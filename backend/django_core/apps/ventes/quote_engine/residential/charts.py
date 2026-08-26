@@ -145,6 +145,50 @@ def bill_before_after(bills_before, bills_after, economies=None,
     return _uri(fig)
 
 
+def production_mensuelle(valeurs, w=10.0, h=1.05) -> str:
+    """PRODMOIS — production solaire MOIS PAR MOIS (12 barres, kWh).
+
+    ``valeurs`` = les douze productibles mensuels RÉELS du devis, dérivés par
+    ``quote_engine.productible.production_mensuelle`` (production annuelle du
+    devis distribuée sur les poids GHI Maroc) — EXACTEMENT la série que
+    ``public_views._monthly_production`` sert à la proposition en ligne. Le
+    graphe ne calcule rien : il DESSINE ce qu'on lui passe.
+
+    Série absente ou incomplète ⇒ '' : l'appelant omet alors la carte entière
+    (discipline « barre manquante = carte omise », jamais douze barres
+    fabriquées).
+
+    Ratio volontairement plat (~9,5:1) : rendue à 19 mm de haut par le CSS,
+    l'image occupe toute la largeur utile de la page sans coûter la hauteur
+    d'un vrai graphe — c'est ce qui la laisse tenir dans le budget de
+    pagination de la page « détail ».
+    """
+    valeurs = list(valeurs or [])
+    if len(valeurs) != 12 or not any(v > 0 for v in valeurs):
+        return ""
+    import numpy as np
+    x = np.arange(12)
+    fig, ax = plt.subplots(figsize=(w, h))
+    ax.bar(x, valeurs, 0.62, color=GOLD, edgecolor="none", zorder=2)
+    ax.set_ylim(0, max(valeurs) * 1.18)
+    ax.set_xticks(x)
+    ax.set_xticklabels(_MONTHS, fontsize=8, color=MUTED)
+    ax.tick_params(axis="y", labelsize=7.5, colors=MUTED)
+    ax.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
+    ax.text(0.0, 1.04, "kWh", transform=ax.transAxes, fontsize=7.5,
+            color=MUTED, ha="left", va="bottom")
+    # Le titre vit DANS l'image (comme la note du graphe des factures) : une
+    # ligne de titre HTML au-dessus coûterait ~4 mm au budget de la page.
+    ax.text(1.0, 1.04, "Production solaire estimée, mois par mois",
+            transform=ax.transAxes, fontsize=8.5, color=NAVY, ha="right",
+            va="bottom", fontweight="bold")
+    _clean(ax)
+    ax.margins(x=0.012)
+    fig.tight_layout()
+    return _uri(fig)
+
+
 def coverage_donut(pct, w=1.95, h=1.95) -> str:
     pct = max(0, min(100, int(round(pct))))
     fig, ax = plt.subplots(figsize=(w, h))
@@ -305,8 +349,15 @@ def build_all(data: dict) -> dict:
     # même pas calculés — seul le calepinage, dérivé du nombre RÉEL de panneaux,
     # est produit. Aucun appelant ne lit les clés absentes (cover/options les
     # référencent uniquement dans leurs branches non masquées).
+    # PRODMOIS — la production mensuelle ne descend PAS de la couche
+    # économique : elle dérive de la production annuelle du devis (donnée
+    # technique). Elle est donc calculée dans les DEUX branches — et vaut ''
+    # dès que la production annuelle manque (carte omise, jamais fabriquée).
+    from ..productible import production_mensuelle as _prod_mens
+    prod_chart = production_mensuelle(_prod_mens(data.get("prod_kwh")))
     if data.get("masquer_synthese"):
-        return {"roof": roof_layout(data["nb_panneaux"])}
+        return {"roof": roof_layout(data["nb_panneaux"]),
+                "production": prod_chart}
     _pb_kw = dict(
         cashflow_sans=data.get("cashflow_sans"),
         cashflow_avec=data.get("cashflow_avec"),
@@ -333,4 +384,6 @@ def build_all(data: dict) -> dict:
         # plus grand encore à cette échelle).
         "payback_xl": payback_curve(*_pb_args, h=3.2, **_pb_kw),
         "roof": roof_layout(data["nb_panneaux"]),
+        # PRODMOIS — bande « production mois par mois » de la page détail.
+        "production": prod_chart,
     }

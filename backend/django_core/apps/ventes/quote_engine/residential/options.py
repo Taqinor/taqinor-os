@@ -470,6 +470,25 @@ def build_pages(ctx) -> list:
     # (~12 lignes communes et plus) passent en 4 pages.
     fits_one = (_table_mm(shared) + _deltas_mm() + _comparatif_mm()) <= 68.0
 
+    # ── PRODMOIS — bande « production mois par mois » sur la page détail ─────
+    # Hauteur du bloc (image 19 mm + ses marges), IMPUTÉE au même budget de
+    # pagination que le tableau : la bande n'est rendue que s'il reste
+    # réellement de la place, avec 4 mm de garde en plus du modèle. Elle ne
+    # change JAMAIS ``fits_one`` (calculé ci-dessus SANS elle) — donc aucun
+    # devis ne bascule de 3 à 4 pages à cause d'elle : soit il y a la place,
+    # soit la bande s'omet. Un devis chargé (page équipement découpée) ne la
+    # reçoit pas non plus : sa page détail est pleine par définition.
+    _PRODMOIS_MM = 21.0
+    _prod_chart = (charts or {}).get("production") or ""
+    prodmois_html = ""
+    if _prod_chart and fits_one:
+        _reste = 68.0 - 4.0 - (_table_mm(shared) + _deltas_mm()
+                               + _comparatif_mm())
+        if _reste >= _PRODMOIS_MM:
+            prodmois_html = (
+                f'<div class="p2-prodmois"><img src="{_prod_chart}" '
+                'alt="Production solaire estimée, mois par mois"></div>')
+
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
         out, cur, h, bi = [], [], 0.0, 0
@@ -513,6 +532,12 @@ def build_pages(ctx) -> list:
   .p2-spec-v {{ font-family:{fonts['display']}; font-size:18pt;
     color:{C['navy']}; line-height:1; }}
   .p2-spec-l {{ font-size:8pt; color:{C['muted']}; line-height:1.2; }}
+
+  /* PRODMOIS — bande production mois par mois (hauteur FIXE : la pagination
+     de la page détail est budgétée dessus, cf. _PRODMOIS_MM). */
+  .p2-prodmois {{ margin-top:2mm; }}
+  .p2-prodmois img {{ height:19mm; width:auto; max-width:100%;
+    display:block; margin:0 auto; }}
 
   /* Block label */
   .p2-lbl {{ font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase;
@@ -866,7 +891,7 @@ def build_pages(ctx) -> list:
         light_cls = (" p2-light"
                      if (not deux_options and len(shared) <= 4) else "")
         return [_wrap_page(
-            head_html + band_html
+            head_html + band_html + prodmois_html
             + _table_html(shared, equipement_lbl)
             + '<div class="qj" data-w="35"></div>'
             + closing_html

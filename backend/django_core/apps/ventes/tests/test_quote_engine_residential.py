@@ -985,6 +985,58 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertNotIn('class="c1-qr-cell"', html)
 
 
+class TestProductionMensuellePageDetail(SimpleTestCase):
+    """PRODMOIS — bande « production mois par mois » de la page détail.
+
+    Ce qui est vérifié : la série DESSINÉE est EXACTEMENT celle que la
+    proposition en ligne sert (``public_views._monthly_production``), elle
+    somme au productible ANNUEL du devis (aucun total fabriqué), et la bande
+    s'omet dès qu'il n'y a plus la place ou plus de production."""
+
+    def test_serie_identique_a_celle_de_la_proposition_en_ligne(self):
+        from apps.ventes.public_views import _monthly_production
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for annuel in (8065, 70568, 1, 123456):
+            self.assertEqual(production_mensuelle(annuel),
+                             _monthly_production({'prod_kwh': annuel}),
+                             f'divergence sur {annuel} kWh/an')
+
+    def test_la_serie_somme_au_productible_annuel_reel(self):
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for annuel in (8065, 70568, 12000):
+            serie = production_mensuelle(annuel)
+            self.assertEqual(len(serie), 12)
+            # distribution d'un total RÉEL : la somme le reproduit (± arrondis)
+            self.assertLessEqual(abs(sum(serie) - annuel), 6)
+
+    def test_aucune_serie_sans_production_annuelle(self):
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for vide in (None, 0, -5, '', 'abc'):
+            self.assertEqual(production_mensuelle(vide), [])
+
+    def test_graphe_omis_quand_la_serie_manque(self):
+        from apps.ventes.quote_engine.residential import charts
+        self.assertEqual(charts.production_mensuelle([]), '')
+        self.assertEqual(charts.production_mensuelle([0] * 12), '')
+        self.assertEqual(charts.production_mensuelle([100] * 11), '')
+
+    def test_bande_rendue_sur_un_devis_qui_a_la_place(self):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        html = render.build_html(renderer._augment(sample_data.build('deux')))
+        self.assertIn('class="p2-prodmois"', html)
+
+    def test_bande_omise_sur_un_devis_charge(self):
+        """Budget de pagination épuisé (devis dense) ⇒ bande OMISE — jamais une
+        4ᵉ page pour la loger."""
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        for variante in ('plus5', 'plus10'):
+            html = render.build_html(
+                renderer._augment(sample_data.build(variante)))
+            self.assertNotIn('class="p2-prodmois"', html, variante)
+
+
 class TestOnepageQrProposition(SimpleTestCase):
     """QRP1 — même vignette sur le format UNE PAGE (moteur legacy) : elle vit
     dans l'en-tête navy, dont la hauteur est fixée par le logo (80 px), donc
