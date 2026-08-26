@@ -51,6 +51,16 @@ export interface InitOptions {
   // navigateur ne parle qu'à la page hôte, la page hôte parle à l'API ». Absent/null
   // → fenêtre de production STRICTEMENT INCHANGÉE (comportement historique, golden).
   bankable?: BankableProduction | null;
+  // L-MAP (fondateur 26/08/2026) — contour ORIGINAL du client, `[lat, lng] ×
+  // n` (convention CRM/`Lead.roof_outline`), pour un calque GÉO-RÉFÉRENCÉ
+  // passif et NON ÉDITABLE sur la carte (voir `referenceContourRing` dans
+  // `prefill.ts`) — distinct de `hydrate.lead.roof_outline`/`hydrate.devis.
+  // geometrie.roof_outline`, qui SÈMENT la zone active éditable et peuvent
+  // diverger du dessin d'origine après une édition. Le tunnel public
+  // (`captureBoot.ts`, jamais cette option) et la preview
+  // (`preview/toiture-3d-pro-11.astro`) ne la passent jamais : absente →
+  // calque vide, boot octet pour octet inchangé.
+  referenceContour?: Array<[number, number]> | null;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -73,6 +83,10 @@ export interface RoofToolApi {
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
+  /** L-MAP — bascule d'affichage du calque de référence géo-référencé
+   *  (`opts.referenceContour`). Sans effet si aucun contour n'a été fourni
+   *  au boot (le calque reste vide dans les deux cas). */
+  setReferenceContourVisible: (visible: boolean) => void;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

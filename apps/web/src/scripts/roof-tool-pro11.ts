@@ -135,7 +135,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -1273,6 +1273,29 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Carte / tracé —
   map.on('load', () => {
+    // L-MAP — calque de référence AJOUTÉ EN PREMIER : il reste sous le tracé en
+    // cours/les obstacles/les points de sommet dans l'ordre d'empilement MapLibre
+    // (chaque addLayer suivant se pose AU-DESSUS). Toujours ajouté (même sans
+    // `opts.referenceContour` : source vide, exactement comme `rp9-obs` sans
+    // obstacle) — le tunnel public et la preview restent visuellement inchangés.
+    map.addSource('rp9-ref-contour', {
+      type: 'geojson',
+      data: referenceContourGeoJSON(referenceContourRing(opts.referenceContour)) as never,
+    });
+    map.addLayer({
+      id: 'rp9-ref-contour-fill',
+      type: 'fill',
+      source: 'rp9-ref-contour',
+      layout: { visibility: referenceContourVisible ? 'visible' : 'none' },
+      paint: { 'fill-color': GOLD, 'fill-opacity': 0.14 },
+    });
+    map.addLayer({
+      id: 'rp9-ref-contour-line',
+      type: 'line',
+      source: 'rp9-ref-contour',
+      layout: { visibility: referenceContourVisible ? 'visible' : 'none' },
+      paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [3, 2] },
+    });
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-obs', { type: 'geojson', data: empty as never });
@@ -1346,6 +1369,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const land = () => { map.resize(); map.jumpTo(target); };
     land();
     map.once('idle', land);
+  }
+
+  /* L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+     layouter ») — calque GÉO-RÉFÉRENCÉ, PASSIF et NON ÉDITABLE, du contour
+     ORIGINAL dessiné par le client (`opts.referenceContour`), distinct de la
+     zone active éditable (`vertices`, seedée par `hydrate.*` ci-dessus et
+     ENSUITE modifiable). Style délibérément DIFFÉRENT de `rp9-line` (le tracé
+     en cours : pas de remplissage, tiret [2, 1.5], largeur 2.5) : ce calque
+     porte un remplissage translucide + un tiret plus large [3, 2] + aucun
+     point de sommet (`rp9-pts` n'en reçoit jamais) — jamais confondable avec
+     un tracé en cours, une sélection PV34 ou un panneau (rendu en 3D par
+     `scene3d`, une couche WebGL entièrement différente). Sans gestionnaire de
+     clic/glissé enregistré sur ces layers : MapLibre ne les rend interactifs
+     que si on les câble explicitement (queryRenderedFeatures/on('click', id,
+     …)) — absent ici par construction, donc le tracé/glissé de panneau/la
+     sélection de groupe-rangée (PV34) traversent ce calque sans le voir. */
+  let referenceContourVisible = true;
+  function referenceContourGeoJSON(ring: LngLat[] | null) {
+    if (!ring || ring.length < 3) return empty;
+    const closed = [...ring, ring[0]];
+    return {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [closed] } }],
+    } as const;
+  }
+  function setReferenceContour(ring: LngLat[] | null) {
+    const src = map.getSource('rp9-ref-contour') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return; // appelé avant map.on('load') : rien à peindre pour l'instant.
+    src.setData(referenceContourGeoJSON(ring) as never);
+  }
+  function setReferenceContourVisible(visible: boolean) {
+    referenceContourVisible = visible;
+    const vis = visible ? 'visible' : 'none';
+    if (map.getLayer('rp9-ref-contour-fill')) map.setLayoutProperty('rp9-ref-contour-fill', 'visibility', vis);
+    if (map.getLayer('rp9-ref-contour-line')) map.setLayoutProperty('rp9-ref-contour-line', 'visibility', vis);
   }
 
   /** W113 — applique l'hydratation d'un lead à l'état d'édition (zone active) : sème le
@@ -2716,5 +2774,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           : meta,
       ),
     snapshot: () => scene3d.snapshot(),
+    // L-MAP — bascule du calque de référence géo-référencé (rp9-chip côté
+    // ToitureDesign.jsx). Guardé dans la fonction elle-même contre un appel
+    // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
+    // les layers n'existent pas encore).
+    setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
   });
 }

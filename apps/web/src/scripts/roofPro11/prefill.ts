@@ -679,3 +679,23 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   if (typeof lead.city === 'string' && lead.city.trim()) contact.city = lead.city.trim();
   return { vertices, center, contact };
 }
+
+/**
+ * L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+ * layouter ») — le contour ORIGINAL dessiné par le client, en `[lng, lat]` ×
+ * n, prêt pour un calque GÉO-RÉFÉRENCÉ passif (`roof-tool-pro11.ts`, source
+ * `rp9-ref-contour`). MÊME validation que `hydrateFromLead` ci-dessus
+ * (`[lat, lng]` × n, ≥ 3 sommets finis) — JAMAIS redéfinie — mais un usage
+ * différent : celui-ci NE SÈME PAS la zone active éditable (`vertices`
+ * ci-dessus), il reste une trace PERMANENTE et NON ÉDITABLE, distincte du
+ * calepinage courant même après une édition. `null` sans contour exploitable
+ * (< 3 sommets) — jamais un tableau vide qui dessinerait un polygone
+ * dégénéré, jamais un contour deviné.
+ */
+export function referenceContourRing(brut: Array<[number, number]> | null | undefined): LngLat[] | null {
+  if (!Array.isArray(brut) || brut.length < 3) return null;
+  const ring = brut
+    .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    .map(([lat, lng]) => [lng, lat] as LngLat);
+  return ring.length >= 3 ? ring : null;
+}
