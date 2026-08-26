@@ -191,18 +191,24 @@ class CouvertureBatteriePubliqueTests(SimpleTestCase):
             self.assertEqual(pas['se_remplit_tous_les_jours'],
                              pas['capacite_kwh'] <= plafond)
 
-    def test_dans_le_curseur_dit_si_le_repere_tombe_sur_un_cran(self):
-        bloc = _bloc(nb_packs_max=2)
+    def test_le_curseur_va_jusqu_a_l_autonomie_complete(self):
+        """ORDRE FONDATEUR (26/08) — « monter à 30-40 kWh avec des modules de
+        5 kWh, pas de problème » : le curseur DOIT atteindre le repère
+        d'autonomie complète, sinon on montre un repère que personne ne peut
+        aller voir. Le plafond demandé par l'appelant ne fait que le PLANCHER."""
+        bloc = _bloc(nb_packs_max=1)
         auto = bloc['autonomie_complete']
-        self.assertEqual(auto['dans_le_curseur'],
-                         auto['nb_packs'] <= bloc['nb_packs_max'])
+        self.assertGreaterEqual(bloc['nb_packs_max'],
+                                min(auto['nb_packs'],
+                                    COUVERTURE_PACKS_PLAFOND))
+        self.assertEqual(len(bloc['pas']), bloc['nb_packs_max'] + 1)
+        self.assertTrue(auto['dans_le_curseur'])
 
-    def test_couverture_de_l_autonomie_servie_meme_hors_curseur(self):
+    def test_couverture_de_l_autonomie_toujours_servie(self):
         """« Autonomie complète : N batteries (≈ X % de votre consommation) »
-        reste affichable même quand N dépasse le dernier cran du curseur."""
-        auto = _bloc(nb_packs_max=1)['autonomie_complete']
-        if auto['nb_packs'] <= COUVERTURE_PACKS_PLAFOND:
-            self.assertIsNotNone(auto['couverture_pct'])
+        reste affichable, y compris si N dépassait le plafond dur des crans."""
+        self.assertIsNotNone(
+            _bloc(nb_packs_max=1)['autonomie_complete']['couverture_pct'])
 
     def test_plafond_dur_du_nombre_de_crans(self):
         bloc = _bloc(nb_packs_max=999)

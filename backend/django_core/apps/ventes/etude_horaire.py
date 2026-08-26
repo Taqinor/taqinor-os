@@ -1191,12 +1191,14 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         return None
 
 
-#: COUVBAT (26/08/2026) — plafond DUR du nombre de paliers « N batteries »
-#: ventilés heure par heure dans le payload public. Ce n'est pas un avis sur
-#: ce qui est vendable (c'est le balayage de stockage qui le dit) : c'est une
-#: borne de COÛT — chaque palier rejoue douze jours types, et une page client
-#: n'a jamais besoin de plus de barreaux que ça sur un curseur.
-COUVERTURE_PACKS_PLAFOND = 10
+#: COUVBAT (26/08/2026) — plafond DUR du nombre de crans « N batteries »
+#: ventilés heure par heure dans le payload public. Ce n'est PAS un avis sur ce
+#: qui est vendable (c'est ``se_remplit_tous_les_jours``, et le balayage de
+#: stockage, qui le disent) : c'est une borne de COÛT — chaque cran rejoue les
+#: douze jours types. Douze crans couvrent largement l'intention du fondateur
+#: (« monter à 30-40 kWh avec des modules de 5 kWh, pas de problème » = 6 à 8
+#: modules) tout en laissant de la marge aux modules plus petits.
+COUVERTURE_PACKS_PLAFOND = 12
 
 
 def _direct_horaire_du_jour(jour_type):
@@ -1346,6 +1348,17 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
         plafond_remplissage = max(0.0, surplus_min or 0.0)
         plafond_remplissage_publie = round(plafond_remplissage, 2)
 
+        # ── L'AUTONOMIE COMPLÈTE, calculée AVANT les crans ──
+        # Elle FIXE la portée du curseur : le fondateur veut pouvoir explorer
+        # jusqu'à l'autonomie complète (« monter à 30-40 kWh avec des modules
+        # de 5 kWh, pas de problème »). Un repère qu'on ne peut pas atteindre
+        # avec le curseur ne se compare à rien.
+        capacite_requise = (deficit_max / BATTERY_ROUNDTRIP
+                            if BATTERY_ROUNDTRIP > 0 else deficit_max)
+        nb_packs_autonomie = int(math.ceil(
+            capacite_requise / capacite_pack)) if capacite_requise > 0 else 0
+        n_max = max(n_max, min(nb_packs_autonomie, COUVERTURE_PACKS_PLAFOND))
+
         def _palier(nb_packs):
             """Un cran du curseur : l'année ET les quatre jours types publics."""
             capacite = nb_packs * capacite_pack
@@ -1414,18 +1427,13 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
 
         pas = [_palier(n) for n in range(n_max + 1)]
 
-        # ── L'AUTONOMIE COMPLÈTE ──
-        capacite_requise = (deficit_max / BATTERY_ROUNDTRIP
-                            if BATTERY_ROUNDTRIP > 0 else deficit_max)
-        nb_packs_autonomie = int(math.ceil(
-            capacite_requise / capacite_pack)) if capacite_requise > 0 else 0
         capacite_autonomie = nb_packs_autonomie * capacite_pack
         deja_calcule = next(
             (p for p in pas if p['nb_packs'] == nb_packs_autonomie), None)
-        if deja_calcule is None and 0 < nb_packs_autonomie <= COUVERTURE_PACKS_PLAFOND:
-            # Le cran d'autonomie tombe HORS du curseur : on le calcule quand
-            # même — pouvoir DIRE « 6 batteries ≈ 99 % de votre consommation »
-            # vaut un treizième parcours des jours types. Sa ventilation
+        if deja_calcule is None and nb_packs_autonomie > 0:
+            # Le cran d'autonomie dépasse le plafond DUR des crans servis : on
+            # le calcule quand même — pouvoir DIRE « 14 batteries ≈ 99 % de
+            # votre consommation » vaut un parcours de plus. Sa ventilation
             # horaire, elle, n'est pas servie (rien ne la dessinerait).
             deja_calcule = _palier(nb_packs_autonomie)
         autonomie = {
