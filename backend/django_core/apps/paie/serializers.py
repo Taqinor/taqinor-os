@@ -4,7 +4,11 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
+from decimal import Decimal
+
 from rest_framework import serializers
+
+from .services import _q
 
 from .models import (
     AdhesionMutuelle,
@@ -473,6 +477,22 @@ class AvanceSalarieSerializer(serializers.ModelSerializer):
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')
+
+    def create(self, validated_data):
+        # WIR197 (fix money) — sans échéance explicite, une avance créée par
+        # l'API restait à `montant_echeance=0` (défaut modèle) et n'était
+        # JAMAIS retenue sur aucun bulletin (`echeance_avance` renvoie 0 tant
+        # que `montant_echeance<=0`). Calculée SERVEUR, ici, pour qu'aucun
+        # client ne puisse recréer le bug — même formule que documentée sur
+        # le modèle (``montant_total / nombre_echeances``) et même arrondi
+        # (``_q``, ROUND_HALF_UP au centime) que le pont RH
+        # (``materialiser_avance_rh``, cas particulier nombre_echeances=1).
+        if not validated_data.get('montant_echeance'):
+            montant_total = validated_data.get('montant_total') or Decimal('0')
+            nombre_echeances = validated_data.get('nombre_echeances') or 1
+            validated_data['montant_echeance'] = _q(
+                Decimal(montant_total) / Decimal(nombre_echeances))
+        return super().create(validated_data)
 
 
 class LigneVirementSerializer(serializers.ModelSerializer):
