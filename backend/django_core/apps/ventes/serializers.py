@@ -1213,6 +1213,167 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
         return value
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# TAILLES (ordre fondateur, 26/08/2026) — l'ÉDITION des trois tailles
+# ════════════════════════════════════════════════════════════════════════════
+
+class OffreTailleConfigSerializer(serializers.Serializer):
+    """La CONFIGURATION d'UNE taille — et rien d'autre.
+
+    LE POINT CENTRAL : ce sérialiseur n'accepte QUE des ENTRÉES (le champ PV,
+    la banque en modules du devis, les produits substitués). Tout nombre
+    DÉRIVÉ — prix TTC, économie, payback, couverture, kWc, production, cumul
+    25 ans — est REFUSÉ en 400, jamais ignoré en silence.
+
+    POURQUOI UN REFUS BRUYANT. Ignorer un champ dérivé le ferait disparaître
+    sans que personne ne l'apprenne : le vendeur croirait avoir fixé un prix,
+    l'écran afficherait autre chose, et la confiance dans les chiffres de la
+    page mourrait là. Le refus rend la règle « zéro chiffre inventé »
+    STRUCTURELLE plutôt que déclarative — il n'existe aucun chemin par lequel
+    un prix tapé à la main puisse entrer dans le stockage, donc aucun par
+    lequel il puisse ressortir sur une page client.
+    """
+
+    nb_panneaux = serializers.IntegerField(min_value=1, max_value=500,
+                                           required=False)
+    batterie_nb_modules = serializers.IntegerField(min_value=0, max_value=100,
+                                                   required=False)
+    equipements = serializers.DictField(child=serializers.IntegerField(),
+                                        required=False)
+
+    def to_internal_value(self, data):
+        """LE REFUS SE FAIT ICI, ET C'EST LA SEULE PLACE QUI MARCHE.
+
+        ``self.initial_data`` n'existe QUE lorsqu'un sérialiseur est construit
+        avec ``data=…``. Imbriqué comme CHAMP d'un parent (le cas de
+        production : ``OffreTailleEcritureSerializer.config``), DRF instancie
+        ce sérialiseur à la déclaration de la classe et appelle
+        ``run_validation(data)`` sans jamais poser ``initial_data`` — le lire
+        depuis ``validate()`` levait donc un ``AttributeError``, soit un 500
+        sur CHAQUE PATCH, légitime ou non. Mes tests unitaires passaient parce
+        qu'ils construisaient le sérialiseur avec ``data=`` : un chemin que la
+        production ne prend jamais.
+
+        ``to_internal_value`` reçoit le dict BRUT dans les DEUX chemins — c'est
+        donc ici, et pas dans ``validate()``, que la comparaison au dictionnaire
+        d'origine est possible.
+
+        ET SURTOUT PAS ``getattr(self, 'initial_data', {})`` : ce pansement
+        rendrait la garde SILENCIEUSEMENT inopérante en production (DRF écarte
+        les clés inconnues, donc ``prix_ttc`` passerait en 200 « ignoré ») —
+        exactement ce que la docstring de cette classe interdit. Une garde qui
+        ne garde plus rien est pire que pas de garde : elle rassure.
+        """
+        from .offres_tailles import CHAMPS_CONFIG, CHAMPS_DERIVES
+
+        if isinstance(data, dict):
+            derives = sorted(set(data) & set(CHAMPS_DERIVES))
+            if derives:
+                raise serializers.ValidationError({
+                    champ: (
+                        'Champ calculé par le moteur : il ne peut pas être '
+                        'saisi. Modifiez la configuration (panneaux, '
+                        'batterie, matériel) et le moteur le recalculera.'
+                    ) for champ in derives})
+            inconnus = sorted(set(data) - set(CHAMPS_CONFIG))
+            if inconnus:
+                raise serializers.ValidationError({
+                    champ: "Champ inconnu dans la configuration d'une taille."
+                    for champ in inconnus})
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                'Configuration vide : rien à enregistrer.')
+        return attrs
+
+    def validate_batterie_nb_modules(self, value):
+        """Zéro module n'exprime PAS « sans batterie » — la variante le fait.
+
+        Une taille sert DEUX variantes : ``sans`` (aucune batterie, par
+        construction) et ``avec``. Demander « avec batterie, zéro module » est
+        une contradiction : la carte ``avec`` disparaîtrait sans que personne
+        ne sache pourquoi. On le DIT au lieu de composer un kit vide.
+        """
+        if value == 0:
+            raise serializers.ValidationError(
+                'Zéro module n\'exprime pas « sans batterie » : la variante '
+                '« sans » de cette taille s\'en charge déjà. Indiquez au moins '
+                'un module, ou laissez le moteur dimensionner la banque.')
+        return value
+
+    def validate_equipements(self, value):
+        """Les substitutions produit — rôle connu, société, ET PRIX RÉEL.
+
+        La garde multi-société se tient ICI, une seule fois : un identifiant
+        d'une autre société est refusé en 400 (jamais silencieusement ignoré,
+        ce qui aurait laissé croire à une substitution appliquée). C'est aussi
+        pourquoi la dérivation, en aval, ne re-vérifie pas la société — une
+        garde recopiée finit par diverger de son original.
+
+        LE PRIX EST UNE GARDE À PART ENTIÈRE, ET LE CATALOGUE LA REND
+        NÉCESSAIRE : les 11 pompes OSP 30-series y sont DÉLIBÉRÉMENT sans prix
+        (« prix à renseigner » tant que le fondateur ne les a pas chiffrées),
+        et d'autres articles peuvent l'être. Substituer un produit à 0 MAD
+        ferait tomber le prix de la carte — une batterie GRATUITE affichée à
+        un client. C'est exactement la discipline « jamais un produit sans
+        prix » que l'auto-remplissage applique déjà côté composition.
+        """
+        from apps.stock.models import Produit
+        from .models import ROLES_AUTO_COMPOSITION
+
+        company = self.context.get('company')
+        if company is None:
+            raise serializers.ValidationError(
+                'Société indéterminée : substitution refusée.')
+        erreurs = {}
+        for role, produit_id in (value or {}).items():
+            if role not in ROLES_AUTO_COMPOSITION:
+                erreurs[role] = 'Rôle de composition inconnu.'
+                continue
+            produit = Produit.objects.filter(
+                pk=produit_id, company=company).first()
+            if produit is None:
+                erreurs[role] = 'Produit introuvable dans votre catalogue.'
+                continue
+            if not (produit.prix_vente or 0) > 0:
+                erreurs[role] = (
+                    'Ce produit n\'a pas encore de prix de vente : il ne peut '
+                    'pas chiffrer une taille (elle s\'afficherait gratuite '
+                    'chez le client). Renseignez son prix au catalogue.')
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value
+
+
+class OffreTailleEcritureSerializer(serializers.Serializer):
+    """Le corps d'un PATCH de configuration : QUELLE taille, et sa config."""
+
+    cle = serializers.CharField()
+    config = OffreTailleConfigSerializer()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
+
+
+class OffreTailleRegenerationSerializer(serializers.Serializer):
+    """Le corps d'une régénération : QUELLE taille redériver, elle SEULE."""
+
+    cle = serializers.CharField()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
+
+
 class PlanCommissionSerializer(serializers.ModelSerializer):
     """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
     de la societe quand ``owner`` est nul).

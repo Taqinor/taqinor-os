@@ -237,8 +237,23 @@ const ventesApi = {
   // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
   // (« vu le … ») + relances de devis abandonné consignées.
   getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),
+  // ANALYT1 (audit item 64) — « Lecture par le client » : visites distinctes
+  // par section de la proposition web + alerte de friction (relecture
+  // répétée). Réservé responsable/admin côté serveur (IsResponsableOrAdmin) —
+  // le front ne l'appelle QUE si le rôle courant le permet (voir DevisList).
+  getLectureClientDevis: (id) => api.get(`/ventes/devis/${id}/lecture-client/`),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
+  // TAILLES (fondateur 26/08/2026) — écran vendeur des trois tailles
+  // Éco/Recommandé/Max (DevisOffresTailles.jsx). Contrat :
+  // apps/ventes/contract_samples/offres_tailles.json. `patchOffreTailleConfig`
+  // n'écrit QUE la CONFIGURATION (nb_panneaux/batterie_nb_modules/equipements) —
+  // tout nombre dérivé est refusé en 400 par le serveur, jamais ignoré.
+  getOffresTaillesDevis: (id) => api.get(`/ventes/devis/${id}/offres-tailles/`),
+  patchOffreTailleConfig: (id, cle, config) =>
+    api.patch(`/ventes/devis/${id}/offres-tailles/config/`, { cle, config }),
+  regenererOffreTaille: (id, cle) =>
+    api.post(`/ventes/devis/${id}/offres-tailles/regenerer/`, { cle }),
   // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
   approbationDevis: (id) => api.get(`/ventes/devis/${id}/approbation/`),
   approuverEtapeDevis: (id, commentaire = '') =>

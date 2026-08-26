@@ -27,9 +27,18 @@ def seed_unites_mesure_hook(company, *, user=None):
     UniteMesure.seed_defaults(company)
 
 
+def seed_cadence_relance_hook(company, *, user=None):
+    """RELANCE FOUNDATION — seede la cadence de relance neutre par défaut
+    (J+2/J+5/J+10/J+20/J+35) de la société (idempotent)."""
+    from .models_relance import CadenceRelanceEtape
+    CadenceRelanceEtape.seed_defaults(company)
+
+
 def register_parametres_signup_hooks():
     """Branche les hooks de seed Paramètres au registre (idempotent)."""
     from core.signup_hooks import register_signup_hook
     register_signup_hook('taux_tva', seed_taux_tva_hook, priority=30)
     register_signup_hook('unites_mesure', seed_unites_mesure_hook,
+                         priority=30)
+    register_signup_hook('cadence_relance', seed_cadence_relance_hook,
                          priority=30)

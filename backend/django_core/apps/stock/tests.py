@@ -266,6 +266,57 @@ class TestSeedCatalogue(TestCase):
         self.assertFalse(Produit.objects.filter(
             company=self.company, sku='OND-DEY-20K-LV').exists())
 
+    def test_bathomo_bat_dey_10_jamais_archive_par_le_seeder(self):
+        """BATHOMO (fondateur 26/08/2026, RECALÉ) — le fondateur n'a PAS
+        archivé le Dyness 10 kWh : il a mis sa QUANTITÉ DE STOCK à 0 (un
+        mouvement de stock). « When it comes back, use it for bigger
+        installations » — un archivage forcé romprait cette promesse (un
+        produit archivé ne redevient jamais actif tout seul). Sur une société
+        NEUVE, le seeder le crée donc comme n'importe quelle autre ligne du
+        catalogue : ACTIF, stock normal — la garde qui l'exclut tant que son
+        stock réel est à 0 vit côté composition (BATHOMO stock-gating,
+        ``apps.ventes.services``), jamais ici."""
+        seed(self.company)
+        bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertFalse(bat10.is_archived)
+        self.assertEqual(bat10.prix_vente, Decimal('25000.00'))  # 30 000 TTC
+        self.assertGreater(bat10.quantite_stock, 0)
+
+    def test_bathomo_bat_dey_10_stock_a_zero_jamais_touche_par_le_seeder(self):
+        """LA GARANTIE QUE CE CORRECTIF NE DOIT PAS PERDRE : un run du seeder
+        sur une base où le fondateur a DÉJÀ mis ``BAT-DEY-10`` à 0 en stock
+        (son geste réel, via un mouvement) ne touche NI le prix NI la
+        quantité — et ne le force PAS non plus à ``is_archived``. Le seeder
+        est additif : une ligne déjà présente (matchée par SKU) est SAUTÉE,
+        point final."""
+        seed(self.company)
+        bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        bat10.quantite_stock = 0
+        bat10.save(update_fields=['quantite_stock'])
+        prix_avant = bat10.prix_vente
+
+        seed(self.company)  # redéploiement (scripts/deploy-prod.ps1)
+
+        bat10.refresh_from_db()
+        self.assertEqual(bat10.quantite_stock, 0)
+        self.assertEqual(bat10.prix_vente, prix_avant)
+        self.assertFalse(bat10.is_archived)
+
+    def test_bathomo_bat_dey_10_reste_dans_le_catalogue_de_composition(self):
+        """PAS archivé ⇒ toujours présent dans ``catalogue_de_la_societe``
+        (filtre ``is_archived=False`` seulement) même à stock 0 — c'est
+        volontaire : l'exclusion « pas de stock » est le travail du
+        stock-gating de la composition batterie, jamais de la visibilité
+        catalogue générale (d'autres rôles, panneaux/onduleurs, peuvent
+        légitimement rester composables en stock non suivi)."""
+        from apps.ventes.services import catalogue_de_la_societe
+        seed(self.company)
+        Produit.objects.filter(
+            company=self.company, sku='BAT-DEY-10').update(quantite_stock=0)
+        skus = {p.sku for p in catalogue_de_la_societe(self.company)}
+        self.assertIn('BAT-DEY-10', skus)
+        self.assertIn('BAT-DEY-5', skus)
+
     def test_pvond_completer_les_specs_ne_resynchronise_aucun_devis(self):
         """PVSYNC — vérification du chemin de resynchronisation.
 
@@ -435,6 +486,10 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(f5.bat_dod_pct, Decimal('90.0'))
         self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
         self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
+        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
+        # keep it very high for 5kwh — maybe 200 » : la valeur EXPLICITEMENT
+        # fondateur ship sur le 5 kWh, jamais sur le 10 kWh (non déclaré).
+        self.assertEqual(f5.bat_max_modules_par_banc, 200)
         self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
         # L-DECH — décharge SOURCÉE datasheet DL5.0C (20250228-EN) :
         # « Charge 75 A / Discharge 100 A » ⇒ 100 A × 51,2 V = 5,12 kW. La
@@ -452,6 +507,26 @@ class TestSeedCatalogue(TestCase):
         # dans les deux sens, et la règle générale du fondateur (100 A × ~52 V)
         # est confirmée à l'ampère près.
         self.assertEqual(f10.bat_max_decharge_kw, Decimal('5.12'))
+        # Aucune valeur fondateur déclarée pour le 10 kWh — jamais un défaut
+        # inventé, le champ reste vide (illimité).
+        self.assertIsNone(f10.bat_max_modules_par_banc)
+
+    def test_bathomo_max_modules_par_banc_comble_jamais_ecrase(self):
+        """Migration stock 0132 — comble UNIQUEMENT le champ VIDE, depuis le
+        MÊME dictionnaire ``FICHES_TECHNIQUES`` que le seeder (aucune valeur
+        recopiée à la main). Une saisie fondateur DIVERGENTE n'est jamais
+        touchée, même par un run nu du seeder (même garde que PV85/L-DECH)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        fiche = FicheTechnique.objects.get(produit=b5)
+        self.assertEqual(fiche.bat_max_modules_par_banc, 200)
+
+        fiche.bat_max_modules_par_banc = 5
+        fiche.save(update_fields=['bat_max_modules_par_banc'])
+        seed(self.company)  # redéploiement, sans --reappliquer-fiches
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.bat_max_modules_par_banc, 5)
 
     def test_ldech_port_batterie_des_hybrides_seede_par_datasheet(self):
         """L-DECH — le PORT BATTERIE des cinq hybrides Deye, sourcé colonne par

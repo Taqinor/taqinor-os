@@ -132,3 +132,12 @@ export function lienCarte(position) {
   const p = normaliserEpingle(position)
   return p ? `https://www.google.com/maps?q=${p.lat},${p.lng}` : null
 }
+
+/* L-MAP (fondateur 26/08/2026) — le calepinage 3D (`ToitClientOverlay.jsx`,
+ * frontend/src/features/ventes) a besoin de savoir SANS dessiner s'il doit
+ * proposer sa bascule d'affichage : même règle d'exploitabilité que
+ * `dessinerContour` ci-dessus (>= 3 sommets, emprise non nulle), jamais
+ * redéfinie. */
+export function contourExploitable(brut) {
+  return dessinerContour(brut) != null
+}

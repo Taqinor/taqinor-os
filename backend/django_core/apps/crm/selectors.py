@@ -1588,6 +1588,48 @@ def relances_du_jour(company, user, scope='today', today=None):
     return qs.order_by('relance_date', 'nom')
 
 
+# ── RELANCE FOUNDATION — file des étapes de cadence de relance dues ─────────
+
+def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None):
+    """RELANCE FOUNDATION — étapes de relance (``RelanceEtape``) DUES, pour le
+    panneau « Relances du jour ».
+
+    Distinct de ``relances_du_jour`` ci-dessus (leads via ``relance_date``,
+    granularité lead) : ici la granularité est l'ÉTAPE de plan structuré
+    (canal + statut propres). ``scope`` = ``overdue`` (en retard, strictement
+    avant aujourd'hui) / ``today`` (échéance aujourd'hui, défaut) / ``all``
+    (aujourd'hui + en retard, l'union affichée par le panneau). Seules les
+    étapes ``a_faire`` sont candidates — jamais une étape déjà traitée. La
+    portée de visibilité de l'utilisateur est respectée (``scope_queryset``
+    via le lead) ; ``owner`` filtre en plus sur le responsable du lead.
+    """
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead, RelanceEtape
+
+    today = today or timezone.localdate()
+    qs = RelanceEtape.objects.filter(
+        company=company, statut=RelanceEtape.Statut.A_FAIRE,
+        lead__is_archived=False,
+    ).select_related('lead', 'lead__owner')
+    if scope == 'overdue':
+        qs = qs.filter(due_date__lt=today)
+    elif scope == 'all':
+        qs = qs.filter(due_date__lte=today)
+    else:  # today
+        qs = qs.filter(due_date=today)
+
+    # Portée de visibilité : mêmes leads que scope_queryset(..., ['owner'])
+    # appliqué à Lead, traduit ici en filtre sur `lead_id`.
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+
+    if owner:
+        qs = qs.filter(lead__owner_id=owner)
+    return qs.order_by('due_date', 'ordre')
+
+
 def leads_chauds_non_contactes(company, user, seuil_score=None):
     """VX83 — Leads « chauds » (score élevé) JAMAIS contactés, pour la file de
     travail. Un lead à fort potentiel dont ``first_contacted_at`` est NULL est

@@ -2824,6 +2824,37 @@ textarea.form-control {
 /* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
 .gen-page { max-width: 1100px; }
 
+/* FOUNDER 26/08/2026 — « la table [Lignes de Produits] n'est pas montrée
+   d'un coup, il faut défiler à gauche/droite, alors qu'elle n'utilise
+   qu'une partie de l'écran. Agrandis et retire le défilement. » Règle
+   append-only : NOUVELLE règle plutôt qu'une modification de `.gen-page`
+   ci-dessus, plus spécifique que l'ordre de cascade seul ne suffirait pas à
+   garantir sans risquer de repasser AU-DESSUS de l'override mobile
+   (`.gen-page { max-width: 100% }`, media ≤768px un peu plus haut dans ce
+   fichier) — bornée à `min-width: 769px` pour ne JAMAIS toucher au mobile,
+   qui garde son comportement existant (page pleine largeur, table empilée
+   en cartes sous 768px, cf. plus bas). 1100px ne laissait que ~812-940px
+   utiles à `.lines-table` (désignation/produit/villa/qté/prix/tva/total/
+   option/ordre/suppr.) une fois `.gen-page` et le padding de carte
+   déduits — assez pour forcer `.lines-table-wrap { overflow-x: auto }` à
+   défiler sur un moniteur large où il restait pourtant beaucoup de place à
+   droite. `.gen-page` n'est utilisée QUE par cet écran (jamais une classe
+   partagée) : l'élargir ne touche aucune autre page. Les autres sections de
+   l'écran (grilles Tailwind `sm:grid-cols-*`/`lg:grid-cols-*`, graphique
+   recharts en `width="100%"`) sont toutes responsives et absorbent la
+   largeur en plus sans rien casser — d'où élargir la page entière plutôt
+   qu'un « breakout » CSS isolé de la seule carte Lignes de Produits (la
+   sidebar a une largeur DYNAMIQUE — dépliée/repliée, `.sidebar`/
+   `.sidebar--collapsed` — un breakout en `100vw` calculerait faux dans un
+   des deux états). `.lines-table` reste en `table-layout: auto` (inchangé) :
+   les colonnes numériques gardent leur largeur fixe (`.col-num`, déjà
+   compactes et alignées à droite) et Désignation/Produit — les deux seules
+   colonnes SANS largeur fixe — absorbent naturellement tout l'espace
+   supplémentaire, sans toucher au balisage. */
+@media (min-width: 769px) {
+  .gen-page { max-width: 1440px; }
+}
+
 /* VX138(d) — bandeau d'actions sticky au scroll SUR TOUS LES PALIERS
    (auparavant sticky uniquement sous la media query mobile) ; le contenu
    spécifique mobile (marge de sécurité iOS, boutons pleine largeur) reste

@@ -10,6 +10,7 @@ IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
 import math
+import re
 
 from django.db import models
 from django.db.models import F
@@ -437,11 +438,26 @@ def _opts_pdf_public(link, variante=None):
     ``None`` = le document complet composé par le commercial. La dégradation
     anticopie ci-dessus reste posée SERVEUR et s'applique à TOUTES les
     variantes — le client ne peut pas la contourner par un paramètre.
+
+    QRP1/A5 (27/08/2026) — LE QR DU PDF SUIT LE LIEN QUI LE SERT. Le moteur
+    imprime un QR vers la proposition en ligne ; à défaut d'indication il prend
+    ``ShareLink.for_devis``, qui rend le lien à l'EXPIRATION LA PLUS LOINTAINE
+    sans regarder son niveau. Un devis partagé deux fois (un lien standard pour
+    un prospect, un lien confiance à longue échéance pour le client) servait
+    donc, sur le PDF STANDARD, un QR vers la page CONFIANCE : la dégradation
+    posée deux lignes plus haut annulée par son propre code-barres. On passe
+    ici le jeton du lien RÉELLEMENT servi — même source unique que le filigrane,
+    donc les deux flux publics ne peuvent pas diverger. Le moteur ne le croit
+    pas sur parole : il ne s'en sert que si un ShareLink de CE devis porte ce
+    jeton et n'a pas expiré (sinon repli historique).
     """
     opts = clean_pdf_options({'variante_option': variante})
     if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
         opts['watermark'] = True
         opts['kit_agrege'] = True
+    _token = (getattr(link, 'token', '') or '').strip()
+    if _token:
+        opts['share_token'] = _token
     return opts
 
 
@@ -1927,6 +1943,103 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
         return {'sans': None, 'avec': None}
 
 
+def _offres_tailles_publique(devis, data, est_residentiel):
+    """TAILLES (ordre fondateur, 26/08/2026) — clé ``offres_tailles`` : les
+    TROIS tailles d'installation explorables (Éco → Recommandé → Max), chacune
+    servie dans ses deux variantes ``sans``/``avec`` batterie (contrat
+    ``apps/ventes/contract_samples/offres_tailles.json``).
+
+    SOURCE DE VÉRITÉ UNIQUE : ``apps.ventes.offres_tailles.deriver`` — une
+    fonction PURE qui REPREND les valeurs déjà servies pour la taille
+    « Recommandé » (c'est le devis officiel : jamais un second calcul, jamais
+    un second arrondi) et dérive les deux autres du moteur/catalogue. Aucun
+    chiffre n'est fabriqué ici.
+
+    Garde ``est_residentiel`` — MÊME discriminant que ``dimensionnement_options``
+    et l'échelle de paliers : un devis pompage/industriel/commercial n'a pas
+    cette notion de taille domestique explorable, et son étude a son propre
+    mode. La garde ``avec_ok``/``variantes_servables``, elle, vit DANS le
+    module (elle porte sur la VARIANTE, pas sur la section entière : un devis
+    sans option batterie garde ses trois tailles, en ``sans`` seulement).
+
+    Servie IDENTIQUE aux deux niveaux de partage (standard/confiance) : ce bloc
+    ne porte que des tailles/prix TTC/économies/paybacks/couvertures déjà
+    publics ailleurs sur la page — jamais un prix d'achat ni une marge
+    (règle #4), jamais un calibre ni une nomenclature (anticopie). Best-effort :
+    un bloc additif ne fait jamais tomber la page d'un client."""
+    if not est_residentiel:
+        return None
+    try:
+        from .offres_tailles import offres_tailles_publique
+        return offres_tailles_publique(devis, data)
+    except Exception:  # noqa: BLE001
+        logger.warning('offres_tailles indisponible', exc_info=True)
+        return None
+
+
+def _calepinage_options_publique(devis, offres_tailles, layout_public,
+                                 sld_servi, est_residentiel):
+    """CORRECTION #8 (ordre fondateur, 26/08/2026) — clé ``calepinage_options``
+    : le calepinage de CHAQUE option explorable (contrat
+    ``apps/ventes/contract_samples/calepinage_options.json``).
+
+    SOURCE DE VÉRITÉ UNIQUE : ``apps.ventes.calepinage_options``, un module de
+    GÉOMÉTRIE PURE qui dérive chaque dessin du calepinage RÉEL du devis — même
+    polygone, même orientation, même trame de rangées. Aucun toit n'est
+    fabriqué ici, et aucun panneau ne sort du contour : le test de contenance
+    porte sur une empreinte plus grande que le panneau réel, donc il refuse
+    plutôt qu'il n'accorde.
+
+    RIEN N'EST RECALCULÉ. Les comptes de panneaux viennent du bloc
+    ``offres_tailles`` DÉJÀ dérivé au-dessus ; le calepinage assaini vient du
+    ``_safe_roof_layout`` DÉJÀ calculé pour la clé racine ``roof_layout`` ; le
+    schéma unifilaire n'est pas re-rendu, on ne fait que NOMMER l'option qu'il
+    décrit. Aucune composition, aucun balayage, aucune conception électrique
+    sur ce chemin de lecture publique (règle #4 : lecture pure).
+
+    DEUX GARDES, ET ELLES SONT CELLES DES BLOCS VOISINS. ``est_residentiel``,
+    le même discriminant qu'``offres_tailles`` (sans tailles, il n'y a pas
+    d'options à dessiner) ; et la case de section ``roof3d`` — appliquée EN
+    AMONT par ``layout_public``, qui vaut déjà ``None`` quand le commercial a
+    décoché « Calepinage 3D ». Servi aux DEUX niveaux de partage, exactement
+    comme le calepinage officiel depuis la décision L-SECT du 24/08/2026.
+
+    Best-effort : le filet vit dans le module (il ne lève jamais), et l'import
+    paresseux garde la vue insensible à son absence."""
+    if not est_residentiel or not offres_tailles or not layout_public:
+        return None
+    try:
+        from .calepinage_options import calepinage_options_publique
+        return calepinage_options_publique(devis, offres_tailles,
+                                           layout_public,
+                                           sld_servi=bool(sld_servi))
+    except Exception:  # noqa: BLE001
+        logger.warning('calepinage_options indisponible', exc_info=True)
+        return None
+
+
+def _parametres_site_publics(devis, layout_public, hypotheses,
+                             conception_electrique):
+    """AUDIT #23 — clé ``parametres_site`` : ce que l'étude a RÉELLEMENT retenu
+    pour ce toit (mêmes notes de contrat que ci-dessus).
+
+    Pas de garde de mode : ce sont des paramètres de SITE (angles, source
+    d'irradiation, chaînes), vrais quel que soit le mode d'installation. Ce
+    sont les CHAMPS qui gardent : chacun est omis quand sa valeur n'est pas
+    stockée, et la clé entière disparaît quand plus rien n'est réel. Les
+    chaînes suivent la case « Schéma unifilaire » par construction (elles sont
+    lues sur ``conception_electrique``, déjà ``None`` quand elle est décochée),
+    et l'orientation suit la case « Calepinage 3D » (lue sur
+    ``layout_public``)."""
+    try:
+        from .calepinage_options import parametres_site_publics
+        return parametres_site_publics(devis, layout_public, hypotheses,
+                                       conception_electrique)
+    except Exception:  # noqa: BLE001
+        logger.warning('parametres_site indisponible', exc_info=True)
+        return None
+
+
 def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
     """PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé
     ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20
@@ -1963,6 +2076,120 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
         return list(paliers) if paliers else []
     except Exception:  # noqa: BLE001
         logger.warning('paliers_batterie indisponible', exc_info=True)
+        return None
+
+
+def _paliers_curseur_batterie(balayage, nb_packs_devis,
+                              capacite_utile_pack_kwh=None):
+    """COUVBAT — le PLAFOND du curseur « N batteries », côté serveur.
+
+    MÊME règle que la page publique (``BATTERY_SIM_MAX_UNITS`` dans
+    ``apps/web/src/pages/proposition/[...token].astro``) : le plus haut des
+    paliers RÉELS du balayage de stockage (dernier retenu ou premier refusé,
+    le plus haut des deux), jamais en-dessous des packs RÉELLEMENT au devis,
+    et le plafond historique de 3 quand aucun balayage n'est servi. Servir un
+    autre plafond ici ferait un curseur dont certains crans n'auraient aucune
+    couverture à lire.
+
+    UNITÉS COMMUNES (revue adversariale Fable, 26/08/2026 — A1) : ``balayage``
+    vient d'une RECOMMANDATION INDÉPENDANTE (``dimensionnement.
+    recommandation_avec`` — le meilleur payback, PAS forcément le module du
+    devis) qui compose au calibre ÉCONOMIQUE 5/10 kWh : ses ``nb_packs``
+    comptent des packs de CE calibre-LÀ, jamais celui du devis. Comparer ces
+    comptes bruts à ``nb_packs_devis`` (packs du calibre RÉELLEMENT vendu —
+    16 kWh sur un Deye BOS-B-Pack16, par exemple) mélangeait deux unités et
+    étirait le curseur sur des crans que le curseur ne pouvait pas couvrir
+    (chaque cran vaut ``N × capacite_utile_pack_kwh`` DU DEVIS, jamais celle
+    du balayage). Avec ``capacite_utile_pack_kwh`` fourni, le plafond du
+    balayage est donc lu en kWh — l'unité commune, déjà publiée par chaque
+    palier/refus — puis RECONVERTI en packs DU DEVIS (arrondi au supérieur :
+    jamais un cran qui couvrirait MOINS que le palier réel du balayage).
+    Sans ``capacite_utile_pack_kwh`` (repli — jamais atteint par l'appelant
+    réel, ``_couverture_batterie_publique`` ne l'invoque qu'après avoir lu
+    une banque réelle) : ancien comportement en packs bruts, byte-identique.
+    """
+    plafond_balayage_packs = 0
+    plafond_balayage_kwh = 0.0
+    for palier in ((balayage or {}).get('paliers') or []):
+        nb = palier.get('nb_packs')
+        if isinstance(nb, int) and nb > plafond_balayage_packs:
+            plafond_balayage_packs = nb
+        capacite = palier.get('capacite_kwh')
+        if (isinstance(capacite, (int, float))
+                and capacite > plafond_balayage_kwh):
+            plafond_balayage_kwh = capacite
+    refuse = (balayage or {}).get('refuse') or {}
+    nb_refuse = refuse.get('nb_packs')
+    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage_packs:
+        plafond_balayage_packs = nb_refuse
+    capacite_refuse = refuse.get('capacite_kwh')
+    if (isinstance(capacite_refuse, (int, float))
+            and capacite_refuse > plafond_balayage_kwh):
+        plafond_balayage_kwh = capacite_refuse
+
+    if capacite_utile_pack_kwh and capacite_utile_pack_kwh > 0:
+        if plafond_balayage_kwh > 0:
+            plafond = math.ceil(
+                plafond_balayage_kwh / capacite_utile_pack_kwh - 1e-9)
+        else:
+            plafond = 0
+    else:
+        plafond = plafond_balayage_packs
+    return max(int(nb_packs_devis or 0), plafond or 3)
+
+
+def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
+    """COUVBAT (ordre fondateur, 26/08/2026) — clé ``couverture_batterie`` :
+    pour CHAQUE cran du curseur « N batteries », la part de la consommation du
+    client réellement couverte (solaire direct + batterie), heure par heure sur
+    les quatre jours types publics ET sur l'année ; plus le nombre de batteries
+    qui couvrirait TOUTE la journée et TOUTE la nuit (``autonomie_complete``).
+
+    Contrat : ``apps/ventes/contract_samples/couverture_batterie.json``.
+    Source de vérité UNIQUE : ``etude_horaire.couverture_batterie_publique``
+    (mêmes douze jours types et même simulateur de batterie que l'étude
+    complète et le balayage du stockage — jamais un second moteur, jamais une
+    courbe approchée côté navigateur).
+
+    Gardes, mêmes que ``paliers_batterie`` : ``est_residentiel`` (un devis
+    agricole/industriel n'a pas ce curseur) ET ``avec_ok`` (un devis qui ne
+    vend PAS l'option batterie n'a rien à couvrir avec une batterie). Une
+    troisième garde lui est propre : sans LIGNE batterie lisible sur le devis,
+    la capacité utile d'un pack est inconnue — on omet, on n'invente pas un
+    module de 5 kWh « du catalogue » (règle CAPUTIL).
+
+    Servie IDENTIQUE aux deux niveaux de partage : ce bloc ne porte que des
+    kWh et des pourcentages de couverture — aucun prix, donc a fortiori aucun
+    prix d'achat ni marge (RULE #4). ``None`` best-effort : un bloc d'affichage
+    additif ne fait jamais tomber la page client."""
+    if not est_residentiel or not bool(data.get('avec_ok')):
+        return None
+    try:
+        from .etude_horaire import (
+            banque_batterie_du_devis, couverture_batterie_publique,
+        )
+        banque = banque_batterie_du_devis(devis)
+        if not banque:
+            return None
+        kwc, conso, ville, lat, lon, occupation, equipements = (
+            _profil_horaire_pour_devis(devis))
+        if not kwc:
+            return None
+        return couverture_batterie_publique(
+            kwc=kwc, conso_kwh_mensuelles=conso,
+            capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh'],
+            nb_packs_max=_paliers_curseur_batterie(
+                balayage, banque['nb_packs'],
+                capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh']),
+            # Les packs RÉELLEMENT au devis sont un plancher : le plafond de
+            # coût du moteur ne doit jamais rendre la configuration vendue
+            # inatteignable sur le curseur (revue du 26/08/2026).
+            nb_packs_plancher=banque['nb_packs'],
+            ville=ville, lat=lat, lon=lon,
+            occupation=occupation, equipements=equipements,
+            puissances_par_pack=banque)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
 
 
@@ -2243,6 +2470,19 @@ def proposal_data(request, token):
                 roof_url = roof_image_signed_url(data['roof_image_key'])
             except Exception:  # noqa: BLE001 — un rendu absent ne casse rien
                 roof_url = None
+        # CORRECTION #8 (26/08/2026) — les trois blocs ci-dessous étaient
+        # calculés EN LIGNE dans le littéral `payload`. Ils en sortent parce
+        # que le calepinage PAR OPTION les RÉUTILISE : il dérive ses dessins du
+        # calepinage assaini (jamais un second assainissement), et il nomme
+        # l'option décrite par le schéma unifilaire déjà rendu (jamais un
+        # second rendu). Le littéral plus bas sert exactement les mêmes
+        # objets — la charge utile est byte-identique.
+        _roof_layout_public = (_safe_roof_layout(devis)
+                               if _section_servie(link, 'roof3d') else None)
+        _sld_public = (_safe_sld_svg(devis, standard=est_standard)
+                       if _section_servie(link, 'sld') else None)
+        _conception_publique = (_conception_electrique_publique(devis, niveau)
+                                if _section_servie(link, 'sld') else None)
         payload = {
             # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
             # les dégradations sont posées ici, pas re-décidées côté client).
@@ -2277,10 +2517,7 @@ def proposal_data(request, token):
             # schéma unifilaire et le kit restent dégradés au niveau standard
             # exactement comme avant (voir sld_svg / conception_electrique /
             # l'agrégation kit ci-dessus).
-            'roof_layout': (
-                _safe_roof_layout(devis)
-                if _section_servie(link, 'roof3d') else None
-            ),
+            'roof_layout': _roof_layout_public,
             # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
             # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
             # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
@@ -2305,20 +2542,14 @@ def proposal_data(request, token):
             # (la page omet le bloc, elle sait déjà le faire sur un devis sans
             # conception électrique). Le détail `conception_electrique`
             # ci-dessous part avec elle : c'est LA MÊME section pour le client.
-            'sld_svg': (
-                _safe_sld_svg(devis, standard=est_standard)
-                if _section_servie(link, 'sld') else None
-            ),
+            'sld_svg': _sld_public,
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
             # SANS PRIX : chaînes (modules/MPPT), protections nominatives
             # (repère, désignation, calibre, quantité) et câbles (section,
             # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
             # ni nomenclature d'achat, ni paramètres internes, ni montant.
             # None tant que la conception électrique (PV41) n'a pas été faite.
-            'conception_electrique': (
-                _conception_electrique_publique(devis, niveau)
-                if _section_servie(link, 'sld') else None
-            ),
+            'conception_electrique': _conception_publique,
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -2542,6 +2773,63 @@ def proposal_data(request, token):
             devis, data, _resid_public)
         if _paliers_batterie is not None:
             payload['paliers_batterie'] = _paliers_batterie
+        # COUVBAT (ordre fondateur, 26/08/2026) — `couverture_batterie` : ce
+        # que le curseur « N batteries » du graphe journée doit MONTRER (part
+        # de la consommation couverte, heure par heure et sur l'année, pour
+        # chaque N) + le nombre de batteries d'une AUTONOMIE COMPLÈTE. Même
+        # patron additif ; même section que le jour type (c'est SON graphe qui
+        # porte le curseur : décocher « Journée type & courbes » retire les
+        # deux ensemble, jamais un curseur orphelin). Contrat :
+        # apps/ventes/contract_samples/couverture_batterie.json.
+        _couverture = (
+            _couverture_batterie_publique(devis, data, _resid_public,
+                                          _balayage)
+            if _jour_type_servi else None)
+        if _couverture is not None:
+            payload['couverture_batterie'] = _couverture
+        # TAILLES (ordre fondateur, 26/08/2026) — `offres_tailles` : les TROIS
+        # tailles d'installation explorables (Éco → Recommandé → Max), chacune
+        # dans ses deux variantes sans/avec, pour qu'UNE bascule au-dessus des
+        # cartes les recalcule toutes les trois sans appel réseau. MÊME patron
+        # additif que les trois clés ci-dessus ; le filet best-effort et la
+        # règle « deux tailles minimum » vivent dans le module
+        # (`offres_tailles.offres_tailles_publique`), qui ne lève jamais.
+        # Servie aux DEUX niveaux de partage : elle ne porte que des natures de
+        # nombres DÉJÀ publiques ailleurs sur cette page. Contrat :
+        # apps/ventes/contract_samples/offres_tailles.json.
+        # GATE DE SECTION — comme `profils_comparatifs` : ce bloc EST un bloc
+        # d'économies (prix, économie annuelle, payback, cumul 25 ans). Le
+        # commercial qui décoche « Économies » dans le dialogue d'envoi doit
+        # les voir partir ENSEMBLE ; les servir ici rendrait la case
+        # contournable par une autre section de la même page.
+        _offres_tailles = (
+            _offres_tailles_publique(devis, data, _resid_public)
+            if _section_servie(link, 'economies') else None)
+        if _offres_tailles is not None:
+            payload['offres_tailles'] = _offres_tailles
+        # CORRECTION #8 (ordre fondateur, 26/08/2026 — « add per option drawing
+        # of the pv ») — `calepinage_options` : le dessin de toiture de CHAQUE
+        # option, dérivé du calepinage RÉEL (même polygone, même trame). MÊME
+        # case de section que le calepinage officiel (`roof3d`) : décocher
+        # « Calepinage 3D » retire le calepinage ET tous les dessins par option
+        # ensemble — jamais un dessin d'option orphelin sur une page qui a
+        # masqué le calepinage. Contrat :
+        # apps/ventes/contract_samples/calepinage_options.json.
+        _calepinage_options = _calepinage_options_publique(
+            devis, _offres_tailles, _roof_layout_public,
+            _sld_public is not None, _resid_public)
+        if _calepinage_options is not None:
+            payload['calepinage_options'] = _calepinage_options
+        # AUDIT #23 — `parametres_site` : l'annexe « paramètres du site »
+        # (orientation/inclinaison du pan principal, source d'irradiation
+        # NOMMÉE, résumé des chaînes déjà publiques, ombrage seulement s'il a
+        # été MESURÉ). Des angles et des noms, jamais des coordonnées machine ;
+        # jamais un second arrondi du productible (il vit dans `hypotheses`).
+        _parametres_site = _parametres_site_publics(
+            devis, _roof_layout_public, payload.get('hypotheses'),
+            _conception_publique)
+        if _parametres_site is not None:
+            payload['parametres_site'] = _parametres_site
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
@@ -2828,10 +3116,46 @@ def proposal_verify_otp_lecture(request, token):
 
 # Sections reconnues du beacon d'engagement (XSAL16). Une section inconnue est
 # simplement ignorée — jamais d'erreur, jamais de section arbitraire stockée.
-_ENGAGEMENT_SECTIONS = {'hero', 'prix', 'etude', 'garanties', 'signature'}
+# ANALYT1 (audit item 64, 26/08/2026) — 'tailles'/'options'/'graphs'/
+# 'economies'/'calepinage'/'sld' ajoutées ADDITIVEMENT : ce sont les vraies
+# ancres `data-track-section` de la page /proposition/[...token].astro
+# actuelle (`#tailles`, `#options`, `#production`→graphs,
+# `#financing-headline`→economies, `#roof3d`→calepinage, `#sld`). 'hero' et
+# 'signature' étaient déjà servies par cette page (fold + `#signer`) ; 'prix'/
+# 'etude'/'garanties' restent — comportement historique inchangé, même si
+# aucun beacon actuel ne les émet plus (jamais de retrait, jamais de
+# renommage : un lien existant qui en porterait resterait lisible).
+_ENGAGEMENT_SECTIONS = {
+    'hero', 'prix', 'etude', 'garanties', 'signature',
+    'tailles', 'options', 'graphs', 'economies', 'calepinage', 'sld',
+}
 # Seuil (secondes cumulées, toutes sections) au-delà duquel on considère que
 # le client a "commencé à lire en détail" — logué UNE SEULE fois par lien.
 _DEEP_ENGAGEMENT_THRESHOLD_SECONDS = 20
+# ANALYT1 — nombre de VISITES DISTINCTES (page-loads différents, jamais de
+# simples re-scrolls dans la même visite) sur la MÊME section au-delà duquel
+# on pose l'alerte de friction (doctrine Proposify : une proposition PERDANTE
+# est re-consultée davantage qu'une proposition GAGNANTE — une relecture
+# répétée d'une même section vaut un coup de fil du commercial). Nommée,
+# strictement interne (jamais un chiffre montré au client).
+_FRICTION_REREAD_VISITS_THRESHOLD = 3
+# Nombre maximum d'identifiants de visite CONSERVÉS par section — borne la
+# taille du JSON (le seuil de friction n'a besoin que de 3 ; large marge pour
+# ne jamais perdre un compte réel avant expiration du lien à 30 j).
+_MAX_VISIT_IDS_PER_SECTION = 20
+# ANALYT1 — libellés FR des sections, pour la note chatter de friction ET la
+# surface ERP ``lecture_client``. Miroir volontaire de la table équivalente
+# côté frontend (``frontend/src/pages/ventes/DevisList.jsx``
+# ``ENGAGEMENT_LABELS``) — jamais une seconde source de vérité pour le
+# CONTENU (les clés sont la vérité, whitelistées ci-dessus), juste deux
+# libellés FR redondants par choix (backend = chatter, frontend = écran).
+ENGAGEMENT_SECTION_LABELS = {
+    'hero': 'accueil', 'prix': 'prix', 'etude': 'étude',
+    'garanties': 'garanties', 'signature': 'signature',
+    'tailles': 'tailles (Éco/Recommandé/Max)', 'options': 'options',
+    'graphs': 'production', 'economies': 'économies',
+    'calepinage': 'calepinage 3D', 'sld': 'schéma électrique',
+}
 
 
 @api_view(['POST'])
@@ -2840,22 +3164,27 @@ _DEEP_ENGAGEMENT_THRESHOLD_SECONDS = 20
 def proposal_engagement(request, token):
     """XSAL16 — Beacon léger d'engagement par section de la proposition.
 
-    Corps : ``{"section": "prix", "seconds": 12}``. Aucune donnée
-    personnelle requise ; agrégé (cumul secondes + compteur de hits) sur
-    ``ShareLink.engagement``, jamais cross-tenant (le jeton borne un seul
-    devis d'une seule société). Section inconnue ou seconds invalide → 204
-    silencieux (best-effort, jamais d'erreur qui casserait le beacon côté
-    site). Au premier franchissement du seuil d'engagement profond, une
-    ligne chatter est posée sur le devis (une seule fois par lien)."""
+    Corps : ``{"section": "prix", "seconds": 12, "visit_id": "..."}``
+    (``visit_id`` ANALYT1 — optionnel, ignoré par un backend/front antérieur à
+    cette lane). Aucune donnée personnelle requise ; agrégé (cumul secondes +
+    compteur de hits + visites distinctes) sur ``ShareLink.engagement``,
+    jamais cross-tenant (le jeton borne un seul devis d'une seule société).
+    Section inconnue ou seconds invalide → 204 silencieux (best-effort,
+    jamais d'erreur qui casserait le beacon côté site). Au premier
+    franchissement du seuil d'engagement profond OU du seuil de RELECTURE
+    (``_FRICTION_REREAD_VISITS_THRESHOLD`` visites distinctes sur une même
+    section), une ligne chatter est posée sur le devis — chacune une seule
+    fois par lien (mêmes idiomes ``deep_engagement_logged_at``/
+    ``friction_alert_logged_at``)."""
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
 
     # L-INTPREV (25/08/2026) — jeton interne : aucun beacon n'est enregistré
-    # (ni ``ShareLink.engagement``, ni la note chatter « a commencé à lire en
-    # détail » au seuil profond) — un aperçu commercial n'est pas une lecture
-    # CLIENT à mesurer. 204 silencieux, même contrat que le rejet d'un beacon
-    # invalide ci-dessous.
+    # (ni ``ShareLink.engagement``, ni les notes chatter « a commencé à lire
+    # en détail »/« relit une section » ci-dessous) — un aperçu commercial
+    # n'est pas une lecture CLIENT à mesurer. 204 silencieux, même contrat que
+    # le rejet d'un beacon invalide ci-dessous.
     if link.via_interne:
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
@@ -2871,6 +3200,20 @@ def proposal_engagement(request, token):
         # proposition côté client, mais on n'enregistre rien d'invalide.
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
+    # ANALYT1 — identifiant de VISITE (un page-load), jamais un identifiant
+    # personnel : généré côté client à chaque chargement de page (jamais
+    # persisté au-delà de l'onglet). Anti-garbage minimal (alphanumérique +
+    # tiret, borné en longueur) ; une valeur absente/malformée dégrade
+    # simplement en « pas de comptage de visites distinctes pour cet appel »,
+    # jamais une erreur.
+    visit_id_raw = str(request.data.get('visit_id') or '').strip()
+    visit_id = (
+        visit_id_raw
+        if 0 < len(visit_id_raw) <= 64
+        and re.match(r'^[A-Za-z0-9-]+$', visit_id_raw)
+        else None
+    )
+
     # QX30be — CORRECTIF perte de mise à jour : le read-modify-write du JSON
     # d'engagement était NON atomique (deux beacons de sections concurrents se
     # écrasaient — last-write-win). On relit le lien VERROUILLÉ dans une
@@ -2883,6 +3226,15 @@ def proposal_engagement(request, token):
         slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
         slot['seconds'] = int(slot.get('seconds', 0)) + seconds
         slot['hits'] = int(slot.get('hits', 0)) + 1
+
+        # ANALYT1 — visites DISTINCTES sur CETTE section : un ``visit_id`` déjà
+        # vu (même page encore ouverte, beacon rejoué) ne recompte pas.
+        visit_ids = list(slot.get('visit_ids') or [])
+        if visit_id and visit_id not in visit_ids:
+            visit_ids.append(visit_id)
+            visit_ids = visit_ids[-_MAX_VISIT_IDS_PER_SECTION:]
+        slot['visit_ids'] = visit_ids
+        slot['visits'] = len(visit_ids)
         engagement[section] = slot
         locked.engagement = engagement
 
@@ -2894,8 +3246,22 @@ def proposal_engagement(request, token):
         )
         if newly_deep:
             locked.deep_engagement_logged_at = timezone.now()
-        locked.save(
-            update_fields=['engagement', 'deep_engagement_logged_at'])
+
+        # ANALYT1 — signal de FRICTION : CETTE section vient de franchir le
+        # seuil de relecture. Une seule alerte par LIEN (jamais une par
+        # section) — la première section à franchir le seuil gagne, comme
+        # ``deep_engagement_logged_at`` ne loggue qu'une fois tous sections
+        # confondues.
+        newly_friction = (
+            locked.friction_alert_logged_at is None
+            and slot['visits'] >= _FRICTION_REREAD_VISITS_THRESHOLD
+        )
+        update_fields = ['engagement', 'deep_engagement_logged_at']
+        if newly_friction:
+            locked.friction_alert_logged_at = timezone.now()
+            locked.friction_alert_section = section
+            update_fields += ['friction_alert_logged_at', 'friction_alert_section']
+        locked.save(update_fields=update_fields)
     link = locked
 
     if newly_deep and link.devis_id:
@@ -2906,6 +3272,18 @@ def proposal_engagement(request, token):
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client a commencé à lire la proposition en détail ({resume}).')
+        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+            pass
+
+    if newly_friction and link.devis_id:
+        try:
+            from . import activity
+            label = ENGAGEMENT_SECTION_LABELS.get(section, section)
+            activity.log_devis_note(
+                link.devis, None,
+                f'Le client relit la section « {label} » de la proposition '
+                f'depuis {slot["visits"]} visites distinctes — signal de '
+                f'friction, un appel peut débloquer la décision.')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
 

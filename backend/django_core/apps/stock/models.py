@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import MinValueValidator
 
 
 class Categorie(models.Model):
@@ -2088,6 +2089,25 @@ class FicheTechnique(models.Model):
     bat_max_decharge_kw = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Puissance de décharge maximale (kW), par pack.')
+    # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now keep
+    # it very high for 5kwh — maybe 200 ». Le PLAFOND fondateur du nombre de
+    # modules IDENTIQUES qu'un même banc peut empiler pour CE produit (une
+    # limite fabricant d'assemblage série/parallèle, jamais une limite
+    # inventée par le moteur). ``None`` = ILLIMITÉ (repli byte-identique à
+    # l'historique — aucun produit n'était borné avant ce champ). Une banque
+    # candidate qui exigerait plus de modules que cette limite est REJETÉE en
+    # sélection (``apps.ventes.services.composition_residentielle``), jamais
+    # tronquée à la limite (une banque tronquée n'atteindrait plus la cible).
+    # F3 (revue 26/08/2026) — LE CHAMP SIGNIFIE « limite ≥ 1, vide =
+    # illimité » : 0 n'est pas une limite, c'est une banque IMPOSSIBLE (toute
+    # candidate serait rejetée, y compris via un pin — un « avec batterie »
+    # muet). ``MinValueValidator(1)`` l'interdit à la saisie (formulaire ET
+    # API) plutôt que de le laisser produire un vivier vide silencieux.
+    bat_max_modules_par_banc = models.PositiveIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text='Nombre MAXIMUM de modules identiques dans un même banc '
+                  '(limite ≥ 1). Vide = illimité.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     pdf = models.FileField(

@@ -133,7 +133,21 @@ MAX_PANNEAUX_BALAYAGE = 120
 #: composition catalogue et douze simulations journalières, le tout SYNCHRONEMENT
 #: dans un aperçu. Un balayage tronqué par ce plafond le DIT (``stockage_tronque``
 #: + avertissement) : jamais un silence.
-MAX_PALIERS_STOCKAGE = 12
+#: BATHOMO (fondateur 26/08/2026) — 12 → 16, même marge que
+#: ``MAX_PALIERS_ECHELLE`` (« up to 30 or 40 kWh using 5 kWh batteries, no
+#: problem ») : au pas de 5 kWh, l'univers de candidates couvre désormais
+#: jusqu'à 85 kWh au lieu de 65, avant même de considérer le plafond du toit
+#: ou la règle « batteries toujours pleines ».
+#: TODO (revue adversariale 26/08/2026, F4 cheap optional — NON MESURÉ,
+#: infra de profilage indisponible dans cette session) : 12 → 16 fait sonder
+#: JUSQU'À 17 cibles (``MAX_PALIERS_STOCKAGE + 1``) sur l'endpoint public
+#: NON CACHÉ (chaque cible = une composition catalogue + 12 simulations
+#: journalières) — mesurer le coût réel de cette bascule sur ``/proposal``
+#: (ou l'endpoint payload public équivalent) et, si le +30 % annoncé se
+#: confirme, ajouter un plafond dédié/plus bas SPÉCIFIQUE au chemin public
+#: non caché (``MAX_SONDES_ECHELLE`` reste le garde-fou général) plutôt que
+#: de revenir sur la marge ``MAX_PALIERS_ECHELLE`` (F1 — « up to 30-40 kWh »).
+MAX_PALIERS_STOCKAGE = 16
 
 #: DIM2 — GARDE-FOU de l'extension « chasse à la falaise » : au-delà de la
 #: parité production/consommation, le balayage peut continuer pour voir si une
@@ -828,7 +842,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         compositions = []
         vues = {}
         # L-DECH — LES BORNES DE PUISSANCE, PALIER PAR PALIER. Chaque cible est
-        # une composition DIFFÉRENTE (15 kWh = un 10 + un 5, 20 kWh = deux 10) :
+        # une composition DIFFÉRENTE (15 kWh = trois modules de 5 — une banque
+        # est toujours HOMOGÈNE, fondateur 26/08/2026 ; 20 kWh = deux 10) :
         # la décharge disponible s'additionne avec les packs, et le port
         # batterie de l'onduleur la re-borne. Lues par la MÊME fonction que
         # l'étude complète (``puissances_batterie_des_lignes``) sur les lignes
@@ -1029,6 +1044,52 @@ def _arrondi(valeur, decimales=2):
     return None if valeur is None else round(valeur, decimales)
 
 
+def tailles_eligibles(tableau):
+    """Les lignes du tableau qu'une recommandation a le DROIT de retenir.
+
+    Une taille n'est éligible que si l'option de BASE (sans batterie) est
+    composable, chiffrable ET électriquement saine. Un verdict bloquant sur la
+    variante batterie n'écarte PAS la taille — il retire seulement l'option
+    batterie (``batterie_disponible``), ce que le tableau montre.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) pour que
+    :mod:`apps.ventes.offres_tailles` lise la MÊME éligibilité que
+    l'optimiseur, au lieu d'en recopier une seconde qui divergerait au premier
+    critère ajouté.
+    """
+    return [
+        ligne for ligne in (tableau or [])
+        if ligne.get('composable')
+        and ligne.get('payback_sans_annees') is not None
+        and not ligne.get('verdicts_bloquants_sans')
+    ]
+
+
+def point_depart_meilleur_payback(eligibles):
+    """LE POINT DE DÉPART de la doctrine : la taille au MEILLEUR PAYBACK.
+
+    À égalité (écart < :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas
+    connu au centième d'année), la meilleure couverture de consommation, puis
+    le plus grand champ. Renvoie ``(ligne | None, meilleur_payback, a_egalite)``
+    — le tuple dont :func:`choisir_recommandation` a besoin pour motiver son
+    choix, et dont :mod:`apps.ventes.offres_tailles` n'utilise que la ligne.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) — c'est
+    exactement l'offre « Éco » de la page client (« l'entrée de gamme sensée »).
+    L'extraire plutôt que la recopier garantit qu'Éco et le départ de la
+    recommandation ne peuvent JAMAIS désigner deux tailles différentes.
+    """
+    if not eligibles:
+        return None, None, []
+    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
+    a_egalite = [
+        x for x in eligibles
+        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
+    ]
+    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    return depart, meilleur_payback, a_egalite
+
+
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
@@ -1062,16 +1123,9 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     if critere not in CRITERES:
         critere = CRITERE_DEFAUT
 
-    # Une taille n'est éligible que si l'option de BASE (sans batterie) est
-    # composable, chiffrable ET électriquement saine. Un verdict bloquant sur
-    # la variante batterie n'écarte PAS la taille — il retire seulement
-    # l'option batterie (``batterie_disponible``), ce que le tableau montre.
-    eligibles = [
-        ligne for ligne in (tableau or [])
-        if ligne.get('composable')
-        and ligne.get('payback_sans_annees') is not None
-        and not ligne.get('verdicts_bloquants_sans')
-    ]
+    # Éligibilité : voir :func:`tailles_eligibles` (extraite le 26/08/2026 pour
+    # que ``offres_tailles`` lise la MÊME règle, jamais une seconde copie).
+    eligibles = tailles_eligibles(tableau)
     if not eligibles:
         return None, (
             'aucune taille recommandable : le catalogue ne compose aucune '
@@ -1095,12 +1149,11 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
         )
 
     # ── 1. LE POINT DE DÉPART : la taille au meilleur payback ────────────────
-    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
-    a_egalite = [
-        x for x in eligibles
-        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
-    ]
-    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    # Extrait en :func:`point_depart_meilleur_payback` (26/08/2026) : c'est
+    # AUSSI l'offre « Éco » de la page client, et les deux ne doivent jamais
+    # pouvoir désigner deux tailles différentes.
+    depart, meilleur_payback, a_egalite = point_depart_meilleur_payback(
+        eligibles)
 
     # ── 2. LA MONTÉE : doctrine du 25/08/2026 ────────────────────────────────
     # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
@@ -1560,7 +1613,13 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
 #: métier : c'est la LONGUEUR RAISONNABLE d'un choix à l'écran. La liste
 #: s'arrête de toute façon d'elle-même au plafond du toit ou dès qu'un palier
 #: ne se remplit plus, souvent bien avant.
-MAX_PALIERS_ECHELLE = 8
+#: BATHOMO (fondateur 26/08/2026) — « we can go up to 30 or 40 kWh using
+#: 5 kWh batteries, no problem » : 8 → 16, marge explicite pour que l'échelle
+#: n'écrête plus une installation qui peut légitimement monter à 6-8 packs
+#: de 5 kWh au-delà du palier retenu (l'ancienne valeur suffisait déjà
+#: mathématiquement combinée à ``MAX_PALIERS_STOCKAGE``, mais la coupait
+#: PILE là où un grand champ commençait à devenir intéressant).
+MAX_PALIERS_ECHELLE = 16
 
 #: GARDE-FOU DE CALCUL : nombre maximal de tailles de champ réellement sondées.
 #: Chaque sonde coûte une composition catalogue par palier PLUS douze
@@ -1625,6 +1684,39 @@ def _compter_modules_batterie(lignes_vue):
         elif abs(nominal - 10.0) < 1.0:
             dix += quantite
     return cinq, dix
+
+
+def _compter_modules_batterie_generique(lignes_vue):
+    """``(nb_modules, module_kwh)`` — GÉNÉRALISATION de
+    :func:`_compter_modules_batterie` à N'IMPORTE QUEL calibre (A1, revue
+    adversariale Fable 26/08/2026) : ``nb_batteries_5``/``nb_batteries_10``
+    rendent ``(0, 0)`` pour un devis dont le module vendu n'est NI 5 NI
+    10 kWh (le Deye BOS-B-Pack16, 16 kWh, un produit RÉEL des gammes) — une
+    composition pourtant bien réelle (prix, capacité) semblerait alors « sans
+    batterie ».
+
+    Une composition est TOUJOURS HOMOGÈNE (BATHOMO — jamais un mélange de
+    calibres) : au plus UN nominal apparaît réellement sur les lignes
+    batterie d'UNE composition. Ce compteur additionne leurs quantités et
+    rend ce nominal-là, quel qu'il soit — jamais restreint à 5/10.
+    ``(0, None)`` si aucune ligne batterie lisible n'est présente — jamais
+    un calibre inventé."""
+    from apps.ventes.services import _parse_kwh
+    total = 0
+    module_kwh = None
+    for ligne in (lignes_vue or []):
+        if ligne.get('role') != 'batterie':
+            continue
+        quantite = int(_num(ligne.get('quantite')))
+        if quantite <= 0:
+            continue
+        nominal = _parse_kwh(ligne.get('designation') or '')
+        if nominal is None or nominal <= 0:
+            continue
+        total += quantite
+        if module_kwh is None:
+            module_kwh = nominal
+    return (total, module_kwh) if total > 0 else (0, None)
 
 
 def _lignes_produit_du_devis(devis):
@@ -1730,6 +1822,77 @@ def capacite_batterie_des_lignes(devis):
     return round(total, 2) if total > 0 else None
 
 
+def module_batterie_du_devis(devis):
+    """BATHOMO (fondateur 26/08/2026) — le CALIBRE (en kWh, un flottant
+    POSITIF quelconque — voir F6 ci-dessous) DÉJÀ engagé par les LIGNES
+    RÉELLES de ce devis, ou ``None`` si aucune ligne batterie n'existe
+    encore.
+
+    « the battery-related features in the quote web page should ALWAYS use
+    the quote items — if the quote has 5 kWh batteries the web page should
+    only show 5 kWh batteries ; and we can go up to 30 or 40 kWh using 5 kWh
+    batteries, no problem. » :func:`echelle_paliers_batterie` passe cette
+    valeur en ``batterie_module_kwh`` à CHAQUE composition qu'elle sonde
+    (:func:`apps.ventes.services.composition_residentielle`) : l'échelle
+    grandit alors en N modules de CE SEUL calibre — jamais un re-choix
+    catalogue qui basculerait vers l'autre calibre au passage d'un multiple
+    de 10.
+
+    F6 (revue adversariale 26/08/2026) — GÉNÉRALISÉ à N'IMPORTE QUEL calibre
+    positif, jamais un whitelist figé sur 5/10. Un devis qui vend le VRAI
+    Deye BOS-B-Pack16 (16 kWh, présent dans les gammes) perdait SILENCIEUSEMENT
+    son pin sous l'ancien whitelist — retombant sur un re-choix catalogue,
+    exactement la violation « la page suit les articles du devis » que F1
+    corrige par ailleurs. Les lignes sont regroupées PAR CALIBRE LE PLUS
+    PROCHE (tolérance ±1 kWh, la même que l'ancien couple 5/10) : deux
+    lectures d'un même module à l'arrondi près (5.0 / 5.12) ne doivent
+    JAMAIS ouvrir deux compartiments distincts.
+
+    F6 — MÊME FILTRE DE VARIANTE que :func:`facteur_remise_du_devis`
+    (``variante != 'sans'``) : une ligne réservée à l'option SANS batterie
+    (L-2OPT) n'a, par construction, jamais de ligne batterie — mais aligner
+    la lecture évite toute divergence future entre les deux fonctions.
+
+    LECTURE, JAMAIS UNE RECOMPOSITION — même source que
+    :func:`_compter_modules_batterie` (le nom des lignes déjà vendues). Un
+    devis historique EXCEPTIONNELLEMENT mélangé (un devis composé avant ce
+    correctif) retient le calibre qui porte la plus grande capacité totale —
+    égalité tranchée par le PLUS PETIT calibre (jamais un chiffre inventé,
+    la meilleure lecture d'un fait imparfait plutôt qu'un blocage).
+    ``None`` (devis sans ligne batterie, ou un devis qui n'existe pas
+    encore) ⇒ l'appelant retombe sur le choix ÉCONOMIQUE normal du
+    catalogue (comportement inchangé)."""
+    try:
+        from apps.ventes.services import _is_battery, _parse_kwh
+
+        capacites = {}  # calibre (kWh, ouvert par la 1re ligne) -> capacité
+        for ligne in _lignes_produit_du_devis(devis):
+            if (getattr(ligne, 'variante', '') or '') == 'sans':
+                continue
+            designation = getattr(ligne, 'designation', '') or ''
+            if not _is_battery(designation):
+                continue
+            quantite = _num(ligne.quantite)
+            if quantite <= 0:
+                continue
+            nominal = _num(_parse_kwh(designation))
+            if nominal <= 0:
+                continue
+            calibre = next(
+                (c for c in capacites if abs(c - nominal) < 1.0), nominal)
+            capacites[calibre] = (
+                capacites.get(calibre, 0.0) + nominal * quantite)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('module batterie du devis illisible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+    if not capacites:
+        return None
+    # Capacité totale DÉCROISSANTE, égalité tranchée par le calibre
+    # CROISSANT (déterministe, jamais dépendant de l'ordre des lignes).
+    return min(capacites, key=lambda c: (-capacites[c], c))
+
+
 def echelle_paliers_batterie(devis):
     """L'ÉCHELLE des paliers de batterie proposables sur CE devis résidentiel.
 
@@ -1739,7 +1902,24 @@ def echelle_paliers_batterie(devis):
     * ``capacite_kwh`` — capacité UTILE réellement livrée par la composition
       catalogue de ce palier (fiche technique, jamais l'étiquette) ;
     * ``nb_batteries_5`` / ``nb_batteries_10`` — combien de modules 5 kWh et
-      10 kWh la composition contient, tels qu'on les COMPTE ;
+      10 kWh la composition contient, tels qu'on les COMPTE. UNE BANQUE EST
+      TOUJOURS HOMOGÈNE (fondateur 26/08/2026) : ces deux compteurs ne sont
+      JAMAIS non nuls tous les deux sur le MÊME palier — mélanger des
+      calibres dans une même banque est électriquement interdit, et c'est ce
+      mélange composé côté serveur qui a fait retirer le Dyness 10 kWh du
+      stock de production (cf. ``apps.ventes.services.composition_
+      residentielle``, ``apps.stock.management.commands.seed_catalogue``) ;
+      restent ``0``/``0`` — MUETS, jamais faux — pour un calibre NI 5 NI
+      10 kWh (le Deye BOS-B-Pack16, 16 kWh, un produit RÉEL des gammes) ;
+    * ``nb_modules`` / ``module_kwh`` (A1, revue adversariale Fable
+      26/08/2026, AJOUT ADDITIF) — la GÉNÉRALISATION de ce même compte à
+      N'IMPORTE QUEL calibre : combien de modules IDENTIQUES la composition
+      contient, et leur capacité NOMINALE (kWh, étiquette — même grandeur que
+      ``nb_batteries_5``/``10``). ``(0, None)`` seulement si aucune batterie
+      n'est composée sur ce palier. Pour un calibre 5 ou 10 kWh,
+      ``nb_modules`` égale ``nb_batteries_5 + nb_batteries_10`` (un seul des
+      deux est non nul) et ``module_kwh`` vaut ``5.0``/``10.0`` — ces deux
+      nouvelles clés ne REMPLACENT PAS les anciennes, elles les complètent ;
     * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
     * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
     * ``prix_ttc`` — prix de VENTE TTC de la composition complète, **REMISE DU
@@ -1836,6 +2016,14 @@ def _echelle_paliers_batterie(devis):
     # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
     # (``_lire_composition``) et ce taux-ci n'étant que le repli.
     taux_tva = Decimal('20')
+    # BATHOMO (fondateur 26/08/2026) — DÉNOMINATION PAR LE DEVIS. Un devis
+    # qui vend déjà des batteries impose ce calibre à TOUTE l'échelle
+    # sondée ci-dessous (``composition_residentielle(batterie_module_kwh=
+    # …)``) : jamais un re-choix catalogue qui ferait basculer un rang de
+    # l'échelle vers un autre calibre que celui réellement vendu. ``None``
+    # (devis sans ligne batterie — le cas du tableau de dimensionnement
+    # AVANT toute vente) ⇒ le choix ÉCONOMIQUE normal décide, inchangé.
+    module_devis = module_batterie_du_devis(devis)
 
     def composer(panneaux, kwc, cible, journal):
         """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
@@ -1846,7 +2034,8 @@ def _echelle_paliers_batterie(devis):
                 nb_panneaux=panneaux, avec_batterie=True,
                 structure_type='acier', taux_tva=taux_tva,
                 avertissements=journal, deux_options=False, marques=marques,
-                ordre_lignes=ordre, batterie_cible_kwh=cible)
+                ordre_lignes=ordre, batterie_cible_kwh=cible,
+                batterie_module_kwh=module_devis)
         except Exception:  # noqa: BLE001
             logger.warning('composition impossible à %s panneaux / %s kWh',
                            panneaux, cible, exc_info=True)
@@ -1900,7 +2089,8 @@ def _echelle_paliers_batterie(devis):
 
         Un seul parcours des douze jours types sert toutes les capacités
         (``balayer_stockage_horaire``), et les bornes de puissance sont lues
-        composition par composition : 15 kWh (un 10 + un 5) et 20 kWh (deux 10)
+        composition par composition : 15 kWh (TROIS modules de 5 — une banque
+        est toujours HOMOGÈNE, fondateur 26/08/2026) et 20 kWh (deux 10)
         n'ont ni le même prix ni la même puissance de décharge.
         """
         if panneaux in sondes:
@@ -1992,10 +2182,19 @@ def _echelle_paliers_batterie(devis):
         cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
+        # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
+        # ``nb_modules``/``module_kwh`` couvrent N'IMPORTE QUEL calibre (le
+        # Deye BOS-B-Pack16, 16 kWh) là où ``nb_batteries_5``/
+        # ``nb_batteries_10`` restent CORRECTS mais MUETS hors 5/10 — les
+        # anciennes clés ne bougent pas (rétrocompatibilité contrat PACT10).
+        nb_modules, module_kwh = _compter_modules_batterie_generique(
+            vue.get('lignes'))
         return {
             'capacite_kwh': capacite,
             'nb_batteries_5': cinq,
             'nb_batteries_10': dix,
+            'nb_modules': nb_modules,
+            'module_kwh': module_kwh,
             'nb_panneaux': int(panneaux),
             'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
             'prix_ttc': cout,

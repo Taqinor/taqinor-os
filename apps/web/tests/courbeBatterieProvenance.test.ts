@@ -184,10 +184,20 @@ describe('2. La couche batterie vit SUR ce graphe', () => {
   });
 
   // Source pins — le câblage réel de la page.
-  it('la page transmet la série du simulateur à la courbe (un seul moteur)', () => {
+  it('la couche batterie du graphe vient de la MÊME source servie que le graphe empilé (repli sur le moteur horaire, un seul moteur)', () => {
+    // COUVBAT (26/08/2026) — au premier rendu, la couche batterie de la
+    // courbe journalière lit `coverageBandsInitial` — LA MÊME série que
+    // l'aire empilée juste en dessous — et ne retombe sur le moteur horaire
+    // client (`batteryInitial.hourly.battery`) que si rien n'a été servi.
+    // Garantie STRICTEMENT plus forte que « un seul moteur » : les deux
+    // dessins ne peuvent plus jamais se contredire au premier pixel.
+    expect(CODE).toContain('batterieHoraireKwh: coverageBandsInitial');
+    expect(CODE).toContain('? coverageBandsInitial.battery');
+    expect(CODE).toContain(': batteryInitial.hourly.battery,');
+    // Le recalcul interactif, lui, reste le pont `__propBatteryHourly` —
+    // ce script ne calcule toujours rien, il transmet.
     expect(CODE).toContain('__propBatteryHourly');
     expect(CODE).toContain('batterieHoraireKwh,');
-    expect(CODE).toContain('batterieHoraireKwh: batteryInitial.hourly.battery,');
     // La courbe est redemandée par le simulateur à chaque recalcul.
     expect(CODE).toContain('__propRerenderCurves');
   });
@@ -257,9 +267,13 @@ describe('3b. Charge incomplète d’un palier ACCEPTÉ', () => {
     expect(CODE).toContain('remplissagePct: p.remplissageMoyenPct,');
   });
 
-  it('le message de SUR-STOCKAGE (palier refusé) reste distinct et intact', () => {
+  it('le message de SUR-STOCKAGE (palier refusé, ÉLARGI à tout cran non remplissable) reste distinct et intact', () => {
+    // COUVBAT (26/08/2026) — même élargissement que storageSweepBatt2.test.ts :
+    // le message vaut aussi pour tout cran couverture non remplissable, en OR
+    // avec la condition d'origine (jamais un remplacement).
     expect(CODE).toContain('id="battery-sim-overstorage"');
-    expect(CODE).toContain('const hit = !!refuse && refuse.n === n;');
+    expect(CODE).toContain('const hit = (!!refuse && refuse.n === n)');
+    expect(CODE).toContain('|| (cfg.couverture ? (!cran || !cran.remplit) : false);');
   });
 
   it('les trois langues sont servies par data-i18n', () => {

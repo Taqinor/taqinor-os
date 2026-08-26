@@ -19,9 +19,11 @@ from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
+from .models_relance import CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 from .serializers_referentiels import (
+    CadenceRelanceEtapeSerializer,
     ConditionPaiementSerializer,
     TauxTVASerializer,
     UniteMesureSerializer,
@@ -88,6 +90,22 @@ class UniteMesureViewSet(_ReferentielViewSet):
 
     queryset = UniteMesure.objects.all()
     serializer_class = UniteMesureSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('true', '1'):
+            qs = qs.filter(actif=True)
+        return qs
+
+
+class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
+    """RELANCE FOUNDATION — gabarit de cadence de relance par défaut
+    (délai/canal/libellé), consommé par
+    ``apps.crm.services.initialiser_plan_relance``. ``?actif=true``."""
+
+    queryset = CadenceRelanceEtape.objects.all()
+    serializer_class = CadenceRelanceEtapeSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()

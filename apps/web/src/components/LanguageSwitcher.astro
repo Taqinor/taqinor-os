@@ -11,15 +11,22 @@
  * ligne + globe + séparateurs élargissaient trop la barre à 375 px et poussaient
  * le hamburger hors écran. La barre supérieure passe donc à un contrôle COMPACT
  * sur mobile : `variant="bar"` (défaut) rend un menu déroulant globe (`<details>`,
- * sans JS, cible ≥44 px) sous `lg`, et les puces en ligne d'origine dès `lg`
- * (bureau STRICTEMENT inchangé). `variant="menu"` (dans le menu mobile ouvert, où
- * la place ne manque pas) garde les puces en ligne à toutes les tailles.
+ * sans JS, cible ≥44 px) sous `xl`, et les puces en ligne d'origine dès `xl`
+ * (bureau desktop). `variant="menu"` (dans le menu mobile ouvert, où
+ * la place ne manque pas) garde les puces en ligne à toutes les tailles, avec
+ * les MÊMES cibles tactiles ≥44 px — INCHANGÉ (W378).
+ *
+ * W378 (26/08) — la barre `bar` ne s'affiche plus qu'à partir de `xl` (voir
+ * Header.astro), donc ses puces sont désormais dimensionnées pour un pointeur
+ * souris plutôt qu'un doigt : cible tactile 44 px allégée à une taille plus
+ * compacte (h-8, padding réduit) SEULEMENT pour `variant="bar"` — la variante
+ * `menu` (panneau mobile, gelé par le fondateur) garde min 44×44 px verbatim.
  *
  * Props :
  *   path    — chemin racine sans préfixe de locale (ex. '/contact')
  *   current — locale courante
  *   locales — locales disponibles pour cette page (def. [current])
- *   variant — 'bar' (barre supérieure, compact < lg) | 'menu' (puces toujours)
+ *   variant — 'bar' (barre supérieure, compact < xl) | 'menu' (puces toujours)
  */
 import { LOCALE_LABEL, LOCALE_SHORT, type Locale } from '../i18n/config';
 import { localizePath, useTranslations } from '../i18n/utils';
@@ -37,10 +44,16 @@ const ordered = locales;
 // Globe partagé (décoratif) — signale l'affordance de changement de langue.
 const globe = `<svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none" class="shrink-0 opacity-60" style="color:inherit;"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.25"/><ellipse cx="8" cy="8" rx="2.8" ry="6.5" stroke="currentColor" stroke-width="1.25"/><line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" stroke-width="1.25"/><line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.25"/><line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.25"/></svg>`;
 
-// Classe d'un lien-puce (desktop + menu) : cible ≥44 px, état actif en laiton.
+// Classe d'un lien-puce : état actif en laiton.
+// W378 — `menu` (panneau mobile tactile) garde la cible ≥44 px verbatim ;
+// `bar` (barre desktop, souris, visible seulement à partir de `xl`) passe à
+// une taille compacte — c'est ce qui libère la place qui manquait au numéro
+// de téléphone et à "À propos" sur la ligne d'en-tête desktop.
 const chipClass = (loc: Locale) =>
   [
-    'inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2',
+    variant === 'menu'
+      ? 'inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2'
+      : 'inline-flex h-8 items-center justify-center px-1.5',
     'text-xs font-bold uppercase leading-none transition-colors',
     loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
   ].join(' ');
@@ -53,7 +66,7 @@ const chipClass = (loc: Locale) =>
         panneau s'ouvre à l'extrémité logique (end-0 → RTL-safe). Une navigation
         recharge la page → l'état ouvert se réinitialise tout seul. */}
     {variant === 'bar' && (
-      <details class="lang-compact relative lg:hidden">
+      <details class="lang-compact relative xl:hidden">
         <summary
           class="flex min-h-[44px] min-w-[44px] cursor-pointer select-none items-center gap-1 px-2 text-xs font-bold uppercase leading-none text-lune-soft transition-colors hover:text-white"
           aria-label={t('lang.label')}
@@ -91,7 +104,7 @@ const chipClass = (loc: Locale) =>
     <nav
       class:list={[
         'items-center',
-        variant === 'bar' ? 'hidden lg:flex' : 'flex',
+        variant === 'bar' ? 'hidden xl:flex' : 'flex',
       ]}
       aria-label={t('lang.label')}
     >

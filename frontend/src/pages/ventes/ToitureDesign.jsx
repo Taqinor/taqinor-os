@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -38,6 +38,10 @@ import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
+// L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
+// la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
+import ToitClientOverlay from '../../features/ventes/ToitClientOverlay'
+import { contourExploitable } from '../../features/crm/workspace/traceToit'
 import '../../styles/roofbuilder.css'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -267,6 +271,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // L-MAP — bascule d'affichage du calque « Toit dessiné par le client »
+  // (rp9-chip, comme les autres bascules de l'écran). Défaut ON — le
+  // fondateur veut le voir SANS geste supplémentaire ; le bouton ne sert
+  // qu'à le masquer temporairement s'il gêne une lecture de la carte.
+  const [toitClientVisible, setToitClientVisible] = useState(true)
+  // O3 (revue adversariale 26/08) — `builderApi` est une REF : la poser
+  // n'entraîne aucun re-rendu, donc un effet qui ne dépend que de
+  // `toitClientVisible` peut s'exécuter AVANT que le builder soit prêt (clic
+  // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
+  // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
+  const [builderReady, setBuilderReady] = useState(false)
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -367,7 +382,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken,
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
-        onApiReady: (a) => { builderApi.current = a },
+        // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
+        // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
+        // par le MÊME `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : un contour que l'écran refuse déjà (hors
+        // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
+        // polygone orphelin sans bascule pour le masquer.
+        referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -437,8 +459,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteToDevisPayload(ctx) },
+        // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, du
+        // layout courant), géo-référencé sur la carte (calque passif). MÊME
+        // garde `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : voir le commentaire jumeau dans `boot()`.
+        referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
+          ? ctx.geometrie.contour_client : null,
         bankable,
-        onApiReady: (a) => { builderApi.current = a },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -503,7 +531,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteAoVersPayload(ctx) },
-        onApiReady: (a) => { builderApi.current = a },
+        // Mode AO — pas de source de contour client (une affaire n'a pas de
+        // dessin du tunnel public) : `referenceContour` reste absent, comme
+        // avant. `onApiReady` pose quand même `builderReady` par cohérence
+        // avec les deux autres modes (aucun toggle n'existe ici de toute
+        // façon, donc aucun effet observable).
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       const reference = ctx?.affaire?.reference ?? ''
       setStatus(
@@ -518,6 +551,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
     else boot()
     return () => { cancelled = true }
   }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
+
+  // L-MAP — la bascule (rp9-chip) pilote le calque GÉO-RÉFÉRENCÉ du builder,
+  // pas seulement la légende React. O3 (revue adversariale 26/08) — sans
+  // `builderReady` dans les dépendances, un clic PENDANT le boot (builder pas
+  // encore prêt) était un no-op DÉFINITIF : `toitClientVisible` ne change
+  // plus tant qu'on ne reclique pas, donc l'état voulu ne se rattrapait
+  // jamais quand `builderApi.current` finissait par exister. `builderReady`
+  // (état, pas ref) déclenche un re-rendu à l'arrivée de l'API et rejoue la
+  // valeur COURANTE de `toitClientVisible` à ce moment-là.
+  useEffect(() => {
+    builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
+  }, [toitClientVisible, builderReady])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -825,6 +870,20 @@ export default function ToitureDesign({ mode = 'lead' }) {
     'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
   const chipClass = 'rp9-chip'
 
+  // L-MAP (fondateur 26/08/2026) — le contour BRUT du client, tel quel
+  // ([lat, lng] × n, la forme de `Lead.roof_outline`) : en mode lead, le lead
+  // fraîchement chargé le porte directement ; en mode devis, le contexte
+  // agrégé le porte SÉPARÉMENT de `geometrie.outline` (qui peut déjà être le
+  // contour COURANT du calepinage, une fois édité — voir
+  // `contexte_conception_devis`, apps/ventes/selectors.py). Mode AO : aucune
+  // source (les affaires ne portent pas de dessin du tunnel public) — le
+  // calque reste absent, comportement inchangé.
+  const contourClientBrut = estDevis
+    ? (contexte?.geometrie?.contour_client ?? null)
+    : (!estAo ? (lead?.roof_outline ?? null) : null)
+  const toitClientPresent = useMemo(
+    () => contourExploitable(contourClientBrut), [contourClientBrut])
+
   // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
   // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
@@ -1010,11 +1069,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <button type="submit" className="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950">Localiser</button>
           </form>
 
-          <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
-            role="application" aria-label="Carte 3D pour dessiner le toit">
-            <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
-              <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
+          {/* L-MAP — enveloppe ADDITIVE autour de `#rp9-map` (jamais un enfant :
+              le builder ne cherche que ses propres id, un parent ne lui change
+              rien). `ToitClientOverlay` y flotte en calque de référence
+              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`. */}
+          <div className="rp9-map-wrap">
+            <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
+              role="application" aria-label="Carte 3D pour dessiner le toit">
+              <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
+                <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
+              </div>
             </div>
+            <ToitClientOverlay contour={contourClientBrut} visible={toitClientVisible} />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -1022,6 +1088,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
             <button type="button" id="rp9-add-area" disabled className={chipClass}>+ Ajouter une zone</button>
+            {/* L-MAP — bascule du calque de référence, seulement quand un
+                contour client existe (rien à basculer sinon). */}
+            {toitClientPresent && (
+              <button
+                type="button"
+                className={chipClass}
+                aria-pressed={toitClientVisible}
+                onClick={() => setToitClientVisible((v) => !v)}
+                data-testid="rp9-toit-client-toggle"
+              >
+                {toitClientVisible ? 'Toit dessiné : affiché' : 'Toit dessiné : masqué'}
+              </button>
+            )}
             <p className="ml-auto text-sm text-lune-faint"><span>Surface&nbsp;: </span><span id="rp9-area-value" className="text-white">—</span></p>
           </div>
 

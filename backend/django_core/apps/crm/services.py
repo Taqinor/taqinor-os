@@ -25,7 +25,7 @@ from django.apps import apps as django_apps
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Canal, Client, Lead, LeadActivity, PointContact
+from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtape
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -461,6 +461,102 @@ def sync_relance_activity(lead, user):
                 act.save(update_fields=['done', 'done_at', 'done_by'])
     except Exception:
         pass
+
+
+# ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────────
+#
+# Distinct de ``sync_relance_activity`` ci-dessus (rappel UNIQUE piloté par
+# ``Lead.relance_date``) : ce plan matérialise plusieurs touches successives
+# (gabarit ``parametres.CadenceRelanceEtape``, ex. J+2/J+5/J+10/J+20/J+35) sur
+# UN lead, chacune avec son propre canal SUGGÉRÉ et son propre statut. AUCUN
+# envoi automatique (WhatsApp/e-mail) n'est jamais déclenché ici — ce sont des
+# rappels VISUELS pour le commercial (panneau « Relances du jour »), jamais un
+# message sortant.
+def initialiser_plan_relance(lead, user, *, depart=None):
+    """Matérialise le plan de relance de ``lead`` à partir de la cadence par
+    défaut de sa société (``parametres.CadenceRelanceEtape.cadence_pour``).
+
+    IDEMPOTENT : si ``lead`` porte déjà des étapes de relance, elles sont
+    renvoyées telles quelles (jamais de doublon — un second appel « à la
+    demande » sur le même lead ne réinitialise rien). ``depart`` (date) est le
+    point de départ du plan, par défaut aujourd'hui.
+
+    Pose aussi ``Lead.relance_date`` sur l'échéance de la toute première
+    étape (via ``sync_relance_activity``) : le Calendrier / « Ma file »
+    reflètent immédiatement la prochaine touche de la cadence, sans second
+    système de rappel concurrent.
+
+    Retourne la liste des ``RelanceEtape`` (créées ou déjà existantes, dans
+    l'ordre des étapes)."""
+    existantes = list(
+        lead.relance_etapes.order_by('ordre', 'due_date'))
+    if existantes:
+        return existantes
+
+    from datetime import timedelta
+
+    from apps.parametres.models_relance import CadenceRelanceEtape
+    cadence = CadenceRelanceEtape.cadence_pour(lead.company)
+    if not cadence:
+        return []
+
+    depart = depart or timezone.localdate()
+    etapes = []
+    for gabarit in cadence:
+        etapes.append(RelanceEtape(
+            company=lead.company, lead=lead, ordre=gabarit.ordre,
+            due_date=depart + timedelta(days=gabarit.delai_jours),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+        ))
+    RelanceEtape.objects.bulk_create(etapes)
+    resultats = list(lead.relance_etapes.order_by('ordre', 'due_date'))
+
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Plan de relance initialisé ({len(resultats)} étape(s), "
+             f"prochaine le {resultats[0].due_date}).")
+
+    premiere = resultats[0]
+    if not lead.relance_date or lead.relance_date > premiere.due_date:
+        lead.relance_date = premiere.due_date
+        lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return resultats
+
+
+def marquer_etape_relance(etape, user, statut, note=''):
+    """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
+    silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
+    chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
+    prochaine étape ``a_faire`` de CE plan (ou la vide si le plan est
+    terminé) — garde ``sync_relance_activity`` en phase, jamais un second
+    système de rappel concurrent."""
+    if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
+        raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
+
+    etape.statut = statut
+    etape.note = note or ''
+    etape.traite_par = user
+    etape.traite_le = timezone.now()
+    etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
+
+    verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
+    body = f"Relance J+{etape.ordre} ({etape.get_canal_display()}) marquée {verbe}."
+    if note:
+        body += f" Note : {note}"
+    LeadActivity.objects.create(
+        company=etape.company, lead=etape.lead, user=user,
+        kind=LeadActivity.Kind.NOTE, body=body)
+
+    lead = etape.lead
+    prochaine = (lead.relance_etapes
+                 .filter(statut=RelanceEtape.Statut.A_FAIRE)
+                 .order_by('ordre', 'due_date').first())
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+    return etape
 
 
 def _next_round_robin_owner_for_new_lead(company):

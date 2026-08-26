@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
@@ -296,6 +298,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # garde vit ICI car get_permissions PRIME sur le
             # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
             'simuler', 'simulation_status',
+            # TAILLES (26/08/2026) — les trois tailles Éco/Recommandé/Max
+            # côté vendeur : lecture, écriture de la CONFIGURATION d'une
+            # taille, régénération d'une taille. Même périmètre que le
+            # générateur (responsable + admin). PIÈGE VX199 : sans ces trois
+            # noms ICI, les actions tomberaient sur le repli ``IsAdminRole``
+            # et leur ``permission_classes`` — qui déclare la MÊME classe —
+            # ne serait JAMAIS consulté. La lecture porte son propre nom
+            # d'action pour ne pas hériter du niveau de garde de l'écriture.
+            'offres_tailles', 'offres_tailles_config',
+            'offres_tailles_regenerer',
+            # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
+            # visites DISTINCTES par section de la proposition + alerte de
+            # friction (relecture répétée d'une même section). Analytics
+            # INTERNES (jamais montrées au client, jamais une revendication
+            # devant le commercial autre qu'un signal) → même périmètre que
+            # les autres LECTURES sensibles ci-dessus (responsable + admin).
+            # PIÈGE VX199 : sans ce nom ICI, l'action tomberait sur le repli
+            # ``IsAdminRole`` malgré son ``permission_classes`` identique.
+            'lecture_client',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -2252,6 +2273,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'relances': relances_devis_abandonne(devis.company, devis.pk),
         })
 
+    @action(detail=True, methods=['get'], url_path='lecture-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def lecture_client(self, request, pk=None):
+        """ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
+        combien de VISITES DISTINCTES chaque section de la proposition
+        publique a reçues, et l'alerte de friction si une section a été
+        RELUE au-delà du seuil (``ShareLink.friction_alert``).
+
+        Réservé responsable/admin (VX199 — voir ``get_permissions`` ci-
+        dessus) : ce sont des analytics INTERNES (temps/visites du client sur
+        sa propre proposition) — jamais montrées au client, jamais une
+        promesse de conversion, juste un signal « ce client relit, un appel
+        peut aider ». Lecture PURE sur le ``ShareLink`` le plus récent du
+        devis, borné à sa société (déjà scopée par ``get_object()``).
+        ``sections``/``friction`` vides ⇒ aucun beacon reçu pour ce devis."""
+        from ..models import ShareLink
+
+        devis = self.get_object()
+        link = (ShareLink.objects
+                .filter(devis=devis, company=devis.company)
+                .order_by('-id').first())
+        return Response({
+            'sections': link.visites_par_section if link else {},
+            'friction': link.friction_alert if link else None,
+        })
+
     @action(detail=True, methods=['post'], url_path='whatsapp-preview',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_preview(self, request, pk=None):
@@ -2443,6 +2490,99 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         act = activity.log_devis_note(devis, request.user, body)
         return Response(DevisActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    # ── TAILLES (ordre fondateur, 26/08/2026) — les trois tailles côté vendeur ─
+    #
+    # TROIS actions, et le découpage n'est pas cosmétique : ``get_permissions``
+    # raisonne sur ``self.action``, donc une action qui porterait à la fois le
+    # GET et le PATCH sous un seul nom forcerait la LECTURE au niveau de garde
+    # de l'ÉCRITURE. Une action par verbe = une garde juste par verbe.
+    #
+    # PIÈGE VX199 : les trois sont inscrites dans la liste de ``get_permissions``
+    # ci-dessus, ET déclarent la MÊME classe dans leur décorateur. Sans
+    # l'inscription, elles tomberaient sur le repli ``IsAdminRole`` — le
+    # décorateur ne serait jamais consulté et fermerait l'écran aux
+    # responsables tout en AYANT L'AIR ouvert.
+
+    def _offres_tailles_reponse(self, devis):
+        """L'état COMPLET des trois tailles, tel que l'écran vendeur le lit.
+
+        MÊME dérivation que la page client (``offres_tailles.deriver``) : le
+        vendeur et le client ne peuvent pas voir deux jeux de chiffres. Seule
+        différence, assumée : ici aucune taille n'est cachée sous le seuil de
+        deux (c'est un écran d'édition, pas une comparaison), et un devis non
+        dérivable répond ``editable: false`` avec sa raison EN CLAIR plutôt
+        qu'une section muette.
+        """
+        from ..offres_tailles import deriver
+        from ..quote_engine.builder import build_quote_data
+
+        try:
+            data = build_quote_data(devis, {'pdf_mode': 'full'})
+            bloc = deriver(devis, data)
+        except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais
+            logging.getLogger(__name__).warning(
+                'offres_tailles indisponibles sur %s',
+                getattr(devis, 'reference', '?'), exc_info=True)
+            bloc = None
+        if bloc is None:
+            return {
+                'offres_tailles': None,
+                'editable': False,
+                'raison_non_editable': (
+                    'Ce devis ne permet pas encore de dériver des tailles : '
+                    'il doit être résidentiel, porter un profil de '
+                    'consommation réel et un tableau de dimensionnement.'
+                ),
+            }
+        return {'offres_tailles': bloc, 'editable': True}
+
+    @action(detail=True, methods=['get'], url_path='offres-tailles',
+            permission_classes=[IsResponsableOrAdmin])
+    def offres_tailles(self, request, pk=None):
+        """LECTURE des trois tailles Éco / Recommandé / Max de ce devis."""
+        return Response(self._offres_tailles_reponse(self.get_object()))
+
+    @action(detail=True, methods=['patch'], url_path='offres-tailles/config',
+            permission_classes=[IsResponsableOrAdmin])
+    def offres_tailles_config(self, request, pk=None):
+        """ÉCRITURE de la CONFIGURATION d'UNE taille — elle seule.
+
+        Le sérialiseur refuse en 400 tout nombre dérivé : il n'existe aucun
+        chemin par lequel un prix tapé à la main entre dans le stockage. Les
+        deux autres tailles ne sont pas touchées, marqueur ``ajuste`` compris.
+        Aucune ligne, aucun total, aucun statut du devis ne bouge (règle #4).
+        """
+        from ..offres_tailles import enregistrer_config
+        from ..serializers import OffreTailleEcritureSerializer
+
+        devis = self.get_object()
+        serializer = OffreTailleEcritureSerializer(
+            data=request.data, context={'company': devis.company})
+        serializer.is_valid(raise_exception=True)
+        enregistrer_config(devis, serializer.validated_data['cle'],
+                           serializer.validated_data['config'],
+                           utilisateur=request.user)
+        return Response(self._offres_tailles_reponse(devis))
+
+    @action(detail=True, methods=['post'],
+            url_path='offres-tailles/regenerer',
+            permission_classes=[IsResponsableOrAdmin])
+    def offres_tailles_regenerer(self, request, pk=None):
+        """RÉGÉNÈRE UNE taille depuis le moteur — elle seule.
+
+        Retire la configuration du vendeur pour CETTE taille (et donc son
+        marqueur « ajustée ») : la dérivation moteur reprend la main. Les deux
+        autres tailles restent intouchées, y compris leur propre marqueur.
+        """
+        from ..offres_tailles import regenerer_taille
+        from ..serializers import OffreTailleRegenerationSerializer
+
+        devis = self.get_object()
+        serializer = OffreTailleRegenerationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        regenerer_taille(devis, serializer.validated_data['cle'])
+        return Response(self._offres_tailles_reponse(devis))
 
     def _guard_discount_approval(self, devis, ancien, nouveau, remise):
         """T17 — bloque le passage en « envoyé » si la remise dépasse le seuil

@@ -28,7 +28,7 @@ CLES_RACINE = {'devis', 'geometrie', 'cible', 'carte', 'modifiable',
 CLES_DEVIS = {'id', 'reference', 'statut', 'mode_installation', 'lead',
               'client', 'client_nom', 'client_telephone', 'client_ville',
               'client_adresse'}
-CLES_GEOMETRIE = {'source', 'roof_layout', 'pin', 'outline'}
+CLES_GEOMETRIE = {'source', 'roof_layout', 'pin', 'outline', 'contour_client'}
 CLES_CIBLE = {'panneaux', 'kwc', 'panel_watt', 'scenario', 'batterie',
               'avertissements', 'bill_kwh'}
 CLES_CARTE = {'available', 'maptilerKey', 'mapboxToken'}
@@ -161,6 +161,45 @@ class TestDesignContext(TestCase):
         self.assertEqual(len(data['geometrie']['outline']), 2)
         self.assertEqual(data['cible']['bill_kwh'], 850.0)
         self.assertEqual(data['devis']['lead'], lead.id)
+        # Sans layout, `contour_client` == `outline` (même contour du lead).
+        self.assertEqual(
+            data['geometrie']['contour_client'], [[31.6, -8.0], [31.61, -8.0]])
+
+    # ── L-MAP (fondateur 26/08/2026) — le contour CLIENT survit à l'édition ──
+    def test_contour_client_reste_le_contour_original_meme_avec_un_layout(self):
+        """Un devis déjà calepiné porte son PROPRE `outline` (édité par le
+        commercial) : `contour_client` doit rester le contour ORIGINAL du
+        lead, jamais celui du layout — sinon le calepinage 3D ne peut plus
+        distinguer ce que le client a réellement dessiné de ce qui a été
+        retouché depuis."""
+        lead = self._lead(
+            roof_outline=[[31.6, -8.0], [31.61, -8.0], [31.61, -7.99]])
+        layout = {
+            'version': 1,
+            'pin': {'lat': 33.5, 'lng': -7.6},
+            'outline': [[33.5, -7.6], [33.51, -7.6]],  # contour COURANT, édité
+            'zones': [],
+        }
+        devis = self._devis(lead=lead, layout=layout)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'devis')
+        self.assertEqual(
+            data['geometrie']['outline'], [[33.5, -7.6], [33.51, -7.6]])
+        self.assertEqual(
+            data['geometrie']['contour_client'],
+            [[31.6, -8.0], [31.61, -8.0], [31.61, -7.99]])
+
+    def test_contour_client_liste_vide_sans_lead_ni_contour(self):
+        """Jamais `None` — un devis sans lead, ou un lead sans `roof_outline`,
+        rend une liste vide (l'écran peut toujours `.map()` dessus)."""
+        devis_sans_lead = self._devis()
+        self.assertEqual(
+            self._get(devis_sans_lead).data['geometrie']['contour_client'], [])
+
+        lead_muet = self._lead()
+        devis_lead_muet = self._devis(lead=lead_muet)
+        self.assertEqual(
+            self._get(devis_lead_muet).data['geometrie']['contour_client'], [])
 
     # ── Correction fondateur 24/08 — repli GPS du lead quand personne n'a
     #    encore posé d'épingle (ni layout, ni `lead.roof_point`). ──────────
@@ -275,6 +314,27 @@ class TestDesignContext(TestCase):
             company=autre, reference='DEV-PV17-ETR', client=client_autre,
             statut=Devis.Statut.BROUILLON)
         self.assertEqual(self._get(devis).status_code, 404)
+
+    # O4 (revue adversariale 26/08/2026, défense en profondeur) — un
+    # `devis.lead` ne DEVRAIT jamais appartenir à une autre société que le
+    # devis (aucun chemin de l'appli ne le permet), mais si cet invariant
+    # était rompu (bug ailleurs, migration), aucun champ du lead étranger ne
+    # doit fuiter par cet endpoint.
+    def test_lead_d_une_autre_societe_traite_comme_absent(self):
+        autre = make_company('pv17-lead-autre-co')
+        lead_etranger = Lead.objects.create(
+            company=autre, nom='Etranger', prenom='PV17',
+            roof_outline=[[31.6, -8.0], [31.61, -8.0], [31.61, -7.99]],
+            roof_point={'lat': 31.6, 'lng': -8.0}, bill_kwh=Decimal('999'),
+            telephone='+212699999999', ville='Ailleurs')
+        devis = self._devis(lead=lead_etranger)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'none')
+        self.assertIsNone(data['geometrie']['pin'])
+        self.assertEqual(data['geometrie']['contour_client'], [])
+        self.assertIsNone(data['cible']['bill_kwh'])
+        self.assertEqual(data['devis']['client_ville'], '')
+        self.assertEqual(data['devis']['client_telephone'], '')
 
     def test_aucun_prix_achat_ni_marge(self):
         devis = self._devis()

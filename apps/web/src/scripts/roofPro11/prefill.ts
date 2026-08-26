@@ -679,3 +679,54 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   if (typeof lead.city === 'string' && lead.city.trim()) contact.city = lead.city.trim();
   return { vertices, center, contact };
 }
+
+/** Un point du contour brut, TEL QUE rencontré en base : `[lat, lng]` (le
+ *  webhook) ou `{lat, lng}` (import/saisie manuelle) — les DEUX formes que
+ *  `Lead.roof_outline` porte réellement. */
+export type RawContourPoint = [number, number] | { lat: number; lng: number };
+
+/** Borne lat/lng STRICTE — MÊME predicat que `borne()` de traceToit.js (côté
+ *  ERP, frontend/src/features/crm/workspace/traceToit.js) : dupliqué ici
+ *  (les deux packages ne partagent aucun module — apps/web et frontend/ sont
+ *  deux builds distincts) mais avec la MÊME formule, jamais une version plus
+ *  permissive qui accepterait ce que l'ERP refuse. Toute divergence future
+ *  entre les deux doit se lire comme un bug, pas une variation voulue. */
+function coordonneeValide(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90
+    && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+}
+
+/**
+ * L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+ * layouter ») — le contour ORIGINAL dessiné par le client, en `[lng, lat]` ×
+ * n, prêt pour un calque GÉO-RÉFÉRENCÉ passif (`roof-tool-pro11.ts`, source
+ * `rp9-ref-contour`). MÊME validation que `normaliserContour` (traceToit.js,
+ * ERP) — les DEUX formes de points (`[lat, lng]` ET `{lat, lng}`) et le MÊME
+ * bornage lat ∈ [-90, 90] / lng ∈ [-180, 180], jamais une version plus
+ * permissive : un contour que l'écran hôte refuse (légende/bascule absentes)
+ * ne doit JAMAIS dessiner un polygone orphelin, sans bascule pour le masquer,
+ * sur la carte. Usage différent de `hydrateFromLead`/`vertices` ci-dessus
+ * (qui SÈMENT la zone active éditable) : celui-ci reste une trace PERMANENTE
+ * et NON ÉDITABLE, distincte du calepinage courant même après une édition.
+ * `null` sans contour exploitable (< 3 sommets valides) — jamais un tableau
+ * vide qui dessinerait un polygone dégénéré, jamais un contour deviné.
+ */
+export function referenceContourRing(brut: RawContourPoint[] | null | undefined): LngLat[] | null {
+  if (!Array.isArray(brut)) return null;
+  const ring: LngLat[] = [];
+  for (const p of brut) {
+    let lat: number;
+    let lng: number;
+    if (Array.isArray(p) && p.length >= 2) {
+      lat = Number(p[0]);
+      lng = Number(p[1]);
+    } else if (p && typeof p === 'object') {
+      lat = Number((p as { lat?: unknown }).lat);
+      lng = Number((p as { lng?: unknown }).lng);
+    } else {
+      continue;
+    }
+    if (coordonneeValide(lat, lng)) ring.push([lng, lat]);
+  }
+  return ring.length >= 3 ? ring : null;
+}

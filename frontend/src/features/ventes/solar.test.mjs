@@ -25,7 +25,11 @@ import {
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0
-const P = (nom, ttc) => ({ id: ++_id, nom, prix_vente: ht(ttc) })
+// BATHOMO/F4 (fondateur 26/08/2026) — `quantite_stock` par défaut à 500,
+// même convention que le catalogue seedé (`seed_catalogue.py`) : le stock-
+// gating batterie n'exclut QUE ce qu'un test met explicitement à 0, jamais
+// les fixtures existantes qui ne parlaient pas encore de stock.
+const P = (nom, ttc, qty = 500) => ({ id: ++_id, nom, prix_vente: ht(ttc), quantite_stock: qty })
 const SEEDED = [
   P('Onduleur réseau Huawei 5kW Monophasé', 14000),
   P('Onduleur réseau Huawei 10kW Monophasé', 18000),
@@ -317,12 +321,20 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
   assert.equal(totals.totalAvecBrut, 101727.5)
 })
 
-test('auto-fill 24 panneaux × 710 W : batterie composée 10+5, structures alu', () => {
+test('auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu', () => {
+  // BATHOMO/F4 (fondateur 26/08/2026) — l'ancien calcul mélangeait 1×10 + 1×5
+  // (électriquement interdit, l'incident qui a fait retirer le Dyness 10 kWh
+  // du stock). Sur ce fixture (5 kWh = 17 000 TTC → 3 400/kWh ; 10 kWh =
+  // 30 000 TTC → 3 000/kWh), le 10 kWh est moins cher AU kWh, mais 15 kWh
+  // exigerait un 2×10 kWh EN SURPLUS (20 kWh, 60 000 TTC) contre un 3×5 kWh
+  // EXACT (51 000 TTC) : le moins cher au TOTAL gagne, jamais une préférence
+  // de calibre fixe — c'est le 5 kWh, homogène, jamais mélangé.
   const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
   const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'aluminium' })
   const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 10').quantite, 1)
-  assert.equal(by('Dyness 5').quantite, 1)
+  assert.equal(by('Dyness 10').quantite, 0)
+  assert.equal(by('Dyness 5').quantite, 3)
+  assert.equal(by('Dyness 5').prix_unit_ttc, 17000)
   assert.equal(by('aluminium').quantite, 24)
   assert.equal(by('aluminium').prix_unit_ttc, 850)
   assert.equal(by('acier').quantite, 0)
@@ -363,12 +375,14 @@ test('auto-fill : un catalogue encore écrit « Deyness » alimente le même viv
   const iGenerique = ancien.findIndex(p => p.nom.includes('Batterie Lithium'))
   ancien.unshift(...ancien.splice(iGenerique, 1))
 
-  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh (1 × 10 + 1 × 5)
+  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène (jamais 1×10 + 1×5 mélangé,
+  // même raison économique que le test « batterie homogène » ci-dessus).
+  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
   const rows = autoFillLines(ancien, { kwp, panelW: 710, structureType: 'acier' })
   const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Deyness 10').quantite, 1)
+  assert.equal(by('Deyness 10').quantite, 0)
   assert.equal(by('Deyness 10').prix_unit_ttc, 30000)
-  assert.equal(by('Deyness 5').quantite, 1)
+  assert.equal(by('Deyness 5').quantite, 3)
   assert.equal(by('Deyness 5').prix_unit_ttc, 17000)
   // Aucune batterie générique ne s'est glissée à la place de la marque.
   assert.ok(rows.every(r => !r.designation.includes('Lithium')))
@@ -400,18 +414,106 @@ test('auto-fill : batterie « haute tension » jamais auto-choisie même moins c
   assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
 })
 
-test('auto-fill : les batteries 5/10 kWh restent choisies comme avant malgré une HV au catalogue', () => {
+test('auto-fill : les batteries 5/10 kWh restent choisies (homogène) malgré une HV au catalogue', () => {
   const avecHV = [...SEEDED, P('Batterie Dyness haute tension 16 kWh', 100)]
 
+  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène, même raison économique.
   const rows24 = autoFillLines(avecHV, { kwp: 24 * 710 / 1000, panelW: 710, structureType: 'aluminium' })
   const by24 = (frag) => rows24.find(r => r.designation.includes(frag))
-  assert.equal(by24('Dyness 10').quantite, 1)
-  assert.equal(by24('Dyness 5').quantite, 1)
+  assert.equal(by24('Dyness 10').quantite, 0)
+  assert.equal(by24('Dyness 5').quantite, 3)
 
   const rows5 = autoFillLines(avecHV, { kwp: 5 * 710 / 1000, panelW: 710, structureType: 'acier' })
   const by5 = (frag) => rows5.find(r => r.designation.includes(frag))
   assert.equal(by5('Dyness 5').quantite, 1)
   assert.equal(by5('Dyness 10').quantite, 0)
+})
+
+// ── BATHOMO/F4 (fondateur 26/08/2026, revue adversariale) — MIROIR EXACT du
+// moteur serveur (apps/ventes/services.py::composition_residentielle) :
+// homogène par calibre, EN STOCK seulement, prix TTC total le plus bas,
+// plafond de modules respecté. Mêmes cas que
+// apps/ventes/tests/test_bathomo_banque_homogene.py côté backend.
+test('F4 — prix RÉELS fondateur : 2×5 kWh (28 000 TTC) bat 1×10 kWh (30 000 TTC) pour une cible de 10 kWh', () => {
+  // « 2×5=28 000 beats 1×10=30 000 for a 10 kWh target » (fondateur,
+  // 26/08/2026) : catalogue de production, 5 kWh = 14 000 TTC (2 800/kWh),
+  // 10 kWh = 30 000 TTC (3 000/kWh) — le 5 kWh est moins cher au kWh.
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  const kwp = 14 * 710 / 1000 // 9.94 → cible batterie 10 kWh
+  const rows = autoFillLines(catalogue, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 5').quantite, 2)
+  assert.equal(by('Dyness 10').quantite, 0)
+})
+
+test('F4 — jusqu\'à 40 kWh (8 packs de 5 kWh) le 5 kWh reste économique, jamais mélangé', () => {
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  for (const cibleKwh of [15, 20, 25, 30, 35, 40]) {
+    const kwp = cibleKwh // panelW=1000W → kwp == cible arrondie au multiple de 5
+    const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
+    const by = (frag) => rows.find(r => r.designation.includes(frag))
+    assert.equal(by('Dyness 10').quantite, 0, `cible ${cibleKwh} kWh`)
+    assert.equal(by('Dyness 5').quantite * 5, cibleKwh, `cible ${cibleKwh} kWh`)
+  }
+})
+
+test('F4 — un calibre à 0 en stock est EXCLU du choix économique', () => {
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000, /* qty */ 0), // rupture de stock
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  // Cible 20 kWh : sans la garde de stock, le 10 kWh (moins cher au kWh à ce
+  // prix) gagnerait l'arbitrage économique — la garde de stock l'exclut.
+  const kwp = 20
+  const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 10').quantite, 0)
+  assert.equal(by('Dyness 5').quantite, 4)
+})
+
+test('F4 — max_modules_par_banc (specs_solaire) rejette une candidate qui le dépasse, jamais un mélange', () => {
+  const bat5 = P('Batterie Dyness 5 kWh', 14000)
+  bat5.specs_solaire = { famille: 'batterie', max_modules_par_banc: 2 }
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    bat5,
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  // 20 kWh exigerait 4×5 (au-dessus du plafond 2) : REJETÉ — seul le 10 kWh
+  // (2×10, sans plafond) reste, jamais une banque tronquée à 2×5=10 kWh.
+  const rows = autoFillLines(catalogue, { kwp: 20, panelW: 1000, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 5').quantite, 0)
+  assert.equal(by('Dyness 10').quantite, 2)
 })
 
 // ── PVOND — garde batterie PILOTÉ PAR LA DONNÉE + verrou de complétude ──────

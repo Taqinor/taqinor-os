@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9549, operations: 17194, components: 5049}
+counts: {paths: 9569, operations: 17222, components: 5059}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2607,6 +2607,7 @@ operations:
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
+- post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
@@ -2698,6 +2699,9 @@ operations:
 - post /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_create
 - post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
+- get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_list
+- post /api/django/crm/relance-etapes/{id}/fait/ -> django_crm_relance_etapes_fait_create
+- post /api/django/crm/relance-etapes/{id}/sauter/ -> django_crm_relance_etapes_sauter_create
 - get /api/django/crm/revues-compte/ -> django_crm_revues_compte_list
 - post /api/django/crm/revues-compte/ -> django_crm_revues_compte_create
 - delete /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_destroy
@@ -5885,6 +5889,12 @@ operations:
 - get /api/django/parametres/audit/ -> django_parametres_audit_retrieve
 - post /api/django/parametres/audit/purge/ -> django_parametres_audit_purge_create
 - get /api/django/parametres/audit/sections/ -> django_parametres_audit_sections_retrieve
+- get /api/django/parametres/cadence-relance/ -> django_parametres_cadence_relance_list
+- post /api/django/parametres/cadence-relance/ -> django_parametres_cadence_relance_create
+- delete /api/django/parametres/cadence-relance/{id}/ -> django_parametres_cadence_relance_destroy
+- get /api/django/parametres/cadence-relance/{id}/ -> django_parametres_cadence_relance_retrieve
+- patch /api/django/parametres/cadence-relance/{id}/ -> django_parametres_cadence_relance_partial_update
+- put /api/django/parametres/cadence-relance/{id}/ -> django_parametres_cadence_relance_update
 - get /api/django/parametres/conditions-paiement/ -> django_parametres_conditions_paiement_list
 - post /api/django/parametres/conditions-paiement/ -> django_parametres_conditions_paiement_create
 - delete /api/django/parametres/conditions-paiement/{id}/ -> django_parametres_conditions_paiement_destroy
@@ -8403,9 +8413,13 @@ operations:
 - get /api/django/ventes/devis/{id}/historique/ -> django_ventes_devis_historique_retrieve
 - get /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_retrieve
 - post /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_create
+- get /api/django/ventes/devis/{id}/lecture-client/ -> django_ventes_devis_lecture_client_retrieve
 - get /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_retrieve
 - post /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_create
 - post /api/django/ventes/devis/{id}/noter/ -> django_ventes_devis_noter_create
+- get /api/django/ventes/devis/{id}/offres-tailles/ -> django_ventes_devis_offres_tailles_retrieve
+- patch /api/django/ventes/devis/{id}/offres-tailles/config/ -> django_ventes_devis_offres_tailles_config_partial_update
+- post /api/django/ventes/devis/{id}/offres-tailles/regenerer/ -> django_ventes_devis_offres_tailles_regenerer_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/refuser/ -> django_ventes_devis_refuser_create
@@ -11241,6 +11255,7 @@ operations:
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
+- post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
@@ -11332,6 +11347,9 @@ operations:
 - post /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_create
 - post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
+- get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_list
+- post /api/v1/crm/relance-etapes/{id}/fait/ -> v1_crm_relance_etapes_fait_create
+- post /api/v1/crm/relance-etapes/{id}/sauter/ -> v1_crm_relance_etapes_sauter_create
 - get /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_list
 - post /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_create
 - delete /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_destroy
@@ -14519,6 +14537,12 @@ operations:
 - get /api/v1/parametres/audit/ -> v1_parametres_audit_retrieve
 - post /api/v1/parametres/audit/purge/ -> v1_parametres_audit_purge_create
 - get /api/v1/parametres/audit/sections/ -> v1_parametres_audit_sections_retrieve
+- get /api/v1/parametres/cadence-relance/ -> v1_parametres_cadence_relance_list
+- post /api/v1/parametres/cadence-relance/ -> v1_parametres_cadence_relance_create
+- delete /api/v1/parametres/cadence-relance/{id}/ -> v1_parametres_cadence_relance_destroy
+- get /api/v1/parametres/cadence-relance/{id}/ -> v1_parametres_cadence_relance_retrieve
+- patch /api/v1/parametres/cadence-relance/{id}/ -> v1_parametres_cadence_relance_partial_update
+- put /api/v1/parametres/cadence-relance/{id}/ -> v1_parametres_cadence_relance_update
 - get /api/v1/parametres/conditions-paiement/ -> v1_parametres_conditions_paiement_list
 - post /api/v1/parametres/conditions-paiement/ -> v1_parametres_conditions_paiement_create
 - delete /api/v1/parametres/conditions-paiement/{id}/ -> v1_parametres_conditions_paiement_destroy
@@ -16991,9 +17015,13 @@ operations:
 - get /api/v1/ventes/devis/{id}/historique/ -> v1_ventes_devis_historique_retrieve
 - get /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_retrieve
 - post /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_create
+- get /api/v1/ventes/devis/{id}/lecture-client/ -> v1_ventes_devis_lecture_client_retrieve
 - get /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_retrieve
 - post /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_create
 - post /api/v1/ventes/devis/{id}/noter/ -> v1_ventes_devis_noter_create
+- get /api/v1/ventes/devis/{id}/offres-tailles/ -> v1_ventes_devis_offres_tailles_retrieve
+- patch /api/v1/ventes/devis/{id}/offres-tailles/config/ -> v1_ventes_devis_offres_tailles_config_partial_update
+- post /api/v1/ventes/devis/{id}/offres-tailles/regenerer/ -> v1_ventes_devis_offres_tailles_regenerer_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/refuser/ -> v1_ventes_devis_refuser_create
@@ -17585,6 +17613,8 @@ components:
 - BulletinRequest
 - Cabinet
 - CabinetRequest
+- CadenceRelanceEtape
+- CadenceRelanceEtapeRequest
 - Caisse
 - CaisseRequest
 - CalendrierProjet
@@ -17609,6 +17639,7 @@ components:
 - Canal
 - Canal26dEnum
 - CanalC7fEnum
+- CanalCf4Enum
 - CanalRequest
 - CanalResolutionEnum
 - Candidature
@@ -19272,6 +19303,7 @@ components:
 - PaginatedBulletinList
 - PaginatedBulletinPaieList
 - PaginatedCabinetList
+- PaginatedCadenceRelanceEtapeList
 - PaginatedCaisseList
 - PaginatedCalendrierProjetList
 - PaginatedCampagneCulturaleList
@@ -19957,6 +19989,7 @@ components:
 - PaginatedRegularisationChargesList
 - PaginatedRegulatoryDossierList
 - PaginatedRelanceDevisAbandonneList
+- PaginatedRelanceEtapeList
 - PaginatedRelanceLoyerList
 - PaginatedReleveAOList
 - PaginatedReleveConsommationList
@@ -20299,6 +20332,7 @@ components:
 - PatchedBulletinPaieRequest
 - PatchedBulletinRequest
 - PatchedCabinetRequest
+- PatchedCadenceRelanceEtapeRequest
 - PatchedCaisseRequest
 - PatchedCalendrierProjetRequest
 - PatchedCampagneCulturaleRequest
@@ -20460,6 +20494,7 @@ components:
 - PatchedDerogationCreditRequest
 - PatchedDerogationRequest
 - PatchedDeviceKiosqueRequest
+- PatchedDevisRequest
 - PatchedDevisWriteRequest
 - PatchedDiffusionPlanRequest
 - PatchedDocumentClientPortailRequest
@@ -21525,6 +21560,9 @@ components:
 - RegulatoryDossierStatutEnum
 - RelanceDevisAbandonne
 - RelanceDevisAbandonneRequest
+- RelanceEtape
+- RelanceEtapeRequest
+- RelanceEtapeStatutEnum
 - RelanceLoyer
 - RelanceLoyerCanalEnum
 - RelanceLoyerNiveauEnum
