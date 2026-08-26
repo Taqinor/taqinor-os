@@ -108,6 +108,12 @@ const config = {
       { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      // WIR265/FG42 — import d'un relevé bancaire (dry-run puis import). Le
+      // couple d'endpoints multipart existait sans aucun consommateur. Même
+      // écran que les encaissements (l'assistant s'y ouvre sur cette route) :
+      // l'import n'a de sens qu'à côté de la liste qu'il alimente. Réservé
+      // responsable/admin, comme la garde serveur `IsResponsableOrAdmin`.
+      { to: '/ventes/paiements/import-releve', label: 'Import relevé bancaire', k: 'nav.import_releve', icon: navIcon(Wallet), roles: ['responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation' },
       // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
       // traiter aujourd'hui » (QX29/QX30), réservé responsable/admin.
@@ -147,6 +153,9 @@ const config = {
     { path: '/ventes/factures', component: FactureList },
     { path: '/ventes/avoirs', component: AvoirsPage },
     { path: '/ventes/relances', component: RelancesPage },
+    // WIR265 — la route d'import précède `/ventes/paiements` (préfixe plus
+    // spécifique) et rend le MÊME écran, assistant d'import ouvert.
+    { path: '/ventes/paiements/import-releve', component: PaiementsPage, roles: ['responsable', 'admin'] },
     { path: '/ventes/paiements', component: PaiementsPage },
     { path: '/ventes/listes-prix', component: ListesPrixPage },
     // WIR104 — écran consommateur du cluster réglementaire (FG245, FG268-287).

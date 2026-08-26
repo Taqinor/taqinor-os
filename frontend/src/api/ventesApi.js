@@ -330,6 +330,24 @@ const ventesApi = {
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),
 
+  // ── WIR265/FG42 — Import d'un relevé bancaire (dry-run puis commit) ──────
+  // Le couple d'endpoints multipart existait et testé depuis FG42, SANS aucun
+  // consommateur. `file` est le nom de champ RÉELLEMENT lu par le serveur
+  // (`request.FILES.get('file')`), XLSX ou CSV, 5 Mo max.
+  // FormData NU, sans `Content-Type` manuel : c'est le navigateur qui pose
+  // l'en-tête AVEC son boundary multipart — le forcer à la main produit un
+  // corps illisible côté serveur.
+  importReleveDryRun: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/ventes/paiements/import-releve/dry-run/', form)
+  },
+  importReleveCommit: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/ventes/paiements/import-releve/commit/', form)
+  },
+
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),
   getAvoirs: (params) => api.get('/ventes/avoirs/', { params }),
