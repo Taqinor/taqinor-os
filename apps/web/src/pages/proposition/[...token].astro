@@ -4407,10 +4407,23 @@ const signConfig = ok
                             </p>
                           )}
 
-                          {va.prixTtc !== null && (
-                            <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(va.prixTtc)}</p>
+                          {/* Le prix ET son libellé tombent ENSEMBLE : « TTC,
+                              clé en main » suspendu sous une carte sans montant
+                              est une étiquette qui ne désigne rien. Sans prix
+                              servi, la carte le dit en toutes lettres. */}
+                          {va.prixTtc !== null ? (
+                            <>
+                              <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(va.prixTtc)}</p>
+                              <p class="text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                            </>
+                          ) : (
+                            <p class="mt-3 text-sm text-lune-soft" data-i18n
+                              data-fr="Prix communiqué par votre conseiller"
+                              data-en="Price provided by your advisor"
+                              data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                              Prix communiqué par votre conseiller
+                            </p>
                           )}
-                          <p class="text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                           {/* prix/kWc — le MÊME chiffre déjà arrondi par le
                               moteur pour le PDF : jamais un second arrondi. */}
                           {va.prixParKwcTtc !== null && (
@@ -4420,7 +4433,14 @@ const signConfig = ok
                             </p>
                           )}
 
-                          <dl class="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm">
+                          {/* La liste ne s'ouvre QUE si au moins un de ses six
+                              champs est servi : un <dl> vide n'afficherait
+                              qu'un filet de séparation orphelin. */}
+                          <dl class="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm" hidden={
+                            va.economieAnnuelleMad === null && va.paybackAnnees === null
+                            && va.couverturePct === null && va.tauxAutoconsommationPct === null
+                            && va.productionAnnuelleKwh === null && va.economiesCumulees25AnsMad === null
+                          }>
                             {va.economieAnnuelleMad !== null && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Économies / an" data-en="Savings / year" data-ar="التوفير / سنة">Économies / an</dt>
