@@ -466,3 +466,55 @@ class MaxModulesParBancRejette(_Base):
         parmi les AUTRES calibres — jamais une banque vide."""
         cinq, dix, _vue = self._compose(cible_kwh=20, kwc=40.0, module_kwh=5)
         self.assertEqual((cinq, dix), (0, 2))
+
+
+class PinCalibreGeneraliseHors5Et10(_Base):
+    """A1 (revue adversariale Fable, 26/08/2026) — le pin doit résoudre
+    N'IMPORTE QUEL calibre du vivier compatible, jamais un whitelist figé
+    5/10 (le Deye BOS-B-Pack16, 16 kWh, est un produit RÉEL des gammes)."""
+
+    slug = 'bathomo-pin16'
+    BATTERIE_SKUS = ('5',)
+
+    def _ajouter_bat16(self, *, compatible=True):
+        bat16 = Produit.objects.create(
+            company=self.company, nom='Batterie Deye BOS-B Pack16 16 kWh',
+            sku='BAT16-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        if compatible:
+            FicheTechnique.objects.create(
+                company=self.company, produit=bat16, type_fiche='batterie',
+                bat_kwh_nominal=Decimal('16.00'),
+                bat_kwh_usable=Decimal('14.40'), bat_dod_pct=Decimal('90.0'),
+                bat_v_nominal=Decimal('51.2'), bat_max_charge_kw=Decimal('6.00'))
+        return bat16
+
+    def test_pin_16_kwh_compatible_est_resolu_jamais_un_repli_5_kwh(self):
+        # Le Dyness 5 kWh de ce montage est LUI AUSSI compatible : sans
+        # l'écarter, la préférence de marque (``dyness_compat or
+        # batteries_compat``) l'emporterait sur le Deye 16 kWh AVANT même la
+        # recherche du pin — ce test veut prouver le calibre, pas la marque.
+        FicheTechnique.objects.filter(
+            produit=self.produits['BAT5']).update(bat_v_nominal=Decimal('1000.0'))
+        self._ajouter_bat16(compatible=True)
+        cinq, dix, vue = self._compose(cible_kwh=16, kwc=40.0, module_kwh=16)
+        self.assertEqual(cinq, 0, 'le pin 16 kWh a glissé vers le 5 kWh')
+        self.assertEqual(dix, 0)
+        self.assertAlmostEqual(vue['batterie_kwh'], 14.40, places=2)
+
+    def test_pin_16_kwh_sans_fiche_donc_incompatible_ne_compose_rien(self):
+        """Sans tension mesurée, sous un onduleur qui DÉCLARE une plage, le
+        16 kWh N'EST PAS dans le vivier compatible : le pin ne trouve AUCUNE
+        correspondance — la composition part SANS batterie plutôt que dans
+        le 5 kWh que ce « devis » ne vend pas (honest absence)."""
+        self._ajouter_bat16(compatible=False)
+        avertissements = []
+        produits = services.catalogue_de_la_societe(self.company)
+        lignes = services.composition_residentielle(
+            produits, kwc=40.0, panel_watt=550, nb_panneaux=72,
+            avec_batterie=True, batterie_cible_kwh=16,
+            batterie_module_kwh=16, avertissements=avertissements)
+        self.assertFalse(any(
+            'batterie' in (li.designation or '').lower() for li in lignes))
+        self.assertTrue(avertissements)
+        self.assertIn('16', avertissements[0])

@@ -919,9 +919,12 @@ class LaDoctrineDOptimum(SimpleTestCase):
 # 7. L'ÉCHELLE DE PALIERS BATTERIE
 # ═══════════════════════════════════════════════════════════════════════════
 #: Le CONTRAT, mot pour mot (PACT10) : la lane qui sert cette échelle à l'écran
-#: code contre CES clés, ni plus ni moins.
+#: code contre CES clés, ni plus ni moins. A1 (revue adversariale Fable,
+#: 26/08/2026, AJOUT ADDITIF) — ``nb_modules``/``module_kwh`` généralisent
+#: ``nb_batteries_5``/``10`` à tout calibre (16 kWh Deye BOS-B-Pack16 compris).
 CLES_PALIER_ECHELLE = {
-    'capacite_kwh', 'nb_batteries_5', 'nb_batteries_10', 'nb_panneaux',
+    'capacite_kwh', 'nb_batteries_5', 'nb_batteries_10',
+    'nb_modules', 'module_kwh', 'nb_panneaux',
     'puissance_kwc', 'prix_ttc', 'economies_annuelles', 'payback_annees',
     'remplissage_ok', 'retenu',
 }
@@ -993,6 +996,15 @@ class LEchelleDePaliersBatterie(_Base):
             self.assertIsInstance(palier['nb_batteries_10'], int)
             self.assertIsInstance(palier['remplissage_ok'], bool)
             self.assertIsInstance(palier['retenu'], bool)
+            # A1 — nb_modules/module_kwh généralisent nb_batteries_5/10 à
+            # tout calibre ; sur ce fixture (5/10 kWh seulement), nb_modules
+            # égale la somme des deux anciennes clés.
+            self.assertIsInstance(palier['nb_modules'], int)
+            self.assertGreater(palier['nb_modules'], 0, palier)
+            self.assertEqual(
+                palier['nb_modules'],
+                palier['nb_batteries_5'] + palier['nb_batteries_10'], palier)
+            self.assertIn(palier['module_kwh'], (5.0, 10.0), palier)
             # Règle #4 : aucun prix d'achat, aucune marge ne fuit ici.
             self.assertNotIn('prix_achat', palier)
             self.assertNotIn('marge', palier)
@@ -1140,6 +1152,75 @@ class LEchelleDePaliersBatterie(_Base):
             quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
         self.assertEqual(
             dimensionnement.module_batterie_du_devis(devis), 16.0)
+
+    def test_a1_pin_sans_correspondance_omet_l_echelle_jamais_un_repli(self):
+        """A1 (revue adversariale Fable, 26/08/2026) — le 16 kWh du test F6
+        ci-dessus n'a AUCUNE fiche technique (aucune tension mesurée) : sous
+        un onduleur qui DÉCLARE une plage (40-60 V, cf. ``_Base``), il
+        n'entre PAS dans le vivier compatible — « honest absence beats a
+        wrong pairing » : l'échelle entière est OMISE (``[]``), jamais
+        repeinte en 5/10 kWh (un calibre que ce devis ne vend pas)."""
+        bat16_sans_fiche = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            sku='BAT16NOFICHE-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        devis = self._devis_residentiel(email='a1-pin-sans-match@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16_sans_fiche,
+            designation='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+        self.assertEqual(
+            dimensionnement.echelle_paliers_batterie(devis), [],
+            "l'échelle n'est pas vide : elle a dû repeindre le devis dans "
+            'un autre calibre que le 16 kWh vendu')
+
+    def test_a1_pin_16_kwh_compatible_denomme_l_echelle_en_16_kwh(self):
+        """A1 — un calibre 16 kWh COMPATIBLE (tension mesurée dans la plage
+        déclarée) doit, lui, dénommer TOUTE l'échelle — jamais un rang qui
+        bascule vers 5/10 kWh au passage d'une cible qui ne tombe pas
+        exactement sur un multiple de 16."""
+        # Les Dyness 5/10 kWh du catalogue de cette classe sont ELLES AUSSI
+        # compatibles (même onduleur) : sans les écarter, la préférence de
+        # marque ``dyness_compat or batteries_compat`` les retiendrait à la
+        # place du Deye 16 kWh — ce test veut prouver le calibre 16 kWh
+        # PRÉCISÉMENT, pas la préférence de marque (couverte ailleurs).
+        FicheTechnique.objects.filter(
+            produit__in=[self.produits['BAT5'], self.produits['BAT10']],
+        ).update(bat_v_nominal=Decimal('1000.0'))
+        bat16_compatible = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pack16 — 16 kWh',
+            sku='BAT16OK-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=bat16_compatible,
+            type_fiche='batterie',
+            bat_kwh_nominal=Decimal('16.00'), bat_kwh_usable=Decimal('14.40'),
+            bat_dod_pct=Decimal('90.0'), bat_v_nominal=Decimal('51.2'),
+            bat_max_charge_kw=Decimal('6.00'))
+        devis = self._devis_residentiel(email='a1-pin-16-ok@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16_compatible,
+            designation='Batterie Deye BOS-B Pack16 — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(palier['module_kwh'], 16.0, palier)
+            self.assertGreater(palier['nb_modules'], 0, palier)
+            # 16 kWh n'est NI 5 NI 10 : les anciennes clés restent correctes
+            # mais MUETTES (généralisation additive, jamais un mensonge).
+            self.assertEqual(palier['nb_batteries_5'], 0, palier)
+            self.assertEqual(palier['nb_batteries_10'], 0, palier)
+            self.assertAlmostEqual(
+                palier['capacite_kwh'], palier['nb_modules'] * 14.40,
+                places=1, msg=palier)
 
     def test_f6_filtre_variante_sans_exclut_les_lignes_option_sans(self):
         """F6 — même filtre que ``facteur_remise_du_devis`` : une ligne

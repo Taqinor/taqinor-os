@@ -1966,7 +1966,8 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
         return None
 
 
-def _paliers_curseur_batterie(balayage, nb_packs_devis):
+def _paliers_curseur_batterie(balayage, nb_packs_devis,
+                              capacite_utile_pack_kwh=None):
     """COUVBAT — le PLAFOND du curseur « N batteries », côté serveur.
 
     MÊME règle que la page publique (``BATTERY_SIM_MAX_UNITS`` dans
@@ -1976,17 +1977,52 @@ def _paliers_curseur_batterie(balayage, nb_packs_devis):
     et le plafond historique de 3 quand aucun balayage n'est servi. Servir un
     autre plafond ici ferait un curseur dont certains crans n'auraient aucune
     couverture à lire.
+
+    UNITÉS COMMUNES (revue adversariale Fable, 26/08/2026 — A1) : ``balayage``
+    vient d'une RECOMMANDATION INDÉPENDANTE (``dimensionnement.
+    recommandation_avec`` — le meilleur payback, PAS forcément le module du
+    devis) qui compose au calibre ÉCONOMIQUE 5/10 kWh : ses ``nb_packs``
+    comptent des packs de CE calibre-LÀ, jamais celui du devis. Comparer ces
+    comptes bruts à ``nb_packs_devis`` (packs du calibre RÉELLEMENT vendu —
+    16 kWh sur un Deye BOS-B-Pack16, par exemple) mélangeait deux unités et
+    étirait le curseur sur des crans que le curseur ne pouvait pas couvrir
+    (chaque cran vaut ``N × capacite_utile_pack_kwh`` DU DEVIS, jamais celle
+    du balayage). Avec ``capacite_utile_pack_kwh`` fourni, le plafond du
+    balayage est donc lu en kWh — l'unité commune, déjà publiée par chaque
+    palier/refus — puis RECONVERTI en packs DU DEVIS (arrondi au supérieur :
+    jamais un cran qui couvrirait MOINS que le palier réel du balayage).
+    Sans ``capacite_utile_pack_kwh`` (repli — jamais atteint par l'appelant
+    réel, ``_couverture_batterie_publique`` ne l'invoque qu'après avoir lu
+    une banque réelle) : ancien comportement en packs bruts, byte-identique.
     """
-    plafond_balayage = 0
+    plafond_balayage_packs = 0
+    plafond_balayage_kwh = 0.0
     for palier in ((balayage or {}).get('paliers') or []):
         nb = palier.get('nb_packs')
-        if isinstance(nb, int) and nb > plafond_balayage:
-            plafond_balayage = nb
+        if isinstance(nb, int) and nb > plafond_balayage_packs:
+            plafond_balayage_packs = nb
+        capacite = palier.get('capacite_kwh')
+        if (isinstance(capacite, (int, float))
+                and capacite > plafond_balayage_kwh):
+            plafond_balayage_kwh = capacite
     refuse = (balayage or {}).get('refuse') or {}
     nb_refuse = refuse.get('nb_packs')
-    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage:
-        plafond_balayage = nb_refuse
-    return max(int(nb_packs_devis or 0), plafond_balayage or 3)
+    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage_packs:
+        plafond_balayage_packs = nb_refuse
+    capacite_refuse = refuse.get('capacite_kwh')
+    if (isinstance(capacite_refuse, (int, float))
+            and capacite_refuse > plafond_balayage_kwh):
+        plafond_balayage_kwh = capacite_refuse
+
+    if capacite_utile_pack_kwh and capacite_utile_pack_kwh > 0:
+        if plafond_balayage_kwh > 0:
+            plafond = math.ceil(
+                plafond_balayage_kwh / capacite_utile_pack_kwh - 1e-9)
+        else:
+            plafond = 0
+    else:
+        plafond = plafond_balayage_packs
+    return max(int(nb_packs_devis or 0), plafond or 3)
 
 
 def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
@@ -2029,8 +2065,9 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
         return couverture_batterie_publique(
             kwc=kwc, conso_kwh_mensuelles=conso,
             capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh'],
-            nb_packs_max=_paliers_curseur_batterie(balayage,
-                                                   banque['nb_packs']),
+            nb_packs_max=_paliers_curseur_batterie(
+                balayage, banque['nb_packs'],
+                capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh']),
             # Les packs RÉELLEMENT au devis sont un plancher : le plafond de
             # coût du moteur ne doit jamais rendre la configuration vendue
             # inatteignable sur le curseur (revue du 26/08/2026).
