@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ShieldAlert, Plus } from 'lucide-react'
 import assurancesApi from './assurancesApi'
 import {
@@ -6,7 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
-import { formatMAD, formatDate } from '../../lib/format'
+import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 import { SINISTRE_STATUS, SINISTRE_TYPES } from './status'
 
 /* ============================================================================
@@ -15,6 +15,12 @@ import { SINISTRE_STATUS, SINISTRE_TYPES } from './status'
    Liste filtrable par statut (declare/en_expertise/indemnise/refuse/clos), avec
    bloc indemnisation (réclamé/franchise/indemnisé/reste à charge) sur la fiche
    sélectionnée et bouton « Marquer contesté » (NTASS16). Montants client-safe.
+
+   WIR262 — le chatter sinistre (`getSinistreHistorique`/`noterSinistre`,
+   déjà exposé côté API) n'avait AUCUN écran : la transition de statut restait
+   invisible, noter un sinistre était impossible. `HistoriqueSinistre`
+   ci-dessous reprend le rendu du fil de `PoliceDetail` (kind/horodatage +
+   diff de champ ou corps de note) pour rester cohérent entre les deux fiches.
    ========================================================================== */
 
 const STATUT_FILTERS = [
@@ -147,6 +153,7 @@ export default function SinistresPage() {
           </div>
           <IndemnisationBloc sinistreId={selected.id} />
           <IndemnisationForm sinistreId={selected.id} onSaved={load} />
+          <HistoriqueSinistre sinistreId={selected.id} />
         </div>
       )}
       {!error && (
@@ -256,6 +263,78 @@ function IndemnisationForm({ sinistreId, onSaved }) {
         </Button>
       </div>
     </form>
+  )
+}
+
+/* WIR262 — chatter du sinistre : fil (transition de statut + notes, plus
+   récent d'abord côté serveur) et composeur de note, rendu identique à
+   l'historique de `PoliceDetail` (`noterPolice`/`getPoliceHistorique`). */
+function HistoriqueSinistre({ sinistreId }) {
+  const [historique, setHistorique] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [noteTexte, setNoteTexte] = useState('')
+  const [envoiNote, setEnvoiNote] = useState(false)
+
+  const charger = useCallback(() => {
+    setLoading(true)
+    assurancesApi.getSinistreHistorique(sinistreId)
+      .then((res) => setHistorique(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setHistorique([]))
+      .finally(() => setLoading(false))
+  }, [sinistreId])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+  useEffect(() => { charger() }, [charger])
+
+  const envoyerNote = async () => {
+    const texte = noteTexte.trim()
+    if (!texte || envoiNote) return
+    setEnvoiNote(true)
+    try {
+      await assurancesApi.noterSinistre(sinistreId, texte)
+      setNoteTexte('')
+      charger()
+    } catch {
+      // best-effort — la note reste dans le composeur pour réessayer.
+    } finally {
+      setEnvoiNote(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t pt-3">
+      <h3 className="text-sm font-semibold">Historique</h3>
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Chargement…</p>
+      ) : historique.length === 0 ? (
+        <p className="py-2 text-center text-sm text-muted-foreground">Aucune activité.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {historique.map((h) => (
+            <li key={h.id} className="rounded-md border p-2 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>{h.kind}</span>
+                <span>{formatDateTime(h.created_at)}</span>
+              </div>
+              {h.field
+                ? <p>{h.field_label || h.field} : {h.old_value} → {h.new_value}</p>
+                : <p>{h.body}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Textarea
+        aria-label="Nouvelle note sinistre"
+        placeholder="Ajouter une note…"
+        value={noteTexte}
+        onChange={(e) => setNoteTexte(e.target.value)}
+      />
+      <div>
+        <Button size="sm" onClick={envoyerNote} disabled={envoiNote || !noteTexte.trim()}>
+          {envoiNote ? 'Envoi…' : 'Publier la note'}
+        </Button>
+      </div>
+    </div>
   )
 }
 
