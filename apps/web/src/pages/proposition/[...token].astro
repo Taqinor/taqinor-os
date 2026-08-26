@@ -1592,9 +1592,54 @@ const tailleVarianteDefaut: 'sans' | 'avec' =
 const tailleVariantes: Array<'sans' | 'avec'> = tailles?.avecServable ? ['sans', 'avec'] : ['sans'];
 /** La ligne « ce qui change » n'existe que si au moins une taille porte une
  *  vraie différence de FAMILLES — un tableau vide n'apprend rien. */
-const taillesDiffMateriel = tailles
+const taillesDiffMateriel: Record<string, boolean> = tailles
   ? Object.fromEntries(tailleVariantes.map((v) => [v, aUneDiffMateriel(tailles, v === 'avec')]))
   : {};
+/** « N × X kWh » d'une banque de taille — un seul libellé pour les DEUX
+ *  endroits qui l'affichent (la carte et le tableau), sinon ils divergeraient.
+ *  Chaque morceau est OMIS quand il n'est pas servi. */
+function libelleBancTaille(v: OffreVariante | null): string {
+  const b = v?.batterie;
+  if (!b) return '';
+  const n = formatNumber(b.nbModules);
+  if (b.moduleKwh === null) return n;
+  return n + ' × ' + formatNumber(b.moduleKwh, Number.isInteger(b.moduleKwh) ? 0 : 1) + ' kWh';
+}
+/** « N panneaux · X,XX kWc » — même discipline d'omission : sans panneaux ni
+ *  puissance, la cellule est VIDE (jamais un tiret présenté comme donnée). */
+function libelleTailleCourte(v: OffreVariante | null): string {
+  if (!v) return '';
+  const bits: string[] = [];
+  if (v.nbPanneaux !== null) bits.push(formatNumber(v.nbPanneaux));
+  if (v.puissanceKwc !== null) bits.push(formatNumber(v.puissanceKwc, 2) + ' kWc');
+  return bits.join(' · ');
+}
+/** LE TABLEAU « CE QUI CHANGE », construit ICI (hors du gabarit) : une ligne
+ *  par critère, une cellule par taille, et toute ligne dont AUCUNE taille ne
+ *  porte de valeur est ÉCARTÉE — un tableau à moitié vide n'apprend rien. */
+interface LigneCompareTaille { cle: string; fr: string; en: string; ar: string; cellules: string[] }
+const taillesComparatif: Record<string, LigneCompareTaille[]> = {};
+if (tailles) {
+  for (const v of tailleVariantes) {
+    const avecB = v === 'avec';
+    const vues = tailles.offres.map((t) => varianteAffichee(t, avecB));
+    const lignes: LigneCompareTaille[] = [
+      { cle: 'taille', fr: 'Taille', en: 'Size', ar: 'الحجم',
+        cellules: vues.map(libelleTailleCourte) },
+      { cle: 'prix', fr: 'Prix TTC', en: 'Price incl. tax', ar: 'الثمن شامل الضريبة',
+        cellules: vues.map((x) => (x?.prixTtc != null ? formatMAD(x.prixTtc) : '')) },
+      { cle: 'eco', fr: 'Économies / an', en: 'Savings / year', ar: 'التوفير / سنة',
+        cellules: vues.map((x) => (x?.economieAnnuelleMad != null ? formatMAD(x.economieAnnuelleMad) : '')) },
+      { cle: 'payback', fr: 'Remboursé en', en: 'Paid back in', ar: 'مسترد في',
+        cellules: vues.map((x) => formatPayback(x?.paybackAnnees ?? null) ?? '') },
+      { cle: 'couverture', fr: 'Couverture', en: 'Coverage', ar: 'التغطية',
+        cellules: vues.map((x) => (x?.couverturePct != null ? formatPercent(x.couverturePct, 0) : '')) },
+      { cle: 'batterie', fr: 'Batterie', en: 'Battery', ar: 'البطارية',
+        cellules: vues.map(libelleBancTaille) },
+    ];
+    taillesComparatif[v] = lignes.filter((l) => l.cellules.some((c) => c !== ''));
+  }
+}
 /** Le cumul 25 ans année par année, LU sur la série cumulée que la page trace
  *  déjà (`quote.cashflow_sans`/`cashflow_avec`). Série absente ⇒ `[]` ⇒ aucun
  *  tableau — jamais une projection reconstruite côté page. */
@@ -4216,10 +4261,7 @@ const signConfig = ok
                           {va.batterie && (
                             <p class="mt-3 rounded-lg border border-white/10 bg-nuit-800/40 px-3 py-2 text-xs text-lune-soft">
                               <span data-i18n data-fr="Batterie :" data-en="Battery:" data-ar="البطارية:">Batterie :</span>
-                              <span class="ms-1 font-semibold text-brass-300" dir="ltr">
-                                {formatNumber(va.batterie.nbModules)}
-                                {va.batterie.moduleKwh !== null ? ` × ${formatNumber(va.batterie.moduleKwh, Number.isInteger(va.batterie.moduleKwh) ? 0 : 1)} kWh` : ''}
-                              </span>
+                              <span class="ms-1 font-semibold text-brass-300" dir="ltr">{libelleBancTaille(va)}</span>
                               {va.batterie.capaciteUtileKwh !== null && (
                                 <span class="ms-1 text-lune-faint" dir="ltr">
                                   ({formatNumber(va.batterie.capaciteUtileKwh, Number.isInteger(va.batterie.capaciteUtileKwh) ? 0 : 1)} kWh <span data-i18n data-fr="utiles" data-en="usable" data-ar="قابلة للاستعمال">utiles</span>)
@@ -4251,7 +4293,7 @@ const signConfig = ok
                             <ul class="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs text-lune-faint">
                               {va.materiel.map((m) => (
                                 <li>
-                                  <span class="text-lune-soft">{m.marque ? `${m.marque} ` : ''}{m.modele ?? ''}</span>
+                                  <span class="text-lune-soft">{m.marque ? m.marque + ' ' : ''}{m.modele ?? ''}</span>
                                   {m.garantieAns !== null && (
                                     <span class="ms-1" dir="ltr">
                                       · <span data-i18n data-fr="garantie" data-en="warranty" data-ar="ضمان">garantie</span> {formatNumber(m.garantieAns)} <span data-i18n data-fr="ans" data-en="years" data-ar="سنوات">ans</span>
@@ -4337,40 +4379,9 @@ const signConfig = ok
               </thead>
               {tailleVariantes.map((v) => {
                 const avecBatterie = v === 'avec';
-                const vues = tailles.offres.map((t) => varianteAffichee(t, avecBatterie));
-                const lignes: Array<{ cle: string; fr: string; en: string; ar: string; cellules: string[] }> = [
-                  {
-                    cle: 'taille', fr: 'Taille', en: 'Size', ar: 'الحجم',
-                    cellules: vues.map((x) => x?.nbPanneaux !== null && x?.nbPanneaux !== undefined
-                      ? `${formatNumber(x.nbPanneaux)} · ${x.puissanceKwc !== null ? `${formatNumber(x.puissanceKwc, 2)} kWc` : ''}`.replace(/ · $/, '')
-                      : ''),
-                  },
-                  {
-                    cle: 'prix', fr: 'Prix TTC', en: 'Price incl. tax', ar: 'الثمن شامل الضريبة',
-                    cellules: vues.map((x) => x?.prixTtc != null ? formatMAD(x.prixTtc) : ''),
-                  },
-                  {
-                    cle: 'eco', fr: 'Économies / an', en: 'Savings / year', ar: 'التوفير / سنة',
-                    cellules: vues.map((x) => x?.economieAnnuelleMad != null ? formatMAD(x.economieAnnuelleMad) : ''),
-                  },
-                  {
-                    cle: 'payback', fr: 'Remboursé en', en: 'Paid back in', ar: 'مسترد في',
-                    cellules: vues.map((x) => formatPayback(x?.paybackAnnees ?? null) ?? ''),
-                  },
-                  {
-                    cle: 'couverture', fr: 'Couverture', en: 'Coverage', ar: 'التغطية',
-                    cellules: vues.map((x) => x?.couverturePct != null ? formatPercent(x.couverturePct, 0) : ''),
-                  },
-                  {
-                    cle: 'batterie', fr: 'Batterie', en: 'Battery', ar: 'البطارية',
-                    cellules: vues.map((x) => x?.batterie
-                      ? `${formatNumber(x.batterie.nbModules)}${x.batterie.moduleKwh !== null ? ` × ${formatNumber(x.batterie.moduleKwh, Number.isInteger(x.batterie.moduleKwh) ? 0 : 1)} kWh` : ''}`
-                      : ''),
-                  },
-                ];
                 return (
                   <tbody data-tailles-comparatif-corps data-taille-variante={v} hidden={v !== tailleVarianteDefaut}>
-                    {lignes.filter((l) => l.cellules.some((c) => c !== '')).map((l) => (
+                    {(taillesComparatif[v] ?? []).map((l) => (
                       <tr class="border-t border-white/10" data-taille-ligne={l.cle}>
                         <td class="py-2 pe-3 text-lune-soft"><span data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</span></td>
                         {l.cellules.map((c) => (
@@ -4406,6 +4417,86 @@ const signConfig = ok
               })}
             </table>
           </div>
+
+          {/* ── #8 · VUE DE DÉTAIL VIVANTE ────────────────────────────────────
+                 Une SEULE vue de détail, qui suit la carte sélectionnée — jamais
+                 N pages statiques par option (les éditeurs du marché l'évitent
+                 explicitement : ça surcharge la page).
+
+                 RÈGLE DE PRÉSERVATION (fondateur, contrainte dure) : ce bloc
+                 n'EFFACE rien. Tous les blocs existants de la page — graphe de
+                 la journée, calque batterie, économies mensuelles, curseur de
+                 stockage, échelle de paliers, comparateur de profils, falaise
+                 tarifaire, calepinage, schéma unifilaire, jours types — restent
+                 EXACTEMENT où ils sont. La sélection par défaut ÉTANT le devis
+                 officiel, un client qui ne touche à aucune carte voit la page
+                 d'aujourd'hui, à l'identique.
+
+                 CE QUE CE BLOC AJOUTE, c'est l'HONNÊTETÉ de la lecture : quand
+                 la taille regardée n'est PAS le devis, il le DIT, pour qu'on ne
+                 lise pas la courbe du devis comme si elle décrivait l'Éco.
+
+                 ARTEFACTS PAR OPTION : le calepinage et le schéma propres à une
+                 taille arrivent d'une lane backend parallèle. Lecture
+                 DÉFENSIVE — absents (le cas d'aujourd'hui), ce bloc n'affiche
+                 aucun dessin et la page garde ses artefacts uniques. */}
+          {tailles.offres.map((t) => tailleVariantes.map((v) => {
+            const avecBatterie = v === 'avec';
+            const va: OffreVariante | null = varianteAffichee(t, avecBatterie);
+            const estLEtatOfficiel = t.estLeDevis && !t.ajuste && v === recoVariante;
+            return (
+              <div
+                class="mt-6 rounded-xl border border-white/10 bg-nuit-800/40 p-4 text-sm"
+                data-taille-detail
+                data-taille-cle={t.cle}
+                data-taille-variante={v}
+                hidden={!(t.cle === tailleDefaut.cle && v === tailleVarianteDefaut)}
+              >
+                <p class="tech-label text-lune-faint">
+                  <span data-i18n data-fr="Vous regardez" data-en="You are viewing" data-ar="أنتم تطالعون">Vous regardez</span>
+                  <span class="ms-1 text-brass-300">{t.titre}</span>
+                  {tailles.avecServable && (
+                    <span class="ms-1 text-lune-soft">
+                      · {v === 'sans'
+                        ? <span data-i18n data-fr="sans batterie" data-en="without battery" data-ar="بدون بطارية">sans batterie</span>
+                        : <span data-i18n data-fr="avec batterie" data-en="with battery" data-ar="مع بطارية">avec batterie</span>}
+                    </span>
+                  )}
+                </p>
+                {estLEtatOfficiel ? (
+                  <p class="mt-2 text-lune-soft" data-i18n
+                    data-fr="Toute la suite de cette page — courbes, économies, calepinage, schéma électrique — décrit cette configuration : c’est votre devis."
+                    data-en="Everything below on this page — curves, savings, roof layout, electrical diagram — describes this configuration: it is your quote."
+                    data-ar="كل ما يلي في هذه الصفحة — المنحنيات، التوفير، توزيع الألواح، المخطط الكهربائي — يصف هذه التشكيلة: إنه عرضكم.">
+                    Toute la suite de cette page — courbes, économies, calepinage, schéma électrique — décrit cette configuration : c’est votre devis.
+                  </p>
+                ) : (
+                  <p class="mt-2 text-lune-soft" data-i18n
+                    data-fr="Les chiffres ci-dessus sont ceux de cette taille. Les courbes, le calepinage et le schéma électrique plus bas décrivent, eux, votre devis officiel — demandez cette taille pour en recevoir l’étude complète."
+                    data-en="The figures above are those of this size. The curves, roof layout and electrical diagram further down describe your official quote — request this size to receive its full study."
+                    data-ar="الأرقام أعلاه تخص هذا الحجم. أما المنحنيات وتوزيع الألواح والمخطط الكهربائي أدناه فتصف عرضكم الرسمي — اطلبوا هذا الحجم لتلقّي دراسته الكاملة.">
+                    Les chiffres ci-dessus sont ceux de cette taille. Les courbes, le calepinage et le schéma électrique plus bas décrivent, eux, votre devis officiel — demandez cette taille pour en recevoir l’étude complète.
+                  </p>
+                )}
+                {/* Artefacts PROPRES à cette option, quand — et seulement
+                    quand — le backend les sert. Aujourd'hui : rien. */}
+                {va?.calepinageSvg && (
+                  <div class="mt-3" data-taille-calepinage set:html={va.calepinageSvg}></div>
+                )}
+                {va?.schemaSvg && (
+                  <div class="mt-3" data-taille-schema set:html={va.schemaSvg}></div>
+                )}
+                <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <a href="#production" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+                    data-fr="Voir la production" data-en="See production" data-ar="عرض الإنتاج">Voir la production</a>
+                  <a href="#options" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+                    data-fr="Voir le détail du prix" data-en="See the price detail" data-ar="عرض تفاصيل الثمن">Voir le détail du prix</a>
+                  <a href="#sld" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+                    data-fr="Voir le schéma électrique" data-en="See the electrical diagram" data-ar="عرض المخطط الكهربائي">Voir le schéma électrique</a>
+                </p>
+              </div>
+            );
+          }))}
         </section>
       )}
 
@@ -7401,7 +7492,11 @@ const signConfig = ok
         const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
         const detailsEl = revisionSection?.querySelector('details');
         const kind = cta.dataset.tailleKind === 'batterie' ? 'batterie' : 'kwc';
-        const kindBtn = revisionSection?.querySelector<HTMLButtonElement>(`[data-revision-kind="${kind}"]`);
+        // Sélecteur assemblé par concaténation : un littéral gabarit derrière
+        // un générique casse le parseur de l'îlot <script> Astro.
+        const kindBtn = revisionSection?.querySelector(
+          '[data-revision-kind="' + kind + '"]',
+        ) as HTMLButtonElement | null;
         const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
         if (detailsEl) detailsEl.open = true;
         kindBtn?.click();

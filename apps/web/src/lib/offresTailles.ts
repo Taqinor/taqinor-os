@@ -153,6 +153,18 @@ export interface OffreVariante {
   famillesDiff: OffreFamillesDiff | null;
   /** `false` UNIQUEMENT quand le moteur l'affirme (taille bornée par le toit). */
   toitOk: boolean | null;
+  /**
+   * #8 — ARTEFACTS PROPRES À CETTE OPTION (calepinage / schéma unifilaire),
+   * servis par une lane backend PARALLÈLE qui n'a pas encore atterri.
+   *
+   * LECTURE STRICTEMENT DÉFENSIVE : tant que le backend ne les sert pas, ces
+   * deux champs valent `null` et la page garde ses artefacts UNIQUES
+   * d'aujourd'hui (le calepinage et le schéma du devis officiel) — jamais un
+   * cadre vide, jamais un « bientôt disponible », jamais un dessin fabriqué
+   * pour une taille qui n'a pas été étudiée.
+   */
+  calepinageSvg: string | null;
+  schemaSvg: string | null;
 }
 
 /**
@@ -182,7 +194,19 @@ function variante(brut: unknown): OffreVariante | null {
     familles: familles(o.familles),
     famillesDiff: famillesDiff(o.familles_diff),
     toitOk: typeof o.toit_ok === 'boolean' ? o.toit_ok : null,
+    // Un SVG servi doit VRAIMENT en être un : une chaîne quelconque recopiée
+    // dans le DOM par `set:html` serait une injection. Même garde que
+    // `hasSldSvg` pour le schéma unique de la page.
+    calepinageSvg: svgServi(o.calepinage_svg),
+    schemaSvg: svgServi(o.schema_svg),
   };
+}
+
+/** Un SVG SERVI, et rien d'autre : la chaîne doit commencer par `<svg`. Toute
+ *  autre valeur est écartée — la page garde alors son artefact d'aujourd'hui. */
+function svgServi(valeur: unknown): string | null {
+  const s = texte(valeur);
+  return s && s.trimStart().startsWith('<svg') ? s : null;
 }
 
 /** La configuration DEMANDÉE quand le client clique « Demander cette
