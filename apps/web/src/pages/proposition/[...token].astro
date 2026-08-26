@@ -205,14 +205,35 @@ import {
 } from '../../lib/realisations';
 // (fondateur 2026-08-17) SOURCE UNIQUE des durées de garantie affichées : le
 // bloc « Pourquoi nous faire confiance » ne code plus aucun chiffre en dur.
+// TAILLES · QUICK WIN (26/08/2026) — le bloc garanties dit désormais les DEUX
+// garanties panneau, qui ne sont PAS la même chose : la garantie PRODUIT (le
+// panneau lui-même) et la garantie RENDEMENT (la puissance encore délivrée).
+// La garantie de POSE est OMISE tant que le fondateur n'en a pas arrêté la
+// durée à afficher — discipline « omettre plutôt que supposer ».
 import {
+  PANEL_PRODUCT_WARRANTY_YEARS,
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   INVERTER_WARRANTY_YEARS,
-  INSTALL_WARRANTY_YEARS,
 } from '../../lib/warranty';
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
 import { ficheBySlug } from '../../lib/fiches';
+// TAILLES (ordre fondateur, 26/08/2026) — les trois tailles explorables
+// (Éco → Recommandé → Max), servies par le contrat `offres_tailles`. Fichier
+// DÉDIÉ, à l'image d'`economiesPeriodes.ts` : aucune arithmétique de taille ne
+// vit dans cette page. Clé absente / moins de deux tailles ⇒ `null` ⇒ la
+// section n'existe pas dans le DOM, la page est celle d'aujourd'hui.
+import {
+  offresTailles,
+  varianteAffichee,
+  tailleParDefaut,
+  peutSigner,
+  messageDemandeTaille,
+  cumulAnnuelServi,
+  aUneDiffMateriel,
+  type OffreTaille,
+  type OffreVariante,
+} from '../../lib/offresTailles';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 // ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
@@ -724,6 +745,25 @@ const batteryUnitCapacityLabel = formatNumber(
 // chiffre NOMINAL (repli sur la désignation), ce serait un faux. On ne
 // l'affiche donc que là où il est vrai.
 const batteryCapacityIsUsable = batteryCoverage?.capaciteUtilePackKwh != null;
+// ── CONSOLIDATION (ordre fondateur, 26/08/2026) — UN SEUL MAÎTRE BATTERIE ───
+// La page portait TROIS sélecteurs de batterie indépendants (les pilules de
+// l'échelle, le curseur, et maintenant la banque de chaque carte de taille) :
+// trois vérités concurrentes sur la même question. Le CURSEUR devient le seul
+// maître ; les pilules et les banques deviennent des RACCOURCIS qui le
+// déplacent (défilement + position), sans rien perdre de leur contenu.
+//
+// Le nombre d'unités est SERVI (`nb_batteries_5` / `nb_batteries_10` du
+// contrat `paliers_batterie`), apparié au calibre que le curseur compte —
+// JAMAIS une division « kWh ÷ calibre » côté page (règle « zéro chiffre
+// inventé »). Calibre hors 5/10 ⇒ `units: null` ⇒ la pilule garde exactement
+// son comportement d'aujourd'hui, sans raccourci.
+const battTiersPourCurseur = battTiersForClient.map((t, i) => ({
+  ...t,
+  units:
+    batteryUnitCapacityKwh === 5 ? (battTiers[i]?.nbBatteries5 ?? null)
+      : batteryUnitCapacityKwh === 10 ? (battTiers[i]?.nbBatteries10 ?? null)
+        : null,
+}));
 // ORDRE FONDATEUR (24/08/2026, soir) — « sélection de plusieurs batteries » :
 // le plafond du curseur suit désormais le mini-balayage RÉEL du moteur
 // (storageSweep) quand il est servi, au lieu d'un « 3 » arbitraire. Il monte
@@ -1530,6 +1570,47 @@ const variants = ok ? proposalVariants(data!) : [];
 const gammes = ok ? proposalGammes(data!) : null;
 const gammeEcart = gammes ? gammeEcartLabel(gammes.soeur.ecart_ttc) : null;
 const gammeRows = gammeComparatif(gammes);
+
+// ── TAILLES (ordre fondateur, 26/08/2026) — « EXPLORER D'AUTRES TAILLES » ───
+// Trois tailles d'installation côte à côte (Éco → Recommandé → Max), UNE seule
+// bascule « Sans / Avec batterie » au-dessus des cartes. EXPLORATION SEULEMENT :
+// le prix officiel, les lignes et la signature du devis ne bougent JAMAIS.
+//
+// GARANTIE DE NON-RÉGRESSION : `tailles === null` (clé absente, devis non
+// résidentiel, pompage, section « Économies » décochée, moins de deux tailles
+// dérivables) ⇒ RIEN n'est rendu, la page est byte-identique à aujourd'hui.
+const tailles = ok ? offresTailles(data) : null;
+// LA SÉLECTION PAR DÉFAUT EST LE DEVIS OFFICIEL — taille du devis, ET variante
+// réellement retenue (`recoVariante`, déjà résolue plus haut par `reco` : la
+// page n'a jamais deux avis sur « quelle option recommander »). Un client qui
+// ne touche à aucune carte lit donc EXACTEMENT son devis, comme aujourd'hui.
+const tailleDefaut: OffreTaille | null = tailles ? tailleParDefaut(tailles) : null;
+const tailleVarianteDefaut: 'sans' | 'avec' =
+  tailles?.avecServable && recoVariante === 'avec' ? 'avec' : 'sans';
+/** Les variantes réellement rendues : `avec` seulement si le devis SERT
+ *  l'option batterie — sinon aucune bascule n'est rendue du tout. */
+const tailleVariantes: Array<'sans' | 'avec'> = tailles?.avecServable ? ['sans', 'avec'] : ['sans'];
+/** La ligne « ce qui change » n'existe que si au moins une taille porte une
+ *  vraie différence de FAMILLES — un tableau vide n'apprend rien. */
+const taillesDiffMateriel = tailles
+  ? Object.fromEntries(tailleVariantes.map((v) => [v, aUneDiffMateriel(tailles, v === 'avec')]))
+  : {};
+/** Le cumul 25 ans année par année, LU sur la série cumulée que la page trace
+ *  déjà (`quote.cashflow_sans`/`cashflow_avec`). Série absente ⇒ `[]` ⇒ aucun
+ *  tableau — jamais une projection reconstruite côté page. */
+// (Le backend annule DÉJÀ `cashflow_avec` quand l'option batterie n'est pas
+//  vendable — aucun garde-fou supplémentaire n'est nécessaire ici : la série
+//  est simplement absente et le tableau « avec » n'est pas rendu.)
+const cumul25Sans = ok ? cumulAnnuelServi(data, false) : [];
+const cumul25Avec = ok ? cumulAnnuelServi(data, true) : [];
+/** « aucune hausse tarifaire supposée » : le drapeau est SERVI (`escalade_
+ *  tarifaire_pct === 0`). Absent ⇒ pas de note — on n'affirme pas une
+ *  hypothèse qu'on ne lit pas. */
+const tailleSansEscalade = tailles?.escaladeTarifairePct === 0;
+/** PRÉ-VISITE — un lien public SANS prix réel n'est pas une proposition
+ *  chiffrée : la page le DIT, au lieu de laisser croire à un devis muet. */
+const estPreVisite = ok && !hasRealPrice(data!, reco ?? 'sans_batterie');
+
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
 // (fondateur 2026-08-18) « Suivi de production via l'application de votre
@@ -3933,6 +4014,401 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── TAILLES · « EXPLORER D'AUTRES TAILLES » (fondateur, 26/08/2026) ──
+           HIÉRARCHIE DES SURFACES DE PRIX (consolidation autorisée par le
+           fondateur) : cette section est LE CHOIX (quelle taille), la section
+           #options juste en dessous est LE DÉTAIL du scénario batterie de
+           l'offre officielle, et les gammes sont repliées plus bas. Trois
+           surfaces de prix qui se concurrençaient, une seule qui commande.
+
+           EXPLORATION SEULEMENT : le prix officiel, les lignes et la signature
+           du devis ne bougent JAMAIS. La sélection PAR DÉFAUT est le devis
+           officiel (taille du devis + variante réellement retenue) — un client
+           qui ne touche à aucune carte lit exactement son devis.
+
+           Contrat absent / moins de deux tailles ⇒ la section n'existe pas
+           dans le DOM et la page est byte-identique à aujourd'hui. -->
+      {tailles && tailleDefaut && (
+        <section
+          id="tailles"
+          class="mx-auto max-w-4xl px-5 pt-14 sm:px-8"
+          data-tailles
+          data-taille-cle-defaut={tailleDefaut.cle}
+          data-taille-variante-defaut={tailleVarianteDefaut}
+        >
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Explorer d’autres tailles" data-en="Explore other sizes" data-ar="استكشاف أحجام أخرى">
+            Explorer d’autres tailles
+          </p>
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Votre devis est la taille « Recommandé ». Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature."
+            data-en="Your quote is the “Recommended” size. The other two are here to compare: nothing you touch here changes your quote or your signature."
+            data-ar="عرضكم هو حجم « موصى به ». الحجمان الآخران للمقارنة فقط: لا شيء تلمسونه هنا يغيّر عرضكم أو توقيعكم.">
+            Votre devis est la taille « Recommandé ». Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature.
+          </p>
+
+          {/* ── UNE SEULE BASCULE, AU-DESSUS DES TROIS CARTES (jamais une
+                 bascule par carte, jamais une grille 3×2 : le client compare
+                 trois TAILLES à scénario batterie constant). Rendue seulement
+                 si le devis SERT réellement l'option batterie
+                 (`avec_servable`) — sinon les cartes sont « sans » seules.
+                 MOBILE : collante sous l'en-tête, pour qu'on la garde sous la
+                 main en faisant défiler les cartes. */}
+          {tailles.avecServable && (
+            <div
+              class="tailles-switch sticky top-0 z-10 -mx-5 mt-5 flex gap-2 bg-nuit/90 px-5 py-3 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none"
+              role="radiogroup"
+              aria-label="Scénario batterie"
+              data-tailles-switch
+            >
+              {tailleVariantes.map((v) => (
+                <button
+                  type="button"
+                  data-tailles-variante={v}
+                  aria-pressed={v === tailleVarianteDefaut ? 'true' : 'false'}
+                  class="btn-pill px-4 py-2 text-sm"
+                  style={v === tailleVarianteDefaut
+                    ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+                    : undefined}
+                >
+                  {v === 'sans' ? (
+                    <span data-i18n data-fr="Sans batterie" data-en="Without battery" data-ar="بدون بطارية">Sans batterie</span>
+                  ) : (
+                    <span data-i18n data-fr="Avec batterie" data-en="With battery" data-ar="مع بطارية">Avec batterie</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* La note d'hypothèse est AU-DESSUS de tout chiffre à 25 ans (les
+              cartes en portent un) — jamais en dessous, jamais en note de bas
+              de page. Le drapeau est SERVI : sans lui, aucune note. */}
+          {tailleSansEscalade && (
+            <p class="mt-4 text-xs text-lune-faint" data-i18n
+              data-fr="Chiffres à 25 ans calculés à tarif constant : aucune hausse tarifaire supposée."
+              data-en="25-year figures computed at a constant tariff: no tariff increase assumed."
+              data-ar="أرقام 25 سنة محسوبة بتعريفة ثابتة: دون افتراض أي ارتفاع في التعريفة.">
+              Chiffres à 25 ans calculés à tarif constant : aucune hausse tarifaire supposée.
+            </p>
+          )}
+
+          {/* ── LES CARTES ────────────────────────────────────────────────────
+                 MOBILE : défilement horizontal avec accroche (scroll-snap) et
+                 la carte « Recommandé » pré-centrée par le script — un empilage
+                 vertical tuerait la comparaison, qui est TOUTE la valeur de ce
+                 bloc. À partir de `sm`, grille classique, les trois visibles.
+                 Chaque carte porte le MÊME jeu de champs, dans le MÊME ordre :
+                 une carte plus pauvre qu'une autre dit la vérité de ce devis-là
+                 (discipline d'omission — la ligne DISPARAÎT, jamais un tiret). */}
+          <div
+            class="tailles-cartes mt-5 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:overflow-visible"
+            style="overscroll-behavior-x: contain;"
+            data-tailles-cartes
+          >
+            {tailles.offres.map((t) => (
+              <article
+                class="cine-card tailles-carte relative flex min-w-[85%] shrink-0 snap-center flex-col rounded-2xl p-5 sm:min-w-0 sm:p-6"
+                data-taille-carte
+                data-taille-cle={t.cle}
+                aria-current={t.cle === tailleDefaut.cle ? 'true' : undefined}
+                style={t.recommande ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+              >
+                {/* BADGE HONNÊTE — il dit un FAIT vérifiable (« c'est votre
+                    devis »), jamais « populaire » ni une urgence fabriquée. */}
+                {t.recommande && (
+                  <span class="absolute -top-3 left-5 rounded-full bg-brass-400 px-3 py-1 text-[11px] font-bold text-nuit sm:left-6" data-i18n
+                    data-fr="Recommandé — c’est votre devis officiel"
+                    data-en="Recommended — this is your official quote"
+                    data-ar="موصى به — هذا هو عرضكم الرسمي">
+                    Recommandé — c’est votre devis officiel
+                  </span>
+                )}
+                <h3 class="display mt-2 text-xl text-lune">{t.titre}</h3>
+
+                {tailleVariantes.map((v) => {
+                  const avecBatterie = v === 'avec';
+                  const va: OffreVariante | null = varianteAffichee(t, avecBatterie);
+                  const signable = peutSigner(t, avecBatterie, recoVariante);
+                  // Le TYPE de demande de modification : une taille EST une
+                  // demande de puissance ; seule la carte du devis basculée sur
+                  // l'autre scénario est une demande de batterie.
+                  const kind = t.estLeDevis ? 'batterie' : 'kwc';
+                  return (
+                    <div data-taille-bloc data-taille-variante={v} hidden={v !== tailleVarianteDefaut}>
+                      {va === null ? (
+                        <p class="mt-3 text-sm text-lune-faint" data-i18n
+                          data-fr="Cette taille n’est pas proposée dans ce scénario."
+                          data-en="This size is not offered in this scenario."
+                          data-ar="هذا الحجم غير مقترح في هذا السيناريو.">
+                          Cette taille n’est pas proposée dans ce scénario.
+                        </p>
+                      ) : (
+                        <>
+                          {(va.nbPanneaux !== null || va.puissanceKwc !== null) && (
+                            <p class="mt-1 text-xs text-lune-faint" dir="ltr">
+                              {va.nbPanneaux !== null && (
+                                <span>{formatNumber(va.nbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
+                              )}
+                              {va.nbPanneaux !== null && va.puissanceKwc !== null && <span class="mx-1" aria-hidden="true">·</span>}
+                              {va.puissanceKwc !== null && <span>{formatNumber(va.puissanceKwc, 2)} kWc</span>}
+                            </p>
+                          )}
+
+                          {va.prixTtc !== null && (
+                            <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(va.prixTtc)}</p>
+                          )}
+                          <p class="text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                          {/* prix/kWc — le MÊME chiffre déjà arrondi par le
+                              moteur pour le PDF : jamais un second arrondi. */}
+                          {va.prixParKwcTtc !== null && (
+                            <p class="mt-1 text-xs text-lune-faint">
+                              <span data-i18n data-fr="soit" data-en="i.e." data-ar="أي">soit</span>{' '}
+                              <span dir="ltr">{formatMAD(va.prixParKwcTtc)}/kWc</span>
+                            </p>
+                          )}
+
+                          <dl class="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm">
+                            {va.economieAnnuelleMad !== null && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n data-fr="Économies / an" data-en="Savings / year" data-ar="التوفير / سنة">Économies / an</dt>
+                                <dd class="fig text-brass-300" dir="ltr">{formatMAD(va.economieAnnuelleMad)}</dd>
+                              </div>
+                            )}
+                            {formatPayback(va.paybackAnnees) && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n data-fr="Remboursé en" data-en="Paid back in" data-ar="مسترد في">Remboursé en</dt>
+                                <dd class="fig text-lune-soft" dir="ltr">{formatPayback(va.paybackAnnees)}</dd>
+                              </div>
+                            )}
+                            {va.couverturePct !== null && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n data-fr="Couverture" data-en="Coverage" data-ar="التغطية">Couverture</dt>
+                                <dd class="fig text-lune-soft" dir="ltr">{formatPercent(va.couverturePct, 0)}</dd>
+                              </div>
+                            )}
+                            {va.tauxAutoconsommationPct !== null && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n data-fr="Autoconsommation" data-en="Self-consumption" data-ar="الاستهلاك الذاتي">Autoconsommation</dt>
+                                <dd class="fig text-lune-soft" dir="ltr">{formatPercent(va.tauxAutoconsommationPct, 0)}</dd>
+                              </div>
+                            )}
+                            {va.productionAnnuelleKwh !== null && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</dt>
+                                <dd class="fig text-lune-soft" dir="ltr">{formatNumber(va.productionAnnuelleKwh, 0)} kWh</dd>
+                              </div>
+                            )}
+                            {va.economiesCumulees25AnsMad !== null && (
+                              <div class="flex justify-between gap-2">
+                                <dt class="text-lune-faint" data-i18n
+                                  data-fr="Économies sur 25 ans" data-en="Savings over 25 years" data-ar="التوفير على 25 سنة">Économies sur 25 ans</dt>
+                                <dd class="fig text-lune-soft" dir="ltr">{formatMAD(va.economiesCumulees25AnsMad)}</dd>
+                              </div>
+                            )}
+                          </dl>
+
+                          {/* LA BANQUE DE CETTE TAILLE — toujours dénommée dans
+                              le module DES LIGNES DU DEVIS (principe fondateur).
+                              CONSOLIDATION : la banque n'est PAS un sélecteur de
+                              plus ; c'est un raccourci qui déplace le CURSEUR,
+                              seul maître batterie de la page. */}
+                          {va.batterie && (
+                            <p class="mt-3 rounded-lg border border-white/10 bg-nuit-800/40 px-3 py-2 text-xs text-lune-soft">
+                              <span data-i18n data-fr="Batterie :" data-en="Battery:" data-ar="البطارية:">Batterie :</span>
+                              <span class="ms-1 font-semibold text-brass-300" dir="ltr">
+                                {formatNumber(va.batterie.nbModules)}
+                                {va.batterie.moduleKwh !== null ? ` × ${formatNumber(va.batterie.moduleKwh, Number.isInteger(va.batterie.moduleKwh) ? 0 : 1)} kWh` : ''}
+                              </span>
+                              {va.batterie.capaciteUtileKwh !== null && (
+                                <span class="ms-1 text-lune-faint" dir="ltr">
+                                  ({formatNumber(va.batterie.capaciteUtileKwh, Number.isInteger(va.batterie.capaciteUtileKwh) ? 0 : 1)} kWh <span data-i18n data-fr="utiles" data-en="usable" data-ar="قابلة للاستعمال">utiles</span>)
+                                </span>
+                              )}
+                              {!va.batterie.remplissageOk && (
+                                <span class="mt-1 block text-lune-faint" data-i18n
+                                  data-fr="Cette capacité ne se remplirait pas tous les jours avec votre toit."
+                                  data-en="This capacity would not fill every day with your roof."
+                                  data-ar="لن تمتلئ هذه السعة كل يوم بسطحكم.">
+                                  Cette capacité ne se remplirait pas tous les jours avec votre toit.
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                class="mt-1 block underline-offset-2 text-brass-300 hover:underline"
+                                data-taille-banc
+                                data-banc-units={va.batterie.nbModules}
+                              >
+                                <span data-i18n data-fr="Voir cette taille sur le curseur" data-en="See this size on the slider" data-ar="عرض هذا الحجم على المؤشر">Voir cette taille sur le curseur</span>
+                              </button>
+                            </p>
+                          )}
+
+                          {/* MATÉRIEL — marque + modèle toujours (décision
+                              fondateur) ; la garantie UNIQUEMENT quand la fiche
+                              produit la porte, jamais une durée supposée. */}
+                          {va.materiel.length > 0 && (
+                            <ul class="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs text-lune-faint">
+                              {va.materiel.map((m) => (
+                                <li>
+                                  <span class="text-lune-soft">{m.marque ? `${m.marque} ` : ''}{m.modele ?? ''}</span>
+                                  {m.garantieAns !== null && (
+                                    <span class="ms-1" dir="ltr">
+                                      · <span data-i18n data-fr="garantie" data-en="warranty" data-ar="ضمان">garantie</span> {formatNumber(m.garantieAns)} <span data-i18n data-fr="ans" data-en="years" data-ar="سنوات">ans</span>
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {/* NOTE DE TOIT — uniquement quand le moteur AFFIRME
+                              que la taille ne tient pas ; jamais une supposition
+                              en l'absence de calepinage réel. */}
+                          {va.toitOk === false && (
+                            <p class="mt-3 text-xs text-lune-faint" data-i18n
+                              data-fr="Cette taille dépasse ce que votre toit peut accueillir d’après l’étude."
+                              data-en="This size exceeds what your roof can host according to the study."
+                              data-ar="يتجاوز هذا الحجم ما يمكن أن يستوعبه سطحكم حسب الدراسة.">
+                              Cette taille dépasse ce que votre toit peut accueillir d’après l’étude.
+                            </p>
+                          )}
+
+                          {/* ── RÈGLE CTA (critique Fable) ───────────────────
+                              Le lien de SIGNATURE n'apparaît QUE lorsque l'état
+                              affiché égale EXACTEMENT le devis officiel : bonne
+                              taille, non ajustée, bonne variante, prix réel.
+                              Partout ailleurs — toute autre carte, toute autre
+                              variante — le SEUL CTA est la demande de
+                              modification, préremplie avec la configuration. */}
+                          <div class="mt-4">
+                            {signable ? (
+                              <a
+                                href="#signer"
+                                class="btn-pill inline-flex w-full items-center justify-center px-4 py-2 text-sm font-semibold"
+                                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                                data-taille-cta="signer"
+                                data-i18n
+                                data-fr="C’est mon devis — aller à la signature"
+                                data-en="This is my quote — go to signing"
+                                data-ar="هذا عرضي — الانتقال إلى التوقيع"
+                              >
+                                C’est mon devis — aller à la signature
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                class="btn-pill inline-flex w-full items-center justify-center px-4 py-2 text-sm"
+                                data-taille-cta="demander"
+                                data-taille-kind={kind}
+                                data-taille-message={messageDemandeTaille(t, avecBatterie)}
+                              >
+                                <span data-i18n data-fr="Demander cette configuration" data-en="Request this configuration" data-ar="طلب هذه التشكيلة">Demander cette configuration</span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </article>
+            ))}
+          </div>
+
+          {/* ── « CE QUI CHANGE » ─────────────────────────────────────────────
+                 Tableau de comparaison sous les cartes — et VUE PRINCIPALE sur
+                 mobile, où trois cartes ne tiennent pas côte à côte. Le volet
+                 matériel ne nomme que des FAMILLES (panneau / onduleur /
+                 batterie) : anticopie-safe, jamais un calibre ni une quantité
+                 de nomenclature. Une cellule vide dit « cette taille ne porte
+                 pas cette valeur » — jamais un tiret présenté comme donnée. */}
+          <div class="mt-6 overflow-x-auto" style="overscroll-behavior-x: contain;">
+            <p class="tech-label text-lune-faint" data-i18n
+              data-fr="Ce qui change" data-en="What changes" data-ar="ما الذي يتغير">Ce qui change</p>
+            <table class="mt-3 w-full min-w-[420px] text-sm" data-tailles-comparatif>
+              <thead>
+                <tr class="text-lune-faint">
+                  <th class="py-2 text-start font-normal"><span class="sr-only" data-i18n data-fr="Critère" data-en="Criterion" data-ar="المعيار">Critère</span></th>
+                  {tailles.offres.map((t) => (
+                    <th class="py-2 text-end font-normal" data-taille-col={t.cle}>{t.titre}</th>
+                  ))}
+                </tr>
+              </thead>
+              {tailleVariantes.map((v) => {
+                const avecBatterie = v === 'avec';
+                const vues = tailles.offres.map((t) => varianteAffichee(t, avecBatterie));
+                const lignes: Array<{ cle: string; fr: string; en: string; ar: string; cellules: string[] }> = [
+                  {
+                    cle: 'taille', fr: 'Taille', en: 'Size', ar: 'الحجم',
+                    cellules: vues.map((x) => x?.nbPanneaux !== null && x?.nbPanneaux !== undefined
+                      ? `${formatNumber(x.nbPanneaux)} · ${x.puissanceKwc !== null ? `${formatNumber(x.puissanceKwc, 2)} kWc` : ''}`.replace(/ · $/, '')
+                      : ''),
+                  },
+                  {
+                    cle: 'prix', fr: 'Prix TTC', en: 'Price incl. tax', ar: 'الثمن شامل الضريبة',
+                    cellules: vues.map((x) => x?.prixTtc != null ? formatMAD(x.prixTtc) : ''),
+                  },
+                  {
+                    cle: 'eco', fr: 'Économies / an', en: 'Savings / year', ar: 'التوفير / سنة',
+                    cellules: vues.map((x) => x?.economieAnnuelleMad != null ? formatMAD(x.economieAnnuelleMad) : ''),
+                  },
+                  {
+                    cle: 'payback', fr: 'Remboursé en', en: 'Paid back in', ar: 'مسترد في',
+                    cellules: vues.map((x) => formatPayback(x?.paybackAnnees ?? null) ?? ''),
+                  },
+                  {
+                    cle: 'couverture', fr: 'Couverture', en: 'Coverage', ar: 'التغطية',
+                    cellules: vues.map((x) => x?.couverturePct != null ? formatPercent(x.couverturePct, 0) : ''),
+                  },
+                  {
+                    cle: 'batterie', fr: 'Batterie', en: 'Battery', ar: 'البطارية',
+                    cellules: vues.map((x) => x?.batterie
+                      ? `${formatNumber(x.batterie.nbModules)}${x.batterie.moduleKwh !== null ? ` × ${formatNumber(x.batterie.moduleKwh, Number.isInteger(x.batterie.moduleKwh) ? 0 : 1)} kWh` : ''}`
+                      : ''),
+                  },
+                ];
+                return (
+                  <tbody data-tailles-comparatif-corps data-taille-variante={v} hidden={v !== tailleVarianteDefaut}>
+                    {lignes.filter((l) => l.cellules.some((c) => c !== '')).map((l) => (
+                      <tr class="border-t border-white/10" data-taille-ligne={l.cle}>
+                        <td class="py-2 pe-3 text-lune-soft"><span data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</span></td>
+                        {l.cellules.map((c) => (
+                          <td class="py-2 text-end text-lune" dir="ltr">{c}</td>
+                        ))}
+                      </tr>
+                    ))}
+                    {/* MATÉRIEL — familles ajoutées / retirées par rapport au
+                        devis. Omis quand rien ne diffère nulle part. La colonne
+                        du devis dit « la référence », pas un tiret. */}
+                    {taillesDiffMateriel[v] && (
+                      <tr class="border-t border-white/10" data-taille-ligne="materiel">
+                        <td class="py-2 pe-3 text-lune-soft"><span data-i18n data-fr="Matériel" data-en="Equipment" data-ar="المعدات">Matériel</span></td>
+                        {tailles.offres.map((t) => {
+                          const diff = varianteAffichee(t, avecBatterie)?.famillesDiff ?? null;
+                          return (
+                            <td class="py-2 text-end text-lune-soft">
+                              {t.estLeDevis && !diff ? (
+                                <span class="text-lune-faint" data-i18n data-fr="la référence" data-en="the reference" data-ar="المرجع">la référence</span>
+                              ) : (
+                                <>
+                                  {diff?.ajoutees.map((f) => (<span class="ms-1">+ {f}</span>))}
+                                  {diff?.retirees.map((f) => (<span class="ms-1">− {f}</span>))}
+                                </>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    )}
+                  </tbody>
+                );
+              })}
+            </table>
+          </div>
+        </section>
+      )}
+
       <!-- ── PV80 · CHAPITRE 7 — VOTRE PRIX, PUIS LA SIGNATURE ────────────────
            L'argent est dit ICI, à un seul endroit, et une seule fois : plus de
            liste d'équipement noyée dans la carte, plus de mensualités, plus de
@@ -4025,7 +4501,7 @@ const signConfig = ok
                      prix officiel affiché plus haut, ni la signature, ne
                      changent jamais. -->
                 {opt === 'avec_batterie' && battTiers.length > 0 && (
-                  <div class="mt-5 border-t border-white/10 pt-4" data-batt-tiers={JSON.stringify(battTiersForClient)}>
+                  <div class="mt-5 border-t border-white/10 pt-4" data-batt-tiers={JSON.stringify(battTiersPourCurseur)}>
                     <p class="tech-label text-lune-faint" data-i18n
                       data-fr="Choisir la taille de batterie" data-en="Choose the battery size" data-ar="اختيار حجم البطارية">
                       Choisir la taille de batterie
@@ -6689,6 +7165,10 @@ const signConfig = ok
       paybackLabel: string | null;
       ok: boolean;
       retenu: boolean;
+      /** CONSOLIDATION — nombre d'unités SERVI pour ce palier, apparié côté
+       *  serveur au calibre que le curseur compte. `null`/absent ⇒ aucun
+       *  raccourci vers le curseur (la pilule garde son comportement seul). */
+      units?: number | null;
     }
     let tiers: ClientTier[] = [];
     try {
@@ -6788,6 +7268,174 @@ const signConfig = ok
       revisionSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       detailEl?.focus();
     });
+
+    // ── CONSOLIDATION (fondateur, 26/08/2026) — les pilules ne sont plus un
+    // sélecteur INDÉPENDANT : elles déplacent aussi le CURSEUR, seul maître
+    // batterie de la page. Le nombre d'unités est SERVI (`units`, apparié
+    // côté serveur au calibre que le curseur compte) — jamais une division
+    // faite ici. Palier sans `units` (calibre hors 5/10 kWh) ⇒ le raccourci
+    // ne se déclenche pas et la pilule garde exactement son comportement
+    // d'aujourd'hui.
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const kwh = Number(btn.dataset.battTierKwh);
+        const tier = tiers.find((t) => t.kwh === kwh);
+        const units = tier?.units;
+        if (typeof units === 'number' && Number.isFinite(units)) pilotherCurseurBatterie(units);
+      });
+    });
+  })();
+
+  // ── CONSOLIDATION · UN SEUL MAÎTRE BATTERIE ────────────────────────────────
+  // Amène le CURSEUR (#battery-sim-slider) sur un nombre d'unités DÉJÀ SERVI et
+  // le montre. Aucune arithmétique : la valeur arrive telle quelle du contrat,
+  // seule la borne haute est relue sur le curseur lui-même (attribut `max` du
+  // DOM, pas un chiffre commercial). Le calque batterie est ouvert au besoin en
+  // CLIQUANT sur sa bascule existante — jamais une seconde logique d'affichage.
+  function pilotherCurseurBatterie(units: number): void {
+    const slider = document.getElementById('battery-sim-slider') as HTMLInputElement | null;
+    if (!slider) return;
+    const toggle = document.getElementById('prod-battery-toggle') as HTMLButtonElement | null;
+    const calque = document.getElementById('battery-sim');
+    if (calque?.hidden && toggle) toggle.click();
+    const max = Number(slider.max);
+    const cible = Number.isFinite(max) ? Math.min(units, max) : units;
+    if (String(cible) === slider.value) {
+      calque?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    slider.value = String(cible);
+    // `input` est l'événement que le moteur du curseur écoute déjà : on rejoue
+    // SON rendu plutôt que d'en dupliquer un second.
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    calque?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // ── TAILLES (ordre fondateur, 26/08/2026) — « EXPLORER D'AUTRES TAILLES » ──
+  // Ce script ne CALCULE RIEN et ne FORMATE RIEN : les deux variantes de chaque
+  // carte (et les deux corps du tableau comparatif) sont rendues CÔTÉ SERVEUR,
+  // avec les mêmes fonctions de formatage que le reste de la page. Basculer
+  // « Sans / Avec » ne fait qu'AFFICHER l'un et MASQUER l'autre — il est donc
+  // structurellement impossible qu'un chiffre affiché ici diffère d'un chiffre
+  // servi (la parade au « 21 contre 22 »).
+  //
+  // Il ne touche JAMAIS un nœud hors de la section #tailles, sauf par les deux
+  // chemins EXISTANTS et explicites : le formulaire de modification (WJ54) et le
+  // curseur batterie. C'est ce qui garantit que la vue par défaut de la page est
+  // celle d'aujourd'hui.
+  (function setupTaillesOffres(): void {
+    const section = document.querySelector<HTMLElement>('[data-tailles]');
+    if (!section) return;
+
+    const varianteDefaut = section.dataset.tailleVarianteDefaut === 'avec' ? 'avec' : 'sans';
+    const cleDefaut = section.dataset.tailleCleDefaut ?? '';
+    const switchBtns = Array.from(section.querySelectorAll<HTMLButtonElement>('[data-tailles-variante]'));
+    const blocs = Array.from(section.querySelectorAll<HTMLElement>('[data-taille-bloc]'));
+    const corps = Array.from(section.querySelectorAll<HTMLElement>('[data-tailles-comparatif-corps]'));
+    const cartes = Array.from(section.querySelectorAll<HTMLElement>('[data-taille-carte]'));
+    // #8 — les vues de détail par option, quand une lane backend en sert
+    // (calepinage/schéma propres à une taille). LECTURE DÉFENSIVE : aucune
+    // n'existe aujourd'hui ⇒ ce tableau est vide et rien ne bouge, jamais un
+    // cadre vide ni un « bientôt disponible ».
+    const details = Array.from(document.querySelectorAll<HTMLElement>('[data-taille-detail]'));
+
+    let variante: 'sans' | 'avec' = varianteDefaut;
+    let cle = cleDefaut;
+
+    function appliquer(): void {
+      for (const b of blocs) b.hidden = b.dataset.tailleVariante !== variante;
+      for (const c of corps) c.hidden = c.dataset.tailleVariante !== variante;
+      for (const btn of switchBtns) {
+        const on = btn.dataset.taillesVariante === variante;
+        btn.setAttribute('aria-pressed', String(on));
+        btn.setAttribute(
+          'style',
+          on
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+      for (const carte of cartes) {
+        const on = carte.dataset.tailleCle === cle;
+        if (on) carte.setAttribute('aria-current', 'true');
+        else carte.removeAttribute('aria-current');
+      }
+      // La vue de détail suit la sélection quand — et SEULEMENT quand — une
+      // vue propre à cette taille/variante a été servie. Sinon les artefacts
+      // uniques de la page (calepinage, schéma) restent ceux d'aujourd'hui.
+      if (details.length > 0) {
+        for (const d of details) {
+          const memeCle = d.dataset.tailleCle === cle;
+          const memeVariante = !d.dataset.tailleVariante || d.dataset.tailleVariante === variante;
+          d.hidden = !(memeCle && memeVariante);
+        }
+      }
+    }
+
+    for (const btn of switchBtns) {
+      btn.addEventListener('click', () => {
+        const v = btn.dataset.taillesVariante;
+        if (v !== 'sans' && v !== 'avec') return;
+        variante = v;
+        appliquer();
+      });
+    }
+
+    for (const carte of cartes) {
+      carte.addEventListener('click', (ev) => {
+        // Un clic sur un CTA garde son propre rôle (lien de signature, demande
+        // de modification, raccourci curseur) : la sélection ne le vole pas.
+        const cible = ev.target as HTMLElement | null;
+        if (cible?.closest('a, button')) return;
+        cle = carte.dataset.tailleCle ?? cle;
+        appliquer();
+      });
+    }
+
+    // « Demander cette configuration » — RÉUTILISE le flux existant « Demander
+    // une modification » (WJ54), exactement comme les pilules de l'échelle :
+    // jamais un second canal, jamais un second endpoint.
+    for (const cta of Array.from(section.querySelectorAll<HTMLButtonElement>('[data-taille-cta="demander"]'))) {
+      cta.addEventListener('click', () => {
+        const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
+        const detailsEl = revisionSection?.querySelector('details');
+        const kind = cta.dataset.tailleKind === 'batterie' ? 'batterie' : 'kwc';
+        const kindBtn = revisionSection?.querySelector<HTMLButtonElement>(`[data-revision-kind="${kind}"]`);
+        const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
+        if (detailsEl) detailsEl.open = true;
+        kindBtn?.click();
+        if (detailEl) detailEl.value = cta.dataset.tailleMessage ?? '';
+        revisionSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        detailEl?.focus();
+      });
+    }
+
+    // La banque d'une carte est un RACCOURCI vers le curseur (consolidation) —
+    // le nombre d'unités est celui SERVI pour cette taille, dans le module des
+    // lignes du devis, donc exactement l'unité que le curseur compte.
+    for (const banc of Array.from(section.querySelectorAll<HTMLButtonElement>('[data-taille-banc]'))) {
+      banc.addEventListener('click', () => {
+        const units = Number(banc.dataset.bancUnits);
+        if (Number.isFinite(units)) pilotherCurseurBatterie(units);
+      });
+    }
+
+    // MOBILE — la carte du devis est PRÉ-CENTRÉE dans le défilement horizontal
+    // (à `sm` et au-dessus, les trois cartes sont en grille : le conteneur ne
+    // défile pas et ce réglage est un no-op). On agit sur le `scrollLeft` DU
+    // CONTENEUR, jamais sur `scrollIntoView`, qui ferait sauter la page entière
+    // au chargement.
+    const scroller = section.querySelector<HTMLElement>('[data-tailles-cartes]');
+    const carteDefaut = cartes.find((c) => c.dataset.tailleCle === cleDefaut);
+    if (scroller && carteDefaut && scroller.scrollWidth > scroller.clientWidth) {
+      scroller.scrollLeft = Math.max(
+        0,
+        carteDefaut.offsetLeft - (scroller.clientWidth - carteDefaut.clientWidth) / 2,
+      );
+    }
+
+    appliquer();
   })();
 
   // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
