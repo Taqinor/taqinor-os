@@ -1598,6 +1598,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     vertices = [...ring];
     const a = activeArea();
     if (a) a.vertices = [...vertices];
+    // Les obstacles étaient posés SUR le contour précédent : reprendre le tracé
+    // client sans les effacer les laisserait à leurs coordonnées d'avant, donc
+    // potentiellement hors du nouveau toit — et ils continueraient à creuser
+    // des trous dans un calepinage qu'ils ne concernent plus. « Recommencer »
+    // veut dire repartir du tracé client, pas en garder la moitié.
+    obstacles = [];
+    if (a) a.obstacles = [];
+    redrawObstacles();
     landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
     closed = false;
     close();
