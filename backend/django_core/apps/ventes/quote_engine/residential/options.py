@@ -523,6 +523,22 @@ def build_pages(ctx) -> list:
   /* QRES39 — photo réelle de toiture : cadrée, arrondie, légendée */
   .p2-roof-photo {{ width:30mm; height:17.5mm; object-fit:cover;
     border-radius:9px; display:block; margin:0 auto; }}
+  /* CALEPDF — photo de toiture ET affiche de calepinage côte à côte. TABLE
+     CSS, pas flex (RENDERING_NOTES §1) : deux cellules de largeur fixe, même
+     hauteur d'image qu'une vignette seule — la bande ne grandit pas d'un
+     millimètre, elle prend sur l'espace resté vide à droite des vignettes
+     techniques. Une seule image ⇒ classe absente ⇒ rendu historique. */
+  .p2-roof-duo {{ flex:0 0 64mm; display:table; table-layout:fixed; }}
+  .p2-roof-duo .p2-roof-one {{ display:table-cell; width:32mm;
+    vertical-align:bottom; text-align:center; }}
+  /* L'affiche de calepinage a une BOÎTE FIXE de 17,5 mm — plus courte que
+     tout ce que cette colonne rend déjà (photo réelle ~22,5 mm, schéma
+     illustratif ~22,7 mm) : quel que soit le format de l'affiche, la bande ne
+     peut donc pas grandir. ``contain`` et non ``cover`` : un plan d'
+     implantation ne se recadre pas, on verrait moins de panneaux qu'il n'y en
+     a. Deux classes ⇒ l'emporte sur ``.p2-roof img`` (1 classe + 1 balise). */
+  .p2-roof .p2-roof-plan {{ width:30mm; height:17.5mm; object-fit:contain;
+    background:#FFFFFF; border-radius:9px; display:block; margin:0 auto; }}
   .p2-roof-cap {{ font-size:6.3pt; color:{C['muted_2']}; margin-top:0.8mm;
     letter-spacing:.06em; text-transform:uppercase; font-weight:700; }}
   .p2-specs {{ flex:1; display:flex; gap:5mm; }}
@@ -738,18 +754,39 @@ def build_pages(ctx) -> list:
 
     # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
     # le schéma illustratif quand elle existe ; repli schéma sinon.
+    # CALEPDF — et le CALEPINAGE rendu par le calepineur (``roof_render``, la
+    # même affiche que la page proposition sert au client) vient À CÔTÉ, sans
+    # jamais remplacer la photo : le client voit sa toiture ET l'implantation
+    # qui lui a été vendue. Les deux vignettes ont la MÊME hauteur (17,5 mm)
+    # que la photo seule d'aujourd'hui : la bande ne grandit pas, seule la
+    # colonne visuelle s'élargit (32 → 64 mm) au détriment de l'espace
+    # inutilisé à droite des trois vignettes techniques.
     roof_photo = (d.get("roof_photo") or "").strip()
+    roof_render = (d.get("roof_render") or "").strip()
+
+    def _vignette(src, legende, alt, cls="p2-roof-photo"):
+        return (f'<div class="p2-roof-one"><img class="{cls}" '
+                f'src="{src}" alt="{alt}">'
+                f'<div class="p2-roof-cap">{legende}</div></div>')
+
+    visuels = []
     if roof_photo:
-        band_visual = (
-            f'<div><img class="p2-roof-photo" src="{roof_photo}" '
-            f'alt="Votre toiture — implantation des panneaux">'
-            '<div class="p2-roof-cap">Votre toiture</div></div>')
+        visuels.append(_vignette(roof_photo, "Votre toiture",
+                                 "Votre toiture — implantation des panneaux"))
+    if roof_render:
+        visuels.append(_vignette(
+            roof_render, "Votre calepinage",
+            "Calepinage — implantation des panneaux sur votre toiture",
+            cls="p2-roof-plan"))
+    if visuels:
+        band_visual = "".join(visuels)
     else:
         band_visual = (f'<img src="{charts["roof"]}" '
                        'alt="Schéma de l\'installation">')
+    roof_cls = " p2-roof-duo" if len(visuels) > 1 else ""
     band_html = (
         f'<div class="p2-band">'
-        f'<div class="p2-roof">{band_visual}</div>'
+        f'<div class="p2-roof{roof_cls}">{band_visual}</div>'
         f'<div class="p2-specs">{spec_html}</div></div>')
 
     def _table_html(items, label):

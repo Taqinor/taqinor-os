@@ -985,6 +985,100 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertNotIn('class="c1-qr-cell"', html)
 
 
+class TestCalepinageSurLaPageDetail(SimpleTestCase):
+    """CALEPDF — l'affiche de calepinage rendue par le calepineur (la MÊME que
+    la page proposition sert au client via ``roof_image_url``) est embarquée en
+    data-URI À CÔTÉ de la photo de toiture, jamais à sa place.
+
+    ANTICOPIE : c'est l'IMAGE, jamais les coordonnées machine — le blob
+    ``Devis.roof_layout`` ne traverse pas le moteur."""
+
+    _POSTER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = sample_data.build()
+        d.update(surcharges)
+        return render.build_html(renderer._augment(d))
+
+    def test_les_deux_visuels_coexistent(self):
+        html = self._html(roof_render=self._POSTER)
+        self.assertIn('class="p2-roof p2-roof-duo"', html)
+        self.assertIn('Votre toiture</div>', html)
+        self.assertIn('Votre calepinage</div>', html)
+        # la photo du client est CONSERVÉE (jamais remplacée)
+        self.assertIn('class="p2-roof-photo"', html)
+        self.assertIn('class="p2-roof-plan"', html)
+
+    def test_calepinage_seul_remplace_le_schema_illustratif(self):
+        html = self._html(roof_photo='', roof_render=self._POSTER)
+        self.assertIn('class="p2-roof-plan"', html)
+        self.assertNotIn('p2-roof-duo">', html)
+        self.assertNotIn("Schéma de l'installation", html)
+
+    def test_sans_calepinage_rendu_historique(self):
+        html = self._html()
+        self.assertNotIn('class="p2-roof-plan"', html)
+        self.assertNotIn('Votre calepinage', html)
+        self.assertIn('class="p2-roof-photo"', html)
+
+    def test_aucune_coordonnee_machine_dans_le_document(self):
+        """Le PDF porte l'IMAGE, pas la géométrie : aucune clé du blob
+        ``roof_layout`` (sommets, obstacles, pose) ne doit s'y trouver."""
+        html = self._html(roof_render=self._POSTER, roof_layout={
+            'zones': [{'id': 'z1', 'vertices': [[0, 0], [9, 0], [9, 6]],
+                       'obstacles': [{'x': 2, 'y': 2}],
+                       'geometry': {'rows': [{'panels': 4}]}}],
+            '_pans_geometry': [{'label': 'Pan Sud', 'azimut_deg': 180}]})
+        for fuite in ('vertices', 'obstacles', '_pans_geometry',
+                      'azimut_deg', 'Pan Sud'):
+            self.assertNotIn(fuite, html, fuite)
+
+
+class TestRoofRenderDataUri(SimpleTestCase):
+    """CALEPDF — le builder lit l'affiche depuis MinIO (jamais une URL suivie
+    au rendu) et dégrade proprement : rien ne casse un PDF."""
+
+    class _Devis:
+        pk = 1
+
+        def __init__(self, key):
+            self.roof_image = key
+
+    def _uri(self, key, octets=b'\x89PNG\r\n\x1a\n data', boom=False):
+        from unittest import mock
+        from apps.ventes.quote_engine import builder
+        cible = 'apps.ventes.utils.pdf.download_roof_image'
+        effet = (mock.Mock(side_effect=OSError('minio down')) if boom
+                 else mock.Mock(return_value=octets))
+        with mock.patch(cible, effet):
+            return builder._roof_render_data_uri(self._Devis(key))
+
+    def test_png_embarque_en_data_uri(self):
+        uri = self._uri('roofs/1/DEV-1.png')
+        self.assertTrue(uri.startswith('data:image/png;base64,'))
+
+    def test_jpeg_reconnu_par_son_extension(self):
+        uri = self._uri('roofs/1/DEV-1.jpg')
+        self.assertTrue(uri.startswith('data:image/jpeg;base64,'))
+
+    def test_sans_cle_aucun_acces(self):
+        from apps.ventes.quote_engine import builder
+        self.assertEqual(
+            builder._roof_render_data_uri(self._Devis('')), '')
+        self.assertEqual(
+            builder._roof_render_data_uri(self._Devis(None)), '')
+
+    def test_minio_indisponible_ne_casse_pas_le_pdf(self):
+        self.assertEqual(self._uri('roofs/1/DEV-1.png', boom=True), '')
+
+    def test_image_trop_lourde_ignoree(self):
+        self.assertEqual(
+            self._uri('roofs/1/DEV-1.png', octets=b'x' * (6 * 1024 * 1024 + 1)),
+            '')
+
+
 class TestProductionMensuellePageDetail(SimpleTestCase):
     """PRODMOIS — bande « production mois par mois » de la page détail.
 

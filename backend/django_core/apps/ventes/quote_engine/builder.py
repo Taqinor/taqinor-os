@@ -97,6 +97,48 @@ def _roof_photo_data_uri(devis) -> str:
         return ""
 
 
+def _roof_render_data_uri(devis) -> str:
+    """CALEPDF — LE CALEPINAGE DU CLIENT, celui que sa page en ligne lui montre.
+
+    ``Devis.roof_image`` porte la clé MinIO de l'affiche rendue par le
+    calepineur (POST ``devis/<pk>/roof-image``, Q4) : le PNG/JPEG que la page
+    proposition sert au client via ``roof_image_signed_url``
+    (``public_views`` → ``roof_image_url``). Le PDF ne peut pas suivre une URL
+    pré-signée au rendu (le moteur ne fait AUCUN accès réseau, cf. ``_sld_svg``) :
+    on lit donc les octets côté serveur, exactement comme
+    ``_roof_photo_data_uri`` le fait pour une pièce jointe, et on les embarque
+    en data-URI. UNE seule affiche, UNE seule vérité : la page et le document
+    montrent le MÊME rendu.
+
+    ANTICOPIE — c'est l'IMAGE, jamais les coordonnées machine. Le blob
+    ``Devis.roof_layout`` (pans, sommets, obstacles, pose réelle) ne sort pas
+    d'ici ; côté web c'est lui, et lui seul, qui est filtré par
+    ``_safe_roof_layout`` + la case « Calepinage 3D » du commercial, tandis que
+    l'AFFICHE (``roof_image_url``) est servie sans condition. Le PDF devis est
+    la pièce de confiance : il porte donc l'affiche, comme la page.
+
+    '' dès que le devis n'a pas de rendu, que MinIO refuse, ou que l'image
+    dépasse 6 Mo (même plafond que la photo de toiture) — la page se rend
+    alors sans calepinage plutôt que de faire tomber tout le PDF.
+    """
+    key = (getattr(devis, "roof_image", None) or "").strip()
+    if not key:
+        return ""
+    try:
+        import base64
+        from apps.ventes.utils.pdf import download_roof_image
+        data = download_roof_image(key)
+        if not data or len(data) > 6 * 1024 * 1024:
+            return ""
+        mime = "image/jpeg" if key.lower().endswith(
+            (".jpg", ".jpeg")) else "image/png"
+        return f"data:{mime};base64," + base64.b64encode(data).decode()
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        logger.warning("CALEPDF: rendu de calepinage illisible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return ""
+
+
 def _sld_svg(devis) -> str:
     """PV46 — schéma unifilaire du devis, en SVG INLINE pour l'annexe technique.
 
@@ -2258,6 +2300,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.
         "roof_photo": _roof_photo_data_uri(devis),
+        # CALEPDF — l'AFFICHE du calepinage rendue par le calepineur (la même
+        # que la page proposition sert au client). '' quand le devis n'en
+        # porte pas : la page détail se rend alors comme aujourd'hui.
+        "roof_render": _roof_render_data_uri(devis),
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
