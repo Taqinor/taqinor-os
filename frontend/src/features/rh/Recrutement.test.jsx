@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import rhApi from '../../api/rhApi'
 import Recrutement from './Recrutement.jsx'
@@ -28,6 +29,11 @@ vi.mock('../../api/rhApi', () => {
     default: {
       getEpiCatalogue: vi.fn(empty),
       getDotationsEpi: vi.fn(empty),
+      // WIR194 — cycle complet de la dotation EPI (remise/restitution/émargement).
+      createDotationEpi: vi.fn(),
+      restituerDotationEpi: vi.fn(),
+      emargerDotationEpi: vi.fn(),
+      getEmargementsDotationEpi: vi.fn(empty),
       getOuverturesPoste: vi.fn(empty),
       getCandidatures: vi.fn(empty),
       getVivier: vi.fn(empty),
@@ -61,7 +67,9 @@ function renderRecrutement() {
   return render(
     <MemoryRouter>
       <ThemeProvider>
-        <Recrutement />
+        <ConfirmProvider>
+          <Recrutement />
+        </ConfirmProvider>
       </ThemeProvider>
     </MemoryRouter>,
   )
@@ -156,6 +164,59 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
     }))
+  })
+})
+
+describe('Recrutement — WIR194 : dotations EPI (remise/restitution/émargement)', () => {
+  beforeEach(() => { vi.clearAllMocks(); armerStatistiques() })
+
+  it('crée une dotation via rhApi.createDotationEpi', async () => {
+    rhApi.getEpiCatalogue.mockResolvedValue({ data: [{ id: 4, designation: 'Casque de chantier' }] })
+    rhApi.createDotationEpi.mockResolvedValueOnce({ data: { id: 1 } })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle dotation/ }))[0])
+    fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '12' } })
+    fireEvent.change(screen.getByLabelText('EPI'), { target: { value: '4' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer la dotation' })[0])
+
+    await waitFor(() => expect(rhApi.createDotationEpi).toHaveBeenCalledWith(
+      expect.objectContaining({ employe: '12', epi: '4' }),
+    ))
+  })
+
+  it('émarge puis restitue une dotation depuis l’écran', async () => {
+    rhApi.getDotationsEpi.mockResolvedValue({
+      data: [{
+        id: 7, employe: 12, employe_nom: 'Alaoui Sara',
+        epi: 4, epi_designation: 'Casque de chantier',
+        accuse_remise: false, restituee: false,
+      }],
+    })
+    rhApi.emargerDotationEpi.mockResolvedValueOnce({
+      data: { emargement: { id: 1 }, deja_accusee: false, accuse_remise: true },
+    })
+    rhApi.restituerDotationEpi.mockResolvedValueOnce({ data: { id: 7, restituee: true } })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('Casque de chantier')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    const emargerDialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(emargerDialog.getByLabelText('Nom du signataire'), { target: { value: 'Alaoui Sara' } })
+    fireEvent.click(emargerDialog.getByRole('button', { name: 'Émarger' }))
+
+    await waitFor(() => expect(rhApi.emargerDotationEpi).toHaveBeenCalledWith(7, expect.objectContaining({
+      signataire_nom: 'Alaoui Sara', role_signataire: 'employe',
+    })))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Restituer' }))[0])
+    // Confirmation Radix maison (AlertDialog, confirmLabel « Restituer ») —
+    // scopée au dialogue pour ne pas ambiguïser avec le bouton déclencheur.
+    const confirmDialog = within(await screen.findByRole('alertdialog'))
+    fireEvent.click(confirmDialog.getByRole('button', { name: 'Restituer' }))
+    await waitFor(() => expect(rhApi.restituerDotationEpi).toHaveBeenCalledWith(7))
   })
 })
 
