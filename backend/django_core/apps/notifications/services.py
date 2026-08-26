@@ -862,7 +862,10 @@ def publish_annonce(annonce, *, now=None):
         return annonce
     now = now or timezone.now()
     recipients = annonce_recipients(annonce)
-    link = '/annonces/' + str(annonce.pk)
+    # WIR177 — route REELLE de l'ecran destinataire : `/annonces` avec le
+    # motif `?annonce=<pk>` que la page lit pour deplier l'annonce visee.
+    # `/annonces/<pk>` n'a JAMAIS existe cote routeur (404 garanti).
+    link = '/annonces?annonce=' + str(annonce.pk)
     for user in recipients:
         try:
             notify(
@@ -971,7 +974,8 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
             destinataires = list(annonce_recipients(annonce))
             lu_ids = set(AnnonceLecture.objects.filter(
                 annonce=annonce).values_list('utilisateur_id', flat=True))
-            link = '/annonces/' + str(annonce.pk)
+            # WIR177 — meme route reelle que la publication ci-dessus.
+            link = '/annonces?annonce=' + str(annonce.pk)
             for user in destinataires:
                 if user.pk in lu_ids:
                     continue  # déjà lu → aucune relance.

@@ -88,6 +88,10 @@ const NotFound = lazy(() => import('../ui/NotFound'))
 const Forbidden = lazy(() => import('../ui/Forbidden'))
 // VX247(d) — glossaire métier statique (les HelpTip VX47 y pointent).
 const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
+// WIR177 — écran DESTINATAIRE des annonces internes (XKB5/XKB6). Atteint
+// depuis les notifications « annonce publiée » et « relance de lecture », dont
+// le lien porte désormais `/annonces?annonce=<pk>`.
+const AnnoncesPage = lazy(() => import('../features/notifications/AnnoncesPage'))
 // NTPRT8 — shell + écrans du PORTAIL CLIENT authentifié (hors shell ERP).
 const PortalClientLayout = lazy(() => import('../features/portail/client/PortalClientLayout'))
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
@@ -410,6 +414,9 @@ const router = createBrowserRouter([
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
+  // WIR177 — annonces internes reçues (`?annonce=<pk>` déplie celle visée).
+  // contextuelle: atteinte depuis la cloche de notifications (annonce publiée / relance de lecture), pas depuis le menu
+  { path: '/annonces', loader: authLoader, element: <WithLayout><AnnoncesPage /></WithLayout> },
 
   // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 
