@@ -1301,7 +1301,7 @@ export default function DevisGenerator({
   }
 
   // FOUNDER 26/08 — les DEUX valeurs de dimensionnement pour l'AFFICHAGE
-  // (« Sans batterie : N panneaux · X kWc » / « Avec batterie : … »),
+  // (« Recommandé sans batterie : N panneaux · X kWc » / « … avec … »),
   // INDÉPENDANTES du scénario choisi — contrairement à `sizingInfo` qui
   // aplatit déjà le résultat sur UNE seule branche (celle du scénario). Le
   // moteur horaire serveur (recommandation/recommandation_avec, source de
@@ -1316,6 +1316,15 @@ export default function DevisGenerator({
   // quantités à 0 quel que soit le scénario) — y afficher une valeur « avec »
   // serait un chiffre fabriqué. `null` = rien de calculable pour l'instant
   // (avant toute frappe/recalcul — jamais un défaut inventé, règle #4).
+  //
+  // F3 (revue adversariale 26/08) — sans/avec ne se repliaient PAS ensemble :
+  // un côté pouvait venir du serveur (moteur horaire PVGIS) pendant que
+  // l'autre retombait sur le balayage local (`sizingInfo`/`.avec`) — deux
+  // méthodes de calcul DIFFÉRENTES dont l'ÉCART affiché n'était alors plus
+  // comparable (chaque nombre reste réel pris isolément, mais leur DELTA ne
+  // veut plus rien dire). Correctif : la PAIRE ne s'affiche que si les DEUX
+  // branches partagent la MÊME source (serveur+serveur ou local+local) ;
+  // sinon seule la valeur sourcée s'affiche, jamais la paire mixte.
   const deuxValeursDim = (() => {
     if (modeInstallation !== 'residentiel') return { sans: null, avec: null }
     const srvSans = etudeHoraireDonnees?.dimensionnement?.recommandation
@@ -1325,15 +1334,26 @@ export default function DevisGenerator({
     // (applyLead et consorts) ; sinon c'est la branche sans, avec `.avec` imbriqué.
     const localSans = (scenario === SCENARIO_AVEC) ? null : sizingInfo
     const localAvec = (scenario === SCENARIO_AVEC) ? sizingInfo : sizingInfo?.avec
-    const sans = (Number(srvSans?.panneaux) > 0)
+    const srvSansOk = Number(srvSans?.panneaux) > 0
+    const srvAvecOk = Number(srvAvec?.panneaux) > 0
+    const localSansOk = localSans?.nbPanneaux > 0
+    const localAvecOk = localAvec?.nbPanneaux > 0
+    const asSans = () => (srvSansOk
       ? { nbPanneaux: srvSans.panneaux, kwc: srvSans.kwc }
-      : ((localSans?.nbPanneaux > 0)
-          ? { nbPanneaux: localSans.nbPanneaux, kwc: localSans.kwcOptimal } : null)
-    const avec = (Number(srvAvec?.panneaux) > 0)
+      : { nbPanneaux: localSans.nbPanneaux, kwc: localSans.kwcOptimal })
+    const asAvec = () => (srvAvecOk
       ? { nbPanneaux: srvAvec.panneaux, kwc: srvAvec.kwc }
-      : ((localAvec?.nbPanneaux > 0)
-          ? { nbPanneaux: localAvec.nbPanneaux, kwc: localAvec.kwcOptimal } : null)
-    return { sans, avec }
+      : { nbPanneaux: localAvec.nbPanneaux, kwc: localAvec.kwcOptimal })
+    if (srvSansOk && srvAvecOk) return { sans: asSans(), avec: asAvec() }
+    if (localSansOk && localAvecOk) return { sans: asSans(), avec: asAvec() }
+    // Sources dépareillées (ou une seule branche calculable) : UNE seule
+    // valeur, jamais la paire — priorité serveur > local, indépendamment
+    // pour la branche qui EST affichée seule.
+    if (srvSansOk) return { sans: asSans(), avec: null }
+    if (localSansOk) return { sans: asSans(), avec: null }
+    if (srvAvecOk) return { sans: null, avec: asAvec() }
+    if (localAvecOk) return { sans: null, avec: asAvec() }
+    return { sans: null, avec: null }
   })()
 
   const applyLead = (id) => {
@@ -2417,15 +2437,24 @@ export default function DevisGenerator({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au drapeau « Appliquer cette taille », pas à chaque frappe de nbPanneaux/panelW
   }, [nbPanneaux, panelW])
 
-  // FOUNDER 26/08 — bouton « Recalculer le dimensionnement » : en ÉDITION
-  // (?edit=ID), `nbPanneaux` est posé UNE fois depuis les lignes du brouillon
-  // rouvert et `fHiver`/`fEte` ne sont PAS reposées depuis le devis (aucune
-  // source ne les porte encore côté serveur) — changer la facture ensuite ne
-  // touchait donc plus jamais le nombre de panneaux : `syncBillEstimator`
-  // tourne bien à chaque frappe, mais son garde-fou `nbPanneauxTouched` reste
-  // FERMÉ (aucun chemin ne le rouvre après un chargement d'édition), et le
-  // bouton « Auto-remplir » existant ne fait que recomposer le catalogue au
-  // `nbPanneaux` COURANT — il ne redérive jamais ce compte depuis la facture.
+  // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
+  // (revue adversariale 26/08 — corrige la prose initiale, qui affirmait à
+  // tort que `nbPanneauxTouched` restait FERMÉ après un chargement d'édition ;
+  // en réalité rien dans l'effet d'édition ?edit= ne touche ce ref, il reste
+  // à sa valeur `useRef(false)` par défaut — c'est la preuve gardée par les
+  // tests ROOT CAUSE 1-3 ci-dessous) :
+  //   1. En ÉDITION (?edit=ID), `fHiver`/`fEte` ne sont JAMAIS reposées
+  //      depuis le devis serveur (aucune source ne les porte encore côté
+  //      serveur) — retaper la facture repart donc d'un champ VIDE, pas de
+  //      la facture d'origine.
+  //   2. Le bouton « Auto-remplir » existant (`handleAutoFill`) ne fait que
+  //      recomposer le catalogue au `nbPanneaux` COURANT — il ne redérive
+  //      jamais ce compte depuis la facture (`computeAutoSizing` n'y est
+  //      jamais appelé).
+  //   3. Dès qu'un nombre de panneaux a été touché À LA MAIN (n'importe où,
+  //      n'importe quand dans la session — pas spécifiquement à cause de
+  //      l'édition), `nbPanneauxTouched` se ferme et plus AUCUNE frappe sur
+  //      la facture ne recalcule quoi que ce soit (N3, comportement voulu).
   // Ce bouton est le déverrouillage EXPLICITE demandé par le fondateur : un
   // clic vaut consentement à remplacer les quantités auto-dérivées (jamais
   // une frappe seule, cf. règle N3/`syncBillEstimator`).
@@ -2440,6 +2469,19 @@ export default function DevisGenerator({
   // aujourd'hui (il ne préserve pas plus les lignes ajoutées à la main que
   // lui — comportement historique inchangé, pas régressé par ce bouton).
   const recalcDimPending = useRef(false)
+  // F1 (revue adversariale 26/08, BLOQUANT) — capture l'état RÉEL du
+  // garde-fou juste AVANT de le déverrouiller : le reverrouillage (effet
+  // ci-dessous) restaure EXACTEMENT cette valeur, JAMAIS un `true` figé. Un
+  // `true` figé (l'ancien code) verrouillait PERMANEMMENT le garde-fou après
+  // le tout premier clic — y compris en création, où il partait FAUX : (a)
+  // le redimensionnement facture→panneaux en direct (règle N3,
+  // `syncBillEstimator`) mourait silencieusement pour le reste de la
+  // session ; (b) une « Auto-remplir » ultérieure retombait sur `kwp` via
+  // `resolveKwcAvec()` (court-circuit `nbPanneauxTouched.current`) alors que
+  // l'écran continuait d'afficher l'optimum AVEC réellement divergent
+  // (`deuxValeursDim`) — un nombre affiché qui ne correspondait plus à ce
+  // qui venait d'être composé (violation de la règle chiffres-vérifiés).
+  const recalcDimPriorTouched = useRef(false)
   const recalculerDimensionnement = () => {
     const sizing = computeAutoSizing(fHiver, fEte)
     if (!sizing) {
@@ -2454,9 +2496,9 @@ export default function DevisGenerator({
     // Déverrouille temporairement le garde-fou « touché » : sinon
     // `resolveKwcAvec()` (lu par `handleAutoFill` ci-dessous) court-circuite
     // sur `kwp` et les deux optimiseurs ne pourraient plus jamais diverger
-    // après un premier recalcul. Reverrouillé dans l'effet ci-dessous une
-    // fois la composition lancée, pour qu'une frappe suivante sur la facture
-    // reste silencieuse (règle fondateur : seul le bouton recalcule).
+    // après un premier recalcul. Reverrouillé dans l'effet ci-dessous — à
+    // l'état d'AVANT ce clic (capturé ici), jamais à `true` en dur.
+    recalcDimPriorTouched.current = nbPanneauxTouched.current
     nbPanneauxTouched.current = false
     const retenu = (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC)
       ? sizing.avec : sizing
@@ -2474,7 +2516,22 @@ export default function DevisGenerator({
   useEffect(() => {
     if (!recalcDimPending.current) return
     recalcDimPending.current = false
-    Promise.resolve(handleAutoFill()).finally(() => { nbPanneauxTouched.current = true })
+    // F2 (revue adversariale 26/08) — la fenêtre de déverrouillage doit être
+    // bornée au calcul SYNCHRONE, jamais à tout l'aller-retour réseau. Une
+    // fonction async exécute la totalité de son préfixe SYNCHRONE (tout ce
+    // qui précède son premier `await`) AVANT de rendre la main à l'appelant :
+    // `handleAutoFill()` lit déjà `resolveKwcAvec()` — donc déjà
+    // `nbPanneauxTouched.current` — dans ce préfixe (branche résidentielle),
+    // avant son `await ventesApi.composerDevis(...)`. Reverrouiller ICI
+    // (jamais dans un `.finally()` après le round-trip, comme avant) ferme la
+    // fenêtre avant qu'une frappe sur la facture ait la moindre chance de s'y
+    // engouffrer : sinon `syncBillEstimator` pouvait recomposer
+    // nbPanneaux/sizingInfo PENDANT que la réponse en vol écrasait les lignes
+    // calculées sur l'ANCIEN kwc (incident identifié en revue — deux sources
+    // divergentes en course).
+    const pending = handleAutoFill()
+    nbPanneauxTouched.current = recalcDimPriorTouched.current
+    Promise.resolve(pending).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au drapeau posé par recalculerDimensionnement
   }, [recalcDimTick])
 
@@ -3843,24 +3900,38 @@ export default function DevisGenerator({
             {/* FOUNDER 26/08 — les DEUX valeurs de dimensionnement (L-2OPT),
                 toujours dérivées d'un calcul réel (serveur horaire si
                 disponible, sinon le même balayage local que ci-dessus —
-                jamais un chiffre inventé). Résidentiel uniquement : l'option
-                batterie n'existe nulle part ailleurs (agricole = pompage,
-                industriel/commercial ne la vendent jamais). Mono-option
-                (`showSans`/`showAvec`, scénario déjà choisi) : seule la
-                valeur réellement vendue sur CE devis s'affiche. */}
+                jamais un chiffre inventé, et jamais la paire mixée depuis
+                deux sources différentes — voir deuxValeursDim/F3). Résidentiel
+                uniquement : l'option batterie n'existe nulle part ailleurs
+                (agricole = pompage, industriel/commercial ne la vendent
+                jamais). Mono-option (`showSans`/`showAvec`, scénario déjà
+                choisi) : seule la valeur réellement vendue sur CE devis
+                s'affiche.
+                F4 (revue adversariale 26/08) — le garde EXTÉRIEUR doit
+                refléter EXACTEMENT ce que le contenu va rendre : l'ancien
+                `(deuxValeursDim.sans || deuxValeursDim.avec)` pouvait être
+                vrai (ex. `sans` calculable) alors que `showSans` est FAUX
+                (scénario mono « Avec batterie ») ET `avec` encore `null` —
+                un wrapper vide (marge + data-testid orphelins) s'affichait
+                pour rien. Le garde reprend donc les DEUX conditions
+                (source ET scénario) que le contenu vérifie déjà.
+                F5 (revue adversariale 26/08) — « Recommandé » en tête : ce
+                sont des RECOMMANDATIONS de l'optimiseur, pas une description
+                des lignes composées — un nombre de panneaux TAPÉ À LA MAIN
+                peut diverger du dimensionnement optimal affiché ici. */}
             {modeInstallation === 'residentiel'
-              && (deuxValeursDim.sans || deuxValeursDim.avec) && (
+              && ((showSans && deuxValeursDim.sans) || (showAvec && deuxValeursDim.avec)) && (
               <div className="mt-2 grid gap-0.5 text-sm text-foreground"
                    data-testid="dimensionnement-deux-valeurs">
                 {showSans && deuxValeursDim.sans && (
                   <div>
-                    Sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
+                    Recommandé sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
                     {' '}· {formatNumber(deuxValeursDim.sans.kwc, { decimals: 2 })} kWc
                   </div>
                 )}
                 {showAvec && deuxValeursDim.avec && (
                   <div>
-                    Avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
+                    Recommandé avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
                     {' '}· {formatNumber(deuxValeursDim.avec.kwc, { decimals: 2 })} kWc
                   </div>
                 )}
