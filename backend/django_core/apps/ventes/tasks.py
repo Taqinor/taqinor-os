@@ -585,3 +585,37 @@ def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token)
         logger.error('task_build_async_export failed company=%s layout=%s: %s',
                      company_id, layout, exc)
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+
+
+# ── AUTO-PIPELINE (ordre fondateur 26/08/2026) ──────────────────────────────
+# « si le client dessine son toit dans le tunnel, une fois que le lead arrive
+# dans notre ERP ça crée automatiquement le devis automatique. »
+#
+# POURQUOI UNE TÂCHE, ET PAS UN APPEL DIRECT DANS LE WEBHOOK : le webhook du
+# site est une surface PUBLIQUE, son temps de réponse est un engagement envers
+# le Worker Cloudflare qui l'appelle. Le dimensionnement + la composition +
+# l'étude horaire se comptent en SECONDES : les jouer dans la requête ferait
+# payer au visiteur (et au Worker) le prix d'un travail qui ne l'intéresse pas.
+# Le webhook se contente donc de mettre en file et rend la main.
+#
+# AUCUN RETRY : le service est idempotent par construction (un lead, un devis
+# — garde d'existence + dedup en base), mais un echec ici n'est pas une perte
+# de donnee : le lead est enregistre, complet, et le commercial garde le
+# chemin manuel. Reessayer en boucle une composition qui echoue (catalogue
+# incomplet, marque epinglee absente) ne ferait que bruler des workers.
+
+@shared_task(name='ventes.devis_automatique_depuis_lead')
+def task_devis_automatique_depuis_lead(lead_id, company_id):
+    """Cree le devis brouillon d'un lead du tunnel, cale sur son trace de toit.
+
+    Toute la decision (reglage de societe, idempotence, portes de donnee) vit
+    dans ``services.creer_devis_automatique_depuis_lead`` : cette enveloppe ne
+    fait que la sortir de la requete HTTP.
+    """
+    from .services import creer_devis_automatique_depuis_lead
+
+    devis = creer_devis_automatique_depuis_lead(
+        lead_id=lead_id, company_id=company_id)
+    if devis is None:
+        return None
+    return devis.pk
