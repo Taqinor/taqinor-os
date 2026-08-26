@@ -5804,9 +5804,10 @@ def contour_client_lnglat(lead):
             lat, lng = float(lat), float(lng)
         except (TypeError, ValueError):
             continue
+        # Ce test rejette AUSSI les NaN : toute comparaison avec NaN est
+        # fausse, donc `-90 <= nan <= 90` l'est, et le point est écarté. (Un
+        # second garde-fou `lat != lat` vivait ici : il était inatteignable.)
         if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            continue
-        if lat != lat or lng != lng:      # NaN
             continue
         anneau.append([lng, lat])
     return anneau if len(anneau) >= 3 else []
@@ -5976,6 +5977,34 @@ def auto_devis_tunnel_actif(company):
     return bool(getattr(profil, 'devis_auto_depuis_tunnel', True))
 
 
+_MARQUE_AUTO_DEVIS = 'ventes.auto_devis'
+
+
+def _liberer_marque_auto_devis(company, lead_id):
+    """F5 — RELÂCHE la marque d'achèvement d'un lead dont la création a échoué.
+
+    ``dedupe_event`` pose sa ligne AVANT le travail — c'est ce qui lui permet
+    de départager deux workers simultanés. Mais laissée en place après un
+    échec, cette même ligne devient une porte fermée DÉFINITIVEMENT : un lead
+    sans facture aujourd'hui, ou un catalogue momentanément incomplet, et plus
+    jamais personne — ni un rejeu, ni un appel manuel du service — ne pourrait
+    lui créer son devis automatique. La marque doit donc dire « c'est FAIT »,
+    pas « ça a été tenté ».
+
+    Best-effort et silencieuse sur erreur : elle est appelée depuis des
+    chemins d'exception, et ne doit jamais masquer l'erreur d'origine.
+    """
+    try:
+        from core.idempotency import ProcessedWebhookEvent
+        ProcessedWebhookEvent.objects.filter(
+            company=company, source=_MARQUE_AUTO_DEVIS,
+            event_id=str(lead_id)).delete()
+    except Exception:  # noqa: BLE001 — jamais au-dessus de l'erreur d'origine
+        logger.warning(
+            'Auto-devis: marque de dédup non relâchée pour le lead %s — un '
+            'prochain essai sera refusé.', lead_id, exc_info=True)
+
+
 def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     """AUTO-PIPELINE — le devis brouillon d'un lead arrivé du tunnel.
 
@@ -5986,13 +6015,24 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     1. **Société / lead lisibles** — lecture cross-app par
        ``crm.selectors.get_company_lead`` (jamais ``crm.models``).
     2. **Réglage de société** — ``auto_devis_tunnel_actif``.
-    3. **IDEMPOTENCE — un lead, un devis.** Un lead qui porte DÉJÀ un devis
-       n'en reçoit pas un second, quoi qu'il arrive. C'est la garde qui tient
-       même si un webhook est re-livré, si la tâche Celery est rejouée
-       (``acks_late``), ou si les deux se produisent en même temps : la
-       vérification et la création se font dans UNE transaction, et le lead est
-       verrouillé (``select_for_update``) pour que deux workers ne puissent pas
-       passer la porte ensemble.
+    3. **IDEMPOTENCE — un lead, un devis**, en DEUX gardes distinctes, car
+       elles n'attrapent pas la même chose :
+
+       a. une lecture « ce lead porte-t-il déjà un devis ? » — elle couvre le
+          cas courant (webhook re-livré plus tard, tâche rejouée après coup,
+          devis déjà saisi à la main par un commercial) ;
+       b. une MARQUE D'ACHÈVEMENT en base
+          (``core.idempotency.dedupe_event``, contrainte d'unicité sur
+          ``(company, source, event_id)``) — elle seule départage deux
+          exécutions SIMULTANÉES, que la lecture (a) laisserait passer
+          ensemble. Il n'y a ici NI transaction englobante, NI
+          ``select_for_update`` : c'est la contrainte d'unicité qui arbitre,
+          et le perdant de l'insertion abandonne sans rien créer.
+
+       La marque n'est gardée QUE si un devis a réellement été créé : tout
+       échec la relâche (voir ``_liberer_marque_auto_devis``), sans quoi un
+       lead non chiffrable aujourd'hui — facture manquante, catalogue
+       incomplet — resterait définitivement fermé à un appel ultérieur.
     4. **Assez de donnée RÉELLE** — c'est ``build_devis_auto`` qui tranche,
        avec EXACTEMENT les portes qu'il oppose déjà au commercial
        (``AutoDevisError`` : marché non résidentiel, aucune facture d'hiver ni
@@ -6039,7 +6079,7 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     # rejeux (``core.idempotency.dedupe_event``) — on ne s'en réinvente pas une
     # seconde. Perdant = on ne crée rien, en silence : l'autre worker s'en
     # charge.
-    if not dedupe_event(company=company, source='ventes.auto_devis',
+    if not dedupe_event(company=company, source=_MARQUE_AUTO_DEVIS,
                         event_id=str(lead_id)):
         logger.info(
             'Auto-devis: création déjà en cours/faite pour le lead %s '
@@ -6047,16 +6087,18 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         return None
 
     journal_auto = {}
-    # Lectures pures (catalogue + géométrie du tracé) — hors transaction.
-    produit_panneau, _societe = _panneau_pour_calepinage(
-        {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
-    plafond = plafond_physique_du_contour(
-        contour_client_lnglat(lead), produit_panneau)
-
-    # Le ``try`` ENVELOPPE la transaction (et non l'inverse) : un refus de
-    # dimensionnement doit défaire ce que la construction aurait pu commencer,
-    # jamais laisser un devis à moitié écrit derrière lui.
+    # Le ``try`` couvre TOUT ce qui suit la pose de la marque — y compris les
+    # lectures catalogue/géométrie — et il ENVELOPPE la transaction (et non
+    # l'inverse) : un refus de dimensionnement doit défaire ce que la
+    # construction aurait pu commencer, jamais laisser un devis à moitié écrit.
+    # F5 — chaque sortie en échec RELÂCHE la marque : elle atteste d'un devis
+    # CRÉÉ, jamais d'une tentative.
     try:
+        # Lectures pures (catalogue + géométrie du tracé) — hors transaction.
+        produit_panneau, _societe = _panneau_pour_calepinage(
+            {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
+        plafond = plafond_physique_du_contour(
+            contour_client_lnglat(lead), produit_panneau)
         with transaction.atomic():
             devis = build_devis_auto(
                 lead=lead,
@@ -6067,10 +6109,14 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
                 company=company, plafond_toit=plafond,
                 journal_auto=journal_auto)
     except AutoDevisError as exc:
+        _liberer_marque_auto_devis(company, lead_id)
         logger.info(
             'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
             lead_id, exc.field or 'donnée manquante')
         return None
+    except Exception:  # noqa: BLE001 — relâcher AVANT de laisser remonter
+        _liberer_marque_auto_devis(company, lead_id)
+        raise
 
     # ── LA BOUCLE DE VÉRIFICATION DU COMMERCIAL ───────────────────────────
     # Le devis porte le lead : il apparaît donc DÉJÀ dans la liste des devis et

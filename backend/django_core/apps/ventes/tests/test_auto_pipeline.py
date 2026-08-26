@@ -401,6 +401,49 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         self.assertIsNone(self._creer(lead))
         self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
 
+    def test_un_echec_ne_ferme_pas_la_porte_pour_toujours(self):
+        """F5 — LA MARQUE ATTESTE D'UN DEVIS CRÉÉ, PAS D'UNE TENTATIVE.
+
+        ``dedupe_event`` pose sa ligne AVANT le travail (c'est ce qui départage
+        deux workers simultanés). Laissée en place après un échec, elle
+        fermait le lead DÉFINITIVEMENT : le commercial remplit la facture
+        manquante, relance — et plus rien ne se crée jamais.
+        """
+        from core.idempotency import ProcessedWebhookEvent
+
+        lead = self._lead(facture_hiver=None, roof_outline=CONTOUR_LATLNG)
+        self.assertIsNone(self._creer(lead))       # rien : pas de facture
+        self.assertFalse(ProcessedWebhookEvent.objects.filter(
+            company=self.company, source='ventes.auto_devis',
+            event_id=str(lead.pk)).exists())
+
+        # La donnée arrive : le MÊME lead peut enfin recevoir son devis.
+        lead.facture_hiver = Decimal('1800')
+        lead.save(update_fields=['facture_hiver'])
+        self.assertIsNotNone(self._creer(lead))
+        # Et cette fois la marque RESTE : le devis existe pour de bon.
+        self.assertTrue(ProcessedWebhookEvent.objects.filter(
+            company=self.company, source='ventes.auto_devis',
+            event_id=str(lead.pk)).exists())
+
+    def test_une_exception_inattendue_relache_aussi_la_marque(self):
+        """F5 — même règle sur un échec NON prévu (catalogue indisponible,
+        base momentanément fautive) : l'erreur remonte, mais elle ne laisse
+        pas le lead condamné."""
+        from core.idempotency import ProcessedWebhookEvent
+
+        lead = self._lead(roof_outline=CONTOUR_LATLNG)
+        with patch('apps.ventes.services.build_devis_auto',
+                   side_effect=RuntimeError('catalogue indisponible')):
+            with self.assertRaises(RuntimeError):
+                self._creer(lead)
+        self.assertFalse(ProcessedWebhookEvent.objects.filter(
+            company=self.company, source='ventes.auto_devis',
+            event_id=str(lead.pk)).exists())
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
+        # Le chemin normal redevient possible immédiatement.
+        self.assertIsNotNone(self._creer(lead))
+
     def test_un_devis_saisi_a_la_main_bloque_lauto(self):
         lead = self._lead(roof_outline=CONTOUR_LATLNG)
         Devis.objects.create(company=self.company, lead=lead,
