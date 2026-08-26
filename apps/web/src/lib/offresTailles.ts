@@ -170,18 +170,6 @@ export interface OffreVariante {
   famillesDiff: OffreFamillesDiff | null;
   /** `false` UNIQUEMENT quand le moteur l'affirme (taille bornée par le toit). */
   toitOk: boolean | null;
-  /**
-   * #8 — ARTEFACTS PROPRES À CETTE OPTION (calepinage / schéma unifilaire),
-   * servis par une lane backend PARALLÈLE qui n'a pas encore atterri.
-   *
-   * LECTURE STRICTEMENT DÉFENSIVE : tant que le backend ne les sert pas, ces
-   * deux champs valent `null` et la page garde ses artefacts UNIQUES
-   * d'aujourd'hui (le calepinage et le schéma du devis officiel) — jamais un
-   * cadre vide, jamais un « bientôt disponible », jamais un dessin fabriqué
-   * pour une taille qui n'a pas été étudiée.
-   */
-  calepinageSvg: string | null;
-  schemaSvg: string | null;
 }
 
 /**
@@ -211,19 +199,7 @@ function variante(brut: unknown): OffreVariante | null {
     familles: familles(o.familles),
     famillesDiff: famillesDiff(o.familles_diff),
     toitOk: typeof o.toit_ok === 'boolean' ? o.toit_ok : null,
-    // Un SVG servi doit VRAIMENT en être un : une chaîne quelconque recopiée
-    // dans le DOM par `set:html` serait une injection. Même garde que
-    // `hasSldSvg` pour le schéma unique de la page.
-    calepinageSvg: svgServi(o.calepinage_svg),
-    schemaSvg: svgServi(o.schema_svg),
   };
-}
-
-/** Un SVG SERVI, et rien d'autre : la chaîne doit commencer par `<svg`. Toute
- *  autre valeur est écartée — la page garde alors son artefact d'aujourd'hui. */
-function svgServi(valeur: unknown): string | null {
-  const s = texte(valeur);
-  return s && s.trimStart().startsWith('<svg') ? s : null;
 }
 
 /** La configuration DEMANDÉE quand le client clique « Demander cette
@@ -455,6 +431,218 @@ export interface AnneeCumulee {
   /** 1..N — la série servie commence à l'année 1 (l'année 0 vaut −prix). */
   annee: number;
   cumuleMad: number;
+}
+
+// ── CORRECTION #8 · LE DESSIN DE TOITURE DE CHAQUE OPTION ───────────────────
+// Contrat `calepinage_options` (racine). Deux principes gouvernent tout ce qui
+// suit, et expliquent pourquoi ce module est si mince :
+//
+//  1. AUCUN SECOND FORMAT DE DESSIN. Le `layout` d'une option a EXACTEMENT la
+//     forme de la clé racine `roof_layout` : la page le rejoue dans SA
+//     visionneuse existante (`parseRoofLayout` → `buildViewerFullPlan`). Le
+//     backend ne rend AUCUN SVG de calepinage — il n'en a jamais rendu. Ce
+//     module ne TYPE donc pas le layout : il le laisse passer tel quel vers le
+//     lecteur qui en est déjà propriétaire, au lieu d'en faire une seconde
+//     description qui pourrait dériver.
+//  2. `origine: "devis"` NE PORTE PAS DE LAYOUT. Quand une option dessine
+//     exactement ce que le devis pose, la page réutilise `roof_layout` — zéro
+//     copie, donc zéro dessin voisin qui divergerait de l'artefact contractuel.
+//     C'est la discipline de la carte `recommande`, appliquée à la géométrie.
+
+/** Le dessin d'UNE option (une taille × une variante). */
+export interface OptionCalepinage {
+  /** Panneaux DEMANDÉS par cette taille. */
+  nbPanneaux: number | null;
+  /** Panneaux réellement DESSINÉS — inférieur quand le toit a tranché. */
+  nbPanneauxDessines: number | null;
+  /** `devis` ⇒ réutiliser la clé racine `roof_layout` (aucun layout ici). */
+  origine: 'devis' | 'derive';
+  /** `true` UNIQUEMENT quand le toit réel n'a pas pu tout accueillir. */
+  plafonne: boolean;
+  /**
+   * Le calepinage dérivé, DANS LA FORME DE `roof_layout` — opaque ici, relu par
+   * `parseRoofLayout`. `null` sur `origine: "devis"` (par contrat) et sur toute
+   * valeur illisible : la page retombe alors sur son artefact d'aujourd'hui.
+   */
+  layout: unknown | null;
+}
+
+function optionCalepinage(brut: unknown): OptionCalepinage | null {
+  if (!brut || typeof brut !== 'object') return null;
+  const o = brut as Record<string, unknown>;
+  const origine = o.origine === 'devis' ? 'devis' : o.origine === 'derive' ? 'derive' : null;
+  // Une option sans origine lisible ne dit pas d'où vient son dessin : on
+  // préfère l'absence à un dessin dont on ne saurait pas s'il est contractuel.
+  if (origine === null) return null;
+  const layoutBrut = o.layout;
+  const layout = origine === 'derive' && layoutBrut && typeof layoutBrut === 'object'
+    ? layoutBrut
+    : null;
+  // Un `derive` SANS layout exploitable n'a rien à montrer.
+  if (origine === 'derive' && layout === null) return null;
+  return {
+    nbPanneaux: nombre(o.nb_panneaux),
+    nbPanneauxDessines: nombre(o.nb_panneaux_dessines),
+    origine,
+    plafonne: o.plafonne === true,
+    layout,
+  };
+}
+
+/**
+ * Le POINTEUR de schéma unifilaire : il NOMME l'option que le schéma DÉJÀ SERVI
+ * (`sld_svg`, racine) décrit. Il n'en fabrique aucun autre — le devis ne stocke
+ * qu'UNE conception électrique, et en dessiner une seconde exigerait un calcul
+ * et une écriture sur un chemin de lecture publique.
+ *
+ * La conséquence côté page est une RÈGLE D'HONNÊTETÉ : le schéma n'est montré
+ * QUE sous l'option qu'il décrit. Le montrer sous une autre taille le
+ * mal-étiquetterait — un plan électrique légendé pour une installation qui
+ * n'est pas la sienne.
+ */
+export interface PointeurSld {
+  cle: string;
+  variante: 'sans' | 'avec';
+}
+
+function pointeurSld(brut: unknown): PointeurSld | null {
+  if (!brut || typeof brut !== 'object') return null;
+  const o = brut as Record<string, unknown>;
+  const cle = texte(o.cle);
+  const variante = o.variante === 'avec' ? 'avec' : o.variante === 'sans' ? 'sans' : null;
+  if (!cle || variante === null) return null;
+  return { cle, variante };
+}
+
+export interface CalepinageOptions {
+  /** Panneaux du calepinage RÉEL du devis (l'ancre de toute la dérivation). */
+  nbPanneauxCalepines: number | null;
+  /** Absent quand aucun schéma n'est servi, ou qu'il ne dit pas ce qu'il dessine. */
+  sld: PointeurSld | null;
+  /** `offres[cle][variante]` — la carte des dessins, telle que servie. */
+  offres: Record<string, Partial<Record<'sans' | 'avec', OptionCalepinage>>>;
+}
+
+/**
+ * `null` quand la clé n'est pas servie (devis sans calepinage exploitable, non
+ * résidentiel, section « Calepinage 3D » décochée, ou toute erreur de
+ * dérivation) : la page rend alors EXACTEMENT ce qu'elle rend aujourd'hui — le
+ * calepinage officiel s'il est servi, le poster sinon.
+ */
+export function calepinageOptions(payload: unknown): CalepinageOptions | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const brut = (payload as Record<string, unknown>).calepinage_options;
+  if (!brut || typeof brut !== 'object') return null;
+  const o = brut as Record<string, unknown>;
+  const offresBrut = o.offres;
+  const offres: CalepinageOptions['offres'] = {};
+  if (offresBrut && typeof offresBrut === 'object') {
+    for (const [cle, parVariante] of Object.entries(offresBrut as Record<string, unknown>)) {
+      if (!parVariante || typeof parVariante !== 'object') continue;
+      const pv = parVariante as Record<string, unknown>;
+      const entree: Partial<Record<'sans' | 'avec', OptionCalepinage>> = {};
+      for (const v of ['sans', 'avec'] as const) {
+        const dessin = optionCalepinage(pv[v]);
+        if (dessin) entree[v] = dessin;
+      }
+      if (entree.sans || entree.avec) offres[cle] = entree;
+    }
+  }
+  if (Object.keys(offres).length === 0 && !pointeurSld(o.sld)) return null;
+  return {
+    nbPanneauxCalepines: nombre(o.nb_panneaux_calepines),
+    sld: pointeurSld(o.sld),
+    offres,
+  };
+}
+
+/** Le dessin d'une taille × variante, ou `null` — jamais de repli sur l'autre
+ *  variante : un dessin est une géométrie, pas un chiffre commercial. */
+export function dessinDeLOption(
+  bloc: CalepinageOptions | null,
+  cle: string,
+  variante: 'sans' | 'avec',
+): OptionCalepinage | null {
+  return bloc?.offres[cle]?.[variante] ?? null;
+}
+
+/** `true` quand le schéma unifilaire SERVI décrit EXACTEMENT cette option. */
+export function sldDecritLOption(
+  bloc: CalepinageOptions | null,
+  cle: string,
+  variante: 'sans' | 'avec',
+): boolean {
+  return bloc?.sld?.cle === cle && bloc?.sld?.variante === variante;
+}
+
+// ── AUDIT #23 · ANNEXE « PARAMÈTRES DU SITE » ───────────────────────────────
+// Ce que l'étude a RÉELLEMENT retenu pour CE toit-là. Entièrement facultative,
+// champ par champ. Deux règles la gouvernent :
+//  · AUCUN DÉFAUT — pas d'inclinaison « 30° » supposée, pas de « plein sud », et
+//    surtout pas d'ombrage forfaitaire : `ombrage` n'existe QUE si une matrice
+//    d'ombrage MESURÉE est stockée, et ne publie alors qu'un FAIT (`mesure`),
+//    jamais un pourcentage de perte qui serait un chiffre inventé ;
+//  · DES ANGLES ET DES NOMS, JAMAIS DES COORDONNÉES MACHINE — ni origine, ni
+//    sommets, ni lat/lng, ni surface : le contour reste dans `roof_layout`,
+//    sous sa propre case de section.
+
+export interface ParametresSite {
+  orientationDeg: number | null;
+  /** Le nom du cap (« Sud »), pas une valeur machine. */
+  orientation: string | null;
+  inclinaisonDeg: number | null;
+  typeToit: string | null;
+  irradiation: { source: string | null; ville: string | null } | null;
+  chaines: { nb: number | null; modulesParChaine: number[] } | null;
+  /** Présent UNIQUEMENT si une matrice d'ombrage MESURÉE est stockée. */
+  ombrageMesure: boolean;
+}
+
+export function parametresSite(payload: unknown): ParametresSite | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const brut = (payload as Record<string, unknown>).parametres_site;
+  if (!brut || typeof brut !== 'object') return null;
+  const o = brut as Record<string, unknown>;
+
+  const irrBrut = o.irradiation;
+  let irradiation: ParametresSite['irradiation'] = null;
+  if (irrBrut && typeof irrBrut === 'object') {
+    const i = irrBrut as Record<string, unknown>;
+    const source = texte(i.source);
+    const ville = texte(i.ville);
+    if (source || ville) irradiation = { source, ville };
+  }
+
+  const chBrut = o.chaines;
+  let chaines: ParametresSite['chaines'] = null;
+  if (chBrut && typeof chBrut === 'object') {
+    const c = chBrut as Record<string, unknown>;
+    const modules = Array.isArray(c.modules_par_chaine)
+      ? c.modules_par_chaine.map(nombre).filter((n): n is number => n !== null)
+      : [];
+    const nb = nombre(c.nb);
+    if (nb !== null || modules.length > 0) chaines = { nb, modulesParChaine: modules };
+  }
+
+  const ombrageBrut = o.ombrage;
+  const ombrageMesure = !!ombrageBrut && typeof ombrageBrut === 'object'
+    && (ombrageBrut as Record<string, unknown>).mesure === true;
+
+  const bloc: ParametresSite = {
+    orientationDeg: nombre(o.orientation_deg),
+    orientation: texte(o.orientation),
+    inclinaisonDeg: nombre(o.inclinaison_deg),
+    typeToit: texte(o.type_toit),
+    irradiation,
+    chaines,
+    ombrageMesure,
+  };
+  // Aucun champ réel ⇒ pas d'annexe : un encadré « Paramètres du site » vide
+  // est pire que pas d'encadré du tout.
+  const aQuelqueChose = bloc.orientationDeg !== null || bloc.orientation !== null
+    || bloc.inclinaisonDeg !== null || bloc.typeToit !== null
+    || bloc.irradiation !== null || bloc.chaines !== null || bloc.ombrageMesure;
+  return aQuelqueChose ? bloc : null;
 }
 
 export function cumulAnnuelServi(

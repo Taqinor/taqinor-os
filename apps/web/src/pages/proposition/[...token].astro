@@ -233,6 +233,12 @@ import {
   cumulAnnuelServi,
   aUneDiffMateriel,
   FAMILLE_LABELS,
+  // CORRECTION #8 — le dessin de toiture de CHAQUE option, et l'annexe
+  // « paramètres du site » (audit #23), servis par la même lane backend.
+  calepinageOptions,
+  dessinDeLOption,
+  sldDecritLOption,
+  parametresSite,
   type OffreTaille,
   type OffreVariante,
 } from '../../lib/offresTailles';
@@ -1661,6 +1667,40 @@ const cumul25 = recoVariante === 'avec' ? cumul25Avec : cumul25Sans;
  *  tarifaire_pct === 0`). Absent ⇒ pas de note — on n'affirme pas une
  *  hypothèse qu'on ne lit pas. */
 const tailleSansEscalade = tailles?.escaladeTarifairePct === 0;
+// ── CORRECTION #8 — LE DESSIN DE TOITURE DE CHAQUE OPTION ──────────────────
+// `null` (pas de calepinage exploitable, section « Calepinage 3D » décochée,
+// devis non résidentiel) ⇒ la page rend EXACTEMENT ce qu'elle rend aujourd'hui :
+// le calepinage officiel s'il est servi, le poster sinon.
+const calepOptions = ok ? calepinageOptions(data) : null;
+/** Sérialisé UNE fois pour la visionneuse : `origine: "devis"` ne porte AUCUN
+ *  layout (la visionneuse rejoue alors la clé racine `roof_layout`, déjà dans
+ *  `viewerConfig`) — zéro copie, donc zéro dessin voisin qui divergerait. */
+const calepOptionsPourClient = calepOptions
+  ? JSON.stringify({
+      offres: Object.fromEntries(
+        Object.entries(calepOptions.offres).map(([cle, parVariante]) => [
+          cle,
+          Object.fromEntries(
+            Object.entries(parVariante).map(([v, d]) => [
+              v,
+              { origine: d!.origine, layout: d!.layout },
+            ]),
+          ),
+        ]),
+      ),
+    })
+  : null;
+// AUDIT #23 — annexe « paramètres du site ». Champ par champ, aucun défaut.
+const paramSite = ok ? parametresSite(data) : null;
+/** Le type de toiture est une clé MACHINE (`pitched`/`flat`) : on ne la montre
+ *  jamais telle quelle, et une clé inconnue fait DISPARAÎTRE la ligne plutôt
+ *  que d'afficher un mot d'ingénieur anglais à un client. */
+const TYPE_TOIT_LABELS: Record<string, { fr: string; en: string; ar: string }> = {
+  pitched: { fr: 'Toiture en pente', en: 'Pitched roof', ar: 'سطح مائل' },
+  flat: { fr: 'Toiture-terrasse', en: 'Flat roof', ar: 'سطح مستوٍ' },
+};
+const typeToitLabel = paramSite?.typeToit ? (TYPE_TOIT_LABELS[paramSite.typeToit] ?? null) : null;
+
 /** PRÉ-VISITE — un lien public SANS prix réel n'est pas une proposition
  *  chiffrée : la page le DIT, au lieu de laisser croire à un devis muet. On
  *  réutilise `heroHasRealPrice` (défini plus haut, et qui pilote déjà le CTA) —
@@ -2097,7 +2137,7 @@ const signConfig = ok
       {show3d && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig}>
+        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-calepinage-options={calepOptionsPourClient}>
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-en="At the heart of your proposal" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
           <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-en="Your roof in 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
@@ -4717,9 +4757,11 @@ const signConfig = ok
                  DÉFENSIVE — absents (le cas d'aujourd'hui), ce bloc n'affiche
                  aucun dessin et la page garde ses artefacts uniques. */}
           {tailles.offres.map((t) => tailleVariantes.map((v) => {
-            const avecBatterie = v === 'avec';
-            const va: OffreVariante | null = varianteAffichee(t, avecBatterie);
             const estLEtatOfficiel = t.estLeDevis && !t.ajuste && v === recoVariante;
+            // Le dessin de CETTE option, et le verdict « le schéma servi
+            // décrit-il CETTE option ? » — les deux absents par défaut.
+            const dessin = dessinDeLOption(calepOptions, t.cle, v);
+            const sldIci = sldDecritLOption(calepOptions, t.cle, v);
             return (
               <div
                 class="mt-6 rounded-xl border border-white/10 bg-nuit-800/40 p-4 text-sm"
@@ -4754,21 +4796,72 @@ const signConfig = ok
                     Les chiffres ci-dessus sont ceux de cette taille. Les courbes, le calepinage et le schéma électrique plus bas décrivent, eux, votre devis officiel — demandez cette taille pour en recevoir l’étude complète.
                   </p>
                 )}
-                {/* Artefacts PROPRES à cette option, quand — et seulement
-                    quand — le backend les sert. Aujourd'hui : rien. */}
-                {va?.calepinageSvg && (
-                  <div class="mt-3" data-taille-calepinage set:html={va.calepinageSvg}></div>
-                )}
-                {va?.schemaSvg && (
-                  <div class="mt-3" data-taille-schema set:html={va.schemaSvg}></div>
+                {/* ── LE DESSIN DE CETTE OPTION (correction #8) ──────────────
+                    Le backend ne sert AUCUN SVG : il sert, pour les tailles qui
+                    ne dessinent pas ce que le devis pose, un `layout` DANS LA
+                    FORME EXACTE de `roof_layout`. La page le rejoue donc dans
+                    SA visionneuse existante — jamais un second moteur de rendu.
+                    `origine: "devis"` ne porte aucun layout : la vue 3D d'en
+                    haut montre DÉJÀ cette configuration, on le dit et on s'y
+                    réfère au lieu d'en fabriquer une copie. */}
+                {dessin && (
+                  <p class="mt-3 rounded-lg border border-white/10 bg-nuit-800/60 px-3 py-2 text-xs text-lune-soft">
+                    {dessin.origine === 'devis' ? (
+                      <span data-i18n
+                        data-fr="La vue 3D de votre toit, plus haut sur cette page, montre exactement cette configuration."
+                        data-en="The 3D view of your roof, higher up this page, shows exactly this configuration."
+                        data-ar="العرض ثلاثي الأبعاد لسطحكم، أعلى هذه الصفحة، يُظهر هذه التشكيلة بالضبط.">
+                        La vue 3D de votre toit, plus haut sur cette page, montre exactement cette configuration.
+                      </span>
+                    ) : (
+                      <>
+                        <span data-i18n
+                          data-fr="Ce dessin reprend VOTRE toit — même contour, mêmes rangées — avec"
+                          data-en="This drawing reuses YOUR roof — same outline, same rows — with"
+                          data-ar="يعتمد هذا الرسم سطحكم أنتم — نفس المحيط، نفس الصفوف — مع">
+                          Ce dessin reprend VOTRE toit — même contour, mêmes rangées — avec
+                        </span>
+                        {dessin.nbPanneauxDessines !== null && (
+                          <span class="mx-1 font-semibold text-brass-300" dir="ltr">{formatNumber(dessin.nbPanneauxDessines)}</span>
+                        )}
+                        <span data-i18n data-fr="panneaux." data-en="panels." data-ar="لوحاً.">panneaux.</span>
+                        {/* PLAFOND — c'est le TOIT qui a tranché, pas nous. On
+                            le dit, sinon le client compte les panneaux à
+                            l'écran et trouve un autre chiffre sur sa carte. */}
+                        {dessin.plafonne && (
+                          <span class="mt-1 block text-lune-faint" data-i18n
+                            data-fr="Plafonné par votre toit : il ne peut pas en accueillir davantage."
+                            data-en="Capped by your roof: it cannot host any more."
+                            data-ar="محدود بسطحكم: لا يمكنه استيعاب المزيد.">
+                            Plafonné par votre toit : il ne peut pas en accueillir davantage.
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          class="mt-1 block underline-offset-2 text-brass-300 hover:underline"
+                          data-taille-voir-3d
+                        >
+                          <span data-i18n data-fr="Voir ce calepinage en 3D" data-en="See this layout in 3D" data-ar="عرض هذا التوزيع بالأبعاد الثلاثة">Voir ce calepinage en 3D</span>
+                        </button>
+                      </>
+                    )}
+                  </p>
                 )}
                 <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   <a href="#production" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
                     data-fr="Voir la production" data-en="See production" data-ar="عرض الإنتاج">Voir la production</a>
                   <a href="#options" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
                     data-fr="Voir le détail du prix" data-en="See the price detail" data-ar="عرض تفاصيل الثمن">Voir le détail du prix</a>
-                  <a href="#sld" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
-                    data-fr="Voir le schéma électrique" data-en="See the electrical diagram" data-ar="عرض المخطط الكهربائي">Voir le schéma électrique</a>
+                  {/* LE SCHÉMA N'EST PROPOSÉ QUE SOUS L'OPTION QU'IL DÉCRIT.
+                      Le devis ne stocke QU'UNE conception électrique ; le
+                      pointeur `sld` dit laquelle des options elle dessine. Le
+                      lier depuis une autre taille légenderait un plan technique
+                      avec le nom d'une installation qui n'est pas la sienne —
+                      un mal-étiquetage, pas un raccourci. */}
+                  {sldIci && (
+                    <a href="#sld" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+                      data-fr="Voir le schéma électrique" data-en="See the electrical diagram" data-ar="عرض المخطط الكهربائي">Voir le schéma électrique</a>
+                  )}
                 </p>
               </div>
             );
@@ -5978,7 +6071,7 @@ const signConfig = ok
 
       <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
            <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
-      {(assumptions.length > 0 || enviro) && (
+      {(assumptions.length > 0 || enviro || paramSite) && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
             <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-en="Our assumptions" data-ar="فرضياتنا">Nos hypothèses</summary>
@@ -6005,6 +6098,87 @@ const signConfig = ok
                     data-en={`Estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — Moroccan grid emission factor, source to be specified.`}
                     data-ar={`الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh — معامل انبعاث الشبكة المغربية، المصدر يبقى للتحديد.`}>
                     Production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — facteur d’émission du réseau marocain, source à préciser.
+                  </dd>
+                </div>
+              )}
+              {/* ── AUDIT #23 · ANNEXE « PARAMÈTRES DU SITE » ─────────────────
+                  Ce que l'étude a RÉELLEMENT retenu pour CE toit-là. Sa place
+                  est ici, avec les autres hypothèses : c'est de la méthode, pas
+                  de l'argumentaire.
+
+                  DEUX DISCIPLINES : (a) chaque champ est OMIS quand il n'est pas
+                  stocké — pas d'inclinaison « 30° par défaut », pas de « plein
+                  sud » supposé, et surtout AUCUN ombrage forfaitaire : la ligne
+                  d'ombrage n'existe que si une matrice MESURÉE est stockée, et
+                  elle n'énonce alors qu'un FAIT, jamais un pourcentage de perte
+                  qui serait inventé ; (b) des ANGLES et des NOMS, jamais des
+                  coordonnées machine — le contour du toit reste dans le
+                  calepinage, sous sa propre case de section.
+
+                  Le PRODUCTIBLE n'est PAS republié ici : il vit déjà dans les
+                  hypothèses ci-dessus. On ne fait que NOMMER sa source et sa
+                  ville — un second arrondi du même chiffre est exactement ce
+                  que l'incident « 21 contre 22 » interdit. */}
+              {paramSite && (
+                <div data-parametres-site>
+                  <dt class="text-lune-faint" data-i18n data-fr="Paramètres du site" data-en="Site parameters" data-ar="معطيات الموقع">Paramètres du site</dt>
+                  <dd class="mt-0.5 text-lune-soft">
+                    <ul class="space-y-0.5">
+                      {(paramSite.orientation !== null || paramSite.orientationDeg !== null) && (
+                        <li>
+                          <span data-i18n data-fr="Orientation :" data-en="Orientation:" data-ar="الاتجاه:">Orientation :</span>
+                          {paramSite.orientation !== null && <span class="ms-1 text-lune">{paramSite.orientation}</span>}
+                          {paramSite.orientationDeg !== null && (
+                            <span class="ms-1 text-lune-faint" dir="ltr">({formatNumber(paramSite.orientationDeg)}°)</span>
+                          )}
+                        </li>
+                      )}
+                      {paramSite.inclinaisonDeg !== null && (
+                        <li>
+                          <span data-i18n data-fr="Inclinaison :" data-en="Tilt:" data-ar="الميل:">Inclinaison :</span>
+                          <span class="ms-1 text-lune" dir="ltr">{formatNumber(paramSite.inclinaisonDeg)}°</span>
+                        </li>
+                      )}
+                      {typeToitLabel && (
+                        <li>
+                          <span data-i18n data-fr="Type de toiture :" data-en="Roof type:" data-ar="نوع السطح:">Type de toiture :</span>
+                          <span class="ms-1 text-lune" data-i18n
+                            data-fr={typeToitLabel.fr} data-en={typeToitLabel.en} data-ar={typeToitLabel.ar}>{typeToitLabel.fr}</span>
+                        </li>
+                      )}
+                      {paramSite.irradiation !== null && (
+                        <li>
+                          <span data-i18n data-fr="Source d’irradiation :" data-en="Irradiation source:" data-ar="مصدر الإشعاع:">Source d’irradiation :</span>
+                          {paramSite.irradiation.source !== null && <span class="ms-1 text-lune">{paramSite.irradiation.source}</span>}
+                          {paramSite.irradiation.ville !== null && <span class="ms-1 text-lune-faint">({paramSite.irradiation.ville})</span>}
+                        </li>
+                      )}
+                      {paramSite.chaines !== null && (
+                        <li>
+                          <span data-i18n data-fr="Chaînes :" data-en="Strings:" data-ar="السلاسل:">Chaînes :</span>
+                          {paramSite.chaines.nb !== null && (
+                            <span class="ms-1 text-lune" dir="ltr">{formatNumber(paramSite.chaines.nb)}</span>
+                          )}
+                          {paramSite.chaines.modulesParChaine.length > 0 && (
+                            <span class="ms-1 text-lune-faint" dir="ltr">
+                              ({paramSite.chaines.modulesParChaine.map((n) => formatNumber(n)).join(' + ')}
+                              <span class="ms-1" data-i18n data-fr="modules" data-en="modules" data-ar="وحدات">modules</span>)
+                            </span>
+                          )}
+                        </li>
+                      )}
+                      {/* OMBRAGE — un FAIT, jamais un pourcentage. Absent quand
+                          aucune mesure n'a été relevée : ne rien dire est plus
+                          honnête que « ombrage négligeable » supposé. */}
+                      {paramSite.ombrageMesure && (
+                        <li data-i18n
+                          data-fr="Ombrage : relevé sur site (mesuré, pas estimé)."
+                          data-en="Shading: surveyed on site (measured, not estimated)."
+                          data-ar="التظليل: مُعايَن في الموقع (مقيس، لا مقدَّر).">
+                          Ombrage : relevé sur site (mesuré, pas estimé).
+                        </li>
+                      )}
+                    </ul>
                   </dd>
                 </div>
               )}
@@ -7244,6 +7418,57 @@ const signConfig = ok
     let booted = false;
     let handle: { dispose: () => void } | null = null;
 
+    // ── CORRECTION #8 — LE CALEPINAGE DE L'OPTION CHOISIE ────────────────────
+    // La visionneuse reste UNIQUE : on ne monte jamais un second moteur de
+    // rendu. On échange seulement le LAYOUT qu'elle rejoue — les dessins par
+    // option ont, par contrat, la forme EXACTE de `roof_layout`.
+    //
+    // `layoutRacine` est le calepinage du devis : c'est lui au premier rendu, et
+    // c'est lui que retrouve toute option `origine: "devis"` (qui ne porte
+    // volontairement aucune copie). La vue par défaut est donc, au bit près,
+    // celle d'aujourd'hui.
+    const layoutRacine = layout;
+    interface DessinOption { origine: string; layout: RoofLayout | null }
+    let dessinsParOption: Record<string, Record<string, DessinOption>> = {};
+    try {
+      const brut = section3d.dataset.calepinageOptions;
+      if (brut) {
+        const parsed = JSON.parse(brut) as { offres?: Record<string, Record<string, DessinOption>> };
+        dessinsParOption = parsed.offres ?? {};
+      }
+    } catch {
+      dessinsParOption = {};
+    }
+
+    /** Rejoue la visionneuse sur le calepinage d'une option. Aucun dessin servi
+     *  pour cette option ⇒ NO-OP total : on ne montre jamais le toit d'une
+     *  taille sous le nom d'une autre. */
+    function montrerCalepinageOption(cle: string, variante: string): void {
+      const d = dessinsParOption[cle]?.[variante];
+      if (!d) return;
+      const cible = d.origine === 'devis' ? layoutRacine : (d.layout ?? null);
+      if (!cible) return;
+      layout = cible;
+      // Déjà montée : on la démonte et on la remonte sur le nouveau layout —
+      // c'est le MÊME chemin de boot, donc aucune divergence de rendu possible.
+      if (booted) {
+        handle?.dispose();
+        handle = null;
+        booted = false;
+        if (overlay) overlay.hidden = false;
+        if (startBtn) { startBtn.hidden = false; startBtn.disabled = false; }
+      }
+      section3d!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // SEAM DÉCOUPLÉE — la section des tailles ÉMET, celle-ci ÉCOUTE. Aucune des
+    // deux ne va chercher les nœuds de l'autre : c'est ce qui garde la garde
+    // d'énumération DOM vraie des deux côtés.
+    document.addEventListener('taqinor:calepinage-option', (ev) => {
+      const d = (ev as CustomEvent<{ cle?: string; variante?: string }>).detail;
+      if (d?.cle && d?.variante) montrerCalepinageOption(d.cle, d.variante);
+    });
+
     function showFallback(msg: string): void {
       if (startBtn) startBtn.hidden = true;
       if (noteEl) noteEl.textContent = msg;
@@ -7908,6 +8133,24 @@ const signConfig = ok
         if (detailEl) detailEl.value = cta.dataset.tailleMessage ?? '';
         revisionSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         detailEl?.focus();
+      });
+    }
+
+    // « Voir ce calepinage en 3D » — la section des tailles ÉMET, la visionneuse
+    // ÉCOUTE. Aucune des deux n'atteint les nœuds de l'autre : c'est un
+    // événement, pas une poignée. Le bouton n'existe que sur une option dont le
+    // backend a servi un dessin DÉRIVÉ (une option `origine: "devis"` renvoie à
+    // la vue d'en haut, qui la montre déjà). Jamais déclenché au chargement :
+    // seul un clic délibéré remonte la visionneuse.
+    for (const btn of Array.from(section.querySelectorAll<HTMLButtonElement>('[data-taille-voir-3d]'))) {
+      btn.addEventListener('click', () => {
+        const bloc = btn.closest('[data-taille-detail]') as HTMLElement | null;
+        const cleOpt = bloc?.dataset.tailleCle;
+        const varianteOpt = bloc?.dataset.tailleVariante;
+        if (!cleOpt || !varianteOpt) return;
+        document.dispatchEvent(new CustomEvent('taqinor:calepinage-option', {
+          detail: { cle: cleOpt, variante: varianteOpt },
+        }));
       });
     }
 
