@@ -1044,6 +1044,52 @@ def _arrondi(valeur, decimales=2):
     return None if valeur is None else round(valeur, decimales)
 
 
+def tailles_eligibles(tableau):
+    """Les lignes du tableau qu'une recommandation a le DROIT de retenir.
+
+    Une taille n'est éligible que si l'option de BASE (sans batterie) est
+    composable, chiffrable ET électriquement saine. Un verdict bloquant sur la
+    variante batterie n'écarte PAS la taille — il retire seulement l'option
+    batterie (``batterie_disponible``), ce que le tableau montre.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) pour que
+    :mod:`apps.ventes.offres_tailles` lise la MÊME éligibilité que
+    l'optimiseur, au lieu d'en recopier une seconde qui divergerait au premier
+    critère ajouté.
+    """
+    return [
+        ligne for ligne in (tableau or [])
+        if ligne.get('composable')
+        and ligne.get('payback_sans_annees') is not None
+        and not ligne.get('verdicts_bloquants_sans')
+    ]
+
+
+def point_depart_meilleur_payback(eligibles):
+    """LE POINT DE DÉPART de la doctrine : la taille au MEILLEUR PAYBACK.
+
+    À égalité (écart < :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas
+    connu au centième d'année), la meilleure couverture de consommation, puis
+    le plus grand champ. Renvoie ``(ligne | None, meilleur_payback, a_egalite)``
+    — le tuple dont :func:`choisir_recommandation` a besoin pour motiver son
+    choix, et dont :mod:`apps.ventes.offres_tailles` n'utilise que la ligne.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) — c'est
+    exactement l'offre « Éco » de la page client (« l'entrée de gamme sensée »).
+    L'extraire plutôt que la recopier garantit qu'Éco et le départ de la
+    recommandation ne peuvent JAMAIS désigner deux tailles différentes.
+    """
+    if not eligibles:
+        return None, None, []
+    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
+    a_egalite = [
+        x for x in eligibles
+        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
+    ]
+    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    return depart, meilleur_payback, a_egalite
+
+
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
@@ -1077,16 +1123,9 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     if critere not in CRITERES:
         critere = CRITERE_DEFAUT
 
-    # Une taille n'est éligible que si l'option de BASE (sans batterie) est
-    # composable, chiffrable ET électriquement saine. Un verdict bloquant sur
-    # la variante batterie n'écarte PAS la taille — il retire seulement
-    # l'option batterie (``batterie_disponible``), ce que le tableau montre.
-    eligibles = [
-        ligne for ligne in (tableau or [])
-        if ligne.get('composable')
-        and ligne.get('payback_sans_annees') is not None
-        and not ligne.get('verdicts_bloquants_sans')
-    ]
+    # Éligibilité : voir :func:`tailles_eligibles` (extraite le 26/08/2026 pour
+    # que ``offres_tailles`` lise la MÊME règle, jamais une seconde copie).
+    eligibles = tailles_eligibles(tableau)
     if not eligibles:
         return None, (
             'aucune taille recommandable : le catalogue ne compose aucune '
@@ -1110,12 +1149,11 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
         )
 
     # ── 1. LE POINT DE DÉPART : la taille au meilleur payback ────────────────
-    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
-    a_egalite = [
-        x for x in eligibles
-        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
-    ]
-    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    # Extrait en :func:`point_depart_meilleur_payback` (26/08/2026) : c'est
+    # AUSSI l'offre « Éco » de la page client, et les deux ne doivent jamais
+    # pouvoir désigner deux tailles différentes.
+    depart, meilleur_payback, a_egalite = point_depart_meilleur_payback(
+        eligibles)
 
     # ── 2. LA MONTÉE : doctrine du 25/08/2026 ────────────────────────────────
     # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
