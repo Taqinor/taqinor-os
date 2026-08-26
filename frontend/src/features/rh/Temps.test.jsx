@@ -35,6 +35,8 @@ vi.mock('../../api/rhApi', () => {
       createRoster: vi.fn(),
       updateRoster: vi.fn(),
       getConflitsRoster: vi.fn(empty),
+      // WIR239 — émargement de présence chantier (colonne Geofence morte).
+      emargerPresenceChantier: vi.fn(),
       getEmployes: vi.fn(() => Promise.resolve({
         data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
       })),
@@ -255,5 +257,29 @@ describe('Temps — WIR238 : roster (création + conflits de congé)', () => {
 
     expect(await screen.findByText(/en conflit de congé sur les 30 prochains jours/)).toBeInTheDocument()
     expect((await screen.findAllByText('Conflit congé')).length).toBeGreaterThan(1)
+  })
+})
+
+describe('Temps — WIR239 : émargement de présence chantier (colonne Geofence morte)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('émarge une présence chantier non émargée', async () => {
+    rhApi.getPresencesChantier.mockResolvedValueOnce({
+      data: [{
+        id: 15, employe: 9, employe_nom: 'Bennani Youssef',
+        installation_id: 4, date: '2026-08-12',
+        statut: 'present', statut_display: 'Présent', emarge: false, hors_zone: false,
+      }],
+    })
+    rhApi.emargerPresenceChantier.mockResolvedValueOnce({
+      data: { id: 15, emarge: true, hors_zone: false },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Présences chantier' }))
+    await screen.findAllByText('Bennani Youssef')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    await waitFor(() => expect(rhApi.emargerPresenceChantier).toHaveBeenCalledWith(15))
   })
 })

@@ -168,6 +168,11 @@ const rhApi = {
   updateRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
   getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
+  // WIR239 — émargement de présence chantier (colonne Geofence morte faute
+  // d'appelant) : accepte optionnellement gps_lat/gps_lng (drapeau hors_zone
+  // posé côté serveur, jamais bloquant).
+  emargerPresenceChantier: (id, data) =>
+    api.post(`/rh/presences-chantier/${id}/emarger/`, data ?? {}),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
   // WIR195 — un incident (retard/absence injustifiée) était créé depuis
   // Temps.jsx (`genererIncidentAbsence`) mais jamais relisible ni justifiable
@@ -226,6 +231,10 @@ const rhApi = {
   marquerSessionRealisee: (id, data) =>
     api.post(`/rh/sessions-formation/${id}/marquer-realisee/`, data ?? {}),
   getBesoinsFormation: (params) => api.get('/rh/besoins-formation/', { params }),
+  // WIR239 — bascule un besoin de formation en « satisfait » (400 si la
+  // session liée n'est pas réalisée — affiché tel quel).
+  satisfaireBesoinFormation: (id) =>
+    api.post(`/rh/besoins-formation/${id}/satisfaire/`, {}),
   // ── XRH34 — Quiz builder (gestion RH — porte les bonnes réponses ; ARC44) ──
   getQuizFormation: (params) => quizFormationResource.list(params),
   createQuizFormation: (data) => quizFormationResource.create(data),
@@ -353,12 +362,20 @@ const rhApi = {
   getAccidentsTravail: (params) => api.get('/rh/accidents-travail/', { params }),
   // WIR36 — wrapper d'écriture manquant (ViewSet full CRUD, aucun appelant).
   createAccidentTravail: (data) => api.post('/rh/accidents-travail/', data),
+  // WIR239 — export CSV de la déclaration CNSS des accidents du travail
+  // (colonnes matricule/identité/dates/gravité/arrêt/déclaration — blob).
+  exportAccidentsCnss: (params) =>
+    api.get('/rh/accidents-travail/export-cnss/', { params, responseType: 'blob' }),
   getPresquAccidents: (params) => api.get('/rh/presqu-accidents/', { params }),
   // WIR36 — idem : presqu'accident (near-miss).
   createPresquAccident: (data) => api.post('/rh/presqu-accidents/', data),
   getCauseriesSecurite: (params) => api.get('/rh/causeries-securite/', { params }),
   // WIR36 — idem : causerie de sécurité (toolbox talk).
   createCauserieSecurite: (data) => api.post('/rh/causeries-securite/', data),
+  // WIR239 — émargement d'un participant à une causerie (FG183, présence
+  // signée) : corps { participant }, déjà figurer sur la feuille sinon 400.
+  emargerCauserieParticipant: (id, data) =>
+    api.post(`/rh/causeries-securite/${id}/emarger/`, data ?? {}),
   getAnalysesRisques: (params) =>
     api.get('/rh/analyses-risques-chantier/', { params }),
   validerAnalyseRisques: (id, data) =>
@@ -472,6 +489,11 @@ const rhApi = {
     api.post('/rh/elements-variables-paie/', data),
   updateElementVariablePaie: (id, data) =>
     api.patch(`/rh/elements-variables-paie/${id}/`, data),
+  // WIR239 (PACT162) — export CSV serveur du bordereau (remplace l'export
+  // client trompeur : la colonne Retenues additionne les avances sur
+  // salaire APPROUVÉES à déduire sur la même période — jamais recalculé ici).
+  exportBordereauPaieCsv: (params) =>
+    api.get('/rh/elements-variables-paie/export-paie-csv/', { params, responseType: 'blob' }),
   marquerExporteElementVariablePaie: (id) =>
     api.post(`/rh/elements-variables-paie/${id}/marquer-exporte/`, {}),
 

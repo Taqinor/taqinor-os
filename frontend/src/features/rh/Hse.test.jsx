@@ -27,6 +27,9 @@ vi.mock('../../api/rhApi', () => {
       createAccidentTravail: vi.fn(),
       createPresquAccident: vi.fn(),
       createCauserieSecurite: vi.fn(),
+      // WIR239 — export CNSS (blob) + émargement d'un participant de causerie.
+      exportAccidentsCnss: vi.fn(),
+      emargerCauserieParticipant: vi.fn(),
     },
   }
 })
@@ -93,5 +96,45 @@ describe('Hse — déclarations manuelles (WIR36)', () => {
     await waitFor(() => expect(rhApi.createCauserieSecurite).toHaveBeenCalledWith(
       expect.objectContaining({ theme: 'Port des EPI', date_causerie: '2026-08-01' }),
     ))
+  })
+})
+
+describe('Hse — WIR239 : export CNSS + émargement des causeries', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    URL.createObjectURL = vi.fn(() => 'blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  it('télécharge le CSV CNSS des accidents via rhApi.exportAccidentsCnss', async () => {
+    rhApi.exportAccidentsCnss.mockResolvedValueOnce({ data: new Blob(['csv']) })
+    renderHse()
+    await screen.findByText('HSE — Hygiène, sécurité & environnement')
+
+    fireEvent.click(await screen.findByRole('button', { name: /Exporter CNSS/ }))
+    await waitFor(() => expect(rhApi.exportAccidentsCnss).toHaveBeenCalled())
+  })
+
+  it('émarge un participant de causerie via rhApi.emargerCauserieParticipant', async () => {
+    rhApi.getCauseriesSecurite.mockResolvedValueOnce({
+      data: [{
+        id: 5, theme: 'Port des EPI', date_causerie: '2026-08-01',
+        participants: [{ id: 12, participant: 9, participant_nom: 'Bennani Youssef', emarge: false }],
+      }],
+    })
+    rhApi.emargerCauserieParticipant.mockResolvedValueOnce({ data: {} })
+    renderHse()
+    await screen.findByText('HSE — Hygiène, sécurité & environnement')
+    fireEvent.click(screen.getByRole('radio', { name: 'Causeries' }))
+    await screen.findByText('Port des EPI')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émargement' }))[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Émarger' }))
+
+    await waitFor(() => expect(rhApi.emargerCauserieParticipant).toHaveBeenCalledWith(
+      5, { participant: 9 },
+    ))
+    expect(await screen.findByText('Émargé')).toBeInTheDocument()
   })
 })

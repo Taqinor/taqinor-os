@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, CheckCircle2, UploadCloud } from 'lucide-react'
+import { Plus, CheckCircle2, UploadCloud, Download } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Badge, toast, Button,
@@ -71,6 +71,26 @@ export default function ElementsVariablesPaie() {
     }
   }
 
+  // WIR239 (PACT162) — le CSV serveur remplace l'export client trompeur :
+  // la colonne Retenues y additionne les avances sur salaire APPROUVÉES à
+  // déduire sur la même période, jamais recalculé côté client. Placé AVANT
+  // « Marquer exporté » : on télécharge le bordereau réel avant de l'archiver.
+  const telechargerCsv = async (l) => {
+    try {
+      const res = await rhApi.exportBordereauPaieCsv({ employe: l.employe, annee: l.annee, mois: l.mois })
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `elements-variables-paie-${l.annee}-${l.mois}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Export CSV impossible.')
+    }
+  }
+
   const tone = (statut) => (statut === 'exporte' ? 'success' : statut === 'valide' ? 'info' : 'neutral')
 
   const columns = useMemo(() => [
@@ -88,10 +108,11 @@ export default function ElementsVariablesPaie() {
     if (l.statut === 'brouillon') {
       return [{ id: 'valider', label: 'Valider', icon: CheckCircle2, onClick: () => valider(l) }]
     }
+    const actions = [{ id: 'telecharger', label: 'Télécharger le CSV', icon: Download, onClick: () => telechargerCsv(l) }]
     if (l.statut === 'valide') {
-      return [{ id: 'exporter', label: 'Marquer exporté', icon: UploadCloud, onClick: () => marquerExporte(l) }]
+      actions.push({ id: 'exporter', label: 'Marquer exporté', icon: UploadCloud, onClick: () => marquerExporte(l) })
     }
-    return []
+    return actions
   }
 
   return (

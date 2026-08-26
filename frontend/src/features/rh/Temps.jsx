@@ -370,6 +370,24 @@ export default function Temps() {
     },
   ], [])
 
+  // WIR239 — la colonne Géofence était morte : rien n'appelait jamais
+  // l'action serveur `emarger` (idempotent — ré-émarger ne fait que rejouer
+  // l'horodatage/auteur). Sans GPS mobile ici, hors_zone reste False côté
+  // serveur (défaut) → « Dans la zone ».
+  const emargerPresence = async (p) => {
+    try {
+      await rhApi.emargerPresenceChantier(p.id)
+      toast.success('Présence émargée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Émargement impossible.')
+    }
+  }
+
+  const presenceActions = (p) => (p.emarge
+    ? []
+    : [{ id: 'emarger', label: 'Émarger', icon: CheckCircle2, onClick: () => emargerPresence(p) }])
+
   const heuresColumns = useMemo(() => [
     { id: 'employe', header: 'Employé', width: 180, accessor: (h) => h.employe_nom || String(h.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (h) => h.date || '', cell: (v) => formatDate(v) },
@@ -409,7 +427,7 @@ export default function Temps() {
     pointages: { title: 'Pointages', columns: pointageColumns, rows: pointages, rowActions: pointageActions, exportName: 'pointages',
       actions: pointagesActions },
     roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster', actions: rosterActions },
-    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
+    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, rowActions: presenceActions, exportName: 'presences-chantier' },
     heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
       actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',
