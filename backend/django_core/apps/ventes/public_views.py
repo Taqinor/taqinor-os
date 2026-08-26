@@ -2677,7 +2677,14 @@ def proposal_data(request, token):
         # Servie aux DEUX niveaux de partage : elle ne porte que des natures de
         # nombres DÉJÀ publiques ailleurs sur cette page. Contrat :
         # apps/ventes/contract_samples/offres_tailles.json.
-        _offres_tailles = _offres_tailles_publique(devis, data, _resid_public)
+        # GATE DE SECTION — comme `profils_comparatifs` : ce bloc EST un bloc
+        # d'économies (prix, économie annuelle, payback, cumul 25 ans). Le
+        # commercial qui décoche « Économies » dans le dialogue d'envoi doit
+        # les voir partir ENSEMBLE ; les servir ici rendrait la case
+        # contournable par une autre section de la même page.
+        _offres_tailles = (
+            _offres_tailles_publique(devis, data, _resid_public)
+            if _section_servie(link, 'economies') else None)
         if _offres_tailles is not None:
             payload['offres_tailles'] = _offres_tailles
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
