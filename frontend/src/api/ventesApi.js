@@ -290,6 +290,37 @@ const ventesApi = {
   dgiConformiteFacture: (id) => api.get(`/ventes/factures/${id}/dgi-conformite/`),
   // FG43/WR2 — actions en masse (émettre/relancer/email/pdf) sur une sélection.
   bulkFactures: (action, ids) => api.post('/ventes/factures/bulk/', { action, ids }),
+
+  // ── WIR183 — six actions Facture COMPLÈTES côté serveur, sans aucune UI ──
+  // Elles existaient toutes dans `apps/ventes/views/facture.py` (ZFAC1,
+  // XFAC13, XPOS7, XFAC6, XFAC11, ZFAC6) et n'étaient appelables par personne.
+  // Toutes réservées au palier responsable/admin (`IsResponsableOrAdmin`
+  // côté serveur) ; les messages d'erreur serveur sont affichés TELS QUELS.
+
+  // ZFAC1 — repasse une facture ÉMISE en brouillon (aucun paiement ni avoir,
+  // période comptable ouverte). La référence est CONSERVÉE.
+  remettreBrouillonFacture: (id) =>
+    api.post(`/ventes/factures/${id}/remettre-brouillon/`),
+  // XFAC13 — abandon manuel du résiduel (write-off). `motif` OBLIGATOIRE :
+  // irrecouvrable | geste_commercial | ecart_reglement | liquidation.
+  abandonnerSoldeFacture: (id, motif) =>
+    api.post(`/ventes/factures/${id}/abandonner-solde/`, { motif }),
+  // XPOS7 — retour client contre la facture d'origine : crée l'avoir, avec
+  // option de re-stockage. `{ motif, restocker, lignes: [{ligne, quantite}] }`.
+  retourClientFacture: (id, data) =>
+    api.post(`/ventes/factures/${id}/retour-client/`, data),
+  // XFAC6 — matérialise la pénalité de retard du niveau de relance courant
+  // en une facture de frais SÉPARÉE (la facture d'origine n'est pas modifiée).
+  facturerPenalitesFacture: (id) =>
+    api.post(`/ventes/factures/${id}/facturer-penalites/`),
+  // XFAC11 — UNE facture consolidée à partir de plusieurs devis acceptés du
+  // MÊME client.
+  consoliderFactures: (devisIds) =>
+    api.post('/ventes/factures/consolider/', { devis_ids: devisIds }),
+  // ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures (FIFO par
+  // échéance, ou `repartition: {facture_id: montant}` pour forcer).
+  encaissementGroupeFactures: (data) =>
+    api.post('/ventes/factures/encaissement-groupe/', data),
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),
