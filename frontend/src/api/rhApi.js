@@ -260,6 +260,19 @@ const rhApi = {
     api.get(`/rh/dotations-epi/${id}/emargements/`),
   getOuverturesPoste: (params) => api.get('/rh/ouvertures-poste/', { params }),
   createOuverturePoste: (data) => api.post('/rh/ouvertures-poste/', data),
+  // WIR196 — YHIRE14 : cycle d'approbation amont (brouillon → en_approbation
+  // → ouvert), séparation des tâches (approbateur ≠ demandeur côté serveur,
+  // refusé en 400 sinon). Une ouverture créée restait bloquée à vie en
+  // brouillon faute de ces wrappers.
+  soumettreOuverturePoste: (id) =>
+    api.post(`/rh/ouvertures-poste/${id}/soumettre/`, {}),
+  approuverOuverturePoste: (id) =>
+    api.post(`/rh/ouvertures-poste/${id}/approuver/`, {}),
+  refuserOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/refuser/`, data ?? {}),
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (FG190).
+  cloturerCampagneEvaluation: (id) =>
+    api.post(`/rh/campagnes-evaluation/${id}/cloturer/`, {}),
   getCandidatures: (params) => api.get('/rh/candidatures/', { params }),
   createCandidature: (data) => api.post('/rh/candidatures/', data),
   updateCandidature: (id, data) => api.patch(`/rh/candidatures/${id}/`, data),

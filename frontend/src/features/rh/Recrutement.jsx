@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
-  Plus, RotateCcw, PenLine, History,
+  Plus, RotateCcw, PenLine, History, CheckCircle2, XCircle,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -67,6 +67,10 @@ export default function Recrutement() {
   const [dotationOpen, setDotationOpen] = useState(false)
   const [emargerFor, setEmargerFor] = useState(null)
   const [historiqueDotationFor, setHistoriqueDotationFor] = useState(null)
+
+  // WIR196 — ouverture de poste : créable + workflow YHIRE14 (soumettre/
+  // approuver/refuser).
+  const [posteOpen, setPosteOpen] = useState(false)
 
   // Dialogues ATS.
   const [promesseFor, setPromesseFor] = useState(null)
@@ -221,6 +225,56 @@ export default function Recrutement() {
     }
   }
 
+  // WIR196 — cycle d'approbation amont YHIRE14 (brouillon → en_approbation
+  // → ouvert). Le détail 400 serveur (ex. refus d'auto-approbation, SoD
+  // approbateur ≠ demandeur) est affiché TEL QUEL, jamais un filtrage client.
+  const soumettreOuverture = async (o) => {
+    try {
+      await rhApi.soumettreOuverturePoste(o.id)
+      toast.success('Ouverture soumise à approbation.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Soumission impossible.')
+    }
+  }
+
+  const approuverOuverture = async (o) => {
+    try {
+      await rhApi.approuverOuverturePoste(o.id)
+      toast.success('Ouverture approuvée — poste ouvert.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Approbation impossible.')
+    }
+  }
+
+  const refuserOuverture = async (o) => {
+    const ok = await confirm({
+      title: `Refuser l’ouverture « ${o.intitule} » ?`,
+      confirmLabel: 'Refuser',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await rhApi.refuserOuverturePoste(o.id, { motif_refus: 'Refusée par le responsable.' })
+      toast.success('Ouverture refusée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Refus impossible.')
+    }
+  }
+
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (FG190).
+  const cloturerCampagne = async (c) => {
+    try {
+      await rhApi.cloturerCampagneEvaluation(c.id)
+      toast.success('Campagne clôturée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    }
+  }
+
   const supprimerGabarit = async (g) => {
     const ok = await confirmDelete({
       title: 'Supprimer ce gabarit ?',
@@ -343,16 +397,29 @@ export default function Recrutement() {
     }
     return actions
   }
+  // WIR196 — workflow YHIRE14 (brouillon → en_approbation → ouvert) +
   // XRH15 — candidats INTERNES d'une ouverture : classement des employés par
   // couverture du profil requis du `poste_ref` (mobilité interne avant
-  // sourcing externe). Sans `poste_ref`, l'action n'a pas de cible.
-  const ouvertureActions = (o) => (o.poste_ref
-    ? [{
-      id: 'candidats-internes',
-      label: 'Candidats internes',
-      icon: Users,
-      onClick: () => setInternesFor(o),
-    }]
+  // sourcing externe). Sans `poste_ref`, l'action « Candidats internes » n'a
+  // pas de cible.
+  const ouvertureActions = (o) => {
+    const actions = []
+    if (o.statut === 'brouillon') {
+      actions.push({ id: 'soumettre', label: 'Soumettre à approbation', icon: CheckCircle2, onClick: () => soumettreOuverture(o) })
+    }
+    if (o.statut === 'en_approbation') {
+      actions.push({ id: 'approuver', label: 'Approuver', icon: CheckCircle2, onClick: () => approuverOuverture(o) })
+      actions.push({ id: 'refuser', label: 'Refuser', icon: XCircle, destructive: true, onClick: () => refuserOuverture(o) })
+    }
+    if (o.poste_ref) {
+      actions.push({ id: 'candidats-internes', label: 'Candidats internes', icon: Users, onClick: () => setInternesFor(o) })
+    }
+    return actions
+  }
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (idempotent,
+  // aucun effet si déjà clôturée).
+  const campagneActions = (c) => (c.statut !== 'cloturee'
+    ? [{ id: 'cloturer', label: 'Clôturer', icon: CheckCircle2, onClick: () => cloturerCampagne(c) }]
     : [])
   const evalActions = (e) => [
     ...(e.statut === 'brouillon'
@@ -390,6 +457,7 @@ export default function Recrutement() {
         <div className="flex flex-col gap-4">
           <ListShell title="Ouvertures de poste" columns={posteColumns} rows={postes} loading={loading} error={error}
             searchable rowActions={ouvertureActions} exportName="ouvertures-poste"
+            actions={<Button onClick={() => setPosteOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle ouverture</Button>}
             emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
           <ListShell title="Candidatures" columns={candidatureColumns} rows={candidatures} loading={loading} error={error}
             searchable rowActions={candidatureActions} exportName="candidatures"
@@ -424,7 +492,7 @@ export default function Recrutement() {
               { id: 'annee', header: 'Année', width: 90, align: 'right', searchable: false, accessor: (c) => c.annee ?? '', cell: (v) => v || '—' },
               { id: 'statut', header: 'Statut', width: 120, accessor: (c) => c.statut_display || c.statut || '', cell: (v) => v || '—' },
             ]}
-            rows={campagnes} loading={loading} error={error} searchable exportName="campagnes-evaluation"
+            rows={campagnes} loading={loading} error={error} searchable rowActions={campagneActions} exportName="campagnes-evaluation"
             emptyTitle="Aucune campagne" emptyDescription="Aucune campagne d’évaluation." />
           <ListShell title="Évaluations" columns={evalColumns} rows={evaluations} loading={loading} error={error}
             searchable rowActions={evalActions} exportName="evaluations"
@@ -437,6 +505,12 @@ export default function Recrutement() {
           emptyTitle="Aucune sanction" emptyDescription="Aucune sanction enregistrée." />
       )}
 
+      {posteOpen && (
+        <OuvertureDialog
+          onClose={() => setPosteOpen(false)}
+          onSaved={() => { setPosteOpen(false); recharger() }}
+        />
+      )}
       {promesseFor && (
         <PromesseDialog
           candidature={promesseFor}
@@ -839,6 +913,79 @@ function HistoriqueDotationDialog({ dotation, onClose }) {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR196 — Nouvelle ouverture de poste (naît BROUILLON côté serveur) ── */
+function OuvertureDialog({ onClose, onSaved }) {
+  const [intitule, setIntitule] = useState('')
+  const [nombrePostes, setNombrePostes] = useState('1')
+  const [dateCible, setDateCible] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(intitule || description || dateCible)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(intitule.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR196 — jamais de `statut` envoyé : le serveur pose BROUILLON par
+      // défaut (YHIRE14), le cycle d'approbation s'ouvre ensuite via
+      // « Soumettre à approbation ».
+      await rhApi.createOuverturePoste({
+        intitule: intitule.trim(),
+        nombre_postes: Number(nombrePostes) || 1,
+        date_cible: dateCible || null,
+        description: description || '',
+      })
+      toast.success('Ouverture créée (brouillon).')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.intitule || 'Création de l’ouverture impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle ouverture de poste</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ou-intitule">Intitulé</Label>
+            <Input id="ou-intitule" autoFocus value={intitule} onChange={(e) => setIntitule(e.target.value)}
+              placeholder="Ex. Technicien photovoltaïque" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ou-nombre">Nombre de postes</Label>
+              <Input id="ou-nombre" type="number" step="any" min="1" value={nombrePostes} onChange={(e) => setNombrePostes(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ou-cible">Date cible (optionnel)</Label>
+              <Input id="ou-cible" type="date" value={dateCible} onChange={(e) => setDateCible(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ou-description">Description du profil (optionnel)</Label>
+            <Textarea id="ou-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Création…' : 'Créer l’ouverture'}</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

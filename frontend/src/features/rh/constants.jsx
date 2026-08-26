@@ -60,8 +60,11 @@ export const EtapeCandidature = statusPill({
   rejete: { label: 'Rejeté', tone: 'danger' },
 })
 
-// Statut d'une ouverture de poste.
+// Statut d'une ouverture de poste (YHIRE14 — cycle d'approbation amont
+// brouillon → en_approbation → ouvert, avant pourvu/clos/annulé).
 export const StatutPoste = statusPill({
+  brouillon: { label: 'Brouillon', tone: 'neutral' },
+  en_approbation: { label: 'En approbation', tone: 'warning' },
   ouvert: { label: 'Ouvert', tone: 'success' },
   pourvu: { label: 'Pourvu', tone: 'neutral' },
   clos: { label: 'Clos', tone: 'neutral' },
