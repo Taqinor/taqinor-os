@@ -1282,7 +1282,11 @@ const ecoRetourAns = (variante: 'sans' | 'avec') =>
   (variante === 'avec' ? ecoPeriodes?.avec : ecoPeriodes?.sans)
     ?.retourInvestissementAns ?? null;
 
-// ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
+// ── WJ14 — Impact environnemental, depuis la production annuelle du moteur.
+// RÈGLE « CHIFFRES VÉRIFIÉS » (26/08/2026) : SEULE la tonne annuelle est rendue
+// au client. L'équivalent « arbres » (22 kg/arbre/an, sans source) a été retiré
+// du rendu, ici comme dans le moteur PDF — le champ `trees` reste calculé par la
+// bibliothèque pour les pages éditoriales publiques, il n'est plus lu ici.
 const enviro = ok ? environmentalImpact(prodKwh) : null;
 
 // ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
@@ -5600,18 +5604,35 @@ const signConfig = ok
       </section>
 
 
-      <!-- ── PV80 · IMPACT CO₂ — UNE ligne. Le détail du calcul (facteur
-           d'émission, kg par arbre) a rejoint « Nos hypothèses » juste en
-           dessous : c'est sa place, pas une demi-page d'explication ici. -->
+      <!-- ── IMPACT CO₂ — RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) ──
+           Ce bloc affichait DEUX chiffres invérifiables à côté du seul qui
+           tienne : un équivalent « arbres » bâti sur 22 kg de CO₂ par arbre et
+           par an (ordre de grandeur sans source), et — côté PDF — un cumul
+           25 ans obtenu en multipliant l'annuel par 23,5 (facteur jamais
+           justifié). Les deux sont RETIRÉS de tout rendu client, ici comme dans
+           le moteur PDF.
+
+           CE QUI RESTE est la TONNE ANNUELLE, et elle porte désormais sa
+           provenance en clair : le facteur d'émission du réseau marocain est
+           encore « source à préciser » tant que le fondateur n'a pas fourni la
+           référence datée. Dire « source à préciser » à côté d'un chiffre est
+           honnête ; laisser croire à une publication qui n'est pas citée ne
+           l'est pas. Le jour où la source arrive, seule cette ligne change. -->
       {enviro && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="cine-card v2-body flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-2xl p-5 text-sm text-lune-soft sm:p-6">
             <span class="fig lum text-2xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂ / an</span>
             <span data-i18n
-              data-fr={`évités — l’équivalent de ${formatNumber(enviro.trees)} arbres.`}
-              data-en={`avoided — the equivalent of ${formatNumber(enviro.trees)} trees.`}
-              data-ar={`تُتجنَّب — أي ما يعادل ${formatNumber(enviro.trees)} شجرة.`}>
-              évités — l’équivalent de <strong class="text-brass-300">{formatNumber(enviro.trees)} arbres</strong>.
+              data-fr="évités par votre production solaire."
+              data-en="avoided by your solar production."
+              data-ar="تُتجنَّب بفضل إنتاجكم الشمسي.">
+              évités par votre production solaire.
+            </span>
+            <span class="block w-full text-xs text-lune-faint" data-i18n
+              data-fr="Calculé avec le facteur d’émission du réseau marocain — source à préciser."
+              data-en="Computed with the Moroccan grid emission factor — source to be specified."
+              data-ar="محسوب بمعامل انبعاثات الشبكة المغربية — المصدر يبقى للتحديد.">
+              Calculé avec le facteur d’émission du réseau marocain — source à préciser.
             </span>
           </p>
         </section>

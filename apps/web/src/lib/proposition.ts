@@ -1701,16 +1701,29 @@ export const SAVINGS_HORIZON_YEARS = 25;
 export const BILL_INFLATION_RATE = 0;
 
 /**
- * WJ14 — Facteur d'émission du réseau électrique marocain (ONEE), en kg de CO₂
- * évité par kWh solaire autoconsommé. Le mix marocain reste fortement carboné
- * (charbon majoritaire) ; 0,81 kg CO₂/kWh est l'ordre de grandeur publié pour le
- * facteur d'émission moyen du réseau. Constante AFFICHÉE à l'écran.
+ * WJ14 — Facteur d'émission du réseau électrique marocain, en kg de CO₂ évité
+ * par kWh solaire autoconsommé.
+ *
+ * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — le commentaire d'origine
+ * annonçait « l'ordre de grandeur PUBLIÉ » sans citer AUCUNE publication : une
+ * source revendiquée mais introuvable est pire qu'une source manquante. Tant que
+ * le fondateur n'a pas fourni la référence DATÉE, tout rendu client de ce
+ * facteur doit être accompagné de « source à préciser » — ce que fait désormais
+ * la page proposition. La VALEUR est inchangée (aucun chiffre n'a bougé) ; c'est
+ * la PROVENANCE affichée qui devient honnête.
  */
 export const CO2_KG_PER_KWH = 0.81;
 
 /**
- * WJ14 — Équivalent « arbres » : un arbre mûr absorbe ≈ 22 kg de CO₂ par an
- * (ordre de grandeur communément retenu). Constante AFFICHÉE à l'écran.
+ * WJ14 — Équivalent « arbres » : un arbre mûr absorbe ≈ 22 kg de CO₂ par an.
+ *
+ * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — cet équivalent N'EST
+ * PLUS RENDU sur la proposition client (ni sur le PDF) : les 22 kg/arbre/an sont
+ * un ordre de grandeur sans source, et une équivalence bâtie sur un chiffre
+ * invérifiable n'a rien à faire à côté d'un devis. La constante SUBSISTE pour
+ * les pages éditoriales publiques (`/impact-taqinor`), qui assument un discours
+ * de vulgarisation ; elle ne doit PAS revenir sur un document commercial sans
+ * une source datée fournie par le fondateur.
  */
 export const CO2_KG_PER_TREE_YEAR = 22;
 
