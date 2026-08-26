@@ -244,6 +244,11 @@ describe('CampagnesInnovationPage — cycle de vie (WIR213)', () => {
 
     await waitFor(() => expect(noter).toHaveBeenCalledWith(1, 'Relancer les techniciens lundi.'))
     // Le fil rendu est celui que le SERVEUR renvoie, pas un ajout optimiste.
-    expect(await screen.findByText('Relancer les techniciens lundi.')).toBeInTheDocument()
+    // Assertion sur le textContent du panneau, comme ci-dessus : ChatterTimeline
+    // rend une note en « 📝 Note : <body> » DANS UN SEUL span, donc aucun
+    // élément ne porte le body nu comme texte propre — un `getByText(body)`
+    // exact ne matcherait jamais, même le fil correctement rendu.
+    await waitFor(() => expect(panneau.textContent)
+      .toMatch(/Relancer les techniciens lundi\./))
   })
 })
