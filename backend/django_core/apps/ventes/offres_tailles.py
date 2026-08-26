@@ -22,11 +22,19 @@ LES TROIS DÉFINITIONS, ET POURQUOI ELLES NE PEUVENT PAS DÉRIVER.
   :func:`~apps.ventes.dimensionnement.point_depart_meilleur_payback` — la
   FONCTION MÊME dont ``choisir_recommandation`` fait son point de départ. Les
   deux ne peuvent donc jamais désigner deux tailles différentes.
-* **Max** = la plus grande taille admissible : le PLAFOND DU TOIT quand le
-  devis porte un calepinage (:func:`~apps.ventes.dimensionnement.
-  plafond_toit_du_devis`), sinon la dernière taille éligible du balayage — qui
-  porte déjà ses propres bornes (facteur falaise, ``MAX_PANNEAUX_BALAYAGE``).
+* **Max** = la plus grande taille admissible : LA CONTENANCE RÉELLE DU TOIT
+  quand le devis porte un calepinage (:func:`~apps.ventes.calepinage_options.
+  capacite_toit_du_devis` — panneaux conservés + extension maximale PROUVÉE à
+  l'intérieur du polygone réel), sinon la dernière taille éligible du balayage,
+  qui porte déjà ses propres bornes (facteur falaise, ``MAX_PANNEAUX_BALAYAGE``).
   Jamais un panneau au-delà d'une borne physique.
+
+  ELLE NE S'ANCRE PLUS SUR ``plafond_toit_du_devis`` (26/08/2026, devis live
+  test15) : cette fonction rend le nombre de panneaux DESSINÉS par le
+  commercial. Recommandé étant resynchronisé sur ce même dessin, Max valait
+  Recommandé sur TOUT devis calepiné — la troisième carte s'effondrait
+  toujours. Le dessiné reste la bonne cible pour la resynchronisation ; il n'a
+  jamais été la contenance.
 
 CONVERGENCE : quand deux tailles désignent le même champ (l'optimum EST déjà
 le devis, ou le toit est déjà saturé), la liste COLLAPSE — deux cartes, voire
@@ -503,12 +511,33 @@ class _Contexte:
         self.catalogue = catalogue
         self.marques = marques
         self.ordre = ordre
+        from apps.ventes.calepinage_options import capacite_toit_du_devis
         from apps.ventes.dimensionnement import (
             facteur_remise_du_devis, module_batterie_du_devis,
             plafond_toit_du_devis)
         self.module_batterie_kwh = module_batterie_du_devis(devis)
         self.facteur_remise = facteur_remise_du_devis(devis)
+        #: Ce que le commercial a DESSINÉ (``layout.result.panels``) — la cible
+        #: de resynchronisation, PAS la contenance du toit.
         self.plafond_toit = plafond_toit_du_devis(devis)
+        #: Ce que la géométrie RÉELLE du toit tient (panneaux conservés +
+        #: extension maximale prouvée à l'intérieur du polygone). Mémoïsé sur
+        #: le devis : UN seul balayage par requête, partagé par les six cartes.
+        self.capacite_toit = capacite_toit_du_devis(devis)
+
+    @property
+    def toit_max(self):
+        """Le plus grand nombre de panneaux que ce toit accepte, ou ``None``.
+
+        LA RÈGLE VIT DANS ``dimensionnement.plus_grande_contenance`` — UN SEUL
+        endroit, partagé avec la borne de champ de l'échelle de paliers
+        batterie. Deux expressions voisines de « ce toit accepte N panneaux »
+        finiraient par diverger, et c'est précisément une divergence de ce
+        genre (le dessiné se faisant passer pour la contenance) qui a effondré
+        cette carte-ci.
+        """
+        from apps.ventes.dimensionnement import plus_grande_contenance
+        return plus_grande_contenance(self.capacite_toit, self.plafond_toit)
 
     @property
     def etude_kwargs(self):
@@ -624,13 +653,33 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
     if depart and _num(depart.get('panneaux')) > 0:
         champs['eco'] = int(depart['panneaux'])
 
-    # MAX — la plus grande taille éligible, bornée par le TOIT quand le devis
-    # porte un calepinage. Le balayage porte déjà ses propres bornes (facteur
-    # falaise + ``MAX_PANNEAUX_BALAYAGE``) : on ne les repousse pas, on les lit.
+    # MAX — LA CONTENANCE RÉELLE DU TOIT quand le devis porte un calepinage.
+    #
+    # CE QUI A CHANGÉ, ET POURQUOI (ordre fondateur, 26/08/2026, diagnostiqué
+    # sur le devis live test15). Cette borne était ``plafond_toit_du_devis``,
+    # c'est-à-dire le nombre de panneaux DESSINÉS par le commercial. Or
+    # « Recommandé » est resynchronisé sur ce MÊME dessin : Max valait donc
+    # Recommandé sur TOUT devis calepiné, la carte s'effondrait toujours, et le
+    # fondateur ne voyait jamais trois cartes. Ce que le commercial a dessiné
+    # n'est pas ce que le toit accepte — la contenance se MESURE, et c'est
+    # ``calepinage_options.capacite_toit_du_devis`` qui la mesure, avec la MÊME
+    # machinerie d'extension que le dessin (donc sans qu'aucune carte ne puisse
+    # annoncer un nombre que son propre calepinage ne saurait dessiner).
+    #
+    # SANS CALEPINAGE, RIEN NE CHANGE : la dernière taille éligible du balayage,
+    # qui porte déjà ses propres bornes (facteur falaise +
+    # ``MAX_PANNEAUX_BALAYAGE``) — on ne les repousse pas, on les lit.
+    #
+    # LE PLANCHER À « RECOMMANDÉ » GARDE LA CONVERGENCE HONNÊTE : un toit déjà
+    # saturé (contenance == dessiné) redonne le champ du devis, la signature
+    # collapse les deux cartes, et la liste ne se remplit JAMAIS d'un
+    # intermédiaire fabriqué pour occuper un troisième emplacement.
+    if contexte.toit_max:
+        champs['max'] = max(int(contexte.toit_max),
+                            int(nb_panneaux_devis or 0))
+        return champs
     admissibles = [int(x['panneaux']) for x in eligibles
                    if _num(x.get('panneaux')) > 0]
-    if contexte.plafond_toit:
-        admissibles = [n for n in admissibles if n <= int(contexte.plafond_toit)]
     if admissibles:
         champs['max'] = max(admissibles)
     return champs
@@ -798,10 +847,17 @@ def _ajouter_toit(carte, contexte, nb_panneaux):
     Sans calepinage, le devis ne sait pas ce que ce toit accepte : le champ est
     OMIS. Jamais un « ça rentre » supposé sur une surface que personne n'a
     mesurée.
+
+    LE VERDICT SE LIT SUR LA CONTENANCE (``toit_max``), PAS SUR LE DESSIN. La
+    page imprime « Cette taille dépasse ce que votre toit peut accueillir » dès
+    que ce champ vaut ``False`` : le comparer au nombre de panneaux DESSINÉS
+    aurait collé cette note à la carte Max le jour même où elle se met enfin à
+    proposer davantage — c'est-à-dire à la traiter d'impossible alors que la
+    géométrie vient de prouver le contraire.
     """
-    if not contexte.plafond_toit:
+    if not contexte.toit_max:
         return
-    carte['toit_ok'] = bool(int(nb_panneaux) <= int(contexte.plafond_toit))
+    carte['toit_ok'] = bool(int(nb_panneaux) <= int(contexte.toit_max))
 
 
 def _remplissage_ok(contexte, kwc, capacite, bornes):
@@ -1223,8 +1279,11 @@ def deriver(devis, data):
     if contexte.module_batterie_kwh:
         bloc['module_batterie_kwh'] = round(
             float(contexte.module_batterie_kwh), 2)
-    if contexte.plafond_toit:
-        bloc['plafond_toit_panneaux'] = int(contexte.plafond_toit)
+    if contexte.toit_max:
+        # LA CONTENANCE, pas le dessin : la clé s'appelle « plafond du toit »,
+        # et publier sous ce nom le nombre de panneaux DESSINÉS était le même
+        # mensonge que celui qui effondrait la carte Max.
+        bloc['plafond_toit_panneaux'] = int(contexte.toit_max)
     if escalade is not None:
         bloc['escalade_tarifaire_pct'] = escalade
     if horizon is not None:

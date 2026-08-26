@@ -72,12 +72,25 @@ def _tableau(*paires):
     } for panneaux, payback in paires]
 
 
-def _contexte_factice(devis, *, module_kwh=5.0, plafond=None, remise=1.0):
-    """Un contexte de dérivation sans catalogue ni base — la mécanique seule."""
+def _contexte_factice(devis, *, module_kwh=5.0, capacite=None, plafond=None,
+                      remise=1.0):
+    """Un contexte de dérivation sans catalogue ni base — la mécanique seule.
+
+    DEUX NOMBRES DE TOIT, ET C'EST TOUT LE SUJET DE LA CORRECTION DU 26/08/2026.
+    ``plafond`` est ce que le commercial a DESSINÉ
+    (``dimensionnement.plafond_toit_du_devis``) ; ``capacite`` est ce que la
+    géométrie réelle TIENT (``calepinage_options.capacite_toit_du_devis``).
+    ``toit_max`` — le seul que la dérivation lit — est leur maximum, recopié ici
+    EAGERLY parce qu'un ``SimpleNamespace`` ne porte pas la propriété du vrai
+    :class:`~apps.ventes.offres_tailles._Contexte`. Un test qui veut bouger le
+    verdict de toit doit donc réécrire ``toit_max``, pas seulement ``plafond``.
+    """
+    valeurs = [int(v) for v in (capacite, plafond) if v]
     contexte = SimpleNamespace(
         devis=devis, entrees={}, panel_watt=710.0, catalogue=[],
         marques={}, ordre=[], module_batterie_kwh=module_kwh,
-        facteur_remise=remise, plafond_toit=plafond)
+        facteur_remise=remise, plafond_toit=plafond, capacite_toit=capacite,
+        toit_max=max(valeurs) if valeurs else None)
     contexte.etude_kwargs = {}
     return contexte
 
@@ -373,13 +386,29 @@ class CarteDuDevisTests(SimpleTestCase):
         self.assertNotIn('toit_ok', sans)
 
     def test_avec_calepinage_le_verdict_de_toit_est_reel(self):
+        # LE VERDICT SE LIT SUR LA CONTENANCE, pas sur le nombre de panneaux
+        # dessinés : c'est ``toit_max`` que ``_ajouter_toit`` interroge.
         contexte = self._contexte()
-        contexte.plafond_toit = 24
+        contexte.capacite_toit = contexte.toit_max = 24
         self.assertIs(
             ot._carte_du_devis(contexte, self.DATA, 'sans')['toit_ok'], True)
         # 26 panneaux ne tiennent pas sur un toit qui en accepte 24.
         self.assertIs(
             ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], False)
+
+    def test_le_verdict_de_toit_suit_la_CONTENANCE_pas_le_dessin(self):
+        # LA RÉGRESSION QUE CE TEST INTERDIT (26/08/2026). Le commercial a
+        # dessiné 22 panneaux ; la géométrie du toit en tient 30. Comparer au
+        # DESSIN aurait collé « cette taille dépasse votre toit » à une carte de
+        # 26 panneaux que le toit accepte parfaitement — et l'aurait collé
+        # PRÉCISÉMENT à la carte Max, le jour où elle se met enfin à proposer
+        # davantage.
+        contexte = self._contexte()
+        contexte.plafond_toit = 22
+        contexte.capacite_toit = 30
+        contexte.toit_max = 30
+        self.assertIs(
+            ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], True)
 
     def test_devis_sans_taille_servie_aucune_carte(self):
         contexte = self._contexte()
@@ -396,11 +425,12 @@ class DerivationTests(SimpleTestCase):
     DATA = {'nb_panneaux_sans': 22, 'variantes_servables': ['sans', 'avec']}
 
     def _deriver(self, *, tableau, data=None, config=None, plafond=None,
-                 cartes=None):
+                 capacite=None, cartes=None):
         devis = SimpleNamespace(
             etude_params={'dimensionnement': {'tableau': tableau}},
             offres_tailles_config=config, reference='DEV-X')
-        contexte = _contexte_factice(devis, plafond=plafond)
+        contexte = _contexte_factice(devis, plafond=plafond,
+                                     capacite=capacite)
         cartes = cartes or {'sans': _carte(), 'avec': _carte()}
 
         def _moteur(_contexte_, nb, _config=None, *, avec_servable=True):
@@ -433,22 +463,80 @@ class DerivationTests(SimpleTestCase):
         eco = next(o for o in bloc['offres'] if o['cle'] == 'eco')
         self.assertEqual(eco['sans']['nb_panneaux'], 16)
 
-    def test_max_est_borne_par_le_TOIT_quand_un_calepinage_existe(self):
-        # 34 panneaux ne tiennent pas sur un toit qui en accepte 28 : « Max »
-        # s'arrête à 26 — jamais un panneau au-delà d'une borne physique.
+    def test_max_est_LA_CONTENANCE_du_toit_quand_un_calepinage_existe(self):
+        # LA CORRECTION DU 26/08/2026, ARMÉE. « Max » n'est plus la dernière
+        # taille du BALAYAGE rabotée par le toit : c'est LA CONTENANCE du toit
+        # elle-même. Le balayage s'arrête à 26 ; la géométrie tient 28 ⇒ Max
+        # vaut 28. Sous l'ancienne règle il valait 26, c'est-à-dire moins que ce
+        # que le toit accepte — et sur un devis réel, exactement le champ déjà
+        # dessiné, donc une carte qui ne proposait rien.
         bloc = self._deriver(
             tableau=_tableau((10, 6.0), (22, 8.0), (26, 9.0), (34, 11.0)),
-            plafond=28)
+            capacite=28)
         self.assertEqual(bloc['plafond_toit_panneaux'], 28)
         maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
-        self.assertEqual(maxi['sans']['nb_panneaux'], 26)
+        self.assertEqual(maxi['sans']['nb_panneaux'], 28)
+
+    def test_max_DEPASSE_le_champ_dessine_le_bug_du_devis_live(self):
+        # LE BUG, REPRODUIT À L'IDENTIQUE. Sur le devis live test15 le
+        # commercial avait dessiné 15 panneaux ; « Recommandé » est
+        # resynchronisé sur ce dessin, et « Max » s'ancrait sur LE MÊME nombre
+        # ⇒ les deux cartes portaient 15, la signature les dédupliquait, et
+        # trois cartes n'apparaissaient JAMAIS. La contenance mesurée (24) rend
+        # la troisième carte à sa raison d'être.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (15, 8.0)),
+            data={'nb_panneaux_sans': 15,
+                  'variantes_servables': ['sans', 'avec']},
+            # LES CARTES SUIVENT LE DEVIS, ET IL FAUT LE DIRE AU HARNAIS.
+            # ``_deriver`` bouchonne ``_carte_du_devis`` par ``dict(cartes[v])``
+            # SANS réécrire ``nb_panneaux`` — c'est fidèle à la production, où
+            # la carte « Recommandé » est REPRISE telle quelle du devis et
+            # n'est jamais recomposée. Les cartes par défaut portent 22 (le
+            # champ de ``DATA``) : sans ce pin, « Recommandé » annonçait 22
+            # alors que ``data`` dit 15, et le test comparait deux fixtures
+            # entre elles. ``_carte_moteur``, lui, réécrit bien le champ —
+            # d'où Éco et Max corrects sans rien préciser.
+            cartes={'sans': _carte(nb_panneaux=15),
+                    'avec': _carte(nb_panneaux=15)},
+            plafond=15, capacite=24)
+        cles = [o['cle'] for o in bloc['offres']]
+        self.assertEqual(cles, ['eco', 'recommande', 'max'])
+        recommande = next(o for o in bloc['offres']
+                          if o['cle'] == 'recommande')
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        self.assertEqual(recommande['sans']['nb_panneaux'], 15)
+        self.assertEqual(maxi['sans']['nb_panneaux'], 24)
+        self.assertGreater(maxi['sans']['nb_panneaux'],
+                           recommande['sans']['nb_panneaux'])
 
     def test_toit_sature_max_converge_au_lieu_de_depasser(self):
-        # Le devis occupe DÉJÀ tout le toit : « Max » n'a rien à proposer et
-        # disparaît. On ne fabrique pas une taille plus grande que le toit.
+        # LE COLLAPSE RESTE, MAIS SEULEMENT POUR UNE VRAIE CONVERGENCE : le
+        # devis (22) occupe DÉJÀ toute la contenance mesurée (22). « Max » n'a
+        # rien à proposer et disparaît. On ne fabrique pas une taille plus
+        # grande que le toit.
         bloc = self._deriver(
-            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)), plafond=24)
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)), capacite=22)
         self.assertNotIn('max', [o['cle'] for o in bloc['offres']])
+
+    def test_une_contenance_SOUS_le_devis_ne_rapetisse_jamais_la_carte_max(self):
+        # Garde-fou de non-régression : si la contenance mesurée tombe SOUS le
+        # champ du devis (layout dont le ``result.panels`` déclaré dépasse les
+        # panneaux réellement sérialisés), « Max » ne devient pas une carte plus
+        # PETITE que « Recommandé » — elle converge et disparaît.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)), capacite=18)
+        self.assertNotIn('max', [o['cle'] for o in bloc['offres']])
+
+    def test_sans_calepinage_max_reste_la_derniere_taille_du_balayage(self):
+        # LE REPLI EST INCHANGÉ : sans calepinage, aucune contenance n'est
+        # mesurable et « Max » reste la dernière taille éligible du balayage,
+        # avec ses bornes à lui. Aucune clé de plafond n'est publiée.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)))
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        self.assertEqual(maxi['sans']['nb_panneaux'], 34)
+        self.assertNotIn('plafond_toit_panneaux', bloc)
 
     def test_CONVERGENCE_recommande_survit_jamais_eco(self):
         # LE piège. Optimum == devis == 22 panneaux : dédupliquer dans l'ordre

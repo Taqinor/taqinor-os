@@ -59,12 +59,29 @@ const CONTRAT_CALEP = JSON.parse(
 );
 const CALEP = CONTRAT_CALEP.exemple;
 
-/** Le bloc `#tailles` du gabarit, borné à ses propres frontières. */
+/** Le bloc `#tailles` du gabarit, borné à ses PROPRES frontières.
+ *
+ * LA BORNE EST LA BALISE FERMANTE DE LA SECTION, PAS LA SECTION SUIVANTE.
+ * Elle était `id="options"` — ce qui marchait tant que `#tailles` vivait juste
+ * au-dessus de lui. Depuis que l'aperçu remonte SOUS LE HÉROS (fondateur,
+ * 26/08/2026), une borne « jusqu'à #options » avalerait tout ce qui les sépare
+ * désormais : calepinage, installation, production, économies, schéma,
+ * confiance, FAQ. Toutes les assertions NÉGATIVES de ce fichier (« ce bloc ne
+ * contient pas “populaire” ») et tous ses comptes d'occurrences seraient alors
+ * évalués sur la moitié de la page — verts ou rouges pour de mauvaises raisons.
+ *
+ * `#tailles` ne contient AUCUNE `<section>` imbriquée (des `div` et une table),
+ * donc le premier `</section>` qui suit son ouverture EST le sien. La borne ne
+ * dépend plus de la position de la section dans la page. */
 function sectionTailles(source: string): string {
   const debut = source.indexOf('id="tailles"');
   expect(debut, 'la section #tailles doit exister').toBeGreaterThan(0);
-  const fin = source.indexOf('id="options"', debut);
-  expect(fin, '#options doit suivre #tailles').toBeGreaterThan(debut);
+  const fin = source.indexOf('</section>', debut);
+  expect(fin, '#tailles doit se refermer').toBeGreaterThan(debut);
+  expect(
+    source.slice(debut, fin).includes('<section'),
+    '#tailles ne doit pas contenir de <section> imbriquée (la borne en dépend)',
+  ).toBe(false);
   return source.slice(debut, fin);
 }
 
@@ -506,6 +523,32 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
     const options = PAGE.indexOf('id="options"');
     expect(tailles).toBeGreaterThan(0);
     expect(options).toBeGreaterThan(tailles);
+  });
+
+  it('APERÇU D’ABORD : les cartes suivent le HÉROS et précèdent TOUS les détails', () => {
+    // ORDRE FONDATEUR (26/08/2026) — la section vivait après le calepinage,
+    // l'installation, la production, les économies et le schéma : le client
+    // traversait toute la page avant de découvrir qu'il avait un CHOIX. La
+    // règle d'audit est l'aperçu d'abord.
+    const hero = PAGE.indexOf('data-track-section="hero"');
+    const tailles = PAGE.indexOf('id="tailles"');
+    expect(hero, 'ancre héros absente').toBeGreaterThan(0);
+    expect(tailles, 'ancre #tailles absente').toBeGreaterThan(0);
+    expect(hero).toBeLessThan(tailles);
+    for (const ancre of ['id="roof3d"', 'id="installation"', 'id="production"',
+      'id="financing-headline"', 'id="sld"', 'id="confiance"', 'id="faq"',
+      'id="options"', 'id="signer"']) {
+      const idx = PAGE.indexOf(ancre);
+      expect(idx, `ancre ${ancre} absente`).toBeGreaterThan(0);
+      expect(tailles, `#tailles doit précéder ${ancre}`).toBeLessThan(idx);
+    }
+  });
+
+  it('la VUE DE DÉTAIL VIVANTE voyage AVEC les cartes (une seule section)', () => {
+    // Le déplacement est ATOMIQUE : la vue « Vous regardez … » suit la carte
+    // sélectionnée, donc la laisser en bas de page pendant que les cartes
+    // remontent en haut l'aurait orpheline à ~2 700 lignes de son sélecteur.
+    expect(sectionTailles(PAGE)).toContain('data-taille-detail');
   });
 
   it('le badge dit un FAIT vérifiable, jamais « populaire » ni une urgence', () => {
