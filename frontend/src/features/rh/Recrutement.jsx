@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
-  Plus, RotateCcw, PenLine, History, CheckCircle2, XCircle,
+  Plus, RotateCcw, PenLine, History, CheckCircle2, XCircle, MessageSquare, ClipboardList,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -12,6 +12,7 @@ import {
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatDate, formatNumber } from '../../lib/format'
 import rhApi from '../../api/rhApi'
+import ChatterTimeline from '../../components/ChatterTimeline'
 import {
   EtapeCandidature, StatutPoste, StatutSanction, StatutEvaluation,
 } from './constants.jsx'
@@ -83,6 +84,10 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR240 — panneau Activité (chatter candidature) + grille de notation
+  // d'entretien.
+  const [activiteFor, setActiviteFor] = useState(null)
+  const [notationFor, setNotationFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -389,6 +394,10 @@ export default function Recrutement() {
       actions.push({ id: 'embaucher', label: 'Embaucher', icon: UserPlus, onClick: () => embaucher(c) })
     }
     actions.push({ id: 'entretien', label: 'Planifier un entretien', icon: CalendarClock, onClick: () => setEntretienFor(c) })
+    // WIR240 — transitions journalisées invisibles + notation d'entretien
+    // jusqu'ici sans consommateur (comparatif/colonne Note à vie vides).
+    actions.push({ id: 'activite', label: 'Activité', icon: MessageSquare, onClick: () => setActiviteFor(c) })
+    actions.push({ id: 'notation', label: 'Entretiens & notation', icon: ClipboardList, onClick: () => setNotationFor(c) })
     actions.push({ id: 'promesse', label: 'Promesse d’embauche', icon: FileSignature, onClick: () => setPromesseFor(c) })
     actions.push({ id: 'comparatif', label: 'Comparer les candidats', icon: BarChart3, onClick: () => setComparatifFor(c) })
     actions.push({ id: 'cv', label: 'Analyser le CV', icon: ScanText, onClick: () => parserCv(c) })
@@ -554,6 +563,18 @@ export default function Recrutement() {
         <FeedbackDialog
           evaluation={feedbackFor}
           onClose={() => setFeedbackFor(null)}
+        />
+      )}
+      {activiteFor && (
+        <ActiviteCandidatureDialog
+          candidature={activiteFor}
+          onClose={() => setActiviteFor(null)}
+        />
+      )}
+      {notationFor && (
+        <EntretiensNotationDialog
+          candidature={notationFor}
+          onClose={() => setNotationFor(null)}
         />
       )}
       {dotationOpen && (
@@ -1523,6 +1544,176 @@ function FeedbackDialog({ evaluation, onClose }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/* ── WIR240 — Panneau Activité d'une candidature (chatter XRH18) ──
+   `CandidatureActivity` (type/field/message/auteur_nom/date_creation) est
+   une forme ANTÉRIEURE à la forme générique consommée nativement par
+   `ChatterTimeline` (kind/field_label/body/user_nom/created_at, cf.
+   `crm.LeadActivity`) : simple alias de champs, aucune mutation. */
+function ActiviteCandidatureDialog({ candidature, onClose }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    rhApi.getHistoriqueCandidature(candidature.id)
+      .then((res) => setEntries(unwrap(res.data)))
+      .catch(() => setError('Activité indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  useEffect(charger, [candidature.id])
+
+  const envoyerNote = async () => {
+    const message = note.trim()
+    if (!message) return
+    setSaving(true)
+    try {
+      await rhApi.noterCandidature(candidature.id, { message })
+      setNote('')
+      charger()
+    } catch {
+      toast.error('Envoi de la note impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const adapted = entries.map((a) => ({
+    ...a,
+    kind: (a.type === 'note' ? 'note' : 'modification'),
+    body: a.message,
+    field_label: a.field,
+    user_nom: a.auteur_nom,
+    created_at: a.date_creation,
+  }))
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Activité — {candidature.nom}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ajouter une note…" rows={2} className="flex-1" />
+            <Button onClick={envoyerNote} disabled={!note.trim() || saving}>{saving ? 'Envoi…' : 'Noter'}</Button>
+          </div>
+          {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {!loading && !error && (
+            <ChatterTimeline entries={adapted} emptyLabel="Aucune activité pour le moment." />
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// NoteEntretien.Avis.choices — côté serveur.
+const AVIS_OPTIONS = [
+  { value: 'favorable', label: 'Favorable' },
+  { value: 'reserve', label: 'Réservé' },
+  { value: 'defavorable', label: 'Défavorable' },
+]
+
+/* ── WIR240 — Grille de notation des entretiens d'une candidature (XRH17) ──
+   Sans cette grille, le comparatif (`getComparatifCandidats`) et la note
+   d'entretien restaient à vie vides : personne n'appelait jamais
+   `noterEntretienRecrutement`. */
+function EntretiensNotationDialog({ candidature, onClose }) {
+  const [entretiens, setEntretiens] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    rhApi.getEntretiensRecrutement({ candidature: candidature.id })
+      .then((res) => setEntretiens(unwrap(res.data)))
+      .catch(() => setError('Entretiens indisponibles.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  useEffect(charger, [candidature.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader><DialogTitle>Entretiens & notation — {candidature.nom}</DialogTitle></DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && (
+          entretiens.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun entretien planifié pour ce candidat.</p>
+            : (
+              <ul className="flex flex-col gap-3">
+                {entretiens.map((e) => (
+                  <EntretienNoteRow key={e.id} entretien={e} onNoted={charger} />
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EntretienNoteRow({ entretien, onNoted }) {
+  const [note, setNote] = useState('3')
+  const [avis, setAvis] = useState('reserve')
+  const [commentaire, setCommentaire] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const notes = entretien.notes || []
+  const moyenne = notes.length
+    ? notes.reduce((sum, n) => sum + (n.moyenne_criteres ?? 0), 0) / notes.length
+    : null
+  const libelle = entretien.type_display || entretien.type || `Entretien #${entretien.id}`
+
+  const enregistrer = async () => {
+    setSaving(true)
+    try {
+      await rhApi.noterEntretienRecrutement(entretien.id, {
+        notes_criteres: { global: Number(note) }, commentaire, avis,
+      })
+      toast.success('Entretien noté.')
+      onNoted?.()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Notation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">{libelle}{entretien.date_heure ? ` — ${formatDate(entretien.date_heure)}` : ''}</span>
+        <Badge tone="info">{moyenne != null ? `Note ${formatNumber(moyenne, { decimals: 1 })}` : 'Sans note'}</Badge>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Input type="number" step="any" min="1" max="5" value={note} onChange={(e) => setNote(e.target.value)} aria-label={`Note — ${libelle}`} />
+        <select value={avis} onChange={(e) => setAvis(e.target.value)}
+          className="h-9 rounded-md border border-border bg-card px-2 text-sm" aria-label={`Avis — ${libelle}`}>
+          {AVIS_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </select>
+        <Button size="sm" disabled={saving} onClick={enregistrer}>{saving ? 'Enregistrement…' : 'Noter'}</Button>
+      </div>
+      <Input className="mt-2" value={commentaire} onChange={(e) => setCommentaire(e.target.value)} placeholder="Commentaire (optionnel)" />
+    </li>
   )
 }
 

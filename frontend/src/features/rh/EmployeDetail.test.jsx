@@ -32,6 +32,8 @@ vi.mock('../../api/rhApi', () => {
       getRegistreFormation: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
       getIntegration: vi.fn(() => Promise.resolve({ data: { lignes: [], total: 0, faits: 0, progression_pct: 0 } })),
       getHistoriqueEmploye: vi.fn(empty),
+      // WIR240 — composeur de note du chatter.
+      noterEmploye: vi.fn(() => Promise.resolve({ data: {} })),
       getRemunerations: vi.fn(empty),
       getCompaRatio: vi.fn(() => Promise.resolve({ data: null })),
       // XRH15 — écarts de compétences (analyse d'écart requis-vs-actuel).
@@ -231,5 +233,24 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     expect(screen.getByText('Domicile')).toBeInTheDocument()
     expect(screen.getByText('Terrain')).toBeInTheDocument()
     expect(screen.getAllByText('Bureau').length).toBe(5)
+  })
+
+  it('WIR240 — compose une note sur le fil Activité via rhApi.noterEmploye', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await userEvent.click(screen.getByRole('tab', { name: /Activité/ }))
+    fireEvent.change(screen.getByPlaceholderText('Ajouter une note…'), { target: { value: 'RAS ce mois-ci.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Noter' }))
+
+    await waitFor(() => expect(rhApi.noterEmploye).toHaveBeenCalledWith(
+      '7', { message: 'RAS ce mois-ci.' },
+    ))
+    // Rechargée du serveur : `getHistoriqueEmploye` est réappelé après l'envoi.
+    await waitFor(() => expect(rhApi.getHistoriqueEmploye).toHaveBeenCalledTimes(2))
   })
 })

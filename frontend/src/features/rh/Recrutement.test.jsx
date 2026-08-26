@@ -66,6 +66,11 @@ vi.mock('../../api/rhApi', () => {
       createRetourFeedback360: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
       // XRH15 — candidats internes classés par couverture du profil requis.
       getCandidatsInternes: vi.fn(empty),
+      // WIR240 — chatter candidature (Activité) + grille de notation d'entretien.
+      getHistoriqueCandidature: vi.fn(empty),
+      noterCandidature: vi.fn(() => Promise.resolve({ data: {} })),
+      getEntretiensRecrutement: vi.fn(empty),
+      noterEntretienRecrutement: vi.fn(() => Promise.resolve({ data: {} })),
     },
   }
 })
@@ -304,6 +309,73 @@ describe('Recrutement — WIR196 : ouvertures de poste (workflow YHIRE14)', () =
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Clôturer' }))[0])
     await waitFor(() => expect(rhApi.cloturerCampagneEvaluation).toHaveBeenCalledWith(3))
+  })
+})
+
+describe('Recrutement — WIR240 : chatter candidature (Activité) + notation d’entretien', () => {
+  beforeEach(() => { vi.clearAllMocks(); armerStatistiques() })
+
+  it('affiche le fil et compose une note via rhApi.noterCandidature', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getCandidatures.mockResolvedValueOnce({
+      data: [{ id: 7, nom: 'Amrani Yassine', etape: 'entretien', etape_display: 'Entretien' }],
+    })
+    rhApi.getHistoriqueCandidature.mockResolvedValue({
+      data: [{
+        id: 1, candidature: 7, type: 'log', field: 'etape',
+        old_value: 'recu', new_value: 'entretien',
+        auteur_nom: 'rh1', date_creation: '2026-08-01T10:00:00Z',
+      }],
+    })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    const row = (await screen.findAllByText('Amrani Yassine')).map((el) => el.closest('tr')).find(Boolean)
+    expect(row).toBeTruthy()
+
+    // « Activité » n'est pas une action rapide (3e de la liste) : passe par
+    // le menu kebab persistant, patron déjà établi dans le reste du repo.
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Activité'))
+    const dialog = within(await screen.findByRole('dialog'))
+    // Log automatique de transition déjà rendu par ChatterTimeline.
+    expect(await dialog.findByText(/etape/)).toBeInTheDocument()
+
+    fireEvent.change(dialog.getByPlaceholderText('Ajouter une note…'), { target: { value: 'Bon feeling.' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Noter' }))
+
+    await waitFor(() => expect(rhApi.noterCandidature).toHaveBeenCalledWith(
+      7, { message: 'Bon feeling.' },
+    ))
+  })
+
+  it('note un entretien via rhApi.noterEntretienRecrutement (grille de notation)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getCandidatures.mockResolvedValueOnce({
+      data: [{ id: 7, nom: 'Amrani Yassine', etape: 'entretien', etape_display: 'Entretien' }],
+    })
+    rhApi.getEntretiensRecrutement.mockResolvedValue({
+      data: [{
+        id: 15, candidature: 7, type: 'technique', type_display: 'Technique',
+        date_heure: '2026-08-05T09:00:00Z', statut: 'planifie', notes: [],
+      }],
+    })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    const row = (await screen.findAllByText('Amrani Yassine')).map((el) => el.closest('tr')).find(Boolean)
+    expect(row).toBeTruthy()
+
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Entretiens & notation'))
+    const dialog = within(await screen.findByRole('dialog'))
+    await dialog.findByText(/Technique/)
+    fireEvent.change(dialog.getByLabelText(/Note —/), { target: { value: '4' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Noter' }))
+
+    await waitFor(() => expect(rhApi.noterEntretienRecrutement).toHaveBeenCalledWith(
+      15, expect.objectContaining({ notes_criteres: { global: 4 }, avis: 'reserve' }),
+    ))
   })
 })
 

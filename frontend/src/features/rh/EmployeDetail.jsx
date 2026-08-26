@@ -99,6 +99,9 @@ export default function EmployeDetail() {
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
   const [chatter, setChatter] = useState([])
+  // WIR240 — composeur de note du chatter (fil déjà en lecture seule).
+  const [noteEmploye, setNoteEmploye] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
   // WIR131 — badges reçus (ZRH14) + catalogue société pour le formulaire.
   const [badgesRecus, setBadgesRecus] = useState([])
   const [badgesCatalogue, setBadgesCatalogue] = useState([])
@@ -447,25 +450,57 @@ export default function EmployeDetail() {
   )
 
   // XRH6 — chatter (timeline d'activité : logs automatiques + notes).
+  // WIR240 — la branche `type='note'` était déjà rendue ci-dessus mais rien
+  // ne permettait d'EN CRÉER une : composeur ajouté, auteur/société posés
+  // côté serveur, rechargée depuis le serveur après envoi (jamais un ajout
+  // optimiste local qui pourrait diverger du chatter réel).
+  const envoyerNote = async () => {
+    const message = noteEmploye.trim()
+    if (!message) return
+    setNoteSaving(true)
+    try {
+      await rhApi.noterEmploye(id, { message })
+      setNoteEmploye('')
+      recharger()
+    } catch {
+      toast.error('Envoi de la note impossible.')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
   const chatterTab = (
-    <Liste
-      rows={chatter}
-      loading={subLoading}
-      empty="Aucune activité enregistrée."
-      renderRow={(a) => (
-        <div className="min-w-0">
-          <p className="text-sm">
-            {a.type === 'note' || a.type === 'NOTE'
-              ? (a.message || '—')
-              : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {a.auteur_nom || a.auteur || 'Système'}
-            {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
-          </p>
-        </div>
-      )}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2">
+        <Textarea
+          value={noteEmploye}
+          onChange={(e) => setNoteEmploye(e.target.value)}
+          placeholder="Ajouter une note…"
+          rows={2}
+          className="flex-1"
+        />
+        <Button onClick={envoyerNote} disabled={!noteEmploye.trim() || noteSaving}>
+          {noteSaving ? 'Envoi…' : 'Noter'}
+        </Button>
+      </div>
+      <Liste
+        rows={chatter}
+        loading={subLoading}
+        empty="Aucune activité enregistrée."
+        renderRow={(a) => (
+          <div className="min-w-0">
+            <p className="text-sm">
+              {a.type === 'note' || a.type === 'NOTE'
+                ? (a.message || '—')
+                : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {a.auteur_nom || a.auteur || 'Système'}
+              {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
+            </p>
+          </div>
+        )}
+      />
+    </div>
   )
 
   // WIR131 — badges de reconnaissance (ZRH14) reçus par ce dossier.
