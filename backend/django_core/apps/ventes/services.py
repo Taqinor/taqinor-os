@@ -5859,16 +5859,35 @@ def plafond_physique_du_contour(contour, produit_panneau):
     son avertissement existant. Poser ici un second moteur (pente et azimut
     devinés) donnerait un nombre que l'écran contredirait : c'est exactement le
     piège que le drapeau ``USE_MOTEUR_CALEPINAGE`` existe pour tenir fermé.
+
+    LES DIMENSIONS VIENNENT DE LA FICHE TECHNIQUE, PAS DU PRODUIT. Une première
+    version lisait ``produit.longueur_mm``/``largeur_mm`` : ces champs
+    n'existent PAS sur ``stock.Produit``, ils vivent sur sa ``FicheTechnique``
+    (PV5). ``getattr(..., None)`` rendait donc silencieusement ``None`` et le
+    plafond ne s'appliquait JAMAIS — une garde morte, verte en apparence. On
+    passe désormais par ``stock.selectors.kit_from_produit`` (lecture cross-app
+    sanctionnée, jamais ``stock.models``), qui est déjà LA source unique des
+    dimensions réelles d'un module pour le moteur de calepinage : elle rend
+    ``None`` dès qu'une des grandeurs requises manque, exactement la règle
+    « on ne devine jamais une géométrie ».
+
+    Conséquence assumée : sans fiche technique complète sur le panneau, il n'y
+    a PAS de plafond. C'est le bon défaut — un plafond inventé serait pire que
+    pas de plafond.
     """
     aire_toit = aire_contour_m2(contour)
-    if not aire_toit:
+    if not aire_toit or produit_panneau is None:
         return None
-    longueur = getattr(produit_panneau, 'longueur_mm', None)
-    largeur = getattr(produit_panneau, 'largeur_mm', None)
     try:
-        aire_panneau = (float(longueur) / 1000.0) * (float(largeur) / 1000.0)
-    except (TypeError, ValueError):
+        from apps.stock.selectors import kit_from_produit
+        kit = kit_from_produit(produit_panneau)
+    except Exception:  # noqa: BLE001 — un catalogue illisible n'est pas un plafond
+        logger.warning('Auto-devis: dimensions du panneau illisibles — aucun '
+                       'plafond de toit appliqué.', exc_info=True)
         return None
+    if kit is None:
+        return None
+    aire_panneau = float(kit.module_long_m) * float(kit.module_court_m)
     if aire_panneau <= 0:
         return None
     plafond = int(aire_toit // aire_panneau)
