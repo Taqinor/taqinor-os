@@ -633,6 +633,10 @@ REFUS = {
     # CalendrierProjet, pas une liste de choix déclarable.
     "frontend/src/features/gestion_projet/pages/PlanningPage.jsx": [
         ("calendrier ouvré", "FORME")],
+    # WIR280 — le test décrit le COMPORTEMENT de l'action evaluer (400 FR sur
+    # formule illégale), pas une liste de choix ; fichier de test.
+    "frontend/src/features/compta/pages/EtatsPersonnalisesPage.test.jsx": [
+        ("formule illégale rend", "TEST")],
     "frontend/src/router/moduleGating.wir171.test.mjs": [
         ("MIROIR de la garde serveur", "TEST"),
         ("CanViewAoRentabilite", "TEST"),

@@ -199,8 +199,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/installations/views/installation.py:152` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/installation.py:698` | update_or_create | PhotoChecklistMeta.objects | attachment |
 | `backend/django_core/apps/installations/views/intervention.py:105` | get_or_create | TypeIntervention.objects | cle, company |
-| `backend/django_core/apps/installations/views/intervention.py:950` | get_or_create | PhotoAnnotation.objects | attachment |
-| `backend/django_core/apps/installations/views/intervention.py:1495` | get_or_create | ToolReturn.objects | intervention, outil_id |
+| `backend/django_core/apps/installations/views/intervention.py:961` | get_or_create | PhotoAnnotation.objects | attachment |
+| `backend/django_core/apps/installations/views/intervention.py:1506` | get_or_create | ToolReturn.objects | intervention, outil_id |
 | `backend/django_core/apps/installations/views/program.py:152` | get_or_create | link_model.objects | projet |
 | `backend/django_core/apps/installations/views/rfq.py:205` | get_or_create | RFQConsultation.objects | fournisseur, rfq |
 | `backend/django_core/apps/installations/views/safety.py:103` | get_or_create | TypeIntervention.objects | cle, company |
