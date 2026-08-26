@@ -38,6 +38,10 @@ vi.mock('../../api/ventesApi', () => ({
     createListePrix: vi.fn(),
     setLignePrixListe: vi.fn(),
     addRegleListePrix: vi.fn(),
+    // WIR226 — les deux wrappers qui existaient depuis toujours et que
+    // l'écran n'appelait JAMAIS (il était Create + Read only).
+    patchListePrix: vi.fn(),
+    deleteListePrix: vi.fn(),
   },
 }))
 vi.mock('../../api/stockApi', () => ({
@@ -99,5 +103,108 @@ describe('ListesPrixPage', () => {
     fireEvent.click(within(addDialog).getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(ventesApi.setLignePrixListe).toHaveBeenCalledWith(
       1, { produit: '1', prix_unitaire: '850' }))
+  })
+})
+
+
+/* WIR226 — L'écran était Create + Read only (nom + devise) malgré la ligne
+   FE-XSAL1-3 du FRONTEND_GAP_PLAN qui annonçait un « CRUD » : ni renommage, ni
+   dates, ni segment, ni archivage, ni suppression — alors que `patchListePrix`
+   et `deleteListePrix` existaient depuis toujours des DEUX côtés. Une liste
+   devenue fausse restait donc dans la résolution de prix pour toujours. */
+describe('ListesPrixPage — WIR226 : CRUD complet', () => {
+  const LISTE = {
+    id: 1, nom: 'Revendeur', devise: 'MAD', archived: false,
+    segment_client: '', date_debut: null, date_fin: null,
+    lignes: [], regles: [],
+  }
+
+  const ouvrirDetail = async (liste = LISTE) => {
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText(liste.nom))
+    return screen.findByRole('dialog')
+  }
+
+  it('renomme, cible un segment et date la liste (PATCH réel)', async () => {
+    ventesApi.patchListePrix.mockResolvedValue({ data: {} })
+    const dialog = await ouvrirDetail()
+    fireEvent.change(within(dialog).getByLabelText('Nom'),
+      { target: { value: 'Revendeur Nord' } })
+    fireEvent.change(within(dialog).getByLabelText('Segment client ciblé'),
+      { target: { value: 'revendeur' } })
+    fireEvent.change(within(dialog).getByLabelText('Valide jusqu’au'),
+      { target: { value: '2026-12-31' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer les modifications' }))
+
+    await waitFor(() => expect(ventesApi.patchListePrix).toHaveBeenCalledWith(1, {
+      nom: 'Revendeur Nord',
+      devise: 'MAD',
+      segment_client: 'revendeur',
+      date_debut: null,
+      date_fin: '2026-12-31',
+    }))
+    // Le rechargement suit : la valeur persiste au lieu de vivre dans l'écran.
+    await waitFor(() => expect(ventesApi.getListePrix).toHaveBeenCalledWith(1))
+  })
+
+  it('archive une liste active (elle sort de la résolution de prix)', async () => {
+    ventesApi.patchListePrix.mockResolvedValue({ data: {} })
+    const dialog = await ouvrirDetail()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archiver' }))
+    await waitFor(() => expect(ventesApi.patchListePrix)
+      .toHaveBeenCalledWith(1, { archived: true }))
+  })
+
+  it('réactive une liste archivée', async () => {
+    ventesApi.patchListePrix.mockResolvedValue({ data: {} })
+    const dialog = await ouvrirDetail({ ...LISTE, nom: 'Ancienne', archived: true })
+    expect(within(dialog).getByText(/exclue de la résolution de prix/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Réactiver' }))
+    await waitFor(() => expect(ventesApi.patchListePrix)
+      .toHaveBeenCalledWith(1, { archived: false }))
+  })
+
+  it('la suppression est CONFIRMÉE avant d’appeler le serveur', async () => {
+    ventesApi.deleteListePrix.mockResolvedValue({ data: {} })
+    const dialog = await ouvrirDetail()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }))
+    // Rien n'est encore parti : la confirmation s'ouvre d'abord.
+    expect(ventesApi.deleteListePrix).not.toHaveBeenCalled()
+    const confirmation = await screen.findByText(/Supprimer « Revendeur » \?/)
+    expect(confirmation).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer définitivement' }))
+    await waitFor(() => expect(ventesApi.deleteListePrix).toHaveBeenCalledWith(1))
+    // Le détail se ferme et la liste est rechargée (la liste supprimée
+    // disparaît alors aussi du sélecteur de la fiche client, qui lit la même
+    // ressource).
+    await waitFor(() => expect(ventesApi.getListesPrix.mock.calls.length)
+      .toBeGreaterThan(1))
+  })
+
+  it('un refus serveur est affiché tel quel', async () => {
+    ventesApi.patchListePrix.mockRejectedValue({
+      response: { data: { detail: 'Une liste porte déjà ce nom.' } },
+    })
+    const dialog = await ouvrirDetail()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer les modifications' }))
+    expect(await screen.findByText('Une liste porte déjà ce nom.')).toBeInTheDocument()
+  })
+
+  it('la création accepte aussi segment et dates, sans champ vide envoyé', async () => {
+    ventesApi.getListesPrix.mockResolvedValue({ data: [] })
+    ventesApi.createListePrix.mockResolvedValue({ data: { id: 2 } })
+    render(<ListesPrixPage />)
+    await screen.findByText('Aucune liste de prix')
+    fireEvent.click(screen.getByRole('button', { name: /Nouvelle liste/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Nom'), { target: { value: 'Export' } })
+    fireEvent.change(within(dialog).getByLabelText('Segment client ciblé'),
+      { target: { value: 'export' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
+    await waitFor(() => expect(ventesApi.createListePrix).toHaveBeenCalledWith({
+      nom: 'Export', devise: 'MAD', segment_client: 'export',
+    }))
   })
 })
