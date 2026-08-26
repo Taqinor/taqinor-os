@@ -74,10 +74,16 @@ describe('RelancesDuJourWidget (RELANCE FOUNDATION)', () => {
     expect(screen.getByRole('button', { name: /Sauter/ })).toBeInTheDocument()
   })
 
-  it('affiche un état vide quand aucune relance n\'est due', async () => {
+  it('affiche un état vide quand aucune relance n\'est due, avec le rappel du déclencheur (fiche lead)', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValueOnce({ data: { count: 0, results: [] } })
     mount()
     await waitFor(() => expect(screen.getByText(/Aucune relance due/)).toBeInTheDocument())
+    // Revue Fable finale — « Aucune relance due » à elle seule se lit comme
+    // « tout est à jour » ; le vide peut aussi vouloir dire « aucun lead n'a
+    // de plan initialisé ». Le widget reste minimal (aucun bouton d'action
+    // ici) mais nomme où se trouve le vrai déclencheur.
+    expect(screen.getByText(/Initialiser le plan de relance/)).toBeInTheDocument()
+    expect(screen.getByText(/Suivi commercial/)).toBeInTheDocument()
   })
 
   it('navigue vers le lead au clic sur son nom', async () => {
