@@ -1233,6 +1233,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   const empty = { type: 'FeatureCollection', features: [] } as const;
 
+  // L-MAP (fondateur 26/08/2026) — état du calque de référence géo-référencé,
+  // HOISSÉ ici (au-dessus de map.on('load') plus bas, qui le LIT à sa
+  // création) : la revue adversariale du 26/08 a jugé fragile de le déclarer
+  // plus bas, sous couvert que `on('load')` s'exécute forcément après (vrai
+  // aujourd'hui, mais un ordre de lecture qui ne dépend QUE d'un luxe
+  // d'exécution asynchrone est un piège pour la prochaine modification).
+  let referenceContourVisible = true;
+
   // — Scène 3D Three.js (couche WebGL custom MapLibre) : voir roofPro11/scene3d.ts. Le
   // module possède le renderer/scène/caméra/soleil + la photo de toit (W70) ; l'entrée
   // garde la construction de la carte et le boot map.on('load') (qui ajoute customLayer).
@@ -1275,13 +1283,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   map.on('load', () => {
     // L-MAP — calque de référence AJOUTÉ EN PREMIER : il reste sous le tracé en
     // cours/les obstacles/les points de sommet dans l'ordre d'empilement MapLibre
-    // (chaque addLayer suivant se pose AU-DESSUS). Toujours ajouté (même sans
-    // `opts.referenceContour` : source vide, exactement comme `rp9-obs` sans
-    // obstacle) — le tunnel public et la preview restent visuellement inchangés.
-    map.addSource('rp9-ref-contour', {
-      type: 'geojson',
-      data: referenceContourGeoJSON(referenceContourRing(opts.referenceContour)) as never,
-    });
+    // (chaque addLayer suivant se pose AU-DESSUS). Toujours ajouté, SOURCE VIDE au
+    // départ (comme `rp9-obs` sans obstacle) puis peuplée par `setReferenceContour`
+    // juste après (une SEULE façon de construire ce GeoJSON, jamais deux) — le
+    // tunnel public et la preview (qui ne passent jamais `opts.referenceContour`)
+    // restent visuellement inchangés.
+    map.addSource('rp9-ref-contour', { type: 'geojson', data: empty as never });
     map.addLayer({
       id: 'rp9-ref-contour-fill',
       type: 'fill',
@@ -1296,6 +1303,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       layout: { visibility: referenceContourVisible ? 'visible' : 'none' },
       paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
+    setReferenceContour(referenceContourRing(opts.referenceContour));
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-obs', { type: 'geojson', data: empty as never });
@@ -1385,7 +1393,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
      que si on les câble explicitement (queryRenderedFeatures/on('click', id,
      …)) — absent ici par construction, donc le tracé/glissé de panneau/la
      sélection de groupe-rangée (PV34) traversent ce calque sans le voir. */
-  let referenceContourVisible = true;
   function referenceContourGeoJSON(ring: LngLat[] | null) {
     if (!ring || ring.length < 3) return empty;
     const closed = [...ring, ring[0]];
