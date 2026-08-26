@@ -170,20 +170,68 @@ class FamillesTests(SimpleTestCase):
 
 class Cumul25AnsTests(SimpleTestCase):
 
-    def test_somme_les_flux_annuels_jamais_le_cumul_net(self):
-        # ``cumulative`` part de ``-investissement`` : le lire imposerait de
-        # ré-ajouter le prix (une soustraction puis une addition = deux
-        # occasions de se tromper de signe). On somme les flux.
-        cumul = ot._cumul_25_ans(100000.0, 10000.0, avec_batterie=False)
-        self.assertIsNotNone(cumul)
-        # Sans hausse tarifaire (TARIFF_ESCALATION = 0) et avec la seule
-        # dégradation panneau, 25 ans valent un peu MOINS que 25 × l'année 1.
-        self.assertLess(cumul, 25 * 10000.0)
-        self.assertGreater(cumul, 20 * 10000.0)
+    def test_recommande_LIT_la_courbe_servie_au_lieu_de_la_refaire(self):
+        # F1 — LE test de non-régression. ``cashflow_sans`` EST la série que la
+        # page trace ; son dernier point + le prix = les économies encaissées.
+        # Refaire le calcul ici donnerait un autre nombre (voir le test
+        # suivant), et la carte finirait ailleurs que la courbe au-dessus.
+        data = {'cashflow_sans': [-90000, -80000, 12345],
+                'cashflow_avec': [-100000, 4321]}
+        self.assertEqual(ot._cumul_servi(data, 'sans', 100000.0), 112345.0)
+        self.assertEqual(ot._cumul_servi(data, 'avec', 100000.0), 104321.0)
+
+    def test_sans_courbe_servie_aucun_cumul_reconstitue(self):
+        self.assertIsNone(ot._cumul_servi({}, 'sans', 100000.0))
+        self.assertIsNone(ot._cumul_servi({'cashflow_sans': []}, 'sans', 1.0))
+        self.assertIsNone(ot._cumul_servi({'cashflow_sans': [1]}, 'sans', 0))
+
+    def test_les_DEUX_arguments_de_la_page_changent_le_resultat(self):
+        # F1 — la preuve que les omettre n'était pas anodin : sans
+        # ``battery_share``, le moteur applique l'abattement 0,90 à TOUTE
+        # l'économie (le bug Z5 que le fondateur a fait corriger le 20/08) ;
+        # sans ``inverter_replace_cost``, aucune provision n'est retranchée.
+        nu = ot._cumul_moteur(100000.0, 10000.0, stockage=True,
+                              part_batterie=None, cout_onduleur_ttc=None)
+        comme_la_page = ot._cumul_moteur(
+            100000.0, 10000.0, stockage=True, part_batterie=0.3,
+            cout_onduleur_ttc=20000.0)
+        self.assertIsNotNone(nu)
+        self.assertIsNotNone(comme_la_page)
+        self.assertNotEqual(nu, comme_la_page)
+
+    def test_la_part_batterie_reprend_la_formule_de_pricing(self):
+        # (avec − sans) / avec, bornée à zéro — au caractère près.
+        self.assertAlmostEqual(
+            ot._part_batterie({'taux_autoconso_avec': 0.9,
+                               'taux_autoconso_sans': 0.6}),
+            (0.9 - 0.6) / 0.9)
+        self.assertEqual(
+            ot._part_batterie({'taux_autoconso_avec': 0.5,
+                               'taux_autoconso_sans': 0.8}), 0.0)
+        self.assertIsNone(ot._part_batterie({'taux_autoconso_avec': 0}))
+        self.assertIsNone(ot._part_batterie({}))
+
+    def test_aucune_provision_onduleur_sans_ligne_onduleur(self):
+        # Q1 — le prix RÉEL de la ligne, jamais un pourcentage de repli.
+        lignes = [SimpleNamespace(quantite=10, prix_unitaire=1000,
+                                  produit=None)]
+        self.assertIsNone(ot._cout_onduleur_ttc(lignes, ['panneau'], 1.0))
+
+    def test_la_provision_onduleur_est_remisee_comme_le_prix(self):
+        lignes = [SimpleNamespace(quantite=1, prix_unitaire=10000,
+                                  produit=None)]
+        plein = ot._cout_onduleur_ttc(lignes, ['onduleur_hybride'], 1.0)
+        remise = ot._cout_onduleur_ttc(lignes, ['onduleur_hybride'], 0.9)
+        self.assertEqual(plein, 12000.0)          # 10 000 × 1,20 (TVA repli)
+        self.assertEqual(remise, round(plein * 0.9, 2))
 
     def test_aucune_entree_aucun_cumul(self):
-        self.assertIsNone(ot._cumul_25_ans(None, 10000.0, avec_batterie=False))
-        self.assertIsNone(ot._cumul_25_ans(100000.0, 0, avec_batterie=False))
+        self.assertIsNone(ot._cumul_moteur(
+            None, 10000.0, stockage=False, part_batterie=None,
+            cout_onduleur_ttc=None))
+        self.assertIsNone(ot._cumul_moteur(
+            100000.0, 0, stockage=False, part_batterie=None,
+            cout_onduleur_ttc=None))
 
     def test_escalade_tarifaire_reste_a_zero(self):
         # La page imprime « aucune hausse tarifaire supposée » AU-DESSUS du
@@ -207,14 +255,28 @@ class CarteDuDevisTests(SimpleTestCase):
         'eco_s_ann': 13260.4, 'eco_a_ann': 17880.9,
         'roi_s': 8.21, 'roi_a': 7.98,
         'prod_kwh_sans': 19140.0, 'prod_kwh_avec': 22620.0,
+        # QX39 — la série cumulée que la page trace déjà.
+        'cashflow_sans': [-95000, -80000, 222899.45],
+        'cashflow_avec': [-130000, -110000, 277299.75],
     }
 
-    def _contexte(self):
-        devis = SimpleNamespace(
-            etude_params={'etude_horaire': {'annuel': {
+    def _bloc_horaire(self, kwc=12.1):
+        """Un bloc horaire qui PASSE la garde anti-périmé de ``pricing``."""
+        return {
+            'kwc': kwc,
+            'annuel': {
+                'production_kwh': 19140.0, 'consommation_kwh': 21000.0,
+                'economie_sans_mad': 13260.4, 'economie_avec_mad': 17880.9,
                 'couverture_sans': 0.61, 'couverture_avec': 0.794,
                 'taux_autoconso_sans': 0.628, 'taux_autoconso_avec': 0.926,
-            }}},
+            },
+            'mois': [{'economie_sans_mad': 1105.0,
+                      'economie_avec_mad': 1490.0} for _ in range(12)],
+        }
+
+    def _contexte(self, kwc=12.1):
+        devis = SimpleNamespace(
+            etude_params={'etude_horaire': self._bloc_horaire(kwc)},
             reference='DEV-X')
         return _contexte_factice(devis)
 
@@ -249,7 +311,28 @@ class CarteDuDevisTests(SimpleTestCase):
         sans = ot._carte_du_devis(self._contexte(), self.DATA, 'sans')
         self.assertEqual(sans['couverture_pct'], 61.0)
         self.assertEqual(sans['taux_autoconsommation_pct'], 62.8)
+
+    def test_le_cumul_25_ans_est_le_BOUT_de_la_courbe_servie(self):
+        # F1 — 222 899,45 (dernier point) + 108 900,55 (prix) = 331 800,00.
+        sans = ot._carte_du_devis(self._contexte(), self.DATA, 'sans')
+        self.assertEqual(sans['economies_cumulees_25_ans_mad'], 331800.0)
+
+    def test_un_bloc_horaire_PERIME_ne_sert_aucun_taux(self):
+        # F2 — LE test de non-régression. Le bloc a été calculé à 12,1 kWc ;
+        # la carte « avec » de ce devis à deux options fait 14,3 kWc. Ses
+        # chiffres décrivent donc une AUTRE installation : la garde CJ2a de
+        # ``pricing._lire_etude_horaire`` les refuse, et la carte les OMET
+        # plutôt que d'afficher « couverture 79,4 % » à côté du bon prix.
         avec = ot._carte_du_devis(self._contexte(), self.DATA, 'avec')
+        self.assertNotIn('couverture_pct', avec)
+        self.assertNotIn('taux_autoconsommation_pct', avec)
+        # Le reste de la carte reste servi.
+        self.assertEqual(avec['prix_ttc'], 142700.25)
+
+    def test_un_bloc_horaire_A_JOUR_sert_les_taux_de_la_variante(self):
+        # Le cas normal (devis mono-champ) : le bloc décrit bien cette taille.
+        contexte = self._contexte(kwc=14.3)
+        avec = ot._carte_du_devis(contexte, self.DATA, 'avec')
         self.assertEqual(avec['couverture_pct'], 79.4)
         self.assertEqual(avec['taux_autoconsommation_pct'], 92.6)
 
@@ -262,6 +345,16 @@ class CarteDuDevisTests(SimpleTestCase):
         # …mais tout le reste est servi : une carte partielle vaut mieux
         # qu'une carte absente ou qu'un chiffre inventé.
         self.assertEqual(sans['prix_ttc'], 108900.55)
+
+    def test_un_bloc_horaire_TRONQUE_est_refuse_comme_perime(self):
+        # Onze mois au lieu de douze : la garde de ``pricing`` refuse — et
+        # cette carte-ci n'a pas le droit d'être plus laxiste que le PDF.
+        bloc = self._bloc_horaire()
+        bloc['mois'] = bloc['mois'][:11]
+        contexte = _contexte_factice(SimpleNamespace(
+            etude_params={'etude_horaire': bloc}, reference='DEV-X'))
+        sans = ot._carte_du_devis(contexte, self.DATA, 'sans')
+        self.assertNotIn('couverture_pct', sans)
 
     def test_sans_calepinage_aucun_verdict_de_toit(self):
         sans = ot._carte_du_devis(self._contexte(), self.DATA, 'sans')
@@ -297,12 +390,18 @@ class DerivationTests(SimpleTestCase):
             offres_tailles_config=config, reference='DEV-X')
         contexte = _contexte_factice(devis, plafond=plafond)
         cartes = cartes or {'sans': _carte(), 'avec': _carte()}
+
+        def _moteur(_contexte_, nb, _config=None, *, avec_servable=True):
+            # Le faux moteur HONORE ``avec_servable`` exactement comme le vrai :
+            # un mock qui l'ignorerait ferait passer un test que la production
+            # échouerait (la variante batterie doit disparaître AVANT le calcul,
+            # pas être filtrée après).
+            return {'sans': dict(cartes['sans'], nb_panneaux=nb),
+                    'avec': (dict(cartes['avec'], nb_panneaux=nb)
+                             if avec_servable else None)}
+
         with mock.patch.object(ot, '_contexte', return_value=contexte), \
-                mock.patch.object(
-                    ot, '_carte_moteur',
-                    side_effect=lambda _c, n, _cfg=None: {
-                        'sans': dict(cartes['sans'], nb_panneaux=n),
-                        'avec': dict(cartes['avec'], nb_panneaux=n)}), \
+                mock.patch.object(ot, '_carte_moteur', side_effect=_moteur), \
                 mock.patch.object(
                     ot, '_carte_du_devis',
                     side_effect=lambda _c, _d, v: dict(cartes[v])):
@@ -415,15 +514,21 @@ class DerivationTests(SimpleTestCase):
         contexte = _contexte_factice(devis)
         sans_batterie = dict(_carte(), familles=['onduleur', 'panneau'])
         sans_batterie.pop('batterie')
+
+        def _moteur(_contexte_, nb, _config=None, *, avec_servable=True):
+            return {'sans': dict(sans_batterie, nb_panneaux=nb),
+                    'avec': (dict(sans_batterie, nb_panneaux=nb)
+                             if avec_servable else None)}
+
+        def _devis_carte(_contexte_, _data, variante):
+            # La référence est FIABLE : sans ce marqueur, « ce qui change » se
+            # tait (et le test ne prouverait rien).
+            return dict(_carte(), _familles_fiables=True)
+
         with mock.patch.object(ot, '_contexte', return_value=contexte), \
-                mock.patch.object(
-                    ot, '_carte_moteur',
-                    side_effect=lambda _c, n, _cfg=None: {
-                        'sans': dict(sans_batterie, nb_panneaux=n),
-                        'avec': dict(sans_batterie, nb_panneaux=n)}), \
-                mock.patch.object(
-                    ot, '_carte_du_devis',
-                    side_effect=lambda _c, _d, v: dict(_carte())):
+                mock.patch.object(ot, '_carte_moteur', side_effect=_moteur), \
+                mock.patch.object(ot, '_carte_du_devis',
+                                  side_effect=_devis_carte):
             bloc = ot.deriver(devis, self.DATA)
 
         eco = next(o for o in bloc['offres'] if o['cle'] == 'eco')
@@ -518,6 +623,31 @@ class ContratTests(SimpleTestCase):
         self.assertNotIn('"autonomie_heures"', brut)
         self.assertIn('pas_d_autonomie_en_heures', self.contrat['notes'])
 
+    def test_les_prix_par_kwc_du_contrat_sont_CEUX_du_serveur(self):
+        # F7 — PACT10 : la lane web construit CONTRE ce fichier. Une valeur à
+        # deux décimales lui ferait écrire un formateur pour un nombre que le
+        # serveur n'émet jamais (il fait ``float(round(prix / kwc))``).
+        for cle, exemple in self.contrat.items():
+            if not cle.startswith('exemple') or not isinstance(exemple, dict):
+                continue
+            bloc = exemple.get('offres_tailles')
+            if not isinstance(bloc, dict):
+                continue
+            for offre in bloc.get('offres') or []:
+                for variante in ('sans', 'avec'):
+                    carte = offre.get(variante) or {}
+                    if 'prix_par_kwc_ttc' not in carte:
+                        continue
+                    self.assertEqual(
+                        carte['prix_par_kwc_ttc'],
+                        ot._prix_par_kwc(carte['prix_ttc'],
+                                         carte['puissance_kwc']),
+                        '%s/%s/%s' % (cle, offre['cle'], variante))
+
+    def test_aucun_champ_PRIVE_ne_figure_au_contrat(self):
+        brut = CONTRAT.read_text(encoding='utf-8')
+        self.assertNotIn('"_familles_fiables"', brut)
+
     def test_le_contrat_declare_le_refus_des_champs_derives(self):
         regles = self.contrat['api_vendeur']['ecriture_config']['regles']
         texte = ' '.join(regles)
@@ -536,6 +666,113 @@ class ContratTests(SimpleTestCase):
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. LA CONFIGURATION STOCKÉE — indépendance par taille
 # ═══════════════════════════════════════════════════════════════════════════
+
+class MaterielDuDevisTests(TestCase):
+    """F4/F5 — la carte nomme le matériel DE SA VARIANTE, classé comme le
+    catalogue le classe."""
+
+    def _devis_deux_options(self):
+        from authentication.models import Company
+        company = Company.objects.create(slug='mat', nom='mat')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-MAT-01', statut='envoye',
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        lignes = (
+            ('Panneau Canadien Solar 710W', '', '14'),
+            ('Onduleur réseau Huawei 10kW Monophasé', 'sans', '1'),
+            ('Onduleur hybride Deye 10kW Monophasé', 'avec', '1'),
+            ('Batterie Dyness 5 kWh', 'avec', '2'),
+        )
+        for nom, variante, qte in lignes:
+            produit = Produit.objects.create(
+                company=company, nom=nom, prix_vente='1000',
+                marque=nom.split()[1], quantite_stock=10)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal('1000'),
+                remise=Decimal('0'), variante=variante)
+        return devis
+
+    def test_la_carte_SANS_ne_nomme_ni_batterie_ni_onduleur_hybride(self):
+        # Le bug : lire toutes les lignes faisait lister la BATTERIE sur la
+        # carte « sans batterie » — la carte décrivait l'autre option.
+        materiel, _ = ot._materiel_du_devis(self._devis_deux_options(), 'sans')
+        familles = {e['famille'] for e in materiel}
+        self.assertNotIn('batterie', familles)
+        onduleur = next(e for e in materiel if e['famille'] == 'onduleur')
+        self.assertEqual(onduleur['role'], 'onduleur_reseau')
+
+    def test_la_carte_AVEC_nomme_l_onduleur_HYBRIDE_et_la_batterie(self):
+        # Le bug symétrique : la première ligne onduleur rencontrée était
+        # celle du RÉSEAU, donc la carte « avec batterie » annonçait un
+        # onduleur incapable de gérer une batterie.
+        materiel, _ = ot._materiel_du_devis(self._devis_deux_options(), 'avec')
+        familles = {e['famille'] for e in materiel}
+        self.assertIn('batterie', familles)
+        onduleur = next(e for e in materiel if e['famille'] == 'onduleur')
+        self.assertEqual(onduleur['role'], 'onduleur_hybride')
+
+    def test_les_lignes_COMMUNES_sont_dans_les_deux_cartes(self):
+        for variante in ('sans', 'avec'):
+            materiel, _ = ot._materiel_du_devis(
+                self._devis_deux_options(), variante)
+            self.assertIn('panneau', {e['famille'] for e in materiel})
+
+    def test_le_role_vient_du_classifieur_CATALOGUE(self):
+        # F5 — même source des deux côtés : ``services.classer_produit``, celui
+        # que la composition utilise pour poser ses rôles.
+        self.assertEqual(ot._role_de_la_ligne('Onduleur hybride Deye 10kW'),
+                         'onduleur_hybride')
+        self.assertEqual(ot._role_de_la_ligne('Onduleur réseau Huawei 10kW'),
+                         'onduleur_reseau')
+        self.assertEqual(ot._role_de_la_ligne('Panneau 710W'), 'panneau')
+        self.assertIsNone(ot._role_de_la_ligne('Forfait déplacement'))
+
+    def test_une_ligne_non_classee_se_SIGNALE(self):
+        from authentication.models import Company
+        company = Company.objects.create(slug='mat2', nom='mat2')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-MAT-02', statut='envoye',
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        produit = Produit.objects.create(
+            company=company, nom='Boîtier exotique', prix_vente='500',
+            quantite_stock=1)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Boîtier exotique',
+            quantite=Decimal('1'), prix_unitaire=Decimal('500'),
+            remise=Decimal('0'))
+        _materiel, tout_classe = ot._materiel_du_devis(devis, 'sans')
+        self.assertIs(tout_classe, False)
+
+    def test_une_reference_NON_FIABLE_fait_taire_ce_qui_change(self):
+        # F5 — une famille manquée côté référence ferait accuser les autres
+        # tailles d'un ajout imaginaire. Mieux vaut aucune comparaison.
+        offres = [
+            {'cle': 'recommande',
+             'sans': {'familles': ['panneau'], '_familles_fiables': False}},
+            {'cle': 'eco', 'sans': {'familles': ['onduleur', 'panneau']}},
+        ]
+        ot._poser_diff_familles(offres)
+        self.assertNotIn('familles_diff', offres[1]['sans'])
+
+    def test_une_reference_FIABLE_publie_ce_qui_change(self):
+        offres = [
+            {'cle': 'recommande',
+             'sans': {'familles': ['batterie', 'panneau'],
+                      '_familles_fiables': True}},
+            {'cle': 'eco', 'sans': {'familles': ['panneau']}},
+        ]
+        ot._poser_diff_familles(offres)
+        self.assertEqual(offres[1]['sans']['familles_diff'],
+                         {'ajoutees': [], 'retirees': ['batterie']})
+
+    def test_les_champs_PRIVES_ne_sortent_jamais(self):
+        offres = [{'cle': 'recommande',
+                   'sans': {'familles': ['panneau'],
+                            '_familles_fiables': True}}]
+        ot._retirer_champs_prives(offres)
+        self.assertEqual(list(offres[0]['sans']), ['familles'])
+
 
 class SubstitutionTests(TestCase):
     """Remplacer un produit doit changer le prix, la capacité ET le NOM.
@@ -665,6 +902,31 @@ class ConfigStockeeTests(TestCase):
             (devis.statut, devis.taux_tva, devis.remise_globale,
              devis.lignes.count()), avant)
 
+    def test_ecrire_ne_gele_NI_ne_bouge_prix_par_kwc(self):
+        # SCA47 — ``Devis.save`` DÉRIVE ET GÈLE ``prix_par_kwc`` (write-once)
+        # dès qu'un kWc et un total existent. Passer par ``save(update_fields=…)``
+        # aurait donc pu figer, au passage d'une exploration, une colonne
+        # interne que ce geste ne concerne pas. On écrit LA colonne, seule.
+        devis = self._devis()
+        devis.etude_params = {'puissance_kwc': 12.1}
+        devis.save()
+        gele_avant = devis.prix_par_kwc
+        ot.enregistrer_config(devis, 'eco', {'nb_panneaux': 12})
+        devis.refresh_from_db()
+        self.assertEqual(devis.prix_par_kwc, gele_avant)
+
+    def test_ecrire_ne_fait_pas_passer_le_devis_pour_MODIFIE(self):
+        # VX98 — ``updated_at`` (auto_now) aurait avancé et la page aurait
+        # affiché « modifié il y a N minutes » sur un devis dont rien de
+        # contractuel n'a bougé.
+        devis = self._devis()
+        avant = Devis.objects.values_list(
+            'updated_at', flat=True).get(pk=devis.pk)
+        ot.enregistrer_config(devis, 'eco', {'nb_panneaux': 12})
+        apres = Devis.objects.values_list(
+            'updated_at', flat=True).get(pk=devis.pk)
+        self.assertEqual(avant, apres)
+
     def test_taille_inconnue_refusee(self):
         devis = self._devis()
         with self.assertRaises(ValueError):
@@ -741,6 +1003,48 @@ class SerialiseurTests(TestCase):
             quantite_stock=1)
         serializer = self._config({'equipements': {'ovni': mien.pk}})
         self.assertFalse(serializer.is_valid())
+
+    def test_IMBRIQUE_le_refus_fonctionne_aussi_comme_CHAMP(self):
+        # F6 — LE test qui manquait. Construit avec ``data=``, DRF pose
+        # ``initial_data`` ; IMBRIQUÉ comme champ d'un parent — le seul chemin
+        # que la production prend — il ne le pose PAS, et lire
+        # ``self.initial_data`` depuis ``validate()`` levait un AttributeError
+        # (500 sur chaque PATCH). Le refus vit maintenant dans
+        # ``to_internal_value``, qui reçoit le dict brut dans les DEUX cas.
+        from apps.ventes.serializers import OffreTailleEcritureSerializer
+        serializer = OffreTailleEcritureSerializer(
+            data={'cle': 'eco',
+                  'config': {'nb_panneaux': 12, 'prix_ttc': 1}},
+            context={'company': self.company})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('prix_ttc', json.dumps(serializer.errors))
+
+    def test_IMBRIQUE_une_config_legitime_passe(self):
+        from apps.ventes.serializers import OffreTailleEcritureSerializer
+        serializer = OffreTailleEcritureSerializer(
+            data={'cle': 'eco', 'config': {'nb_panneaux': 12}},
+            context={'company': self.company})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data['config']['nb_panneaux'], 12)
+
+    def test_un_produit_SANS_PRIX_est_refuse(self):
+        # F3 — le catalogue en contient délibérément (les 11 pompes OSP sont
+        # « prix à renseigner »). Substituer un produit à 0 MAD afficherait
+        # une batterie GRATUITE sur une carte client.
+        gratuit = Produit.objects.create(
+            company=self.company, nom='Batterie sans prix', prix_vente='0',
+            quantite_stock=1)
+        serializer = self._config({'equipements': {'batterie': gratuit.pk}})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('batterie', serializer.errors['equipements'])
+
+    def test_zero_module_de_batterie_est_refuse_BRUYAMMENT(self):
+        # « Sans batterie » s'exprime par la VARIANTE, pas par zéro module :
+        # la carte « avec » aurait disparu sans que personne ne sache pourquoi.
+        serializer = self._config({'batterie_nb_modules': 0})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('batterie_nb_modules', serializer.errors)
 
     def test_la_cle_de_taille_est_bornee_aux_trois(self):
         from apps.ventes.serializers import OffreTailleEcritureSerializer
@@ -873,6 +1177,24 @@ class PayloadPubliqueTests(_Base):
         self.assertEqual(standard['offres_tailles'],
                          confiance['offres_tailles'])
 
+    def test_section_economies_decochee_retire_les_tailles(self):
+        # Ce bloc EST un bloc d'économies (prix, économie, payback, cumul
+        # 25 ans) : décocher « Économies » dans le dialogue d'envoi doit les
+        # emporter ensemble, sinon la case est contournable par une autre
+        # section de la même page.
+        devis = self._devis('pub-section')
+        with mock.patch('apps.ventes.offres_tailles.deriver',
+                        return_value=self._BLOC):
+            payload = self._payload(devis, sections={'economies': False})
+        self.assertNotIn('offres_tailles', payload)
+
+    def test_sections_par_defaut_servent_les_tailles(self):
+        devis = self._devis('pub-defaut')
+        with mock.patch('apps.ventes.offres_tailles.deriver',
+                        return_value=self._BLOC):
+            payload = self._payload(devis)
+        self.assertIn('offres_tailles', payload)
+
     def test_aucun_prix_d_achat_ne_fuit_dans_le_bloc(self):
         devis = self._devis('pub-marge')
         with mock.patch('apps.ventes.offres_tailles.deriver',
@@ -948,6 +1270,34 @@ class ApiVendeurTests(_Base):
         # RIEN n'a été stocké : un refus est un refus, pas un enregistrement
         # partiel.
         self.assertIn(devis.offres_tailles_config, (None, {}))
+
+    def test_patch_LEGITIME_repond_200_et_pas_500(self):
+        # F6 — LE test de bout en bout qui manquait. Mes tests unitaires
+        # construisaient le sérialiseur avec ``data=`` : un chemin que la
+        # production ne prend JAMAIS. Ici on passe par l'action réelle, donc
+        # par le sérialiseur IMBRIQUÉ — celui qui levait un AttributeError
+        # (HTTP 500) sur CHAQUE appel, légitime ou non.
+        devis = self._devis('api-200')
+        with mock.patch('apps.ventes.offres_tailles.deriver',
+                        return_value=self._BLOC):
+            resp = self._client(devis).patch(
+                '/api/django/ventes/devis/%s/offres-tailles/config/' % devis.pk,
+                {'cle': 'eco', 'config': {'nb_panneaux': 18}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content[:400])
+
+    def test_patch_d_un_champ_derive_repond_400_ET_PAS_500(self):
+        # Le pendant du précédent : le refus doit être un 400 LISIBLE, pas un
+        # 500 — et surtout pas un 200 « ignoré en silence », ce qu'un
+        # ``getattr(self, 'initial_data', {})`` aurait produit (DRF écarte les
+        # clés inconnues, donc le champ serait passé sans un mot).
+        devis = self._devis('api-400')
+        resp = self._client(devis).patch(
+            '/api/django/ventes/devis/%s/offres-tailles/config/' % devis.pk,
+            {'cle': 'eco', 'config': {'nb_panneaux': 18,
+                                      'economie_annuelle_mad': 99999}},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content[:400])
+        self.assertIn('economie_annuelle_mad', json.dumps(resp.json()))
 
     def test_patch_n_affecte_QUE_la_taille_nommee(self):
         devis = self._devis('api-isole')
