@@ -920,10 +920,14 @@
     detail:texte, ok:booleen, skipped:inconnu, total:nombre, updated:inconnu
 - frontend/src/api/stockApi.js :: comparerTcoFournisseurs -> /api/django/stock/produits/<>/comparer-tco
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
+- frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
+    detail:texte, id:inconnu, statut_validation:inconnu
 - frontend/src/api/stockApi.js :: envoyerEmailBcf -> /api/django/stock/bons-commande-fournisseur/<>/envoyer-email
     detail:texte, email_statut:inconnu, log_id:inconnu, statut:inconnu
 - frontend/src/api/stockApi.js :: exploserKit -> /api/django/stock/kits/<>/exploser
     detail:texte, kit_id:inconnu, kit_nom:inconnu, lignes:inconnu, quantite_kit:inconnu
+- frontend/src/api/stockApi.js :: forceDeleteFournisseur -> /api/django/stock/fournisseurs/<>/force-delete
+    bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: forceDeleteProduit -> /api/django/stock/produits/<>/force-delete
     bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: getComptesAPayer -> /api/django/stock/factures-fournisseur/comptes-a-payer
@@ -942,6 +946,8 @@
     avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
+- frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
+    detail:texte, mouvement_id:inconnu, valeur_perdue:texte
 - frontend/src/api/stockApi.js :: resolveCode -> /api/django/stock/produits/resolve
     chantier:inconnu, client:inconnu, created:inconnu, date_fin_garantie:inconnu, date_peremption:inconnu, detail:texte, gs1:inconnu, id:inconnu, label:inconnu, nb_tickets_ouverts:inconnu, numero_lot:inconnu, numero_serie:inconnu, quantite:inconnu, quantite_restante:inconnu, reference:inconnu, route:texte, serie:texte, sku:texte, statut:inconnu, type:texte
 - frontend/src/api/stockApi.js :: scanGs1ReceptionFournisseur -> /api/django/stock/receptions-fournisseur/scan-gs1
