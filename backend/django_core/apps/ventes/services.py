@@ -5582,7 +5582,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # l'avait déjà dessiné. Avec elles, l'écran ouvre sur le contour du client
     # et le pave immédiatement. Absent de tracé → dict vide → comportement
     # STRICTEMENT inchangé.
-    zone_client = zone_toit_depuis_contour(lead, panneaux=panneaux)
+    zone_client = zone_toit_depuis_contour(lead, panneaux=panneaux, kwc=kwc)
     if zone_client:
         layout.update(zone_client)
         if isinstance(journal_auto, dict):
@@ -5800,7 +5800,7 @@ def plafond_physique_du_contour(contour, produit_panneau):
     return plafond if plafond > 0 else None
 
 
-def zone_toit_depuis_contour(lead, *, panneaux):
+def zone_toit_depuis_contour(lead, *, panneaux, kwc=None):
     """Le fragment de layout roofPro11 qui porte le tracé du CLIENT, ou ``{}``.
 
     Rend exactement les clés que ``SerializedLayout`` déclare — ``version``,
@@ -5836,6 +5836,19 @@ def zone_toit_depuis_contour(lead, *, panneaux):
         pin = {'lng': sum(p[0] for p in contour) / len(contour),
                'lat': sum(p[1] for p in contour) / len(contour)}
     cible = max(int(panneaux or 0), 0)
+    # ``result`` par pan — les TROIS chiffres que ``extract_roof_config`` lit
+    # pour écrire ``etude_params['toiture']``. Sans lui, la config toiture d'un
+    # devis automatique repartait à « 0 kWc / 0 m² » : un zéro affiché est pire
+    # qu'une absence. Les trois sont DÉRIVÉS et traçables — le compte est la
+    # cible réellement composée, la puissance est celle du devis (le MÊME
+    # ``result.kwc`` racine), et la surface est celle du polygone que le client
+    # a tracé, mesurée par ``aire_contour_m2``. Aucun n'est neuf.
+    resultat_pan = {'count': cible}
+    if kwc:
+        resultat_pan['kwc'] = float(kwc)
+    aire = aire_contour_m2(contour)
+    if aire:
+        resultat_pan['areaM2'] = round(aire, 2)
     return {
         'version': 2,
         'pin': pin,
@@ -5851,6 +5864,10 @@ def zone_toit_depuis_contour(lead, *, panneaux):
             'facingManual': False,
             'neededPanels': cible,
             'neededAuto': False,
+            # Additif : ``deserializeLayout`` ignore les clés qu'il ne déclare
+            # pas (il repave au boot de toute façon) — ceci ne sert qu'aux
+            # lecteurs SERVEUR du layout.
+            'result': resultat_pan,
         }],
         'activeAreaId': _AUTO_ZONE_ID,
         'source': 'lead',

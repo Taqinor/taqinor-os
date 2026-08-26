@@ -186,6 +186,27 @@ class ZoneDepuisContourTest(TestCase):
         self.assertFalse(zone['neededAuto'])
         self.assertEqual(zone['obstacles'], [])
 
+    def test_le_pan_publie_ses_trois_chiffres_derives(self):
+        """``extract_roof_config`` lit ces trois-là pour écrire
+        ``etude_params['toiture']`` : sans eux la config toiture d'un devis
+        automatique repartait à « 0 kWc / 0 m² », et un zéro affiché est pire
+        qu'une absence."""
+        lead = self._lead(roof_outline=CONTOUR_LATLNG)
+        res = zone_toit_depuis_contour(
+            lead, panneaux=16, kwc=11.36)['zones'][0]['result']
+        self.assertEqual(res['count'], 16)
+        self.assertEqual(res['kwc'], 11.36)
+        # Surface MESURÉE sur le polygone du client, jamais supposée.
+        self.assertAlmostEqual(
+            res['areaM2'],
+            round(aire_contour_m2(contour_client_lnglat(lead)), 2), places=2)
+
+    def test_sans_puissance_connue_aucun_kwc_publie(self):
+        res = zone_toit_depuis_contour(
+            self._lead(roof_outline=CONTOUR_LATLNG),
+            panneaux=16)['zones'][0]['result']
+        self.assertNotIn('kwc', res)
+
     def test_pin_depuis_le_repere_du_client_sinon_centroide(self):
         pose = self._lead(roof_outline=CONTOUR_LATLNG,
                           roof_point={'lat': 33.6, 'lng': -7.6})
@@ -228,6 +249,12 @@ class BuildDevisAutoAvecContourTest(TestCase):
         # La zone porte la cible RÉELLEMENT composée, pas un nombre à part.
         self.assertEqual(layout['zones'][0]['neededPanels'],
                          layout['result']['panels'])
+        # La config toiture du devis n'est plus « 0 kWc / 0 m² ».
+        toiture = (devis.etude_params or {}).get('toiture') or {}
+        self.assertEqual(toiture.get('nb_panneaux'),
+                         layout['result']['panels'])
+        self.assertGreater(toiture.get('kwc') or 0, 0)
+        self.assertGreater(toiture.get('surface_m2') or 0, 0)
 
     def test_sans_contour_le_layout_est_celui_dhier(self):
         devis = build_devis_auto(
