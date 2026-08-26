@@ -664,11 +664,19 @@ DEFAULT_PDF_OPTIONS = {
     # C'est un choix de LECTURE : il ne touche aucun statut (règle #4) et
     # n'engage rien — l'option SIGNÉE reste ``Devis.option_acceptee``.
     'variante_option': None,
+    # QRP1/A5 — jeton du ShareLink qui SERT ce PDF (anticopie du QR page 1).
+    # ``None`` = appel interne (ERP, Celery) : le moteur retombe sur
+    # ``ShareLink.for_devis`` — comportement historique, byte-identique.
+    'share_token': None,
 }
 
 #: Valeurs acceptées pour ``variante_option`` (liste blanche STRICTE — tout le
 #: reste retombe sur ``None``, c'est-à-dire le document complet du commercial).
 VARIANTES_PDF = ('sans', 'avec', 'les_deux')
+
+# QRP1/A5 — forme admissible d'un jeton de ShareLink (garde de surface : la
+# VRAIE validation est la recherche en base, bornée au devis rendu).
+_SHARE_TOKEN_RE = re.compile(r'[A-Za-z0-9_\-]{8,128}')
 
 
 def clean_pdf_options(raw) -> dict:
@@ -709,6 +717,19 @@ def clean_pdf_options(raw) -> dict:
             opts[_flag] = bool(raw[_flag])
     if raw.get('current_fuel') in ('butane', 'diesel', 'none'):
         opts['current_fuel'] = raw['current_fuel']
+    # QRP1/A5 — JETON DU LIEN QUI SERT CE PDF (anticopie). Sans lui, le QR de
+    # la proposition descend de ``ShareLink.for_devis``, qui rend le lien à
+    # l'EXPIRATION LA PLUS LOINTAINE — pas celui qui sert le document : un PDF
+    # rendu au niveau STANDARD (filigrané, nomenclature dégradée) pouvait
+    # porter un QR vers la page CONFIANCE. L'appelant public passe donc le
+    # jeton du lien qu'il vient de résoudre.
+    # Whitelister ce paramètre est SANS RISQUE parce que le moteur ne le croit
+    # pas sur parole : il ne s'en sert que si un ShareLink de CE devis porte ce
+    # jeton (et n'a pas expiré). Un jeton bricolé, périmé, ou appartenant à un
+    # autre devis retombe donc EXACTEMENT sur le comportement historique.
+    _tok = raw.get('share_token')
+    if isinstance(_tok, str) and _SHARE_TOKEN_RE.fullmatch(_tok):
+        opts['share_token'] = _tok
     try:
         acompte = raw.get('custom_acompte')
         # ERR76 — never forward a negative acompte; the engine additionally
@@ -2252,7 +2273,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.utils.client_links import chemin_proposition
         _pk = getattr(devis, "pk", None)
         if _pk is not None:
-            _share = ShareLink.for_devis(devis)
+            # ── QRP1/A5 — LE QR SUIT LE LIEN QUI SERT CE DOCUMENT ────────────
+            # ``ShareLink.for_devis`` rend le lien à l'EXPIRATION LA PLUS
+            # LOINTAINE, sans regarder son niveau : un PDF rendu au niveau
+            # STANDARD (filigrané, nomenclature dégradée) pouvait donc porter
+            # un QR vers la page CONFIANCE — la dégradation anticopie du
+            # document annulée par son propre code-barres. Quand l'appelant
+            # public passe le jeton du lien qu'il vient de résoudre
+            # (``pdf_options['share_token']``), c'est CELUI-LÀ qui est imprimé.
+            # Le jeton n'est pas cru sur parole : il doit désigner un ShareLink
+            # de CE devis, encore valide. Sinon (appel ERP/Celery, jeton
+            # inconnu, périmé, ou d'un autre devis) → repli ``for_devis``,
+            # strictement le comportement historique.
+            _share = None
+            _tok = (opts or {}).get("share_token")
+            if _tok:
+                from django.utils import timezone as _tz
+                _share = ShareLink.objects.filter(
+                    devis=devis, token=_tok,
+                    expires_at__gt=_tz.now()).first()
+            if _share is None:
+                _share = ShareLink.for_devis(devis)
             if _tenant_site:
                 _signer_base = "https://" + _tenant_site
             else:
@@ -2300,10 +2341,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.
         "roof_photo": _roof_photo_data_uri(devis),
-        # CALEPDF — l'AFFICHE du calepinage rendue par le calepineur (la même
-        # que la page proposition sert au client). '' quand le devis n'en
-        # porte pas : la page détail se rend alors comme aujourd'hui.
-        "roof_render": _roof_render_data_uri(devis),
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
@@ -2545,6 +2582,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roof_image = getattr(devis, "roof_image", None)
     if roof_image:
         data["roof_image_key"] = roof_image
+    # ── CALEPDF/A8 — L'AFFICHE DU CALEPINAGE EST UN ARTEFACT DE RENDU ────────
+    # ``build_quote_data`` alimente DEUX consommateurs : les renderers PDF et
+    # la charge utile JSON de la proposition publique. Embarquer l'affiche
+    # (jusqu'à 6 Mo de base64) dans le dict commun la faisait voyager dans la
+    # charge utile — que la page ne lit même pas, puisqu'elle a déjà son URL
+    # pré-signée — et déclenchait un GET MinIO SYNCHRONE à chaque affichage de
+    # page. On ne la charge donc QUE lorsque le chemin de RENDU la demande :
+    # ``generate_premium_devis_pdf`` pose ce drapeau serveur (jamais whitelisté
+    # par ``clean_pdf_options`` : un corps client ne peut pas l'allumer).
+    # Sans drapeau, la clé ``roof_render`` n'existe pas et AUCUN octet n'est lu.
+    if roof_image and (pdf_options or {}).get("_embed_roof_render"):
+        data["roof_render"] = _roof_render_data_uri(devis)
     # PV46/PVSLD — annexe technique : les clés ne sont ajoutées QUE si le devis
     # porte une conception électrique (PV41). Sans étude, aucune clé nouvelle →
     # charge utile strictement identique à aujourd'hui.
@@ -2888,7 +2937,15 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
         .get(pk=devis_id)
     )
 
-    data = build_quote_data(devis, pdf_options)
+    # CALEPDF/A8 — c'est ICI, et seulement ici, que l'affiche du calepinage est
+    # lue depuis MinIO : ce chemin est le SEUL qui rende un PDF. La charge utile
+    # JSON de la proposition publique appelle ``build_quote_data`` sans ce
+    # drapeau et ne transporte donc pas les octets (ni ne les va chercher).
+    # Drapeau SERVEUR, comme ``watermark`` : ``clean_pdf_options`` ne le
+    # whiteliste pas, un corps client ne peut pas l'allumer.
+    _opts_rendu = dict(pdf_options or {})
+    _opts_rendu["_embed_roof_render"] = True
+    data = build_quote_data(devis, _opts_rendu)
 
     # L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
     # PUBLIC (share-link) rendu au niveau standard : ``pdf_options['watermark']``
@@ -3051,7 +3108,17 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
     empreinte_stockee = meta.get("empreinte")
     if devis.fichier_pdf and empreinte_stockee:
         try:
-            attendue = empreinte_donnees_pdf(build_quote_data(devis, options))
+            # CALEPDF/A8 — l'empreinte STOCKÉE est celle des données RENDUES,
+            # affiche de calepinage comprise : la reconstruire ici doit poser
+            # le même drapeau, sinon les deux empreintes divergeraient toujours
+            # et le fichier stocké ne serait plus JAMAIS réutilisé. Le corollaire
+            # est voulu : une affiche re-jouée (même clé MinIO, octets
+            # différents) change l'empreinte et force un PDF frais — un
+            # calepinage périmé ne peut pas être servi.
+            _opts_empreinte = dict(options)
+            _opts_empreinte["_embed_roof_render"] = True
+            attendue = empreinte_donnees_pdf(
+                build_quote_data(devis, _opts_empreinte))
         except Exception:  # noqa: BLE001 — un devis illisible se re-rend
             attendue = None
         if attendue and attendue == empreinte_stockee:
