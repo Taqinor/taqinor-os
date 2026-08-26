@@ -72,6 +72,10 @@ import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// WIR188/NTCRD11 — bannière d'alerte crédit, alimentée par le
+// `credit_warning` que l'acceptation renvoie (WIR187). Elle ne rend RIEN
+// en mode « aucun » : aucun bruit quand il n'y a rien à dire.
+import CreditWarningBanner from '../../features/credit/CreditWarningBanner'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
@@ -1580,6 +1584,10 @@ export default function DevisList() {
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // WIR188 — avertissement crédit renvoyé par l'acceptation (WIR187). Tant
+  // qu'il est posé, la modale RESTE OUVERTE : le vendeur doit l'avoir vu (et
+  // pouvoir demander une dérogation) avant que l'écran passe à la suite.
+  const [acceptCreditWarning, setAcceptCreditWarning] = useState(null)
   // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
   // porte pas les lignes du devis — jamais un chiffre inventé).
   const [dealCelebration, setDealCelebration] = useState(null)
@@ -1665,6 +1673,7 @@ export default function DevisList() {
     setAcceptDate(new Date().toISOString().slice(0, 10))
     setAcceptOption('sans_batterie')
     setAcceptBusy(false)
+    setAcceptCreditWarning(null)
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -2049,13 +2058,23 @@ export default function DevisList() {
     if (!d) return
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, {
+      const res = await ventesApi.accepterDevis(d.id, {
         nom: acceptNom,
         date: acceptDate,
         option: d.nb_options === 2 ? acceptOption : '',
       })
-      setAcceptTarget(null)
       dispatch(fetchDevis())
+      // WIR188 — la réponse porte l'état crédit du client (WIR187). Hors mode
+      // « aucun », la modale RESTE OUVERTE sur la bannière : le vendeur doit
+      // l'avoir vue, et peut demander une dérogation sans quitter l'écran.
+      // Le devis est DÉJÀ accepté (le refus dur, lui, aurait renvoyé un 403
+      // avant d'arriver ici) — la bannière informe, elle ne bloque pas.
+      const avertissement = res?.data?.credit_warning
+      if (avertissement && avertissement.mode && avertissement.mode !== 'aucun') {
+        setAcceptCreditWarning(avertissement)
+        return
+      }
+      setAcceptTarget(null)
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
       // (rare, lié au revenu). La carte de victoire remplace le toast plat
       // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
@@ -2753,7 +2772,24 @@ export default function DevisList() {
         open={!!acceptTarget}
         onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}
         title={`Accepter le devis — ${acceptTarget?.reference ?? ''}`}
-        footer={(
+        footer={acceptCreditWarning ? (
+          // WIR188 — après l'acceptation, la modale ne montre plus que la
+          // bannière : un seul bouton, qui clôt et enchaîne sur la célébration.
+          <Button onClick={() => {
+            const d = acceptTarget
+            setAcceptCreditWarning(null)
+            setAcceptTarget(null)
+            if (d) {
+              setDealCelebration({
+                reference: d.reference,
+                montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+                kwc: null,
+              })
+            }
+          }}>
+            J'ai compris
+          </Button>
+        ) : (
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
             <Button onClick={submitAccept} loading={acceptBusy}>
@@ -2762,6 +2798,14 @@ export default function DevisList() {
           </>
         )}
       >
+          {acceptCreditWarning ? (
+            <CreditWarningBanner
+              warning={acceptCreditWarning}
+              clientId={acceptTarget?.client}
+              montant={acceptTarget?.total_affiche ?? acceptTarget?.total_ttc}
+              devisId={acceptTarget?.id}
+            />
+          ) : (
           <div className="flex flex-col gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
@@ -2790,6 +2834,7 @@ export default function DevisList() {
               </div>
             )}
           </div>
+          )}
       </ResponsiveDialog>
 
       {/* APX14 — l'aperçu du PDF de proposition, INLINE. Même source

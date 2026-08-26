@@ -19,8 +19,6 @@
 bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/dossiers
 inatteignable|frontend/src/features/compta/components/EcritureSourceLink.jsx
 inatteignable|frontend/src/features/credit/CreditBadge.jsx
-inatteignable|frontend/src/features/credit/CreditWarningBanner.jsx
-inatteignable|frontend/src/features/credit/DemandeDerogationWizard.jsx
 inatteignable|frontend/src/features/magasin/scan/ComptageScanPanel.jsx
 inatteignable|frontend/src/features/magasin/scan/PickingScanPanel.jsx
 inatteignable|frontend/src/features/magasin/scan/ReceptionScanPanel.jsx

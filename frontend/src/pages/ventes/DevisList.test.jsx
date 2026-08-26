@@ -49,6 +49,12 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       // n'etait appele que par l'auto-note de relance WhatsApp, VX222).
       historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
       noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+      // WIR188 — l'acceptation renvoie l'etat credit du client (WIR187) :
+      // par defaut « aucun », donc aucune banniere (comportement historique
+      // des tests ci-dessous).
+      accepterDevis: vi.fn(() => Promise.resolve({
+        data: { credit_warning: { mode: 'aucun', depassement: '0.00', disponible: null } },
+      })),
       telechargerPdfDevis: vi.fn(() => Promise.resolve({
         data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
         headers: {},
@@ -1050,5 +1056,65 @@ describe('DevisList — WIR274 : composeur de note manuelle', () => {
     await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledWith(30))
     expect(screen.queryByLabelText(/Ajouter une note/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Ajouter la note' })).toBeNull()
+  })
+})
+
+
+/* WIR188/NTCRD11 — La banniere d'alerte credit etait CONSTRUITE mais montee
+   NULLE PART : le `credit_warning` que l'acceptation renvoie (WIR187) n'avait
+   aucun lecteur, et un vendeur pouvait faire signer un client en depassement
+   sans rien voir. Elle est montee ici, sur la modale d'acceptation. */
+describe('DevisList — WIR188 : banniere credit a l’acceptation', () => {
+  const DEVIS = [{
+    id: 40, reference: 'DEV-CRED', client: 3, client_nom: 'ACME',
+    statut: 'envoye', date_creation: '2026-07-01', total_ttc: 20000,
+    nb_options: 1, version: 1,
+  }]
+
+  const accepter = async (user) => {
+    const row = screen.getByText('DEV-CRED').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Accepter/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Confirmer l'acceptation/ }))
+  }
+
+  it('mode « aucun » : AUCUNE banniere, la modale se ferme comme avant', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByTestId('credit-warning-banner')).toBeNull())
+  })
+
+  it('mode « avertissement » : banniere orange, la modale reste ouverte', async () => {
+    ventesApi.accepterDevis.mockResolvedValueOnce({
+      data: {
+        credit_warning: {
+          mode: 'avertissement', depassement: '4000.00', disponible: '1000.00',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    const banniere = await screen.findByTestId('credit-warning-banner')
+    expect(banniere).toHaveAttribute('data-mode', 'avertissement')
+    expect(screen.getByRole('button', { name: /J'ai compris/ })).toBeInTheDocument()
+  })
+
+  it('mode « blocage » : banniere rouge + demande de derogation', async () => {
+    ventesApi.accepterDevis.mockResolvedValueOnce({
+      data: {
+        credit_warning: {
+          mode: 'blocage', depassement: '12500.00', disponible: '7500.00',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    const banniere = await screen.findByTestId('credit-warning-banner')
+    expect(banniere).toHaveAttribute('data-mode', 'blocage')
+    expect(await screen.findByTestId('credit-derogation-wizard')).toBeInTheDocument()
   })
 })
