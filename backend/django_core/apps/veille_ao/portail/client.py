@@ -53,23 +53,23 @@ qui est le protocole, pas la cible.
 """
 from __future__ import annotations
 
-import html as html_stdlib
 import logging
 import os
-import re
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import httpx
 
 from . import ErreurPortail
-# Les gardes vivent dans ``garde_fous`` (VAO19) et sont RÉ-EXPORTÉES ici :
-# le client reste le point d'entrée lisible du paquet, sans détenir deux fois
-# la même règle.
+# Les gardes (VAO19) et la lecture du protocole PRADO (VAO20) vivent dans
+# leurs modules PURS et sont RÉ-EXPORTÉES ici : le client reste le point
+# d'entrée lisible du paquet, sans détenir deux fois la même règle. Deux
+# lectures divergentes du même compteur seraient un bug impossible à voir.
 from .garde_fous import (
     GardeFous, MaquillageRefuse, RechercheNonRestreinte, cle_de_societe,
     exiger_mot_cle_restrictif, verifier_identite_honnete,
 )
+from .resultats import ReponseInattendue, lire_pagestate, lire_total
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +93,6 @@ class PortailIndisponible(ErreurPortail):
     Distincte de ``ClientRefuse`` : ce n'est pas un refus, c'est une
     indisponibilité. Elle se journalise en échec et se rejoue le lendemain —
     jamais dans la foulée (la cadence prime).
-    """
-
-
-class ReponseInattendue(ErreurPortail):
-    """200 OK, mais la page n'a pas la forme attendue.
-
-    Pagestate absent, compteur introuvable : le portail est un logiciel tiers
-    (Atexo) qui peut changer du jour au lendemain. On le DIT, on ne rend pas
-    un tableau vide.
     """
 
 
@@ -154,45 +145,6 @@ PAGES_MAX = 3
 
 DELAI_CONNEXION = 10.0
 DELAI_LECTURE = 60.0
-
-_TOTAL_RE = re.compile(
-    r'id="ctl0_CONTENU_PAGE_resultSearch_nombreElement"[^>]*>\s*'
-    r'([\d\s .,]+?)\s*<', re.IGNORECASE)
-_INPUT_PAGESTATE_RE = re.compile(
-    r'<input[^>]*name="PRADO_PAGESTATE"[^>]*>', re.IGNORECASE)
-_VALUE_RE = re.compile(r'value="([^"]*)"', re.IGNORECASE)
-
-
-def lire_total(html):
-    """Le nombre de consultations ANNONCÉ par le portail, ou ``None``.
-
-    ``None`` n'est pas 0 : c'est « le compteur est introuvable », donc une
-    page qui n'a plus la forme attendue. Les deux ne doivent jamais être
-    confondus — c'est tout le propos de VAO20.
-    """
-    trouve = _TOTAL_RE.search(html or '')
-    if not trouve:
-        return None
-    chiffres = re.sub(r'[^\d]', '', trouve.group(1))
-    return int(chiffres) if chiffres else None
-
-
-def lire_pagestate(html):
-    """Le champ caché ``PRADO_PAGESTATE``, DÉSÉCHAPPÉ, ou ``None``.
-
-    Le déséchappement n'est pas cosmétique : le pagestate est du base64 qui
-    contient des « + » servis en ``&#43;``. Le renvoyer échappé fait rendre au
-    portail une page 1 muette au lieu de la page demandée — un bug qui se lit
-    « 0 résultat » et non « erreur ».
-    """
-    balise = _INPUT_PAGESTATE_RE.search(html or '')
-    if not balise:
-        return None
-    valeur = _VALUE_RE.search(balise.group(0))
-    if not valeur:
-        return None
-    return html_stdlib.unescape(valeur.group(1))
-
 
 # ─────────────────────────────────────────────────────────────────────────
 # Les gardes d'entrée
