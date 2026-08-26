@@ -47,9 +47,10 @@ PRODUCTIBLE_DEFAUT = 1600
 # d'émission du réseau marocain. Les deux « équivalences » qui l'accompagnaient
 # (arbres, cumul 25 ans) ont été retirées de TOUS LES PDF parce qu'aucune
 # source ne les porte (voir plus bas) — ne pas les y réintroduire sans source
-# nommée. PÉRIMÈTRE : les PDF seulement ; ``apps/web`` porte encore ses propres
-# copies (``CO2_KG_PER_TREE_YEAR``, cumul de la page) et n'est pas modifiable
-# depuis cette lane — leur retrait appartient à la lane de la page client.
+# nommée. Le SITE a fait le même retrait de son côté dans le même lot
+# (``apps/web`` n'exporte plus ``CO2_KG_PER_TREE_YEAR``) : les deux supports
+# disent donc la même chose, et il n'existe plus aucune surface client où ces
+# deux équivalences s'impriment.
 #
 # Facteur réseau marocain — mix électrique national, ≈0,81 t CO₂/MWh.
 # SOURCE À PRÉCISER : la valeur est cohérente avec l'ordre de grandeur publié
@@ -64,10 +65,11 @@ CO2_T_PAR_MWH = 0.81
 # INTERNES existants (agricole). « 22 » est une référence de vulgarisation sans
 # source vérifiable (l'absorption dépend de l'essence, de l'âge et du climat,
 # d'un facteur 5 au moins).
-# CO2SRC — PLUS AUCUN RENDU DANS LES PDF : cette lane l'a retirée des trois
-# surfaces PDF qui l'imprimaient (résidentiel cover.py + options.py, agricole
-# economics_page.py). Elle reste AFFICHÉE PAR LE SITE (``apps/web``,
-# ``CO2_KG_PER_TREE_YEAR``), hors du périmètre de cette lane : son retrait de
-# la page client appartient à la lane qui la possède. Ne pas la réimprimer sur
-# un document sans source nommée et datée.
+# CO2SRC — PLUS AUCUN RENDU CLIENT. Cette lane l'a retirée des trois surfaces
+# PDF qui l'imprimaient (résidentiel cover.py + options.py, agricole
+# economics_page.py) ; la lane de la page client a retiré la sienne du site
+# dans le même lot (``apps/web`` n'exporte plus ``CO2_KG_PER_TREE_YEAR``). La
+# constante ne survit ici que pour un calcul INTERNE agricole (``economics``
+# publie encore une clé ``trees`` que plus personne n'imprime). Ne pas la
+# réafficher, nulle part, sans source nommée et datée.
 KG_CO2_PAR_ARBRE_AN = 22

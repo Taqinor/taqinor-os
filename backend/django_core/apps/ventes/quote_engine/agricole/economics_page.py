@@ -296,10 +296,9 @@ def _env_block(show_env, co2_t, trees, fuel_qty, C, fmt, fmt_dec):
     appelants (donnée interne d'``economics``) mais n'est PLUS imprimé — la
     condition d'affichage ne le regarde donc plus non plus.
 
-    PÉRIMÈTRE de ce changement : les PDF seulement. ``apps/web`` porte encore
-    sa propre équivalence en arbres (``CO2_KG_PER_TREE_YEAR``) et n'est pas
-    modifiable depuis cette lane ; son retrait appartient à la lane qui possède
-    la page client."""
+    PÉRIMÈTRE de ce changement : les trois surfaces PDF. Le site a fait le même
+    retrait de son côté dans le même lot (``apps/web`` n'exporte plus
+    ``CO2_KG_PER_TREE_YEAR``), donc plus aucune surface client ne l'imprime."""
     if not (show_env and co2_t):
         return ""
     green = C["green"]
