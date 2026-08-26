@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
-  Wrench, ShieldAlert,
+  Wrench, ShieldAlert, Send, FileText,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import { ListShell, DetailShell } from '../../ui/module'
 import {
   Button, Badge, Dialog, DialogContent, DialogTitle, Input, Textarea, Label,
@@ -17,7 +18,7 @@ import {
   NcrStatutPill, CapaStatutPill, GravitePill,
 } from './qhsePills'
 import { GRAVITE } from './qhseStatus'
-import NcrChatter from './NcrChatter'
+import NcrChatter, { CapaChatter } from './NcrChatter'
 
 /* ============================================================================
    UX30 — Non-conformités (NCR) & actions correctives/préventives (CAPA).
@@ -368,6 +369,63 @@ function DerogationCreateDialog({ ncr, onClose, onDone }) {
   )
 }
 
+/* WIR201 — SCAR (demande d'action corrective fournisseur), recommandée
+   depuis la fiche NCR quand un fournisseur est déjà tracé (disposition
+   « retour fournisseur »). Crée la SCAR au statut `emise` ; le cycle
+   répondue/vérifiée se pilote ensuite depuis l'onglet SCAR fournisseur
+   (CheckinsSecurite.jsx). */
+function ScarCreateDialog({ ncr, onClose, onDone }) {
+  const [descriptionDefaut, setDescriptionDefaut] = useState('')
+  const [echeanceReponse, setEcheanceReponse] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.demandesActionFournisseur.create({
+        fournisseur: ncr.fournisseur,
+        ncr_source: ncr.id,
+        description_defaut: descriptionDefaut,
+        echeance_reponse: echeanceReponse || undefined,
+      })
+      toast.success('Demande adressée au fournisseur (SCAR).')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création de la SCAR impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Demander une action au fournisseur</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Description du défaut</Label>
+            <Textarea rows={3} placeholder="Décrire le défaut constaté"
+              value={descriptionDefaut}
+              onChange={(e) => setDescriptionDefaut(e.target.value)} />
+          </div>
+          <div>
+            <Label>Échéance de réponse</Label>
+            <Input type="date" value={echeanceReponse}
+              onChange={(e) => setEcheanceReponse(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Envoi…' : 'Envoyer la demande'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* XQHS7 — analyse structurée d'une NCR : chaîne 5-Pourquoi (≤5 entrées, borne
    serveur) et rapport 8D (D1-D8). `AnalyseNcr` n'a AUCUN CRUD : l'action
    `analyse/` est sa seule surface — un POST vide lit l'analyse existante, un
@@ -437,10 +495,26 @@ function AnalyseNcrPanel({ ncrId }) {
     }
   }
 
+  // WIR276 (XQHS7) — PDF interne 5-Pourquoi/8D téléchargeable depuis le
+  // détail NCR (`rendre_analyse_ncr_pdf` existait déjà, jamais appelé).
+  async function telechargerPdf() {
+    try {
+      const res = await qhseApi.nonConformites.analysePdf(ncrId)
+      downloadBlob(new Blob([res.data]), `analyse-ncr-${ncrId}.pdf`)
+    } catch {
+      toast.error('Téléchargement du PDF impossible.')
+    }
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={telechargerPdf}>
+          <FileText size={15} /> Télécharger le PDF
+        </Button>
+      </div>
       <section className="flex flex-col gap-3">
         <h4 className="text-sm font-semibold">5-Pourquoi</h4>
         {pourquoi.map((p, i) => (
@@ -497,6 +571,8 @@ function NcrDetail({ ncr, onBack, onChanged }) {
   // qhseApi.js, DerogationsRegister en lecture seule).
   const [creatingIntervention, setCreatingIntervention] = useState(false)
   const [derogOpen, setDerogOpen] = useState(false)
+  // WIR201 — SCAR recommandée depuis la fiche NCR (fournisseur déjà tracé).
+  const [scarOpen, setScarOpen] = useState(false)
 
   async function creerInterventionSav() {
     setCreatingIntervention(true)
@@ -565,6 +641,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
             <Button size="sm" variant="outline" onClick={() => setDerogOpen(true)}>
               <ShieldAlert size={15} /> Créer une dérogation
             </Button>
+            {/* WIR201 — SCAR recommandée quand un fournisseur est tracé sur
+                la NCR (disposition « retour fournisseur »). */}
+            {ncr.fournisseur && (
+              <Button size="sm" variant="outline" onClick={() => setScarOpen(true)}>
+                <Send size={15} /> Demander une action au fournisseur
+              </Button>
+            )}
             {ncr.statut !== 'cloturee' && (
               <Button size="sm" onClick={cloturer} disabled={busy}>
                 <CheckCircle2 size={15} /> Clôturer
@@ -625,6 +708,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
         <DerogationCreateDialog
           ncr={ncr}
           onClose={() => setDerogOpen(false)}
+          onDone={() => {}}
+        />
+      )}
+      {scarOpen && (
+        <ScarCreateDialog
+          ncr={ncr}
+          onClose={() => setScarOpen(false)}
           onDone={() => {}}
         />
       )}
@@ -821,9 +911,34 @@ function VerifierDialog({ capa, onClose, onDone }) {
   )
 }
 
+// WIR234 — panneau détail CAPA : la CAPA a désormais son propre chatter
+// (jumeau NcrChatter, `capa/<id>/historique`/`noter` déjà exposés côté
+// serveur par `_ChatterMixin` mais sans consommateur côté écran).
+function CapaDetailDialog({ capa, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-xl">
+        <DialogTitle>CAPA — {capa.type_action_display || capa.type_action}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <p className="whitespace-pre-wrap text-sm">{capa.description}</p>
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>Statut : <CapaStatutPill status={capa.statut} /></span>
+            <span>Échéance : {formatDate(capa.echeance)}</span>
+          </div>
+          <CapaChatter capaId={capa.id} />
+          <div className="flex justify-end pt-1">
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CapaRegister() {
   const [onlyLate, setOnlyLate] = useState(false)
   const [verifying, setVerifying] = useState(null)
+  const [detailCapa, setDetailCapa] = useState(null)
   const { rows, loading, error, reload } = useQhseList(
     () => (onlyLate ? qhseApi.capa.enRetard() : qhseApi.capa.list()),
     [onlyLate],
@@ -877,6 +992,7 @@ function CapaRegister() {
         error={error}
         searchable
         exportName="qhse-capa"
+        onRowClick={(r) => setDetailCapa(r)}
         rowActions={(r) => [
           {
             id: 'verifier',
@@ -904,6 +1020,12 @@ function CapaRegister() {
           capa={verifying}
           onClose={() => setVerifying(null)}
           onDone={reload}
+        />
+      )}
+      {detailCapa && (
+        <CapaDetailDialog
+          capa={detailCapa}
+          onClose={() => setDetailCapa(null)}
         />
       )}
     </>

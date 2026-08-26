@@ -1995,6 +1995,27 @@ def diffuser_procedure(procedure, users):
 
 
 @transaction.atomic
+def ajouter_lecteurs(diffusion, users):
+    """Ajoute des lecteurs à une ``DiffusionProcedure`` EXISTANTE (XQHS15,
+    WIR277 — le modèle en documentait déjà l'existence sans qu'elle soit
+    codée).
+
+    Idempotent par utilisateur (``get_or_create`` — pas de doublon
+    ``AccuseLecture``) ; ``population_cible`` est mise à jour pour rester
+    traçable (union des ids déjà ciblés et des nouveaux).
+    """
+    users = list(users)
+    ids = set((diffusion.population_cible or {}).get('user_ids', []))
+    for user in users:
+        AccuseLecture.objects.get_or_create(
+            company=diffusion.company, diffusion=diffusion, user=user)
+        ids.add(user.id)
+    diffusion.population_cible = {'user_ids': sorted(ids)}
+    diffusion.save(update_fields=['population_cible'])
+    return diffusion
+
+
+@transaction.atomic
 def accuser_lecture(diffusion, user):
     """Enregistre l'accusé de lecture d'un utilisateur (XQHS15).
 

@@ -742,11 +742,17 @@
     criteres:inconnu, nb_criteres:nombre, nb_criteres_sans_donnee:nombre, niveau:inconnu, score_global:inconnu
 - frontend/src/api/qhseApi.js :: moyenne -> /api/django/qhse/retours-client/moyenne
     moyenne:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: notifier -> /api/django/qhse/campagnes-rappel/<>/notifier
+    campagne:inconnu, notifies:nombre
 - frontend/src/api/qhseApi.js :: paretoDefauts -> /api/django/qhse/pareto-defauts
     pareto:inconnu, premier_passage:objet
+- frontend/src/api/qhseApi.js :: peupler -> /api/django/qhse/campagnes-rappel/<>/peupler
+    campagne:inconnu, crees:nombre
 - frontend/src/api/qhseApi.js :: peutCloturer -> /api/django/qhse/notations-fin-chantier/peut-cloturer
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancer -> /api/django/qhse/demandes-changement/relancer
+    relances:nombre
+- frontend/src/api/qhseApi.js :: relancerExercices -> /api/django/qhse/exercices-urgence/relancer
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
     relances:nombre
@@ -758,6 +764,8 @@
     disponible:booleen, erreur:texte, suggestion:inconnu
 - frontend/src/api/qhseApi.js :: suggestionClassification -> /api/django/qhse/ia/suggestion-classification
     disponible:booleen, erreur:texte, suggestion:inconnu
+- frontend/src/api/qhseApi.js :: trajectoire -> /api/django/qhse/objectifs/<>/trajectoire
+    baseline:inconnu, cible:inconnu, echeance:inconnu, points:liste
 - frontend/src/api/recordsApi.js :: getMyActivities -> /api/django/records/activities/mine
     a_venir:liste, aujourdhui:liste, en_retard:liste
 - frontend/src/api/recordsApi.js :: markActivityDone -> /api/django/records/activities/<>/done

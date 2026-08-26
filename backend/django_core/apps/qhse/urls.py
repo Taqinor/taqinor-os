@@ -3,17 +3,23 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet,
+    analyse_ncr_pdf,
     AspectEnvironnementalViewSet, AuditViewSet,
+    AuditCertificationViewSet, AuditPlanifieViewSet,
     BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
+    CampagneRappelViewSet,
     causerie_securite_pdf,
-    CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
+    CauseIncidentViewSet, CertificationViewSet, ClauseNormeViewSet,
+    ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     CodeDefautViewSet,
-    ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
-    CritereAuditViewSet, DeclarationCnssViewSet, DemandeChangementViewSet,
-    DerogationViewSet,
-    EtapeDeclarationAtViewSet,
+    ContactUrgenceViewSet, ContexteOrganisationViewSet,
+    ControleReceptionViewSet, DechetViewSet,
+    CritereAuditViewSet, DeclarationCnssViewSet,
+    DecisionReunionViewSet, DemandeChangementViewSet,
+    DerogationViewSet, DiffusionProcedureViewSet,
+    ElementRappelViewSet, EtapeDeclarationAtViewSet,
     CoutNonQualiteViewSet,
     EvaluationRisqueViewSet, ExerciceUrgenceViewSet, GrilleAuditViewSet,
     IncidentViewSet,
@@ -24,18 +30,19 @@ from .views import (
     ItemNotationViewSet, LienSignalementPublicViewSet,
     LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet,
-    ObservationSecuriteViewSet,
-    ParetoDefautsViewSet, PermisTravailViewSet,
+    ObjectifQhseViewSet, ObservationSecuriteViewSet,
+    ParetoDefautsViewSet, PartieInteresseeViewSet, PermisTravailViewSet,
     PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
     PlanInspectionModeleViewSet,
-    PlanUrgenceViewSet,
+    PlanUrgenceViewSet, ProgrammeAuditViewSet,
     LigneBilanCarboneViewSet,
     PointControleModeleViewSet, PointControleReceptionViewSet,
     ProcedureQualiteViewSet, public_signalement,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
     ReponseCritereViewSet,
-    RetourClientQualiteViewSet, RevueVeilleReglementaireViewSet,
+    RetourClientQualiteViewSet, ReunionQhseViewSet,
+    RevueObjectifViewSet, RevueVeilleReglementaireViewSet,
     RisqueOpportuniteViewSet,
     SecouristeViewSet, SignalementPublicViewSet,
     VeilleReglementaireViewSet,
@@ -113,6 +120,23 @@ router.register(r'revues-veille', RevueVeilleReglementaireViewSet)
 # d'action corrective fournisseur), jusqu'ici sans exposition REST.
 router.register(r'checkins-securite', CheckinSecuriteViewSet)
 router.register(r'demandes-action-fournisseur', DemandeActionFournisseurViewSet)
+# WIR275 — 10 modèles ISO QHSE orphelins (services testés, aucune exposition
+# REST jusqu'ici).
+router.register(r'campagnes-rappel', CampagneRappelViewSet)
+router.register(r'elements-rappel', ElementRappelViewSet)
+router.register(r'certifications', CertificationViewSet)
+router.register(r'audits-certification', AuditCertificationViewSet)
+router.register(r'programmes-audit', ProgrammeAuditViewSet)
+router.register(r'audits-planifies', AuditPlanifieViewSet)
+router.register(r'clauses-norme', ClauseNormeViewSet)
+router.register(r'reunions', ReunionQhseViewSet)
+router.register(r'decisions-reunion', DecisionReunionViewSet)
+router.register(r'objectifs', ObjectifQhseViewSet)
+router.register(r'revues-objectif', RevueObjectifViewSet)
+# WIR277 — contexte SMQ ISO 4.1/4.2 + diffusion des procédures qualité.
+router.register(r'parties-interessees', PartieInteresseeViewSet)
+router.register(r'contexte-organisation', ContexteOrganisationViewSet)
+router.register(r'diffusions-procedure', DiffusionProcedureViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -131,4 +155,7 @@ urlpatterns = [
     # bilingue FR/AR, lu via apps.rh.selectors (jamais rh.models/rh.views).
     path('causeries/<int:causerie_id>/pdf/', causerie_securite_pdf,
          name='qhse-causerie-securite-pdf'),
+    # WIR275 (XQHS7) — PDF interne 5-Pourquoi/8D d'une NCR.
+    path('non-conformites/<int:pk>/analyse/pdf/', analyse_ncr_pdf,
+         name='qhse-analyse-ncr-pdf'),
 ]

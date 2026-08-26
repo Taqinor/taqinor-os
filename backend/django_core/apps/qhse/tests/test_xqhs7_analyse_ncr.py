@@ -206,3 +206,54 @@ class AnalyseNcrApiTests(TestCase):
         resp = auth_client(self.user).post(
             self._url(ncr), {'cinq_pourquoi': []}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class AnalyseNcrPdfRouteTests(TestCase):
+    """WIR275 — route ``GET …/non-conformites/<id>/analyse/pdf/``
+    (``rendre_analyse_ncr_pdf`` existait déjà, aucune route ne l'appelait)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs7-pdf-route', 'CoXqhs7PdfRoute')
+        self.user = User.objects.create_user(
+            username='resp-xqhs7-pdf-route', password='x',
+            company=self.company, role_legacy='responsable')
+
+    def _url(self, ncr_id):
+        return f'/api/django/qhse/non-conformites/{ncr_id}/analyse/pdf/'
+
+    def _fake_weasyprint(self):
+        import types
+
+        fake_module = types.ModuleType('weasyprint')
+        fake_html_instance = type(
+            'FakeHTML', (), {'write_pdf': lambda self: b'%PDF-1.4 fake'})()
+        fake_module.HTML = lambda string: fake_html_instance
+        return fake_module
+
+    def test_telecharge_le_pdf(self):
+        import sys
+
+        ncr = make_ncr(self.company)
+        enregistrer_analyse_ncr(ncr, cinq_pourquoi=[
+            {'pourquoi': 'Pourquoi 1', 'reponse': 'R1'}])
+        with patch.dict(sys.modules, {'weasyprint': self._fake_weasyprint()}):
+            resp = auth_client(self.user).get(self._url(ncr.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertEqual(resp.content, b'%PDF-1.4 fake')
+
+    def test_404_sans_analyse(self):
+        ncr = make_ncr(self.company)
+        resp = auth_client(self.user).get(self._url(ncr.id))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_404_ncr_inconnue(self):
+        resp = auth_client(self.user).get(self._url(999999))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_isolation_societe_404(self):
+        autre = make_company('co-xqhs7-pdf-route-x', 'Autre')
+        ncr = make_ncr(autre)
+        enregistrer_analyse_ncr(ncr, cinq_pourquoi=[])
+        resp = auth_client(self.user).get(self._url(ncr.id))
+        self.assertEqual(resp.status_code, 404)
