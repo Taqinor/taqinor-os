@@ -1153,7 +1153,7 @@ function RubriquesRecurrentesDialog({ profil, onClose }) {
   const [rubriques, setRubriques] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
-  const [busy, setBusy] = useState('')
+  const [, setBusy] = useState('')
 
   const load = () =>
     Promise.all([

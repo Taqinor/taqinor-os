@@ -76,11 +76,15 @@ export default function VoipJournalPage() {
   }
 
   // WIR271 — ouvre le formulaire de clôture, durée PRÉ-REMPLIE avec le temps
-  // écoulé depuis `started_at` (éditable ensuite — jamais figée).
-  function ouvrirTerminer(appel) {
+  // écoulé depuis `started_at` (éditable ensuite — jamais figée). `maintenant`
+  // (Date.now()) est lu par l'APPELANT, dans le gestionnaire de clic
+  // lui-même (react-hooks/purity : un impur comme Date.now() ne doit jamais
+  // s'exécuter dans une fonction atteignable depuis le rendu — seul le corps
+  // direct d'un event handler JSX l'est).
+  function ouvrirTerminer(appel, maintenant) {
     const ecoulees = appel.started_at
       ? Math.max(
-        0, Math.round((Date.now() - new Date(appel.started_at).getTime()) / 1000))
+        0, Math.round((maintenant - new Date(appel.started_at).getTime()) / 1000))
       : 0
     setTerminantId(appel.id)
     setDureeSaisie(String(ecoulees))
@@ -185,7 +189,8 @@ export default function VoipJournalPage() {
                         )}
                       </div>
                     ) : (
-                      <button type="button" onClick={() => ouvrirTerminer(a)}>
+                      <button type="button"
+                        onClick={() => ouvrirTerminer(a, Date.now())}>
                         Terminer
                       </button>
                     )}
