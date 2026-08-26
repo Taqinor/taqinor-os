@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Search, Plus, Hash, BellOff, Moon, Smile, X, MessagesSquare, Bookmark } from 'lucide-react'
-import { Avatar, AvatarFallback, Badge, Input, initials } from '../../ui'
+import {
+  Search, Plus, Hash, Bell, BellOff, Moon, Smile, X, MessagesSquare, Bookmark,
+  Archive, MoreHorizontal,
+} from 'lucide-react'
+import {
+  Avatar, AvatarFallback, Badge, Input, initials,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../ui'
 import { cn } from '../../lib/cn'
 import messagesApi from '../../api/messagesApi'
 import { selectConversations, selectActiveId } from './store/messagingSlice'
@@ -224,6 +230,15 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
   const [view, setView] = useState('discussions')
   // WIR156 — statuts des collègues (indicateur emoji / DND dans la liste).
   const [colleagues, setColleagues] = useState({})
+  // ── WIR260 — sourdine / archivage actionnables depuis la liste ──────────
+  // `c.muted` était un champ MORT : la liste l'affichait mais rien ne pouvait
+  // le poser. Les deux actions écrivent côté serveur ; l'état local reflète le
+  // résultat IMMÉDIATEMENT (pas de rechargement complet des conversations —
+  // `messagingSlice.js` reste hors périmètre de cette tâche).
+  const [mutedOverrides, setMutedOverrides] = useState({}) // { [id]: bool }
+  const [archivedIds, setArchivedIds] = useState([])       // ids retirés
+  // ── WIR260 — recherche plein-texte SERVEUR (section « Messages ») ───────
+  const [msgHits, setMsgHits] = useState([])
   useEffect(() => {
     if (!messagesApi.status?.colleagues) return
     messagesApi.status.colleagues()
@@ -242,15 +257,64 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
     return peer ? colleagues[peer.id] : null
   }
 
+  // WIR260 — état effectif de la sourdine : la bascule locale prime sur le
+  // champ serveur tant que la liste n'a pas été rechargée.
+  const isMuted = (c) => (
+    Object.prototype.hasOwnProperty.call(mutedOverrides, c.id)
+      ? mutedOverrides[c.id]
+      : !!c.muted
+  )
+
+  const toggleMute = async (c) => {
+    const next = !isMuted(c)
+    if (!messagesApi.muteConversation) return
+    try {
+      await messagesApi.muteConversation(c.id, next)
+      setMutedOverrides((m) => ({ ...m, [c.id]: next }))
+    } catch { /* best-effort : la ligne reste dans son état actuel */ }
+  }
+
+  const archive = async (c) => {
+    if (!messagesApi.archiveConversation) return
+    try {
+      await messagesApi.archiveConversation(c.id)
+      setArchivedIds((ids) => (ids.includes(c.id) ? ids : [...ids, c.id]))
+    } catch { /* best-effort : la ligne reste visible */ }
+  }
+
   const filtered = useMemo(() => {
+    const visibles = conversations.filter((c) => !archivedIds.includes(c.id))
     const q = query.trim().toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => {
+    if (!q) return visibles
+    return visibles.filter((c) => {
       const title = conversationTitle(c, currentUserId).toLowerCase()
       const preview = lastPreview(c).toLowerCase()
       return title.includes(q) || preview.includes(q)
     })
-  }, [conversations, query, currentUserId])
+  }, [conversations, query, currentUserId, archivedIds])
+
+  // WIR260 — la recherche plein-texte SERVEUR (`/chat/conversations/search/`)
+  // était inatteignable depuis l'UI : le champ ne faisait qu'un filtre LOCAL
+  // sur les titres/aperçus déjà chargés. On la branche en plus (jamais à la
+  // place) : le filtre local reste la première réponse, la section
+  // « Messages » ajoute les extraits renvoyés par le serveur. Débounce 250 ms,
+  // comme la barre de recherche globale. DÉGRADATION SILENCIEUSE : une erreur
+  // réseau (ou un `messagesApi.search` absent) vide simplement la section — le
+  // filtre local n'est jamais perturbé.
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2 || !messagesApi.search) {
+      Promise.resolve().then(() => setMsgHits([]))
+      return undefined
+    }
+    let alive = true
+    const t = setTimeout(() => {
+      messagesApi.search(q)
+        .then((r) => { if (alive) setMsgHits(r.data?.results ?? r.data ?? []) })
+        .catch(() => { if (alive) setMsgHits([]) })
+    }, 250)
+    return () => { alive = false; clearTimeout(t) }
+  }, [query])
 
   return (
     <div className="flex h-full flex-col" data-testid="conversation-list">
@@ -326,17 +390,21 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
             const unread = c.unread_count || 0
             const isActive = c.id === activeId
             const peer = peerStatus(c)
+            const muted = isMuted(c)
             return (
-              <li key={c.id}>
+              <li
+                key={c.id}
+                className={cn(
+                  'flex items-stretch border-b border-border/60',
+                  isActive && 'bg-primary/5',
+                  unread > 0 && 'bg-accent/20',
+                )}
+              >
                 <button
                   type="button"
                   onClick={() => onSelect?.(c.id)}
                   aria-current={isActive ? 'true' : undefined}
-                  className={cn(
-                    'flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-muted/50',
-                    isActive && 'bg-primary/5',
-                    unread > 0 && 'bg-accent/20',
-                  )}
+                  className="flex min-w-0 flex-1 items-start gap-2.5 py-2.5 pl-3 pr-1 text-left transition-colors hover:bg-muted/50"
                 >
                   <Avatar>
                     <AvatarFallback>
@@ -354,7 +422,7 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
                           <span aria-label="Statut du collègue" className="shrink-0">{peer.status_emoji}</span>
                         )}
                         {title}
-                        {c.muted && (
+                        {muted && (
                           <BellOff size={12} aria-label="Notifications coupées"
                                    className="shrink-0 text-muted-foreground" />
                         )}
@@ -378,11 +446,64 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
                     </span>
                   </span>
                 </button>
+
+                {/* WIR260 — menu d'actions de la ligne. HORS du bouton de la
+                    ligne (un bouton dans un bouton est invalide et le clic
+                    ouvrirait la conversation au lieu du menu). */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Actions de ${title}`}
+                      className="flex w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
+                    >
+                      <MoreHorizontal size={16} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => toggleMute(c)}>
+                      {muted
+                        ? <Bell size={14} aria-hidden="true" />
+                        : <BellOff size={14} aria-hidden="true" />}
+                      {muted ? 'Réactiver' : 'Sourdine'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => archive(c)}>
+                      <Archive size={14} aria-hidden="true" /> Archiver
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </li>
             )
           })
         )}
       </ul>
+
+      {/* WIR260 — résultats de la recherche plein-texte SERVEUR. S'ajoute au
+          filtre local (jamais à sa place) ; absente tant qu'aucun extrait n'est
+          revenu, donc une erreur réseau ne laisse RIEN d'anormal à l'écran. */}
+      {msgHits.length > 0 && (
+        <div className="border-t border-border" data-testid="chat-search-messages">
+          <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            Messages ({msgHits.length})
+          </p>
+          <ul className="max-h-56 overflow-y-auto" role="list" aria-label="Messages trouvés">
+            {msgHits.map((h) => (
+              <li key={h.message_id ?? h.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect?.(h.conversation)}
+                  className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                >
+                  <span className="w-full truncate text-sm text-foreground">{h.snippet}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {h.conversation_name} · {shortTime(h.created_at)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       </>
       )}
     </div>
