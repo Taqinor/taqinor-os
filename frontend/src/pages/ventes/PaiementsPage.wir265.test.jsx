@@ -67,8 +67,11 @@ beforeEach(() => {
 describe('PaiementsPage — WIR265 : import de relevé bancaire', () => {
   it('la route /import-releve ouvre l’assistant', async () => {
     renderPage()
-    expect(await screen.findByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('Importer un relevé bancaire')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog')
+    // « Importer un relevé bancaire » est AUSSI le libellé du bouton de
+    // l'en-tête : on vise le TITRE du dialogue, pas le texte nu.
+    expect(within(dialog).getByRole('heading', { name: 'Importer un relevé bancaire' }))
+      .toBeInTheDocument()
   })
 
   it('l’écran des encaissements seul n’ouvre PAS l’assistant', async () => {

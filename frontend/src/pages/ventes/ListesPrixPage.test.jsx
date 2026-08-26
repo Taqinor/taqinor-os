@@ -130,7 +130,7 @@ describe('ListesPrixPage — WIR226 : CRUD complet', () => {
   it('renomme, cible un segment et date la liste (PATCH réel)', async () => {
     ventesApi.patchListePrix.mockResolvedValue({ data: {} })
     const dialog = await ouvrirDetail()
-    fireEvent.change(within(dialog).getByLabelText('Nom'),
+    fireEvent.change(within(dialog).getByLabelText(/^Nom/),
       { target: { value: 'Revendeur Nord' } })
     fireEvent.change(within(dialog).getByLabelText('Segment client ciblé'),
       { target: { value: 'revendeur' } })
@@ -199,7 +199,7 @@ describe('ListesPrixPage — WIR226 : CRUD complet', () => {
     await screen.findByText('Aucune liste de prix')
     fireEvent.click(screen.getByRole('button', { name: /Nouvelle liste/ }))
     const dialog = await screen.findByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('Nom'), { target: { value: 'Export' } })
+    fireEvent.change(within(dialog).getByLabelText(/^Nom/), { target: { value: 'Export' } })
     fireEvent.change(within(dialog).getByLabelText('Segment client ciblé'),
       { target: { value: 'export' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
