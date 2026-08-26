@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* WIR126 — les onglets de Risques.jsx (Permis & LOTO, Incidents en priorité)
    étaient lecture seule alors que le backend supporte création + cycle de vie
@@ -10,7 +11,11 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    déconsigner, Incident créer — débloque la chaîne d'escalade déjà testée
    côté serveur, AnalyseIncident.genererCapa). On vérifie que chaque onglet
    prioritaire expose désormais ses actions d'écriture de bout en bout.
-   Réseau mocké. */
+   Réseau mocké.
+   WIR278 — onglet « Contexte SMQ (ISO 4) » (contexte singleton + parties
+   intéressées). Le mock de `contexteOrganisation.courant` IMPORTE le
+   contrat committé (apps/qhse/contract_samples/contexte_organisation_courant.json,
+   PACT10/13). */
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -32,6 +37,7 @@ const {
   empty, permisCreate, permisValider, permisCloturer, lotoCreate,
   lotoDeconsigner, incidentCreate, genererCapa,
   exerciceCreate, exerciceRealiser, exerciceCreerCapa, exerciceDus, exerciceRelancer,
+  permisPdf, inductionPdf, contexteCourant, contexteUpdateCourant, partieCreate,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   permisCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -50,6 +56,10 @@ const {
   // WIR235 (XQHS27) — PDF terrain bilingue FR/AR (permis + induction).
   permisPdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF-1.4']) })),
   inductionPdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF-1.4']) })),
+  // WIR278 (XQHS15) — contexte SMQ singleton + parties intéressées.
+  contexteCourant: vi.fn(),
+  contexteUpdateCourant: vi.fn(() => Promise.resolve({ data: {} })),
+  partieCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
 }))
 
 const PERMIS_ROW = {
@@ -63,6 +73,10 @@ const LOTO_ROW = {
 const PLAN_ROW = {
   id: 60, titre: 'Plan évacuation Bouskoura', chantier_id: 5,
   point_rassemblement: 'Portail principal', nb_secouristes: 2,
+}
+const PARTIE_ROW = {
+  id: 100, partie: 'Client', attentes: 'Qualité et délais',
+  pertinence: 'forte', pertinence_display: 'Forte',
 }
 const EXERCICE_PLANIFIE_ROW = {
   id: 70, plan: 60, plan_titre: 'Plan évacuation Bouskoura',
@@ -131,6 +145,14 @@ vi.mock('../../api/qhseApi', () => ({
     observationsSecurite: { list: empty },
     liensSignalement: { list: empty },
     signalementsPublics: { list: empty },
+    contexteOrganisation: {
+      courant: (...a) => contexteCourant(...a),
+      updateCourant: (...a) => contexteUpdateCourant(...a),
+    },
+    partiesInteressees: {
+      list: vi.fn(() => Promise.resolve({ data: [PARTIE_ROW] })),
+      create: (...a) => partieCreate(...a),
+    },
   },
 }))
 
@@ -145,7 +167,11 @@ function withProviders(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  contexteCourant.mockResolvedValue(
+    reponseContrat('qhse', 'contexte_organisation_courant'))
+})
 
 describe('Risques — Permis & LOTO (WIR126)', () => {
   it('propose de créer un permis de travail et l\'envoie au serveur', async () => {
@@ -325,5 +351,40 @@ describe('Risques — PDF terrain bilingues FR/AR (WIR235)', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'PDF (AR)' })[0])
     await waitFor(() => expect(inductionPdf).toHaveBeenCalledWith(80, { lang: 'ar' }))
+  })
+})
+
+describe('Risques — Contexte SMQ ISO 4 (WIR278)', () => {
+  it('charge le contexte singleton (contrat committé importé) et l’enregistre', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Contexte SMQ (ISO 4)' }))
+
+    const swot = await screen.findByLabelText('SWOT')
+    await waitFor(() => expect(swot).toHaveValue(
+      expect.stringContaining('équipe technique solaire expérimentée')))
+
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(contexteUpdateCourant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        swot: expect.stringContaining('équipe technique solaire expérimentée'),
+      }),
+    ))
+  })
+
+  it('crée une partie intéressée', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Contexte SMQ (ISO 4)' }))
+    await waitFor(() => expect(screen.getAllByText('Client').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouvelle partie intéressée/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Partie'), 'Autorité locale')
+    await user.click(within(dialog).getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(partieCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ partie: 'Autorité locale', pertinence: 'moyenne' }),
+    ))
   })
 })

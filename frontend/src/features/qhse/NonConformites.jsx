@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
-  Wrench, ShieldAlert, Send,
+  Wrench, ShieldAlert, Send, FileText,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import { ListShell, DetailShell } from '../../ui/module'
 import {
   Button, Badge, Dialog, DialogContent, DialogTitle, Input, Textarea, Label,
@@ -494,10 +495,26 @@ function AnalyseNcrPanel({ ncrId }) {
     }
   }
 
+  // WIR276 (XQHS7) — PDF interne 5-Pourquoi/8D téléchargeable depuis le
+  // détail NCR (`rendre_analyse_ncr_pdf` existait déjà, jamais appelé).
+  async function telechargerPdf() {
+    try {
+      const res = await qhseApi.nonConformites.analysePdf(ncrId)
+      downloadBlob(new Blob([res.data]), `analyse-ncr-${ncrId}.pdf`)
+    } catch {
+      toast.error('Téléchargement du PDF impossible.')
+    }
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={telechargerPdf}>
+          <FileText size={15} /> Télécharger le PDF
+        </Button>
+      </div>
       <section className="flex flex-col gap-3">
         <h4 className="text-sm font-semibold">5-Pourquoi</h4>
         {pourquoi.map((p, i) => (

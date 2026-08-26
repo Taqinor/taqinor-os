@@ -5,6 +5,7 @@
 import { lazy } from 'react'
 import {
   ShieldCheck, AlertOctagon, ClipboardCheck, ShieldAlert, Leaf, Star, UserCheck,
+  Award,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -24,6 +25,9 @@ const Environnement = lazy(() => import('./Environnement'))
 const NotationFinChantier = lazy(() => import('./NotationFinChantier'))
 // WIR115 — check-in sécurité (technicien seul sur site) + SCAR fournisseur.
 const CheckinsSecurite = lazy(() => import('./CheckinsSecurite'))
+// WIR276 — registres ISO QHSE (rappels produit, certifications, programme
+// d'audit, revues de direction, objectifs) jusqu'ici sans écran.
+const IsoQhse = lazy(() => import('./IsoQhse'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -46,6 +50,7 @@ const config = {
       { to: '/qhse/environnement', label: 'Environnement & ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/qhse/notations', label: 'Notation fin de chantier', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/qhse/checkins-securite', label: 'Check-ins sécurité', icon: <UserCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/qhse/iso', label: 'Registres ISO', icon: <Award size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -56,6 +61,7 @@ const config = {
     ['/qhse/environnement', 'Environnement & ESG — QHSE'],
     ['/qhse/notations', 'Notation fin de chantier — QHSE'],
     ['/qhse/checkins-securite', 'Check-ins sécurité — QHSE'],
+    ['/qhse/iso', 'Registres ISO — QHSE'],
     ['/qhse', 'Cockpit QHSE'],
   ],
   sectionLabels: { qhse: 'QHSE' },
@@ -67,6 +73,7 @@ const config = {
     { path: '/qhse/environnement', component: Environnement, roles: ROLES },
     { path: '/qhse/notations', component: NotationFinChantier, roles: ROLES },
     { path: '/qhse/checkins-securite', component: CheckinsSecurite, roles: ROLES },
+    { path: '/qhse/iso', component: IsoQhse, roles: ROLES },
   ],
 }
 

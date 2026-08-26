@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ClipboardCheck, PackageCheck, Play, Calculator, AlertTriangle, CheckCircle2, PlusCircle,
+  Send, Check,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
@@ -351,6 +352,46 @@ function ProcedureQualiteDialog({ onClose, onDone }) {
   )
 }
 
+// WIR278 (XQHS15) — diffuse cette version à une population d'utilisateurs
+// (ids) VALIDÉE côté serveur (jamais un id hors société accepté).
+function DiffuserProcedureDialog({ procedure, onClose, onDone }) {
+  const [userIds, setUserIds] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const ids = userIds.split(',').map((s) => s.trim()).filter(Boolean).map(Number)
+    if (ids.length === 0) { toast.error('Au moins un destinataire (id) est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.proceduresQualite.diffuser(procedure.id, { user_ids: ids })
+      toast.success('Procédure diffusée.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Diffusion impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Diffuser cette version — {procedure.reference}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Destinataires (ids utilisateur, séparés par des virgules)</Label>
+            <Input aria-label="Destinataires (ids utilisateur, séparés par des virgules)"
+              value={userIds} onChange={(e) => setUserIds(e.target.value)}
+              placeholder="5, 7, 9" />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Diffusion…' : 'Diffuser'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function RetourClientDialog({ onClose, onDone }) {
   const [chantierId, setChantierId] = useState('')
   const [note, setNote] = useState('5')
@@ -442,6 +483,10 @@ export default function Inspections() {
   const [reloadRetours, setReloadRetours] = useState(0)
   const [busyAudit, setBusyAudit] = useState(null)
   const [busyProc, setBusyProc] = useState(null)
+  // WIR278 — diffusion des procédures + accusé de lecture.
+  const [diffusingProc, setDiffusingProc] = useState(null)
+  const [busyLecture, setBusyLecture] = useState(null)
+  const [reloadLectures, setReloadLectures] = useState(0)
 
   const calculerScoreAudit = async (audit) => {
     setBusyAudit(audit.id)
@@ -472,6 +517,18 @@ export default function Inspections() {
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Activation impossible.')
     } finally { setBusyProc(null) }
+  }
+  // WIR278 (XQHS15) — accuse lecture pour l'UTILISATEUR COURANT uniquement
+  // (jamais un tiers) sur une diffusion en attente.
+  const marquerLu = async (lecture) => {
+    setBusyLecture(lecture.id)
+    try {
+      await qhseApi.diffusionsProcedure.marquerLu(lecture.diffusion)
+      toast.success('Lecture accusée.')
+      setReloadLectures((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Accusé de lecture impossible.')
+    } finally { setBusyLecture(null) }
   }
 
   const plansModelesCols = useMemo(() => [
@@ -709,12 +766,20 @@ export default function Inspections() {
                 <PlusCircle size={15} aria-hidden="true" /> Nouvelle procédure
               </Button>
             )}
-            rowActions={(r) => (r.statut === 'brouillon'
-              ? [{
-                  id: 'activer', label: 'Mettre en vigueur', icon: CheckCircle2,
-                  disabled: busyProc === r.id, onClick: () => activerProcedure(r),
-                }]
-              : [])}
+            rowActions={(r) => [
+              ...(r.statut === 'brouillon'
+                ? [{
+                    id: 'activer', label: 'Mettre en vigueur', icon: CheckCircle2,
+                    disabled: busyProc === r.id, onClick: () => activerProcedure(r),
+                  }]
+                : []),
+              // WIR278 — la diffusion n'avait aucun bouton (service testé,
+              // aucun appelant côté écran).
+              {
+                id: 'diffuser', label: 'Diffuser cette version', icon: Send,
+                onClick: () => setDiffusingProc(r),
+              },
+            ]}
           />
           <QhseResourceList
             title="Mes lectures en attente"
@@ -722,7 +787,11 @@ export default function Inspections() {
             fetcher={() => qhseApi.proceduresQualite.mesLecturesEnAttente()}
             columns={lecturesCols}
             exportName="qhse-lectures-en-attente"
-            deps={[reloadProc]}
+            deps={[reloadProc, reloadLectures]}
+            rowActions={(r) => [{
+              id: 'marquer-lu', label: 'Marquer comme lue', icon: Check,
+              disabled: busyLecture === r.id, onClick: () => marquerLu(r),
+            }]}
           />
           <MoyenneRetoursWidget deps={[reloadRetours]} />
           <QhseResourceList
@@ -773,6 +842,13 @@ export default function Inspections() {
         <RetourClientDialog
           onClose={() => setDialog(null)}
           onDone={() => setReloadRetours((n) => n + 1)}
+        />
+      )}
+      {diffusingProc && (
+        <DiffuserProcedureDialog
+          procedure={diffusingProc}
+          onClose={() => setDiffusingProc(null)}
+          onDone={() => setReloadLectures((n) => n + 1)}
         />
       )}
     </div>
