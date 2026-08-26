@@ -208,6 +208,12 @@ const stockApi = {
     api.delete(`/stock/factures-fournisseur/${id}/`),
   getComptesAPayer: (params) =>
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
+  // WIR192/XPUR10 — rapprochement 3 voies : file d'exceptions + résolution
+  // (déblocage du paiement, Responsable/Admin).
+  getFacturesEnException: () =>
+    api.get('/stock/factures-fournisseur/en-exception/'),
+  resoudreExceptionFacture: (id, data) =>
+    api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`, data ?? {}),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
