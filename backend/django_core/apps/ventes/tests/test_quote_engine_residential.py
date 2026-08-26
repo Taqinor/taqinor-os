@@ -649,6 +649,64 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         # aucun paramètre de requête n'a été greffé sur le lien du QR
         self.assertNotIn('?', signer)
 
+    def test_la_charge_utile_publique_ne_porte_pas_l_affiche(self):
+        """A8 — ``build_quote_data`` alimente AUSSI la charge utile JSON de la
+        proposition publique. Sans le drapeau de rendu, la clé ``roof_render``
+        n'existe pas et AUCUN octet n'est lu depuis MinIO : la page n'emporte
+        pas jusqu'à 8 Mo de base64 qu'elle ne lit même pas, et ne déclenche pas
+        un GET synchrone à chaque affichage."""
+        from unittest import mock
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        devis.roof_image = f'roofs/{devis.company_id}/{devis.reference}.png'
+        devis.save(update_fields=['roof_image'])
+        cible = 'apps.ventes.utils.pdf.download_roof_image'
+        with mock.patch(cible) as dl:
+            data = build_quote_data(devis)
+        self.assertNotIn('roof_render', data)
+        dl.assert_not_called()
+        # …et la clé MinIO, elle, reste publiée (elle ne coûte rien).
+        self.assertEqual(data['roof_image_key'], devis.roof_image)
+        # Le chemin de RENDU, lui, la demande explicitement.
+        with mock.patch(cible, return_value=b'\x89PNG\r\n\x1a\n x') as dl:
+            data = build_quote_data(devis, {'_embed_roof_render': True})
+        self.assertTrue(data['roof_render'].startswith('data:image/png'))
+        dl.assert_called_once()
+
+    def test_le_qr_suit_le_lien_qui_sert_le_pdf_pas_le_plus_lointain(self):
+        """QRP1/A5 — ANTICOPIE. ``ShareLink.for_devis`` rend le lien à
+        l'EXPIRATION LA PLUS LOINTAINE, sans regarder son niveau : un PDF rendu
+        au niveau STANDARD pouvait donc porter un QR vers la page CONFIANCE —
+        la dégradation du document annulée par son propre code-barres. Quand
+        l'appelant passe le jeton du lien qui SERT le document, c'est celui-là
+        qui est imprimé ; sinon, repli historique."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        # Le lien de CONFIANCE expire le plus tard → c'est celui que
+        # ``for_devis`` choisirait.
+        confiance = ShareLink.objects.create(
+            company=devis.company, devis=devis,
+            expires_at=timezone.now() + timedelta(days=90))
+        standard = ShareLink.objects.create(
+            company=devis.company, devis=devis,
+            expires_at=timezone.now() + timedelta(days=2))
+        self.assertEqual(ShareLink.for_devis(devis).token, confiance.token)
+
+        servi = build_quote_data(devis, {'share_token': standard.token})
+        self.assertIn(standard.token, servi['links']['signer'])
+        self.assertNotIn(confiance.token, servi['links']['signer'])
+
+        # Sans jeton (rendu interne ERP/Celery) → comportement historique.
+        interne = build_quote_data(devis)
+        self.assertIn(confiance.token, interne['links']['signer'])
+
+        # Jeton inconnu, ou d'un AUTRE devis → jamais cru sur parole.
+        bidon = build_quote_data(devis, {'share_token': 'z' * 40})
+        self.assertIn(confiance.token, bidon['links']['signer'])
+
     @tag('pdf')
     def test_footer_page_total_matches_real_pages(self):
         from apps.ventes.quote_engine.residential import renderer, render
@@ -987,6 +1045,23 @@ class TestPageUnQrProposition(SimpleTestCase):
         html = self._html(links={})
         self.assertNotIn('class="c1-qr-cell"', html)
 
+    def test_bande_autonome_quand_la_carte_facture_n_existe_pas(self):
+        """O4 — document SANS couche économique (Z2 : aucune donnée réelle
+        d'ancrage) : il n'y a pas de carte « facture mois par mois » pour
+        loger la vignette, qui devient alors une bande fine sous le bandeau
+        environnemental — là où la page a de la place de reste."""
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        # savings_estimated + ni factures réelles ni conso saisie
+        # ⇒ renderer.ancrage_reel_absent ⇒ couche économique omise.
+        html = self._html(savings_estimated=True, factures_reelles=False,
+                          factures_mensuelles=None, conso_annuelle_kwh=None)
+        self.assertIn('class="c1-qrbox"', html)
+        self.assertNotIn('class="c1-qr-cell"', html)   # pas de carte facture
+        self.assertIn('Consultez votre proposition interactive', html)
+
 
 class TestCalepinageSurLaPageDetail(SimpleTestCase):
     """CALEPDF — l'affiche de calepinage rendue par le calepineur (la MÊME que
@@ -1006,25 +1081,31 @@ class TestCalepinageSurLaPageDetail(SimpleTestCase):
         return render.build_html(renderer._augment(d))
 
     def test_les_deux_visuels_coexistent(self):
+        """A1 — la photo reste DANS la bande (dont la largeur ne bouge pas) et
+        le calepinage descend dans la rangée de visuels."""
         html = self._html(roof_render=self._POSTER)
-        self.assertIn('class="p2-roof p2-roof-duo"', html)
-        self.assertIn('Votre toiture</div>', html)
-        self.assertIn('Votre calepinage</div>', html)
+        self.assertTrue('Votre toiture</div>' in html)
+        self.assertTrue('Votre calepinage</div>' in html)
         # la photo du client est CONSERVÉE (jamais remplacée)
-        self.assertIn('class="p2-roof-photo"', html)
-        self.assertIn('class="p2-roof-plan"', html)
+        self.assertTrue('class="p2-roof-photo"' in html)
+        self.assertTrue('class="p2-vis-plan"' in html)
+        # …et la colonne visuelle de la bande garde sa largeur historique
+        self.assertTrue('class="p2-roof">' in html)
+        self.assertTrue('p2-roof-duo' not in html)
 
     def test_calepinage_seul_remplace_le_schema_illustratif(self):
+        """Sans photo, le calepinage prend la place du schéma illustratif DANS
+        la bande — et ne se répète pas dans la rangée."""
         html = self._html(roof_photo='', roof_render=self._POSTER)
-        self.assertIn('class="p2-roof-plan"', html)
-        self.assertNotIn('p2-roof-duo">', html)
-        self.assertNotIn("Schéma de l'installation", html)
+        self.assertTrue('class="p2-roof-plan"' in html)
+        self.assertTrue('class="p2-vis-plan"' not in html)
+        self.assertTrue("Schéma de l'installation" not in html)
 
     def test_sans_calepinage_rendu_historique(self):
         html = self._html()
-        self.assertNotIn('class="p2-roof-plan"', html)
-        self.assertNotIn('Votre calepinage', html)
-        self.assertIn('class="p2-roof-photo"', html)
+        self.assertTrue('class="p2-roof-plan"' not in html)
+        self.assertTrue('Votre calepinage' not in html)
+        self.assertTrue('class="p2-roof-photo"' in html)
 
     def test_aucune_coordonnee_machine_dans_le_document(self):
         """Le PDF porte l'IMAGE, pas la géométrie : aucune clé du blob
@@ -1036,7 +1117,7 @@ class TestCalepinageSurLaPageDetail(SimpleTestCase):
             '_pans_geometry': [{'label': 'Pan Sud', 'azimut_deg': 180}]})
         for fuite in ('vertices', 'obstacles', '_pans_geometry',
                       'azimut_deg', 'Pan Sud'):
-            self.assertNotIn(fuite, html, fuite)
+            self.assertTrue(fuite not in html, fuite)
 
 
 class TestRoofRenderDataUri(SimpleTestCase):
@@ -1081,6 +1162,27 @@ class TestRoofRenderDataUri(SimpleTestCase):
             self._uri('roofs/1/DEV-1.png', octets=b'x' * (6 * 1024 * 1024 + 1)),
             '')
 
+    def test_le_drapeau_de_rendu_n_est_pas_whiteliste(self):
+        """A8 — ``_embed_roof_render`` est un drapeau SERVEUR (comme
+        ``watermark``) : ``clean_pdf_options`` ne le laisse pas passer, donc un
+        corps client ne peut pas déclencher la lecture MinIO."""
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        self.assertNotIn('_embed_roof_render',
+                         clean_pdf_options({'_embed_roof_render': True}))
+
+    def test_un_jeton_de_partage_bricole_est_ignore(self):
+        """A5 — la liste blanche n'accepte QUE la forme d'un jeton ; la vraie
+        validation (appartenance au devis) se fait ensuite en base."""
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        for mauvais in ('', 'court', '../../etc/passwd', 'a b c', None, 42,
+                        'x' * 200):
+            self.assertIsNone(
+                clean_pdf_options({'share_token': mauvais})['share_token'],
+                repr(mauvais))
+        self.assertEqual(
+            clean_pdf_options({'share_token': 'AbCd-1234_efgh'})['share_token'],
+            'AbCd-1234_efgh')
+
 
 class TestProductionMensuellePageDetail(SimpleTestCase):
     """PRODMOIS — bande « production mois par mois » de la page détail.
@@ -1121,17 +1223,175 @@ class TestProductionMensuellePageDetail(SimpleTestCase):
         from apps.ventes.quote_engine.residential import (
             renderer, render, sample_data)
         html = render.build_html(renderer._augment(sample_data.build('deux')))
-        self.assertIn('class="p2-prodmois"', html)
+        self.assertTrue('class="p2-vis-prod"' in html)
 
     def test_bande_omise_sur_un_devis_charge(self):
-        """Budget de pagination épuisé (devis dense) ⇒ bande OMISE — jamais une
-        4ᵉ page pour la loger."""
+        """Budget de pagination épuisé (devis dense) ⇒ rangée OMISE — jamais
+        une 4ᵉ page pour la loger."""
         from apps.ventes.quote_engine.residential import (
             renderer, render, sample_data)
         for variante in ('plus5', 'plus10'):
             html = render.build_html(
                 renderer._augment(sample_data.build(variante)))
-            self.assertNotIn('class="p2-prodmois"', html, variante)
+            self.assertTrue('class="p2-visuels"' not in html, variante)
+
+
+def _boites_texte(page):
+    """Toutes les boîtes de texte d'une page WeasyPrint, à plat.
+
+    Sert aux gardes structurelles ci-dessous : pas de PyMuPDF, pas d'écriture
+    de fichier — juste l'arbre de boîtes que le moteur vient de composer.
+    """
+    out = []
+
+    def _walk(box):
+        if getattr(box, "text", None):
+            out.append(box)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child)
+
+    _walk(page._page_box)
+    return out
+
+
+class TestPaginationPireCas(SimpleTestCase):
+    """QRP1/PRODMOIS/CALEPDF — GARDE DE PAGINATION DU PIRE CAS, non étiquetée.
+
+    Les gardes de pagination existantes portent ``@tag('pdf')`` et CI les
+    EXCLUT (``--exclude-tag=pdf``) : elles ne protègent donc rien pendant un
+    run normal. Celle-ci est délibérément SANS étiquette, et elle rend le
+    document dans la configuration la plus lourde que cette lane ait rendue
+    possible — celle qu'aucune fixture ne portait :
+
+      · affiche de calepinage présente (rangée de visuels) ;
+      · champs PV DIVERGENTS, donc la bande porte « kWh / an produits
+        (sans · avec) », l'étiquette longue que PDFPROD interdit de faire
+        passer à la ligne ;
+      · bande « production mois par mois » présente ;
+      · vignette QR sur la page 1.
+
+    C'est exactement la combinaison où une bande élargie aurait débordé.
+    """
+
+    #: Affiche factice, format LARGE (comme un vrai rendu de calepinage).
+    POSTER = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf'
+              'FcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+
+    #: Pagination documentée des fixtures (mise en page NON divergente), avec
+    #: le calepinage ET la bande production présents. Un devis à champs PV
+    #: divergents peut légitimement gagner une page — c'est le découpage
+    #: L-2OPT (quantités différentes ⇒ lignes en delta), antérieur à cette
+    #: lane ; le test relatif ci-dessous couvre ce cas-là.
+    PAGES_ATTENDUES = {"deux": 3, "sans": 3, "long": 3,
+                       "plus5": 3, "plus10": 4}
+
+    def _donnees(self, variante, divergent=True, plan=True):
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build(variante)
+        if plan:
+            d["roof_render"] = self.POSTER
+        if divergent and d.get("deux_options", True):
+            # Deux optimiseurs : champs PV différents ⇒ étiquettes « sans ·
+            # avec » sur la puissance, les panneaux ET la production.
+            _nb = d["nb_panneaux"]
+            d.update({
+                "panneaux_divergents": True,
+                "nb_panneaux_sans": _nb, "nb_panneaux_avec": _nb + 4,
+                "puissance_kwc_sans": d["puissance_kwc"],
+                "puissance_kwc_avec": round(d["puissance_kwc"] * 1.18, 2),
+                "watt_par_panneau_sans": d["watt_par_panneau"],
+                "watt_par_panneau_avec": d["watt_par_panneau"],
+                "prod_kwh_sans": d["prod_kwh"],
+                "prod_kwh_avec": round(d["prod_kwh"] * 1.18),
+            })
+        return d
+
+    def _rendu(self, variante, **kw):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(self._donnees(variante, **kw))
+        html = render.build_html(d)
+        return html, HTML(string=html).render()
+
+    def test_pagination_documentee_tenue_avec_calepinage_et_production(self):
+        """Mise en page normale : les nombres de pages documentés tiennent
+        AVEC l'affiche de calepinage, la bande production et la vignette QR."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        for variante, attendu in self.PAGES_ATTENDUES.items():
+            _, doc = self._rendu(variante, divergent=False)
+            self.assertEqual(
+                len(doc.pages), attendu,
+                f"{variante} (calepinage + production + QR) : "
+                f"{len(doc.pages)} pages au lieu de {attendu}")
+
+    def test_le_pire_cas_n_ajoute_jamais_une_page(self):
+        """LA garde de cette lane, en RELATIF : sur CHAQUE fixture et dans les
+        DEUX mises en page (normale et champs PV divergents — l'étiquette
+        longue de PDFPROD), ajouter l'affiche de calepinage et la bande
+        production ne doit pas coûter une page.
+
+        Le relatif est délibéré : un devis divergent peut légitimement gagner
+        une page par le découpage L-2OPT (quantités différentes ⇒ lignes en
+        delta), antérieur à cette lane. Ce qui doit rester vrai, c'est que NOS
+        artefacts n'en ajoutent aucune, dans aucune des deux mises en page."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        from apps.ventes.quote_engine.residential import sample_data
+        for variante in sample_data.keys():
+            for divergent in (False, True):
+                _, sans = self._rendu(variante, divergent=divergent,
+                                      plan=False)
+                _, avec = self._rendu(variante, divergent=divergent,
+                                      plan=True)
+                self.assertEqual(
+                    len(avec.pages), len(sans.pages),
+                    f"{variante} (divergent={divergent}) : le calepinage a "
+                    f"fait passer le document de {len(sans.pages)} à "
+                    f"{len(avec.pages)} pages")
+
+    def test_l_etiquette_production_divergente_ne_passe_pas_a_la_ligne(self):
+        """PDFPROD — la bande annonce « kWh / an produits (sans · avec) » sur
+        UNE ligne. C'est cette contrainte que l'élargissement de la colonne
+        visuelle (32 → 64 mm) cassait ; la rangée de visuels la préserve."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        _, doc = self._rendu("deux")
+        page2 = doc.pages[1]
+        morceaux = [b.text.strip() for b in _boites_texte(page2)]
+        self.assertIn("kWh / an produits (sans · avec)", morceaux,
+                      "l'étiquette a été coupée en plusieurs lignes — la "
+                      "colonne des vignettes techniques est passée sous son "
+                      "plancher de 36 mm")
+
+    def test_le_calepinage_ne_touche_pas_la_bande(self):
+        """A1 — le calepinage ne coûte RIEN à la bande : les trois vignettes
+        techniques restent exactement où elles étaient, à la même largeur de
+        colonne. (Le coût du calepinage est la rangée de visuels du dessous,
+        elle-même budgétée dans la pagination.)"""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+
+        def _vignettes(plan):
+            _, doc = self._rendu("deux", divergent=True, plan=plan)
+            return [(b.text.strip(), round(b.position_x, 1),
+                     round(b.position_y, 1))
+                    for b in _boites_texte(doc.pages[1])
+                    if "kWh / an produits" in b.text
+                    or "panneaux (sans" in b.text
+                    or "kWc installés" in b.text]
+
+        sans_plan = _vignettes(False)
+        self.assertTrue(sans_plan, "vignettes techniques introuvables")
+        self.assertEqual(sans_plan, _vignettes(True))
 
 
 class TestOnepageQrProposition(SimpleTestCase):
@@ -1149,13 +1409,66 @@ class TestOnepageQrProposition(SimpleTestCase):
         except Exception:
             self.skipTest('qrcode absent de cet environnement')
         html = self._html()
-        self.assertIn('Consultez votre proposition interactive', html)
-        self.assertIn('taqinor.ma/proposition', html)
-        self.assertIn('data:image/png', html)
+        self.assertTrue('proposition interactive' in html)
+        self.assertTrue('taqinor.ma/proposition' in html)
+        self.assertTrue('QR — votre proposition en ligne' in html)
 
     def test_entete_historique_sans_proposition_en_ligne(self):
         html = self._html(links={'signer': 'taqinor.ma/signer/DEV-RES-DEMO'})
-        self.assertNotIn('proposition interactive', html)
-        # balisage flex historique de l'en-tête conservé
-        self.assertIn('align-items:center;justify-content:space-between;">',
-                      html)
+        self.assertTrue('proposition interactive' not in html)
+        self.assertTrue('QR — votre proposition en ligne' not in html)
+
+    def test_l_entete_a_une_hauteur_EXPLICITE_dans_les_deux_cas(self):
+        """A4 — la zone de contenu de cette page est bornée
+        (``overflow:hidden``) : un en-tête plus haut ROGNERAIT silencieusement
+        le bas du document (le Total TTC d'un devis dense) sans qu'aucune garde
+        de pagination ne s'en aperçoive — le PDF ferait toujours 1 page. La
+        hauteur de la bande est donc IMPOSÉE, identique avec ou sans QR, et
+        indépendante de la présence de ``logo.png``."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        attendu = f'height:{G.ONEPAGE_HEADER_MM}mm'
+        self.assertIn(attendu, self._html())
+        self.assertIn(attendu, self._html(
+            links={'signer': 'taqinor.ma/signer/X'}))
+
+    def test_le_qr_tient_sous_la_bande_d_entete(self):
+        """A4 — la pile QR (code + platine blanche) doit rester sous la
+        hauteur de bande, sinon elle la pousse et rogne le bas de page."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._html()
+        self.assertIn('height:18mm;width:18mm', html)
+        # 18 mm de code + 2 × 0,7 mm de platine = 19,4 mm < la bande.
+        self.assertLess(18 + 2 * 0.7, G.ONEPAGE_HEADER_MM)
+        # A6 — aucun arrondi sur l'image du code (il rognerait les motifs de
+        # repérage des coins) ; platine BLANCHE derrière l'aplat navy.
+        _pile = html.split('QR — votre proposition en ligne', 1)[1][:200]
+        self.assertNotIn('border-radius', _pile)
+        self.assertIn('background:#FFFFFF;padding:0.7mm', html)
+
+    def test_le_total_ttc_reste_au_dessus_de_la_ligne_de_rognage(self):
+        """A4 — garde STRUCTURELLE du pire cas : sur le devis le plus dense,
+        le bloc « Total TTC » doit se composer AU-DESSUS de la borne basse de
+        la zone de contenu (``bottom:72px``). En dessous, il disparaîtrait du
+        document sans qu'aucun compteur de pages ne bouge."""
+        try:
+            from weasyprint import HTML
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        from apps.ventes.tests import _moteur_fixtures as F
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        html = G.render_html_for(
+            F.donnees_legacy('plus10', pdf_mode='onepage'))
+        doc = HTML(string=html).render()
+        self.assertEqual(len(doc.pages), 1)
+        page = doc.pages[0]
+        # borne basse de la zone de contenu : 72 px sous le bas de la page.
+        limite = page.height - 72
+        totaux = [b for b in _boites_texte(page)
+                  if 'Total TTC' in b.text or 'TOTAL TTC' in b.text]
+        self.assertTrue(totaux, "bloc « Total TTC » introuvable")
+        for b in totaux:
+            self.assertLess(
+                b.position_y + b.height, limite,
+                "le Total TTC tombe sous la ligne de rognage de la page une "
+                "— il serait invisible sur le document rendu")

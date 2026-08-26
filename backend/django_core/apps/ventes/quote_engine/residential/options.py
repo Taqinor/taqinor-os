@@ -470,24 +470,49 @@ def build_pages(ctx) -> list:
     # (~12 lignes communes et plus) passent en 4 pages.
     fits_one = (_table_mm(shared) + _deltas_mm() + _comparatif_mm()) <= 68.0
 
-    # ── PRODMOIS — bande « production mois par mois » sur la page détail ─────
-    # Hauteur du bloc (image 19 mm + ses marges), IMPUTÉE au même budget de
-    # pagination que le tableau : la bande n'est rendue que s'il reste
+    # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
+    # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
+    # CSS) : l'affiche de calepinage à gauche (quand la bande porte déjà la
+    # photo du client) et la bande « production mois par mois » à droite. Un
+    # seul des deux ⇒ il occupe la rangée seul ; aucun des deux ⇒ pas de
+    # rangée.
+    #
+    # Hauteur du bloc (image 19 mm + ses marges) IMPUTÉE au même budget de
+    # pagination que le tableau : la rangée n'est rendue que s'il reste
     # réellement de la place, avec 4 mm de garde en plus du modèle. Elle ne
     # change JAMAIS ``fits_one`` (calculé ci-dessus SANS elle) — donc aucun
     # devis ne bascule de 3 à 4 pages à cause d'elle : soit il y a la place,
-    # soit la bande s'omet. Un devis chargé (page équipement découpée) ne la
+    # soit la rangée s'omet. Un devis chargé (page équipement découpée) ne la
     # reçoit pas non plus : sa page détail est pleine par définition.
-    _PRODMOIS_MM = 21.0
+    # Résolus ICI (et pas plus bas, avec la bande) : le budget de pagination a
+    # besoin de savoir si la rangée de visuels existera.
+    roof_photo = (d.get("roof_photo") or "").strip()
+    roof_render = (d.get("roof_render") or "").strip()
+    # Sans photo, le calepinage prend la place du schéma illustratif DANS la
+    # bande : il ne se répète alors pas dans la rangée.
+    plan_dans_la_bande = bool(roof_render and not roof_photo)
+
+    _VISUELS_MM = 21.0
     _prod_chart = (charts or {}).get("production") or ""
-    prodmois_html = ""
-    if _prod_chart and fits_one:
+    _plan_a_part = roof_render if not plan_dans_la_bande else ""
+    visuels_html = ""
+    if (_prod_chart or _plan_a_part) and fits_one:
         _reste = 68.0 - 4.0 - (_table_mm(shared) + _deltas_mm()
                                + _comparatif_mm())
-        if _reste >= _PRODMOIS_MM:
-            prodmois_html = (
-                f'<div class="p2-prodmois"><img src="{_prod_chart}" '
-                'alt="Production solaire estimée, mois par mois"></div>')
+        if _reste >= _VISUELS_MM:
+            _cells = ""
+            if _plan_a_part:
+                _cells += (
+                    '<div class="p2-vis-plan">'
+                    f'<img class="p2-roof-plan" src="{_plan_a_part}" '
+                    'alt="Calepinage — implantation des panneaux sur votre '
+                    'toiture">'
+                    '<div class="p2-roof-cap">Votre calepinage</div></div>')
+            if _prod_chart:
+                _cells += (
+                    f'<div class="p2-vis-prod"><img src="{_prod_chart}" '
+                    'alt="Production solaire estimée, mois par mois"></div>')
+            visuels_html = f'<div class="p2-visuels">{_cells}</div>'
 
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
@@ -523,20 +548,12 @@ def build_pages(ctx) -> list:
   /* QRES39 — photo réelle de toiture : cadrée, arrondie, légendée */
   .p2-roof-photo {{ width:30mm; height:17.5mm; object-fit:cover;
     border-radius:9px; display:block; margin:0 auto; }}
-  /* CALEPDF — photo de toiture ET affiche de calepinage côte à côte. TABLE
-     CSS, pas flex (RENDERING_NOTES §1) : deux cellules de largeur fixe, même
-     hauteur d'image qu'une vignette seule — la bande ne grandit pas d'un
-     millimètre, elle prend sur l'espace resté vide à droite des vignettes
-     techniques. Une seule image ⇒ classe absente ⇒ rendu historique. */
-  .p2-roof-duo {{ flex:0 0 64mm; display:table; table-layout:fixed; }}
-  .p2-roof-duo .p2-roof-one {{ display:table-cell; width:32mm;
-    vertical-align:bottom; text-align:center; }}
-  /* L'affiche de calepinage a une BOÎTE FIXE de 17,5 mm — plus courte que
-     tout ce que cette colonne rend déjà (photo réelle ~22,5 mm, schéma
-     illustratif ~22,7 mm) : quel que soit le format de l'affiche, la bande ne
-     peut donc pas grandir. ``contain`` et non ``cover`` : un plan d'
-     implantation ne se recadre pas, on verrait moins de panneaux qu'il n'y en
-     a. Deux classes ⇒ l'emporte sur ``.p2-roof img`` (1 classe + 1 balise). */
+  /* CALEPDF/A1 — l'affiche de calepinage a une BOÎTE FIXE de 17,5 mm dans la
+     bande (elle n'y entre QUE faute de photo, à la place du schéma illustratif
+     ~22,7 mm : la bande ne peut donc que rétrécir, jamais grandir) et de 16 mm
+     dans la rangée de visuels. ``contain`` et non ``cover`` : un plan
+     d'implantation ne se recadre pas, on verrait moins de panneaux qu'il n'y
+     en a. Deux classes ⇒ l'emporte sur ``.p2-roof img`` (1 classe + 1 balise). */
   .p2-roof .p2-roof-plan {{ width:30mm; height:17.5mm; object-fit:contain;
     background:#FFFFFF; border-radius:9px; display:block; margin:0 auto; }}
   .p2-roof-cap {{ font-size:6.3pt; color:{C['muted_2']}; margin-top:0.8mm;
@@ -549,10 +566,22 @@ def build_pages(ctx) -> list:
     color:{C['navy']}; line-height:1; }}
   .p2-spec-l {{ font-size:8pt; color:{C['muted']}; line-height:1.2; }}
 
-  /* PRODMOIS — bande production mois par mois (hauteur FIXE : la pagination
-     de la page détail est budgétée dessus, cf. _PRODMOIS_MM). */
-  .p2-prodmois {{ margin-top:2mm; }}
-  .p2-prodmois img {{ height:19mm; width:auto; max-width:100%;
+  /* PRODMOIS + CALEPDF — rangée de visuels : calepinage | production mois par
+     mois. TABLE CSS, pas flex (RENDERING_NOTES §1). Les deux images ont une
+     HAUTEUR FIXE ≤ 19 mm, donc la rangée mesure toujours ~19 mm quel que soit
+     son contenu — c'est ce que _VISUELS_MM budgète. La cellule du plan est
+     hors du flux de la bande : les vignettes techniques gardent leurs ~44,7 mm
+     de colonne (plancher PDFPROD de 36 mm). */
+  .p2-visuels {{ display:table; width:100%; table-layout:fixed;
+    margin-top:2mm; }}
+  .p2-vis-plan {{ display:table-cell; width:36mm; vertical-align:middle;
+    text-align:center; padding-right:5mm; }}
+  .p2-vis-plan .p2-roof-plan {{ width:31mm; height:16mm; object-fit:contain;
+    background:#FFFFFF; border:1px solid {C['line']}; border-radius:7px;
+    display:block; margin:0 auto; }}
+  .p2-vis-plan .p2-roof-cap {{ margin-top:0.6mm; }}
+  .p2-vis-prod {{ display:table-cell; vertical-align:middle; }}
+  .p2-vis-prod img {{ height:19mm; width:auto; max-width:100%;
     display:block; margin:0 auto; }}
 
   /* Block label */
@@ -754,39 +783,44 @@ def build_pages(ctx) -> list:
 
     # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
     # le schéma illustratif quand elle existe ; repli schéma sinon.
-    # CALEPDF — et le CALEPINAGE rendu par le calepineur (``roof_render``, la
-    # même affiche que la page proposition sert au client) vient À CÔTÉ, sans
-    # jamais remplacer la photo : le client voit sa toiture ET l'implantation
-    # qui lui a été vendue. Les deux vignettes ont la MÊME hauteur (17,5 mm)
-    # que la photo seule d'aujourd'hui : la bande ne grandit pas, seule la
-    # colonne visuelle s'élargit (32 → 64 mm) au détriment de l'espace
-    # inutilisé à droite des trois vignettes techniques.
-    roof_photo = (d.get("roof_photo") or "").strip()
-    roof_render = (d.get("roof_render") or "").strip()
-
+    #
+    # CALEPDF/A1 (revue adversariale) — LA BANDE NE S'ÉLARGIT PAS. Une première
+    # version posait les deux vignettes côte à côte en faisant passer la colonne
+    # visuelle de 32 à 64 mm : les trois vignettes techniques tombaient alors à
+    # ~34 mm de colonne, sous le plancher de 36 mm que PDFPROD documente juste
+    # au-dessus (« la colonne de la bande fait ~36 mm et ne doit pas passer à la
+    # ligne ») — un devis à champs PV divergents aurait fait passer « kWh / an
+    # produits (sans · avec) » à la ligne et grandi la bande, sur la page même
+    # où la bande « production » est budgétée au millimètre. La bande reste donc
+    # EXACTEMENT ce qu'elle était, et le calepinage descend d'une rangée (voir
+    # ``visuels_html`` plus bas), où il partage la hauteur de la bande
+    # production sans rien coûter.
+    #
+    # Deux cas seulement :
+    #   · photo présente → la bande porte la PHOTO (rendu historique) et le
+    #     calepinage, s'il existe, va dans la rangée du dessous ;
+    #   · pas de photo → le calepinage PREND la place du schéma illustratif
+    #     dans la bande (une implantation réelle vaut mieux qu'un glyphe) et ne
+    #     se répète pas plus bas.
     def _vignette(src, legende, alt, cls="p2-roof-photo"):
-        return (f'<div class="p2-roof-one"><img class="{cls}" '
-                f'src="{src}" alt="{alt}">'
-                f'<div class="p2-roof-cap">{legende}</div></div>')
+        return (f'<img class="{cls}" src="{src}" alt="{alt}">'
+                f'<div class="p2-roof-cap">{legende}</div>')
 
-    visuels = []
     if roof_photo:
-        visuels.append(_vignette(roof_photo, "Votre toiture",
-                                 "Votre toiture — implantation des panneaux"))
-    if roof_render:
-        visuels.append(_vignette(
+        band_visual = "<div>" + _vignette(
+            roof_photo, "Votre toiture",
+            "Votre toiture — implantation des panneaux") + "</div>"
+    elif plan_dans_la_bande:
+        band_visual = "<div>" + _vignette(
             roof_render, "Votre calepinage",
             "Calepinage — implantation des panneaux sur votre toiture",
-            cls="p2-roof-plan"))
-    if visuels:
-        band_visual = "".join(visuels)
+            cls="p2-roof-plan") + "</div>"
     else:
         band_visual = (f'<img src="{charts["roof"]}" '
                        'alt="Schéma de l\'installation">')
-    roof_cls = " p2-roof-duo" if len(visuels) > 1 else ""
     band_html = (
         f'<div class="p2-band">'
-        f'<div class="p2-roof{roof_cls}">{band_visual}</div>'
+        f'<div class="p2-roof">{band_visual}</div>'
         f'<div class="p2-specs">{spec_html}</div></div>')
 
     def _table_html(items, label):
@@ -928,7 +962,7 @@ def build_pages(ctx) -> list:
         light_cls = (" p2-light"
                      if (not deux_options and len(shared) <= 4) else "")
         return [_wrap_page(
-            head_html + band_html + prodmois_html
+            head_html + band_html + visuels_html
             + _table_html(shared, equipement_lbl)
             + '<div class="qj" data-w="35"></div>'
             + closing_html
