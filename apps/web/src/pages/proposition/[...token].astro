@@ -4447,8 +4447,11 @@ const signConfig = ok
                 style={t.recommande ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
               >
                 {/* BADGE HONNÊTE — il dit un FAIT vérifiable (« c'est votre
-                    devis »), jamais « populaire » ni une urgence fabriquée. */}
-                {t.recommande && (
+                    devis »), jamais « populaire » ni une urgence fabriquée.
+                    Gardé sur est_le_devis, PAS sur recommande : une carte
+                    Recommandé AJUSTÉE par le vendeur porte d'autres chiffres
+                    que le devis officiel — le badge mentirait (Fable C2). */}
+                {t.estLeDevis && (
                   <span class="absolute -top-3 left-5 rounded-full bg-brass-400 px-3 py-1 text-[11px] font-bold text-nuit sm:left-6" data-i18n
                     data-fr="Recommandé — c’est votre devis officiel"
                     data-en="Recommended — this is your official quote"

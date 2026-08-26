@@ -230,6 +230,8 @@
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
+    count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelances -> /api/django/crm/leads/relances
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach

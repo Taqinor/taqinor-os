@@ -17,7 +17,9 @@ import { formatDateTime } from '../../lib/format'
 // la proposition web, miroir de `ENGAGEMENT_SECTION_LABELS` côté serveur
 // (apps/ventes/public_views.py) ET de `ENGAGEMENT_LABELS` (DevisList.jsx —
 // résumé temps/section, surface DISTINCTE et non gardée par rôle).
-// source-choix: ventes.public_views.ENGAGEMENT_SECTION_LABELS
+// (le miroir est verifie par les tests du panneau — pas de marqueur source-choix :
+// la constante serveur est un dict de libelles, pas une liste de valeurs que la
+// garde check_choices_declares sait parser ; revue Fable B3, 26/08/2026)
 const LECTURE_CLIENT_SECTION_LABELS = {
   hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties',
   signature: 'signature', tailles: 'tailles (Éco/Recommandé/Max)',

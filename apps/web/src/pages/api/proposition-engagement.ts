@@ -83,7 +83,12 @@ export const POST: APIRoute = async ({ request }) => {
       // amont a son propre budget best-effort.
       signal: AbortSignal.timeout(8000),
     });
-    return json({ ok: true }, res.status >= 200 && res.status < 500 ? 204 : 202);
+    // 204 est un « null body status » : un corps ferait LEVER le runtime Workers
+    // (« Response with null body status cannot have body ») — revue Fable C1.
+    if (res.status >= 200 && res.status < 500) {
+      return new Response(null, { status: 204 });
+    }
+    return json({ ok: true }, 202);
   } catch {
     // Backend injoignable : jamais bloquant côté client (beacon fire-and-forget).
     return json({ ok: false, sent: false }, 202);
