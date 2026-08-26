@@ -81,6 +81,21 @@ describe('PV80 — plus AUCUN crédit / financement / échelonnement', () => {
 });
 
 describe('PV81 — LA PREUVE AVANT LE STYLO : l’ordre des chapitres', () => {
+  it('l’APERÇU des tailles s’intercale entre le héros et le premier détail', () => {
+    // ORDRE FONDATEUR (26/08/2026) — « aperçu d'abord ». La section
+    // « Explorer d'autres tailles » rendait APRÈS le calepinage,
+    // l'installation, la production, les économies et le schéma : le client
+    // devait traverser la page entière avant de découvrir qu'il avait un
+    // CHOIX. Elle suit désormais immédiatement le héros. Les dix chapitres
+    // ci-dessous gardent, eux, exactement l'ordre qu'ils avaient.
+    const hero = at('id="prop-fold-figures"');
+    const tailles = at('id="tailles"');
+    const roof3d = at('id="roof3d"');
+    expect(tailles, 'ancre #tailles absente').toBeGreaterThan(0);
+    expect(hero).toBeLessThan(tailles);
+    expect(tailles).toBeLessThan(roof3d);
+  });
+
   it('héros → toit 3D → installation → production → économies → schéma → PREUVE → prix → signature → suite', () => {
     const hero = at('id="prop-fold-figures"');
     const roof3d = at('id="roof3d"');
