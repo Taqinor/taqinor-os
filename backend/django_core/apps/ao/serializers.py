@@ -785,6 +785,13 @@ class DossierAOSerializer(serializers.ModelSerializer):
     # exigée du client, jamais lue d'un corps de requête.
     reference = serializers.CharField(
         max_length=40, required=False, allow_blank=True, read_only=True)
+    # WIR206 — les statuts ATTEIGNABLES, dérivés de la table déclarative
+    # ``DossierAO.TRANSITIONS`` (la seule description du cycle). L'écran ne
+    # doit JAMAIS reconstruire ce graphe de son côté : deux tables finiraient
+    # par diverger, et la barre de statut proposerait une cible que le serveur
+    # refuse (ou masquerait une cible légitime). Même forme que l'action
+    # ``AppelOffreViewSet.transitions`` : ``[{valeur, libelle}]``.
+    transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = DossierAO
@@ -792,9 +799,20 @@ class DossierAOSerializer(serializers.ModelSerializer):
             'id', 'appel_offre', 'appel_offre_reference', 'reference',
             'intitule', 'statut', 'statut_display', 'date_depot', 'pieces',
             'complet', 'taux_completude', 'raisons_de_non_depot',
-            'created_at', 'updated_at',
+            'transitions', 'created_at', 'updated_at',
         ]
         read_only_fields = ['statut', 'created_at', 'updated_at']
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_transitions(self, obj):
+        cibles = DossierAO.TRANSITIONS.get(obj.statut, set())
+        # Ordre STABLE (celui de l'énumération) : une liste dont l'ordre change
+        # d'une requête à l'autre ferait sauter les boutons sous le curseur.
+        return [
+            {'valeur': valeur, 'libelle': libelle}
+            for valeur, libelle in DossierAO.Statut.choices
+            if valeur in cibles
+        ]
 
 
 # ── AOF118/AOF141 — Équipements engagés : snapshot figé, AUCUN prix ────────

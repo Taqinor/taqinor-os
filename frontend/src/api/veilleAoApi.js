@@ -66,8 +66,14 @@ const veilleAoApi = {
   // ── AcheteurCible — le carnet de démarchage (VAO29) ──
   acheteursCibles: crud('acheteurs-cibles'),
 
-  // ── ExecutionCollecte — le journal d'exécution (VAO24) ──
-  executions: crud('executions'),
+  /* WIR269 — `executions` a été RETIRÉ. La ressource existe côté serveur
+     (`ExecutionCollecte`, VAO24) mais AUCUN écran ne l'appelait, et c'est
+     délibéré : la santé de la collecte est servie par l'appel agrégé
+     `sante()` (dernière collecte réussie + âge + alarme de silence), jamais
+     par un calcul dérivé côté front sur la liste des exécutions — c'est écrit
+     dans l'en-tête de ce fichier. Un export sans appelant est une invitation à
+     recalculer ici ce que le serveur calcule déjà. Le jour où un journal
+     d'exécution s'affiche, il revient AVEC son écran. */
 
   // ── Déclenchement manuel (VAO23) — LE MÊME job que le beat de nuit. ──
   collecte: {

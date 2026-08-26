@@ -36,7 +36,13 @@ const ACTIFS = new Set(['queued', 'running', 'en_file', 'en_cours'])
 const SUCCES = new Set(['done', 'succes', 'termine'])
 const ECHECS = new Set(['failed', 'echec', 'erreur'])
 
-export const cleStockage = (dossierId) => `ao.dossier.${dossierId}.job-pack`
+/* La clé de reprise est PAR DOSSIER **et par canal** (WIR205/WIR207) : deux
+   suivis peuvent vivre sur le même écran — le pack ZIP et la régénération du
+   dossier — et une clé commune leur ferait suivre le job l'un de l'autre (le
+   ZIP annoncerait « prêt » parce que la régénération vient de finir). Le canal
+   par défaut reste `pack` : la clé historique est INCHANGÉE. */
+export const cleStockage = (dossierId, canal = 'pack') =>
+  `ao.dossier.${dossierId}.job-${canal}`
 
 function lire(cle) {
   try { return globalThis.localStorage?.getItem(cle) ?? null } catch { return null }
@@ -76,9 +82,19 @@ function etatInitial(cle) {
 }
 
 export default function useGenerationJob(dossierId, options = {}) {
-  const { intervalMs = 3000, onSucces, onEchec, onAnnulerServeur } = options
+  const {
+    intervalMs = 3000, onSucces, onEchec, onAnnulerServeur,
+    // WIR207 — `canal` sépare les suivis concurrents (voir `cleStockage`) ;
+    // `demarrer` remplace l'appel qui LANCE le travail. Par défaut, les deux
+    // valent exactement ce qu'ils valaient : le pack ZIP.
+    canal = 'pack', demarrer,
+  } = options
 
-  const cle = useMemo(() => cleStockage(dossierId), [dossierId])
+  const cle = useMemo(() => cleStockage(dossierId, canal), [dossierId, canal])
+  // Lu par référence : l'écran recrée sa fermeture à chaque rendu, ce qui ne
+  // doit ni recréer `lancer` ni relancer le sondage.
+  const demarrerRef = useRef(demarrer)
+  useEffect(() => { demarrerRef.current = demarrer })
 
   // Reprise : l'utilisateur est parti puis revenu — on REPREND le suivi du job
   // en cours au lieu d'en lancer un second. `jobId`/`job`/`erreur`/`verrou`
@@ -139,7 +155,9 @@ export default function useGenerationJob(dossierId, options = {}) {
     setEtat((prev) => ({ ...prev, erreur: null, verrou: null, job: null }))
     setLancement(true)
     try {
-      const res = await aoApi.dossiers.zip(dossierId)
+      const res = demarrerRef.current
+        ? await demarrerRef.current()
+        : await aoApi.dossiers.zip(dossierId)
       const id = res?.data?.job_id ?? res?.data?.id ?? null
       setEtat((prev) => ({ ...prev, jobId: id }))
       ecrire(cle, id)

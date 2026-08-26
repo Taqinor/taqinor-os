@@ -81,15 +81,22 @@ export default function PieceRow({
               {piece.motif_peremption ? ` ${piece.motif_peremption}` : ''}
             </span>
           </p>
+          {/* WIR207 — LIBELLÉ HONNÊTE. Le bouton annonçait « Régénérer
+              « <cette pièce> » » alors que l'action serveur
+              (`DossierAOViewSet.generer_piece`) ne prend AUCUN argument de
+              pièce : elle relance la production du PACK ENTIER. Promettre une
+              régénération ciblée pendant qu'on réécrit tout le dossier est le
+              genre de mensonge d'interface qui ne se découvre qu'après coup. */}
           <Button
             size="sm"
             variant="outline"
             className="self-start"
             disabled={regenerating || verrouille}
             onClick={() => onRegenerer?.(piece)}
+            data-ao-regenerer={piece.code}
           >
             <RefreshCw className={`size-3.5 ${regenerating ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {regenerating ? 'Régénération…' : `Régénérer « ${libelle} »`}
+            {regenerating ? 'Régénération du dossier…' : 'Régénérer le dossier complet'}
           </Button>
         </div>
       )}

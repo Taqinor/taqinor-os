@@ -43,6 +43,36 @@ const STATUTS = {
 
 const MESSAGE_IMPACT_REQUIS = 'on ne pose une question que si sa réponse change le compte'
 
+/* WIR207 — les QUATRE actions que `services.trancher_question` accepte
+   (`ACTIONS_QUESTION`). L'écran ne propose rien d'autre : une action inconnue
+   part en 400, et une action inventée ici serait un bouton qui ne marche
+   jamais. Le libellé dit ce que l'action FAIT à la donnée, pas son nom de
+   code. */
+const ACTIONS_TRANCHER = [
+  { valeur: 'aucune', libelle: 'Aucune — enregistrer la décision seule' },
+  { valeur: 'ecarter_obstacle', libelle: 'Écarter l’obstacle lié (il sort du compte)' },
+  { valeur: 'confirmer_obstacle', libelle: 'Confirmer l’obstacle lié (requalifier sa provenance)' },
+  { valeur: 'requalifier_cote', libelle: 'Requalifier les cotes de la chaîne liée' },
+]
+
+/* Les provenances que `confirmer_obstacle` peut poser — celles d'`ObstacleAO.
+   Provenance` côté serveur. `ECARTE` n'y figure PAS : écarter est une action à
+   part entière (ci-dessus), pas une provenance à choisir. */
+const PROVENANCES_CONFIRMATION = [
+  { valeur: 'MESURE', libelle: 'Mesuré' },
+  { valeur: 'MESURE_DOUTEUX', libelle: 'Mesuré, à confirmer' },
+  { valeur: 'PLAN', libelle: 'Relevé sur plan' },
+  { valeur: 'DEVINE', libelle: 'Deviné' },
+  { valeur: 'DECLARE_CLIENT', libelle: 'Déclaré par le client' },
+]
+
+/* Les statuts de cote que `requalifier_cote` peut poser (`StatutCote`). */
+const STATUTS_COTE = [
+  { valeur: 'MESURE', libelle: 'Mesurée' },
+  { valeur: 'A_CONFIRMER', libelle: 'À confirmer' },
+  { valeur: 'PLAN_OU_DEDUIT', libelle: 'Relevée sur plan ou déduite' },
+]
+
 function versEntier(brut) {
   if (brut === '' || brut == null) return null
   const n = Number.parseInt(brut, 10)
@@ -69,15 +99,19 @@ export function QuestionFiche({
   question,
   historique = [],
   onChange,
+  onTrancher,
   onRecalculer,
   recalculEnCours = false,
+  tranchageEnCours = false,
 }) {
   const [texte, setTexte] = useState(question?.texte ?? '')
   const [impactMin, setImpactMin] = useState(question?.impact_min_modules ?? '')
   const [impactMax, setImpactMax] = useState(question?.impact_max_modules ?? '')
   const [reponse, setReponse] = useState(question?.reponse ?? '')
   const [decision, setDecision] = useState(question?.decision ?? '')
-  const [dateDecision, setDateDecision] = useState(question?.date_decision ?? '')
+  const [actionTrancher, setActionTrancher] = useState('aucune')
+  const [provenance, setProvenance] = useState('MESURE')
+  const [statutCote, setStatutCote] = useState('MESURE')
 
   // La fiche re-synchronise ses champs locaux quand `question` change
   // (nouvelle référence — on ouvre une AUTRE question) : ajustement pendant
@@ -92,7 +126,9 @@ export function QuestionFiche({
     setImpactMax(question?.impact_max_modules ?? '')
     setReponse(question?.reponse ?? '')
     setDecision(question?.decision ?? '')
-    setDateDecision(question?.date_decision ?? '')
+    setActionTrancher('aucune')
+    setProvenance('MESURE')
+    setStatutCote('MESURE')
   }
 
   if (!question) return null
@@ -111,8 +147,26 @@ export function QuestionFiche({
     })
   }
 
+  /* WIR207 — la RÉPONSE reçue est une donnée de saisie : elle s'enregistre par
+     le CRUD, comme le texte de la question. La DÉCISION, elle, ne s'écrit plus
+     par ici : la poser en PATCH laissait le texte en base sans rien appliquer
+     (obstacle toujours au compte, cotes inchangées, variantes toujours « à
+     jour »). Elle passe par « Trancher » ci-dessous. */
   const enregistrerReponse = () => {
-    onChange?.({ reponse, decision, date_decision: dateDecision || null })
+    onChange?.({ reponse })
+  }
+
+  const trancherQuestion = () => {
+    const texteDecision = decision.trim()
+    if (!texteDecision) return
+    onTrancher?.({
+      decision: texteDecision,
+      action: actionTrancher,
+      // Envoyés SEULEMENT quand l'action les consomme : une clé de trop est
+      // ignorée par le serveur, mais elle laisserait croire ici qu'elle agit.
+      ...(actionTrancher === 'confirmer_obstacle' ? { provenance } : {}),
+      ...(actionTrancher === 'requalifier_cote' ? { statut_cote: statutCote } : {}),
+    })
   }
 
   const delta = deltaReel(question)
@@ -178,23 +232,7 @@ export function QuestionFiche({
           value={reponse}
           onChange={(e) => setReponse(e.target.value)}
         />
-        <Label htmlFor={`ao-question-decision-${question.id}`}>Décision retenue</Label>
-        <Textarea
-          id={`ao-question-decision-${question.id}`}
-          rows={2}
-          value={decision}
-          onChange={(e) => setDecision(e.target.value)}
-        />
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor={`ao-question-date-${question.id}`}>Date de la décision</Label>
-            <Input
-              id={`ao-question-date-${question.id}`}
-              type="date"
-              value={dateDecision ?? ''}
-              onChange={(e) => setDateDecision(e.target.value)}
-            />
-          </div>
           <Button size="sm" variant="outline" onClick={enregistrerReponse}>
             Enregistrer la réponse
           </Button>
@@ -204,6 +242,80 @@ export function QuestionFiche({
             </Button>
           )}
         </div>
+      </div>
+
+      {/* ── WIR207 — TRANCHER : la décision est APPLIQUÉE, pas seulement écrite */}
+      <div className="flex flex-col gap-2 border-t border-border pt-3" data-ao-trancher={question.id}>
+        <Label htmlFor={`ao-question-decision-${question.id}`}>Décision retenue</Label>
+        <Textarea
+          id={`ao-question-decision-${question.id}`}
+          rows={2}
+          value={decision}
+          onChange={(e) => setDecision(e.target.value)}
+        />
+
+        <Label htmlFor={`ao-question-action-${question.id}`}>Ce que la décision applique</Label>
+        <select
+          id={`ao-question-action-${question.id}`}
+          className="form-select h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+          value={actionTrancher}
+          onChange={(e) => setActionTrancher(e.target.value)}
+        >
+          {ACTIONS_TRANCHER.map((a) => (
+            <option key={a.valeur} value={a.valeur}>{a.libelle}</option>
+          ))}
+        </select>
+
+        {actionTrancher === 'confirmer_obstacle' && (
+          <>
+            <Label htmlFor={`ao-question-provenance-${question.id}`}>Provenance à poser</Label>
+            <select
+              id={`ao-question-provenance-${question.id}`}
+              className="form-select h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+              value={provenance}
+              onChange={(e) => setProvenance(e.target.value)}
+            >
+              {PROVENANCES_CONFIRMATION.map((p) => (
+                <option key={p.valeur} value={p.valeur}>{p.libelle}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        {actionTrancher === 'requalifier_cote' && (
+          <>
+            <Label htmlFor={`ao-question-statut-cote-${question.id}`}>Statut à poser sur les cotes</Label>
+            <select
+              id={`ao-question-statut-cote-${question.id}`}
+              className="form-select h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+              value={statutCote}
+              onChange={(e) => setStatutCote(e.target.value)}
+            >
+              {STATUTS_COTE.map((s) => (
+                <option key={s.valeur} value={s.valeur}>{s.libelle}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          La date de décision est posée par le serveur au moment où la question
+          est tranchée — elle ne se saisit pas ici.
+          {question.date_decision
+            ? ` Tranchée le ${formatDate(question.date_decision)}.`
+            : ''}
+        </p>
+
+        <Button
+          size="sm"
+          className="self-start"
+          loading={tranchageEnCours}
+          disabled={tranchageEnCours || !decision.trim()}
+          onClick={trancherQuestion}
+          data-ao-trancher-valider={question.id}
+        >
+          Trancher la question
+        </Button>
       </div>
 
       {/* ── Impact prévu → delta RÉEL ────────────────────────────────────── */}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ObstaclesList from './ObstaclesList'
 
@@ -107,5 +107,82 @@ describe('ObstaclesList (AOF90)', () => {
     await user.click(screen.getByLabelText(/Afficher les écartés/))
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3)
     expect(screen.queryByText(/Démolie au lot gros œuvre/)).toBeNull()
+  })
+})
+
+/* WIR205 — écarter / réintégrer sont des ACTIONS SERVEUR. L'écran ne les
+   propose que sur un obstacle DÉJÀ enregistré (id numérique), il EXIGE le
+   motif que le serveur exige, et il n'invente aucun état : c'est le parent qui
+   appelle `aoApi.obstacles.ecarter/reintegrer` et rend la réponse. */
+const ENREGISTRE = {
+  id: 41,
+  repere: 'F',
+  nature: 'edicule',
+  designation: 'Local technique',
+  provenance: 'MESURE',
+  x0: 0,
+  x1: 2,
+  y0: 0,
+  y1: 2,
+}
+
+const ENREGISTRE_ECARTE = {
+  ...ENREGISTRE,
+  id: 42,
+  repere: 'G',
+  provenance: 'ECARTE',
+  decision: 'Déposé au lot couverture',
+}
+
+describe('ObstaclesList — écarter / réintégrer (WIR205)', () => {
+  it('écarter EXIGE un motif et le transmet au serveur via le parent', async () => {
+    const user = userEvent.setup()
+    const onEcarter = vi.fn(async () => {})
+    const { container } = render(
+      <ObstaclesList obstacles={[ENREGISTRE]} onEcarter={onEcarter} />,
+    )
+
+    await user.click(container.querySelector('[data-ao-ecarter="F"]'))
+    const confirmer = container.querySelector('[data-ao-ecarter-confirmer="F"]')
+    expect(confirmer).toBeDisabled() // pas de motif → pas d'écartement
+
+    await user.type(
+      screen.getByLabelText("Motif de l'écartement"),
+      'Déposé au lot couverture — constaté sur site.',
+    )
+    expect(confirmer).toBeEnabled()
+    await user.click(confirmer)
+
+    expect(onEcarter).toHaveBeenCalledTimes(1)
+    expect(onEcarter.mock.calls[0][0].id).toBe(41)
+    expect(onEcarter.mock.calls[0][1]).toMatch(/Déposé au lot couverture/)
+  })
+
+  it('un obstacle pas encore enregistré ne peut pas être écarté (id local)', () => {
+    const { container } = render(<ObstaclesList obstacles={[...MESURES]} />)
+    const bouton = container.querySelector('[data-ao-ecarter="A"]')
+    expect(bouton).toBeDisabled()
+    expect(bouton.getAttribute('title')).toMatch(/pas encore enregistré/)
+  })
+
+  it('un obstacle écarté propose la RÉINTÉGRATION, et le refus serveur est écrit', async () => {
+    const user = userEvent.setup()
+    const onReintegrer = vi.fn(async () => {
+      throw new Error('Le serveur a refusé la réintégration.')
+    })
+    const { container } = render(
+      <ObstaclesList obstacles={[ENREGISTRE_ECARTE]} onReintegrer={onReintegrer} />,
+    )
+
+    expect(container.querySelector('[data-ao-ecarter="G"]')).toBeNull()
+    await user.click(container.querySelector('[data-ao-reintegrer="G"]'))
+    expect(onReintegrer).toHaveBeenCalledTimes(1)
+
+    const erreur = await waitFor(() => {
+      const el = container.querySelector('[data-ao-obstacles-erreur]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(erreur.textContent).toMatch(/refusé la réintégration/)
   })
 })

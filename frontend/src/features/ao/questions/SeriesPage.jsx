@@ -141,6 +141,9 @@ export function SeriesPage({ affaireId }) {
   const [imageAnnotee, setImageAnnotee] = useState(null)
   const [preparation, setPreparation] = useState(false)
   const [enregistrementQuestion, setEnregistrementQuestion] = useState(false)
+  // WIR207 — trancher est une écriture À PART (action serveur qui APPLIQUE) :
+  // son propre indicateur, pour ne pas bloquer l'enregistrement de la réponse.
+  const [tranchage, setTranchage] = useState(false)
   // Ce que cet écran REFUSE de faire, avec son motif — jamais un bouton muet.
   const [noteQuestion, setNoteQuestion] = useState(null)
 
@@ -256,6 +259,43 @@ export function SeriesPage({ affaireId }) {
     }
   }
 
+  /* ── WIR207 — TRANCHER passe par l'action serveur, jamais par un PATCH ────
+     `questions.trancher` APPLIQUE la décision (écarte l'obstacle, requalifie
+     les cotes) puis PÉRIME les variantes de calepinage des toitures touchées —
+     et renvoie combien. Un PATCH de `decision` posait le texte et laissait
+     tout le reste intact : le dossier citait ensuite un calepinage bâti sur la
+     donnée d'AVANT la décision. Le nombre de variantes périmées est ANNONCÉ :
+     c'est ce qui prévient qu'il faut relancer un calcul. */
+  const trancher = async (corps) => {
+    if (!questionCourante?.id) {
+      setNoteQuestion(
+        'Question pas encore enregistrée : enregistrez-la d’abord, puis '
+        + 'tranchez — le serveur ne peut appliquer une décision que sur une '
+        + 'question qu’il connaît.',
+      )
+      return
+    }
+    setTranchage(true)
+    try {
+      const { data } = await aoApi.questions.trancher(questionCourante.id, corps)
+      const perimees = data?.variantes_perimees ?? 0
+      setNoteQuestion(
+        perimees > 0
+          ? `Question tranchée. ${perimees} variante(s) de calepinage passée(s) `
+            + 'en PÉRIMÉ : relancez un calcul avant de citer un compte.'
+          : 'Question tranchée. Aucune variante de calepinage n’était concernée.',
+      )
+      toast.success('Question tranchée.')
+      await refetch()
+    } catch (e) {
+      const motif = errMsg(e, 'Décision refusée par le serveur.')
+      setNoteQuestion(motif)
+      toast.error(motif)
+    } finally {
+      setTranchage(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -368,6 +408,8 @@ export function SeriesPage({ affaireId }) {
               <QuestionFiche
                 question={questionCourante}
                 onChange={enregistrerQuestion}
+                onTrancher={trancher}
+                tranchageEnCours={tranchage}
                 recalculEnCours={enregistrementQuestion}
                 onRecalculer={() => setNoteQuestion(
                   'Le recalcul appartient à l’atelier de calepinage (onglet « Calepinages ») : '

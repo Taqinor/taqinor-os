@@ -49,6 +49,11 @@ const mocks = vi.hoisted(() => ({
   piecesFourniesList: vi.fn(),
   // PACT74 — l'onglet « Pièces du DCE » (PiecesConsultation).
   piecesConsultationList: vi.fn(),
+  // WIR206 — barre de statut (transitions SERVEUR + changer-statut) et lead lie.
+  transitions: vi.fn(),
+  changerStatut: vi.fn(),
+  lead: vi.fn(),
+  rattacherLead: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -58,7 +63,11 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../../api/aoApi', () => ({
   default: {
-    affaires: { get: mocks.get, list: mocks.affairesList },
+    affaires: {
+      get: mocks.get, list: mocks.affairesList,
+      transitions: mocks.transitions, changerStatut: mocks.changerStatut,
+      lead: mocks.lead, rattacherLead: mocks.rattacherLead,
+    },
     // Ce que le serveur persiste réellement pour un calepinage (AOF28).
     toitures: { list: mocks.toituresList, create: mocks.toituresCreate },
     // Le panneau Toitures ouvre le wizard de création : une toiture se
@@ -68,6 +77,7 @@ vi.mock('../../api/aoApi', () => ({
     dossiers: {
       list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece,
       controlesAvantDepot: mocks.controlesAvantDepot, completude: mocks.completude,
+      changerStatut: vi.fn().mockResolvedValue({ data: {} }),
     },
     checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
     piecesDossierAo: { list: mocks.piecesFourniesList, update: vi.fn() },
@@ -139,6 +149,19 @@ const AFFAIRE = {
   dossier_completude: 62, resultat_issue_display: null,
 }
 
+/* WIR206 — la charge utile EXACTE de `GET /ao/appels-offres/<id>/transitions/`
+   (`AppelOffreViewSet.transitions`) : le statut courant, son libellé, et les
+   cibles atteignables `[{valeur, libelle}]`. L'écran ne connaît PAS le graphe :
+   tout ce qu'il propose vient d'ici. */
+const TRANSITIONS_DEPOSE = {
+  statut: 'depose',
+  statut_display: 'Déposé',
+  transitions: [
+    { valeur: 'gagne', libelle: 'Gagné' },
+    { valeur: 'perdu', libelle: 'Perdu' },
+  ],
+}
+
 const COMMENTS = [
   { id: 10, body: 'Visite de site effectuée.', author_display: 'Reda Kasri', created_at: '2026-08-01T10:00:00Z' },
 ]
@@ -192,6 +215,10 @@ beforeEach(() => {
   mocks.checklistList.mockResolvedValue({ data: [] })
   mocks.piecesFourniesList.mockResolvedValue({ data: [] })
   mocks.piecesConsultationList.mockResolvedValue({ data: [] })
+  mocks.transitions.mockResolvedValue({ data: TRANSITIONS_DEPOSE })
+  mocks.changerStatut.mockResolvedValue({ data: { ...AFFAIRE, statut: 'gagne' } })
+  mocks.lead.mockResolvedValue({ data: { lead_id: null, fiche: null } })
+  mocks.rattacherLead.mockResolvedValue({ data: AFFAIRE })
 })
 
 // Les 13 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
@@ -725,6 +752,106 @@ describe('AffaireDetail', () => {
       // `aoRentabiliteApi` est un export SÉPARÉ d'`aoApi`, jamais importé ici.
       expect(codeSeul).not.toMatch(/aoRentabiliteApi/)
       expect(codeSeul).not.toMatch(/rentabilite/i)
+    })
+  })
+
+  /* ── WIR206 — la barre de statut et le lead lié ────────────────────────── */
+  describe('barre de statut (WIR206)', () => {
+    it('ne propose QUE les cibles servies par `transitions` (aucun graphe local)', async () => {
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+      await waitFor(() => expect(mocks.transitions).toHaveBeenCalledWith('1'))
+
+      expect(document.querySelector('[data-ao-transition="gagne"]')).toBeTruthy()
+      expect(document.querySelector('[data-ao-transition="perdu"]')).toBeTruthy()
+      // Un statut que le serveur n'a PAS servi n'est jamais proposé.
+      expect(document.querySelector('[data-ao-transition="brouillon"]')).toBeNull()
+      // Et le code ne contient aucune table de transitions recopiée.
+      expect(codeSeul).not.toMatch(/TRANSITIONS_AO/)
+    })
+
+    it('« Gagné » poste sur changer-statut puis recharge l’affaire', async () => {
+      const user = userEvent.setup()
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+      await waitFor(() => expect(
+        document.querySelector('[data-ao-transition="gagne"]')).toBeTruthy())
+
+      await user.click(document.querySelector('[data-ao-transition="gagne"]'))
+      await waitFor(() => expect(mocks.changerStatut).toHaveBeenCalledWith('1', 'gagne'))
+      // La fiche est RELUE : le statut affiché vient du serveur, jamais d'un
+      // état local optimiste.
+      await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThan(1))
+    })
+
+    it('une transition interdite affiche le message FR du serveur, sans rien changer', async () => {
+      const user = userEvent.setup()
+      mocks.changerStatut.mockRejectedValue({
+        response: {
+          status: 400,
+          data: { statut: ['Transition interdite : depuis « Déposé », seuls « Gagné » et « Perdu » sont atteignables.'] },
+        },
+      })
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+      await waitFor(() => expect(
+        document.querySelector('[data-ao-transition="gagne"]')).toBeTruthy())
+
+      await user.click(document.querySelector('[data-ao-transition="gagne"]'))
+      const refus = await waitFor(() => {
+        const el = document.querySelector('[data-ao-statut-refus]')
+        expect(el).toBeTruthy()
+        return el
+      })
+      expect(refus.textContent).toMatch(/Transition interdite/)
+      // Le statut de l'en-tête n'a pas bougé.
+      expect(screen.getAllByText('Déposé').length).toBeGreaterThan(0)
+    })
+
+    it('le lead lié se rattache et se détache par l’action serveur dédiée', async () => {
+      const user = userEvent.setup()
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+      await waitFor(() => expect(mocks.lead).toHaveBeenCalledWith('1'))
+
+      // Sans lead : le champ de rattachement est proposé.
+      const champ = await screen.findByLabelText(/Identifiant du lead/)
+      await user.type(champ, '12')
+      await user.click(document.querySelector('[data-ao-rattacher-lead]'))
+      await waitFor(() => expect(mocks.rattacherLead).toHaveBeenCalledWith('1', '12'))
+    })
+
+    it('un lead déjà lié affiche sa fiche-carte et propose « Détacher »', async () => {
+      const user = userEvent.setup()
+      mocks.lead.mockResolvedValue({
+        data: {
+          lead_id: 12,
+          fiche: { label: 'Commune X', subtitle: 'Devis envoyé · Casablanca', url: '/leads/12' },
+        },
+      })
+      renderScreen()
+      await screen.findAllByText('AO-2026-001')
+
+      // Assertion PORTÉE sur la carte du lead. « Commune X » est AUSSI
+      // l'acheteur de l'affaire (fixture `AFFAIRE`, rendu par le bloc
+      // Synthèse) : une recherche globale matcherait deux nœuds — c'est la
+      // même raison qui impose `findAllByText` pour 'AO-2026-001' ailleurs
+      // dans ce fichier. Le scope prouve en plus ce qui compte vraiment : que
+      // c'est bien la FICHE-CARTE DU LEAD qui porte le libellé, pas le champ
+      // acheteur qui partage la chaîne par coïncidence.
+      const carteLead = await waitFor(() => {
+        const el = document.querySelector('[data-ao-lead="12"]')
+        expect(el).toBeTruthy()
+        return el
+      })
+      expect(carteLead.textContent).toMatch(/Commune X/)
+      expect(carteLead.textContent).toMatch(/Devis envoyé · Casablanca/)
+      // Le lien pointe l'URL servie par `crm.selectors.lead_card`.
+      expect(carteLead.querySelector('a[href="/leads/12"]')).toBeTruthy()
+
+      await user.click(document.querySelector('[data-ao-detacher-lead]'))
+      // Un identifiant VIDE détache (contrat de `rattacher_ao_au_lead`).
+      await waitFor(() => expect(mocks.rattacherLead).toHaveBeenCalledWith('1', null))
     })
   })
 })

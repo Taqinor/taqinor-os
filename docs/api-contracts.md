@@ -58,6 +58,8 @@
     id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/aoApi.js :: layout -> /api/django/ao/appels-offres/<>/layout
     detail:inconnu, roof_layout:inconnu
+- frontend/src/api/aoApi.js :: lead -> /api/django/ao/appels-offres/<>/lead
+    fiche:inconnu, lead_id:inconnu
 - frontend/src/api/aoApi.js :: marches -> /api/django/ao/calepinage/variantes/<>/marches
     arrivee:inconnu, depart:inconnu, gain_total:inconnu, honnete:booleen, marches:liste, motifs:liste, recit:inconnu
 - frontend/src/api/aoApi.js :: resultat -> /api/django/ao/calepinage/resultat/<>
@@ -66,6 +68,8 @@
     gagnes:inconnu, perdus:inconnu, taux_reussite_pct:inconnu, total_decides:inconnu, total_resultats:nombre
 - frontend/src/api/aoApi.js :: tableauMarches -> /api/django/ao/tableau-marches
     capacite:objet, cautions:objet, echeances_dues:nombre, en_cours:objet, marches_en_execution:objet, reussite:objet
+- frontend/src/api/aoApi.js :: transitions -> /api/django/ao/appels-offres/<>/transitions
+    statut:inconnu, statut_display:inconnu, transitions:liste
 - frontend/src/api/aoApi.js :: verrouiller -> /api/django/ao/economie/<>/verrouiller
     verrouillee:booleen
 - frontend/src/api/auditApi.js :: getMeta -> /api/django/audit/meta
