@@ -40,6 +40,9 @@ vi.mock('../../api/marketingApi', () => ({
       list: mocks.campagnesList,
       reporting: mocks.campagnesReporting,
       reportingExportXlsx: mocks.campagnesReportingExport,
+      // WIR258 — sonde IA appelée au montage de CampagneForm.
+      genererIaDisponible: () => Promise.resolve({ data: { configured: false } }),
+      genererIa: () => Promise.resolve({ data: { ok: false } }),
     },
     evenements: {
       get: mocks.evenementGet,
@@ -47,6 +50,11 @@ vi.mock('../../api/marketingApi', () => ({
       reporting: mocks.evenementReporting,
       reportingExportXlsx: mocks.evenementReportingExport,
     },
+    listes: { list: () => Promise.resolve({ data: [] }) },
+    blocsContenu: { list: () => Promise.resolve({ data: [] }) },
+    heatmapEngagement: () => Promise.resolve({
+      data: { cellules: [], meilleur: null, total_envois: 0 },
+    }),
     inscriptionsEvenement: { list: mocks.inscriptionsList },
     billetsEvenement: { list: mocks.billetsList },
     questionsEvenement: { list: mocks.questionsList },

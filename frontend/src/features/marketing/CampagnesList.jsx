@@ -7,11 +7,11 @@ import { formatDateTime } from '../../lib/format'
 /* ============================================================================
    NTMKT2 — Liste des campagnes (statut/canal, filtre) + éditeur inline.
    ----------------------------------------------------------------------------
-   Remplace l'ancien écran combiné `CampagnesScreen.jsx` (conservé tel quel,
-   plus routé — dérogation « touch only the named files ») par une liste
-   filtrable + `CampagneForm.jsx` pour la création/édition ; le clic sur une
-   ligne ouvre `CampagneDetail.jsx` (trace destinataire XMKT2, test A/B
-   NTMKT3, envoi de test XMKT13).
+   Remplace l'ancien écran combiné `CampagnesScreen.jsx` — SUPPRIMÉ par WIR258
+   (doublon non routé qui emportait avec lui l'assistant IA XMKT34, désormais
+   dans `CampagneForm.jsx`) — par une liste filtrable + `CampagneForm.jsx`
+   pour la création/édition ; le clic sur une ligne ouvre `CampagneDetail.jsx`
+   (trace destinataire XMKT2, test A/B NTMKT3, envoi de test XMKT13).
    ========================================================================== */
 
 const STATUTS = [
