@@ -529,17 +529,15 @@ class _Contexte:
     def toit_max(self):
         """Le plus grand nombre de panneaux que ce toit accepte, ou ``None``.
 
-        LA CONTENANCE MESURÉE D'ABORD ; le compte DESSINÉ n'est plus qu'un
-        plancher. Le ``max()`` n'est pas une hésitation : la contenance vaut par
-        construction au moins le posé (elle part de lui et ne fait qu'ajouter),
-        si bien que le second terme ne l'emporte que sur un layout dont le
-        ``result.panels`` déclaré dépasse les panneaux réellement sérialisés —
-        et là, refuser de compter la différence transformerait une incohérence
-        de données en une note « cette taille dépasse votre toit » sur une
-        carte qui, elle, n'a pas bougé. On ne durcit jamais ce verdict-là.
+        LA RÈGLE VIT DANS ``dimensionnement.plus_grande_contenance`` — UN SEUL
+        endroit, partagé avec la borne de champ de l'échelle de paliers
+        batterie. Deux expressions voisines de « ce toit accepte N panneaux »
+        finiraient par diverger, et c'est précisément une divergence de ce
+        genre (le dessiné se faisant passer pour la contenance) qui a effondré
+        cette carte-ci.
         """
-        valeurs = [int(v) for v in (self.capacite_toit, self.plafond_toit) if v]
-        return max(valeurs) if valeurs else None
+        from apps.ventes.dimensionnement import plus_grande_contenance
+        return plus_grande_contenance(self.capacite_toit, self.plafond_toit)
 
     @property
     def etude_kwargs(self):
