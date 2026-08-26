@@ -333,10 +333,17 @@ describe('Risques — PDF terrain bilingues FR/AR (WIR235)', () => {
     await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
     await waitFor(() => expect(screen.getAllByText('Soudure toiture').length).toBeGreaterThan(0))
 
-    await user.click(screen.getAllByRole('button', { name: 'PDF (FR)' })[0])
+    // Un permis « brouillon » porte 4 actions (Valider, Clôturer, PDF FR, PDF
+    // AR) : `RowActions` n'en révèle que 2 en raccourci, les PDF vivent dans
+    // le menu kebab de la ligne.
+    const ligne = screen.getAllByText('Soudure toiture')
+      .map((el) => el.closest('tr')).find(Boolean)
+    await user.click(within(ligne).getByLabelText("Plus d'actions sur la ligne"))
+    await user.click(await screen.findByRole('menuitem', { name: 'PDF (FR)' }))
     await waitFor(() => expect(permisPdf).toHaveBeenCalledWith(10, { lang: 'fr' }))
 
-    await user.click(screen.getAllByRole('button', { name: 'PDF (AR)' })[0])
+    await user.click(within(ligne).getByLabelText("Plus d'actions sur la ligne"))
+    await user.click(await screen.findByRole('menuitem', { name: 'PDF (AR)' }))
     await waitFor(() => expect(permisPdf).toHaveBeenCalledWith(10, { lang: 'ar' }))
   })
 
@@ -361,7 +368,9 @@ describe('Risques — Contexte SMQ ISO 4 (WIR278)', () => {
     await user.click(screen.getByRole('tab', { name: 'Contexte SMQ (ISO 4)' }))
 
     const swot = await screen.findByLabelText('SWOT')
-    await waitFor(() => expect(swot).toHaveValue(
+    // `toHaveValue` compare en `===` (jest-dom `compareAsSet`) : il n'accepte
+    // AUCUN matcher asymétrique. On compare donc la valeur elle-même.
+    await waitFor(() => expect(swot.value).toEqual(
       expect.stringContaining('équipe technique solaire expérimentée')))
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))

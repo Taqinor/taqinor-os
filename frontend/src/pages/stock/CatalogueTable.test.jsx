@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
@@ -382,7 +383,9 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     renderTable({ onRebut })
     const grid = screen.getByRole('grid')
     const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
 
     const item = await screen.findByRole('menuitem', { name: /Mettre au rebut/ })
     fireEvent.click(item)
@@ -393,7 +396,9 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     renderTable({ onRebut: undefined })
     const grid = screen.getByRole('grid')
     const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
 
     await screen.findByRole('menu')
     expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
@@ -403,7 +408,9 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     renderTable({ canWrite: false, onRebut: vi.fn() })
     const grid = screen.getByRole('grid')
     const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
 
     await screen.findByRole('menu')
     expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()

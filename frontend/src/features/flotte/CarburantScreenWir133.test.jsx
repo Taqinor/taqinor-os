@@ -27,7 +27,14 @@ const { empty, sinistresCreate } = vi.hoisted(() => ({
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
-    pleins: { list: empty, ocr: vi.fn() },
+    // WIR236 — la carte « Synthèse TVA carburant » monte flotteApi.pleins.syntheseTva().
+    pleins: {
+      list: empty,
+      ocr: vi.fn(),
+      syntheseTva: () => Promise.resolve({
+        data: { total_recuperable: 0, total_non_deductible: 0, par_mois: [] },
+      }),
+    },
     cartes: { list: empty, anomalies: () => Promise.resolve({ data: { anomalies: [] } }), create: vi.fn(), update: vi.fn() },
     conducteurs: { list: () => Promise.resolve({ data: [{ id: 2, nom: 'Karim' }] }) },
     actifs: { list: () => Promise.resolve({ data: [{ id: 10, label: 'Camion 12345-A-6' }] }) },
