@@ -2114,9 +2114,14 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # rejoint le brut comme tout élément variable (part imposable/exonérée
     # répartie par ``repartir_avantage``, comme les gains ci-dessus) ; une
     # RETENUE ne touche JAMAIS le brut/les bases — déduite du net à payer,
-    # comme les avances/saisies (cf. plus bas). Une COTISATION n'a aucune
-    # donnée réelle aujourd'hui (seule CIMR — calculée séparément — utilise
-    # ce type au catalogue) : ignorée tant qu'aucun cas d'usage ne l'exige.
+    # comme les avances/saisies (cf. plus bas). Une COTISATION (CNSS/AMO/CIMR
+    # sont TOUTES au catalogue avec ce type, cf. RUBRIQUES_DEFAUT/STANDARD —
+    # chacune est DÉJÀ calculée séparément, part salariale ET patronale, plus
+    # haut dans cette fonction) est ignorée ici : le rattachement d'une
+    # rubrique COTISATION est REFUSÉ dès le rattachement/la sauvegarde
+    # (``RubriqueEmployeSerializer.validate``, WIR243) — cette branche n'est
+    # donc atteinte que par un enregistrement légataire (créé hors API,
+    # ex. Django admin) et reste un no-op défensif, jamais un double comptage.
     for rubrique_employe in rubriques_employe_actives(profil, periode):
         rubrique = rubrique_employe.rubrique
         montant = montant_rubrique_employe(rubrique_employe, salaire_base)

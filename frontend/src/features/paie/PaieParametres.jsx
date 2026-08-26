@@ -1162,7 +1162,14 @@ function RubriquesRecurrentesDialog({ profil, onClose }) {
     ])
       .then(([re, r]) => {
         setRows(listOf(re.data).filter((x) => x.profil === profil.id))
-        setRubriques(listOf(r.data))
+        // WIR243 (Fable review) — rattachable seulement en GAIN/RETENUE : une
+        // COTISATION (CNSS/AMO/CIMR) est déjà calculée séparément par le
+        // moteur, et ANCIENNETE l'est aussi (formule dédiée) — les proposer
+        // ici les ferait rattacher puis silencieusement ignorer. Le serveur
+        // refuse aussi les deux (RubriqueEmployeSerializer.validate) : ce
+        // filtre est une aide, jamais l'unique garde.
+        setRubriques(listOf(r.data).filter(
+          (rub) => rub.type !== 'cotisation' && rub.code !== 'ANCIENNETE'))
       })
       .catch(() => toast.error('Chargement des rubriques récurrentes impossible.'))
       .finally(() => setLoading(false))

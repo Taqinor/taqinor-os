@@ -330,6 +330,53 @@ class AssietteTauxCatalogueGuardMoteurTests(TestCase):
         self.assertEqual(res['brut'], Decimal('10500.00'))
 
 
+# ── API : refus au rattachement (WIR243, Fable review) ─────────────────────
+
+class RubriqueEmployeAttachabiliteApiTests(TestCase):
+    """ANCIENNETE et COTISATION ne peuvent JAMAIS être rattachées comme
+    rubrique récurrente — double comptage / calculée séparément par le
+    moteur. Le message est un ValidationError DRF clair, en français."""
+    BASE = '/api/django/paie/rubriques-employe/'
+
+    def setUp(self):
+        self.co = make_company('wir243-attach-api')
+        ensure_defaults(self.co)
+        self.user = make_user(self.co, 'wir243-attach-user')
+        self.dossier = make_dossier(self.co, 'WA1')
+        self.profil = make_profil(self.co, self.dossier, Decimal('10000'))
+
+    def test_refuse_anciennete(self):
+        rub = make_rubrique(self.co, 'ANCIENNETE', imposable=True)
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id, 'montant': '500',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('rubrique', resp.data)
+        self.assertIn('ancienneté', str(resp.data['rubrique']).lower())
+        self.assertFalse(
+            RubriqueEmploye.objects.filter(profil=self.profil).exists())
+
+    def test_refuse_cotisation(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='CNSS', libelle='Cotisation CNSS',
+            type=Rubrique.TYPE_COTISATION)
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id, 'montant': '500',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('rubrique', resp.data)
+        self.assertIn('cotisation', str(resp.data['rubrique']).lower())
+        self.assertFalse(
+            RubriqueEmploye.objects.filter(profil=self.profil).exists())
+
+    def test_gain_normal_toujours_autorise(self):
+        rub = make_rubrique(self.co, 'TRANSPORT', imposable=False)
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id, 'montant': '500',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+
 # ── API : refus taux catalogue sur assiette non calculable ─────────────────
 
 class RubriqueEmployeAssietteTauxApiTests(TestCase):

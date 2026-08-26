@@ -40,6 +40,32 @@ vi.mock('../../api/rhApi', () => ({
   },
 }))
 
+/* WIR243 (Fable review) — le sélecteur « Rattacher une rubrique » doit être
+   inspectable pour vérifier ses options (GAIN/RETENUE seulement). Radix
+   Select ne s'ouvre pas de façon fiable sous jsdom (portail + pointer
+   events) — pattern établi (PaieDeclarations.test.jsx, pages/ventes/
+   ListesPrixPage.test.jsx) : remplacer les primitives Select par un
+   <select> natif (options toujours dans le DOM, sans interaction), le reste
+   de `../../ui` reste réel. */
+vi.mock('../../ui', async (importActual) => {
+  const actual = await importActual()
+  const Passthrough = ({ children }) => <>{children}</>
+  return {
+    ...actual,
+    Select: ({ value, onValueChange, children, disabled }) => (
+      <select role="combobox" value={value} disabled={disabled}
+        onChange={(e) => onValueChange(e.target.value)}>
+        <option value="" />
+        {children}
+      </select>
+    ),
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
+
 import paieApi from '../../api/paieApi'
 import PaieParametres from './PaieParametres.jsx'
 
@@ -272,5 +298,55 @@ describe('PaieParametres — Rubriques récurrentes : taux assiette honesty (WIR
       expect(within(formulaire).getByText(
         /taux appliqué au salaire de base \(prorata\)/,
       )).toBeInTheDocument()
+    })
+})
+
+describe('PaieParametres — Rubriques récurrentes : attachabilité (WIR243, Fable review)', () => {
+  // COTISATION (CNSS/AMO/CIMR sont TOUTES ainsi au catalogue) et ANCIENNETE
+  // sont déjà calculées séparément par le moteur — les proposer au
+  // rattachement les ferait rattacher puis silencieusement ignorer.
+  const RUBRIQUES = [
+    { id: 1, code: 'TRANSPORT', libelle: 'Indemnité de transport', type: 'gain' },
+    { id: 2, code: 'AVANCE', libelle: 'Avance / acompte', type: 'retenue' },
+    { id: 3, code: 'CNSS', libelle: 'Cotisation CNSS (part salariale)', type: 'cotisation' },
+    { id: 4, code: 'ANCIENNETE', libelle: "Prime d'ancienneté", type: 'gain' },
+  ]
+
+  beforeEach(() => {
+    paieApi.getProfils.mockResolvedValue(ok([PROFIL]))
+    paieApi.getRubriquesEmploye.mockResolvedValue(ok([]))
+    paieApi.getRubriques.mockResolvedValue(ok(RUBRIQUES))
+  })
+
+  it('le sélecteur « Rattacher une rubrique » exclut COTISATION et ANCIENNETE',
+    async () => {
+      wrap(<PaieParametres />)
+      await userEvent.click(screen.getByRole('tab', { name: 'Profils' }))
+
+      const row = (await screen.findAllByText('Amrani Yassine'))
+        .map((el) => el.closest('tr')).find(Boolean)
+      expect(row).toBeTruthy()
+      await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+      await userEvent.click(await screen.findByText('Rubriques récurrentes'))
+
+      const listeDialog = await screen.findByRole('dialog')
+      await userEvent.click(
+        within(listeDialog).getByRole('button', { name: 'Rattacher une rubrique' }))
+
+      // Deux dialogues frères (jamais imbriqués) : Radix marque le premier
+      // `aria-hidden` dès que le second (au-dessus) s'ouvre — un seul reste
+      // accessible, c'est celui du formulaire de rattachement.
+      const formulaire = await screen.findByRole('dialog', {
+        name: 'Rattacher une rubrique récurrente',
+      })
+
+      const select = within(formulaire).getByRole('combobox')
+      const options = within(select).getAllByRole('option')
+        .map((o) => o.textContent)
+
+      expect(options.some((t) => t.includes('TRANSPORT'))).toBe(true)
+      expect(options.some((t) => t.includes('AVANCE'))).toBe(true)
+      expect(options.some((t) => t.includes('CNSS'))).toBe(false)
+      expect(options.some((t) => t.includes('ANCIENNETE'))).toBe(false)
     })
 })

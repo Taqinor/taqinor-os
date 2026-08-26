@@ -299,9 +299,11 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
 
     ``company`` posée côté serveur ; ``profil`` et ``rubrique`` sont validés
     comme appartenant à la société de l'utilisateur. WIR243 (Fable review) —
-    refus BLOQUANT au rattachement/à la sauvegarde (jamais un silence : voir
-    ``validate``) : un taux CATALOGUE (sans aucune surcharge montant/taux sur
-    cette ligne) portant sur une assiette non calculable à ce stade
+    trois refus BLOQUANTS au rattachement/à la sauvegarde (jamais un
+    silence : voir ``validate``) : une rubrique ANCIENNETE ou COTISATION ne
+    peut JAMAIS être rattachée (double comptage / déjà calculée séparément
+    par le moteur) ; un taux CATALOGUE (sans aucune surcharge montant/taux
+    sur cette ligne) portant sur une assiette non calculable à ce stade
     (brut/brut_imposable/net_imposable/plafonnée CNSS) est refusé plutôt que
     silencieusement appliqué au salaire de base.
     """
@@ -335,6 +337,25 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         rubrique = self._valeur_courante(attrs, 'rubrique')
         if rubrique is not None:
+            # WIR243 (Fable review, attachabilité) — ANCIENNETE et toute
+            # rubrique de type COTISATION (CNSS/AMO/CIMR sont TOUTES au
+            # catalogue avec ce type) ne peuvent jamais être rattachées : le
+            # sélecteur « Rattacher une rubrique » du dialogue les filtre
+            # déjà côté client, mais le serveur refuse indépendamment (le
+            # filtre client est une aide, jamais l'unique garde).
+            if rubrique.code == 'ANCIENNETE':
+                raise serializers.ValidationError({'rubrique': (
+                    "La prime d'ancienneté est déjà recalculée "
+                    "automatiquement pour chaque profil (formule sur "
+                    "l'ancienneté réelle) — elle ne peut pas être rattachée "
+                    "comme rubrique récurrente (la compter deux fois "
+                    "doublerait la prime).")})
+            if rubrique.type == Rubrique.TYPE_COTISATION:
+                raise serializers.ValidationError({'rubrique': (
+                    'Une rubrique de type « Cotisation » (CNSS/AMO/CIMR…) '
+                    'ne peut pas être rattachée comme rubrique récurrente : '
+                    'elle est déjà calculée séparément par le moteur de '
+                    'paie.')})
             montant = self._valeur_courante(attrs, 'montant')
             taux = self._valeur_courante(attrs, 'taux')
             if not montant and taux is None \
