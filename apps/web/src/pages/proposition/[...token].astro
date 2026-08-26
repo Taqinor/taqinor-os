@@ -4513,6 +4513,19 @@ const signConfig = ok
           data-ar={twoOptions ? 'خياراكم' : 'ثمنكم'}>
           {twoOptions ? 'Vos deux options' : 'Votre prix'}
         </p>
+        {/* CONSOLIDATION — quand la section « Explorer d'autres tailles » la
+            précède, cette section dit clairement CE QU'ELLE EST : le détail de
+            l'offre OFFICIELLE, scénario batterie par scénario batterie. Sans
+            section de tailles, cette ligne n'existe pas et le bloc est celui
+            d'aujourd'hui, au pixel près. */}
+        {tailles && (
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Voici le détail de l’offre que vous avez reçue — c’est elle, et elle seule, que vous signez."
+            data-en="Here is the detail of the offer you received — this, and only this, is what you sign."
+            data-ar="إليكم تفاصيل العرض الذي توصّلتم به — هذا، وهذا وحده، ما توقّعونه.">
+            Voici le détail de l’offre que vous avez reçue — c’est elle, et elle seule, que vous signez.
+          </p>
+        )}
         <div class={`mt-5 grid gap-4 ${twoOptions ? 'sm:grid-cols-2' : ''}`}>
           {options.map((opt) => {
             const totaux = optionTotaux(data!, opt);
@@ -4744,7 +4757,23 @@ const signConfig = ok
            COMPLET de la gamme qu'il signera (un PDF = une gamme). -->
       {gammes && (
         <section id="gammes" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم">Vos deux gammes</p>
+          {/* ── CONSOLIDATION (fondateur, 26/08/2026) — HIÉRARCHIE DES PRIX ───
+                 La page portait TROIS surfaces de prix ouvertes en même temps :
+                 les tailles, les deux options du devis, et les deux gammes. Le
+                 client ne savait plus laquelle commandait. Les gammes se
+                 REPLIENT donc dans un <details> natif (accessible sans JS, zéro
+                 CLS) : RIEN n'est supprimé — les deux cartes, l'écart en MAD, le
+                 lien vers l'autre gamme et le tableau comparatif sont intacts à
+                 l'intérieur —, seule la hiérarchie de lecture change. Le
+                 <details> s'ouvre TOUT SEUL quand aucune section de tailles ne
+                 le précède : sans elle, il n'y a pas de hiérarchie à établir et
+                 le bloc reste ouvert comme aujourd'hui. */}
+          <details class="gammes-fold" open={!tailles}>
+            <summary class="cursor-pointer list-none">
+              <span class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم">Vos deux gammes</span>
+              <span class="ms-2 text-xs text-lune-faint" data-i18n
+                data-fr="(voir et comparer)" data-en="(view and compare)" data-ar="(عرض ومقارنة)">(voir et comparer)</span>
+            </summary>
           <p class="mt-3 text-sm text-lune-soft" data-i18n
             data-fr="Deux compositions, deux prix. Choisissez celle qui vous convient : votre signature portera sur la gamme choisie."
             data-en="Two configurations, two prices. Pick the one that suits you: your signature will apply to the range you choose."
@@ -4835,6 +4864,7 @@ const signConfig = ok
               </table>
             </div>
           )}
+          </details>
         </section>
       )}
 
