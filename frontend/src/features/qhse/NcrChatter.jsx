@@ -1,28 +1,28 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MessageSquare, Send } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { Card, Button, Textarea, toast } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
-   UX30/WIR234 â€” Chatter Odoo-style (historique + notes) sur une entitÃ© QHSE.
+   UX30/WIR234 — Chatter Odoo-style (historique + notes) sur une entité QHSE.
    ----------------------------------------------------------------------------
    `NcrChatter` alimente le panneau `activity` de la DetailShell d'une
-   non-conformitÃ© via `non-conformites/<id>/historique`/`noter`. `CapaChatter`
-   en est le JUMEAU pour une CAPA (`capa/<id>/historique`/`noter`, exposÃ©es
-   cÃ´tÃ© serveur par le mÃªme `_ChatterMixin` â€” jusqu'ici sans consommateur
-   cÃ´tÃ© Ã©cran, WIR234). Les deux partagent `ChatterCard`, seule la source des
+   non-conformité via `non-conformites/<id>/historique`/`noter`. `CapaChatter`
+   en est le JUMEAU pour une CAPA (`capa/<id>/historique`/`noter`, exposées
+   côté serveur par le même `_ChatterMixin` — jusqu'ici sans consommateur
+   côté écran, WIR234). Les deux partagent `ChatterCard`, seule la source des
    appels change.
-   Chaque entrÃ©e : kind (creation / modification / note), acteur, horodatage.
+   Chaque entrée : kind (creation / modification / note), acteur, horodatage.
    ========================================================================== */
 
-/* PACT158 â€” le serveur Ã©crit kind='modification' (apps/qhse/chatter.py +
-   QhseChatterEntry.Kind), jamais 'field_change' : la clÃ© doit matcher la
-   valeur RÃ‰ELLE du modÃ¨le, sinon la branche Â« Champ : ancienne â†’ nouvelle Â»
-   ne se dÃ©clenche jamais et chaque changement automatique s'affiche Ã  tort
-   Â« Enregistrement crÃ©Ã© Â» avec une pastille montrant le mot brut. */
+/* PACT158 — le serveur écrit kind='modification' (apps/qhse/chatter.py +
+   QhseChatterEntry.Kind), jamais 'field_change' : la clé doit matcher la
+   valeur RÉELLE du modèle, sinon la branche « Champ : ancienne → nouvelle »
+   ne se déclenche jamais et chaque changement automatique s'affiche à tort
+   « Enregistrement créé » avec une pastille montrant le mot brut. */
 const KIND_LABEL = {
-  creation: 'CrÃ©ation',
+  creation: 'Création',
   modification: 'Modification',
   note: 'Note',
 }
@@ -31,9 +31,9 @@ function entryText(e) {
   if (e.kind === 'note') return e.body
   if (e.kind === 'modification') {
     const label = e.field_label || e.field || 'Champ'
-    return `${label} : ${e.old_value ?? 'â€”'} â†’ ${e.new_value ?? 'â€”'}`
+    return `${label} : ${e.old_value ?? '—'} → ${e.new_value ?? '—'}`
   }
-  return e.body || 'Enregistrement crÃ©Ã©'
+  return e.body || 'Enregistrement créé'
 }
 
 function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historique' }) {
@@ -51,7 +51,7 @@ function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historiqu
       const data = res.data
       setEntries(Array.isArray(data) ? data : (data?.results ?? []))
     } catch {
-      // Panneau secondaire : on n'Ã©crase pas l'Ã©cran en cas d'Ã©chec.
+      // Panneau secondaire : on n'écrase pas l'écran en cas d'échec.
     } finally {
       setLoading(false)
     }
@@ -69,9 +69,9 @@ function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historiqu
       await postNote(resourceId, text)
       setBody('')
       await load()
-      toast.success('Note ajoutÃ©e.')
+      toast.success('Note ajoutée.')
     } catch {
-      toast.error('Impossible dâ€™ajouter la note.')
+      toast.error('Impossible d’ajouter la note.')
     } finally {
       setSubmitting(false)
     }
@@ -88,16 +88,16 @@ function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historiqu
 
       <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
         {loading && (
-          <p className="text-sm text-muted-foreground">Chargementâ€¦</p>
+          <p className="text-sm text-muted-foreground">Chargement…</p>
         )}
         {!loading && entries.length === 0 && (
-          <p className="text-sm text-muted-foreground">Aucune entrÃ©e.</p>
+          <p className="text-sm text-muted-foreground">Aucune entrée.</p>
         )}
         {entries.map((e) => (
           <div key={e.id} className="border-l-2 border-border pl-3">
             <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">
-                {e.user_nom || 'SystÃ¨me'}
+                {e.user_nom || 'Système'}
               </span>
               <span>{KIND_LABEL[e.kind] ?? e.kind}</span>
               <span>{formatDateTime(e.created_at)}</span>
@@ -111,7 +111,7 @@ function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historiqu
         <Textarea
           ref={taRef}
           rows={2}
-          placeholder="Ajouter une noteâ€¦"
+          placeholder="Ajouter une note…"
           value={body}
           onChange={(ev) => setBody(ev.target.value)}
         />
@@ -139,9 +139,9 @@ export default function NcrChatter({ ncrId }) {
   )
 }
 
-// WIR234 â€” jumeau de NcrChatter pour une CAPA (`ActionCorrectivePreventive`),
-// jusqu'ici sans aucun panneau d'activitÃ© cÃ´tÃ© Ã©cran alors que le serveur
-// expose dÃ©jÃ  `capa/<id>/historique`/`noter` (mÃªme `_ChatterMixin`).
+// WIR234 — jumeau de NcrChatter pour une CAPA (`ActionCorrectivePreventive`),
+// jusqu'ici sans aucun panneau d'activité côté écran alors que le serveur
+// expose déjà `capa/<id>/historique`/`noter` (même `_ChatterMixin`).
 export function CapaChatter({ capaId }) {
   return (
     <ChatterCard
