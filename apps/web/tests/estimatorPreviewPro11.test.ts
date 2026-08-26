@@ -395,7 +395,10 @@ describe('pro-11 — W90 : massing du toit en pente (pignons/jupe de rive)', () 
     // une seule occurrence de skirt (le bloc gated), aucun chemin plat ne la touche.
     expect(scene.match(/skirtGeo/g)?.length).toBeGreaterThanOrEqual(1);
     // la jupe est posée après la dalle et avant les axes de visée (chemin commun), gated flush.
-    const flushIdx = scene.indexOf('if (flush) {\n      const n = ring.length;');
+    // O7 (hygiene, 26/08/2026) — `\r?\n` : un checkout Windows (CRLF) rendait
+    // cette recherche introuvable (le littéral ne portait qu'un `\n`), faisant
+    // échouer ce SEUL test pour une raison sans rapport avec ce qu'il vérifie.
+    const flushIdx = scene.search(/if \(flush\) \{\r?\n {6}const n = ring\.length;/);
     expect(flushIdx).toBeGreaterThan(0);
   });
 });
