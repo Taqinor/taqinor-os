@@ -185,6 +185,11 @@ const gestionProjetApi = {
   createDocument: (data) => api.post(`${P}/documents/`, data),
   deleteDocument: (id) => api.delete(`${P}/documents/${id}/`),
   getDocumentVersions: (id) => api.get(`${P}/documents/${id}/versions/`),
+  // WIR203 — dépôt d'une nouvelle version (fichier obligatoire, multipart) :
+  // le n° de version et l'auteur sont posés côté serveur (jamais du corps).
+  deposerVersionDocument: (id, formData) =>
+    api.post(`${P}/documents/${id}/deposer/`, formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }),
   getCommentaires: (params) => api.get(`${P}/commentaires/`, { params }),
   createCommentaire: (data) => api.post(`${P}/commentaires/`, data),
   deleteCommentaire: (id) => api.delete(`${P}/commentaires/${id}/`),
