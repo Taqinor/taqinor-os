@@ -45,6 +45,10 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       // WIR225 — le panneau de comparaison est servi par le SERVEUR (le groupe
       // complet de variantes), plus par une chaine reconstruite localement.
       getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
+      // WIR274 — fil du devis + composeur de note manuelle (`noterDevis`
+      // n'etait appele que par l'auto-note de relance WhatsApp, VX222).
+      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
+      noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
       telechargerPdfDevis: vi.fn(() => Promise.resolve({
         data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
         headers: {},
@@ -980,5 +984,71 @@ describe('DevisList — WIR225 : comparaison des variantes servie par le serveur
     await waitFor(() => expect(ventesApi.getVariantes).toHaveBeenCalledWith(20))
     expect(await screen.findByRole('table', { name: /Comparaison des variantes/ }))
       .toBeInTheDocument()
+  })
+})
+
+
+/* WIR274 — `noterDevis` existait des deux cotes mais n'etait appele QUE par
+   l'auto-note de relance WhatsApp (VX222) : aucun composeur ne permettait
+   d'ecrire une note a la main sur un devis. Le fil est RECHARGE DU SERVEUR
+   apres l'envoi — jamais un ajout optimiste local. */
+describe('DevisList — WIR274 : composeur de note manuelle', () => {
+  const DEVIS = [{
+    id: 30, reference: 'DEV-NOTE', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+  }]
+
+  const ouvrirHistorique = async (user) => {
+    const row = screen.getByText('DEV-NOTE').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Historique des modifications/ }))
+  }
+
+  it('publie la note puis RECHARGE le fil depuis le serveur', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{
+          id: 9, body: 'Client rappelle lundi.', user_nom: 'Reda',
+          created_at: '2026-08-26T10:00:00Z',
+        }],
+      })
+    renderList({ loading: false, devis: DEVIS })
+    await ouvrirHistorique(user)
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledWith(30))
+
+    const zone = await screen.findByLabelText(/Ajouter une note/)
+    await user.type(zone, 'Client rappelle lundi.')
+    await user.click(screen.getByRole('button', { name: 'Ajouter la note' }))
+
+    await waitFor(() => expect(ventesApi.noterDevis)
+      .toHaveBeenCalledWith(30, 'Client rappelle lundi.'))
+    // Second appel = rechargement serveur, et la note apparait telle qu'il la rend.
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Client rappelle lundi.')).toBeInTheDocument()
+  })
+
+  it('le bouton reste ferme sur une note vide (aucun appel serveur)', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis.mockResolvedValue({ data: [] })
+    renderList({ loading: false, devis: DEVIS })
+    await ouvrirHistorique(user)
+    const bouton = await screen.findByRole('button', { name: 'Ajouter la note' })
+    expect(bouton).toBeDisabled()
+    const zone = screen.getByLabelText(/Ajouter une note/)
+    await user.type(zone, '   ')
+    expect(screen.getByRole('button', { name: 'Ajouter la note' })).toBeDisabled()
+    expect(ventesApi.noterDevis).not.toHaveBeenCalled()
+  })
+
+  it('un palier « normal » ne voit AUCUN composeur', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis.mockResolvedValue({ data: [] })
+    renderList({ loading: false, devis: DEVIS, role: 'normal', role_nom: 'Commercial' })
+    await ouvrirHistorique(user)
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledWith(30))
+    expect(screen.queryByLabelText(/Ajouter une note/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Ajouter la note' })).toBeNull()
   })
 })

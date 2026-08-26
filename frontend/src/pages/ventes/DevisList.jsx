@@ -368,6 +368,8 @@ function DevisRow({ d, ctx }) {
     // WIR225 - comparaison des variantes servie par le serveur.
     variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 - composeur de note manuelle sur le panneau Historique.
+    peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
@@ -1160,6 +1162,35 @@ function DevisRow({ d, ctx }) {
                 ))}
               </ul>
             )}
+            {/* ── WIR274 — Composeur de note manuelle ──────────────────────
+                `noterDevis` n'était appelé que par l'auto-note de relance
+                WhatsApp (VX222, intacte) : personne ne pouvait écrire une
+                note à la main. Le fil est RECHARGÉ DU SERVEUR après l'envoi —
+                jamais un ajout optimiste local. */}
+            {peutNoter && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                <label htmlFor={`note-devis-${d.id}`} className="sr-only">
+                  Ajouter une note — {d.reference}
+                </label>
+                <Textarea
+                  id={`note-devis-${d.id}`}
+                  rows={2}
+                  placeholder="Ajouter une note au fil du devis…"
+                  value={noteBrouillon[d.id] ?? ''}
+                  onChange={(e) => ecrireNote(d.id, e.target.value)}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="button" size="sm"
+                    loading={noteBusyId === d.id}
+                    disabled={!(noteBrouillon[d.id] || '').trim()}
+                    onClick={() => publierNote(d.id)}
+                  >
+                    Ajouter la note
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -1404,20 +1435,57 @@ export default function DevisList() {
 
   // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
   // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
-  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
-  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  // `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  //
+  // WIR274 — le commentaire annonçait une migration vers `ChatterTimeline`
+  // « quand il atterrira » : il a atterri (VX23, `components/ChatterTimeline`),
+  // et cette note était donc périmée. La migration n'est PAS faite ici, et
+  // volontairement : ce composant attend la forme `crm.LeadActivity` (avec
+  // `kind`), que `DevisActivity` ne porte pas — le brancher tel quel rendrait
+  // TOUTE entrée comme une note manuelle. Le rendu ci-dessous distingue déjà
+  // note et changement de champ. Ce qui manquait vraiment, c'est le
+  // COMPOSEUR : `noterDevis` n'était appelé que par l'auto-note de relance
+  // WhatsApp (VX222) — personne ne pouvait écrire une note à la main.
   const [histoOpenId, setHistoOpenId] = useState(null)
   const [histoCache, setHistoCache] = useState({})   // id → entrées
   const [histoLoadingId, setHistoLoadingId] = useState(null)
+
+  // Recharge le fil DEPUIS LE SERVEUR (jamais un ajout optimiste local : la
+  // note doit être vue telle que le serveur l'a enregistrée, horodatage et
+  // auteur compris).
+  const rechargerHistorique = (id) => {
+    setHistoLoadingId(id)
+    return ventesApi.historiqueDevis(id)
+      .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+      .catch(() => setHistoCache(c => ({ ...c, [id]: c[id] ?? [] })))
+      .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+  }
+
   const toggleHistorique = (id) => {
     if (histoOpenId === id) { setHistoOpenId(null); return }
     setHistoOpenId(id)
-    if (histoCache[id] === undefined) {
-      setHistoLoadingId(id)
-      ventesApi.historiqueDevis(id)
-        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
-        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
-        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    if (histoCache[id] === undefined) rechargerHistorique(id)
+  }
+
+  // WIR274 — composeur de note manuelle. Réservé au palier responsable/admin,
+  // comme la garde serveur de l'action `noter`.
+  const peutNoter = ['admin', 'responsable'].includes(role)
+  const [noteBrouillon, setNoteBrouillon] = useState({}) // id → texte
+  const [noteBusyId, setNoteBusyId] = useState(null)
+  const ecrireNote = (id, texte) =>
+    setNoteBrouillon(b => ({ ...b, [id]: texte }))
+  const publierNote = async (id) => {
+    const texte = (noteBrouillon[id] || '').trim()
+    if (!texte) return
+    setNoteBusyId(id)
+    try {
+      await ventesApi.noterDevis(id, texte)
+      setNoteBrouillon(b => ({ ...b, [id]: '' }))
+      await rechargerHistorique(id)
+    } catch (err) {
+      toast.error(frenchError(err, "La note n'a pas pu être ajoutée."))
+    } finally {
+      setNoteBusyId(null)
     }
   }
 
@@ -2400,6 +2468,8 @@ export default function DevisList() {
     // WIR225 - comparaison des variantes servie par le serveur.
     variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 - composeur de note manuelle sur le panneau Historique.
+    peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
