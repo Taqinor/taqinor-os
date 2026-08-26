@@ -256,9 +256,17 @@ describe('Recrutement — WIR196 : ouvertures de poste (workflow YHIRE14)', () =
   })
 
   it('soumet puis approuve une ouverture (brouillon → en_approbation → ouvert)', async () => {
-    rhApi.getOuverturesPoste.mockResolvedValueOnce({
-      data: [{ id: 5, intitule: 'Technicien PV', nombre_postes: 1, statut: 'brouillon', statut_display: 'Brouillon' }],
-    })
+    // `soumettreOuverture` recharge la liste IMMÉDIATEMENT après succès (avant
+    // que le test ne reprenne la main) : la réponse « en_approbation » doit
+    // donc être en file dès le départ (2e appel), pas posée après coup — sous
+    // vitest réel le rechargement automatique la consommerait trop tôt.
+    rhApi.getOuverturesPoste
+      .mockResolvedValueOnce({
+        data: [{ id: 5, intitule: 'Technicien PV', nombre_postes: 1, statut: 'brouillon', statut_display: 'Brouillon' }],
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: 5, intitule: 'Technicien PV', nombre_postes: 1, statut: 'en_approbation', statut_display: 'En approbation' }],
+      })
     rhApi.soumettreOuverturePoste.mockResolvedValueOnce({
       data: { id: 5, statut: 'en_approbation' },
     })
@@ -270,10 +278,8 @@ describe('Recrutement — WIR196 : ouvertures de poste (workflow YHIRE14)', () =
     fireEvent.click((await screen.findAllByRole('button', { name: 'Soumettre à approbation' }))[0])
     await waitFor(() => expect(rhApi.soumettreOuverturePoste).toHaveBeenCalledWith(5))
 
-    // Rechargement : l'ouverture repasse en_approbation → « Approuver ».
-    rhApi.getOuverturesPoste.mockResolvedValue({
-      data: [{ id: 5, intitule: 'Technicien PV', nombre_postes: 1, statut: 'en_approbation', statut_display: 'En approbation' }],
-    })
+    // Rechargement automatique consommé : l'ouverture est passée en
+    // en_approbation → « Approuver » apparaît.
     rhApi.approuverOuverturePoste.mockResolvedValueOnce({ data: { id: 5, statut: 'ouvert' } })
     fireEvent.click((await screen.findAllByRole('button', { name: 'Approuver' }))[0])
     await waitFor(() => expect(rhApi.approuverOuverturePoste).toHaveBeenCalledWith(5))

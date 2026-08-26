@@ -127,7 +127,9 @@ describe('Hse — WIR239 : export CNSS + émargement des causeries', () => {
     renderHse()
     await screen.findByText('HSE — Hygiène, sécurité & environnement')
     fireEvent.click(screen.getByRole('radio', { name: 'Causeries' }))
-    await screen.findByText('Port des EPI')
+    // DataTable rend la table desktop ET le repli carte mobile (les deux
+    // existent dans le DOM en jsdom) : getAllBy*, jamais getBy* ici.
+    await screen.findAllByText('Port des EPI')
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Émargement' }))[0])
     fireEvent.click(await screen.findByRole('button', { name: 'Émarger' }))

@@ -169,7 +169,9 @@ describe('Competences — WIR239 : besoin de formation « satisfait »', () => {
     renderCompetences()
     await screen.findByText('Compétences & habilitations')
     fireEvent.click(screen.getByRole('radio', { name: 'Formation' }))
-    await screen.findByText('Habilitation B1V')
+    // DataTable rend la table desktop ET le repli carte mobile (les deux
+    // existent dans le DOM en jsdom) : getAllBy*, jamais getBy* ici.
+    await screen.findAllByText('Habilitation B1V')
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
     await waitFor(() => expect(rhApi.satisfaireBesoinFormation).toHaveBeenCalledWith(8))
@@ -189,7 +191,7 @@ describe('Competences — WIR239 : besoin de formation « satisfait »', () => {
     renderCompetences()
     await screen.findByText('Compétences & habilitations')
     fireEvent.click(screen.getByRole('radio', { name: 'Formation' }))
-    await screen.findByText('Secourisme')
+    await screen.findAllByText('Secourisme')
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
     await waitFor(() => expect(rhApi.satisfaireBesoinFormation).toHaveBeenCalledWith(9))
