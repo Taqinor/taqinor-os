@@ -16,6 +16,9 @@ import { formatMAD } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// WIR256 — lien « Voir l'écriture comptable » (WIR24), auto-masqué tant
+// qu'aucune écriture n'existe (réglage auto-écritures inactif).
+import EcritureSourceLink from '../../features/compta/components/EcritureSourceLink.jsx'
 
 const STATUT_TABS = [
   { key: 'tous', label: 'Tous' },
@@ -145,6 +148,10 @@ export default function AvoirsPage() {
               { key: 'total_ttc', header: 'Total TTC', align: 'right', cell: (a) => formatMAD(a.total_ttc) },
               { key: 'motif', header: 'Motif', cell: (a) => a.motif || '—' },
               { key: 'statut', header: 'Statut', cell: (a) => <StatusPill status={a.statut} label={a.statut_display} /> },
+              {
+                key: 'ecriture', header: 'Écriture',
+                cell: (a) => <EcritureSourceLink sourceType="avoir" sourceId={a.id} />,
+              },
               {
                 key: 'actions',
                 header: '',
