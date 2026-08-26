@@ -1263,6 +1263,136 @@ class LEchelleDePaliersBatterie(_Base):
             % ([p['capacite_kwh'] for p in borne],
                [p['capacite_kwh'] for p in libre]))
 
+    # ── LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (26/08/2026) ───────
+    #
+    # MÊME CONFLATION QUE LA CARTE « MAX », MÊME CORRECTION. ``max_champ``
+    # bornait le champ que ``champ_minimal`` a le droit de tirer pour REMPLIR
+    # une banque, et il le bornait au nombre de panneaux DESSINÉS. Sur un devis
+    # calepiné, un palier que le toit peut nourrir se retrouvait donc grisé
+    # « ne se remplit pas » — et l'échelle S'ARRÊTAIT là, escamotant toutes les
+    # capacités supérieures.
+
+    @staticmethod
+    def _layout_extensible(dessines=18, colonnes=6):
+        """Un calepinage RÉEL : ``dessines`` panneaux posés sur un grand toit.
+
+        Mêmes conventions que ``test_calepinage_options.toit`` (azimut 0, pas
+        2,4 m × 1,2 m, contour 24 m × 16 m) : la géométrie en tient BEAUCOUP
+        plus que ce qui est dessiné — c'est tout l'objet de ces tests.
+        """
+        import math
+        olng, olat = -7.58, 33.57
+        deg2m = math.pi / 180 * 6378137.0
+        coslat = math.cos(olat * math.pi / 180)
+
+        def lnglat(x, y):
+            return [olng + x / (deg2m * coslat), olat + y / deg2m]
+
+        panneaux = [{'cx': round(-(-6.0 + c * 2.4), 3),
+                     'cy': round(-2.0 + r * 1.2, 3)}
+                    for r in range(dessines // colonnes)
+                    for c in range(colonnes)]
+        return {
+            'scenario': 'reseau', 'panelWatt': 550,
+            'zones': [{
+                'id': 'z1', 'label': 'Pan Sud',
+                'vertices': [lnglat(-12, -8), lnglat(12, -8),
+                             lnglat(12, 8), lnglat(-12, 8)],
+                'obstacles': [], 'roofType': 'flat', 'pitchDeg': 0,
+                'facingAzimuthDeg': 0,
+                'geometry': {'azimuthDeg': 0, 'tiltDeg': 15,
+                             'origin': [olng, olat],
+                             'count': len(panneaux), 'panels': panneaux},
+            }],
+            'result': {'panels': len(panneaux),
+                       'kwc': round(len(panneaux) * 550 / 1000.0, 3)},
+        }
+
+    def test_la_borne_de_champ_est_la_CONTENANCE_pas_le_dessin(self):
+        """Le devis dessine 18 panneaux ; le toit en tient 78. C'est 78 qui
+        borne le champ que l'échelle peut tirer pour remplir une banque."""
+        devis = self._devis_residentiel(
+            email='contenance@example.com',
+            roof_layout=self._layout_extensible())
+        # Les DEUX lectures du toit, et elles disent des choses différentes :
+        # c'est précisément la confusion qui a causé le bug.
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis), 18,
+                         'le DESSIN doit rester ce qu\'il est (resync)')
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis), 78,
+                         'la CONTENANCE mesurée sur le polygone réel')
+
+    def test_un_palier_que_le_TOIT_peut_nourrir_n_est_plus_grise(self):
+        """LE BUG, ET SA CORRECTION, SUR LA VRAIE ÉCHELLE.
+
+        On dérive DEUX fois la même échelle sur le MÊME devis : une fois avec
+        la contenance mesurée (le comportement corrigé), une fois en neutralisant
+        la mesure — ce qui fait retomber la borne sur le DESSIN, exactement
+        l'ancien comportement. Les deux doivent DIVERGER : un champ tiré au-delà
+        des 18 panneaux dessinés, et une échelle qui ne se fait plus tronquer.
+        """
+        devis = self._devis_residentiel(
+            email='paliercontenance@example.com',
+            roof_layout=self._layout_extensible())
+        echelle_contenance = dimensionnement.echelle_paliers_batterie(devis)
+        with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
+                   return_value=None):
+            echelle_dessin = dimensionnement.echelle_paliers_batterie(devis)
+
+        self.assertTrue(echelle_contenance,
+                        'échelle vide : le test ne prouverait rien')
+        champs_contenance = [p['nb_panneaux'] for p in echelle_contenance]
+        champs_dessin = [p['nb_panneaux'] for p in echelle_dessin]
+
+        # LE RÉGIME EST POSÉ, PAS ESPÉRÉ. Si un jour le profil de ce fixture
+        # n'exige plus jamais plus de 18 panneaux, les deux échelles se
+        # confondent et ce test ne prouve PLUS rien — il doit alors ROUGIR pour
+        # le dire, jamais passer en silence.
+        self.assertNotEqual(
+            champs_contenance, champs_dessin,
+            'le fixture n\'exerce plus le régime : les deux ancrages donnent '
+            'la même échelle (%s). Reprendre un profil qui réclame plus de '
+            'panneaux que le dessin.' % champs_contenance)
+
+        # 1. Le champ est TIRÉ au-delà du dessin — ce que l'ancienne borne
+        #    interdisait — sans jamais dépasser ce que le toit tient.
+        self.assertGreater(max(champs_contenance), 18)
+        self.assertLessEqual(max(champs_contenance), 78)
+        # 2. L'échelle n'est plus tronquée : elle propose au moins autant de
+        #    paliers qu'avec l'ancienne borne.
+        self.assertGreaterEqual(len(echelle_contenance), len(echelle_dessin))
+        # 3. Aucun palier ne ment sur le toit.
+        for palier in echelle_contenance:
+            self.assertLessEqual(palier['nb_panneaux'], 78)
+
+    def test_un_toit_SATURE_laisse_l_echelle_inchangee(self):
+        """CONVERGENCE HONNÊTE : quand le dessin occupe déjà toute la
+        contenance, la borne ne bouge pas d'un panneau."""
+        # Contour serré autour de la pose : aucun emplacement de plus ne passe
+        # le test de contenance (cf. test_calepinage_options).
+        layout = self._layout_extensible()
+        import math
+        olng, olat = -7.58, 33.57
+        deg2m = math.pi / 180 * 6378137.0
+        coslat = math.cos(olat * math.pi / 180)
+
+        def lnglat(x, y):
+            return [olng + x / (deg2m * coslat), olat + y / deg2m]
+
+        layout['zones'][0]['vertices'] = [lnglat(-8.0, -2.6), lnglat(8.0, -2.6),
+                                          lnglat(8.0, 2.6), lnglat(-8.0, 2.6)]
+        devis = self._devis_residentiel(email='sature@example.com',
+                                        roof_layout=layout)
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis), 18)
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis), 18)
+        for palier in dimensionnement.echelle_paliers_batterie(devis):
+            self.assertLessEqual(palier['nb_panneaux'], 18)
+
+    def test_sans_calepinage_aucune_borne_de_toit(self):
+        """Repli EXACT sur le comportement d'avant : pas de layout ⇒ pas de
+        plafond de toit du tout, seulement les garde-fous de calcul."""
+        devis = self._devis_residentiel(email='sansplan@example.com')
+        self.assertIsNone(dimensionnement.contenance_toit_du_devis(devis))
+
     def test_le_profil_absent_reclame_moins_de_panneaux_pour_la_meme_banque(
             self):
         """CONSÉQUENCE PRÉDITE PAR LE FONDATEUR — un foyer ABSENT en journée

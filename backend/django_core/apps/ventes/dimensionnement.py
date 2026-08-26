@@ -1672,6 +1672,43 @@ def plafond_toit_du_devis(devis):
     return cible if cible > 0 else None
 
 
+def plus_grande_contenance(capacite, plafond):
+    """LA RÈGLE « ce toit accepte N panneaux », en UN SEUL endroit.
+
+    La CONTENANCE MESURÉE d'abord ; le compte DESSINÉ n'est qu'un plancher. Le
+    ``max()`` n'est pas une hésitation : la contenance vaut par construction au
+    moins le posé (elle part de lui et ne fait qu'ajouter), si bien que le
+    second terme ne l'emporte que sur un layout dont le ``result.panels``
+    déclaré dépasse les panneaux réellement sérialisés. Dans ce cas-là, refuser
+    de compter la différence RÉTRÉCIRAIT une borne qui existait déjà — on ne
+    durcit jamais un plafond de toit sur une incohérence de données.
+
+    ``None`` quand aucune des deux lectures n'aboutit : pas de calepinage, donc
+    pas de plafond de toit du tout (jamais une surface inventée).
+    """
+    valeurs = [int(v) for v in (capacite, plafond) if v]
+    return max(valeurs) if valeurs else None
+
+
+def contenance_toit_du_devis(devis):
+    """Le plus grand nombre de panneaux que le TOIT de ce devis accepte.
+
+    LA FONCTION QUE TOUT CE QUI PROPOSE UNE TAILLE DOIT LIRE — l'échelle de
+    paliers batterie comme les trois tailles Éco/Recommandé/Max. Elle mesure
+    (:func:`~apps.ventes.calepinage_options.capacite_toit_du_devis` : panneaux
+    conservés + extension maximale PROUVÉE dans le polygone réel) et retombe
+    sur le compte DESSINÉ (:func:`plafond_toit_du_devis`) quand la géométrie
+    n'est pas exploitable — donc, sans calepinage, ``None`` et AUCUNE borne de
+    toit, exactement comme avant.
+
+    UN SEUL BALAYAGE PAR REQUÊTE : la mesure est mémoïsée sur l'instance de
+    devis, si bien que l'échelle, les cartes et la clé publique la partagent.
+    """
+    from apps.ventes.calepinage_options import capacite_toit_du_devis
+    return plus_grande_contenance(capacite_toit_du_devis(devis),
+                                  plafond_toit_du_devis(devis))
+
+
 def _compter_modules_batterie(lignes_vue):
     """``(nb de modules 5 kWh, nb de modules 10 kWh)`` LUS sur la composition.
 
@@ -1960,11 +1997,19 @@ def echelle_paliers_batterie(devis):
     exactement ce que le fondateur a autorisé le 25/08 : « extra batteries might
     add extra panels with extra cost, that is still fine ».
 
-    LE CHAMP EST BORNÉ, ET CHAQUE BORNE EST JUSTIFIÉE : le PLAFOND DU TOIT quand
-    le devis porte un calepinage (:func:`plafond_toit_du_devis` — on ne propose
-    pas des panneaux qui ne tiennent pas), sinon :data:`FACTEUR_MAX_FALAISE` ×
-    la taille de parité de CE client, plafonnée par
+    LE CHAMP EST BORNÉ, ET CHAQUE BORNE EST JUSTIFIÉE : la CONTENANCE DU TOIT
+    quand le devis porte un calepinage (:func:`contenance_toit_du_devis` — on ne
+    propose pas des panneaux qui ne tiennent pas), ET :data:`FACTEUR_MAX_FALAISE`
+    × la taille de parité de CE client, plafonnée par
     :data:`MAX_PANNEAUX_BALAYAGE`.
+
+    LA BORNE DE TOIT SE MESURE, ELLE NE SE DÉCLARE PAS (26/08/2026). Elle lisait
+    :func:`plafond_toit_du_devis`, qui rend le nombre de panneaux DESSINÉS par
+    le commercial — pas ce que le toit tient. Sur un devis calepiné, un palier
+    que le toit peut nourrir se retrouvait grisé « ne se remplit pas », et
+    l'échelle S'ARRÊTAIT là (voir la boucle : ``champ_minimal`` rend ``None``,
+    on rend le palier en ``remplissage_ok=False`` puis on ``break``) — les
+    capacités supérieures ne s'affichaient jamais.
 
     ``remplissage_ok=False`` n'apparaît QUE sur le premier palier que même le
     champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)
@@ -2073,9 +2118,26 @@ def _echelle_paliers_batterie(devis):
         (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
     max_champ = min(MAX_PANNEAUX_BALAYAGE,
                     int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
-    plafond_toit = plafond_toit_du_devis(devis)
-    if plafond_toit:
-        max_champ = min(max_champ, int(plafond_toit))
+    # LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (fondateur, 26/08/2026).
+    #
+    # Elle valait ``plafond_toit_du_devis``, c'est-à-dire le nombre de panneaux
+    # que le commercial a DESSINÉS. Or ``max_champ`` n'est pas un décor : c'est
+    # le champ maximal que ``champ_minimal`` a le droit de tirer pour REMPLIR
+    # une banque. Le caper au dessiné avait donc deux effets, tous deux faux sur
+    # un devis calepiné — et c'est EXACTEMENT la conflation qui effondrait la
+    # carte « Max » :
+    #   1. un palier que le toit peut nourrir était rendu ``remplissage_ok =
+    #      False``, grisé « ne se remplirait pas », alors que la géométrie le
+    #      permet ;
+    #   2. pire, l'échelle S'ARRÊTE à ce palier-là (``break``) — toutes les
+    #      capacités au-dessus disparaissaient de l'écran.
+    # Le commercial dessine ce dont le client a besoin, puis s'arrête : ce n'est
+    # pas la limite du toit. La contenance, elle, est MESURÉE sur le polygone
+    # réel. Sans calepinage exploitable, ``None`` ⇒ aucune borne de toit, le
+    # comportement d'avant au panneau près.
+    contenance_toit = contenance_toit_du_devis(devis)
+    if contenance_toit:
+        max_champ = min(max_champ, int(contenance_toit))
     max_champ = max(1, max_champ)
 
     # ── L'ÉCHELLE DES CAPACITÉS, DÉRIVÉE DU CATALOGUE ────────────────────────
