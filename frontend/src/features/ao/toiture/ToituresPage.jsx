@@ -432,6 +432,13 @@ function sommetsDepuisRectServeur(x0, x1, y0, y1) {
   ]
 }
 
+// WIR205 — `est_ecarte` est un champ DÉRIVÉ du sérialiseur serveur
+// (`ObstacleAOSerializer`, lecture seule) : c'est LUI qui fait autorité, pas
+// une comparaison de chaîne côté écran. Le repli sur la provenance ne sert
+// qu'aux réponses partielles (une création n'échoie pas toujours le champ).
+const estEcarte = (record) =>
+  record?.est_ecarte ?? (record?.provenance === 'ECARTE')
+
 function obstacleDepuisServeur(record) {
   const sommets = Array.isArray(record.polygone_local_m) && record.polygone_local_m.length >= 3
     ? record.polygone_local_m.map(([x, y]) => ({ x: nb(x), y: nb(y) }))
@@ -442,7 +449,19 @@ function obstacleDepuisServeur(record) {
     id: record.id,
     repere: record.repere || '',
     nature: NATURE_OBSTACLE_DEPUIS_SERVEUR[record.nature] ?? 'edicule',
-    provenance: PROVENANCE_OBSTACLE_DEPUIS_SERVEUR[record.provenance] ?? 'mesure',
+    /* WIR205 — l'ÉCARTEMENT traverse la traduction dans LES DEUX SENS.
+       Le vocabulaire des outils locaux n'a pas d'équivalent d'`ECARTE` : le
+       repli le faisait passer pour « relevé sur plan », ce qui le remettait
+       DANS le compte engagé (alors que la règle AOF90 l'en sort), le rendait
+       bloquant pour la publication, et le RÉACTIVAIT au prochain
+       « Enregistrer ». On garde donc la clé SERVEUR telle quelle — c'est
+       exactement le vocabulaire que `gardePublication.normaliserProvenance`
+       comprend — et un drapeau explicite pour les deux actions de la liste. */
+    provenance: estEcarte(record)
+      ? 'ECARTE'
+      : (PROVENANCE_OBSTACLE_DEPUIS_SERVEUR[record.provenance] ?? 'mesure'),
+    ecarte: estEcarte(record),
+    decision: record.decision ?? '',
     sommets,
     rectX0M: record.rect_x0_m, rectX1M: record.rect_x1_m,
     rectY0M: record.rect_y0_m, rectY1M: record.rect_y1_m,
@@ -467,7 +486,12 @@ function obstacleVersPayload(o, toitureId) {
     toiture: toitureId,
     repere: o.repere ?? '',
     nature: NATURE_OBSTACLE_VERS_SERVEUR[o.nature] ?? 'caisson_technique',
-    provenance: PROVENANCE_OBSTACLE_VERS_SERVEUR[o.provenance] ?? 'MESURE',
+    // WIR205 — un obstacle ÉCARTÉ le reste : sans cette branche, « Enregistrer »
+    // réécrivait `provenance` depuis le vocabulaire local (qui ignore `ECARTE`)
+    // et RÉACTIVAIT en silence l'obstacle que quelqu'un venait d'écarter.
+    ...(o.ecarte
+      ? { provenance: 'ECARTE', actif: false, decision: o.decision ?? '' }
+      : { provenance: PROVENANCE_OBSTACLE_VERS_SERVEUR[o.provenance] ?? 'MESURE' }),
     polygone_local_m: sommets.map((s) => [nb(s.x), nb(s.y)]),
     rect_x0_m: bbox ? bbox.xMin : null,
     rect_x1_m: bbox ? bbox.xMax : null,
@@ -798,6 +822,73 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     setChaines(suivantes)
   }, [])
 
+  /* ── WIR205 — les trois ACTIONS SERVEUR de l'atelier ────────────────────
+     Écarter/réintégrer un obstacle et proposer une compensation sont des
+     décisions OPPOSABLES : elles partent au serveur tout de suite (jamais
+     différées au prochain « Enregistrer »), et l'écran ne montre que ce que le
+     serveur a répondu. L'instantané distant (`distantsObstaclesRef`) est mis à
+     jour AVEC la réponse, sinon le diff de l'enregistrement suivant repartirait
+     d'un état périmé. */
+  const remplacerObstacleServeur = useCallback((record) => {
+    const suivant = obstacleDepuisServeur(record)
+    distantsObstaclesRef.current = distantsObstaclesRef.current.map(
+      (d) => (Number(d.id) === Number(record.id) ? record : d),
+    )
+    majObstaclesPlanche(
+      obstacles.map(
+        (o) => (Number(o.id) === Number(record.id) ? { ...o, ...suivant } : o),
+      ),
+    )
+  }, [obstacles, majObstaclesPlanche])
+
+  const ecarterObstacle = useCallback(async (obstacle, motif) => {
+    if (!estIdServeur(obstacle?.id)) {
+      throw new Error(
+        'Obstacle pas encore enregistré — « Enregistrer » d’abord, puis écarter.',
+      )
+    }
+    try {
+      const { data } = await aoApi.obstacles.ecarter(Number(obstacle.id), motif)
+      remplacerObstacleServeur(data)
+      setNote(null)
+    } catch (e) {
+      throw new Error(errMsg(e, 'Le serveur a refusé l’écartement.'))
+    }
+  }, [remplacerObstacleServeur])
+
+  const reintegrerObstacle = useCallback(async (obstacle) => {
+    if (!estIdServeur(obstacle?.id)) {
+      throw new Error('Obstacle inconnu du serveur — rien à réintégrer.')
+    }
+    try {
+      // Aucune provenance envoyée : l'écartement ÉCRASE la provenance d'origine
+      // côté serveur (`services.ecarter_obstacle`), elle n'est donc récupérable
+      // nulle part. Plutôt que d'en inventer une ici, on laisse le serveur
+      // appliquer SON défaut documenté (`MESURE`) — corrigeable ensuite dans
+      // l'inspecteur, jamais deviné par cet écran.
+      const { data } = await aoApi.obstacles.reintegrer(Number(obstacle.id), {})
+      remplacerObstacleServeur(data)
+      setNote(null)
+    } catch (e) {
+      throw new Error(errMsg(e, 'Le serveur a refusé la réintégration.'))
+    }
+  }, [remplacerObstacleServeur])
+
+  const demanderCompensation = useCallback(async (chaine) => {
+    if (!estIdServeur(chaine?.id)) {
+      throw new Error(
+        'Chaîne pas encore enregistrée : « Enregistrer » d’abord — le serveur '
+        + 'ne peut proposer une répartition que sur une chaîne qu’il connaît.',
+      )
+    }
+    try {
+      const { data } = await aoApi.chaines.compensation(Number(chaine.id))
+      return data
+    } catch (e) {
+      throw new Error(errMsg(e, 'Compensation refusée par le serveur.'))
+    }
+  }, [])
+
   const majZones = useCallback((suivantes) => {
     interactionRef.current = true
     setZones(suivantes)
@@ -1040,6 +1131,8 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         onSurvol={setSurvolObstacle}
         onSelection={setSurvolObstacle}
         onPoserQuestion={(question) => setQuestionProposee(question)}
+        onEcarter={ecarterObstacle}
+        onReintegrer={reintegrerObstacle}
         onPretAPublier={() => setNote(
           'Refus : le modèle de toiture ne porte AUCUN état « prête à publier » '
           + '(aucun champ de ce nom au serveur). Rien n’a été enregistré — la garde '
@@ -1089,6 +1182,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
       <FermeturesPanel
         chaines={chaines}
         onChaines={majChaines}
+        onCompenser={demanderCompensation}
         onCalepiner={() => setNote(
           'Chaînes arbitrées. Le calepinage se lance depuis l’onglet « Calepinages » '
           + 'de la fiche affaire (le calcul est sans état, piloté par la toiture) : '

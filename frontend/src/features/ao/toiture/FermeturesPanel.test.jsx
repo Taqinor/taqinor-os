@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FermeturesPanel from './FermeturesPanel'
 
@@ -44,8 +44,29 @@ const RELEVE = [
   },
 ]
 
+/* WIR205 — la compensation vient du SERVEUR. Ce faux `onCompenser` rend la
+   charge utile EXACTE de `ChaineCotesViewSet.compensation`
+   (`services.proposer_compensation_prorata`) : `{residu_m, applique, segments:
+   [{index, libelle, valeur_m, valeur_proposee_m, delta_m}]}`. Les valeurs sont
+   celles du relevé « Développé arc » (22,60 / 22,75 / 22,40 pour 68,05
+   mesurés) réparties au prorata — aucune clé inventée. */
+const COMPENSATION_C3 = {
+  residu_m: 0.3,
+  applique: false,
+  segments: [
+    { index: 0, libelle: 'T1', valeur_m: 22.6, valeur_proposee_m: 22.7, delta_m: 0.1 },
+    { index: 1, libelle: 'T2', valeur_m: 22.75, valeur_proposee_m: 22.851, delta_m: 0.101 },
+    { index: 2, libelle: 'T3', valeur_m: 22.4, valeur_proposee_m: 22.499, delta_m: 0.099 },
+  ],
+}
+
 // Harnais : le panneau est contrôlé — l'atelier détient les chaînes.
-function Harnais({ initial = RELEVE, onCalepiner = () => {}, espion }) {
+function Harnais({
+  initial = RELEVE,
+  onCalepiner = () => {},
+  espion,
+  onCompenser = async () => COMPENSATION_C3,
+}) {
   const [chaines, setChaines] = useState(initial)
   return (
     <FermeturesPanel
@@ -54,6 +75,7 @@ function Harnais({ initial = RELEVE, onCalepiner = () => {}, espion }) {
         espion?.(suivantes)
         setChaines(suivantes)
       }}
+      onCompenser={onCompenser}
       onCalepiner={onCalepiner}
     />
   )
@@ -92,20 +114,66 @@ describe('FermeturesPanel (AOF86)', () => {
     expect(onCalepiner).not.toHaveBeenCalled()
   })
 
-  it('« compenser au prorata » montre l’AVANT/APRÈS puis referme la chaîne', async () => {
+  it('« compenser au prorata » DEMANDE la répartition au serveur, montre l’AVANT/APRÈS, puis referme', async () => {
     const user = userEvent.setup()
-    render(<Harnais />)
+    const onCompenser = vi.fn(async () => COMPENSATION_C3)
+    render(<Harnais onCompenser={onCompenser} />)
     await user.click(document.querySelector('[data-ao-fermeture-prorata="c3"]'))
 
-    const apercu = document.querySelector('[data-ao-fermeture-apercu]')
-    expect(apercu).toBeTruthy()
-    expect(apercu.textContent).toMatch(/22\.600/) // avant
-    expect(apercu.textContent).toMatch(/22\.700/) // après
+    // La proposition vient du serveur, pas d'un produit en croix local.
+    expect(onCompenser).toHaveBeenCalledTimes(1)
+    expect(onCompenser.mock.calls[0][0].id).toBe('c3')
+
+    const apercu = await waitFor(() => {
+      const el = document.querySelector('[data-ao-fermeture-apercu]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(apercu.textContent).toMatch(/22\.600/) // avant (valeur_m serveur)
+    expect(apercu.textContent).toMatch(/22\.700/) // après (valeur_proposee_m)
 
     await user.click(document.querySelector('[data-ao-fermeture-appliquer]'))
+    // 22,700 + 22,851 + 22,499 = 68,050 → la chaîne referme exactement.
     expect(statut('c3')).toBe('OK')
     expect(residu('c3')).toBe('0.000')
     expect(screen.getByRole('button', { name: 'Passer au calepinage' })).toBeEnabled()
+  })
+
+  it('sans réponse serveur exploitable, RIEN n’est proposé et le refus est écrit', async () => {
+    const user = userEvent.setup()
+    const espion = vi.fn()
+    render(<Harnais espion={espion} onCompenser={async () => null} />)
+    await user.click(document.querySelector('[data-ao-fermeture-prorata="c3"]'))
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-ao-fermeture-erreur]')).toBeTruthy()
+    })
+    expect(document.querySelector('[data-ao-fermeture-apercu]')).toBeFalsy()
+    expect(espion).not.toHaveBeenCalled()
+    expect(statut('c3')).toBe('ECART') // aucun relevé réécrit
+  })
+
+  it('un refus serveur est affiché tel quel, sans compensation de repli', async () => {
+    const user = userEvent.setup()
+    const espion = vi.fn()
+    render(
+      <Harnais
+        espion={espion}
+        onCompenser={async () => {
+          throw new Error('Chaîne pas encore enregistrée : « Enregistrer » d’abord.')
+        }}
+      />,
+    )
+    await user.click(document.querySelector('[data-ao-fermeture-prorata="c3"]'))
+
+    const erreur = await waitFor(() => {
+      const el = document.querySelector('[data-ao-fermeture-erreur]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(erreur.textContent).toMatch(/pas encore enregistrée/)
+    expect(document.querySelector('[data-ao-fermeture-apercu]')).toBeFalsy()
+    expect(espion).not.toHaveBeenCalled()
   })
 
   it('l’acceptation exige un motif ÉCRIT, qui est ensuite persisté et visible', async () => {
@@ -142,6 +210,9 @@ describe('FermeturesPanel (AOF86)', () => {
     const onCalepiner = vi.fn()
     render(<Harnais onCalepiner={onCalepiner} />)
     await user.click(document.querySelector('[data-ao-fermeture-prorata="c3"]'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-ao-fermeture-appliquer]')).toBeTruthy()
+    })
     await user.click(document.querySelector('[data-ao-fermeture-appliquer]'))
     await user.click(screen.getByRole('button', { name: 'Passer au calepinage' }))
     expect(onCalepiner).toHaveBeenCalledTimes(1)

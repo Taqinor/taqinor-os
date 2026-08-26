@@ -63,9 +63,31 @@ test('les ressources de relevé pointent le NOM SERVEUR (plans-source au singuli
   // PACT76 — `plansSources` porte désormais aussi l'action `upload` : le CRUD
   // de base reste `crud('plans-source')`, étalé (spread) dans l'objet.
   assert.match(body, /plansSources:\s*\{\s*\n\s*\.\.\.crud\('plans-source'\)/)
-  assert.match(body, /chaines:\s*crud\('chaines-cotes'\)/)
+  // WIR205 — `chaines` porte désormais aussi l'action `compensation` : le CRUD
+  // de base reste `crud('chaines-cotes')`, étalé (spread) dans l'objet.
+  assert.match(body, /chaines:\s*\{\s*\n\s*\.\.\.crud\('chaines-cotes'\)/)
   assert.doesNotMatch(sansCommentaires(src), /crud\('plans-sources'\)/)
   assert.doesNotMatch(sansCommentaires(src), /crud\('chaines'\)/)
+})
+
+test('WIR205 — obstacles.ecarter/reintegrer et chaines.compensation publient les @action RÉELLES', () => {
+  const body = aoApiBody()
+  // Un obstacle mesuré n'est JAMAIS supprimé : il est ÉCARTÉ, avec un motif.
+  assert.match(body, /obstacles:\s*\{\s*\n\s*\.\.\.crud\('obstacles'\)/)
+  assert.match(body, /ecarter:\s*\(id,\s*motif\)\s*=>\s*api\.post\(`\/ao\/obstacles\/\$\{id\}\/ecarter\/`,\s*\{ motif \}\)/)
+  assert.match(body, /api\.post\(`\/ao\/obstacles\/\$\{id\}\/reintegrer\/`/)
+  // La compensation au prorata est une LECTURE (elle PROPOSE, elle n'applique
+  // rien) : GET, jamais un POST qui laisserait croire à une écriture.
+  assert.match(body, /compensation:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/chaines-cotes\/\$\{id\}\/compensation\/`\)/)
+})
+
+test('WIR205 — les deux @action d’obstacle et la compensation existent côté serveur', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fichierAo } = await import('../test/contratServeur.js')
+  const serveur = readFileSync(fichierAo('views.py'), 'utf8')
+  assert.match(serveur, /@action\(detail=True, methods=\['post'\], url_path='ecarter'\)/)
+  assert.match(serveur, /@action\(detail=True, methods=\['post'\], url_path='reintegrer'\)/)
+  assert.match(serveur, /@action\(detail=True, methods=\['get'\], url_path='compensation'\)/)
 })
 
 test('PACT76 — plansSources.upload publie l’action MULTIPART réelle (PlanSourceViewSet.upload)', () => {

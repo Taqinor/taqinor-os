@@ -126,8 +126,29 @@ const aoApi = {
     },
   },
   releves: crud('releves'),
-  obstacles: crud('obstacles'),
-  chaines: crud('chaines-cotes'),
+  /* WIR205 — les DEUX actions métier d'`ObstacleAOViewSet` (AOF22), relues
+     dans `apps/ao/views.py` : un obstacle mesuré n'est JAMAIS supprimé, il
+     est ÉCARTÉ avec sa géométrie conservée (le retour arrière doit rester un
+     one-liner et l'échelle de décomposition doit pouvoir chiffrer ce que la
+     décision rapporte). `ecarter` EXIGE un motif — le serveur renvoie 400
+     nommé sans lui, et l'écran ne le contourne pas. `reintegrer` remet
+     l'obstacle actif sous la provenance choisie (défaut serveur `MESURE`). */
+  obstacles: {
+    ...crud('obstacles'),
+    ecarter: (id, motif) => api.post(`/ao/obstacles/${id}/ecarter/`, { motif }),
+    reintegrer: (id, { provenance, motif } = {}) =>
+      api.post(`/ao/obstacles/${id}/reintegrer/`, { provenance, motif }),
+  },
+  /* WIR205 — la compensation au prorata est une PROPOSITION SERVEUR, jamais un
+     produit en croix d'écran : `ChaineCotesViewSet.compensation` (GET) rend
+     `{residu_m, applique: false, segments: [{index, libelle, valeur_m,
+     valeur_proposee_m, delta_m}]}` — ou `null` quand il n'y a rien à
+     répartir. Elle n'APPLIQUE rien : c'est l'atelier qui écrit ensuite les
+     valeurs proposées, à l'enregistrement. */
+  chaines: {
+    ...crud('chaines-cotes'),
+    compensation: (id) => api.get(`/ao/chaines-cotes/${id}/compensation/`),
+  },
   // PV54/PV56 — `ZoneAO` existe désormais (contour NOMMÉ : enveloppe /
   // interdite / réservée / préférée), routée sous `zones` (`apps/ao/urls.py`,
   // `router.register(r'zones', ZoneAOViewSet, …)`). L'atelier de traçage
