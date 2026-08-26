@@ -820,10 +820,18 @@ describe('GAMMES — choix de gamme sur la page proposition', () => {
       'data-fr="Ce qui change entre les deux" data-en="What differs between the two"');
   });
 
-  it('la bande « Autres tailles » reste distincte du bloc gammes', () => {
+  // (26/08) La bande a été RETITRÉE « Autres versions de ce devis » : son ancien
+  // nom, « Autres tailles proposées », était devenu quasi-homonyme de la section
+  // « Explorer d'autres tailles » alors qu'il désigne les autres DEVIS du
+  // client. L'INTENTION de ce test est inchangée — la bande reste un bloc
+  // DISTINCT, placé après les gammes ; seul le libellé cherché a suivi.
+  it('la bande des autres VERSIONS reste distincte du bloc gammes', () => {
     const idxGammes = PAGE.indexOf('<section id="gammes"');
-    const idxTailles = PAGE.indexOf('data-fr="Autres tailles proposées"');
+    const idxVersions = PAGE.indexOf('data-fr="Autres versions de ce devis"');
     expect(idxGammes).toBeGreaterThan(0);
-    expect(idxTailles).toBeGreaterThan(idxGammes);
+    expect(idxVersions).toBeGreaterThan(idxGammes);
+    // …et elle ne reprend plus le vocabulaire des tailles, qui appartient
+    // désormais à la section d'exploration.
+    expect(PAGE).not.toContain('data-fr="Autres tailles proposées"');
   });
 });
