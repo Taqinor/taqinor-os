@@ -1609,15 +1609,10 @@ function libelleBancTaille(v: OffreVariante | null): string {
   if (b.moduleKwh === null) return n;
   return n + ' × ' + formatNumber(b.moduleKwh, Number.isInteger(b.moduleKwh) ? 0 : 1) + ' kWh';
 }
-/** « N panneaux · X,XX kWc » — même discipline d'omission : sans panneaux ni
- *  puissance, la cellule est VIDE (jamais un tiret présenté comme donnée). */
-function libelleTailleCourte(v: OffreVariante | null): string {
-  if (!v) return '';
-  const bits: string[] = [];
-  if (v.nbPanneaux !== null) bits.push(formatNumber(v.nbPanneaux));
-  if (v.puissanceKwc !== null) bits.push(formatNumber(v.puissanceKwc, 2) + ' kWc');
-  return bits.join(' · ');
-}
+// (Le nombre de panneaux et la puissance sont DEUX lignes du tableau, pas une :
+//  « 22 · 12,10 kWc » dans une cellule oblige à deviner l'unité du premier
+//  nombre, et un « panneaux » écrit en dur ne se traduirait pas. Deux lignes,
+//  deux libellés `data-i18n` — chacun lisible dans les trois langues.)
 /** LE TABLEAU « CE QUI CHANGE », construit ICI (hors du gabarit) : une ligne
  *  par critère, une cellule par taille, et toute ligne dont AUCUNE taille ne
  *  porte de valeur est ÉCARTÉE — un tableau à moitié vide n'apprend rien. */
@@ -1628,8 +1623,10 @@ if (tailles) {
     const avecB = v === 'avec';
     const vues = tailles.offres.map((t) => varianteAffichee(t, avecB));
     const lignes: LigneCompareTaille[] = [
-      { cle: 'taille', fr: 'Taille', en: 'Size', ar: 'الحجم',
-        cellules: vues.map(libelleTailleCourte) },
+      { cle: 'panneaux', fr: 'Panneaux', en: 'Panels', ar: 'الألواح',
+        cellules: vues.map((x) => (x?.nbPanneaux != null ? formatNumber(x.nbPanneaux) : '')) },
+      { cle: 'puissance', fr: 'Puissance', en: 'Power', ar: 'القدرة',
+        cellules: vues.map((x) => (x?.puissanceKwc != null ? formatNumber(x.puissanceKwc, 2) + ' kWc' : '')) },
       { cle: 'prix', fr: 'Prix TTC', en: 'Price incl. tax', ar: 'الثمن شامل الضريبة',
         cellules: vues.map((x) => (x?.prixTtc != null ? formatMAD(x.prixTtc) : '')) },
       { cle: 'eco', fr: 'Économies / an', en: 'Savings / year', ar: 'التوفير / سنة',
