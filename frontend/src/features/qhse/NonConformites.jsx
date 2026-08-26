@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
-  Wrench, ShieldAlert,
+  Wrench, ShieldAlert, Send,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { ListShell, DetailShell } from '../../ui/module'
@@ -368,6 +368,63 @@ function DerogationCreateDialog({ ncr, onClose, onDone }) {
   )
 }
 
+/* WIR201 — SCAR (demande d'action corrective fournisseur), recommandée
+   depuis la fiche NCR quand un fournisseur est déjà tracé (disposition
+   « retour fournisseur »). Crée la SCAR au statut `emise` ; le cycle
+   répondue/vérifiée se pilote ensuite depuis l'onglet SCAR fournisseur
+   (CheckinsSecurite.jsx). */
+function ScarCreateDialog({ ncr, onClose, onDone }) {
+  const [descriptionDefaut, setDescriptionDefaut] = useState('')
+  const [echeanceReponse, setEcheanceReponse] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.demandesActionFournisseur.create({
+        fournisseur: ncr.fournisseur,
+        ncr_source: ncr.id,
+        description_defaut: descriptionDefaut,
+        echeance_reponse: echeanceReponse || undefined,
+      })
+      toast.success('Demande adressée au fournisseur (SCAR).')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création de la SCAR impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Demander une action au fournisseur</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Description du défaut</Label>
+            <Textarea rows={3} placeholder="Décrire le défaut constaté"
+              value={descriptionDefaut}
+              onChange={(e) => setDescriptionDefaut(e.target.value)} />
+          </div>
+          <div>
+            <Label>Échéance de réponse</Label>
+            <Input type="date" value={echeanceReponse}
+              onChange={(e) => setEcheanceReponse(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Envoi…' : 'Envoyer la demande'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* XQHS7 — analyse structurée d'une NCR : chaîne 5-Pourquoi (≤5 entrées, borne
    serveur) et rapport 8D (D1-D8). `AnalyseNcr` n'a AUCUN CRUD : l'action
    `analyse/` est sa seule surface — un POST vide lit l'analyse existante, un
@@ -497,6 +554,8 @@ function NcrDetail({ ncr, onBack, onChanged }) {
   // qhseApi.js, DerogationsRegister en lecture seule).
   const [creatingIntervention, setCreatingIntervention] = useState(false)
   const [derogOpen, setDerogOpen] = useState(false)
+  // WIR201 — SCAR recommandée depuis la fiche NCR (fournisseur déjà tracé).
+  const [scarOpen, setScarOpen] = useState(false)
 
   async function creerInterventionSav() {
     setCreatingIntervention(true)
@@ -565,6 +624,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
             <Button size="sm" variant="outline" onClick={() => setDerogOpen(true)}>
               <ShieldAlert size={15} /> Créer une dérogation
             </Button>
+            {/* WIR201 — SCAR recommandée quand un fournisseur est tracé sur
+                la NCR (disposition « retour fournisseur »). */}
+            {ncr.fournisseur && (
+              <Button size="sm" variant="outline" onClick={() => setScarOpen(true)}>
+                <Send size={15} /> Demander une action au fournisseur
+              </Button>
+            )}
             {ncr.statut !== 'cloturee' && (
               <Button size="sm" onClick={cloturer} disabled={busy}>
                 <CheckCircle2 size={15} /> Clôturer
@@ -625,6 +691,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
         <DerogationCreateDialog
           ncr={ncr}
           onClose={() => setDerogOpen(false)}
+          onDone={() => {}}
+        />
+      )}
+      {scarOpen && (
+        <ScarCreateDialog
+          ncr={ncr}
+          onClose={() => setScarOpen(false)}
           onDone={() => {}}
         />
       )}
