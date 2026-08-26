@@ -213,9 +213,15 @@ export interface SerializedZone {
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
    *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
   obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
-  roofType: 'flat' | 'pitched';
-  pitchDeg: number;
-  facingAzimuthDeg: number;
+  /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
+   *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
+   *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
+   *  site » de la proposition client). Les DEUX lecteurs — `deserializeLayout` (ERP)
+   *  et `buildViewerFullPlan` (visionneuse publique) — appliquent alors les MÊMES
+   *  valeurs de zone vierge que `newAreaRecord()`. */
+  roofType?: 'flat' | 'pitched';
+  pitchDeg?: number;
+  facingAzimuthDeg?: number;
   facingManual: boolean;
   neededPanels: number;
   neededAuto: boolean;
@@ -509,9 +515,17 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
     })),
-    roofType: z.roofType,
-    pitchDeg: z.pitchDeg,
-    facingAzimuthDeg: z.facingAzimuthDeg,
+    // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
+    // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
+    // écrit dans le layout descend jusqu'à l'annexe « paramètres du site » de la
+    // proposition CLIENT (voir apps/ventes/services.zone_toit_depuis_contour). L'écran,
+    // lui, a besoin d'une valeur pour calculer : il applique donc SES propres valeurs
+    // de zone vierge — les MÊMES que `newAreaRecord()` dans roof-tool-pro11.ts — là où
+    // elles sont visiblement modifiables. Un layout sérialisé par le builder porte
+    // TOUJOURS les trois clés, donc ce repli ne change rien pour un dossier enregistré.
+    roofType: z.roofType ?? 'flat',
+    pitchDeg: z.pitchDeg ?? 22,
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,

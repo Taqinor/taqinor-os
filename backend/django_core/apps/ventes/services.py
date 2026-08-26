@@ -5726,15 +5726,26 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
 # contour du client à paver au boot au lieu d'une page blanche.
 
 _AUTO_ZONE_ID = 'area-1'
-# MÊMES valeurs que la zone vierge du builder (``newAreaRecord()`` dans
-# roof-tool-pro11.ts : flat / 22° / 180°). Ce ne sont pas des chiffres
-# inventés ici : ce sont EXACTEMENT les réglages que l'écran afficherait à un
-# commercial qui viendrait de tracer ce contour à la main, et que le moteur de
-# calepinage utiliserait pour lui. Les recopier garantit qu'un calepinage
-# automatique et un calepinage manuel du même contour partent du même état.
-_AUTO_ZONE_ROOF_TYPE = 'flat'
-_AUTO_ZONE_PITCH_DEG = 22
-_AUTO_ZONE_AZIMUTH_DEG = 180
+# ── CE QUE LA ZONE AUTOMATIQUE NE DIT PAS, ET POURQUOI (F2) ─────────────────
+# Elle n'écrit NI ``roofType``, NI ``pitchDeg``, NI ``facingAzimuthDeg``.
+#
+# La première version les posait aux valeurs de la zone vierge du builder
+# (``newAreaRecord()`` : flat / 22° / 180°) en se disant « ce sont les réglages
+# que l'écran afficherait de toute façon ». À l'écran, oui — et ils y sont
+# VISIBLEMENT MODIFIABLES. Mais un champ écrit dans le layout ne s'arrête pas
+# à l'écran : il descend ``extract_roof_config`` → ``_pans_geometry`` →
+# ``calepinage_options.parametres_site_publics``, et le CLIENT lisait alors
+# « Orientation Sud (180°) · Inclinaison 22° · Toit plat » dans l'annexe
+# « paramètres du site » de sa proposition — présenté comme un relevé, sur un
+# toit que personne n'a mesuré. Avant ce lot ces trois champs étaient ABSENTS
+# d'un devis automatique ; ils le restent.
+#
+# L'écran, lui, ne perd rien : ``deserializeLayout`` applique ses propres
+# valeurs par défaut quand la clé manque (apps/web prefill.ts) — donc le
+# commercial voit et corrige exactement ce qu'il verrait après avoir tracé le
+# contour à la main. Dès qu'il enregistre, ``serializeLayout`` écrit les trois
+# champs pour de bon et l'annexe les publie : un chiffre n'est publié qu'une
+# fois qu'un humain l'a regardé.
 
 
 def contour_client_lnglat(lead):
@@ -5892,9 +5903,9 @@ def zone_toit_depuis_contour(lead, *, panneaux, kwc=None):
             'label': 'Toit du client',
             'vertices': [list(p) for p in contour],
             'obstacles': [],
-            'roofType': _AUTO_ZONE_ROOF_TYPE,
-            'pitchDeg': _AUTO_ZONE_PITCH_DEG,
-            'facingAzimuthDeg': _AUTO_ZONE_AZIMUTH_DEG,
+            # PAS de roofType / pitchDeg / facingAzimuthDeg : voir le bloc
+            # « CE QUE LA ZONE AUTOMATIQUE NE DIT PAS » ci-dessus. `facingManual`
+            # reste faux et le dit : personne n'a fixé d'orientation.
             'facingManual': False,
             'neededPanels': cible,
             'neededAuto': False,

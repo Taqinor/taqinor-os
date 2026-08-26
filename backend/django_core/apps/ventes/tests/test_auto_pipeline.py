@@ -207,6 +207,53 @@ class ZoneDepuisContourTest(TestCase):
             panneaux=16)['zones'][0]['result']
         self.assertNotIn('kwc', res)
 
+    def test_la_zone_automatique_ne_pretend_rien_du_toit(self):
+        """F2 — CE QUE PERSONNE N'A MESURÉ N'EST PAS ÉCRIT.
+
+        La zone ne pose ni ``roofType``, ni ``pitchDeg``, ni
+        ``facingAzimuthDeg``. Ces trois champs ne s'arrêtent pas à l'écran :
+        ils descendent ``extract_roof_config`` → ``_pans_geometry`` → l'annexe
+        « paramètres du site » de la proposition CLIENT. Les poser aux valeurs
+        de zone vierge du builder ferait lire au client « Orientation Sud
+        (180°) · Inclinaison 22° · Toit plat » comme un relevé, sur un toit que
+        personne n'a regardé."""
+        zone = zone_toit_depuis_contour(
+            self._lead(roof_outline=CONTOUR_LATLNG), panneaux=12)['zones'][0]
+        self.assertNotIn('roofType', zone)
+        self.assertNotIn('pitchDeg', zone)
+        self.assertNotIn('facingAzimuthDeg', zone)
+        # Ce qui est écrit l'est parce qu'il est RÉEL : le tracé et la cible.
+        self.assertEqual(len(zone['vertices']), 4)
+        self.assertEqual(zone['neededPanels'], 12)
+        self.assertFalse(zone['facingManual'])
+
+    def test_annexe_client_muette_tant_que_personne_na_regarde(self):
+        """F2, bout en bout — l'annexe « paramètres du site » n'annonce ni
+        orientation, ni inclinaison, ni type de toit sur un devis automatique ;
+        elle les annonce dès qu'un vrai calepinage enregistré les porte."""
+        from apps.ventes.calepinage_options import parametres_site_publics
+        from apps.ventes.services import extract_roof_config
+
+        auto = zone_toit_depuis_contour(
+            self._lead(roof_outline=CONTOUR_LATLNG), panneaux=12, kwc=8.52)
+        pans_auto = extract_roof_config(auto)['pans']
+        annexe = parametres_site_publics(None, {'pans': pans_auto}) or {}
+        for cle in ('orientation', 'orientation_deg', 'inclinaison_deg',
+                    'type_toit'):
+            self.assertNotIn(cle, annexe)
+
+        # Après un enregistrement RÉEL depuis l'écran : `serializeLayout` écrit
+        # les trois champs, et l'annexe les publie.
+        enregistre = {'zones': [{
+            'label': 'Toit', 'roofType': 'flat', 'pitchDeg': 15,
+            'facingAzimuthDeg': 180,
+            'result': {'count': 12, 'kwc': 8.52, 'areaM2': 30.0}}]}
+        pans_vus = extract_roof_config(enregistre)['pans']
+        annexe_vue = parametres_site_publics(None, {'pans': pans_vus}) or {}
+        self.assertEqual(annexe_vue['orientation'], 'Sud')
+        self.assertEqual(annexe_vue['inclinaison_deg'], 15.0)
+        self.assertEqual(annexe_vue['type_toit'], 'flat')
+
     def test_pin_depuis_le_repere_du_client_sinon_centroide(self):
         pose = self._lead(roof_outline=CONTOUR_LATLNG,
                           roof_point={'lat': 33.6, 'lng': -7.6})
