@@ -339,6 +339,21 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         self.assertEqual(
             Devis.objects.filter(company=self.company, lead=lead).count(), 1)
 
+    def test_la_garde_de_course_bloque_un_worker_concurrent(self):
+        """PORTE 3b — deux livraisons simultanées du même webhook (ou un rejeu
+        Celery ``acks_late``) peuvent franchir la garde d'existence ENSEMBLE :
+        seule la contrainte d'unicité en base les départage. On simule le
+        worker GAGNANT (sa marque est déjà posée) et on vérifie que le perdant
+        ne crée rien — la même primitive que le webhook, jamais une seconde."""
+        from core.idempotency import dedupe_event
+
+        lead = self._lead(roof_outline=CONTOUR_LATLNG)
+        self.assertTrue(dedupe_event(
+            company=self.company, source='ventes.auto_devis',
+            event_id=str(lead.pk)))
+        self.assertIsNone(self._creer(lead))
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
+
     def test_un_devis_saisi_a_la_main_bloque_lauto(self):
         lead = self._lead(roof_outline=CONTOUR_LATLNG)
         Devis.objects.create(company=self.company, lead=lead,
