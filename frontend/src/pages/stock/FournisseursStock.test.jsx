@@ -137,9 +137,12 @@ describe('FournisseursStock — fournisseurs archivés (WIR190)', () => {
     await screen.findByRole('grid', { name: 'Fournisseurs' })
 
     await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
-    expect(await screen.findByRole('grid', { name: 'Fournisseurs archivés' })).toBeInTheDocument()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
+    expect(grid).toBeInTheDocument()
     expect(stockApi.getFournisseursArchived).toHaveBeenCalled()
-    expect(screen.getByText('Archivé SARL')).toBeInTheDocument()
+    // Le DataTable double chaque ligne (grille desktop + carte mobile) : on
+    // porte la requête sur la grille, comme le test « Réactiver » plus bas.
+    expect(within(grid).getByText('Archivé SARL')).toBeInTheDocument()
   })
 
   it('« Réactiver » un fournisseur archivé appelle unarchiveFournisseur', async () => {

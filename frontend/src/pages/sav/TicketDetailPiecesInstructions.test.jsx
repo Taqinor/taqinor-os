@@ -162,9 +162,13 @@ describe('TicketDetail — Instructions (WIR233)', () => {
     await screen.findByText('Ticket SAV — SAV-1', { exact: false })
 
     const zone = screen.getByLabelText("Instructions d'intervention")
-    await user.type(zone, 'Couper le disjoncteur avant intervention.')
-    expect(zone).toHaveValue('Couper le disjoncteur avant intervention.')
-  })
+    // `user.type` re-rend TOUT le détail du ticket à chaque frappe : 40
+    // caractères coûtaient ~12 s isolé et dépassaient les 20 s de timeout dès
+    // que la suite tourne en parallèle. Texte court + `delay: null` (aucune
+    // temporisation entre frappes) : la saisie reste réelle, touche par touche.
+    await user.type(zone, 'Couper le disjoncteur.', { delay: null })
+    expect(zone).toHaveValue('Couper le disjoncteur.')
+  }, 40000)
 
   it('Suggestions KB : insère le corps SANS écriture serveur avant l’enregistrement', async () => {
     const user = userEvent.setup()
