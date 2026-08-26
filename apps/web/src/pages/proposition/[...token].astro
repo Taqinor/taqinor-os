@@ -4068,8 +4068,9 @@ const signConfig = ok
                  LA POSE EST OMISE : sa durée d'affichage n'est pas arrêtée par
                  le fondateur. Discipline « omettre plutôt que supposer » — on
                  préfère ne rien annoncer qu'annoncer une durée qu'on devrait
-                 corriger devant un client. `INSTALL_WARRANTY_YEARS` reste dans
-                 la bibliothèque, prête pour le jour où la durée est tranchée. */}
+                 corriger devant un client. La constante de pose reste dans
+                 `lib/warranty.ts`, prête pour le jour où la durée est tranchée
+                 (un test épingle et son absence ici, et sa présence là-bas). */}
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {equipPresence.panneaux && (
               <>
@@ -4327,9 +4328,31 @@ const signConfig = ok
 
           {/* ── LES CARTES ────────────────────────────────────────────────────
                  MOBILE : défilement horizontal avec accroche (scroll-snap) et
-                 la carte « Recommandé » pré-centrée par le script — un empilage
+                 la carte du devis pré-centrée par le script — un empilage
                  vertical tuerait la comparaison, qui est TOUTE la valeur de ce
                  bloc. À partir de `sm`, grille classique, les trois visibles.
+
+                 LE CALCUL À 375 px (iPhone SE / gamme d'entrée Android, le
+                 mobile le plus étroit qu'on doive servir) : la page pose
+                 `px-5` de chaque côté, il reste donc 375 − 40 = 335 px utiles.
+                 Une carte à `min-w-[85%]` occupe ≈ 285 px et laisse ≈ 50 px de
+                 la carte voisine visibles au bord — assez pour que l'œil VOIE
+                 qu'il y a autre chose à droite (sans cette amorce, un
+                 défilement horizontal passe inaperçu et le client croit n'avoir
+                 qu'une seule offre). `snap-center` garantit qu'un balayage
+                 finit toujours sur une carte entière, jamais à cheval. Trois
+                 cartes empilées verticalement, elles, imposeraient ≈ 3 écrans
+                 de défilement entre la première et la troisième : on ne compare
+                 plus, on se souvient — c'est exactement ce que le fondateur
+                 interdit. La bascule reste `sticky top-0` pendant ce
+                 défilement, donc toujours sous le pouce ; et le tableau
+                 « ce qui change » juste en dessous est la vue de comparaison
+                 PRINCIPALE sur mobile, celle qui met les trois tailles sur un
+                 même écran sans rien scroller latéralement.
+
+                 (Les seuils viennent du breakpoint `sm` de Tailwind, 640 px :
+                 en dessous, défilement ; au-dessus, grille à trois colonnes.) */}
+          {/* SUITE DU BLOC :
                  Chaque carte porte le MÊME jeu de champs, dans le MÊME ordre :
                  une carte plus pauvre qu'une autre dit la vérité de ce devis-là
                  (discipline d'omission — la ligne DISPARAÎT, jamais un tiret). */}
