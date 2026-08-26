@@ -389,6 +389,11 @@ const roofImg = data?.roof_image_url ?? null;
 const clientName = data?.client_name || q?.client_name || 'Client';
 const reference = data?.reference || q?.ref || '';
 const proposalDate = data?.date || q?.date || '';
+// Audit item 66 — la marque servie par CETTE page (apps/web est le site
+// public Taqinor, jamais multi-tenant côté web) ; même littéral que les 46
+// autres mentions « Taqinor » de cette page, isolé ici pour le bloc
+// contre-signature ci-dessous.
+const brand = 'Taqinor';
 
 // Options à présenter (une ou deux), dans l'ordre Sans → Avec.
 const options: OptionKey[] = ok
@@ -5942,6 +5947,38 @@ const signConfig = ok
               <span id="sign-spinner" class="spinner" hidden aria-hidden="true"></span>
             </button>
           </form>
+        </div>
+
+        {/* ── CONTRE-SIGNATURE {brand} (audit item 66, revue Fable finale) ──
+             Le PDF (apps/ventes/quote_engine/residential/trust.py) affiche
+             DEUX cases de signature côte à côte : « Bon pour accord — le
+             client » ET « Pour {brand} / Cachet et signature ». Cette page
+             ne portait que la première (le canvas du client ci-dessus) — le
+             client signait seul, sans jamais voir sur l'écran l'engagement
+             RÉCIPROQUE de {brand} qu'il retrouvera pourtant sur le document
+             téléchargé. Panneau DISPLAY ONLY, additif SOUS le bloc de
+             signature existant : aucun canvas, aucun nouvel endpoint, ne
+             touche à rien du flux du formulaire au-dessus. Le nom du
+             signataire n'apparaît que si le payload le fournit
+             (`seller.name`, WJ114 — pas encore exposé par le backend
+             aujourd'hui) ; à défaut, la marque seule — jamais un nom
+             inventé (règle « zéro chiffre/nom inventé »). */}
+        <div id="prop-contre-signature" class="mt-6 rounded-xl border border-white/10 bg-nuit-800/40 p-4" data-testid="contre-signature-marque">
+          <p class="tech-label text-lune-faint" data-i18n
+            data-fr={`Pour ${brand} — signature et cachet`}
+            data-en={`For ${brand} — signature and stamp`}
+            data-ar={`عن ${brand} — التوقيع والختم`}>
+            {`Pour ${brand} — signature et cachet`}
+          </p>
+          {seller?.name && (
+            <p class="mt-1 text-sm text-lune">{seller.name}</p>
+          )}
+          <p class="mt-2 text-xs text-lune-faint" data-i18n
+            data-fr="Le devis fait foi dès réception de l’acompte."
+            data-en="The quote is binding upon receipt of the deposit."
+            data-ar="يصبح العرض ملزماً بمجرد استلام الدفعة الأولى.">
+            Le devis fait foi dès réception de l’acompte.
+          </p>
         </div>
 
         {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER ────────────────────────────

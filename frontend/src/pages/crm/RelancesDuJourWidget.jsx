@@ -139,7 +139,21 @@ export default function RelancesDuJourWidget() {
         ) : error ? (
           <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
         ) : etapes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune relance due. 🎉</p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Aucune relance due. 🎉</p>
+            {/* Revue Fable finale — ce panneau reste vide tant qu'AUCUN lead
+                n'a de plan initialisé (crmApi.initialiserRelance n'avait
+                aucun déclencheur avant ce correctif) : sans ce mot, « Aucune
+                relance due » se lit comme « tout est à jour » alors que ça
+                peut aussi vouloir dire « rien n'a jamais démarré ». Le vrai
+                déclencheur vit dans la fiche du lead (bouton « Initialiser
+                le plan de relance », section Suivi commercial) — ce widget
+                ne fait qu'orienter, jamais un second bouton d'action ici. */}
+            <p className="text-xs text-muted-foreground">
+              Le plan de relance d&apos;un lead ne démarre qu&apos;après avoir cliqué
+              « Initialiser le plan de relance » dans sa fiche (Suivi commercial).
+            </p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {etapes.map((etape) => (
