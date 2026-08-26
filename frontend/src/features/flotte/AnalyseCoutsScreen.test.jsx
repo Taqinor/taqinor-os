@@ -29,6 +29,14 @@ const rapportBudget = vi.fn(() => Promise.resolve({
 }))
 const coutsCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
 const budgetsCreate = vi.fn(() => Promise.resolve({ data: { id: 2 } }))
+// WIR236 — journal kilométrique agrégé par chantier (nouvel onglet, lazy
+// monté par Radix Tabs : ne s'appelle qu'à l'activation).
+const journal = vi.fn(() => Promise.resolve({
+  data: {
+    nb_trajets: 3, distance_totale_km: 120.5,
+    par_chantier: [{ installation_id: 5, chantier_reference: 'CHT-2026-0001', nb_trajets: 3, distance_km: 120.5 }],
+  },
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -38,6 +46,7 @@ vi.mock('../../api/flotteApi', () => ({
     actifs: { list: () => Promise.resolve({ data: [{ id: 1, label: '12345-A-6' }] }) },
     couts: { create: (...args) => coutsCreate(...args) },
     budgets: { create: (...args) => budgetsCreate(...args) },
+    trajetsChantier: { journal: (...args) => journal(...args) },
   },
 }))
 
@@ -115,5 +124,19 @@ describe('AnalyseCoutsScreen', () => {
     await waitFor(() => expect(budgetsCreate).toHaveBeenCalledWith(
       expect.objectContaining({ categorie: 'carburant', montant_budgete: 50000 }),
     ))
+  })
+
+  it('charge le journal kilométrique agrégé sur l’onglet dédié (WIR236)', async () => {
+    const user = userEvent.setup()
+    withProviders(<AnalyseCoutsScreen />)
+    await user.click(screen.getByRole('tab', { name: 'Journal kilométrique' }))
+
+    await waitFor(() => expect(journal).toHaveBeenCalled())
+    // fr-FR : `formatNumber` rend la décimale avec une virgule. « 120,5 km »
+    // apparaît à la fois dans le résumé ET dans la cellule Distance de la
+    // ligne (même valeur) — DataTable rend en plus la table desktop ET les
+    // cartes mobiles dans le DOM : plusieurs occurrences attendues.
+    expect((await screen.findAllByText(/120,5 km/)).length).toBeGreaterThan(0)
+    await waitFor(() => expect(screen.getAllByText('CHT-2026-0001').length).toBeGreaterThan(0))
   })
 })

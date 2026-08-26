@@ -199,3 +199,27 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 'rib': identite.get('rib', ''),
             },
         })
+
+
+class MesLivraisonsPortailViewSet(viewsets.ViewSet):
+    """WIR216 — « Mes livraisons » : la section portail que le lien de l'email
+    ``livraison_en_transit``/``livraison_livree`` (FG228,
+    ``apps.installations.livraison_client_notify``) prétendait déjà ouvrir —
+    elle n'existait pas (404 systématique).
+
+    Lecture SEULE via ``apps.installations.selectors.livraisons_client_portail``
+    (jamais un import de ``apps.installations.models`` — frontière cross-app) :
+    ce sélecteur est DÉJÀ le contrat client-safe testé par XSTK22 (jamais
+    ``cout_transport`` ni un prix d'achat). Distinct de l'action
+    ``LivraisonViewSet.portail`` (INTERNE, ``IsAnyRole`` + ``?client=`` du
+    corps de requête — jamais atteignable par un compte portail, cf.
+    ``IsAnyRole`` qui exclut explicitement ``portee != interne``) : ICI, le
+    client est dérivé du compte portail CONNECTÉ, jamais d'un paramètre."""
+
+    permission_classes = [IsPortalClientUser]
+
+    def list(self, request):
+        from apps.installations.selectors import livraisons_client_portail
+        company, client_id = _scope(request)
+        return Response(
+            {'results': livraisons_client_portail(company, client_id)})

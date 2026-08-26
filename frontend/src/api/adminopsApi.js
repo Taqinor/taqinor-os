@@ -36,6 +36,18 @@ const adminopsApi = {
   marquerAnnonceLue: (id) =>
     api.post(`/adminops/annonces/${id}/marquer-lu/`, null,
       { suppressErrorToast: true }),
+
+  // ── WIR267/N100(e) — Facturation de licence (registre fondateur,
+  // superuser uniquement). « Payée » est un pointage MANUEL — aucune
+  // passerelle de paiement. ────────────────────────────────────────────────
+  listFacturationLicences: (params) =>
+    api.get('/adminops/facturation-licences/', { params }),
+  marquerFactureLicencePayee: (id, data) =>
+    api.post(`/adminops/facturation-licences/${id}/marquer-payee/`, data),
+  exporterFacturationLicencesCsv: (params) =>
+    api.get('/adminops/facturation-licences/export-csv/', {
+      params, responseType: 'blob',
+    }),
 }
 
 export default adminopsApi
