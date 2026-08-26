@@ -5956,13 +5956,17 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         return None
 
     journal_auto = {}
-    with transaction.atomic():
-        produit_panneau, _societe = _panneau_pour_calepinage(
-            {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
-        plafond = plafond_physique_du_contour(
-            contour_client_lnglat(lead), produit_panneau)
+    # Lectures pures (catalogue + géométrie du tracé) — hors transaction.
+    produit_panneau, _societe = _panneau_pour_calepinage(
+        {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
+    plafond = plafond_physique_du_contour(
+        contour_client_lnglat(lead), produit_panneau)
 
-        try:
+    # Le ``try`` ENVELOPPE la transaction (et non l'inverse) : un refus de
+    # dimensionnement doit défaire ce que la construction aurait pu commencer,
+    # jamais laisser un devis à moitié écrit derrière lui.
+    try:
+        with transaction.atomic():
             devis = build_devis_auto(
                 lead=lead,
                 # Le devis est attribué au commercial qui possède le lead
@@ -5971,11 +5975,11 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
                 user=getattr(lead, 'owner', None),
                 company=company, plafond_toit=plafond,
                 journal_auto=journal_auto)
-        except AutoDevisError as exc:
-            logger.info(
-                'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
-                lead_id, exc.field or 'donnée manquante')
-            return None
+    except AutoDevisError as exc:
+        logger.info(
+            'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
+            lead_id, exc.field or 'donnée manquante')
+        return None
 
     # ── LA BOUCLE DE VÉRIFICATION DU COMMERCIAL ───────────────────────────
     # Le devis porte le lead : il apparaît donc DÉJÀ dans la liste des devis et
