@@ -625,6 +625,14 @@ REFUS = {
         ("Icône de chat", "MIROIR_JS")],
     "frontend/src/components/layout/Sidebar.odx6.test.jsx": [
         ("coquille redevient NEUTRE", "TEST")],
+    # WIR171 — le gating d'écran DÉCRIT la sémantique de la garde serveur
+    # (HasPermissionOrLegacy) : comportement, pas une liste de choix.
+    "frontend/src/components/layout/Sidebar.jsx": [
+        ("HasPermissionOrLegacy", "COMPORTEMENT")],
+    "frontend/src/router/moduleGating.wir171.test.mjs": [
+        ("MIROIR de la garde serveur", "TEST"),
+        ("CanViewAoRentabilite", "TEST"),
+        ("user.is_responsable", "TEST")],
     "frontend/src/lib/monitoring.test.mjs": [("Sentry frontend", "TEST")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],
