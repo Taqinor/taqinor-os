@@ -171,8 +171,14 @@ describe('PaieDeclarations — Avances/prêts (WIR197, cycle complet en UI)', ()
     wrap(<PaieDeclarations />)
     await userEvent.click(screen.getByRole('tab', { name: 'Avances & saisies' }))
 
-    const rowNonRetenue = (await screen.findByText('#10')).closest('tr')
-    const rowDejaRetenue = screen.getByText('#11').closest('tr')
+    // DataTable rend AUSSI des cartes mobiles (même texte, hors <table>) — on
+    // ne garde que le match dont le plus proche ancêtre est une <tr> (pattern
+    // établi : PaieParametres.test.jsx).
+    await screen.findAllByText('#10')
+    const rowNonRetenue = screen.getAllByText('#10')
+      .map((el) => el.closest('tr')).find(Boolean)
+    const rowDejaRetenue = screen.getAllByText('#11')
+      .map((el) => el.closest('tr')).find(Boolean)
 
     // Déjà retenue (montant_rembourse > 0) : aucune action de ligne exposée.
     expect(
@@ -200,7 +206,8 @@ describe('PaieDeclarations — Avances/prêts (WIR197, cycle complet en UI)', ()
     wrap(<PaieDeclarations />)
     await userEvent.click(screen.getByRole('tab', { name: 'Avances & saisies' }))
 
-    const row = (await screen.findByText('#20')).closest('tr')
+    await screen.findAllByText('#20')
+    const row = screen.getAllByText('#20').map((el) => el.closest('tr')).find(Boolean)
     await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
     await userEvent.click(await screen.findByText('Supprimer'))
 
