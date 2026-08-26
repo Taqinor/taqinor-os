@@ -486,7 +486,7 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         self.assertIsNotNone(self._creer(lead))
 
     def test_un_devis_saisi_a_la_main_bloque_lauto(self):
-        from apps.ventes.models import Client
+        from apps.crm.models import Client
         lead = self._lead(roof_outline=CONTOUR_LATLNG)
         # ``Devis.client`` est NOT NULL : le devis « saisi à la main » du
         # scénario porte donc son client, comme dans la vraie vie (rouge CI —
