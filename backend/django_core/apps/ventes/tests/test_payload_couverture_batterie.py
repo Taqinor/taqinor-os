@@ -30,9 +30,12 @@ from apps.stock.models import Produit
 from apps.ventes.etude_horaire import (
     BATTERY_ROUNDTRIP,
     COUVERTURE_PACKS_PLAFOND,
+    _mettre_a_l_echelle,
+    _pas_fins_ventilables,
     couverture_batterie_publique,
     jours_types_annee,
     simuler_batterie_jour,
+    simuler_batterie_pas_fins,
 )
 from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.public_views import (
@@ -51,6 +54,17 @@ CONTRAT = (Path(__file__).resolve().parent.parent / 'contract_samples'
 KWC = 8.5
 CONSO_12 = [900.0] * 12
 CAP_PACK = 4.6
+
+#: Une couche d'équipement DÉCLARÉE (piscine) — c'est elle qui fait basculer le
+#: moteur sur sa chronologie FINE (``pas_fins``) pour les mois d'été, dont
+#: juillet, l'un des quatre mois publics. Même forme que
+#: ``courbes_journalieres._equipements``.
+EQUIPEMENTS_PISCINE = {
+    'piscine': {
+        'kw': 1.1, 'heures': list(range(10, 18)), 'saisons': ['ete'],
+        'mode': 'redistribution', 'source': 'fixture_test',
+    },
+}
 
 
 def _bloc(nb_packs_max=4, **kwargs):
@@ -94,6 +108,63 @@ class VentilationHoraireTests(SimpleTestCase):
         self.assertEqual(r['restitue_24h'], [0.0] * 24)
         self.assertEqual(r['charge_24h'], [0.0] * 24)
 
+    def test_les_deux_series_sont_des_listes_distinctes(self):
+        """``a = b = [...]`` les ferait pointer sur la MÊME liste : une
+        modification en place de l'une bougerait l'autre en silence."""
+        r = simuler_batterie_jour(self.CONSO, self.PROD, 8.0)
+        self.assertIsNot(r['restitue_24h'], r['charge_24h'])
+
+    def test_total_publie_nul_vide_la_ventilation(self):
+        """RÉGRESSION (revue du 26/08/2026) — ``_mettre_a_l_echelle`` rendait
+        la série INCHANGÉE quand le total publié valait 0 : les barres
+        dessinaient une énergie que le compteur annonçait nulle."""
+        self.assertEqual(_mettre_a_l_echelle([2.0, 3.0], 5.0, 0.0), [0.0, 0.0])
+        self.assertEqual(_mettre_a_l_echelle([2.0, 3.0], 5.0, 2.5), [1.0, 1.5])
+        self.assertEqual(_mettre_a_l_echelle([2.0, 3.0], 5.0, 5.0), [2.0, 3.0])
+
+
+class VentilationPasFinsTests(SimpleTestCase):
+    """La MÊME promesse sur la chronologie FINE : la ventilation horaire des
+    pas de cinq minutes somme exactement au total publié."""
+
+    def _pas(self):
+        """Un jour à pas fins : heures plates + une heure sous-découpée."""
+        pas = []
+        for heure in range(24):
+            conso_h = 0.5 if heure < 6 else (1.0 if heure < 18 else 2.5)
+            prod_h = 2.0 if 6 <= heure < 14 else 0.0
+            if heure == 20:  # une heure PORTEUSE, découpée en douze pas
+                for _ in range(12):
+                    pas.append({'heure': heure, 'duree_h': 1 / 12,
+                                'conso_kwh': conso_h / 12, 'prod_kwh': 0.0,
+                                'plafond_decharge_kw': conso_h})
+                continue
+            pas.append({'heure': heure, 'duree_h': 1.0,
+                        'conso_kwh': conso_h, 'prod_kwh': prod_h,
+                        'plafond_decharge_kw': max(0.0, conso_h - prod_h)})
+        return pas
+
+    def test_les_24_heures_somment_au_total_restitue(self):
+        r = simuler_batterie_pas_fins(self._pas(), 8.0)
+        self.assertAlmostEqual(sum(r['restitue_24h']), r['restitue_kwh'],
+                               places=6)
+        self.assertAlmostEqual(sum(r['charge_24h']), r['charge_kwh'], places=6)
+
+    def test_un_pas_sans_heure_est_detecte_par_le_garde_fou(self):
+        """LE DANGER SILENCIEUX : un pas sans clé ``heure`` compte dans les
+        TOTAUX mais dans AUCUNE barre — la bande batterie sortirait trop
+        courte et l'écart serait imputé au RÉSEAU. ``_pas_fins_ventilables``
+        le refuse en amont, et ``couverture_batterie_publique`` omet alors le
+        bloc entier plutôt que de dessiner faux."""
+        pas = self._pas()
+        self.assertTrue(_pas_fins_ventilables(pas))
+        pas[3] = dict(pas[3])
+        pas[3].pop('heure')
+        self.assertFalse(_pas_fins_ventilables(pas))
+        # …et la preuve du danger : sans le garde-fou, la somme décroche.
+        r = simuler_batterie_pas_fins(pas, 8.0)
+        self.assertLessEqual(sum(r['restitue_24h']), r['restitue_kwh'] + 1e-9)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. ``couverture_batterie_publique`` — pur, aucune BD
@@ -101,13 +172,16 @@ class VentilationHoraireTests(SimpleTestCase):
 
 class CouvertureBatteriePubliqueTests(SimpleTestCase):
 
-    def test_chaque_heure_somme_exactement_a_la_consommation(self):
-        """LA garde centrale : direct + batterie + réseau == consommation de
-        l'heure, sur chaque jour type et à chaque cran du curseur. La tolérance
-        est celle de l'arrondi publié (3 décimales × 3 bandes)."""
-        bloc = _bloc()
+    def _verifier_conservation(self, bloc, equipements=None):
+        """direct + batterie + réseau == consommation, heure par heure.
+
+        TOLÉRANCE EXACTE, PAS APPROXIMATIVE : chaque bande est publiée arrondie
+        à 3 décimales, elles sont trois, donc l'écart ne peut PAS dépasser
+        1,5 mWh. ``places=3`` (< 0,5 mWh) serait plus serré que l'arrondi
+        lui-même et donc voué à clignoter."""
         jours, _av, _src = jours_types_annee(
-            kwc=KWC, conso_kwh_mensuelles=CONSO_12, ville='Casablanca')
+            kwc=KWC, conso_kwh_mensuelles=CONSO_12, ville='Casablanca',
+            equipements=equipements)
         conso_par_mois = {j['mois']: j['conso_24h'] for j in jours}
         for pas in bloc['pas']:
             for mois, courbes in pas['jours_types'].items():
@@ -116,7 +190,46 @@ class CouvertureBatteriePubliqueTests(SimpleTestCase):
                     somme = (courbes['direct_kwh'][heure]
                              + courbes['batterie_kwh'][heure]
                              + courbes['reseau_kwh'][heure])
-                    self.assertAlmostEqual(somme, conso[heure], places=2)
+                    self.assertAlmostEqual(somme, conso[heure], delta=0.0015)
+
+    def test_chaque_heure_somme_exactement_a_la_consommation(self):
+        """LA garde centrale, sur le chemin HORAIRE (aucun équipement
+        déclaré ⇒ pas de chronologie fine)."""
+        self._verifier_conservation(_bloc())
+
+    def test_conservation_sur_le_chemin_A_PAS_FINS(self):
+        """LA MÊME garde sur le chemin que le moteur emprunte VRAIMENT dès
+        qu'un équipement est déclaré : la chronologie fine de cinq minutes,
+        regroupée par heure. C'est le chemin le plus exposé (les rafales sont
+        posées et rebornées) et il n'était couvert par aucun test — la revue
+        du 26/08/2026 l'a vérifié à la main, ce test le fait à chaque CI."""
+        jours, _av, _src = jours_types_annee(
+            kwc=KWC, conso_kwh_mensuelles=CONSO_12, ville='Casablanca',
+            equipements=EQUIPEMENTS_PISCINE)
+        self.assertTrue(any(j.get('pas_fins') for j in jours),
+                        'la fixture doit produire une chronologie fine')
+        self.assertTrue(
+            any(j['mois'] in (1, 4, 7, 11) and j.get('pas_fins')
+                for j in jours),
+            'au moins un mois PUBLIC doit passer par les pas fins')
+        self._verifier_conservation(_bloc(equipements=EQUIPEMENTS_PISCINE),
+                                    equipements=EQUIPEMENTS_PISCINE)
+
+    def test_pas_fins_non_ventilables_le_bloc_est_omis(self):
+        """Discipline Z2 — une chronologie fine dont un pas ne dit pas son
+        heure rendrait toutes les bandes fausses : on omet le bloc entier."""
+        from unittest import mock
+        jours, _av, _src = jours_types_annee(
+            kwc=KWC, conso_kwh_mensuelles=CONSO_12, ville='Casablanca',
+            equipements=EQUIPEMENTS_PISCINE)
+        for jour in jours:
+            if jour.get('pas_fins'):
+                jour['pas_fins'] = [dict(p) for p in jour['pas_fins']]
+                jour['pas_fins'][0].pop('heure', None)
+                break
+        with mock.patch('apps.ventes.etude_horaire.jours_types_annee',
+                        return_value=(jours, [], {})):
+            self.assertIsNone(_bloc(equipements=EQUIPEMENTS_PISCINE))
 
     def test_les_quatre_mois_publics_et_24_valeurs_par_bande(self):
         bloc = _bloc()
@@ -126,6 +239,37 @@ class CouvertureBatteriePubliqueTests(SimpleTestCase):
                 for bande in ('direct_kwh', 'batterie_kwh', 'reseau_kwh'):
                     self.assertEqual(len(courbes[bande]), 24)
                     self.assertTrue(all(v >= 0 for v in courbes[bande]))
+
+    def test_chaque_jour_type_porte_SON_taux_de_couverture(self):
+        """La ligne de chiffres qui entoure le graphe parle du JOUR dessiné :
+        elle a donc besoin du taux DE CE JOUR-LÀ, servi. Sans lui, la page
+        devrait le calculer elle-même, ou afficher un taux ANNUEL à côté de
+        trois kWh JOURNALIERS — deux grandeurs différentes côte à côte."""
+        for pas in _bloc()['pas']:
+            for courbes in pas['jours_types'].values():
+                pct = courbes['couverture_pct']
+                self.assertIsInstance(pct, float)
+                self.assertGreaterEqual(pct, 0.0)
+                self.assertLessEqual(pct, 100.0 + 1e-9)
+
+    def test_le_taux_du_jour_est_bien_celui_de_ses_propres_bandes(self):
+        """Il DOIT tomber sur (direct + batterie) ÷ consommation de CE jour :
+        un taux servi qui ne correspondrait pas au dessin d'à côté serait
+        exactement la contradiction que ce bloc existe pour empêcher."""
+        for pas in _bloc()['pas']:
+            for courbes in pas['jours_types'].values():
+                direct = sum(courbes['direct_kwh'])
+                batterie = sum(courbes['batterie_kwh'])
+                conso = direct + batterie + sum(courbes['reseau_kwh'])
+                attendu = 100.0 * (direct + batterie) / conso
+                self.assertAlmostEqual(courbes['couverture_pct'], attendu,
+                                       delta=0.15)
+
+    def test_le_taux_du_jour_monte_avec_le_nombre_de_batteries(self):
+        for mois in ('1', '4', '7', '11'):
+            pcts = [p['jours_types'][mois]['couverture_pct']
+                    for p in _bloc()['pas']]
+            self.assertEqual(pcts, sorted(pcts))
 
     def test_la_couverture_monte_avec_le_nombre_de_batteries(self):
         """Une batterie de plus ne peut pas couvrir MOINS : si ce test tombe,
@@ -419,6 +563,24 @@ class GardesPayloadTests(_PayloadBase):
         la clé est absente du payload (jamais un module inventé)."""
         devis = self._devis('cb-sansbat', avec_batterie=False, scenario=None)
         self.assertNotIn('couverture_batterie', self._payload(devis))
+
+    def test_section_jour_type_decochee_aucune_cle(self):
+        """L-SECT — le curseur VIT dans le graphe « Journée type & courbes » :
+        décocher cette section doit retirer les DEUX ensemble, jamais laisser
+        un curseur orphelin (ou, pire, une couverture servie pour un graphe
+        qui n'est pas là)."""
+        devis = self._devis('cb-section')
+        payload = self._payload(devis, sections={'jour_type': False})
+        self.assertNotIn('couverture_batterie', payload)
+        self.assertNotIn('courbes_journalieres', payload)
+        # Le reste de la page part normalement.
+        self.assertIn('quote', payload)
+
+    def test_section_jour_type_cochee_les_deux_partent(self):
+        payload = self._payload(self._devis('cb-section-on'),
+                                sections={'jour_type': True})
+        self.assertIn('couverture_batterie', payload)
+        self.assertIn('courbes_journalieres', payload)
 
     def test_une_erreur_moteur_ne_fait_pas_tomber_la_page(self):
         from unittest import mock
