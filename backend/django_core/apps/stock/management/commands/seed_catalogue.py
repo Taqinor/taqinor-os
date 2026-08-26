@@ -70,12 +70,19 @@ CATALOGUE = [
     # doublon), que la migration de renommage soit passée ou non.
     # Prix fondateur 25/08/2026 : 17 000 → 14 000 TTC (migration stock 0131
     # recale les bases existantes, gardée par l'ancienne valeur).
-    # BATHOMO (fondateur 26/08/2026) — BAT-DEY-10 RETIRÉ du stock de
-    # production (composition mélangée 5+10 kWh interdite électriquement,
-    # cf. ``services.composition_residentielle``) : la ligne RESTE ici pour
-    # que prix/fiche/garantie ne bougent pas sur une base qui la porte déjà
-    # (appariement par SKU), mais elle est ARCHIVÉE en fin de run (voir
-    # ``ARTEFACTS_BATTERIE_SKUS`` plus bas) — jamais active au chiffrage.
+    # BATHOMO (fondateur 26/08/2026, RECALÉ) — le fondateur n'a PAS archivé le
+    # Dyness 10 kWh : il a mis sa QUANTITÉ DE STOCK à 0 via un mouvement de
+    # stock (le vrai bug était que RIEN ne consultait le stock au chiffrage —
+    # corrigé côté composition, cf. ``services.composition_residentielle`` /
+    # ``_batterie_en_stock``, jamais ici). Le seeder n'a donc RIEN de
+    # spécifique à faire pour ce SKU : une base qui le porte déjà est
+    # retrouvée par SKU et SAUTÉE comme toute autre ligne (prix/quantité
+    # jamais touchés) ; une société NEUVE le seed comme tout le catalogue,
+    # stock normal inclus — quand le fondateur réapprovisionne sa quantité
+    # réelle, la composition recommence à le proposer AUTOMATIQUEMENT, sans
+    # redéploiement ni intervention côté catalogue. (Un run antérieur avait
+    # ARCHIVÉ ce SKU par erreur — RETIRÉ par ce même correctif, le seeder ne
+    # force plus jamais son statut.)
     ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 14000, 13000, 500, 5),
     ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
@@ -249,21 +256,21 @@ ARTEFACTS_ONDULEUR_SKUS = [
     'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
 ]
 
-# BATHOMO (fondateur 26/08/2026) — le Dyness 10 kWh RETIRÉ du stock de
-# production : le simulateur composait des banques MÉLANGÉES (un module 5 kWh
-# + un module 10 kWh pour viser 15 kWh), un mélange électriquement interdit
-# (une banque ne peut être qu'un empilage de modules IDENTIQUES). La correction
-# racine vit dans ``apps.ventes.services.composition_residentielle`` (banques
-# désormais toujours homogènes, un seul calibre par palier) ; côté catalogue,
-# MÊME patron que ``ARTEFACTS_ONDULEUR_SKUS`` ci-dessus : le SKU reste dans
-# ``CATALOGUE`` (prix/fiche/garantie inchangés — une base de production qui le
-# porte déjà n'est ni modifiée ni recréée, matché par SKU d'abord) mais sort
-# du catalogue de composition en ARCHIVÉ, jamais supprimé — un futur run du
-# seeder (nouvelle société, redéploiement) ne peut donc plus le faire
-# réapparaître ACTIF au chiffrage automatique.
-ARTEFACTS_BATTERIE_SKUS = [
-    'BAT-DEY-10',
-]
+# BATHOMO (fondateur 26/08/2026, RECALÉ) — Dyness 10 kWh : PAS d'archivage
+# forcé. Un premier passage avait traité ce SKU comme les ARTEFACTS ci-dessus
+# (archivage forcé en fin de run), sur l'hypothèse que le fondateur l'avait
+# retiré du catalogue. FAIT CORRIGÉ : il a mis sa QUANTITÉ DE STOCK à 0 (un
+# mouvement de stock, pas un archivage) — « when it comes back, use it for
+# bigger installations » : quand il réapprovisionne, le module doit redevenir
+# utilisable AUTOMATIQUEMENT, sans repasser par le seeder. Un archivage forcé
+# ici romprait exactement cette promesse (un produit archivé ne redevient
+# jamais actif tout seul). La garde qui EXCLUT ce module tant que son stock
+# est à 0 vit désormais côté composition (``apps.ventes.services.
+# composition_residentielle`` / ``_batterie_en_stock`` — la racine du mélange
+# 5+10 kWh électriquement interdit qui a motivé ce retrait est corrigée là,
+# banques toujours homogènes) — JAMAIS ici, où seul l'idiome ARTEFACTS/
+# PLACEHOLDER (archivage définitif, produits qui ne reviendront jamais) reste
+# légitime.
 
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
 # Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
@@ -1671,14 +1678,15 @@ class Command(BaseCommand):
         # PVOND (2026-08-18) — MÊME patron pour les deux ARTEFACTS onduleur
         # Huawei mono 10/12 kW (``ARTEFACTS_ONDULEUR_SKUS``) : archivés, donc
         # hors catalogue de composition, jamais supprimés.
-        # BATHOMO (2026-08-26) — MÊME patron pour le Dyness 10 kWh retiré du
-        # stock (``ARTEFACTS_BATTERIE_SKUS``) : archivé, donc hors catalogue de
-        # composition (``catalogue_de_la_societe`` filtre ``is_archived=False``),
-        # jamais supprimé.
+        # BATHOMO (2026-08-26, RECALÉ) — le Dyness 10 kWh (``BAT-DEY-10``)
+        # N'EST PLUS dans cette liste : ce n'est PAS un artefact qui ne
+        # reviendra jamais (le fondateur l'a seulement mis à 0 en stock, un
+        # mouvement, pas un archivage — « when it comes back, use it for
+        # bigger installations »). Sa garde d'exclusion vit côté composition
+        # (stock-gating batterie, ``apps.ventes.services``), jamais ici.
         archived_count = Produit.objects.filter(
             company=company,
-            sku__in=(PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS
-                     + ARTEFACTS_BATTERIE_SKUS),
+            sku__in=(PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS),
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs

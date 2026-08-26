@@ -266,46 +266,55 @@ class TestSeedCatalogue(TestCase):
         self.assertFalse(Produit.objects.filter(
             company=self.company, sku='OND-DEY-20K-LV').exists())
 
-    def test_bathomo_bat_dey_10_archive_sur_base_neuve(self):
-        """BATHOMO (fondateur 26/08/2026) — le Dyness 10 kWh a été retiré du
-        stock de production : le simulateur composait des banques MÉLANGÉES
-        (un module 5 kWh + un module 10 kWh pour viser 15 kWh), interdit
-        électriquement (cf. ``apps.ventes.services.composition_residentielle``,
-        désormais homogène). Sur une société NEUVE, le seeder crée toujours la
-        ligne (prix/fiche/garantie inchangés — appariement par SKU, comme
-        ``ARTEFACTS_ONDULEUR_SKUS``) mais l'ARCHIVE dans le MÊME run — jamais
-        active au chiffrage automatique."""
+    def test_bathomo_bat_dey_10_jamais_archive_par_le_seeder(self):
+        """BATHOMO (fondateur 26/08/2026, RECALÉ) — le fondateur n'a PAS
+        archivé le Dyness 10 kWh : il a mis sa QUANTITÉ DE STOCK à 0 (un
+        mouvement de stock). « When it comes back, use it for bigger
+        installations » — un archivage forcé romprait cette promesse (un
+        produit archivé ne redevient jamais actif tout seul). Sur une société
+        NEUVE, le seeder le crée donc comme n'importe quelle autre ligne du
+        catalogue : ACTIF, stock normal — la garde qui l'exclut tant que son
+        stock réel est à 0 vit côté composition (BATHOMO stock-gating,
+        ``apps.ventes.services``), jamais ici."""
         seed(self.company)
         bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
-        self.assertTrue(bat10.is_archived)
+        self.assertFalse(bat10.is_archived)
         self.assertEqual(bat10.prix_vente, Decimal('25000.00'))  # 30 000 TTC
+        self.assertGreater(bat10.quantite_stock, 0)
 
-    def test_bathomo_bat_dey_10_deja_actif_est_archive_pas_supprime(self):
-        """Une base où BAT-DEY-10 était encore ACTIF (avant ce correctif, ou
-        remis actif par erreur) se voit archivée au prochain redéploiement —
-        jamais supprimée, prix et quantité intacts (règle seeder additive)."""
+    def test_bathomo_bat_dey_10_stock_a_zero_jamais_touche_par_le_seeder(self):
+        """LA GARANTIE QUE CE CORRECTIF NE DOIT PAS PERDRE : un run du seeder
+        sur une base où le fondateur a DÉJÀ mis ``BAT-DEY-10`` à 0 en stock
+        (son geste réel, via un mouvement) ne touche NI le prix NI la
+        quantité — et ne le force PAS non plus à ``is_archived``. Le seeder
+        est additif : une ligne déjà présente (matchée par SKU) est SAUTÉE,
+        point final."""
         seed(self.company)
         bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
-        bat10.is_archived = False
-        bat10.save(update_fields=['is_archived'])
-        prix_avant, qte_avant = bat10.prix_vente, bat10.quantite_stock
+        bat10.quantite_stock = 0
+        bat10.save(update_fields=['quantite_stock'])
+        prix_avant = bat10.prix_vente
 
         seed(self.company)  # redéploiement (scripts/deploy-prod.ps1)
 
         bat10.refresh_from_db()
-        self.assertTrue(bat10.is_archived)
+        self.assertEqual(bat10.quantite_stock, 0)
         self.assertEqual(bat10.prix_vente, prix_avant)
-        self.assertEqual(bat10.quantite_stock, qte_avant)
+        self.assertFalse(bat10.is_archived)
 
-    def test_bathomo_bat_dey_10_absent_du_catalogue_de_composition(self):
-        """Archivé ⇒ exclu de ``catalogue_de_la_societe`` (filtre
-        ``is_archived=False``) : le chiffrage automatique ne peut plus jamais
-        composer une banque avec ce module, tandis que le 5 kWh reste au
-        vivier."""
+    def test_bathomo_bat_dey_10_reste_dans_le_catalogue_de_composition(self):
+        """PAS archivé ⇒ toujours présent dans ``catalogue_de_la_societe``
+        (filtre ``is_archived=False`` seulement) même à stock 0 — c'est
+        volontaire : l'exclusion « pas de stock » est le travail du
+        stock-gating de la composition batterie, jamais de la visibilité
+        catalogue générale (d'autres rôles, panneaux/onduleurs, peuvent
+        légitimement rester composables en stock non suivi)."""
         from apps.ventes.services import catalogue_de_la_societe
         seed(self.company)
+        Produit.objects.filter(
+            company=self.company, sku='BAT-DEY-10').update(quantite_stock=0)
         skus = {p.sku for p in catalogue_de_la_societe(self.company)}
-        self.assertNotIn('BAT-DEY-10', skus)
+        self.assertIn('BAT-DEY-10', skus)
         self.assertIn('BAT-DEY-5', skus)
 
     def test_pvond_completer_les_specs_ne_resynchronise_aucun_devis(self):
