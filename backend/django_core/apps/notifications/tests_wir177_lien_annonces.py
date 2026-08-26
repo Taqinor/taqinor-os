@@ -15,9 +15,17 @@ Ce module PROUVE :
     `/annonces/<pk>`) ;
   * relance de lecture → EXACTEMENT le même lien ;
   * l'accusé de lecture par l'API est IDEMPOTENT (second clic : 200, toujours
-    une seule ligne) et apparaît bien au rapport de conformité.
+    une seule ligne) et apparaît bien au rapport de conformité ;
+  * PACT10/PACT13 — la réponse RÉELLE de `GET /annonces/?active=1` a
+    exactement la forme de l'exemple COMMITTÉ
+    (`contract_samples/annonces_actives.json`), celui-là même
+    qu'`AnnoncesPage.test.jsx` importe au lieu d'écrire son propre mock. Sans
+    cette moitié-ci, l'exemple pourrirait dans son coin — ce que le README de
+    `contract_samples/` désigne comme pire que pas d'exemple du tout.
 """
+import json
 from datetime import timedelta
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -29,6 +37,10 @@ from authentication.models import Company
 from .models import Annonce, AnnonceLecture, EventType, Notification
 
 User = get_user_model()
+
+ECHANTILLON = (Path(__file__).resolve().parent
+               / 'contract_samples' / 'annonces_actives.json')
+ANNONCES_URL = '/api/django/notifications/annonces/'
 
 
 def _company(nom='WIR177 Co'):
@@ -110,3 +122,85 @@ class AccuseLectureIdempotentTests(TestCase):
                          [self.user.pk])
         self.assertEqual(rapport['manquants'], [])
         self.assertEqual(rapport['total_cibles'], 1)
+
+
+class ContratAnnoncesActivesTests(TestCase):
+    """PACT10/PACT13 — l'exemple COMMITTÉ est la forme RÉELLE du serveur.
+
+    `AnnoncesPage.test.jsx` importe ce même fichier (`exempleContrat(
+    'notifications', 'annonces_actives')`) au lieu d'écrire son mock : si le
+    serveur change de forme, l'exemple doit changer et le test frontend casse
+    tout seul, sans réunion ni discipline humaine.
+    """
+
+    ENVELOPPE = ['count', 'next', 'previous', 'results']
+
+    def setUp(self):
+        self.company = _company('WIR177 Contrat')
+        self.user = _user(self.company, 'wir177-contrat', 'responsable')
+        self.contrat = json.loads(ECHANTILLON.read_text(encoding='utf-8'))
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def _reponse_active(self):
+        resp = self.api.get(ANNONCES_URL, {'active': 1})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return resp
+
+    def test_l_exemple_annonce_l_endpoint_reel(self):
+        self.assertEqual(self.contrat['endpoint'],
+                         f'GET {ANNONCES_URL}')
+
+    def test_l_enveloppe_paginee_est_celle_du_serveur(self):
+        """`count/next/previous/results` — l'écran lit `results`."""
+        resp = self._reponse_active()
+        self.assertEqual(sorted(resp.data), self.ENVELOPPE)
+        for variante in ('exemple', 'exemple_vide'):
+            self.assertEqual(sorted(self.contrat[variante]), self.ENVELOPPE,
+                             variante)
+
+    def test_les_cles_d_une_annonce_sont_celles_de_l_exemple(self):
+        """Aucune clé inventée, aucune clé omise : la comparaison est faite sur
+        une annonce RÉELLEMENT sérialisée par le serveur."""
+        Annonce.objects.create(
+            company=self.company, titre='Contrat',
+            corps='Corps de contrôle.', lecture_obligatoire=True,
+            publiee=True, date_publication_effective=timezone.now())
+        resp = self._reponse_active()
+        self.assertEqual(resp.data['count'], 1)
+        reelle = resp.data['results'][0]
+        for ligne in self.contrat['exemple']['results']:
+            self.assertEqual(sorted(ligne), sorted(reelle))
+
+    def test_les_champs_lus_par_l_ecran_existent_vraiment(self):
+        """Les 7 clés que `AnnoncesPage.jsx` lit — une seule absente et l'écran
+        affiche un vide silencieux (le défaut du 03/08/2026)."""
+        Annonce.objects.create(
+            company=self.company, titre='Contrat 2', corps='C',
+            publiee=True, date_publication_effective=timezone.now())
+        reelle = self._reponse_active().data['results'][0]
+        for champ in ('id', 'titre', 'corps', 'auteur_username', 'epinglee',
+                      'lecture_obligatoire', 'date_publication_effective'):
+            with self.subTest(champ=champ):
+                self.assertIn(champ, reelle)
+
+    def test_active_1_ecarte_les_non_publiees_et_les_expirees(self):
+        """Ce que le `pourquoi` de l'exemple annonce : `?active=1` ne sert que
+        des annonces publiées ET non expirées."""
+        publiee = Annonce.objects.create(
+            company=self.company, titre='Visible', publiee=True,
+            date_publication_effective=timezone.now())
+        Annonce.objects.create(
+            company=self.company, titre='Brouillon', publiee=False)
+        Annonce.objects.create(
+            company=self.company, titre='Expirée', publiee=True,
+            date_publication_effective=timezone.now() - timedelta(days=30),
+            date_expiration=timezone.now() - timedelta(days=1))
+        ids = [r['id'] for r in self._reponse_active().data['results']]
+        self.assertEqual(ids, [publiee.pk])
+
+    def test_l_exemple_vide_est_un_AUTRE_ETAT_pas_une_autre_forme(self):
+        resp = self._reponse_active()
+        self.assertEqual(resp.data['count'], 0)
+        self.assertEqual(list(resp.data['results']), [])
+        self.assertEqual(self.contrat['exemple_vide']['results'], [])
