@@ -28,6 +28,8 @@ vi.mock('../../api/stockApi', () => ({
     rouvrirBcf: vi.fn(),
     dupliquerBcf: vi.fn(),
     facturerBcf: vi.fn(),
+    updateBonCommandeFournisseur: vi.fn(),
+    reviserBcf: vi.fn(),
   },
 }))
 
@@ -336,5 +338,71 @@ describe('ZPUR1 — facturer directement (politique sur commande)', () => {
     fireEvent.click(btn)
     await waitFor(() => expect(stockApi.facturerBcf).toHaveBeenCalledWith(42))
     expect(await screen.findByText(/FF-2026-0001/)).toBeInTheDocument()
+  })
+})
+
+// ── WIR191 — réviser un BCF envoyé/reçu (XPUR18), Note ne perd plus la saisie ─
+describe('WIR191 — réviser un BCF déjà envoyé/reçu', () => {
+  const bcfEnvoye = {
+    id: 77, reference: 'BCF-2026-07-0077', statut: 'envoye', fournisseur: 1,
+    date_commande: '2026-07-01', date_livraison_prevue: '2026-07-15', note: 'note initiale',
+    lignes: [{ id: 501, produit: 7, produit_nom: 'Module test', quantite: 2, prix_achat_unitaire: 100, quantite_recue: 0 }],
+  }
+
+  it('« Enregistrer »/« Envoyer au fournisseur » sont absents à l\'état envoyé (seul « Réviser » est proposé)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.getByRole('button', { name: 'Réviser' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Envoyer au fournisseur/ })).toBeNull()
+  })
+
+  it('la Note est verrouillée hors mode Réviser (elle ne peut plus perdre une saisie sans bouton pour l\'enregistrer)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.getByLabelText('Note')).toBeDisabled()
+  })
+
+  it('« Réviser » déverrouille lignes/dates/note et enregistre via reviserBcf — jamais updateBonCommandeFournisseur', async () => {
+    stockApi.reviserBcf.mockResolvedValue({ data: { ...bcfEnvoye, revision: 1, reapprobation_requise: false } })
+    const onSaved = vi.fn()
+    renderDetail({ bcf: bcfEnvoye, onSaved })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réviser' }))
+    const note = screen.getByLabelText('Note')
+    expect(note).toBeEnabled()
+    fireEvent.change(note, { target: { value: 'note révisée' } })
+    fireEvent.change(screen.getByDisplayValue('2'), { target: { value: '5' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la révision' }))
+    await waitFor(() => expect(stockApi.reviserBcf).toHaveBeenCalledWith(77, expect.objectContaining({
+      note: 'note révisée',
+      lignes: [expect.objectContaining({ id: 501, quantite: 5 })],
+    })))
+    expect(stockApi.updateBonCommandeFournisseur).not.toHaveBeenCalled()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(await screen.findByText('Révision enregistrée.')).toBeInTheDocument()
+  })
+
+  it('affiche le drapeau reapprobation_requise renvoyé par le serveur', async () => {
+    stockApi.reviserBcf.mockResolvedValue({ data: { ...bcfEnvoye, reapprobation_requise: true } })
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: 'Réviser' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la révision' }))
+    expect(await screen.findByText(/une nouvelle approbation est requise/)).toBeInTheDocument()
+  })
+
+  it('« Annuler la révision » restaure les valeurs d\'origine sans appeler le serveur', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: 'Réviser' }))
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'brouillon perdu' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler la révision' }))
+    expect(screen.getByLabelText('Note')).toHaveValue('note initiale')
+    expect(screen.getByLabelText('Note')).toBeDisabled()
+    expect(stockApi.reviserBcf).not.toHaveBeenCalled()
+  })
+
+  it('un BCF en brouillon ne propose pas « Réviser » (seul Enregistrer standard s\'applique)', () => {
+    renderDetail({ bcf: { ...bcfEnvoye, statut: 'brouillon' } })
+    expect(screen.queryByRole('button', { name: 'Réviser' })).toBeNull()
   })
 })

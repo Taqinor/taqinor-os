@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
+  Pencil,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
@@ -224,9 +225,19 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
+  const [dateLivraisonPrevue, setDateLivraisonPrevue] = useState(bcf?.date_livraison_prevue ?? '')
   const [note, setNote] = useState(bcf?.note ?? '')
   const [lignes, setLignes] = useState(
     (bcf?.lignes ?? []).map((l) => ({ ...l })))
+  // WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/reçu :
+  // le mode « Réviser » déverrouille lignes/dates/note SANS jamais passer par
+  // le save()/update() standard (le backend le refuse à ces statuts).
+  const revisable = !isNew && (statut === 'envoye' || statut === 'recu')
+  const [revising, setRevising] = useState(false)
+  // Édition des lignes : `editableLignes` (isNew/brouillon) reste le SEUL
+  // déclencheur des boutons Enregistrer/Envoyer standard ; `lignesEditable`
+  // ajoute la révision pour la SAISIE (quantité/prix/note/dates) uniquement.
+  const lignesEditable = editableLignes || revising
   // ZPUR8 — « Other Information » : acheteur (défaut = créateur côté serveur),
   // référence fournisseur, note de bas de page, incoterm reporté.
   const [acheteur, setAcheteur] = useState(bcf?.acheteur ?? '')
@@ -352,6 +363,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
+    date_livraison_prevue: dateLivraisonPrevue || null,
     note: note || null,
     // ZPUR8 — « Other Information » : acheteur, réf. fournisseur, note de
     // bas de page + report incoterm (édité au document, jamais recalculé).
@@ -501,6 +513,46 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // WIR191/XPUR18 — mode « Réviser » : déverrouille dates/note/lignes (quantité,
+  // prix, désignation d'une ligne libre) SANS jamais passer par le save()
+  // standard (le backend refuse un PUT/PATCH à ces statuts). N'envoie que les
+  // lignes déjà enregistrées (`l.id`) — reviser ne crée/supprime aucune ligne.
+  const doReviser = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.reviserBcf(bcf.id, {
+        date_commande: dateCommande || null,
+        date_livraison_prevue: dateLivraisonPrevue || null,
+        note: note ?? '',
+        lignes: lignes.filter((l) => l.id).map((l) => ({
+          id: l.id,
+          quantite: Number(l.quantite) || 0,
+          prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+            ? 0 : Number(l.prix_achat_unitaire),
+          designation: l.designation ?? '',
+        })),
+      })
+      setInfo(r.data?.reapprobation_requise
+        ? 'Révision enregistrée — une nouvelle approbation est requise (montant en hausse).'
+        : 'Révision enregistrée.')
+      setRevising(false)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La révision a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  // Abandonne la révision en cours : les saisies reviennent à la version
+  // servie par le serveur (jamais un update() standard à ces statuts).
+  const cancelRevising = () => {
+    setRevising(false)
+    setDateCommande(bcf?.date_commande ?? '')
+    setDateLivraisonPrevue(bcf?.date_livraison_prevue ?? '')
+    setNote(bcf?.note ?? '')
+    setLignes((bcf?.lignes ?? []).map((l) => ({ ...l })))
+    setError(null)
+  }
+
   // ZPUR4 — clone ce BCF en un nouveau BROUILLON (quantités reçues à zéro).
   const dupliquer = async () => {
     setBusy(true); setError(null)
@@ -593,8 +645,16 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>
             <Input id="bcf-date" type="date" value={dateCommande ?? ''}
-                   disabled={!editableLignes}
+                   disabled={!lignesEditable}
                    onChange={(e) => setDateCommande(e.target.value)} />
+          </div>
+          {/* WIR191/XPUR18 — date de livraison DEMANDÉE, révisable ; distincte
+              de la date CONFIRMÉE par le fournisseur (accusé, jamais écrasée). */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-date-livraison">Date de livraison prévue</label>
+            <Input id="bcf-date-livraison" type="date" value={dateLivraisonPrevue ?? ''}
+                   disabled={!lignesEditable}
+                   onChange={(e) => setDateLivraisonPrevue(e.target.value)} />
           </div>
         </div>
 
@@ -718,6 +778,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                               )}
                             </div>
                           )
+                        ) : revising && (l.sans_stock || (!l.produit && l.designation != null)) ? (
+                          // WIR191 — reviser() ne touche jamais au produit d'une
+                          // ligne (seule quantité/prix/désignation sont suivis) :
+                          // la désignation d'une ligne LIBRE reste éditable, le
+                          // picker produit d'une ligne catalogue reste figé.
+                          <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
+                                 value={l.designation ?? ''}
+                                 onChange={(e) => setLigne(idx, { designation: e.target.value })} />
                         ) : (
                           <span>
                             {l.produit_nom ?? l.designation ?? '—'}
@@ -729,14 +797,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
+                        {lignesEditable ? (
                           <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
                                  value={l.quantite ?? ''}
                                  onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
                         ) : l.quantite}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
+                        {lignesEditable ? (
                           <>
                             <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
                                    value={l.prix_achat_unitaire ?? ''}
@@ -782,8 +850,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="bcf-note">Note</label>
+          {/* WIR191 — la Note n'est plus « éditable sans bouton » à l'état
+              envoyé : elle suit exactement `lignesEditable` (brouillon/neuf,
+              ou mode Réviser explicite) — sinon aucune saisie ne pouvait être
+              enregistrée (le save() standard est refusé par le serveur). */}
           <Textarea id="bcf-note" rows={2} value={note ?? ''}
-                    disabled={!editableLignes && statut !== 'envoye'}
+                    disabled={!lignesEditable}
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
@@ -821,6 +893,22 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             <Button type="button" variant="outline" loading={busy} onClick={dupliquer}>
               <Copy /> Dupliquer
             </Button>
+          )}
+          {/* WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/
+              reçu. Le bouton Enregistrer/Envoyer standard n'apparaît jamais à
+              ces statuts (gardé par `editableLignes`, inchangé). */}
+          {revisable && !revising && (
+            <Button type="button" variant="outline" onClick={() => setRevising(true)}>
+              <Pencil /> Réviser
+            </Button>
+          )}
+          {revising && (
+            <>
+              <Button type="button" variant="ghost" onClick={cancelRevising}>Annuler la révision</Button>
+              <Button type="button" loading={busy} onClick={doReviser}>
+                {busy ? '…' : 'Enregistrer la révision'}
+              </Button>
+            </>
           )}
           {/* ZPUR1 — facture directement les lignes « sur commande », sans
               exiger de réception préalable. */}

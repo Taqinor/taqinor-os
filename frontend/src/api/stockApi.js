@@ -111,6 +111,10 @@ const stockApi = {
     api.delete(`/stock/bons-commande-fournisseur/${id}/`),
   envoyerBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  // WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/reçu
+  // (lignes/dates/note) ; incrémente `revision`, renvoie `reapprobation_requise`.
+  reviserBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/reviser/`, data),
   // QS4/QS3 — envois fournisseur : WhatsApp (lien wa.me prêt à envoyer +
   // marque le BCF « envoyé ») et email (PDF joint + EmailLog). Le lien/PDF
   // montrent les prix d'achat au FOURNISSEUR (légitime), jamais côté client.
