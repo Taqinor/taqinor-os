@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   // WIR209/PUB90 — boucle d'apprentissage des anomalies.
   anomalyFeedback: vi.fn(),
   detectors: vi.fn(),
+  // WIR272/PUB91 — rejeu historique d'une règle.
+  backtest: vi.fn(),
   permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
@@ -27,6 +29,7 @@ vi.mock('./adsengineApi', () => ({
     rules: {
       templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal,
       list: mocks.policies, create: mocks.policyCreate, update: mocks.policyUpdate,
+      backtest: mocks.backtest,
     },
     anomalies: {
       list: mocks.anomalies, feedback: mocks.anomalyFeedback,
@@ -81,6 +84,22 @@ beforeEach(() => {
     { detector: 'cpl_spike', total: 4, labelled: 2, useful: 1, false_positive: 1,
       precision: 0.5, throttled: false, throttle_factor: 1 },
   ] } })
+  // PUB91 — forme RÉELLE de `rule_backtest.backtest_rule`.
+  mocks.backtest.mockResolvedValue({ data: {
+    supported: true, reason: '', template_key: 'fatigue',
+    label_fr: 'Fatigue créative',
+    range: { debut: '2026-04-18', fin: '2026-07-16' },
+    proposals: [
+      { date: '2026-05-02', target_type: 'adset', target_meta_id: 'as1',
+        action_kind: 'swap_creative',
+        condition_fr: 'fréquence 3,4 > 3 → vrai.', computed: { frequency: 3.4 } },
+      { date: '2026-06-11', target_type: 'adset', target_meta_id: 'as2',
+        action_kind: 'swap_creative',
+        condition_fr: 'fréquence 3,1 > 3 → vrai.', computed: { frequency: 3.1 } },
+    ],
+    summary: { days: 90, would_propose: 2, distinct_targets: 2,
+      action_kind: 'swap_creative' },
+  } })
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
   ] } })
@@ -268,5 +287,84 @@ describe('RulesScreen — WIR209 votes d\'anomalie + précision par détecteur',
     expect(screen.getByTestId('ae-anomaly-vote-fp-9')).toBeDisabled()
     fireEvent.click(screen.getByTestId('ae-anomaly-vote-useful-9'))
     expect(mocks.anomalyFeedback).not.toHaveBeenCalled()
+  })
+})
+
+/* ==========================================================================
+   WIR272/PUB91 — « Qu'aurait fait cette règle ? » : rejeu historique avant
+   l'armement. `RulePolicyViewSet.backtest` (detail=True) n'avait aucun
+   appelant. LECTURE SEULE : aucune EngineAction n'est créée.
+   ========================================================================== */
+describe('RulesScreen — WIR272 backtest historique d\'une règle', () => {
+  const AVEC_INSTANCE = [{ id: 2, template_key: 'fatigue', enabled: false, dry_run: true }]
+
+  it('le bouton n\'existe QUE si une instance RulePolicy existe (endpoint detail=True)', async () => {
+    // Par défaut aucune instance : aucun bouton de backtest.
+    renderScreen()
+    await screen.findAllByTestId('ae-rule-template')
+    expect(screen.queryByTestId('ae-rule-backtest-fatigue')).toBeNull()
+    expect(screen.queryByTestId('ae-rule-backtest-overlap')).toBeNull()
+  })
+
+  it('appelle backtest(id, 90) et rend les actions SIMULÉES', async () => {
+    mocks.policies.mockResolvedValue({ data: AVEC_INSTANCE })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+    // Le rejeu porte sur l'INSTANCE (id 2), sur la fenêtre serveur par défaut.
+    await waitFor(() => expect(mocks.backtest).toHaveBeenCalledWith(2, 90))
+    const panel = await screen.findByTestId('ae-rule-backtest-result-fatigue')
+    expect(panel).toHaveTextContent('aurait proposé 2 action(s) sur 2 objet(s)')
+    expect(panel).toHaveTextContent('aucune action n\'a été créée')
+    expect(screen.getAllByTestId('ae-rule-backtest-proposal')).toHaveLength(2)
+    expect(panel).toHaveTextContent('2026-05-02')
+    expect(panel).toHaveTextContent('fréquence 3,4 > 3 → vrai.')
+    // Aucune proposition n'a été CRÉÉE : rien n'est posté nulle part.
+    expect(mocks.policyCreate).not.toHaveBeenCalled()
+    expect(mocks.policyUpdate).not.toHaveBeenCalled()
+  })
+
+  it('le backtest est proposé AVANT l\'armement (règle désarmée, bouton Armer présent)', async () => {
+    mocks.policies.mockResolvedValue({ data: AVEC_INSTANCE })
+    renderScreen()
+    expect(await screen.findByTestId('ae-rule-backtest-fatigue')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-rule-arm-fatigue')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-rule-state-fatigue')).toHaveTextContent('Désarmée')
+  })
+
+  it('règle non rejouable : le serveur dit pourquoi, rien n\'est inventé', async () => {
+    mocks.policies.mockResolvedValue({ data: AVEC_INSTANCE })
+    mocks.backtest.mockResolvedValue({ data: {
+      supported: false,
+      reason: 'Backtest indisponible pour ce type de règle (évaluateur non câblé).',
+      template_key: 'fatigue', label_fr: 'Fatigue créative',
+      proposals: [], summary: { days: 90, would_propose: 0, distinct_targets: 0, action_kind: null },
+    } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+    expect(await screen.findByTestId('ae-rule-backtest-unsupported-fatigue'))
+      .toHaveTextContent('évaluateur non câblé')
+    expect(screen.queryAllByTestId('ae-rule-backtest-proposal')).toHaveLength(0)
+  })
+
+  it('aucun déclenchement sur la période : c\'est DIT, jamais un panneau vide', async () => {
+    mocks.policies.mockResolvedValue({ data: AVEC_INSTANCE })
+    mocks.backtest.mockResolvedValue({ data: {
+      supported: true, reason: '', template_key: 'fatigue', label_fr: 'Fatigue créative',
+      range: { debut: '2026-04-18', fin: '2026-07-16' }, proposals: [],
+      summary: { days: 90, would_propose: 0, distinct_targets: 0, action_kind: 'swap_creative' },
+    } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+    expect(await screen.findByTestId('ae-rule-backtest-empty-fatigue'))
+      .toHaveTextContent('jamais déclenchée')
+  })
+
+  it('un backtest en échec affiche une erreur et ne rend aucun résultat', async () => {
+    mocks.policies.mockResolvedValue({ data: AVEC_INSTANCE })
+    mocks.backtest.mockRejectedValue(new Error('500'))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+    expect(await screen.findByTestId('ae-rules-err')).toHaveTextContent('Backtest impossible')
+    expect(screen.queryByTestId('ae-rule-backtest-result-fatigue')).toBeNull()
   })
 })

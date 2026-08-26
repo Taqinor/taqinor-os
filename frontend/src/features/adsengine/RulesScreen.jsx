@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   SlidersHorizontal, AlertTriangle, Play, Power, PowerOff, ThumbsUp, ThumbsDown,
+  History,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
@@ -32,6 +33,20 @@ const VOTE_LABELS_FR = {
 function anomalyRows(raw) {
   return (Array.isArray(raw) ? raw : (raw?.results || raw?.anomalies || [])) || []
 }
+
+/* ============================================================================
+   WIR272/PUB91 — « Qu'aurait fait cette règle ? » (backtest historique).
+   ----------------------------------------------------------------------------
+   Le dry-run répond « qu'est-ce que ça ferait MAINTENANT ? » ; le backtest
+   répond « qu'est-ce que ça AURAIT fait sur le dernier trimestre ? » — la seule
+   question qui permet de décider d'armer. Le point d'entrée existait
+   (`RulePolicyViewSet.backtest`) mais n'avait aucun appelant. Il est
+   detail=True : il rejoue une INSTANCE `RulePolicy` réelle, donc le bouton
+   n'apparaît que si la règle a déjà une instance (armée ou non). LECTURE SEULE :
+   aucune `EngineAction` n'est créée.
+   ========================================================================== */
+// Fenêtre par défaut = celle du serveur (`rule_backtest.DEFAULT_BACKTEST_DAYS`).
+const BACKTEST_DAYS = 90
 
 /* ============================================================================
    PUB23 — Armer/désarmer une règle depuis la console.
@@ -93,6 +108,9 @@ export default function RulesScreen() {
   const [detectors, setDetectors] = useState([])
   const [voteBusyId, setVoteBusyId] = useState(null)
   const [voteErr, setVoteErr] = useState('')
+  // WIR272/PUB91 — backtest historique par gabarit (key → réponse serveur).
+  const [backtests, setBacktests] = useState({})
+  const [backtestBusyKey, setBacktestBusyKey] = useState(null)
 
   const reloadPolicies = useCallback(() => (
     adsengineApi.rules.list()
@@ -201,6 +219,24 @@ export default function RulesScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
+  // WIR272/PUB91 — rejeu historique d'une règle EXISTANTE (lecture seule).
+  const runBacktest = async (t, policy) => {
+    if (!policy) return
+    const req = adsengineApi.rules.backtest?.(policy.id, BACKTEST_DAYS)
+    if (!req || typeof req.then !== 'function') return
+    setBacktestBusyKey(t.key); setErr('')
+    try {
+      const r = await req
+      const d = (r && typeof r.data === 'object' && r.data) || null
+      if (!d) { setErr('Backtest indisponible.'); return }
+      setBacktests(m => ({ ...m, [t.key]: d }))
+    } catch {
+      setErr("Backtest impossible (l'historique n'a pas pu être rejoué).")
+    } finally {
+      setBacktestBusyKey(null)
+    }
+  }
+
   // Dry-run d'un gabarit : simule, ne modifie RIEN.
   const dryRun = async (key) => {
     setBusyKey(key); setErr('')
@@ -244,6 +280,7 @@ export default function RulesScreen() {
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   {templates.map(t => {
                     const dr = dryRuns[t.key]
+                    const bt = backtests[t.key]
                     const policy = policyFor(t.key)
                     const armed = !!(policy && policy.enabled)
                     return (
@@ -272,6 +309,18 @@ export default function RulesScreen() {
                                 onClick={() => setConfirmKey(t.key)}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                                 <Power size={14} aria-hidden="true" /> Armer
+                              </button>
+                            )}
+                            {/* WIR272/PUB91 — à côté du dry-run, AVANT l'armement :
+                                le rejeu historique. detail=True ⇒ visible seulement
+                                si une instance RulePolicy existe déjà. */}
+                            {policy && (
+                              <button type="button" className="btn btn-light ae-rule-backtest"
+                                data-testid={`ae-rule-backtest-${t.key}`}
+                                disabled={backtestBusyKey === t.key}
+                                onClick={() => runBacktest(t, policy)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <History size={14} aria-hidden="true" /> Qu&apos;aurait fait cette règle ?
                               </button>
                             )}
                             <button type="button" className="btn btn-primary"
@@ -312,6 +361,62 @@ export default function RulesScreen() {
                               <button type="button" className="btn btn-light"
                                 onClick={() => setConfirmKey(null)}>Annuler</button>
                             </div>
+                          </div>
+                        )}
+
+                        {/* WIR272/PUB91 — Résultat du rejeu historique. Tous les
+                            chiffres viennent de `backtest_rule` ; rien n'est
+                            recalculé ici et aucune action n'a été créée. */}
+                        {bt && (
+                          <div className="ae-rule-backtest-result"
+                            data-testid={`ae-rule-backtest-result-${t.key}`}
+                            style={{ marginTop: '0.75rem', background: '#f5f3ff',
+                              border: '1px solid #ddd6fe', borderRadius: 6, padding: '0.75rem' }}>
+                            {!bt.supported
+                              ? (
+                                <p data-testid={`ae-rule-backtest-unsupported-${t.key}`}
+                                  style={{ margin: 0, color: '#5b21b6' }}>
+                                  {bt.reason || 'Backtest indisponible pour ce type de règle.'}
+                                </p>
+                              )
+                              : (
+                                <>
+                                  <p style={{ margin: '0 0 0.4rem', fontWeight: 600 }}>
+                                    Sur {formatNumber(bt.summary?.days, 0)} jour(s)
+                                    {bt.range?.debut && bt.range?.fin
+                                      ? ` (${bt.range.debut} → ${bt.range.fin})` : ''}, cette règle
+                                    aurait proposé {formatNumber(bt.summary?.would_propose, 0)} action(s)
+                                    sur {formatNumber(bt.summary?.distinct_targets, 0)} objet(s).
+                                  </p>
+                                  <p style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+                                    Rejeu hypothétique : aucune action n&apos;a été créée.
+                                  </p>
+                                  {(bt.proposals || []).length === 0
+                                    ? <p data-testid={`ae-rule-backtest-empty-${t.key}`}
+                                        style={{ margin: 0, color: '#64748b' }}>
+                                        Elle ne se serait jamais déclenchée sur cette période.</p>
+                                    : (
+                                      <ul style={{ listStyle: 'none', margin: 0, padding: 0,
+                                        display: 'grid', gap: '0.35rem' }}>
+                                        {(bt.proposals || []).map((p, i) => (
+                                          <li key={`${p.date}-${p.target_meta_id || i}`}
+                                            data-testid="ae-rule-backtest-proposal"
+                                            style={{ display: 'flex', gap: '0.5rem',
+                                              alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                            <strong style={{ fontSize: '0.85rem' }}>{p.date}</strong>
+                                            <span style={{ color: '#475569', fontSize: '0.85rem' }}>
+                                              {p.target_type || '—'}
+                                              {p.target_meta_id ? ` ${p.target_meta_id}` : ''}
+                                            </span>
+                                            <span style={{ color: '#334155', fontSize: '0.85rem' }}>
+                                              {p.condition_fr || '—'}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                </>
+                              )}
                           </div>
                         )}
 

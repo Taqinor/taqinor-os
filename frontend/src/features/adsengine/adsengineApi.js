@@ -257,6 +257,16 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/regles/', { params }),
     create: (payload) => api.post('/adsengine/regles/', payload),
     update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
+    // WIR272/PUB91 — « Qu'aurait fait cette règle sur votre dernier trimestre ? »
+    // `RulePolicyViewSet.backtest` (views.py:1037, detail=True → exige une
+    // instance `RulePolicy` EXISTANTE) rejoue la règle jour par jour sur les
+    // snapshots RÉELS. LECTURE SEULE (`adsengine_view`) : aucune `EngineAction`
+    // n'est créée. `?jours=` borne la fenêtre (défaut serveur 90, plafond 180).
+    // Réponse : `{supported, reason, template_key, label_fr, range:{debut,fin},
+    // proposals:[{date,target_type,target_meta_id,action_kind,condition_fr,
+    // computed}], summary:{days,would_propose,distinct_targets,action_kind}}`.
+    backtest: (id, jours) =>
+      api.get(`/adsengine/regles/${id}/backtest/`, { params: { jours } }),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
