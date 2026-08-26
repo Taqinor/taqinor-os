@@ -1026,6 +1026,8 @@
     avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, estimation_conso:inconnu, etude:inconnu, profil:objet
 - frontend/src/api/ventesApi.js :: rejeterEtapeDevis -> /api/django/ventes/devis/<>/rejeter-etape
     detail:texte, etape_id:inconnu
+- frontend/src/api/ventesApi.js :: resoudrePlanCommission -> /api/django/ventes/plans-commission/resoudre
+    owner:inconnu, plan:inconnu, source:inconnu
 - frontend/src/api/ventesApi.js :: setVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
@@ -3690,11 +3692,17 @@
     visibilite ∈ {EQUIPE, PERSONNELLE}
 - frontend/src/api/ventesApi.js :: createListePrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: createPlanCommission -> /api/django/ventes/plans-commission  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: deleteListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: deleteNiveauRelance -> /api/django/ventes/niveaux-relance/<>  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: deletePlanCommission -> /api/django/ventes/plans-commission/<>  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: getListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: getListesPrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
@@ -3702,10 +3710,16 @@
 - frontend/src/api/ventesApi.js :: getNiveauxRelance -> /api/django/ventes/niveaux-relance  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: getPlansCommission -> /api/django/ventes/plans-commission  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: patchListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: updateListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: updatePlanCommission -> /api/django/ventes/plans-commission/<>  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/voipApi.js :: getAppels -> /api/django/voip/appels  [AppelSerializer]
     champs: cible, direction, duree_secondes, ended_at, external_call_id, fournisseur, id, issue, numero, numero_normalise, started_at, statut, utilisateur
     direction ∈ {entrant, sortant}

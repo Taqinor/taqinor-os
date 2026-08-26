@@ -5,7 +5,7 @@ import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
-  Paperclip,
+  Paperclip, BadgePercent,
   Ship, Route, Factory, Layers,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -156,6 +156,9 @@ const ObjetsPersonnalisesPage = lazy(() => import('./ObjetsPersonnalisesPage'))
 // WIR270/FG10 — centre de pièces jointes société : l'endpoint transverse
 // `records/attachments/all/` n'avait aucun écran (export client mort).
 const PiecesJointesPage = lazy(() => import('../../pages/parametres/PiecesJointesPage'))
+// WIR282/XSAL6 — plans de commission (moitié front de WIR281). Contrat
+// partagé : apps/ventes/contract_samples/plan_commission.json.
+const PlansCommissionPage = lazy(() => import('../../pages/parametres/PlansCommissionPage'))
 const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObjectRecordsPage'))
 
 const config = {
@@ -207,6 +210,8 @@ const config = {
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // WIR270 — vue transverse des fichiers de la société (FG10).
       { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // WIR282 — plans de commission (XSAL6), gatés responsable/admin.
+      { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -228,6 +233,7 @@ const config = {
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés
