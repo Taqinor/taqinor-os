@@ -1025,6 +1025,19 @@ export function proposalEndpoint(apiBase: string, token: string): string {
 }
 
 /**
+ * ANALYT1 (audit item 64) — URL backend du beacon d'engagement par section
+ * (XSAL16, `apps/ventes/public_views.py proposal_engagement`), endpoint
+ * PUBLIC monté sous `public/` (jamais `ventes/`, contrairement à
+ * `proposalEndpoint`/`acceptEndpoint` ci-dessus). Utilisée SEULEMENT côté
+ * serveur, par le proxy `pages/api/proposition-engagement.ts` — même
+ * discipline que `acceptEndpoint`.
+ */
+export function engagementEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/public/proposal/${encodeURIComponent(token)}/engagement/`;
+}
+
+/**
  * URL publique du DEVIS PDF premium (même token) : le bouton « Télécharger le
  * devis » pointe directement vers le backend (nouvel onglet). Le lien est public
  * et tokenisé — pas d'auth, pas de prix d'achat (le backend ne les rend jamais).

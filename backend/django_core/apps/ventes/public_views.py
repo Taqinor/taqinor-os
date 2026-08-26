@@ -10,6 +10,7 @@ IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
 import math
+import re
 
 from django.db import models
 from django.db.models import F
@@ -3115,10 +3116,46 @@ def proposal_verify_otp_lecture(request, token):
 
 # Sections reconnues du beacon d'engagement (XSAL16). Une section inconnue est
 # simplement ignorée — jamais d'erreur, jamais de section arbitraire stockée.
-_ENGAGEMENT_SECTIONS = {'hero', 'prix', 'etude', 'garanties', 'signature'}
+# ANALYT1 (audit item 64, 26/08/2026) — 'tailles'/'options'/'graphs'/
+# 'economies'/'calepinage'/'sld' ajoutées ADDITIVEMENT : ce sont les vraies
+# ancres `data-track-section` de la page /proposition/[...token].astro
+# actuelle (`#tailles`, `#options`, `#production`→graphs,
+# `#financing-headline`→economies, `#roof3d`→calepinage, `#sld`). 'hero' et
+# 'signature' étaient déjà servies par cette page (fold + `#signer`) ; 'prix'/
+# 'etude'/'garanties' restent — comportement historique inchangé, même si
+# aucun beacon actuel ne les émet plus (jamais de retrait, jamais de
+# renommage : un lien existant qui en porterait resterait lisible).
+_ENGAGEMENT_SECTIONS = {
+    'hero', 'prix', 'etude', 'garanties', 'signature',
+    'tailles', 'options', 'graphs', 'economies', 'calepinage', 'sld',
+}
 # Seuil (secondes cumulées, toutes sections) au-delà duquel on considère que
 # le client a "commencé à lire en détail" — logué UNE SEULE fois par lien.
 _DEEP_ENGAGEMENT_THRESHOLD_SECONDS = 20
+# ANALYT1 — nombre de VISITES DISTINCTES (page-loads différents, jamais de
+# simples re-scrolls dans la même visite) sur la MÊME section au-delà duquel
+# on pose l'alerte de friction (doctrine Proposify : une proposition PERDANTE
+# est re-consultée davantage qu'une proposition GAGNANTE — une relecture
+# répétée d'une même section vaut un coup de fil du commercial). Nommée,
+# strictement interne (jamais un chiffre montré au client).
+_FRICTION_REREAD_VISITS_THRESHOLD = 3
+# Nombre maximum d'identifiants de visite CONSERVÉS par section — borne la
+# taille du JSON (le seuil de friction n'a besoin que de 3 ; large marge pour
+# ne jamais perdre un compte réel avant expiration du lien à 30 j).
+_MAX_VISIT_IDS_PER_SECTION = 20
+# ANALYT1 — libellés FR des sections, pour la note chatter de friction ET la
+# surface ERP ``lecture_client``. Miroir volontaire de la table équivalente
+# côté frontend (``frontend/src/pages/ventes/DevisList.jsx``
+# ``ENGAGEMENT_LABELS``) — jamais une seconde source de vérité pour le
+# CONTENU (les clés sont la vérité, whitelistées ci-dessus), juste deux
+# libellés FR redondants par choix (backend = chatter, frontend = écran).
+ENGAGEMENT_SECTION_LABELS = {
+    'hero': 'accueil', 'prix': 'prix', 'etude': 'étude',
+    'garanties': 'garanties', 'signature': 'signature',
+    'tailles': 'tailles (Éco/Recommandé/Max)', 'options': 'options',
+    'graphs': 'production', 'economies': 'économies',
+    'calepinage': 'calepinage 3D', 'sld': 'schéma électrique',
+}
 
 
 @api_view(['POST'])
@@ -3127,22 +3164,27 @@ _DEEP_ENGAGEMENT_THRESHOLD_SECONDS = 20
 def proposal_engagement(request, token):
     """XSAL16 — Beacon léger d'engagement par section de la proposition.
 
-    Corps : ``{"section": "prix", "seconds": 12}``. Aucune donnée
-    personnelle requise ; agrégé (cumul secondes + compteur de hits) sur
-    ``ShareLink.engagement``, jamais cross-tenant (le jeton borne un seul
-    devis d'une seule société). Section inconnue ou seconds invalide → 204
-    silencieux (best-effort, jamais d'erreur qui casserait le beacon côté
-    site). Au premier franchissement du seuil d'engagement profond, une
-    ligne chatter est posée sur le devis (une seule fois par lien)."""
+    Corps : ``{"section": "prix", "seconds": 12, "visit_id": "..."}``
+    (``visit_id`` ANALYT1 — optionnel, ignoré par un backend/front antérieur à
+    cette lane). Aucune donnée personnelle requise ; agrégé (cumul secondes +
+    compteur de hits + visites distinctes) sur ``ShareLink.engagement``,
+    jamais cross-tenant (le jeton borne un seul devis d'une seule société).
+    Section inconnue ou seconds invalide → 204 silencieux (best-effort,
+    jamais d'erreur qui casserait le beacon côté site). Au premier
+    franchissement du seuil d'engagement profond OU du seuil de RELECTURE
+    (``_FRICTION_REREAD_VISITS_THRESHOLD`` visites distinctes sur une même
+    section), une ligne chatter est posée sur le devis — chacune une seule
+    fois par lien (mêmes idiomes ``deep_engagement_logged_at``/
+    ``friction_alert_logged_at``)."""
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
 
     # L-INTPREV (25/08/2026) — jeton interne : aucun beacon n'est enregistré
-    # (ni ``ShareLink.engagement``, ni la note chatter « a commencé à lire en
-    # détail » au seuil profond) — un aperçu commercial n'est pas une lecture
-    # CLIENT à mesurer. 204 silencieux, même contrat que le rejet d'un beacon
-    # invalide ci-dessous.
+    # (ni ``ShareLink.engagement``, ni les notes chatter « a commencé à lire
+    # en détail »/« relit une section » ci-dessous) — un aperçu commercial
+    # n'est pas une lecture CLIENT à mesurer. 204 silencieux, même contrat que
+    # le rejet d'un beacon invalide ci-dessous.
     if link.via_interne:
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
@@ -3158,6 +3200,20 @@ def proposal_engagement(request, token):
         # proposition côté client, mais on n'enregistre rien d'invalide.
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
+    # ANALYT1 — identifiant de VISITE (un page-load), jamais un identifiant
+    # personnel : généré côté client à chaque chargement de page (jamais
+    # persisté au-delà de l'onglet). Anti-garbage minimal (alphanumérique +
+    # tiret, borné en longueur) ; une valeur absente/malformée dégrade
+    # simplement en « pas de comptage de visites distinctes pour cet appel »,
+    # jamais une erreur.
+    visit_id_raw = str(request.data.get('visit_id') or '').strip()
+    visit_id = (
+        visit_id_raw
+        if 0 < len(visit_id_raw) <= 64
+        and re.match(r'^[A-Za-z0-9-]+$', visit_id_raw)
+        else None
+    )
+
     # QX30be — CORRECTIF perte de mise à jour : le read-modify-write du JSON
     # d'engagement était NON atomique (deux beacons de sections concurrents se
     # écrasaient — last-write-win). On relit le lien VERROUILLÉ dans une
@@ -3170,6 +3226,15 @@ def proposal_engagement(request, token):
         slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
         slot['seconds'] = int(slot.get('seconds', 0)) + seconds
         slot['hits'] = int(slot.get('hits', 0)) + 1
+
+        # ANALYT1 — visites DISTINCTES sur CETTE section : un ``visit_id`` déjà
+        # vu (même page encore ouverte, beacon rejoué) ne recompte pas.
+        visit_ids = list(slot.get('visit_ids') or [])
+        if visit_id and visit_id not in visit_ids:
+            visit_ids.append(visit_id)
+            visit_ids = visit_ids[-_MAX_VISIT_IDS_PER_SECTION:]
+        slot['visit_ids'] = visit_ids
+        slot['visits'] = len(visit_ids)
         engagement[section] = slot
         locked.engagement = engagement
 
@@ -3181,8 +3246,22 @@ def proposal_engagement(request, token):
         )
         if newly_deep:
             locked.deep_engagement_logged_at = timezone.now()
-        locked.save(
-            update_fields=['engagement', 'deep_engagement_logged_at'])
+
+        # ANALYT1 — signal de FRICTION : CETTE section vient de franchir le
+        # seuil de relecture. Une seule alerte par LIEN (jamais une par
+        # section) — la première section à franchir le seuil gagne, comme
+        # ``deep_engagement_logged_at`` ne loggue qu'une fois tous sections
+        # confondues.
+        newly_friction = (
+            locked.friction_alert_logged_at is None
+            and slot['visits'] >= _FRICTION_REREAD_VISITS_THRESHOLD
+        )
+        update_fields = ['engagement', 'deep_engagement_logged_at']
+        if newly_friction:
+            locked.friction_alert_logged_at = timezone.now()
+            locked.friction_alert_section = section
+            update_fields += ['friction_alert_logged_at', 'friction_alert_section']
+        locked.save(update_fields=update_fields)
     link = locked
 
     if newly_deep and link.devis_id:
@@ -3193,6 +3272,18 @@ def proposal_engagement(request, token):
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client a commencé à lire la proposition en détail ({resume}).')
+        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+            pass
+
+    if newly_friction and link.devis_id:
+        try:
+            from . import activity
+            label = ENGAGEMENT_SECTION_LABELS.get(section, section)
+            activity.log_devis_note(
+                link.devis, None,
+                f'Le client relit la section « {label} » de la proposition '
+                f'depuis {slot["visits"]} visites distinctes — signal de '
+                f'friction, un appel peut débloquer la décision.')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
 

@@ -293,6 +293,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # d'action pour ne pas hériter du niveau de garde de l'écriture.
             'offres_tailles', 'offres_tailles_config',
             'offres_tailles_regenerer',
+            # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
+            # visites DISTINCTES par section de la proposition + alerte de
+            # friction (relecture répétée d'une même section). Analytics
+            # INTERNES (jamais montrées au client, jamais une revendication
+            # devant le commercial autre qu'un signal) → même périmètre que
+            # les autres LECTURES sensibles ci-dessus (responsable + admin).
+            # PIÈGE VX199 : sans ce nom ICI, l'action tomberait sur le repli
+            # ``IsAdminRole`` malgré son ``permission_classes`` identique.
+            'lecture_client',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -2208,6 +2217,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response({
             'ouverture': ouverture,
             'relances': relances_devis_abandonne(devis.company, devis.pk),
+        })
+
+    @action(detail=True, methods=['get'], url_path='lecture-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def lecture_client(self, request, pk=None):
+        """ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
+        combien de VISITES DISTINCTES chaque section de la proposition
+        publique a reçues, et l'alerte de friction si une section a été
+        RELUE au-delà du seuil (``ShareLink.friction_alert``).
+
+        Réservé responsable/admin (VX199 — voir ``get_permissions`` ci-
+        dessus) : ce sont des analytics INTERNES (temps/visites du client sur
+        sa propre proposition) — jamais montrées au client, jamais une
+        promesse de conversion, juste un signal « ce client relit, un appel
+        peut aider ». Lecture PURE sur le ``ShareLink`` le plus récent du
+        devis, borné à sa société (déjà scopée par ``get_object()``).
+        ``sections``/``friction`` vides ⇒ aucun beacon reçu pour ce devis."""
+        from ..models import ShareLink
+
+        devis = self.get_object()
+        link = (ShareLink.objects
+                .filter(devis=devis, company=devis.company)
+                .order_by('-id').first())
+        return Response({
+            'sections': link.visites_par_section if link else {},
+            'friction': link.friction_alert if link else None,
         })
 
     @action(detail=True, methods=['post'], url_path='whatsapp-preview',

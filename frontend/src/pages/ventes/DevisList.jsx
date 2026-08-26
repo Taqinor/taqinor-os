@@ -367,6 +367,7 @@ function DevisRow({ d, ctx }) {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
@@ -1146,6 +1147,7 @@ function DevisRow({ d, ctx }) {
             <DevisSuiviPartagePanel
               data={suiviCache[d.id]}
               loading={suiviLoadingId === d.id}
+              lectureClient={canSeeLectureClient ? lectureClientCache[d.id] : undefined}
             />
           </div>
         </td>
@@ -1253,6 +1255,11 @@ export default function DevisList() {
   // une ligne dont le lead lié est un lead Meta : gaté aux mêmes rôles que le
   // module Publicité (responsable/admin — module.config.jsx).
   const canSeePublicite = useIsAdminOrResponsable()
+  // ANALYT1 (audit item 64) — « Lecture par le client » (visites distinctes
+  // par section + alerte de friction) n'est chargée QUE pour ce rôle — même
+  // périmètre que la garde serveur (IsResponsableOrAdmin sur
+  // `lecture-client/`) : un rôle sans ce droit ne déclenche même pas l'appel.
+  const canSeeLectureClient = useIsAdminOrResponsable()
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -1334,6 +1341,12 @@ export default function DevisList() {
   const [suiviOpenId, setSuiviOpenId] = useState(null)
   const [suiviCache, setSuiviCache] = useState({})   // id → {ouverture, relances}
   const [suiviLoadingId, setSuiviLoadingId] = useState(null)
+  // ANALYT1 (audit item 64) — même panneau, même patron de cache-au-premier-
+  // clic que suiviCache ci-dessus ; id → {sections, friction} (voir
+  // DevisSuiviPartagePanel). N'est chargé QUE pour un rôle responsable/admin
+  // (canSeeLectureClient) — un rôle sans ce droit n'émet même pas l'appel
+  // (qui recevrait de toute façon 403 côté serveur).
+  const [lectureClientCache, setLectureClientCache] = useState({})
   const toggleSuiviPartage = (id) => {
     if (suiviOpenId === id) { setSuiviOpenId(null); return }
     setSuiviOpenId(id)
@@ -1343,6 +1356,13 @@ export default function DevisList() {
         .then(res => setSuiviCache(c => ({ ...c, [id]: res.data || null })))
         .catch(() => setSuiviCache(c => ({ ...c, [id]: null })))
         .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
+    }
+    // ANALYT1 — appel SÉPARÉ, uniquement pour un rôle responsable/admin
+    // (jamais tenté sinon — la garde serveur le refuserait de toute façon).
+    if (canSeeLectureClient && lectureClientCache[id] === undefined) {
+      ventesApi.getLectureClientDevis(id)
+        .then(res => setLectureClientCache(c => ({ ...c, [id]: res.data || null })))
+        .catch(() => setLectureClientCache(c => ({ ...c, [id]: null })))
     }
   }
 
@@ -2305,6 +2325,7 @@ export default function DevisList() {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
