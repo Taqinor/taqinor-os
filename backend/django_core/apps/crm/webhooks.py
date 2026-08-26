@@ -1862,6 +1862,34 @@ def website_lead_webhook(request):
         # (le jour où son transfert n'est plus en arrière-plan) l'afficher au
         # client à la place du code provisoire. Peut être ``null`` : émetteur
         # sans nom exploitable, ou attribution en échec (best-effort ci-dessus).
+        # ── AUTO-PIPELINE (ordre fondateur 26/08/2026) ────────────────────
+        # « si le client dessine son toit dans le tunnel, une fois que le lead
+        # arrive dans notre ERP ça crée automatiquement le devis automatique,
+        # et l'outil de calepinage dessine les panneaux tout seul — le
+        # commercial ne fait que VÉRIFIER. »
+        #
+        # UNIQUEMENT sur un lead RÉELLEMENT NOUVEAU (`created`) : la fenêtre
+        # anti-rejeu de 60 s complète une fiche existante et ne doit pas
+        # produire un second devis. Combiné aux trois couches de dédup déjà en
+        # place au-dessus (dédup DUR `dedupe_event`, garde cache QW10, fenêtre
+        # téléphone) et à la garde d'idempotence du service lui-même (un lead,
+        # un devis), un webhook re-livré ne crée JAMAIS deux devis.
+        #
+        # Lecture cross-app par le `services.py` de la cible (règle CLAUDE.md) :
+        # crm ne connaît de `ventes` que cette seule fonction. Elle MET EN FILE
+        # et rend la main tout de suite — le webhook ne paie jamais le prix de
+        # la composition. Best-effort de bout en bout : le lead est déjà
+        # enregistré, rien ici ne peut le remettre en cause.
+        if created:
+            try:
+                from apps.ventes.services import (
+                    planifier_devis_automatique_pour_lead)
+                planifier_devis_automatique_pour_lead(lead.pk, company.pk)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning(
+                    'website_lead_webhook: mise en file du devis automatique '
+                    'échouée (lead #%s)', lead.pk, exc_info=True)
+
         body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk,
                 'client_ref': lead.client_ref}
         body.update(extra)

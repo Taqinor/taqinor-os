@@ -58,13 +58,22 @@ def _fake_tmy(lat, lon):
 
 
 def pans_geometry(nb=1):
-    """``_pans_geometry`` (QJ21) — un pan par orientation, azimut PVGIS."""
-    pans = [{'label': 'Pan Sud', 'orientation': 'Sud', 'azimut_deg': 0,
+    """``_pans_geometry`` (QJ21) — un pan par orientation, azimut BOUSSOLE.
+
+    F3 (26/08/2026) — CE FIXTURE MASQUAIT UN BUG CLIENT. Il écrivait
+    ``azimut_deg: 0`` pour « Pan Sud » et ``-90`` pour « Pan Est », c'est-à-dire
+    la convention PVGIS — alors qu'AUCUN producteur réel n'écrit ça :
+    ``services.extract_roof_config`` publie l'azimut BOUSSOLE du builder
+    (180 = Sud, 90 = Est). Écrit dans le repère du consommateur plutôt que dans
+    celui du producteur, il rendait vert un code qui simulait tous les toits
+    plein Sud en plein Nord. Il parle désormais le repère du PRODUCTEUR.
+    """
+    pans = [{'label': 'Pan Sud', 'orientation': 'Sud', 'azimut_deg': 180,
              'inclinaison_deg': 30, 'nb_panneaux': 16, 'kwc': 8.8,
              'roof_type': 'pitched'}]
     if nb > 1:
         pans.append({'label': 'Pan Est', 'orientation': 'Est',
-                     'azimut_deg': -90, 'inclinaison_deg': 30,
+                     'azimut_deg': 90, 'inclinaison_deg': 30,
                      'nb_panneaux': 8, 'kwc': 4.4, 'roof_type': 'pitched'})
     return pans[:nb]
 
@@ -117,9 +126,56 @@ class LesZonesViennentDuCalepinage(_Base):
         zones = tasks_mod.zones_etude_du_devis(devis)
         self.assertEqual([z['label'] for z in zones], ['Pan Sud', 'Pan Est'])
         self.assertEqual([z['kwc'] for z in zones], [8.8, 4.4])
-        # L'azimut est déjà en convention PVGIS des deux côtés : jamais converti.
+        # F3 — le stockage parle BOUSSOLE (180 = Sud, 90 = Est), PVGIS parle
+        # aspect (0 = Sud, -90 = Est) : la conversion se fait à la lecture.
         self.assertEqual([z['azimuth'] for z in zones], [0.0, -90.0])
         self.assertEqual([z['tilt'] for z in zones], [30.0, 30.0])
+
+    def test_le_repere_dazimut_tient_du_PRODUCTEUR_au_CONSOMMATEUR(self):
+        """F3 — LE TEST QUI MANQUAIT : le repère d'``azimut_deg`` épinglé
+        bout en bout, PRODUCTEUR RÉEL compris.
+
+        Les tests précédents écrivaient ``_pans_geometry`` à la main, donc
+        n'importe quelle convention pouvait s'y glisser. Celui-ci part d'un
+        layout à la forme du BUILDER (``facingAzimuthDeg``, azimut boussole),
+        le fait passer par le vrai producteur
+        (``services.extract_roof_config``), puis par le vrai consommateur
+        (``zones_etude_du_devis``) — et exige que PVGIS reçoive l'aspect. Un
+        toit plein Sud doit arriver à 0°, jamais à 180° (= plein Nord).
+        """
+        from apps.ventes.services import extract_roof_config
+
+        layout_builder = {'zones': [
+            {'label': 'Pan Sud', 'roofType': 'pitched', 'pitchDeg': 30,
+             'facingAzimuthDeg': 180,
+             'result': {'count': 16, 'kwc': 8.8, 'areaM2': 32.0}},
+            {'label': 'Pan Est', 'roofType': 'pitched', 'pitchDeg': 30,
+             'facingAzimuthDeg': 90,
+             'result': {'count': 8, 'kwc': 4.4, 'areaM2': 16.0}},
+        ]}
+        pans = extract_roof_config(layout_builder)['pans']
+        # Le PRODUCTEUR publie la boussole, telle que le builder l'écrit.
+        self.assertEqual([p['azimut_deg'] for p in pans], [180, 90])
+        self.assertEqual([p['orientation'] for p in pans], ['Sud', 'Est'])
+
+        devis = self._devis(layout={'version': 2, '_pans_geometry': pans})
+        zones = tasks_mod.zones_etude_du_devis(devis)
+        # Le CONSOMMATEUR (PVGIS) reçoit l'aspect. C'est CETTE égalité qui
+        # aurait attrapé le bug : sans conversion, elle vaudrait [180, 90].
+        self.assertEqual([z['azimuth'] for z in zones], [0.0, -90.0])
+
+    def test_un_azimut_absent_ne_devient_jamais_une_orientation_inventee(self):
+        """Devis automatique — rien n'a été mesuré, donc ``azimut_deg`` est
+        absent : la zone part sans azimut et PVGIS retombe sur le défaut
+        DÉCLARÉ par la société, jamais sur un plein Sud supposé."""
+        pans = [{'label': 'Toit du client', 'nb_panneaux': 12, 'kwc': 6.6,
+                 'azimut_deg': None, 'inclinaison_deg': None,
+                 'orientation': '', 'roof_type': ''}]
+        devis = self._devis(layout={'version': 2, '_pans_geometry': pans})
+        zones = tasks_mod.zones_etude_du_devis(devis)
+        self.assertEqual(len(zones), 1)
+        self.assertIsNone(zones[0]['azimuth'])
+        self.assertIsNone(zones[0]['tilt'])
 
     def test_le_point_gps_vient_du_lead(self):
         zones = tasks_mod.zones_etude_du_devis(self._devis())

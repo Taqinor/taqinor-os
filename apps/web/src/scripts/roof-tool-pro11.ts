@@ -1577,6 +1577,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return false;
   }
 
+  /**
+   * AP-F2 (fondateur 26/08/2026) — « Recommencer depuis le tracé client » : reseme la
+   * zone active DEPUIS le contour ORIGINAL du client (`opts.referenceContour`, la MÊME
+   * source que le calque de référence L-MAP, relue via `referenceContourRing` — UN
+   * SEUL validateur de contour) et relance l'optimiseur, pour annuler des retouches
+   * manuelles et repartir du tracé client. Renvoie `false` SANS RIEN changer si aucun
+   * contour exploitable n'a été fourni au boot (jamais un contour deviné).
+   *
+   * `close()` s'auto-garde (`if (closed || vertices.length < 3) return;`) : le tracé
+   * est déjà FERMÉ dans le cas visé par ce bouton (le calepinage automatique tourne
+   * dès le boot, via applyHydration/applyDevisHydration) donc un simple appel à
+   * `close()` serait un no-op silencieux. On repart de l'état « prêt à fermer »
+   * (`closed = false`), exactement comme `clearEditorState` avant un nouveau tracé,
+   * puis `close()` referme et recalcule pour de vrai.
+   */
+  function recommencerDepuisTraceClient(): boolean {
+    const ring = referenceContourRing(opts.referenceContour);
+    if (!ring) return false;
+    vertices = [...ring];
+    const a = activeArea();
+    if (a) a.vertices = [...vertices];
+    // Les obstacles étaient posés SUR le contour précédent : reprendre le tracé
+    // client sans les effacer les laisserait à leurs coordonnées d'avant, donc
+    // potentiellement hors du nouveau toit — et ils continueraient à creuser
+    // des trous dans un calepinage qu'ils ne concernent plus. « Recommencer »
+    // veut dire repartir du tracé client, pas en garder la moitié.
+    obstacles = [];
+    if (a) a.obstacles = [];
+    redrawObstacles();
+    landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
+    closed = false;
+    close();
+    return true;
+  }
+
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
   // ═══════════ TRACÉ + GÉOCODAGE : voir roofPro11/mapDraw.ts ═══════════
@@ -2786,5 +2821,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
+    // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
+    // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
+    recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),
   });
 }

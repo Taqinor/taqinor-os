@@ -80,14 +80,28 @@ BASELINE_ALLOWLIST = {
     # composition_residentielle (2672->2693, 3870->3931, 4003->4064).
     # Verifie par CONTENU (memes trois formules -- round(prix_ttc, 2) ; deux
     # fois round(total_panneaux * watt / 1000.0, 3)), aucun nouveau site.
-    "backend/django_core/apps/ventes/services.py:1088",
-    "backend/django_core/apps/ventes/services.py:1091",
-    "backend/django_core/apps/ventes/services.py:3931",
-    "backend/django_core/apps/ventes/services.py:4064",
+    # AUTO-PIPELINE (26/08/2026) -- RECALEES UNE SEULE FOIS, EN FIN DE LOT.
+    # Le lot insere du code AU-DESSUS de ces cinq sites (correction du repere
+    # d'azimut, blocs d'explication, garde de relachement de marque) : ils
+    # glissent tous de +63 lignes (1088->1151, 1091->1154, 2693->2756,
+    # 3931->3994, 4064->4127).
+    # LECON : recaler A MI-LOT ne sert a rien -- la premiere recalibration
+    # (+34) a ete perimee par les correctifs suivants. On recale APRES le
+    # dernier commit de code, puis on relit a point fixe.
+    # Verifie par CONTENU, pas par confiance : chacune des cinq lignes a ete
+    # comparee a la MEME ligne de l'arbre d'avant le lot (fc2794de) et elles
+    # sont BYTE-IDENTIQUES -- memes formules ('surface_m2': round(...,2),
+    # 'kwc': round(...,3), return (round(prix_ttc,2), ...), deux fois
+    # round(total_panneaux*watt/1000.0, 3)). AUCUN round() nouveau n'entre
+    # par ce lot.
+    "backend/django_core/apps/ventes/services.py:1151",
+    "backend/django_core/apps/ventes/services.py:1154",
+    "backend/django_core/apps/ventes/services.py:3994",
+    "backend/django_core/apps/ventes/services.py:4127",
     # BATHOMO (26/08/2026, revu en fold) — clé de COMPARAISON des candidates de
     # banc batterie (le moins cher gagne) ; la valeur arrondie n'est jamais
     # servie ni stockée, le prix de ligne réel passe par la chaîne de pricing.
-    "backend/django_core/apps/ventes/services.py:2693",
+    "backend/django_core/apps/ventes/services.py:2756",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa Ã—N (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
