@@ -1101,7 +1101,7 @@ def sweep_approval_reminders(company, *, today=None):
                 count += _sweep_one_pending_approval(
                     company, approval, approver=approver,
                     requester=approval.requested_by,
-                    link=f'/automation/approvals/{approval.pk}',
+                    link='/approbations?source=automation',
                     description=approval.description or 'Une action',
                     relance_days=relance_days, escalade_days=escalade_days,
                     today=today)
@@ -1127,7 +1127,7 @@ def sweep_approval_reminders(company, *, today=None):
                 count += _sweep_one_pending_approval(
                     company, demande, approver=approver,
                     requester=demande.demandeur,
-                    link=f'/compta/approbations/{demande.pk}',
+                    link='/comptabilite/approbations-config',
                     description=f'La demande {label}',
                     relance_days=relance_days, escalade_days=escalade_days,
                     today=today)
