@@ -316,6 +316,33 @@ class Devis(models.Model):
                   'figé au moment de l\'envoi. Jamais recalculé ensuite.',
     )
 
+    # ── TAILLES (ordre fondateur, 26/08/2026) — les TROIS tailles explorables ──
+    # Éco / Recommandé / Max : la CONFIGURATION que le vendeur a éventuellement
+    # ajustée pour chaque taille, et RIEN d'autre. Les nombres DÉRIVÉS (prix
+    # TTC, économie, payback, couverture, kWc…) ne sont JAMAIS stockés ici : le
+    # moteur les réestampille à chaque lecture depuis cette configuration, ce
+    # qui rend physiquement impossible un prix tapé à la main
+    # (règle « zéro chiffre inventé »).
+    #
+    # NULL / {} = aucune taille ajustée : la dérivation moteur fournit les trois
+    # par défaut et le comportement est STRICTEMENT identique à avant ce champ.
+    # Forme : {'eco'|'recommande'|'max': {'config': {'nb_panneaux': int,
+    # 'batterie_nb_modules': int, 'equipements': {role: produit_id}},
+    # 'ajuste': bool, 'modifie_le': iso8601, 'modifie_par': user_id}}.
+    # Contrat partagé : apps/ventes/contract_samples/offres_tailles.json.
+    #
+    # DISTINCT de ``variante_de``/``variante_tier`` (NTCPQ16 — une variante de
+    # GAMME est un devis brouillon complet) et du couple sans/avec batterie :
+    # une taille n'est qu'une EXPLORATION, elle ne crée aucun devis, ne touche
+    # aucune ligne et ne change aucun statut (règle #4).
+    offres_tailles_config = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tailles explorables (configuration ajustée)',
+        help_text='Configuration par taille (eco/recommande/max) ajustée par '
+                  'le vendeur. Les nombres dérivés ne sont jamais stockés : '
+                  'le moteur les recalcule depuis cette configuration.',
+    )
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — le comportement reste
