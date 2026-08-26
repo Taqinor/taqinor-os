@@ -170,7 +170,12 @@ describe('COUVBAT — la page BRANCHE le bloc servi (et retombe proprement sans 
   });
 
   it('le curseur monte jusqu’au dernier cran servi (autonomie comprise)', () => {
-    expect(CODE).toContain('batteryCoverage?.nbPacksMax ?? 0');
+    // Revue 26/08 — « le plafond servi fait loi » (storageSweepBatt2.test.ts,
+    // même ligne) : `batteryCoverage` servi ⇒ SEUL `nbPacksMax` fixe le
+    // plafond, plus de MAX avec un plafond historique qui aurait pu ouvrir
+    // des crans sans données.
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = batteryCoverage');
+    expect(CODE).toContain('? batteryCoverage.nbPacksMax');
   });
 
   it('le repère d’autonomie est affiché, avec sa réserve d’honnêteté', () => {
