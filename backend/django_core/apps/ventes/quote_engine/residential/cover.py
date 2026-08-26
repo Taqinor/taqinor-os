@@ -250,8 +250,12 @@ def build(ctx):
     #
     # SOURCE DU LIEN : ``d['links']['signer']``, posé par ``builder`` (QX6 —
     # ShareLink tokenisé, ``utils.client_links.chemin_proposition``). On ne
-    # forge RIEN ici et on n'ajoute AUCUN paramètre : le QR encode l'URL telle
-    # quelle — aucun nom, aucune adresse, aucune coordonnée GPS en query.
+    # forge RIEN ici et on n'ajoute AUCUN paramètre de requête : le QR encode
+    # l'URL telle quelle. Ce que cette URL contient, exactement : le SLUG du
+    # nom du client dans le CHEMIN (PV84 — cosmétique, jamais vérifié côté
+    # serveur) puis le jeton. Aucune adresse, aucune coordonnée GPS, et rien en
+    # query. La forme AFFICHÉE sous le code, elle, est tronquée à
+    # « <hôte>/proposition » : ni le nom ni le jeton ne s'impriment en clair.
     # Le repli historique de ``renderer._augment`` (« <site>/signer/<ref> »,
     # jamais servi par le site) est explicitement EXCLU : sans vraie
     # proposition en ligne, la vignette s'omet plutôt que d'imprimer un QR
@@ -264,11 +268,17 @@ def build(ctx):
         qr_href = theme.normaliser_lien(_signer)
         qr_disp = theme.lien_affiche(_signer)
         # Correction M sans logo central : le MÊME lien tient en beaucoup moins
-        # de modules qu'en H+logo (la vignette de la page 3), donc reste
-        # scannable à 20 mm. Vide si la roue ``qrcode`` manque → tout le bloc
-        # s'omet (le lien de la page 3 reste, lui, entier).
+        # de modules qu'en H+logo (la vignette de la page 3). MESURÉ, zone de
+        # silence comprise : 41 modules de large pour un lien courant (61
+        # caractères), 45 avec le slug du nom, 53 dans le pire cas réaliste
+        # (domaine locataire long + slug long + jeton) — soit de 0,46 à
+        # 0,36 mm par module à 19 mm de côté. A6 — ``border=4`` : 4 modules de
+        # zone de silence au lieu de 2, la marge que réclament les lecteurs
+        # quand le code est posé dans une carte bordée. Vide si la roue
+        # ``qrcode`` manque → tout le bloc s'omet (le lien de la page 3 reste,
+        # lui, entier).
         qr_uri = theme.qr_data_uri(qr_href, logo=False, correction="M",
-                                   box_size=10, border=2)
+                                   box_size=10, border=4)
 
     qr_inner = ""
     if qr_uri:

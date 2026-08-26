@@ -2703,10 +2703,13 @@ def _proposition_link():
 
     Le lien vient EXCLUSIVEMENT de ``data['links']['signer']`` (builder QX6 :
     ShareLink + ``utils.client_links.chemin_proposition``) : ce module ne forge
-    aucune URL et n'ajoute AUCUN paramètre — ni nom, ni adresse, ni GPS. Le
-    repli historique « <site>/signer/<réf> » (jamais servi par le site) est
-    exclu : sans vraie proposition en ligne, la vignette s'omet plutôt que de
-    porter un QR qui mène à un 404.
+    aucune URL et n'ajoute AUCUN paramètre de requête. Ce que l'URL contient :
+    le SLUG du nom du client dans le CHEMIN (PV84 — cosmétique, jamais vérifié
+    côté serveur) puis le jeton ; aucune adresse, aucune coordonnée GPS. La
+    forme AFFICHÉE, elle, est tronquée à « <hôte>/proposition » — ni le nom ni
+    le jeton ne s'impriment en clair. Le repli historique « <site>/signer/<réf> »
+    (jamais servi par le site) est exclu : sans vraie proposition en ligne, la
+    vignette s'omet plutôt que de porter un QR qui mène à un 404.
     """
     url = (LINKS.get("signer") or "").strip()
     if "/proposition/" not in url:
@@ -2717,17 +2720,34 @@ def _proposition_link():
     return href, ("/".join(morceaux[:2]) if len(morceaux) > 2 else court)
 
 
+#: QRP1/A4 — hauteur de la bande d'en-tête du format UNE PAGE, en millimètres.
+#: C'est la hauteur qu'y occupe le logo (80 px). Elle est désormais IMPOSÉE à
+#: la rangée (et non plus subie), pour deux raisons prouvées en revue :
+#:   · sans ``logo.png``, ``logo_html`` retombe sur un texte de 15 pt et la
+#:     bande se serait réglée sur la vignette QR — donc une hauteur DIFFÉRENTE
+#:     selon la présence d'un asset ;
+#:   · la zone de contenu de cette page est bornée (``overflow:hidden``), donc
+#:     un en-tête plus haut ROGNE SILENCIEUSEMENT le bas du document (le Total
+#:     TTC d'un devis dense) sans qu'aucune garde de pagination ne s'en
+#:     aperçoive — le PDF ferait toujours 1 page.
+#: Toute la vignette QR tient sous cette hauteur, par construction.
+ONEPAGE_HEADER_MM = 21.17
+
+
 def _onepage_qr_uri(href):
-    """QRP1 — QR PNG data-URI de la proposition (correction M, sans logo : le
-    même lien tient en bien moins de modules qu'en H, donc reste scannable à
-    16 mm). '' si la roue ``qrcode`` manque — la vignette s'omet alors et le
-    document reste identique à aujourd'hui."""
+    """QRP1 — QR PNG data-URI de la proposition (correction M, sans logo
+    central : le même lien tient en bien moins de modules qu'en H, donc reste
+    scannable à 18 mm). A6 — ``border=4`` : la zone de silence par défaut (2
+    modules) est trop courte pour un QR posé sur un aplat NAVY ; 4 modules de
+    blanc, plus la platine blanche du gabarit, rendent la lecture fiable.
+    '' si la roue ``qrcode`` manque — la vignette s'omet alors et le document
+    reste identique à aujourd'hui."""
     if not href:
         return ""
     try:
         from .residential import theme as _rtheme
         return _rtheme.qr_data_uri(href, logo=False, correction="M",
-                                   box_size=10, border=2)
+                                   box_size=10, border=4)
     except Exception:
         return ""
 
@@ -2735,17 +2755,21 @@ def _onepage_qr_uri(href):
 def _onepage_header_html():
     """QRP1 — en-tête navy du format UNE PAGE.
 
-    Sans lien tokenisé (ou sans ``qrcode``), renvoie EXACTEMENT le balisage
-    historique — aucun devis existant ne bouge d'un pixel. Avec le lien, la
-    vignette QR se pose entre le logo et la référence, dans une TABLE CSS
+    Sans lien tokenisé (ou sans ``qrcode``), renvoie le balisage historique à
+    la hauteur imposée près — aucun contenu ne bouge. Avec le lien, la vignette
+    QR se pose entre le logo et la référence, dans une TABLE CSS
     (RENDERING_NOTES §1 : le flex de WeasyPrint sous-estime la hauteur de flux
-    d'une rangée de cartes et ignore ``gap``). La rangée garde la hauteur du
-    LOGO (80 px ≈ 21 mm), plus haute que le QR : l'en-tête ne grandit pas, donc
-    la densité adaptative de la page et sa garantie « exactement 1 page » sont
-    intactes.
+    d'une rangée de cartes et ignore ``gap``).
+
+    A4 — la rangée porte une HAUTEUR EXPLICITE (``ONEPAGE_HEADER_MM``) sur la
+    cellule du logo : elle vaut donc exactement la même chose avec ou sans
+    ``logo.png``, et avec ou sans QR. La légende passe À GAUCHE du code (et non
+    dessous) : la pile tient ainsi sous la bande sans rétrécir le QR, qui garde
+    18 mm — la seule dimension qui décide de sa lisibilité.
     """
     href, court = _proposition_link()
     qr = _onepage_qr_uri(href)
+    h = f"{ONEPAGE_HEADER_MM}mm"
     ref_html = (
         '<div style="text-align:right;">'
         f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
@@ -2754,23 +2778,34 @@ def _onepage_header_html():
         f'margin-top:2px;">{DATE_STR}</div></div>')
     if not qr:
         return (
-            f'<div style="background:{CN};padding:14px 24px;display:flex;'
-            'align-items:center;justify-content:space-between;">'
-            f'{logo_html("80px")}\n    {ref_html}</div>')
+            f'<div style="background:{CN};padding:14px 24px;display:table;'
+            'width:100%;table-layout:fixed;">'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;'
+            f'height:{h};">{logo_html("80px")}</div>'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;">'
+            f'{ref_html}</div></div>')
+    # A6 — platine BLANCHE derrière le code (aplat navy) et AUCUN arrondi sur
+    # l'image : un rayon rognait ~2 modules dans les coins, précisément là où
+    # vivent les trois motifs de repérage.
+    qr_cell = (
+        '<div style="display:table;margin:0 auto;">'
+        '<div style="display:table-cell;vertical-align:middle;'
+        'text-align:right;padding-right:3mm;">'
+        '<div style="color:rgba(255,255,255,0.80);font-size:6.2pt;'
+        'line-height:1.25;">Consultez votre<br>proposition interactive'
+        f'<br><span style="color:{CA};">{court}</span></div></div>'
+        '<div style="display:table-cell;vertical-align:middle;">'
+        '<div style="background:#FFFFFF;padding:0.7mm;display:inline-block;">'
+        f'<img src="{qr}" alt="QR — votre proposition en ligne" '
+        'style="height:18mm;width:18mm;display:block;"></div></div></div>')
     return (
         f'<div style="background:{CN};padding:14px 24px;display:table;'
         'width:100%;table-layout:fixed;">'
-        '<div style="display:table-cell;vertical-align:middle;width:34%;">'
-        f'{logo_html("80px")}</div>'
-        '<div style="display:table-cell;vertical-align:middle;width:32%;'
-        'text-align:center;">'
-        f'<img src="{qr}" alt="QR — votre proposition en ligne" '
-        'style="height:16mm;width:16mm;display:inline-block;'
-        'border-radius:3px;">'
-        '<div style="color:rgba(255,255,255,0.72);font-size:6pt;'
-        'margin-top:2px;line-height:1.2;">Consultez votre proposition '
-        f'interactive<br>{court}</div></div>'
-        '<div style="display:table-cell;vertical-align:middle;width:34%;">'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;'
+        f'height:{h};">{logo_html("80px")}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:48%;">'
+        f'{qr_cell}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;">'
         f'{ref_html}</div></div>')
 
 

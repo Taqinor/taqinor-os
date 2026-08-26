@@ -161,19 +161,24 @@ def build(ctx) -> str:
     # ── QRP1 — lien tokenisé + QR de la proposition en ligne ─────────────────
     # Même discipline que la page 1 résidentielle : le lien vient EXCLUSIVEMENT
     # de ``d['links']['signer']`` (builder QX6, ShareLink tokenisé), aucune URL
-    # forgée ici et AUCUN paramètre ajouté — ni nom, ni adresse, ni GPS. Le
-    # repli « <site>/signer/<réf> » (jamais servi par le site) est exclu : sans
-    # vraie proposition en ligne, la vignette s'omet plutôt que d'imprimer un
-    # QR qui mène à un 404. Rendue sous la note légale, dans les ~50 mm restés
-    # libres au bas de cette page (mesurés) : aucune 5ᵉ page possible.
+    # forgée ici et AUCUN paramètre de requête ajouté. L'URL porte le SLUG du
+    # nom du client dans son CHEMIN (PV84 — cosmétique, jamais vérifié côté
+    # serveur) et le jeton ; ni adresse ni GPS. La forme AFFICHÉE est tronquée
+    # à « <hôte>/proposition » : ni le nom ni le jeton en clair. Le repli
+    # « <site>/signer/<réf> » (jamais servi par le site) est exclu : sans vraie
+    # proposition en ligne, la vignette s'omet plutôt que d'imprimer un QR qui
+    # mène à un 404. Rendue sous la note légale, dans les ~50 mm restés libres
+    # au bas de cette page (mesurés) : aucune 5ᵉ page possible.
     _signer = ((d.get("links") or {}).get("signer") or "").strip()
     qr_html = ""
     if "/proposition/" in _signer:
         from ..residential import theme as _rtheme
         _href = _rtheme.normaliser_lien(_signer)
         _court = _rtheme.lien_affiche(_signer)
+        # A6 — 4 modules de zone de silence (et aucun arrondi sur l'image
+        # elle-même : un rayon rogne les motifs de repérage des coins).
         _qr = _rtheme.qr_data_uri(_href, logo=False, correction="M",
-                                  box_size=10, border=2)
+                                  box_size=10, border=4)
         if _qr:
             qr_html = (
                 '<div class="a1-qr"><div class="a1-qr-t">'
