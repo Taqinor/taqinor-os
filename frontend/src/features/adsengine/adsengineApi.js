@@ -199,6 +199,19 @@ const adsengineApi = {
     // reste est signalé à l'écran comme tronqué, jamais escamoté.
     allDecisions: (params) => api.get('/adsengine/decisions/',
       { params: { page_size: SERVER_MAX_PAGE_SIZE, ...params } }),
+    // WIR209 — CLÔTURE HUMAINE d'une expérience avec verdict
+    // (`ExperimentViewSet.conclure`, views.py:910). Corps OBLIGATOIRE
+    // `{validated: true|false}` (booléen strict, sinon 400 FR) : l'opérateur
+    // décide, la machine enregistre. Réponse `{node, decision_log, validated}` ;
+    // `node: null` (200) = aucune hypothèse rattachée, verdict non déplacé.
+    conclude: (id, payload) =>
+      api.post(`/adsengine/experiences/${id}/conclure/`, payload),
+    // WIR209 — LECTURE SEULE des résultats de l'étude A/B native Meta liée
+    // (`ExperimentViewSet.sync_ad_study`) : journalise un `DecisionLog` et le
+    // renvoie (`DecisionLogSerializer`). 404 sans `meta_study_id`, 400 sans
+    // connexion Meta active, 502 si Meta échoue. Rien n'est écrit chez Meta.
+    syncAdStudy: (id) =>
+      api.post(`/adsengine/experiences/${id}/sync-ad-study/`),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
@@ -249,6 +262,18 @@ const adsengineApi = {
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
   anomalies: {
     list: (params) => api.get('/adsengine/anomalies/', { params }),
+    // WIR209/PUB90 — vote HUMAIN sur une anomalie
+    // (`AnomalyEventViewSet.feedback`) : `{vote: 'useful'|'false_positive'}`
+    // (toute autre valeur → 400 FR). Acteur + horodatage posés côté serveur ;
+    // idempotent (re-voter remplace). Renvoie l'anomalie sérialisée.
+    feedback: (id, payload) =>
+      api.post(`/adsengine/anomalies/${id}/feedback/`, payload),
+    // WIR209/PUB90 — précision + état de throttle PAR DÉTECTEUR
+    // (`AnomalyEventViewSet.detectors`, url_path `detecteurs`) : renvoie
+    // `{detecteurs: [{detector,total,labelled,useful,false_positive,precision,
+    // throttled,throttle_factor}]}`. Un détecteur sans anomalie est ABSENT —
+    // jamais fabriqué.
+    detectors: () => api.get('/adsengine/anomalies/detecteurs/'),
   },
 
   // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──

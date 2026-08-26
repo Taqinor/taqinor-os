@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
   policies: vi.fn(),
   policyCreate: vi.fn(),
   policyUpdate: vi.fn(),
+  // WIR209/PUB90 — boucle d'apprentissage des anomalies.
+  anomalyFeedback: vi.fn(),
+  detectors: vi.fn(),
+  permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -24,9 +28,20 @@ vi.mock('./adsengineApi', () => ({
       templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal,
       list: mocks.policies, create: mocks.policyCreate, update: mocks.policyUpdate,
     },
-    anomalies: { list: mocks.anomalies },
+    anomalies: {
+      list: mocks.anomalies, feedback: mocks.anomalyFeedback,
+      detectors: mocks.detectors,
+    },
     alerts: { history: mocks.history },
   },
+}))
+
+// WIR209 — voter sur une anomalie exige `adsengine_manage` (backend) ; accès
+// complet par défaut, restreint dans le test dédié.
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false, has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import RulesScreen from './RulesScreen'
@@ -43,6 +58,7 @@ beforeEach(() => {
       condition_fr: 'la fréquence dépasse 3', action_fr: 'proposer une rotation de créatif',
       cadence: 'critical' },
   ] })
+  mocks.permissions = ['adsengine_view', 'adsengine_manage']
   mocks.policies.mockResolvedValue({ data: [] })
   mocks.policyCreate.mockResolvedValue({ data: { id: 1, template_key: 'overlap', enabled: true, dry_run: false } })
   mocks.policyUpdate.mockResolvedValue({ data: { id: 2, template_key: 'fatigue', enabled: false, dry_run: true } })
@@ -54,8 +70,17 @@ beforeEach(() => {
     ] } })
   mocks.anomalies.mockResolvedValue({ data: [
     { id: 9, titre: 'CPL en forte hausse', severite: 'critique',
-      message: 'Le coût par lead a doublé en 24 h.', quand: '2026-07-15' },
+      message: 'Le coût par lead a doublé en 24 h.', quand: '2026-07-15',
+      // PUB90 — champs RÉELS de `AnomalyEventSerializer`.
+      detector: 'cpl_spike', feedback: '' },
   ] })
+  // PUB90 — forme RÉELLE de `anomaly.detector_stats` (précision = fraction).
+  mocks.anomalyFeedback.mockImplementation((id, payload) => Promise.resolve({
+    data: { id, detector: 'cpl_spike', feedback: payload.vote } }))
+  mocks.detectors.mockResolvedValue({ data: { detecteurs: [
+    { detector: 'cpl_spike', total: 4, labelled: 2, useful: 1, false_positive: 1,
+      precision: 0.5, throttled: false, throttle_factor: 1 },
+  ] } })
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
   ] } })
@@ -170,5 +195,78 @@ describe('RulesScreen (ENG43)', () => {
       fireEvent.click(await screen.findByTestId('ae-rule-arm-confirm-btn-overlap'))
       expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent('refusé')
     })
+  })
+})
+
+/* ==========================================================================
+   WIR209/PUB90 — Boucle d'apprentissage des anomalies : vote utile /
+   faux-positif + tuile de précision par détecteur (throttle visible).
+   Avant : `anomalies/<id>/feedback/` et `anomalies/detecteurs/` n'avaient
+   AUCUN appelant — la précision restait vide et le throttle ne partait jamais.
+   ========================================================================== */
+describe('RulesScreen — WIR209 votes d\'anomalie + précision par détecteur', () => {
+  it('vote « utile » : poste {vote} sur l\'anomalie et relit les détecteurs', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-anomaly-vote-useful-9'))
+    await waitFor(() => expect(mocks.anomalyFeedback)
+      .toHaveBeenCalledWith(9, { vote: 'useful' }))
+    // Le vote affiché est celui CONFIRMÉ par le serveur.
+    expect(await screen.findByTestId('ae-anomaly-vote-state-9'))
+      .toHaveTextContent('Utile')
+    // La précision est relue après le vote (1 appel au montage + 1 après).
+    await waitFor(() => expect(mocks.detectors).toHaveBeenCalledTimes(2))
+  })
+
+  it('vote « faux positif » : poste la valeur serveur false_positive', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-anomaly-vote-fp-9'))
+    await waitFor(() => expect(mocks.anomalyFeedback)
+      .toHaveBeenCalledWith(9, { vote: 'false_positive' }))
+    expect(await screen.findByTestId('ae-anomaly-vote-state-9'))
+      .toHaveTextContent('Faux positif')
+  })
+
+  it('un vote refusé affiche une erreur et n\'affiche AUCUN vote', async () => {
+    mocks.anomalyFeedback.mockRejectedValue(new Error('403'))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-anomaly-vote-useful-9'))
+    expect(await screen.findByTestId('ae-anomaly-vote-err')).toHaveTextContent('refusé')
+    expect(screen.queryByTestId('ae-anomaly-vote-state-9')).toBeNull()
+  })
+
+  it('la tuile rend les chiffres du serveur (précision + votes), jamais un calcul local', async () => {
+    renderScreen()
+    const tile = await screen.findByTestId('ae-detector-tile')
+    expect(tile).toHaveTextContent('cpl_spike')
+    expect(screen.getByTestId('ae-detector-precision-cpl_spike')).toHaveTextContent('50 %')
+    expect(tile).toHaveTextContent('2 vote(s) sur 4 anomalie(s)')
+    // Non throttlé ici : aucune pastille de cadence réduite.
+    expect(screen.queryByTestId('ae-detector-throttled-cpl_spike')).toBeNull()
+  })
+
+  it('un détecteur throttlé le MONTRE (cadence réduite)', async () => {
+    mocks.detectors.mockResolvedValue({ data: { detecteurs: [
+      { detector: 'cpl_spike', total: 9, labelled: 6, useful: 1, false_positive: 5,
+        precision: 0.1667, throttled: true, throttle_factor: 4 },
+    ] } })
+    renderScreen()
+    expect(await screen.findByTestId('ae-detector-throttled-cpl_spike'))
+      .toHaveTextContent('Cadence réduite')
+  })
+
+  it('aucun détecteur : message dédié (jamais un détecteur fabriqué)', async () => {
+    mocks.detectors.mockResolvedValue({ data: { detecteurs: [] } })
+    renderScreen()
+    expect(await screen.findByTestId('ae-detectors-empty')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-detector-tile')).toBeNull()
+  })
+
+  it('sans adsengine_manage : les deux votes sont grisés (permission backend respectée)', async () => {
+    mocks.permissions = ['adsengine_view']
+    renderScreen()
+    expect(await screen.findByTestId('ae-anomaly-vote-useful-9')).toBeDisabled()
+    expect(screen.getByTestId('ae-anomaly-vote-fp-9')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('ae-anomaly-vote-useful-9'))
+    expect(mocks.anomalyFeedback).not.toHaveBeenCalled()
   })
 })
