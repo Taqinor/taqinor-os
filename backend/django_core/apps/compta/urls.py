@@ -79,6 +79,8 @@ from .views import (
     EcheancierReconnaissanceViewSet,
     ModeleEcritureViewSet, LigneModeleEcritureViewSet,
     AbonnementEcritureViewSet,
+    # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
+    EmpruntViewSet, EcheanceEmpruntViewSet, EtatPersonnaliseViewSet,
 )
 
 router = DefaultRouter()
@@ -230,6 +232,13 @@ router.register(r'echeances-reconnaissance', EcheancierReconnaissanceViewSet)
 router.register(r'modeles-ecriture', ModeleEcritureViewSet)
 router.register(r'lignes-modele-ecriture', LigneModeleEcritureViewSet)
 router.register(r'abonnements-ecriture', AbonnementEcritureViewSet)
+# ── WIR279 / XACC14 — Emprunts & crédits-bails contractés par la société ────
+router.register(r'emprunts', EmpruntViewSet)
+router.register(r'echeances-emprunt', EcheanceEmpruntViewSet)
+# ── WIR279 / XACC19 — États financiers PARAMÉTRABLES ───────────────────────
+# Route DISTINCTE de ``etats/`` (EtatsComptablesViewSet, les états FIGÉS
+# GL/balance/CPC/bilan) : deux ressources différentes, jamais fusionnées.
+router.register(r'etats-personnalises', EtatPersonnaliseViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts
