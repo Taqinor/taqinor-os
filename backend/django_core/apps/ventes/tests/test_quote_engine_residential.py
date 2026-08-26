@@ -1162,6 +1162,39 @@ class TestRoofRenderDataUri(SimpleTestCase):
             self._uri('roofs/1/DEV-1.png', octets=b'x' * (6 * 1024 * 1024 + 1)),
             '')
 
+    def test_les_flux_pdf_publics_passent_le_jeton_du_lien_servi(self):
+        """A5 (câblage) — ``_opts_pdf_public`` est la SOURCE UNIQUE des options
+        des deux flux PDF publics (``proposal_pdf`` et ``public_document``) :
+        c'est là que le filigrane anticopie est posé, donc c'est là que le jeton
+        du lien servi doit l'être aussi — les deux flux ne peuvent pas diverger.
+
+        Sans DB : ``_niveau_lien`` et la lecture du jeton sont tous deux en
+        ``getattr`` défensif, un lien factice suffit."""
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public_views import _opts_pdf_public
+
+        class _Lien:
+            def __init__(self, token, niveau):
+                self.token = token
+                self.niveau = niveau
+
+        standard = _opts_pdf_public(
+            _Lien('TOKENstandard1234', ShareLink.NIVEAU_STANDARD))
+        self.assertEqual(standard['share_token'], 'TOKENstandard1234')
+        # …et la dégradation anticopie reste posée sur le MÊME appel.
+        self.assertTrue(standard['watermark'])
+        self.assertTrue(standard['kit_agrege'])
+
+        confiance = _opts_pdf_public(
+            _Lien('TOKENconfiance999', ShareLink.NIVEAU_CONFIANCE))
+        self.assertEqual(confiance['share_token'], 'TOKENconfiance999')
+        self.assertFalse(confiance.get('watermark'))
+
+        # Lien sans jeton lisible → aucune clé posée, repli moteur historique.
+        self.assertIsNone(
+            _opts_pdf_public(_Lien('', ShareLink.NIVEAU_CONFIANCE))
+            ['share_token'])
+
     def test_le_drapeau_de_rendu_n_est_pas_whiteliste(self):
         """A8 — ``_embed_roof_render`` est un drapeau SERVEUR (comme
         ``watermark``) : ``clean_pdf_options`` ne le laisse pas passer, donc un

@@ -437,11 +437,26 @@ def _opts_pdf_public(link, variante=None):
     ``None`` = le document complet composé par le commercial. La dégradation
     anticopie ci-dessus reste posée SERVEUR et s'applique à TOUTES les
     variantes — le client ne peut pas la contourner par un paramètre.
+
+    QRP1/A5 (27/08/2026) — LE QR DU PDF SUIT LE LIEN QUI LE SERT. Le moteur
+    imprime un QR vers la proposition en ligne ; à défaut d'indication il prend
+    ``ShareLink.for_devis``, qui rend le lien à l'EXPIRATION LA PLUS LOINTAINE
+    sans regarder son niveau. Un devis partagé deux fois (un lien standard pour
+    un prospect, un lien confiance à longue échéance pour le client) servait
+    donc, sur le PDF STANDARD, un QR vers la page CONFIANCE : la dégradation
+    posée deux lignes plus haut annulée par son propre code-barres. On passe
+    ici le jeton du lien RÉELLEMENT servi — même source unique que le filigrane,
+    donc les deux flux publics ne peuvent pas diverger. Le moteur ne le croit
+    pas sur parole : il ne s'en sert que si un ShareLink de CE devis porte ce
+    jeton et n'a pas expiré (sinon repli historique).
     """
     opts = clean_pdf_options({'variante_option': variante})
     if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
         opts['watermark'] = True
         opts['kit_agrege'] = True
+    _token = (getattr(link, 'token', '') or '').strip()
+    if _token:
+        opts['share_token'] = _token
     return opts
 
 
