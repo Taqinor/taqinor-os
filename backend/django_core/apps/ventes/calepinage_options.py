@@ -12,9 +12,17 @@ CE QUE CE MODULE NE FAIT PAS, ET C'EST L'ESSENTIEL
   sur le devis : même polygone, même orientation, même trame de rangées, mêmes
   obstacles. Moins de panneaux ⇒ on en RETIRE par la fin des rangées ; plus de
   panneaux ⇒ on PROLONGE la trame À L'INTÉRIEUR du polygone réel. Un panneau
-  hors du contour ne peut pas exister ici : le test de contenance est fait sur
-  une empreinte CONSERVATRICE (plus grande que le panneau réel), donc un
-  emplacement douteux est REFUSÉ, jamais accordé.
+  hors du contour ne peut pas exister ici : les QUATRE COINS d'une empreinte
+  CONSERVATRICE doivent tomber dans le polygone, au-delà du retrait de rive et
+  hors du dégagement de tout obstacle — donc un emplacement douteux est
+  REFUSÉ, jamais accordé.
+
+  CETTE EMPREINTE N'EST CONSERVATRICE QUE SUR UNE VRAIE LATTICE, et c'est
+  pourquoi :meth:`_Trame.trame_reguliere` existe : sur un pavage MIXTE (PV62 —
+  pose choisie rangée par rangée), le pas retenu serait le plus petit des
+  deux et l'empreinte deviendrait plus PETITE que le panneau dessiné. La
+  dérivation refuse alors de prolonger, plutôt que de valider une contenance
+  qui ne couvre pas le rendu.
 * **Il n'invente aucun format de dessin.** Le ``layout`` d'une option a
   EXACTEMENT la forme que la page lit déjà pour la clé racine ``roof_layout``
   (``apps/web/src/lib/proposition.ts`` ``parseRoofLayout`` →
@@ -69,13 +77,50 @@ _DEG2M = _DEG2RAD * _RAYON_WGS84
 #: rangées voisines.
 _TOLERANCE_RANGEE_M = 0.30
 
-#: Retrait de rive (m) exigé des quatre coins d'un emplacement AJOUTÉ. MÊME
-#: valeur que le calepineur (``lib/roofPro2.ts`` ``PERIMETER_SETBACK_M`` et son
-#: miroir visionneuse ``VIEWER_SETBACK_M``). Appliqué à une empreinte déjà plus
-#: grande que le panneau réel : le test est donc STRICTEMENT plus sévère que
-#: celui qui a posé le calepinage d'origine. On préfère toujours dessiner un
-#: panneau de moins que dessiner un panneau dehors.
+#: Écart minimal (m) pour qu'une différence de position COMPTE comme un pas.
+#: MÊME seuil que le client (``lib/proposition.ts`` ``inferPanelPose`` :
+#: ``if (gap > 1e-3 …)``) : en dessous, ce sont deux panneaux d'une MÊME
+#: colonne (rangées empilées, ou les deux versants d'un chevron Est-Ouest) —
+#: pas une mesure de pas. Le 1e-6 d'origine laissait le bruit flottant
+#: (``sin(180°) ≈ 1e-16``) se faire passer pour un pas de grille.
+_EPS_PAS_M = 1e-3
+
+#: Tolérance (m) du critère « cet écart est un multiple entier du pas ».
+#: Généreuse VOLONTAIREMENT : elle doit absorber le bruit d'une pose retouchée
+#: sans jamais absorber la différence entre un pas portrait (~1,32 m) et un pas
+#: paysage (~2,40 m) — c'est cette différence-là que la garde PV62 doit voir.
+_TOLERANCE_LATTICE_M = 0.05
+
+#: Retrait de rive (m) exigé des quatre coins d'un emplacement AJOUTÉ. C'est le
+#: retrait PAR DÉFAUT du calepineur — ``lib/roofPro2.ts`` ``PERIMETER_SETBACK_M``,
+#: le ``fallbackM`` de ``resolveSetbacks`` et le repli
+#: ``estimatorBrainV2`` ``opts.setbackM ?? PERIMETER_SETBACK_M`` (miroir
+#: visionneuse : ``VIEWER_SETBACK_M``).
+#:
+#: LIMITE CONNUE, DITE HONNÊTEMENT (PV63) : le calepineur accepte désormais des
+#: retraits PAR CÔTÉ (``resolveSetbacks`` → ``{lateralM, extremityM,
+#: parapetM}``), et ces trois valeurs NE SONT PAS SÉRIALISÉES dans le layout
+#: (``prefill.ts`` ne les émet pas). Un dessin dérivé prolonge donc toujours au
+#: retrait par défaut de 0,5 m. Conséquence bornée et connue : sur un toit
+#: réglé à un retrait PLUS GRAND, une rangée ajoutée peut s'approcher du bord
+#: plus près que le commercial ne l'aurait fait — jamais hors du polygone. Le
+#: jour où les retraits par côté voyageront dans le layout, ils se lisent ici.
 _RETRAIT_RIVE_M = 0.5
+
+#: PV61 — dégagement (m) autour d'un obstacle, PAR TYPE. Table recopiée de
+#: ``apps/web/src/scripts/roofPro11/types.ts`` ``CLEARANCE_BY_TYPE`` : les
+#: obstacles HAUTS ou salissants (cheminée, chien-assis, édicule) demandent
+#: 0,50 m — suie, ombre portée, accès d'entretien ; les autres gardent le
+#: dégagement de base.
+_DEGAGEMENT_DEFAUT = 0.3          # estimatorBrainV2 OBSTACLE_CLEARANCE_M
+_DEGAGEMENTS = {
+    'cheminee': 0.5,
+    'chien_assis': 0.5,
+    'edicule': 0.5,
+    'ventilation': _DEGAGEMENT_DEFAUT,
+    'antenne': _DEGAGEMENT_DEFAUT,
+    'autre': _DEGAGEMENT_DEFAUT,
+}
 
 #: Bornes de travail — un endpoint public non caché ne fait pas de géométrie
 #: non bornée. Au-delà, on plafonne (et on le DIT via ``plafonne``).
@@ -98,8 +143,16 @@ _GEO_RECOPIEES = ('azimuthDeg', 'tiltDeg', 'family', 'flush', 'origin')
 #: ici n'existe pas en sortie. ``neededPanels`` en est volontairement absente
 #: (c'est la cible dimensionnée par l'étude du DEVIS, elle ne décrit pas la
 #: taille explorée) et ``geometry`` aussi (elle est reconstruite).
-_ZONE_RECOPIEES = ('id', 'label', 'vertices', 'obstacles', 'roofType',
+_ZONE_RECOPIEES = ('id', 'label', 'vertices', 'roofType',
                    'pitchDeg', 'facingAzimuthDeg')
+
+#: Les SEULES clés d'un OBSTACLE recopiées. La liste d'obstacles était le
+#: dernier endroit recopié EN BLOC : une sonde d'injection y a fait voyager un
+#: ``prix_achat`` niché dans un obstacle. Ce sont exactement les champs que la
+#: page lit (``proposition.parseRoofLayout``) plus ``type`` (PV61, le
+#: dégagement) — rien d'autre n'a de raison d'exister sur un dessin.
+_OBSTACLE_RECOPIEES = ('id', 'centerLng', 'centerLat', 'lengthM', 'widthM',
+                       'type')
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -114,6 +167,19 @@ def _fini(valeur):
     if nombre != nombre or nombre in (float('inf'), float('-inf')):
         return None
     return nombre
+
+
+def _multiple(ecart, pas):
+    """``ecart`` est-il un MULTIPLE ENTIER de ``pas`` (à la tolérance près) ?
+
+    Le critère de régularité d'une lattice. La tolérance est celle de la
+    géométrie du toit, pas celle du flottant : un pavage mixte se trahit par
+    des écarts de l'ordre du décimètre, jamais du millimètre.
+    """
+    if pas is None or pas <= _EPS_PAS_M:
+        return False
+    reste = abs(ecart) / pas
+    return abs(reste - round(reste)) * pas <= _TOLERANCE_LATTICE_M
 
 
 def axes_de_pose(azimut_deg):
@@ -195,12 +261,23 @@ def _distance_bord(point, anneau):
 
 
 def obstacles_enu(obstacles, origine):
-    """Les obstacles en boîtes ENU ``(xmin, ymin, xmax, ymax)``.
+    """Les obstacles en boîtes ENU ``(xmin, ymin, xmax, ymax)``, DÉGAGEMENT INCLUS.
 
-    L'orientation d'un obstacle n'est PAS stockée : on le traite comme une
-    boîte alignée Est/Nord de ``lengthM`` × ``widthM``. C'est conservateur dans
-    le sens utile (on refuse un peu large autour d'une cheminée), jamais
-    l'inverse.
+    ``lengthM`` EST L'ÉTENDUE NORD-SUD ET ``widthM`` L'ÉTENDUE EST-OUEST — pas
+    l'inverse. La source de vérité est ``apps/web/src/lib/obstacles.ts``
+    (``obstacleRing`` : ``dLat = lengthM/2``, ``dLng = widthM/2 / cosLat``),
+    et le type le documente noir sur blanc (« Étendue nord-sud (m) » /
+    « Étendue est-ouest (m) »). Les intervertir faisait pivoter la zone
+    d'exclusion de 90° : sur une cheminée 1 m × 6 m, la boîte protégeait une
+    bande de toit VIDE et laissait poser un panneau SUR la souche. Une boîte
+    carrée ne peut pas révéler l'erreur — c'est le test non carré qui l'arme.
+
+    PV61 — LE DÉGAGEMENT FAIT PARTIE DE LA BOÎTE. Le calepineur n'exige pas
+    seulement « hors du rectangle » : il refuse tout coin à moins de
+    ``clearance`` du bord (``estimatorBrainV2`` : ``pointInPolygon(c, o) ||
+    distToBoundary(c, o) <= cl``), et ce dégagement est PROPRE AU TYPE
+    (``CLEARANCE_BY_TYPE``). On gonfle donc chaque boîte de son dégagement ici,
+    une fois : le test d'emplacement n'a plus qu'à ne pas la toucher.
     """
     olng = _fini((origine or [None, None])[0])
     olat = _fini((origine or [None, None])[1])
@@ -213,16 +290,19 @@ def obstacles_enu(obstacles, origine):
             continue
         lng = _fini(obstacle.get('centerLng'))
         lat = _fini(obstacle.get('centerLat'))
-        longueur = _fini(obstacle.get('lengthM'))
-        largeur = _fini(obstacle.get('widthM'))
-        if None in (lng, lat, longueur, largeur):
+        nord_sud = _fini(obstacle.get('lengthM'))
+        est_ouest = _fini(obstacle.get('widthM'))
+        if None in (lng, lat, nord_sud, est_ouest):
             continue
-        if longueur <= 0 or largeur <= 0:
+        if nord_sud <= 0 or est_ouest <= 0:
             continue
+        degagement = _DEGAGEMENTS.get(obstacle.get('type'),
+                                      _DEGAGEMENT_DEFAUT)
         cx = (lng - olng) * _DEG2M * cos_lat
         cy = (lat - olat) * _DEG2M
-        boites.append((cx - longueur / 2.0, cy - largeur / 2.0,
-                       cx + longueur / 2.0, cy + largeur / 2.0))
+        demi_x = est_ouest / 2.0 + degagement       # Est-Ouest = widthM
+        demi_y = nord_sud / 2.0 + degagement        # Nord-Sud  = lengthM
+        boites.append((cx - demi_x, cy - demi_y, cx + demi_x, cy + demi_y))
     return boites
 
 
@@ -303,7 +383,7 @@ class _Trame:
         for _v, cellules in self.rangees:
             for i in range(1, len(cellules)):
                 ecart = cellules[i][0] - cellules[i - 1][0]
-                if ecart > 1e-6 and (pas is None or ecart < pas):
+                if ecart > _EPS_PAS_M and (pas is None or ecart < pas):
                     pas = ecart
         return pas
 
@@ -311,7 +391,7 @@ class _Trame:
         pas = None
         for i in range(1, len(self.rangees)):
             ecart = self.rangees[i][0] - self.rangees[i - 1][0]
-            if ecart > 1e-6 and (pas is None or ecart < pas):
+            if ecart > _EPS_PAS_M and (pas is None or ecart < pas):
                 pas = ecart
         return pas
 
@@ -327,26 +407,61 @@ class _Trame:
         return sum(len(cellules) for _v, cellules in self.rangees)
 
     # ── extension ───────────────────────────────────────────────────────────
+    def trame_reguliere(self):
+        """La pose tient-elle VRAIMENT sur UNE lattice à pas unique ?
+
+        PV62 — LE PAVAGE PEUT ÊTRE MIXTE : le calepineur choisit la pose
+        (portrait / paysage) RANGÉE PAR RANGÉE (``ctx.sel.orient === 'mixed'``,
+        un choix atteignable d'un clic), et les rangées ont alors des pas
+        DIFFÉRENTS. Or ``_safe_zone_geometry`` ne publie PAS la pose par
+        panneau (``orient``) : depuis la donnée assainie, un pavage mixte
+        ressemble à un pavage uniforme.
+
+        Sans cette garde, ``pas_colonne`` valait le MINIMUM des deux pas — donc
+        le pas PORTRAIT — et l'empreinte de validation devenait PLUS PETITE que
+        le panneau réellement dessiné sur les rangées paysage : la preuve de
+        contenance ne couvrait plus le rendu (jusqu'à ~3 cm de coin hors
+        polygone, et des panneaux qui s'interpénètrent d'un mètre à l'écran).
+
+        La garde est arithmétique et n'invente rien : sur une VRAIE lattice,
+        chaque écart dans une rangée et chaque écart entre rangées est un
+        MULTIPLE ENTIER du pas. Dès qu'un écart ne l'est pas, on refuse de
+        prolonger — la taille plafonne, ce qui est le pire honnête.
+        """
+        if self.pas_colonne is None or self.pas_rangee is None:
+            return False
+        for _v, cellules in self.rangees:
+            for i in range(1, len(cellules)):
+                ecart = cellules[i][0] - cellules[i - 1][0]
+                if not _multiple(ecart, self.pas_colonne):
+                    return False
+        for i in range(1, len(self.rangees)):
+            ecart = self.rangees[i][0] - self.rangees[i - 1][0]
+            if not _multiple(ecart, self.pas_rangee):
+                return False
+        return True
+
     def extensible(self):
         """Peut-on PROLONGER cette zone sans deviner ?
 
-        Il faut les DEUX pas (colonne et rangée) : sans le pas de rangée on ne
-        connaît pas la profondeur occupée par un panneau, donc on ne peut pas
-        prouver qu'un ajout tient dans le polygone. Une zone à une seule rangée
-        (ou posée À LA MAIN, ``mode == 'free'``) n'est donc jamais prolongée —
-        le dessin plafonne, et il le DIT.
+        Il faut les DEUX pas (colonne et rangée) — sans le pas de rangée, la
+        profondeur occupée par un panneau est inconnue, donc on ne peut pas
+        PROUVER qu'un ajout tient — ET une trame réellement régulière (voir
+        :meth:`trame_reguliere`, PV62). Une zone à une seule rangée, une pose
+        faite À LA MAIN (``mode == 'free'``) ou un pavage mixte ne sont jamais
+        prolongés : le dessin plafonne, et il le DIT.
         """
         return (not self.libre and bool(self.rangees)
-                and self.pas_colonne is not None
-                and self.pas_rangee is not None)
+                and self.trame_reguliere())
 
     def _emplacement_libre(self, uu, vv):
         """Les quatre coins d'une empreinte CONSERVATRICE tiennent-ils ?
 
-        L'empreinte vaut ``pas_colonne`` × ``pas_rangee`` : par construction
-        elle est PLUS GRANDE que le panneau réel (le pas inclut le jeu entre
-        panneaux, et le pas de rangée inclut l'ombre portée sur toit plat).
-        Un emplacement accepté ici l'aurait donc été par le calepineur ; un
+        L'empreinte vaut ``pas_colonne`` × ``pas_rangee``. Sur la lattice
+        UNIQUE que :meth:`trame_reguliere` vient de prouver, elle est plus
+        grande que le panneau réel (le pas de colonne inclut le jeu entre
+        panneaux ; le pas de rangée inclut l'ombre portée sur toit plat). Un
+        emplacement accepté ici l'aurait donc été par le calepineur ; un
         emplacement refusé peut être un refus prudent — c'est le sens voulu.
         """
         du = self.pas_colonne / 2.0
@@ -359,6 +474,9 @@ class _Trame:
             if _distance_bord(coin, self.anneau) < _RETRAIT_RIVE_M:
                 return False
         if self.obstacles:
+            # Les boîtes portent DÉJÀ leur dégagement PV61 (voir
+            # ``obstacles_enu``) : toucher l'une d'elles, c'est violer le
+            # dégagement, pas seulement mordre la souche.
             xs = [c[0] for c in coins]
             ys = [c[1] for c in coins]
             xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
@@ -430,37 +548,91 @@ class _Trame:
 # ════════════════════════════════════════════════════════════════════════════
 
 def _modes_libres(devis):
-    """``{index de zone: True}`` pour les zones posées À LA MAIN.
+    """``(identifiants libres, rangs libres)`` — les zones posées À LA MAIN.
 
     ``geometry.mode == 'free'`` (PV30) n'est PAS republié par la whitelist
-    publique : on va donc le chercher sur le blob stocké, et lui seul. Une
-    lecture ratée vaut « pas libre » — au pire on refuse d'étendre une zone
+    publique : on va donc le chercher sur le blob stocké, et lui seul.
+
+    LE RANG BRUT N'EST PAS LE RANG PUBLIÉ, et c'est ce qui rendait cette
+    protection inopérante. ``_safe_roof_layout`` SAUTE les entrées qui ne sont
+    pas des dicts ; un blob portant une entrée parasite avant une zone libre
+    décalait donc tous les rangs d'un cran, la zone libre héritait du drapeau
+    de sa voisine, et une pose faite à la main se faisait prolonger sur une
+    lattice qu'elle n'a jamais eue.
+
+    D'où DEUX clés, dans cet ordre : l'``id`` de zone (stable, présent sur
+    toute zone sérialisée par le builder) et, en repli pour les blobs anciens
+    sans ``id``, un rang calculé avec EXACTEMENT le même filtre que
+    ``_safe_roof_layout`` (dicts seulement) — donc aligné sur la liste publiée.
+
+    Une lecture ratée vaut « pas libre » — au pire on refuse d'étendre une zone
     qu'on aurait pu étendre, jamais l'inverse.
     """
-    libres = {}
+    identifiants, rangs = set(), set()
     layout = getattr(devis, 'roof_layout', None)
     if not isinstance(layout, dict):
-        return libres
-    for index, zone in enumerate(layout.get('zones') or []):
+        return identifiants, rangs
+    rang = 0
+    for zone in layout.get('zones') or []:
         if not isinstance(zone, dict):
+            # MÊME saut que ``_safe_roof_layout`` : c'est ce qui garde les
+            # rangs alignés sur la liste publiée.
             continue
         geometrie = zone.get('geometry')
         if isinstance(geometrie, dict) and geometrie.get('mode') == 'free':
-            libres[index] = True
-    return libres
+            if zone.get('id'):
+                identifiants.add(zone['id'])
+            rangs.add(rang)
+        rang += 1
+    return identifiants, rangs
+
+
+def zones_publiees(layout_public):
+    """Les zones du calepinage assaini, avec leur rang — dicts seulement."""
+    return [(rang, zone)
+            for rang, zone in enumerate((layout_public or {}).get('zones') or [])
+            if isinstance(zone, dict)]
+
+
+def nb_panneaux_publies(layout_public):
+    """Le nombre de panneaux que le calepinage PUBLIÉ dessine réellement.
+
+    C'est le compte que la page AFFICHE quand elle rend la clé racine
+    ``roof_layout`` — donc le seul contre lequel une taille a le droit de dire
+    « c'est exactement le calepinage du devis ». Compté sur TOUTES les zones
+    publiées, y compris celles que la dérivation ne sait pas relire (voir
+    :func:`lire_trames`) : sinon une zone illisible faisait sous-compter le
+    toit, et la carte finissait par annoncer un nombre que son propre dessin ne
+    montrait pas.
+    """
+    total = 0
+    for _rang, zone in zones_publiees(layout_public):
+        geometrie = zone.get('geometry')
+        if not isinstance(geometrie, dict):
+            continue
+        panneaux = geometrie.get('panels')
+        if isinstance(panneaux, list):
+            total += sum(1 for p in panneaux if isinstance(p, dict))
+    return total
 
 
 def lire_trames(layout_public, libres=None):
-    """Les trames exploitables du calepinage ASSAINI, dans l'ordre stocké."""
-    libres = libres or {}
+    """Les trames EXPLOITABLES du calepinage assaini, dans l'ordre publié.
+
+    Une zone publiée peut être illisible pour la dérivation (contour de moins
+    de trois sommets valides, centres non finis…). Elle est alors absente
+    d'ici — et :func:`deriver` en tire la conséquence : il ne dérive plus rien
+    du tout, plutôt que de servir un dessin amputé de cette zone.
+    """
+    identifiants, rangs = libres if libres else (set(), set())
     trames = []
-    for index, zone in enumerate((layout_public or {}).get('zones') or []):
-        if not isinstance(zone, dict):
-            continue
+    for rang, zone in zones_publiees(layout_public):
         geometrie = zone.get('geometry')
         if not isinstance(geometrie, dict) or not geometrie.get('panels'):
             continue
-        trame = _Trame(index, zone, geometrie, libre=libres.get(index, False))
+        libre = (zone.get('id') in identifiants if zone.get('id')
+                 else rang in rangs)
+        trame = _Trame(rang, zone, geometrie, libre=libre)
         if trame.rangees and trame.anneau and len(trame.anneau) >= 3:
             trames.append(trame)
     return trames
@@ -509,11 +681,16 @@ def layout_derive(layout_public, par_zone):
     chiffres du devis sous un autre toit.
     """
     zones = []
-    for index, zone in enumerate((layout_public or {}).get('zones') or []):
-        if not isinstance(zone, dict):
-            continue
+    for rang, zone in zones_publiees(layout_public):
         nouvelle = {cle: zone[cle] for cle in _ZONE_RECOPIEES if cle in zone}
-        panneaux = par_zone.get(index) or []
+        if 'obstacles' in zone:
+            # La clé SUIT la zone source (même vide : le calepinage dit alors
+            # « ce pan n'a pas d'obstacle », ce qui n'est pas la même chose que
+            # « on n'en sait rien »). Seuls les CHAMPS sont filtrés.
+            nouvelle['obstacles'] = [
+                {cle: o[cle] for cle in _OBSTACLE_RECOPIEES if cle in o}
+                for o in zone['obstacles'] or [] if isinstance(o, dict)]
+        panneaux = par_zone.get(rang) or []
         geometrie = zone.get('geometry')
         if panneaux and isinstance(geometrie, dict):
             geo = {cle: geometrie[cle] for cle in _GEO_RECOPIEES
@@ -527,21 +704,29 @@ def layout_derive(layout_public, par_zone):
     return {'version': 2, 'zones': zones}
 
 
-def _dessin(trames, layout_public, cible, nb_reel, cache):
+def _dessin(trames, layout_public, cible, nb_publies, derivable, cache):
     """Le dict d'une option : ``origine``, ``layout``, ``plafonne``.
 
-    Quand la taille demande EXACTEMENT le nombre de panneaux réellement posés,
-    le dessin EST le calepinage officiel : ``origine = 'devis'`` et AUCUN
-    layout n'est transporté — la page réutilise la clé racine ``roof_layout``.
-    Zéro copie, donc zéro dessin voisin capable de diverger de l'artefact
-    contractuel.
+    L'ANCRE EST ``nb_publies``, PAS LE NOMBRE DE PANNEAUX RELISIBLES. Quand la
+    taille demande EXACTEMENT ce que le calepinage PUBLIÉ dessine, le dessin
+    EST le calepinage officiel : ``origine = 'devis'`` et AUCUN layout n'est
+    transporté — la page réutilise la clé racine ``roof_layout``. Zéro copie,
+    donc zéro dessin voisin capable de diverger de l'artefact contractuel.
+
+    ``derivable`` faux (une zone publiée est illisible pour la dérivation) ⇒
+    aucune AUTRE taille ne reçoit de dessin. C'est le choix explicite entre
+    deux façons de se tromper : un dessin amputé de cette zone ferait dire à la
+    carte « 22 panneaux » sous une image qui en montre 14, et l'absence
+    honnête ne coûte que la vue de détail sur un cas rare.
     """
     cible = int(cible)
     if cible <= 0:
         return None
-    if cible == nb_reel:
+    if cible == nb_publies:
         return {'nb_panneaux': cible, 'nb_panneaux_dessines': cible,
                 'origine': 'devis'}
+    if not derivable:
+        return None
     if cible in cache:
         dessine, layout = cache[cible]
     else:
@@ -561,7 +746,51 @@ def _dessin(trames, layout_public, cible, nb_reel, cache):
 # LE BLOC PUBLIC
 # ════════════════════════════════════════════════════════════════════════════
 
-def _pointeur_sld(offres, sld_servi):
+def _design_stocke(devis):
+    """La conception électrique STOCKÉE du devis, ou ``None``.
+
+    Import paresseux : le module reste sans dépendance Django à l'import, et
+    une lecture impossible ne coûte qu'un pointeur absent.
+    """
+    try:
+        from .electrical_service import conception_electrique_stockee
+        design = conception_electrique_stockee(devis)
+    except Exception:  # noqa: BLE001 — pas de conception ⇒ pas de pointeur
+        return None
+    return design if isinstance(design, dict) else None
+
+
+def _variante_du_design(design):
+    """La variante que le schéma STOCKÉ dessine — ``'avec'``, ``'sans'``, None.
+
+    L'ARTEFACT DIT LA VÉRITÉ, PAS LA CARTE. La question « ce schéma
+    montre-t-il une batterie ? » a UNE réponse, et elle est écrite dans
+    l'artefact lui-même : ``materiel.batterie.presente``
+    (``electrical_service`` — ``bool(entree.batterie)`` au moment où le schéma
+    a été calculé). La déduire du fait que la carte « Recommandé » sert une
+    variante « avec » revenait à lire un signal COMMERCIAL pour légender un
+    dessin TECHNIQUE, et les deux divergent pour de vrai :
+
+    * la carte « avec » existe (les lignes servent l'option) mais la conception
+      a été jouée sur le panier SANS batterie ⇒ un schéma raccordé réseau
+      légendé « avec batterie » ;
+    * l'artefact est ANTÉRIEUR à une resynchronisation qui a retiré la batterie
+      ⇒ un schéma AVEC batterie légendé « sans ».
+
+    Dans les deux cas la page affirmait au client un fait que le dessin sous
+    ses yeux contredisait. On lit donc l'artefact ; illisible ⇒ pas de
+    pointeur (absence honnête).
+    """
+    materiel = (design or {}).get('materiel')
+    if not isinstance(materiel, dict):
+        return None
+    batterie = materiel.get('batterie')
+    if not isinstance(batterie, dict) or 'presente' not in batterie:
+        return None
+    return 'avec' if batterie['presente'] else 'sans'
+
+
+def _pointeur_sld(offres, sld_servi, design):
     """L'option que le schéma unifilaire DÉJÀ SERVI décrit — ou ``None``.
 
     Le devis ne stocke qu'UNE conception électrique
@@ -572,8 +801,10 @@ def _pointeur_sld(offres, sld_servi):
     chemin de LECTURE publique : interdit. On se contente donc de NOMMER
     l'option décrite ; la page affiche le schéma là, et l'omet ailleurs.
 
-    Rien n'est nommé si aucun schéma n'est servi, ou si la carte du devis n'est
-    plus le devis (``est_le_devis`` faux — le vendeur a ajusté cette taille).
+    Rien n'est nommé si aucun schéma n'est servi, si la carte du devis n'est
+    plus le devis (``est_le_devis`` faux — le vendeur a ajusté cette taille),
+    si l'artefact ne dit pas ce qu'il dessine (:func:`_variante_du_design`), ou
+    si la carte ne sert pas la variante que l'artefact dessine.
     """
     if not sld_servi:
         return None
@@ -582,8 +813,8 @@ def _pointeur_sld(offres, sld_servi):
                       and offre.get('est_le_devis')), None)
     if reference is None:
         return None
-    variante = 'avec' if reference.get('avec') else 'sans'
-    if not reference.get(variante):
+    variante = _variante_du_design(design)
+    if variante is None or not reference.get(variante):
         return None
     return {'cle': 'recommande', 'variante': variante}
 
@@ -600,9 +831,20 @@ def deriver(devis, offres_tailles, layout_public, sld_servi=False):
     trames = lire_trames(layout_public, _modes_libres(devis))
     if not trames:
         return None
-    nb_reel = sum(trame.nb_panneaux for trame in trames)
-    if nb_reel <= 0:
+    # DEUX COMPTES, ET LA DIFFÉRENCE EST LE PIÈGE. ``nb_publies`` est ce que la
+    # page DESSINE aujourd'hui pour ce devis (toutes les zones publiées) ;
+    # ``nb_relisibles`` est ce que la dérivation sait manipuler. Ils ne
+    # coïncident pas quand une zone publiée est illisible ici (contour trop
+    # court, centres non finis). Ancrer « c'est le devis » sur le SECOND
+    # laissait deux mensonges symétriques passer : une taille égale au vrai
+    # posé partait en dérivé et perdait silencieusement la zone illisible, et
+    # une taille égale au sous-compte se faisait étiqueter « c'est le devis »
+    # alors que le calepinage racine en dessine davantage.
+    nb_publies = nb_panneaux_publies(layout_public)
+    nb_relisibles = sum(trame.nb_panneaux for trame in trames)
+    if nb_publies <= 0:
         return None
+    derivable = nb_relisibles == nb_publies
 
     cache, par_offre = {}, {}
     for offre in offres:
@@ -615,7 +857,8 @@ def deriver(devis, offres_tailles, layout_public, sld_servi=False):
             if not isinstance(carte, dict):
                 continue
             dessin = _dessin(trames, layout_public,
-                             carte.get('nb_panneaux') or 0, nb_reel, cache)
+                             carte.get('nb_panneaux') or 0, nb_publies,
+                             derivable, cache)
             if dessin is not None:
                 dessins[variante] = dessin
         if dessins:
@@ -623,8 +866,8 @@ def deriver(devis, offres_tailles, layout_public, sld_servi=False):
     if not par_offre:
         return None
 
-    bloc = {'nb_panneaux_calepines': nb_reel, 'offres': par_offre}
-    pointeur = _pointeur_sld(offres, sld_servi)
+    bloc = {'nb_panneaux_calepines': nb_publies, 'offres': par_offre}
+    pointeur = _pointeur_sld(offres, sld_servi, _design_stocke(devis))
     if pointeur:
         bloc['sld'] = pointeur
     return bloc
@@ -671,19 +914,13 @@ def _pan_principal(layout_public):
     return None
 
 
-def _ombrage_mesure(devis):
-    """``True`` seulement si une matrice d'ombrage 12 × 24 RÉELLE est stockée.
+def _matrice_ombrage_valide(matrice):
+    """Exactement 12 × 24 facteurs finis dans [0, 1] — sinon ``False``.
 
-    RÈGLE « ZÉRO CHIFFRE INVENTÉ », appliquée à la lettre : on ne publie AUCUN
-    pourcentage de perte (l'agréger sur 288 facteurs serait un chiffre que
-    personne n'a mesuré sous cette forme), et surtout aucun ombrage par défaut.
-    Ce booléen dit un FAIT — « l'ombrage du voisinage a été relevé » — ou n'est
-    pas publié du tout.
+    MÊME forme que le producteur (``prefill.serializeShading`` : 12 mois × 24
+    heures, chaque facteur borné [0, 1]) et que le lecteur existant
+    (``etude._valid_matrix``). Une matrice à moitié fausse est refusée EN BLOC.
     """
-    layout = getattr(devis, 'roof_layout', None)
-    if not isinstance(layout, dict):
-        return False
-    matrice = layout.get('shading')
     if not isinstance(matrice, list) or len(matrice) != 12:
         return False
     for ligne in matrice:
@@ -694,6 +931,38 @@ def _ombrage_mesure(devis):
             if valeur is None or valeur < 0 or valeur > 1:
                 return False
     return True
+
+
+def _ombrage_mesure(devis):
+    """``True`` seulement si une matrice d'ombrage 12 × 24 RÉELLE est stockée.
+
+    LA CLÉ EST ``shading12x24``, PAS ``shading``. C'est le nom que le
+    producteur écrit (``roofPro11/prefill.ts`` : ``shading12x24:
+    serializeShading(ctx.shadeFactors)``) et celui que le lecteur backend
+    existant interroge (``apps.ventes.etude`` : racine du layout ET par zone,
+    « PV71 choisit encore où la matrice voyage côté web »). Lire ``shading``
+    revenait à ne jamais rien trouver : le champ ``ombrage`` était du code
+    mort, et son test se mentait à lui-même en injectant la clé fantôme.
+
+    Mêmes deux emplacements que ``etude`` : la racine du layout, ou n'importe
+    quelle zone.
+
+    RÈGLE « ZÉRO CHIFFRE INVENTÉ », appliquée à la lettre : on ne publie AUCUN
+    pourcentage de perte (l'agréger sur 288 facteurs serait un chiffre que
+    personne n'a mesuré sous cette forme), et surtout aucun ombrage par défaut.
+    Ce booléen dit un FAIT — « l'ombrage du voisinage a été relevé » — ou n'est
+    pas publié du tout.
+    """
+    layout = getattr(devis, 'roof_layout', None)
+    if not isinstance(layout, dict):
+        return False
+    if _matrice_ombrage_valide(layout.get('shading12x24')):
+        return True
+    for zone in layout.get('zones') or []:
+        if isinstance(zone, dict) and _matrice_ombrage_valide(
+                zone.get('shading12x24')):
+            return True
+    return False
 
 
 def _chaines_publiques(conception_electrique):
