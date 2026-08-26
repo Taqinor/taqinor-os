@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Inbox, Trash2, UserCog, XCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
@@ -225,9 +225,14 @@ function DelegationsTab() {
 }
 
 function ApprobationsFileTab() {
+  // WIR176 — les liens de notification approbation atterrissent ici via
+  // `/approbations?source=<automation|installations|ged|…>` : le filtre
+  // « Source » se pré-règle sur le paramètre d'URL au premier rendu (jamais
+  // relu après, comme les autres filtres de cet onglet).
+  const [searchParams] = useSearchParams()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [source, setSource] = useState('')
+  const [source, setSource] = useState(() => searchParams.get('source') || '')
   const [priorite, setPriorite] = useState('')
   const [trier, setTrier] = useState('')
   const [decidingKey, setDecidingKey] = useState(null)
