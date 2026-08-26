@@ -25,7 +25,7 @@ import { frenchError } from '../../lib/frenchError'
    tant que rien n'a été configuré) et n'enregistre que sur action explicite.
    ========================================================================== */
 
-// source-choix: credit.LimiteCredit.ModeHold
+// source-choix: credit.LimiteCredit.mode_hold
 const MODES_HOLD = [
   { value: 'aucun', label: 'Aucun — aucun blocage, aucune alerte' },
   { value: 'avertissement', label: 'Avertissement — signalé, jamais bloquant' },
