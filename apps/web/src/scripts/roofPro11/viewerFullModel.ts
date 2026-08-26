@@ -233,9 +233,14 @@ export function buildViewerFullPlan(layout: RoofLayout | null | undefined): View
       label: z.label,
       vertices: z.vertices.map(([lng, lat]) => [lng, lat] as LngLat),
       obstacles: obstaclesOfZone(z),
-      roofType: z.roofType,
-      pitchDeg: z.pitchDeg,
-      facingAzimuthDeg: z.facingAzimuthDeg,
+      // F2 — MÊME repli que `deserializeLayout` côté ERP : une zone posée par le
+      // serveur depuis le tracé du client n'écrit pas ces trois champs (rien n'a été
+      // mesuré). La visionneuse doit quand même dessiner un volume : elle prend les
+      // valeurs de zone vierge du builder plutôt qu'un `undefined` qui casserait la
+      // scène. Un layout sérialisé par le builder les porte toujours : sans effet.
+      roofType: z.roofType ?? 'flat',
+      pitchDeg: z.pitchDeg ?? 22,
+      facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
       neededPanels: z.neededPanels,
       plan,
       panelCount: plan ? plan.grid.panels.length : 0,

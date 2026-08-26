@@ -1009,6 +1009,35 @@ def _aspect_to_orientation(aspect):
     return min(table, key=lambda t: abs(a - t[0]))[1]
 
 
+def _azimut_boussole_vers_aspect(azimut):
+    """Azimut BOUSSOLE du builder (180 = Sud) → azimut PVGIS (0 = Sud).
+
+    MÊME formule que le builder lui-même (``roofPro11/prodWindow.ts`` :
+    ``aspect: res.facingAzimuthDeg - 180``), normalisée dans [-180, 180] pour
+    que ±180 reste bien le Nord. Valeur illisible → ``None`` (le libellé est
+    alors omis, jamais deviné)."""
+    try:
+        a = float(azimut)
+    except (TypeError, ValueError):
+        return None
+    return (a - 180.0 + 180.0) % 360.0 - 180.0
+
+
+def _aspect_vers_azimut_boussole(aspect):
+    """Azimut PVGIS (0 = Sud) → azimut BOUSSOLE (180 = Sud), dans [0, 360).
+
+    Réciproque de :func:`_azimut_boussole_vers_aspect`. Elle existe pour que
+    ``_pans_geometry['azimut_deg']`` n'ait qu'UN SEUL repère quelle que soit la
+    clé source du layout (F3) — voir :func:`extract_roof_config`. Valeur
+    illisible → ``None``.
+    """
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return None
+    return (a + 180.0) % 360.0
+
+
 def extract_roof_config(layout):
     """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
     plat, JSON-sérialisable, indépendant de la version de l'outil.
@@ -1058,9 +1087,40 @@ def extract_roof_config(layout):
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
         surface = float(res.get('areaM2') or geo.get('areaM2')
                         or a.get('areaM2') or 0.0)
-        aspect = a.get('facingAzimuthDeg')
-        if aspect is None:
-            aspect = a.get('aspect')
+        # ── DEUX CONVENTIONS D'ANGLE, ET ELLES SONT OPPOSÉES ────────────────
+        # ``facingAzimuthDeg`` est l'AZIMUT BOUSSOLE du builder (180 = Sud) —
+        # c'est ce que ``newAreaRecord()`` pose par défaut et ce que le solveur
+        # d'orientation écrit ; le builder lui-même le convertit pour PVGIS en
+        # retranchant 180 (``roofPro11/prodWindow.ts`` : « jambe sud : aspect =
+        # azimut − 180 »).
+        # ``aspect``, lui, est DÉJÀ l'azimut PVGIS (0 = Sud), et c'est cette
+        # convention-là qu'attend ``_aspect_to_orientation``.
+        #
+        # Les deux entraient ici SANS conversion : un pan plein Sud
+        # (``facingAzimuthDeg: 180``) ressortait donc « Nord », et l'annexe
+        # « paramètres du site » de la proposition CLIENT publiait
+        # ``orientation_deg: 180`` juste à côté de ``orientation: 'Nord'`` —
+        # deux affirmations contradictoires, dont une fausse, sous les yeux du
+        # client. On convertit désormais à la lecture, à l'endroit exact où la
+        # convention est connue. ``azimut_deg`` reste la valeur BRUTE (aucun
+        # autre consommateur ne change de repère) : seul le LIBELLÉ est corrigé.
+        #
+        # F3 — ET ``azimut_deg`` NE PUBLIE QU'UN SEUL REPÈRE. Il recopiait la
+        # valeur BRUTE de la clé source : COMPASS venant de ``facingAzimuthDeg``,
+        # PVGIS venant de ``aspect``. Deux toits plein Sud pouvaient donc sortir
+        # d'ici avec ``azimut_deg`` 180 pour l'un et 0 pour l'autre, tous deux
+        # étiquetés « Sud » — et ses consommateurs (annexe client, étude
+        # bancable) n'avaient aucun moyen de savoir lequel ils lisaient. Le
+        # repère PUBLIÉ est désormais la BOUSSOLE, toujours : la branche
+        # ``facingAzimuthDeg`` garde sa valeur brute (aucun consommateur ne
+        # change de repère), la branche ``aspect`` est convertie.
+        brut = a.get('facingAzimuthDeg')
+        if brut is not None:
+            azimut_boussole = brut
+            aspect_pvgis = _azimut_boussole_vers_aspect(brut)
+        else:
+            aspect_pvgis = a.get('aspect')
+            azimut_boussole = _aspect_vers_azimut_boussole(aspect_pvgis)
         pitch = a.get('pitchDeg')
         if pitch is None:
             pitch = a.get('pitch')
@@ -1070,9 +1130,12 @@ def extract_roof_config(layout):
             'nb_panneaux': count,
             'kwc': round(kwc, 3) if kwc else 0.0,
             'surface_m2': round(surface, 2) if surface else 0.0,
-            'azimut_deg': aspect,
+            # BOUSSOLE (180 = Sud), toujours — voir F3 ci-dessus. Tout lecteur
+            # qui a besoin de l'aspect PVGIS convertit lui-même, avec
+            # ``_azimut_boussole_vers_aspect``.
+            'azimut_deg': azimut_boussole,
             'inclinaison_deg': pitch,
-            'orientation': _aspect_to_orientation(aspect),
+            'orientation': _aspect_to_orientation(aspect_pvgis),
         }
         pans.append(pan)
         total_surface += surface
@@ -5368,7 +5431,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
 
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
-                     scenario=None, etude_extra=None):
+                     scenario=None, etude_extra=None, plafond_toit=None,
+                     journal_auto=None):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Lit le profil énergétique du lead (taille souhaitée en kWc, sinon facture
@@ -5393,6 +5457,23 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
       factures mensuelles réelles du contrat PACT10, par exemple). Elles
       complètent ce que la construction a déjà écrit, sans jamais écraser le
       scénario arrêté ci-dessus.
+
+    AUTO-PIPELINE (26/08/2026) — deux paramètres de plus, tous deux OPTIONNELS
+    et sans effet quand ils sont absents (l'endpoint ``/devis/auto/`` est donc
+    inchangé) :
+
+    * ``plafond_toit`` — borne PHYSIQUE dure en panneaux (cf.
+      ``plafond_physique_du_contour``). Elle ne peut que RÉDUIRE : jamais une
+      cible relevée, jamais un chiffre ajouté au devis.
+    * ``journal_auto`` — dict que l'appelant fournit pour recevoir ce qui s'est
+      décidé sans lui (``plafond_applique``, ``panneaux_avant_plafond``,
+      ``contour_client``), afin de pouvoir l'écrire NOIR SUR BLANC dans
+      l'historique du lead. Rien n'y est écrit s'il n'est pas fourni.
+
+    Et, quand le lead porte un tracé de toit, le layout du devis embarque
+    désormais ce tracé comme VRAIE zone de calepinage
+    (``zone_toit_depuis_contour``) : l'écran 3D ouvre sur le toit du client,
+    déjà pavé, au lieu d'une carte vierge.
     """
     marche = (getattr(lead, 'type_installation', '') or '').lower()
     if marche and marche != 'residentiel':
@@ -5523,11 +5604,52 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         # Mono « sans » : l'optimum « avec » n'a rien à faire dans ce devis.
         optimum_avec = None
 
+    # ── AUTO-PIPELINE — LE PLAFOND PHYSIQUE DU TOIT, S'IL EST CONNU ────────
+    # Il ne peut que RÉDUIRE, et il ne mord que sur une cible physiquement
+    # impossible (surface du contour ÷ surface d'un panneau — voir
+    # ``plafond_physique_du_contour`` pour pourquoi c'est le seul plafond
+    # honnête à prononcer ici). Le plafond de CALEPINAGE, lui, reste celui du
+    # moteur qui dessine, à l'écran.
+    if plafond_toit:
+        try:
+            plafond = int(plafond_toit)
+        except (TypeError, ValueError):
+            plafond = 0
+        if plafond > 0 and panneaux > plafond:
+            logger.warning(
+                'Auto-devis (lead %s): cible de %d panneaux ramenée à %d — '
+                'le tracé du client ne peut pas en porter davantage.',
+                getattr(lead, 'pk', '?'), panneaux, plafond)
+            if isinstance(journal_auto, dict):
+                journal_auto['panneaux_avant_plafond'] = panneaux
+                journal_auto['plafond_applique'] = plafond
+            panneaux = plafond
+            kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+            if optimum_avec and int(optimum_avec.get('nb_panneaux') or 0) > plafond:
+                # L'axe « avec batterie » subit le MÊME toit : sans cela le
+                # devis proposerait une option qui ne rentre pas.
+                optimum_avec = dict(optimum_avec)
+                optimum_avec['nb_panneaux'] = plafond
+                watt_avec = optimum_avec.get('panel_watt') or watt_dimensionnement
+                optimum_avec['kwc'] = round(plafond * float(watt_avec) / 1000, 2)
+
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
         'panelWatt': watt_dimensionnement,
         'scenario': 'avec_batterie' if wants_battery else 'reseau',
     }
+    # ── AUTO-PIPELINE — LE TRACÉ DU CLIENT DEVIENT LA ZONE DU CALEPINAGE ───
+    # Sans ces clés, le layout d'un devis automatique ne décrit AUCUNE
+    # géométrie : l'écran 3D s'ouvrait sur une carte vierge et le commercial
+    # devait re-tracer le toit pour voir un seul panneau, alors que le client
+    # l'avait déjà dessiné. Avec elles, l'écran ouvre sur le contour du client
+    # et le pave immédiatement. Absent de tracé → dict vide → comportement
+    # STRICTEMENT inchangé.
+    zone_client = zone_toit_depuis_contour(lead, panneaux=panneaux, kwc=kwc)
+    if zone_client:
+        layout.update(zone_client)
+        if isinstance(journal_auto, dict):
+            journal_auto['contour_client'] = len(zone_client['outline'])
     # ── U3 — GARDE MARQUE ÉPINGLÉE, portée côté SERVEUR ────────────────────
     # Cette garde ne vivait que dans `createAutoQuote` : le chemin backend en
     # était dépourvu. Une marque réglée dans Paramètres → Gammes mais absente
@@ -5601,6 +5723,479 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         devis.reference, panneaux, kwc, wants_battery, deux_options,
         source_dimensionnement, getattr(company, 'id', '?'))
     return devis
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# AUTO-PIPELINE — DU TRACÉ DU CLIENT AU DEVIS BROUILLON, SANS MAIN HUMAINE
+# ════════════════════════════════════════════════════════════════════════════
+#
+# ORDRE FONDATEUR (26/08/2026) : « si le client dessine son toit dans le
+# tunnel, alors une fois que le lead arrive dans notre ERP ça crée
+# automatiquement le devis automatique, et l'outil de calepinage dessine les
+# panneaux tout seul — le commercial ne fait que VÉRIFIER ce qui a été fait
+# automatiquement. »
+#
+# CE QUI N'EST PAS RÉINVENTÉ ICI (et ne doit jamais l'être) :
+#   · le DIMENSIONNEMENT reste celui de ``build_devis_auto`` — facture d'hiver
+#     ou profil horaire réel : exactement les mêmes chiffres qu'une création
+#     manuelle, aucun nombre neuf n'entre dans le devis par ce chemin ;
+#   · la COMPOSITION reste la source unique U3 (``composition_residentielle`` /
+#     ``composition_deux_optimiseurs``) ;
+#   · la NUMÉROTATION reste ``core.numbering`` (highest-used+1, JAMAIS
+#     count()+1) via ``build_devis_from_layout`` ;
+#   · le DESSIN des panneaux reste l'affaire du moteur de calepinage de
+#     l'écran — celui-là même que le tunnel public utilise pour son estimation.
+#     Un layout sérialisé ne transporte JAMAIS de pose : ``deserializeLayout``
+#     rend ses zones avec ``result: null, renderPlan: null`` et l'écran re-pave
+#     au boot. Poser des panneaux côté serveur avec un SECOND moteur ne ferait
+#     donc qu'inventer un dessin que l'écran contredirait aussitôt.
+#
+# CE QUE CE BLOC FAIT, ET RIEN D'AUTRE : il transforme ``Lead.roof_outline`` en
+# une VRAIE zone de toit dans le layout du devis, pour que l'écran ait le
+# contour du client à paver au boot au lieu d'une page blanche.
+
+_AUTO_ZONE_ID = 'area-1'
+# ── CE QUE LA ZONE AUTOMATIQUE NE DIT PAS, ET POURQUOI (F2) ─────────────────
+# Elle n'écrit NI ``roofType``, NI ``pitchDeg``, NI ``facingAzimuthDeg``.
+#
+# La première version les posait aux valeurs de la zone vierge du builder
+# (``newAreaRecord()`` : flat / 22° / 180°) en se disant « ce sont les réglages
+# que l'écran afficherait de toute façon ». À l'écran, oui — et ils y sont
+# VISIBLEMENT MODIFIABLES. Mais un champ écrit dans le layout ne s'arrête pas
+# à l'écran : il descend ``extract_roof_config`` → ``_pans_geometry`` →
+# ``calepinage_options.parametres_site_publics``, et le CLIENT lisait alors
+# « Orientation Sud (180°) · Inclinaison 22° · Toit plat » dans l'annexe
+# « paramètres du site » de sa proposition — présenté comme un relevé, sur un
+# toit que personne n'a mesuré. Avant ce lot ces trois champs étaient ABSENTS
+# d'un devis automatique ; ils le restent.
+#
+# L'écran, lui, ne perd rien : ``deserializeLayout`` applique ses propres
+# valeurs par défaut quand la clé manque (apps/web prefill.ts) — donc le
+# commercial voit et corrige exactement ce qu'il verrait après avoir tracé le
+# contour à la main. Dès qu'il enregistre, ``serializeLayout`` écrit les trois
+# champs pour de bon et l'annexe les publie : un chiffre n'est publié qu'une
+# fois qu'un humain l'a regardé.
+
+
+def contour_client_lnglat(lead):
+    """Le tracé du client en ``[[lng, lat], …]`` (convention builder), ou ``[]``.
+
+    MÊMES règles que ``referenceContourRing`` (apps/web prefill.ts) et que
+    ``normaliserContour`` (frontend traceToit.js) : les DEUX formes réellement
+    stockées dans ``Lead.roof_outline`` — ``[lat, lng]`` (posée par le webhook,
+    cf. ``_clean_roof_outline``) et ``{lat, lng}`` (import / saisie manuelle) —
+    le MÊME bornage lat ∈ [-90, 90] / lng ∈ [-180, 180], et le MÊME seuil de
+    3 sommets (un polygone commence à 3). Jamais une version plus permissive :
+    un contour que l'écran refuse de dessiner ne doit pas devenir une zone
+    côté serveur.
+    """
+    brut = getattr(lead, 'roof_outline', None)
+    if not isinstance(brut, (list, tuple)):
+        return []
+    anneau = []
+    for point in brut:
+        if isinstance(point, dict):
+            lat, lng = point.get('lat'), point.get('lng')
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            lat, lng = point[0], point[1]
+        else:
+            continue
+        try:
+            lat, lng = float(lat), float(lng)
+        except (TypeError, ValueError):
+            continue
+        # Ce test rejette AUSSI les NaN : toute comparaison avec NaN est
+        # fausse, donc `-90 <= nan <= 90` l'est, et le point est écarté. (Un
+        # second garde-fou `lat != lat` vivait ici : il était inatteignable.)
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            continue
+        anneau.append([lng, lat])
+    return anneau if len(anneau) >= 3 else []
+
+
+def aire_contour_m2(contour):
+    """L'aire (m²) d'un contour ``[[lng, lat], …]``, ou ``None``.
+
+    Reprojection ENU par ``calepinage_options.anneau_enu`` (la formule DÉJÀ
+    partagée avec l'écran), puis lacet de souliers. Aucune approximation
+    maison : c'est la surface du polygone que le client a réellement tracé.
+    """
+    if len(contour or []) < 3:
+        return None
+    from .calepinage_options import anneau_enu
+
+    origine = contour[0]
+    anneau = anneau_enu(contour, origine)
+    if len(anneau) < 3:
+        return None
+    aire2 = 0.0
+    for i in range(len(anneau)):
+        ax, ay = anneau[i]
+        bx, by = anneau[(i + 1) % len(anneau)]
+        aire2 += ax * by - bx * ay
+    aire = abs(aire2) / 2.0
+    return aire if aire > 0 else None
+
+
+def plafond_physique_du_contour(contour, produit_panneau):
+    """Le nombre de panneaux qu'un toit de cette SURFACE ne peut PAS dépasser.
+
+    ``None`` dès qu'une donnée manque (contour illisible, produit sans
+    dimensions) — jamais un plafond deviné.
+
+    C'est une BORNE PHYSIQUE DURE, pas un calepinage : ``aire du contour ÷ aire
+    d'un panneau``. Deux propriétés en font le seul plafond honnête qu'on
+    puisse poser côté serveur :
+
+    * elle ne dépend d'AUCUN paramètre que le client ne nous a pas donné (ni
+      pente, ni azimut, ni retrait de rive, ni obstacles) — donc elle
+      n'invente rien ;
+    * elle est LARGE par construction (un calepinage réel tient toujours
+      nettement moins que la surface brute), donc elle ne rabote jamais un
+      devis légitime : elle n'attrape que les cibles physiquement impossibles.
+
+    Le vrai plafond de calepinage, lui, est prononcé par le SEUL moteur qui
+    dessine — celui de l'écran, au boot — qui pose le maximum tenable et lève
+    son avertissement existant. Poser ici un second moteur (pente et azimut
+    devinés) donnerait un nombre que l'écran contredirait : c'est exactement le
+    piège que le drapeau ``USE_MOTEUR_CALEPINAGE`` existe pour tenir fermé.
+
+    LES DIMENSIONS VIENNENT DE LA FICHE TECHNIQUE, PAS DU PRODUIT. Une première
+    version lisait ``produit.longueur_mm``/``largeur_mm`` : ces champs
+    n'existent PAS sur ``stock.Produit``, ils vivent sur sa ``FicheTechnique``
+    (PV5). ``getattr(..., None)`` rendait donc silencieusement ``None`` et le
+    plafond ne s'appliquait JAMAIS — une garde morte, verte en apparence. On
+    passe désormais par ``stock.selectors.kit_from_produit`` (lecture cross-app
+    sanctionnée, jamais ``stock.models``), qui est déjà LA source unique des
+    dimensions réelles d'un module pour le moteur de calepinage : elle rend
+    ``None`` dès qu'une des grandeurs requises manque, exactement la règle
+    « on ne devine jamais une géométrie ».
+
+    Conséquence assumée : sans fiche technique complète sur le panneau, il n'y
+    a PAS de plafond. C'est le bon défaut — un plafond inventé serait pire que
+    pas de plafond.
+    """
+    aire_toit = aire_contour_m2(contour)
+    if not aire_toit or produit_panneau is None:
+        return None
+    try:
+        from apps.stock.selectors import kit_from_produit
+        kit = kit_from_produit(produit_panneau)
+    except Exception:  # noqa: BLE001 — un catalogue illisible n'est pas un plafond
+        logger.warning('Auto-devis: dimensions du panneau illisibles — aucun '
+                       'plafond de toit appliqué.', exc_info=True)
+        return None
+    if kit is None:
+        return None
+    aire_panneau = float(kit.module_long_m) * float(kit.module_court_m)
+    if aire_panneau <= 0:
+        return None
+    plafond = int(aire_toit // aire_panneau)
+    return plafond if plafond > 0 else None
+
+
+def zone_toit_depuis_contour(lead, *, panneaux, kwc=None):
+    """Le fragment de layout roofPro11 qui porte le tracé du CLIENT, ou ``{}``.
+
+    Rend exactement les clés que ``SerializedLayout`` déclare — ``version``,
+    ``pin``, ``outline``, ``zones``, ``activeAreaId`` — donc ce que
+    ``deserializeLayout`` / ``hydrateFromDevis`` savent déjà relire : l'écran
+    ouvre alors sur la zone du client, la ferme et la pave, sans qu'un
+    commercial ait à re-tracer quoi que ce soit.
+
+    ``outline`` est en ``[[lat, lng], …]`` et ``zones[].vertices`` en
+    ``[[lng, lat], …]`` : ce sont les DEUX conventions de ``serializeLayout``,
+    respectées telles quelles (les inverser ferait atterrir le toit à des
+    milliers de kilomètres).
+
+    ``neededPanels`` porte la cible du devis et ``neededAuto`` vaut ``False`` :
+    c'est le nombre VENDU qui pilote l'optimiseur, jamais un remplissage
+    « au mieux ». Si la cible ne tient pas, l'écran pose le maximum et lève son
+    avertissement — le plafond est prononcé par le moteur qui dessine.
+    """
+    contour = contour_client_lnglat(lead)
+    if not contour:
+        return {}
+    point = getattr(lead, 'roof_point', None)
+    pin = None
+    if isinstance(point, dict):
+        try:
+            pin = {'lat': float(point['lat']), 'lng': float(point['lng'])}
+        except (KeyError, TypeError, ValueError):
+            pin = None
+    if pin is None:
+        # Centroïde du contour — MÊME repli que ``centroidOf`` côté écran
+        # (moyenne des sommets), une valeur DÉRIVÉE du tracé réel, jamais une
+        # position inventée.
+        pin = {'lng': sum(p[0] for p in contour) / len(contour),
+               'lat': sum(p[1] for p in contour) / len(contour)}
+    cible = max(int(panneaux or 0), 0)
+    # ``result`` par pan — les TROIS chiffres que ``extract_roof_config`` lit
+    # pour écrire ``etude_params['toiture']``. Sans lui, la config toiture d'un
+    # devis automatique repartait à « 0 kWc / 0 m² » : un zéro affiché est pire
+    # qu'une absence. Les trois sont DÉRIVÉS et traçables — le compte est la
+    # cible réellement composée, la puissance est celle du devis (le MÊME
+    # ``result.kwc`` racine), et la surface est celle du polygone que le client
+    # a tracé, mesurée par ``aire_contour_m2``. Aucun n'est neuf.
+    resultat_pan = {'count': cible}
+    if kwc:
+        resultat_pan['kwc'] = float(kwc)
+    aire = aire_contour_m2(contour)
+    if aire:
+        resultat_pan['areaM2'] = round(aire, 2)
+    return {
+        'version': 2,
+        'pin': pin,
+        'outline': [[lat, lng] for lng, lat in contour],
+        'zones': [{
+            'id': _AUTO_ZONE_ID,
+            'label': 'Toit du client',
+            'vertices': [list(p) for p in contour],
+            'obstacles': [],
+            # PAS de roofType / pitchDeg / facingAzimuthDeg : voir le bloc
+            # « CE QUE LA ZONE AUTOMATIQUE NE DIT PAS » ci-dessus. `facingManual`
+            # reste faux et le dit : personne n'a fixé d'orientation.
+            'facingManual': False,
+            'neededPanels': cible,
+            'neededAuto': False,
+            # Additif : ``deserializeLayout`` ignore les clés qu'il ne déclare
+            # pas (il repave au boot de toute façon) — ceci ne sert qu'aux
+            # lecteurs SERVEUR du layout.
+            'result': resultat_pan,
+        }],
+        'activeAreaId': _AUTO_ZONE_ID,
+        'source': 'lead',
+        # Marqueur INTERNE (préfixe `_`, comme ``_pans_geometry``) : il dit que
+        # cette zone vient du tracé du client et n'a jamais été validée par un
+        # humain. L'écran s'en sert pour afficher « à vérifier » ; personne ne
+        # doit le prendre pour une géométrie relevée.
+        '_origine_calepinage': 'contour_client',
+    }
+
+
+def auto_devis_tunnel_actif(company):
+    """La société veut-elle des devis automatiques depuis le tunnel ?
+
+    Réglage de société (``parametres.CompanyProfile.devis_auto_depuis_tunnel``),
+    ACTIF par défaut — c'est le flux que le fondateur a demandé. Une société
+    qui n'a pas encore de profil hérite donc du défaut, jamais d'un « non »
+    silencieux ; un profil illisible vaut « non » (on ne crée pas de document
+    sur une lecture ratée).
+    """
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 — table absente / migration en cours
+        logger.warning(
+            'Auto-devis: profil de société illisible (company %s) — '
+            'création automatique désactivée par prudence.',
+            getattr(company, 'pk', '?'))
+        return False
+    if profil is None:
+        return True
+    return bool(getattr(profil, 'devis_auto_depuis_tunnel', True))
+
+
+_MARQUE_AUTO_DEVIS = 'ventes.auto_devis'
+
+
+def _liberer_marque_auto_devis(company, lead_id):
+    """F5 — RELÂCHE la marque d'achèvement d'un lead dont la création a échoué.
+
+    ``dedupe_event`` pose sa ligne AVANT le travail — c'est ce qui lui permet
+    de départager deux workers simultanés. Mais laissée en place après un
+    échec, cette même ligne devient une porte fermée DÉFINITIVEMENT : un lead
+    sans facture aujourd'hui, ou un catalogue momentanément incomplet, et plus
+    jamais personne — ni un rejeu, ni un appel manuel du service — ne pourrait
+    lui créer son devis automatique. La marque doit donc dire « c'est FAIT »,
+    pas « ça a été tenté ».
+
+    Best-effort et silencieuse sur erreur : elle est appelée depuis des
+    chemins d'exception, et ne doit jamais masquer l'erreur d'origine.
+    """
+    try:
+        from core.idempotency import ProcessedWebhookEvent
+        ProcessedWebhookEvent.objects.filter(
+            company=company, source=_MARQUE_AUTO_DEVIS,
+            event_id=str(lead_id)).delete()
+    except Exception:  # noqa: BLE001 — jamais au-dessus de l'erreur d'origine
+        logger.warning(
+            'Auto-devis: marque de dédup non relâchée pour le lead %s — un '
+            'prochain essai sera refusé.', lead_id, exc_info=True)
+
+
+def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
+    """AUTO-PIPELINE — le devis brouillon d'un lead arrivé du tunnel.
+
+    Rend le ``Devis`` créé, ou ``None`` — et ``None`` n'est JAMAIS une erreur :
+    c'est le cas normal quand le lead n'a pas de quoi être chiffré. LES PORTES,
+    dans l'ordre, et aucune n'est nouvelle :
+
+    1. **Société / lead lisibles** — lecture cross-app par
+       ``crm.selectors.get_company_lead`` (jamais ``crm.models``).
+    2. **Réglage de société** — ``auto_devis_tunnel_actif``.
+    3. **IDEMPOTENCE — un lead, un devis**, en DEUX gardes distinctes, car
+       elles n'attrapent pas la même chose :
+
+       a. une lecture « ce lead porte-t-il déjà un devis ? » — elle couvre le
+          cas courant (webhook re-livré plus tard, tâche rejouée après coup,
+          devis déjà saisi à la main par un commercial) ;
+       b. une MARQUE D'ACHÈVEMENT en base
+          (``core.idempotency.dedupe_event``, contrainte d'unicité sur
+          ``(company, source, event_id)``) — elle seule départage deux
+          exécutions SIMULTANÉES, que la lecture (a) laisserait passer
+          ensemble. Il n'y a ici NI transaction englobante, NI
+          ``select_for_update`` : c'est la contrainte d'unicité qui arbitre,
+          et le perdant de l'insertion abandonne sans rien créer.
+
+       La marque n'est gardée QUE si un devis a réellement été créé : tout
+       échec la relâche (voir ``_liberer_marque_auto_devis``), sans quoi un
+       lead non chiffrable aujourd'hui — facture manquante, catalogue
+       incomplet — resterait définitivement fermé à un appel ultérieur.
+    4. **Assez de donnée RÉELLE** — c'est ``build_devis_auto`` qui tranche,
+       avec EXACTEMENT les portes qu'il oppose déjà au commercial
+       (``AutoDevisError`` : marché non résidentiel, aucune facture d'hiver ni
+       taille souhaitée, marque épinglée absente du stock). Un lead incomplet
+       ou parasite ne reçoit donc rien du tout, et surtout pas un devis vide.
+
+    Le tracé du client, s'il existe, entre dans le layout du devis
+    (``zone_toit_depuis_contour``) et borne physiquement la taille
+    (``plafond_physique_du_contour``). Sans tracé : un devis automatique
+    ordinaire, sans calepinage — le comportement d'aujourd'hui.
+    """
+    from django.db import transaction
+
+    from apps.crm.selectors import get_company_lead
+    from authentication.models import Company
+    from core.idempotency import dedupe_event
+
+    from .models import Devis
+
+    company = Company.objects.filter(pk=company_id).first()
+    if company is None:
+        return None
+    if not auto_devis_tunnel_actif(company):
+        logger.info(
+            'Auto-devis: désactivé pour la société %s — lead %s non chiffré.',
+            company_id, lead_id)
+        return None
+
+    lead = get_company_lead(company, lead_id)
+    if lead is None:
+        return None
+
+    # PORTE 3a — un lead qui porte déjà un devis (automatique OU saisi à la
+    # main) n'en reçoit jamais un second.
+    if Devis.objects.filter(company=company, lead=lead).exists():
+        logger.info(
+            'Auto-devis: le lead %s porte déjà un devis — rien créé.', lead_id)
+        return None
+
+    # PORTE 3b — LA COURSE. Deux livraisons simultanées du même webhook, ou un
+    # rejeu Celery concurrent (``acks_late``), peuvent franchir la porte 3a
+    # ensemble : seule une contrainte d'unicité en base les départage. C'est
+    # EXACTEMENT la primitive que le webhook utilise déjà pour ses propres
+    # rejeux (``core.idempotency.dedupe_event``) — on ne s'en réinvente pas une
+    # seconde. Perdant = on ne crée rien, en silence : l'autre worker s'en
+    # charge.
+    if not dedupe_event(company=company, source=_MARQUE_AUTO_DEVIS,
+                        event_id=str(lead_id)):
+        logger.info(
+            'Auto-devis: création déjà en cours/faite pour le lead %s '
+            '(dédup) — rien créé.', lead_id)
+        return None
+
+    journal_auto = {}
+    # Le ``try`` couvre TOUT ce qui suit la pose de la marque — y compris les
+    # lectures catalogue/géométrie — et il ENVELOPPE la transaction (et non
+    # l'inverse) : un refus de dimensionnement doit défaire ce que la
+    # construction aurait pu commencer, jamais laisser un devis à moitié écrit.
+    # F5 — chaque sortie en échec RELÂCHE la marque : elle atteste d'un devis
+    # CRÉÉ, jamais d'une tentative.
+    try:
+        # Lectures pures (catalogue + géométrie du tracé) — hors transaction.
+        produit_panneau, _societe = _panneau_pour_calepinage(
+            {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
+        plafond = plafond_physique_du_contour(
+            contour_client_lnglat(lead), produit_panneau)
+        with transaction.atomic():
+            devis = build_devis_auto(
+                lead=lead,
+                # Le devis est attribué au commercial qui possède le lead
+                # quand il y en a un, à personne sinon — jamais à un
+                # utilisateur inventé pour la circonstance.
+                user=getattr(lead, 'owner', None),
+                company=company, plafond_toit=plafond,
+                journal_auto=journal_auto)
+    except AutoDevisError as exc:
+        _liberer_marque_auto_devis(company, lead_id)
+        logger.info(
+            'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
+            lead_id, exc.field or 'donnée manquante')
+        return None
+    except Exception:  # noqa: BLE001 — relâcher AVANT de laisser remonter
+        _liberer_marque_auto_devis(company, lead_id)
+        raise
+
+    # ── LA BOUCLE DE VÉRIFICATION DU COMMERCIAL ───────────────────────────
+    # Le devis porte le lead : il apparaît donc DÉJÀ dans la liste des devis et
+    # sur la fiche du lead. Ce qui manquait, c'est le REÇU daté qui dit d'où il
+    # sort et qu'il attend une relecture. Note d'historique (chatter existant,
+    # aucun mécanisme neuf), best-effort : un devis créé ne doit jamais être
+    # remis en cause par une note qui échoue.
+    corps = (
+        'Devis automatique créé depuis le tunnel — à vérifier : %s.'
+        % devis.reference)
+    if journal_auto.get('contour_client'):
+        corps += (
+            ' Le calepinage part du tracé du client (%d points) : ouvrez '
+            '« Concevoir la toiture (3D) » pour le contrôler.'
+            % journal_auto['contour_client'])
+    if journal_auto.get('plafond_applique'):
+        corps += (
+            ' Taille ramenée de %d à %d panneaux : la surface du tracé du '
+            'client ne peut physiquement pas en porter davantage.'
+            % (journal_auto['panneaux_avant_plafond'],
+               journal_auto['plafond_applique']))
+    try:
+        from apps.crm.services import ajouter_note_lead
+        ajouter_note_lead(company=company, lead_id=lead_id,
+                          user=getattr(lead, 'owner', None), body=corps)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'Auto-devis %s: note d\'historique échouée sur le lead %s.',
+            devis.reference, lead_id, exc_info=True)
+
+    logger.info('Auto-devis %s créé automatiquement pour le lead %s '
+                '(company %s).', devis.reference, lead_id, company_id)
+    return devis
+
+
+def planifier_devis_automatique_pour_lead(lead_id, company_id):
+    """Met la création du devis automatique EN FILE — jamais en ligne.
+
+    Point d'entrée cross-app : ``apps.crm`` appelle CETTE fonction (règle
+    services.py), et rien d'autre de ``ventes``.
+
+    Contrairement à ``planifier_resynchronisation_produit`` (PVSYNC), il n'y a
+    ici **aucun repli en ligne**, et c'est délibéré : le webhook du site est
+    une surface PUBLIQUE dont le temps de réponse est un engagement, alors que
+    la composition + l'étude horaire se comptent en secondes. Un courtier
+    injoignable fait donc simplement retomber ce lead-là sur le chemin
+    d'aujourd'hui — le commercial crée son devis à la main — ce qui est un
+    dégradé acceptable ; un webhook qui met cinq secondes à répondre ne l'est
+    pas. L'échec est journalisé, jamais avalé en silence.
+    """
+    from .tasks import task_devis_automatique_depuis_lead
+
+    try:
+        task_devis_automatique_depuis_lead.apply_async(
+            args=[lead_id, company_id], retry=False)
+    except Exception as exc:  # noqa: BLE001 — courtier indisponible
+        logger.warning(
+            'Auto-devis: file Celery indisponible (%s) — le lead %s n\'aura '
+            'pas de devis automatique (création manuelle inchangée).',
+            exc, lead_id)
 
 
 class AcceptError(Exception):

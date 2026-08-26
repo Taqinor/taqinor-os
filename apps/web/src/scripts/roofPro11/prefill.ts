@@ -213,9 +213,15 @@ export interface SerializedZone {
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
    *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
   obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
-  roofType: 'flat' | 'pitched';
-  pitchDeg: number;
-  facingAzimuthDeg: number;
+  /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
+   *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
+   *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
+   *  site » de la proposition client). Les DEUX lecteurs — `deserializeLayout` (ERP)
+   *  et `buildViewerFullPlan` (visionneuse publique) — appliquent alors les MÊMES
+   *  valeurs de zone vierge que `newAreaRecord()`. */
+  roofType?: 'flat' | 'pitched';
+  pitchDeg?: number;
+  facingAzimuthDeg?: number;
   facingManual: boolean;
   neededPanels: number;
   neededAuto: boolean;
@@ -509,9 +515,17 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
     })),
-    roofType: z.roofType,
-    pitchDeg: z.pitchDeg,
-    facingAzimuthDeg: z.facingAzimuthDeg,
+    // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
+    // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
+    // écrit dans le layout descend jusqu'à l'annexe « paramètres du site » de la
+    // proposition CLIENT (voir apps/ventes/services.zone_toit_depuis_contour). L'écran,
+    // lui, a besoin d'une valeur pour calculer : il applique donc SES propres valeurs
+    // de zone vierge — les MÊMES que `newAreaRecord()` dans roof-tool-pro11.ts — là où
+    // elles sont visiblement modifiables. Un layout sérialisé par le builder porte
+    // TOUJOURS les trois clés, donc ce repli ne change rien pour un dossier enregistré.
+    roofType: z.roofType ?? 'flat',
+    pitchDeg: z.pitchDeg ?? 22,
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
@@ -660,13 +674,19 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
 } {
   const empty = { vertices: [] as LngLat[], center: null as LngLat | null, contact: {} };
   if (!lead) return empty;
-  let vertices: LngLat[] = [];
+  // AP-F1 (fondateur 26/08/2026) — UN SEUL validateur de contour : avant ce correctif,
+  // cette fonction ré-implémentait son propre filtre et n'acceptait QUE la forme
+  // `[lat, lng]`, alors que `referenceContourRing` (plus bas dans ce fichier) accepte
+  // déjà les DEUX formes RÉELLES de `Lead.roof_outline` (`[lat, lng]` du webhook ET
+  // `{lat, lng}` de l'import/saisie manuelle), avec le MÊME bornage. La divergence
+  // faisait qu'un contour `{lat, lng}` se dessinait comme calque passif de référence
+  // (referenceContourRing l'acceptait) mais ne semait AUCUNE zone éditable — les
+  // panneaux n'apparaissaient jamais tant que le commercial ne retraçait pas le toit
+  // à la main. Sortie IDENTIQUE à avant pour la forme tuple (même conversion
+  // [lat,lng] → [lng,lat], même règle ≥ 3 sommets valides, même bornage).
+  const ring = referenceContourRing(lead.roof_outline);
+  const vertices: LngLat[] = ring ?? [];
   let center: LngLat | null = null;
-  if (Array.isArray(lead.roof_outline) && lead.roof_outline.length >= 3) {
-    vertices = lead.roof_outline
-      .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
-      .map(([lat, lng]) => [lng, lat] as LngLat);
-  }
   const pt = lead.roof_point;
   if (pt && Number.isFinite(pt.lat) && Number.isFinite(pt.lng)) {
     center = [pt.lng, pt.lat];

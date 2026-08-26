@@ -1027,6 +1027,15 @@ def _pan_principal(layout_public):
     Même lecture que ``services.extract_roof_config`` (qui retient déjà le pan
     le plus puissant comme orientation principale) : ``_pans_geometry``
     d'abord, la première zone exploitable ensuite.
+
+    F3 (26/08/2026) — LES DEUX BRANCHES PUBLIENT LE MÊME REPÈRE, et il faut
+    que ça reste vrai : ``azimut_deg`` est l'azimut BOUSSOLE (180 = Sud). La
+    branche ``pans`` le tient de ``extract_roof_config``, qui normalise
+    désormais les deux clés source vers la boussole ; la branche ``zones`` lit
+    ``facingAzimuthDeg``, qui est déjà la boussole. Avant cette normalisation,
+    deux toits plein Sud pouvaient sortir d'ici à 180° et à 0°, tous deux
+    étiquetés « Sud », et l'annexe client publiait l'un ou l'autre selon la
+    branche empruntée. Ne réintroduisez pas d'aspect PVGIS ici sans convertir.
     """
     pans = [pan for pan in (layout_public or {}).get('pans') or []
             if isinstance(pan, dict)]

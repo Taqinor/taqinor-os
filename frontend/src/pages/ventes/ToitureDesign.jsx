@@ -884,6 +884,42 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const toitClientPresent = useMemo(
     () => contourExploitable(contourClientBrut), [contourClientBrut])
 
+  // AP-F2 (fondateur 26/08/2026) — note « calepinage automatique » : visible quand
+  // les panneaux à l'écran viennent d'un SEMIS AUTOMATIQUE depuis le tracé client
+  // (roofPro11 applyHydration / applyDevisHydration, repli lead-like), jamais d'un
+  // calepinage enregistré par un commercial — celui-ci reste libre de VÉRIFIER avant
+  // d'envoyer. Mode lead : dès qu'un contour exploitable existe — MÊME garde que la
+  // bascule L-MAP (`toitClientPresent`), jamais un second prédicat. Mode devis :
+  // seulement si le devis n'a JAMAIS reçu de design enregistré (`roof_layout` sans
+  // zones — sinon un commercial a déjà calepiné et rien ne doit le recouvrir) ET
+  // qu'un contour exploitable existe (`contour_client`, sinon `outline` — même repli
+  // que le serveur quand `roof_layout` est absent, apps/ventes/selectors.py). Mode
+  // AO : jamais affichée (hors périmètre — une affaire n'a pas de tunnel public).
+  // AP2 — un devis créé AUTOMATIQUEMENT à l'arrivée du lead porte désormais la zone
+  // du client DANS son layout (apps/ventes/services.zone_toit_depuis_contour), donc
+  // `zones` n'est plus vide alors que PERSONNE n'a validé ce calepinage : le serveur
+  // l'estampille `_origine_calepinage: 'contour_client'`. Ce marqueur disparaît dès
+  // que le commercial enregistre sa conception (`sync-layout` REMPLACE le layout par
+  // la sérialisation du builder, qui ne l'émet jamais) — c'est exactement le moment
+  // où la note doit s'éteindre.
+  const layoutPoseAutomatiquement =
+    contexte?.geometrie?.roof_layout?._origine_calepinage === 'contour_client'
+  const devisRoofLayoutSansZones = !(contexte?.geometrie?.roof_layout?.zones?.length > 0)
+  const contourClientOuOutlinePourNote = contourExploitable(contexte?.geometrie?.contour_client)
+    ? contexte?.geometrie?.contour_client
+    : contexte?.geometrie?.outline
+  const calepinageAutomatiqueVisible = estDevis
+    ? (layoutPoseAutomatiquement
+      || (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote)))
+    : (!estAo && toitClientPresent)
+  // Le bouton « Recommencer » relit `opts.referenceContour`, c'est-à-dire le contour
+  // CLIENT et lui seul : il n'est proposé que si ce contour-là existe encore. Sans ce
+  // garde-fou la branche `layoutPoseAutomatiquement` pourrait afficher un bouton
+  // inerte (layout estampillé, mais tracé du lead effacé depuis).
+  const recommencerDisponible = estDevis
+    ? contourExploitable(contexte?.geometrie?.contour_client)
+    : (!estAo && toitClientPresent)
+
   // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
   // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
@@ -1052,6 +1088,33 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <span className="text-xs text-lune-faint">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
           </div>
         </div>
+        )}
+
+        {/* AP-F2 (fondateur 26/08/2026) — note explicite quand les panneaux à
+            l'écran viennent d'un SEMIS AUTOMATIQUE depuis le tracé client, jamais
+            d'un calepinage enregistré par un commercial (voir calepinageAutomatiqueVisible
+            ci-dessus). Le bouton reseme la zone active depuis CE MÊME contour et relance
+            l'optimiseur (roof-tool-pro11.ts recommencerDepuisTraceClient) — n'est rendu
+            que si un contour exploitable existe (la condition de la note l'implique déjà). */}
+        {calepinageAutomatiqueVisible && (
+          <div
+            className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-brass-400/40 p-4"
+            data-testid="rp9-calepinage-auto-note"
+          >
+            <p className="text-sm text-lune-soft" role="status">
+              Calepinage automatique depuis le tracé client — à vérifier
+            </p>
+            {recommencerDisponible && (
+              <button
+                type="button"
+                className={chipClass}
+                onClick={() => builderApi.current?.recommencerDepuisTraceClient?.()}
+                data-testid="rp9-recommencer-trace-client"
+              >
+                Recommencer depuis le tracé client
+              </button>
+            )}
+          </div>
         )}
 
         {/* BUILDER — DOM complet (mêmes ids que la preview pro-11). */}

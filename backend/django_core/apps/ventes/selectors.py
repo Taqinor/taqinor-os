@@ -2300,6 +2300,28 @@ def contexte_conception_devis(devis, company):
         contour = layout.get('outline')
         pin = pin_brut if isinstance(pin_brut, dict) else None
         outline = contour if isinstance(contour, list) else []
+        # ── AUTO-PIPELINE (ordre fondateur 26/08/2026) — LE TRACÉ DU CLIENT
+        # NE DOIT JAMAIS SE PERDRE DERRIÈRE UN LAYOUT SANS GÉOMÉTRIE ──────────
+        # Un devis peut porter un `roof_layout` qui ne décrit AUCUNE géométrie :
+        # c'est le cas de tout devis AUTOMATIQUE d'avant ce lot (le layout de
+        # `build_devis_auto` ne portait que `result`/`panelWatt`/`scenario`).
+        # `outline` valait alors `[]` et `zones` était absent : côté écran,
+        # `hydrateFromDevis` ne trouvait ni zone ni contour, retombait sur
+        # l'épingle seule, et le commercial devait RE-DESSINER le toit pour voir
+        # un seul panneau — alors que le tracé du client était là, juste à côté,
+        # dessiné en calque passif (`contour_client`). C'était LA cause du
+        # « le calepinage ne se fait pas tout seul ».
+        #
+        # Repli STRICTEMENT non destructif : il ne s'applique que si le layout
+        # ne dit RIEN de la géométrie (ni `outline` exploitable, ni `zones`) —
+        # un devis déjà calepiné garde son dessin, intact, en toutes
+        # circonstances. Le contour rendu reste celui du CLIENT (`contour_client`,
+        # `Lead.roof_outline` tel quel), jamais une géométrie inventée.
+        if not outline and not (layout.get('zones') or layout.get('areas')):
+            outline = contour_client
+            if pin is None:
+                point_lead = getattr(lead, 'roof_point', None) if lead else None
+                pin = point_lead if isinstance(point_lead, dict) else None
     else:
         roof_layout = None
         point_lead = getattr(lead, 'roof_point', None) if lead else None
