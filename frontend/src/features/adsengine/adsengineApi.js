@@ -119,6 +119,14 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // WIR208 — APPLIQUER une action DÉJÀ APPROUVÉE
+    // (`EngineActionViewSet.apply`, views.py:1530 → `services.apply_action`).
+    // Aucun autre chemin n'atteint Meta : le backend refuse tout statut ≠
+    // `approuvee` (409 `ActionNotApproved`, le client Meta n'est jamais
+    // construit) et repasse l'action `echouee` sur un échec Meta (502).
+    // Ce wrapper n'active JAMAIS de campagne : il applique la décision humaine
+    // déjà prise, à travers le seul point d'entrée serveur existant.
+    apply: (id) => api.post(`/adsengine/actions/${id}/apply/`),
     // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
     // via le producteur backend (résolution + validation) ; les kinds simples
     // passent par `create` ({kind, reason_fr, payload}). Tout finit en
