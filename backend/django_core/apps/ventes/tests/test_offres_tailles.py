@@ -726,9 +726,12 @@ class MaterielDuDevisTests(TestCase):
         self.assertEqual(onduleur['role'], 'onduleur_hybride')
 
     def test_les_lignes_COMMUNES_sont_dans_les_deux_cartes(self):
+        # UN seul devis pour les deux lectures : le construire dans la boucle
+        # recréait la Company slug='mat' dans la même transaction (violation
+        # d'unicité — rouge CI ronde 3).
+        devis = self._devis_deux_options()
         for variante in ('sans', 'avec'):
-            materiel, _ = ot._materiel_du_devis(
-                self._devis_deux_options(), variante)
+            materiel, _ = ot._materiel_du_devis(devis, variante)
             self.assertIn('panneau', {e['famille'] for e in materiel})
 
     def test_le_role_vient_du_classifieur_CATALOGUE(self):

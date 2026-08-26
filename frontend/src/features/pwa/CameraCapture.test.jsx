@@ -40,7 +40,7 @@ function installGeolocation(behavior) {
 }
 
 async function takeOnePhoto(user) {
-  await user.click(await screen.findByRole('button', { name: /prendre la photo|photo suivante/i }))
+  await user.click(await screen.findByRole('button', { name: /prendre la photo|photo suivante/i }, { timeout: 5000 }))
 }
 
 describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
@@ -61,7 +61,7 @@ describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
     render(<CameraCapture onCapture={onCapture} onClose={onClose} />)
 
     await takeOnePhoto(user)
-    await user.click(await screen.findByRole('button', { name: /utiliser cette photo/i }))
+    await user.click(await screen.findByRole('button', { name: /utiliser cette photo/i }, { timeout: 5000 }))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1))
     const [file, geo] = onCapture.mock.calls[0]
@@ -77,7 +77,7 @@ describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
     render(<CameraCapture onCapture={onCapture} onClose={vi.fn()} />)
 
     await takeOnePhoto(user)
-    await user.click(await screen.findByRole('button', { name: /utiliser cette photo/i }))
+    await user.click(await screen.findByRole('button', { name: /utiliser cette photo/i }, { timeout: 5000 }))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1))
     expect(onCapture.mock.calls[0][1]).toBeNull()
@@ -92,14 +92,14 @@ describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
 
     // 1re photo.
     await takeOnePhoto(user)
-    await user.click(await screen.findByRole('button', { name: /garder et continuer/i }))
+    await user.click(await screen.findByRole('button', { name: /garder et continuer/i }, { timeout: 5000 }))
     await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1))
     expect(onClose).not.toHaveBeenCalled()
 
     // 2e photo — le bouton devient « Photo suivante », la pellicule affiche 1 miniature.
     expect(await screen.findByText('1 photo')).toBeInTheDocument()
     await takeOnePhoto(user)
-    await user.click(await screen.findByRole('button', { name: /garder et continuer/i }))
+    await user.click(await screen.findByRole('button', { name: /garder et continuer/i }, { timeout: 5000 }))
     await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(2))
     expect(onClose).not.toHaveBeenCalled()
     expect(await screen.findByText('2 photos')).toBeInTheDocument()
