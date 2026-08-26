@@ -712,6 +712,35 @@ def _tension_nominale_batterie(batterie):
         return None
 
 
+def _max_modules_par_banc(batterie):
+    """BATHOMO (fondateur 26/08/2026) — le plafond fondateur du nombre de
+    modules IDENTIQUES admis dans un même banc pour CETTE batterie, ou
+    ``None`` = ILLIMITÉ (aucune fiche, ou champ vide — comportement
+    byte-identique à l'historique, où rien n'était borné)."""
+    if batterie is None:
+        return None
+    from apps.stock.selectors import specs_for_produit
+    valeur = (specs_for_produit(batterie) or {}).get('max_modules_par_banc')
+    try:
+        return int(valeur) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _prix_ttc_batterie(produit, quantite, taux_repli):
+    """Prix TTC total pour ``quantite`` modules de ``produit`` — le taux DU
+    PRODUIT s'il en déclare un, sinon ``taux_repli`` (celui du devis). MÊME
+    convention que ``dimensionnement._lire_composition`` (TVA par ligne),
+    pour que le classement économique compare des bases identiques."""
+    taux_produit = getattr(produit, 'tva', None)
+    try:
+        taux_pct = (float(taux_produit) if taux_produit is not None
+                    else float(taux_repli))
+    except (TypeError, ValueError):
+        taux_pct = float(taux_repli)
+    return float(quantite) * float(produit.prix_vente) * (1.0 + taux_pct / 100.0)
+
+
 def _batterie_compatible(batterie, plage):
     """La batterie entre-t-elle dans la plage batterie de l'onduleur ?
 
@@ -850,6 +879,32 @@ def _has_price(produit) -> bool:
     (e.g. the curve-only OSP pumps) is NEVER auto-quoted (CLAUDE.md).
     """
     return bool(produit.prix_vente and Decimal(produit.prix_vente) > 0)
+
+
+def _batterie_en_stock(produit) -> bool:
+    """BATHOMO (fondateur 26/08/2026) — ce module de batterie a-t-il du
+    STOCK RÉELLEMENT SUIVI (``Produit.quantite_stock`` > 0) ?
+
+    L'incident : le fondateur a mis le Dyness 10 kWh à 0 en stock (un
+    MOUVEMENT de stock — jamais un archivage), mais RIEN ne consultait le
+    stock au chiffrage : le module continuait d'apparaître dans les banques
+    composées. Cette garde ne s'applique QU'AU RÔLE BATTERIE (jamais un
+    filtre stock global — panneaux/onduleurs peuvent légitimement rester en
+    stock NON SUIVI, cf. le reste du catalogue) : un module à 0 en stock
+    sort du vivier exactement comme un module hors plage de tension, et
+    quand le fondateur réapprovisionne, il redevient composable tout seul
+    (aucun redéploiement, aucune intervention catalogue) — cf.
+    ``apps.stock.management.commands.seed_catalogue`` (BATHOMO, même
+    session : plus d'archivage forcé sur ce SKU).
+    """
+    if produit is None:
+        return False
+    if getattr(produit, 'is_archived', False):
+        return False
+    try:
+        return int(getattr(produit, 'quantite_stock', 0) or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _marque_correspond(produit, marque):
@@ -2063,6 +2118,31 @@ def avertissement_vivier_batterie_vide(plage):
             'SANS batterie. Ajoutez une batterie tarifée.')
 
 
+def avertissement_batterie_rupture_stock():
+    """BATHOMO/F5 (fondateur 26/08/2026) — message DISTINCT de
+    ``avertissement_vivier_batterie_vide`` : ici, une (ou plusieurs)
+    batterie(s) COMPATIBLE(S) existent (le couple électrique est bon) mais
+    leur STOCK est à 0. Conflater ce cas avec « aucune batterie compatible »
+    enverrait le commercial vers le mauvais correctif (« changez d'onduleur »
+    quand le vrai geste est de réapprovisionner, ou de choisir un autre
+    module déjà en stock)."""
+    return ('Batterie(s) compatibles en rupture de stock : le devis a été '
+            'composé SANS batterie. Réapprovisionnez, ou choisissez un '
+            'autre module batterie.')
+
+
+def avertissement_batterie_plafond_banc():
+    """BATHOMO/F3 (fondateur 26/08/2026) — message DISTINCT des deux
+    précédents : des batteries compatibles ET en stock existent, mais
+    ``bat_max_modules_par_banc`` (le plafond fondateur de modules par
+    banque) a rejeté TOUTES les candidates homogènes pour cette cible —
+    jamais une banque tronquée, jamais un « avec batterie » qui part sans
+    aucune batterie sans le dire."""
+    return ('Aucune banque batterie ne respecte le plafond de modules par '
+            'banc pour cette cible : le devis a été composé SANS batterie. '
+            'Augmentez le plafond, ou choisissez un autre module.')
+
+
 def _v_txt(volts):
     """« 160.0 » → « 160 » (une tension entière ne s'écrit pas avec un ,0)."""
     try:
@@ -2161,7 +2241,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
                               ordre_lignes=None, mppt_paires=1, phase=None,
-                              batterie_cible_kwh=None):
+                              batterie_cible_kwh=None,
+                              batterie_module_kwh=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -2234,6 +2315,22 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     (``apps.ventes.dimensionnement``) l'utilise, pour EXPLORER le stockage comme
     une deuxième dimension et montrer au fondateur ce qu'une banque plus grande
     changerait — explorer n'est pas décider.
+
+    ``batterie_module_kwh`` (BATHOMO, fondateur 26/08/2026 — « if the quote has
+    5 kWh batteries the web page should only show 5 kWh batteries ; and we can
+    go up to 30 or 40 kWh using 5 kWh batteries, no problem ») — IMPOSE le
+    calibre (``5`` ou ``10``) de la banque, plutôt que de laisser le choix « au
+    plus proche de la cible » ci-dessous décider. Un appelant qui connaît déjà
+    le module RÉELLEMENT engagé par un devis (lu sur ses LIGNES vendues, jamais
+    redeviné ici) l'impose ainsi pour toute l'échelle qu'il explore : la banque
+    grandit alors en N modules de CE calibre — jusqu'à 6-8 packs de 5 kWh pour
+    atteindre 30-40 kWh — sans jamais glisser vers l'autre calibre au passage
+    d'un multiple de 10 (où le choix « au plus proche » préfère normalement le
+    plus gros module). ``None`` (LE DÉFAUT) ⇒ comportement inchangé : le
+    calibre le plus proche de ``cible_kwh`` décide, égalité tranchée pour le
+    plus gros. Calibre imposé absent du catalogue ⇒ repli silencieux sur ce
+    même choix « au plus proche » — jamais une banque vide du seul fait d'un
+    calibre non stocké.
 
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
@@ -2472,7 +2569,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                 panneau, coince[0], coince[1]))
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
-    # servie en modules Dyness 10 kWh + un 5 kWh d'appoint ──
+    # servie en modules HOMOGÈNES (un seul calibre par banque — voir la garde
+    # plus bas, après le choix du vivier) ──
     # TOLÉRANCE DEUX ORTHOGRAPHES : la marque s'écrit « Dyness » (correction
     # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
     # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
@@ -2483,8 +2581,6 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         cible_kwh = max(5, _arrondi_js(float(batterie_cible_kwh) / 5) * 5)
     else:
         cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
-    nb10 = int(cible_kwh // 10)
-    nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
     # une batterie n'entre au vivier que si sa TENSION NOMINALE tombe dans la
     # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Le repli par mot-clé
@@ -2502,32 +2598,156 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # (c'est elle qui alimente l'avertissement « vivier vide », un motif
     # DISTINCT de « marque introuvable ») ; la marque ne restreint qu'ENSUITE.
     # Même ordre que l'écran et que ``_pick_product`` : garde métier d'abord.
-    batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
-                 for p in par_marque(
-                     [p for p in par_type.get('batterie') or []
-                      if _batterie_compatible(p, _plage_bat)], 'batterie')]
-    dyness = [b for b in batteries
-              if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
-                     for marque in ('dyness', 'deyness'))]
-    vivier = dyness or batteries
-    if veut_batterie and not vivier:
-        # Le vivier est VIDE alors que le devis est demandé AVEC batterie : la
-        # composition part sans batterie (jamais une batterie incompatible),
-        # mais elle le DIT — sinon le devis mentait par omission.
+    # BATHOMO (26/08/2026, F1 recalé) — DEUX VIVIERS, PAS UN. La
+    # COMPATIBILITÉ (tension) est un fait électrique qui s'applique TOUJOURS ;
+    # le STOCK, lui, ne s'applique QU'AU CHOIX ÉCONOMIQUE (une composition
+    # SANS pin — une NOUVELLE sélection). Un devis qui vend DÉJÀ un calibre
+    # (``batterie_module_kwh``) l'a COMMIS : la loi fondateur est « la page
+    # suit les articles du devis », donc le pin reste composable même si son
+    # stock est tombé à 0 depuis — repeindre la banque en 10 kWh (un module
+    # que ce devis ne vend PAS) serait exactement la violation que ce
+    # correctif devait éliminer, et avec les DEUX calibres à 0 la page
+    # mourrait sur un devis pourtant déjà signé. SCOPÉ AU RÔLE BATTERIE SEUL :
+    # aucun autre rôle (panneaux/onduleurs) n'a cette garde de stock — un
+    # filtre global casserait la composition pour un catalogue au stock non
+    # suivi (cf. ``_batterie_en_stock``).
+    batteries_compat = [(_parse_kwh(getattr(p, 'nom', '')), p)
+                        for p in par_marque(
+                            [p for p in par_type.get('batterie') or []
+                             if _batterie_compatible(p, _plage_bat)],
+                            'batterie')]
+    dyness_compat = [b for b in batteries_compat
+                     if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
+                            for marque in ('dyness', 'deyness'))]
+    vivier_compat = dyness_compat or batteries_compat
+    # Le vivier ÉCONOMIQUE (nouvelle sélection, sans pin) : compatible ET en
+    # stock — sous-ensemble du vivier compatible, jamais un second filtrage
+    # indépendant (une marque non stockée reste hors des deux).
+    vivier_stock = [(cap, p) for cap, p in vivier_compat
+                    if _batterie_en_stock(p)]
+    bat5_compat = next((p for cap, p in vivier_compat if cap == 5), None)
+    bat10_compat = next((p for cap, p in vivier_compat if cap == 10), None)
+    bat5_stock = next((p for cap, p in vivier_stock if cap == 5), None)
+    bat10_stock = next((p for cap, p in vivier_stock if cap == 10), None)
+    # ── BANQUE HOMOGÈNE + ÉCONOMIE DE CALIBRE (fondateur 26/08/2026) ──
+    # JAMAIS un mélange de calibres dans la même banque : c'est électriquement
+    # interdit (des modules 5 kWh et 10 kWh en parallèle/série ne s'équilibrent
+    # pas), et c'est ce mélange, composé côté serveur, qui a fait retirer le
+    # Dyness 10 kWh du stock de production (cf. ``apps.stock.management.
+    # commands.seed_catalogue``).
+    #
+    # Pour CHAQUE calibre disponible (en stock, compatible, et dont le
+    # plafond ``bat_max_modules_par_banc`` n'est pas dépassé — cf.
+    # ``_max_modules_par_banc``), UNE SEULE candidate homogène est générée :
+    # le plus petit N de modules IDENTIQUES qui ATTEINT OU DÉPASSE
+    # ``cible_kwh`` (plafond arrondi, jamais un manque — « extra batteries
+    # might add extra panels with extra cost, that is still fine »). Parmi
+    # les candidates retenues, celle au prix TTC TOTAL LE PLUS BAS gagne,
+    # égalité tranchée par le MOINS de modules (fondateur 26/08/2026 :
+    # l'économie décide, pas une préférence de calibre — 2×5 kWh à 28 000
+    # TTC bat 1×10 kWh à 30 000 pour une cible de 10 kWh dès que les modules
+    # 5 kWh sont moins chers au kWh). C'est ce qui fait grandir la banque en
+    # 5 kWh, sans jamais glisser vers le 10 kWh, tant que ce dernier reste
+    # plus cher au kWh — et REDEVENIR compétitif tout seul si son prix ou
+    # son stock changent. Aucun mélange n'est jamais formé : au plus UN des
+    # deux compteurs ci-dessous est non nul.
+    #
+    # ``batterie_module_kwh`` COURT-CIRCUITE ce choix économique quand
+    # l'appelant impose un calibre précis (module déjà engagé par un devis) :
+    # la banque grandit alors en N modules de CE seul calibre, jamais l'autre
+    # — c'est ce qui garantit que l'échelle explorée pour UN devis ne bascule
+    # jamais vers un autre calibre que celui qu'il vend déjà. LE PIN LIT LE
+    # VIVIER COMPATIBLE (F1) — jamais le vivier stock : le module déjà engagé
+    # reste composable même hors stock, SEULE la sélection ÉCONOMIQUE (sans
+    # pin) est stock-gatée.
+
+    def _candidat(calibre, produit):
+        """Une candidate homogène ``(prix_ttc, n, calibre, produit)`` pour ce
+        calibre, ou ``None`` si son plafond fondateur de modules est dépassé."""
+        n = max(1, int(math.ceil(cible_kwh / calibre - 1e-9)))
+        plafond = _max_modules_par_banc(produit)
+        if plafond is not None and n > plafond:
+            return None
+        prix_ttc = _prix_ttc_batterie(produit, n, taux_tva)
+        return (round(prix_ttc, 2), n, calibre, produit)
+
+    calibre_impose = None
+    if batterie_module_kwh is not None:
+        try:
+            calibre_impose = float(batterie_module_kwh)
+        except (TypeError, ValueError):
+            calibre_impose = None
+
+    candidat_impose = None
+    if calibre_impose == 5.0 and bat5_compat is not None:
+        candidat_impose = _candidat(5, bat5_compat)
+    elif calibre_impose == 10.0 and bat10_compat is not None:
+        candidat_impose = _candidat(10, bat10_compat)
+
+    candidats = []
+    if candidat_impose is not None:
+        candidats = [candidat_impose]
+    else:
+        # Aucun calibre imposé, calibre imposé absent du vivier COMPATIBLE,
+        # OU son plafond de modules interdit la seule candidate qu'il
+        # permettrait : repli sur le choix économique parmi les calibres EN
+        # STOCK — jamais une banque vide du seul fait d'un calibre non
+        # stocké ou plafonné, MAIS jamais non plus un calibre hors stock
+        # ressuscité par ce repli (F1 : le repli économique reste stock-gaté,
+        # seul le PIN d'origine bypassait le stock).
+        for calibre, produit in ((5, bat5_stock), (10, bat10_stock)):
+            if produit is None:
+                continue
+            candidat = _candidat(calibre, produit)
+            if candidat is not None:
+                candidats.append(candidat)
+
+    if veut_batterie and not candidats:
+        # AUCUNE candidate — via le pin ou l'économie : la composition part
+        # sans batterie (jamais une banque fabriquée), mais elle le DIT —
+        # sinon le devis mentait par omission. C'est CETTE garde qui rend
+        # l'option « avec batterie » honnêtement non-servable (``avec_ok``/
+        # ``variantes_servables``, quote_engine/builder.py) : aucune ligne
+        # batterie n'est composée, donc ``has_batterie`` retombe à faux tout
+        # seul — aucune machinerie neuve à câbler ici.
+        #
+        # F5 — LE DIAGNOSTIC SUIT LA VRAIE CAUSE (trois messages distincts,
+        # jamais « changez d'onduleur » quand le vrai geste est de
+        # réapprovisionner ou d'augmenter un plafond) :
+        #   1. vivier COMPATIBLE vide → aucune batterie ne convient à cet
+        #      onduleur (tension) : le message historique.
+        #   2. vivier compatible non vide mais vivier STOCK vide, et aucun
+        #      pin n'a résolu (F3/F1) → rupture de stock.
+        #   3. sinon (du stock existait ou un pin compatible existait) mais
+        #      ``candidats`` est quand même vide → le plafond de modules a
+        #      rejeté toutes les candidates possibles (F3).
+        if not vivier_compat:
+            message = avertissement_vivier_batterie_vide(_plage_bat)
+        elif not vivier_stock and candidat_impose is None:
+            message = avertissement_batterie_rupture_stock()
+        else:
+            message = avertissement_batterie_plafond_banc()
         if avertissements is not None:
-            avertissements.append(
-                avertissement_vivier_batterie_vide(_plage_bat))
+            avertissements.append(message)
         else:
             logger.warning(
-                'PVOND: vivier batterie vide (plage %s) alors que le devis est '
-                'demandé AVEC batterie — composition SANS batterie ; cet '
-                'appelant ne porte aucun canal d\'avertissement.', _plage_bat)
-    bat5 = next((p for cap, p in vivier if cap == 5), None)
-    bat10 = next((p for cap, p in vivier if cap == 10), None)
-    if bat10 is None and bat5 is not None and nb10 > 0:
-        # Pas de module 10 kWh au catalogue → toute la cible en modules 5 kWh.
-        nb5 = max(1, _arrondi_js(cible_kwh / 5))
-        nb10 = 0
+                'PVOND: aucune banque batterie composable (%s) alors que le '
+                'devis est demandé AVEC batterie — composition SANS '
+                'batterie ; cet appelant ne porte aucun canal '
+                'd\'avertissement.', message)
+
+    bat5 = bat10 = None
+    nb5, nb10 = 0, 0
+    if candidats:
+        candidats.sort(key=lambda c: (c[0], c[1]))
+        _prix_retenu, n_retenu, calibre_retenu, produit_retenu = candidats[0]
+        # ``produit_retenu`` — jamais ``bat5_stock``/``bat10_stock`` : un pin
+        # (F1) résout depuis le vivier COMPATIBLE, qui peut désigner un
+        # produit hors stock que le vivier stock-gaté ne connaît pas.
+        if calibre_retenu == 5:
+            bat5, nb5 = produit_retenu, n_retenu
+        else:
+            bat10, nb10 = produit_retenu, n_retenu
 
     # ── Structure : le type demandé (acier par défaut), une par panneau ──
     # PVMRQ — DEUX rôles distincts (``structure_acier`` / ``structure_alu``,
@@ -2670,7 +2890,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # « 5 et 10 kWh », c'est-à-dire recréer un second catalogue en dur qui
     # divergerait au premier module ajouté.
     lignes.capacites_batterie_vivier = sorted(
-        {float(cap) for cap, _p in vivier if cap and float(cap) > 0})
+        {float(cap) for cap, _p in vivier_compat if cap and float(cap) > 0})
     return lignes
 
 

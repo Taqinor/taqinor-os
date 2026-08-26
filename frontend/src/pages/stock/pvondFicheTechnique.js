@@ -206,7 +206,11 @@ const CHAMPS_PAR_TYPE = {
     'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
     'longueur_mm', 'largeur_mm',
   ],
-  batterie: ['bat_kwh_nominal', 'bat_kwh_usable', 'bat_v_nominal', 'bat_dod_pct'],
+  // BATHOMO (fondateur 26/08/2026) — ``bat_max_modules_par_banc`` : le
+  // plafond fondateur-éditable du nombre de modules IDENTIQUES qu'un même
+  // banc peut empiler pour ce produit (vide = illimité, 0 invalide — F3).
+  batterie: ['bat_kwh_nominal', 'bat_kwh_usable', 'bat_v_nominal', 'bat_dod_pct',
+             'bat_max_modules_par_banc'],
 }
 
 /** Champs BOOLÉENS du bloc FicheTechnique — traités à part des champs
@@ -261,6 +265,7 @@ export const LIBELLES_FICHE = {
   bat_kwh_usable: 'Capacité utilisable (kWh)',
   bat_v_nominal: 'Tension nominale (V)',
   bat_dod_pct: 'Profondeur de décharge — plage utile (%)',
+  bat_max_modules_par_banc: 'Max modules par banc — vide = illimité',
 }
 
 /** Titre de la section affichée, par `type_fiche` backend. */

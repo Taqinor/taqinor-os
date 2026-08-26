@@ -3,6 +3,7 @@
   "pourquoi": "PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20 kWh…) qu'un devis résidentiel « avec batterie » peut proposer, chacun avec son propre nb panneaux/kWc/prix TTC/économies annuelles/payback. Source de vérité : ``apps.ventes.dimensionnement.echelle_paliers_batterie(devis)`` (fonction PURE, lane P2-A parallèle) — cette page (apps/ventes/public_views.py `proposal_data`) et la page publique lisent CE fichier.",
   "notes": {
     "derivation": "Chaque entrée est un palier candidat DÉRIVÉ du moteur/catalogue (nb panneaux, nb batteries par calibre 5/10 kWh, kWc, prix TTC, économies annuelles, payback, remplissage) — jamais un chiffre inventé côté serveur public (règle fondateur « zéro chiffre inventé »).",
+    "banque_homogene": "UNE BANQUE EST TOUJOURS HOMOGÈNE (fondateur 26/08/2026) : ``nb_batteries_5`` et ``nb_batteries_10`` restent tous les deux DANS le contrat (rétrocompatibilité), mais AU PLUS UN des deux est non nul sur un MÊME palier — mélanger des calibres dans une même banque est électriquement interdit, et c'est ce mélange, composé côté serveur, qui a fait retirer le Dyness 10 kWh du stock de production (cf. ``apps.ventes.services.composition_residentielle``).",
     "absence": "``echelle_paliers_batterie`` vient d'une lane parallèle (P2-A) : tant qu'elle n'existe pas encore sur cette branche, la clé ``paliers_batterie`` est ABSENTE du payload (jamais une erreur, jamais un ``[]`` qui mentirait sur un calcul non fait) — le fold des deux lanes la fait apparaître. Une liste VIDE (fonction présente, aucun palier dérivable) est en revanche servie telle quelle.",
     "gardes": "Résidentiel seulement (même discriminant que ``dimensionnement_options`` — ``is_residential``) : un devis agricole/industriel/commercial n'a pas cette notion de palier de batterie domestique. ``avec_ok`` seulement (même discipline CJ2b/L-VAR que le reste de la page) : une échelle de batterie n'a de sens que si ce devis vend RÉELLEMENT l'option batterie.",
     "niveaux": "Servie IDENTIQUE aux deux niveaux de partage (standard/confiance) — ce bloc ne porte que des tailles/prix/économies déjà publics ailleurs sur cette page ; seule la nomenclature détaillée se dégrade au niveau standard, jamais les tailles/prix de ce bloc.",
@@ -10,7 +11,7 @@
   },
   "exemple": {
     "paliers_batterie": [
-      {"capacite_kwh": 15.0, "nb_batteries_5": 1, "nb_batteries_10": 1, "nb_panneaux": 26, "puissance_kwc": 18.46, "prix_ttc": 148655.0, "economies_annuelles": 28088.0, "payback_annees": 5.5, "remplissage_ok": true, "retenu": true},
+      {"capacite_kwh": 15.0, "nb_batteries_5": 3, "nb_batteries_10": 0, "nb_panneaux": 26, "puissance_kwc": 18.46, "prix_ttc": 148655.0, "economies_annuelles": 28088.0, "payback_annees": 5.5, "remplissage_ok": true, "retenu": true},
       {"capacite_kwh": 20.0, "nb_batteries_5": 0, "nb_batteries_10": 2, "nb_panneaux": 30, "puissance_kwc": 21.3, "prix_ttc": 171000.0, "economies_annuelles": 31500.0, "payback_annees": 5.9, "remplissage_ok": true, "retenu": false}
     ]
   },

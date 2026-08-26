@@ -1192,7 +1192,7 @@ def specs_for_produit(produit):
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
-        max_charge_kw, max_decharge_kw}``.
+        max_charge_kw, max_decharge_kw, max_modules_par_banc}``.
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -1259,6 +1259,12 @@ def specs_for_produit(produit):
             # getattr : les doubles de test (_FausseFiche) ne portent pas
             # forcément les champs récents — absent ≡ NULL (non évaluable).
             ('max_decharge_kw', getattr(fiche, 'bat_max_decharge_kw', None)),
+            # BATHOMO (2026-08-26) — le plafond fondateur du nombre de
+            # modules IDENTIQUES admis dans un même banc. getattr : les
+            # doubles de test (_FausseFiche) ne portent pas forcément le
+            # champ récent — absent ≡ NULL (illimité, comportement inchangé).
+            ('max_modules_par_banc',
+             getattr(fiche, 'bat_max_modules_par_banc', None)),
         ):
             _put(out, key, value)
     return out
@@ -1547,6 +1553,13 @@ def specs_solaire_produit(produit):
 
     plage = plage_batterie_onduleur(produit) if famille == 'onduleur' else None
     v_nominal = specs.get('v_nominal') if famille == 'batterie' else None
+    # BATHOMO/F4 (fondateur 26/08/2026) — le plafond fondateur du nombre de
+    # modules par banc EXPOSÉ EN LECTURE SEULE : le mirroir JS
+    # (frontend/src/features/ventes/solar.js autoFillLines) le lit pour
+    # rejeter les mêmes candidates que le moteur serveur (jamais un second
+    # champ éditable côté écran — la saisie reste dans Stock/ProduitForm).
+    max_modules = (specs.get('max_modules_par_banc')
+                   if famille == 'batterie' else None)
     return {
         'famille': famille or None,
         # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (ligne
@@ -1555,6 +1568,9 @@ def specs_solaire_produit(produit):
         'plage_batterie_v': list(plage) if plage is not None else None,
         # Batterie : tension nominale (V) de sa fiche technique.
         'v_nominal': float(v_nominal) if v_nominal is not None else None,
+        # Batterie : plafond de modules IDENTIQUES par banc, None = illimité.
+        'max_modules_par_banc': (int(max_modules)
+                                 if max_modules is not None else None),
         # Onduleur : libellés des variables de contrat absentes (verrou).
         'manquantes': onduleur_specs_manquantes(produit),
     }
