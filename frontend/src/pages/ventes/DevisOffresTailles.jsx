@@ -143,9 +143,16 @@ function TierCard({
   )
   const remplissageKo = varianteAffichee === 'avec' && donneesVariante?.batterie
     && donneesVariante.batterie.remplissage_ok === false
-  const erreursGenerales = errorsAt(erreurs, 'cle')
-    .concat(errorsAt(erreurs))
-    .filter((m, i, arr) => arr.indexOf(m) === i)
+  // Tout ce qui n'est PAS déjà affiché près d'un rôle catalogue précis
+  // (`erreursRole` ci-dessous, sous chaque select) : `cle`, `nb_panneaux`,
+  // `batterie_nb_modules`, le repli générique {path:[]} des catch() —
+  // jamais un message affiché DEUX fois.
+  const roleErrorKeys = new Set(roles.map(r => `config.equipements.${r}`))
+  const erreursGenerales = Array.from(new Set(
+    erreurs
+      .filter(e => !roleErrorKeys.has(e.path.join('.')))
+      .map(e => e.message),
+  ))
 
   return (
     <Card data-testid={`offre-taille-${offre.cle}`} className={offre.recommande ? 'border-primary/50' : undefined}>
