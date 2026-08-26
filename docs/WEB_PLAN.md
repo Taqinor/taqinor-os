@@ -228,7 +228,7 @@ hand-roller un substitut backend dans apps/web. WJ117/118/119/120/121/125 sont w
 La passe Fable a bloqué et fait corriger la fuite du compteur de panneaux 3D (WJ125 finding 1,
 corrigée dans ce batch). Les findings restants sont notés ici comme tâches de suivi :
 
-- [ ] WJ127 — **Repli teaser honnête pour les cas SANS estimation (finding 2, MEDIUM).** Les
+- [ ] WJ127 — (@lane: web-journey) **Repli teaser honnête pour les cas SANS estimation (finding 2, MEDIUM).** Les
   cartes d'erreur/edge (`mt-estimate-toolarge`, `-toolarge-pro`, callback agricole indispo) vivent
   DANS `#mt-doc` désormais masqué : un visiteur industriel à 2 000 000 MAD ne voit plus le message
   honnête « à cette échelle, étude dédiée » — seulement le teaser générique « Recevez votre étude
@@ -236,7 +236,7 @@ corrigée dans ce batch). Les findings restants sont notés ici comme tâches de
   Fix : une variante figure-free du hook teaser pour ces chemins (« votre projet relève d'une étude
   dédiée — un conseiller vous rappelle »), FR/EN/AR, sans divulguer de chiffre. (@lane: web-journey)
   (@model: sonnet)
-- [ ] WJ128 — **Robustesse prix/capacité du simulateur batterie (findings 3+4, LOW).** Dans
+- [ ] WJ128 — (@lane: web-proposal) **Robustesse prix/capacité du simulateur batterie (findings 3+4, LOW).** Dans
   `proposition/[token].astro`/`batterySim.ts` : (a) si la ligne batterie de l'offre matche le
   mot-clé mais ne porte ni réf ni « N kWh » lisible, `resolveOfferBattery` retombe à 5 kWh tout en
   affichant le prix réel — dissocier « capacité connue » de « prix réel » (afficher « sur étude » si
@@ -245,7 +245,7 @@ corrigée dans ce batch). Les findings restants sont notés ici comme tâches de
   gros montant/capacité ; (c) si l'offre quote > 3 unités, le slider (max 3) ne peut jamais afficher
   le prix réel (n === offeredUnits jamais atteint) — élargir le max au nombre offert ou afficher le
   vrai total. (@lane: web-proposal) (@model: sonnet)
-- [ ] WJ129 — **Durcissements mineurs (findings 5+6, NITS).** `batterySim.ts` : `clamp01` renvoie
+- [ ] WJ129 — (@lane: web-proposal) **Durcissements mineurs (findings 5+6, NITS).** `batterySim.ts` : `clamp01` renvoie
   `hi` (1.0, borne la plus optimiste) sur entrée non-finie — le `??` ne rattrape que null/undefined ;
   utiliser le constant par défaut documenté sur NaN (inatteignable des appelants actuels, mais piège).
   Et documenter le décalage sémantique télémétrie : en chemin gaté, `estimation/viewed` se déclenche
