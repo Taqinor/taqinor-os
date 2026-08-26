@@ -23,7 +23,11 @@ import VoiceNoteRecorder from '../../features/offlinesync/VoiceNoteRecorder'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
+import crmApi from '../../api/crmApi'
 import api from '../../api/axios'
+// WIR178 — même sélecteur client (recherche /crm/clients/search/) que le
+// quick-create ⌘K (TicketQuickCreateModal) et DevisGenerator.
+import { searchCompanies } from '../../features/crm/companyLookup'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
@@ -86,6 +90,7 @@ import {
   Input,
   Textarea,
   Checkbox,
+  Combobox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   SelectGroup, SelectLabel,
   Segmented,
@@ -1600,11 +1605,12 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
   )
 }
 
-// Formulaire minimal de création rapide (référence auto côté serveur) : type,
-// client texte libre non requis ici — on réutilise le flux normal via
-// createTicket avec juste la date_tournee proposée en info (posée ensuite par
-// le glisser-déposer si l'utilisateur veut affiner) — garde le composant
-// simple : ouvre la fiche standard n'est pas nécessaire, un POST minimal suffit.
+// Formulaire minimal de création rapide (référence auto côté serveur) :
+// client (OBLIGATOIRE — WIR178, `Ticket.client` est un FK non nullable côté
+// serveur, un payload sans client était un 400 garanti) + type + description,
+// puis createTicket suivi de replanifierTicket sur la date cliquée dans le
+// calendrier (affinable ensuite par glisser-déposer) — garde le composant
+// simple : ouvrir la fiche standard n'est pas nécessaire, un POST minimal suffit.
 // VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
 // même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
 // silencieusement à « correctif » à chaque ouverture.
@@ -1619,16 +1625,29 @@ const ecrireLastTicketType = (v) => {
 }
 
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
+  const [clientId, setClientId] = useState(null)
   const [description, setDescription] = useState('')
   const [type, setType] = useState(lireLastTicketType)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
+  // WIR178 — mêmes données propres que DevisGenerator/TicketQuickCreateModal
+  // (endpoint /search/, filtré aux clients : un ticket a besoin d'un id
+  // client réel).
+  const onSearchClient = async (query) => {
+    const hits = await searchCompanies(query, { searcher: crmApi.searchClients })
+    const clientHits = hits.filter((h) => h.source === 'client')
+    return clientHits.map((h) => ({ value: String(h.id), label: h.nom }))
+  }
+
   const submit = async () => {
-    setBusy(true)
     setErr(null)
+    if (!clientId) { setErr('Le client est requis.'); return }
+    setBusy(true)
     try {
-      const r = await savApi.createTicket({ type, description: description || undefined })
+      const r = await savApi.createTicket({
+        client: parseInt(clientId, 10), type, description: description || undefined,
+      })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
       ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
@@ -1651,10 +1670,23 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid gap-3">
-          <FormField label="Type">
+          <FormField label="Client" htmlFor="cqc-client">
             {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
+            <Combobox
+              id="cqc-client"
+              autoFocus
+              value={clientId}
+              onChange={(v) => setClientId(v)}
+              onSearch={onSearchClient}
+              placeholder="— Sélectionner un client —"
+              searchPlaceholder="Nom ou ICE…"
+              emptyText="Aucun client dans vos données"
+              invalid={err && !clientId ? true : undefined}
+            />
+          </FormField>
+          <FormField label="Type">
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger autoFocus><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
               </SelectContent>
