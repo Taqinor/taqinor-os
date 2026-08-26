@@ -365,11 +365,12 @@ function DevisRow({ d, ctx }) {
   const {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    // WIR225 - comparaison des variantes servie par le serveur.
+    variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
@@ -501,8 +502,7 @@ function DevisRow({ d, ctx }) {
                 <button
                   type="button"
                   className="font-medium underline hover:no-underline"
-                  onClick={() => setVersionsOpenId(
-                    versionsOpenId === d.id ? null : d.id)}
+                  onClick={() => basculerVersions(d.id)}
                   title="Voir la version qui remplace ce devis"
                 >
                   {d.superseded_by_ref}
@@ -516,8 +516,7 @@ function DevisRow({ d, ctx }) {
               <button
                 type="button"
                 className="text-primary hover:underline"
-                onClick={() => setVersionsOpenId(
-                  versionsOpenId === d.id ? null : d.id)}
+                onClick={() => basculerVersions(d.id)}
               >
                 {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
               </button>
@@ -1056,34 +1055,65 @@ function DevisRow({ d, ctx }) {
     {versionsOpenId === d.id && (
       <tr>
         <td colSpan={8} className="bg-muted/30">
+          {/* WIR225 — comparaison des variantes, servie par le SERVEUR
+              (`getVariantes`) : la chaîne reconstruite localement ignorait
+              toute variante absente de la page courante. */}
           <div className="px-3 py-2">
             <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Historique des versions
+              Comparaison des variantes
             </p>
-            {versionChain.length === 0 ? (
+            {variantesEtat.loading ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : variantesEtat.error ? (
               <p className="text-xs text-muted-foreground">
-                Aucune autre version trouvée parmi les devis chargés.
+                Comparaison indisponible pour le moment.
+              </p>
+            ) : variantesEtat.rows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Ce devis n’appartient à aucun groupe de variantes.
               </p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {versionChain.map(v => (
-                  <li key={v.id}
-                      className="flex flex-wrap items-center gap-2">
-                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
-                      v{v.version || 1}
-                    </Badge>
-                    <strong>{v.reference}</strong>
-                    <span className="text-xs text-muted-foreground">
-                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
-                      {v.date_creation
-                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
-                    </span>
-                    {v.id === d.id && (
-                      <span className="text-xs text-primary">(version affichée)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm"
+                       aria-label={`Comparaison des variantes de ${d.reference}`}>
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Référence</th>
+                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Libellé</th>
+                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total HT</th>
+                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variantesEtat.rows.map(v => (
+                      <tr key={v.id}
+                          data-source={v.id === d.id ? 'true' : undefined}
+                          className="border-b border-border/60 last:border-b-0">
+                        <td className="px-2 py-1">
+                          <strong>{v.reference}</strong>
+                          {v.id === d.id && (
+                            <span className="ml-2 text-xs text-primary">(source)</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1 text-muted-foreground">
+                          {/* Aucun libellé n'est INVENTÉ : le nom de gamme s'il
+                              existe, sinon le rang de version servi par le
+                              serveur. */}
+                          {v.etude_params?.gamme?.nom || `v${v.version || 1}`}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {v.total_ht != null ? formatMAD(v.total_ht) : '—'}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {(v.total_affiche ?? v.total_ttc) != null
+                            ? formatMAD(v.total_affiche ?? v.total_ttc)
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </td>
@@ -1298,6 +1328,53 @@ export default function DevisList() {
     const v = searchParams.get('variantes')
     return v ? Number(v) : null
   })
+
+  /* ── WIR225 — Le panneau de comparaison est alimenté par le SERVEUR ───────
+     `GET /ventes/devis/<id>/variantes/` (QJ15) renvoie le groupe COMPLET de
+     variantes (même `version_parent`, actives) — il n'avait aucun appelant.
+     Le panneau se contentait de `versionChain`, une chaîne reconstruite
+     LOCALEMENT à partir des devis DÉJÀ CHARGÉS dans la liste : une variante
+     hors page (pagination, filtre de statut, recherche) en disparaissait
+     purement et simplement, et la promesse de comparaison n'était pas tenue.
+     On interroge donc le serveur, seul à connaître le groupe entier. */
+  const [variantesEtat, setVariantesEtat] = useState({
+    id: null, rows: [], loading: false, error: false,
+  })
+  const variantesRef = useRef(null)
+
+  const chargerVariantes = (id) => {
+    variantesRef.current = id
+    if (id == null) {
+      setVariantesEtat({ id: null, rows: [], loading: false, error: false })
+      return
+    }
+    setVariantesEtat({ id, rows: [], loading: true, error: false })
+    ventesApi.getVariantes(id)
+      .then((r) => {
+        if (variantesRef.current !== id) return
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
+        setVariantesEtat({ id, rows, loading: false, error: false })
+      })
+      .catch(() => {
+        if (variantesRef.current !== id) return
+        setVariantesEtat({ id, rows: [], loading: false, error: true })
+      })
+  }
+
+  // Bascule du panneau : un seul chemin, partagé par le bouton de ligne, le
+  // deep-link `?variantes=` et les deux créations (variantes / gamme).
+  const basculerVersions = (id) => {
+    const cible = versionsOpenId === id ? null : id
+    setVersionsOpenId(cible)
+    chargerVariantes(cible)
+  }
+
+  // Deep-link `?variantes=<id>` : charger le groupe au MONTAGE (l'état initial
+  // ci-dessus pose déjà l'id ; il ne déclenche aucun chargement à lui seul).
+  useEffect(() => {
+    if (versionsOpenId != null) chargerVariantes(versionsOpenId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── QG10 — Modale « Variantes » : confirmer / éditer le pourcentage avant
   //    de créer les 3 variantes (−p / standard / +p) puis router vers la
@@ -1565,6 +1642,7 @@ export default function DevisList() {
       closeVarianteModal()
       // Route vers la comparaison : panneau versions du devis source ouvert.
       setVersionsOpenId(d.id)
+      chargerVariantes(d.id)
       setSearchParams({ variantes: String(d.id) }, { replace: true })
     } catch (err) {
       toast.error(frenchError(err, 'Création variantes impossible.'))
@@ -1602,6 +1680,7 @@ export default function DevisList() {
       toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
       closeGammeModal()
       setVersionsOpenId(d.id)
+      chargerVariantes(d.id)
       setSearchParams({ variantes: String(d.id) }, { replace: true })
     } catch (err) {
       toast.error(frenchError(err, 'Création de la gamme impossible.'))
@@ -2266,32 +2345,9 @@ export default function DevisList() {
     [devis],
   )
 
-  // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
-  // ancien, puis ajoute la version courante et descend via superseded_by_ref.
-  // Triée par numéro de version croissant pour un affichage lisible.
-  const versionChain = useMemo(() => {
-    if (versionsOpenId == null) return []
-    const byRef = new Map(devis.map(d => [d.reference, d]))
-    const cur = devis.find(d => d.id === versionsOpenId)
-    if (!cur) return []
-    const seen = new Set()
-    const chain = []
-    // Remonter vers les versions plus anciennes.
-    let node = cur
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.version_parent_ref ? byRef.get(node.version_parent_ref) : null
-    }
-    // Descendre vers les versions plus récentes (remplaçantes).
-    node = cur.superseded_by_ref ? byRef.get(cur.superseded_by_ref) : null
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.superseded_by_ref ? byRef.get(node.superseded_by_ref) : null
-    }
-    return chain.sort((a, b) => (a.version || 1) - (b.version || 1))
-  }, [versionsOpenId, devis])
+  // WIR225 — la chaîne de révisions reconstruite LOCALEMENT (`versionChain`)
+  // a été retirée : elle ne voyait que les devis déjà chargés dans la page, et
+  // le panneau lit désormais le groupe complet servi par `getVariantes`.
 
   // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
   const summary = useMemo(() => {
@@ -2336,16 +2392,18 @@ export default function DevisList() {
 
   // ── ARC49 — Sac de contexte passé à chaque <DevisRow> (« lignes divisées »).
   // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
-  // aucune valeur n'est transformée. `versionChain` est mémoïsé plus haut sur
+  // aucune valeur n'est transformée. L'état des variantes est chargé sur
   // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
   const rowCtx = {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    // WIR225 - comparaison des variantes servie par le serveur.
+    variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
+    effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,

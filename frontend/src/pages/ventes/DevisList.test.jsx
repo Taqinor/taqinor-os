@@ -37,6 +37,14 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       ...actual.default,
       refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
       getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
+      // WIR217 — le sondage PDF lit l'ETAT du rendu (pret/en_cours/echec), et
+      // non plus le devis entier : un echec definitif etait invisible.
+      etatPdfDevis: vi.fn(() => Promise.resolve({
+        data: { devis: 99, statut: 'pret', fichier_pdf: true, erreur: null, date: null },
+      })),
+      // WIR225 — le panneau de comparaison est servi par le SERVEUR (le groupe
+      // complet de variantes), plus par une chaine reconstruite localement.
+      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
       telechargerPdfDevis: vi.fn(() => Promise.resolve({
         data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
         headers: {},
@@ -460,10 +468,12 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
       // Le % (25) est transmis en override de requête.
       expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25 })
     })
-    // La comparaison s'ouvre : le panneau « Historique des versions » apparaît.
+    // La comparaison s'ouvre : le panneau (WIR225 — servi par getVariantes)
+    // apparaît et le groupe est demandé au serveur.
     await waitFor(() => {
-      expect(screen.getByText('Historique des versions')).toBeTruthy()
+      expect(screen.getByText('Comparaison des variantes')).toBeTruthy()
     })
+    await waitFor(() => { expect(ventesApi.getVariantes).toHaveBeenCalledWith(20) })
   })
 
   it('rend le champ % en lecture seule pour un rôle non autorisé', async () => {
@@ -905,5 +915,70 @@ describe('DevisList — ARC49-FIX : la liste reste visible sur téléphone (< 76
     expect(conteneurTable.className.split(/\s+/)).not.toContain('hidden')
     expect(within(conteneurTable).getByText('DEV-2026-07-0001')).toBeInTheDocument()
     expect(conteneurTable.querySelector('table').className).toContain('data-table')
+  })
+})
+
+
+/* WIR225 — Le panneau de comparaison promettait de comparer des variantes mais
+   se contentait de `versionChain`, une chaîne reconstruite LOCALEMENT à partir
+   des devis DÉJÀ CHARGÉS dans la page : une variante hors page (pagination,
+   filtre, recherche) en disparaissait purement et simplement, et
+   `getVariantes` — qui renvoie le groupe COMPLET — n'avait aucun appelant. */
+describe('DevisList — WIR225 : comparaison des variantes servie par le serveur', () => {
+  const SOURCE = {
+    id: 20, reference: 'DEV-VAR', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1,
+  }
+  // 3 variantes créées + le devis source = 4 lignes aux totaux DISTINCTS.
+  const GROUPE = [
+    { id: 20, reference: 'DEV-VAR', version: 1, total_ht: '3333.33', total_ttc: '4000.00' },
+    { id: 21, reference: 'DEV-VAR-A', version: 2, total_ht: '2666.67', total_ttc: '3200.00' },
+    { id: 22, reference: 'DEV-VAR-B', version: 3, total_ht: '4000.00', total_ttc: '4800.00' },
+    // Variante ABSENTE de la page courante : invisible avant WIR225.
+    { id: 23, reference: 'DEV-VAR-C', version: 4, total_ht: '5000.00', total_ttc: '6000.00' },
+  ]
+
+  it('ouvre le panneau, interroge le serveur et rend les 4 colonnes', async () => {
+    const user = userEvent.setup()
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: GROUPE })
+    renderList({ loading: false, devis: [SOURCE] })
+    const row = screen.getByText('DEV-VAR').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Voir les versions/ }))
+
+    await waitFor(() => expect(ventesApi.getVariantes).toHaveBeenCalledWith(20))
+    const table = await screen.findByRole('table', { name: /Comparaison des variantes/ })
+    for (const entete of ['Référence', 'Libellé', 'Total HT', 'Total TTC']) {
+      expect(within(table).getByText(entete)).toBeInTheDocument()
+    }
+    // Les 4 entrées du groupe, y compris celle absente de la page.
+    for (const ref of ['DEV-VAR', 'DEV-VAR-A', 'DEV-VAR-B', 'DEV-VAR-C']) {
+      expect(within(table).getByText(ref)).toBeInTheDocument()
+    }
+    // Totaux DISTINCTS (aucun chiffre inventé : ceux du serveur, formatés).
+    for (const ttc of [4000, 3200, 4800, 6000]) {
+      expect(within(table).getAllByText(formatMAD(ttc)).length).toBeGreaterThan(0)
+    }
+    // La source est REPÉRÉE.
+    expect(within(table).getByText('(source)')).toBeInTheDocument()
+    expect(table.querySelectorAll('tr[data-source="true"]')).toHaveLength(1)
+  })
+
+  it('groupe vide : état propre, aucune ligne inventée', async () => {
+    const user = userEvent.setup()
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: [] })
+    renderList({ loading: false, devis: [SOURCE] })
+    const row = screen.getByText('DEV-VAR').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Voir les versions/ }))
+    expect(await screen.findByText(/aucun groupe de variantes/))
+      .toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: /Comparaison des variantes/ })).toBeNull()
+  })
+
+  it('le deep-link ?variantes= charge le groupe au montage', async () => {
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: GROUPE })
+    renderList({ loading: false, devis: [SOURCE] }, ['/ventes/devis?variantes=20'])
+    await waitFor(() => expect(ventesApi.getVariantes).toHaveBeenCalledWith(20))
+    expect(await screen.findByRole('table', { name: /Comparaison des variantes/ }))
+      .toBeInTheDocument()
   })
 })
