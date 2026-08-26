@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Banknote, FileDown, Send, RefreshCw, FileSpreadsheet, ListChecks,
-  XCircle, RotateCcw, UploadCloud, Calculator, History,
+  XCircle, RotateCcw, UploadCloud, Calculator, History, Plus, Pencil, Trash2,
 } from 'lucide-react'
 import {
   Button, Card, Input, Spinner, EmptyState, Badge, toast,
@@ -745,6 +745,8 @@ function AvancesTab() {
   const [loading, setLoading] = useState(true)
   const [, setBusy] = useState('')
   const [lotOuvert, setLotOuvert] = useState(false)
+  // WIR197 — dialogue Avance : null = fermé, {} = création, {...} = édition.
+  const [avanceDialog, setAvanceDialog] = useState(null)
 
   const load = () =>
     Promise.all([paieApi.getAvances(), paieApi.getSaisies()])
@@ -765,6 +767,22 @@ function AvancesTab() {
       await load()
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Annulation impossible.')
+    } finally { setBusy('') }
+  }
+
+  // WIR197 — supprimable seulement tant qu'aucune retenue n'a été imputée
+  // (montant_rembourse en lecture seule, incrémenté par la validation des
+  // bulletins) : au-delà, l'historique de remboursement doit rester intact.
+  const supprimerAvance = async (avance) => {
+    const libelleAvance = avance.type === 'pret' ? 'le prêt' : "l'avance"
+    if (!window.confirm(`Supprimer ${libelleAvance} du profil #${avance.profil} ?`)) return
+    setBusy(`suppr-avance-${avance.id}`)
+    try {
+      await paieApi.deleteAvance(avance.id)
+      toast.success('Avance supprimée.')
+      await load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Suppression impossible.')
     } finally { setBusy('') }
   }
 
@@ -802,11 +820,22 @@ function AvancesTab() {
   return (
     <div className="flex flex-col gap-4">
       <Card className="p-4 sm:p-5">
-        <h3 className="mb-3 font-display font-semibold">Avances / prêts</h3>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-display font-semibold">Avances / prêts</h3>
+          <Button variant="outline" size="sm" onClick={() => setAvanceDialog({})}>
+            <Plus size={15} aria-hidden="true" /> Nouvelle avance
+          </Button>
+        </div>
         {avances.length === 0 ? (
           <EmptyState icon={ListChecks} title="Aucune avance" />
         ) : (
-          <DataTable data={avances} columns={avanceCols} exportName="avances" />
+          <DataTable data={avances} columns={avanceCols} exportName="avances"
+            rowActions={(r) => (Number(r.montant_rembourse) > 0 ? [] : [
+              { id: 'modifier', label: 'Modifier', icon: Pencil,
+                onClick: () => setAvanceDialog(r) },
+              { id: 'supprimer', label: 'Supprimer', icon: Trash2,
+                destructive: true, onClick: () => supprimerAvance(r) },
+            ])} />
         )}
       </Card>
       <Card className="p-4 sm:p-5">
@@ -830,7 +859,99 @@ function AvancesTab() {
         <LotSaisiesDialog onClose={() => setLotOuvert(false)}
           onCreated={load} />
       )}
+      {avanceDialog && (
+        <AvanceDialog avance={avanceDialog.id ? avanceDialog : null}
+          onClose={() => setAvanceDialog(null)} onSaved={load} />
+      )}
     </div>
+  )
+}
+
+/* ── WIR197 — création/édition d'une avance ou d'un prêt salarié ── */
+function AvanceDialog({ avance, onClose, onSaved }) {
+  const isEdit = !!avance
+  const [profil, setProfil] = useState(avance?.profil ? String(avance.profil) : '')
+  const [type, setType] = useState(avance?.type || 'avance')
+  const [libelle, setLibelle] = useState(avance?.libelle || '')
+  const [montantTotal, setMontantTotal] = useState(
+    avance?.montant_total != null ? String(avance.montant_total) : '')
+  const [nombreEcheances, setNombreEcheances] = useState(
+    avance?.nombre_echeances != null ? String(avance.nombre_echeances) : '1')
+  const [dateDebut, setDateDebut] = useState(avance?.date_debut || '')
+  const [busy, setBusy] = useState(false)
+
+  const enregistrer = async () => {
+    if (!profil || !montantTotal || !dateDebut) {
+      toast.error('Profil, montant total et date de début sont requis.')
+      return
+    }
+    setBusy(true)
+    try {
+      await paieApi.saveAvance(avance?.id, {
+        profil: Number(profil),
+        type,
+        libelle,
+        montant_total: Number(montantTotal),
+        nombre_echeances: Number(nombreEcheances) || 1,
+        date_debut: dateDebut,
+      })
+      toast.success(isEdit ? 'Avance modifiée.' : 'Avance créée.')
+      onSaved()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Modifier l'avance" : 'Nouvelle avance / prêt'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">ID du profil de paie</span>
+            <Input type="number" step="any" value={profil} disabled={isEdit}
+              onChange={(e) => setProfil(e.target.value)} placeholder="12" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Type</span>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="avance">Avance sur salaire</SelectItem>
+                <SelectItem value="pret">Prêt salarié</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Libellé</span>
+            <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Montant total</span>
+            <Input type="number" step="any" value={montantTotal}
+              onChange={(e) => setMontantTotal(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Nombre d'échéances</span>
+            <Input type="number" step="any" value={nombreEcheances}
+              onChange={(e) => setNombreEcheances(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Date de début de retenue</span>
+            <Input type="date" value={dateDebut}
+              onChange={(e) => setDateDebut(e.target.value)} />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button onClick={enregistrer} loading={busy}>
+            {isEdit ? 'Enregistrer' : 'Créer'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
