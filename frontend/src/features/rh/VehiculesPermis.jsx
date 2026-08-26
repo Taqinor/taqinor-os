@@ -84,7 +84,6 @@ export default function VehiculesPermis() {
       })
       .finally(() => { if (vivant) setLoading(false) })
     return () => { vivant = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadTick])
 
   const vehiculeLabel = useMemo(() => {

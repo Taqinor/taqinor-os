@@ -1261,15 +1261,17 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
   const [doublons, setDoublons] = useState([])
 
   useEffect(() => {
-    if (!email.trim() && !telephone.trim()) { setDoublons([]); return undefined }
     let vivant = true
+    const vide = !email.trim() && !telephone.trim()
     const t = setTimeout(() => {
+      if (!vivant) return
+      if (vide) { setDoublons([]); return }
       rhApi.checkCandidatureDuplicates({
         email: email.trim() || undefined, telephone: telephone.trim() || undefined,
       })
         .then((res) => { if (vivant) setDoublons(unwrap(res.data)) })
         .catch(() => { if (vivant) setDoublons([]) })
-    }, 400)
+    }, vide ? 0 : 400)
     return () => { vivant = false; clearTimeout(t) }
   }, [email, telephone])
 
