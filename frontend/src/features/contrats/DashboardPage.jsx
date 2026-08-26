@@ -138,6 +138,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* NTSUB12/WIR252 — métriques SaaS niveau investisseur. */}
+      {!loading && !error && <MetriquesSaasCard />}
+
       {/* WIR77 / XCTR9 — valeur vie client (CLV) par client. */}
       {!loading && !error && <ClvCard />}
 
@@ -196,6 +199,103 @@ function CohortesHeatmap({ cohortes }) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+// NTSUB12/WIR252 — métriques SaaS niveau investisseur : ARR bridge, Quick
+// Ratio, Rule of 40 (`contratsApi.getMetriquesSaas`). `quick_ratio`,
+// `croissance_arr_pct` et `rule_of_40` peuvent être `null` (division par
+// zéro gardée côté serveur, ex. aucune perte de MRR sur la période) — rendus
+// « — » tels quels, JAMAIS une valeur recalculée ou par défaut côté client.
+// Une erreur (ex. 400 debut > fin) est capturée et affichée sans planter
+// l'écran. Période filtrable (défaut serveur : mois courant).
+function MetriquesSaasCard() {
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const charger = async (e) => {
+    e?.preventDefault?.()
+    setBusy(true)
+    setErr(null)
+    try {
+      const params = {}
+      if (debut) params.debut = debut
+      if (fin) params.fin = fin
+      const r = await contratsApi.getMetriquesSaas(params)
+      setData(r.data)
+    } catch (e2) {
+      setData(null)
+      setErr(e2?.response?.data?.detail || 'Métriques indisponibles.')
+    } finally { setBusy(false) }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (période par défaut serveur)
+    charger()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+
+  const bridge = data?.arr_bridge
+  const quickRatio = data?.quick_ratio
+  const ruleOf40 = data?.rule_of_40
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold">
+        <TrendingUp className="size-4 text-muted-foreground" aria-hidden="true" /> Métriques SaaS (investisseur)
+      </h3>
+      <form onSubmit={charger} className="mb-3 flex flex-wrap items-end gap-3" noValidate>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="saas-debut">Début</Label>
+          <Input id="saas-debut" type="date" value={debut}
+            onChange={(e) => setDebut(e.target.value)} className="w-40" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="saas-fin">Fin</Label>
+          <Input id="saas-fin" type="date" value={fin}
+            onChange={(e) => setFin(e.target.value)} className="w-40" />
+        </div>
+        <Button type="submit" variant="outline" disabled={busy}>{busy ? 'Calcul…' : 'Calculer'}</Button>
+      </form>
+      {err && <p className="mb-2 text-sm text-destructive" role="alert">{err}</p>}
+      {data && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">ARR (fin de période)</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {bridge ? formatMAD(bridge.arr_fin) : '—'}
+            </p>
+            {bridge && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Début {formatMAD(bridge.arr_debut)} · New {formatMAD(bridge.new)} ·
+                {' '}Expansion {formatMAD(bridge.expansion)} · Contraction {formatMAD(bridge.contraction)} ·
+                {' '}Churn {formatMAD(bridge.churn)}
+              </p>
+            )}
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Quick Ratio</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {quickRatio != null ? quickRatio : '—'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Rule of 40</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {ruleOf40?.rule_of_40 != null ? ruleOf40.rule_of_40 : '—'}
+            </p>
+            {ruleOf40 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Croissance ARR {ruleOf40.croissance_arr_pct != null ? `${ruleOf40.croissance_arr_pct}%` : '—'} ·
+                {' '}Marge {ruleOf40.marge_pct != null ? `${ruleOf40.marge_pct}%` : '—'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
   )
 }
 
