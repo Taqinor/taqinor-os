@@ -28,6 +28,10 @@ import { fetchAllPages } from '../../utils/fetchAllPages'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
 import DevisLineRow from './DevisLineRow'
+// TAILLES (fondateur 26/08/2026) — écran vendeur Éco/Recommandé/Max, composant
+// autonome (se masque lui-même hors résidentiel/devis non enregistré) pour ne
+// pas alourdir ce fichier déjà volumineux.
+import DevisOffresTailles from './DevisOffresTailles'
 import { Combobox } from '../../ui/Combobox'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog, toast } from '../../ui/confirm'
@@ -4487,6 +4491,14 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
         )}
+
+        {/* ── Tailles Éco / Recommandé / Max (fondateur 26/08/2026) ──
+            Composant autonome : se masque lui-même hors résidentiel ou sur un
+            devis pas encore enregistré (editId absent — l'API a besoin d'un
+            pk réel). Ne lit/n'écrit AUCUNE ligne du devis (rule #4, couche
+            d'exploration séparée) ; `produits` réutilise le catalogue déjà
+            chargé pour « Auto-remplir » (pas de second aller-retour réseau). */}
+        <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits} />
 
         {/* ── Lignes de produits ── */}
         <Card>
