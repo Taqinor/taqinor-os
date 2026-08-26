@@ -133,7 +133,12 @@ MAX_PANNEAUX_BALAYAGE = 120
 #: composition catalogue et douze simulations journalières, le tout SYNCHRONEMENT
 #: dans un aperçu. Un balayage tronqué par ce plafond le DIT (``stockage_tronque``
 #: + avertissement) : jamais un silence.
-MAX_PALIERS_STOCKAGE = 12
+#: BATHOMO (fondateur 26/08/2026) — 12 → 16, même marge que
+#: ``MAX_PALIERS_ECHELLE`` (« up to 30 or 40 kWh using 5 kWh batteries, no
+#: problem ») : au pas de 5 kWh, l'univers de candidates couvre désormais
+#: jusqu'à 85 kWh au lieu de 65, avant même de considérer le plafond du toit
+#: ou la règle « batteries toujours pleines ».
+MAX_PALIERS_STOCKAGE = 16
 
 #: DIM2 — GARDE-FOU de l'extension « chasse à la falaise » : au-delà de la
 #: parité production/consommation, le balayage peut continuer pour voir si une
@@ -1561,7 +1566,13 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
 #: métier : c'est la LONGUEUR RAISONNABLE d'un choix à l'écran. La liste
 #: s'arrête de toute façon d'elle-même au plafond du toit ou dès qu'un palier
 #: ne se remplit plus, souvent bien avant.
-MAX_PALIERS_ECHELLE = 8
+#: BATHOMO (fondateur 26/08/2026) — « we can go up to 30 or 40 kWh using
+#: 5 kWh batteries, no problem » : 8 → 16, marge explicite pour que l'échelle
+#: n'écrête plus une installation qui peut légitimement monter à 6-8 packs
+#: de 5 kWh au-delà du palier retenu (l'ancienne valeur suffisait déjà
+#: mathématiquement combinée à ``MAX_PALIERS_STOCKAGE``, mais la coupait
+#: PILE là où un grand champ commençait à devenir intéressant).
+MAX_PALIERS_ECHELLE = 16
 
 #: GARDE-FOU DE CALCUL : nombre maximal de tailles de champ réellement sondées.
 #: Chaque sonde coûte une composition catalogue par palier PLUS douze
@@ -1731,6 +1742,54 @@ def capacite_batterie_des_lignes(devis):
     return round(total, 2) if total > 0 else None
 
 
+def module_batterie_du_devis(devis):
+    """BATHOMO (fondateur 26/08/2026) — le CALIBRE (``5.0`` ou ``10.0`` kWh)
+    DÉJÀ engagé par les LIGNES RÉELLES de ce devis, ou ``None`` si aucune
+    ligne batterie n'existe encore.
+
+    « the battery-related features in the quote web page should ALWAYS use
+    the quote items — if the quote has 5 kWh batteries the web page should
+    only show 5 kWh batteries ; and we can go up to 30 or 40 kWh using 5 kWh
+    batteries, no problem. » :func:`echelle_paliers_batterie` passe cette
+    valeur en ``batterie_module_kwh`` à CHAQUE composition qu'elle sonde
+    (:func:`apps.ventes.services.composition_residentielle`) : l'échelle
+    grandit alors en N modules de CE SEUL calibre — jamais un re-choix
+    catalogue qui basculerait vers l'autre calibre au passage d'un multiple
+    de 10.
+
+    LECTURE, JAMAIS UNE RECOMPOSITION — même source que
+    :func:`_compter_modules_batterie` (le nom des lignes déjà vendues). Un
+    devis historique EXCEPTIONNELLEMENT mélangé (un devis composé avant ce
+    correctif) retient le calibre qui porte la plus grande capacité totale —
+    jamais un chiffre inventé, la meilleure lecture d'un fait imparfait
+    plutôt qu'un blocage. ``None`` (devis sans ligne batterie, ou un devis
+    qui n'existe pas encore) ⇒ l'appelant retombe sur le choix ÉCONOMIQUE
+    normal du catalogue (comportement inchangé)."""
+    try:
+        from apps.ventes.services import _is_battery, _parse_kwh
+
+        capacite_5 = capacite_10 = 0.0
+        for ligne in _lignes_produit_du_devis(devis):
+            designation = getattr(ligne, 'designation', '') or ''
+            if not _is_battery(designation):
+                continue
+            quantite = _num(ligne.quantite)
+            if quantite <= 0:
+                continue
+            nominal = _num(_parse_kwh(designation))
+            if abs(nominal - 5.0) < 1.0:
+                capacite_5 += 5.0 * quantite
+            elif abs(nominal - 10.0) < 1.0:
+                capacite_10 += 10.0 * quantite
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('module batterie du devis illisible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+    if capacite_5 <= 0 and capacite_10 <= 0:
+        return None
+    return 10.0 if capacite_10 > capacite_5 else 5.0
+
+
 def echelle_paliers_batterie(devis):
     """L'ÉCHELLE des paliers de batterie proposables sur CE devis résidentiel.
 
@@ -1843,6 +1902,14 @@ def _echelle_paliers_batterie(devis):
     # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
     # (``_lire_composition``) et ce taux-ci n'étant que le repli.
     taux_tva = Decimal('20')
+    # BATHOMO (fondateur 26/08/2026) — DÉNOMINATION PAR LE DEVIS. Un devis
+    # qui vend déjà des batteries impose ce calibre à TOUTE l'échelle
+    # sondée ci-dessous (``composition_residentielle(batterie_module_kwh=
+    # …)``) : jamais un re-choix catalogue qui ferait basculer un rang de
+    # l'échelle vers un autre calibre que celui réellement vendu. ``None``
+    # (devis sans ligne batterie — le cas du tableau de dimensionnement
+    # AVANT toute vente) ⇒ le choix ÉCONOMIQUE normal décide, inchangé.
+    module_devis = module_batterie_du_devis(devis)
 
     def composer(panneaux, kwc, cible, journal):
         """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
@@ -1853,7 +1920,8 @@ def _echelle_paliers_batterie(devis):
                 nb_panneaux=panneaux, avec_batterie=True,
                 structure_type='acier', taux_tva=taux_tva,
                 avertissements=journal, deux_options=False, marques=marques,
-                ordre_lignes=ordre, batterie_cible_kwh=cible)
+                ordre_lignes=ordre, batterie_cible_kwh=cible,
+                batterie_module_kwh=module_devis)
         except Exception:  # noqa: BLE001
             logger.warning('composition impossible à %s panneaux / %s kWh',
                            panneaux, cible, exc_info=True)

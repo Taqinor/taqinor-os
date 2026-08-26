@@ -1033,6 +1033,31 @@ class LEchelleDePaliersBatterie(_Base):
         for palier in retenus:
             self.assertAlmostEqual(palier['capacite_kwh'], vendue, places=1)
 
+    def test_bathomo_devis_a_5_kwh_echelle_denominee_en_5_kwh_seulement(self):
+        """BATHOMO (fondateur 26/08/2026) — « if the quote has 5 kWh
+        batteries the web page should only show 5 kWh batteries ». Ce devis
+        vend une ligne 5 kWh ; le catalogue de cette classe porte AUSSI le
+        10 kWh (en stock) — sans le pin, certains rangs choisiraient le
+        10 kWh (économie/tie-break). Avec le pin, TOUS les rangs restent en
+        modules 5 kWh, jusqu'à ce que le champ (ou le toit) arrête
+        l'échelle."""
+        devis = self._devis_residentiel(email='pin5-ech@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+
+        self.assertEqual(dimensionnement.module_batterie_du_devis(devis), 5.0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang de l\'échelle a basculé vers le 10 kWh alors que '
+                'ce devis vend du 5 kWh : %s' % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
     def test_le_plafond_du_toit_borne_chaque_palier(self):
         """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
         des panneaux qui ne tiennent pas, et un toit plus petit ne peut que
