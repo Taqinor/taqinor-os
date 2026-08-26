@@ -1553,6 +1553,13 @@ def specs_solaire_produit(produit):
 
     plage = plage_batterie_onduleur(produit) if famille == 'onduleur' else None
     v_nominal = specs.get('v_nominal') if famille == 'batterie' else None
+    # BATHOMO/F4 (fondateur 26/08/2026) — le plafond fondateur du nombre de
+    # modules par banc EXPOSÉ EN LECTURE SEULE : le mirroir JS
+    # (frontend/src/features/ventes/solar.js autoFillLines) le lit pour
+    # rejeter les mêmes candidates que le moteur serveur (jamais un second
+    # champ éditable côté écran — la saisie reste dans Stock/ProduitForm).
+    max_modules = (specs.get('max_modules_par_banc')
+                   if famille == 'batterie' else None)
     return {
         'famille': famille or None,
         # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (ligne
@@ -1561,6 +1568,9 @@ def specs_solaire_produit(produit):
         'plage_batterie_v': list(plage) if plage is not None else None,
         # Batterie : tension nominale (V) de sa fiche technique.
         'v_nominal': float(v_nominal) if v_nominal is not None else None,
+        # Batterie : plafond de modules IDENTIQUES par banc, None = illimité.
+        'max_modules_par_banc': (int(max_modules)
+                                 if max_modules is not None else None),
         # Onduleur : libellés des variables de contrat absentes (verrou).
         'manquantes': onduleur_specs_manquantes(produit),
     }

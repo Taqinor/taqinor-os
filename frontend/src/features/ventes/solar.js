@@ -1697,8 +1697,6 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // nommé « Deyness » (base non migrée, saisie manuelle) reste reconnu, sans
   // quoi le vivier retomberait sur TOUTES les batteries du catalogue.
   const target = Math.max(5, Math.round(kwp / 5) * 5)
-  let nb10 = Math.floor(target / 10)
-  let nb5 = (target % 10) >= 5 ? 1 : 0
   // PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le garde par mot-clé
   // PVG4 ; miroir EXACT de `_batterie_compatible` côté backend
   // apps/ventes/services.py). Une batterie n'entre au vivier que si sa TENSION
@@ -1736,12 +1734,60 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
       + `la composition part SANS batterie. Ajoutez une batterie compatible `
       + `au catalogue, ou changez d'onduleur.`)
   }
+  // BATHOMO (fondateur 26/08/2026, F4 — revue adversariale) — MIROIR EXACT de
+  // `composition_residentielle` (apps/ventes/services.py) : l'ancien calcul
+  // (`nb10 = floor(cible/10)` + `nb5 = 1` si le reste ≥ 5) composait une
+  // banque MÉLANGÉE 5+10 kWh en parallèle — électriquement interdit, le MÊME
+  // incident qui a fait retirer le Dyness 10 kWh du stock de production côté
+  // serveur. Cet écran étant l'« Auto-remplir » de secours au premier échec
+  // du dry-run serveur (jamais un devis existant qu'on re-dénomme — pas de
+  // pin ici, seulement une NOUVELLE sélection), la RÈGLE ÉCONOMIQUE
+  // s'applique directement, comme le repli économique serveur :
+  //   1. EN STOCK SEULEMENT (`quantite_stock` — un module à 0 en stock n'est
+  //      composable ni serveur ni écran) ;
+  //   2. UNE candidate homogène par calibre : le plus petit N de modules
+  //      IDENTIQUES qui ATTEINT OU DÉPASSE la cible (jamais un manque) ;
+  //   3. plafonnée par `specs_solaire.max_modules_par_banc` (le plafond
+  //      fondateur — REJETÉE si dépassée, jamais tronquée) ;
+  //   4. le prix TTC TOTAL le plus bas gagne, égalité tranchée par le moins
+  //      de modules — jamais une préférence de calibre fixe.
+  const enStock = (p) => (Number(p?.quantite_stock) || 0) > 0
+  const batPoolStock = batPool.filter(x => enStock(x.p))
+  const bat5Stock = batPoolStock.find(x => x.cap === 5)
+  const bat10Stock = batPoolStock.find(x => x.cap === 10)
+  const candidatBatterie = (cap, entry) => {
+    if (!entry) return null
+    const n = Math.max(1, Math.ceil(target / cap - 1e-9))
+    const plafond = Number(entry.p?.specs_solaire?.max_modules_par_banc)
+    if (Number.isFinite(plafond) && plafond > 0 && n > plafond) return null
+    const puTtc = ttcFromHt(entry.p.prix_vente, tauxTvaOf(entry.p))
+    return { cap, n, prixTtc: puTtc * n, entry }
+  }
+  const candidatsBatterie = [
+    candidatBatterie(5, bat5Stock),
+    candidatBatterie(10, bat10Stock),
+  ].filter(Boolean)
+  candidatsBatterie.sort((a, b) => (a.prixTtc - b.prixTtc) || (a.n - b.n))
+  const batterieRetenue = candidatsBatterie[0] ?? null
+  const nb5 = batterieRetenue?.cap === 5 ? batterieRetenue.n : 0
+  const nb10 = batterieRetenue?.cap === 10 ? batterieRetenue.n : 0
+  // `bat5`/`bat10` restent les produits du vivier COMPATIBLE (comme avant ce
+  // correctif) — jamais restreints au seul calibre RETENU : la ligne du
+  // calibre perdant reste une VRAIE ligne produit à quantité 0 (le tableau
+  // éditable de l'écran doit pouvoir la faire remonter à la main), jamais un
+  // placeholder générique.
   const bat5 = batPool.find(x => x.cap === 5)
   const bat10 = batPool.find(x => x.cap === 10)
-  if (!bat10 && bat5 && nb10 > 0) {
-    // pas de module 10 kWh au catalogue → tout en modules 5 kWh
-    nb5 = Math.max(1, Math.round(target / 5))
-    nb10 = 0
+  // F3/F5 — un vivier compatible NON VIDE qui n'aboutit quand même à AUCUNE
+  // candidate (rupture de stock des deux calibres, ou plafond qui rejette la
+  // seule candidate possible) reste HONNÊTE : même canal d'avertissement,
+  // jamais un hybride sans batterie composé en silence.
+  if (batPool.length && !batterieRetenue) {
+    avertissementsBatterie.push(
+      `Batterie(s) compatibles indisponibles pour la cible visée (rupture `
+      + `de stock, ou plafond de modules par banc dépassé) : la composition `
+      + `part SANS batterie. Réapprovisionnez, augmentez le plafond, ou `
+      + `choisissez un autre module.`)
   }
 
   // Structures : type choisi par radio, 1 par panneau (prix catalogue).

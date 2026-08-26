@@ -138,6 +138,15 @@ MAX_PANNEAUX_BALAYAGE = 120
 #: problem ») : au pas de 5 kWh, l'univers de candidates couvre désormais
 #: jusqu'à 85 kWh au lieu de 65, avant même de considérer le plafond du toit
 #: ou la règle « batteries toujours pleines ».
+#: TODO (revue adversariale 26/08/2026, F4 cheap optional — NON MESURÉ,
+#: infra de profilage indisponible dans cette session) : 12 → 16 fait sonder
+#: JUSQU'À 17 cibles (``MAX_PALIERS_STOCKAGE + 1``) sur l'endpoint public
+#: NON CACHÉ (chaque cible = une composition catalogue + 12 simulations
+#: journalières) — mesurer le coût réel de cette bascule sur ``/proposal``
+#: (ou l'endpoint payload public équivalent) et, si le +30 % annoncé se
+#: confirme, ajouter un plafond dédié/plus bas SPÉCIFIQUE au chemin public
+#: non caché (``MAX_SONDES_ECHELLE`` reste le garde-fou général) plutôt que
+#: de revenir sur la marge ``MAX_PALIERS_ECHELLE`` (F1 — « up to 30-40 kWh »).
 MAX_PALIERS_STOCKAGE = 16
 
 #: DIM2 — GARDE-FOU de l'extension « chasse à la falaise » : au-delà de la
