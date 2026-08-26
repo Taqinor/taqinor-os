@@ -4,6 +4,8 @@ import recordsApi from '../../api/recordsApi'
 import {
   Card, CardContent, Button, Input, Label, EmptyState, Spinner, Badge,
 } from '../../ui'
+// VX75 — tout horodatage passe par lib/format.js (jamais un toLocaleString nu).
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    WIR270/FG10 — Centre de pièces jointes de la société.
@@ -40,12 +42,6 @@ function tailleLisible(octets) {
   if (n < 1024) return `${n} o`
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} Ko`
   return `${(n / (1024 * 1024)).toFixed(1)} Mo`
-}
-
-function dateLisible(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
 }
 
 export default function PiecesJointesPage() {
@@ -186,7 +182,7 @@ export default function PiecesJointesPage() {
                   <td>{tailleLisible(a.size)}</td>
                   <td>{a.phase || '—'}</td>
                   <td>{a.uploaded_by_nom || '—'}</td>
-                  <td>{dateLisible(a.created_at)}</td>
+                  <td>{formatDateTime(a.created_at)}</td>
                 </tr>
               ))}
             </tbody>

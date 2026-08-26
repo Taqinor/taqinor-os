@@ -12,11 +12,13 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
+// VX75 — toute date passe par lib/format.js (jamais un toLocaleDateString nu).
+import { formatDate } from '../../lib/format'
 
 const fmtDate = (iso) => {
   if (!iso) return null
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('fr-FR')
+  const rendu = formatDate(iso)
+  return rendu === '—' ? null : rendu
 }
 
 const PHASES = [

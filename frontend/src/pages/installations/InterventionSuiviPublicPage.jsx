@@ -11,13 +11,15 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
+// VX75 — tout horodatage passe par lib/format.js (jamais un toLocaleString nu).
+import { formatDateTime } from '../../lib/format'
 
+// `formatDateTime` renvoie « — » sur une valeur vide/illisible : ici on veut
+// masquer la ligne, donc on distingue explicitement l'absence.
 const fmtHeure = (iso) => {
   if (!iso) return null
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? null
-    : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+  const rendu = formatDateTime(iso)
+  return rendu === '—' ? null : rendu
 }
 
 export default function InterventionSuiviPublicPage() {
