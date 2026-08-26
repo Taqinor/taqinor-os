@@ -502,7 +502,11 @@ export default function FournisseursStock() {
       ?.catch(() => {})
   }
   const reloadArchived = () => {
-    setLoadingArchived(true)
+    // Fable review (fix WIR190) — react-hooks/set-state-in-effect : ce
+    // helper est invoqué directement depuis le corps d'un useEffect
+    // ci-dessous ; poser `setLoadingArchived(true)` en microtask (jamais
+    // synchrone dans l'appel) évite le cascading update détecté par la règle.
+    Promise.resolve().then(() => setLoadingArchived(true))
     stockApi.getFournisseursArchived()
       .then((r) => setItemsArchived(r.data?.results ?? r.data ?? []))
       .catch(() => toastError('Chargement des fournisseurs archivés impossible.'))
