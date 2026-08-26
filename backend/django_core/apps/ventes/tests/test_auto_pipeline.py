@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.crm.models import Lead, LeadActivity
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis
 from apps.ventes.services import (
     aire_contour_m2,
@@ -60,19 +60,36 @@ def make_company(slug):
     return c
 
 
+def fiche_module(produit, *, longueur_mm=2278, largeur_mm=1134, pmax_wc=550):
+    """La FICHE TECHNIQUE d'un module — LA source des dimensions réelles.
+
+    ``stock.Produit`` ne porte NI longueur NI largeur : elles vivent sur sa
+    ``FicheTechnique`` (PV5), et ``stock.selectors.kit_from_produit`` exige les
+    TROIS grandeurs (longueur, largeur, Pmax) sous peine de rendre ``None``.
+    Un test qui poserait les dimensions sur le produit ne testerait rien.
+    """
+    return FicheTechnique.objects.create(
+        company=produit.company, produit=produit,
+        type_fiche=FicheTechnique.TypeFiche.MODULE,
+        longueur_mm=longueur_mm, largeur_mm=largeur_mm,
+        pmax_wc=Decimal(str(pmax_wc)))
+
+
 def seed_catalogue(company, *, panneau_dims=True):
     """Catalogue minimal — mêmes désignations que ``seed_catalogue``."""
-    def mk(nom, sku, prix, **extra):
+    def mk(nom, sku, prix):
         return Produit.objects.create(
             company=company, nom=nom, sku=sku,
             prix_vente=Decimal(prix), prix_achat=Decimal('1'),
-            quantite_stock=100, **extra)
+            quantite_stock=100)
 
-    dims = ({'longueur_mm': 2278, 'largeur_mm': 1134} if panneau_dims else {})
-    mk('Panneau Jinko 550W', f'PAN-{company.pk}', 1100, **dims)
+    panneau = mk('Panneau Jinko 550W', f'PAN-{company.pk}', 1100)
+    if panneau_dims:
+        fiche_module(panneau)
     mk('Onduleur réseau Huawei 5kW Monophasé', f'ONDR-{company.pk}', 14000)
     mk('Onduleur hybride Deye 5kW Monophasé', f'ONDH-{company.pk}', 17000)
     mk('Batterie Dyness 5 kWh', f'BAT-{company.pk}', 17000)
+    return panneau
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -134,15 +151,39 @@ class AireEtPlafondTest(TestCase):
         self.assertIsNone(aire_contour_m2([[0, 0], [1, 1]]))
 
     def test_plafond_sans_dimensions_produit_est_none(self):
-        """Aucune dimension de panneau connue → AUCUN plafond deviné."""
+        """Aucune dimension de panneau connue → AUCUN plafond deviné.
+
+        Les dimensions vivent sur la FICHE TECHNIQUE, jamais sur le produit :
+        un panneau sans fiche, ou dont la fiche est incomplète, ne donne pas de
+        plafond (``kit_from_produit`` rend ``None`` — « on ne devine jamais une
+        géométrie »)."""
+        company = make_company('plafond-co')
         contour = contour_client_lnglat(Lead(roof_outline=CONTOUR_LATLNG))
         self.assertIsNone(plafond_physique_du_contour(contour, None))
-        self.assertIsNone(plafond_physique_du_contour(
-            contour, Produit(longueur_mm=None, largeur_mm=None)))
+        sans_fiche = Produit.objects.create(
+            company=company, nom='Panneau sans fiche', sku='PAN-NOFICHE',
+            prix_vente=Decimal('1100'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+        self.assertIsNone(plafond_physique_du_contour(contour, sans_fiche))
+        # Fiche PRÉSENTE mais incomplète (pas de Pmax) → toujours aucun plafond.
+        incomplet = Produit.objects.create(
+            company=company, nom='Panneau fiche partielle', sku='PAN-PARTIEL',
+            prix_vente=Decimal('1100'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=company, produit=incomplet,
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            longueur_mm=2278, largeur_mm=1134)
+        self.assertIsNone(plafond_physique_du_contour(contour, incomplet))
 
     def test_plafond_est_surface_sur_surface(self):
+        company = make_company('plafond-ok-co')
         contour = contour_client_lnglat(Lead(roof_outline=CONTOUR_LATLNG))
-        panneau = Produit(longueur_mm=2278, largeur_mm=1134)
+        panneau = Produit.objects.create(
+            company=company, nom='Panneau Jinko 550W', sku='PAN-PLAFOND',
+            prix_vente=Decimal('1100'), prix_achat=Decimal('1'),
+            quantite_stock=10)
+        fiche_module(panneau, longueur_mm=2278, largeur_mm=1134)
         plafond = plafond_physique_du_contour(contour, panneau)
         aire = aire_contour_m2(contour)
         attendu = int(aire // (2.278 * 1.134))

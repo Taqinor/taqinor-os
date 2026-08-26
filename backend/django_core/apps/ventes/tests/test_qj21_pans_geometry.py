@@ -38,7 +38,19 @@ def seed_catalogue(company):
 
 
 def make_multi_pan_layout():
-    """Two-zone layout: Sud (12 panels, 6.6 kWc) + Est (4 panels, 2.2 kWc)."""
+    """Two-zone layout: Sud (12 panels, 6.6 kWc) + Est (4 panels, 2.2 kWc).
+
+    F3 (26/08/2026) — REPÈRE CORRIGÉ. ``facingAzimuthDeg`` est l'azimut
+    BOUSSOLE du builder : 180 = Sud, 90 = Est (c'est ``newAreaRecord()`` qui
+    pose 180 par défaut, et ``serializeLayout`` n'écrit jamais autre chose).
+    Ce fixture disait 0 pour « Pan Sud » et -90 pour « Pan Est », c'est-à-dire
+    la convention PVGIS (0 = Sud) — il décrivait donc un pan plein NORD et un
+    pan plein OUEST tout en les appelant Sud et Est, et
+    ``extract_roof_config`` rendait quand même « Sud »/« Est » par la MÊME
+    erreur de repère. Le test était vert des deux côtés de la faute.
+    Corrigé des DEUX côtés : le fixture parle le repère du PRODUCTEUR, et les
+    assertions attendent l'orientation réelle de ce repère-là.
+    """
     return {
         'version': 1,
         'scenario': 'reseau',
@@ -50,7 +62,7 @@ def make_multi_pan_layout():
                 'obstacles': [],
                 'roofType': 'pitched',
                 'pitchDeg': 30,
-                'facingAzimuthDeg': 0,
+                'facingAzimuthDeg': 180,   # BOUSSOLE : 180 = Sud
                 'neededPanels': 12,
                 'neededAuto': True,
             },
@@ -60,7 +72,7 @@ def make_multi_pan_layout():
                 'obstacles': [],
                 'roofType': 'pitched',
                 'pitchDeg': 25,
-                'facingAzimuthDeg': -90,
+                'facingAzimuthDeg': 90,    # BOUSSOLE : 90 = Est
                 'neededPanels': 4,
                 'neededAuto': True,
             },
@@ -96,17 +108,17 @@ class TestQJ21PansGeometry(TestCase):
                              '_pans_geometry must be stored in roof_layout')
         self.assertEqual(len(pans_geo), 2)
 
-        # Pan Sud — azimut 0, inclinaison 30, orientation Sud
+        # Pan Sud — azimut BOUSSOLE 180, inclinaison 30, orientation Sud
         pan_sud = next(p for p in pans_geo if p['label'] == 'Pan Sud')
-        self.assertEqual(pan_sud['azimut_deg'], 0)
+        self.assertEqual(pan_sud['azimut_deg'], 180)
         self.assertEqual(pan_sud['inclinaison_deg'], 30)
         self.assertEqual(pan_sud['orientation'], 'Sud')
         self.assertEqual(pan_sud['nb_panneaux'], 12)
         self.assertEqual(pan_sud['roof_type'], 'pitched')
 
-        # Pan Est — azimut -90, inclinaison 25, orientation Est
+        # Pan Est — azimut BOUSSOLE 90, inclinaison 25, orientation Est
         pan_est = next(p for p in pans_geo if p['label'] == 'Pan Est')
-        self.assertEqual(pan_est['azimut_deg'], -90)
+        self.assertEqual(pan_est['azimut_deg'], 90)
         self.assertEqual(pan_est['inclinaison_deg'], 25)
         self.assertEqual(pan_est['orientation'], 'Est')
         self.assertEqual(pan_est['nb_panneaux'], 4)
@@ -149,7 +161,7 @@ class TestQJ21PansGeometry(TestCase):
                 'obstacles': [],
                 'roofType': 'flat',
                 'pitchDeg': 15,
-                'facingAzimuthDeg': 0,
+                'facingAzimuthDeg': 180,   # BOUSSOLE : 180 = Sud (cf. F3)
                 'neededPanels': 10,
                 'neededAuto': True,
             }],
@@ -160,7 +172,7 @@ class TestQJ21PansGeometry(TestCase):
         pans_geo = devis.roof_layout.get('_pans_geometry')
         self.assertIsNotNone(pans_geo)
         self.assertEqual(len(pans_geo), 1)
-        self.assertEqual(pans_geo[0]['azimut_deg'], 0)
+        self.assertEqual(pans_geo[0]['azimut_deg'], 180)
         self.assertEqual(pans_geo[0]['orientation'], 'Sud')
 
     def test_legacy_layout_without_zones_has_no_pans_geometry(self):
