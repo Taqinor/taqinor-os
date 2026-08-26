@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   piecesFourniesList: vi.fn(),
   // WIR206 — la barre de statut du dossier (seul chemin de mutation reel).
   changerStatut: vi.fn(),
+  // WIR207 — le suivi du job de regeneration (202 + job_id, puis statut).
+  statutJob: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -45,6 +47,8 @@ vi.mock('../../../api/aoApi', () => ({
       completude: mocks.completude,
       // WIR206 — `changer-statut` : le SEUL chemin de mutation du statut.
       changerStatut: mocks.changerStatut,
+      // WIR207 — suivi du job lance par `generer-piece` (202 + job_id).
+      statutJob: mocks.statutJob,
     },
     // `EcheancesDossier` ne l'appelle que depuis le formulaire de prorogation,
     // que cet écran ne monte pas (`peutProroger={false}` — le serveur ne
@@ -117,6 +121,8 @@ beforeEach(() => {
   mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
   mocks.piecesFourniesList.mockResolvedValue({ data: [] })
   mocks.changerStatut.mockResolvedValue({ data: {} })
+  mocks.statutJob.mockResolvedValue({ data: { statut: 'running' } })
+  try { globalThis.localStorage?.clear() } catch { /* pas de stockage */ }
 })
 
 describe('DossierPage (AOF174)', () => {
@@ -160,15 +166,65 @@ describe('DossierPage (AOF174)', () => {
       screen.getByText(/le calepinage du bâtiment C est passé de 264 à 314/),
     ).toBeInTheDocument()
     expect(
-      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
+      screen.getAllByRole('button', { name: /Régénérer le dossier complet/ })[0],
     ).toBeInTheDocument()
   })
 
-  it('« Régénérer » appelle le service serveur de génération de pièce', async () => {
+  /* WIR207 — le libellé disait « Régénérer « Mémoire technique » » alors que
+     l'action serveur ne prend AUCUNE pièce : elle relance le PACK ENTIER. Le
+     bouton dit désormais ce qu'il fait, et l'appel ne passe plus d'argument
+     mort. */
+  it('« Régénérer le dossier complet » lance le pack ENTIER, sans argument de pièce', async () => {
     mocks.get.mockResolvedValue({ data: DOSSIER_V2 })
     renderScreen()
-    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer « Mémoire technique »/ }))[0])
-    await waitFor(() => expect(mocks.genererPiece).toHaveBeenCalledWith('7', 'memoire'))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer le dossier complet/ }))[0])
+    await waitFor(() => expect(mocks.genererPiece).toHaveBeenCalledWith('7'))
+    expect(mocks.genererPiece.mock.calls[0]).toHaveLength(1)
+  })
+
+  it('le succès n’est annoncé qu’à la FIN du job, jamais sur le 202 d’acceptation', async () => {
+    mocks.get.mockResolvedValue({ data: DOSSIER_V2 })
+    // L'action répond « accepté » (202 + job_id), PAS « fait ».
+    mocks.genererPiece.mockResolvedValue({ data: { job_id: 55, statut: 'queued' } })
+    renderScreen()
+    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer le dossier complet/ }))[0])
+
+    // Tant que le job tourne, le bouton le DIT — aucun succès affiché.
+    expect(await screen.findByRole('button', { name: /Régénération du dossier…/ }))
+      .toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Régénérer le dossier complet$/ }))
+      .toBeNull()
+
+    // Le job se termine : c'est SEULEMENT là que l'écran conclut et recharge.
+    mocks.statutJob.mockResolvedValue({ data: { statut: 'done' } })
+    const appelsAvant = mocks.get.mock.calls.length
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() => expect(mocks.statutJob).toHaveBeenCalledWith('7', 55))
+    await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThan(appelsAvant))
+    expect((await screen.findAllByRole('button', { name: /Régénérer le dossier complet/ }))[0])
+      .toBeInTheDocument()
+  })
+
+  it('un refus de lancement (409 verrou) est ÉCRIT, sans job ni succès', async () => {
+    mocks.get.mockResolvedValue({ data: DOSSIER_V2 })
+    mocks.genererPiece.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Une opération est déjà en cours (Sami B.).', verrou: { porteur: 'Sami B.' } },
+      },
+    })
+    renderScreen()
+    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer le dossier complet/ }))[0])
+
+    const refus = await waitFor(() => {
+      const el = document.querySelector('[data-ao-regeneration-refus]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(refus.textContent).toMatch(/déjà en cours/)
+    expect(mocks.statutJob).not.toHaveBeenCalled()
   })
 
   it('le verrou de dossier (AOF155) est affiché et suspend les actions d’écriture', async () => {
@@ -185,7 +241,7 @@ describe('DossierPage (AOF174)', () => {
     expect((await screen.findAllByText(/Opération en cours sur ce dossier/)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Sami B\./).length).toBeGreaterThan(0)
     expect(
-      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
+      screen.getAllByRole('button', { name: /Régénérer le dossier complet/ })[0],
     ).toBeDisabled()
   })
 })

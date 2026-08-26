@@ -128,6 +128,12 @@ const aoApi = {
       fd.append('fichier', fichier)
       return api.post('/ao/toitures/dxf/analyser/', fd)
     },
+    // WIR207/AOF27 — applique un jeu de paramètres (`PresetCalepinage`) à CETTE
+    // toiture EN UN APPEL : le service pose l'instantané et journalise au
+    // chatter du dossier. Jamais un PATCH nu de `parametres_calepinage`, qui
+    // écrirait les valeurs sans laisser de trace de leur origine.
+    appliquerPreset: (id, preset) =>
+      api.post(`/ao/toitures/${id}/appliquer-preset/`, { preset }),
   },
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
@@ -291,7 +297,18 @@ const aoApi = {
      `texte`, et AU MOINS un impact chiffré (`impact_min_modules` et/ou
      `impact_max_modules`) — le sérialiseur refuse le reste, et c'est la règle
      produit : on ne pose une question que si sa réponse change le compte. */
-  questions: crud('questions'),
+  /* WIR207 — TRANCHER n'est pas ÉCRIRE UNE DÉCISION. Un PATCH de `decision`
+     posait le texte et rien d'autre : l'obstacle restait au compte, les cotes
+     gardaient leur statut et les variantes de calepinage restaient « à jour »
+     alors que leur base venait de changer. `trancher` (POST) APPLIQUE la
+     décision — `ecarter_obstacle` / `confirmer_obstacle` / `requalifier_cote`
+     / `aucune` — puis périme les variantes des toitures touchées et renvoie
+     `variantes_perimees`. Le serveur refuse en 400 une décision vide ou une
+     action sans objet lié. */
+  questions: {
+    ...crud('questions'),
+    trancher: (id, corps) => api.post(`/ao/questions/${id}/trancher/`, corps),
+  },
   /* ── `equipements` — CONSTRUIT le 03/08/2026 (AOF118 + AOF141) ───────────
      Le trou est comblé : `EquipementAO` a désormais son sérialiseur, son
      ViewSet `equipements` et l'action atomique `bascule`

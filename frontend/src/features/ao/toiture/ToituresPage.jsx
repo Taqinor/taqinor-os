@@ -643,6 +643,82 @@ const OUTILS_ATELIER = [
   { id: 'panoramique', label: 'Main (panoramique)', icon: Hand, raccourci: 'h' },
 ]
 
+/* ── WIR207 — Appliquer un JEU DE PARAMÈTRES à cette toiture ───────────────
+   `toitures.appliquerPreset` (AOF27) était sans appelant : la Bibliothèque
+   avait retiré son bouton « Appliquer » (elle ne désigne aucune toiture) en
+   notant qu'un endpoint restait « à construire » — alors qu'il existe depuis
+   toujours, sur la TOITURE. C'est donc ici que l'application se fait, sur la
+   toiture ouverte, par l'ACTION (le service pose l'instantané des paramètres
+   et journalise au chatter du dossier) — jamais par un PATCH nu de
+   `parametres_calepinage`, qui écrirait les valeurs sans dire d'où elles
+   viennent. */
+function SelecteurPreset({ toitureId, onApplique }) {
+  const { data: presets, loading } = useResource(
+    () => aoApi.bibliotheque.list({ type: 'preset' }), 'presets',
+    { initialData: [], select: unwrapList, errorMessage: () => '' },
+  )
+  const [choix, setChoix] = useState('')
+  const [enCours, setEnCours] = useState(false)
+  const [refus, setRefus] = useState(null)
+
+  const appliquer = async () => {
+    if (!choix) return
+    setRefus(null)
+    setEnCours(true)
+    try {
+      const { data } = await aoApi.toitures.appliquerPreset(toitureId, Number(choix))
+      toast.success('Jeu de paramètres appliqué à cette toiture.')
+      onApplique?.(data)
+    } catch (e) {
+      setRefus(errMsg(e, 'Le serveur a refusé l’application de ce preset.'))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  if (!loading && (presets ?? []).length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground" data-ao-presets-vide>
+        Aucun jeu de paramètres en bibliothèque — rien à appliquer.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2" data-ao-presets={(presets ?? []).length}>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="ao-preset-toiture">
+        Jeu de paramètres à appliquer
+        <select
+          id="ao-preset-toiture"
+          className="form-select h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+          value={choix}
+          onChange={(e) => setChoix(e.target.value)}
+        >
+          <option value="">Choisir…</option>
+          {(presets ?? []).map((p) => (
+            <option key={p.id} value={p.id}>{p.nom}</option>
+          ))}
+        </select>
+      </label>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={!choix || enCours}
+        onClick={appliquer}
+        data-ao-appliquer-preset
+      >
+        Appliquer
+      </Button>
+      {refus && (
+        <p role="alert" className="w-full text-sm text-destructive" data-ao-preset-refus>
+          {refus}
+        </p>
+      )}
+    </div>
+  )
+}
+
 /* Légende de provenance — le vocabulaire du tableau d'obstacles, rendu par le
    composant qui en est la SEULE source de vérité (`ProvenanceBadge`, AOF9),
    jamais recopié en pastilles locales. */
@@ -1020,6 +1096,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         chaînes de cotes ET les zones de la boîte à outils, en une seule
         écriture (PV53/PV56).
       </p>
+      <SelecteurPreset toitureId={toitureId} onApplique={onEnregistre} />
       <TableauGeometrie
         points={points}
         obstacles={obstacles}

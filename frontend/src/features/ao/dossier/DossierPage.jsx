@@ -7,6 +7,7 @@ import useVisibilityAwarePolling from '../../../hooks/useVisibilityAwarePolling'
 import { Card, EmptyState, Skeleton, toast } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import PieceRow from './PieceRow'
+import useGenerationJob from './useGenerationJob'
 import { piecesVisibles } from './DossierPage.utils'
 
 /* ============================================================================
@@ -87,8 +88,6 @@ const ChecklistPartenaire = lazy(() => import('./ChecklistPartenaire'))
 // déjà en lecture (`PieceRow`), mais aucun écran ne permettait de les marquer
 // présentes ni d'y attacher un fichier.
 const PiecesFournies = lazy(() => import('./PiecesFournies'))
-
-const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const POLL_MS = 15000
 
@@ -209,7 +208,6 @@ export default function DossierPage({
   const params = useParams()
   const id = dossierId ?? params.id
   const [selectedId, setSelectedId] = useState(null)
-  const [regeneratingId, setRegeneratingId] = useState(null)
 
   const { data: dossier, loading, error, refetch } = useResource(
     () => aoApi.dossiers.get(id), id,
@@ -236,19 +234,46 @@ export default function DossierPage({
   )
   const verrou = dossier?.verrou ?? null
 
-  const regenerer = useCallback(async (piece) => {
-    setRegeneratingId(piece.id)
-    try {
-      await aoApi.dossiers.genererPiece(id, piece.type || piece.code)
-      toast.success(`« ${piece.libelle || piece.code} » régénérée.`)
-      refetch()
-    } catch (e) {
-      // 409 du verrou de dossier (AOF155) : le serveur NOMME le porteur.
-      toast.error(errMsg(e, 'Régénération impossible.'))
-    } finally {
-      setRegeneratingId(null)
-    }
-  }, [id, refetch])
+  /* ── WIR207 — la régénération suit le JOB, elle ne le devine pas ──────────
+     Deux mensonges corrigés d'un coup :
+       * l'ARGUMENT MORT : `genererPiece(id, piece.type)` passait un second
+         argument que le wrapper ignore et que l'action serveur ne connaît pas
+         (`DossierAOViewSet.generer_piece` ne prend aucune pièce — elle relance
+         le PACK ENTIER) ;
+       * le SUCCÈS ANTICIPÉ : l'action répond 202 + `job_id`, c'est-à-dire
+         « accepté », pas « fait ». Annoncer « régénérée » à ce moment-là
+         affichait un succès sur un travail qui pouvait encore échouer.
+     Le suivi passe par `useGenerationJob` sur son propre canal (le pack ZIP a
+     le sien) : le succès n'est annoncé qu'à la FIN du job, et un échec est dit
+     avec le motif du serveur. */
+  const demarrerRegeneration = useCallback(
+    () => aoApi.dossiers.genererPiece(id), [id],
+  )
+  const regenerationTerminee = useCallback(() => {
+    toast.success('Dossier régénéré.')
+    refetch()
+  }, [refetch])
+  const regenerationEchouee = useCallback((job) => {
+    toast.error(job?.erreur || job?.error || 'Régénération du dossier en échec.')
+    refetch()
+  }, [refetch])
+
+  const {
+    lancer: lancerRegeneration,
+    erreur: erreurRegeneration,
+    verrou: verrouRegeneration,
+    enCours: regenerationEnCours,
+  } = useGenerationJob(id, {
+    canal: 'regeneration',
+    demarrer: demarrerRegeneration,
+    onSucces: regenerationTerminee,
+    onEchec: regenerationEchouee,
+  })
+
+  // Le refus d'un lancement (400 « aucune pièce générable », 409 du verrou
+  // AOF155 qui NOMME son porteur) est déjà porté par `erreur`/`verrou` du
+  // hook — on ne fabrique pas un second message par-dessus.
+  const regenerer = useCallback(() => lancerRegeneration(), [lancerRegeneration])
 
   if (loading && !dossier) {
     return (
@@ -282,6 +307,17 @@ export default function DossierPage({
 
       <VerrouBandeau verrou={verrou} />
 
+      {/* WIR207 — un refus de régénération est ÉCRIT (400 « aucune pièce
+          générable », 409 du verrou qui nomme son porteur) : sans lui, le
+          bouton se réarmait sans que rien n'explique pourquoi. */}
+      {(erreurRegeneration || verrouRegeneration) && (
+        <p role="alert" className="text-sm text-destructive" data-ao-regeneration-refus>
+          {erreurRegeneration
+            || `Régénération impossible : une opération est déjà en cours${
+              verrouRegeneration?.porteur ? ` (${verrouRegeneration.porteur})` : ''}.`}
+        </p>
+      )}
+
       {/* WIR206 — la barre de statut : sans elle, `pret_a_deposer` restait
           inatteignable depuis l'interface et le dossier ne « partait » jamais. */}
       <BarreStatutDossier
@@ -309,7 +345,7 @@ export default function DossierPage({
                   selected={selected?.id === piece.id}
                   onSelect={(p) => setSelectedId(p.id)}
                   onRegenerer={regenerer}
-                  regenerating={regeneratingId === piece.id}
+                  regenerating={regenerationEnCours}
                   verrouille={Boolean(verrou)}
                 />
               ))}

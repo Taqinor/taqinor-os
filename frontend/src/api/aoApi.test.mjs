@@ -200,6 +200,29 @@ test('WIR206 — le statut passe par transitions (GET) + changer-statut (POST), 
   assert.match(body, /api\.post\(`\/ao\/appels-offres\/\$\{id\}\/rattacher-lead\/`,\s*\{ lead \}\)/)
 })
 
+test('WIR207 — trancher (POST) et appliquer-preset (POST) publient les @action réelles', () => {
+  const body = aoApiBody()
+  // Trancher APPLIQUE la décision : c'est une action, jamais un PATCH du
+  // champ `decision` (qui poserait le texte sans rien appliquer).
+  assert.match(body, /questions:\s*\{\s*\n\s*\.\.\.crud\('questions'\)/)
+  assert.match(body, /trancher:\s*\(id,\s*corps\)\s*=>\s*api\.post\(`\/ao\/questions\/\$\{id\}\/trancher\/`,\s*corps\)/)
+  // Appliquer un preset écrit sur la TOITURE, par l'action AOF27.
+  assert.match(body, /appliquerPreset:\s*\(id,\s*preset\)\s*=>\s*\n?\s*api\.post\(`\/ao\/toitures\/\$\{id\}\/appliquer-preset\/`,\s*\{ preset \}\)/)
+})
+
+test('WIR207 — trancher et appliquer-preset existent RÉELLEMENT côté serveur', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fichierAo } = await import('../test/contratServeur.js')
+  const vues = readFileSync(fichierAo('views.py'), 'utf8')
+  assert.match(vues, /@action\(detail=True, methods=\['post'\], url_path='trancher'\)/)
+  assert.match(vues, /@action\(detail=True, methods=\['post'\], url_path='appliquer-preset'\)/)
+  // `generer-piece` ne prend AUCUN argument de pièce : elle relance le pack
+  // entier (d'où le libellé honnête côté écran, WIR207).
+  const viewsets = readFileSync(fichierAo('viewsets.py'), 'utf8')
+  assert.match(viewsets, /def generer_piece\(self, request, pk=None\):/)
+  assert.match(viewsets, /status=status\.HTTP_202_ACCEPTED/)
+})
+
 test('WIR206 — les @action de statut/lead existent RÉELLEMENT côté serveur', async () => {
   const { readFileSync } = await import('node:fs')
   const { fichierAo } = await import('../test/contratServeur.js')
