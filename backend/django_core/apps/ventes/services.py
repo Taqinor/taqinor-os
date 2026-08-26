@@ -2143,6 +2143,24 @@ def avertissement_batterie_plafond_banc():
             'Augmentez le plafond, ou choisissez un autre module.')
 
 
+def avertissement_batterie_pin_sans_correspondance(calibre_impose):
+    """A1 (revue adversariale Fable, 26/08/2026) — message DISTINCT des trois
+    précédents : le devis vend DÉJÀ un calibre précis (``batterie_module_
+    kwh``, lu par ``dimensionnement.module_batterie_du_devis``), mais AUCUNE
+    batterie de ce calibre n'existe dans le vivier COMPATIBLE — ni stock, ni
+    plafond en cause, le calibre lui-même n'est pas composable sous cet
+    onduleur (ex. un système haute tension jamais compatible avec un
+    hybride basse tension). « Honest absence beats a wrong pairing » :
+    repeindre la banque dans un AUTRE calibre que celui déjà vendu serait
+    exactement la violation que ce chantier ferme — la composition part
+    donc SANS batterie plutôt que dans un calibre que ce devis ne vend pas."""
+    return ('Le module batterie déjà vendu sur ce devis (%s kWh) ne '
+            'correspond à aucune batterie du vivier compatible : le devis a '
+            'été composé SANS batterie plutôt que dans un autre calibre. '
+            'Vérifiez le catalogue, ou la compatibilité électrique de ce '
+            'module avec l\'onduleur retenu.' % _v_txt(calibre_impose))
+
+
 def _v_txt(volts):
     """« 160.0 » → « 160 » (une tension entière ne s'écrit pas avec un ,0)."""
     try:
@@ -2625,8 +2643,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # indépendant (une marque non stockée reste hors des deux).
     vivier_stock = [(cap, p) for cap, p in vivier_compat
                     if _batterie_en_stock(p)]
-    bat5_compat = next((p for cap, p in vivier_compat if cap == 5), None)
-    bat10_compat = next((p for cap, p in vivier_compat if cap == 10), None)
+    # A1 — ``bat5_compat``/``bat10_compat`` (le vivier COMPATIBLE, 5/10 SEUL)
+    # ont disparu : le pin résout désormais N'IMPORTE QUEL calibre du vivier
+    # compatible (recherche directe dans ``vivier_compat``, voir plus bas) —
+    # seul le repli ÉCONOMIQUE (sans pin) reste borné à 5/10, et lui reste
+    # STOCK-gaté.
     bat5_stock = next((p for cap, p in vivier_stock if cap == 5), None)
     bat10_stock = next((p for cap, p in vivier_stock if cap == 10), None)
     # ── BANQUE HOMOGÈNE + ÉCONOMIE DE CALIBRE (fondateur 26/08/2026) ──
@@ -2678,23 +2699,55 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         except (TypeError, ValueError):
             calibre_impose = None
 
+    # A1 (revue adversariale Fable, 26/08/2026) — LE PIN N'EST PLUS UN
+    # WHITELIST 5/10. ``module_batterie_du_devis`` (dimensionnement.py, F6)
+    # rend N'IMPORTE QUEL calibre positif lu sur les lignes du devis (le
+    # Deye BOS-B-Pack16, 16 kWh, est un produit RÉEL des gammes) : un pin qui
+    # ne matchait QUE 5.0/10.0 laissait un devis 16 kWh retomber en silence
+    # sur le choix économique 5/10 — repeindre la banque dans un calibre que
+    # ce devis ne vend PAS, exactement la violation que ce chantier devait
+    # fermer. Résolution par CALIBRE LE PLUS PROCHE dans le vivier COMPATIBLE
+    # (tolérance ±1 kWh, la même que ``_compter_modules_batterie``/
+    # ``module_batterie_du_devis``), pour N'IMPORTE QUEL calibre du vivier —
+    # jamais restreinte à 5/10.
+    #
+    # PIN SANS CORRESPONDANCE ⇒ AUCUN REPLI ÉCONOMIQUE (nouveauté A1) :
+    # « honest absence beats a wrong pairing » (Fable) — si le calibre déjà
+    # vendu n'existe même pas dans le vivier compatible (ex. un système HAUTE
+    # TENSION jamais composable sous un onduleur basse tension), retomber sur
+    # le choix économique 5/10 fabriquerait une banque d'un AUTRE calibre que
+    # celui du devis. La composition part alors SANS batterie (même chemin
+    # honnête que le vivier vide), et — en amont — l'échelle de paliers
+    # (``dimensionnement.echelle_paliers_batterie``) omet purement ses rangs
+    # au lieu d'en proposer dans le mauvais calibre : chaque cible sondée
+    # retombe sur une capacité nulle, ``reels`` reste vide, la fonction rend
+    # ``[]``. Un pin qui MATCHE mais dont le plafond de modules rejette la
+    # seule candidate possible garde en revanche le repli économique
+    # ci-dessous (F3, comportement inchangé — un plafond n'est pas une
+    # absence de calibre).
     candidat_impose = None
-    if calibre_impose == 5.0 and bat5_compat is not None:
-        candidat_impose = _candidat(5, bat5_compat)
-    elif calibre_impose == 10.0 and bat10_compat is not None:
-        candidat_impose = _candidat(10, bat10_compat)
+    pin_sans_correspondance = False
+    if calibre_impose is not None:
+        correspondance = next(
+            ((cap, p) for cap, p in vivier_compat
+             if abs(cap - calibre_impose) < 1.0), None)
+        if correspondance is not None:
+            cap_trouve, produit_trouve = correspondance
+            candidat_impose = _candidat(cap_trouve, produit_trouve)
+        else:
+            pin_sans_correspondance = True
 
     candidats = []
     if candidat_impose is not None:
         candidats = [candidat_impose]
-    else:
-        # Aucun calibre imposé, calibre imposé absent du vivier COMPATIBLE,
-        # OU son plafond de modules interdit la seule candidate qu'il
-        # permettrait : repli sur le choix économique parmi les calibres EN
-        # STOCK — jamais une banque vide du seul fait d'un calibre non
-        # stocké ou plafonné, MAIS jamais non plus un calibre hors stock
-        # ressuscité par ce repli (F1 : le repli économique reste stock-gaté,
-        # seul le PIN d'origine bypassait le stock).
+    elif not pin_sans_correspondance:
+        # Aucun calibre imposé, OU un calibre imposé dont le plafond de
+        # modules interdit la seule candidate qu'il permettrait : repli sur
+        # le choix économique parmi les calibres 5/10 EN STOCK — jamais une
+        # banque vide du seul fait d'un calibre non stocké ou plafonné, MAIS
+        # jamais non plus un calibre hors stock ressuscité par ce repli
+        # (F1 : le repli économique reste stock-gaté, seul le PIN d'origine
+        # bypassait le stock).
         for calibre, produit in ((5, bat5_stock), (10, bat10_stock)):
             if produit is None:
                 continue
@@ -2711,9 +2764,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         # batterie n'est composée, donc ``has_batterie`` retombe à faux tout
         # seul — aucune machinerie neuve à câbler ici.
         #
-        # F5 — LE DIAGNOSTIC SUIT LA VRAIE CAUSE (trois messages distincts,
+        # F5 — LE DIAGNOSTIC SUIT LA VRAIE CAUSE (quatre messages distincts,
         # jamais « changez d'onduleur » quand le vrai geste est de
-        # réapprovisionner ou d'augmenter un plafond) :
+        # réapprovisionner, d'augmenter un plafond, ou de vérifier le
+        # calibre) :
+        #   0. (A1) le devis vend DÉJÀ un calibre précis, et ce calibre
+        #      N'EXISTE PAS dans le vivier compatible → message dédié,
+        #      jamais confondu avec « aucune batterie compatible » (le
+        #      vivier peut très bien porter D'AUTRES calibres compatibles).
         #   1. vivier COMPATIBLE vide → aucune batterie ne convient à cet
         #      onduleur (tension) : le message historique.
         #   2. vivier compatible non vide mais vivier STOCK vide, et aucun
@@ -2721,7 +2779,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         #   3. sinon (du stock existait ou un pin compatible existait) mais
         #      ``candidats`` est quand même vide → le plafond de modules a
         #      rejeté toutes les candidates possibles (F3).
-        if not vivier_compat:
+        if pin_sans_correspondance:
+            message = avertissement_batterie_pin_sans_correspondance(
+                calibre_impose)
+        elif not vivier_compat:
             message = avertissement_vivier_batterie_vide(_plage_bat)
         elif not vivier_stock and candidat_impose is None:
             message = avertissement_batterie_rupture_stock()

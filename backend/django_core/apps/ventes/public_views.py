@@ -1927,6 +1927,40 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
         return {'sans': None, 'avec': None}
 
 
+def _offres_tailles_publique(devis, data, est_residentiel):
+    """TAILLES (ordre fondateur, 26/08/2026) — clé ``offres_tailles`` : les
+    TROIS tailles d'installation explorables (Éco → Recommandé → Max), chacune
+    servie dans ses deux variantes ``sans``/``avec`` batterie (contrat
+    ``apps/ventes/contract_samples/offres_tailles.json``).
+
+    SOURCE DE VÉRITÉ UNIQUE : ``apps.ventes.offres_tailles.deriver`` — une
+    fonction PURE qui REPREND les valeurs déjà servies pour la taille
+    « Recommandé » (c'est le devis officiel : jamais un second calcul, jamais
+    un second arrondi) et dérive les deux autres du moteur/catalogue. Aucun
+    chiffre n'est fabriqué ici.
+
+    Garde ``est_residentiel`` — MÊME discriminant que ``dimensionnement_options``
+    et l'échelle de paliers : un devis pompage/industriel/commercial n'a pas
+    cette notion de taille domestique explorable, et son étude a son propre
+    mode. La garde ``avec_ok``/``variantes_servables``, elle, vit DANS le
+    module (elle porte sur la VARIANTE, pas sur la section entière : un devis
+    sans option batterie garde ses trois tailles, en ``sans`` seulement).
+
+    Servie IDENTIQUE aux deux niveaux de partage (standard/confiance) : ce bloc
+    ne porte que des tailles/prix TTC/économies/paybacks/couvertures déjà
+    publics ailleurs sur la page — jamais un prix d'achat ni une marge
+    (règle #4), jamais un calibre ni une nomenclature (anticopie). Best-effort :
+    un bloc additif ne fait jamais tomber la page d'un client."""
+    if not est_residentiel:
+        return None
+    try:
+        from .offres_tailles import offres_tailles_publique
+        return offres_tailles_publique(devis, data)
+    except Exception:  # noqa: BLE001
+        logger.warning('offres_tailles indisponible', exc_info=True)
+        return None
+
+
 def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
     """PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé
     ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20
@@ -1966,7 +2000,8 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
         return None
 
 
-def _paliers_curseur_batterie(balayage, nb_packs_devis):
+def _paliers_curseur_batterie(balayage, nb_packs_devis,
+                              capacite_utile_pack_kwh=None):
     """COUVBAT — le PLAFOND du curseur « N batteries », côté serveur.
 
     MÊME règle que la page publique (``BATTERY_SIM_MAX_UNITS`` dans
@@ -1976,17 +2011,52 @@ def _paliers_curseur_batterie(balayage, nb_packs_devis):
     et le plafond historique de 3 quand aucun balayage n'est servi. Servir un
     autre plafond ici ferait un curseur dont certains crans n'auraient aucune
     couverture à lire.
+
+    UNITÉS COMMUNES (revue adversariale Fable, 26/08/2026 — A1) : ``balayage``
+    vient d'une RECOMMANDATION INDÉPENDANTE (``dimensionnement.
+    recommandation_avec`` — le meilleur payback, PAS forcément le module du
+    devis) qui compose au calibre ÉCONOMIQUE 5/10 kWh : ses ``nb_packs``
+    comptent des packs de CE calibre-LÀ, jamais celui du devis. Comparer ces
+    comptes bruts à ``nb_packs_devis`` (packs du calibre RÉELLEMENT vendu —
+    16 kWh sur un Deye BOS-B-Pack16, par exemple) mélangeait deux unités et
+    étirait le curseur sur des crans que le curseur ne pouvait pas couvrir
+    (chaque cran vaut ``N × capacite_utile_pack_kwh`` DU DEVIS, jamais celle
+    du balayage). Avec ``capacite_utile_pack_kwh`` fourni, le plafond du
+    balayage est donc lu en kWh — l'unité commune, déjà publiée par chaque
+    palier/refus — puis RECONVERTI en packs DU DEVIS (arrondi au supérieur :
+    jamais un cran qui couvrirait MOINS que le palier réel du balayage).
+    Sans ``capacite_utile_pack_kwh`` (repli — jamais atteint par l'appelant
+    réel, ``_couverture_batterie_publique`` ne l'invoque qu'après avoir lu
+    une banque réelle) : ancien comportement en packs bruts, byte-identique.
     """
-    plafond_balayage = 0
+    plafond_balayage_packs = 0
+    plafond_balayage_kwh = 0.0
     for palier in ((balayage or {}).get('paliers') or []):
         nb = palier.get('nb_packs')
-        if isinstance(nb, int) and nb > plafond_balayage:
-            plafond_balayage = nb
+        if isinstance(nb, int) and nb > plafond_balayage_packs:
+            plafond_balayage_packs = nb
+        capacite = palier.get('capacite_kwh')
+        if (isinstance(capacite, (int, float))
+                and capacite > plafond_balayage_kwh):
+            plafond_balayage_kwh = capacite
     refuse = (balayage or {}).get('refuse') or {}
     nb_refuse = refuse.get('nb_packs')
-    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage:
-        plafond_balayage = nb_refuse
-    return max(int(nb_packs_devis or 0), plafond_balayage or 3)
+    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage_packs:
+        plafond_balayage_packs = nb_refuse
+    capacite_refuse = refuse.get('capacite_kwh')
+    if (isinstance(capacite_refuse, (int, float))
+            and capacite_refuse > plafond_balayage_kwh):
+        plafond_balayage_kwh = capacite_refuse
+
+    if capacite_utile_pack_kwh and capacite_utile_pack_kwh > 0:
+        if plafond_balayage_kwh > 0:
+            plafond = math.ceil(
+                plafond_balayage_kwh / capacite_utile_pack_kwh - 1e-9)
+        else:
+            plafond = 0
+    else:
+        plafond = plafond_balayage_packs
+    return max(int(nb_packs_devis or 0), plafond or 3)
 
 
 def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
@@ -2029,8 +2099,9 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
         return couverture_batterie_publique(
             kwc=kwc, conso_kwh_mensuelles=conso,
             capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh'],
-            nb_packs_max=_paliers_curseur_batterie(balayage,
-                                                   banque['nb_packs']),
+            nb_packs_max=_paliers_curseur_batterie(
+                balayage, banque['nb_packs'],
+                capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh']),
             # Les packs RÉELLEMENT au devis sont un plancher : le plafond de
             # coût du moteur ne doit jamais rendre la configuration vendue
             # inatteignable sur le curseur (revue du 26/08/2026).
@@ -2633,6 +2704,26 @@ def proposal_data(request, token):
             if _jour_type_servi else None)
         if _couverture is not None:
             payload['couverture_batterie'] = _couverture
+        # TAILLES (ordre fondateur, 26/08/2026) — `offres_tailles` : les TROIS
+        # tailles d'installation explorables (Éco → Recommandé → Max), chacune
+        # dans ses deux variantes sans/avec, pour qu'UNE bascule au-dessus des
+        # cartes les recalcule toutes les trois sans appel réseau. MÊME patron
+        # additif que les trois clés ci-dessus ; le filet best-effort et la
+        # règle « deux tailles minimum » vivent dans le module
+        # (`offres_tailles.offres_tailles_publique`), qui ne lève jamais.
+        # Servie aux DEUX niveaux de partage : elle ne porte que des natures de
+        # nombres DÉJÀ publiques ailleurs sur cette page. Contrat :
+        # apps/ventes/contract_samples/offres_tailles.json.
+        # GATE DE SECTION — comme `profils_comparatifs` : ce bloc EST un bloc
+        # d'économies (prix, économie annuelle, payback, cumul 25 ans). Le
+        # commercial qui décoche « Économies » dans le dialogue d'envoi doit
+        # les voir partir ENSEMBLE ; les servir ici rendrait la case
+        # contournable par une autre section de la même page.
+        _offres_tailles = (
+            _offres_tailles_publique(devis, data, _resid_public)
+            if _section_servie(link, 'economies') else None)
+        if _offres_tailles is not None:
+            payload['offres_tailles'] = _offres_tailles
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est

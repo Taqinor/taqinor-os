@@ -1212,10 +1212,15 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
 #: ventilés heure par heure dans le payload public. Ce n'est PAS un avis sur ce
 #: qui est vendable (c'est ``se_remplit_tous_les_jours``, et le balayage de
 #: stockage, qui le disent) : c'est une borne de COÛT — chaque cran rejoue les
-#: douze jours types. Douze crans couvrent largement l'intention du fondateur
-#: (« monter à 30-40 kWh avec des modules de 5 kWh, pas de problème » = 6 à 8
-#: modules) tout en laissant de la marge aux modules plus petits.
-COUVERTURE_PACKS_PLAFOND = 12
+#: douze jours types.
+#: O1 (revue adversariale Fable, 26/08/2026) — 12 → 16, ALIGNÉ sur
+#: ``dimensionnement.MAX_PALIERS_ECHELLE``/``MAX_PALIERS_STOCKAGE`` (déjà
+#: bumpés à 16 pour « monter à 30-40 kWh avec des modules de 5 kWh, pas de
+#: problème » = 6 à 8 modules). Un plafond de COUVERTURE plus bas que celui
+#: de l'échelle/du balayage listerait un palier PRICÉ que le curseur ne
+#: pourrait jamais atteindre — la page afficherait un prix sans pouvoir en
+#: montrer la couverture.
+COUVERTURE_PACKS_PLAFOND = 16
 
 
 def _pas_fins_ventilables(pas_fins):

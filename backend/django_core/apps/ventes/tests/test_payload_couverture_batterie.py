@@ -414,6 +414,61 @@ class PlafondCurseurTests(SimpleTestCase):
                     'refuse': None}
         self.assertEqual(_paliers_curseur_batterie(balayage, 1), 6)
 
+    # ── A1 (revue adversariale Fable, 26/08/2026) — UNITÉS COMMUNES ─────────
+    # ``balayage`` vient d'une recommandation INDÉPENDANTE (calibre 5/10 kWh
+    # économique) : ses ``nb_packs`` ne comptent PAS des packs du calibre du
+    # devis. Comparer les comptes bruts mélange deux unités et étire le
+    # curseur sur des crans qu'il ne peut pas couvrir.
+
+    def test_sans_capacite_pack_repli_ancien_comportement_brut(self):
+        """``capacite_utile_pack_kwh`` absent (repli, jamais atteint par
+        l'appelant réel) : comportement EXACT d'avant ce correctif."""
+        balayage = {'paliers': [{'nb_packs': 3, 'capacite_kwh': 15.0}],
+                    'refuse': None}
+        self.assertEqual(_paliers_curseur_batterie(balayage, 1), 3)
+
+    def test_capacite_pack_convertit_le_plafond_en_unites_du_devis(self):
+        """Le balayage recommande jusqu'à 15 kWh (3 packs de 5 kWh — SON
+        calibre à LUI) ; ce devis vend des packs de 16 kWh (Deye BOS-B-Pack16) :
+        15 kWh tient dans UN SEUL pack de 16 kWh, jamais « 3 » packs de
+        16 kWh (48 kWh, un curseur bien plus large que ce que le balayage a
+        réellement recommandé)."""
+        balayage = {'paliers': [{'nb_packs': 3, 'capacite_kwh': 15.0}],
+                    'refuse': None}
+        self.assertEqual(
+            _paliers_curseur_batterie(
+                balayage, 1, capacite_utile_pack_kwh=16.0),
+            1)
+
+    def test_capacite_pack_arrondit_toujours_au_superieur_jamais_un_manque(self):
+        """17 kWh recommandés, packs de 16 kWh : 2 packs (32 kWh), jamais 1
+        (16 kWh — sous le palier réellement recommandé par le balayage)."""
+        balayage = {'paliers': [{'nb_packs': 2, 'capacite_kwh': 17.0}],
+                    'refuse': None}
+        self.assertEqual(
+            _paliers_curseur_batterie(
+                balayage, 1, capacite_utile_pack_kwh=16.0),
+            2)
+
+    def test_capacite_pack_lit_aussi_le_refuse(self):
+        balayage = {'paliers': [{'nb_packs': 1, 'capacite_kwh': 5.0}],
+                    'refuse': {'nb_packs': 4, 'capacite_kwh': 20.0}}
+        self.assertEqual(
+            _paliers_curseur_batterie(
+                balayage, 1, capacite_utile_pack_kwh=16.0),
+            2)  # ceil(20/16) = 2, jamais le "4" brut du calibre 5 kWh
+
+    def test_capacite_pack_jamais_sous_les_packs_du_devis(self):
+        """Le plancher « packs réellement au devis » tient MÊME converti :
+        un devis à 5 packs de 16 kWh reste à 5, même si le balayage (calibre
+        5 kWh) ne recommande que 20 kWh (1,25 → 2 packs de 16 kWh)."""
+        balayage = {'paliers': [{'nb_packs': 4, 'capacite_kwh': 20.0}],
+                    'refuse': None}
+        self.assertEqual(
+            _paliers_curseur_batterie(
+                balayage, 5, capacite_utile_pack_kwh=16.0),
+            5)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Le contrat partagé (PACT10)

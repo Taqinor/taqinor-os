@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import {
   COTE_DESSIN,
   centreContour,
+  contourExploitable,
   dessinerContour,
   formaterSurface,
   lienCarte,
@@ -99,4 +100,13 @@ test('formaterSurface n\'affiche jamais une surface nulle', () => {
 test('lienCarte reprend la forme du lien GPS déjà servi par la fiche', () => {
   assert.equal(lienCarte({ lat: 33.5, lng: -7.6 }), 'https://www.google.com/maps?q=33.5,-7.6')
   assert.equal(lienCarte(null), null)
+})
+
+// L-MAP — le calepinage 3D (ToitClientOverlay.jsx) s'en sert pour savoir SANS
+// dessiner s'il doit proposer sa bascule d'affichage.
+test('contourExploitable suit exactement la règle de dessinerContour', () => {
+  assert.equal(contourExploitable(CARRE), true)
+  assert.equal(contourExploitable(null), false)
+  assert.equal(contourExploitable([]), false)
+  assert.equal(contourExploitable([[33, -7], [33.001, -7]]), false)
 })
