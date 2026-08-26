@@ -127,11 +127,16 @@ describe('ContratsMaintenance — Rentabilité (WIR231, gardée prix_achat_voir)
   })
 
   it('avec la permission : affiche revenu/coût/marge triés par le SERVEUR', async () => {
+    // Fable review — le sélecteur réel (apps/sav/selectors.py:811-821,
+    // rentabilite_contrat) ne renvoie QUE contrat_id/client_id/
+    // installation_id/revenu/cout/marge/nb_visites/marge_par_visite —
+    // jamais `client_nom`. Le mock reflète cette forme réelle ; l'écran
+    // retombe donc sur son fallback « Contrat #N » (jamais un nom inventé).
     getRentabiliteContrats.mockResolvedValue({
       data: {
         results: [
-          { contrat_id: 1, client_nom: 'Perdant', revenu: 100, cout: 900, marge: -800, marge_par_visite: -800 },
-          { contrat_id: 2, client_nom: 'Gagnant', revenu: 2000, cout: 200, marge: 1800, marge_par_visite: 1800 },
+          { contrat_id: 1, client_id: 11, revenu: 100, cout: 900, marge: -800, marge_par_visite: -800 },
+          { contrat_id: 2, client_id: 22, revenu: 2000, cout: 200, marge: 1800, marge_par_visite: 1800 },
         ],
       },
     })
@@ -140,8 +145,8 @@ describe('ContratsMaintenance — Rentabilité (WIR231, gardée prix_achat_voir)
 
     await user.click(screen.getByRole('radio', { name: 'Rentabilité' }))
     await waitFor(() => expect(getRentabiliteContrats).toHaveBeenCalled())
-    expect(await screen.findByText('Perdant')).toBeInTheDocument()
-    expect(screen.getByText('Gagnant')).toBeInTheDocument()
+    expect(await screen.findByText('Contrat #1')).toBeInTheDocument()
+    expect(screen.getByText('Contrat #2')).toBeInTheDocument()
   })
 })
 

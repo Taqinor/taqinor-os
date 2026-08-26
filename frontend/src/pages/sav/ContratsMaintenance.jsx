@@ -682,14 +682,20 @@ export function Component() {
               </ul>
             )}
             <div className="flex flex-wrap items-end gap-3">
+              {/* Fable review — FormField ne relie PAS label→enfant
+                  (ui/Form.jsx) : aria-label explicite comme VehiculeDetail.jsx,
+                  sinon `getByLabelText` échoue en CI (« no form control
+                  associated »). */}
               <FormField label="Date de tournée">
-                <Input type="date" value={tourneeDate}
+                <Input type="date" value={tourneeDate} aria-label="Date de tournée"
                        onChange={(e) => setTourneeDate(e.target.value)} />
               </FormField>
               <FormField label="Technicien (optionnel)">
                 <Select value={tourneeTechnicien || '__none'}
                         onValueChange={(v) => setTourneeTechnicien(v === '__none' ? '' : v)}>
-                  <SelectTrigger className="w-48"><SelectValue placeholder="— Technicien —" /></SelectTrigger>
+                  <SelectTrigger className="w-48" aria-label="Technicien (optionnel)">
+                    <SelectValue placeholder="— Technicien —" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">— Technicien —</SelectItem>
                     {users.map((u) => (
