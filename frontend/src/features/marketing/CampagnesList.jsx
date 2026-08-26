@@ -38,6 +38,13 @@ export default function CampagnesList() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null) // null = création
   const [err, setErr] = useState('')
+  // WIR257/ZMKT8 — onglet « Reporting » : le reporting multi-vue et son export
+  // XLSX existaient côté serveur sans aucun appelant.
+  const [vue, setVue] = useState('campagnes') // campagnes | reporting
+  const [groupby, setGroupby] = useState('canal')
+  const [rapport, setRapport] = useState([])
+  const [rapportLoading, setRapportLoading] = useState(false)
+  const [rapportExport, setRapportExport] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -49,6 +56,21 @@ export default function CampagnesList() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
+
+  // WIR257 — le reporting n'est chargé QUE sur son onglet (aucun appel réseau
+  // tant qu'il n'est pas ouvert), et rechargé au changement de groupby.
+  const loadRapport = useCallback(() => {
+    setRapportLoading(true)
+    marketingApi.campagnes.reporting({ groupby })
+      .then(r => setRapport(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setRapport([]))
+      .finally(() => setRapportLoading(false))
+  }, [groupby])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet
+    if (vue === 'reporting') loadRapport()
+  }, [vue, loadRapport])
 
   const visibles = campagnes.filter(c => {
     if (statut && c.statut !== statut) return false
@@ -78,6 +100,20 @@ export default function CampagnesList() {
       setErr('Export impossible.')
     } finally {
       setExportEnCours(false)
+    }
+  }
+
+  // WIR257 — l'export XLSX part AU MÊME groupby que le tableau affiché :
+  // ce qu'on télécharge est exactement ce qu'on lit.
+  const exporterRapport = async () => {
+    setRapportExport(true)
+    try {
+      const r = await marketingApi.campagnes.reportingExportXlsx({ groupby })
+      marketingApi.downloadBlob(r.data, `reporting_campagnes_${groupby}.xlsx`)
+    } catch {
+      setErr('Export du reporting impossible.')
+    } finally {
+      setRapportExport(false)
     }
   }
 
@@ -112,9 +148,71 @@ export default function CampagnesList() {
         </div>
       </div>
 
+      {/* WIR257 — bascule Campagnes ↔ Reporting (ZMKT8). */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button type="button" data-testid="campagnes-vue-liste"
+          className={`btn ${vue === 'campagnes' ? 'btn-primary' : 'btn-light'}`}
+          onClick={() => setVue('campagnes')}>Campagnes</button>
+        <button type="button" data-testid="campagnes-vue-reporting"
+          className={`btn ${vue === 'reporting' ? 'btn-primary' : 'btn-light'}`}
+          onClick={() => setVue('reporting')}>Reporting</button>
+      </div>
+
       {err && <p style={{ color: '#dc2626' }}>{err}</p>}
 
-      {showForm && (
+      {vue === 'reporting' && (
+        <div data-testid="campagnes-reporting">
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+            <label className="form-label" htmlFor="reporting-groupby">Grouper par</label>
+            <select id="reporting-groupby" className="form-input"
+              data-testid="reporting-groupby"
+              value={groupby} onChange={e => setGroupby(e.target.value)}>
+              <option value="canal">Canal</option>
+              <option value="mois">Mois</option>
+              <option value="campagne">Campagne</option>
+            </select>
+            <button className="btn btn-light" type="button"
+              data-testid="reporting-exporter"
+              disabled={rapportExport} onClick={exporterRapport}>
+              {rapportExport ? 'Export…' : 'Exporter (XLSX)'}
+            </button>
+          </div>
+
+          {rapportLoading ? <p className="page-loading">Chargement…</p> : (
+            <table className="data-table" data-testid="reporting-table">
+              <thead>
+                <tr>
+                  <th>Groupe</th><th>Délivrés</th><th>Ouverts</th><th>Clics</th>
+                  <th>Rebonds</th><th>Désinscrits</th>
+                  <th>CTR %</th><th>CTOR %</th><th>Délivrabilité %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rapport.map((l) => (
+                  <tr key={l.groupe} data-testid="reporting-row">
+                    <td>{l.groupe}</td>
+                    <td>{l.delivres}</td>
+                    <td>{l.ouverts}</td>
+                    <td>{l.cliques}</td>
+                    <td>{l.rebonds}</td>
+                    <td>{l.desinscrits}</td>
+                    <td>{l.ctr_pct}</td>
+                    <td>{l.ctor_pct}</td>
+                    <td>{l.delivrabilite_pct}</td>
+                  </tr>
+                ))}
+                {rapport.length === 0 && (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#64748b' }}>
+                    Aucun envoi sur ce regroupement
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {vue === 'campagnes' && showForm && (
         <div style={{ marginBottom: '1.25rem' }}>
           <CampagneForm
             initial={editing ? formFromCampagne(editing) : emptyForm()}
@@ -124,7 +222,7 @@ export default function CampagnesList() {
         </div>
       )}
 
-      {loading
+      {vue === 'campagnes' && (loading
         ? <p className="page-loading">Chargement…</p>
         : (
           <table className="data-table" data-testid="campagnes-table">
@@ -160,7 +258,7 @@ export default function CampagnesList() {
               )}
             </tbody>
           </table>
-        )}
+        ))}
     </div>
   )
 }
