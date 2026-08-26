@@ -210,6 +210,28 @@ ALL_PERMISSIONS = [
     # leurs propres codes — inchangés.
     'rh_voir',
     'rh_gerer',
+    # ── WIR173 — FP&A (apps/fpa). Les 4 codes existaient DÉJÀ côté
+    # ``apps/fpa/permissions.py`` (NTFPA26) mais n'étaient enregistrés NULLE
+    # PART : ils n'étaient donc pas assignables depuis l'UI de gestion des
+    # rôles, et les 14 viewsets FP&A (cycles, export XLSX, scénarios,
+    # projection de masse salariale) n'avaient AUCUNE garde — tout utilisateur
+    # authentifié de la société les lisait ET les écrivait.
+    #   * ``fpa_saisir``         — saisir le budget de SON département ;
+    #   * ``fpa_valider``        — valider/rejeter un budget soumis ;
+    #   * ``fpa_consulter_tout`` — voir TOUS les départements (lecture élargie,
+    #     n'écrit jamais) ;
+    #   * ``fpa_administrer``    — administration complète FP&A : SEULE
+    #     permission acceptée sur les actions de gouvernance d'un cycle
+    #     (ouvrir-saisie / clore / dupliquer / export).
+    # Comme ``ao_*`` (AOF2) et ``rh_*`` (WIR172), aucun de ces codes n'est mappé
+    # sur un rôle Responsable/Commercial/Technicien/Utilisateur/Viewer : la
+    # planification budgétaire reste à la direction (Directeur/Administrateur
+    # par héritage d'ALL_PERMISSIONS). Les comptes HÉRITÉS sans rôle fin gardent
+    # leur accès historique (repli légacy de ``FpaScopedPermission``).
+    'fpa_saisir',
+    'fpa_valider',
+    'fpa_consulter_tout',
+    'fpa_administrer',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable

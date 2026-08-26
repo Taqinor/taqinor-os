@@ -11,6 +11,7 @@ from authentication.models import Company
 from apps.fpa.models import (
     Categorie, CycleBudgetaire, Departement, LigneBudgetDepartement,
 )
+from apps.roles.models import Role
 
 User = get_user_model()
 
@@ -19,8 +20,17 @@ class TestPerimetreDepartement(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
             slug='ntfpa26-co', defaults={'nom': 'NTFPA26 Co'})
+        # WIR173 — les viewsets FP&A sont désormais gardés : le responsable de
+        # département porte le code métier qui correspond à son rôle
+        # (``fpa_saisir`` = saisir le budget de SON département) et RIEN de
+        # plus. Sans ``fpa_consulter_tout``/``fpa_administrer``, le périmètre
+        # NTFPA26 s'applique — c'est exactement ce que ce module vérifie.
+        self.role_saisie = Role.objects.create(
+            company=self.company, nom='ntfpa26-saisie',
+            permissions=['fpa_saisir'])
         self.resp_a = User.objects.create_user(
-            username='ntfpa26-a', password='x', company=self.company)
+            username='ntfpa26-a', password='x', company=self.company,
+            role=self.role_saisie)
         self.cycle = CycleBudgetaire.objects.create(
             company=self.company, nom='Budget 2027',
             date_debut=date(2027, 1, 1), date_fin=date(2027, 12, 31),

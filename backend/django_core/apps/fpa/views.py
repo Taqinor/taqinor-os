@@ -11,6 +11,10 @@ from .models import (
     MappingCategorieCompte, PrevisionGlissante, ScenarioBudgetaire,
     SoumissionBudgetDepartement,
 )
+from .permissions import (
+    FPA_ADMINISTRER, FPA_ECRITURE, FPA_LECTURE, ExigeFpaPermission,
+    FpaScopedPermission,
+)
 from .serializers import (
     CommentaireVarianceSerializer, CycleBudgetaireSerializer,
     DepartementSerializer, HypotheseRecrutementSerializer,
@@ -21,7 +25,45 @@ from .serializers import (
 )
 
 
-class DepartementViewSet(CompanyScopedModelViewSet):
+class _FpaBaseViewSet(CompanyScopedModelViewSet):
+    """Base FP&A : société scopée + garde de permission FINE (WIR173).
+
+    Les 14 viewsets FP&A n'avaient AUCUNE garde : tout utilisateur authentifié
+    de la société pouvait lire ET écrire les cycles budgétaires, l'export XLSX
+    de synthèse, les scénarios what-if et la projection de masse salariale.
+    ``FpaScopedPermission`` route désormais la garde par méthode HTTP —
+    lecture ⇒ l'un de ``FPA_LECTURE``, écriture ⇒ l'un de ``FPA_ECRITURE`` —
+    avec le repli légacy des comptes sans rôle fin. Le périmètre PAR
+    DÉPARTEMENT (NTFPA26, ``departements_visibles_ids``) est une couche
+    SUPPLÉMENTAIRE, appliquée après cette garde et inchangée.
+    """
+
+    permission_classes = [FpaScopedPermission]
+    read_permission = FPA_LECTURE
+    write_permission = FPA_ECRITURE
+
+
+class _FpaBaseReadOnlyViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Variante lecture seule (+ actions custom) de ``_FpaBaseViewSet``."""
+
+    permission_classes = [FpaScopedPermission]
+    read_permission = FPA_LECTURE
+    write_permission = FPA_ECRITURE
+
+
+class _FpaBaseComputeViewSet(viewsets.ViewSet):
+    """Variante « endpoints de calcul » (aucun modèle propre) de la base FP&A.
+
+    Company scopée via ``request.user.company`` dans chaque action ; même garde
+    de permission que les viewsets à modèle.
+    """
+
+    permission_classes = [FpaScopedPermission]
+    read_permission = FPA_LECTURE
+    write_permission = FPA_ECRITURE
+
+
+class DepartementViewSet(_FpaBaseViewSet):
     """NTFPA1 — CRUD des départements FP&A, scopé société."""
 
     queryset = Departement.objects.select_related('responsable', 'parent').all()
@@ -55,7 +97,7 @@ class DepartementViewSet(CompanyScopedModelViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
+class CycleBudgetaireViewSet(_FpaBaseViewSet):
     """NTFPA2 — Cycles budgétaires : machine d'états gardée (brouillon →
     ouvert_saisie → en_validation → clos), transitions illégales refusées
     (400)."""
@@ -66,7 +108,8 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
     search_fields = ['nom']
     ordering_fields = ['date_debut', 'nom']
 
-    @action(detail=True, methods=['post'], url_path='ouvrir-saisie')
+    @action(detail=True, methods=['post'], url_path='ouvrir-saisie',
+            permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)])
     def ouvrir_saisie(self, request, pk=None):
         cycle = self.get_object()
         if cycle.statut != CycleBudgetaire.Statut.BROUILLON:
@@ -79,7 +122,8 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         notifier_ouverture_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
-    @action(detail=True, methods=['post'], url_path='clore')
+    @action(detail=True, methods=['post'], url_path='clore',
+            permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)])
     def clore(self, request, pk=None):
         cycle = self.get_object()
         if cycle.statut not in (
@@ -92,7 +136,8 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         clore_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
-    @action(detail=True, methods=['get'], url_path='export')
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)])
     def export(self, request, pk=None):
         cycle = self.get_object()
         from django.http import HttpResponse
@@ -110,7 +155,8 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = f'attachment; filename="{nom}"'
         return resp
 
-    @action(detail=True, methods=['post'], url_path='dupliquer')
+    @action(detail=True, methods=['post'], url_path='dupliquer',
+            permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)])
     def dupliquer(self, request, pk=None):
         cycle_source = self.get_object()
         nouveau_nom = request.data.get('nouveau_nom') or f'{cycle_source.nom} (copie)'
@@ -122,7 +168,7 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
 
-class LigneBudgetDepartementViewSet(CompanyScopedModelViewSet):
+class LigneBudgetDepartementViewSet(_FpaBaseViewSet):
     """NTFPA3 — Lignes de budget départemental (saisie mensuelle par
     catégorie). NTFPA6 — un cycle clos refuse toute écriture (400, via le
     ``ValidationError`` levé par ``LigneBudgetDepartement.save()``)."""
@@ -236,7 +282,7 @@ class LigneBudgetDepartementViewSet(CompanyScopedModelViewSet):
         return Response(SoumissionBudgetDepartementSerializer(soumission).data)
 
 
-class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class SoumissionBudgetDepartementViewSet(_FpaBaseReadOnlyViewSet):
     """NTFPA5 — lecture des soumissions + chatter (historique/note)."""
 
     queryset = SoumissionBudgetDepartement.objects.select_related(
@@ -264,7 +310,7 @@ class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelView
         return Response(ChatterActivitySerializer(activite).data)
 
 
-class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):
+class PrevisionGlissanteViewSet(_FpaBaseViewSet):
     """NTFPA8 — Prévisions glissantes (rolling forecast 12-18 mois) +
     génération depuis la moyenne des 3 derniers mois réels (compta)."""
 
@@ -304,7 +350,7 @@ class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):
         return Response(PrevisionGlissanteSerializer(prevision).data)
 
 
-class LignePrevisionGlissanteViewSet(CompanyScopedModelViewSet):
+class LignePrevisionGlissanteViewSet(_FpaBaseViewSet):
     """NTFPA8 — édition directe des points d'une prévision glissante (une
     modification manuelle pose ``source='manuel'``, jamais réécrasée)."""
 
@@ -318,7 +364,7 @@ class LignePrevisionGlissanteViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class ScenarioBudgetaireViewSet(CompanyScopedModelViewSet):
+class ScenarioBudgetaireViewSet(_FpaBaseViewSet):
     """NTFPA15/16/17/18 — Scénarios what-if : deltas appliqués en lecture,
     comparaison côte-à-côte, promotion en base, analyse de sensibilité."""
 
@@ -382,7 +428,7 @@ class ScenarioBudgetaireViewSet(CompanyScopedModelViewSet):
         return Response({'variable': variable, 'points': points})
 
 
-class LigneScenarioViewSet(CompanyScopedModelViewSet):
+class LigneScenarioViewSet(_FpaBaseViewSet):
     """NTFPA15 — deltas d'un scénario (jamais écrits dans le cycle réel)."""
 
     queryset = LigneScenario.objects.all()
@@ -395,7 +441,7 @@ class LigneScenarioViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class HypotheseRecrutementViewSet(CompanyScopedModelViewSet):
+class HypotheseRecrutementViewSet(_FpaBaseViewSet):
     """NTFPA10 — Hypothèses de recrutement/départ (alimente le driver masse
     salariale NTFPA9)."""
 
@@ -415,7 +461,7 @@ class HypotheseRecrutementViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class ConsolidationViewSet(viewsets.ViewSet):
+class ConsolidationViewSet(_FpaBaseComputeViewSet):
     """NTFPA23 — consolidation multi-département (P&L prévisionnel simplifié)."""
 
     def list(self, request):
@@ -440,7 +486,7 @@ class ConsolidationViewSet(viewsets.ViewSet):
         })
 
 
-class VarianceViewSet(viewsets.ViewSet):
+class VarianceViewSet(_FpaBaseComputeViewSet):
     """NTFPA19 — analyse des écarts (variance) prévu/réel/forecast, en lecture."""
 
     def list(self, request):
@@ -463,7 +509,7 @@ class VarianceViewSet(viewsets.ViewSet):
         return Response(payload)
 
 
-class MappingCategorieCompteViewSet(CompanyScopedModelViewSet):
+class MappingCategorieCompteViewSet(_FpaBaseViewSet):
     """NTFPA21 — mapping catégorie FP&A ↔ préfixe de compte CGNC (utilisé par
     la variance NTFPA19 pour traduire les catégories vers les classes
     comptables réelles sans coder en dur le plan CGNC)."""
@@ -478,7 +524,7 @@ class MappingCategorieCompteViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class CommentaireVarianceViewSet(CompanyScopedModelViewSet):
+class CommentaireVarianceViewSet(_FpaBaseViewSet):
     """NTFPA20 — commentaires de variance (un par cellule, historique complet)."""
 
     queryset = CommentaireVariance.objects.select_related('auteur').all()
@@ -497,7 +543,7 @@ class CommentaireVarianceViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company, auteur=self.request.user)
 
 
-class DriversViewSet(viewsets.ViewSet):
+class DriversViewSet(_FpaBaseComputeViewSet):
     """NTFPA9/11/12 — drivers de planning (endpoints de calcul, aucun modèle
     propre). Company scopée via ``request.user.company``."""
 
