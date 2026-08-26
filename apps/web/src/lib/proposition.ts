@@ -443,6 +443,32 @@ export interface ProposalResponse {
     surplus_kwh?: unknown;
   }> | null;
   /**
+   * COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
+   * DOIT MONTRER : pour chaque cran, la part de la consommation du client
+   * réellement COUVERTE (solaire direct + batterie), heure par heure sur les
+   * quatre jours types publics ET sur l'année ; plus le nombre de batteries
+   * d'une AUTONOMIE COMPLÈTE (jour + nuit).
+   *
+   * CONTRAT PARTAGÉ (PACT10) :
+   * `backend/django_core/apps/ventes/contract_samples/couverture_batterie.json`
+   * — c'est CE fichier que les deux moitiés lisent, pas cette interface.
+   *
+   * La page N'EN CALCULE AUCUN CHIFFRE : elle LIT. Ces courbes viennent du
+   * moteur horaire (mêmes douze jours types et même simulateur de batterie que
+   * l'étude complète), là où la page rejouait avant un moteur approché sur une
+   * silhouette générique. Clé absente ⇒ la page retombe EXACTEMENT sur son
+   * comportement d'avant (simulateur client `lib/batterySim`).
+   */
+  couverture_batterie?: {
+    capacite_utile_pack_kwh?: unknown;
+    rendement?: unknown;
+    conso_annuelle_kwh?: unknown;
+    mois_jours_types?: unknown;
+    nb_packs_max?: unknown;
+    pas?: unknown;
+    autonomie_complete?: unknown;
+  } | null;
+  /**
    * L-PCMP (fondateur, 24/08/2026) — les TROIS silhouettes d'occupation
    * calculées par le moteur sur les MÊMES factures réelles du client, plus
    * l'installation OPTIMALE que le balayage retient pour chacune.
@@ -4247,6 +4273,142 @@ export function proposalJoursTypes(
   return PROPOSAL_JOUR_TYPE_MONTH_IDS.every((m) => !!out[m])
     ? (out as Record<ProposalJourTypeMonthId, ProposalJourTypeMonth>)
     : null;
+}
+
+
+// ── COUVBAT — LA COUVERTURE DE LA CONSOMMATION, CRAN PAR CRAN ──────────────
+// Ordre fondateur du 26/08/2026 : « en déplaçant le curseur, montrer ce que la
+// batterie choisie COUVRE de ma consommation, jour ET nuit ». Rien n'est
+// calculé ici : ces fonctions LISENT et VALIDENT le bloc `couverture_batterie`
+// servi par le moteur horaire. Une entrée illisible est IGNORÉE, jamais
+// complétée par une estimation locale (règle « zéro chiffre inventé »).
+
+/** Les trois bandes horaires d'un jour type, telles que le moteur les sert. */
+export interface BatteryCoverageHours {
+  /** 24 kWh couverts par le solaire DIRECT (min(conso, prod) de l'heure). */
+  direct: number[];
+  /** 24 kWh couverts par la BATTERIE (ce qu'elle restitue à cette heure). */
+  battery: number[];
+  /** 24 kWh importés du RÉSEAU (le reste). */
+  grid: number[];
+}
+
+/** Un cran du curseur : son année et ses quatre jours types. */
+export interface BatteryCoverageStep {
+  nbPacks: number;
+  capaciteKwh: number;
+  /** % de la consommation ANNUELLE couverte (direct + batterie). */
+  couverturePct: number;
+  directAnnuelKwh: number;
+  batterieAnnuelKwh: number;
+  reseauAnnuelKwh: number;
+  /** `false` ⇒ ce toit ne remplirait pas cette banque tous les jours. */
+  seRemplitTousLesJours: boolean;
+  /** Indexé par mois (« 1 »/« 4 »/« 7 »/« 11 »). */
+  joursTypes: Record<string, BatteryCoverageHours>;
+}
+
+/** Le repère « autonomie complète » : jour + nuit, et son honnêteté. */
+export interface BatteryFullAutonomy {
+  nbPacks: number;
+  capaciteKwh: number;
+  /** `false` ⇒ à afficher HORS de la plage recommandée, jamais comme offre. */
+  seRemplitTousLesJours: boolean;
+  /** Le plus grand nombre de packs que ce toit remplit CHAQUE jour. */
+  nbPacksRemplissables: number;
+  capaciteRemplissableMaxKwh: number;
+  /** % de consommation couverte à ce nombre de packs (`null` si non servi). */
+  couverturePct: number | null;
+  /** Le curseur atteint-il ce cran ? */
+  dansLeCurseur: boolean;
+  /** Mois du jour type le plus gourmand (celui qui dicte le repère). */
+  mois: number | null;
+}
+
+export interface BatteryCoverageInfo {
+  /** Capacité UTILE d'un pack DU DEVIS (règle CAPUTIL) — jamais un catalogue. */
+  capaciteUtilePackKwh: number;
+  consoAnnuelleKwh: number | null;
+  nbPacksMax: number;
+  pas: BatteryCoverageStep[];
+  autonomie: BatteryFullAutonomy | null;
+}
+
+function coverageHours(raw: unknown): BatteryCoverageHours | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (!isValidHourly24(r.direct_kwh) || !isValidHourly24(r.batterie_kwh)
+      || !isValidHourly24(r.reseau_kwh)) return null;
+  return { direct: r.direct_kwh, battery: r.batterie_kwh, grid: r.reseau_kwh };
+}
+
+/**
+ * `null` quand `couverture_batterie` est absent, illisible, ou qu'aucun cran
+ * exploitable n'en sort — la page garde alors EXACTEMENT son affichage d'avant
+ * (simulateur client), jamais un bloc à moitié rempli.
+ */
+export function batteryCoverageInfo(
+  p: Pick<ProposalResponse, 'couverture_batterie'>,
+): BatteryCoverageInfo | null {
+  const b = p.couverture_batterie;
+  if (!b || typeof b !== 'object') return null;
+  const packKwh = finiteOrNull(b.capacite_utile_pack_kwh);
+  if (packKwh === null || packKwh <= 0) return null;
+  const pas: BatteryCoverageStep[] = [];
+  for (const raw of (Array.isArray(b.pas) ? b.pas : []) as unknown[]) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const nbPacks = finiteOrNull(r.nb_packs);
+    const capaciteKwh = finiteOrNull(r.capacite_kwh);
+    const couverturePct = finiteOrNull(r.couverture_pct);
+    if (nbPacks === null || capaciteKwh === null || couverturePct === null) continue;
+    const joursTypes: Record<string, BatteryCoverageHours> = {};
+    const src = (r.jours_types ?? {}) as Record<string, unknown>;
+    for (const mois of Object.keys(src)) {
+      const heures = coverageHours(src[mois]);
+      if (heures) joursTypes[mois] = heures;
+    }
+    pas.push({
+      nbPacks: Math.trunc(nbPacks),
+      capaciteKwh,
+      couverturePct,
+      directAnnuelKwh: finiteOrNull(r.direct_annuel_kwh) ?? 0,
+      batterieAnnuelKwh: finiteOrNull(r.batterie_annuel_kwh) ?? 0,
+      reseauAnnuelKwh: finiteOrNull(r.reseau_annuel_kwh) ?? 0,
+      seRemplitTousLesJours: r.se_remplit_tous_les_jours !== false,
+      joursTypes,
+    });
+  }
+  if (pas.length === 0) return null;
+  pas.sort((a, c) => a.nbPacks - c.nbPacks);
+
+  let autonomie: BatteryFullAutonomy | null = null;
+  const a = (b.autonomie_complete ?? null) as Record<string, unknown> | null;
+  if (a && typeof a === 'object') {
+    const nbPacks = finiteOrNull(a.nb_packs);
+    const capaciteKwh = finiteOrNull(a.capacite_kwh);
+    if (nbPacks !== null && nbPacks > 0 && capaciteKwh !== null) {
+      autonomie = {
+        nbPacks: Math.trunc(nbPacks),
+        capaciteKwh,
+        seRemplitTousLesJours: a.se_remplit_tous_les_jours === true,
+        nbPacksRemplissables: Math.max(
+          0, Math.trunc(finiteOrNull(a.nb_packs_remplissables) ?? 0)),
+        capaciteRemplissableMaxKwh: finiteOrNull(a.capacite_remplissable_max_kwh) ?? 0,
+        couverturePct: finiteOrNull(a.couverture_pct),
+        dansLeCurseur: a.dans_le_curseur === true,
+        mois: finiteOrNull(a.mois),
+      };
+    }
+  }
+  return {
+    capaciteUtilePackKwh: packKwh,
+    consoAnnuelleKwh: finiteOrNull(b.conso_annuelle_kwh),
+    nbPacksMax: Math.trunc(
+      finiteOrNull(b.nb_packs_max) ?? pas[pas.length - 1].nbPacks),
+    pas,
+    autonomie,
+  };
 }
 
 
