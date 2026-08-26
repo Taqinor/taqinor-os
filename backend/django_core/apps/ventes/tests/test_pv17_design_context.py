@@ -315,6 +315,27 @@ class TestDesignContext(TestCase):
             statut=Devis.Statut.BROUILLON)
         self.assertEqual(self._get(devis).status_code, 404)
 
+    # O4 (revue adversariale 26/08/2026, défense en profondeur) — un
+    # `devis.lead` ne DEVRAIT jamais appartenir à une autre société que le
+    # devis (aucun chemin de l'appli ne le permet), mais si cet invariant
+    # était rompu (bug ailleurs, migration), aucun champ du lead étranger ne
+    # doit fuiter par cet endpoint.
+    def test_lead_d_une_autre_societe_traite_comme_absent(self):
+        autre = make_company('pv17-lead-autre-co')
+        lead_etranger = Lead.objects.create(
+            company=autre, nom='Etranger', prenom='PV17',
+            roof_outline=[[31.6, -8.0], [31.61, -8.0], [31.61, -7.99]],
+            roof_point={'lat': 31.6, 'lng': -8.0}, bill_kwh=Decimal('999'),
+            telephone='+212699999999', ville='Ailleurs')
+        devis = self._devis(lead=lead_etranger)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'none')
+        self.assertIsNone(data['geometrie']['pin'])
+        self.assertEqual(data['geometrie']['contour_client'], [])
+        self.assertIsNone(data['cible']['bill_kwh'])
+        self.assertEqual(data['devis']['client_ville'], '')
+        self.assertEqual(data['devis']['client_telephone'], '')
+
     def test_aucun_prix_achat_ni_marge(self):
         devis = self._devis()
         corps = str(self._get(devis).data)

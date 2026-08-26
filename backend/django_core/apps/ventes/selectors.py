@@ -2254,6 +2254,16 @@ def contexte_conception_devis(devis, company):
         return None
 
     lead = getattr(devis, 'lead', None)
+    # O4 (revue adversariale 26/08/2026, défense en profondeur) — un
+    # `devis.lead` ne devrait JAMAIS appartenir à une AUTRE société que le
+    # devis lui-même (la garde ci-dessus ne borne que `devis.company_id`),
+    # mais si cet invariant était un jour rompu (bug ailleurs, migration de
+    # données), aucun champ du lead (contour, GPS, téléphone, adresse…) ne
+    # doit fuiter par cet endpoint : on le traite comme absent, exactement
+    # le repli déjà utilisé partout ci-dessous (`if lead else None`).
+    if lead is not None and company_id is not None \
+            and getattr(lead, 'company_id', None) != company_id:
+        lead = None
 
     # L-MAP (fondateur 26/08/2026) — le contour ORIGINAL du client, capturé
     # UNE FOIS pour toutes ici, AVANT toute logique de layout : `outline`
