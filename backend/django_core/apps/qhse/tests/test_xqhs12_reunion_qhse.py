@@ -15,6 +15,8 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -30,6 +32,9 @@ from apps.qhse.services import (
 
 User = get_user_model()
 
+REUNIONS = '/api/django/qhse/reunions/'
+DECISIONS = '/api/django/qhse/decisions-reunion/'
+
 
 def make_company(slug, nom):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
@@ -39,6 +44,12 @@ def make_company(slug, nom):
 def make_user(company, username, role='responsable'):
     return User.objects.create_user(
         username=username, password='x', company=company, role_legacy=role)
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class CreerCapaDepuisDecisionTests(TestCase):
@@ -197,3 +208,81 @@ class RelancerCshDuJourBeatTests(TestCase):
         self.assertEqual(
             settings.CELERY_TASK_ROUTES['qhse.relancer_csh_du_jour']['queue'],
             'scheduled')
+
+
+class ReunionQhseApiTests(TestCase):
+    """WIR275 — CRUD + action ``cloturer`` (checklist ISO 9.3 exigée pour
+    une revue de direction — jamais un endpoint auparavant)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-api', 'CoXqhs12Api')
+        self.user = make_user(self.company, 'resp-xqhs12-api')
+        self.api = auth_client(self.user)
+
+    def test_create_pose_company(self):
+        resp = self.api.post(REUNIONS, {
+            'type_reunion': ReunionQhse.TypeReunion.REUNION_HSE,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        reunion = ReunionQhse.objects.get(id=resp.data['id'])
+        self.assertEqual(reunion.company_id, self.company.id)
+
+    def test_cloturer_revue_direction_checklist_incomplete_400(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REVUE_DIRECTION)
+        resp = self.api.post(f'{REUNIONS}{reunion.id}/cloturer/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        reunion.refresh_from_db()
+        self.assertEqual(reunion.statut, ReunionQhse.Statut.PLANIFIEE)
+
+    def test_cloturer_reunion_hse_ok(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        resp = self.api.post(f'{REUNIONS}{reunion.id}/cloturer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], ReunionQhse.Statut.CLOTUREE)
+
+    def test_isolation_inter_societes(self):
+        autre = make_company('co-xqhs12-api-x', 'Autre')
+        ReunionQhse.objects.create(
+            company=autre, type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        data = self.api.get(REUNIONS).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
+
+
+class DecisionReunionApiTests(TestCase):
+    """WIR275 — CRUD + action ``creer-capa`` (``creer_capa_depuis_decision``
+    n'avait aucun appelant, idempotent)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-dec-api', 'CoXqhs12DecApi')
+        self.user = make_user(self.company, 'resp-xqhs12-dec-api')
+        self.api = auth_client(self.user)
+        self.reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+
+    def test_creer_capa_action_idempotente(self):
+        decision = DecisionReunion.objects.create(
+            company=self.company, reunion=self.reunion,
+            texte='Renforcer la formation LOTO')
+        r1 = self.api.post(f'{DECISIONS}{decision.id}/creer-capa/')
+        self.assertEqual(r1.status_code, 200, r1.data)
+        capa_id_1 = r1.data['id']
+        r2 = self.api.post(f'{DECISIONS}{decision.id}/creer-capa/')
+        self.assertEqual(r2.data['id'], capa_id_1)
+        self.assertEqual(
+            ActionCorrectivePreventive.objects.filter(
+                company=self.company).count(), 1)
+
+    def test_reunion_hors_societe_refusee(self):
+        autre = make_company('co-xqhs12-dec-api-x', 'Autre')
+        reunion_autre = ReunionQhse.objects.create(
+            company=autre, type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        resp = self.api.post(DECISIONS, {
+            'reunion': reunion_autre.id, 'texte': 'X',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

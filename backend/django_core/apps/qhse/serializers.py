@@ -9,12 +9,14 @@ from rest_framework import serializers
 from .models import (
     AccuseLecture, ActionCorrectivePreventive, AnalyseIncident,
     AnalyseNcr, AspectEnvironnemental, Audit,
+    AuditCertification, AuditPlanifie,
     CauseIncident,
-    CodeDefaut,
-    ConsignationLoto, ContactUrgence, ControleReception,
+    CampagneRappel, Certification, ClauseNorme, CodeDefaut,
+    ConsignationLoto, ContactUrgence, ContexteOrganisation, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
-    EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, DecisionReunion,
+    DemandeChangement, DiffusionProcedure, Derogation,
+    ElementRappel, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     ExerciceUrgence,
     InductionSecurite, IndicateurESG,
@@ -22,14 +24,16 @@ from .models import (
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    ObservationSecurite,
+    ObjectifQhse, ObservationSecurite,
+    PartieInteressee,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
-    PlanInspectionModele, PlanUrgence,
+    PlanInspectionModele, PlanUrgence, ProgrammeAudit,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire, RisqueOpportunite, RisqueOpportuniteCapa,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    RevueObjectif, RevueVeilleReglementaire,
+    RisqueOpportunite, RisqueOpportuniteCapa,
     Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
@@ -1595,3 +1599,305 @@ class RisqueOpportuniteCapaSerializer(serializers.ModelSerializer):
         model = RisqueOpportuniteCapa
         fields = ['id', 'risque_opportunite', 'capa', 'date_creation']
         read_only_fields = fields
+
+
+# ── WIR275 (XQHS5) — campagnes de rappel produit ────────────────────────────
+class CampagneRappelSerializer(serializers.ModelSerializer):
+    """XQHS5 — campagne de rappel/containment (défaut fournisseur produit-lot).
+    ``company`` posée côté serveur ; ``produit`` (FK-chaîne stock.Produit) et
+    ``responsable`` validés même-société."""
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_elements = serializers.IntegerField(
+        source='elements.count', read_only=True)
+
+    class Meta:
+        model = CampagneRappel
+        fields = [
+            'id', 'titre', 'produit', 'serie_debut', 'serie_fin', 'lot',
+            'motif', 'gravite', 'gravite_display', 'statut', 'statut_display',
+            'nb_elements', 'date_verification_efficacite', 'responsable',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_produit(self, value):
+        return _meme_societe(self, value, 'Produit')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+
+class ElementRappelSerializer(serializers.ModelSerializer):
+    """XQHS5 — équipement concerné par une ``CampagneRappel`` (rattachement
+    LÂCHE au parc via ``equipement_id``/``installation_id``/``ticket_sav_id``,
+    jamais un import cross-app). ``campagne`` validée même-société."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ElementRappel
+        fields = [
+            'id', 'campagne', 'equipement_id', 'numero_serie',
+            'installation_id', 'statut', 'statut_display', 'ticket_sav_id',
+            'notifie_le', 'note', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_campagne(self, value):
+        return _meme_societe(self, value, 'Campagne de rappel')
+
+
+# ── WIR275 (XQHS9) — registre des certifications + audits externes ─────────
+class CertificationSerializer(serializers.ModelSerializer):
+    """XQHS9 — certificat ISO/NM détenu. ``statut_calcule`` dérive l'état réel
+    (expiré/à renouveler) à la date du jour, en lecture seule."""
+    referentiel_display = serializers.CharField(
+        source='get_referentiel_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Certification
+        fields = [
+            'id', 'referentiel', 'referentiel_display', 'organisme',
+            'numero_certificat', 'perimetre', 'date_emission',
+            'date_expiration', 'prealerte_jours', 'statut', 'statut_display',
+            'statut_calcule', 'responsable', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+
+class AuditCertificationSerializer(serializers.ModelSerializer):
+    """XQHS9 — audit d'un organisme certificateur sur une ``Certification``.
+    ``ncr_id`` (lien lâche) est posé UNIQUEMENT par le service
+    ``lever_ncr_audit_certification`` (jamais un PATCH direct — même patron
+    que ``AnalyseNcr``/``RisqueOpportuniteCapa``)."""
+    type_etape_display = serializers.CharField(
+        source='get_type_etape_display', read_only=True)
+
+    class Meta:
+        model = AuditCertification
+        fields = [
+            'id', 'certification', 'type_etape', 'type_etape_display',
+            'date_audit', 'auditeur_externe', 'constats', 'constat_majeur',
+            'ncr_id', 'date_creation',
+        ]
+        read_only_fields = ['ncr_id', 'date_creation']
+
+    def validate_certification(self, value):
+        return _meme_societe(self, value, 'Certification')
+
+
+# ── WIR275 (XQHS10) — programme d'audit interne annuel ──────────────────────
+class ProgrammeAuditSerializer(serializers.ModelSerializer):
+    """XQHS10 — programme d'audit interne d'une année civile."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_audits_planifies = serializers.IntegerField(
+        source='audits_planifies.count', read_only=True)
+
+    class Meta:
+        model = ProgrammeAudit
+        fields = [
+            'id', 'annee', 'statut', 'statut_display', 'nb_audits_planifies',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class AuditPlanifieSerializer(serializers.ModelSerializer):
+    """XQHS10 — audit planifié au sein d'un ``ProgrammeAudit``.
+    ``independance_ok`` est une garde ADVISORY (jamais bloquante) exposée en
+    lecture seule : ``False`` avertit que l'auditeur audite son propre
+    domaine, sans jamais empêcher la création/l'instanciation."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    independance_ok = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditPlanifie
+        fields = [
+            'id', 'programme', 'processus_domaine', 'grille', 'date_cible',
+            'auditeur', 'responsable_domaine', 'statut', 'statut_display',
+            'independance_ok', 'audit', 'date_creation',
+        ]
+        read_only_fields = ['audit', 'date_creation']
+
+    def get_independance_ok(self, obj):
+        return obj.independance_ok()
+
+    def validate_programme(self, value):
+        return _meme_societe(self, value, "Programme d'audit")
+
+    def validate_grille(self, value):
+        return _meme_societe(self, value, "Grille d'audit")
+
+    def validate_auditeur(self, value):
+        return _meme_societe(self, value, 'Auditeur')
+
+    def validate_responsable_domaine(self, value):
+        return _meme_societe(self, value, 'Responsable de domaine')
+
+
+# ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ───────────────
+class ClauseNormeSerializer(serializers.ModelSerializer):
+    """XQHS11 — clause d'un référentiel ISO, seedable. Company-scopée."""
+
+    class Meta:
+        model = ClauseNorme
+        fields = [
+            'id', 'referentiel', 'numero', 'intitule', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── WIR275 (XQHS12) — revue de direction + comité d'hygiène et de sécurité ──
+class ReunionQhseSerializer(serializers.ModelSerializer):
+    """XQHS12 — réunion QHSE structurée (revue de direction/CSH/HSE).
+    ``checklist_9_3_complete`` (lecture seule) n'a de sens que pour
+    ``revue_direction`` — exigée par ``services.cloturer_reunion_qhse`` avant
+    de clôturer une revue de direction."""
+    type_reunion_display = serializers.CharField(
+        source='get_type_reunion_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    checklist_9_3_complete = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReunionQhse
+        fields = [
+            'id', 'type_reunion', 'type_reunion_display', 'date_reunion',
+            'participants', 'ordre_du_jour', 'pv', 'attachment_ids',
+            'checklist_revue_direction', 'checklist_9_3_complete',
+            'rapport_annuel', 'statut', 'statut_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_checklist_9_3_complete(self, obj):
+        return obj.checklist_9_3_complete()
+
+
+class DecisionReunionSerializer(serializers.ModelSerializer):
+    """XQHS12 — décision prise en réunion QHSE. ``capa_id`` (lien lâche) est
+    posé UNIQUEMENT par l'action ``creer-capa/`` (service
+    ``creer_capa_depuis_decision`` — jamais un PATCH direct)."""
+
+    class Meta:
+        model = DecisionReunion
+        fields = [
+            'id', 'reunion', 'texte', 'responsable', 'capa_id',
+            'date_creation',
+        ]
+        read_only_fields = ['capa_id', 'date_creation']
+
+    def validate_reunion(self, value):
+        return _meme_societe(self, value, 'Réunion QHSE')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+
+# ── WIR275 (XQHS13) — objectifs & cibles QHSE/ESG (ISO 6.2) ────────────────
+class ObjectifQhseSerializer(serializers.ModelSerializer):
+    """XQHS13 — objectif chiffré QHSE/ESG avec baseline/cible/échéance."""
+    domaine_display = serializers.CharField(
+        source='get_domaine_display', read_only=True)
+    sens_amelioration_display = serializers.CharField(
+        source='get_sens_amelioration_display', read_only=True)
+    frequence_revue_display = serializers.CharField(
+        source='get_frequence_revue_display', read_only=True)
+
+    class Meta:
+        model = ObjectifQhse
+        fields = [
+            'id', 'domaine', 'domaine_display', 'intitule',
+            'indicateur_libre', 'indicateur_esg', 'valeur_baseline',
+            'annee_baseline', 'valeur_cible', 'echeance',
+            'sens_amelioration', 'sens_amelioration_display', 'responsable',
+            'frequence_revue', 'frequence_revue_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_indicateur_esg(self, value):
+        return _meme_societe(self, value, 'Indicateur ESG')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+
+class RevueObjectifSerializer(serializers.ModelSerializer):
+    """XQHS13 — revue périodique d'un ``ObjectifQhse``. ``atteint`` est
+    DÉRIVÉ côté serveur au ``save()`` du modèle (valeur constatée vs cible et
+    sens d'amélioration) — jamais reçu en écriture."""
+
+    class Meta:
+        model = RevueObjectif
+        fields = [
+            'id', 'objectif', 'periode', 'date_revue', 'valeur_constatee',
+            'atteint', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = ['atteint', 'date_creation']
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif QHSE')
+
+
+# ── WIR277 (XQHS15) — contexte SMQ ISO 4.1/4.2 ──────────────────────────────
+class PartieInteresseeSerializer(serializers.ModelSerializer):
+    """XQHS15 (ISO 4.2) — partie intéressée pertinente pour le SMQ."""
+    pertinence_display = serializers.CharField(
+        source='get_pertinence_display', read_only=True)
+
+    class Meta:
+        model = PartieInteressee
+        fields = [
+            'id', 'partie', 'attentes', 'pertinence', 'pertinence_display',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ContexteOrganisationSerializer(serializers.ModelSerializer):
+    """XQHS15 (ISO 4.1) — contexte/enjeux de l'organisation, SINGLETON par
+    société (``OneToOneField company``). ``company`` posée côté serveur."""
+
+    class Meta:
+        model = ContexteOrganisation
+        fields = [
+            'id', 'swot', 'perimetre_smq', 'date_modification',
+        ]
+        read_only_fields = ['date_modification']
+
+
+class DiffusionProcedureSerializer(serializers.ModelSerializer):
+    """XQHS15 — diffusion d'une version de procédure. LECTURE SEULE côté
+    CRUD : une diffusion se crée exclusivement via l'action ``diffuser/`` de
+    ``ProcedureQualiteViewSet`` (jamais un POST direct)."""
+    procedure_reference = serializers.CharField(
+        source='procedure.reference', read_only=True)
+    procedure_version = serializers.IntegerField(
+        source='procedure.version', read_only=True)
+    nb_lecteurs = serializers.IntegerField(
+        source='accuses_lecture.count', read_only=True)
+    nb_lus = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DiffusionProcedure
+        fields = [
+            'id', 'procedure', 'procedure_reference', 'procedure_version',
+            'population_cible', 'nb_lecteurs', 'nb_lus', 'date_diffusion',
+        ]
+        read_only_fields = fields
+
+    def get_nb_lus(self, obj):
+        return obj.accuses_lecture.filter(lu_le__isnull=False).count()
