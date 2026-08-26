@@ -31,11 +31,31 @@ const DEMANDES = [{
   email: 'karim@solaire-atlas.ma', statut: 'en_attente',
 }]
 
-// Routeur d'API : la console fait DEUX GET distincts (tenants + file).
-function routerGet(demandes = DEMANDES) {
+// WIR267 — registre de facturation de licence (2 factures mockées).
+const FACTURES_LICENCE = [
+  {
+    id: 10, reference: 'LIC-2026-0001', societe_nom: 'Client Alpha',
+    periode: '2026-07-01', plan_code: 'pro', montant_ttc: 1200,
+    statut: 'emise', statut_libelle: 'Émise',
+  },
+  {
+    id: 11, reference: 'LIC-2026-0002', societe_nom: 'Client Beta',
+    periode: '2026-07-01', plan_code: 'starter', montant_ttc: 300,
+    statut: 'payee', statut_libelle: 'Payée',
+  },
+]
+
+// Routeur d'API : la console fait TROIS GET distincts (tenants + file +
+// facturation de licence).
+function routerGet(demandes = DEMANDES, facturesLicence = FACTURES_LICENCE) {
   return (url) => {
     if (url.startsWith('/adminops/demandes-inscription/')) {
       return Promise.resolve({ data: { results: demandes, en_attente: demandes.length } })
+    }
+    if (url.startsWith('/adminops/facturation-licences/')) {
+      return Promise.resolve({
+        data: { results: facturesLicence, total_du_ttc: 1200 },
+      })
     }
     return Promise.resolve({ data: TENANTS })
   }
@@ -140,5 +160,80 @@ describe('TenantsConsole — cockpit fondateur (N100/N101)', () => {
     })
     const lien = screen.getByRole('link', { name: 'Demander une session' })
     expect(lien).toHaveAttribute('href', '/admin/impersonation/demander')
+  })
+})
+
+describe('TenantsConsole — Facturation de licence (WIR267)', () => {
+  it('charge le registre et affiche le total dû TTC + les 2 factures mockées', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(apiMock.get).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/', { params: undefined })
+    })
+    expect(screen.getByTestId('facturation-total-du')).toHaveTextContent('1200 MAD')
+    expect(screen.getByText('LIC-2026-0001')).toBeInTheDocument()
+    expect(screen.getByText('LIC-2026-0002')).toBeInTheDocument()
+  })
+
+  it('marque une facture payée (POST marquer-payee) et recharge le registre', async () => {
+    renderPage()
+    await screen.findByText('LIC-2026-0001')
+
+    // Seule la facture « emise » (LIC-2026-0001) propose le bouton — la
+    // « payee » (LIC-2026-0002) ne l'a jamais eu.
+    expect(
+      screen.queryByRole('button', { name: 'Marquer payée la facture LIC-2026-0002' }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button',
+      { name: 'Marquer payée la facture LIC-2026-0001' }))
+
+    await waitFor(() => {
+      expect(apiMock.post).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/10/marquer-payee/', undefined)
+    })
+    // Le registre est rechargé après le pointage (best-effort, comme la
+    // file d'inscription) : un second GET est parti.
+    await waitFor(() => {
+      expect(apiMock.get.mock.calls.filter(
+        ([url]) => url === '/adminops/facturation-licences/',
+      ).length).toBeGreaterThan(1)
+    })
+  })
+
+  it('exporte le CSV (GET export-csv, blob) sans planter', async () => {
+    // jsdom n'implémente pas createObjectURL/revokeObjectURL par défaut
+    // (même patron que DevisList.test.jsx — QG1).
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderPage()
+    await screen.findByText('LIC-2026-0001')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter CSV' }))
+
+    await waitFor(() => {
+      expect(apiMock.get).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/export-csv/',
+        { params: undefined, responseType: 'blob' },
+      )
+    })
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+
+    clickSpy.mockRestore()
+  })
+
+  it('filtre par statut (repasse le paramètre au registre et à l’export)', async () => {
+    renderPage()
+    await screen.findByText('LIC-2026-0001')
+    apiMock.get.mockClear()
+
+    await userEvent.selectOptions(screen.getByLabelText('Statut'), 'payee')
+
+    await waitFor(() => {
+      expect(apiMock.get).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/', { params: { statut: 'payee' } })
+    })
   })
 })
