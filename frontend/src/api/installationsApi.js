@@ -120,6 +120,21 @@ const installationsApi = {
   noterIntervention: (id, body) =>
     api.post(`/installations/interventions/${id}/noter/`, { body }),
 
+  // WIR264/XFSM7 + ZFSM2 — liens PUBLICS tokenisés d'une intervention : suivi
+  // « technicien en route » et compte-rendu signé. Les deux jetons sont
+  // DISTINCTS ; le serveur renvoie `{token, path, url}` où `url` pointe sur la
+  // PAGE (`/intervention/<token>`, `/intervention-rapport/<token>`).
+  getLienClientIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-client/`),
+  getLienRapportIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-rapport/`),
+  // Les DEUX pages publiques lisent leur payload SANS session (aucun loader
+  // d'auth) : le jeton EST l'autorisation.
+  getInterventionPublique: (token) =>
+    api.get(`/public/installations/intervention/${token}/`),
+  getInterventionRapportPublic: (token) =>
+    api.get(`/public/installations/intervention-rapport/${token}/`),
+
   // F5 — Liste de préparation (matériel du chantier + outils du kit).
   getPreparation: (id) => api.get(`/installations/interventions/${id}/preparation/`),
   choisirKit: (id, kit) =>
