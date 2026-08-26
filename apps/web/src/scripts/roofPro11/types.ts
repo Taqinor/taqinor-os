@@ -93,6 +93,13 @@ export interface RoofToolApi {
    *  (`opts.referenceContour`). Sans effet si aucun contour n'a été fourni
    *  au boot (le calque reste vide dans les deux cas). */
   setReferenceContourVisible: (visible: boolean) => void;
+  /** AP-F2 (fondateur 26/08/2026) — reseme la zone active DEPUIS le contour
+   *  ORIGINAL du client (`opts.referenceContour`, MÊME source que le calque
+   *  de référence) et relance l'optimiseur, pour que le commercial puisse
+   *  annuler ses retouches et repartir du tracé client. Renvoie `false` sans
+   *  RIEN changer si aucun contour exploitable n'a été fourni au boot
+   *  (`referenceContourRing` renvoie `null`) — jamais un contour deviné. */
+  recommencerDepuisTraceClient: () => boolean;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET
