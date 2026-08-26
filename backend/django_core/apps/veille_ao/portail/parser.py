@@ -136,7 +136,7 @@ def normaliser(texte):
     return _ESPACES_RE.sub(' ', texte).strip(' \t\n\r:•-')
 
 
-def _sans_accents(texte):
+def sans_accents(texte):
     """Pour COMPARER un libellé, jamais pour stocker une valeur."""
     decompose = unicodedata.normalize('NFKD', texte or '')
     return ''.join(c for c in decompose if not unicodedata.combining(c)).lower()
@@ -191,9 +191,9 @@ def _valeur_apres_libelle(noeud, libelle):
     champs dans une cellule du portail. Comparaison SANS accents, pour que
     « Procédure » reste trouvable si le portail écrit « Procedure ».
     """
-    cible = _sans_accents(libelle)
+    cible = sans_accents(libelle)
     for fort in noeud.find_all(['strong', 'b', 'label']):
-        if not _sans_accents(fort.get_text()).strip().startswith(cible):
+        if not sans_accents(fort.get_text()).strip().startswith(cible):
             continue
         morceaux = []
         for suivant in fort.next_siblings:
@@ -226,7 +226,7 @@ def _liste(valeur):
 def _cellule_marquee(cellules, *marqueurs):
     """La cellule dont l'en-tête ou la classe porte l'un des marqueurs."""
     for cellule in cellules:
-        mots = _sans_accents(' '.join(
+        mots = sans_accents(' '.join(
             _liste(cellule.get('headers')) + _liste(cellule.get('class'))))
         if any(marqueur in mots for marqueur in marqueurs):
             return cellule
@@ -351,5 +351,5 @@ def analyser_page(html, url_base=''):
 __all__ = [
     'ANALYSEUR', 'CASABLANCA', 'Extraction', 'LigneIllisible', 'analyser_ligne',
     'analyser_page', 'decoder_utf8', 'lire_date', 'lire_date_heure',
-    'lire_identifiants', 'normaliser',
+    'lire_identifiants', 'normaliser', 'sans_accents',
 ]
