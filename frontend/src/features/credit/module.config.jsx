@@ -4,7 +4,7 @@
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import {
-  Wallet, ShieldAlert, CreditCard, Upload, ShieldCheck, Users,
+  Wallet, ShieldAlert, CreditCard, Upload, ShieldCheck, Users, Settings2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -34,12 +34,16 @@ const ConditionsSegmentScreen = lazy(() => import('./ConditionsSegmentScreen'))
 const ImportLimitesCreditPage = lazy(() => import('./ImportLimitesCreditPage'))
 const PolicesAssuranceCreditPage = lazy(() => import('./PolicesAssuranceCreditPage'))
 const SegmentsClientPage = lazy(() => import('./SegmentsClientPage'))
+// WIR185/NTCRD3 — reglages credit societe : l'endpoint existait sans ecran, la
+// politique de hold restait donc figee sur ses defauts.
+const ReglagesCreditPage = lazy(() => import('./ReglagesCreditPage'))
 
 const IconWallet = <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />
 const IconDerog = <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />
 const IconImport = <Upload size={17} strokeWidth={1.75} aria-hidden="true" />
 const IconAssurance = <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />
 const IconSegments = <Users size={17} strokeWidth={1.75} aria-hidden="true" />
+const IconReglages = <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'credit',
@@ -58,6 +62,7 @@ export default {
       { to: '/credit/import-limites', label: 'Import des limites', icon: IconImport, roles: ROLES },
       { to: '/credit/assurance', label: 'Assurance-crédit', icon: IconAssurance, roles: ROLES },
       { to: '/credit/segments-clients', label: 'Segments clients', icon: IconSegments, roles: ROLES },
+      { to: '/credit/reglages', label: 'Réglages', icon: IconReglages, roles: ROLES },
     ],
   },
   // routes.meta : du plus spécifique au plus général.
@@ -65,6 +70,7 @@ export default {
     ['/credit/import-limites', 'Import des limites de crédit'],
     ['/credit/assurance', 'Assurance-crédit (polices et encours garantis)'],
     ['/credit/segments-clients', 'Segments crédit des clients'],
+    ['/credit/reglages', 'Réglages crédit de la société'],
     ['/credit/exposition', 'Exposition crédit'],
     ['/credit/derogations', 'Dérogations crédit'],
     ['/credit/conditions', 'Conditions de paiement par segment'],
@@ -78,6 +84,7 @@ export default {
     { path: '/credit/import-limites', component: ImportLimitesCreditPage, roles: ROLES },
     { path: '/credit/assurance', component: PolicesAssuranceCreditPage, roles: ROLES },
     { path: '/credit/segments-clients', component: SegmentsClientPage, roles: ROLES },
+    { path: '/credit/reglages', component: ReglagesCreditPage, roles: ROLES },
     // Fiche crédit d'un client atteinte depuis l'exposition (sans URL tapée).
     { path: '/credit/clients/:id', component: FicheCreditClientPage, roles: ROLES },
   ],
