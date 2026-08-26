@@ -65,7 +65,7 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # de l'heuristique partagée.
 DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/gestion_projet/models.py:103",
-    "backend/django_core/apps/stock/models.py:705",
+    "backend/django_core/apps/stock/models.py:706",
 }
 
 FLOAT_LIKE = {"FloatField"}
