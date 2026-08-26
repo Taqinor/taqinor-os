@@ -83,6 +83,23 @@ describe('TimesheetsTab', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
 
+  it('« Classement » lit total_heures/taux_completude_pct (— si null) + jours_de_retard', async () => {
+    gestionProjetApi.getClassementTemps.mockResolvedValueOnce({
+      data: {
+        lignes: [
+          { ressource_id: 7, ressource_nom: 'Amine', total_heures: 12.5, taux_completude_pct: 80, jours_de_retard: 1 },
+          { ressource_id: 8, ressource_nom: 'Sami', total_heures: 0, taux_completude_pct: null, jours_de_retard: null },
+        ],
+      },
+    })
+    const user = userEvent.setup()
+    withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} ressources={ressources} />)
+    await user.click(await screen.findByRole('tab', { name: 'Classement' }))
+    expect(await screen.findByText('12,5')).toBeTruthy()
+    expect(screen.getByText('80 %')).toBeTruthy()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
   it('« Heures attendues » charge l\'écart pour la ressource choisie', async () => {
     const user = userEvent.setup()
     withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} ressources={ressources} />)
