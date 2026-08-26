@@ -31,6 +31,86 @@ const INFORMATEURS = [
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
+/* ── WIR269 — « D'où vient le chiffre d'affaires » (VAO31) ─────────────────
+   Le constat CENTRAL de l'étude était illisible : l'endpoint agrégé existait
+   (`GET /veille_ao/attribution/`), personne ne l'appelait, et la question
+   « la veille automatique rapporte-t-elle vraiment ? » n'avait aucune réponse
+   à l'écran.
+
+   RÈGLE ABSOLUE DE CE BLOC : **aucun agrégat n'est recalculé ici.** Chaque
+   nombre affiché — y compris la ligne « Total » — est lu TEL QUEL dans la
+   réponse serveur (`kpis.attribution`, qui lit l'issue des affaires par le
+   `selectors.py` d'`apps.ao`). Une somme faite ici finirait, un jour, par
+   afficher un chiffre différent de celui du serveur sur le même écran.
+
+   Les DEUX axes sont à ÉGALITÉ (par source automatique ET par informateur
+   humain) : c'est tout l'intérêt de la mesure — rendre visible ce que la
+   veille automatique ne voit pas, jamais en note de bas de page. */
+const COLONNES_ATTRIBUTION = [
+  { cle: 'avis', libelle: 'Avis' },
+  { cle: 'retenus', libelle: 'Retenus' },
+  { cle: 'affaires', libelle: 'Affaires' },
+  { cle: 'gagnes', libelle: 'Gagnés' },
+  { cle: 'perdus', libelle: 'Perdus' },
+  { cle: 'en_cours', libelle: 'En cours' },
+]
+
+// Un nombre ABSENT n'est pas un zéro : « — » dit qu'on ne sait pas, un 0
+// affirmerait qu'il n'y en a eu aucun.
+const nb = (v) => (Number.isFinite(v) ? v : '—')
+
+function TableauAttribution({ titre, lignes, total, axe }) {
+  if (!lignes?.length) {
+    return (
+      <div data-veille-attribution-vide={axe}>
+        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{titre}</h4>
+        <p className="text-sm text-muted-foreground">Aucun canal mesuré pour l’instant.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="data-table w-full text-sm" data-veille-attribution={axe}>
+        <caption className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {titre}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Canal</th>
+            {COLONNES_ATTRIBUTION.map((c) => (
+              <th key={c.cle} scope="col" className="text-right">{c.libelle}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {lignes.map((ligne) => (
+            <tr key={ligne.cle} data-veille-canal={ligne.cle}>
+              <th scope="row" className="font-normal">{ligne.libelle}</th>
+              {COLONNES_ATTRIBUTION.map((c) => (
+                <td key={c.cle} className="text-right tabular-nums">{nb(ligne[c.cle])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {total && axe === 'source' && (
+          /* Le total est celui du SERVEUR (`attribution.total`), jamais une
+             somme des lignes ci-dessus. Il n'est rendu qu'UNE fois (sous l'axe
+             « source ») : les deux axes décrivent les MÊMES avis, les
+             additionner les compterait deux fois. */
+          <tfoot>
+            <tr data-veille-attribution-total="">
+              <th scope="row">Total</th>
+              {COLONNES_ATTRIBUTION.map((c) => (
+                <td key={c.cle} className="text-right font-medium tabular-nums">{nb(total[c.cle])}</td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  )
+}
+
 // VAO27 — capter en 30 s un AO reçu par WhatsApp/SMS/appel, AVEC sa source.
 // Seul `informateur` bloque (VAO27 Done= : « 400 FR sinon ») — tout le reste
 // est facultatif, aucune validation qui bloque une saisie faite du chantier.
@@ -106,6 +186,13 @@ export default function SanteVeille({ onAvisAjoute }) {
     { select: (res) => res.data, errorMessage: 'État de la veille indisponible.' },
   )
 
+  // WIR269 — un SECOND appel agrégé, distinct de `sante()` : deux mesures
+  // différentes, deux endpoints, aucun croisement côté écran.
+  const { data: attribution, loading: chargementAttribution } = useResource(
+    () => veilleAoApi.attribution(), undefined,
+    { select: (res) => res.data, errorMessage: 'Attribution du chiffre d’affaires indisponible.' },
+  )
+
   const alarme = Boolean(sante?.alarme_active)
   const age = ageLabel(sante?.derniere_collecte_reussie)
 
@@ -138,6 +225,35 @@ export default function SanteVeille({ onAvisAjoute }) {
           <Badge tone="success" className="ml-auto">
             <CheckCircle2 className="size-3.5" aria-hidden="true" /> Collecte silencieuse : aucune alarme
           </Badge>
+        )}
+      </Card>
+
+      {/* Bloc 1bis — D'OÙ VIENT LE CHIFFRE D'AFFAIRES (VAO31/WIR269). Le
+          constat central de l'étude, servi par UN appel agrégé : rien n'est
+          recalculé ici, total compris. */}
+      <Card className="flex flex-col gap-3 p-4" data-veille-attribution-bloc="">
+        <h3 className="font-display text-sm font-semibold">D’où vient le chiffre d’affaires</h3>
+        <p className="text-xs text-muted-foreground">
+          Canal → avis → affaires → gagnés, sur tout l’historique. Les deux axes
+          décrivent les mêmes avis&nbsp;: la source automatique qui les a
+          ramenés, et l’informateur humain qui les a signalés.
+        </p>
+        {chargementAttribution && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {!chargementAttribution && (
+          <>
+            <TableauAttribution
+              axe="source"
+              titre="Par source (collecte automatique)"
+              lignes={attribution?.par_source}
+              total={attribution?.total}
+            />
+            <TableauAttribution
+              axe="informateur"
+              titre="Par informateur (signalé par un humain)"
+              lignes={attribution?.par_informateur}
+              total={attribution?.total}
+            />
+          </>
         )}
       </Card>
 
