@@ -344,6 +344,42 @@ class BuildDevisAutoAvecContourTest(TestCase):
         self.assertGreater(toiture.get('kwc') or 0, 0)
         self.assertGreater(toiture.get('surface_m2') or 0, 0)
 
+    def test_le_devis_automatique_nait_avec_son_dimensionnement(self):
+        """Incident test16 (27/08/2026, DEV-202608-0033/0034) — le chemin auto
+        gardait l'appel CJ2a d'origine (bloc horaire SEUL) au lieu du geste
+        L-1V : un devis automatique naissait sans
+        ``etude_params['dimensionnement']``, et la page client perdait d'un
+        coup les trois tailles Éco/Recommandé/Max, la tranche tarifaire, le
+        régime batterie, le balayage de stockage et les profils comparatifs —
+        jusqu'à la première édition manuelle du devis. Le devis automatique
+        doit naître avec le MÊME tableau que le chemin de création du
+        générateur (``atomic``), et ce tableau doit porter des tailles
+        ÉLIGIBLES — c'est lui qui donne Éco (meilleur payback) et Max
+        (dernière taille éligible) aux trois tailles de la page client.
+
+        ``ville`` — le balayage a besoin d'un ANCRAGE de productible
+        (« localisation non résolue » est un motif d'abstention documenté de
+        ``rafraichir_dimensionnement_devis``) : un lead du tunnel porte
+        toujours sa localisation (tracé GPS, ville facultative). Même ancrage
+        que le fixture de l'échelle de paliers (test_deux_optimiseurs)."""
+        devis = build_devis_auto(
+            lead=self._lead(facture_hiver=Decimal('1800'),
+                            roof_outline=CONTOUR_LATLNG,
+                            ville='Casablanca'),
+            user=self.user, company=self.company)
+        dimensionnement = (devis.etude_params or {}).get(
+            'dimensionnement') or {}
+        tableau = dimensionnement.get('tableau') or []
+        self.assertTrue(
+            tableau,
+            'le devis automatique doit naître avec son tableau de '
+            'dimensionnement (etude_params["dimensionnement"]["tableau"])')
+        from apps.ventes.dimensionnement import tailles_eligibles
+        self.assertTrue(
+            tailles_eligibles(tableau),
+            'aucune taille éligible dans le tableau du devis automatique — '
+            'Éco/Max resteraient indérivables sur la page client')
+
     def test_sans_contour_le_layout_est_celui_dhier(self):
         devis = build_devis_auto(
             lead=self._lead(facture_hiver=Decimal('1800')),

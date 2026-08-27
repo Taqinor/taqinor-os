@@ -5710,12 +5710,19 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         devis.etude_params = etude
         devis.save(update_fields=['etude_params'])
 
-    # CJ2a — le bloc canonique d'étude horaire est posé APRÈS la construction :
-    # il a besoin de la puissance réellement composée et de la capacité de
-    # stockage réellement chiffrée. Best-effort et non bloquant : un devis
-    # reste parfaitement valide sans lui (le moteur de devis retombe alors sur
-    # son forfait ÉTIQUETÉ — règle Z2).
-    rafraichir_etude_horaire(devis, kwc=kwc)
+    # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
+    # comme sur les chemins d'écriture du générateur (``atomic``,
+    # ``replace-lines``, ``sync-layout``). Ce chemin gardait l'appel CJ2a
+    # d'origine (bloc horaire SEUL) : un devis automatique naissait sans
+    # ``dimensionnement``, et la page client perdait d'un coup les trois
+    # tailles Éco/Recommandé/Max, la tranche tarifaire, le régime batterie,
+    # le balayage de stockage et les profils comparatifs — jusqu'à la première
+    # édition manuelle (DEV-202608-0033/0034). Posé APRÈS la fusion
+    # ``etude_extra`` ci-dessus (les factures réelles nourrissent le
+    # dimensionnement), toujours APRÈS la construction (la puissance et le
+    # stockage réellement composés), best-effort et non bloquant : un devis
+    # reste parfaitement valide sans ses études.
+    rafraichir_etudes_du_devis(devis, force=True)
 
     logger.info(
         'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s, '
