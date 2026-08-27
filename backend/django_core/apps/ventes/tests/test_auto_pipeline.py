@@ -355,10 +355,17 @@ class BuildDevisAutoAvecContourTest(TestCase):
         doit naître avec le MÊME tableau que le chemin de création du
         générateur (``atomic``), et ce tableau doit porter des tailles
         ÉLIGIBLES — c'est lui qui donne Éco (meilleur payback) et Max
-        (dernière taille éligible) aux trois tailles de la page client."""
+        (dernière taille éligible) aux trois tailles de la page client.
+
+        ``ville`` — le balayage a besoin d'un ANCRAGE de productible
+        (« localisation non résolue » est un motif d'abstention documenté de
+        ``rafraichir_dimensionnement_devis``) : un lead du tunnel porte
+        toujours sa localisation (tracé GPS, ville facultative). Même ancrage
+        que le fixture de l'échelle de paliers (test_deux_optimiseurs)."""
         devis = build_devis_auto(
             lead=self._lead(facture_hiver=Decimal('1800'),
-                            roof_outline=CONTOUR_LATLNG),
+                            roof_outline=CONTOUR_LATLNG,
+                            ville='Casablanca'),
             user=self.user, company=self.company)
         dimensionnement = (devis.etude_params or {}).get(
             'dimensionnement') or {}
