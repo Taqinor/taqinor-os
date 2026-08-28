@@ -26,8 +26,16 @@ LES TROIS DÉFINITIONS, ET POURQUOI ELLES NE PEUVENT PAS DÉRIVER.
   quand le devis porte un calepinage (:func:`~apps.ventes.calepinage_options.
   capacite_toit_du_devis` — panneaux conservés + extension maximale PROUVÉE à
   l'intérieur du polygone réel), sinon la dernière taille éligible du balayage,
-  qui porte déjà ses propres bornes (facteur falaise, ``MAX_PANNEAUX_BALAYAGE``).
+  qui porte déjà ses propres bornes (facteur falaise, ``MAX_PANNEAUX_BALAYAGE``),
+  PLAFONNÉE par le mur physique du tracé client (:func:`~apps.ventes.
+  dimensionnement.plafond_physique_du_devis` — aire ÷ empreinte d'un panneau).
   Jamais un panneau au-delà d'une borne physique.
+
+  ET LE COMPTE DESSINÉ NE LA PINCE PLUS (28/08/2026) : un devis AUTOMATIQUE
+  naît avec un layout CONTOUR-SEUL dont ``result.panels`` n'est que la cible
+  VENDUE. Rien n'y étant mesurable, le lire comme un plafond de toit effondrait
+  Max sur Recommandé sur TOUS les devis automatiques — et court-circuitait en
+  prime le repli « dernière taille éligible ».
 
   ELLE NE S'ANCRE PLUS SUR ``plafond_toit_du_devis`` (26/08/2026, devis live
   test15) : cette fonction rend le nombre de panneaux DESSINÉS par le
@@ -526,6 +534,20 @@ class _Contexte:
         self.capacite_toit = capacite_toit_du_devis(devis)
 
     @property
+    def plafond_physique(self):
+        """LE MUR PHYSIQUE du tracé client (aire ÷ empreinte d'un panneau).
+
+        LU PARESSEUSEMENT, ET C'EST VOULU : il lit le catalogue (le produit
+        panneau et sa fiche technique), or il ne sert QUE lorsqu'aucun
+        calepinage n'est mesurable. Le calculer d'office ajouterait une requête
+        à chaque dérivation d'un devis calepiné, pour un nombre que
+        :meth:`toit_max` jetterait. Le résultat est mémoïsé sur l'instance de
+        devis, donc le relire ne coûte rien.
+        """
+        from apps.ventes.dimensionnement import plafond_physique_du_devis
+        return plafond_physique_du_devis(self.devis)
+
+    @property
     def toit_max(self):
         """Le plus grand nombre de panneaux que ce toit accepte, ou ``None``.
 
@@ -535,9 +557,16 @@ class _Contexte:
         finiraient par diverger, et c'est précisément une divergence de ce
         genre (le dessiné se faisant passer pour la contenance) qui a effondré
         cette carte-ci.
+
+        SANS CALEPINAGE MESURABLE, C'EST LE MUR PHYSIQUE DU TRACÉ, jamais le
+        compte dessiné (28/08/2026) — sur un devis AUTOMATIQUE, ``result.panels``
+        ne porte que la cible VENDUE, et la prendre pour un plafond de toit
+        effondrait Max sur Recommandé.
         """
         from apps.ventes.dimensionnement import plus_grande_contenance
-        return plus_grande_contenance(self.capacite_toit, self.plafond_toit)
+        physique = None if self.capacite_toit else self.plafond_physique
+        return plus_grande_contenance(self.capacite_toit, self.plafond_toit,
+                                      physique)
 
     @property
     def etude_kwargs(self):
@@ -666,22 +695,43 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
     # machinerie d'extension que le dessin (donc sans qu'aucune carte ne puisse
     # annoncer un nombre que son propre calepinage ne saurait dessiner).
     #
-    # SANS CALEPINAGE, RIEN NE CHANGE : la dernière taille éligible du balayage,
-    # qui porte déjà ses propres bornes (facteur falaise +
-    # ``MAX_PANNEAUX_BALAYAGE``) — on ne les repousse pas, on les lit.
+    # LA GARDE EST « ``capacite_toit``, PAS ``toit_max`` » (28/08/2026) : c'est
+    # la MESURE qui ouvre cette branche-là, jamais la simple existence d'une
+    # borne — sans quoi le mur physique du tracé, qui ne fait que refuser
+    # l'impossible, se mettrait à PROPOSER un champ (voir le repli plus bas).
     #
     # LE PLANCHER À « RECOMMANDÉ » GARDE LA CONVERGENCE HONNÊTE : un toit déjà
     # saturé (contenance == dessiné) redonne le champ du devis, la signature
     # collapse les deux cartes, et la liste ne se remplit JAMAIS d'un
     # intermédiaire fabriqué pour occuper un troisième emplacement.
-    if contexte.toit_max:
+    if contexte.capacite_toit:
         champs['max'] = max(int(contexte.toit_max),
                             int(nb_panneaux_devis or 0))
         return champs
+
+    # AUCUN CALEPINAGE MESURABLE — LE REPLI, ET SA BORNE (28/08/2026).
+    #
+    # C'est l'état de TOUT devis AUTOMATIQUE : ``zone_toit_depuis_contour`` pose
+    # le tracé du client et écrit ``result.panels`` = la cible VENDUE, sans
+    # sérialiser un seul panneau. Rien n'est donc mesurable — et le compte
+    # dessiné, qui n'est ici que ce qu'on vient de vendre, n'a JAMAIS eu le
+    # droit de dire « ce toit accepte N ». Il le disait pourtant : Max valait
+    # Recommandé, la troisième carte s'effondrait sur tous les devis
+    # automatiques, et la simple présence du layout court-circuitait ce
+    # repli-ci.
+    #
+    # Le repli est la dernière taille ÉLIGIBLE du balayage (qui porte déjà ses
+    # propres bornes : facteur falaise + ``MAX_PANNEAUX_BALAYAGE``) — PLAFONNÉE
+    # par le mur physique du tracé quand il est connu (``toit_max`` vaut alors
+    # exactement ``plafond_physique_du_devis``). Ce mur ne PROPOSE rien : il ne
+    # fait que refuser une taille physiquement impossible.
     admissibles = [int(x['panneaux']) for x in eligibles
                    if _num(x.get('panneaux')) > 0]
     if admissibles:
-        champs['max'] = max(admissibles)
+        maximum = max(admissibles)
+        if contexte.toit_max:
+            maximum = min(maximum, int(contexte.toit_max))
+        champs['max'] = maximum
     return champs
 
 
@@ -842,11 +892,16 @@ def _ajouter_taux(carte, annuel, variante):
 
 
 def _ajouter_toit(carte, contexte, nb_panneaux):
-    """``toit_ok`` — SEULEMENT quand un calepinage réel existe.
+    """``toit_ok`` — SEULEMENT quand une borne de toit RÉELLE existe.
 
-    Sans calepinage, le devis ne sait pas ce que ce toit accepte : le champ est
-    OMIS. Jamais un « ça rentre » supposé sur une surface que personne n'a
-    mesurée.
+    Sans calepinage MESURABLE ni tracé exploitable, le devis ne sait pas ce que
+    ce toit accepte : le champ est OMIS. Jamais un « ça rentre » supposé sur une
+    surface que personne n'a mesurée.
+
+    LE VERDICT SUIT ``toit_max``, DONC LA MÊME BORNE QUE LA CARTE MAX (c'est
+    tout l'intérêt de n'en avoir qu'une) : la contenance mesurée quand elle
+    existe, sinon le mur physique du tracé. Une taille SOUS ce mur ne peut donc
+    jamais être marquée « dépasse le toit ».
 
     LE VERDICT SE LIT SUR LA CONTENANCE (``toit_max``), PAS SUR LE DESSIN. La
     page imprime « Cette taille dépasse ce que votre toit peut accueillir » dès
@@ -1279,10 +1334,13 @@ def deriver(devis, data):
     if contexte.module_batterie_kwh:
         bloc['module_batterie_kwh'] = round(
             float(contexte.module_batterie_kwh), 2)
-    if contexte.toit_max:
-        # LA CONTENANCE, pas le dessin : la clé s'appelle « plafond du toit »,
-        # et publier sous ce nom le nombre de panneaux DESSINÉS était le même
-        # mensonge que celui qui effondrait la carte Max.
+    if contexte.capacite_toit and contexte.toit_max:
+        # LA CONTENANCE MESURÉE, ET ELLE SEULE. La clé s'appelle « plafond du
+        # toit » : publier sous ce nom le nombre de panneaux DESSINÉS était le
+        # même mensonge que celui qui effondrait la carte Max, et y publier le
+        # MUR PHYSIQUE (aire ÷ empreinte, large par construction) en serait un
+        # autre — ce mur sert à refuser une taille impossible, jamais à
+        # annoncer au client ce que son toit tient. Sans mesure : pas de clé.
         bloc['plafond_toit_panneaux'] = int(contexte.toit_max)
     if escalade is not None:
         bloc['escalade_tarifaire_pct'] = escalade
