@@ -731,7 +731,13 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
         maximum = max(admissibles)
         if contexte.toit_max:
             maximum = min(maximum, int(contexte.toit_max))
-        champs['max'] = maximum
+        # LE MÊME PLANCHER QUE LA BRANCHE MESURÉE (revue Fable, 28/08/2026) :
+        # sans lui, un balayage court ou un tracé PARTIEL (le client n'a dessiné
+        # qu'un pan) rendait une carte Max PLUS PETITE que le devis officiel —
+        # un ordre Éco → Recommandé → Max incohérent pour le client. Le champ du
+        # devis est la réalité vendue : Max ne descend jamais dessous, et
+        # l'égalité fait collapser les deux cartes au lieu de mentir.
+        champs['max'] = max(maximum, int(nb_panneaux_devis or 0))
     return champs
 
 
@@ -892,16 +898,17 @@ def _ajouter_taux(carte, annuel, variante):
 
 
 def _ajouter_toit(carte, contexte, nb_panneaux):
-    """``toit_ok`` — SEULEMENT quand une borne de toit RÉELLE existe.
+    """``toit_ok`` — SEULEMENT quand un calepinage MESURÉ existe.
 
-    Sans calepinage MESURABLE ni tracé exploitable, le devis ne sait pas ce que
-    ce toit accepte : le champ est OMIS. Jamais un « ça rentre » supposé sur une
-    surface que personne n'a mesurée.
-
-    LE VERDICT SUIT ``toit_max``, DONC LA MÊME BORNE QUE LA CARTE MAX (c'est
-    tout l'intérêt de n'en avoir qu'une) : la contenance mesurée quand elle
-    existe, sinon le mur physique du tracé. Une taille SOUS ce mur ne peut donc
-    jamais être marquée « dépasse le toit ».
+    Sans calepinage MESURABLE, le devis ne sait pas ce que ce toit accepte : le
+    champ est OMIS. Jamais un « ça rentre » supposé sur une surface que personne
+    n'a mesurée — et jamais un « ça dépasse » non plus (revue Fable,
+    28/08/2026) : le mur PHYSIQUE du tracé est une borne large calculée sur un
+    contour que le client a pu ne tracer QUE PARTIELLEMENT ; s'en servir pour
+    imprimer « Cette taille dépasse ce que votre toit peut accueillir » — y
+    compris sur la carte du devis OFFICIEL — accuserait d'impossible une
+    installation que personne n'a mesurée. Le mur PLAFONNE la carte Max
+    (:func:`_champs_des_tailles`) ; il ne prononce aucun verdict par carte.
 
     LE VERDICT SE LIT SUR LA CONTENANCE (``toit_max``), PAS SUR LE DESSIN. La
     page imprime « Cette taille dépasse ce que votre toit peut accueillir » dès
@@ -910,7 +917,7 @@ def _ajouter_toit(carte, contexte, nb_panneaux):
     proposer davantage — c'est-à-dire à la traiter d'impossible alors que la
     géométrie vient de prouver le contraire.
     """
-    if not contexte.toit_max:
+    if not contexte.capacite_toit or not contexte.toit_max:
         return
     carte['toit_ok'] = bool(int(nb_panneaux) <= int(contexte.toit_max))
 

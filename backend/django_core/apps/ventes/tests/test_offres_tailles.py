@@ -419,30 +419,27 @@ class CarteDuDevisTests(SimpleTestCase):
         self.assertIs(
             ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], True)
 
-    def test_une_taille_SOUS_le_mur_physique_n_est_jamais_dite_hors_toit(self):
-        # DEVIS AUTOMATIQUE (28/08/2026) : rien de mesurable, 22 panneaux
-        # vendus/dessinés, un tracé qui en porte 60. La carte de 26 panneaux
-        # tient — la marquer « dépasse votre toit » parce qu'elle dépasse le
-        # champ VENDU serait exactement l'accusation fausse que la correction
-        # de Max supprime.
+    def test_le_mur_physique_ne_prononce_AUCUN_verdict_par_carte(self):
+        # DEVIS AUTOMATIQUE (revue Fable, 28/08/2026) : rien de mesurable, un
+        # tracé qui porte un mur physique. Le mur PLAFONNE la carte Max, mais un
+        # contour peut n'avoir été tracé QUE PARTIELLEMENT — il n'a donc le
+        # droit ni de dire « ça rentre » ni de dire « ça dépasse » sur une
+        # carte : ``toit_ok`` est OMIS, dans les deux sens.
         contexte = self._contexte()
         contexte.plafond_toit = 22
         contexte.capacite_toit = None
         contexte.plafond_physique = 60
         contexte.toit_max = 60
-        self.assertIs(
-            ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], True)
-
-    def test_le_mur_physique_dit_quand_meme_NON_a_l_impossible(self):
-        # La borne reste une borne : 26 panneaux sur un tracé qui n'en porte
-        # que 24, c'est faux, et la carte doit le dire.
-        contexte = self._contexte()
-        contexte.plafond_toit = 22
-        contexte.capacite_toit = None
+        self.assertNotIn('toit_ok',
+                         ot._carte_du_devis(contexte, self.DATA, 'avec'))
+        # Y compris quand la carte DÉPASSE le mur : la carte du devis OFFICIEL
+        # sur un tracé partiel ne doit jamais s'afficher « dépasse votre
+        # toit ». Le mur, lui, continue de plafonner Max (testé côté
+        # ``_champs_des_tailles``).
         contexte.plafond_physique = 24
         contexte.toit_max = 24
-        self.assertIs(
-            ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], False)
+        self.assertNotIn('toit_ok',
+                         ot._carte_du_devis(contexte, self.DATA, 'avec'))
 
     def test_devis_sans_taille_servie_aucune_carte(self):
         contexte = self._contexte()
@@ -624,6 +621,22 @@ class DerivationTests(SimpleTestCase):
                              plafond=22, capacite=None, physique=60)
         # 22 == le devis : Max converge et disparaît plutôt que d'inventer 60.
         self.assertNotIn('max', [o['cle'] for o in bloc['offres']])
+
+    def test_max_du_repli_ne_descend_JAMAIS_sous_le_devis(self):
+        # REVUE FABLE (28/08/2026) — le plancher de la branche mesurée existe
+        # aussi dans le repli : balayage court (16) et tracé PARTIEL (mur 14)
+        # sous le champ du devis (22) ⇒ Max ne devient pas une carte plus
+        # PETITE que « Recommandé » — elle converge sur le devis et disparaît,
+        # exactement comme dans la branche mesurée. Un ordre Éco → Recommandé →
+        # Max où Max serait la plus petite carte est un mensonge d'affichage.
+        bloc = self._deriver(tableau=_tableau((10, 6.0), (16, 8.0)),
+                             plafond=None, capacite=None, physique=14)
+        cles = [o['cle'] for o in bloc['offres']] if bloc else []
+        self.assertNotIn('max', cles)
+        for offre in (bloc or {}).get('offres', []):
+            if offre['cle'] == 'recommande':
+                continue
+            self.assertLessEqual(offre['sans']['nb_panneaux'], 22)
 
     def test_le_mur_physique_n_est_JAMAIS_publie_comme_plafond_de_toit(self):
         # « plafond_toit_panneaux » nomme LA CONTENANCE MESURÉE. Le mur (aire ÷
