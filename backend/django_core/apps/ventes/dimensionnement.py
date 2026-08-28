@@ -1813,11 +1813,15 @@ def contenance_toit_du_devis(devis):
 
     UN SEUL BALAYAGE PAR REQUÊTE : la mesure est mémoïsée sur l'instance de
     devis, si bien que l'échelle, les cartes et la clé publique la partagent.
+    Le mur physique, lui, n'est LU QUE si la mesure a échoué — il interroge le
+    catalogue, et le calculer d'office coûterait une requête par dérivation
+    pour un nombre que :func:`plus_grande_contenance` jetterait.
     """
     from apps.ventes.calepinage_options import capacite_toit_du_devis
-    return plus_grande_contenance(capacite_toit_du_devis(devis),
-                                  plafond_toit_du_devis(devis),
-                                  plafond_physique_du_devis(devis))
+    capacite = capacite_toit_du_devis(devis)
+    physique = None if capacite else plafond_physique_du_devis(devis)
+    return plus_grande_contenance(capacite, plafond_toit_du_devis(devis),
+                                  physique)
 
 
 def _compter_modules_batterie(lignes_vue):
