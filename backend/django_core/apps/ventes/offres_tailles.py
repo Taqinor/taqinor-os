@@ -1425,7 +1425,7 @@ def _retirer_champs_prives(offres):
                 carte.pop(cle, None)
 
 
-def offres_tailles_publique(devis, data):
+def offres_tailles_publique(devis, data, cles_servies=None):
     """Le bloc pour le payload public — best-effort, ne lève JAMAIS.
 
     MÊME patron que ``_echelle_paliers_batterie_publique`` : toute exception
@@ -1437,17 +1437,39 @@ def offres_tailles_publique(devis, data):
     économies, payback, couverture) — jamais un prix d'achat, jamais une marge
     (règle #4), jamais un calibre ni une nomenclature (anticopie).
 
-    DEUX TAILLES MINIMUM. Une section « Explorer d'autres tailles » qui n'en
-    montre qu'UNE n'explore rien : la clé est alors ABSENTE plutôt que servie
-    à moitié. L'API vendeur, elle, sert TOUT ce qui est dérivable (même une
-    seule taille) — c'est un écran d'édition, pas une comparaison.
+    ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026). ``cles_servies`` est
+    l'ensemble des tailles que CE LIEN sert (``{'eco', 'recommande', 'max'}``
+    au maximum), lu par l'appelant sur ``ShareLink.sections`` — ``None``
+    (défaut) = tout est servi, donc tout lien existant garde ses trois cartes.
+    Le filtrage a lieu ICI, sur le bloc DÉJÀ dérivé, et jamais dans la
+    dérivation : « ce qui change » (``familles_diff``) se calcule contre
+    « Recommandé », et la convergence collapse en le regardant lui aussi.
+    Retirer une taille en amont changerait donc les CHIFFRES des cartes
+    restantes — le client verrait deux pages différentes pour un même devis
+    selon ce que le vendeur a coché.
+
+    DEUX TAILLES MINIMUM, ET LE SEUIL PORTE SUR LES CARTES SERVIES. Une
+    section « Explorer d'autres tailles » qui n'en montre qu'UNE n'explore
+    rien : la clé est alors ABSENTE plutôt que servie à moitié — c'est
+    exactement ce que le vendeur DEMANDE quand il n'envoie qu'une option.
+    L'API vendeur, elle, sert TOUT ce qui est dérivable (même une seule
+    taille) — c'est un écran d'édition, pas une comparaison.
     """
     try:
         bloc = deriver(devis, data)
     except Exception:  # noqa: BLE001
         logger.warning('offres_tailles indisponible', exc_info=True)
         return None
-    if not bloc or len(bloc.get('offres') or []) < 2:
+    if not bloc:
+        return None
+    if cles_servies is not None:
+        # « Recommandé » n'est jamais retirable : c'est LE devis (la seule
+        # carte autorisée à ouvrir la signature).
+        gardees = set(cles_servies) | {'recommande'}
+        bloc = dict(bloc)
+        bloc['offres'] = [o for o in (bloc.get('offres') or [])
+                          if o.get('cle') in gardees]
+    if len(bloc.get('offres') or []) < 2:
         return None
     return bloc
 

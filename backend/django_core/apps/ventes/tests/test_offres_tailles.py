@@ -766,6 +766,57 @@ class DerivationTests(SimpleTestCase):
                                side_effect=RuntimeError('moteur cassé')):
             self.assertIsNone(ot.offres_tailles_publique(devis, {}))
 
+    # ── ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) ───────────────────────
+    #
+    # Le vendeur choisit dans le dialogue d'envoi COMBIEN de tailles le client
+    # voit. Le filtrage a lieu APRÈS la dérivation — filtrer avant changerait
+    # les chiffres des cartes restantes (« ce qui change » se calcule contre
+    # Recommandé, et la convergence le regarde lui aussi).
+
+    def _publique(self, cles_servies):
+        devis = SimpleNamespace(reference='DEV-X')
+        trois = {'offres': [{'cle': 'eco'}, {'cle': 'recommande'},
+                            {'cle': 'max'}]}
+        with mock.patch.object(ot, 'deriver', return_value=trois):
+            return ot.offres_tailles_publique(devis, {}, cles_servies)
+
+    def test_ENVOI_defaut_None_sert_les_trois_tailles(self):
+        # Tout lien DÉJÀ envoyé (aucune case posée) garde ses trois cartes.
+        bloc = self._publique(None)
+        self.assertEqual([o['cle'] for o in bloc['offres']],
+                         ['eco', 'recommande', 'max'])
+
+    def test_ENVOI_deux_options_ne_sert_que_la_taille_gardee(self):
+        for gardee in ('eco', 'max'):
+            with self.subTest(gardee=gardee):
+                bloc = self._publique({'recommande', gardee})
+                self.assertEqual(
+                    sorted(o['cle'] for o in bloc['offres']),
+                    sorted(['recommande', gardee]))
+
+    def test_ENVOI_une_seule_option_fait_DISPARAITRE_la_section(self):
+        # C'est exactement ce que le vendeur demande : la page redevient
+        # celle d'avant les cartes. Le seuil de deux porte sur les cartes
+        # SERVIES, pas sur les cartes dérivables.
+        self.assertIsNone(self._publique({'recommande'}))
+
+    def test_ENVOI_recommande_n_est_JAMAIS_retirable(self):
+        # C'est LE devis : la seule carte autorisée à ouvrir la signature.
+        # Même un ensemble qui l'oublie le récupère.
+        bloc = self._publique({'eco', 'max'})
+        self.assertIn('recommande', [o['cle'] for o in bloc['offres']])
+
+    def test_ENVOI_le_filtrage_ne_MUTE_pas_le_bloc_derive(self):
+        # Le bloc dérivé est aussi lu par l'API vendeur et par les dessins
+        # par option : le filtrage public ne doit pas le rogner sous eux.
+        devis = SimpleNamespace(reference='DEV-X')
+        trois = {'offres': [{'cle': 'eco'}, {'cle': 'recommande'},
+                            {'cle': 'max'}]}
+        with mock.patch.object(ot, 'deriver', return_value=trois):
+            ot.offres_tailles_publique(devis, {}, {'recommande', 'eco'})
+        self.assertEqual([o['cle'] for o in trois['offres']],
+                         ['eco', 'recommande', 'max'])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. LE CONTRAT (PACT10) — la forme servie EST la forme partagée
@@ -848,6 +899,21 @@ class ContratTests(SimpleTestCase):
                         ot._prix_par_kwc(carte['prix_ttc'],
                                          carte['puissance_kwc']),
                         '%s/%s/%s' % (cle, offre['cle'], variante))
+
+    def test_le_contrat_declare_les_DEUX_cases_d_envoi_de_tailles(self):
+        # PACT10 — la lane web et la lane ERP construisent CONTRE ce fichier :
+        # les deux clés de sections doivent y être nommées, et le contrat doit
+        # dire que « Recommandé » n'est pas retirable (sans quoi le dialogue
+        # d'envoi finirait par proposer de la décocher).
+        note = self.contrat['notes']['options_envoyees']
+        for cle in ('taille_eco', 'taille_max'):
+            self.assertIn(cle, note)
+            self.assertIn(cle, ShareLink.SECTIONS_CLES)
+        self.assertNotIn('taille_recommande', ShareLink.SECTIONS_CLES)
+
+    def test_le_contrat_dit_que_le_seuil_porte_sur_les_cartes_SERVIES(self):
+        self.assertIn('SERVIES',
+                      self.contrat['notes']['deux_tailles_minimum'])
 
     def test_aucun_champ_PRIVE_ne_figure_au_contrat(self):
         brut = CONTRAT.read_text(encoding='utf-8')
