@@ -73,24 +73,33 @@ def _tableau(*paires):
 
 
 def _contexte_factice(devis, *, module_kwh=5.0, capacite=None, plafond=None,
-                      remise=1.0):
+                      physique=None, remise=1.0):
     """Un contexte de dérivation sans catalogue ni base — la mécanique seule.
 
-    DEUX NOMBRES DE TOIT, ET C'EST TOUT LE SUJET DE LA CORRECTION DU 26/08/2026.
+    TROIS NOMBRES DE TOIT, ET LEUR HIÉRARCHIE EST TOUT LE SUJET.
     ``plafond`` est ce que le commercial a DESSINÉ
     (``dimensionnement.plafond_toit_du_devis``) ; ``capacite`` est ce que la
-    géométrie réelle TIENT (``calepinage_options.capacite_toit_du_devis``).
-    ``toit_max`` — le seul que la dérivation lit — est leur maximum, recopié ici
-    EAGERLY parce qu'un ``SimpleNamespace`` ne porte pas la propriété du vrai
-    :class:`~apps.ventes.offres_tailles._Contexte`. Un test qui veut bouger le
-    verdict de toit doit donc réécrire ``toit_max``, pas seulement ``plafond``.
+    géométrie réelle TIENT (``calepinage_options.capacite_toit_du_devis``) ;
+    ``physique`` est le MUR du tracé client (``aire ÷ empreinte``,
+    ``dimensionnement.plafond_physique_du_devis``), ajouté le 28/08/2026 —
+    c'est la seule borne qui subsiste sur un devis AUTOMATIQUE, dont le layout
+    contour-seul n'a rien de mesurable.
+
+    ``toit_max`` — le seul que la dérivation lit — est recopié ici EAGERLY
+    (un ``SimpleNamespace`` ne porte pas la propriété du vrai
+    :class:`~apps.ventes.offres_tailles._Contexte`) MAIS IL EST CALCULÉ PAR LA
+    VRAIE RÈGLE (``dimensionnement.plus_grande_contenance``) : une fixture qui
+    réimplémenterait la hiérarchie finirait par diverger de la production, et
+    ces tests-ci verdiraient sur une règle qui n'existe plus. Un test qui veut
+    bouger le verdict de toit peut toujours réécrire ``toit_max`` directement.
     """
-    valeurs = [int(v) for v in (capacite, plafond) if v]
+    from apps.ventes.dimensionnement import plus_grande_contenance
     contexte = SimpleNamespace(
         devis=devis, entrees={}, panel_watt=710.0, catalogue=[],
         marques={}, ordre=[], module_batterie_kwh=module_kwh,
         facteur_remise=remise, plafond_toit=plafond, capacite_toit=capacite,
-        toit_max=max(valeurs) if valeurs else None)
+        plafond_physique=physique,
+        toit_max=plus_grande_contenance(capacite, plafond, physique))
     contexte.etude_kwargs = {}
     return contexte
 
@@ -410,6 +419,31 @@ class CarteDuDevisTests(SimpleTestCase):
         self.assertIs(
             ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], True)
 
+    def test_une_taille_SOUS_le_mur_physique_n_est_jamais_dite_hors_toit(self):
+        # DEVIS AUTOMATIQUE (28/08/2026) : rien de mesurable, 22 panneaux
+        # vendus/dessinés, un tracé qui en porte 60. La carte de 26 panneaux
+        # tient — la marquer « dépasse votre toit » parce qu'elle dépasse le
+        # champ VENDU serait exactement l'accusation fausse que la correction
+        # de Max supprime.
+        contexte = self._contexte()
+        contexte.plafond_toit = 22
+        contexte.capacite_toit = None
+        contexte.plafond_physique = 60
+        contexte.toit_max = 60
+        self.assertIs(
+            ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], True)
+
+    def test_le_mur_physique_dit_quand_meme_NON_a_l_impossible(self):
+        # La borne reste une borne : 26 panneaux sur un tracé qui n'en porte
+        # que 24, c'est faux, et la carte doit le dire.
+        contexte = self._contexte()
+        contexte.plafond_toit = 22
+        contexte.capacite_toit = None
+        contexte.plafond_physique = 24
+        contexte.toit_max = 24
+        self.assertIs(
+            ot._carte_du_devis(contexte, self.DATA, 'avec')['toit_ok'], False)
+
     def test_devis_sans_taille_servie_aucune_carte(self):
         contexte = self._contexte()
         self.assertIsNone(ot._carte_du_devis(contexte, {}, 'sans'))
@@ -425,12 +459,12 @@ class DerivationTests(SimpleTestCase):
     DATA = {'nb_panneaux_sans': 22, 'variantes_servables': ['sans', 'avec']}
 
     def _deriver(self, *, tableau, data=None, config=None, plafond=None,
-                 capacite=None, cartes=None):
+                 capacite=None, physique=None, cartes=None):
         devis = SimpleNamespace(
             etude_params={'dimensionnement': {'tableau': tableau}},
             offres_tailles_config=config, reference='DEV-X')
         contexte = _contexte_factice(devis, plafond=plafond,
-                                     capacite=capacite)
+                                     capacite=capacite, physique=physique)
         cartes = cartes or {'sans': _carte(), 'avec': _carte()}
 
         def _moteur(_contexte_, nb, _config=None, *, avec_servable=True):
@@ -537,6 +571,77 @@ class DerivationTests(SimpleTestCase):
         maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
         self.assertEqual(maxi['sans']['nb_panneaux'], 34)
         self.assertNotIn('plafond_toit_panneaux', bloc)
+
+    # ── DEVIS AUTOMATIQUE : LE LAYOUT CONTOUR-SEUL (28/08/2026) ───────────
+    #
+    # ``services.zone_toit_depuis_contour`` pose le tracé du client et écrit
+    # ``result.panels`` = LA CIBLE VENDUE, sans sérialiser un seul panneau.
+    # Donc : ``capacite_toit`` = None (rien à mesurer) et ``plafond_toit`` =
+    # le champ du devis. Lire ce dernier comme un plafond de toit effondrait
+    # Max sur Recommandé sur TOUS les devis automatiques — et la simple
+    # présence du layout court-circuitait le repli « dernière taille éligible ».
+
+    def test_devis_AUTO_contour_seul_max_redevient_la_derniere_taille(self):
+        # LE BUG ORDONNÉ, REPRODUIT : 22 panneaux vendus et dessinés, aucune
+        # géométrie mesurable, un tracé qui pourrait en porter 60. Max doit
+        # valoir 34 (la dernière taille éligible), PAS 22.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)),
+            plafond=22, capacite=None, physique=60)
+        cles = [o['cle'] for o in bloc['offres']]
+        self.assertEqual(cles, ['eco', 'recommande', 'max'])
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        recommande = next(o for o in bloc['offres']
+                          if o['cle'] == 'recommande')
+        self.assertEqual(maxi['sans']['nb_panneaux'], 34)
+        self.assertGreater(maxi['sans']['nb_panneaux'],
+                           recommande['sans']['nb_panneaux'])
+
+    def test_devis_AUTO_sans_trace_exploitable_max_reste_le_balayage(self):
+        # Aucun mur physique lisible (pas de fiche technique, tracé illisible) :
+        # le dessin ne reprend PAS la main pour autant. Max reste la dernière
+        # taille éligible — jamais le champ vendu.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)),
+            plafond=22, capacite=None, physique=None)
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        self.assertEqual(maxi['sans']['nb_panneaux'], 34)
+
+    def test_le_MUR_PHYSIQUE_du_trace_plafonne_vraiment_max(self):
+        # Un petit toit : le balayage irait à 34, la surface n'en porte que 26.
+        # Max est PLAFONNÉ, jamais proposé au-delà du physiquement possible.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)),
+            plafond=22, capacite=None, physique=26)
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        self.assertEqual(maxi['sans']['nb_panneaux'], 26)
+
+    def test_le_mur_physique_ne_PROPOSE_jamais_un_champ(self):
+        # Le mur (60) est au-dessus de tout le balayage (34) : il ne fait que
+        # refuser l'impossible, il ne pousse JAMAIS Max au-delà d'une taille
+        # que le balayage a réellement jugée éligible.
+        bloc = self._deriver(tableau=_tableau((10, 6.0), (22, 8.0)),
+                             plafond=22, capacite=None, physique=60)
+        # 22 == le devis : Max converge et disparaît plutôt que d'inventer 60.
+        self.assertNotIn('max', [o['cle'] for o in bloc['offres']])
+
+    def test_le_mur_physique_n_est_JAMAIS_publie_comme_plafond_de_toit(self):
+        # « plafond_toit_panneaux » nomme LA CONTENANCE MESURÉE. Le mur (aire ÷
+        # empreinte) est large par construction : le publier sous ce nom
+        # annoncerait au client un toit qu'aucun calepinage ne saurait remplir.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)),
+            plafond=22, capacite=None, physique=60)
+        self.assertNotIn('plafond_toit_panneaux', bloc)
+
+    def test_le_compte_DESSINE_seul_ne_publie_aucun_plafond(self):
+        # Ni contenance ni tracé : aucune borne de toit, donc aucune clé — et
+        # surtout pas le champ vendu déguisé en plafond.
+        bloc = self._deriver(
+            tableau=_tableau((10, 6.0), (22, 8.0), (34, 11.0)), plafond=22)
+        self.assertNotIn('plafond_toit_panneaux', bloc)
+        maxi = next(o for o in bloc['offres'] if o['cle'] == 'max')
+        self.assertEqual(maxi['sans']['nb_panneaux'], 34)
 
     def test_CONVERGENCE_recommande_survit_jamais_eco(self):
         # LE piège. Optimum == devis == 22 panneaux : dédupliquer dans l'ordre
@@ -661,6 +766,57 @@ class DerivationTests(SimpleTestCase):
                                side_effect=RuntimeError('moteur cassé')):
             self.assertIsNone(ot.offres_tailles_publique(devis, {}))
 
+    # ── ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) ───────────────────────
+    #
+    # Le vendeur choisit dans le dialogue d'envoi COMBIEN de tailles le client
+    # voit. Le filtrage a lieu APRÈS la dérivation — filtrer avant changerait
+    # les chiffres des cartes restantes (« ce qui change » se calcule contre
+    # Recommandé, et la convergence le regarde lui aussi).
+
+    def _publique(self, cles_servies):
+        devis = SimpleNamespace(reference='DEV-X')
+        trois = {'offres': [{'cle': 'eco'}, {'cle': 'recommande'},
+                            {'cle': 'max'}]}
+        with mock.patch.object(ot, 'deriver', return_value=trois):
+            return ot.offres_tailles_publique(devis, {}, cles_servies)
+
+    def test_ENVOI_defaut_None_sert_les_trois_tailles(self):
+        # Tout lien DÉJÀ envoyé (aucune case posée) garde ses trois cartes.
+        bloc = self._publique(None)
+        self.assertEqual([o['cle'] for o in bloc['offres']],
+                         ['eco', 'recommande', 'max'])
+
+    def test_ENVOI_deux_options_ne_sert_que_la_taille_gardee(self):
+        for gardee in ('eco', 'max'):
+            with self.subTest(gardee=gardee):
+                bloc = self._publique({'recommande', gardee})
+                self.assertEqual(
+                    sorted(o['cle'] for o in bloc['offres']),
+                    sorted(['recommande', gardee]))
+
+    def test_ENVOI_une_seule_option_fait_DISPARAITRE_la_section(self):
+        # C'est exactement ce que le vendeur demande : la page redevient
+        # celle d'avant les cartes. Le seuil de deux porte sur les cartes
+        # SERVIES, pas sur les cartes dérivables.
+        self.assertIsNone(self._publique({'recommande'}))
+
+    def test_ENVOI_recommande_n_est_JAMAIS_retirable(self):
+        # C'est LE devis : la seule carte autorisée à ouvrir la signature.
+        # Même un ensemble qui l'oublie le récupère.
+        bloc = self._publique({'eco', 'max'})
+        self.assertIn('recommande', [o['cle'] for o in bloc['offres']])
+
+    def test_ENVOI_le_filtrage_ne_MUTE_pas_le_bloc_derive(self):
+        # Le bloc dérivé est aussi lu par l'API vendeur et par les dessins
+        # par option : le filtrage public ne doit pas le rogner sous eux.
+        devis = SimpleNamespace(reference='DEV-X')
+        trois = {'offres': [{'cle': 'eco'}, {'cle': 'recommande'},
+                            {'cle': 'max'}]}
+        with mock.patch.object(ot, 'deriver', return_value=trois):
+            ot.offres_tailles_publique(devis, {}, {'recommande', 'eco'})
+        self.assertEqual([o['cle'] for o in trois['offres']],
+                         ['eco', 'recommande', 'max'])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. LE CONTRAT (PACT10) — la forme servie EST la forme partagée
@@ -743,6 +899,21 @@ class ContratTests(SimpleTestCase):
                         ot._prix_par_kwc(carte['prix_ttc'],
                                          carte['puissance_kwc']),
                         '%s/%s/%s' % (cle, offre['cle'], variante))
+
+    def test_le_contrat_declare_les_DEUX_cases_d_envoi_de_tailles(self):
+        # PACT10 — la lane web et la lane ERP construisent CONTRE ce fichier :
+        # les deux clés de sections doivent y être nommées, et le contrat doit
+        # dire que « Recommandé » n'est pas retirable (sans quoi le dialogue
+        # d'envoi finirait par proposer de la décocher).
+        note = self.contrat['notes']['options_envoyees']
+        for cle in ('taille_eco', 'taille_max'):
+            self.assertIn(cle, note)
+            self.assertIn(cle, ShareLink.SECTIONS_CLES)
+        self.assertNotIn('taille_recommande', ShareLink.SECTIONS_CLES)
+
+    def test_le_contrat_dit_que_le_seuil_porte_sur_les_cartes_SERVIES(self):
+        self.assertIn('SERVIES',
+                      self.contrat['notes']['deux_tailles_minimum'])
 
     def test_aucun_champ_PRIVE_ne_figure_au_contrat(self):
         brut = CONTRAT.read_text(encoding='utf-8')

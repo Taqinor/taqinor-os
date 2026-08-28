@@ -99,6 +99,42 @@ class TestSectionsModele(SectionsBase):
         self.assertTrue(link.section_servie('roof3d'))
 
 
+class TestTaillesServies(TestCase):
+    """ENVOI 1/2/3 OPTIONS — la lecture des deux cases, isolée."""
+
+    def _servies(self, sections):
+        from apps.ventes.public_views import _tailles_servies
+        return _tailles_servies(ShareLink(sections=sections))
+
+    def test_recommande_est_TOUJOURS_servie(self):
+        # C'est LE devis. Aucune case ne la retire, y compris quand les deux
+        # autres sont décochées.
+        for sections in ({}, {'taille_eco': False, 'taille_max': False}):
+            with self.subTest(sections=sections):
+                self.assertIn('recommande', self._servies(sections))
+
+    def test_absentes_les_trois_tailles_sont_servies(self):
+        self.assertEqual(self._servies({}),
+                         {'eco', 'recommande', 'max'})
+
+    def test_chaque_case_retire_SA_taille(self):
+        self.assertEqual(self._servies({'taille_eco': False}),
+                         {'recommande', 'max'})
+        self.assertEqual(self._servies({'taille_max': False}),
+                         {'eco', 'recommande'})
+
+    def test_les_deux_false_ne_laissent_que_le_devis(self):
+        self.assertEqual(
+            self._servies({'taille_eco': False, 'taille_max': False}),
+            {'recommande'})
+
+    def test_les_deux_cles_sont_dans_la_whitelist(self):
+        # Sans quoi l'action share-link les refuserait en 400 et le dialogue
+        # d'envoi ne pourrait rien poser.
+        self.assertIn('taille_eco', ShareLink.SECTIONS_CLES)
+        self.assertIn('taille_max', ShareLink.SECTIONS_CLES)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # (b) Action share-link
 # ═══════════════════════════════════════════════════════════════════════════
@@ -276,6 +312,64 @@ class TestPayloadSections(SectionsBase):
             retire = self._payload(self._lien(devis, {'gammes': False}))
         self.assertIsNotNone(servi['gammes'])
         self.assertIsNone(retire['gammes'])
+
+    # ── tailles : ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) ────────────
+    #
+    # Deux cases seulement — `taille_eco` et `taille_max`. « Recommandé » n'en
+    # a pas : c'est LE devis, la seule carte autorisée à ouvrir la signature.
+    # La dérivation est bouchonnée (elle a ses propres tests dans
+    # test_offres_tailles) : ce qu'on éprouve ici, c'est le CÂBLAGE lien →
+    # payload.
+
+    TROIS_TAILLES = {
+        'avec_servable': False,
+        'offres': [{'cle': 'eco', 'titre': 'Éco'},
+                   {'cle': 'recommande', 'titre': 'Recommandé'},
+                   {'cle': 'max', 'titre': 'Max'}],
+    }
+
+    def _tailles(self, devis, sections=None):
+        """Les clés de tailles réellement SERVIES par ce lien (``None`` = la
+        section entière est absente du payload)."""
+        with mock.patch('apps.ventes.offres_tailles.deriver',
+                        return_value=dict(self.TROIS_TAILLES)):
+            payload = self._payload(self._lien(devis, sections))
+        bloc = payload.get('offres_tailles')
+        if bloc is None:
+            return None
+        return [o['cle'] for o in bloc['offres']]
+
+    def test_tailles_absentes_de_sections_servent_les_TROIS(self):
+        # Additif : tout lien DÉJÀ envoyé garde exactement ses trois cartes.
+        self.assertEqual(self._tailles(self._devis()),
+                         ['eco', 'recommande', 'max'])
+
+    def test_taille_eco_false_retire_la_carte_eco_et_elle_seule(self):
+        self.assertEqual(self._tailles(self._devis(), {'taille_eco': False}),
+                         ['recommande', 'max'])
+
+    def test_taille_max_false_retire_la_carte_max_et_elle_seule(self):
+        self.assertEqual(self._tailles(self._devis(), {'taille_max': False}),
+                         ['eco', 'recommande'])
+
+    def test_les_deux_false_font_disparaitre_la_SECTION(self):
+        # UNE option envoyée = la page d'avant ce chantier : pas de section
+        # « Explorer d'autres tailles » (une carte seule n'explore rien).
+        self.assertIsNone(self._tailles(
+            self._devis(), {'taille_eco': False, 'taille_max': False}))
+
+    def test_true_explicite_sert_la_taille(self):
+        self.assertEqual(
+            self._tailles(self._devis(),
+                          {'taille_eco': True, 'taille_max': True}),
+            ['eco', 'recommande', 'max'])
+
+    def test_economies_false_retire_les_tailles_meme_cochees(self):
+        # Ce bloc EST un bloc d'économies : la case « Économies » ne doit pas
+        # être contournable par les cases de tailles.
+        self.assertIsNone(self._tailles(
+            self._devis(), {'economies': False, 'taille_eco': True,
+                            'taille_max': True}))
 
     # ── aucune case ne change les montants ni le niveau ──────────────────
     def test_toutes_cases_decochees_laisse_les_montants_intacts(self):

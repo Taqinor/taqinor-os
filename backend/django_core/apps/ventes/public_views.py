@@ -1943,7 +1943,23 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
         return {'sans': None, 'avec': None}
 
 
-def _offres_tailles_publique(devis, data, est_residentiel):
+def _tailles_servies(link):
+    """ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) — les tailles de CE lien.
+
+    Deux cases seulement (``taille_eco``, ``taille_max``), même sémantique à
+    trois états que toutes les autres sections : absente ⇒ servie, donc tout
+    lien déjà envoyé garde ses trois cartes. « Recommandé » n'a pas de case et
+    n'en aura pas : c'est LE devis, la seule carte autorisée à ouvrir la
+    signature."""
+    servies = {'recommande'}
+    if _section_servie(link, 'taille_eco'):
+        servies.add('eco')
+    if _section_servie(link, 'taille_max'):
+        servies.add('max')
+    return servies
+
+
+def _offres_tailles_publique(devis, data, est_residentiel, cles_servies=None):
     """TAILLES (ordre fondateur, 26/08/2026) — clé ``offres_tailles`` : les
     TROIS tailles d'installation explorables (Éco → Recommandé → Max), chacune
     servie dans ses deux variantes ``sans``/``avec`` batterie (contrat
@@ -1966,12 +1982,18 @@ def _offres_tailles_publique(devis, data, est_residentiel):
     ne porte que des tailles/prix TTC/économies/paybacks/couvertures déjà
     publics ailleurs sur la page — jamais un prix d'achat ni une marge
     (règle #4), jamais un calibre ni une nomenclature (anticopie). Best-effort :
-    un bloc additif ne fait jamais tomber la page d'un client."""
+    un bloc additif ne fait jamais tomber la page d'un client.
+
+    ``cles_servies`` (28/08/2026) porte le choix « 1 / 2 / 3 options » du
+    dialogue d'envoi, lu par :func:`_tailles_servies` sur ``ShareLink.sections``
+    — ``None`` = tout servi. Le seuil « deux tailles minimum » s'applique aux
+    cartes SERVIES : n'envoyer que « Recommandé » fait donc disparaître la
+    section entière, ce qui est exactement ce que le vendeur a demandé."""
     if not est_residentiel:
         return None
     try:
         from .offres_tailles import offres_tailles_publique
-        return offres_tailles_publique(devis, data)
+        return offres_tailles_publique(devis, data, cles_servies)
     except Exception:  # noqa: BLE001
         logger.warning('offres_tailles indisponible', exc_info=True)
         return None
@@ -2802,8 +2824,14 @@ def proposal_data(request, token):
         # commercial qui décoche « Économies » dans le dialogue d'envoi doit
         # les voir partir ENSEMBLE ; les servir ici rendrait la case
         # contournable par une autre section de la même page.
+        # ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) — les cases
+        # `taille_eco` / `taille_max` du MÊME dialogue disent combien de
+        # tailles ce client voit. Une seule servie ⇒ la section disparaît
+        # (`offres_tailles_publique` : le seuil de deux porte sur les cartes
+        # SERVIES) — et avec elle les dessins par option, qui la lisent.
         _offres_tailles = (
-            _offres_tailles_publique(devis, data, _resid_public)
+            _offres_tailles_publique(devis, data, _resid_public,
+                                     _tailles_servies(link))
             if _section_servie(link, 'economies') else None)
         if _offres_tailles is not None:
             payload['offres_tailles'] = _offres_tailles
