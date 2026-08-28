@@ -2375,7 +2375,7 @@ const signConfig = ok
                             {va.productionAnnuelleKwh !== null && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</dt>
-                                <dd class="fig text-lune-soft" dir="ltr">{formatNumber(va.productionAnnuelleKwh, 0)} kWh</dd>
+                                <dd class="fig text-lune-soft" dir="ltr"><span data-taille-production-value>{formatNumber(va.productionAnnuelleKwh, 0)}</span> kWh</dd>
                               </div>
                             )}
                             {va.economiesCumulees25AnsMad !== null && (
@@ -4037,18 +4037,27 @@ const signConfig = ok
 
           {/* ── Le résumé annuel EN CHIFFRES, sous le graphe (jamais un chiffre
                  recalculé : exactement ceux du devis backend). ───────────── */}
+          {/* data-hero-production-card/-value et data-hero-eco-annual-card/-value —
+              LANE W (extension, revue Fable) : MÊME discipline que le héros
+              (copier le texte déjà rendu par la carte sélectionnée, masquer
+              l'item ENTIER quand elle ne sert pas ce champ, restaurer le
+              texte mis en cache sur Recommandé + variante par défaut). Ce
+              bandeau « Économie estimée / an » est un NŒUD DISTINCT du
+              créneau `data-hero-eco-value` du héros (même donnée `ecoHero`,
+              deux endroits de la page) — il porte donc son propre crochet,
+              jamais partagé. */}
           {(prodKwh || ecoHero) && (
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               {prodKwh ? (
-                <div class="cine-card rounded-xl p-5">
+                <div class="cine-card rounded-xl p-5" data-hero-production-card>
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-en="Estimated production / year" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
-                  <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
+                  <p class="fig fig-md mt-2 text-lune" dir="ltr"><span data-hero-production-value>{formatNumber(prodKwh)}</span> <span class="text-lg text-lune-soft">kWh</span></p>
                 </div>
               ) : null}
               {ecoHero ? (
-                <div class="cine-card rounded-xl p-5">
+                <div class="cine-card rounded-xl p-5" data-hero-eco-annual-card>
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Économie estimée / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économie estimée / an</p>
-                  <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ecoHero)}</p>
+                  <p class="fig fig-md lum mt-2" dir="ltr"><span data-hero-eco-annual-value>{formatMAD(ecoHero)}</span></p>
                 </div>
               ) : null}
             </div>
@@ -4199,8 +4208,18 @@ const signConfig = ok
                     pourcentage servi (longueur d'arc = circonférence × pct/100).
                     Le moteur borne déjà 1..100 : 100 % ne s'affiche que si le
                     backend dit production ≥ consommation. */}
+                {/* data-hero-couverture-card — LANE W (extension, revue Fable) :
+                    l'anneau `stroke-dasharray` est un ARC géométrique PRÉCALCULÉ
+                    au chargement (`donutDash`/`donutCirc`, une vraie
+                    circonférence × pourcentage) — le recalculer en JS pour
+                    suivre une autre carte serait EXACTEMENT le calcul côté
+                    client interdit. Plutôt qu'un anneau FIGÉ sous un nouveau
+                    pourcentage (un mensonge visuel), la carte ENTIÈRE est
+                    MASQUÉE hors de Recommandé + variante par défaut, et
+                    redémasquée au retour — jamais un readback, jamais un
+                    second calcul de géométrie. */}
                 {showCouvertureDonut && couverture && (
-                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2">
+                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2" data-hero-couverture-card>
                     <svg viewBox="0 0 100 100" width="112" height="112" class="shrink-0" role="img"
                       aria-label={`Couverture solaire : ${formatNumber(couverture.pct, 0)} %`}>
                       <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-lune-faint)" stroke-opacity="0.22" stroke-width="10" />
@@ -8199,10 +8218,28 @@ const signConfig = ok
     const heroPanneauxItem = document.querySelector<HTMLElement>('[data-hero-panneaux-item]');
     const heroPanneauxValue = document.querySelector<HTMLElement>('[data-hero-panneaux-value]');
     const heroLegendSep = document.querySelector<HTMLElement>('[data-hero-legend-sep]');
+    // EXTENSION (revue Fable) — le bandeau « Production estimée / an » et le
+    // bandeau « Économie estimée / an » du chapitre production sont des
+    // NŒUDS DISTINCTS du héros (`#prop-fold-figures`) : même donnée, deux
+    // endroits de page, donc deux crochets `data-hero-*` propres — jamais un
+    // sélecteur partagé qui masquerait l'un en croyant piloter l'autre.
+    const heroProductionCard = document.querySelector<HTMLElement>('[data-hero-production-card]');
+    const heroProductionValue = document.querySelector<HTMLElement>('[data-hero-production-value]');
+    const heroEcoAnnualCard = document.querySelector<HTMLElement>('[data-hero-eco-annual-card]');
+    const heroEcoAnnualValue = document.querySelector<HTMLElement>('[data-hero-eco-annual-value]');
+    // La carte « Couverture solaire » porte un ANNEAU SVG dont l'arc
+    // (`stroke-dasharray`) est une géométrie PRÉCALCULÉE au chargement — la
+    // recalculer en JS pour suivre une autre carte serait exactement le
+    // calcul côté client interdit. Elle n'a donc PAS de crochet de valeur :
+    // elle est MASQUÉE en bloc hors de Recommandé (jamais un anneau figé
+    // sous un nouveau pourcentage), et redémasquée au retour.
+    const heroCouvertureCard = document.querySelector<HTMLElement>('[data-hero-couverture-card]');
     const heroTtcOriginal = heroTtcValue?.textContent ?? null;
     const heroEcoOriginal = heroEcoValue?.textContent ?? null;
     const heroKwcOriginal = heroKwcValue?.textContent ?? null;
     const heroPanneauxOriginal = heroPanneauxValue?.textContent ?? null;
+    const heroProductionOriginal = heroProductionValue?.textContent ?? null;
+    const heroEcoAnnualOriginal = heroEcoAnnualValue?.textContent ?? null;
 
     let variante: 'sans' | 'avec' = varianteDefaut;
     let cle = cleDefaut;
@@ -8273,6 +8310,27 @@ const signConfig = ok
         const panneauxVisible = !!heroPanneauxItem && !heroPanneauxItem.hidden;
         heroLegendSep.hidden = !(kwcVisible && panneauxVisible);
       }
+
+      // EXTENSION (revue Fable) — même discipline pour le bandeau
+      // « Production estimée / an » du chapitre production.
+      appliquerChampHero(
+        heroProductionValue, heroProductionCard, heroProductionOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-production-value]'),
+      );
+      // « Économie estimée / an » lit le MÊME champ carte que le héros
+      // (`data-taille-eco-value`) : ce bandeau n'a jamais rendu de payback au
+      // chargement (il n'existe que sous `ecoHero`), donc aucun risque de
+      // croisement eco/payback ici — pas besoin d'un `data-hero-*-kind`.
+      appliquerChampHero(
+        heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-eco-value]'),
+      );
+
+      // L'anneau de couverture ne PEUT PAS suivre honnêtement (son arc est
+      // une géométrie précalculée, pas un texte à copier) : la carte entière
+      // est masquée hors de Recommandé plutôt que de montrer un anneau figé
+      // sous un nouveau pourcentage — jamais un second calcul de géométrie.
+      if (heroCouvertureCard) heroCouvertureCard.hidden = !surLeDefaut;
     }
 
     function appliquer(): void {

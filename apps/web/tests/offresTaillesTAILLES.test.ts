@@ -1212,4 +1212,90 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     expect(corpsFn).toContain('if (surLeDefaut) {');
     expect(corpsFn).toContain('item.hidden = false;');
   });
+
+  // ── EXTENSION (revue Fable, ordre fondateur) — LES BANDEAUX RESTANTS ───────
+  // « le détail de la page suit la carte » couvre aussi la production, le
+  // bandeau « Économie estimée / an » (distinct du héros) et la couverture —
+  // avec la MÊME discipline copier/masquer/restaurer, sauf pour l'anneau de
+  // couverture (voir plus bas : son arc ne peut pas honnêtement suivre).
+
+  it('la carte porte le crochet PRODUCTION, jumeau du crochet du bandeau', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc, 'data-taille-production-value').toContain('data-taille-production-value');
+    // Le nombre SEUL est isolé — jamais « kWh » dupliqué en copiant le texte
+    // (le bandeau porte déjà son propre « kWh » statique).
+    expect(bloc).toContain('<span data-taille-production-value>{formatNumber(va.productionAnnuelleKwh, 0)}</span> kWh');
+  });
+
+  it('le bandeau PRODUCTION suit la carte, avec les mêmes hooks card/value que le héros', () => {
+    expect(CODE).toContain('data-hero-production-card');
+    expect(CODE).toContain('data-hero-production-value');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-production-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-production-value]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroProductionValue, heroProductionCard, heroProductionOriginal, surLeDefaut');
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-production-value]')");
+    // Même garde-fou zéro-calcul : pas de readback `?? heroProductionOriginal`
+    // hors de `appliquerChampHero` (qui, lui, restaure QUE sur `surLeDefaut`).
+    expect(synchro).not.toContain('?? heroProductionOriginal');
+  });
+
+  it('le bandeau « Économie estimée / an » est un NŒUD DISTINCT du héros — jamais un sélecteur partagé', () => {
+    // La faille ciblée par la demande : ce bandeau vit dans le chapitre
+    // production (`prodKwh || ecoHero`), le héros vit dans #prop-fold-figures
+    // — deux endroits, donc deux crochets, jamais `data-hero-eco-value` réutilisé
+    // (qui masquerait ou écrirait le MAUVAIS nœud).
+    expect(CODE).toContain('data-hero-eco-annual-card');
+    expect(CODE).toContain('data-hero-eco-annual-value');
+    expect(CODE, 'un span dédié, pas le crochet du héros').toContain(
+      '<span data-hero-eco-annual-value>{formatMAD(ecoHero)}</span>',
+    );
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-annual-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-annual-value]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut');
+    // Ce bandeau ne rend JAMAIS de payback au chargement (seulement sous
+    // `ecoHero`) : il lit donc directement `data-taille-eco-value`, sans le
+    // ternaire `heroEcoKind` du héros — pas de risque de croisement ici.
+    expect(synchro).toContain(
+      "heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut,\n        texteDeLaCarteSelectionnee('[data-taille-eco-value]')",
+    );
+  });
+
+  it('COUVERTURE — l’anneau NE PEUT PAS suivre honnêtement : la carte entière est MASQUÉE, jamais un arc figé', () => {
+    // Branche prise : HIDE. L'arc `stroke-dasharray` est une géométrie
+    // précalculée (circonférence × pourcentage) au chargement — la
+    // recalculer en JS serait exactement le calcul côté client interdit, et
+    // laisser l'ancien arc sous un nouveau pourcentage serait un mensonge
+    // visuel. Donc : ni lecture de carte, ni readback — un simple masquage
+    // inconditionnel hors de Recommandé + variante par défaut.
+    expect(CODE).toContain('data-hero-couverture-card');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-couverture-card]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroCouvertureCard.hidden = !surLeDefaut');
+    // AUCUNE lecture de carte pour ce champ (ni valeur, ni texte de
+    // remplacement) — la garde-fou du bloc entier est la seule logique.
+    expect(synchro).not.toContain('heroCouvertureValue');
+    expect(synchro).not.toContain("texteDeLaCarteSelectionnee('[data-taille-couverture");
+    // Et surtout : aucun calcul de géométrie (circonférence, dasharray) dans
+    // TOUT le script de la section — la règle « zéro calcul » vérifiée pour
+    // le script entier vaut nommément ici.
+    for (const interdit of ['donutDash', 'donutCirc', 'stroke-dasharray', 'Math.PI']) {
+      expect(corps, interdit).not.toContain(interdit);
+    }
+  });
+
+  it('les TROIS nouveaux bandeaux restent sous le prefixe documenté `data-hero-`', () => {
+    // Régression du garde-fou PRÉSERVATION (SORTIES_DOCUMENTEES) : aucun
+    // sélecteur brut par id n'est apparu pour ces trois extensions.
+    const corps = scriptTailles();
+    for (const interdit of [
+      "getElementById('financing-headline')", "getElementById('production')",
+    ]) {
+      expect(corps, interdit).not.toContain(interdit);
+    }
+  });
 });
