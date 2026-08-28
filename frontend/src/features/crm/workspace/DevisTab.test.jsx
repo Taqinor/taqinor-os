@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
+  TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
 } from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -13,7 +14,9 @@ import DevisTab, {
    WhatsApp multi-devis FR/Darija (état `wa` fourni par le parent — ici des
    props contrôlées, comme le fera réellement ContextRail). */
 
-const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.hoisted(() => ({
+const {
+  genererFacture, createFromDevis, whatsappDevis, shareLinkDevis, getOffresTaillesDevis,
+} = vi.hoisted(() => ({
   genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
   createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
   whatsappDevis: vi.fn(() => Promise.resolve({
@@ -30,8 +33,15 @@ const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.ho
       niveau: 'standard', otp_lecture: false,
     },
   })),
+  // LANE E (spec_3_options.md) — DevisOffresTailles.jsx (composant RÉUTILISÉ
+  // tel quel par « Modifier les options ») appelle ce même module ventesApi
+  // au montage : un stub minimal (« pas encore disponible ») suffit ici, ce
+  // composant a déjà ses propres tests dédiés (DevisOffresTailles.test.jsx).
+  getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
 }))
-vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture, shareLinkDevis } }))
+vi.mock('../../../api/ventesApi', () => ({
+  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis },
+}))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
 // salle) pour ne pas polluer ces tests, déjà couverts par son propre test.
@@ -272,10 +282,19 @@ describe('LW22 — WhatsApp multi-devis', () => {
    les boutons copier/ouvrir/WhatsApp. Les tests L5/L-NIV ci-dessous ouvrent
    donc le dialogue avant d'agir, et le corps posté à share-link porte en plus
    `sections` (les 7 clés, toutes à true par défaut). */
-const TOUTES_SECTIONS = {
+// LANE E (spec_3_options.md) — `getSections` fusionne désormais les 7 clés
+// de sections ET les 2 clés de tailles (`taille_eco`/`taille_max`) dans le
+// MÊME objet posté au serveur (défaut = 3 options, donc les deux à `true`) ;
+// tous les tests ci-dessous qui postent « toutes les sections par défaut »
+// portent donc aussi ces deux clés (`TOUTES_SECTIONS`). `sectionsDepuisServeur`
+// reste une fonction pure qui ne connaît QUE les 7 clés historiques
+// (`SECTIONS_SEULES`) — les tailles ont leur propre fonction pure/tests plus
+// bas dans ce fichier.
+const SECTIONS_SEULES = {
   roof3d: true, sld: true, pdf: true, bankable: true,
   economies: true, jour_type: true, gammes: true,
 }
+const TOUTES_SECTIONS = { ...SECTIONS_SEULES, taille_eco: true, taille_max: true }
 const ouvrirEnvoi = (user) => user.click(
   screen.getByRole('button', { name: /Envoyer au client/ }),
 )
@@ -698,15 +717,186 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
   })
 
   it('sectionsDepuisServeur — trois états : absente = servie, false = retirée, true = servie', () => {
-    expect(sectionsDepuisServeur(undefined)).toEqual(TOUTES_SECTIONS)
-    expect(sectionsDepuisServeur({})).toEqual(TOUTES_SECTIONS)
+    expect(sectionsDepuisServeur(undefined)).toEqual(SECTIONS_SEULES)
+    expect(sectionsDepuisServeur({})).toEqual(SECTIONS_SEULES)
     expect(sectionsDepuisServeur({ pdf: false, roof3d: true }))
-      .toEqual({ ...TOUTES_SECTIONS, pdf: false })
+      .toEqual({ ...SECTIONS_SEULES, pdf: false })
   })
 
   it('les libellés des cases couvrent exactement la whitelist serveur', () => {
     expect(SECTIONS_ENVOI.map((s) => s.key)).toEqual([
       'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
     ])
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LANE E (spec_3_options.md, fondateur 28/08/2026) — dialogue « Envoyer au
+   client » : combien de tailles (Éco/Recommandé/Max) le client voit. Backend
+   contract (ShareLink.SECTIONS_CLES étendu, LANE B, déjà mergé sur la branche
+   d'accumulation) : `taille_eco`/`taille_max`, MÊME sémantique trois-états
+   que les 7 clés ci-dessus ; `recommande` n'a pas de clé (toujours servie).
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  const optionsRadiogroup = () => screen.getByRole(
+    'radiogroup', { name: /Nombre d'options présentées — page client de DEV-1/ },
+  )
+  const radio = (label) => within(optionsRadiogroup()).getByRole('radio', { name: label })
+  const eco = () => screen.getByRole('checkbox', { name: /^Taille Éco — page client de DEV-1/ })
+  const max = () => screen.getByRole('checkbox', { name: /^Taille Max — page client de DEV-1/ })
+  const recommande = () => screen.getByRole(
+    'checkbox', { name: /^Taille Recommandé — toujours servie — page client de DEV-1/ },
+  )
+
+  it('défaut = 3 options : curseur sur 3, Éco et Max cochées, Recommandé verrouillée cochée', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    expect(radio('3')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+    expect(max()).toBeChecked()
+    expect(recommande()).toBeChecked()
+    expect(recommande()).toBeDisabled()
+  })
+
+  it('Recommandé ne peut jamais être décochée (case désactivée)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(recommande())
+    expect(recommande()).toBeChecked()
+  })
+
+  it('curseur → cases : 1 décoche Éco ET Max, 2 ne garde que Max, 3 recoche les deux', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('1'))
+    expect(eco()).not.toBeChecked()
+    expect(max()).not.toBeChecked()
+
+    await user.click(radio('2'))
+    expect(eco()).not.toBeChecked()
+    expect(max()).toBeChecked()
+
+    await user.click(radio('3'))
+    expect(eco()).toBeChecked()
+    expect(max()).toBeChecked()
+  })
+
+  it('cases → curseur : décocher Max depuis 3 ramène le curseur sur 2 ; décocher Éco ensuite le ramène sur 1', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(max())
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+
+    await user.click(eco())
+    expect(radio('1')).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(eco())
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+    expect(max()).not.toBeChecked()
+  })
+
+  it('POST porte sections.taille_eco/taille_max = false/false quand seule Recommandé est servie (1 option)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('1'))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
+    }))
+  })
+
+  it('POST porte sections.taille_eco = false quand 2 options servies (Recommandé + Max)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('2'))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, taille_eco: false },
+    }))
+  })
+
+  it('POST porte les 2 tailles à true par défaut (3 options, aucune interaction)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
+  })
+
+  it('réouverture relit l’état RÉEL du dernier lien (2 options, Éco retirée) plutôt que le défaut', async () => {
+    const user = userEvent.setup()
+    const devisDejaEnvoye = {
+      ...devis1,
+      share_link: { niveau: 'standard', otp_lecture: false, sections: { taille_eco: false } },
+    }
+    renderTab({ state: leadState({ devis: [devisDejaEnvoye] }) })
+    await ouvrirEnvoi(user)
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).not.toBeChecked()
+    expect(max()).toBeChecked()
+  })
+
+  it('« Modifier les options… » ouvre l’écran vendeur existant DevisOffresTailles pour ce devis', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+    expect(screen.getByText(/Modifier les options — DEV-1/)).toBeInTheDocument()
+    await waitFor(() => expect(getOffresTaillesDevis).toHaveBeenCalledWith(1))
+  })
+})
+
+/* Fonctions pures — testables sans rendu (même patron que sectionsDepuisServeur). */
+describe('LANE E — logique pure du curseur 1/2/3 (co-localisée, testable sans DOM)', () => {
+  it('taillesDepuisServeur — trois états : absente = servie, false = retirée, true = servie', () => {
+    expect(taillesDepuisServeur(undefined)).toEqual({ taille_eco: true, taille_max: true })
+    expect(taillesDepuisServeur({})).toEqual({ taille_eco: true, taille_max: true })
+    expect(taillesDepuisServeur({ taille_eco: false })).toEqual({ taille_eco: false, taille_max: true })
+    expect(taillesDepuisServeur({ taille_eco: true, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: false })
+  })
+
+  it('optionsCountFromTailles : Recommandé compte toujours + les tailles cochées', () => {
+    expect(optionsCountFromTailles({ taille_eco: false, taille_max: false })).toBe(1)
+    expect(optionsCountFromTailles({ taille_eco: true, taille_max: false })).toBe(2)
+    expect(optionsCountFromTailles({ taille_eco: false, taille_max: true })).toBe(2)
+    expect(optionsCountFromTailles({ taille_eco: true, taille_max: true })).toBe(3)
+  })
+
+  it('taillesFromOptionsCount : 1 décoche tout, 3 coche tout, 2 préserve un choix unique sinon défaut Max', () => {
+    expect(taillesFromOptionsCount(1, { taille_eco: true, taille_max: true }))
+      .toEqual({ taille_eco: false, taille_max: false })
+    expect(taillesFromOptionsCount(3, { taille_eco: false, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: true })
+    // Depuis 1 (aucune cochée) → 2 : défaut Max (règle explicite du spec).
+    expect(taillesFromOptionsCount(2, { taille_eco: false, taille_max: false }))
+      .toEqual({ taille_eco: false, taille_max: true })
+    // Depuis 3 (les deux cochées) → 2 : même défaut Max.
+    expect(taillesFromOptionsCount(2, { taille_eco: true, taille_max: true }))
+      .toEqual({ taille_eco: false, taille_max: true })
+    // Un seul déjà coché → préservé tel quel.
+    expect(taillesFromOptionsCount(2, { taille_eco: true, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: false })
+  })
+
+  it('les libellés des cases de tailles couvrent exactement les 2 clés serveur ajoutées', () => {
+    expect(TAILLES_ENVOI.map((t) => t.key)).toEqual(['taille_eco', 'taille_max'])
   })
 })
