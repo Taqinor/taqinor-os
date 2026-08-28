@@ -1236,9 +1236,18 @@ class LEchelleDePaliersBatterie(_Base):
         self.assertIsNone(dimensionnement.module_batterie_du_devis(devis))
 
     def test_le_plafond_du_toit_borne_chaque_palier(self):
-        """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
-        des panneaux qui ne tiennent pas, et un toit plus petit ne peut que
-        RESTREINDRE la liste — jamais l'allonger."""
+        """La CONTENANCE MESURÉE est un plafond physique : l'échelle ne propose
+        jamais des panneaux qui ne tiennent pas, et un toit plus petit ne peut
+        que RESTREINDRE la liste — jamais l'allonger.
+
+        RÉ-ANCRÉ LE 28/08/2026 (MAX RÉEL, ordre fondateur) : la borne était
+        exercée via un layout à COMPTE DÉCLARÉ seul (``result.panels`` sans un
+        panneau sérialisé). Ce compte-là n'est plus une borne de toit — c'est
+        la cible vendue, et la prendre pour un plafond effondrait la carte Max
+        de tout devis automatique. La borne qui reste est la contenance
+        MESURÉE ; le second bloc épingle justement qu'un compte déclaré seul ne
+        borne PLUS rien.
+        """
         sans_toit = self._devis_residentiel(email='sanstoit@example.com')
         libre = dimensionnement.echelle_paliers_batterie(sans_toit)
 
@@ -1250,7 +1259,9 @@ class LEchelleDePaliersBatterie(_Base):
                                     'kwc': round(plafond * 550 / 1000.0, 3)}})
         self.assertEqual(dimensionnement.plafond_toit_du_devis(avec_toit),
                          plafond)
-        borne = dimensionnement.echelle_paliers_batterie(avec_toit)
+        with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
+                   return_value=plafond):
+            borne = dimensionnement.echelle_paliers_batterie(avec_toit)
 
         for palier in borne:
             self.assertLessEqual(
@@ -1262,6 +1273,17 @@ class LEchelleDePaliersBatterie(_Base):
             'le plafond du toit a ALLONGÉ l\'échelle : %s vs %s'
             % ([p['capacite_kwh'] for p in borne],
                [p['capacite_kwh'] for p in libre]))
+
+        # LE COMPTE DÉCLARÉ SEUL NE BORNE PLUS RIEN (28/08/2026) : sans mesure
+        # ni mur physique, ce devis se comporte comme un devis SANS layout.
+        with patch('apps.ventes.dimensionnement.plafond_physique_du_devis',
+                   return_value=None):
+            declare = dimensionnement.echelle_paliers_batterie(avec_toit)
+        self.assertEqual(
+            [p['nb_panneaux'] for p in declare],
+            [p['nb_panneaux'] for p in libre],
+            'le compte déclaré (%d) a borné l\'échelle alors que rien n\'est '
+            'mesurable — la conflation dessin/contenance est revenue' % plafond)
 
     # ── LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (26/08/2026) ───────
     #
@@ -1355,8 +1377,17 @@ class LEchelleDePaliersBatterie(_Base):
         self.assertEqual(dimensionnement.contenance_toit_du_devis(devis),
                          contenance)
         echelle_contenance = dimensionnement.echelle_paliers_batterie(devis)
+        # L'ANCRE DE RÉFÉRENCE (28/08/2026) : l'ancien ancrage « dessin » a
+        # DISPARU par construction — sans mesure, la borne retombe désormais
+        # sur le MUR PHYSIQUE du tracé, jamais sur le compte dessiné. Pour
+        # continuer d'exercer le régime « une borne basse tronque, la mesure
+        # libère », on rejoue donc l'échelle avec un mur ARTIFICIELLEMENT bas,
+        # égal au dessin d'hier (12) : mêmes nombres, même divergence, et la
+        # garde de régime ci-dessous garde exactement son pouvoir d'alerte.
         with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
-                   return_value=None):
+                   return_value=None), \
+                patch('apps.ventes.dimensionnement.plafond_physique_du_devis',
+                      return_value=dessines):
             echelle_dessin = dimensionnement.echelle_paliers_batterie(devis)
 
         # Les deux échelles doivent EXISTER : une liste vide ferait lever les
