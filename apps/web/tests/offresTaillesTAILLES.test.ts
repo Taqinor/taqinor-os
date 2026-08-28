@@ -1063,7 +1063,7 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     expect(CODE).toContain('data-hero-kwc-value');
     expect(CODE).toContain('data-hero-panneaux-value');
     // Sur les DEUX bandeaux visés — pas un troisième nœud inventé.
-    const hero = CODE.slice(CODE.indexOf('id="prop-fold-figures"'), CODE.indexOf('id="prop-fold-figures"') + 1200);
+    const hero = CODE.slice(CODE.indexOf('id="prop-fold-figures"'), CODE.indexOf('id="prop-fold-figures"') + 1700);
     expect(hero).toContain('data-hero-ttc-value');
     expect(hero).toContain('data-hero-eco-value');
     expect(hero).toContain('data-hero-eco-sub');
@@ -1112,7 +1112,8 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     expect(corps).toContain('heroEcoOriginal');
     expect(corps).toContain('heroKwcOriginal');
     expect(corps).toContain('heroPanneauxOriginal');
-    expect(corps).toContain('heroTtcValue.textContent = surLeDefaut');
+    expect(corps).toContain('appliquerChampHero(');
+    expect(corps).toContain('valeur.textContent = original;');
   });
 
   it('OMISSION HONNÊTE — la ligne MAD/mois du héros est MASQUÉE hors de Recommandé, jamais retraduite en JS', () => {
@@ -1136,5 +1137,79 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     expect(corps).toContain("querySelector<HTMLElement>('[data-hero-ttc-value]')");
     expect(corps).not.toContain("getElementById('prop-fold-figures')");
     expect(corps).not.toContain("getElementById('installation')");
+  });
+
+  // ── REVUE ADVERSARIALE (correction, commit e5b5051e) ──────────────────────
+  // Faille : quand la carte SÉLECTIONNÉE ne sert pas un champ, le code
+  // repartait sur le texte ORIGINAL (celui du devis officiel) — un chiffre
+  // RÉEL mais attribué à la MAUVAISE offre. Et le créneau « Économie / an »
+  // pouvait recevoir un payback (« 4,7 ans ») sous un libellé pensé pour un
+  // montant — un mal-étiquetage. Le correctif : masquer l'item plutôt que de
+  // mentir par readback, et ne jamais croiser eco/payback.
+
+  it('une carte SANS ce champ MASQUE l’item du héros — jamais le chiffre du devis officiel à sa place', () => {
+    const corps = scriptTailles();
+    // `appliquerChampHero` : hors défaut, `texteCarte === null` ⇒ l'item
+    // ENTIER (le conteneur, pas seulement la valeur) est masqué — jamais un
+    // repli sur `original`.
+    expect(corps).toContain('function appliquerChampHero');
+    const fn = corps.slice(corps.indexOf('function appliquerChampHero'));
+    const corpsFn = fn.slice(0, fn.indexOf('\n    }\n'));
+    expect(corpsFn).toContain('if (texteCarte === null) {');
+    expect(corpsFn).toContain('item.hidden = true;');
+    // Le readback interdit (`?? heroTtcOriginal` etc. sur une carte non
+    // défaut) ne doit plus exister nulle part dans la fonction de synchro.
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    const corpsSynchro = synchro.slice(0, synchro.indexOf('\n    }\n'));
+    for (const interdit of [
+      '?? heroTtcOriginal', '?? heroEcoOriginal', '?? heroKwcOriginal', '?? heroPanneauxOriginal',
+    ]) {
+      expect(corpsSynchro, interdit).not.toContain(interdit);
+    }
+  });
+
+  it('les conteneurs à masquer sont les ITEMS ENTIERS (libellé + valeur), pas la seule valeur', () => {
+    // Un libellé « Total TTC » orphelin au-dessus d'un vide serait aussi
+    // trompeur qu'un mauvais chiffre : c'est tout le encadré/l'item qui
+    // disparaît, jamais seulement le `<span>` du nombre.
+    expect(CODE).toContain('data-hero-ttc-card');
+    expect(CODE).toContain('data-hero-eco-card');
+    expect(CODE).toContain('data-hero-kwc-item');
+    expect(CODE).toContain('data-hero-panneaux-item');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-ttc-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-kwc-item]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-panneaux-item]')");
+  });
+
+  it('ÉCO ≠ PAYBACK — le créneau « Économie / an » ne lit JAMAIS le champ homonyme de l’autre nature', () => {
+    // `data-hero-eco-kind`, figé au chargement (`ecoHero ? 'eco' : 'payback'`),
+    // dit ce que CE bloc a réellement rendu ; le script ne lit le champ de la
+    // carte QUE s'il porte le même nom — jamais un croisement.
+    expect(CODE).toContain("data-hero-eco-kind={ecoHero ? 'eco' : 'payback'}");
+    const corps = scriptTailles();
+    expect(corps).toContain("heroEcoCard?.dataset.heroEcoKind === 'payback' ? 'payback' : 'eco'");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain("heroEcoKind === 'payback'");
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-payback-value]')");
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-eco-value]')");
+    // La ligne qui choisit le champ est un ternaire STRICT eco/payback — pas
+    // un enchaînement `??` qui accepterait l'un OU l'autre indifféremment.
+    expect(synchro).not.toMatch(/texteDeLaCarteSelectionnee\('\[data-taille-eco-value\]'\)\s*\?\?\s*texteDeLaCarteSelectionnee\('\[data-taille-payback-value\]'\)/);
+  });
+
+  it('le séparateur de la légende « installation » ne reste JAMAIS orphelin', () => {
+    expect(CODE).toContain('data-hero-legend-sep');
+    const corps = scriptTailles();
+    expect(corps).toContain('heroLegendSep.hidden = !(kwcVisible && panneauxVisible)');
+  });
+
+  it('PRÉSERVATION — restaurer démasque TOUJOURS (le retour sur Recommandé lève tout masquage)', () => {
+    const corps = scriptTailles();
+    const fn = corps.slice(corps.indexOf('function appliquerChampHero'));
+    const corpsFn = fn.slice(0, fn.indexOf('\n    }\n'));
+    expect(corpsFn).toContain('if (surLeDefaut) {');
+    expect(corpsFn).toContain('item.hidden = false;');
   });
 });
