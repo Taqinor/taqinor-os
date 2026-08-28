@@ -5627,14 +5627,13 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # pour les deux options.
     optimum_avec = None
     taille_demandee = cible if cible is not None else taille_kwc
+    # Une taille NULLE ou illisible sur la fiche ne « demande » rien : elle
+    # laisse la main au moteur plutôt que de refuser un lead parfaitement
+    # dimensionnable (``target_kwc``, lui, a déjà été validé plus haut).
     if taille_demandee not in (None, ''):
-        source_dimensionnement = 'taille_demandee'
         panneaux = _residential_panel_count(taille_kwc=taille_demandee)
-        if panneaux <= 0:
-            raise AutoDevisError(
-                "La taille souhaitée du lead n'est pas exploitable : "
-                'renseignez une puissance en kWc supérieure à zéro.',
-                field='taille_souhaitee_kwc')
+    if panneaux > 0:
+        source_dimensionnement = 'taille_demandee'
     else:
         panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
