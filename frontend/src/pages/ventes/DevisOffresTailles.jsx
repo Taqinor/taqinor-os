@@ -105,7 +105,10 @@ function Stepper({ label, value, onChange, min, disabled, testId }) {
                     onClick={() => onChange(Math.max(min, value - 1))}>
           <Minus className="size-3.5" />
         </IconButton>
-        <span className="num w-8 text-center text-sm font-semibold tabular-nums">{value}</span>
+        {/* `w-8` (2 rem) coupait un compte à trois chiffres — un champ de 120
+            panneaux est une taille « Max » parfaitement ordinaire. Largeur
+            MINIMALE, pas fixe : la valeur pousse, elle n'est plus rognée. */}
+        <span className="num min-w-10 px-0.5 text-center text-sm font-semibold tabular-nums">{value}</span>
         <IconButton label={`${label} : plus`} size="icon" variant="outline"
                     disabled={disabled}
                     onClick={() => onChange(value + 1)}>

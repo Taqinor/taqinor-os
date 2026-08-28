@@ -7084,6 +7084,30 @@ textarea.form-control {
 .lw-dup-dialog {
   max-width: 40rem;
 }
+
+/* ── « Modifier les options » — LA BOÎTE DOIT TENIR SES TROIS CARTES ──────────
+ *
+ * Cette classe était POSÉE sur le `DialogContent` (DevisTab.jsx) mais DÉFINIE
+ * NULLE PART : la boîte retombait donc sur le `max-w-lg` (32 rem) du composant
+ * de base, et trois cartes d'ajustement — chacune avec son champ panneaux, sa
+ * banque batterie et ses deux boutons pas-à-pas — s'écrasaient dans une demi-
+ * largeur d'écran. C'est exactement ce que le fondateur voyait : cartes à
+ * l'étroit, pas-à-pas rognés, valeurs coupées.
+ *
+ * Le `max-height` et le défilement interne viennent DÉJÀ du composant de base
+ * (`max-h-[calc(100dvh-2rem)] overflow-y-auto`) : on n'en pose pas un second
+ * qui divergerait. Seule la LARGEUR manquait.
+ *
+ * La grille des cartes est re-déclarée en `auto-fit` : ses classes Tailwind
+ * (`sm:grid-cols-2 lg:grid-cols-3`) réagissent au VIEWPORT, pas au conteneur —
+ * dans une boîte modale, elles ne décrivent donc pas la place réellement
+ * disponible. `auto-fit` la lit, elle. */
+.lw-context-devis-edit-tailles {
+  max-width: min(96vw, 1160px);
+}
+.lw-context-devis-edit-tailles [data-testid='offres-tailles-cartes'] {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
 .lw-dup-table {
   width: 100%;
   border-collapse: collapse;
