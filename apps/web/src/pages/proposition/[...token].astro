@@ -1971,11 +1971,23 @@ const signConfig = ok
               Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici.
             </p>
           )}
+          {/* data-hero-ttc-value / data-hero-eco-value / data-hero-eco-sub —
+              LANE W (28/08/2026) : le SEUL crochet qui laisse « le détail de
+              la page » suivre la carte cliquée dans « Explorer d'autres
+              tailles ». Zéro chiffre nouveau : le script relit ces nœuds tels
+              quels au chargement (restauration exacte sur Recommandé) et,
+              sur une autre carte, copie le texte DÉJÀ RENDU par CETTE carte
+              (même `formatMAD`, même arrondi) — jamais un second calcul. La
+              ligne `data-hero-eco-sub` (MAD/mois ou payback) n'est pas
+              reconstruite en JS (elle porte du texte traduit) : elle est
+              simplement MASQUÉE hors de Recommandé — l'« omission honnête »
+              de la règle zéro-chiffre-inventé plutôt qu'une traduction
+              approximative. */}
           <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
             {heroTtc !== null ? (
               <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</p>
-                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr"><span data-hero-ttc-value>{formatMAD(heroTtc)}</span></p>
                 <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr="clé en main" data-en="turnkey" data-ar="تسليم مفتاح في اليد">clé en main</p>
               </div>
             ) : null}
@@ -1983,19 +1995,21 @@ const signConfig = ok
               <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</p>
                 <p class="fig mt-1 text-2xl text-lune sm:text-3xl" dir="ltr">
-                  {ecoHero ? formatMAD(ecoHero) : paybackHero}
+                  <span data-hero-eco-value>{ecoHero ? formatMAD(ecoHero) : paybackHero}</span>
                 </p>
                 {/* `headline.monthly` est DÉJÀ calculé par savingsHeadline — le
                     même chiffre que le chapitre « Vos économies », jamais un
                     second calcul. Repli sur le payback quand il manque. */}
-                {ecoHero && headline?.monthly ? (
-                  <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
-                ) : ecoHero && paybackHero ? (
-                  <p class="mt-0.5 text-xs text-lune-faint" data-i18n
-                    data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
-                    Rentabilisé en {paybackHero}
-                  </p>
-                ) : null}
+                <div data-hero-eco-sub>
+                  {ecoHero && headline?.monthly ? (
+                    <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
+                  ) : ecoHero && paybackHero ? (
+                    <p class="mt-0.5 text-xs text-lune-faint" data-i18n
+                      data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
+                      Rentabilisé en {paybackHero}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
@@ -2282,10 +2296,10 @@ const signConfig = ok
                           {(va.nbPanneaux !== null || va.puissanceKwc !== null) && (
                             <p class="mt-1 text-xs text-lune-faint" dir="ltr">
                               {va.nbPanneaux !== null && (
-                                <span>{formatNumber(va.nbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
+                                <span><span data-taille-panneaux-value>{formatNumber(va.nbPanneaux)}</span> <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
                               )}
                               {va.nbPanneaux !== null && va.puissanceKwc !== null && <span class="mx-1" aria-hidden="true">·</span>}
-                              {va.puissanceKwc !== null && <span>{formatNumber(va.puissanceKwc, 2)} kWc</span>}
+                              {va.puissanceKwc !== null && <span><span data-taille-kwc-value>{formatNumber(va.puissanceKwc, 2)}</span> kWc</span>}
                             </p>
                           )}
 
@@ -2295,7 +2309,7 @@ const signConfig = ok
                               servi, la carte le dit en toutes lettres. */}
                           {va.prixTtc !== null ? (
                             <>
-                              <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(va.prixTtc)}</p>
+                              <p class="fig fig-md lum mt-3" dir="ltr" data-taille-ttc-value>{formatMAD(va.prixTtc)}</p>
                               <p class="text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                             </>
                           ) : (
@@ -2326,13 +2340,13 @@ const signConfig = ok
                             {va.economieAnnuelleMad !== null && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Économies / an" data-en="Savings / year" data-ar="التوفير / سنة">Économies / an</dt>
-                                <dd class="fig text-brass-300" dir="ltr">{formatMAD(va.economieAnnuelleMad)}</dd>
+                                <dd class="fig text-brass-300" dir="ltr" data-taille-eco-value>{formatMAD(va.economieAnnuelleMad)}</dd>
                               </div>
                             )}
                             {formatPayback(va.paybackAnnees) && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Remboursé en" data-en="Paid back in" data-ar="مسترد في">Remboursé en</dt>
-                                <dd class="fig text-lune-soft" dir="ltr">{formatPayback(va.paybackAnnees)}</dd>
+                                <dd class="fig text-lune-soft" dir="ltr" data-taille-payback-value>{formatPayback(va.paybackAnnees)}</dd>
                               </div>
                             )}
                             {va.couverturePct !== null && (
@@ -2826,14 +2840,19 @@ const signConfig = ok
               (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
               en UNE ligne au-dessus du tableau : c'est une légende, pas un
               tableau de bord. Chaque valeur reste celle du devis backend. */}
-          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
+          {/* data-hero-kwc-value / data-hero-panneaux-value — LANE W : mêmes
+              crochets « suivre la carte cliquée » qu'au héros, restaurés à
+              l'identique sur Recommandé. `wattPanneau` (fiche produit du
+              devis officiel, pas de la carte) reste figé : une carte Éco/Max
+              ne prétend pas connaître le modèle de panneau catalogue. */}
+          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft" data-installation-legend>
             {heroKwc ? (
-              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(heroKwc, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
+              <span class="fig text-xl text-lune" dir="ltr"><span data-hero-kwc-value>{formatNumber(heroKwc, 2)}</span> <span class="text-sm text-lune-soft">kWc</span></span>
             ) : null}
             {heroKwc && heroNbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
             {heroNbPanneaux ? (
               <span class="fig text-xl text-lune" dir="ltr">
-                {formatNumber(heroNbPanneaux)}
+                <span data-hero-panneaux-value>{formatNumber(heroNbPanneaux)}</span>
                 {wattPanneau ? <span class="text-sm text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
                 <span class="ms-1 text-sm text-lune-soft" data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span>
               </span>
@@ -8128,8 +8147,69 @@ const signConfig = ok
     // page garde ses artefacts uniques — jamais un cadre vide.
     const details = Array.from(document.querySelectorAll<HTMLElement>('[data-taille-detail]'));
 
+    // ── LANE W (28/08/2026) — « le détail de la page suit la carte » ────────
+    // Les SEULS nœuds hors de la section #tailles que ce script touche, en
+    // plus des deux chemins déjà documentés ci-dessus (WJ54, curseur
+    // batterie) : le bloc de chiffres du héros et la légende kWc/panneaux
+    // de « Votre installation ». Ce script ne CALCULE ni ne FORMATE rien ici
+    // non plus : il COPIE le texte DÉJÀ RENDU par la carte sélectionnée
+    // (même `formatMAD`/`formatNumber` que la carte elle-même) — jamais un
+    // second calcul. La ligne MAD/mois du héros (`data-hero-eco-sub`) porte
+    // du texte traduit qu'aucune carte Éco/Max ne sert : elle est MASQUÉE
+    // hors de Recommandé plutôt que reconstruite en JS (omission honnête).
+    // Sur Recommandé + la variante par défaut, tout est restauré au texte
+    // ORIGINAL mis en cache au chargement — jamais recalculé depuis la
+    // carte — ce qui garantit l'identité byte-à-byte de la page au chargement
+    // et après un aller-retour, même quand une nuance de dimensionnement
+    // (devis à deux options) ferait légèrement diverger le héros de la carte.
+    const heroTtcValue = document.querySelector<HTMLElement>('[data-hero-ttc-value]');
+    const heroEcoValue = document.querySelector<HTMLElement>('[data-hero-eco-value]');
+    const heroEcoSub = document.querySelector<HTMLElement>('[data-hero-eco-sub]');
+    const heroKwcValue = document.querySelector<HTMLElement>('[data-hero-kwc-value]');
+    const heroPanneauxValue = document.querySelector<HTMLElement>('[data-hero-panneaux-value]');
+    const heroTtcOriginal = heroTtcValue?.textContent ?? null;
+    const heroEcoOriginal = heroEcoValue?.textContent ?? null;
+    const heroKwcOriginal = heroKwcValue?.textContent ?? null;
+    const heroPanneauxOriginal = heroPanneauxValue?.textContent ?? null;
+
     let variante: 'sans' | 'avec' = varianteDefaut;
     let cle = cleDefaut;
+
+    /** Le texte DÉJÀ RENDU par la carte sélectionnée, pour ce sélecteur — ou
+     *  `null` si cette carte ne sert pas ce champ (discipline d'omission). */
+    function texteDeLaCarteSelectionnee(selecteur: string): string | null {
+      const carte = cartes.find((c) => c.dataset.tailleCle === cle);
+      const bloc = carte?.querySelector<HTMLElement>(
+        `[data-taille-bloc][data-taille-variante="${variante}"]`,
+      );
+      const noeud = bloc?.querySelector<HTMLElement>(selecteur);
+      return noeud ? noeud.textContent : null;
+    }
+
+    function synchroniserDetailPage(): void {
+      const surLeDefaut = cle === cleDefaut && variante === varianteDefaut;
+      if (heroTtcValue) {
+        heroTtcValue.textContent = surLeDefaut
+          ? heroTtcOriginal
+          : (texteDeLaCarteSelectionnee('[data-taille-ttc-value]') ?? heroTtcOriginal);
+      }
+      if (heroEcoValue) {
+        const eco = texteDeLaCarteSelectionnee('[data-taille-eco-value]');
+        const payback = texteDeLaCarteSelectionnee('[data-taille-payback-value]');
+        heroEcoValue.textContent = surLeDefaut ? heroEcoOriginal : (eco ?? payback ?? heroEcoOriginal);
+      }
+      if (heroEcoSub) heroEcoSub.hidden = !surLeDefaut;
+      if (heroKwcValue) {
+        heroKwcValue.textContent = surLeDefaut
+          ? heroKwcOriginal
+          : (texteDeLaCarteSelectionnee('[data-taille-kwc-value]') ?? heroKwcOriginal);
+      }
+      if (heroPanneauxValue) {
+        heroPanneauxValue.textContent = surLeDefaut
+          ? heroPanneauxOriginal
+          : (texteDeLaCarteSelectionnee('[data-taille-panneaux-value]') ?? heroPanneauxOriginal);
+      }
+    }
 
     function appliquer(): void {
       for (const b of blocs) b.hidden = b.dataset.tailleVariante !== variante;
@@ -8159,6 +8239,7 @@ const signConfig = ok
           d.hidden = !(memeCle && memeVariante);
         }
       }
+      synchroniserDetailPage();
     }
 
     for (const btn of switchBtns) {
