@@ -1544,6 +1544,311 @@ def regenerer_taille(devis, cle):
     return stockees
 
 
+class ApplicationImpossible(Exception):
+    """La taille « Recommandé » ne peut PAS être appliquée à ce devis-là.
+
+    ``revision_possible`` reprend la distinction de
+    :class:`~apps.ventes.services.SyncLayoutError` : un devis ENVOYÉ se révise
+    (une nouvelle version repart en brouillon), un devis accepté/refusé/expiré
+    est clos. L'écran affiche le motif tel quel, en français.
+    """
+
+    def __init__(self, detail, *, revision_possible=False):
+        super().__init__(detail)
+        self.detail = detail
+        self.revision_possible = revision_possible
+
+
+def appliquer_au_devis(devis, cle, *, utilisateur=None):
+    """APPLIQUE la configuration « Recommandé » AU DEVIS LUI-MÊME.
+
+    LE TROU QUE CECI BOUCHE (ordre fondateur, 29/08/2026). Éco et Max sont des
+    cartes d'EXPLORATION : les ajuster change ce que le client voit, et c'est
+    tout ce qu'on leur demande. « Recommandé », lui, EST le devis — mais
+    l'ajuster n'écrivait QUE ``offres_tailles_config`` : la carte changeait,
+    et le devis officiel (ses lignes, ses totaux, son PDF, l'en-tête de la page
+    client) ne bougeait pas d'un panneau. Le vendeur croyait modifier son devis
+    et ne modifiait qu'une vignette — « les modifications ne changent rien au
+    devis », mot pour mot.
+
+    UNE SEULE MACHINERIE DE RECOMPOSITION, JAMAIS UNE SECONDE.
+    :func:`~apps.ventes.services.sync_devis_from_layout` (PV18) est LE chemin
+    qui porte un devis vivant à un nouveau compte de panneaux : il protège les
+    prix négociés (il ne touche QUE des quantités), suit la ferrure, les câbles,
+    l'onduleur et la batterie, complète le kit manquant, et — surtout — porte
+    DÉJÀ la garde de statut. On lui passe le calepinage DU DEVIS avec le seul
+    champ ``result`` réécrit : la géométrie réelle du toit est conservée, seule
+    la cible change. Écrire ici une seconde composition aurait recréé
+    exactement la divergence que ce module entier existe pour empêcher.
+
+    LES GARDES, ET AUCUNE N'EST FRANCHIE PAR DÉFAUT :
+
+    * **Recommandé seulement.** Éco et Max gardent leur sémantique
+      d'exploration ; les appliquer au devis ferait disparaître la comparaison
+      que le client est justement en train de lire.
+    * **Le statut est LU, jamais écrit** (règle #4) : la garde est celle de
+      ``sync_devis_from_layout``, pas une copie — brouillon seul, « envoyé »
+      renvoyé vers « Réviser », accepté/refusé/expiré refusé net.
+    * **Une ligne NÉGOCIÉE n'est jamais réécrite en silence.** Une substitution
+      de matériel re-tarife la ligne ; si celle-ci porte un prix ou une remise
+      qui ne sont plus ceux du catalogue (``_est_au_prix_catalogue``), le geste
+      est REFUSÉ en nommant la ligne, jamais appliqué par-dessus.
+    * **Tout ou rien.** Le tout tient dans une transaction : un refus tardif
+      (substitution en conflit) annule la resynchronisation déjà faite.
+    * **La configuration est CONSOMMÉE.** Le devis EST désormais la vérité :
+      laisser un marqueur « Ajusté » sur « Recommandé » ferait mentir la carte
+      (elle serait redérivée par le moteur au lieu d'être reprise du devis) et
+      afficherait un badge que plus rien ne distingue.
+
+    Rend ``{panneaux_avant, panneaux, batterie_modules, substitutions,
+    lignes_modifiees, lignes_ajoutees, avertissements}``.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import DevisActivity
+    from apps.ventes.services import (
+        SyncLayoutError, extract_roof_config, rafraichir_etudes_du_devis,
+        sync_devis_from_layout)
+
+    if cle != 'recommande':
+        raise ApplicationImpossible(
+            'Seule la taille « Recommandé » s\'applique au devis : « %s » est '
+            'une taille d\'exploration, montrée au client à côté de l\'offre '
+            'officielle.' % TITRES.get(cle, cle))
+
+    entree = lire_config_stockee(devis).get('recommande') or {}
+    config = entree.get('config') or {}
+    if not config:
+        raise ApplicationImpossible(
+            'Aucune configuration ajustée sur la taille « Recommandé » : il '
+            'n\'y a rien à appliquer au devis.')
+    nb_panneaux = int(_num(config.get('nb_panneaux'), 0))
+    if nb_panneaux <= 0:
+        raise ApplicationImpossible(
+            'La configuration « Recommandé » ne porte aucun champ de panneaux '
+            ': impossible de recomposer le devis sans lui.')
+
+    contexte = _contexte(devis)
+    if contexte is None:
+        raise ApplicationImpossible(
+            'Ce devis ne permet pas de dériver des tailles (résidentiel, '
+            'profil de consommation réel et catalogue tarifé requis) : il ne '
+            'peut donc pas en recevoir une.')
+
+    panneaux_avant = _compter_panneaux_du_devis(devis)
+    modules = int(_num(config.get('batterie_nb_modules'), 0))
+    equipements = config.get('equipements') or {}
+
+    with transaction.atomic():
+        try:
+            resultat = sync_devis_from_layout(
+                devis, _layout_de_la_taille(devis, contexte, nb_panneaux,
+                                            modules, extract_roof_config),
+                user=utilisateur)
+        except SyncLayoutError as erreur:
+            raise ApplicationImpossible(
+                erreur.detail,
+                revision_possible=erreur.revision_possible) from erreur
+
+        devis.refresh_from_db()
+        modules_poses = _porter_modules_batterie(devis, modules)
+        substitutions = _substituer_sur_le_devis(devis, equipements,
+                                                 contexte)
+
+        # Les quatre études suivent les lignes — sans quoi le devis porterait
+        # une composition neuve et un bloc horaire décrivant l'ancienne.
+        rafraichir_etudes_du_devis(devis, force=True)
+
+        DevisActivity.objects.create(
+            company=getattr(devis, 'company', None), devis=devis,
+            kind=DevisActivity.Kind.MODIFICATION,
+            field='offres_tailles.recommande',
+            field_label='Taille « Recommandé » appliquée au devis',
+            old_value='%s panneaux' % panneaux_avant,
+            new_value=_resume_applique(resultat.get('panneaux'), modules_poses,
+                                       substitutions),
+            user=utilisateur)
+
+        # CONSOMMÉE : le devis est désormais la vérité, la carte « Recommandé »
+        # redevient sa REPRISE (``_carte_du_devis``) plutôt qu'une dérivation
+        # moteur portant un badge « Ajusté » que plus rien ne distingue.
+        regenerer_taille(devis, 'recommande')
+
+    logger.info(
+        'TAILLES: « Recommandé » appliquée au devis %s (%s → %s panneaux, '
+        'société %s, par %s)', getattr(devis, 'reference', '?'),
+        panneaux_avant, resultat.get('panneaux'),
+        getattr(getattr(devis, 'company', None), 'id', '?'),
+        getattr(utilisateur, 'username', '?'))
+    return {
+        'panneaux_avant': panneaux_avant,
+        'panneaux': resultat.get('panneaux'),
+        'batterie_modules': modules_poses,
+        'substitutions': substitutions,
+        'lignes_modifiees': resultat.get('lignes_modifiees'),
+        'lignes_ajoutees': resultat.get('lignes_ajoutees'),
+        'avertissements': list(resultat.get('avertissements') or []),
+    }
+
+
+def _layout_de_la_taille(devis, contexte, nb_panneaux, modules,
+                         extract_roof_config):
+    """LE CALEPINAGE DU DEVIS, avec la seule CIBLE réécrite.
+
+    La géométrie (zones, pans, tracé du client) est conservée telle quelle :
+    on ne redessine pas un toit, on change ce qu'on y pose. Seul ``result``
+    est réécrit — le compte visé et son kWc, calculés au wattage RÉEL du
+    catalogue (:attr:`_Contexte.panel_watt`), c'est-à-dire celui-là même dont
+    les trois cartes tirent leurs chiffres.
+
+    ``annualKwh``/``savings`` sont RETIRÉS plutôt que recopiés : ce sont les
+    projections de l'ANCIENNE taille, et ``sync_devis_from_layout`` les
+    recopierait telles quelles dans ``etude_params``. Les vraies études sont
+    recalculées juste après par ``rafraichir_etudes_du_devis``.
+
+    ``battery`` suit la demande, mais ne RETIRE jamais une batterie que le
+    devis vend déjà : une configuration de taille ne porte que des modules
+    strictement positifs (le sérialiseur refuse le zéro), elle n'exprime donc
+    jamais « enlevez la batterie ».
+    """
+    layout = dict(getattr(devis, 'roof_layout', None) or {})
+    toiture = extract_roof_config(layout)
+    watt = _num(getattr(contexte, 'panel_watt', 0)) or _num(
+        (toiture or {}).get('panel_watt'), 0)
+
+    result = dict(layout.get('result') or {})
+    result.pop('annualKwh', None)
+    result.pop('savings', None)
+    result['panels'] = int(nb_panneaux)
+    result['count'] = int(nb_panneaux)
+    if watt > 0:
+        result['kwc'] = round(nb_panneaux * watt / 1000.0, 3)
+        layout['panelWatt'] = int(round(watt))
+    layout['result'] = result
+
+    a_deja_une_batterie = bool(_compter_modules_du_devis(devis))
+    layout['battery'] = bool(modules) or a_deja_une_batterie
+    layout['scenario'] = ('avec_batterie' if layout['battery'] else 'reseau')
+    return layout
+
+
+def _compter_panneaux_du_devis(devis):
+    """Le nombre de panneaux RÉELLEMENT posés (option « sans » d'abord).
+
+    Même lecture par variante que ``_materiel_du_devis`` : sur un devis à deux
+    options, le compte affiché est celui de l'option 1, jamais la somme des
+    deux — un nombre qui ne décrit aucune installation.
+    """
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _is_panel
+
+    total = 0
+    for ligne in _lignes_produit_du_devis(devis):
+        if (getattr(ligne, 'variante', '') or '') == 'avec':
+            continue
+        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+            continue
+        total += int(_num(getattr(ligne, 'quantite', 0)))
+    return total
+
+
+def _porter_modules_batterie(devis, modules):
+    """Porte la banque du devis à ``modules`` modules. ``None`` = rien touché.
+
+    Une QUANTITÉ, et rien d'autre : ni prix, ni produit, ni TVA. C'est la même
+    politique que ``sync_devis_from_layout`` applique déjà aux panneaux, aux
+    câbles et à la ferrure — et la raison pour laquelle elle n'a pas besoin de
+    la garde de prix négocié : un prix unitaire négocié reste intact.
+
+    Plusieurs lignes batterie (rare) : seule la PLUS GROSSE bouge, même règle
+    que la ligne dominante des panneaux.
+    """
+    from decimal import Decimal as _Decimal
+
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _is_battery
+
+    if not modules:
+        return None
+    candidats = [ligne for ligne in _lignes_produit_du_devis(devis)
+                 if (getattr(ligne, 'variante', '') or '') != 'sans'
+                 and getattr(ligne, 'produit', None) is not None
+                 and _is_battery(getattr(ligne, 'designation', '') or '')]
+    if not candidats:
+        return None
+    dominante = max(candidats, key=lambda li: _num(getattr(li, 'quantite', 0)))
+    if int(_num(getattr(dominante, 'quantite', 0))) == int(modules):
+        return int(modules)
+    dominante.quantite = _Decimal(str(int(modules)))
+    dominante.save(update_fields=['quantite'])
+    return int(modules)
+
+
+def _substituer_sur_le_devis(devis, equipements, contexte):
+    """Remplace le PRODUIT des lignes substituées. ``{role: nom}`` appliqué.
+
+    LA GARDE DE LIGNE NÉGOCIÉE EST ICI, ET NULLE PART AILLEURS DANS CE CHEMIN.
+    Une substitution re-tarife la ligne : y passer par-dessus un prix ou une
+    remise que le commercial a négociés détruirait une décision commerciale
+    que personne n'a demandé de revoir. Le geste est donc REFUSÉ EN NOMMANT LA
+    LIGNE — l'utilisateur choisit alors de remettre la ligne au catalogue, ou
+    de faire la substitution à la main sur l'écran de devis.
+
+    Un rôle qu'aucune ligne du devis ne porte est IGNORÉ (rien à remplacer) —
+    ajouter une ligne ici serait une composition, et ce chemin n'en fait pas.
+    """
+    from decimal import Decimal as _Decimal
+
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _est_au_prix_catalogue
+
+    if not equipements:
+        return {}
+    produits = _resoudre_substitutions(
+        equipements, company=(contexte.entrees or {}).get('company'))
+    if not produits:
+        return {}
+
+    lignes = list(_lignes_produit_du_devis(devis))
+    appliquees = {}
+    for role, produit in produits.items():
+        cibles = [ligne for ligne in lignes
+                  if _role_de_la_ligne(
+                      getattr(ligne, 'designation', '') or '') == role]
+        if not cibles:
+            continue
+        ligne = cibles[0]
+        if not _est_au_prix_catalogue(ligne):
+            raise ApplicationImpossible(
+                'La ligne « %s » porte un prix ou une remise négociés : le '
+                'remplacer par « %s » les effacerait. Remettez la ligne au '
+                'prix catalogue, ou faites la substitution à la main sur le '
+                'devis.' % (getattr(ligne, 'designation', '') or 'sans nom',
+                            getattr(produit, 'nom', '') or 'ce produit'))
+        ligne.produit = produit
+        ligne.designation = getattr(produit, 'nom', '') or ligne.designation
+        prix = getattr(produit, 'prix_vente', None)
+        if prix is not None:
+            ligne.prix_unitaire = _Decimal(str(prix))
+        tva = getattr(produit, 'tva', None)
+        if tva is not None:
+            ligne.taux_tva = _Decimal(str(tva))
+        ligne.save(update_fields=['produit', 'designation', 'prix_unitaire',
+                                  'taux_tva'])
+        appliquees[role] = ligne.designation
+    return appliquees
+
+
+def _resume_applique(panneaux, modules, substitutions):
+    """La ligne de chatter — ce qui a RÉELLEMENT changé, rien de plus."""
+    morceaux = ['%s panneaux' % (panneaux if panneaux is not None else '?')]
+    if modules:
+        morceaux.append('%s module(s) de batterie' % modules)
+    for role, nom in sorted((substitutions or {}).items()):
+        morceaux.append('%s → %s' % (role, nom))
+    return ', '.join(morceaux)
+
+
 def _ecrire_colonne(devis, valeur):
     """Écrit ``offres_tailles_config`` — CETTE COLONNE, ET RIEN D'AUTRE.
 

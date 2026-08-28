@@ -307,7 +307,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # ne serait JAMAIS consulté. La lecture porte son propre nom
             # d'action pour ne pas hériter du niveau de garde de l'écriture.
             'offres_tailles', 'offres_tailles_config',
-            'offres_tailles_regenerer',
+            'offres_tailles_regenerer', 'offres_tailles_appliquer',
             # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
             # visites DISTINCTES par section de la proposition + alerte de
             # friction (relecture répétée d'une même section). Analytics
@@ -2583,6 +2583,45 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         serializer.is_valid(raise_exception=True)
         regenerer_taille(devis, serializer.validated_data['cle'])
         return Response(self._offres_tailles_reponse(devis))
+
+    @action(detail=True, methods=['post'],
+            url_path='offres-tailles/appliquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def offres_tailles_appliquer(self, request, pk=None):
+        """APPLIQUE la taille « Recommandé » AU DEVIS (lignes, totaux, études).
+
+        LA DIFFÉRENCE AVEC ``offres-tailles/config``, ET C'EST TOUT LE SUJET.
+        Le PATCH écrit une CONFIGURATION d'exploration : la carte change, le
+        devis officiel ne bouge pas. Ce POST-ci fait l'inverse — il RECOMPOSE
+        le devis lui-même sur la configuration ajustée de « Recommandé », par
+        ``sync_devis_from_layout`` (l'unique machinerie de recomposition), si
+        bien que le PDF, les totaux et la page client changent réellement.
+
+        Le STATUT n'est jamais écrit (règle #4) : c'est la garde de
+        ``sync_devis_from_layout`` qui décide, et un refus revient en 400 avec
+        son motif EN FRANÇAIS (``revision_possible`` dit si « Réviser » est la
+        bonne suite). Éco et Max sont refusées : ce sont des explorations.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        from ..offres_tailles import ApplicationImpossible, appliquer_au_devis
+        from ..serializers import OffreTailleRegenerationSerializer
+
+        devis = self.get_object()
+        serializer = OffreTailleRegenerationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            resume = appliquer_au_devis(devis, serializer.validated_data['cle'],
+                                        utilisateur=request.user)
+        except ApplicationImpossible as erreur:
+            raise ValidationError({
+                'detail': erreur.detail,
+                'revision_possible': erreur.revision_possible,
+            })
+        devis.refresh_from_db()
+        reponse = self._offres_tailles_reponse(devis)
+        reponse['applique'] = resume
+        return Response(reponse)
 
     def _guard_discount_approval(self, devis, ancien, nouveau, remise):
         """T17 — bloque le passage en « envoyé » si la remise dépasse le seuil
