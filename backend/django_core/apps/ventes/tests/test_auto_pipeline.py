@@ -53,6 +53,10 @@ CONTOUR_LATLNG = [
 ]
 CONTOUR_DICTS = [{'lat': lat, 'lng': lng} for lat, lng in CONTOUR_LATLNG]
 
+#: Ancrage de productible des fixtures qui créent un devis (leçon #86) — sans
+#: ville ni GPS, le moteur ne sait rien du site et le devis est refusé.
+VILLE_ANCRE = 'Casablanca'
+
 
 def make_company(slug):
     from authentication.models import Company
@@ -321,9 +325,26 @@ class BuildDevisAutoAvecContourTest(TestCase):
         seed_catalogue(self.company)
 
     def _lead(self, **extra):
+        # ANCRAGE DE PRODUCTIBLE (29/08/2026) — depuis que TOUT dimensionnement
+        # passe par le moteur, un lead sans ville ni GPS n'est plus
+        # dimensionnable du tout : le devis serait refusé (motif « ville »).
+        # On ancre par la VILLE, pas par des coordonnées : la ville se lit dans
+        # la table de référence, un point GPS partirait sur PVGIS en ligne.
+        extra.setdefault('ville', VILLE_ANCRE)
         return Lead.objects.create(
             company=self.company, nom='Auto', prenom='Pipe',
             email='autopipe@ex.com', **extra)
+
+    def _attendu(self, lead):
+        """Le nombre de panneaux que le MOTEUR recommande pour ce lead — ce
+        module n'épingle plus les 16 panneaux de la règle des 900 DH/mois."""
+        from apps.ventes import services
+        nb, _watt, source, _avec = services._panneaux_dimensionnement_horaire(
+            lead=lead, company=self.company,
+            phase=services.phase_client_pour_dimensionnement(lead))
+        self.assertEqual(source, 'moteur_horaire')
+        self.assertGreater(nb, 0)
+        return nb
 
     def test_le_layout_embarque_la_zone_du_client(self):
         devis = build_devis_auto(
@@ -360,12 +381,13 @@ class BuildDevisAutoAvecContourTest(TestCase):
         ``ville`` — le balayage a besoin d'un ANCRAGE de productible
         (« localisation non résolue » est un motif d'abstention documenté de
         ``rafraichir_dimensionnement_devis``) : un lead du tunnel porte
-        toujours sa localisation (tracé GPS, ville facultative). Même ancrage
-        que le fixture de l'échelle de paliers (test_deux_optimiseurs)."""
+        toujours sa localisation (tracé GPS, ville facultative). Depuis le
+        29/08/2026 cet ancrage est le DÉFAUT de tous les fixtures de ce module
+        (``_lead``), le dimensionnement passant désormais toujours par le
+        moteur."""
         devis = build_devis_auto(
             lead=self._lead(facture_hiver=Decimal('1800'),
-                            roof_outline=CONTOUR_LATLNG,
-                            ville='Casablanca'),
+                            roof_outline=CONTOUR_LATLNG),
             user=self.user, company=self.company)
         dimensionnement = (devis.etude_params or {}).get(
             'dimensionnement') or {}
@@ -381,32 +403,37 @@ class BuildDevisAutoAvecContourTest(TestCase):
             'Éco/Max resteraient indérivables sur la page client')
 
     def test_sans_contour_le_layout_est_celui_dhier(self):
+        lead = self._lead(facture_hiver=Decimal('1800'))
+        attendu = self._attendu(lead)
         devis = build_devis_auto(
-            lead=self._lead(facture_hiver=Decimal('1800')),
-            user=self.user, company=self.company)
+            lead=lead, user=self.user, company=self.company)
         self.assertNotIn('zones', devis.roof_layout)
-        self.assertEqual(devis.roof_layout['result']['panels'], 16)
+        self.assertEqual(devis.roof_layout['result']['panels'], attendu)
 
     def test_le_plafond_ne_peut_que_reduire(self):
         journal = {}
+        lead = self._lead(facture_hiver=Decimal('1800'),
+                          roof_outline=CONTOUR_LATLNG)
+        attendu = self._attendu(lead)
+        self.assertGreater(attendu, 4, 'le fixture doit dépasser le plafond '
+                                       'pour que le test prouve quelque chose')
         devis = build_devis_auto(
-            lead=self._lead(facture_hiver=Decimal('1800'),
-                            roof_outline=CONTOUR_LATLNG),
-            user=self.user, company=self.company,
+            lead=lead, user=self.user, company=self.company,
             plafond_toit=4, journal_auto=journal)
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
         self.assertEqual(int(panel.quantite), 4)
-        self.assertEqual(journal['panneaux_avant_plafond'], 16)
+        self.assertEqual(journal['panneaux_avant_plafond'], attendu)
         self.assertEqual(journal['plafond_applique'], 4)
 
     def test_un_plafond_plus_large_ne_change_rien(self):
+        lead = self._lead(facture_hiver=Decimal('1800'))
+        attendu = self._attendu(lead)
         devis = build_devis_auto(
-            lead=self._lead(facture_hiver=Decimal('1800')),
-            user=self.user, company=self.company, plafond_toit=999)
+            lead=lead, user=self.user, company=self.company, plafond_toit=999)
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
-        self.assertEqual(int(panel.quantite), 16)
+        self.assertEqual(int(panel.quantite), attendu)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -423,6 +450,9 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
 
     def _lead(self, **extra):
         extra.setdefault('facture_hiver', Decimal('1800'))
+        # Cf. ``BuildDevisAutoAvecContourTest._lead`` — depuis le 29/08/2026 un
+        # lead sans ancrage de productible n'est plus dimensionnable.
+        extra.setdefault('ville', VILLE_ANCRE)
         return Lead.objects.create(
             company=self.company, nom='Arrivée', prenom='Lead',
             owner=self.owner, source=Lead.Source.SITE_WEB, **extra)

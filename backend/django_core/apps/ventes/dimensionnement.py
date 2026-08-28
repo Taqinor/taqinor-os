@@ -4,14 +4,19 @@ ORDRE FONDATEUR (CJ2) : « this calculus might be the base of deciding which
 installation for each client, instead of my 900dh/month rule — do complete work
 to decide which size is the best for each monthly consumption ».
 
-CE QUI EST REMPLACÉ. La règle historique vit dans
-``services._residential_panel_count`` (services.py:3700-3714) : ``facture_hiver
-// 900 × 8 panneaux``. Elle ne regarde ni la saison, ni la forme de
-consommation, ni le barème, ni le prix du kit — un client « présent en
-journée » et un client « absent en journée » avec la même facture recevaient la
-même installation, alors que leur autoconsommation réelle diffère du simple au
-double. Cette règle N'EST PAS SUPPRIMÉE : elle reste le repli honnête quand
-aucun profil n'existe (voir :func:`recommander_taille`).
+CE QUI EST REMPLACÉ. La règle historique vivait dans
+``services._residential_panel_count`` : ``facture_hiver // 900 × 8 panneaux``.
+Elle ne regardait ni la saison, ni la forme de consommation, ni le barème, ni
+le prix du kit — un client « présent en journée » et un client « absent en
+journée » avec la même facture recevaient la même installation, alors que leur
+autoconsommation réelle diffère du simple au double.
+
+ELLE EST SUPPRIMÉE (ordre fondateur du 29/08/2026 : « all sizing should go
+through the new sizing tool, and i said ALL sizing »). Il n'y a plus de repli :
+``_residential_panel_count`` ne fait plus que convertir une puissance DEMANDÉE
+en panneaux, et quand ce module ne peut pas dimensionner, le devis automatique
+est REFUSÉ en nommant la donnée manquante (``services._refus_dimensionnement``)
+plutôt que dimensionné par une autre règle.
 
 CE QUI LA REMPLACE. On BALAIE les tailles candidates et, pour chacune, on
 mesure vraiment :
@@ -1531,12 +1536,12 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
                        **kwargs):
     """Balaye puis recommande : ``{tableau, recommandation, motivation, critere}``.
 
-    C'est LE point d'entrée du successeur de la règle « 900 DH/mois ». Quand
-    aucune taille n'est recommandable (catalogue incomplet, ou profil trop
+    C'est LE point d'entrée du dimensionnement — celui qui a REMPLACÉ la règle
+    « 900 DH/mois », désormais supprimée. Quand aucune taille n'est
+    recommandable (catalogue incomplet, localisation non résolue, profil trop
     pauvre pour que le moteur calcule), ``recommandation`` vaut ``None`` et
-    ``motivation`` dit pourquoi — l'appelant retombe alors sur
-    ``services._residential_panel_count`` (la règle historique), ÉTIQUETÉE
-    comme repli, jamais présentée comme un calcul.
+    ``motivation`` dit pourquoi : l'appelant ne retombe sur AUCUNE autre règle,
+    il refuse le devis en nommant la donnée manquante.
 
     DIM2 (fondateur 24/08/2026) — trois clés s'ajoutent, toutes ADDITIVES :
 

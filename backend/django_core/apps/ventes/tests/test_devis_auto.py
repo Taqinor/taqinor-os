@@ -1,9 +1,18 @@
 """Copilote — devis AUTOMATIQUE (résidentiel) + garde-fou « toujours auto ».
 
-``build_devis_auto()`` dimensionne un devis résidentiel depuis la fiche lead
-(facture d'hiver ou taille souhaitée) et délègue à ``build_devis_from_layout``.
-L'agent n'a plus d'action de création VIDE : seule ``ventes.devis.creer_auto``
-subsiste, avec les actions d'édition par chat.
+``build_devis_auto()`` dimensionne un devis résidentiel depuis la fiche lead et
+délègue à ``build_devis_from_layout``. L'agent n'a plus d'action de création
+VIDE : seule ``ventes.devis.creer_auto`` subsiste, avec les actions d'édition
+par chat.
+
+RE-ANCRAGE DU 29/08/2026 (ordre fondateur « all sizing should go through the
+new sizing tool, and i said ALL sizing »). Ce module épinglait la règle des
+900 DH/mois (1800 MAD ⇒ 2 tranches × 8 = 16 panneaux à 710 Wc). Cette règle est
+SUPPRIMÉE : une facture se dimensionne désormais par le moteur horaire. Les
+tests n'épinglent donc plus un nombre magique — ils épinglent que le devis
+porte EXACTEMENT ce que le moteur recommande pour ce fixture
+(``panneaux_du_moteur``), et les fixtures ancrent leur ``ville`` (sans ancrage
+de productible, le moteur ne peut RIEN calculer — leçon #86).
 
 Run:
     python manage.py test apps.ventes.tests.test_devis_auto -v 2
@@ -50,6 +59,27 @@ def auth_client(user):
 
 AUTO_URL = '/api/django/ventes/devis/auto/'
 
+#: Ancrage de productible des fixtures — sans ville ni GPS, le moteur ne sait
+#: pas ce que produit le site et s'abstient (leçon #86).
+VILLE_ANCRE = 'Casablanca'
+
+
+def panneaux_du_moteur(lead, company):
+    """``(nb_panneaux, panel_watt)`` que le MOTEUR recommande pour ce lead.
+
+    Les tests s'y adossent au lieu d'épingler un nombre : le nombre juste est
+    par définition celui du moteur, et il bougera légitimement le jour où le
+    catalogue ou le barème bougent. Ce qui est épinglé, c'est que le devis n'a
+    pas d'AUTRE source de dimensionnement."""
+    from apps.ventes import services
+    nb, watt, source, _avec = services._panneaux_dimensionnement_horaire(
+        lead=lead, company=company,
+        phase=services.phase_client_pour_dimensionnement(lead))
+    assert source == 'moteur_horaire', (
+        'le moteur ne dimensionne pas ce fixture (motif « %s ») — le devis '
+        'automatique le refuserait' % source)
+    return nb, watt
+
 
 class BuildDevisAutoServiceTest(TestCase):
     def setUp(self):
@@ -60,19 +90,29 @@ class BuildDevisAutoServiceTest(TestCase):
         seed_catalogue(self.company)
 
     def _lead(self, **extra):
+        extra.setdefault('ville', VILLE_ANCRE)
+        extra.setdefault('email', 'auto@ex.com')
         return Lead.objects.create(
-            company=self.company, nom='Auto', prenom='Lead',
-            email='auto@ex.com', **extra)
+            company=self.company, nom='Auto', prenom='Lead', **extra)
 
-    def test_sizes_from_facture_hiver(self):
-        # 1800 / 900 = 2 tranches × 8 = 16 panneaux ; 16×710/1000 = 11.36 kWc.
+    def test_la_facture_est_dimensionnee_par_le_moteur(self):
+        """RE-ANCRÉ (29/08/2026) — le lead n'a QU'UNE facture d'hiver et aucun
+        profil d'appel : c'est exactement le cas qui partait hier sur la règle
+        des 900 DH/mois (1800 ⇒ 16 panneaux à 710 Wc). Il doit désormais sortir
+        AU CHIFFRE DU MOTEUR, panneau catalogue réel compris."""
+        lead = self._lead(facture_hiver=Decimal('1800'))
+        attendu, watt = panneaux_du_moteur(lead, self.company)
         devis = build_devis_auto(
-            lead=self._lead(facture_hiver=Decimal('1800')),
-            user=self.user, company=self.company)
+            lead=lead, user=self.user, company=self.company)
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
-        self.assertEqual(int(panel.quantite), 16)
+        self.assertEqual(int(panel.quantite), attendu)
+        # La règle historique aurait dit 16 panneaux de 710 Wc : le devis ne
+        # doit surtout pas être tombé là-dessus par hasard.
+        self.assertEqual(
+            float(devis.etude_params['puissance_kwc']),
+            round(attendu * watt / 1000, 2))
         # U2 (fondateur 20/08/2026) — le lead ne dit rien de la batterie, donc
         # le devis propose LES DEUX options (et non plus le réseau seul).
         desigs = [li.designation for li in devis.lignes.all()]
@@ -81,8 +121,26 @@ class BuildDevisAutoServiceTest(TestCase):
         self.assertTrue(any('Batterie' in d for d in desigs))
         self.assertEqual(devis.etude_params['scenario'],
                          'Les deux (Sans + Avec)')
-        self.assertAlmostEqual(
-            float(devis.etude_params['puissance_kwc']), 11.36, places=2)
+
+    def test_deux_leads_meme_facture_meme_taille_avec_ou_sans_profil(self):
+        """L'INCIDENT test18/test19, en test. Deux leads à 2500 MAD de facture
+        d'hiver : l'un porte un profil d'appel (occupation déclarée), l'autre
+        rien. Hier ils repartaient de DEUX règles différentes (moteur pour le
+        premier, 900 DH pour le second — 16 panneaux). Aujourd'hui les deux
+        passent par le moteur ; la présence d'un profil peut légitimement
+        CHANGER la taille (c'est tout son intérêt), mais plus jamais la RÈGLE.
+        """
+        for email, extra in (('sans-profil@ex.com', {}),
+                             ('avec-profil@ex.com',
+                              {'occupation_jour': 'present'})):
+            lead = self._lead(facture_hiver=Decimal('2500'), email=email,
+                              **extra)
+            attendu, _watt = panneaux_du_moteur(lead, self.company)
+            devis = build_devis_auto(lead=lead, user=self.user,
+                                     company=self.company)
+            panel = next(li for li in devis.lignes.all()
+                         if 'Panneau' in li.designation)
+            self.assertEqual(int(panel.quantite), attendu, email)
 
     def test_sizes_from_taille_souhaitee(self):
         # U1 (fondateur 20/08/2026) — le compte de panneaux est un PLAFOND :
@@ -192,14 +250,83 @@ class BuildDevisAutoServiceTest(TestCase):
         self.assertFalse(any('Batterie' in li.designation for li in sans))
 
     def test_missing_data_raises(self):
-        with self.assertRaises(AutoDevisError):
+        """Aucune facture, aucune taille : le moteur n'a rien à inverser — le
+        refus NOMME la facture d'hiver."""
+        with self.assertRaises(AutoDevisError) as ctx:
             build_devis_auto(lead=self._lead(), user=self.user,
                              company=self.company)
+        self.assertEqual(ctx.exception.field, 'facture_hiver')
 
-    def test_low_bill_raises(self):
-        with self.assertRaises(AutoDevisError):
-            build_devis_auto(lead=self._lead(facture_hiver=Decimal('500')),
-                             user=self.user, company=self.company)
+    def test_facture_faible_le_moteur_decide_quand_meme(self):
+        """RE-ANCRÉ — 500 MAD tombait sous la tranche de 900 (0 panneau ⇒
+        refus). Ce seuil n'existe plus : c'est le moteur qui décide, et lui
+        seul. Le test épingle donc l'ACCORD avec le moteur, quel que soit son
+        verdict — jamais l'arithmétique des tranches."""
+        lead = self._lead(facture_hiver=Decimal('500'))
+        from apps.ventes import services
+        nb, watt, source, _avec = services._panneaux_dimensionnement_horaire(
+            lead=lead, company=self.company,
+            phase=services.phase_client_pour_dimensionnement(lead))
+        if nb > 0:
+            devis = build_devis_auto(lead=lead, user=self.user,
+                                     company=self.company)
+            panel = next(li for li in devis.lignes.all()
+                         if 'Panneau' in li.designation)
+            self.assertEqual(int(panel.quantite), nb)
+            self.assertEqual(source, 'moteur_horaire')
+            self.assertGreater(watt, 0)
+        else:
+            with self.assertRaises(AutoDevisError):
+                build_devis_auto(lead=lead, user=self.user,
+                                 company=self.company)
+
+    def test_la_taille_souhaitee_du_lead_reste_souveraine(self):
+        """Le commercial sait ce qu'il vend : une taille sur la fiche passe
+        devant le moteur, même quand le lead porte une facture ET un profil
+        que le moteur saurait parfaitement dimensionner."""
+        lead = self._lead(facture_hiver=Decimal('1800'),
+                          occupation_jour='present',
+                          taille_souhaitee_kwc=Decimal('6'))
+        devis = build_devis_auto(lead=lead, user=self.user,
+                                 company=self.company)
+        panel = next(li for li in devis.lignes.all()
+                     if 'Panneau' in li.designation)
+        # 6 kWc → plafond ceil(6000/710) = 9 panneaux de 710 Wc : la
+        # conversion, pas le moteur (qui aurait choisi son panneau catalogue).
+        self.assertEqual(int(panel.quantite), 9)
+
+    def test_target_kwc_reste_souverain(self):
+        """Et la cible demandée POUR CE DEVIS passe devant tout le reste."""
+        lead = self._lead(facture_hiver=Decimal('1800'),
+                          taille_souhaitee_kwc=Decimal('6'))
+        devis = build_devis_auto(lead=lead, user=self.user,
+                                 company=self.company,
+                                 target_kwc=Decimal('3'))
+        panel = next(li for li in devis.lignes.all()
+                     if 'Panneau' in li.designation)
+        self.assertEqual(int(panel.quantite), 5)   # ceil(3000/710)
+
+    def test_moteur_sans_localisation_refuse_en_nommant_la_ville(self):
+        """LE POINT DUR DE L'ORDRE FONDATEUR : quand le moteur ne peut pas
+        dimensionner, on REFUSE en nommant la donnée manquante. Aucun devis ne
+        doit plus naître d'une autre règle — surtout pas des 900 DH/mois, qui
+        auraient donné 16 panneaux ici."""
+        lead = self._lead(facture_hiver=Decimal('1800'), ville='')
+        with self.assertRaises(AutoDevisError) as ctx:
+            build_devis_auto(lead=lead, user=self.user, company=self.company)
+        self.assertEqual(ctx.exception.field, 'ville')
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
+
+    def test_la_regle_des_900_dh_ne_dimensionne_plus_rien(self):
+        """La branche « facture ÷ 900 × 8 » a QUITTÉ le code : la fonction de
+        conversion ne connaît plus que les kWc."""
+        from apps.ventes import services
+        self.assertFalse(hasattr(services, '_AUTO_TRANCHE_MAD'))
+        self.assertFalse(hasattr(services, '_AUTO_PANELS_PER_TRANCHE'))
+        import inspect
+        params = inspect.signature(
+            services._residential_panel_count).parameters
+        self.assertNotIn('facture_hiver', params)
 
     def test_non_residential_raises(self):
         for marche in ('agricole', 'industriel', 'commercial'):
@@ -228,7 +355,7 @@ class AutoEndpointTest(TestCase):
     def test_creates_dimensioned_devis(self):
         lead = Lead.objects.create(
             company=self.company, nom='Ep', prenom='Lead',
-            facture_hiver=Decimal('1800'))
+            ville=VILLE_ANCRE, facture_hiver=Decimal('1800'))
         resp = self.api.post(AUTO_URL, {'lead': lead.id}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['statut'], 'brouillon')
