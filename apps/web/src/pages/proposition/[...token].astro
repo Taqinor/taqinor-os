@@ -1971,31 +1971,56 @@ const signConfig = ok
               Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici.
             </p>
           )}
+          {/* data-hero-ttc-value / data-hero-eco-value / data-hero-eco-sub —
+              LANE W (28/08/2026) : le SEUL crochet qui laisse « le détail de
+              la page » suivre la carte cliquée dans « Explorer d'autres
+              tailles ». Zéro chiffre nouveau : le script relit ces nœuds tels
+              quels au chargement (restauration exacte sur Recommandé) et,
+              sur une autre carte, copie le texte DÉJÀ RENDU par CETTE carte
+              (même `formatMAD`, même arrondi) — jamais un second calcul.
+
+              REVUE ADVERSARIALE (correction) : une carte qui NE SERT PAS le
+              champ ne doit JAMAIS laisser voir le chiffre du DEVIS OFFICIEL
+              à sa place — ce serait un chiffre attribué à la mauvaise offre.
+              `data-hero-ttc-card` / `data-hero-eco-card` sont les conteneurs
+              ENTIERS (libellé + valeur + légende) que le script MASQUE au
+              lieu de repartir sur l'original quand la carte sélectionnée ne
+              sert pas ce champ — l'omission honnête, jamais un mensonge par
+              readback. `data-hero-eco-kind` fige, AU CHARGEMENT, ce que ce
+              bloc a réellement rendu (« eco » = économie annuelle,
+              « payback » = repli retour sur investissement) : le script ne
+              lit QUE le champ homonyme sur la carte sélectionnée — jamais un
+              payback sous un libellé « Économie / an », ni l'inverse. La
+              ligne `data-hero-eco-sub` (MAD/mois ou payback) n'est pas
+              reconstruite en JS (elle porte du texte traduit) : elle reste
+              MASQUÉE hors de Recommandé. */}
           <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
             {heroTtc !== null ? (
-              <div class="cine-card rounded-xl p-4">
+              <div class="cine-card rounded-xl p-4" data-hero-ttc-card>
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</p>
-                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr"><span data-hero-ttc-value>{formatMAD(heroTtc)}</span></p>
                 <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr="clé en main" data-en="turnkey" data-ar="تسليم مفتاح في اليد">clé en main</p>
               </div>
             ) : null}
             {(ecoHero || paybackHero) ? (
-              <div class="cine-card rounded-xl p-4">
+              <div class="cine-card rounded-xl p-4" data-hero-eco-card data-hero-eco-kind={ecoHero ? 'eco' : 'payback'}>
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</p>
                 <p class="fig mt-1 text-2xl text-lune sm:text-3xl" dir="ltr">
-                  {ecoHero ? formatMAD(ecoHero) : paybackHero}
+                  <span data-hero-eco-value>{ecoHero ? formatMAD(ecoHero) : paybackHero}</span>
                 </p>
                 {/* `headline.monthly` est DÉJÀ calculé par savingsHeadline — le
                     même chiffre que le chapitre « Vos économies », jamais un
                     second calcul. Repli sur le payback quand il manque. */}
-                {ecoHero && headline?.monthly ? (
-                  <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
-                ) : ecoHero && paybackHero ? (
-                  <p class="mt-0.5 text-xs text-lune-faint" data-i18n
-                    data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
-                    Rentabilisé en {paybackHero}
-                  </p>
-                ) : null}
+                <div data-hero-eco-sub>
+                  {ecoHero && headline?.monthly ? (
+                    <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
+                  ) : ecoHero && paybackHero ? (
+                    <p class="mt-0.5 text-xs text-lune-faint" data-i18n
+                      data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
+                      Rentabilisé en {paybackHero}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
@@ -2282,10 +2307,10 @@ const signConfig = ok
                           {(va.nbPanneaux !== null || va.puissanceKwc !== null) && (
                             <p class="mt-1 text-xs text-lune-faint" dir="ltr">
                               {va.nbPanneaux !== null && (
-                                <span>{formatNumber(va.nbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
+                                <span><span data-taille-panneaux-value>{formatNumber(va.nbPanneaux)}</span> <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
                               )}
                               {va.nbPanneaux !== null && va.puissanceKwc !== null && <span class="mx-1" aria-hidden="true">·</span>}
-                              {va.puissanceKwc !== null && <span>{formatNumber(va.puissanceKwc, 2)} kWc</span>}
+                              {va.puissanceKwc !== null && <span><span data-taille-kwc-value>{formatNumber(va.puissanceKwc, 2)}</span> kWc</span>}
                             </p>
                           )}
 
@@ -2295,7 +2320,7 @@ const signConfig = ok
                               servi, la carte le dit en toutes lettres. */}
                           {va.prixTtc !== null ? (
                             <>
-                              <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(va.prixTtc)}</p>
+                              <p class="fig fig-md lum mt-3" dir="ltr" data-taille-ttc-value>{formatMAD(va.prixTtc)}</p>
                               <p class="text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                             </>
                           ) : (
@@ -2326,13 +2351,13 @@ const signConfig = ok
                             {va.economieAnnuelleMad !== null && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Économies / an" data-en="Savings / year" data-ar="التوفير / سنة">Économies / an</dt>
-                                <dd class="fig text-brass-300" dir="ltr">{formatMAD(va.economieAnnuelleMad)}</dd>
+                                <dd class="fig text-brass-300" dir="ltr" data-taille-eco-value>{formatMAD(va.economieAnnuelleMad)}</dd>
                               </div>
                             )}
                             {formatPayback(va.paybackAnnees) && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Remboursé en" data-en="Paid back in" data-ar="مسترد في">Remboursé en</dt>
-                                <dd class="fig text-lune-soft" dir="ltr">{formatPayback(va.paybackAnnees)}</dd>
+                                <dd class="fig text-lune-soft" dir="ltr" data-taille-payback-value>{formatPayback(va.paybackAnnees)}</dd>
                               </div>
                             )}
                             {va.couverturePct !== null && (
@@ -2350,7 +2375,7 @@ const signConfig = ok
                             {va.productionAnnuelleKwh !== null && (
                               <div class="flex justify-between gap-2">
                                 <dt class="text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</dt>
-                                <dd class="fig text-lune-soft" dir="ltr">{formatNumber(va.productionAnnuelleKwh, 0)} kWh</dd>
+                                <dd class="fig text-lune-soft" dir="ltr"><span data-taille-production-value>{formatNumber(va.productionAnnuelleKwh, 0)}</span> kWh</dd>
                               </div>
                             )}
                             {va.economiesCumulees25AnsMad !== null && (
@@ -2826,14 +2851,24 @@ const signConfig = ok
               (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
               en UNE ligne au-dessus du tableau : c'est une légende, pas un
               tableau de bord. Chaque valeur reste celle du devis backend. */}
-          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
+          {/* data-hero-kwc-value / data-hero-panneaux-value — LANE W : mêmes
+              crochets « suivre la carte cliquée » qu'au héros, restaurés à
+              l'identique sur Recommandé. `wattPanneau` (fiche produit du
+              devis officiel, pas de la carte) reste figé : une carte Éco/Max
+              ne prétend pas connaître le modèle de panneau catalogue.
+              `data-hero-kwc-item`/`data-hero-panneaux-item` sont les items
+              ENTIERS que le script masque (jamais un readback sur l'original)
+              quand la carte sélectionnée ne sert pas ce champ ; le séparateur
+              `data-hero-legend-sep` suit — jamais un point orphelin entre un
+              item masqué et son voisin. */}
+          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft" data-installation-legend>
             {heroKwc ? (
-              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(heroKwc, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
+              <span class="fig text-xl text-lune" dir="ltr" data-hero-kwc-item><span data-hero-kwc-value>{formatNumber(heroKwc, 2)}</span> <span class="text-sm text-lune-soft">kWc</span></span>
             ) : null}
-            {heroKwc && heroNbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
+            {heroKwc && heroNbPanneaux ? <span class="text-lune-faint" aria-hidden="true" data-hero-legend-sep>·</span> : null}
             {heroNbPanneaux ? (
-              <span class="fig text-xl text-lune" dir="ltr">
-                {formatNumber(heroNbPanneaux)}
+              <span class="fig text-xl text-lune" dir="ltr" data-hero-panneaux-item>
+                <span data-hero-panneaux-value>{formatNumber(heroNbPanneaux)}</span>
                 {wattPanneau ? <span class="text-sm text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
                 <span class="ms-1 text-sm text-lune-soft" data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span>
               </span>
@@ -4002,18 +4037,27 @@ const signConfig = ok
 
           {/* ── Le résumé annuel EN CHIFFRES, sous le graphe (jamais un chiffre
                  recalculé : exactement ceux du devis backend). ───────────── */}
+          {/* data-hero-production-card/-value et data-hero-eco-annual-card/-value —
+              LANE W (extension, revue Fable) : MÊME discipline que le héros
+              (copier le texte déjà rendu par la carte sélectionnée, masquer
+              l'item ENTIER quand elle ne sert pas ce champ, restaurer le
+              texte mis en cache sur Recommandé + variante par défaut). Ce
+              bandeau « Économie estimée / an » est un NŒUD DISTINCT du
+              créneau `data-hero-eco-value` du héros (même donnée `ecoHero`,
+              deux endroits de la page) — il porte donc son propre crochet,
+              jamais partagé. */}
           {(prodKwh || ecoHero) && (
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               {prodKwh ? (
-                <div class="cine-card rounded-xl p-5">
+                <div class="cine-card rounded-xl p-5" data-hero-production-card>
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-en="Estimated production / year" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
-                  <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
+                  <p class="fig fig-md mt-2 text-lune" dir="ltr"><span data-hero-production-value>{formatNumber(prodKwh)}</span> <span class="text-lg text-lune-soft">kWh</span></p>
                 </div>
               ) : null}
               {ecoHero ? (
-                <div class="cine-card rounded-xl p-5">
+                <div class="cine-card rounded-xl p-5" data-hero-eco-annual-card>
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Économie estimée / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économie estimée / an</p>
-                  <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ecoHero)}</p>
+                  <p class="fig fig-md lum mt-2" dir="ltr"><span data-hero-eco-annual-value>{formatMAD(ecoHero)}</span></p>
                 </div>
               ) : null}
             </div>
@@ -4164,8 +4208,18 @@ const signConfig = ok
                     pourcentage servi (longueur d'arc = circonférence × pct/100).
                     Le moteur borne déjà 1..100 : 100 % ne s'affiche que si le
                     backend dit production ≥ consommation. */}
+                {/* data-hero-couverture-card — LANE W (extension, revue Fable) :
+                    l'anneau `stroke-dasharray` est un ARC géométrique PRÉCALCULÉ
+                    au chargement (`donutDash`/`donutCirc`, une vraie
+                    circonférence × pourcentage) — le recalculer en JS pour
+                    suivre une autre carte serait EXACTEMENT le calcul côté
+                    client interdit. Plutôt qu'un anneau FIGÉ sous un nouveau
+                    pourcentage (un mensonge visuel), la carte ENTIÈRE est
+                    MASQUÉE hors de Recommandé + variante par défaut, et
+                    redémasquée au retour — jamais un readback, jamais un
+                    second calcul de géométrie. */}
                 {showCouvertureDonut && couverture && (
-                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2">
+                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2" data-hero-couverture-card>
                     <svg viewBox="0 0 100 100" width="112" height="112" class="shrink-0" role="img"
                       aria-label={`Couverture solaire : ${formatNumber(couverture.pct, 0)} %`}>
                       <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-lune-faint)" stroke-opacity="0.22" stroke-width="10" />
@@ -8128,8 +8182,156 @@ const signConfig = ok
     // page garde ses artefacts uniques — jamais un cadre vide.
     const details = Array.from(document.querySelectorAll<HTMLElement>('[data-taille-detail]'));
 
+    // ── LANE W (28/08/2026) — « le détail de la page suit la carte » ────────
+    // Les SEULS nœuds hors de la section #tailles que ce script touche, en
+    // plus des deux chemins déjà documentés ci-dessus (WJ54, curseur
+    // batterie) : le bloc de chiffres du héros et la légende kWc/panneaux
+    // de « Votre installation ». Ce script ne CALCULE ni ne FORMATE rien ici
+    // non plus : il COPIE le texte DÉJÀ RENDU par la carte sélectionnée
+    // (même `formatMAD`/`formatNumber` que la carte elle-même) — jamais un
+    // second calcul.
+    //
+    // REVUE ADVERSARIALE (correction, zéro-chiffre-inventé) — une carte qui
+    // NE SERT PAS un champ ne doit JAMAIS laisser voir le chiffre du DEVIS
+    // OFFICIEL à sa place : ce serait un nombre RÉEL mais ATTRIBUÉ à la
+    // MAUVAISE offre. `masquer()` MASQUE donc l'item entier au lieu de
+    // repartir sur l'original — l'omission honnête, la même discipline que
+    // les cartes elles-mêmes. Et le créneau « Économie / an » ne mélange
+    // JAMAIS un payback sous un libellé pensé pour une économie (ou
+    // l'inverse) : `data-hero-eco-kind`, figé au chargement, dit lequel des
+    // deux CE bloc a réellement rendu, et seul le champ HOMONYME de la carte
+    // sélectionnée peut s'y substituer. La ligne MAD/mois du héros
+    // (`data-hero-eco-sub`) porte du texte traduit qu'aucune carte Éco/Max
+    // ne sert : elle reste MASQUÉE hors de Recommandé (jamais reconstruite
+    // en JS). Sur Recommandé + la variante par défaut, tout est DÉMASQUÉ et
+    // restauré au texte ORIGINAL mis en cache au chargement — jamais
+    // recalculé depuis la carte — ce qui garantit l'identité byte-à-byte de
+    // la page au chargement et après un aller-retour.
+    const heroTtcCard = document.querySelector<HTMLElement>('[data-hero-ttc-card]');
+    const heroTtcValue = document.querySelector<HTMLElement>('[data-hero-ttc-value]');
+    const heroEcoCard = document.querySelector<HTMLElement>('[data-hero-eco-card]');
+    const heroEcoValue = document.querySelector<HTMLElement>('[data-hero-eco-value]');
+    const heroEcoKind = heroEcoCard?.dataset.heroEcoKind === 'payback' ? 'payback' : 'eco';
+    const heroEcoSub = document.querySelector<HTMLElement>('[data-hero-eco-sub]');
+    const heroKwcItem = document.querySelector<HTMLElement>('[data-hero-kwc-item]');
+    const heroKwcValue = document.querySelector<HTMLElement>('[data-hero-kwc-value]');
+    const heroPanneauxItem = document.querySelector<HTMLElement>('[data-hero-panneaux-item]');
+    const heroPanneauxValue = document.querySelector<HTMLElement>('[data-hero-panneaux-value]');
+    const heroLegendSep = document.querySelector<HTMLElement>('[data-hero-legend-sep]');
+    // EXTENSION (revue Fable) — le bandeau « Production estimée / an » et le
+    // bandeau « Économie estimée / an » du chapitre production sont des
+    // NŒUDS DISTINCTS du héros (`#prop-fold-figures`) : même donnée, deux
+    // endroits de page, donc deux crochets `data-hero-*` propres — jamais un
+    // sélecteur partagé qui masquerait l'un en croyant piloter l'autre.
+    const heroProductionCard = document.querySelector<HTMLElement>('[data-hero-production-card]');
+    const heroProductionValue = document.querySelector<HTMLElement>('[data-hero-production-value]');
+    const heroEcoAnnualCard = document.querySelector<HTMLElement>('[data-hero-eco-annual-card]');
+    const heroEcoAnnualValue = document.querySelector<HTMLElement>('[data-hero-eco-annual-value]');
+    // La carte « Couverture solaire » porte un ANNEAU SVG dont l'arc
+    // (`stroke-dasharray`) est une géométrie PRÉCALCULÉE au chargement — la
+    // recalculer en JS pour suivre une autre carte serait exactement le
+    // calcul côté client interdit. Elle n'a donc PAS de crochet de valeur :
+    // elle est MASQUÉE en bloc hors de Recommandé (jamais un anneau figé
+    // sous un nouveau pourcentage), et redémasquée au retour.
+    const heroCouvertureCard = document.querySelector<HTMLElement>('[data-hero-couverture-card]');
+    const heroTtcOriginal = heroTtcValue?.textContent ?? null;
+    const heroEcoOriginal = heroEcoValue?.textContent ?? null;
+    const heroKwcOriginal = heroKwcValue?.textContent ?? null;
+    const heroPanneauxOriginal = heroPanneauxValue?.textContent ?? null;
+    const heroProductionOriginal = heroProductionValue?.textContent ?? null;
+    const heroEcoAnnualOriginal = heroEcoAnnualValue?.textContent ?? null;
+
     let variante: 'sans' | 'avec' = varianteDefaut;
     let cle = cleDefaut;
+
+    /** Le texte DÉJÀ RENDU par la carte sélectionnée, pour ce sélecteur — ou
+     *  `null` si cette carte ne sert pas ce champ (discipline d'omission). */
+    function texteDeLaCarteSelectionnee(selecteur: string): string | null {
+      const carte = cartes.find((c) => c.dataset.tailleCle === cle);
+      const bloc = carte?.querySelector<HTMLElement>(
+        `[data-taille-bloc][data-taille-variante="${variante}"]`,
+      );
+      const noeud = bloc?.querySelector<HTMLElement>(selecteur);
+      return noeud ? noeud.textContent : null;
+    }
+
+    /**
+     * Applique UN champ du héros : restauration sur Recommandé, sinon copie
+     * du texte de la carte OU masquage de l'item entier quand la carte ne
+     * sert pas ce champ — JAMAIS un readback sur l'original sous une autre
+     * carte (le bug corrigé par cette revue).
+     */
+    function appliquerChampHero(
+      valeur: HTMLElement | null,
+      item: HTMLElement | null,
+      original: string | null,
+      surLeDefaut: boolean,
+      texteCarte: string | null,
+    ): void {
+      if (!valeur) return;
+      if (surLeDefaut) {
+        valeur.textContent = original;
+        if (item) item.hidden = false;
+        return;
+      }
+      if (texteCarte === null) {
+        if (item) item.hidden = true;
+        return;
+      }
+      if (item) item.hidden = false;
+      valeur.textContent = texteCarte;
+    }
+
+    function synchroniserDetailPage(): void {
+      const surLeDefaut = cle === cleDefaut && variante === varianteDefaut;
+      appliquerChampHero(
+        heroTtcValue, heroTtcCard, heroTtcOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-ttc-value]'),
+      );
+      // Le créneau économie ne lit QUE le champ homonyme de ce qui a été
+      // rendu au chargement (`heroEcoKind`) — jamais l'autre.
+      const ecoTexteCarte = heroEcoKind === 'payback'
+        ? texteDeLaCarteSelectionnee('[data-taille-payback-value]')
+        : texteDeLaCarteSelectionnee('[data-taille-eco-value]');
+      appliquerChampHero(heroEcoValue, heroEcoCard, heroEcoOriginal, surLeDefaut, ecoTexteCarte);
+      if (heroEcoSub) heroEcoSub.hidden = !surLeDefaut;
+      appliquerChampHero(
+        heroKwcValue, heroKwcItem, heroKwcOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-kwc-value]'),
+      );
+      appliquerChampHero(
+        heroPanneauxValue, heroPanneauxItem, heroPanneauxOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-panneaux-value]'),
+      );
+      // Le séparateur entre kWc et panneaux ne survit QUE si les deux items
+      // sont visibles — jamais un point orphelin à côté d'un item masqué.
+      if (heroLegendSep) {
+        const kwcVisible = !!heroKwcItem && !heroKwcItem.hidden;
+        const panneauxVisible = !!heroPanneauxItem && !heroPanneauxItem.hidden;
+        heroLegendSep.hidden = !(kwcVisible && panneauxVisible);
+      }
+
+      // EXTENSION (revue Fable) — même discipline pour le bandeau
+      // « Production estimée / an » du chapitre production.
+      appliquerChampHero(
+        heroProductionValue, heroProductionCard, heroProductionOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-production-value]'),
+      );
+      // « Économie estimée / an » lit le MÊME champ carte que le héros
+      // (`data-taille-eco-value`) : ce bandeau n'a jamais rendu de payback au
+      // chargement (il n'existe que sous `ecoHero`), donc aucun risque de
+      // croisement eco/payback ici — pas besoin d'un `data-hero-*-kind`.
+      appliquerChampHero(
+        heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut,
+        texteDeLaCarteSelectionnee('[data-taille-eco-value]'),
+      );
+
+      // L'anneau de couverture ne PEUT PAS suivre honnêtement (son arc est
+      // une géométrie précalculée, pas un texte à copier) : la carte entière
+      // est masquée hors de Recommandé plutôt que de montrer un anneau figé
+      // sous un nouveau pourcentage — jamais un second calcul de géométrie.
+      if (heroCouvertureCard) heroCouvertureCard.hidden = !surLeDefaut;
+    }
 
     function appliquer(): void {
       for (const b of blocs) b.hidden = b.dataset.tailleVariante !== variante;
@@ -8159,6 +8361,7 @@ const signConfig = ok
           d.hidden = !(memeCle && memeVariante);
         }
       }
+      synchroniserDetailPage();
     }
 
     for (const btn of switchBtns) {

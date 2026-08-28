@@ -1672,22 +1672,130 @@ def plafond_toit_du_devis(devis):
     return cible if cible > 0 else None
 
 
-def plus_grande_contenance(capacite, plafond):
+def contour_du_devis_lnglat(devis):
+    """Les anneaux ``[[lng, lat], …]`` du TRACÉ CLIENT de ce devis, ou ``[]``.
+
+    DEUX SOURCES, DANS CET ORDRE, ET AUCUNE N'INVENTE UNE GÉOMÉTRIE :
+
+    1. les zones du calepinage porté par le devis (``roof_layout['zones']``,
+       ``vertices`` en ``[[lng, lat], …]`` — la convention de
+       ``services.zone_toit_depuis_contour``, qui y recopie précisément le
+       contour dessiné par le client) ;
+    2. à défaut, ``Lead.roof_outline`` via ``services.contour_client_lnglat``
+       (qui porte déjà les deux formes réellement stockées et le seuil de trois
+       sommets).
+
+    Un anneau de moins de trois sommets est écarté, jamais réparé.
+    """
+    anneaux = []
+    layout = getattr(devis, 'roof_layout', None)
+    if isinstance(layout, dict):
+        for zone in (layout.get('zones') or []):
+            if not isinstance(zone, dict):
+                continue
+            anneau = []
+            for point in (zone.get('vertices') or []):
+                if not isinstance(point, (list, tuple)) or len(point) < 2:
+                    continue
+                try:
+                    anneau.append([float(point[0]), float(point[1])])
+                except (TypeError, ValueError):
+                    continue
+            if len(anneau) >= 3:
+                anneaux.append(anneau)
+    if anneaux:
+        return anneaux
+    from apps.ventes.services import contour_client_lnglat
+    contour = contour_client_lnglat(getattr(devis, 'lead', None))
+    return [contour] if contour else []
+
+
+#: Mémo posé sur l'INSTANCE de devis — même patron que
+#: ``calepinage_options._MEMO_CAPACITE``. La borne physique lit le catalogue
+#: (le produit panneau et sa fiche technique) : sans mémo, un endpoint public
+#: non caché la relirait une fois par carte et par variante.
+_MEMO_PLAFOND_PHYSIQUE = '_taqinor_plafond_physique'
+
+
+def plafond_physique_du_devis(devis):
+    """La BORNE PHYSIQUE DURE du tracé client — ``None`` si indéterminable.
+
+    ``aire du contour ÷ aire d'un panneau``, prononcée par la fonction qui la
+    porte déjà (:func:`apps.ventes.services.plafond_physique_du_contour`) : on
+    ne réécrit pas ici une seconde formule de surface. Plusieurs zones se
+    SOMMENT — chacune est un morceau de toit réel.
+
+    CE QUE CETTE BORNE EST, ET CE QU'ELLE N'EST PAS. Elle ne dépend d'aucun
+    paramètre que le client ne nous a pas donné (ni pente, ni azimut, ni retrait
+    de rive) : elle n'invente rien, et elle est LARGE par construction — un
+    calepinage réel tient toujours nettement moins. Ce n'est donc PAS une
+    contenance ; c'est le mur au-delà duquel une taille serait physiquement
+    impossible. Elle ne sert qu'à PLAFONNER, jamais à proposer un nombre.
+
+    Ne lève JAMAIS : un catalogue ou une géométrie illisibles ne valent pas un
+    plafond, ils valent ``None``.
+    """
+    memo = getattr(devis, _MEMO_PLAFOND_PHYSIQUE, None)
+    if isinstance(memo, tuple) and len(memo) == 1:
+        return memo[0]
+    plafond = None
+    try:
+        from apps.ventes.services import (
+            _panneau_pour_calepinage, plafond_physique_du_contour)
+        anneaux = contour_du_devis_lnglat(devis)
+        if anneaux:
+            produit, _societe = _panneau_pour_calepinage(
+                getattr(devis, 'roof_layout', None) or {},
+                company=getattr(devis, 'company', None), devis=devis)
+            total = 0
+            for anneau in anneaux:
+                part = plafond_physique_du_contour(anneau, produit)
+                if part:
+                    total += int(part)
+            plafond = total or None
+    except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas un
+        # plafond : on n'en publie aucun.
+        logger.warning('plafond physique du toit indisponible', exc_info=True)
+        plafond = None
+    try:
+        setattr(devis, _MEMO_PLAFOND_PHYSIQUE, (plafond,))
+    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
+        # mémo, jamais le résultat.
+        pass
+    return plafond
+
+
+def plus_grande_contenance(capacite, plafond, borne_physique=None):
     """LA RÈGLE « ce toit accepte N panneaux », en UN SEUL endroit.
 
-    La CONTENANCE MESURÉE d'abord ; le compte DESSINÉ n'est qu'un plancher. Le
-    ``max()`` n'est pas une hésitation : la contenance vaut par construction au
-    moins le posé (elle part de lui et ne fait qu'ajouter), si bien que le
-    second terme ne l'emporte que sur un layout dont le ``result.panels``
-    déclaré dépasse les panneaux réellement sérialisés. Dans ce cas-là, refuser
-    de compter la différence RÉTRÉCIRAIT une borne qui existait déjà — on ne
-    durcit jamais un plafond de toit sur une incohérence de données.
+    LA CONTENANCE MESURÉE COMMANDE. Quand elle existe, le compte DESSINÉ n'est
+    qu'un plancher : le ``max()`` n'est pas une hésitation, la contenance vaut
+    par construction au moins le posé (elle part de lui et ne fait qu'ajouter),
+    si bien que le second terme ne l'emporte que sur un layout dont le
+    ``result.panels`` déclaré dépasse les panneaux réellement sérialisés. Dans
+    ce cas-là, refuser de compter la différence RÉTRÉCIRAIT une borne qui
+    existait déjà — on ne durcit jamais un plafond de toit sur une incohérence
+    de données.
 
-    ``None`` quand aucune des deux lectures n'aboutit : pas de calepinage, donc
-    pas de plafond de toit du tout (jamais une surface inventée).
+    SANS CONTENANCE MESURÉE, LE COMPTE DESSINÉ NE PINCE PLUS RIEN (correction
+    ordonnée le 28/08/2026). Un devis AUTOMATIQUE naît avec un layout
+    CONTOUR-SEUL (``services.zone_toit_depuis_contour``) : aucun panneau n'y est
+    sérialisé, donc rien n'est mesurable, et ``result.panels`` n'y porte que la
+    CIBLE VENDUE. Le prendre pour un plafond de toit revenait à dire « ce toit
+    accepte exactement ce que je viens de vendre » — Max valait Recommandé, la
+    troisième carte s'effondrait sur tout devis automatique, et la présence du
+    layout court-circuitait en plus le repli « dernière taille éligible du
+    balayage ». Le dessin reste ce qu'il est — la cible de RESYNCHRONISATION —
+    et la seule borne honnête qui subsiste est la borne PHYSIQUE du tracé
+    (:func:`plafond_physique_du_devis`).
+
+    ``None`` quand rien n'aboutit : pas de plafond de toit du tout (jamais une
+    surface inventée).
     """
-    valeurs = [int(v) for v in (capacite, plafond) if v]
-    return max(valeurs) if valeurs else None
+    if capacite:
+        valeurs = [int(v) for v in (capacite, plafond) if v]
+        return max(valeurs)
+    return int(borne_physique) if borne_physique else None
 
 
 def contenance_toit_du_devis(devis):
@@ -1696,17 +1804,24 @@ def contenance_toit_du_devis(devis):
     LA FONCTION QUE TOUT CE QUI PROPOSE UNE TAILLE DOIT LIRE — l'échelle de
     paliers batterie comme les trois tailles Éco/Recommandé/Max. Elle mesure
     (:func:`~apps.ventes.calepinage_options.capacite_toit_du_devis` : panneaux
-    conservés + extension maximale PROUVÉE dans le polygone réel) et retombe
-    sur le compte DESSINÉ (:func:`plafond_toit_du_devis`) quand la géométrie
-    n'est pas exploitable — donc, sans calepinage, ``None`` et AUCUNE borne de
-    toit, exactement comme avant.
+    conservés + extension maximale PROUVÉE dans le polygone réel) ; à défaut de
+    géométrie mesurable, elle retombe sur la BORNE PHYSIQUE du tracé client
+    (:func:`plafond_physique_du_devis`) — et sur rien d'autre : le compte
+    DESSINÉ ne borne plus le toit (voir :func:`plus_grande_contenance`). Sans
+    tracé ni calepinage : ``None`` et AUCUNE borne de toit, exactement comme
+    avant.
 
     UN SEUL BALAYAGE PAR REQUÊTE : la mesure est mémoïsée sur l'instance de
     devis, si bien que l'échelle, les cartes et la clé publique la partagent.
+    Le mur physique, lui, n'est LU QUE si la mesure a échoué — il interroge le
+    catalogue, et le calculer d'office coûterait une requête par dérivation
+    pour un nombre que :func:`plus_grande_contenance` jetterait.
     """
     from apps.ventes.calepinage_options import capacite_toit_du_devis
-    return plus_grande_contenance(capacite_toit_du_devis(devis),
-                                  plafond_toit_du_devis(devis))
+    capacite = capacite_toit_du_devis(devis)
+    physique = None if capacite else plafond_physique_du_devis(devis)
+    return plus_grande_contenance(capacite, plafond_toit_du_devis(devis),
+                                  physique)
 
 
 def _compter_modules_batterie(lignes_vue):
@@ -2010,6 +2125,12 @@ def echelle_paliers_batterie(devis):
     l'échelle S'ARRÊTAIT là (voir la boucle : ``champ_minimal`` rend ``None``,
     on rend le palier en ``remplissage_ok=False`` puis on ``break``) — les
     capacités supérieures ne s'affichaient jamais.
+
+    ET SUR UN DEVIS AUTOMATIQUE, ELLE NE SE DÉCLARE PLUS DU TOUT (28/08/2026) :
+    son layout est CONTOUR-SEUL — rien n'y est mesurable et ``result.panels``
+    n'y porte que la cible vendue —, si bien que la borne retombe désormais sur
+    le MUR PHYSIQUE du tracé (:func:`plafond_physique_du_devis`) au lieu de
+    figer l'échelle sur ce qu'on venait de vendre.
 
     ``remplissage_ok=False`` n'apparaît QUE sur le premier palier que même le
     champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)

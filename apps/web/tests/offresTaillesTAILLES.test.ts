@@ -778,13 +778,20 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
   }
 
   it('toutes les fonctions de la lane ne touchent QUE leurs nœuds (+ les sorties documentées)', () => {
-    // LES DEUX SEULES SORTIES AUTORISÉES, nommées explicitement :
+    // LES SORTIES AUTORISÉES, nommées explicitement :
     //   · le formulaire de modification EXISTANT (WJ54) ;
-    //   · le curseur batterie et sa bascule de calque, seul maître batterie.
+    //   · le curseur batterie et sa bascule de calque, seul maître batterie ;
+    //   · LANE W (28/08/2026) — le détail de la page SUIT la carte cliquée :
+    //     le bloc de chiffres du héros (`#prop-fold-figures`) et la légende
+    //     kWc/panneaux de « Votre installation », les DEUX SEULS nœuds hors
+    //     de #tailles que `synchroniserDetailPage` touche, chacun repéré par
+    //     un `data-hero-*` propre à cette sortie (jamais un `data-taille-*`
+    //     réutilisé, qui aurait fait croire à un nœud interne à la section).
     const SORTIES_DOCUMENTEES = [
       'data-revision-token', 'revision-detail',
       'battery-sim-slider', 'prod-battery-toggle', 'battery-sim',
       'roof3d-stale-request',
+      'data-hero-',
     ];
     // TOUT le jeu de méthodes de requête, pas seulement les trois évidentes.
     const REQUETES = String.raw`(?:getElementById|querySelectorAll|querySelector|getElementsByTagName|getElementsByClassName|getElementsByName|closest)`;
@@ -964,6 +971,331 @@ describe('LIENS ERP — les chemins tokenisés émis par la page sont intacts', 
     const bloc = sectionTailles(CODE);
     for (const interdit of ['/api/', 'api.taqinor.ma', 'token=', '/proposition/']) {
       expect(bloc, interdit).not.toContain(interdit);
+    }
+  });
+});
+
+// ── 8. LANE W (28/08/2026) — ENVOI 1/2/3 OPTIONS : 2 OU 3 CARTES ────────────
+// Le backend (LANE B, déjà foldée) peut désormais filtrer `offres` à 2 ou 3
+// entrées selon les sections `taille_eco`/`taille_max` du ShareLink. Cette
+// bibliothèque ne connaît PAS ce filtrage — elle lit juste la liste qu'on lui
+// donne — donc ces épingles vérifient qu'elle reste GÉNÉRIQUE sur la longueur.
+
+describe('LANE W — la liste `offres` peut porter 2 OU 3 cartes, MÊME ordre', () => {
+  it('3 cartes servies (le contrat complet) : Éco → Recommandé → Max', () => {
+    const bloc = offresTailles(SERVI)!;
+    expect(bloc.offres).toHaveLength(3);
+    expect(bloc.offres.map((t) => t.cle)).toEqual(['eco', 'recommande', 'max']);
+  });
+
+  it('2 cartes servies (le vendeur a décoché une taille) : l’ordre Éco → Recommandé survit', () => {
+    const deux = {
+      offres_tailles: {
+        avec_servable: SERVI.offres_tailles.avec_servable,
+        offres: [SERVI.offres_tailles.offres[0], SERVI.offres_tailles.offres[1]], // eco, recommande
+      },
+    };
+    const bloc = offresTailles(deux)!;
+    expect(bloc).not.toBeNull();
+    expect(bloc.offres).toHaveLength(2);
+    expect(bloc.offres.map((t) => t.cle)).toEqual(['eco', 'recommande']);
+    expect(tailleParDefaut(bloc).cle).toBe('recommande');
+  });
+
+  it('2 cartes servies (Recommandé + Max, l’Éco décochée) : même discipline', () => {
+    const deux = {
+      offres_tailles: {
+        avec_servable: SERVI.offres_tailles.avec_servable,
+        offres: [SERVI.offres_tailles.offres[1], SERVI.offres_tailles.offres[2]], // recommande, max
+      },
+    };
+    const bloc = offresTailles(deux)!;
+    expect(bloc.offres).toHaveLength(2);
+    expect(bloc.offres.map((t) => t.cle)).toEqual(['recommande', 'max']);
+  });
+
+  it('1 seule servie (le vendeur a décoché les deux cases) : AUCUNE section — la page d’avant', () => {
+    // C'est exactement la garde « MOINS DE DEUX tailles ⇒ null » déjà testée
+    // plus haut contre un échantillon à la main ; ici contre le VRAI contrat,
+    // pour la scénario réel de l'envoi « 1 option ».
+    const uneSeule = {
+      offres_tailles: {
+        avec_servable: SERVI.offres_tailles.avec_servable,
+        offres: [SERVI.offres_tailles.offres[1]], // recommande seule
+      },
+    };
+    expect(offresTailles(uneSeule)).toBeNull();
+  });
+
+  it('la page rend le NOMBRE DE CARTES SERVI, jamais un compte codé en dur (2 ou 3)', () => {
+    const bloc = sectionTailles(CODE);
+    // La grille itère `tailles.offres` — jamais `.slice(0, 3)` ni une longueur
+    // supposée : un filtrage backend à 2 cartes doit se voir sans toucher au
+    // gabarit.
+    expect(bloc).toContain('{tailles.offres.map((t) => (');
+    for (const interdit of ['.slice(0, 3)', '.slice(0,3)', 'offres[0], tailles.offres[1], tailles.offres[2]']) {
+      expect(bloc, interdit).not.toContain(interdit);
+    }
+  });
+});
+
+// ── 9. LANE W — « LE DÉTAIL DE LA PAGE SUIT LA CARTE » ──────────────────────
+// Ordre fondateur (28/08/2026) : cliquer une carte doit faire suivre le héros
+// (prix/économie) et la légende kWc/panneaux de « Votre installation ». Ce
+// module ne calcule toujours rien (règle zéro-chiffre-inventé) : le script
+// COPIE le texte déjà rendu par la carte sélectionnée, ou RESTAURE le texte
+// d'origine mis en cache — jamais un second `formatMAD`/`formatNumber`.
+
+describe('LANE W — le héros et la légende « installation » suivent la carte cliquée', () => {
+  function scriptTailles(): string {
+    const debut = CODE.indexOf('function setupTaillesOffres');
+    expect(debut, 'setupTaillesOffres doit exister').toBeGreaterThan(0);
+    const reste = CODE.slice(debut);
+    const fin = reste.indexOf('\n  })();');
+    expect(fin, 'setupTaillesOffres doit se refermer').toBeGreaterThan(0);
+    return reste.slice(0, fin);
+  }
+
+  it('les crochets `data-hero-*` existent, sur le héros ET la légende « installation »', () => {
+    expect(CODE).toContain('data-hero-ttc-value');
+    expect(CODE).toContain('data-hero-eco-value');
+    expect(CODE).toContain('data-hero-eco-sub');
+    expect(CODE).toContain('data-hero-kwc-value');
+    expect(CODE).toContain('data-hero-panneaux-value');
+    // Sur les DEUX bandeaux visés — pas un troisième nœud inventé.
+    const hero = CODE.slice(CODE.indexOf('id="prop-fold-figures"'), CODE.indexOf('id="prop-fold-figures"') + 1700);
+    expect(hero).toContain('data-hero-ttc-value');
+    expect(hero).toContain('data-hero-eco-value');
+    expect(hero).toContain('data-hero-eco-sub');
+    const installation = CODE.slice(CODE.indexOf('id="installation"'), CODE.indexOf('id="installation"') + 1500);
+    expect(installation).toContain('data-hero-kwc-value');
+    expect(installation).toContain('data-hero-panneaux-value');
+  });
+
+  it('chaque carte porte le MÊME jeu de crochets, pour que le script ait quoi copier', () => {
+    const bloc = sectionTailles(CODE);
+    for (const hook of [
+      'data-taille-ttc-value', 'data-taille-eco-value', 'data-taille-payback-value',
+      'data-taille-panneaux-value', 'data-taille-kwc-value',
+    ]) {
+      expect(bloc, hook).toContain(hook);
+    }
+  });
+
+  it('le script COPIE le texte déjà rendu — aucun second calcul, aucune requête réseau', () => {
+    const corps = scriptTailles();
+    expect(corps).toContain('function synchroniserDetailPage');
+    expect(corps).toContain('texteDeLaCarteSelectionnee');
+    expect(corps).toContain('.textContent');
+    // La discipline « zéro chiffre calculé côté client », déjà vérifiée pour
+    // tout le script, vaut nommément pour cette nouvelle fonction.
+    for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'toFixed', 'Math.round', 'fetch(']) {
+      expect(corps, interdit).not.toContain(interdit);
+    }
+  });
+
+  it('appliquer() APPELLE la synchronisation à chaque changement de carte/variante', () => {
+    const corps = scriptTailles();
+    expect(corps).toContain('synchroniserDetailPage();');
+    const appliquer = corps.slice(corps.indexOf('function appliquer'));
+    expect(appliquer.indexOf('synchroniserDetailPage();')).toBeGreaterThan(0);
+  });
+
+  it('PRÉSERVATION — sur Recommandé + la variante par défaut, tout est RESTAURÉ, jamais recalculé', () => {
+    const corps = scriptTailles();
+    // `surLeDefaut` compare cle/variante aux deux valeurs par défaut, et
+    // restaure alors le texte ORIGINAL mis en cache — pas un texte lu sur la
+    // carte recommandée (qui pourrait légèrement diverger sur un devis à deux
+    // options divergentes, cf. L-DEUXOPT).
+    expect(corps).toContain('cle === cleDefaut && variante === varianteDefaut');
+    expect(corps).toContain('heroTtcOriginal');
+    expect(corps).toContain('heroEcoOriginal');
+    expect(corps).toContain('heroKwcOriginal');
+    expect(corps).toContain('heroPanneauxOriginal');
+    expect(corps).toContain('appliquerChampHero(');
+    expect(corps).toContain('valeur.textContent = original;');
+  });
+
+  it('OMISSION HONNÊTE — la ligne MAD/mois du héros est MASQUÉE hors de Recommandé, jamais retraduite en JS', () => {
+    const corps = scriptTailles();
+    // Aucune carte Éco/Max ne sert de valeur « mensuelle » : plutôt que de la
+    // reconstruire (economie / 12, un calcul interdit) ou de retraduire une
+    // phrase en trois langues depuis le script, la ligne est simplement
+    // masquée hors de la sélection par défaut.
+    expect(corps).toContain('heroEcoSub.hidden = !surLeDefaut');
+    // …et elle ne contient AUCUN mot traduit en dur (ce serait un 4e canal
+    // d'i18n, hors du mécanisme data-i18n de la page).
+    expect(corps).not.toMatch(/heroEcoSub\.(?:textContent|innerHTML)\s*=/);
+  });
+
+  it('les sorties hors de #tailles restent UNIQUEMENT les deux bandeaux documentés', () => {
+    // Régression du garde-fou « toutes les fonctions de la lane ne touchent
+    // QUE leurs nœuds » : la seule famille d'attributs neuve est `data-hero-*`
+    // — jamais un id brut (`getElementById('prop-fold-figures')` par ex.)
+    // qui échapperait au garde-fou générique.
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-ttc-value]')");
+    expect(corps).not.toContain("getElementById('prop-fold-figures')");
+    expect(corps).not.toContain("getElementById('installation')");
+  });
+
+  // ── REVUE ADVERSARIALE (correction, commit e5b5051e) ──────────────────────
+  // Faille : quand la carte SÉLECTIONNÉE ne sert pas un champ, le code
+  // repartait sur le texte ORIGINAL (celui du devis officiel) — un chiffre
+  // RÉEL mais attribué à la MAUVAISE offre. Et le créneau « Économie / an »
+  // pouvait recevoir un payback (« 4,7 ans ») sous un libellé pensé pour un
+  // montant — un mal-étiquetage. Le correctif : masquer l'item plutôt que de
+  // mentir par readback, et ne jamais croiser eco/payback.
+
+  it('une carte SANS ce champ MASQUE l’item du héros — jamais le chiffre du devis officiel à sa place', () => {
+    const corps = scriptTailles();
+    // `appliquerChampHero` : hors défaut, `texteCarte === null` ⇒ l'item
+    // ENTIER (le conteneur, pas seulement la valeur) est masqué — jamais un
+    // repli sur `original`.
+    expect(corps).toContain('function appliquerChampHero');
+    const fn = corps.slice(corps.indexOf('function appliquerChampHero'));
+    const corpsFn = fn.slice(0, fn.indexOf('\n    }\n'));
+    expect(corpsFn).toContain('if (texteCarte === null) {');
+    expect(corpsFn).toContain('item.hidden = true;');
+    // Le readback interdit (`?? heroTtcOriginal` etc. sur une carte non
+    // défaut) ne doit plus exister nulle part dans la fonction de synchro.
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    const corpsSynchro = synchro.slice(0, synchro.indexOf('\n    }\n'));
+    for (const interdit of [
+      '?? heroTtcOriginal', '?? heroEcoOriginal', '?? heroKwcOriginal', '?? heroPanneauxOriginal',
+    ]) {
+      expect(corpsSynchro, interdit).not.toContain(interdit);
+    }
+  });
+
+  it('les conteneurs à masquer sont les ITEMS ENTIERS (libellé + valeur), pas la seule valeur', () => {
+    // Un libellé « Total TTC » orphelin au-dessus d'un vide serait aussi
+    // trompeur qu'un mauvais chiffre : c'est tout le encadré/l'item qui
+    // disparaît, jamais seulement le `<span>` du nombre.
+    expect(CODE).toContain('data-hero-ttc-card');
+    expect(CODE).toContain('data-hero-eco-card');
+    expect(CODE).toContain('data-hero-kwc-item');
+    expect(CODE).toContain('data-hero-panneaux-item');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-ttc-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-kwc-item]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-panneaux-item]')");
+  });
+
+  it('ÉCO ≠ PAYBACK — le créneau « Économie / an » ne lit JAMAIS le champ homonyme de l’autre nature', () => {
+    // `data-hero-eco-kind`, figé au chargement (`ecoHero ? 'eco' : 'payback'`),
+    // dit ce que CE bloc a réellement rendu ; le script ne lit le champ de la
+    // carte QUE s'il porte le même nom — jamais un croisement.
+    expect(CODE).toContain("data-hero-eco-kind={ecoHero ? 'eco' : 'payback'}");
+    const corps = scriptTailles();
+    expect(corps).toContain("heroEcoCard?.dataset.heroEcoKind === 'payback' ? 'payback' : 'eco'");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain("heroEcoKind === 'payback'");
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-payback-value]')");
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-eco-value]')");
+    // La ligne qui choisit le champ est un ternaire STRICT eco/payback — pas
+    // un enchaînement `??` qui accepterait l'un OU l'autre indifféremment.
+    expect(synchro).not.toMatch(/texteDeLaCarteSelectionnee\('\[data-taille-eco-value\]'\)\s*\?\?\s*texteDeLaCarteSelectionnee\('\[data-taille-payback-value\]'\)/);
+  });
+
+  it('le séparateur de la légende « installation » ne reste JAMAIS orphelin', () => {
+    expect(CODE).toContain('data-hero-legend-sep');
+    const corps = scriptTailles();
+    expect(corps).toContain('heroLegendSep.hidden = !(kwcVisible && panneauxVisible)');
+  });
+
+  it('PRÉSERVATION — restaurer démasque TOUJOURS (le retour sur Recommandé lève tout masquage)', () => {
+    const corps = scriptTailles();
+    const fn = corps.slice(corps.indexOf('function appliquerChampHero'));
+    const corpsFn = fn.slice(0, fn.indexOf('\n    }\n'));
+    expect(corpsFn).toContain('if (surLeDefaut) {');
+    expect(corpsFn).toContain('item.hidden = false;');
+  });
+
+  // ── EXTENSION (revue Fable, ordre fondateur) — LES BANDEAUX RESTANTS ───────
+  // « le détail de la page suit la carte » couvre aussi la production, le
+  // bandeau « Économie estimée / an » (distinct du héros) et la couverture —
+  // avec la MÊME discipline copier/masquer/restaurer, sauf pour l'anneau de
+  // couverture (voir plus bas : son arc ne peut pas honnêtement suivre).
+
+  it('la carte porte le crochet PRODUCTION, jumeau du crochet du bandeau', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc, 'data-taille-production-value').toContain('data-taille-production-value');
+    // Le nombre SEUL est isolé — jamais « kWh » dupliqué en copiant le texte
+    // (le bandeau porte déjà son propre « kWh » statique).
+    expect(bloc).toContain('<span data-taille-production-value>{formatNumber(va.productionAnnuelleKwh, 0)}</span> kWh');
+  });
+
+  it('le bandeau PRODUCTION suit la carte, avec les mêmes hooks card/value que le héros', () => {
+    expect(CODE).toContain('data-hero-production-card');
+    expect(CODE).toContain('data-hero-production-value');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-production-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-production-value]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroProductionValue, heroProductionCard, heroProductionOriginal, surLeDefaut');
+    expect(synchro).toContain("texteDeLaCarteSelectionnee('[data-taille-production-value]')");
+    // Même garde-fou zéro-calcul : pas de readback `?? heroProductionOriginal`
+    // hors de `appliquerChampHero` (qui, lui, restaure QUE sur `surLeDefaut`).
+    expect(synchro).not.toContain('?? heroProductionOriginal');
+  });
+
+  it('le bandeau « Économie estimée / an » est un NŒUD DISTINCT du héros — jamais un sélecteur partagé', () => {
+    // La faille ciblée par la demande : ce bandeau vit dans le chapitre
+    // production (`prodKwh || ecoHero`), le héros vit dans #prop-fold-figures
+    // — deux endroits, donc deux crochets, jamais `data-hero-eco-value` réutilisé
+    // (qui masquerait ou écrirait le MAUVAIS nœud).
+    expect(CODE).toContain('data-hero-eco-annual-card');
+    expect(CODE).toContain('data-hero-eco-annual-value');
+    expect(CODE, 'un span dédié, pas le crochet du héros').toContain(
+      '<span data-hero-eco-annual-value>{formatMAD(ecoHero)}</span>',
+    );
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-annual-card]')");
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-eco-annual-value]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut');
+    // Ce bandeau ne rend JAMAIS de payback au chargement (seulement sous
+    // `ecoHero`) : il lit donc directement `data-taille-eco-value`, sans le
+    // ternaire `heroEcoKind` du héros — pas de risque de croisement ici.
+    expect(synchro).toContain(
+      "heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut,\n        texteDeLaCarteSelectionnee('[data-taille-eco-value]')",
+    );
+  });
+
+  it('COUVERTURE — l’anneau NE PEUT PAS suivre honnêtement : la carte entière est MASQUÉE, jamais un arc figé', () => {
+    // Branche prise : HIDE. L'arc `stroke-dasharray` est une géométrie
+    // précalculée (circonférence × pourcentage) au chargement — la
+    // recalculer en JS serait exactement le calcul côté client interdit, et
+    // laisser l'ancien arc sous un nouveau pourcentage serait un mensonge
+    // visuel. Donc : ni lecture de carte, ni readback — un simple masquage
+    // inconditionnel hors de Recommandé + variante par défaut.
+    expect(CODE).toContain('data-hero-couverture-card');
+    const corps = scriptTailles();
+    expect(corps).toContain("querySelector<HTMLElement>('[data-hero-couverture-card]')");
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
+    expect(synchro).toContain('heroCouvertureCard.hidden = !surLeDefaut');
+    // AUCUNE lecture de carte pour ce champ (ni valeur, ni texte de
+    // remplacement) — la garde-fou du bloc entier est la seule logique.
+    expect(synchro).not.toContain('heroCouvertureValue');
+    expect(synchro).not.toContain("texteDeLaCarteSelectionnee('[data-taille-couverture");
+    // Et surtout : aucun calcul de géométrie (circonférence, dasharray) dans
+    // TOUT le script de la section — la règle « zéro calcul » vérifiée pour
+    // le script entier vaut nommément ici.
+    for (const interdit of ['donutDash', 'donutCirc', 'stroke-dasharray', 'Math.PI']) {
+      expect(corps, interdit).not.toContain(interdit);
+    }
+  });
+
+  it('les TROIS nouveaux bandeaux restent sous le prefixe documenté `data-hero-`', () => {
+    // Régression du garde-fou PRÉSERVATION (SORTIES_DOCUMENTEES) : aucun
+    // sélecteur brut par id n'est apparu pour ces trois extensions.
+    const corps = scriptTailles();
+    for (const interdit of [
+      "getElementById('financing-headline')", "getElementById('production')",
+    ]) {
+      expect(corps, interdit).not.toContain(interdit);
     }
   });
 });

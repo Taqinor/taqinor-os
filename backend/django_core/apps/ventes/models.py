@@ -1460,9 +1460,24 @@ class ShareLink(models.Model):
     # champ est purement additif.
     #
     # Clés supportées (whitelist unique — voir SECTIONS_CLES ci-dessous) :
-    # roof3d, sld, pdf, bankable, economies, jour_type, gammes.
+    # roof3d, sld, pdf, bankable, economies, jour_type, gammes,
+    # taille_eco, taille_max.
+    #
+    # ── ENVOI 1/2/3 OPTIONS (ordre fondateur, 28/08/2026) — ``taille_eco`` et
+    # ``taille_max`` disent COMBIEN de tailles le client voit sur sa page
+    # (``offres_tailles``). MÊME sémantique à trois états que les autres :
+    # absentes ⇒ servies (tout lien déjà envoyé garde ses trois cartes).
+    # « Recommandé » N'A PAS de clé et n'en aura jamais : c'est LE devis —
+    # celui que le client signe, la seule carte autorisée à ouvrir la
+    # signature. La retirer n'aurait aucun sens et laisserait une page sans
+    # offre. Les deux à ``False`` ⇒ une seule taille servie ⇒ la section
+    # « Explorer d'autres tailles » disparaît (la page d'avant ce chantier).
+    #
+    # AUCUNE MIGRATION : ``sections`` est un JSONField et la validation de
+    # l'action ``share-link`` lit CETTE whitelist — elle suit donc d'elle-même.
     SECTIONS_CLES = (
         'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
+        'taille_eco', 'taille_max',
     )
     sections = models.JSONField(
         default=dict, blank=True,

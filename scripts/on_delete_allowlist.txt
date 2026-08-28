@@ -2370,7 +2370,7 @@ backend/django_core/apps/ventes/models.py:1850
 backend/django_core/apps/ventes/models.py:1853
 backend/django_core/apps/ventes/models.py:1871
 backend/django_core/apps/ventes/models.py:1864
-backend/django_core/apps/ventes/models.py:1931
+backend/django_core/apps/ventes/models.py:1946
 backend/django_core/apps/ventes/models.py:1914
 backend/django_core/apps/ventes/models.py:1923
 backend/django_core/apps/ventes/models.py:1910
