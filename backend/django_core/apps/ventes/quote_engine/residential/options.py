@@ -53,6 +53,41 @@ def _split_items(sans_items, avec_items):
     return shared, delta_sans, delta_avec
 
 
+def _pair_divergents(delta_sans, delta_avec):
+    """L-2OPTPDF (ordre fondateur, 28/08/2026) — APPARIE LES RÔLES DIVERGENTS.
+
+    ``_split_items`` sort du tableau commun toute désignation dont la quantité
+    diffère d'une option à l'autre (15 panneaux sans / 14 avec) : elle atterrit
+    dans le delta de CHAQUE option. Le client lisait alors « Panneau … »,
+    « Structure … », « Socle … » DEUX FOIS, une fois par carte — trois rôles
+    répétés qui gonflaient la page et poussaient le devis à 4 pages.
+
+    Ici on les APPARIE : une désignation présente des deux côtés devient UNE
+    ligne à deux valeurs (« 15 · 14 ») dans le tableau d'équipement ; les cartes
+    « Spécifique à l'option N » ne gardent que ce qui n'existe VRAIMENT que d'un
+    côté (onduleur réseau vs hybride, batterie, compteur…).
+
+    Retourne ``(paires, seul_sans, seul_avec)``. L'ordre de ``delta_sans`` est
+    conservé. Une désignation portée par PLUSIEURS lignes du même côté n'est pas
+    appariable (on ne saurait pas quelle ligne va avec quelle ligne) : elle reste
+    dans les deltas, exactement comme avant.
+    """
+    cnt_s, cnt_a = {}, {}
+    for it in delta_sans:
+        cnt_s[it["designation"]] = cnt_s.get(it["designation"], 0) + 1
+    for it in delta_avec:
+        cnt_a[it["designation"]] = cnt_a.get(it["designation"], 0) + 1
+    communs = {n for n in (cnt_s.keys() & cnt_a.keys())
+               if cnt_s[n] == 1 and cnt_a[n] == 1}
+    par_avec = {it["designation"]: it for it in delta_avec
+                if it["designation"] in communs}
+    paires = [(it, par_avec[it["designation"]]) for it in delta_sans
+              if it["designation"] in communs]
+    seul_sans = [it for it in delta_sans if it["designation"] not in communs]
+    seul_avec = [it for it in delta_avec if it["designation"] not in communs]
+    return paires, seul_sans, seul_avec
+
+
 def _produits_href(produits_base):
     """https URL of the fiches library hub from a bare 'taqinor.ma/produits'."""
     base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
@@ -91,6 +126,63 @@ def _row(it, fmt, produits_base="taqinor.ma/produits"):
         f'<td class="p2-r p2-tot">{total_ht}</td>'
         f'</tr>'
     )
+
+
+def _deux_valeurs(v_sans, v_avec):
+    """« 15 · 14 » — la valeur SANS puis la valeur AVEC, jamais une seule.
+
+    Valeurs identiques ⇒ un seul nombre (rien à comparer : on n'écrit pas
+    « 1 · 1 »). Les deux nombres sont typés : le second, celui de l'option
+    recommandée, porte la couleur navy des totaux.
+    """
+    if v_sans == v_avec:
+        return v_sans
+    return (f'<span class="p2-vs">{v_sans}</span>'
+            f'<span class="p2-vsep"> &middot; </span>'
+            f'<span class="p2-va">{v_avec}</span>')
+
+
+def _row_pair(pair, fmt, produits_base="taqinor.ma/produits"):
+    """L-2OPTPDF — UNE ligne de tableau pour un rôle présent dans les DEUX
+    options avec des quantités (ou des prix) différents.
+
+    Les colonnes Qté / P.U. HT / Total HT y portent DEUX valeurs « sans · avec »
+    au lieu de dupliquer la ligne entière dans les deux cartes d'option. La
+    chaîne P.U. → Total HT par ligne est intégralement préservée : chaque
+    colonne montre simplement sa valeur de chaque côté.
+    """
+    s, a = pair
+    marque = s.get("marque") or a.get("marque") or ""
+    marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
+    qte = _deux_valeurs(f'{s["quantite"]:g}', f'{a["quantite"]:g}')
+    pu = _deux_valeurs(fmt(s["prix_unit_ht"]), fmt(a["prix_unit_ht"]))
+    tva = f"{int(round(s['taux_tva']))}%"
+    tot = _deux_valeurs(fmt(s["prix_unit_ht"] * s["quantite"]),
+                        fmt(a["prix_unit_ht"] * a["quantite"]))
+    return (
+        f'<tr class="p2-tr-2v">'
+        f'<td class="p2-d">{_name_html(s, produits_base)}{marque_html}</td>'
+        f'<td class="p2-c">{qte}</td>'
+        f'<td class="p2-r">{pu}</td>'
+        f'<td class="p2-c p2-tva">{tva}</td>'
+        f'<td class="p2-r p2-tot">{tot}</td>'
+        f'</tr>'
+    )
+
+
+def _entry_row(entry, fmt, produits_base="taqinor.ma/produits"):
+    """Une entrée de tableau : ligne simple (``it``) ou ligne appariée."""
+    kind, payload = entry
+    if kind == "paire":
+        return _row_pair(payload, fmt, produits_base)
+    return _row(payload, fmt, produits_base)
+
+
+def _entry_item(entry):
+    """L'item représentatif d'une entrée (côté SANS pour une paire) — sert au
+    modèle de hauteur, qui ne mesure que la longueur de la désignation."""
+    kind, payload = entry
+    return payload[0] if kind == "paire" else payload
 
 
 def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
@@ -179,11 +271,36 @@ def build_pages(ctx) -> list:
         shared, delta_sans, delta_avec = _split_items(
             d["sans_items"], d["avec_items"]
         )
+        # L-2OPTPDF — les rôles présents des DEUX côtés (quantités divergentes)
+        # remontent dans le tableau, en UNE ligne à deux valeurs ; les cartes
+        # d'option ne gardent que le vraiment spécifique.
+        paires, delta_sans, delta_avec = _pair_divergents(
+            delta_sans, delta_avec)
     else:
         # Une seule option : toutes ses lignes forment le tableau d'équipement
         # (aucun delta à comparer).
         shared = d["avec_items"] if avec_ok else d["sans_items"]
-        delta_sans, delta_avec = [], []
+        delta_sans, delta_avec, paires = [], [], []
+
+    # ENTRÉES du tableau d'équipement, DANS L'ORDRE DU DEVIS côté « sans » :
+    # une paire reprend la place qu'occupait sa ligne. Aucune paire (tout devis
+    # non divergent, ou mono-option) ⇒ liste strictement égale à ``shared``,
+    # donc HTML et pagination inchangés au bit près.
+    if paires:
+        _par_nom = {s["designation"]: (s, a) for s, a in paires}
+        _shared_noms = {it["designation"] for it in shared}
+        entries, _vus = [], set()
+        for it in d["sans_items"]:
+            nom = it["designation"]
+            if nom in _par_nom and nom not in _vus:
+                entries.append(("paire", _par_nom[nom]))
+                _vus.add(nom)
+            elif nom in _shared_noms and nom not in _vus:
+                _vus.add(nom)
+                entries.extend(("solo", x) for x in shared
+                               if x["designation"] == nom)
+    else:
+        entries = [("solo", it) for it in shared]
 
     # ── Top spec list ────────────────────────────────────────────────────────
     # L-2OPT — quand les deux options n'ont PAS le même nombre de panneaux, un
@@ -276,7 +393,12 @@ def build_pages(ctx) -> list:
                           d["totaux_sans"], fmt, C)
             + _totals_chain("Option 2 — Avec batterie", C["gold"],
                             d["totaux_avec"], fmt, C, recommended=True))
-        equipement_lbl = "Équipement commun aux deux options"
+        # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
+        # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
+        # (tout devis à deux options non divergent) le libellé historique est
+        # rendu à l'identique.
+        equipement_lbl = ("Équipement des deux options" if paires
+                          else "Équipement commun aux deux options")
     else:
         # QX5 — une seule carte de totaux pour l'unique option réelle.
         _tot = d["totaux_avec"] if avec_ok else d["totaux_sans"]
@@ -402,16 +524,33 @@ def build_pages(ctx) -> list:
             cmp_rows.append(("Retour sur investissement",
                              f'{_yrs(roi_s)} ans', f'{_yrs(roi_a)} ans'))
 
-    if cmp_rows:
+    def _cmp_table(rows):
         _crows = "".join(
             f'<tr><td class="p2-cmp-k">{k}</td>'
             f'<td class="p2-cmp-v">{a}</td>'
             f'<td class="p2-cmp-v p2-cmp-a">{b}</td></tr>'
-            for k, a, b in cmp_rows)
+            for k, a, b in rows)
+        return ('<table class="p2-cmp"><thead><tr><th></th>'
+                '<th>Sans batterie</th><th>Avec batterie</th></tr></thead>'
+                f'<tbody>{_crows}</tbody></table>')
+
+    # L-2OPTPDF — À PARTIR DE 4 LIGNES, LE COMPARATIF SE LIT SUR DEUX COLONNES.
+    # Les valeurs comparées sont courtes (« 15 × 710 W », « 12 400 MAD ») et le
+    # tableau occupait 182 mm de large pour ~40 mm de contenu : posé en deux
+    # demi-tableaux côte à côte, il porte EXACTEMENT les mêmes lignes sur
+    # MOITIÉ MOINS de hauteur — la place qui manquait pour garder le devis
+    # divergent sur sa pagination normale. Chaque demi-tableau garde son
+    # en-tête « Sans batterie / Avec batterie » : aucune colonne muette.
+    _CMP_2UP_MIN = 4
+    if len(cmp_rows) >= _CMP_2UP_MIN:
+        _mid = (len(cmp_rows) + 1) // 2
         comparatif_html = (
-            '<table class="p2-cmp"><thead><tr><th></th>'
-            '<th>Sans batterie</th><th>Avec batterie</th></tr></thead>'
-            f'<tbody>{_crows}</tbody></table>')
+            '<div class="p2-cmp-grid">'
+            f'<div class="p2-cmp-col">{_cmp_table(cmp_rows[:_mid])}</div>'
+            f'<div class="p2-cmp-col">{_cmp_table(cmp_rows[_mid:])}</div>'
+            '</div>')
+    elif cmp_rows:
+        comparatif_html = _cmp_table(cmp_rows)
     else:
         comparatif_html = ""
 
@@ -444,8 +583,11 @@ def build_pages(ctx) -> list:
         return 4.5 + (3.2 if len(str(it.get("designation") or "")) > 55
                       else 0.0)
 
-    def _table_mm(items):
-        return 6.5 + sum(_row_mm(it) for it in items)
+    def _table_mm(entries):
+        # L-2OPTPDF — une ligne appariée mesure comme une ligne simple : ses
+        # deux valeurs tiennent DANS les colonnes existantes (c'est tout
+        # l'intérêt du format « 15 · 14 » face à deux lignes dupliquées).
+        return 6.5 + sum(_row_mm(_entry_item(e)) for e in entries)
 
     def _deltas_mm():
         if not deux_options:
@@ -460,7 +602,14 @@ def build_pages(ctx) -> list:
         « tient sur une page » et déborderait sur une 4ᵉ page. Absent ⇒ 0,0,
         donc décision de pagination identique à l'historique.
         """
-        return 5.0 + len(cmp_rows) * 4.0 if cmp_rows else 0.0
+        if not cmp_rows:
+            return 0.0
+        # L-2OPTPDF — sur deux colonnes, la hauteur est celle de la PLUS HAUTE
+        # des deux moitiés (arrondi supérieur), pas celle des N lignes.
+        n = len(cmp_rows)
+        if n >= _CMP_2UP_MIN:
+            n = (n + 1) // 2
+        return 5.0 + n * 4.0
 
     # QRES49/57 (fondateur, 2026-07-18) — un devis de la taille RÉELLE des
     # devis du fondateur (~13 lignes, fixture « plus5 ») tient en 3 pages AVEC
@@ -468,7 +617,7 @@ def build_pages(ctx) -> list:
     # cartes badges → bande fine sur la page signature ; la ligne « fiches
     # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
     # (~12 lignes communes et plus) passent en 4 pages.
-    fits_one = (_table_mm(shared) + _deltas_mm() + _comparatif_mm()) <= 68.0
+    fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()) <= 68.0
 
     # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
     # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
@@ -497,7 +646,7 @@ def build_pages(ctx) -> list:
     _plan_a_part = roof_render if not plan_dans_la_bande else ""
     visuels_html = ""
     if (_prod_chart or _plan_a_part) and fits_one:
-        _reste = 68.0 - 4.0 - (_table_mm(shared) + _deltas_mm()
+        _reste = 68.0 - 4.0 - (_table_mm(entries) + _deltas_mm()
                                + _comparatif_mm())
         if _reste >= _VISUELS_MM:
             _cells = ""
@@ -518,7 +667,7 @@ def build_pages(ctx) -> list:
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
         out, cur, h, bi = [], [], 0.0, 0
         for it in items:
-            ih = _row_mm(it)
+            ih = _row_mm(_entry_item(it))
             budget = budgets[min(bi, len(budgets) - 1)]
             if cur and h + ih > budget:
                 out.append(cur)
@@ -608,6 +757,21 @@ def build_pages(ctx) -> list:
   .p2-mk {{ color:{C['muted']}; font-size:7.6pt; margin-left:5px; }}
   .p2-tva {{ color:{C['muted']}; font-size:8pt; }}
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
+
+  /* L-2OPTPDF — ligne à deux valeurs (rôle présent dans les deux options avec
+     des quantités différentes) : une seule ligne de tableau, jamais la même
+     désignation répétée dans les deux cartes d'option. NE PAS écrire ici la
+     paire de mots que les gardes de non-régression cherchent dans le document
+     — la feuille de style part sur TOUTES les pages, y compris celles d'un
+     devis non divergent. */
+  .p2-tr-2v td {{ white-space:nowrap; }}
+  .p2-tr-2v td.p2-d {{ white-space:normal; }}
+  .p2-vs {{ color:{C['muted']}; }}
+  .p2-vsep {{ color:{C['line']}; }}
+  .p2-va {{ color:{C['navy']}; font-weight:700; }}
+  .p2-lbl-leg {{ float:right; font-size:7.2pt; font-weight:600;
+    letter-spacing:0; text-transform:none; color:{C['muted']}; }}
+  .p2-lbl-leg b {{ color:{C['navy']}; font-weight:700; }}
 
   /* Per-option delta mini-cards */
   .p2-deltas {{ display:flex; gap:5mm; margin-top:1.5mm; align-items:stretch; }}
@@ -748,6 +912,19 @@ def build_pages(ctx) -> list:
   .p2-cmp td {{ padding:0.85mm 2.5mm; border-bottom:1px solid {C['line_soft']};
     text-align:right; font-feature-settings:'tnum' 1; }}
   .p2-cmp tbody tr:last-child td {{ border-bottom:none; }}
+  /* L-2OPTPDF — comparatif sur deux colonnes. TABLE CSS, pas flex
+     (RENDERING_NOTES §1 : WeasyPrint rétrécit les colonnes d'un flex).
+     ``table-layout:fixed`` ⇒ deux demi-largeurs strictement égales. */
+  .p2-cmp-grid {{ display:table; width:100%; table-layout:fixed;
+    margin-top:2mm; }}
+  .p2-cmp-col {{ display:table-cell; vertical-align:top; }}
+  .p2-cmp-col:first-child {{ padding-right:6mm; }}
+  .p2-cmp-grid .p2-cmp {{ margin-top:0; }}
+  /* Colonne de libellés bornée : les valeurs (``nowrap``) gardent leur place
+     même dans une demi-largeur. */
+  .p2-cmp-grid .p2-cmp .p2-cmp-k {{ width:44%; }}
+  .p2-cmp-grid .p2-cmp td, .p2-cmp-grid .p2-cmp thead th {{
+    padding-left:1.6mm; padding-right:1.6mm; }}
   .p2-cmp .p2-cmp-k {{ text-align:left; color:{C['muted']}; }}
   .p2-cmp .p2-cmp-v {{ color:{C['ink']}; font-weight:600; white-space:nowrap; }}
   .p2-cmp .p2-cmp-a {{ color:{C['navy']}; }}
@@ -824,9 +1001,15 @@ def build_pages(ctx) -> list:
         f'<div class="p2-specs">{spec_html}</div></div>')
 
     def _table_html(items, label):
-        rows = "".join(_row(it, fmt, produits_link) for it in items)
+        rows = "".join(_entry_row(e, fmt, produits_link) for e in items)
+        # L-2OPTPDF — la légende n'apparaît QUE sur une page qui porte
+        # réellement une ligne à deux valeurs, et TIENT SUR LA LIGNE du
+        # libellé : elle ne coûte pas un millimètre de hauteur.
+        leg = ('<span class="p2-lbl-leg">deux valeurs&nbsp;: '
+               '<b>sans</b> &middot; <b>avec</b> batterie</span>'
+               if any(k == "paire" for k, _ in items) else "")
         return (
-            f'<div class="p2-lbl">{label}</div>'
+            f'<div class="p2-lbl">{label}{leg}</div>'
             '<table class="p2-tbl"><thead><tr>'
             '<th class="p2-d">Désignation</th>'
             '<th class="p2-c">Qté</th>'
@@ -960,10 +1143,10 @@ def build_pages(ctx) -> list:
         # la courbe grandit (52 mm) au lieu de laisser l'élastique combler un
         # vide géant — l'espace nourrit le contenu avant les respirations.
         light_cls = (" p2-light"
-                     if (not deux_options and len(shared) <= 4) else "")
+                     if (not deux_options and len(entries) <= 4) else "")
         return [_wrap_page(
             head_html + band_html + visuels_html
-            + _table_html(shared, equipement_lbl)
+            + _table_html(entries, equipement_lbl)
             + '<div class="qj" data-w="35"></div>'
             + closing_html
             + '<div class="qj" data-w="65"></div>'
@@ -973,7 +1156,7 @@ def build_pages(ctx) -> list:
     # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
     # tableau), pages « suite » (titre court seulement — la clôture suit le
     # DERNIER morceau de tableau).
-    chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
+    chunks = _chunk_rows(entries, budgets=[118.0, 165.0])
     # Z2 — les intérieurs sont gardés pour pouvoir, en mode « économies omises »,
     # replier l'encart environnemental sur la DERNIÈRE page équipement (dans son
     # gabarit ``p2-wrap``) au lieu de publier une page « rentabilité » vide.

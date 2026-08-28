@@ -709,3 +709,197 @@ class TestVignetteProductionDeuxValeurs(SimpleTestCase):
         self.assertIn('<div class="c1-kpi-l">Production estimée</div>', html)
         self.assertIn('<span class="p2-spec-l">kWh / an produits</span>', html)
         self.assertNotIn('sans · avec', html)
+
+
+# ── L-2OPTPDF (ORDRE FONDATEUR, 28/08/2026) — LA PAGE ÉQUIPEMENT NE SE ────────
+# DÉDOUBLE PLUS. Sur un devis à deux options dont les nombres de panneaux
+# divergent (DEV-202608-0040 : 15 sans / 14 avec), ``_split_items`` sortait
+# panneaux + structures + socles du tableau commun et les REPOSAIT dans LES DEUX
+# cartes « Spécifique à l'option N » : trois rôles écrits deux fois, une page 2
+# gonflée, et un devis rendu sur 4 pages au lieu de 3.
+#
+# Chaque rôle divergent tient désormais sur UNE ligne à deux valeurs
+# (« 15 · 14 »), et le tableau comparatif se lit sur deux colonnes : le devis
+# divergent retrouve sa pagination normale.
+#
+# Fixtures PURES (aucune BD, aucun WeasyPrint) : on compte les ``<div
+# class="page">`` du HTML EXACT qui part au rendu — une ``.page`` = une page A4
+# composée par WeasyPrint (cf. ``render.build_html``).
+def _items_divergents(nb_sans=15, nb_avec=14):
+    """Composition réelle d'un devis divergent : panneaux, structures et socles
+    changent de quantité d'une option à l'autre ; l'onduleur et la batterie
+    n'existent que d'un côté."""
+    pan = {"designation": "Panneau Canadien Solar 710W",
+           "marque": "Canadian Solar", "prix_unit_ht": 1273.0, "taux_tva": 10}
+    stru = {"designation": "Structure de fixation aluminium", "marque": "",
+            "prix_unit_ht": 250.0, "taux_tva": 20}
+    socle = {"designation": "Socle béton", "marque": "",
+             "prix_unit_ht": 60.0, "taux_tva": 20}
+    tab = {"designation": "Tableau De Protection AC/DC", "marque": "",
+           "quantite": 1, "prix_unit_ht": 1250.0, "taux_tva": 20}
+    inst = {"designation": "Installation", "marque": "", "quantite": 1,
+            "prix_unit_ht": 4000.0, "taux_tva": 20}
+    ond_r = {"designation": "Onduleur réseau Huawei 10kW Triphasé",
+             "marque": "Huawei", "quantite": 1, "prix_unit_ht": 14000.0,
+             "taux_tva": 20}
+    ond_h = {"designation": "Onduleur hybride Deye 10kW Triphasé",
+             "marque": "Deye", "quantite": 1, "prix_unit_ht": 19000.0,
+             "taux_tva": 20}
+    bat = {"designation": "Batterie Dyness 10 kWh", "marque": "Dyness",
+           "quantite": 1, "prix_unit_ht": 22000.0, "taux_tva": 20}
+    sans = [dict(pan, quantite=nb_sans), ond_r, tab,
+            dict(stru, quantite=nb_sans), dict(socle, quantite=nb_sans * 2),
+            inst]
+    avec = [dict(pan, quantite=nb_avec), ond_h, bat, tab,
+            dict(stru, quantite=nb_avec), dict(socle, quantite=nb_avec * 2),
+            inst]
+    return sans, avec
+
+
+def _surcharges_divergentes(nb_sans=15, nb_avec=14):
+    sans, avec = _items_divergents(nb_sans, nb_avec)
+    return {
+        "sans_items": sans, "avec_items": avec,
+        "panneaux_divergents": True,
+        "nb_panneaux_sans": nb_sans, "nb_panneaux_avec": nb_avec,
+        "nb_panneaux": nb_avec,
+        "puissance_kwc_sans": round(nb_sans * 0.71, 2),
+        "puissance_kwc_avec": round(nb_avec * 0.71, 2),
+        "puissance_kwc": round(nb_avec * 0.71, 2),
+        "watt_par_panneau_sans": 710, "watt_par_panneau_avec": 710,
+        "batterie_kwh_total": 10,
+    }
+
+
+def _surcharges_egales(nb=15):
+    """Le TÉMOIN : la même composition, quantités IDENTIQUES des deux côtés."""
+    s = _surcharges_divergentes(nb, nb)
+    s["panneaux_divergents"] = False
+    return s
+
+
+class TestLignesDivergentesDeuxValeurs(SimpleTestCase):
+    """L-2OPTPDF (a) — UN RÔLE DIVERGENT = UNE LIGNE, DEUX VALEURS."""
+
+    def setUp(self):
+        self.html = F.html_residentiel(**_surcharges_divergentes())
+
+    def _cartes(self):
+        cartes = re.findall(r'<div class="p2-dbody">.*?</ul>', self.html, re.S)
+        self.assertEqual(len(cartes), 2)
+        return cartes
+
+    def test_le_panneau_ne_s_ecrit_qu_une_fois(self):
+        """Le cœur de l'incident : la désignation apparaissait dans les DEUX
+        cartes d'option. Elle vit maintenant dans le tableau, une seule fois."""
+        for carte in self._cartes():
+            self.assertNotIn('Panneau Canadien Solar 710W', carte)
+            self.assertNotIn('Structure de fixation aluminium', carte)
+            self.assertNotIn('Socle béton', carte)
+
+    def test_la_ligne_porte_les_deux_quantites_et_les_deux_totaux(self):
+        lignes = re.findall(r'<tr class="p2-tr-2v">.*?</tr>', self.html, re.S)
+        self.assertEqual(len(lignes), 3)      # panneaux, structures, socles
+        panneau = next(x for x in lignes if 'Panneau Canadien' in x)
+        # Qté « 15 · 14 » …
+        self.assertIn('<span class="p2-vs">15</span>', panneau)
+        self.assertIn('<span class="p2-va">14</span>', panneau)
+        # … P.U. unique (le prix ne change pas d'une option à l'autre) …
+        from apps.ventes.quote_engine.residential.theme import fmt
+        self.assertIn(f'<td class="p2-r">{fmt(1273.0)}</td>', panneau)
+        # … et les DEUX totaux HT (15 × 1 273 et 14 × 1 273).
+        self.assertIn(f'<span class="p2-vs">{fmt(15 * 1273.0)}</span>',
+                      panneau)
+        self.assertIn(f'<span class="p2-va">{fmt(14 * 1273.0)}</span>',
+                      panneau)
+        # La chaîne par ligne reste complète : TVA comprise.
+        self.assertIn('>10%<', panneau)
+
+    def test_les_deux_colonnes_sont_nommees(self):
+        """Deux nombres côte à côte ne se devinent pas : la légende du tableau
+        dit lequel est « sans » et lequel est « avec »."""
+        self.assertIn('deux valeurs&nbsp;: <b>sans</b> &middot; '
+                      '<b>avec</b> batterie', self.html)
+        self.assertIn('Équipement des deux options', self.html)
+
+    def test_le_vraiment_specifique_reste_dans_sa_carte(self):
+        """Ce qui n'existe QUE d'un côté ne se compare pas : onduleur réseau
+        contre onduleur hybride + batterie restent par option."""
+        sans, avec = self._cartes()
+        self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
+        self.assertNotIn('Batterie Dyness 10 kWh', sans)
+        self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
+        self.assertIn('Batterie Dyness 10 kWh', avec)
+
+
+class TestPaginationDevisDivergent(SimpleTestCase):
+    """L-2OPTPDF (b) — LE DEVIS DIVERGENT GARDE SES 3 PAGES.
+
+    Le format 'full' résidentiel vaut 3 pages (couverture + installation +
+    signature). Un devis divergent en faisait 4 : ses trois rôles dupliqués
+    plus le tableau comparatif ne tenaient plus dans le budget de la page
+    installation, qui se scindait en page équipement + page rentabilité.
+    """
+
+    def _pages(self, **surcharges):
+        return F.html_residentiel(**surcharges).count('<div class="page">')
+
+    def test_le_devis_divergent_tient_en_trois_pages(self):
+        self.assertEqual(self._pages(**_surcharges_divergentes()), 3)
+
+    def test_le_devis_a_quantites_egales_tient_toujours_en_trois_pages(self):
+        """Non-régression : le témoin (même composition, 15 · 15) n'a jamais
+        débordé et ne déborde toujours pas."""
+        self.assertEqual(self._pages(**_surcharges_egales()), 3)
+
+    def test_le_comparatif_de_synthese_est_intact(self):
+        """La page reste compacte SANS rien retirer au comparatif : il se lit
+        sur deux colonnes, chaque moitié gardant ses en-têtes."""
+        html = F.html_residentiel(**_surcharges_divergentes())
+        self.assertEqual(html.count('<div class="p2-cmp-grid">'), 1)
+        self.assertEqual(html.count('<table class="p2-cmp">'), 2)
+        self.assertEqual(html.count('<th>Sans batterie</th>'), 2)
+        self.assertEqual(html.count('<th>Avec batterie</th>'), 2)
+        for libelle in ('Panneaux', 'Puissance', 'Batteries', 'Prix TTC'):
+            self.assertIn(f'<td class="p2-cmp-k">{libelle}</td>', html)
+
+
+class TestNonDivergentInchangeAuBitPres(SimpleTestCase):
+    """L-2OPTPDF (c) — QUANTITÉS ÉGALES ⇒ EXACTEMENT LE RENDU D'HIER.
+
+    Aucune ligne appariée, aucune légende, aucun comparatif : le corps de la
+    page 2 d'un devis non divergent ne bouge pas d'un octet (seule la feuille
+    de style gagne des règles qui ne s'appliquent à rien ici).
+    """
+
+    def test_aucune_ligne_a_deux_valeurs(self):
+        for surcharges in ({}, _surcharges_egales()):
+            html = F.html_residentiel(**surcharges)
+            # La BALISE, pas la classe seule : les deux vivent aussi dans la
+            # feuille de style, qui part sur toutes les pages.
+            self.assertNotIn('<tr class="p2-tr-2v">', html)
+            self.assertNotIn('<span class="p2-lbl-leg">', html)
+            self.assertNotIn('<div class="p2-cmp-grid">', html)
+            self.assertIn('Équipement commun aux deux options', html)
+            self.assertNotIn('Équipement des deux options', html)
+
+    def test_le_tableau_commun_garde_toutes_ses_lignes(self):
+        """Quantités égales ⇒ panneaux, structures et socles restent COMMUNS
+        (une seule quantité, l'historique)."""
+        html = F.html_residentiel(**_surcharges_egales())
+        for designation in ('Structure de fixation aluminium', 'Socle béton'):
+            self.assertEqual(html.count(designation), 1)
+
+    def test_le_corps_de_la_page_2_est_celui_de_l_ancien_decoupage(self):
+        """Témoin mécanique : la même page rendue en neutralisant
+        l'appariement — les deux HTML doivent être identiques."""
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer,
+        )
+        data = renderer._augment(F.donnees_residentiel(**_surcharges_egales()))
+        ctx = render.build_ctx(data)
+        neuf = "".join(options.build_pages(ctx))
+        with patch.object(options, '_pair_divergents',
+                          lambda s, a: ([], s, a)):
+            ancien = "".join(options.build_pages(ctx))
+        self.assertEqual(neuf, ancien)
