@@ -417,7 +417,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc):
+                  cout_onduleur_ttc, sortie=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -430,6 +430,13 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
     ``TARIFF_ESCALATION`` reste à 0 et n'est pas touché : la projection est à
     tarif PLAT, et le bloc sert ``escalade_tarifaire_pct`` pour que la page
     imprime « aucune hausse tarifaire supposée » AU-DESSUS du chiffre.
+
+    ``sortie`` (facultatif, OPTIONS CHARGEABLES 29/08/2026) reçoit la SÉRIE
+    cumulée complète sous la clé ``cumulative``. C'est le détail d'une taille
+    (:mod:`apps.ventes.taille_detail`) qui la lit, pour tracer la MÊME courbe
+    que la page trace déjà pour le devis : sans ce passe-plat, il aurait fallu
+    rappeler ``compute_cashflow_payback`` ailleurs, avec ses deux arguments de
+    discipline, donc se donner une seconde occasion d'en oublier un.
     """
     if not prix_ttc or not economie_annuelle:
         return None
@@ -445,6 +452,8 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
     cumul = (resultat or {}).get('cumulative') or []
     if not cumul:
         return None
+    if sortie is not None:
+        sortie['cumulative'] = [round(_num(v), 2) for v in cumul]
     return round(_num(cumul[-1]) + float(prix_ttc), 2)
 
 
@@ -745,7 +754,8 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
 # UNE CARTE — dérivée du moteur (Éco / Max) ou REPRISE du devis (Recommandé)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
+def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
+                  sortie_profonde=None):
     """Les deux variantes d'une taille, composées et chiffrées par le moteur.
 
     UN SEUL passage horaire pour les DEUX variantes : ``calculer_etude_horaire``
@@ -760,6 +770,16 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
     public non caché.
 
     Renvoie ``{'sans': carte|None, 'avec': carte|None}``.
+
+    ``sortie_profonde`` (facultatif, OPTIONS CHARGEABLES 29/08/2026) est un
+    dict que l'appelant fournit pour récupérer, EN PLUS des deux cartes, les
+    deux séries que la carte AGRÈGE mais ne publie pas : l'étude horaire
+    complète (``etude`` — ses douze mois portent les économies mois par mois)
+    et la courbe cumulée de chaque variante (``cashflow``). C'est le détail
+    d'une taille (:mod:`apps.ventes.taille_detail`) qui les lit, et c'est un
+    PASSE-PLAT DÉLIBÉRÉ : les faire recalculer là-bas aurait posé un second
+    passage moteur — donc, tôt ou tard, deux chiffres pour la même chose.
+    Absent (défaut) ⇒ comportement byte-identique à avant.
     """
     from apps.ventes.dimensionnement import _compter_modules_batterie
     from apps.ventes.dimensionnement import _lire_composition
@@ -819,6 +839,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
         etude = None
     annuel = (etude or {}).get('annuel') or {}
     production = _positif(annuel.get('production_kwh'))
+    if sortie_profonde is not None:
+        sortie_profonde['etude'] = etude
+        sortie_profonde['cashflow'] = {}
 
     cartes = {'sans': None, 'avec': None}
     for variante, vue, lignes in (('sans', vue_sans, lignes_sans),
@@ -848,6 +871,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
+        serie = {} if sortie_profonde is not None else None
         cumul = _cumul_moteur(
             prix, economie,
             stockage=bool(variante == 'avec' and capacite),
@@ -855,7 +879,10 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
                            else None),
             cout_onduleur_ttc=_cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise))
+                contexte.facteur_remise),
+            sortie=serie)
+        if serie and serie.get('cumulative'):
+            sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
             carte['economies_cumulees_25_ans_mad'] = cumul
         if variante == 'avec':
@@ -1542,6 +1569,369 @@ def regenerer_taille(devis, cle):
     stockees.pop(cle, None)
     _ecrire_colonne(devis, stockees or None)
     return stockees
+
+
+class ApplicationImpossible(Exception):
+    """La taille « Recommandé » ne peut PAS être appliquée à ce devis-là.
+
+    ``revision_possible`` reprend la distinction de
+    :class:`~apps.ventes.services.SyncLayoutError` : un devis ENVOYÉ se révise
+    (une nouvelle version repart en brouillon), un devis accepté/refusé/expiré
+    est clos. L'écran affiche le motif tel quel, en français.
+    """
+
+    def __init__(self, detail, *, revision_possible=False):
+        super().__init__(detail)
+        self.detail = detail
+        self.revision_possible = revision_possible
+
+
+def appliquer_au_devis(devis, cle, *, utilisateur=None):
+    """APPLIQUE la configuration « Recommandé » AU DEVIS LUI-MÊME.
+
+    LE TROU QUE CECI BOUCHE (ordre fondateur, 29/08/2026). Éco et Max sont des
+    cartes d'EXPLORATION : les ajuster change ce que le client voit, et c'est
+    tout ce qu'on leur demande. « Recommandé », lui, EST le devis — mais
+    l'ajuster n'écrivait QUE ``offres_tailles_config`` : la carte changeait,
+    et le devis officiel (ses lignes, ses totaux, son PDF, l'en-tête de la page
+    client) ne bougeait pas d'un panneau. Le vendeur croyait modifier son devis
+    et ne modifiait qu'une vignette — « les modifications ne changent rien au
+    devis », mot pour mot.
+
+    UNE SEULE MACHINERIE DE RECOMPOSITION, JAMAIS UNE SECONDE.
+    :func:`~apps.ventes.services.sync_devis_from_layout` (PV18) est LE chemin
+    qui porte un devis vivant à un nouveau compte de panneaux : il protège les
+    prix négociés (il ne touche QUE des quantités), suit la ferrure, les câbles,
+    l'onduleur et la batterie, complète le kit manquant, et — surtout — porte
+    DÉJÀ la garde de statut. On lui passe le calepinage DU DEVIS avec le seul
+    champ ``result`` réécrit : la géométrie réelle du toit est conservée, seule
+    la cible change. Écrire ici une seconde composition aurait recréé
+    exactement la divergence que ce module entier existe pour empêcher.
+
+    LES GARDES, ET AUCUNE N'EST FRANCHIE PAR DÉFAUT :
+
+    * **Recommandé seulement.** Éco et Max gardent leur sémantique
+      d'exploration ; les appliquer au devis ferait disparaître la comparaison
+      que le client est justement en train de lire.
+    * **Le statut est LU, jamais écrit** (règle #4) : la garde est celle de
+      ``sync_devis_from_layout``, pas une copie — brouillon seul, « envoyé »
+      renvoyé vers « Réviser », accepté/refusé/expiré refusé net.
+    * **Une ligne NÉGOCIÉE n'est jamais réécrite en silence.** Une substitution
+      de matériel re-tarife la ligne ; si celle-ci porte un prix ou une remise
+      qui ne sont plus ceux du catalogue (``_est_au_prix_catalogue``), le geste
+      est REFUSÉ en nommant la ligne, jamais appliqué par-dessus.
+    * **Le TOIT borne le compte** (F5). Au-dessus de ce que la toiture accepte
+      (``dimensionnement.contenance_toit_du_devis`` — la borne même dont les
+      trois cartes se servent), le geste est refusé en NOMMANT la contenance.
+      Aucune géométrie mesurable ⇒ aucune borne connue ⇒ aucun refus : on ne
+      refuse pas au nom d'un toit qu'on n'a pas mesuré.
+    * **Un devis « Les deux » reçoit la taille SUR SES DEUX OPTIONS** (F1).
+      Chacune garde son identité (son onduleur, sa batterie), mais panneaux,
+      structures et socles vont au compte demandé — à la HAUSSE comme à la
+      baisse (``sync_devis_from_layout(cible_exacte=True)`` : le compte tapé
+      n'est pas une contenance de toit, c'est le devis voulu), et une
+      substitution touche TOUTES les lignes du rôle, pas la première.
+    * **Tout ou rien.** Le tout tient dans une transaction : un refus tardif
+      (substitution en conflit) annule la resynchronisation déjà faite.
+    * **La configuration est CONSOMMÉE.** Le devis EST désormais la vérité :
+      laisser un marqueur « Ajusté » sur « Recommandé » ferait mentir la carte
+      (elle serait redérivée par le moteur au lieu d'être reprise du devis) et
+      afficherait un badge que plus rien ne distingue.
+
+    Rend ``{panneaux_avant, panneaux, batterie_modules, substitutions,
+    lignes_modifiees, lignes_ajoutees, avertissements}``.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import DevisActivity
+    from apps.ventes.services import (
+        SyncLayoutError, extract_roof_config, rafraichir_etudes_du_devis,
+        sync_devis_from_layout)
+
+    if cle != 'recommande':
+        raise ApplicationImpossible(
+            'Seule la taille « Recommandé » s\'applique au devis : « %s » est '
+            'une taille d\'exploration, montrée au client à côté de l\'offre '
+            'officielle.' % TITRES.get(cle, cle))
+
+    entree = lire_config_stockee(devis).get('recommande') or {}
+    config = entree.get('config') or {}
+    if not config:
+        raise ApplicationImpossible(
+            'Aucune configuration ajustée sur la taille « Recommandé » : il '
+            'n\'y a rien à appliquer au devis.')
+    nb_panneaux = int(_num(config.get('nb_panneaux'), 0))
+    if nb_panneaux <= 0:
+        raise ApplicationImpossible(
+            'La configuration « Recommandé » ne porte aucun champ de panneaux '
+            ': impossible de recomposer le devis sans lui.')
+
+    contexte = _contexte(devis)
+    if contexte is None:
+        raise ApplicationImpossible(
+            'Ce devis ne permet pas de dériver des tailles (résidentiel, '
+            'profil de consommation réel et catalogue tarifé requis) : il ne '
+            'peut donc pas en recevoir une.')
+
+    # ── F5 (revue Fable, 29/08/2026) — LE TOIT EST UNE BORNE, PAS UN DÉCOR ──
+    #
+    # Le sérialiseur ne bornait le compte qu'entre 1 et 500 : rien n'empêchait
+    # d'appliquer 40 panneaux à un devis dont le toit a été dessiné pour 10.
+    # Le devis partait alors chez le client avec une taille que sa propre
+    # toiture ne porte pas, et la première resynchronisation 3D la ramenait au
+    # plafond — le compte se mettait à osciller entre deux écrans.
+    #
+    # LA MÊME BORNE QUE LES CARTES, PAS UNE SECONDE : les trois tailles se
+    # dérivent déjà sous ``contenance_toit_du_devis`` (calepinage mesuré, à
+    # défaut le mur physique du tracé). Et LA MÊME HONNÊTETÉ : sans géométrie,
+    # cette fonction rend ``None`` et il n'y a AUCUNE borne connue — donc aucun
+    # refus. On ne refuse jamais au nom d'un toit qu'on n'a pas mesuré.
+    from apps.ventes.dimensionnement import contenance_toit_du_devis
+    contenance = contenance_toit_du_devis(devis)
+    if contenance and nb_panneaux > int(contenance):
+        raise ApplicationImpossible(
+            'Le toit dessiné sur ce devis n\'accepte que %s panneaux : '
+            'impossible d\'en appliquer %s. Agrandissez le tracé dans '
+            '« Concevoir la toiture (3D) », ou visez au plus %s panneaux.'
+            % (int(contenance), nb_panneaux, int(contenance)))
+
+    panneaux_avant = _compter_panneaux_du_devis(devis)
+    modules = int(_num(config.get('batterie_nb_modules'), 0))
+    equipements = config.get('equipements') or {}
+
+    with transaction.atomic():
+        try:
+            resultat = sync_devis_from_layout(
+                devis, _layout_de_la_taille(devis, contexte, nb_panneaux,
+                                            modules, extract_roof_config),
+                user=utilisateur,
+                # F1 — LE COMPTE TAPÉ DEVIENT LE DEVIS. Sur un devis
+                # « Les deux » (lignes variantées), le calepinage est
+                # normalement un PLAFOND : une option en dessous n'est jamais
+                # augmentée. Ici la cible ne décrit pas un toit mais la
+                # décision du vendeur — elle s'applique aux DEUX options, à la
+                # hausse comme à la baisse. La contenance réelle du toit, elle,
+                # a déjà refusé au-dessus.
+                cible_exacte=True)
+        except SyncLayoutError as erreur:
+            raise ApplicationImpossible(
+                erreur.detail,
+                revision_possible=erreur.revision_possible) from erreur
+
+        devis.refresh_from_db()
+        modules_poses = _porter_modules_batterie(devis, modules)
+        substitutions = _substituer_sur_le_devis(devis, equipements,
+                                                 contexte)
+
+        # Les quatre études suivent les lignes — sans quoi le devis porterait
+        # une composition neuve et un bloc horaire décrivant l'ancienne.
+        rafraichir_etudes_du_devis(devis, force=True)
+
+        DevisActivity.objects.create(
+            company=getattr(devis, 'company', None), devis=devis,
+            kind=DevisActivity.Kind.MODIFICATION,
+            field='offres_tailles.recommande',
+            field_label='Taille « Recommandé » appliquée au devis',
+            old_value='%s panneaux' % panneaux_avant,
+            new_value=_resume_applique(resultat.get('panneaux'), modules_poses,
+                                       substitutions),
+            user=utilisateur)
+
+        # CONSOMMÉE : le devis est désormais la vérité, la carte « Recommandé »
+        # redevient sa REPRISE (``_carte_du_devis``) plutôt qu'une dérivation
+        # moteur portant un badge « Ajusté » que plus rien ne distingue.
+        regenerer_taille(devis, 'recommande')
+
+    logger.info(
+        'TAILLES: « Recommandé » appliquée au devis %s (%s → %s panneaux, '
+        'société %s, par %s)', getattr(devis, 'reference', '?'),
+        panneaux_avant, resultat.get('panneaux'),
+        getattr(getattr(devis, 'company', None), 'id', '?'),
+        getattr(utilisateur, 'username', '?'))
+    return {
+        'panneaux_avant': panneaux_avant,
+        'panneaux': resultat.get('panneaux'),
+        'batterie_modules': modules_poses,
+        'substitutions': substitutions,
+        'lignes_modifiees': resultat.get('lignes_modifiees'),
+        'lignes_ajoutees': resultat.get('lignes_ajoutees'),
+        'avertissements': list(resultat.get('avertissements') or []),
+    }
+
+
+def _layout_de_la_taille(devis, contexte, nb_panneaux, modules,
+                         extract_roof_config):
+    """LE CALEPINAGE DU DEVIS, avec la seule CIBLE réécrite.
+
+    La géométrie (zones, pans, tracé du client) est conservée telle quelle :
+    on ne redessine pas un toit, on change ce qu'on y pose. Seul ``result``
+    est réécrit — le compte visé et son kWc, calculés au wattage RÉEL du
+    catalogue (:attr:`_Contexte.panel_watt`), c'est-à-dire celui-là même dont
+    les trois cartes tirent leurs chiffres.
+
+    ``annualKwh``/``savings`` sont RETIRÉS plutôt que recopiés : ce sont les
+    projections de l'ANCIENNE taille, et ``sync_devis_from_layout`` les
+    recopierait telles quelles dans ``etude_params``. Les vraies études sont
+    recalculées juste après par ``rafraichir_etudes_du_devis``.
+
+    ``battery`` suit la demande, mais ne RETIRE jamais une batterie que le
+    devis vend déjà : une configuration de taille ne porte que des modules
+    strictement positifs (le sérialiseur refuse le zéro), elle n'exprime donc
+    jamais « enlevez la batterie ».
+    """
+    layout = dict(getattr(devis, 'roof_layout', None) or {})
+    toiture = extract_roof_config(layout)
+    watt = _num(getattr(contexte, 'panel_watt', 0)) or _num(
+        (toiture or {}).get('panel_watt'), 0)
+
+    result = dict(layout.get('result') or {})
+    result.pop('annualKwh', None)
+    result.pop('savings', None)
+    result['panels'] = int(nb_panneaux)
+    result['count'] = int(nb_panneaux)
+    if watt > 0:
+        result['kwc'] = round(nb_panneaux * watt / 1000.0, 3)
+        layout['panelWatt'] = int(round(watt))
+    layout['result'] = result
+
+    a_deja_une_batterie = bool(_compter_modules_du_devis(devis))
+    layout['battery'] = bool(modules) or a_deja_une_batterie
+    layout['scenario'] = ('avec_batterie' if layout['battery'] else 'reseau')
+    return layout
+
+
+def _compter_panneaux_du_devis(devis):
+    """Le nombre de panneaux RÉELLEMENT posés (option « sans » d'abord).
+
+    Même lecture par variante que ``_materiel_du_devis`` : sur un devis à deux
+    options, le compte affiché est celui de l'option 1, jamais la somme des
+    deux — un nombre qui ne décrit aucune installation.
+    """
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _is_panel
+
+    total = 0
+    for ligne in _lignes_produit_du_devis(devis):
+        if (getattr(ligne, 'variante', '') or '') == 'avec':
+            continue
+        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+            continue
+        total += int(_num(getattr(ligne, 'quantite', 0)))
+    return total
+
+
+def _porter_modules_batterie(devis, modules):
+    """Porte la banque du devis à ``modules`` modules. ``None`` = rien touché.
+
+    Une QUANTITÉ, et rien d'autre : ni prix, ni produit, ni TVA. C'est la même
+    politique que ``sync_devis_from_layout`` applique déjà aux panneaux, aux
+    câbles et à la ferrure — et la raison pour laquelle elle n'a pas besoin de
+    la garde de prix négocié : un prix unitaire négocié reste intact.
+
+    Plusieurs lignes batterie (rare) : seule la PLUS GROSSE bouge, même règle
+    que la ligne dominante des panneaux.
+    """
+    from decimal import Decimal as _Decimal
+
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _is_battery
+
+    if not modules:
+        return None
+    candidats = [ligne for ligne in _lignes_produit_du_devis(devis)
+                 if (getattr(ligne, 'variante', '') or '') != 'sans'
+                 and getattr(ligne, 'produit', None) is not None
+                 and _is_battery(getattr(ligne, 'designation', '') or '')]
+    if not candidats:
+        return None
+    dominante = max(candidats, key=lambda li: _num(getattr(li, 'quantite', 0)))
+    if int(_num(getattr(dominante, 'quantite', 0))) == int(modules):
+        return int(modules)
+    dominante.quantite = _Decimal(str(int(modules)))
+    dominante.save(update_fields=['quantite'])
+    return int(modules)
+
+
+def _substituer_sur_le_devis(devis, equipements, contexte):
+    """Remplace le PRODUIT des lignes substituées. ``{role: nom}`` appliqué.
+
+    LA GARDE DE LIGNE NÉGOCIÉE EST ICI, ET NULLE PART AILLEURS DANS CE CHEMIN.
+    Une substitution re-tarife la ligne : y passer par-dessus un prix ou une
+    remise que le commercial a négociés détruirait une décision commerciale
+    que personne n'a demandé de revoir. Le geste est donc REFUSÉ EN NOMMANT LA
+    LIGNE — l'utilisateur choisit alors de remettre la ligne au catalogue, ou
+    de faire la substitution à la main sur l'écran de devis.
+
+    Un rôle qu'aucune ligne du devis ne porte est IGNORÉ (rien à remplacer) —
+    ajouter une ligne ici serait une composition, et ce chemin n'en fait pas.
+
+    TOUTES LES LIGNES DU RÔLE, PAS LA PREMIÈRE (F1, revue Fable, 29/08/2026).
+    Sur un devis « Les deux (Sans + Avec) », un même rôle porte DEUX lignes —
+    une par option. N'en substituer qu'une (``cibles[0]``) faisait vendre au
+    même client deux options équipées de PANNEAUX DIFFÉRENTS, sans que rien ne
+    le dise. Et le contrôle des lignes négociées passe AVANT la première
+    écriture : tout ou rien, jamais une option substituée et l'autre refusée.
+    """
+    from decimal import Decimal as _Decimal
+
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.services import _est_au_prix_catalogue
+
+    if not equipements:
+        return {}
+    produits = _resoudre_substitutions(
+        equipements, company=(contexte.entrees or {}).get('company'))
+    if not produits:
+        return {}
+
+    lignes = list(_lignes_produit_du_devis(devis))
+    a_ecrire = []
+    for role, produit in produits.items():
+        cibles = [ligne for ligne in lignes
+                  if _role_de_la_ligne(
+                      getattr(ligne, 'designation', '') or '') == role]
+        if not cibles:
+            continue
+        # TOUT LE CONTRÔLE D'ABORD — une seule ligne négociée refuse le geste
+        # ENTIER, avant qu'aucune n'ait bougé (la transaction englobante le
+        # garantirait aussi, mais un refus qui n'a rien commencé se relit).
+        for ligne in cibles:
+            if not _est_au_prix_catalogue(ligne):
+                raise ApplicationImpossible(
+                    'La ligne « %s » porte un prix ou une remise négociés : '
+                    'la remplacer par « %s » les effacerait. Remettez la ligne '
+                    'au prix catalogue, ou faites la substitution à la main '
+                    'sur le devis.'
+                    % (getattr(ligne, 'designation', '') or 'sans nom',
+                       getattr(produit, 'nom', '') or 'ce produit'))
+        a_ecrire.append((role, produit, cibles))
+
+    appliquees = {}
+    for role, produit, cibles in a_ecrire:
+        for ligne in cibles:
+            ligne.produit = produit
+            ligne.designation = (getattr(produit, 'nom', '')
+                                 or ligne.designation)
+            prix = getattr(produit, 'prix_vente', None)
+            if prix is not None:
+                ligne.prix_unitaire = _Decimal(str(prix))
+            tva = getattr(produit, 'tva', None)
+            if tva is not None:
+                ligne.taux_tva = _Decimal(str(tva))
+            ligne.save(update_fields=['produit', 'designation',
+                                      'prix_unitaire', 'taux_tva'])
+            appliquees[role] = ligne.designation
+    return appliquees
+
+
+def _resume_applique(panneaux, modules, substitutions):
+    """La ligne de chatter — ce qui a RÉELLEMENT changé, rien de plus."""
+    morceaux = ['%s panneaux' % (panneaux if panneaux is not None else '?')]
+    if modules:
+        morceaux.append('%s module(s) de batterie' % modules)
+    for role, nom in sorted((substitutions or {}).items()):
+        morceaux.append('%s → %s' % (role, nom))
+    return ', '.join(morceaux)
 
 
 def _ecrire_colonne(devis, valeur):

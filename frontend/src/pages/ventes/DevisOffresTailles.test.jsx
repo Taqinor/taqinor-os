@@ -13,6 +13,7 @@ vi.mock('../../api/ventesApi', () => ({
     getOffresTaillesDevis: vi.fn(),
     patchOffreTailleConfig: vi.fn(),
     regenererOffreTaille: vi.fn(),
+    appliquerOffreTailleAuDevis: vi.fn(),
   },
 }))
 
@@ -352,5 +353,93 @@ describe('DevisOffresTailles — mono-option (pas de batterie servable)', () => 
     // Les prix affichés sont ceux de la variante 'sans' — jamais 'avec' (absente ici).
     expect(within(screen.getByTestId('offre-taille-eco')).getByText(/52 800/)).toBeTruthy()
     expect(within(screen.getByTestId('offre-taille-recommande')).getByText(/71 400/)).toBeTruthy()
+  })
+})
+
+// « APPLIQUER » N'EST PAS LE MÊME GESTE SELON LA CARTE (fondateur 29/08/2026).
+// Sur « Recommandé » — qui EST le devis — il RECOMPOSE le devis officiel ; sur
+// Éco et Max il ne configure que la carte d'exploration montrée au client. Un
+// libellé unique laissait croire aux deux à la fois, et c'est exactement le
+// malentendu signalé (« les modifications ne changent rien au devis »).
+describe('DevisOffresTailles — « Appliquer » dit ce qu\'il fait', () => {
+  it('« Recommandé » applique AU DEVIS (libellé + second appel de recomposition)', async () => {
+    const user = userEvent.setup()
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.appliquerOffreTailleAuDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    renderSection()
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+
+    const carte = screen.getByTestId('offre-taille-recommande')
+    expect(within(carte).getByTestId('offre-taille-recommande-appliquer').textContent)
+      .toMatch(/Appliquer au devis/)
+    expect(within(carte).getByTestId('offre-taille-recommande-portee').textContent)
+      .toMatch(/recompose le devis officiel/)
+
+    await user.click(within(within(carte).getByTestId('offre-taille-recommande-stepper-panneaux'))
+      .getByRole('button', { name: 'Panneaux : plus' }))
+    await user.click(within(carte).getByTestId('offre-taille-recommande-appliquer'))
+
+    await waitFor(() => {
+      expect(ventesApi.appliquerOffreTailleAuDevis).toHaveBeenCalledWith(42, 'recommande')
+    })
+  })
+
+  it('« Éco » ne configure QUE la carte client — aucune recomposition du devis', async () => {
+    const user = userEvent.setup()
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    renderSection()
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+
+    const carte = screen.getByTestId('offre-taille-eco')
+    expect(within(carte).getByTestId('offre-taille-eco-appliquer').textContent)
+      .toMatch(/Appliquer à la carte client/)
+    expect(within(carte).getByTestId('offre-taille-eco-portee').textContent)
+      .toMatch(/exploration/)
+
+    await user.click(within(within(carte).getByTestId('offre-taille-eco-stepper-panneaux'))
+      .getByRole('button', { name: 'Panneaux : plus' }))
+    await user.click(within(carte).getByTestId('offre-taille-eco-appliquer'))
+
+    await waitFor(() => expect(ventesApi.patchOffreTailleConfig).toHaveBeenCalled())
+    expect(ventesApi.appliquerOffreTailleAuDevis).not.toHaveBeenCalled()
+  })
+
+  it('un refus de recomposition affiche SON motif et retire la config qui mentirait', async () => {
+    const user = userEvent.setup()
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.regenererOffreTaille.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    // Forme RÉELLE du refus serveur (ApplicationImpossible → DRF 400).
+    ventesApi.appliquerOffreTailleAuDevis.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          detail: ['Devis « Envoyé » : le client a déjà cette version sous les yeux.'],
+          revision_possible: true,
+        },
+      },
+    })
+    renderSection()
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+
+    const carte = screen.getByTestId('offre-taille-recommande')
+    await user.click(within(within(carte).getByTestId('offre-taille-recommande-stepper-panneaux'))
+      .getByRole('button', { name: 'Panneaux : plus' }))
+    await user.click(within(carte).getByTestId('offre-taille-recommande-appliquer'))
+
+    await waitFor(() => {
+      expect(within(carte).getByText(/le client a déjà cette version sous les yeux/)).toBeTruthy()
+    })
+    // Le drapeau `revision_possible` est traduit en CONSEIL, jamais affiché
+    // comme un message « false »/« true » brut.
+    expect(within(carte).getByText(/Créez une révision/)).toBeTruthy()
+    expect(carte.textContent).not.toMatch(/\btrue\b|\bfalse\b/)
+    // La configuration enregistrée juste avant est RETIRÉE : sans cela, la
+    // carte porterait un badge « Ajusté » que le devis ne porte pas.
+    await waitFor(() => {
+      expect(ventesApi.regenererOffreTaille).toHaveBeenCalledWith(42, 'recommande')
+    })
   })
 })

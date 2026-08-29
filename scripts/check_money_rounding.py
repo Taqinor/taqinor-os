@@ -96,8 +96,8 @@ BASELINE_ALLOWLIST = {
     # par ce lot.
     "backend/django_core/apps/ventes/services.py:1151",
     "backend/django_core/apps/ventes/services.py:1154",
-    "backend/django_core/apps/ventes/services.py:3994",
-    "backend/django_core/apps/ventes/services.py:4127",
+    "backend/django_core/apps/ventes/services.py:4011",  # recale 29/08 (edits cible_exacte, meme formule kWc)
+    "backend/django_core/apps/ventes/services.py:4153",  # recale 29/08 (idem)
     # BATHOMO (26/08/2026, revu en fold) — clé de COMPARAISON des candidates de
     # banc batterie (le moins cher gagne) ; la valeur arrondie n'est jamais
     # servie ni stockée, le prix de ligne réel passe par la chaîne de pricing.

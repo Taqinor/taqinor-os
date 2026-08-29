@@ -105,7 +105,10 @@ function Stepper({ label, value, onChange, min, disabled, testId }) {
                     onClick={() => onChange(Math.max(min, value - 1))}>
           <Minus className="size-3.5" />
         </IconButton>
-        <span className="num w-8 text-center text-sm font-semibold tabular-nums">{value}</span>
+        {/* `w-8` (2 rem) coupait un compte à trois chiffres — un champ de 120
+            panneaux est une taille « Max » parfaitement ordinaire. Largeur
+            MINIMALE, pas fixe : la valeur pousse, elle n'est plus rognée. */}
+        <span className="num min-w-10 px-0.5 text-center text-sm font-semibold tabular-nums">{value}</span>
         <IconButton label={`${label} : plus`} size="icon" variant="outline"
                     disabled={disabled}
                     onClick={() => onChange(value + 1)}>
@@ -266,11 +269,25 @@ function TierCard({
           <p key={i} className="text-xs text-destructive" data-testid={`offre-taille-${offre.cle}-erreur`}>{m}</p>
         ))}
 
+        {/* CE QUE « APPLIQUER » FAIT N'EST PAS LE MÊME GESTE SELON LA CARTE,
+            et l'écran doit le DIRE. Sur « Recommandé » — qui EST le devis —
+            le bouton recompose le DEVIS OFFICIEL : ses lignes, ses totaux,
+            son PDF et la page du client changent. Sur Éco et Max, il ne
+            configure que la carte d'EXPLORATION montrée à côté de l'offre.
+            Un libellé unique laissait croire aux deux à la fois — c'est
+            exactement le malentendu du 29/08/2026 (« les modifications ne
+            changent rien au devis »). */}
+        <p className="text-xs text-muted-foreground"
+           data-testid={`offre-taille-${offre.cle}-portee`}>
+          {offre.recommande
+            ? 'Cette taille EST le devis : l\'appliquer recompose le devis officiel (lignes, totaux, PDF, page client).'
+            : 'Cette taille est une exploration : l\'appliquer ne change que la carte montrée au client.'}
+        </p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" disabled={!aDesModifications} loading={saving}
                   data-testid={`offre-taille-${offre.cle}-appliquer`}
                   onClick={onAppliquer}>
-            Appliquer
+            {offre.recommande ? 'Appliquer au devis' : 'Appliquer à la carte client'}
           </Button>
           <Button type="button" size="sm" variant="outline" loading={saving}
                   data-testid={`offre-taille-${offre.cle}-regenerer`}
@@ -379,17 +396,46 @@ export default function DevisOffresTailles({ devisId, modeInstallation, produits
     setTailleEnCours(cle)
     setErreursParTaille(e => ({ ...e, [cle]: [] }))
     try {
-      const { data } = await ventesApi.patchOffreTailleConfig(devisId, cle, config)
+      let { data } = await ventesApi.patchOffreTailleConfig(devisId, cle, config)
+      // « RECOMMANDÉ » EST LE DEVIS : l'enregistrement de la configuration ne
+      // suffit pas, il faut RECOMPOSER le devis officiel — sans ce second
+      // appel, le vendeur ajustait une vignette et son devis ne bougeait pas
+      // (ordre fondateur 29/08/2026). Éco et Max restent des explorations :
+      // leur configuration est tout ce qu'il y a à écrire.
+      if (offre.recommande) {
+        ({ data } = await ventesApi.appliquerOffreTailleAuDevis(devisId, cle))
+      }
       setBlock(data)
       setPending(p => ({ ...p, [cle]: {} }))
-      toast.success(`Taille « ${offre.titre} » mise à jour.`)
+      toast.success(offre.recommande
+        ? 'Devis recomposé sur la taille « Recommandé ».'
+        : `Taille « ${offre.titre} » mise à jour.`)
     } catch (err) {
       const raw = err?.response?.data
-      const flat = raw && typeof raw === 'object' ? flattenErrors(raw) : []
-      setErreursParTaille(e => ({
-        ...e,
-        [cle]: flat.length ? flat : [{ path: [], message: 'L\'enregistrement a échoué — vérifiez la configuration.' }],
-      }))
+      // `revision_possible` est un DRAPEAU, pas un message : le laisser passer
+      // dans `flattenErrors` afficherait « false » comme une erreur au vendeur.
+      const utile = raw && typeof raw === 'object'
+        ? Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'revision_possible'))
+        : raw
+      const flat = utile && typeof utile === 'object' ? flattenErrors(utile) : []
+      const revisionPossible = raw?.revision_possible === true
+      const messages = flat.length
+        ? flat
+        : [{ path: [], message: 'L\'enregistrement a échoué — vérifiez la configuration.' }]
+      if (revisionPossible) {
+        messages.push({ path: [], message: 'Créez une révision (« Réviser ») pour changer ce devis.' })
+      }
+      setErreursParTaille(e => ({ ...e, [cle]: messages }))
+      // LE REFUS NE DOIT PAS LAISSER UN BADGE « AJUSTÉ » QUI MENT. Sur
+      // « Recommandé », la configuration a été ENREGISTRÉE avant que la
+      // recomposition ne soit refusée : la garder ferait afficher une taille
+      // « ajustée » que le devis ne porte pas. On la retire.
+      if (offre.recommande) {
+        try {
+          const { data } = await ventesApi.regenererOffreTaille(devisId, cle)
+          setBlock(data)
+        } catch { /* le rechargement suivant remettra l'écran d'aplomb */ }
+      }
     } finally {
       setTailleEnCours(null)
     }

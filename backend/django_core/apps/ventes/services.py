@@ -3804,7 +3804,7 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
             revision_possible=False)
 
 
-def sync_devis_from_layout(devis, layout, user=None):
+def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
     Sous ``transaction.atomic()`` + ``select_for_update`` sur la ligne du devis
@@ -3874,6 +3874,23 @@ def sync_devis_from_layout(devis, layout, user=None):
     Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
     historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
     à la baisse.
+
+    ``cible_exacte`` (défaut ``False`` — TOUS les appels d'hier, comportement
+    byte-identique) RETOURNE cette règle du plafond, et uniquement pour les
+    devis variantés : le compte du layout devient alors une CIBLE EXACTE que
+    CHAQUE option est portée à, à la hausse comme à la baisse.
+
+    POURQUOI CE COMMUTATEUR EXISTE (revue Fable, 29/08/2026). Le plafond est la
+    bonne règle quand la cible vient d'un CALEPINAGE : le toit dit ce qui tient
+    physiquement, et une option qui a délibérément choisi moins n'a pas à se
+    voir vendre des panneaux qu'elle a écartés. Il est la MAUVAISE règle quand
+    la cible vient d'un NOMBRE TAPÉ PAR LE VENDEUR sur la carte « Recommandé »
+    (:func:`~apps.ventes.offres_tailles.appliquer_au_devis`) : là, le vendeur
+    N'exprime PAS une contenance de toit, il exprime le devis qu'il veut. Sous
+    la règle du plafond, taper un compte PLUS GRAND que celui du devis ne
+    faisait STRICTEMENT RIEN — configuration consommée, message de succès,
+    devis inchangé : très exactement le « les modifications ne changent rien au
+    devis » que ce chemin existe pour clore.
 
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
@@ -4056,10 +4073,19 @@ def sync_devis_from_layout(devis, layout, user=None):
             # PHYSIQUEMENT pas posable), une option en dessous n'est jamais
             # augmentée — on ne rajoute pas au client des panneaux que
             # l'optimum a délibérément écartés.
+            # ``cible_exacte`` — la cible vient d'un NOMBRE TAPÉ, pas d'un
+            # toit : les DEUX options y sont portées, à la hausse comme à la
+            # baisse. Sans lui, une augmentation était un NO-OP SILENCIEUX
+            # (« une option qui reste EN DESSOUS n'est JAMAIS augmentée »),
+            # configuration consommée et message de succès compris.
             for variante in (VARIANTE_SANS, VARIANTE_AVEC):
                 vue = _lignes_de(variante)
                 total_vue = sum(int(li.quantite or 0) for li in vue)
-                if not vue or total_vue <= cible_panneaux:
+                if not vue:
+                    continue
+                if total_vue == cible_panneaux:
+                    continue
+                if not cible_exacte and total_vue < cible_panneaux:
                     continue
                 # Rogner d'abord une ligne PROPRE à cette variante : toucher la
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
@@ -4765,13 +4791,22 @@ def planifier_resynchronisation_produit(produit_id, company_id, champs,
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
 # Le Copilote ne doit JAMAIS créer un devis vide : il passe toujours par ce
-# dimensionnement automatique. Port résidentiel de l'auto-fill solar.js —
-# 8 panneaux par tranche de 900 MAD de facture d'hiver, panneaux 710 Wc — puis
-# délégation à build_devis_from_layout (catalogue, numérotation, brouillon).
+# dimensionnement automatique, puis délègue à build_devis_from_layout
+# (catalogue, numérotation, brouillon).
+#
+# ORDRE FONDATEUR (29/08/2026) — « ALL sizing should go through the new sizing
+# tool, and i said ALL sizing ». La règle historique « 8 panneaux par tranche de
+# 900 MAD de facture d'hiver » (port de ``estimerPanneaux`` de solar.js) NE
+# DIMENSIONNE PLUS AUCUN DEVIS : elle a été SUPPRIMÉE de ce module. Deux leads
+# portant la MÊME facture repartaient sinon avec deux tailles issues de deux
+# règles différentes selon qu'un profil d'appel avait été rempli ou non
+# (incident test18/test19 : 15/14 panneaux par le moteur contre 16/16 par la
+# tranche). Désormais : le moteur horaire dimensionne DÈS QU'UNE DONNÉE DE
+# CONSOMMATION EXISTE (la facture d'hiver suffit), et seule une puissance
+# demandée — ``target_kwc`` pour ce devis, ou ``taille_souhaitee_kwc`` sur la
+# fiche — reste souveraine (le commercial sait ce qu'il vend).
 
 _AUTO_PANEL_WATT = 710        # Wc — panneau catalogue par défaut (cf. solar.js)
-_AUTO_PANELS_PER_TRANCHE = 8  # panneaux par tranche de facture d'hiver
-_AUTO_TRANCHE_MAD = 900       # MAD/mois de facture d'hiver par tranche
 
 
 class AutoDevisError(Exception):
@@ -4798,11 +4833,17 @@ def profil_reel_existe(lead):
       km/semaine) — les seules couches que le moteur sait composer ;
     * douze factures mensuelles réelles saisies sur le devis.
 
-    C'est la CONDITION du dimensionnement horaire (ordre fondateur : la nouvelle
-    règle s'applique « quand le profil existe »). Sans profil, le moteur
-    n'aurait qu'une facture répétée douze fois et une silhouette de repli : la
-    règle historique des 900 DH/mois reste alors le choix honnête, et rien ne
-    change pour les devis d'aujourd'hui.
+    NE CONDITIONNE PLUS AUCUN DIMENSIONNEMENT (ordre fondateur du 29/08/2026 :
+    « ALL sizing should go through the new sizing tool »). Cette fonction était
+    la porte du chemin horaire dans ``build_devis_auto`` ; elle n'y est plus
+    appelée, car un lead SANS profil se dimensionne désormais lui aussi par le
+    moteur (facture d'hiver inversée au barème ONEE + silhouette de repli
+    DOCUMENTÉE ``courbes_journalieres.OCCUPATION_REPLI``), et non plus par la
+    règle des 900 DH/mois — qui n'existe plus.
+
+    Elle reste EXPOSÉE comme lecture de qualité de fiche (« ce lead porte-t-il
+    autre chose qu'une facture ? »), utile pour nuancer un affichage ou
+    relancer un commercial, jamais pour décider d'une taille.
     """
     if lead is None:
         return False
@@ -4833,8 +4874,76 @@ def phase_client_pour_dimensionnement(lead):
     return normaliser_phase(getattr(lead, 'raccordement', None))
 
 
+#: Motifs d'ABSTENTION du moteur horaire — la donnée exacte qui manque, pour
+#: que ``build_devis_auto`` puisse la NOMMER au commercial au lieu de retomber
+#: en silence sur une autre règle (ordre fondateur du 29/08/2026 : il n'y a
+#: plus d'autre règle).
+MOTIF_FACTURE_ABSENTE = 'facture_absente'
+MOTIF_LOCALISATION = 'localisation_inconnue'
+MOTIF_CATALOGUE = 'catalogue_incomplet'
+MOTIF_MOTEUR_INDISPONIBLE = 'moteur_indisponible'
+
+#: Ce que l'agent doit demander pour chaque motif : ``{motif: (message, champ)}``.
+#: Un refus NOMME la donnée manquante — c'est ce qui remplace l'ancien repli
+#: silencieux sur la règle des 900 DH/mois.
+_REFUS_DIMENSIONNEMENT = {
+    MOTIF_FACTURE_ABSENTE: (
+        "Données insuffisantes pour dimensionner le devis : renseignez la "
+        "facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead.",
+        'facture_hiver'),
+    MOTIF_LOCALISATION: (
+        "Le chantier n'est pas localisé : renseignez la ville (ou les "
+        "coordonnées GPS) du lead — sans elle, le productible solaire du site "
+        "est inconnu et aucune taille ne peut être calculée.",
+        'ville'),
+    MOTIF_CATALOGUE: (
+        "Le catalogue de la société ne permet de composer aucune installation "
+        "résidentielle pour ce lead : complétez-le (panneau, onduleur) puis "
+        "relancez le devis automatique.",
+        'catalogue'),
+    MOTIF_MOTEUR_INDISPONIBLE: (
+        "Le moteur de dimensionnement est momentanément indisponible : le "
+        "devis n'a pas été créé plutôt que d'être dimensionné par une autre "
+        "règle. Réessayez, ou précisez la taille souhaitée (kWc) du lead.",
+        'dimensionnement'),
+}
+
+
+def _refus_dimensionnement(motif):
+    """L'``AutoDevisError`` (→ 422) correspondant à un motif d'abstention.
+
+    Motif inconnu ⇒ on refuse quand même, en le citant : on ne crée JAMAIS un
+    devis dont la taille viendrait d'ailleurs que du moteur.
+    """
+    message, champ = _REFUS_DIMENSIONNEMENT.get(
+        motif,
+        ("Le devis n'a pas pu être dimensionné (motif « %s »)." % motif,
+         'dimensionnement'))
+    return AutoDevisError(message, field=champ)
+
+
 def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
+
+    C'EST LE SEUL DIMENSIONNEMENT du devis automatique quand aucune puissance
+    n'est demandée (ordre fondateur du 29/08/2026). Il n'exige PAS un profil
+    d'appel rempli : la seule donnée de consommation nécessaire est la facture
+    d'hiver du lead.
+
+    D'OÙ VIENNENT LES kWh QUAND LE LEAD N'A QU'UNE FACTURE. De
+    ``etude_horaire.profil_depuis_factures`` → ``serie_mad_mensuelle`` (la
+    facture d'hiver répétée sur les douze mois, remplacée par la facture d'été
+    sur mai→octobre quand ``ete_differente`` en déclare une distincte) →
+    ``serie_kwh_depuis_mad``, qui inverse le VRAI barème ONEE
+    (``quote_engine.bareme.kwh_depuis_facture_mad`` : tranches progressives/
+    sélectives, location + entretien, TPPAN) — JAMAIS une division par un prix
+    moyen, jamais un tarif écrit ici.
+
+    REPLI DE FORME, DOCUMENTÉ. Sans drapeau d'occupation lisible, la silhouette
+    24 h est ``courbes_journalieres.OCCUPATION_REPLI`` = présence PARTIELLE,
+    le milieu honnête des trois (jamais « présent », qui flatterait
+    l'autoconsommation). Un équipement déclaré sans sa grandeur n'ajoute
+    aucune couche. C'est le SEUL repli : rien d'autre n'est supposé.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
     recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
@@ -4851,10 +4960,10 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     alors l'option « avec » sur le MÊME champ que l'option « sans »
     (comportement historique — jamais un chiffre inventé pour combler le trou).
 
-    Toute impossibilité (pas de facture, localisation non résolue par PVGIS,
-    catalogue incomplet) rend ``(0, None, 'regle_900dh', None)`` : l'appelant
-    retombe alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève
-    jamais.
+    IMPOSSIBILITÉ ⇒ ``(0, None, <motif>, None)`` où ``<motif>`` est l'un des
+    ``MOTIF_*`` ci-dessus — la donnée qui manque, NOMMÉE. Il n'y a plus de
+    repli : l'appelant refuse le devis en citant ce motif (ordre fondateur —
+    « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
     """
     try:
         from apps.crm.selectors import equipements_pour_devis  # noqa: F401
@@ -4870,7 +4979,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             facture_ete_mad=getattr(lead, 'facture_ete', None),
             ete_differente=getattr(lead, 'ete_differente', False))
         if not conso:
-            return 0, None, 'regle_900dh', None
+            return 0, None, MOTIF_FACTURE_ABSENTE, None
 
         drapeaux = {'present': OCCUPATION_PRESENCE,
                     'absent': OCCUPATION_ABSENCE,
@@ -4894,13 +5003,26 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             source_conso=source)
         recommandation = resultat.get('recommandation')
         if not recommandation:
-            return 0, None, 'regle_900dh', None
+            # Le tableau est vide pour DEUX raisons distinctes, et le
+            # commercial n'a pas le même geste à faire : un ancrage de
+            # productible introuvable se corrige sur la FICHE (ville ou tracé
+            # GPS), un catalogue incomplet se corrige dans le CATALOGUE. On
+            # relit donc la localisation — lecture en table/cache, pas un
+            # second dimensionnement — pour nommer la bonne.
+            from apps.parametres.pvgis_profils import productible_mensuel
+            situe = productible_mensuel(
+                ville=getattr(lead, 'ville', None),
+                lat=getattr(lead, 'gps_lat', None),
+                lon=getattr(lead, 'gps_lng', None))
+            return (0, None,
+                    MOTIF_CATALOGUE if situe else MOTIF_LOCALISATION, None)
         return (int(recommandation['panneaux']),
                 recommandation.get('panel_watt'), 'moteur_horaire',
                 _recommandation_avec_rendue(resultat.get('recommandation_avec')))
-    except Exception:  # noqa: BLE001 — jamais bloquant : on retombe sur 900 DH
+    except Exception:  # noqa: BLE001 — l'appelant REFUSE le devis (il n'y a
+        # plus de règle de repli) : on ne masque pas la panne, on la nomme.
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, None, 'regle_900dh', None
+        return 0, None, MOTIF_MOTEUR_INDISPONIBLE, None
 
 
 def _recommandation_avec_rendue(recommandation_avec):
@@ -5278,20 +5400,23 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
     }
 
 
-def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
-                             panel_watt=_AUTO_PANEL_WATT):
-    """Nombre de panneaux pour un lead résidentiel.
+def _residential_panel_count(*, taille_kwc=None, panel_watt=_AUTO_PANEL_WATT):
+    """CONVERSION SEULE : une puissance demandée (kWc) → un nombre de panneaux.
 
-    Priorité à la taille souhaitée explicite (kWc → panneaux à ``panel_watt``),
-    sinon estimation depuis la facture d'hiver (port de ``estimerPanneaux`` de
-    solar.js : 8 panneaux par tranche de 900 MAD). Renvoie 0 si aucune donnée
-    exploitable (le caller lève alors ``AutoDevisError``)."""
+    Ce n'est plus un dimensionnement — c'est de l'arithmétique. La branche
+    « facture d'hiver ÷ 900 MAD × 8 panneaux » a été RETIRÉE le 29/08/2026
+    (ordre fondateur « ALL sizing should go through the new sizing tool ») :
+    une facture se dimensionne désormais par ``_panneaux_dimensionnement_horaire``
+    et par rien d'autre. Ne subsiste ici que le chemin SOUVERAIN — la puissance
+    que le commercial demande (``target_kwc``) ou que la fiche du lead porte
+    (``taille_souhaitee_kwc``).
+
+    U1 — le compte est un PLAFOND (``plafond_panneaux``), comme
+    ``panneauxPourKwc`` / ``composition_residentielle`` : on ne descend jamais
+    sous la puissance vendue. Renvoie 0 sans taille exploitable (le caller lève
+    alors ``AutoDevisError``)."""
     if taille_kwc not in (None, '') and Decimal(str(taille_kwc)) > 0:
-        # U1 — PLAFOND, comme ``panneauxPourKwc`` / ``composition_residentielle``.
         return max(1, plafond_panneaux(float(taille_kwc) * 1000 / panel_watt))
-    if facture_hiver not in (None, '') and Decimal(str(facture_hiver)) > 0:
-        tranches = int(Decimal(str(facture_hiver)) // _AUTO_TRANCHE_MAD)
-        return tranches * _AUTO_PANELS_PER_TRANCHE
     return 0
 
 
@@ -5435,8 +5560,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      journal_auto=None):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
-    Lit le profil énergétique du lead (taille souhaitée en kWc, sinon facture
-    d'hiver), dimensionne le champ PV, compose PAR DÉFAUT la forme DEUX OPTIONS
+    Dimensionne le champ PV par le MOTEUR HORAIRE (ordre fondateur du
+    29/08/2026 : « ALL sizing should go through the new sizing tool ») — sauf
+    si une PUISSANCE est demandée (``target_kwc``, sinon la taille souhaitée du
+    lead), auquel cas cette puissance est souveraine. Puis compose PAR DÉFAUT
+    la forme DEUX OPTIONS
     (« sans batterie » ET « avec batterie » — U2 ; un ``batterie_souhaitee``
     explicite du lead, « avec » ou « sans », reste souverain et compose cette
     option-là seule) et délègue à ``build_devis_from_layout``
@@ -5449,7 +5577,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     lead — c'est un choix ponctuel du commercial, pas une correction du lead :
 
     * ``target_kwc`` — puissance cible demandée (EZ5) ; passe devant la taille
-      souhaitée du lead ET devant l'estimation par facture d'hiver.
+      souhaitée du lead ET devant le dimensionnement du moteur.
     * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'`` ; passe devant le
       ``batterie_souhaitee`` du lead. Absent : c'est le lead qui décide, et son
       silence vaut « les deux » (U2).
@@ -5483,7 +5611,6 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             "de devis.",
             field='type_installation')
 
-    facture_hiver = getattr(lead, 'facture_hiver', None)
     taille_kwc = getattr(lead, 'taille_souhaitee_kwc', None)
     # U3/EZ5 — une cible demandée pour CE devis passe devant les deux données
     # du lead, sans les réécrire.
@@ -5499,59 +5626,49 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             raise AutoDevisError(
                 'La puissance cible doit être supérieure à zéro.',
                 field='target_kwc')
-    # ── CJ2a (ORDRE FONDATEUR) — LE DIMENSIONNEMENT HORAIRE PASSE DEVANT ────
-    # « this calculus might be the base of deciding which installation for each
-    # client, instead of my 900dh/month rule ».
+    # ── ORDRE FONDATEUR (29/08/2026) — TOUT PASSE PAR LE MOTEUR ─────────────
+    # « why do i bloody have the 900dh path — all sizing should go through the
+    # new sizing tool, and i said ALL sizing ».
     #
-    # Trois conditions, toutes nécessaires, pour que la nouvelle règle décide :
-    #   · aucune cible explicite (une puissance demandée reste souveraine — le
-    #     commercial sait ce qu'il vend) ;
-    #   · aucune taille souhaitée sur la fiche du lead (même raison) ;
-    #   · le lead porte un PROFIL RÉEL (``profil_reel_existe``) — sinon le
-    #     moteur n'aurait qu'une facture répétée douze fois et une silhouette
-    #     de repli, ce qui ne vaut pas mieux que la règle historique.
+    # DEUX chemins, et deux seulement :
     #
-    # Faute de quoi : règle des 900 DH/mois, INCHANGÉE. C'est ce qui garantit
-    # qu'aucun devis d'aujourd'hui ne change de taille sans qu'un commercial
-    # ait réellement rempli le questionnaire d'appel.
+    #   1. UNE PUISSANCE EST DEMANDÉE — ``target_kwc`` pour ce devis, sinon la
+    #      ``taille_souhaitee_kwc`` de la fiche : elle est SOUVERAINE (le
+    #      commercial sait ce qu'il vend). Simple conversion kWc → panneaux.
+    #   2. SINON — le MOTEUR HORAIRE dimensionne, dès qu'une donnée de
+    #      consommation existe (la facture d'hiver suffit : elle est inversée
+    #      au barème ONEE réel, la forme 24 h vient de la silhouette de repli
+    #      documentée). Il n'y a PLUS de troisième chemin : la règle des
+    #      900 DH/mois ne décide plus aucun devis. Si le moteur ne peut pas
+    #      dimensionner, on REFUSE en nommant la donnée manquante — jamais un
+    #      repli silencieux qui donnerait au client une taille issue d'une
+    #      autre règle que celle affichée sur sa proposition.
     panneaux = 0
-    source_dimensionnement = 'regle_900dh'
     # Le wattage du panneau doit être CELUI SUR LEQUEL LE BALAYAGE A DÉCIDÉ :
     # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
     # une autre puissance que celle qui a été évaluée.
     watt_dimensionnement = _AUTO_PANEL_WATT
     # L-2OPT — ce que le moteur recommande POUR L'AXE AVEC BATTERIE. ``None``
-    # partout ailleurs : la règle des 900 DH/mois ne connaît qu'UN champ, et
-    # une cible explicite du commercial est souveraine sur les deux options.
+    # sur le chemin souverain : une puissance demandée par le commercial vaut
+    # pour les deux options.
     optimum_avec = None
-    if cible is None and taille_kwc in (None, '') and profil_reel_existe(lead):
+    taille_demandee = cible if cible is not None else taille_kwc
+    # Une taille NULLE ou illisible sur la fiche ne « demande » rien : elle
+    # laisse la main au moteur plutôt que de refuser un lead parfaitement
+    # dimensionnable (``target_kwc``, lui, a déjà été validé plus haut).
+    if taille_demandee not in (None, ''):
+        panneaux = _residential_panel_count(taille_kwc=taille_demandee)
+    if panneaux > 0:
+        source_dimensionnement = 'taille_demandee'
+    else:
         panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
                 lead=lead, company=company,
                 phase=phase_client_pour_dimensionnement(lead)))
-        if panneaux > 0 and watt_retenu:
+        if panneaux <= 0:
+            raise _refus_dimensionnement(source_dimensionnement)
+        if watt_retenu:
             watt_dimensionnement = watt_retenu
-
-    if panneaux <= 0:
-        panneaux = _residential_panel_count(
-            facture_hiver=facture_hiver,
-            taille_kwc=cible if cible is not None else taille_kwc)
-        source_dimensionnement = 'regle_900dh'
-        watt_dimensionnement = _AUTO_PANEL_WATT
-        # Le champ « sans » ne vient plus du moteur : son optimum « avec » ne
-        # lui est plus opposable (on ne mélange pas deux dimensionnements issus
-        # de deux règles différentes).
-        optimum_avec = None
-    if panneaux <= 0:
-        if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
-            msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
-                   "une installation résidentielle. Précisez la taille souhaitée "
-                   "(kWc) du lead.")
-        else:
-            msg = ("Données insuffisantes pour dimensionner le devis : renseignez "
-                   "la facture d'électricité d'hiver (ou la taille souhaitée en "
-                   "kWc) du lead.")
-        raise AutoDevisError(msg, field='facture_hiver')
 
     kwc = round(panneaux * watt_dimensionnement / 1000, 2)
     # ── U2 (fondateur 20/08/2026) — LE DÉFAUT EST « LES DEUX OPTIONS » ──────
@@ -6031,6 +6148,48 @@ def _liberer_marque_auto_devis(company, lead_id):
             'prochain essai sera refusé.', lead_id, exc_info=True)
 
 
+def corps_note_refus_auto_devis(exc):
+    """Le CORPS de la note d'abstention — pur, testable sans base.
+
+    Il NOMME le motif : le champ que le moteur a trouvé manquant, et le
+    message français qu'il oppose déjà au commercial sur l'écran de devis.
+    C'est délibérément le MÊME texte des deux côtés : un lead refusé et un
+    devis refusé le sont pour la même raison, et la lire deux fois formulée
+    autrement ferait croire à deux problèmes.
+
+    Le corps est DÉTERMINISTE (aucune date, aucun compteur) — c'est ce qui
+    permet à la garde anti-répétition de reconnaître le même motif d'un rejeu
+    à l'autre.
+    """
+    champ = getattr(exc, 'field', None) or 'donnée manquante'
+    message = (str(exc) or '').strip()
+    corps = ('Devis automatique NON créé depuis le tunnel — le '
+             'dimensionnement s\'abstient (%s).' % champ)
+    if message:
+        corps += ' Motif : %s' % message
+    corps += (' Complétez la fiche puis créez le devis à la main : rien n\'a '
+              'été écrit sur ce lead.')
+    return corps
+
+
+def _noter_refus_auto_devis(company, lead_id, lead, exc):
+    """Pose la note d'abstention. BEST-EFFORT : ne remonte jamais.
+
+    Un chemin d'observabilité n'a pas le droit de transformer une abstention
+    (cas normal) en erreur : l'appelant rend ``None`` dans les deux cas.
+    """
+    try:
+        from apps.crm.services import ajouter_note_lead_si_nouvelle
+        ajouter_note_lead_si_nouvelle(
+            company=company, lead_id=lead_id,
+            user=getattr(lead, 'owner', None),
+            body=corps_note_refus_auto_devis(exc))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'Auto-devis: note d\'abstention non posée sur le lead %s.',
+            lead_id, exc_info=True)
+
+
 def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     """AUTO-PIPELINE — le devis brouillon d'un lead arrivé du tunnel.
 
@@ -6139,6 +6298,20 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         logger.info(
             'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
             lead_id, exc.field or 'donnée manquante')
+        # ── F6 (revue Fable, 29/08/2026) — UN REFUS SE VOIT SUR LE LEAD ──
+        #
+        # Le refus ne laissait qu'une ligne de journal serveur. Côté
+        # commercial, le lead arrivait NU, sans devis et sans un mot — alors
+        # que la veille les mêmes leads en recevaient un. Le silence se lisait
+        # comme une panne ; c'est une ABSTENTION, et elle a un motif nommable.
+        #
+        # UNE FOIS PAR MOTIF, JAMAIS PAR REJEU : le refus relâche la marque de
+        # dédup (une donnée manquante aujourd'hui ne ferme pas le lead pour
+        # toujours), si bien qu'une re-livraison du webhook rejoue le même
+        # refus. ``ajouter_note_lead_si_nouvelle`` (apps.crm.services — la
+        # frontière cross-app, jamais ``crm.models``) ne repose pas un corps
+        # identique ; un motif DIFFÉRENT, lui, mérite bien sa note.
+        _noter_refus_auto_devis(company, lead_id, lead, exc)
         return None
     except Exception:  # noqa: BLE001 — relâcher AVANT de laisser remonter
         _liberer_marque_auto_devis(company, lead_id)

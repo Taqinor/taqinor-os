@@ -215,11 +215,21 @@ export function estimerMois(hiver, ete) {
   return interpolerFactures(hiver, ete).map(v => Math.round(v))
 }
 
-// 8 panneaux par tranche de 900 MAD de facture hiver. Le ratio est éditable
-// (Paramètres → Avancé) ; sans argument il garde le défaut historique (8).
-// NB : depuis la règle fondateur du 18/08 le dimensionnement passe par les kWc
-// (`estimerKwcDepuisFacture` ci-dessous) ; cette fonction reste pour les appels
-// historiques et les paramétrages explicites en nombre de panneaux.
+// 8 panneaux par tranche de 900 MAD de facture hiver — LA RÈGLE DES 900 DH,
+// SUPPRIMÉE COMME SOURCE DE DIMENSIONNEMENT (ordre fondateur du 29/08/2026 :
+// « ALL sizing should go through the new sizing tool »). Le backend
+// (`apps.ventes.dimensionnement` / `services._panneaux_dimensionnement_horaire`)
+// ne l'appelle plus, et ni `DevisGenerator.jsx` ni `autoQuote.js` ne l'appellent
+// plus non plus (U3-900) : le dernier repli client-facing dimensionnait
+// silencieusement une taille sur ce ratio quand la facture était sous le seuil
+// du balayage local — remplacé par une attente/refus du moteur horaire
+// SERVEUR, qui NOMME la donnée manquante plutôt que de deviner. Cette fonction
+// n'a donc plus AUCUN consommateur de production : conservée seulement pour
+// ses tests historiques (`solar.test.mjs`) et pour ne pas casser un
+// paramétrage explicite en nombre de panneaux qui l'appellerait directement
+// depuis ailleurs (grep vérifié 29/08/2026 : aucun). NE PLUS L'UTILISER pour
+// dimensionner quoi que ce soit — voir `panneaux_par_900mad`
+// (apps/parametres/models_company.py) pour le réglage qui l'alimentait.
 export function estimerPanneaux(factureHiver, perTranche = 8) {
   const n = Number(perTranche)
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)

@@ -1670,3 +1670,512 @@ class ApiVendeurTests(_Base):
             vue.action = action
             classes = [type(p) for p in vue.get_permissions()]
             self.assertEqual(classes, [IsResponsableOrAdmin], action)
+
+
+class AppliquerAuDevisTests(_Base):
+    """« RECOMMANDÉ » EST LE DEVIS : l'ajuster doit RECOMPOSER le devis.
+
+    LE TROU QUE CES TESTS FERMENT (ordre fondateur, 29/08/2026). Écrire la
+    configuration d'une taille n'écrit QUE ``offres_tailles_config``. Pour Éco
+    et Max c'est le contrat exact — ce sont des explorations. Pour
+    « Recommandé », la carte se mettait à être dérivée par le moteur pendant
+    que le devis officiel — ses lignes, ses totaux, son PDF, la page du client
+    — ne bougeait pas d'un panneau : « les modifications ne changent rien au
+    devis », mot pour mot.
+
+    Chaque test ci-dessous protège UNE garde, et aucune n'est décorative :
+    l'exploration reste une exploration, le statut n'est jamais écrit, une
+    ligne négociée n'est jamais réécrite en silence, un refus n'écrit RIEN, et
+    la configuration appliquée est CONSOMMÉE (le devis devient la vérité).
+    """
+
+    def _prepare(self, slug, config, *, statut='brouillon'):
+        """Un devis portant une configuration « Recommandé » à appliquer."""
+        devis = self._devis(slug)
+        Devis.objects.filter(pk=devis.pk).update(statut=statut)
+        devis.refresh_from_db()
+        ot.enregistrer_config(devis, 'recommande', config)
+        return devis
+
+    def _contexte(self, devis):
+        """Le contexte RÉDUIT à ce que ``appliquer_au_devis`` lui demande.
+
+        Le moteur de dérivation a ses propres tests ; ici on éprouve la
+        RECOMPOSITION, pas le balayage. Le wattage est celui du panneau que la
+        fixture vend, pour que le kWc recomposé décrive bien ce devis-là.
+        """
+        return SimpleNamespace(panel_watt=710.0,
+                               entrees={'company': devis.company})
+
+    def _panneaux(self, devis):
+        return int(devis.lignes.get(
+            designation__startswith='Panneau').quantite)
+
+    # ── Le geste NOMINAL ────────────────────────────────────────────────────
+
+    def test_appliquer_RECOMPOSE_les_lignes_du_devis(self):
+        devis = self._prepare('app-ok', {'nb_panneaux': 20})
+        self.assertEqual(self._panneaux(devis), 14)
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            resume = ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 20)
+        self.assertEqual(resume['panneaux_avant'], 14)
+        self.assertEqual(resume['panneaux'], 20)
+
+    def test_la_config_appliquee_est_CONSOMMEE(self):
+        # Le devis EST désormais la vérité : un marqueur « Ajusté » résiduel
+        # ferait redériver la carte par le moteur au lieu de la REPRENDRE du
+        # devis — et afficherait un badge que plus rien ne distingue.
+        devis = self._prepare('app-consomme', {'nb_panneaux': 18})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertNotIn('recommande', ot.lire_config_stockee(devis))
+
+    def test_le_chatter_dit_QUI_a_applique_QUOI(self):
+        from apps.ventes.models import DevisActivity
+        devis = self._prepare('app-chatter', {'nb_panneaux': 19})
+        user = self._user(devis.company)
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            ot.appliquer_au_devis(devis, 'recommande', utilisateur=user)
+        activite = DevisActivity.objects.filter(
+            devis=devis, field='offres_tailles.recommande').first()
+        self.assertIsNotNone(activite)
+        self.assertEqual(activite.user_id, user.pk)
+        self.assertEqual(activite.company_id, devis.company_id)
+        self.assertEqual(activite.old_value, '14 panneaux')
+        self.assertIn('19 panneaux', activite.new_value)
+
+    def test_le_STATUT_n_est_JAMAIS_ecrit(self):
+        # Règle #4 : ce chemin LIT les statuts, il ne les écrit pas.
+        devis = self._prepare('app-statut', {'nb_panneaux': 20})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'brouillon')
+
+    def test_la_banque_batterie_suit_le_compte_demande(self):
+        devis = self._prepare('app-batt', {'nb_panneaux': 16,
+                                           'batterie_nb_modules': 5})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        ligne = devis.lignes.get(designation__startswith='Batterie')
+        self.assertEqual(int(ligne.quantite), 5)
+
+    # ── Les REFUS, et le fait qu'ils n'écrivent RIEN ────────────────────────
+
+    def test_ECO_et_MAX_ne_s_appliquent_JAMAIS_au_devis(self):
+        # Ce sont des cartes d'EXPLORATION montrées à côté de l'offre : les
+        # appliquer effacerait la comparaison que le client est en train de
+        # lire.
+        devis = self._prepare('app-eco', {'nb_panneaux': 20})
+        for cle in ('eco', 'max'):
+            with self.assertRaises(ot.ApplicationImpossible):
+                ot.appliquer_au_devis(devis, cle)
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 14)
+
+    def test_un_devis_ACCEPTE_est_refuse_et_INTOUCHE(self):
+        devis = self._prepare('app-accepte', {'nb_panneaux': 20},
+                              statut='accepte')
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with self.assertRaises(ot.ApplicationImpossible) as capture:
+                ot.appliquer_au_devis(devis, 'recommande')
+        self.assertFalse(capture.exception.revision_possible)
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 14)
+        self.assertEqual(devis.statut, 'accepte')
+        # La configuration reste : rien n'a été consommé puisque rien n'a été
+        # appliqué.
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    def test_un_devis_ENVOYE_renvoie_vers_la_REVISION(self):
+        devis = self._prepare('app-envoye', {'nb_panneaux': 20},
+                              statut='envoye')
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with self.assertRaises(ot.ApplicationImpossible) as capture:
+                ot.appliquer_au_devis(devis, 'recommande')
+        self.assertTrue(capture.exception.revision_possible)
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 14)
+
+    def test_sans_configuration_ajustee_il_n_y_a_RIEN_a_appliquer(self):
+        devis = self._devis('app-vide')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        devis.refresh_from_db()
+        with self.assertRaises(ot.ApplicationImpossible) as capture:
+            ot.appliquer_au_devis(devis, 'recommande')
+        self.assertIn('Aucune configuration', capture.exception.detail)
+
+    def test_une_ligne_NEGOCIEE_refuse_la_substitution_et_n_ecrit_RIEN(self):
+        # Une substitution re-tarife la ligne : passer par-dessus un prix ou
+        # une remise négociés détruirait une décision commerciale que personne
+        # n'a demandé de revoir. Et le refus est TRANSACTIONNEL — la
+        # resynchronisation déjà faite est annulée avec lui.
+        devis = self._devis('app-nego')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        devis.refresh_from_db()
+        ligne = devis.lignes.get(designation__startswith='Panneau')
+        ligne.remise = Decimal('10')
+        ligne.save(update_fields=['remise'])
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        ot.enregistrer_config(devis, 'recommande', {
+            'nb_panneaux': 25, 'equipements': {'panneau': autre.pk}})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with self.assertRaises(ot.ApplicationImpossible) as capture:
+                ot.appliquer_au_devis(devis, 'recommande')
+        self.assertIn('négoci', capture.exception.detail)
+        devis.refresh_from_db()
+        ligne.refresh_from_db()
+        # NI la substitution NI le compte de panneaux n'ont été écrits.
+        self.assertEqual(self._panneaux(devis), 14)
+        self.assertTrue(ligne.designation.startswith('Panneau Canadien'))
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    # ── F5 — LE TOIT EST UNE BORNE, PAS UN DÉCOR ────────────────────────────
+
+    def test_au_dessus_de_la_CONTENANCE_du_toit_le_geste_est_REFUSE(self):
+        """F5 (revue Fable, 29/08/2026). Le sérialiseur ne bornait le compte
+        qu'entre 1 et 500 : rien n'empêchait d'appliquer 40 panneaux à un toit
+        dessiné pour 10. Le devis partait alors avec une taille que la toiture
+        ne porte pas, et la première resynchronisation 3D la ramenait au
+        plafond — le compte se mettait à osciller entre deux écrans."""
+        devis = self._prepare('app-toit', {'nb_panneaux': 40})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=10):
+                with self.assertRaises(ot.ApplicationImpossible) as capture:
+                    ot.appliquer_au_devis(devis, 'recommande')
+        self.assertIn('toit', capture.exception.detail)
+        self.assertIn('10 panneaux', capture.exception.detail)
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 14)
+        # Refus AVANT toute écriture : la configuration reste à appliquer.
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    def test_sous_la_contenance_le_geste_PASSE(self):
+        devis = self._prepare('app-toit-ok', {'nb_panneaux': 18})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=20):
+                ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 18)
+
+    def test_sans_toit_MESURABLE_aucun_refus(self):
+        """MÊME HONNÊTETÉ QUE LES CARTES : sans géométrie, il n'y a AUCUNE
+        borne connue — on ne refuse jamais au nom d'un toit qu'on n'a pas
+        mesuré."""
+        devis = self._prepare('app-toit-inconnu', {'nb_panneaux': 40})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=None):
+                ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 40)
+
+    def test_une_substitution_au_prix_CATALOGUE_passe(self):
+        devis = self._devis('app-subst')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        devis.refresh_from_db()
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        ot.enregistrer_config(devis, 'recommande', {
+            'nb_panneaux': 17, 'equipements': {'panneau': autre.pk}})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            resume = ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        ligne = devis.lignes.get(produit=autre)
+        self.assertEqual(ligne.designation, 'Panneau JA Solar 600W')
+        self.assertEqual(Decimal(ligne.prix_unitaire), Decimal('1000.00'))
+        self.assertEqual(resume['substitutions'],
+                         {'panneau': 'Panneau JA Solar 600W'})
+
+
+class AppliquerSurUnDevisLesDeuxTests(_Base):
+    """F1 (revue Fable, 29/08/2026) — « LES DEUX (Sans + Avec) » EST LE DÉFAUT.
+
+    Un devis U2 porte des lignes VARIANTÉES : deux champs de panneaux, deux
+    onduleurs, une batterie propre à l'option « avec ». Sur ce devis-là,
+    ``sync_devis_from_layout`` traite le compte comme un PLAFOND — c'est la
+    bonne règle pour un CALEPINAGE (le toit dit ce qui tient), et la MAUVAISE
+    pour un nombre TAPÉ par le vendeur. Trois conséquences, toutes vécues :
+
+    a. une AUGMENTATION était un NO-OP SILENCIEUX (« une option qui reste EN
+       DESSOUS n'est JAMAIS augmentée ») — configuration consommée, message de
+       succès, devis inchangé : le « les modifications ne changent rien au
+       devis » que ce chemin existe pour clore ;
+    b. une DIMINUTION rabotait les DEUX options, y compris celle que le
+       vendeur n'ajustait pas ;
+    c. une SUBSTITUTION ne touchait que ``cibles[0]`` — le client recevait
+       deux options équipées de PANNEAUX DIFFÉRENTS, sans que rien ne le dise.
+    """
+
+    def _devis_deux_options(self, slug):
+        """Un devis U2 RÉEL : chaque option a son champ et son onduleur."""
+        company = self._company(slug)
+        client_obj = Client.objects.get_or_create(
+            company=company, nom='Client %s' % slug, defaults={})[0]
+        lead = Lead.objects.create(
+            company=company, nom='Lead', prenom=slug,
+            telephone='+212600000000', ville='Casablanca',
+            facture_hiver=1800, ete_differente=False)
+        devis = Devis.objects.create(
+            company=company, reference='DEV-%s-01' % slug.upper(),
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        lignes = (
+            # (désignation, quantité, PU, variante)
+            ('Panneau Canadien Solar 710W', '14', '1166.67', 'sans'),
+            ('Panneau Canadien Solar 710W', '12', '1166.67', 'avec'),
+            ('Structure de fixation', '14', '400.00', 'sans'),
+            ('Structure de fixation', '12', '400.00', 'avec'),
+            ('Onduleur réseau Huawei 10kW Monophasé', '1', '15000.00',
+             'sans'),
+            ('Onduleur hybride Deye 10kW Monophasé', '1', '23333.33', 'avec'),
+            ('Batterie Dyness 5 kWh', '2', '12500.00', 'avec'),
+        )
+        for nom, qte, pu, variante in lignes:
+            produit = Produit.objects.get_or_create(
+                company=company, nom=nom,
+                defaults={'prix_vente': pu, 'quantite_stock': 50})[0]
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'), variante=variante)
+        return devis
+
+    def _contexte(self, devis):
+        return SimpleNamespace(panel_watt=710.0,
+                               entrees={'company': devis.company})
+
+    def _panneaux(self, devis, variante):
+        return int(devis.lignes.get(designation__startswith='Panneau',
+                                    variante=variante).quantite)
+
+    def _appliquer(self, devis, config):
+        ot.enregistrer_config(devis, 'recommande', config)
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            return ot.appliquer_au_devis(devis, 'recommande')
+
+    # ── (a) L'AUGMENTATION, qui ne faisait RIEN ─────────────────────────────
+
+    def test_une_AUGMENTATION_porte_les_DEUX_options_au_compte_tape(self):
+        devis = self._devis_deux_options('u2-hausse')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis, 'sans'), 20)
+        self.assertEqual(self._panneaux(devis, 'avec'), 20)
+
+    def test_les_structures_suivent_les_DEUX_options(self):
+        devis = self._devis_deux_options('u2-ferrure')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        for variante in ('sans', 'avec'):
+            ligne = devis.lignes.get(designation__startswith='Structure',
+                                     variante=variante)
+            self.assertEqual(int(ligne.quantite), 20, variante)
+
+    # ── (b) LA DIMINUTION ───────────────────────────────────────────────────
+
+    def test_une_DIMINUTION_porte_les_DEUX_options_au_compte_tape(self):
+        devis = self._devis_deux_options('u2-baisse')
+        self._appliquer(devis, {'nb_panneaux': 8})
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis, 'sans'), 8)
+        self.assertEqual(self._panneaux(devis, 'avec'), 8)
+
+    def test_chaque_option_garde_SON_IDENTITE(self):
+        """Le compte change, pas la nature de l'offre : l'option « sans » reste
+        sur son onduleur réseau, l'option « avec » garde sa batterie."""
+        devis = self._devis_deux_options('u2-identite')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        designations = set(devis.lignes.values_list('designation', flat=True))
+        self.assertIn('Onduleur réseau Huawei 10kW Monophasé', designations)
+        self.assertIn('Onduleur hybride Deye 10kW Monophasé', designations)
+        self.assertTrue(devis.lignes.filter(
+            designation__startswith='Batterie', variante='avec').exists())
+
+    # ── (c) LA SUBSTITUTION ─────────────────────────────────────────────────
+
+    def test_une_SUBSTITUTION_atteint_les_DEUX_options(self):
+        devis = self._devis_deux_options('u2-subst')
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        resume = self._appliquer(devis, {
+            'nb_panneaux': 16, 'equipements': {'panneau': autre.pk}})
+        devis.refresh_from_db()
+        substituees = devis.lignes.filter(produit=autre)
+        self.assertEqual(
+            set(substituees.values_list('variante', flat=True)),
+            {'sans', 'avec'},
+            'une seule option substituée : le client recevrait deux offres '
+            'équipées de panneaux différents')
+        self.assertEqual(resume['substitutions'],
+                         {'panneau': 'Panneau JA Solar 600W'})
+
+    def test_une_ligne_NEGOCIEE_sur_UNE_option_refuse_TOUT(self):
+        """Tout ou rien : jamais une option substituée et l'autre refusée."""
+        devis = self._devis_deux_options('u2-nego')
+        ligne = devis.lignes.get(designation__startswith='Panneau',
+                                 variante='avec')
+        ligne.remise = Decimal('10')
+        ligne.save(update_fields=['remise'])
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        with self.assertRaises(ot.ApplicationImpossible) as capture:
+            self._appliquer(devis, {
+                'nb_panneaux': 20, 'equipements': {'panneau': autre.pk}})
+        self.assertIn('négoci', capture.exception.detail)
+        devis.refresh_from_db()
+        # NI la substitution NI le compte n'ont été écrits, des DEUX côtés.
+        self.assertFalse(devis.lignes.filter(produit=autre).exists())
+        self.assertEqual(self._panneaux(devis, 'sans'), 14)
+        self.assertEqual(self._panneaux(devis, 'avec'), 12)
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    # ── LE CHATTER DIT LE VRAI old→new ──────────────────────────────────────
+
+    def test_le_chatter_journalise_le_VRAI_ancien_et_nouveau_compte(self):
+        from apps.ventes.models import DevisActivity
+        devis = self._devis_deux_options('u2-chatter')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        activite = DevisActivity.objects.filter(
+            devis=devis, field='offres_tailles.recommande').first()
+        self.assertIsNotNone(activite)
+        # Le compte de l'option 1, jamais la somme des deux (un nombre qui ne
+        # décrit aucune installation).
+        self.assertEqual(activite.old_value, '14 panneaux')
+        self.assertIn('20 panneaux', activite.new_value)
+
+
+class ApiAppliquerTests(_Base):
+    """L'endpoint ``offres-tailles/appliquer`` — garde, refus, multi-société."""
+
+    URL = '/api/django/ventes/devis/%s/offres-tailles/appliquer/'
+
+    def _api(self, company):
+        api = APIClient()
+        api.force_authenticate(self._user(company))
+        return api
+
+    def _contexte(self, devis):
+        return SimpleNamespace(panel_watt=710.0,
+                               entrees={'company': devis.company})
+
+    def test_appliquer_recompose_et_repond_200(self):
+        devis = self._devis('api-app')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        devis.refresh_from_db()
+        ot.enregistrer_config(devis, 'recommande', {'nb_panneaux': 21})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            resp = self._api(devis.company).post(
+                self.URL % devis.pk, {'cle': 'recommande'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['applique']['panneaux'], 21)
+        devis.refresh_from_db()
+        self.assertEqual(
+            int(devis.lignes.get(designation__startswith='Panneau').quantite),
+            21)
+
+    def test_ECO_repond_400_avec_son_motif_EN_FRANCAIS(self):
+        devis = self._devis('api-app-eco')
+        Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
+        resp = self._api(devis.company).post(
+            self.URL % devis.pk, {'cle': 'eco'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('Recommandé', str(resp.json()['detail']))
+
+    def test_un_devis_ENVOYE_repond_400_et_dit_REVISION_POSSIBLE(self):
+        devis = self._devis('api-app-envoye')
+        ot.enregistrer_config(devis, 'recommande', {'nb_panneaux': 21})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            resp = self._api(devis.company).post(
+                self.URL % devis.pk, {'cle': 'recommande'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIs(resp.json()['revision_possible'], True)
+
+    def test_un_devis_d_une_AUTRE_societe_repond_404_jamais_403(self):
+        devis = self._devis('api-app-a')
+        autre = self._company('api-app-b')
+        resp = self._api(autre).post(
+            self.URL % devis.pk, {'cle': 'recommande'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_l_action_est_fermee_a_un_visiteur(self):
+        devis = self._devis('api-app-anon')
+        resp = APIClient().post(self.URL % devis.pk, {'cle': 'recommande'},
+                                format='json')
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_VX199_l_action_est_inscrite_dans_get_permissions(self):
+        from authentication.permissions import IsResponsableOrAdmin
+        from apps.ventes.views.devis import DevisViewSet
+        vue = DevisViewSet()
+        vue.action = 'offres_tailles_appliquer'
+        self.assertEqual([type(p) for p in vue.get_permissions()],
+                         [IsResponsableOrAdmin])
+
+
+class ChaineJusquAuPayloadTests(_Base):
+    """LA PREUVE DE BOUT EN BOUT : une taille ajustée ATTEINT la page client.
+
+    Les tests de dérivation prouvent que ``deriver`` lit la configuration
+    stockée ; celui-ci prouve que le PAYLOAD PUBLIC la porte — c'est-à-dire
+    que la chaîne complète (``public_views`` → ``offres_tailles_publique`` →
+    ``deriver`` → configuration stockée → carte) n'a AUCUN maillon coupé, ni
+    cache, ni filtre d'envoi qui l'avalerait. Sans ce pin, un ajustement Éco
+    pouvait cesser d'atteindre le client sans qu'aucun test ne rougisse.
+
+    ``deriver`` N'EST PAS BOUCHONNÉ ICI (c'est tout l'intérêt) : seuls le
+    contexte catalogue et le moteur de carte le sont, exactement comme dans
+    ``DerivationTests``.
+    """
+
+    def _payload_avec_config(self, devis, config):
+        contexte = _contexte_factice(devis)
+        devis.etude_params = dict(devis.etude_params or {}, dimensionnement={
+            'tableau': _tableau((10, 6.0), (22, 8.0), (34, 11.0))})
+        devis.offres_tailles_config = config
+        devis.save(update_fields=['etude_params', 'offres_tailles_config'])
+
+        def _moteur(_contexte_, nb, _config=None, *, avec_servable=True):
+            return {'sans': dict(_carte(), nb_panneaux=nb), 'avec': None}
+
+        with mock.patch.object(ot, '_contexte', return_value=contexte), \
+                mock.patch.object(ot, '_carte_moteur', side_effect=_moteur), \
+                mock.patch.object(
+                    ot, '_carte_du_devis',
+                    side_effect=lambda _c, _d, v: dict(_carte(),
+                                                       nb_panneaux=22)):
+            return self._payload(devis)
+
+    def test_une_taille_ECO_ajustee_ATTEINT_la_page_client(self):
+        devis = self._devis('chaine-eco')
+        payload = self._payload_avec_config(devis, {
+            'eco': {'config': {'nb_panneaux': 12}, 'ajuste': True}})
+        eco = next(o for o in payload['offres_tailles']['offres']
+                   if o['cle'] == 'eco')
+        self.assertIs(eco['ajuste'], True)
+        self.assertEqual(eco['sans']['nb_panneaux'], 12)
+
+    def test_sans_ajustement_la_page_client_montre_le_champ_du_MOTEUR(self):
+        # Le contre-test : sans lui, un « 12 » codé en dur passerait aussi.
+        devis = self._devis('chaine-moteur')
+        payload = self._payload_avec_config(devis, None)
+        eco = next(o for o in payload['offres_tailles']['offres']
+                   if o['cle'] == 'eco')
+        self.assertIs(eco['ajuste'], False)
+        self.assertEqual(eco['sans']['nb_panneaux'], 10)

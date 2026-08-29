@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9569, operations: 17222, components: 5059}
+counts: {paths: 9572, operations: 17225, components: 5060}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -6116,6 +6116,7 @@ operations:
 - post /api/django/public/proposal/{token}/otp-lecture/verifier/ -> django_public_proposal_otp_lecture_verifier_create
 - post /api/django/public/proposal/{token}/otp/ -> django_public_proposal_otp_create
 - get /api/django/public/proposal/{token}/pdf/ -> django_public_proposal_pdf_retrieve
+- get /api/django/public/proposal/{token}/taille/{cle}/ -> django_public_proposal_taille_retrieve
 - post /api/django/public/proposal/{token}/virement/ -> django_public_proposal_virement_create
 - post /api/django/public/sav/equipement/{token}/signaler/ -> django_public_sav_equipement_signaler_create
 - get /api/django/public/sav/ticket/{token}/ -> django_public_sav_ticket_retrieve
@@ -8418,6 +8419,7 @@ operations:
 - post /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_create
 - post /api/django/ventes/devis/{id}/noter/ -> django_ventes_devis_noter_create
 - get /api/django/ventes/devis/{id}/offres-tailles/ -> django_ventes_devis_offres_tailles_retrieve
+- post /api/django/ventes/devis/{id}/offres-tailles/appliquer/ -> django_ventes_devis_offres_tailles_appliquer_create
 - patch /api/django/ventes/devis/{id}/offres-tailles/config/ -> django_ventes_devis_offres_tailles_config_partial_update
 - post /api/django/ventes/devis/{id}/offres-tailles/regenerer/ -> django_ventes_devis_offres_tailles_regenerer_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
@@ -17020,6 +17022,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_create
 - post /api/v1/ventes/devis/{id}/noter/ -> v1_ventes_devis_noter_create
 - get /api/v1/ventes/devis/{id}/offres-tailles/ -> v1_ventes_devis_offres_tailles_retrieve
+- post /api/v1/ventes/devis/{id}/offres-tailles/appliquer/ -> v1_ventes_devis_offres_tailles_appliquer_create
 - patch /api/v1/ventes/devis/{id}/offres-tailles/config/ -> v1_ventes_devis_offres_tailles_config_partial_update
 - post /api/v1/ventes/devis/{id}/offres-tailles/regenerer/ -> v1_ventes_devis_offres_tailles_regenerer_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
@@ -21415,6 +21418,7 @@ components:
 - PublicSalleVenteItem
 - PublicScmTableauBordReappro
 - PublicScmTableauBordReapproLigne
+- PublicTailleDetail
 - PublicVisiteReponse
 - PublicVisiteRequestRequest
 - PutAway

@@ -278,10 +278,11 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
                     'batterie_kwh': 10.0}
 
     def _auto(self, *, scenario, optimum_avec, email):
-        with patch.object(services, 'profil_reel_existe', return_value=True), \
-                patch.object(services, '_panneaux_dimensionnement_horaire',
-                             return_value=(8, 550, 'moteur_horaire',
-                                           optimum_avec)):
+        # Depuis le 29/08/2026, ``profil_reel_existe`` ne garde plus l'entrée du
+        # moteur (tout dimensionnement y passe) : seul le moteur est simulé.
+        with patch.object(services, '_panneaux_dimensionnement_horaire',
+                          return_value=(8, 550, 'moteur_horaire',
+                                        optimum_avec)):
             return services.build_devis_auto(
                 lead=self._lead(email=email), user=self.user,
                 company=self.company, scenario=scenario)
@@ -348,10 +349,9 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
         """
         lead = self._lead(email='pompage@example.com',
                           type_installation='agricole')
-        with patch.object(services, 'profil_reel_existe', return_value=True), \
-                patch.object(services, '_panneaux_dimensionnement_horaire',
-                             return_value=(8, 550, 'moteur_horaire',
-                                           self.OPTIMUM_AVEC)):
+        with patch.object(services, '_panneaux_dimensionnement_horaire',
+                          return_value=(8, 550, 'moteur_horaire',
+                                        self.OPTIMUM_AVEC)):
             with self.assertRaises(services.AutoDevisError):
                 services.build_devis_auto(
                     lead=lead, user=self.user, company=self.company,

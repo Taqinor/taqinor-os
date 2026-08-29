@@ -121,6 +121,29 @@ def _strip_confidential_deep(obj):
     return obj
 
 
+def _sans_cles_internes(obj):
+    """Retire RÉCURSIVEMENT toute clé de dict PRÉFIXÉE PAR ``_``.
+
+    LA CONVENTION EST DÉJÀ CELLE DU BUILDER : ``_company_id``, ``_produit_nom``,
+    ``_embed_roof_render`` — le souligné y signifie « donnée de plomberie
+    interne, jamais un champ de document ». Rien de tout cela n'a d'affaire
+    dans la charge utile d'une page publique : ``payload['quote']`` republie
+    ``data`` TEL QUEL, si bien qu'un identifiant de société sortait chez le
+    client (chemin ``.quote._company_id``) — une donnée de cloisonnement
+    multi-société, offerte à qui possède un jeton.
+
+    Le geste est GÉNÉRIQUE plutôt que nominatif : une prochaine clé de
+    plomberie ajoutée au builder sera retirée d'elle-même, sans qu'il faille
+    penser à l'inscrire ici — c'est-à-dire sans l'oublier.
+    """
+    if isinstance(obj, dict):
+        return {k: _sans_cles_internes(v) for k, v in obj.items()
+                if not str(k).startswith('_')}
+    if isinstance(obj, (list, tuple)):
+        return [_sans_cles_internes(v) for v in obj]
+    return obj
+
+
 def _resolve_share_link_by_token(token, *, select_related=()):
     """L-INTPREV (fondateur 25/08/2026) — résout un ShareLink par son jeton
     PUBLIC ou par son jeton INTERNE (aperçu commercial sans notification),
@@ -2519,7 +2542,16 @@ def proposal_data(request, token):
             'date': data['date'],
             'client_name': data['client_name'],
             'statut': devis.statut,
-            'quote': data,
+            # LA PLOMBERIE INTERNE NE FRANCHIT PAS LA FRONTIÈRE. ``data`` porte
+            # des clés de travail préfixées ``_`` (``_company_id``,
+            # ``_produit_nom``…) que le builder pose pour ses propres besoins ;
+            # republier ``data`` tel quel les servait au client — l'identifiant
+            # de société, donc une donnée de cloisonnement multi-société,
+            # sortait sous ``quote._company_id``. Le retrait se fait ICI, à la
+            # publication, et NON sur ``data`` lui-même : les classifications
+            # de ce même fichier (``_produit_nom``) lisent encore ``data`` en
+            # amont, et les amputer casserait la lecture du matériel.
+            'quote': _sans_cles_internes(data),
             # QX49 — mode d'installation + catégorie commerciale + bloc KPI par
             # mode (whitelist stricte, jamais prix_achat/marge). La page web rend
             # les 4 variantes sans re-calcul client.
@@ -2872,6 +2904,158 @@ def proposal_data(request, token):
             {'detail': 'Proposition indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
     return _noindex(Response(payload))
+
+
+def _data_pour_taille_detail(devis, link):
+    """La charge utile moteur, préparée COMME ``proposal_data`` la prépare.
+
+    OPTIONS CHARGEABLES (29/08/2026). Le détail d'une taille redérive le bloc
+    ``offres_tailles`` pour décider ce que ce lien sert ; il doit donc partir
+    d'un ``data`` IDENTIQUE à celui de la page, sans quoi la carte « Recommandé »
+    — l'ancre contre laquelle « ce qui change » et la convergence se calculent —
+    ne serait pas la même des deux côtés, et deux tailles voisines pourraient
+    diverger d'un arrondi.
+
+    Ce sont les SEULES étapes de ``proposal_data`` que la dérivation des tailles
+    lit : l'assainissement récursif règle #4, l'omission Z2 (aucun ancrage réel
+    ⇒ aucune économie ni payback republié), l'omission CJ2b (option batterie non
+    vendable ⇒ aucun chiffre « avec »), et la mise à néant du panier non retenu
+    d'un devis mono-option. Les autres (agrégation kit, financement, URL de
+    rendu, sections d'affichage) ne touchent rien que ``deriver`` regarde.
+
+    LA DUPLICATION EST PROUVÉE, PAS ESPÉRÉE : un test dérive le bloc depuis
+    cette fonction et le compare, clé par clé, à ``payload['offres_tailles']``
+    de ``proposal_data`` sur le même lien. Le jour où l'une des deux
+    préparations bouge sans l'autre, ce test tombe.
+    """
+    from .quote_engine.builder import build_quote_data
+    from .quote_engine.residential.renderer import (
+        ancrage_reel_absent, is_residential,
+    )
+
+    data = _strip_confidential_deep(build_quote_data(devis, {'pdf_mode':
+                                                             'full'}))
+    data = _sans_internes_bancables(data)
+    resid = is_residential(devis, {'pdf_mode': 'full'})
+    if resid and ancrage_reel_absent(data):
+        for cle in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
+                    'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
+            data[cle] = None
+    if data.get('nb_options') == 1:
+        if not data.get('avec_ok'):
+            data['totaux_avec'] = None
+            data['avec_items'] = []
+        if not data.get('sans_ok'):
+            data['totaux_sans'] = None
+            data['sans_items'] = []
+    if not data.get('avec_ok'):
+        for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
+                    'roi_a', 'cashflow_avec', 'net_gain_avec',
+                    'facture_avec_solaire_a'):
+            data[cle] = None
+    return data, resid
+
+
+# YAPIC6 — LA FORME EST DÉCLARÉE, PAS DEVINÉE. Le générateur OpenAPI ne sait
+# rien tirer d'une vue fonction qui rend un dict libre : il émettait
+# l'avertissement NEUF « proposal_taille_detail: unable to guess serializer »,
+# et ce job échoue sur toute signature nouvelle. On déclare donc le contrat que
+# ``apps/ventes/contract_samples/taille_detail.json`` fige déjà — les deux
+# séries profondes (``economies_mensuelles``, ``cashflow``) et la ``carte``
+# restent des objets libres : leurs clés varient avec la taille servie, et les
+# figer champ par champ ici créerait une SECONDE déclaration de contrat à côté
+# de l'échantillon, donc, tôt ou tard, deux contrats.
+_TAILLE_DETAIL_RESPONSE = inline_serializer('PublicTailleDetail', {
+    'cle': drf_serializers.CharField(),
+    'titre': drf_serializers.CharField(allow_null=True),
+    'variante': drf_serializers.CharField(),
+    'est_le_devis': drf_serializers.BooleanField(),
+    'carte': drf_serializers.DictField(),
+    'economies_mensuelles': drf_serializers.DictField(required=False),
+    'cashflow': drf_serializers.DictField(required=False),
+})
+
+
+@extend_schema(responses={200: _TAILLE_DETAIL_RESPONSE})
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_taille_detail(request, token, cle):
+    """OPTIONS CHARGEABLES (fondateur, 29/08/2026) — le DÉTAIL d'UNE taille.
+
+    ``GET proposal/<token>/taille/<cle>/?variante=sans|avec`` — contrat
+    ``apps/ventes/contract_samples/taille_detail.json``. Un clic sur une carte
+    Éco/Max charge ce bloc et la page profonde suit l'option choisie (économies
+    mois par mois, couverture, banque, cumul 25 ans) au lieu de continuer à
+    montrer les nombres du devis officiel sous une carte qui n'est pas lui.
+
+    LECTURE PURE, ET SANS TRACE. Aucune écriture (règle #4), et — délibérément —
+    AUCUN ``_stamp_view`` : la page a déjà compté cette consultation à son
+    chargement ; un clic de carte n'en est pas une seconde. L'OTP de lecture,
+    lui, garde exactement la même porte que ``proposal_data`` — sinon ce chemin
+    serait la fenêtre ouverte à côté de la porte fermée.
+
+    404 GÉNÉRIQUE POUR TOUT REFUS, SANS DISTINCTION : jeton inconnu/expiré,
+    devis non résidentiel, ``cle=recommande`` (cette carte EST le devis : la
+    page la restaure, elle ne la charge pas), taille non ENVOYÉE à ce client
+    (cases ``taille_eco``/``taille_max``), case « Économies » décochée, variante
+    absente, ou dérivation impossible. Rien ne distingue les cas — la raison
+    d'un refus est elle-même une information.
+    """
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+
+    from .services import otp_lecture_verified
+    if not link.via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
+    variante = (request.query_params.get('variante') or 'sans').strip()
+    from .taille_detail import (
+        CACHE_SECONDES, CLES_CHARGEABLES, VARIANTES, cle_cache,
+        detail_publique,
+    )
+    if cle not in CLES_CHARGEABLES or variante not in VARIANTES:
+        return _not_found()
+
+    # MÉMOÏSATION — l'appel refait le passage moteur de cette taille
+    # (composition + étude horaire). La clé porte le LIEN (donc son niveau et
+    # ses cases de section), la taille, la variante et l'empreinte de la
+    # configuration stockée : un « Régénérer » côté vendeur invalide donc tout
+    # seul, sans invalidation à écrire — donc sans risque de l'oublier. Le
+    # cache est best-effort des deux côtés : indisponible, on re-dérive.
+    memo = None
+    try:
+        from django.core.cache import cache
+        memo = cle_cache(link, cle, variante)
+        depuis_cache = cache.get(memo)
+        if depuis_cache is not None:
+            return _noindex(Response(depuis_cache))
+    except Exception:  # noqa: BLE001
+        memo = None
+
+    try:
+        devis = link.devis
+        data, resid = _data_pour_taille_detail(devis, link)
+        bloc = (_offres_tailles_publique(devis, data, resid,
+                                         _tailles_servies(link))
+                if _section_servie(link, 'economies') else None)
+        detail = detail_publique(devis, data, bloc, cle, variante)
+    except Exception:  # noqa: BLE001 — un détail indisponible n'est jamais
+        # une erreur serveur pour le client : la page retombe sur la
+        # synchronisation des chiffres de tête et propose de réessayer.
+        logger.warning('détail de taille indisponible', exc_info=True)
+        return _not_found()
+    if detail is None:
+        return _not_found()
+    if memo:
+        try:
+            from django.core.cache import cache
+            cache.set(memo, detail, CACHE_SECONDES)
+        except Exception:  # noqa: BLE001
+            pass
+    return _noindex(Response(detail))
 
 
 @api_view(['GET'])

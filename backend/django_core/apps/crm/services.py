@@ -3977,6 +3977,37 @@ def ajouter_note_lead(*, company, lead_id, user, body):
     return activity.log_note(lead, user, body)
 
 
+def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
+    """Comme :func:`ajouter_note_lead`, mais SANS RÉPÉTER un corps identique.
+
+    Rend l'activité créée, ou ``None`` si le lead porte DÉJÀ une note au corps
+    exactement identique.
+
+    POURQUOI ELLE EXISTE (F6, 29/08/2026). L'auto-pipeline du tunnel doit
+    laisser une trace quand le moteur REFUSE de chiffrer un lead — sans quoi le
+    commercial constate seulement que « hier ces leads recevaient un devis ».
+    Mais le refus RELÂCHE la marque de dédup (une donnée manquante aujourd'hui
+    ne doit pas fermer le lead pour toujours) : chaque nouvelle livraison du
+    webhook rejoue donc le même refus, et une note par rejeu ensevelirait
+    l'historique du lead sous le même paragraphe. La note est donc posée une
+    fois par MOTIF : le motif change ⇒ une nouvelle note ; le motif se répète
+    ⇒ silence.
+
+    La comparaison porte sur le CORPS et rien d'autre — c'est lui que le
+    commercial lit, et c'est lui qui nomme le champ manquant.
+    """
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    body = (body or '').strip()
+    if not body:
+        raise ValueError("Le champ « body » est obligatoire.")
+    deja = LeadActivity.objects.filter(
+        company=company, lead=lead, kind=LeadActivity.Kind.NOTE,
+        body=body).exists()
+    if deja:
+        return None
+    return activity.log_note(lead, user, body)
+
+
 # ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
 
 # Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
