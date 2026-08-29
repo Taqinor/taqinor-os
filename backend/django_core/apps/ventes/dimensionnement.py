@@ -587,14 +587,23 @@ def _remplissage_rendu(palier_energie):
     }
 
 
-def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
+def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
+                    charges_fixes_mad, ville=None, lat=None,
                     lon=None, occupation=None, equipements=None, phase=None,
                     taux_tva=Decimal('20'), gamme_nom_devis=None,
                     structure_type='acier', min_panneaux=None,
-                    max_panneaux=None, tranches=None,
-                    charges_fixes_mad=None, source_conso=None,
+                    max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
+
+    ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
+    portaient un défaut ``None`` (grille nationale) que TOUS les appelants
+    laissaient jouer, pendant qu'``etude_horaire_pour_devis`` et
+    ``quote_engine/builder`` appliquaient la surcharge de la société : le
+    dimensionnement et le devis valorisaient le MÊME kWh sur deux barèmes, et
+    le choix était invisible au site d'appel puisque les kwargs étaient OMIS
+    plutôt que refusés. Passer explicitement ``tranches=None,
+    charges_fixes_mad=None`` reste possible — c'est alors un choix ÉCRIT.
 
     Pour chaque taille (granularité = UN panneau du catalogue) :
 
@@ -1537,9 +1546,14 @@ def chercher_falaise(tableau, cible_kwh_mois):
     return None
 
 
-def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
-                       **kwargs):
+def recommander_taille(*, company, conso_kwh_mensuelles, tranches,
+                       charges_fixes_mad, critere=CRITERE_DEFAUT, **kwargs):
     """Balaye puis recommande : ``{tableau, recommandation, motivation, critere}``.
+
+    ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46) — voir
+    :func:`balayer_tailles`. Le barème vient de l'identité tarifaire portée par
+    ``apps.ventes.domain.entrees.EntreesMoteur``, donc de la MÊME lecture que
+    celle du moteur de devis.
 
     C'est LE point d'entrée du dimensionnement — celui qui a REMPLACÉ la règle
     « 900 DH/mois », désormais supprimée. Quand aucune taille n'est
@@ -1566,11 +1580,12 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
     conso_annuelle = sum(_num(v) for v in (conso_kwh_mensuelles or ()))
     falaise = bareme.falaise_sous_kwh_mensuel(
         conso_annuelle / 12.0 if conso_annuelle > 0 else 0,
-        tranches=kwargs.get('tranches'))
+        tranches=tranches)
     cible_falaise = (falaise or {}).get('cible_kwh_mois')
 
     tableau = balayer_tailles(
         company=company, conso_kwh_mensuelles=conso_kwh_mensuelles,
+        tranches=tranches, charges_fixes_mad=charges_fixes_mad,
         cible_falaise_kwh_mois=cible_falaise, **kwargs)
     recommandation, motivation = choisir_recommandation(tableau, critere)
     recommandation_avec, motivation_avec = choisir_recommandation_avec(tableau)
@@ -2292,6 +2307,14 @@ def _echelle_paliers_batterie(devis):
         # (il vient du MÊME ``EntreesMoteur``) : l'échelle ne peut pas
         # désigner un palier « retenu » calculé sur un autre Ramadan.
         'jour_reference': entrees['jour_reference'],
+        # QJR46 (R4-B2.23) — LE CINQUIÈME APPELANT. Cette échelle omettait le
+        # barème : ses économies PAR BARREAU étaient calculées sur la grille
+        # nationale alors qu'elles atteignent la charge utile PUBLIQUE
+        # (``public_views``) à côté d'un tableau calculé, lui, sur la
+        # surcharge de la société. Le barème vient maintenant du MÊME
+        # ``EntreesMoteur`` que le tableau.
+        'tranches': entrees['tranches'],
+        'charges_fixes_mad': entrees['charges_fixes_mad'],
     }
 
     sondes = {}

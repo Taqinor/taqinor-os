@@ -5043,7 +5043,10 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
             occupation=entrees.occupation, equipements=entrees.equipements,
             phase=phase, source_conso=entrees.source_conso,
-            jour_reference=entrees.jour_reference)
+            jour_reference=entrees.jour_reference,
+            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
+            tranches=entrees.tranches,
+            charges_fixes_mad=entrees.charges_fixes_mad)
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le
@@ -5367,7 +5370,10 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             occupation=entrees['occupation'],
             equipements=entrees['equipements'],
             source_conso=entrees['source_conso'],
-            jour_reference=entrees['jour_reference'])
+            jour_reference=entrees['jour_reference'],
+            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
+            tranches=entrees['tranches'],
+            charges_fixes_mad=entrees['charges_fixes_mad'])
         resultat['_empreinte'] = empreinte
 
         etude = dict(etude_params)

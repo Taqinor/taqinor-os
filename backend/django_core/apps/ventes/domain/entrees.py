@@ -55,11 +55,12 @@ class EntreesMoteur:
     ``lat``, ``lon``, ``occupation``, ``equipements``, ``tranches``,
     ``charges_fixes_mad``, ``jour_reference``.
 
-    ``tranches`` / ``charges_fixes_mad`` (l'IDENTITÉ TARIFAIRE) sont déclarés
-    ici mais restent à ``None`` tant que QJR46 ne les a pas branchés : les
-    créer d'avance évite que le dataclass ne change de forme au milieu de la
-    vague. ``jour_reference`` est posé par QJR45 (voir
-    :func:`jour_reference_par_defaut`).
+    ``tranches`` / ``charges_fixes_mad`` — L'IDENTITÉ TARIFAIRE (QJR46) : la
+    surcharge de barème de la SOCIÉTÉ, lue par le MÊME
+    ``etude_horaire._reglages_tarifaires`` que le moteur de devis. Elles ne
+    sont lues qu'avec ``contexte=True`` (comme la localisation) : le chemin de
+    garde ne paie aucune requête de plus. ``jour_reference`` est posé par
+    QJR45 (voir :func:`jour_reference_par_defaut`).
 
     DEUX CHAMPS DE CONTEXTE, non canoniques : ``mode`` (le
     ``mode_installation`` déjà vérifié par l'adaptateur) et ``etude_params``
@@ -99,6 +100,21 @@ class EntreesMoteur:
 
     def get(self, cle, defaut=None):
         return getattr(self, cle, defaut)
+
+
+def _reglages_tarifaires_de(company):
+    """QJR46 — ``(tranches, charges_fixes_mad)`` de la SOCIÉTÉ.
+
+    UNE SEULE lecture pour tout le monde : c'est exactement
+    ``etude_horaire._reglages_tarifaires``, celle que le moteur de DEVIS
+    applique déjà. Avant QJR46, le dimensionnement omettait simplement les deux
+    kwargs — ils retombaient sur ``None`` (grille nationale) — pendant que le
+    devis appliquait la surcharge de la société : le MÊME kWh était valorisé
+    sur deux barèmes, et le site d'appel ne voyait rien puisque les kwargs
+    étaient OMIS plutôt que refusés.
+    """
+    from apps.ventes.etude_horaire import _reglages_tarifaires
+    return _reglages_tarifaires(company)
 
 
 def jour_reference_par_defaut():
@@ -188,6 +204,7 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     # s'applique.
     occupation, _source_occ = occupation_du_devis(
         devis, {'mode_installation': mode})
+    tranches, charges_fixes = _reglages_tarifaires_de(company)
     return EntreesMoteur(
         company=company, mode=mode, etude_params=etude_params,
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -196,6 +213,7 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         lon=localisation.get('gps_lng'),
         occupation=occupation,
         equipements=equipements_du_devis(devis),
+        tranches=tranches, charges_fixes_mad=charges_fixes,
         jour_reference=jour)
 
 
@@ -245,6 +263,7 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
             jour_reference=jour)
 
     occupation, _source_occ = occupation_du_lead(lead)
+    tranches, charges_fixes = _reglages_tarifaires_de(company)
     return EntreesMoteur(
         company=company, mode='residentiel', etude_params={},
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -253,7 +272,8 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         lat=getattr(lead, 'gps_lat', None),
         lon=getattr(lead, 'gps_lng', None),
         occupation=occupation,
-        equipements=composer_equipements(equipements_pour_lead(lead)))
+        equipements=composer_equipements(equipements_pour_lead(lead)),
+        tranches=tranches, charges_fixes_mad=charges_fixes)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -296,6 +316,33 @@ def _texte(valeur):
     return texte or None
 
 
+def _tranches_canoniques(tranches):
+    """QJR46 — une table de tranches réduite à ce qui la DÉFINIT.
+
+    ``pricing.TrancheTable`` est une sous-classe de ``list`` : sérialisée
+    telle quelle, elle rendrait ses paires mais PERDRAIT
+    ``selective_threshold`` et ``boundary_tolerance`` — deux barèmes aux mêmes
+    paires mais au seuil sélectif différent auraient la même empreinte. On
+    sérialise donc les trois, explicitement. (Et jamais ``str(objet)`` : la
+    représentation par défaut porte une adresse mémoire, qui changerait
+    l'empreinte à chaque processus.)
+    """
+    if tranches is None:
+        return None
+    try:
+        paires = [[_arrondi(paire[0], 3), _arrondi(paire[1], 6)]
+                  for paire in tranches]
+    except (TypeError, IndexError, KeyError):
+        return None
+    return {
+        'paires': paires,
+        'seuil_selectif': _arrondi(
+            getattr(tranches, 'selective_threshold', None), 3),
+        'tolerance_bord': _arrondi(
+            getattr(tranches, 'boundary_tolerance', None), 3),
+    }
+
+
 def empreinte_entrees(e):
     """QJR43 — l'empreinte SHA-256 des entrées du moteur pour cette fiche.
 
@@ -331,7 +378,7 @@ def empreinte_entrees(e):
         'lon': _arrondi(getattr(e, 'lon', None), _DECIMALES_GPS),
         'occupation': _texte(getattr(e, 'occupation', None)),
         'equipements': getattr(e, 'equipements', None) or {},
-        'tranches': getattr(e, 'tranches', None),
+        'tranches': _tranches_canoniques(getattr(e, 'tranches', None)),
         'charges_fixes_mad': _arrondi(
             getattr(e, 'charges_fixes_mad', None), 2),
         'jour_reference': _texte(getattr(e, 'jour_reference', None)),

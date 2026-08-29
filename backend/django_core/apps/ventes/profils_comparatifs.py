@@ -209,12 +209,18 @@ def _dimensionnement_variante(devis, occupation):
     if not conso:
         return None
     localisation = site_location_for_devis(devis) or {}
+    # QJR46 — le barème de la SOCIÉTÉ, la MÊME lecture que le moteur de devis :
+    # une variante d'occupation ne peut pas valoriser le kWh autrement que le
+    # tableau qu'elle sert à comparer.
+    from apps.ventes.etude_horaire import _reglages_tarifaires
+    tranches, charges_fixes = _reglages_tarifaires(company)
     return recommander_taille(
         company=company, conso_kwh_mensuelles=conso,
         ville=localisation.get('site_ville'),
         lat=localisation.get('gps_lat'), lon=localisation.get('gps_lng'),
         occupation=occupation, equipements=equipements_du_devis(devis),
-        source_conso=source_conso)
+        source_conso=source_conso,
+        tranches=tranches, charges_fixes_mad=charges_fixes)
 
 
 def calculer_profils_comparatifs(devis):

@@ -360,7 +360,13 @@ def etude_horaire_preview(request):
             None, None, conso, source, detail, occupation, equipements,
             avertissements))
 
-    from .etude_horaire import calculer_etude_horaire
+    from .etude_horaire import _reglages_tarifaires, calculer_etude_horaire
+
+    # QJR46 — UN SEUL barème pour toute cette réponse : l'étude d'une taille et
+    # le tableau de dimensionnement servis côte à côte ne peuvent pas valoriser
+    # le kWh différemment (l'étude lisait la surcharge de la société via
+    # ``etude_horaire_pour_devis`` ailleurs, le tableau la grille nationale).
+    tranches, charges_fixes = _reglages_tarifaires(company)
 
     etude = None
     kwc = _num(corps.get('kwc'))
@@ -369,7 +375,8 @@ def etude_horaire_preview(request):
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
             batterie_kwh_utile=_num(corps.get('batterie_kwh')),
-            source_conso=source, detail_conso=detail)
+            source_conso=source, detail_conso=detail,
+            tranches=tranches, charges_fixes_mad=charges_fixes)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '
@@ -380,7 +387,8 @@ def etude_horaire_preview(request):
         dimensionnement = _dimensionner(
             company=company, conso=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements, corps=corps,
-            source=source, avertissements=avertissements)
+            source=source, avertissements=avertissements,
+            tranches=tranches, charges_fixes_mad=charges_fixes)
 
     # T4/L-QA1 — même décomposition mensuelle que le devis enregistré
     # (``services.rafraichir_etude_horaire_devis`` ne l'expose nulle part sur
@@ -414,8 +422,13 @@ def _localisation(corps, devis, lead=None):
 
 
 def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
-                  corps, source, avertissements):
-    """Tableau + recommandation, ou ``None`` avec un avertissement explicite."""
+                  corps, source, avertissements, tranches, charges_fixes_mad):
+    """Tableau + recommandation, ou ``None`` avec un avertissement explicite.
+
+    QJR46 — ``tranches`` / ``charges_fixes_mad`` sont EXIGÉS et viennent de
+    l'appelant : cet aperçu valorisait le kWh sur la grille nationale pendant
+    que l'étude horaire de la MÊME réponse appliquait la surcharge société.
+    """
     if company is None:
         avertissements.append(
             'Dimensionnement impossible : aucune société rattachée au compte '
@@ -429,7 +442,8 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
             lon=lon, occupation=occupation, equipements=equipements,
             phase=normaliser_phase(corps.get('raccordement')),
             critere=corps.get('critere') or None,
-            source_conso=source)
+            source_conso=source,
+            tranches=tranches, charges_fixes_mad=charges_fixes_mad)
     except Exception:  # noqa: BLE001 — un aperçu ne casse jamais
         logger.warning('dimensionnement indisponible', exc_info=True)
         avertissements.append(
