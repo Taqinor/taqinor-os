@@ -66,14 +66,39 @@ class DimensionnementOptionDepuisItemsTests(SimpleTestCase):
         self.assertEqual(bloc['nb_batteries'], 2)
         self.assertEqual(bloc['capacite_batterie_kwh'], 15.4)
 
-    def test_batterie_sans_kwh_lisible_retombe_sur_le_defaut_moteur(self):
-        """Même défaut que ``builder._battery_kwh_from_items`` — jamais un
-        second forfait."""
-        items = [{'designation': 'Batterie', 'quantite': 1.0,
-                  '_produit_nom': ''}]
+    def test_batterie_sans_kwh_lisible_n_invente_aucune_capacite(self):
+        """QJR92b — la page publique n'invente plus 5 kWh.
+
+        Une ligne batterie dont la désignation ne porte aucun kWh lisible
+        (« Batterie Deye BOS-B-Pack », cas de la fixture de contrat
+        ``classification_lignes.json``) retombait sur ``BATTERY_DEFAULT_KWH =
+        5.0`` : un nombre qu'aucune donnée ne soutient, publié sur la page
+        proposition remise au client. Le compte de batteries reste VRAI — c'est
+        la capacité qui est OMISE (``None``), comme un watt illisible laisse
+        ``puissance_kwc`` absent. Règle fondateur « zéro chiffre inventé ».
+        """
+        for designation in ('Batterie', 'Batterie Deye BOS-B-Pack'):
+            with self.subTest(designation=designation):
+                items = [{'designation': designation, 'quantite': 1.0,
+                          '_produit_nom': ''}]
+                bloc = _dimensionnement_option_depuis_items(items)
+                self.assertEqual(bloc['nb_batteries'], 1)
+                self.assertIsNone(bloc['capacite_batterie_kwh'])
+
+    def test_batterie_lisible_et_illisible_ne_compte_que_la_lisible(self):
+        """QJR92b — l'inconnu ne devient jamais un chiffre : la ligne sans kWh
+        contribue 0 (elle ne gonfle pas le total), la ligne lisible compte
+        normalement. La capacité SOUS-ESTIME plutôt que d'inventer — même
+        règle que ``solar.js batteryKwhFromLines`` (BAT5DEF)."""
+        items = [
+            {'designation': 'Batterie 7.7kWh', 'quantite': 1.0,
+             '_produit_nom': ''},
+            {'designation': 'Batterie Deye BOS-B-Pack', 'quantite': 1.0,
+             '_produit_nom': ''},
+        ]
         bloc = _dimensionnement_option_depuis_items(items)
-        self.assertEqual(bloc['nb_batteries'], 1)
-        self.assertEqual(bloc['capacite_batterie_kwh'], 5.0)
+        self.assertEqual(bloc['nb_batteries'], 2)
+        self.assertEqual(bloc['capacite_batterie_kwh'], 7.7)
 
     def test_items_vides_ou_none(self):
         for items in (None, []):
