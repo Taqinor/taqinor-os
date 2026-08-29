@@ -1,0 +1,100 @@
+{
+  "endpoint": "GET /ventes/classifieurs-lignes",
+  "pourquoi": "QJR2 (M0, audit L3 du 29/08/2026) — PACT10 pour la PARITÉ écran/PDF des classifieurs de lignes de devis. `frontend/src/features/ventes/solar.js` (`isPanel`, `isBattery`, `parseKwh`, `batteryKwhFromLines`…) ET `apps/ventes/quote_engine/builder.py` (`_is_panel`, `_is_battery`, `_battery_kwh_from_items`…) classifient CHACUN de leur côté la MÊME désignation de ligne, sans jamais lire une table commune — l'audit a vérifié EN CODE deux divergences réelles où les deux moitiés se contredisent sur le MÊME libellé. `chemin` n'est PAS une route Django : c'est l'URL PUBLIQUE nominale que les deux moitiés doivent atteindre ensemble (même convention que `apps/ventes/contract_samples/ligne_fiche_mapping.json`) ; aucune vue ne la sert, donc `scripts/check_api_shapes.py` ne compare rien ici — la garde de conformité est le test de parité QJR91 (`frontend/src/features/ventes/classifieurs.parite.test.mjs` + `apps/ventes/tests/test_classification_parite.py`), qui n'est PAS dans ce commit (M0 reste docs-only, zéro code aligné). QJR92 aligne ensuite les deux implémentations sur CE fichier.",
+  "notes": {
+    "colonnes": "Chaque cas de `exemple.cas` porte EXACTEMENT les six champs que `solar.js` ET `builder.py` doivent reproduire à l'identique : `designation` (le libellé de ligne, l'entrée des deux classifieurs), `panneau`/`batterie`/`onduleur_hybride`/`onduleur_reseau` (booléens — la classification ATTENDUE, celle que les DEUX lecteurs doivent produire une fois QJR92 fait), `kwh_lisible` (la capacité batterie DÉRIVÉE du libellé — un nombre quand le libellé porte un kWh lisible, `null` sinon ; sans objet pour une ligne qui n'est pas une batterie, `kwh_lisible` vaut `null` aussi — la colonne ne s'applique qu'aux lignes `batterie: true`).",
+    "divergence_module_pv": "Cas `Module PV 550 W` — DIVERGENCE ACTUELLE (constatée en code le 29/08/2026, toujours vraie au moment de ce commit). `apps/ventes/quote_engine/builder.py:342 _is_panel` teste `'module' in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS)` (`_PANEL_MODULE_QUALIFIERS = ('pv', 'photovolta', 'solaire', 'solar')`, `builder.py:334`) → rend `True`. `frontend/src/features/ventes/solar.js:935 isPanel = (d) => _norm(d).includes('panneau')` → rend `False` (aucun mot « panneau » dans ce libellé). CÔTÉ CORRECT : LE BACKEND (`builder.py`) — c'est le PDF qui a raison ici (confirmé par QJR92a, M4) : un devis dont la seule ligne panneau s'appelle ainsi est aujourd'hui REFUSÉ À L'ENREGISTREMENT côté écran comme n'ayant aucun panneau, et affiche 0 panneau partout à l'écran, alors que le PDF le classe correctement. `solar.js isPanel` doit s'ÉLARGIR pour égaler `builder._is_panel` (accepter « module » + qualificatif panneau, et marque+watt) — ce correctif n'est PAS dans ce commit.",
+    "divergence_batterie_sans_kwh": "Cas `Batterie Deye BOS-B-Pack` — DIVERGENCE ACTUELLE (constatée en code le 29/08/2026, toujours vraie au moment de ce commit). Le libellé ne porte aucun kWh lisible (`_KWH_RE` ne matche rien). `frontend/src/features/ventes/solar.js:1215 batteryKwhFromLines` (règle BAT5DEF, 26/08/2026) contribue `0` pour cette ligne — `kwhLisible` vaut donc `null` et la capacité totale SOUS-ESTIME plutôt que d'inventer. `apps/ventes/quote_engine/builder.py:262 BATTERY_DEFAULT_KWH = 5.0`, utilisé `builder.py:289 total += qty * (_parse_kwh(text) or BATTERY_DEFAULT_KWH)`, contribue `5.0` — un nombre FABRIQUÉ, publié sur le PDF client. CÔTÉ CORRECT : LE FRONTEND (`solar.js`, règle BAT5DEF) — confirmé par QJR92b (M4) : `5.0` kWh qu'aucune donnée ne soutient est un nombre inventé sur un document client, la règle fondateur absolue « zéro chiffre inventé ». `builder.py` doit RETIRER `BATTERY_DEFAULT_KWH` et adopter le comportement `solar.js` (contribuer 0, faire remonter l'inconnu) — ce correctif touche `public_views.py:1862-1886` aussi (même défaut sur la page publique) et n'est PAS dans ce commit.",
+    "portee": "Cette fixture couvre les classifieurs RÉSIDENTIELS (`_is_panel`/`isPanel`, `_is_battery`/`isBattery`, `_is_hybrid_inverter`/`isHybridInverter`, `_is_reseau_inverter`/`isReseauInverter`, `_parse_kwh`/`parseKwh`). Elle ne couvre PAS les classifieurs de structure/câblage/protection (`ligne_fiche_mapping.json`, un contrat séparé, un découpage différent — familles de fiches, pas classification panneau/batterie/onduleur)."
+  },
+  "exemple": {
+    "cas": [
+      {
+        "designation": "Panneau Canadian Solar 710W bifacial",
+        "panneau": true,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null
+      },
+      {
+        "designation": "Panneau Canadien Solar 710W",
+        "panneau": true,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null
+      },
+      {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": true,
+        "onduleur_reseau": false,
+        "kwh_lisible": null
+      },
+      {
+        "designation": "Onduleur réseau Huawei 5kW Monophasé",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": true,
+        "kwh_lisible": null
+      },
+      {
+        "designation": "Batterie Dyness 10 kWh",
+        "panneau": false,
+        "batterie": true,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": 10.0
+      },
+      {
+        "designation": "Batterie Gel 2.2 kWh",
+        "panneau": false,
+        "batterie": true,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": 2.2
+      },
+      {
+        "designation": "Structures acier",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null
+      },
+      {
+        "designation": "Module PV 550 W",
+        "panneau": true,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "divergence_actuelle": {
+          "champ": "panneau",
+          "solar_js_isPanel": false,
+          "builder_py_is_panel": true,
+          "cote_correct": "backend (apps/ventes/quote_engine/builder.py:342 _is_panel) — solar.js:935 isPanel doit s'élargir (QJR92a, M4)",
+          "impact": "un devis dont la seule ligne panneau s'appelle ainsi est refusé à l'enregistrement côté écran comme n'ayant aucun panneau, et affiche 0 panneau partout à l'écran"
+        }
+      },
+      {
+        "designation": "Batterie Deye BOS-B-Pack",
+        "panneau": false,
+        "batterie": true,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "divergence_actuelle": {
+          "champ": "kwh_lisible",
+          "solar_js_batteryKwhFromLines_contribue": 0,
+          "builder_py_battery_default_kwh_contribue": 5.0,
+          "cote_correct": "frontend (frontend/src/features/ventes/solar.js:1215 batteryKwhFromLines, règle BAT5DEF 26/08) — apps/ventes/quote_engine/builder.py:262/289 doit retirer BATTERY_DEFAULT_KWH (QJR92b, M4)",
+          "impact": "5.0 kWh est un nombre inventé sur un PDF client (et sur public_views.py:1862-1886, la page publique) — règle fondateur « zéro chiffre inventé »"
+        }
+      }
+    ]
+  }
+}
