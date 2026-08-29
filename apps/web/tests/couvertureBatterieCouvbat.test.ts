@@ -174,8 +174,12 @@ describe('COUVBAT — la page BRANCHE le bloc servi (et retombe proprement sans 
     // même ligne) : `batteryCoverage` servi ⇒ SEUL `nbPacksMax` fixe le
     // plafond, plus de MAX avec un plafond historique qui aurait pu ouvrir
     // des crans sans données.
-    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = batteryCoverage');
-    expect(CODE).toContain('? batteryCoverage.nbPacksMax');
+    // WJ128 (finding 3, 29/08) — cette priorité vit désormais dans
+    // `resolveBatterySimMaxUnits` (lib/batterySim.ts), câblée ici avec
+    // `batteryCoverage?.nbPacksMax` en premier argument prioritaire ; testée
+    // en isolation dans batterySimWJ120.test.ts.
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = resolveBatterySimMaxUnits(');
+    expect(CODE).toContain('offeredUnits, storageRealMax, batteryCoverage?.nbPacksMax ?? null');
   });
 
   it('le repère d’autonomie est affiché, avec sa réserve d’honnêteté', () => {
@@ -218,9 +222,11 @@ describe('COUVBAT — la page BRANCHE le bloc servi (et retombe proprement sans 
   it('le curseur ne dépasse JAMAIS le dernier cran servi', () => {
     // Sinon les crans au-delà repartent en silence vers le simulateur
     // approché, sans grisé ni avertissement — ils auraient l'air recommandés.
-    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = batteryCoverage');
-    expect(CODE).toContain('? batteryCoverage.nbPacksMax');
-    expect(CODE).toContain(': Math.max(offeredUnits, storageRealMax || 3)');
+    // WJ128 (finding 3, 29/08) — même câblage que le test ci-dessus ; la
+    // priorité couverture/repli vit maintenant dans `resolveBatterySimMaxUnits`
+    // (testée en isolation dans batterySimWJ120.test.ts).
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = resolveBatterySimMaxUnits(');
+    expect(CODE).toContain('offeredUnits, storageRealMax, batteryCoverage?.nbPacksMax ?? null');
     // Et l'avertissement couvre aussi le cas « aucun cran pour ce n ».
     expect(CODE).toContain('(cfg.couverture ? (!cran || !cran.remplit) : false)');
   });

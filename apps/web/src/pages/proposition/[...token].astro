@@ -166,6 +166,7 @@ import {
 import {
   simulateBattery,
   resolveOfferBattery,
+  resolveBatterySimMaxUnits,
   renderBatterySplitSvg,
   DEFAULT_UNIT_CAPACITY_KWH,
   HOURS_PER_DAY,
@@ -761,6 +762,23 @@ const batteryUnitCapacityLabel = formatNumber(
 // chiffre NOMINAL (repli sur la désignation), ce serait un faux. On ne
 // l'affiche donc que là où il est vrai.
 const batteryCapacityIsUsable = batteryCoverage?.capaciteUtilePackKwh != null;
+// WJ128 (finding 3) — DISSOCIE « capacité connue » de « prix réel ». Une
+// ligne batterie du devis qui matche `BATTERY_KEYWORDS` sans porter ni réf
+// catalogue (BAT-DEY-5/10) ni « N kWh » lisible, ET pour laquelle ni la
+// couverture moteur ni `batterieKwh ÷ unités` ne donnent de capacité RÉELLE,
+// faisait retomber `batteryUnitCapacityKwh` sur `DEFAULT_UNIT_CAPACITY_KWH`
+// (un catalogue générique, sans lien avec CE devis) — affiché comme si la
+// capacité était sûre, À CÔTÉ du prix RÉEL de cette même ligne. Un prix vrai
+// et une capacité devinée affichés côte à côte, sans distinction, se lisent
+// comme deux vérités également sûres. `batteryCapacityKnown` est vrai dès
+// qu'au moins UNE source réelle a répondu ; faux seulement quand les trois
+// manquent et que le repli catalogue est la SEULE raison du chiffre affiché
+// — le gabarit affiche alors « sur étude » à la place du chiffre de
+// capacité, jamais le prix (qui reste réel, une question indépendante).
+const batteryCapacityKnown =
+  batteryCoverage?.capaciteUtilePackKwh != null
+  || offerBattery.capacityKwhPerUnit != null
+  || servedUnitCapacityKwh != null;
 // ── CONSOLIDATION (ordre fondateur, 26/08/2026) — UN SEUL MAÎTRE BATTERIE ───
 // La page portait TROIS sélecteurs de batterie indépendants (les pilules de
 // l'échelle, le curseur, et maintenant la banque de chaque carte de taille) :
@@ -809,9 +827,11 @@ const storageRealMax = Math.max(storageSweep?.refuse?.nbPacks ?? 0, storageMaxRe
 // sortait — les plus grosses banques avaient donc l'air recommandées. Quand le
 // moteur parle, on s'arrête où il s'arrête. Clé non servie ⇒ plafond
 // historique inchangé, à l'identique.
-const BATTERY_SIM_MAX_UNITS = batteryCoverage
-  ? batteryCoverage.nbPacksMax
-  : Math.max(offeredUnits, storageRealMax || 3);
+// WJ128 (finding 3) — extrait dans batterySim.ts (`resolveBatterySimMaxUnits`)
+// pour être testable en isolation ; comportement byte-identique à l'ancien
+// `batteryCoverage ? batteryCoverage.nbPacksMax : Math.max(offeredUnits, storageRealMax || 3)`.
+const BATTERY_SIM_MAX_UNITS = resolveBatterySimMaxUnits(
+  offeredUnits, storageRealMax, batteryCoverage?.nbPacksMax ?? null);
 // Curseur au départ : les unités offertes (bornées au plafond) si le devis
 // porte une batterie, sinon 1 (« et avec 1 batterie ? »).
 const batterySimInitialN = offeredUnits >= 1 ? Math.min(offeredUnits, BATTERY_SIM_MAX_UNITS) : 1;
@@ -3770,7 +3790,20 @@ const signConfig = ok
               <div class="mt-5">
                 <div class="flex items-center justify-between text-sm">
                   <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
-                <span class="font-semibold text-brass-300"><span dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{batteryUnitCapacityLabel}</span> kWh</span>{batteryCapacityIsUsable && (
+                {/* WJ128 (finding 3) — la capacité par unité ne s'affiche comme un
+                    chiffre QUE quand elle est connue d'une source réelle
+                    (`batteryCapacityKnown`) ; sans source, « sur étude »
+                    remplace le chiffre catalogue deviné — le NOMBRE d'unités
+                    (id="battery-sim-units"), lui, reste réel dans tous les
+                    cas (devis ou curseur). Le PRIX affiché plus bas (id=
+                    "battery-sim-price") est une question INDÉPENDANTE : il
+                    reste réel même quand la capacité ne l'est pas. */}
+                <span class="font-semibold text-brass-300"><span dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span></span>{batteryCapacityKnown ? (
+                    <span dir="ltr"> × <span id="battery-sim-cap">{batteryUnitCapacityLabel}</span> kWh</span>
+                  ) : (
+                    <span id="battery-sim-cap" class="ms-1 font-normal text-lune-faint" data-i18n
+                      data-fr="— capacité sur étude" data-en="— capacity on request" data-ar="— السعة حسب الدراسة">— capacité sur étude</span>
+                  )}{batteryCapacityIsUsable && (
                     <span class="ms-1 font-normal text-lune-faint" data-i18n
                       data-fr="utiles" data-en="usable" data-ar="قابلة للاستعمال">utiles</span>
                   )}</span>
