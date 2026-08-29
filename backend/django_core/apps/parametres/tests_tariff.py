@@ -116,10 +116,13 @@ class BillingModelTest(TestCase):
                          .quantize(Decimal('0.01')))
 
     def test_tolerance_bound_at_510(self):
-        # 505 kWh : borne opératoire 510 → tarif 311–510 (1.405116).
+        # 505 kWh : borne opératoire 510 → tarif 311–510 (1.381704, prouvé par
+        # la facture SRM du 08/05/2026 — décision fondateur D5 du 29/08/2026).
+        # Dérivation : 505 × 1.381704 = 697.76052 → 697.76 MAD.
         bill = tariff_service.monthly_bill_residentiel(self.s, 505)
-        self.assertEqual(bill, (Decimal('505') * Decimal('1.405116'))
+        self.assertEqual(bill, (Decimal('505') * Decimal('1.381704'))
                          .quantize(Decimal('0.01')))
+        self.assertEqual(bill, Decimal('697.76'))
 
     def test_above_all_bounds_top_rate(self):
         # 600 kWh > 510 → tarif du palier ouvert (1.622856).

@@ -1364,7 +1364,7 @@ class TestNoInventedNumberGuard(TestCase):
             {"max_kwh": 150, "prix_kwh_ttc": "1.091388"},
             {"max_kwh": 210, "prix_kwh_ttc": "1.091388"},
             {"max_kwh": 310, "prix_kwh_ttc": "1.187388"},
-            {"max_kwh": 510, "prix_kwh_ttc": "1.405116"},
+            {"max_kwh": 510, "prix_kwh_ttc": "1.381704"},
             {"max_kwh": None, "prix_kwh_ttc": "9.000000"},
         ]
         ts.save()

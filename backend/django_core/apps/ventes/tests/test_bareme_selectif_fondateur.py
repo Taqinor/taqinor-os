@@ -24,6 +24,14 @@ MAIN de la grille officielle — jamais copiés d'une sortie de code. Si l'un de
 trois bouge sans les autres, l'ERP et le site cesseraient d'annoncer la même
 économie au même client : c'est précisément ce que ce verrou interdit.
 
+ÉCART TEMPORAIRE ASSUMÉ ET DATÉ (QJR26, 29/08/2026). La correction du tarif T5
+(décision fondateur D5 — voir plus bas) a été portée sur les DEUX branches ERP
+(ce fichier + solar.test.mjs), pas sur la branche SITE : la moitié
+``apps/web/**`` est une tâche séparée (QJW) et ce périmètre lui est interdit.
+Tant qu'elle n'a pas atterri, ``savingsTranchesFondateur.test.ts`` reste sur
+1,405116 et l'estimateur public annonce une facture T5 ~1,7 % plus haute que
+l'ERP. Le verrou à trois branches se referme quand QJW est mergée.
+
 Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_bareme_selectif_fondateur -v 2
@@ -41,10 +49,18 @@ from apps.ventes.quote_engine.pricing import (
 # Grille officielle (TTC, 2026 — TVA 20 %) : progressif 0-100 = 0,916272 ·
 # 101-150 = 1,091388 ; sélectif (toute la conso au tarif de sa tranche,
 # tolérance 10 kWh) : 151-210 = 1,091388 · 211-310 = 1,187388 ·
-# 311-510 = 1,405116 · > 510 = 1,622856.
+# 311-510 = 1,381704 · > 510 = 1,622856.
+#
+# DÉCISION FONDATEUR D5 (29/08/2026) — TARIF T5 RECALÉ SUR LA FACTURE. La
+# tranche 311-510 vaut 1,381704 et non l'extrapolation « HT constant » de
+# 2025 : la facture SRM n° 643769639 du 08/05/2026 (359 kWh × 1,15142 HT =
+# 496,03 TTC) donne 1,15142 × 1,20 = 1,381704, et la facture du 20/01/2026
+# corrobore (T5 2025 = 1,3817 TTC : au passage TVA 18 → 20 % c'est le TTC qui
+# est resté constant, pas le HT). TOUS les attendus T5 ci-dessous ont donc été
+# RE-DÉRIVÉS À LA MAIN de 1,381704 — jamais recopiés d'une sortie de code.
 TARIF_HAUT = 1.622856    # > 510 kWh/mois
 TARIF_310 = 1.187388     # 211-310 kWh/mois
-TARIF_510 = 1.405116     # 311-510 kWh/mois
+TARIF_510 = 1.381704     # 311-510 kWh/mois — prouvé facture (D5)
 
 # (conso mensuelle kWh, facture mensuelle MAD) — chaque marche du barème,
 # dérivée À LA MAIN. Le jumeau JS (solar.test.mjs, BAREME_FIXTURE) porte la
@@ -56,11 +72,11 @@ BAREME_FIXTURE = [
     (210, 229.19148),   # haut de bande (tolérance) : 210 × 1,091388
     (211, 250.538868),  # bande suivante, TOUTE la conso : 211 × 1,187388
     (310, 368.09028),   # 310 × 1,187388
-    (311, 436.991076),  # 311 × 1,405116
-    (499, 701.152884),  # 499 × 1,405116
-    (500, 702.558),     # 500 × 1,405116 — le seuil « 500 » du fondateur
-    (501, 703.963116),  # 501 × 1,405116 (encore dans sa bande : borne eff. 510)
-    (510, 716.60916),   # 510 × 1,405116
+    (311, 429.709944),  # 311 × 1,381704
+    (499, 689.470296),  # 499 × 1,381704
+    (500, 690.852),     # 500 × 1,381704 — le seuil « 500 » du fondateur
+    (501, 692.233704),  # 501 × 1,381704 (encore dans sa bande : borne eff. 510)
+    (510, 704.66904),   # 510 × 1,381704
     (511, 829.279416),  # 511 × 1,622856 — la marche du haut de grille
     (700, 1135.9992),   # 700 × 1,622856
 ]
@@ -85,9 +101,11 @@ class TestBaremeSelectif(SimpleTestCase):
     def test_la_facture_ne_decroit_jamais_quand_la_conso_monte(self):
         for i in range(1, len(BAREME_FIXTURE)):
             self.assertGreater(BAREME_FIXTURE[i][1], BAREME_FIXTURE[i - 1][1])
-        # 511 kWh coûte 112,670256 MAD de plus que 510 kWh pour UN kWh de plus :
-        # 829,279416 − 716,60916 — c'est la marche sélective, pas un arrondi.
-        self.assertAlmostEqual(829.279416 - 716.60916, 112.670256, places=9)
+        # 511 kWh coûte 124,610376 MAD de plus que 510 kWh pour UN kWh de plus :
+        # 829,279416 − 704,66904 — c'est la marche sélective, pas un arrondi.
+        # (La marche a GRANDI avec la correction D5 : le bas de la marche est
+        #  descendu à 1,381704 alors que le haut, 1,622856, n'a pas bougé.)
+        self.assertAlmostEqual(829.279416 - 704.66904, 124.610376, places=9)
 
     def test_le_prix_effectif_du_kwh_chute_sous_la_marche(self):
         # C'est LA phrase du fondateur : le prix du kWh baisse, pas seulement
@@ -181,13 +199,13 @@ class TestScenarioFondateur(SimpleTestCase):
 
     def test_le_residuel_sous_311_retombe_encore_plus_bas(self):
         # Borne basse du site (autoconsommation 75 % réellement synchrone) :
-        # résiduel 385 kWh/mois → tranche 311-510 → 385 × 1,405116 = 540,96966
-        # → économie 1 135,9992 − 540,96966 = 595,02954 MAD/mois (7 140,35/an).
+        # résiduel 385 kWh/mois → tranche 311-510 → 385 × 1,381704 = 531,95604
+        # → économie 1 135,9992 − 531,95604 = 604,04316 MAD/mois (7 248,52/an).
         self.assertAlmostEqual(
-            _monthly_bill_from_kwh(385, ONEE_TRANCHES), 540.96966, places=9)
+            _monthly_bill_from_kwh(385, ONEE_TRANCHES), 531.95604, places=9)
         self.assertAlmostEqual(
-            _monthly_bill_from_kwh(700, ONEE_TRANCHES) - 540.96966,
-            595.02954, places=9)
+            _monthly_bill_from_kwh(700, ONEE_TRANCHES) - 531.95604,
+            604.04316, places=9)
 
 
 class TestUnSeulBaremeNational(SimpleTestCase):
