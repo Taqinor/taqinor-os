@@ -35,6 +35,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from apps.crm.models import Lead
 from apps.stock.models import Produit
 from apps.ventes import selectors, services
+from apps.ventes.domain import geometrie
 from apps.ventes.models import Devis
 from apps.ventes.services import build_devis_from_layout
 
@@ -355,7 +356,7 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
 
     def _arbitrage(self, historique, compte_moteur, layout=None):
         moteur = _MoteurAuCompteImpose(compte_moteur)
-        with patch.object(services, 'compte_moteur_du_layout', moteur):
+        with patch.object(geometrie, 'compte_moteur_du_layout', moteur):
             resultat = services.arbitrer_compte_calepinage(
                 layout or layout_avec_geometrie(), historique)
         return resultat, moteur
@@ -368,7 +369,7 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
 
     def test_off_le_devis_garde_son_compte_meme_avec_un_moteur_delirant(self):
         moteur = _MoteurAuCompteImpose(999)
-        with patch.object(services, 'compte_moteur_du_layout', moteur):
+        with patch.object(geometrie, 'compte_moteur_du_layout', moteur):
             devis = build_devis_from_layout(
                 layout=layout_avec_geometrie(panels=12, kwc=6.6),
                 user=self.user, company=self.company, lead=self._lead())
@@ -408,7 +409,7 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
     @override_settings(USE_MOTEUR_CALEPINAGE=True)
     def test_le_devis_prend_le_compte_moteur_quand_l_ecart_est_tolere(self):
         moteur = _MoteurAuCompteImpose(13)
-        with patch.object(services, 'compte_moteur_du_layout', moteur):
+        with patch.object(geometrie, 'compte_moteur_du_layout', moteur):
             devis = build_devis_from_layout(
                 layout=layout_avec_geometrie(panels=12, kwc=6.6),
                 user=self.user, company=self.company, lead=self._lead())
@@ -431,7 +432,7 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
     @override_settings(USE_MOTEUR_CALEPINAGE=True)
     def test_ecart_hors_tolerance_l_anomalie_est_journalisee(self):
         moteur = _MoteurAuCompteImpose(40)
-        with patch.object(services, 'compte_moteur_du_layout', moteur):
+        with patch.object(geometrie, 'compte_moteur_du_layout', moteur):
             with self.assertLogs('apps.ventes.services',
                                  level='WARNING') as journal:
                 services.arbitrer_compte_calepinage(
@@ -448,7 +449,7 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
     @override_settings(USE_MOTEUR_CALEPINAGE=True)
     def test_le_devis_garde_ses_panneaux_quand_l_ecart_est_aberrant(self):
         moteur = _MoteurAuCompteImpose(40)
-        with patch.object(services, 'compte_moteur_du_layout', moteur):
+        with patch.object(geometrie, 'compte_moteur_du_layout', moteur):
             devis = build_devis_from_layout(
                 layout=layout_avec_geometrie(panels=12, kwc=6.6),
                 user=self.user, company=self.company, lead=self._lead())
