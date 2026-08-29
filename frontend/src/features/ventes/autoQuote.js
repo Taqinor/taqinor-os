@@ -106,9 +106,10 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
-  // U3-900 — `panneauxParTranche` (réglage Paramètres → Avancé de la règle des
-  // 900 DH/mois) n'est plus lu ICI : la règle a été supprimée (fondateur
-  // 29/08/2026). Voir la doc du paramètre lui-même (solar.js) pour son statut.
+  // U3-900 — la règle des 900 DH/mois (ex-`panneauxParTranche`) a été
+  // supprimée (fondateur 29/08/2026) : le réglage qui l'alimentait
+  // (`panneaux_par_900mad`) a lui-même été retiré du modèle et de l'écran
+  // Paramètres → Avancé — plus aucun consommateur.
   // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
   // fourni, sinon le défaut marché historique — comme le générateur manuel.
   const heuresPompage = (Number(pumpHours) > 0) ? Number(pumpHours) : HEURES_POMPAGE_DEFAUT
