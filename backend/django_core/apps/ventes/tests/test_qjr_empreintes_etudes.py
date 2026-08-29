@@ -35,6 +35,7 @@ from apps.ventes.profils_comparatifs import (
 )
 from apps.ventes.services import (
     _bloc_horaire_deja_a_jour, rafraichir_etude_horaire_devis,
+    rafraichir_etudes_du_devis,
 )
 
 User = get_user_model()
@@ -184,6 +185,20 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
         devis.save(update_fields=['etude_params'])
         self.assertFalse(_bloc_horaire_deja_a_jour(devis, kwc))
 
+    def test_le_bloc_range_porte_la_meme_date_que_le_moteur(self):
+        """QJR45 — une seule lecture d'horloge : la date estampillée est celle
+        contre laquelle le moteur a calculé."""
+        devis = self._devis('qjr44-eh-date')
+        bloc = rafraichir_etude_horaire_devis(devis, force=True)
+        if bloc is None:
+            self.skipTest('étude horaire non calculable sur cette fixture')
+        from apps.ventes.domain.entrees import (
+            empreinte_entrees, entrees_depuis_devis)
+        devis.refresh_from_db()
+        self.assertEqual(
+            devis.etude_params['etude_horaire']['_empreinte_entrees'],
+            empreinte_entrees(entrees_depuis_devis(devis)))
+
     def test_la_tolerance_kwc_du_moteur_est_conservee(self):
         """``_bloc_horaire_deja_a_jour`` n'est PAS retiré : sa tolérance reste
         celle de ``pricing._HORAIRE_TOLERANCE_KWC``."""
@@ -199,3 +214,69 @@ class EtudeHoraireEmpreinteTests(_EmpreintesBase):
         dehors = kwc * (1 + _HORAIRE_TOLERANCE_KWC * 3)
         self.assertTrue(_bloc_horaire_deja_a_jour(devis, dedans))
         self.assertFalse(_bloc_horaire_deja_a_jour(devis, dehors))
+
+
+class ForceRetireTests(_EmpreintesBase):
+    """QJR47 — les ``force=True`` des quatre chemins d'écriture sont retirés.
+
+    Ils protégeaient contre un cache posé sur la PRÉSENCE de la clé. L'empreinte
+    protège mieux : elle recalcule quand une entrée bouge, et seulement là.
+    Coût mesuré par ces tests : ajouter cinq lignes ne déclenchait pas moins de
+    TROIS balayages complets PAR LIGNE, tous synchrones dans le handler HTTP.
+    """
+
+    def test_ajouter_cinq_lignes_ne_declenche_plus_aucun_balayage(self):
+        devis = self._devis('qjr47-cinq')
+        rafraichir_etudes_du_devis(devis)
+        devis = Devis.objects.get(pk=devis.pk)
+
+        patch, appels = self._espion_balayage()
+        with patch:
+            for index in range(5):
+                LigneDevis.objects.create(
+                    devis=devis, designation='Câble solaire %d' % index,
+                    quantite=Decimal('1'), prix_unitaire=Decimal('100'),
+                    remise=Decimal('0'))
+                devis = Devis.objects.get(pk=devis.pk)
+                rafraichir_etudes_du_devis(devis)
+        self.assertEqual(
+            appels, [],
+            'aucune de ces cinq lignes ne change le profil ni le kWc : '
+            'aucun balayage ne doit être rejoué')
+
+    def test_la_fraicheur_est_conservee_quand_la_composition_change(self):
+        """Le recalcul a toujours lieu quand il DOIT avoir lieu."""
+        devis = self._devis('qjr47-fraicheur')
+        premier = rafraichir_etudes_du_devis(devis)
+        if premier.get('etude_horaire') is None:
+            self.skipTest('étude horaire non calculable sur cette fixture')
+        devis = Devis.objects.get(pk=devis.pk)
+        kwc_avant = devis.etude_params['etude_horaire']['kwc']
+
+        ligne = devis.lignes.filter(designation__icontains='Panneau').first()
+        ligne.quantite = Decimal('28')
+        ligne.save(update_fields=['quantite'])
+        devis = Devis.objects.get(pk=devis.pk)
+
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        self.assertNotEqual(devis.etude_params['etude_horaire']['kwc'],
+                            kwc_avant)
+
+    def test_un_profil_modifie_recalcule_sans_force(self):
+        devis = self._devis('qjr47-profil')
+        rafraichir_etudes_du_devis(devis)
+        devis = Devis.objects.get(pk=devis.pk)
+        empreinte_avant = (devis.etude_params.get('dimensionnement') or {}
+                           ).get('_empreinte')
+        self.assertIsNotNone(empreinte_avant)
+
+        devis.lead.facture_hiver = 3600
+        devis.lead.save(update_fields=['facture_hiver'])
+        devis = Devis.objects.get(pk=devis.pk)
+
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        self.assertNotEqual(
+            devis.etude_params['dimensionnement']['_empreinte'],
+            empreinte_avant)

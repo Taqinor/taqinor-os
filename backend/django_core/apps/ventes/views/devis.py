@@ -870,8 +870,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # TROISIÈME, incomplète, dans ``LigneDevisViewSet``) vit maintenant
         # dans ``services.rafraichir_etudes_du_devis``. Une étude ajoutée
         # demain part sur les trois chemins d'écriture, ou sur aucun.
+        # QJR47 — ``force=True`` RETIRÉ : il protégeait contre un cache posé
+        # sur la simple PRÉSENCE de la clé. Depuis QJR43/QJR44 c'est
+        # l'EMPREINTE des entrées (et, pour le bloc horaire, la composition)
+        # qui décide — un devis qui vient d'être créé n'a aucun bloc, donc les
+        # quatre études se calculent de toute façon.
         from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis, force=True)
+        rafraichir_etudes_du_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -917,16 +922,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # rafraîchissement, la composition qui vient d'être posée (panneaux,
         # onduleur, batterie) ne serait jamais celle que le bloc horaire décrit,
         # et le devis retomberait sur le modèle forfaitaire alors qu'un calcul
-        # heure par heure exact est possible. ``force`` : les lignes ET
-        # ``etude_params`` peuvent avoir changé dans le même enregistrement.
+        # heure par heure exact est possible.
         # HORS de la transaction ci-dessus, et best-effort : un devis
         # correctement remplacé ne doit jamais être annulé par une étude.
         # L-1V (24/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE (bloc horaire,
         # dimensionnement, profils comparatifs, conception électrique) : voir
         # ``services.rafraichir_etudes_du_devis``. La composition vient de
         # changer, les quatre études doivent décrire les lignes COURANTES.
+        # QJR47 — ``force=True`` RETIRÉ. Il couvrait le cas « les lignes ET
+        # ``etude_params`` ont changé dans le même enregistrement » : les DEUX
+        # entrent désormais dans l'empreinte (la composition pour le bloc
+        # horaire et les profils, le profil client pour l'empreinte des
+        # entrées), donc un vrai changement recalcule et un faux ne coûte plus
+        # trois balayages complets.
         from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis, force=True)
+        rafraichir_etudes_du_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 

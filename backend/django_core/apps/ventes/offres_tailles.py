@@ -1725,7 +1725,11 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
 
         # Les quatre études suivent les lignes — sans quoi le devis porterait
         # une composition neuve et un bloc horaire décrivant l'ancienne.
-        rafraichir_etudes_du_devis(devis, force=True)
+        # QJR47 — ``force=True`` RETIRÉ : appliquer une taille change la
+        # composition, donc le kWc et la capacité batterie, donc l'empreinte
+        # du bloc horaire et celle des profils comparatifs. Le recalcul a lieu
+        # parce qu'il DOIT avoir lieu, plus parce qu'on l'impose.
+        rafraichir_etudes_du_devis(devis)
 
         DevisActivity.objects.create(
             company=getattr(devis, 'company', None), devis=devis,

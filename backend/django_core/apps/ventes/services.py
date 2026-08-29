@@ -5871,7 +5871,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # dimensionnement), toujours APRÈS la construction (la puissance et le
     # stockage réellement composés), best-effort et non bloquant : un devis
     # reste parfaitement valide sans ses études.
-    rafraichir_etudes_du_devis(devis, force=True)
+    # QJR47 — ``force=True`` RETIRÉ : le devis vient de NAÎTRE, il ne porte
+    # aucun bloc estampillé, donc les quatre études se calculent de toute
+    # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
+    # l'empreinte des entrées).
+    rafraichir_etudes_du_devis(devis)
 
     logger.info(
         'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s, '
