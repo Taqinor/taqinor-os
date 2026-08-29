@@ -479,8 +479,20 @@ class TestQjr64ScenarioSurvitAuxRecalculs(_Base):
         self._declarer(SCENARIO_LES_DEUX)
         # Un scénario stocké MONO : sans le registre, la resynchro le
         # re-dériverait et le PDF perdrait la comparaison.
+        #
+        # ── FIXTURE : le devis est remis en BROUILLON (29/08/2026) ──────────
+        # ``make_devis`` (test_l_niv_niveau) naît « Envoyé » — c'est ce qu'il
+        # faut aux tests L-VAR, qui portent sur la PAGE PUBLIQUE d'un devis
+        # déjà chez le client. Mais ``sync_devis_from_layout`` porte une garde
+        # de statut PRÉ-EXISTANTE et légitime (`services.py`) : un devis
+        # « Envoyé » refuse la resynchro, « le client a déjà cette version sous
+        # les yeux » — il faut passer par une révision. Le brouillon est le
+        # SEUL statut où une resynchro de calepinage est permise, et c'est bien
+        # là que vit le cas visé par QJR64 : le commercial retouche son
+        # calepinage avant envoi, et son scénario déclaré doit y survivre.
         Devis.objects.filter(pk=self.devis.pk).update(
-            etude_params={'scenario': 'Avec batterie'})
+            etude_params={'scenario': 'Avec batterie'},
+            statut=Devis.Statut.BROUILLON)
         self.devis.refresh_from_db()
 
         sync_devis_from_layout(
