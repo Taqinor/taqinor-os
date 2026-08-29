@@ -1075,13 +1075,22 @@ class SubstitutionTests(TestCase):
         self.company = Company.objects.create(slug='sub', nom='sub')
 
     def _lignes(self):
-        """Une composition minimale en mémoire (aucun moteur sollicité)."""
+        """Une composition minimale en mémoire (aucun moteur sollicité).
+
+        Les fiches portent un SKU DISTINCT par appel : un même test appelle
+        l'aide deux fois, et l'unicité conditionnelle `stock.0135` n'interdit
+        le doublon de nom que pour les produits ACTIFS SANS SKU. Les NOMS
+        restent identiques d'un appel à l'autre — les désignations attendues
+        par les assertions ne bougent pas.
+        """
+        self._nb_compositions = getattr(self, '_nb_compositions', 0) + 1
+        n = self._nb_compositions
         panneau = Produit.objects.create(
             company=self.company, nom='Panneau 710 W', prix_vente='1000',
-            marque='Canadian', quantite_stock=10)
+            marque='Canadian', quantite_stock=10, sku='SUB-PAN-%d' % n)
         batterie = Produit.objects.create(
             company=self.company, nom='Batterie 5 kWh', prix_vente='12000',
-            marque='Dyness', quantite_stock=10)
+            marque='Dyness', quantite_stock=10, sku='SUB-BAT-%d' % n)
         lignes = [
             SimpleNamespace(produit=panneau, designation='Panneau 710 W',
                             quantite=10, prix_unitaire=1000),

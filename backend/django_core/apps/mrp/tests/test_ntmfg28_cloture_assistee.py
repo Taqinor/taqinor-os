@@ -41,7 +41,12 @@ def make_of_deux_operations(company, quantite_stock=100):
     # changer le comportement des appels simples (un seul par test).
     suffixe = PosteDeCharge.objects.filter(company=company).count()
     code = 'P-CLOASS' if suffixe == 0 else f'P-CLOASS-{suffixe}'
-    produit = make_produit(company, 'Composite clôture', quantite_stock=quantite_stock)
+    # Le NOM du produit suit le même suffixe que le code de poste : depuis la
+    # contrainte stock/0135 (unicité (company, nom) des produits actifs sans
+    # SKU), le second appel pour la même société violait l'index en base.
+    nom_produit = ('Composite clôture' if suffixe == 0
+                   else f'Composite clôture {suffixe}')
+    produit = make_produit(company, nom_produit, quantite_stock=quantite_stock)
     poste = PosteDeCharge.objects.create(
         company=company, code=code, nom='Poste clôture assistée')
     gamme = Gamme.objects.create(company=company, nom='Gamme clôture', produit=produit)

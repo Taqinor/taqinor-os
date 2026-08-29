@@ -233,8 +233,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:5834` | get_or_create | StructurePaie.objects | code, company |
 | `backend/django_core/apps/paie/services.py:5844` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
 | `backend/django_core/apps/paie/services.py:5870` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
-| `backend/django_core/apps/parametres/models_company.py:756` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_company.py:761` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_company.py:759` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_company.py:764` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
@@ -325,8 +325,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/veille_ao/services.py:895` | get_or_create | SourceVeille.objects | code, company |
 | `backend/django_core/apps/ventes/services.py:342` | get_or_create | ParametresGammes.objects | company |
-| `backend/django_core/apps/ventes/services.py:8647` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:10017` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:10053` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

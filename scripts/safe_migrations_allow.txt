@@ -58,3 +58,11 @@ backend/django_core/apps/qhse/migrations/0056_wir128_permis_valideur_fk.py
 #     créée après coup porte une référence NULL.
 #   - `.update()` global assumé : tables `compta_*portail` à faible volume.
 backend/django_core/apps/portail/migrations/0003_wir95_fk_references.py
+
+# U3-900 (fondateur 29/08/2026) — RemoveField reviewed as part of the founder
+# order itself: `panneaux_par_900mad` fed the sizing rule `estimerPanneaux`,
+# which was deleted from the whole product this week (backend + generator
+# screen, PR #577/027d83eb); the column had no remaining reader anywhere in
+# the codebase (sweep verified). Reversible via migration reversal (restores
+# the column with its default of 8) — no companion data plan needed.
+backend/django_core/apps/parametres/migrations/0080_remove_companyprofile_panneaux_par_900mad.py

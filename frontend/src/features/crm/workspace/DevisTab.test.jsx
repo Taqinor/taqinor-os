@@ -16,33 +16,49 @@ import DevisTab, {
 
 const {
   genererFacture, createFromDevis, whatsappDevis, shareLinkDevis, getOffresTaillesDevis,
-} = vi.hoisted(() => ({
-  genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
-  createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
-  whatsappDevis: vi.fn(() => Promise.resolve({
-    data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
-  })),
-  // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
-  // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
-  // .../share-link/ : {token, path, token_interne, path_interne, niveau,
-  // otp_lecture} — contrat L-NIV + L-INTPREV, apps/ventes/views/devis.py).
-  shareLinkDevis: vi.fn(() => Promise.resolve({
-    data: {
-      token: 'tok-abc', path: '/proposition/karim/tok-abc',
-      token_interne: 'tok-int-xyz', path_interne: '/proposition/karim/tok-int-xyz',
-      niveau: 'standard', otp_lecture: false,
-    },
-  })),
-  // LANE E (spec_3_options.md) — DevisOffresTailles.jsx (composant RÉUTILISÉ
-  // tel quel par « Modifier les options ») appelle ce même module ventesApi
-  // au montage : un stub minimal (« pas encore disponible ») suffit ici, ce
-  // composant a déjà ses propres tests dédiés (DevisOffresTailles.test.jsx).
-  getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-}))
+  getProduits, CATALOGUE_SUBSTITUTIONS,
+} = vi.hoisted(() => {
+  // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
+  // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
+  // test.jsx : id/nom/marque/prix_vente > 0, seul filtre appliqué côté écran).
+  const CATALOGUE_SUBSTITUTIONS = [
+    { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
+  ]
+  return {
+    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
+    createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
+    whatsappDevis: vi.fn(() => Promise.resolve({
+      data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
+    })),
+    // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
+    // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
+    // .../share-link/ : {token, path, token_interne, path_interne, niveau,
+    // otp_lecture} — contrat L-NIV + L-INTPREV, apps/ventes/views/devis.py).
+    shareLinkDevis: vi.fn(() => Promise.resolve({
+      data: {
+        token: 'tok-abc', path: '/proposition/karim/tok-abc',
+        token_interne: 'tok-int-xyz', path_interne: '/proposition/karim/tok-int-xyz',
+        niveau: 'standard', otp_lecture: false,
+      },
+    })),
+    // LANE E (spec_3_options.md) — DevisOffresTailles.jsx (composant RÉUTILISÉ
+    // tel quel par « Modifier les options ») appelle ce même module ventesApi
+    // au montage : un stub minimal (« pas encore disponible ») suffit ici, ce
+    // composant a déjà ses propres tests dédiés (DevisOffresTailles.test.jsx).
+    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    // LANE E — SUBSTITUTIONS — catalogue société DRF (une page suffit ici :
+    // `fetchAllPages` s'arrête dès que `next` est nul).
+    getProduits: vi.fn(() => Promise.resolve({
+      data: { results: CATALOGUE_SUBSTITUTIONS, count: CATALOGUE_SUBSTITUTIONS.length, next: null },
+    })),
+    CATALOGUE_SUBSTITUTIONS,
+  }
+})
 vi.mock('../../../api/ventesApi', () => ({
   default: { genererFacture, shareLinkDevis, getOffresTaillesDevis },
 }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
+vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
 // salle) pour ne pas polluer ces tests, déjà couverts par son propre test.
 vi.mock('../../../api/crmApi', () => ({
@@ -886,6 +902,95 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     const regle = css.match(/\.lw-context-devis-edit-tailles\s*\{[^}]*\}/)
     expect(regle, '.lw-context-devis-edit-tailles doit être DÉFINIE dans index.css').not.toBeNull()
     expect(regle[0]).toMatch(/max-width/)
+  })
+})
+
+// LANE E — SUBSTITUTIONS (fondateur 29/08/2026) — « Modifier les options »
+// (DevisOffresTailles.jsx) ne propose de remplacer un équipement que si on lui
+// passe `produits` (sans lui, `produitsParRole([])` renvoie des listes vides
+// et aucun select de rôle ne rend — DevisOffresTailles.jsx:187-189). DevisTab
+// montait ce composant SANS `produits` : ce bloc verrouille le chargement
+// paresseux (à l'OUVERTURE du dialogue, pas au montage de l'onglet) + le cache
+// par session (aucun second aller-retour réseau à la réouverture) + le repli
+// gracieux sur échec (l'éditeur reste utilisable, juste sans substitutions).
+describe('LANE E — SUBSTITUTIONS : catalogue chargé paresseusement pour « Modifier les options »', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  // Un devis « éditable » avec un rôle 'panneau' substituable, de la forme
+  // du contrat offres_tailles.json (comme dans DevisOffresTailles.test.jsx).
+  const blocEditable = {
+    editable: true,
+    offres_tailles: {
+      avec_servable: false,
+      module_batterie_kwh: 5.0,
+      offres: [{
+        cle: 'recommande', titre: 'Recommandé', recommande: true, est_le_devis: true,
+        config: { nb_panneaux: 22, batterie_nb_modules: 0, batterie_module_kwh: 5.0 },
+        sans: {
+          nb_panneaux: 22, puissance_kwc: 12.1, prix_ttc: 108900.0,
+          economie_annuelle_mad: 13260.0, payback_annees: 8.21, couverture_pct: 61.0,
+          production_annuelle_kwh: 19140.0,
+          materiel: [{ role: 'panneau', famille: 'panneau', marque: 'Longi', modele: 'Panneau 550 W' }],
+          toit_ok: true,
+        },
+        avec: null,
+      }],
+    },
+  }
+
+  const ouvrirModifierOptions = async (user) => {
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+  }
+
+  it('ouvrir le dialogue charge le catalogue une fois et le sert à l’éditeur (un select de substitution rend)', async () => {
+    getOffresTaillesDevis.mockResolvedValueOnce({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+
+    const select = await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    expect(within(select).getByRole('option', { name: /Longi — Panneau Longi 610W/ })).toBeInTheDocument()
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+  })
+
+  it('fermer puis rouvrir le dialogue ne relance pas le chargement du catalogue', async () => {
+    getOffresTaillesDevis.mockResolvedValue({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+    await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+
+    // Ciblé DANS la boîte « Modifier les options » : le dialogue « Envoyer au
+    // client » reste ouvert derrière (dialogues imbriqués), donc un second
+    // bouton « Fermer » existe aussi sur celui-là — `screen.getByRole` seul
+    // trouverait les deux et échouerait sur une correspondance ambiguë.
+    const boiteOptions = screen.getByText(/Modifier les options — DEV-1/).closest('[role="dialog"]')
+    await user.click(within(boiteOptions).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.queryByText(/Modifier les options — DEV-1/)).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+    await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    expect(getProduits).toHaveBeenCalledTimes(1)
+  })
+
+  it('échec réseau du catalogue dégrade sans casser le dialogue — l’éditeur reste utilisable', async () => {
+    getProduits.mockRejectedValueOnce(new Error('réseau indisponible'))
+    getOffresTaillesDevis.mockResolvedValueOnce({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+
+    // Le dialogue et l'écran vendeur restent affichés (rien ne casse) ; sans
+    // catalogue, `produitsParRole([])` ne rend AUCUN select de rôle — c'est le
+    // comportement d'AVANT ce correctif, le repli attendu sur échec réseau.
+    expect(await screen.findByText(/Modifier les options — DEV-1/)).toBeInTheDocument()
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('offre-taille-recommande-equip-panneau')).not.toBeInTheDocument()
   })
 })
 
