@@ -9,6 +9,7 @@ import {
   simulateBattery,
   scaleShapeToDaily,
   resolveOfferBattery,
+  resolveBatterySimMaxUnits,
   renderBatterySplitSvg,
   DYNESS_CAPACITY_KWH,
   ESSENTIAL_LOAD_W,
@@ -232,6 +233,95 @@ describe('WJ120 — resolveOfferBattery : capacité depuis les réfs catalogue, 
     expect(resolveOfferBattery(null).present).toBe(false);
     expect(resolveOfferBattery(undefined).present).toBe(false);
     expect(resolveOfferBattery([]).present).toBe(false);
+  });
+
+  // WJ128 (finding 4, LOW) — une ligne accessoire « câble batterie » matche
+  // aussi BATTERY_KEYWORDS ; listée AVANT le pack, elle ne doit plus gagner.
+  it('câble batterie (accessoire, montant faible) listé AVANT le pack → le pack gagne (plus gros montant)', () => {
+    const items: ProposalItem[] = [
+      { ...mkItem('Câble batterie 2x10mm2', 1), prix_unit_ht: 150, prix_unit_ttc: 180 },
+      { ...mkItem('Batterie Dyness 10 kWh (BAT-DEY-10)', 2), prix_unit_ht: 20000, prix_unit_ttc: 24000 },
+    ];
+    const r = resolveOfferBattery(items);
+    expect(r.present).toBe(true);
+    expect(r.designation).toBe('Batterie Dyness 10 kWh (BAT-DEY-10)');
+    expect(r.capacityKwhPerUnit).toBe(10);
+    expect(r.units).toBe(2);
+  });
+  it('câble batterie SANS capacité lisible listé APRÈS le pack → toujours le pack (jamais "première ligne")', () => {
+    const items: ProposalItem[] = [
+      { ...mkItem('Batterie lithium Dyness 5 kWh (BAT-DEY-5)', 1), prix_unit_ht: 12000, prix_unit_ttc: 14000 },
+      { ...mkItem('Câble batterie', 1), prix_unit_ht: 100, prix_unit_ttc: 120 },
+    ];
+    const r = resolveOfferBattery(items);
+    expect(r.capacityKwhPerUnit).toBe(5);
+    expect(r.units).toBe(1);
+  });
+  it('montant égal (rare) → la ligne à capacité LISIBLE gagne', () => {
+    const items: ProposalItem[] = [
+      { ...mkItem('Accessoire batterie', 1), prix_unit_ht: 1000, prix_unit_ttc: 1000 },
+      { ...mkItem('Batterie LFP 5 kWh', 1), prix_unit_ht: 1000, prix_unit_ttc: 1000 },
+    ];
+    const r = resolveOfferBattery(items);
+    expect(r.capacityKwhPerUnit).toBe(5);
+  });
+
+  // WJ128 (finding 3, LOW) — ligne batterie matchée mais NI réf catalogue NI
+  // « N kWh » lisible dans la désignation → capacité null (jamais un repli à
+  // 5 kWh depuis CETTE fonction — c'est à l'appelant de décider s'il montre
+  // « sur étude » ou un repli catalogue).
+  it('ligne batterie matchée sans réf ni "N kWh" lisible → capacityKwhPerUnit: null (pas un 5 kWh implicite)', () => {
+    const r = resolveOfferBattery([mkItem('Batterie de secours (modèle non précisé)', 3)]);
+    expect(r.present).toBe(true);
+    expect(r.capacityKwhPerUnit).toBeNull();
+    expect(r.units).toBe(3);
+  });
+});
+
+describe('WJ129 (finding 5, NIT) — clamp01 interne : NaN retombe sur la CONSTANTE PAR DÉFAUT, jamais sur `hi`', () => {
+  // clamp01 n'est pas exporté ; on le prouve via l'API publique simulateBattery,
+  // qui l'appelle avec (v, lo, hi, fallback=CONSTANTE_DOCUMENTÉE). Le `??` des
+  // deux appels ne rattrape que null/undefined : un NaN explicite (aujourd'hui
+  // inatteignable des appelants réels de la page) doit produire EXACTEMENT le
+  // même résultat qu'omettre le paramètre (repli sur la constante), jamais un
+  // résultat identique à un rendement/DoD forcé à 100 % (`hi`).
+  it('oneWayEfficiency: NaN ⇒ identique à oneWayEfficiency omis (repli BATTERY_ONE_WAY_EFFICIENCY), jamais hi=1', () => {
+    // backupHours = usableCapacityKwh × etaOneWay ÷ charge essentielle : seul
+    // chiffre qui dépend DIRECTEMENT de etaOneWay sans dépendre aussi de dod
+    // (fromBatteryKwh dépend des deux à la fois via runDay).
+    const withNaN = simulateBattery(baseInput(2, { oneWayEfficiency: NaN }));
+    const withDefault = simulateBattery(baseInput(2, { oneWayEfficiency: undefined }));
+    const withHi = simulateBattery(baseInput(2, { oneWayEfficiency: 1 }));
+    expect(withNaN.backupHours).toBeCloseTo(withDefault.backupHours, 9);
+    expect(withNaN.fromBatteryKwh).toBeCloseTo(withDefault.fromBatteryKwh, 9);
+    expect(BATTERY_ONE_WAY_EFFICIENCY).not.toBe(1);
+    expect(withNaN.backupHours).not.toBeCloseTo(withHi.backupHours, 9);
+  });
+  it('depthOfDischarge: NaN ⇒ identique à depthOfDischarge omis (repli BATTERY_DEPTH_OF_DISCHARGE), jamais hi=1', () => {
+    const withNaN = simulateBattery(baseInput(2, { depthOfDischarge: NaN }));
+    const withDefault = simulateBattery(baseInput(2, { depthOfDischarge: undefined }));
+    const withHi = simulateBattery(baseInput(2, { depthOfDischarge: 1 }));
+    expect(withNaN.usableCapacityKwh).toBeCloseTo(withDefault.usableCapacityKwh, 9);
+    expect(BATTERY_DEPTH_OF_DISCHARGE).not.toBe(1);
+    expect(withNaN.usableCapacityKwh).not.toBeCloseTo(withHi.usableCapacityKwh, 9);
+  });
+});
+
+describe('WJ128 (finding 3, LOW) — resolveBatterySimMaxUnits : le plafond du curseur ne peut jamais être sous les unités offertes', () => {
+  it('offre > 3 unités, aucun balayage/couverture servi → plafond ÉLARGI aux unités offertes (jamais bloqué à 3)', () => {
+    expect(resolveBatterySimMaxUnits(5, 0, null)).toBe(5);
+  });
+  it('offre ≤ 3, rien de servi → repli historique 3', () => {
+    expect(resolveBatterySimMaxUnits(1, 0, null)).toBe(3);
+    expect(resolveBatterySimMaxUnits(0, 0, null)).toBe(3);
+  });
+  it('balayage de stockage servi au-delà de l’offre → le plus grand des deux', () => {
+    expect(resolveBatterySimMaxUnits(2, 6, null)).toBe(6);
+    expect(resolveBatterySimMaxUnits(8, 6, null)).toBe(8);
+  });
+  it('couverture moteur servie → LE PLAFOND SERVI FAIT LOI (l’emporte même sous les unités offertes)', () => {
+    expect(resolveBatterySimMaxUnits(5, 0, 4)).toBe(4);
+    expect(resolveBatterySimMaxUnits(1, 10, 7)).toBe(7);
   });
 });
 

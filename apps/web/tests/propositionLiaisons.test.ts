@@ -1,0 +1,236 @@
+/**
+ * QJW10 — LA GARDE DE COUVERTURE : le test qui aurait attrapé l'oubli du
+ * tableau de trésorerie.
+ *
+ * L'INCIDENT, DOCUMENTÉ DANS LA PAGE ELLE-MÊME. Le tableau année par année
+ * (`data-cumul-annuel`) était rendu au serveur depuis le DEVIS OFFICIEL, et
+ * l'îlot ne le touchait pas : on cliquait « Éco », le grand chiffre du cumul
+ * changeait, et les vingt-cinq lignes en dessous continuaient d'afficher la
+ * série du Recommandé — des chiffres RÉELS attribués à la MAUVAISE offre. La
+ * série de la taille servie existait pourtant déjà dans le contrat
+ * (`cashflow.cumulative`) : elle n'était lue par personne. Il a fallu une revue
+ * Fable pour la voir (commentaire « F2 (revue Fable 29/08/2026) »).
+ *
+ * POURQUOI AUCUN TEST NE POUVAIT L'ATTRAPER. Un CÂBLAGE ne s'énumère pas : on
+ * ne peut pas demander à quatre fonctions écrites à la main « quels champs
+ * connaissez-vous ? ». Depuis QJW7/QJW9, la page est pilotée par deux TABLES —
+ * et une table, elle, s'énumère.
+ *
+ * CE QUE CETTE GARDE EXIGE. Pour CHAQUE clé feuille de
+ * `src/contract_samples/taille_detail.json` : soit une liaison la LIT
+ * réellement (son nom apparaît dans un `lire`), soit elle figure dans
+ * `NON_AFFICHE` avec une RAISON ÉCRITE. Une clé de charge utile ajoutée demain
+ * fait rougir ce fichier jusqu'à ce que quelqu'un décide, par écrit, de
+ * l'afficher ou de ne pas l'afficher.
+ *
+ * CE QUE `NON_AFFICHE` VEUT DIRE, EXACTEMENT : « aucune liaison ne LIT cette
+ * clé ». Ce n'est pas toujours « ce nombre n'est nulle part sur la page » : les
+ * chiffres de TÊTE (prix, kWc, panneaux, production…) sont bien affichés, mais
+ * ils sont RECOPIÉS du texte que le serveur a déjà rendu dans la carte — c'est
+ * la parade au « 21 contre 22 », un seul chemin par nombre. Leur clé de payload
+ * n'est donc délibérément pas lue, et la raison le dit.
+ */
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const read = (rel: string): string =>
+  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+
+const ECHANTILLON = JSON.parse(read('../src/contract_samples/taille_detail.json')) as Record<string, unknown>;
+const LIAISONS = read('../src/lib/proposition/liaisons.ts').replace(/\r\n/g, '\n');
+
+/** Les deux blocs du contrat qui sont des CHARGES UTILES, pas de la prose. */
+const EXEMPLES = ['exemple', 'exemple_avec_batterie'] as const;
+
+/**
+ * Toutes les feuilles du document, en chemins pointés. Un TABLEAU est une
+ * feuille (`valeurs[]`) : c'est la série entière qui est servie ou omise, pas
+ * ses éléments un par un.
+ */
+function feuilles(noeud: unknown, prefixe: string, sortie: Set<string>): void {
+  if (Array.isArray(noeud)) { sortie.add(`${prefixe}[]`); return; }
+  if (noeud && typeof noeud === 'object') {
+    for (const [k, v] of Object.entries(noeud as Record<string, unknown>)) {
+      feuilles(v, prefixe ? `${prefixe}.${k}` : k, sortie);
+    }
+    return;
+  }
+  sortie.add(prefixe);
+}
+
+/** Les chemins de la CHARGE UTILE (union des deux exemples), sans leur préfixe. */
+function cheminsPayload(): string[] {
+  const out = new Set<string>();
+  for (const ex of EXEMPLES) {
+    const brut = new Set<string>();
+    feuilles(ECHANTILLON[ex], '', brut);
+    for (const p of brut) out.add(p);
+  }
+  return [...out].sort();
+}
+
+/** Les chemins qui ne sont PAS de la charge utile (documentation du contrat). */
+function cheminsDocumentation(): string[] {
+  const out = new Set<string>();
+  for (const [k, v] of Object.entries(ECHANTILLON)) {
+    if ((EXEMPLES as readonly string[]).includes(k)) continue;
+    feuilles(v, k, out);
+  }
+  return [...out].sort();
+}
+
+/** `economies_cumulees_25_ans_mad` → `economiesCumulees25AnsMad`. */
+function camel(snake: string): string {
+  const [tete, ...reste] = snake.split('_');
+  return (tete ?? '') + reste.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join('');
+}
+
+/**
+ * LE CORPS DES `lire` — et RIEN d'autre. C'est là, et seulement là, qu'une
+ * liaison consomme le contrat : chercher le nom d'une clé dans tout le module
+ * ferait passer `cle` pour « lue » parce que chaque entrée de table porte un
+ * champ `cle:`. La garde doit être précise pour valoir quelque chose.
+ */
+function corpsDesLire(): string {
+  const morceaux: string[] = [];
+  let i = LIAISONS.indexOf('lire(');
+  while (i !== -1) {
+    const fin = LIAISONS.indexOf('peindre(', i);
+    morceaux.push(LIAISONS.slice(i, fin === -1 ? LIAISONS.length : fin));
+    i = LIAISONS.indexOf('lire(', fin === -1 ? LIAISONS.length : fin);
+  }
+  return morceaux.join('\n');
+}
+
+const LIRE = corpsDesLire();
+
+/** Une clé est LIÉE quand son nom, en camel, apparaît dans un `lire`. */
+function estLiee(chemin: string): boolean {
+  const feuille = chemin.replace(/\[\]$/, '').split('.').pop() ?? '';
+  return new RegExp(String.raw`\b${camel(feuille)}\b`).test(LIRE);
+}
+
+/**
+ * LES DÉCISIONS ÉCRITES. Chaque clé que AUCUNE liaison ne lit doit être ici,
+ * avec la raison — c'est le prix à payer pour qu'un oubli devienne rouge.
+ */
+const NON_AFFICHE: Readonly<Record<string, string>> = {
+  // ── Identité et contrôle du payload, pas des valeurs à afficher ──────────
+  'cle': 'Identifiant de la taille. Il PILOTE le swap (quelle carte est chargée, quelle clé de cache) ; ce n’est pas un nombre à peindre.',
+  'titre': 'Le libellé « Éco »/« Max » est déjà rendu par le serveur sur la carte et sur la vue de détail — le réécrire depuis le payload ferait deux sources pour un même mot.',
+  'variante': 'Sans/avec batterie : la page connaît déjà la variante active (c’est elle qui l’a demandée), et le détail n’en porte qu’une.',
+  'est_le_devis': 'Drapeau de contrôle : « Recommandé » n’a pas d’endpoint et se RESTAURE depuis les originaux. Rien à afficher.',
+
+  // ── Chiffres de TÊTE : affichés, mais RECOPIÉS du texte de la carte ──────
+  // La carte a été formatée au serveur avec les mêmes fonctions que le héros :
+  // recopier son texte garantit qu'un chiffre de tête ne peut pas diverger
+  // d'un chiffre de carte. Lire le payload en plus créerait un SECOND chemin
+  // pour le même nombre — exactement le « 21 contre 22 » que la page évite.
+  'carte.prix_ttc': 'Affiché en tête, mais RECOPIÉ du texte de la carte (liaison HERO `ttc`) — un seul chemin par nombre.',
+  'carte.puissance_kwc': 'Affiché en tête, mais RECOPIÉ du texte de la carte (liaison HERO `kwc`).',
+  'carte.nb_panneaux': 'Affiché en tête, mais RECOPIÉ du texte de la carte (liaison HERO `panneaux`).',
+  'carte.production_annuelle_kwh': 'Affiché dans le chapitre production, mais RECOPIÉ du texte de la carte (liaison HERO `production`).',
+  'carte.economie_annuelle_mad': 'Affiché en tête et dans le bandeau « Économie estimée / an », mais RECOPIÉ du texte de la carte (liaisons HERO `eco` et `eco_annuelle`).',
+
+  // ── Servis par le contrat, mais la PAGE ne les rend nulle part ───────────
+  'carte.prix_par_kwc_ttc': 'La page ne rend aucun prix au kWc dans les chapitres qui suivent la carte ; l’ajouter serait une décision de contenu, pas de câblage.',
+  'carte.taux_autoconsommation_pct': 'Aucun bloc de la page ne rend le taux d’autoconsommation par taille : seule la COUVERTURE a son anneau. Deux pourcentages voisins côte à côte se confondent.',
+  'carte.familles[]': 'Liste de familles de matériel : elle sert au rendu SERVEUR des cartes (comparatif, sections), jamais au swap client.',
+  'carte.toit_ok': 'Faisabilité de la pose sur le toit : rendue par le serveur sur la carte concernée, pas un chapitre profond qui suivrait la sélection.',
+  'carte.batterie.remplissage_ok': 'Drapeau de composition de la banque. La ligne « Batterie · N × X kWh · Y kWh utiles » ne prétend rien sur le remplissage ; afficher un « incomplet » sans le texte qui l’explique inquiéterait sans informer.',
+  'economies_mensuelles.devise': 'MAD est déjà dans le texte formaté par `formatMAD` : l’imprimer une seconde fois donnerait « 640 MAD MAD ».',
+  'cashflow.horizon_annees': 'L’horizon est LU dans la longueur de la série repeinte (une ligne par année) — l’écrire en plus serait un second chiffre pour la même chose.',
+  'cashflow.escalade_tarifaire_pct': 'Vaut 0 : projection à tarif PLAT. La page imprime déjà « aucune hausse tarifaire supposée » au-dessus du tableau, en texte rendu au serveur.',
+
+  // ── La documentation du contrat : jamais servie à un navigateur ──────────
+  'endpoint': 'Documentation du contrat : la route elle-même, pas une donnée.',
+  'pourquoi': 'Documentation du contrat : la raison d’être de l’endpoint.',
+  'notes.recommande_n_a_pas_d_endpoint': 'Note de contrat (documentation).',
+  'notes.derivation': 'Note de contrat (documentation).',
+  'notes.economies_mensuelles': 'Note de contrat (documentation).',
+  'notes.cashflow': 'Note de contrat (documentation).',
+  'notes.batterie': 'Note de contrat (documentation).',
+  'notes.omission': 'Note de contrat (documentation).',
+  'notes.gating': 'Note de contrat (documentation).',
+  'notes.niveau': 'Note de contrat (documentation).',
+  'notes.lecture_pure': 'Note de contrat (documentation).',
+  'notes.cout': 'Note de contrat (documentation).',
+  'exemple_404.commentaire': 'Documentation du refus 404 : la page traite indistinctement tout échec.',
+};
+
+describe('QJW10 — chaque clé du contrat est soit LIÉE, soit REFUSÉE par écrit', () => {
+  const PAYLOAD = cheminsPayload();
+  const DOCUMENTATION = cheminsDocumentation();
+
+  it('l’échantillon est bien lu et non vide (une garde sur zéro clé ne garde rien)', () => {
+    expect(PAYLOAD.length).toBeGreaterThan(20);
+    expect(DOCUMENTATION.length).toBeGreaterThan(5);
+    expect(LIRE.length).toBeGreaterThan(200);
+  });
+
+  it('CHAQUE clé feuille de la charge utile est liée OU justifiée par écrit', () => {
+    const orphelines: string[] = [];
+    for (const chemin of PAYLOAD) {
+      if (estLiee(chemin)) continue;
+      if (NON_AFFICHE[chemin]) continue;
+      orphelines.push(chemin);
+    }
+    expect(
+      orphelines,
+      `clé(s) du contrat sans décision — les lier dans HERO/PROFONDS, ou les ajouter à NON_AFFICHE avec une raison ÉCRITE : ${orphelines.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('CHAQUE clé de la documentation du contrat est justifiée par écrit', () => {
+    const orphelines = DOCUMENTATION.filter((c) => !NON_AFFICHE[c]);
+    expect(orphelines, `documentation sans décision : ${orphelines.join(', ')}`).toEqual([]);
+  });
+
+  it('les six chapitres profonds LISENT bien leur clé du contrat', () => {
+    for (const chemin of [
+      'economies_mensuelles.valeurs[]', 'economies_mensuelles.total',
+      'carte.batterie.nb_modules', 'carte.batterie.module_kwh', 'carte.batterie.capacite_utile_kwh',
+      'carte.couverture_pct', 'carte.economies_cumulees_25_ans_mad', 'carte.payback_annees',
+      'cashflow.cumulative[]',
+    ]) {
+      expect(estLiee(chemin), `${chemin} devrait être LUE par une liaison`).toBe(true);
+      expect(NON_AFFICHE[chemin], `${chemin} ne peut pas être à la fois lue et refusée`).toBeUndefined();
+    }
+  });
+
+  it('AUCUNE justification périmée : toute clé de NON_AFFICHE existe encore dans le contrat', () => {
+    const connues = new Set([...PAYLOAD, ...DOCUMENTATION]);
+    const perimees = Object.keys(NON_AFFICHE).filter((c) => !connues.has(c));
+    expect(
+      perimees,
+      `justification(s) sans clé correspondante — le contrat a bougé : ${perimees.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('chaque raison est une VRAIE phrase, pas un « n/a » qui vide la garde de son sens', () => {
+    for (const [cle, raison] of Object.entries(NON_AFFICHE)) {
+      expect(raison.length, `${cle} : raison trop courte`).toBeGreaterThan(30);
+      expect(raison, `${cle} : raison vide de contenu`).not.toMatch(/^(?:n\/a|na|tbd|todo|—|-)\.?$/i);
+    }
+  });
+});
+
+// ── LES DEUX TABLES ELLES-MÊMES ─────────────────────────────────────────────
+
+describe('QJW10 — les tables restent celles que la page attend', () => {
+  it('HERO déclare sept lignes, dont deux mutuellement exclusives sur `siKind`', () => {
+    const bloc = LIAISONS.slice(
+      LIAISONS.indexOf('export const HERO'),
+      LIAISONS.indexOf('export interface ContexteHero'),
+    );
+    expect((bloc.match(/^\s{4}cle: '/gm) || [])).toHaveLength(7);
+    expect((bloc.match(/siKind: '/g) || [])).toHaveLength(2);
+  });
+
+  it('PROFONDS déclare six chapitres, chacun avec son enveloppe', () => {
+    const bloc = LIAISONS.slice(LIAISONS.indexOf('export const PROFONDS'));
+    expect((bloc.match(/profond</g) || [])).toHaveLength(6);
+    expect((bloc.match(/^\s{4}enveloppe: '/gm) || [])).toHaveLength(6);
+  });
+});

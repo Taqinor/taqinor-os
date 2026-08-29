@@ -35,6 +35,20 @@ const CODE = PAGE
 
 const PROXY = read('../src/pages/api/proposition-taille.ts');
 
+/**
+ * QJW9 (29/08/2026) — OÙ LE CÂBLAGE EST PARTI. L'îlot ne porte plus quatre
+ * fonctions câblées à la main : il ORCHESTRE deux tables déclaratives
+ * (`lib/proposition/liaisons.ts`) via un moteur générique
+ * (`lib/proposition/swap.ts`). Les garanties de cette section n'ont pas
+ * changé — masquer plutôt que mentir, restaurer à l'identique, une variante à
+ * la fois — mais elles se lisent désormais LÀ OÙ ELLES VIVENT.
+ */
+const strip = (s: string): string => s
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/^[ \t]*\/\/.*$/gm, ' ');
+const LIAISONS = strip(read('../src/lib/proposition/liaisons.ts').replace(/\r\n/g, '\n'));
+const SWAP = strip(read('../src/lib/proposition/swap.ts').replace(/\r\n/g, '\n'));
+
 const SERVI = {
   cle: 'eco',
   titre: 'Éco',
@@ -129,11 +143,16 @@ describe('anneau de couverture', () => {
     expect(dasharrayDonut(50, 42)).toMatch(/^\d+\.\d{2} \d+\.\d{2}$/);
   });
 
-  it('la page appelle CETTE fonction des deux côtés (SSR et îlot)', () => {
+  it('la page appelle CETTE fonction des deux côtés (SSR et liaison de swap)', () => {
+    // Côté SERVEUR, dans la page.
     expect(CODE).toContain("import { dasharrayDonut } from '../../lib/tailleDetail'");
     expect(CODE).toContain('const donutDasharray = dasharrayDonut(');
     expect(CODE).toContain('stroke-dasharray={donutDasharray}');
-    expect(CODE).toContain('dasharrayDonut(pct, rayon)');
+    // Côté CLIENT — depuis QJW9, dans la liaison « couverture » de la table
+    // PROFONDS, jamais dans l'îlot : UNE définition, deux lecteurs.
+    expect(LIAISONS).toContain("import { dasharrayDonut, type TailleDetail } from '../tailleDetail';");
+    expect(LIAISONS).toContain("arc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));");
+    expect(CODE, 'plus aucune géométrie d’arc écrite dans l’îlot').not.toContain('dasharrayDonut(pct, rayon)');
   });
 });
 
@@ -267,9 +286,16 @@ describe('page — les chapitres profonds suivent la carte cliquée', () => {
 
   it('l’état de chargement MASQUE au lieu de griser', () => {
     // Griser les chiffres du devis officiel sous une carte Éco, c'est encore
-    // les montrer : la lane les masque le temps de la réponse.
-    expect(CODE).toContain('function marquerChargement(enCours: boolean)');
-    expect(CODE).toContain("n.setAttribute('aria-busy', 'true'); n.hidden = true;");
+    // les montrer : ils sont MASQUÉS le temps de la réponse. Depuis QJW9 la
+    // règle vit dans le moteur et couvre TOUTES les enveloppes de la table —
+    // plus une liste de quatre nœuds qu'il fallait penser à allonger.
+    expect(CODE).toContain('marquerChargement(PROFONDS, true)');
+    expect(CODE).toContain('marquerChargement(PROFONDS, false)');
+    expect(SWAP).toContain("env.setAttribute('aria-busy', 'true');");
+    expect(SWAP).toContain('env.hidden = true;');
+    // Et la sortie de chargement ne DÉMASQUE rien : c'est `appliquer` ou
+    // `restaurer` qui décide champ par champ.
+    expect(SWAP).toContain("env.removeAttribute('aria-busy');");
   });
 
   it('une réponse en retard ne repeint jamais une autre carte', () => {
@@ -277,25 +303,42 @@ describe('page — les chapitres profonds suivent la carte cliquée', () => {
   });
 
   it('un échec MASQUE les chapitres et propose de réessayer', () => {
-    expect(CODE).toContain('const echec = detail === null;');
-    expect(CODE).toContain('if (ecoEchec) ecoEchec.hidden = !echec;');
+    // Le message de réessai est le SEUL nœud profond qui n'est pas une donnée
+    // servie : il reste piloté par l'îlot. Les douze chiffres du devis, eux,
+    // sont masqués par la liaison des économies (mode `echec`).
+    expect(CODE).toContain('if (ecoEchec) ecoEchec.hidden = detail !== null;');
     expect(CODE).toContain('cacheDetail.delete(cleCacheDetail(cle, variante));');
+    expect(LIAISONS).toContain("if (detail === null) return { mode: 'echec' };");
+    expect(LIAISONS).toContain("if (valeur.mode === 'echec') {");
   });
 
   it('« Recommandé » RESTAURE les originaux — jamais un aller-retour réseau', () => {
     expect(CODE).toContain('restaurerDetail();');
     expect(CODE).toContain('if (surLeDefaut || !estChargeable(cle) || !jetonTailles)');
-    expect(CODE).toContain('const originaux = {');
+    // Les originaux sont moissonnés en UNE passe par le moteur, à
+    // l'initialisation, au lieu d'un objet construit champ par champ.
+    expect(CODE).toContain('const originauxProfonds = capturerOriginaux(PROFONDS);');
+    expect(CODE).toContain('restaurer(PROFONDS, originauxProfonds);');
   });
 
   it('un champ que la taille ne sert pas fait MASQUER son bloc', () => {
-    expect(CODE).toContain('if (heroCouvertureCard) heroCouvertureCard.hidden = pct === null;');
-    expect(CODE).toContain('if (cumulCard) cumulCard.hidden = cumul === null;');
-    expect(CODE).toContain('if (paybackCard) paybackCard.hidden = payback === null;');
+    // LA règle, désormais écrite UNE fois dans le moteur : `lire` rend `null`
+    // ⇒ on masque l'enveloppe, on n'appelle PAS `peindre`, on n'écrit rien.
+    expect(SWAP).toContain('if (valeur === null || valeur === undefined) {');
+    expect(SWAP).toContain('if (env) env.hidden = true;');
+    // Et chaque chapitre profond a bien son enveloppe déclarée.
+    for (const enveloppe of [
+      "enveloppe: '[data-hero-couverture-card]'", "enveloppe: '[data-detail-cumul-card]'",
+      "enveloppe: '[data-detail-payback-card]'", "enveloppe: '[data-detail-eco-bloc]'",
+      "enveloppe: '[data-detail-banque]'", "enveloppe: '[data-cumul-annuel]'",
+    ]) {
+      expect(LIAISONS, enveloppe).toContain(enveloppe);
+    }
   });
 
   it('la ligne « avec batterie » des cellules est masquée : un détail = UNE variante', () => {
-    expect(CODE).toContain('for (const n of ecoMoisAvec) n.hidden = true;');
+    expect(LIAISONS).toContain("for (const el of desHtml(noeuds, 'moisAvec')) el.hidden = true;");
+    expect(LIAISONS).toContain('if (totalAvec) totalAvec.hidden = true;');
   });
 });
 
@@ -308,39 +351,53 @@ describe('page — les chapitres profonds suivent la carte cliquée', () => {
 // contrat (`detail.cashflow.cumulative`) — elle n'était lue par personne.
 
 describe('page — F2 : le tableau année par année suit la taille chargée', () => {
-  it('l’îlot tient le bloc ET son corps de tableau', () => {
-    expect(CODE).toContain("document.querySelector<HTMLElement>('[data-cumul-annuel]')");
-    expect(CODE).toContain("cumulAnnuelBloc?.querySelector<HTMLElement>('tbody')");
+  // QJW9 — CE CHAPITRE EST DEVENU UNE LIGNE DE TABLE. C'est le fond de la
+  // bascule : ce tableau avait été OUBLIÉ parce qu'un câblage à la main ne
+  // s'énumère pas. Il est maintenant la sixième entrée de PROFONDS, et
+  // `propositionLiaisons.test.ts` refuse toute clé de contrat qui ne serait ni
+  // liée ni justifiée par écrit — l'oubli est devenu structurellement rouge.
+
+  it('la liaison tient le bloc ET son corps de tableau', () => {
+    expect(LIAISONS).toContain("cle: 'cumul_annuel'");
+    expect(LIAISONS).toContain("enveloppe: '[data-cumul-annuel]'");
+    expect(LIAISONS).toContain("corps: { sel: '[data-cumul-annuel] tbody', capture: 'html' }");
   });
 
   it('il est REPEINT depuis la série SERVIE, jamais recalculé', () => {
-    expect(CODE).toContain('peindreCumulAnnuel(detail?.cashflow?.cumulative ?? null);');
+    expect(LIAISONS).toContain('const serie = detail?.cashflow?.cumulative ?? null;');
     // Formatage par la fonction PARTAGÉE avec le SSR — aucun formatage maison.
-    expect(CODE).toContain('tdVal.textContent = formatMAD(cumulAnnee);');
+    expect(LIAISONS).toContain('tdVal.textContent = formatMAD(cumulAnnee);');
     // Numérotation IDENTIQUE au SSR (`cumulAnnuelServi` : annee = i + 1).
-    expect(CODE).toContain('tdAnnee.textContent = String(i + 1);');
+    expect(LIAISONS).toContain('tdAnnee.textContent = String(i + 1);');
   });
 
   it('série absente ⇒ le bloc entier est MASQUÉ (jamais celui d’une autre offre)', () => {
-    expect(CODE).toContain('if (!serieCumul || serieCumul.length === 0) { cumulAnnuelBloc.hidden = true; return; }');
+    expect(LIAISONS).toContain('return serie && serie.length > 0 ? serie : null;');
+    // …et `null` fait masquer l'enveloppe SANS rien écrire (règle du moteur).
+    expect(SWAP).toContain('if (valeur === null || valeur === undefined) {');
   });
 
   it('il est masqué pendant l’attente, comme les autres chapitres profonds', () => {
-    expect(CODE).toContain('for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) {');
+    // Plus une liste de quatre nœuds : le marquage porte sur TOUTE la table,
+    // donc un chapitre ajouté demain est masqué sans qu'on y pense.
+    expect(CODE).toContain('marquerChargement(PROFONDS, true)');
+    expect(SWAP).toContain('export function marquerChargement<C>(');
   });
 
   it('« Recommandé » le RESTAURE à l’identique (le HTML rendu par le serveur)', () => {
-    expect(CODE).toContain('cumulAnnuel: cumulAnnuelCorps?.innerHTML ?? null,');
-    expect(CODE).toContain('cumulAnnuelCorps.innerHTML = originaux.cumulAnnuel;');
-    expect(CODE).toContain('if (cumulAnnuelBloc) cumulAnnuelBloc.hidden = false;');
+    // La capture `'html'` moissonne le corps rendu par le serveur, et
+    // `restaurer` le repose tel quel — jamais une série reconstruite.
+    expect(LIAISONS).toContain("capture: 'html'");
+    expect(SWAP).toContain("? el.innerHTML");
+    expect(SWAP).toContain("else if (mode === 'html') el.innerHTML = orig.contenu ?? '';");
   });
 
   it('PRÉSERVATION — le rendu SSR d’origine est intact (mêmes classes, même source)', () => {
-    // Le tableau reste rendu par le serveur au premier affichage : l'îlot ne
-    // fait que le suivre. Les classes repeintes sont EXACTEMENT celles du SSR.
+    // Le tableau reste rendu par le serveur au premier affichage : la liaison
+    // ne fait que le suivre. Les classes repeintes sont EXACTEMENT celles du SSR.
     expect(CODE).toContain('{cumul25.map((p) => (');
-    expect(CODE).toContain("tr.className = 'border-t border-white/10';");
-    expect(CODE).toContain("tdVal.className = `py-1.5 text-end fig ${cumulAnnee >= 0 ? 'text-brass-300' : 'text-lune-faint'}`;");
+    expect(LIAISONS).toContain("tr.className = 'border-t border-white/10';");
+    expect(LIAISONS).toContain("tdVal.className = `py-1.5 text-end fig ${cumulAnnee >= 0 ? 'text-brass-300' : 'text-lune-faint'}`;");
   });
 });
 

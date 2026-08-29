@@ -874,6 +874,28 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               data-ar="يمكن للطاقة الشمسية أن تشغّل ضخّكم على مدار الشمس.">
               Le solaire peut alimenter votre pompage au fil du soleil.
             </p>
+            <!-- WJ127 — REPLI HONNETE pour les chemins SANS estimation. Les
+                 cartes d'erreur/edge (`mt-estimate-toolarge`, `-toolarge-pro`,
+                 le rappel agricole) vivent DANS `#mt-doc`, que le gating WJ125
+                 masque : un visiteur dont le site depasse l'echelle du
+                 simulateur ne voyait donc plus le message honnete « a cette
+                 echelle, etude dediee » — seulement l'accroche generique. Pire,
+                 la parite a11y etait INVERSEE : `announceEstimate` disait bien
+                 la verite au lecteur d'ecran, l'ecran ne la montrait pas. Ces
+                 deux accroches de repli disent EXACTEMENT ce que la voix
+                 annonce, et ne divulguent aucun chiffre. Ce commentaire vit
+                 DANS le bloc teaser lu par teaserGateWJ125.test.ts : il ne doit
+                 lui-meme porter ni unite ni montant. -->
+            <p class="mt-teaser-hook" id="mt-teaser-hook-etude" hidden data-i18n
+              data-fr="À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle."
+              data-ar="على هذا النطاق، مشروعكم يستدعي دراسة مخصّصة — سيتصل بكم مستشار.">
+              À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle.
+            </p>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-rappel" hidden data-i18n
+              data-fr="Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté."
+              data-ar="يُحدَّد حجم ضخّكم انطلاقاً من ثقبكم — سيتصل بكم مستشار بحساب مناسب.">
+              Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté.
+            </p>
             <p class="mt-teaser-headline" data-i18n
               data-fr="Recevez votre étude complète et personnalisée"
               data-ar="استلموا دراستكم الكاملة والمخصّصة">
@@ -2180,7 +2202,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { billRangeFromExact, billRangeLabel, type BillRangeId } from '../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../lib/nap';
-  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, MAX_BILL_BY_MODE } from '../../lib/lead';
+  // QJW5 — LE seul constructeur de corps du tunnel, partagé par les trois
+  // locales (`src/lib/tunnel/`). Cette page n'a plus de `buildBody()` à elle :
+  // elle LIT son DOM dans un état simple et le donne à `construireCorps`, qui
+  // applique le registre de champs et appelle `validateLead` lui-même.
+  import { construireCorps } from '../../lib/tunnel/corps';
+  import { etatVide, type EtatTunnel } from '../../lib/tunnel/champs';
+  import { ERREURS } from '../../lib/tunnel/i18n';
   // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme (voir lib/visite.ts) :
   // échoée telle quelle sur le lead pour corréler avec les visites de balise.
   import { appareilId } from '../../lib/visite';
@@ -2771,8 +2800,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // ════════════════════════════════════════════════════════════════════════
   // L-WEBT TASK3 — équipements (facultatifs, jamais bloquants) : la case
   // révèle son détail SEULEMENT si coché (case décochée = question jamais
-  // posée, jamais un « Non » fabriqué — buildBody() plus bas omet la clé
-  // entière tant que la case n'est pas cochée).
+  // posée, jamais un « Non » fabriqué — le registre partagé
+  // `src/lib/tunnel/champs.ts` omet la clé entière tant que la case n'est pas
+  // cochée).
   // ════════════════════════════════════════════════════════════════════════
   const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
     // L-WEBT2 — le chauffe-eau gagne enfin un détail (kW/créneau) : le
@@ -3385,7 +3415,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
    *  proche, coût de l'attente, bouton Imprimer), puis révèle la carte teaser
    *  verrouillée (accroche figure-free adaptée au profil pompage vs toit). Le
    *  CALCUL reste inchangé — seul le RENDU public change. */
-  function showEstimateTeaser(m: string) {
+  /** WJ127 — les trois accroches possibles. 'standard' = une estimation existe
+   *  (accroche toit ou pompage) ; 'etude' = aucune estimation parce que le
+   *  projet dépasse l'échelle du simulateur ; 'rappel' = aucune estimation
+   *  parce que l'hydraulique manque. Les deux replis disent la MÊME chose que
+   *  `announceEstimate` sur ces chemins — parité voyant / lecteur d'écran. */
+  type VarianteTeaser = 'standard' | 'etude' | 'rappel';
+  function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard') {
     docRendered = true;
     const doc = $('mt-doc');
     if (doc) doc.hidden = true;
@@ -3399,9 +3435,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (teaser) teaser.hidden = false;
     const isAgri = m === 'agricole';
     const roofHook = $('mt-teaser-hook-roof');
-    if (roofHook) roofHook.hidden = isAgri;
+    if (roofHook) roofHook.hidden = isAgri || variante !== 'standard';
     const pumpHook = $('mt-teaser-hook-pump');
-    if (pumpHook) pumpHook.hidden = !isAgri;
+    if (pumpHook) pumpHook.hidden = !isAgri || variante !== 'standard';
+    const etudeHook = $('mt-teaser-hook-etude');
+    if (etudeHook) etudeHook.hidden = variante !== 'etude';
+    const rappelHook = $('mt-teaser-hook-rappel');
+    if (rappelHook) rappelHook.hidden = variante !== 'rappel';
   }
   // QX — tarif MAD/kWh de la dernière estimation PRO affichée (hypothèses du
   // moteur) : sert à dériver un billRange cohérent quand la conso est en kWh.
@@ -3589,6 +3629,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
     if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
+      // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
+      // sans ceci, un visiteur industriel à 2 000 000 MAD ne voyait que
+      // l'accroche générique, alors que le lecteur d'écran, lui, recevait bien
+      // le message honnête ci-dessous. L'accroche « étude dédiée » rétablit la
+      // parité, toujours sans le moindre chiffre.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       clearShown();
       fillDocChrome();
       updatePanels3dVisibility();
@@ -3613,6 +3659,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
         if (toolargePro) toolargePro.hidden = false;
+        // WJ127 — même repli honnête (cf. ci-dessus).
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
         clearShown();
         fillDocChrome();
         updatePanels3dVisibility();
@@ -3901,8 +3949,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       const ag = computeAgricoleEstimate();
       if (!ag) {
         // Hydraulique manquante → carte chaleureuse DANS le document (jamais
-        // un chiffre résidentiel fabriqué).
+        // un chiffre résidentiel fabriqué). WJ127 — ce document étant masqué en
+        // parcours public gaté, l'accroche du teaser porte le MÊME message que
+        // l'annonce ci-dessous : le visiteur voyant lit ce que le lecteur
+        // d'écran entend, et aucun chiffre n'est divulgué.
         if (agricoleEl) agricoleEl.hidden = false;
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'rappel');
         lastKwcLabel = '';
         lastSavingsLabel = '';
         lastKwc = null;
@@ -3934,6 +3986,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (note) note.hidden = true;
       if (unavail) unavail.hidden = true;
       if (toolarge) toolarge.hidden = false;
+      // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
+      // l'accroche du teaser dit la même chose, sans divulguer de chiffre.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'Vérifiez le montant saisi.');
       lastKwcLabel = '';
       lastSavingsLabel = '';
@@ -3987,6 +4042,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       ecoMadMonthHigh: est.savingsMonthlyHigh,
       paybackLabel: est.paybackLabel,
     };
+    // WJ129 (finding 6) — DÉCALAGE SÉMANTIQUE ASSUMÉ, documenté sans changer le
+    // comportement : en parcours public gaté, « estimation/viewed » part alors
+    // qu'AUCUN chiffre n'est rendu à l'écran (seul le teaser s'affiche), puis
+    // « contact/reached » part au MÊME instant deux lignes plus bas. Dans un
+    // dashboard funnel les deux étapes semblent franchies d'un coup — cette
+    // discontinuité de conversion se lit « estimation calculée en coulisse +
+    // bascule immédiate vers le contact », pas comme deux actions distinctes
+    // du visiteur.
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -4426,37 +4489,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return true;
   }
 
-  // ——— QX : billRange PROFESSIONNEL dérivé de la conso saisie — toujours
-  // cohérent avec ce qui a piloté l'estimation affichée. En kWh, le MAD
-  // implicite = kWh × tarif des hypothèses du moteur (le même chiffre que le
-  // document) ; « gt10000 » reste factuellement vrai pour tout gros compte. ———
-  function resolveProBillRange(): string {
-    const v = num(proBillId());
-    if (v == null || v <= 0) return '';
-    let mad: number | null = null;
-    if (proBillUnit() === 'mad') mad = v;
-    else if (lastProTarifMadKwh != null && lastProTarifMadKwh > 0) mad = v * lastProTarifMadKwh;
-    if (mad == null || !(mad > 0)) return '';
-    const rid = billRangeFromExact(mad);
-    if (rid) return rid;
-    return mad > 10_000 ? 'gt10000' : '';
-  }
-  // ——— QX : roofType DÉRIVÉ pour TOUS les profils — validateLead (lib/lead.ts)
-  // l'exige pour toute soumission mon-toit, mais plus AUCUN écran ne pose la
-  // question depuis la coupe fondateur du 18/08 (les cartes « type de toit » du
-  // sous-panneau résidentiel ont disparu). On dérive donc de vraies réponses
-  // quand il y en a — bac acier → hangar, toiture-terrasse → toit plat — et on
-  // retombe sinon sur 'autre', le bucket HONNÊTE : jamais une toiture précise
-  // inventée pour un visiteur qu'on n'a pas interrogé. Le commercial qualifie
-  // le vrai type de toiture dans l'ERP / à la visite technique. ———
-  function resolveRoofType(): string {
-    if (isProMode(mode)) {
-      if (surfaceType === 'bac_acier') return 'hangar';
-      if (surfaceType === 'terrasse') return 'toit_plat';
-      return 'autre';
-    }
-    return 'autre';
-  }
+  // QJW5 — `resolveProBillRange()` (tranche C&I dérivée de la conso saisie) et
+  // `resolveRoofType()` (type de toit dérivé, jamais demandé depuis la coupe
+  // fondateur du 18/08) ont quitté cette page : ce sont des DÉRIVATIONS DE
+  // PAYLOAD, elles vivent donc avec le reste du corps dans le registre partagé
+  // (`src/lib/tunnel/champs.ts` — `trancheFactureProfessionnelle` et le
+  // descripteur `typeToiture`). Recopiées dans trois pages, elles pouvaient
+  // diverger ; il n'en existe plus qu'un exemplaire.
   // ——— WJ52 : référence client courte, générée UNE FOIS côté navigateur ———
   // Stable sur des soumissions répétées (ex. échec réseau puis nouvel essai) :
   // générée à la première tentative, réutilisée telle quelle ensuite — jamais
@@ -4492,206 +4531,128 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // désormais dans l'ERP. COMMERCIAL_QUESTION_WEBHOOK_KEY reste dans
   // lib/commercialCategories (le backend s'en sert toujours) — le tunnel ne
   // produit simplement plus ces clés.
-  /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
-  function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    // WJ51 — préférence de contact EXPLICITE (radio « Uniquement WhatsApp » vs
-    // « Un conseiller peut m'appeler ») : `whatsappOptIn` reste dérivé pour ne
-    // rien casser côté CRM/webhook, `contactPreference` part en plus (mappé
-    // sur le champ `canal`).
-    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
-      ? 'phone_ok'
-      : 'whatsapp_only';
-    const whatsappOptIn = contactPreference === 'whatsapp_only';
-    const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
-    const body: Record<string, unknown> = {
-      fullName: val('mt-name'),
-      phone: val('mt-phone'),
-      city: adresse,
-      // QX — billRange TOUJOURS cohérent avec ce qui a piloté l'estimation
-      // affichée : résidentiel = le <select> (auto-dérivé du montant exact,
-      // syncBillRangeFromExact) ; C&I (industriel/commercial) = dérivé de la conso saisie ;
-      // agricole = plus requis (lib/lead.ts, mode 'agricole').
-      billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
-      // QX — dérivé des vraies réponses pour pro/agricole (cartes toit =
-      // sous-panneau résidentiel uniquement) ; cf. resolveRoofType.
-      roofType: resolveRoofType(),
-      consent,
-      whatsappOptIn,
-      contactPreference,
-      email: val('mt-email') || undefined,
-      factureHiver: num('mt-facture-hiver'),
-      // `factureEte`/`eteDifferente` et `raccordement` (mono/triphasé) retirés
-      // du tunnel (coupe fondateur 18/08) — le commercial les complète dans
-      // l'ERP ; les clés sont simplement ABSENTES du corps, lib/lead.ts les
-      // accepte toujours d'autres sources.
-      adresse,
+  /**
+   * QJW5 — L'ADAPTATEUR DOM → ÉTAT. C'est tout ce que cette page fait encore du
+   * corps de lead : lire SES propres champs dans un objet simple. Le corps
+   * lui-même — quelles clés partent, sous quel nom, à quelle condition — et son
+   * pré-contrôle vivent désormais dans `src/lib/tunnel/`, partagés VERBATIM
+   * avec les versions anglaise et arabe. Les trois locales ne peuvent donc plus
+   * diverger : c'est exactement comme cela que le bloc L-WEBT et `appareilId`
+   * étaient restés absents des corps EN et AR sans que rien ne le signale.
+   *
+   * On lit TOUT, sans condition. Les gates (case cochée, unité choisie, profil
+   * actif) sont dans le registre : une valeur lue ici n'est pas une valeur
+   * émise. C'est le registre qui décide, une seule fois, pour les trois pages.
+   */
+  function lireEtatTunnel(): EtatTunnel {
+    const coche = (id: string) => ($(id) as HTMLInputElement | null)?.checked === true;
+    return {
+      ...etatVide(),
+      nomComplet: val('mt-name'),
+      telephone: val('mt-phone'),
+      email: val('mt-email'),
+      ville: val('mt-city'),
+      adresseCarte: addressEl?.value ?? '',
+      adresseSecours: fallbackAddrEl?.value ?? '',
+      consentement: coche('mt-consent'),
+      // WJ51 — préférence de contact EXPLICITE (radio « Uniquement WhatsApp »
+      // vs « Un conseiller peut m'appeler ») : le registre en dérive
+      // `whatsappOptIn` (pour ne rien casser côté CRM/webhook) ET
+      // `contactPreference` (mappé sur le champ `canal`).
+      appelAutorise: coche('mt-contact-phone'),
       // WJ30 — le type de projet et la langue active partent aussi au webhook.
       mode,
-      langue_preferee: currentLang,
-      // `ombrage` RETIRÉ du tunnel (ordre fondateur 21/08) : la clé est
-      // désormais ABSENTE du corps — jamais une chaîne vide. Le contrat webhook
-      // est INCHANGÉ (lib/lead.ts la valide toujours comme facultative et
-      // l'accepte d'autres sources : c'est le commercial qui la renseigne dans
-      // l'ERP après la visite technique). Rien ne change non plus sur le fil :
-      // l'ancienne expression de cette clé produisait déjà `undefined` pour un
-      // visiteur sans réponse, et JSON.stringify omet les `undefined`.
-      // (L'expression elle-même est épinglée ABSENTE de ce fichier par
-      // tests/wj112RefineEstimate.test.ts, qui lit la source BRUTE — ne pas la
-      // réécrire ici, même en commentaire.)
-      // Retirés du tunnel (coupe fondateur 18/08) — le commercial les complète
-      // dans l'ERP, leurs clés sont simplement ABSENTES du corps (lib/lead.ts
-      // les accepte toujours d'autres sources, contrat webhook intact) :
-      // `distributeur`, `billKwh`, `roofAgeYears`, `futureLoads`,
-      // `batteryInterest`, `occupantType`, `projectTiming`, `hasMeterPhoto` —
-      // et `financingIntent`, retirée avant elles pour la même raison.
+      languePreferee: currentLang,
+      factureHiverMad: num('mt-facture-hiver'),
+      trancheFacture: val('mt-bill'),
+      // WJ122 — la conso C&I vient du panneau ACTIF (commercial : mt-cc-bill).
+      // Le tarif MAD/kWh du moteur accompagne la valeur : sans lui, le registre
+      // refuse de convertir une saisie en kWh plutôt que d'inventer un montant.
+      factureProValeur: num(proBillId()),
+      factureProUnite: proBillUnit(),
+      tarifProMadKwh: lastProTarifMadKwh,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant.
+      raisonSociale: val('mt-raison-sociale'),
+      tension,
+      activite: activity,
+      categorieCommerciale: commercialCategory,
+      // WJ123 — mode INDUSTRIEL : les ÉQUIPES plafonnent honnêtement
+      // l'autoconsommation dans estimatePro.
+      equipes,
+      typeSurface: surfaceType,
+      surfaceM2: num('mt-surface-m2'),
+      // QX — sous-panneau AGRICOLE (pompage). Le curseur `mt-heures-pompage`
+      // part avec value="7" AVANT toute interaction : c'est le registre qui le
+      // gate sur le mode agricole, jamais cette lecture.
+      sourceEau: waterSource,
+      uniteEau: waterUnit,
+      profondeurM: num('mt-profondeur'),
+      hmtM: num('mt-hmt'),
+      besoinEau: num('mt-water-need'),
+      heuresPompage: num('mt-heures-pompage'),
+      culture: val('mt-culture'),
+      regionAgricole,
+      surfaceHa: num('mt-surface-ha'),
+      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
+      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
+      depenseCarburantMad: num('mt-fuel-spend'),
+      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
+      creneauVisitePartie: visitWindowPart,
+      creneauVisiteSemaine: visitWindowWeek,
+      // L-WEBT — « Affiner mon profil de consommation » (facultatif, repliable).
+      // Chaque détail kW/créneau est lu SANS condition ici ; c'est le registre
+      // qui le gate sur sa case parente, pour les trois locales à la fois.
+      occupationJour,
+      equipChauffeEau: coche('mt-equip-chauffe-eau'),
+      equipChauffeEauKw: num('mt-equip-chauffe-eau-kw'),
+      equipChauffeEauCreneau: val('mt-equip-chauffe-eau-creneau'),
+      equipVoitureElectrique: coche('mt-equip-ve'),
+      equipVeKmSemaine: num('mt-equip-ve-km'),
+      equipVeChargeurKw: num('mt-equip-ve-kw'),
+      equipVeCreneau: val('mt-equip-ve-creneau'),
+      equipClim: coche('mt-equip-clim'),
+      equipClimPieces: num('mt-equip-clim-pieces'),
+      equipClimKw: num('mt-equip-clim-kw'),
+      equipClimCreneau: val('mt-equip-clim-creneau'),
+      equipPiscine: coche('mt-equip-piscine'),
+      equipPiscinePompeKw: num('mt-equip-piscine-kw'),
+      equipPiscineHeuresJour: num('mt-equip-piscine-heures'),
+      equipPiscineCreneau: val('mt-equip-piscine-creneau'),
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
       // Jetons de DÉDOUBLONNAGE (CRM + Meta CAPI) : générés au premier
       // affichage, stables pour toute la session de saisie, donc un renvoi
       // (échec réseau, double-clic, retour arrière puis re-soumission) porte le
-      // MÊME couple. lib/lead.ts les validait déjà — mais le tunnel ne les
-      // envoyait jamais : côté CAPI, `fireCapi` retombait sur un id dérivé de
-      // l'horodatage, qui DIFFÈRE à chaque renvoi et ne déduplique donc rien.
+      // MÊME couple.
       idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
       eventId: getOrCreateDedupTokens().eventId,
-      // LANE T-WEB — clé additive, jamais bloquante : '' (stockage indisponible)
-      // devient `undefined` (JSON.stringify l'omet), jamais une chaîne vide envoyée.
-      appareilId: appareilId() || undefined,
-      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
-      visitWindowPart: visitWindowPart || undefined,
-      visitWindowWeek: visitWindowWeek || undefined,
-      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant. Les
-      // champs restent envoyés même si le mode a changé depuis (validateLead
-      // les accepte indépendamment du mode — un visiteur qui bascule
-      // résidentiel→professionnel→résidentiel ne perd rien de saisi).
-      raisonSociale: val('mt-raison-sociale') || undefined,
-      // `facilityType` (type de site) et `siteCount` (nombre de sites) retirés
-      // du tunnel (coupe fondateur 18/08) : ni l'un ni l'autre n'entrait dans
-      // estimatePro — le commercial les complète dans l'ERP.
-      // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) est
-      // volontairement DISTINCT du select résidentiel `raccordement`
-      // (monophasé/triphasé) — jamais les deux sens dans un même champ. Les
-      // champs à DÉFAUT visible (tension/activité) ne partent que si un profil
-      // C&I (industriel/commercial) est actif — jamais une donnée fabriquée pour un autre profil.
-      tensionRaccordement: isProMode(mode) ? tension : undefined,
-      // `puissanceKva` et `hasGenerator` (+ groupe kVA / diesel plus bas)
-      // retirés du tunnel (coupe fondateur 18/08) : estimatePro ne les lit pas.
-      activityProfile: isProMode(mode) ? activity : undefined,
-      surfaceType: surfaceType || undefined,
-      surfaceM2: num('mt-surface-m2') ?? undefined,
-      // WJ122 — la conso C&I vient du panneau actif (commercial : mt-cc-bill).
-      proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
-      proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
-      // WJ122 — mode COMMERCIAL : catégorie + réponses spécifiques (liste blanche
-      // webhook QX51 ; hôtel ≠ bureau à facture égale via le day-share archétype).
-      categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
-      // WJ123 — mode INDUSTRIEL v2 : les ÉQUIPES restent (elles plafonnent
-      // honnêtement l'autoconsommation dans estimatePro) ; `weekend`,
-      // `cosPhiConnu`, `groupeKva` et `dieselDhMois` sont retirés du tunnel
-      // (coupe fondateur 18/08) — aucun n'entrait dans le calcul.
-      //
-      // PLUS DE GATE SUR LE MODE COURANT. Ces champs ne partaient que si le
-      // profil actif AU MOMENT DE L'ENVOI correspondait : un visiteur qui
-      // décrivait son site industriel puis rebasculait sur « commercial » (ou
-      // revenait à l'étape 1 pour vérifier) voyait ses réponses silencieusement
-      // effacées du payload — alors qu'il les avait bien données. Règle unique
-      // désormais, la même que `raisonSociale` ci-dessus : TOUTE VALEUR SAISIE
-      // NON VIDE PART. Un champ de saisie jamais rempli reste `undefined`, et
-      // validateLead borne/écarte chaque clé séparément, indépendamment du
-      // mode. UNE SEULE EXCEPTION, gardée gatée plus bas : `heuresPompage` est
-      // un <input type="range" value="7">, sa `.value` vaut « 7 » AVANT toute
-      // saisie — la dégater fabriquerait une réponse que personne n'a donnée.
-      equipes: equipes || undefined,
-      // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
-      // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
-      // ombrière/terrain sont décrits par leurs booléens, jamais une fausse toiture.
-      // Le gate sur le TYPE DE SURFACE reste (c'est de la sémantique, pas du
-      // mode) ; seul le gate sur le mode courant disparaît.
-      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: surfaceType === 'ombriere' ? true : undefined,
-      terrain: surfaceType === 'terrain' ? true : undefined,
-      // QX — sous-panneau AGRICOLE (pompage).
-      waterSource: waterSource || undefined,
-      profondeurM: num('mt-profondeur') ?? undefined,
-      hmtM: num('mt-hmt') ?? undefined,
-      debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
-      besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      // SEUL champ qui GARDE son gate de mode, et c'est un choix : les autres
-      // sont des saisies vides par défaut, celui-ci est un curseur qui part
-      // avec value="7" (#mt-heures-pompage). Sans le gate, un lead résidentiel
-      // ou industriel transporterait « 7 h/j » que personne n'a saisi, et le
-      // CRM l'afficherait comme une réponse du visiteur sur une villa.
-      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
-      // `irrigation` retirée du tunnel (coupe fondateur 18/08) — le moteur eau
-      // retombe sur son efficience par défaut ; le commercial la complète dans l'ERP.
-      culture: val('mt-culture') || undefined,
-      // WJ124 — région agronomique (pilote le moteur eau FAO-56 côté proposition).
-      regionAgricole: regionAgricole || undefined,
-      surfaceHa: num('mt-surface-ha') ?? undefined,
-      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
-      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
-      fuelSpendMad: num('mt-fuel-spend') ?? undefined,
+      // LANE T-WEB — empreinte d'appareil anonyme, additive et jamais
+      // bloquante : '' (stockage indisponible) devient une clé ABSENTE.
+      appareilId: appareilId(),
       // QX — EXACTEMENT les chiffres affichés dans le document d'estimation
       // (le conseiller CRM voit ce que le client a vu — jamais plus).
-      estimateShown: estimateShown ?? undefined,
-      // L-WEBT — « Affiner mon profil de consommation » (facultatif,
-      // repliable) : occupation_jour + équipements. Noms de clé SNAKE_CASE
-      // délibérément (seule exception à la convention camelCase de ce fichier)
-      // — ce sont les noms EXACTS des champs `crm.Lead` (apps/crm/models.py :
-      // occupation_jour, equip_piscine, equip_piscine_pompe_kw,
-      // equip_voiture_electrique, equip_ve_km_semaine, equip_clim,
-      // equip_clim_pieces, equip_chauffe_eau_electrique) que
-      // ``webhooks.py _extract_web_questionnaire`` lit directement, sans
-      // traduction. Case décochée = question jamais posée : la clé est
-      // ABSENTE (jamais un booléen `false` fabriqué), exactement la discipline
-      // WJ30 déjà en vigueur sur ce fichier.
-      occupation_jour: occupationJour || undefined,
-      equip_chauffe_eau_electrique: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked || undefined,
-      equip_voiture_electrique: ($('mt-equip-ve') as HTMLInputElement | null)?.checked || undefined,
-      equip_ve_km_semaine: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (num('mt-equip-ve-km') ?? undefined) : undefined,
-      equip_clim: ($('mt-equip-clim') as HTMLInputElement | null)?.checked || undefined,
-      equip_clim_pieces: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (num('mt-equip-clim-pieces') ?? undefined) : undefined,
-      equip_piscine: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked || undefined,
-      equip_piscine_pompe_kw: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (num('mt-equip-piscine-kw') ?? undefined) : undefined,
-      // L-WEBT2 (24/08/2026, ordre fondateur) — détails kW/créneau ENCORE
-      // PLUS facultatifs : mêmes 8 colonnes `crm.Lead` que le commercial
-      // saisit à l'appel (L-BACK/L-BACK2), désormais aussi alimentables par
-      // le client depuis ce tunnel. Même garde `checked ? … : undefined` que
-      // les 4 détails ci-dessus — jamais de saisie fantôme si la case
-      // parente n'est pas cochée.
-      equip_chauffe_eau_kw: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked ? (num('mt-equip-chauffe-eau-kw') ?? undefined) : undefined,
-      equip_chauffe_eau_creneau: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked ? (val('mt-equip-chauffe-eau-creneau') || undefined) : undefined,
-      equip_ve_chargeur_kw: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (num('mt-equip-ve-kw') ?? undefined) : undefined,
-      equip_ve_creneau: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (val('mt-equip-ve-creneau') || undefined) : undefined,
-      equip_clim_kw: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (num('mt-equip-clim-kw') ?? undefined) : undefined,
-      equip_clim_creneau: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (val('mt-equip-clim-creneau') || undefined) : undefined,
-      equip_piscine_heures_jour: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (num('mt-equip-piscine-heures') ?? undefined) : undefined,
-      equip_piscine_creneau: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (val('mt-equip-piscine-creneau') || undefined) : undefined,
+      estimationAffichee: estimateShown,
+      // WJ116 — fbclid/UTM (parrainage inclus) repris de sessionStorage.
+      tracking: readTrackingParams(),
+      // WJ4 — repère et contour FACULTATIFS : on ne BLOQUE jamais sans eux.
+      repereToit: capturePin,
+      contourToit: captureOutline,
       // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
-      website_url: val('mt-hp'),
+      honeypot: val('mt-hp'),
     };
-    // WJ116 — fbclid/UTM (parrainage inclus) : joints seulement s'ils existent.
-    Object.assign(body, readTrackingParams());
-    // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
-    if (capturePin) {
-      body.roofPoint = capturePin;
-      body.gpsLat = capturePin.lat;
-      body.gpsLng = capturePin.lng;
-    }
-    if (captureOutline.length >= 3) body.roofOutline = captureOutline;
-    const v = validateLead(body);
-    const errors: Record<string, string> = v.ok ? {} : { ...v.errors };
-    // WJ65 — validateLead (lib/lead.ts, hors périmètre de cette page) n'exige
-    // qu'une longueur ≥ 2 : un nom fait uniquement d'emojis/symboles (ex. « 😀😀 »)
-    // passait donc silencieusement. On exige ICI au moins UNE lettre (tout
-    // alphabet — \p{L} couvre le latin ET l'arabe) avant l'envoi.
-    if (!errors.fullName && !/\p{L}/u.test(val('mt-name'))) {
-      errors.fullName = currentLang === 'ar' ? 'الاسم الكامل مطلوب' : 'Nom complet requis';
-    }
-    return { body, errors };
+  }
+
+  /**
+   * Le corps du lead + les erreurs client. Il n'y a plus de `buildBody()` ici —
+   * ni fonction, ni enveloppe : la page appelle directement le module partagé,
+   * qui applique le registre puis le `validateLead` de lib/lead.ts. Les
+   * messages passent par la table de la langue AFFICHÉE au moment de l'envoi
+   * (cette page bascule FR/عربي en direct), pas par celle de son URL.
+   */
+  function corpsDuLead(): { body: Record<string, unknown>; errors: Record<string, string> } {
+    return construireCorps(lireEtatTunnel(), { messages: ERREURS[currentLang] });
   }
 
   function showInlineErrors(errors: Record<string, string>) {
@@ -4815,7 +4776,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
-    const { body, errors } = buildBody();
+    const { body, errors } = corpsDuLead();
     if (Object.keys(errors).length > 0) {
       showInlineErrors(errors);
       if (errEl) {
@@ -4862,9 +4823,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
-          // WJ52 — affiche la référence générée dans buildBody() (déjà incluse
-          // dans le body envoyé — on la relit ici via getOrCreateClientRef()
-          // pour rester la MÊME valeur, jamais régénérée).
+          // WJ52 — affiche la référence générée à la lecture de l'état (déjà
+          // incluse dans le body envoyé — on la relit ici via
+          // getOrCreateClientRef() pour rester la MÊME valeur, jamais régénérée).
           const refEl = $('mt-client-ref');
           if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;

@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateLead } from '../src/lib/lead';
+import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 // mon-toit.astro is CRLF (Windows-authored) — normalize before pinning
 // source snippets so this test is line-ending-agnostic.
@@ -199,21 +201,37 @@ describe('validateLead — détails kW/créneau facultatifs (L-WEBT2, 24/08/2026
   });
 });
 
-describe('mon-toit.astro — la case décochée omet la clé du corps envoyé (source pin)', () => {
-  it('buildBody() gate chaque grandeur équipement sur la case cochée correspondante', () => {
-    // Preuve que la page n'envoie JAMAIS une grandeur sans que la case ait
-    // été cochée : chaque `equip_*_kw`/`equip_*_pieces`/`equip_*_km_semaine`
-    // du corps est construit par un ternaire `checked ? num(...) : undefined`,
-    // jamais un num() nu qui enverrait une saisie fantôme.
-    expect(PAGE).toMatch(
-      /equip_piscine_pompe_kw:\s*\(\$\('mt-equip-piscine'\)[^)]*\)\?\.checked \? \(num\('mt-equip-piscine-kw'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_ve_km_semaine:\s*\(\$\('mt-equip-ve'\)[^)]*\)\?\.checked \? \(num\('mt-equip-ve-km'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_clim_pieces:\s*\(\$\('mt-equip-clim'\)[^)]*\)\?\.checked \? \(num\('mt-equip-clim-pieces'\) \?\? undefined\) : undefined/,
-    );
+describe('tunnel — la case décochée omet la clé du corps envoyé', () => {
+  // QJW5 — cette garde épinglait le TEXTE du ternaire `checked ? … : undefined`
+  // dans le `buildBody()` de la page FR. Le corps venant désormais du registre
+  // partagé (`src/lib/tunnel/champs.ts`), on épingle ce qui compte vraiment :
+  // le COMPORTEMENT, et pour les trois locales à la fois.
+  const corps = (etat: Partial<EtatTunnel>) =>
+    construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+      .body;
+
+  it('chaque grandeur équipement est gatée sur sa case cochée', () => {
+    // Le cas réel : le visiteur coche, saisit, puis DÉCOCHE. La saisie reste
+    // dans le champ masqué — elle ne doit jamais partir.
+    const saisies: Partial<EtatTunnel> = {
+      equipPiscinePompeKw: 1.1,
+      equipVeKmSemaine: 150,
+      equipClimPieces: 4,
+    };
+    const decoche = corps(saisies);
+    expect(decoche).not.toHaveProperty('equip_piscine_pompe_kw');
+    expect(decoche).not.toHaveProperty('equip_ve_km_semaine');
+    expect(decoche).not.toHaveProperty('equip_clim_pieces');
+
+    const coche = corps({
+      ...saisies,
+      equipPiscine: true,
+      equipVoitureElectrique: true,
+      equipClim: true,
+    });
+    expect(coche.equip_piscine_pompe_kw).toBe(1.1);
+    expect(coche.equip_ve_km_semaine).toBe(150);
+    expect(coche.equip_clim_pieces).toBe(4);
   });
 
   it("le hidden input occupation_jour existe et la sélection d'une silhouette l'alimente", () => {
@@ -233,33 +251,41 @@ describe('mon-toit.astro — la case décochée omet la clé du corps envoyé (s
 });
 
 describe('mon-toit.astro — détails kW/créneau (L-WEBT2) gatés sur la case parente', () => {
-  it('buildBody() gate chaque détail kW/créneau sur la case équipement correspondante', () => {
-    // Même discipline que le bloc L-WEBT ci-dessus : jamais un num()/val() nu
-    // qui enverrait une saisie fantôme si la case parente n'est pas cochée.
-    expect(PAGE).toMatch(
-      /equip_chauffe_eau_kw:\s*\(\$\('mt-equip-chauffe-eau'\)[^)]*\)\?\.checked \? \(num\('mt-equip-chauffe-eau-kw'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_chauffe_eau_creneau:\s*\(\$\('mt-equip-chauffe-eau'\)[^)]*\)\?\.checked \? \(val\('mt-equip-chauffe-eau-creneau'\) \|\| undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_ve_chargeur_kw:\s*\(\$\('mt-equip-ve'\)[^)]*\)\?\.checked \? \(num\('mt-equip-ve-kw'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_ve_creneau:\s*\(\$\('mt-equip-ve'\)[^)]*\)\?\.checked \? \(val\('mt-equip-ve-creneau'\) \|\| undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_clim_kw:\s*\(\$\('mt-equip-clim'\)[^)]*\)\?\.checked \? \(num\('mt-equip-clim-kw'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_clim_creneau:\s*\(\$\('mt-equip-clim'\)[^)]*\)\?\.checked \? \(val\('mt-equip-clim-creneau'\) \|\| undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_piscine_heures_jour:\s*\(\$\('mt-equip-piscine'\)[^)]*\)\?\.checked \? \(num\('mt-equip-piscine-heures'\) \?\? undefined\) : undefined/,
-    );
-    expect(PAGE).toMatch(
-      /equip_piscine_creneau:\s*\(\$\('mt-equip-piscine'\)[^)]*\)\?\.checked \? \(val\('mt-equip-piscine-creneau'\) \|\| undefined\) : undefined/,
-    );
+  it('chaque détail kW/créneau est gaté sur sa case équipement', () => {
+    // Même discipline que le bloc L-WEBT ci-dessus : jamais une saisie fantôme
+    // héritée d'une case décochée après coup.
+    const corps = (etat: Partial<EtatTunnel>) =>
+      construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+        .body;
+    const saisies: Partial<EtatTunnel> = {
+      equipChauffeEauKw: 2.4, equipChauffeEauCreneau: 'nuit',
+      equipVeChargeurKw: 7.4, equipVeCreneau: 'soir',
+      equipClimKw: 3.5, equipClimCreneau: 'matin',
+      equipPiscineHeuresJour: 6.5, equipPiscineCreneau: 'soir',
+    };
+    const decoche = corps(saisies);
+    for (const cle of [
+      'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+      'equip_ve_chargeur_kw', 'equip_ve_creneau',
+      'equip_clim_kw', 'equip_clim_creneau',
+      'equip_piscine_heures_jour', 'equip_piscine_creneau',
+    ]) {
+      expect(decoche, cle).not.toHaveProperty(cle);
+    }
+
+    const coche = corps({
+      ...saisies,
+      equipChauffeEau: true, equipVoitureElectrique: true,
+      equipClim: true, equipPiscine: true,
+    });
+    expect(coche.equip_chauffe_eau_kw).toBe(2.4);
+    expect(coche.equip_chauffe_eau_creneau).toBe('nuit');
+    expect(coche.equip_ve_chargeur_kw).toBe(7.4);
+    expect(coche.equip_ve_creneau).toBe('soir');
+    expect(coche.equip_clim_kw).toBe(3.5);
+    expect(coche.equip_clim_creneau).toBe('matin');
+    expect(coche.equip_piscine_heures_jour).toBe(6.5);
+    expect(coche.equip_piscine_creneau).toBe('soir');
   });
 
   it('les 4 <select> créneau existent avec une option vide neutre par défaut', () => {
