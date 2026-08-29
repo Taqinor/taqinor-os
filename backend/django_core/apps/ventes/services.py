@@ -1383,10 +1383,11 @@ def cible_depuis_lignes(devis, variante='sans'):
     * ``panneaux`` — somme des quantités des lignes classées « panneau » par le
       classifieur partagé ``_is_panel`` (aligné sur ``quote_engine/builder.py``).
       Les lignes de SECTION/NOTE (sans prix ni quantité) sont ignorées.
-    * ``panel_watt`` — wattage unitaire, dans cet ordre : la fiche technique du
-      produit dominant (``pmax_wc``), sinon le wattage lu dans le libellé
-      (désignation puis nom du produit), sinon déduit du kWc de l'étude, sinon
-      ``CIBLE_WATT_DEFAUT`` — et là SEULEMENT un avertissement est levé.
+    * ``panel_watt`` — wattage unitaire de la ligne dominante DE CETTE OPTION
+      (QJR33), dans cet ordre : la fiche technique du produit dominant
+      (``pmax_wc``), sinon le wattage lu dans le libellé (désignation puis nom
+      du produit), sinon déduit du kWc de l'étude, sinon ``CIBLE_WATT_DEFAUT``
+      — et là SEULEMENT un avertissement est levé.
     * ``kwc`` — puissance recalculée DEPUIS LES LIGNES (``panneaux × watt``),
       pas recopiée de l'étude : c'est le devis qui fait foi ici, pas un
       paramètre d'étude qui a pu se désynchroniser.
@@ -1409,6 +1410,13 @@ def cible_depuis_lignes(devis, variante='sans'):
     ``panneaux`` = l'option SANS accompagné de ``scenario='avec_batterie'`` —
     une cible que rien ne décrit, envoyée telle quelle à l'écran 3D (PV17). Les
     quatre grandeurs viennent désormais du MÊME sous-ensemble de lignes.
+
+    QJR33 (29/08/2026) — ``panel_watt`` REJOINT ENFIN CE SOUS-ENSEMBLE. La ligne
+    DOMINANTE (celle qui porte le wattage) se cherchait encore dans TOUTES les
+    lignes panneau du devis : sur un devis « Les deux » à DEUX modèles de
+    panneau, le ``kwc`` rendu mariait le COMPTE d'une option au WATTAGE de
+    l'autre (5,68 kWc observés au lieu de 4,40), et ce kWc partait tel quel dans
+    le contrat 3D. Les CINQ grandeurs viennent maintenant de la même variante.
 
     ``variante`` choisit ce sous-ensemble : ``'sans'`` (défaut — l'option 1,
     celle que l'écran dessine, comportement historique) ou ``'avec'``. Sur un
@@ -1470,10 +1478,17 @@ def cible_depuis_lignes(devis, variante='sans'):
 
     # Ligne dominante = la plus GROSSE quantité : c'est elle qui porte le
     # wattage de référence, et c'est elle que PV18 ajustera en cas d'écart.
+    #
+    # QJR33 (29/08/2026) — ELLE SE LIT DANS LE PANIER DE CETTE OPTION, comme le
+    # COMPTE juste au-dessus. Elle était cherchée dans TOUTES les lignes
+    # panneau du devis : sur un devis « Les deux » à DEUX modèles de panneau
+    # (8 × 710 Wc en « sans », 10 × 440 Wc en « avec »), le ``kwc`` rendu
+    # mariait le compte d'une option au wattage de l'AUTRE — 5,68 kWc au lieu
+    # de 4,40 — et ce kWc partait tel quel dans le contexte 3D (PV17).
     dominante = None
-    if lignes_panneau:
+    if lignes_panneau_option:
         dominante = max(
-            lignes_panneau,
+            lignes_panneau_option,
             key=lambda li: Decimal(str(li.quantite or 0)))
 
     # Deux modèles de panneau différents dans un même devis : le calepinage ne
@@ -1488,7 +1503,11 @@ def cible_depuis_lignes(devis, variante='sans'):
         (li.produit_id, (li.designation or '').strip().lower())
         for li in lignes_panneau
     }
-    if len(identites) > 1:
+    # QJR33 — ``dominante`` est désormais celle de CETTE option : elle peut être
+    # absente (option sans aucune ligne panneau) alors que le devis, lui, porte
+    # plusieurs modèles. On ne nomme alors aucune ligne plutôt que d'en inventer
+    # une (et surtout plutôt que de planter sur ``None``).
+    if len(identites) > 1 and dominante is not None:
         avertissements.append(
             'Ce devis porte %d modèles de panneau différents : l\'écart de '
             'calepinage sera appliqué à la ligne la plus grosse (« %s »).'
