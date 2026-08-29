@@ -244,14 +244,26 @@ function GenCardHeader({ icon: Icon, title, children }) {
   )
 }
 
-function MetricCard({ label, value, unit, recommended, accent }) {
+function MetricCard({ label, value, unit, recommended, accent, badge }) {
   return (
     <div className={`gen-metric${accent ? ' gen-metric-accent' : ''}${recommended ? ' gen-metric-rec' : ''}`}>
       <div className="gen-metric-label">
         {label}
         {recommended && <span className="gen-rec-badge">★ Recommandé</span>}
       </div>
-      <div className="gen-metric-value">{value}</div>
+      <div className="gen-metric-value">
+        {value}
+        {/* QJR35 — la carte lit une économie/payback dérivé LOCALEMENT
+            (miroir `roi`, jamais serveur) sans facture réelle saisie ni
+            étude horaire serveur : puce visible À CÔTÉ de la valeur, la
+            carte reste rendue (le vendeur s'en sert comme repère). */}
+        {badge && (
+          <span className="ml-1.5 align-middle rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning"
+                data-testid="gen-metric-badge-exemple">
+            {badge}
+          </span>
+        )}
+      </div>
       <div className="gen-metric-unit">{unit}</div>
     </div>
   )
@@ -1148,6 +1160,14 @@ export default function DevisGenerator({
     ? (totals.totalAvec > 0 && apercuEcoAvec > 0
         ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
     : roiPourAvec?.payback_avec
+
+  // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
+  // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
+  // chiffre dérivé du MIROIR LOCAL sans qu'aucune facture réelle ni étude
+  // horaire serveur n'existe encore. Ni caché (le vendeur s'en sert comme
+  // repère) ni remplacé par un autre chiffre — étiqueté. QJR89/QJR90 rendent
+  // cette règle structurelle ; ceci est l'intérim minimal.
+  const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -4542,10 +4562,12 @@ export default function DevisGenerator({
                       </div>
                       <MetricCard label="Économies"
                                   value={fmtNum(Math.round(apercuEcoSans))}
-                                  unit="MAD / an" />
+                                  unit="MAD / an"
+                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                       <MetricCard label="ROI"
                                   value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
-                                  unit="retour sur invest." accent />
+                                  unit="retour sur invest." accent
+                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                       <MetricCard label="Coût"
                                   value={fmtNum(Math.round(totals.totalSans))}
                                   unit="MAD TTC" />
@@ -4572,10 +4594,12 @@ export default function DevisGenerator({
                         <>
                           <MetricCard label="Économies"
                                       value={fmtNum(Math.round(apercuEcoAvec))}
-                                      unit="MAD / an" />
+                                      unit="MAD / an"
+                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                           <MetricCard label="ROI"
                                       value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
-                                      unit="retour sur invest." accent />
+                                      unit="retour sur invest." accent
+                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                           <MetricCard label="Coût"
                                       value={fmtNum(Math.round(totals.totalAvec))}
                                       unit="MAD TTC" />
