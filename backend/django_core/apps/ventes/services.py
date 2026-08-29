@@ -8642,13 +8642,49 @@ _PRODUIT_FRAIS_REFACTURES_NOM = 'Frais refacturés'
 
 
 def _produit_frais_refactures(company):
+    """Produit de service « Frais refacturés » de la société — un seul, jamais
+    deux.
+
+    COURSE FERMÉE (29/08/2026). C'était un ``get_or_create(company=…, nom=…)``
+    sur un couple SANS contrainte d'unicité : deux appels concurrents (webhook,
+    tâche Celery, double validation) créaient DEUX fiches homonymes. Depuis
+    ``stock.0135``, un UNIQUE conditionnel couvre exactement ce couple pour les
+    produits ACTIFS SANS SKU — et ce site applique le patron maison
+    ``lecture -> création dans un point de sauvegarde -> relecture sur
+    IntegrityError`` (même idiome que ``ventes.utils.references``), qui :
+
+      * rend la course inoffensive (le perdant relit la fiche du gagnant) ;
+      * ne casse JAMAIS la transaction englobante (le ``atomic()`` interne est
+        un savepoint) ;
+      * survit à une base historique où plusieurs homonymes coexisteraient
+        encore — ``.first()`` déterministe (plus petit ``pk``) là où
+        ``get_or_create`` aurait levé ``MultipleObjectsReturned``.
+
+    Les produits ARCHIVÉS sont ignorés (ils sortent du périmètre de la
+    contrainte) : archiver l'ancienne fiche en fait naître une neuve, jamais un
+    conflit."""
+    from django.db import IntegrityError, transaction
+
     from apps.stock.models import Produit
 
-    produit, _ = Produit.objects.get_or_create(
-        company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
-        defaults={'prix_vente': Decimal('0'), 'quantite_stock': 0,
-                  'seuil_alerte': 0})
-    return produit
+    def _lire():
+        return Produit.objects.filter(
+            company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+            is_archived=False).order_by('pk').first()
+
+    produit = _lire()
+    if produit is not None:
+        return produit
+    try:
+        with transaction.atomic():
+            return Produit.objects.create(
+                company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+                prix_vente=Decimal('0'), quantite_stock=0, seuil_alerte=0)
+    except IntegrityError:
+        produit = _lire()
+        if produit is None:
+            raise
+        return produit
 
 
 def ajouter_lignes_frais_refactures(*, facture, lignes, user=None):
