@@ -1,4 +1,4 @@
-﻿# Rebase 2026-08-25 (L-2OPT) : les entrees `apps/ventes/models.py` au-dela
+# Rebase 2026-08-25 (L-2OPT) : les entrees `apps/ventes/models.py` au-dela
 # de la ligne 501 sont decalees de +30 -- LigneDevis.variante (champ +
 # choices + docstring) insere DANS LigneDevis. Memes FK, aucun NOUVEAU
 # CASCADE (ceux du chantier portent leur commentaire inline).
@@ -2326,9 +2326,9 @@ backend/django_core/apps/ventes/models.py:1105
 backend/django_core/apps/ventes/models.py:1130
 backend/django_core/apps/ventes/models.py:1124
 backend/django_core/apps/ventes/models.py:1186
-backend/django_core/apps/ventes/models.py:1201
+backend/django_core/apps/ventes/models.py:1298
 backend/django_core/apps/ventes/models.py:1204
-backend/django_core/apps/ventes/models.py:1244
+backend/django_core/apps/ventes/models.py:1341
 backend/django_core/apps/ventes/models.py:1261
 backend/django_core/apps/ventes/models.py:1252
 backend/django_core/apps/ventes/models.py:1267
@@ -2370,7 +2370,7 @@ backend/django_core/apps/ventes/models.py:1850
 backend/django_core/apps/ventes/models.py:1853
 backend/django_core/apps/ventes/models.py:1871
 backend/django_core/apps/ventes/models.py:1864
-backend/django_core/apps/ventes/models.py:1946
+backend/django_core/apps/ventes/models.py:2043
 backend/django_core/apps/ventes/models.py:1914
 backend/django_core/apps/ventes/models.py:1923
 backend/django_core/apps/ventes/models.py:1910

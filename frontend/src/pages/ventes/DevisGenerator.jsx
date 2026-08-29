@@ -2904,7 +2904,7 @@ export default function DevisGenerator({
   // rien retapé serait exactement la perte que cette tâche referme. Une clé
   // que l'écran ne connaît pas est simplement ABSENTE du corps — la fusion la
   // laisse alors intacte, bit à bit.
-  // QF7 / QJR66 — LES CHOIX DU COMMERCIAL, tous marchés. Repris de l'ancien
+  // QF7 / QJR66 — LES CHOIX DU COMMERCIAL, tous marchés. L'ancien
   // `buildEtudeParamsChoice`, à la sémantique près : le scénario et l'option
   // recommandée AFFICHÉS À L'ÉCRAN sont persistés pour TOUS les modes
   // (résidentiel / industriel / commercial / agricole), pas seulement quand
