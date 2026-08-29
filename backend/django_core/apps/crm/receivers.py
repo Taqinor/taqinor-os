@@ -53,7 +53,21 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     sur ``montant_commission_du`` et passe le deal à À_PAYER. Émet
     ``deal_commission_due`` (core.events) pour un futur consommateur compta —
     jamais d'écriture comptable automatique ici (frontière compta respectée).
+
+    QJR22 — Décision fondateur D3 (29/08/2026) : la commission est un
+    pourcentage du total NET de l'OPTION ACCEPTÉE, jamais du total BRUT ni,
+    sur un devis à deux options, de la somme des deux (un montant qui ne
+    correspond à aucune vente réelle). ``devis.option_acceptee`` est déjà
+    posé quand ce signal se déclenche (``services.accept_devis`` l'écrit en
+    base avant d'émettre ``devis_accepted``) : on route donc sur la chaîne
+    canonique par option (``apps.ventes.utils.options.option_totaux``, la
+    même que l'échéancier/bon de commande) plutôt que sur ``devis.total_ht``
+    (brut, toutes lignes, aucune option). Cross-app : lecture via un
+    utilitaire de ``ventes`` (pas d'import de ``models``), comme le reste de
+    ce fichier.
     """
+    from apps.ventes.utils.options import option_totaux
+
     from .models import DealEnregistre
 
     if devis.lead_id is None:
@@ -68,7 +82,8 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     if not taux:
         return
     try:
-        montant = (devis.total_ht * taux) / 100
+        total_net_option = option_totaux(devis)['ht']
+        montant = (total_net_option * taux) / 100
     except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis
         logger.exception('NTCRM22 — échec calcul commission deal %s', deal.pk)
         return
