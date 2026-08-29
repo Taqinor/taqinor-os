@@ -5277,10 +5277,20 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
 
     Contrairement à ``rafraichir_etude_horaire_devis``, aucune donnée de
     LIGNES n'entre dans ce calcul (le tableau balaye TOUTES les tailles
-    candidates, il ne lit pas la composition posée) : ``force`` n'a donc de
-    sens ici que pour forcer un recalcul après un changement de profil
-    (factures/occupation/équipements) — inchangé sinon, on ne recalcule pas à
-    chaque sauvegarde de devis pour un profil qui n'a pas bougé.
+    candidates, il ne lit pas la composition posée).
+
+    QJR43 — L'EMPREINTE DES ENTRÉES DÉCIDE, PLUS LA PRÉSENCE DE LA CLÉ. Le
+    bloc rangé porte ``_empreinte`` (``domain.entrees.empreinte_entrees``) et
+    n'est recalculé QUE si l'empreinte des entrées d'aujourd'hui en diffère.
+    Avant, le test était ``'dimensionnement' in etude_params`` : corriger la
+    facture d'hiver, l'occupation ou les équipements du lead ne périmait RIEN,
+    et le tableau servi restait celui de la toute première lecture. Un bloc
+    SANS ``_empreinte`` (tout devis antérieur à QJR43) est traité comme PÉRIMÉ
+    — un recalcul, une seule fois, par devis existant.
+
+    ``force`` reste accepté et signifie désormais « recalcule même si
+    l'empreinte concorde » ; il devient inutile sur les chemins qui ne
+    changeaient que la composition (QJR47 les retire un par un).
 
     Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux
     (règle #4). ``None`` (⇒ clé ABSENTE) quand le profil n'est pas
@@ -5288,14 +5298,20 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
     localisation non résolue) — jamais un tableau inventé.
     """
     try:
-        # P2-A — LECTURE UNIQUE des entrées (voir
-        # ``entrees_dimensionnement_du_devis``) : l'échelle de paliers batterie
-        # part exactement des mêmes.
-        garde = entrees_dimensionnement_du_devis(devis, contexte=False)
-        if garde is None:
+        from apps.ventes.domain.entrees import empreinte_entrees
+
+        # P2-A / QJR42 — LECTURE UNIQUE des entrées : l'échelle de paliers
+        # batterie part exactement des mêmes. Elle est faite AVEC contexte
+        # parce que l'empreinte a besoin de la localisation, de l'occupation
+        # et des équipements — c'est le prix (une lecture, pas un balayage)
+        # d'un cache qui se périme vraiment, et il remplace les DEUX lectures
+        # que faisait l'ancien chemin quand il recalculait.
+        entrees = entrees_dimensionnement_du_devis(devis)
+        if entrees is None:
             return None
-        etude_params = garde['etude_params']
-        if not garde['conso_kwh_mensuelles']:
+        etude_params = entrees['etude_params']
+        conso = entrees['conso_kwh_mensuelles']
+        if not conso:
             if not force and 'dimensionnement' not in etude_params:
                 return None
             etude = dict(etude_params)
@@ -5304,13 +5320,11 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             devis.save(update_fields=['etude_params'])
             return None
 
-        if not force and 'dimensionnement' in etude_params:
-            return etude_params['dimensionnement']
-
-        # On RECALCULE : c'est le seul chemin qui a besoin du contexte
-        # (localisation, occupation, équipements).
-        entrees = entrees_dimensionnement_du_devis(devis)
-        conso = entrees['conso_kwh_mensuelles']
+        empreinte = empreinte_entrees(entrees)
+        bloc = etude_params.get('dimensionnement')
+        if (not force and isinstance(bloc, dict)
+                and bloc.get('_empreinte') == empreinte):
+            return bloc
 
         from apps.ventes.dimensionnement import recommander_taille
         resultat = recommander_taille(
@@ -5319,6 +5333,7 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             occupation=entrees['occupation'],
             equipements=entrees['equipements'],
             source_conso=entrees['source_conso'])
+        resultat['_empreinte'] = empreinte
 
         etude = dict(etude_params)
         etude['dimensionnement'] = resultat

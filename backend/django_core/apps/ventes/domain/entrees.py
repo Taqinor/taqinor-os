@@ -23,9 +23,23 @@ déplacement ne change alors AUCUN appelant, ce qui est exactement ce qu'exige
 la règle « une tâche déplace OU corrige, jamais les deux ».
 """
 from dataclasses import dataclass, fields as _champs_dataclass
+import hashlib
+import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+#: QJR43 — VERSION DU MOTEUR D'ENTRÉES. Entre dans l'empreinte : la bouger
+#: périme TOUS les blocs rangés (un recalcul, une fois, par devis). C'est le
+#: seul levier pour invalider un cache après un changement de RÈGLE (une
+#: silhouette d'occupation retouchée, une couche d'équipement corrigée) que
+#: les entrées elles-mêmes ne reflètent pas.
+VERSION_MOTEUR_ENTREES = 'qjr43-1'
+
+#: Précision retenue pour la localisation : 4 décimales ≈ 11 m. Au-delà, deux
+#: relevés GPS du MÊME toit produiraient deux empreintes et feraient recalculer
+#: le tableau le plus lourd du parcours pour rien.
+_DECIMALES_GPS = 4
 
 
 @dataclass(frozen=True)
@@ -211,3 +225,88 @@ def entrees_depuis_lead(lead, company, *, contexte=True):
         lon=getattr(lead, 'gps_lng', None),
         occupation=occupation,
         equipements=composer_equipements(equipements_pour_lead(lead)))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# QJR43 — L'EMPREINTE DES ENTRÉES
+# ════════════════════════════════════════════════════════════════════════════
+# CE QU'ELLE REMPLACE. Le bloc le plus lourd du parcours
+# (``etude_params['dimensionnement']`` : un balayage de toutes les tailles
+# candidates, chacune composant le catalogue et simulant douze jours types)
+# était mis en cache sur la simple PRÉSENCE de sa clé. RIEN ne l'invalidait :
+# le commercial pouvait corriger la facture d'hiver, l'occupation ou les
+# équipements du lead, le tableau servi restait celui de la première lecture.
+# L'empreinte fait exactement l'inverse : elle recalcule SI ET SEULEMENT SI une
+# entrée a bougé.
+
+
+def _arrondi(valeur, decimales):
+    """Un nombre arrondi, ou ``None`` — jamais une exception sur une saisie."""
+    if valeur is None or valeur == '':
+        return None
+    try:
+        return round(float(valeur), decimales)
+    except (TypeError, ValueError):
+        return None
+
+
+def _serie_arrondie(serie, decimales=3):
+    """Une série de nombres arrondis (le bruit flottant ne périme rien)."""
+    if serie is None:
+        return None
+    if isinstance(serie, (list, tuple)):
+        return [_arrondi(v, decimales) for v in serie]
+    return _arrondi(serie, decimales)
+
+
+def _texte(valeur):
+    """Un texte normalisé (casse/espaces), ou ``None``."""
+    if valeur is None:
+        return None
+    texte = str(valeur).strip().lower()
+    return texte or None
+
+
+def empreinte_entrees(e):
+    """QJR43 — l'empreinte SHA-256 des entrées du moteur pour cette fiche.
+
+    CE QUI Y ENTRE, et rien d'autre : la consommation mensuelle, sa source, la
+    localisation (ville normalisée, lat/lon arrondis à ``_DECIMALES_GPS``),
+    l'occupation, les couches d'équipement, l'identité tarifaire
+    (``tranches`` + ``charges_fixes_mad``), le ``jour_reference`` et
+    :data:`VERSION_MOTEUR_ENTREES`.
+
+    POURQUOI LES COUCHES D'ÉQUIPEMENT PLUTÔT QUE LES 15 CHAMPS BRUTS. Les 15
+    champs du lead (``crm.selectors.equipements_pour_lead``) ne franchissent le
+    moteur que sous la forme composée par ``courbes_journalieres`` — une
+    piscine déclarée SANS puissance de pompe ne produit aucune couche et ne
+    change donc AUCUN chiffre. Empreindre les couches, c'est empreindre
+    exactement ce que le moteur consomme : ni un recalcul de moins (toute
+    grandeur réelle qui bouge change sa couche), ni un recalcul de trop.
+
+    NE FAIT PAS ENTRER ``mode`` / ``etude_params`` : ce sont des champs de
+    contexte du chemin devis, pas des entrées du moteur (``etude_params``
+    contient d'ailleurs le bloc que cette empreinte estampille — l'y inclure
+    créerait une dépendance circulaire).
+
+    Rend un texte hexadécimal stable entre deux processus (``json.dumps``
+    trié, séparateurs figés) : deux serveurs ne peuvent pas se contredire.
+    """
+    charge = {
+        'version': VERSION_MOTEUR_ENTREES,
+        'conso_kwh_mensuelles': _serie_arrondie(
+            getattr(e, 'conso_kwh_mensuelles', None)),
+        'source_conso': _texte(getattr(e, 'source_conso', None)),
+        'ville': _texte(getattr(e, 'ville', None)),
+        'lat': _arrondi(getattr(e, 'lat', None), _DECIMALES_GPS),
+        'lon': _arrondi(getattr(e, 'lon', None), _DECIMALES_GPS),
+        'occupation': _texte(getattr(e, 'occupation', None)),
+        'equipements': getattr(e, 'equipements', None) or {},
+        'tranches': getattr(e, 'tranches', None),
+        'charges_fixes_mad': _arrondi(
+            getattr(e, 'charges_fixes_mad', None), 2),
+        'jour_reference': _texte(getattr(e, 'jour_reference', None)),
+    }
+    canonique = json.dumps(charge, sort_keys=True, separators=(',', ':'),
+                           default=str, ensure_ascii=False)
+    return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
