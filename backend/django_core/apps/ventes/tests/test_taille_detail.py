@@ -62,6 +62,17 @@ BLOC = {
 }
 
 
+def _bloc_prix(prix_ttc):
+    """Le MÊME bloc, au ``prix_ttc`` près sur la carte « Éco / sans ».
+
+    Sert à prouver qu'un second appel RE-DÉRIVE au lieu de resservir le cache :
+    si la clé n'avait pas bougé, la réponse porterait encore l'ancien prix.
+    """
+    eco = dict(BLOC['offres'][0],
+               sans=dict(BLOC['offres'][0]['sans'], prix_ttc=prix_ttc))
+    return dict(BLOC, offres=[eco, BLOC['offres'][1]])
+
+
 def _etude(economie_sans=800.0, economie_avec=1200.0, mois=12):
     return {'mois': [{'economie_sans_mad': economie_sans,
                       'economie_avec_mad': economie_avec}
@@ -271,6 +282,20 @@ class CacheTests(SimpleTestCase):
                          'sans'),
             td.cle_cache(self._lien(sections={'taille_eco': True}), 'eco',
                          'sans'))
+
+    def test_des_lignes_ILLISIBLES_degradent_sans_casser(self):
+        """QJR56 — sans devis lisible, la clé reste une clé (constante).
+
+        Le repli est une CONSTANTE, jamais un aléa : la clé doit être la même
+        entre le ``cache.get`` et le ``cache.set`` du même appel, sinon chaque
+        lecture écrirait une entrée que personne ne relira.
+        """
+        self.assertEqual(td._empreinte_lignes(None), td._LIGNES_ILLISIBLES)
+        self.assertEqual(td._empreinte_lignes(SimpleNamespace()),
+                         td._LIGNES_ILLISIBLES)
+        # …et ``cle_cache`` traverse ce cas sans lever (les fixtures sans base
+        # de cette classe en dépendent).
+        self.assertTrue(td.cle_cache(self._lien(), 'eco', 'sans'))
 
 
 class ContratTests(SimpleTestCase):
@@ -486,6 +511,57 @@ class EndpointTests(_Base):
         for interdit in ('prix_achat', 'revendeur', 'marge'):
             self.assertNotIn(interdit, brut)
 
+    def test_EDITER_UNE_LIGNE_change_le_PRIX_servi_AUSSITOT(self):
+        """QJR56 (origine QB47) — LE PRIX PÉRIMÉ QUE LE CACHE SERVAIT.
+
+        Le ``prix_ttc`` des cartes Éco/Max porte le facteur de remise RÉEL du
+        devis, lu sur ses LIGNES. Or éditer une ligne ne pousse NI
+        ``offres_tailles_config`` NI ``updated_at`` — les deux seules entrées
+        que la clé de cache portait. Un vendeur qui corrigeait un prix laissait
+        donc son client lire l'ancien pendant un quart d'heure, juste à côté de
+        chiffres d'en-tête, eux, fraîchement dérivés.
+
+        Le test exige le prix NEUF au deuxième appel, ET prouve la prémisse au
+        passage : sans elle, il passerait pour la mauvaise raison.
+        """
+        devis = self._devis('det-ligne')
+        lien = self._lien(devis)
+        premier = self._appel(lien.token, 'eco')
+        self.assertEqual(premier.status_code, 200)
+        self.assertEqual(premier.json()['carte']['prix_ttc'], 52800.0)
+
+        colonnes = ('updated_at', 'offres_tailles_config')
+        avant = Devis.objects.values(*colonnes).get(pk=devis.pk)
+        ligne = devis.lignes.order_by('pk').first()
+        ligne.prix_unitaire = Decimal('1300.00')
+        ligne.save(update_fields=['prix_unitaire'])
+        # LA PRÉMISSE, PROUVÉE ET PAS SUPPOSÉE : l'ancienne empreinte n'aurait
+        # PAS bougé, donc c'est bien la signature des lignes qui invalide.
+        self.assertEqual(Devis.objects.values(*colonnes).get(pk=devis.pk),
+                         avant)
+
+        second = self._appel(lien.token, 'eco', bloc=_bloc_prix(61000.0))
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()['carte']['prix_ttc'], 61000.0)
+
+    def test_SANS_edition_le_cache_repond_encore(self):
+        """Témoin — la correction ne doit pas rendre le cache inutile.
+
+        Deuxième appel avec un bloc DIFFÉRENT alors que RIEN n'a bougé : la
+        réponse doit rester celle du premier (donc venir du cache). C'est ce
+        témoin qui distingue « la clé bouge quand il faut » de « la clé bouge
+        tout le temps ».
+        """
+        devis = self._devis('det-temoin')
+        lien = self._lien(devis)
+        self.assertEqual(
+            self._appel(lien.token, 'eco').json()['carte']['prix_ttc'],
+            52800.0)
+        self.assertEqual(
+            self._appel(lien.token, 'eco',
+                        bloc=_bloc_prix(61000.0)).json()['carte']['prix_ttc'],
+            52800.0)
+
     def test_le_jeton_d_une_AUTRE_societe_ne_donne_rien(self):
         # Multi-tenant : le jeton borne un seul devis d'une seule société ; un
         # jeton de la société A ne peut pas nommer une taille de la société B.
@@ -494,6 +570,51 @@ class EndpointTests(_Base):
         resp = self._appel(a.token, 'eco')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['carte']['nb_panneaux'], 10)
+
+
+class CacheLignesTests(_Base):
+    """QJR56 — la signature des LIGNES, sur de VRAIES lignes.
+
+    ``LigneDevis`` ne porte AUCUN horodatage (ni ``updated_at`` ni
+    ``created_at``) : la signature est donc celle du CONTENU des colonnes qui
+    décident un chiffre servi, jamais une date. Ces tests portent sur la clé
+    elle-même ; le prix RÉELLEMENT servi, lui, est prouvé côté endpoint.
+    """
+
+    def test_un_devis_INCHANGE_garde_sa_cle(self):
+        """Témoin — et preuve que la lecture est DÉTERMINISTE.
+
+        La signature vient d'une requête : sans ``order_by('pk')``, deux
+        lectures du même devis pourraient rendre les lignes dans deux ordres et
+        la clé vibrerait toute seule — un cache qui ne sert jamais.
+        """
+        lien = self._lien(self._devis('cle-temoin'))
+        self.assertEqual(td.cle_cache(lien, 'eco', 'sans'),
+                         td.cle_cache(lien, 'eco', 'sans'))
+
+    def test_EDITER_le_prix_d_une_ligne_bouge_la_cle(self):
+        lien = self._lien(self._devis('cle-prix'))
+        avant = td.cle_cache(lien, 'eco', 'sans')
+        ligne = lien.devis.lignes.order_by('pk').first()
+        ligne.prix_unitaire = Decimal('1300.00')
+        ligne.save(update_fields=['prix_unitaire'])
+        self.assertNotEqual(avant, td.cle_cache(lien, 'eco', 'sans'))
+
+    def test_EDITER_la_quantite_d_une_ligne_bouge_la_cle(self):
+        lien = self._lien(self._devis('cle-qte'))
+        avant = td.cle_cache(lien, 'eco', 'sans')
+        ligne = lien.devis.lignes.order_by('pk').first()
+        ligne.quantite = Decimal('20')
+        ligne.save(update_fields=['quantite'])
+        self.assertNotEqual(avant, td.cle_cache(lien, 'eco', 'sans'))
+
+    def test_SUPPRIMER_une_ligne_bouge_la_cle(self):
+        # Le ``pk`` est dans la signature exprès : un retrait se voit même
+        # quand les montants restants se compensent par hasard.
+        lien = self._lien(self._devis('cle-suppr'))
+        avant = td.cle_cache(lien, 'eco', 'sans')
+        lien.devis.lignes.order_by('pk').last().delete()
+        self.assertNotEqual(avant, td.cle_cache(lien, 'eco', 'sans'))
 
 
 class PreparationTests(_Base):
