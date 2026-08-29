@@ -1866,11 +1866,22 @@ export default function DevisGenerator({
       const rend = parseFloat(data?.rendement_global)
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
+      // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
+      // CompanyProfileSerializer, fields='__all__') : ce setQuoteLogic
+      // RECONSTRUIT l'objet entier (repli des 4 champs ci-dessus, historique),
+      // ce qui EFFAÇAIT silencieusement le `productible: null` de l'état
+      // initial et rendait le réglage société mort à l'écran — le générateur
+      // et le PDF citaient alors deux productibles différents pour le même
+      // devis. Repli EXPLICITE sur `null` (jamais une constante d'écran) :
+      // `productibleForCity` (solar.js) sait déjà retomber sur le PVGIS par
+      // ville quand aucune surcharge société réelle n'existe.
+      const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
         efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
+        productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
       if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
