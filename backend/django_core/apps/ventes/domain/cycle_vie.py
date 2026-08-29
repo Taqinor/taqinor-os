@@ -1393,14 +1393,63 @@ def mark_devis_sent(*, devis, user=None):
     return devis
 
 
+# ── QJR76 : la garde d'envoi et le courriel fournisseur ─────────────────────
+# `verifier_devis_envoyable` garde `mark_devis_sent` (plus haut) — ce module
+# l'importait par un pont. `log_supplier_email` est l'autre envoi de document
+# du domaine : il rejoint les e-mails d'acceptation et les OTP.
+def log_supplier_email(
+        *, company, to_email, sujet, corps, attachment=None,
+        attachment_name=None, reference='', user=None):
+    """QS3 — Envoie un email FOURNISSEUR (PDF joint) et le consigne dans EmailLog.
+
+    Point d'entrée cross-app pour ``stock`` (qui n'importe pas ``ventes.models``
+    ni ``ventes.email_service``). Le fil EmailLog n'a pas de FK fournisseur : on
+    consigne company + destinataire + référence (client/devis/facture restent
+    nuls). NO-OP réseau sans clé configurée (backend console) — l'entrée est tout
+    de même écrite. Renvoie ``(ok, log)``."""
+    from apps.ventes.models import EmailLog
+    from apps.ventes.email_service import _send, _from_email
+    dest = (to_email or '').strip()
+    log = EmailLog(
+        company=company,
+        direction=EmailLog.Direction.SORTANT,
+        to_email=dest[:254], from_email=_from_email(),
+        sujet=(sujet or '')[:300], corps=corps or '',
+        reference=(reference or '')[:80],
+        piece_jointe=(attachment_name or '')[:255],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return False, log
+    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return ok, log
+
+
+def verifier_devis_envoyable(devis):
+    """NTCPQ7 — lève ``ValidationError`` si une étape d'approbation de remise
+    est encore ``en_attente`` (blocage envoi/génération PDF).
+
+    Lecture cross-app cpq via import LOCAL (aucun cycle au niveau module).
+    Aucune étape en attente ⇒ ne lève rien (comportement inchangé)."""
+    from rest_framework.exceptions import ValidationError
+    from apps.cpq.selectors import premiere_etape_en_attente
+    etape = premiere_etape_en_attente(devis)
+    if etape is not None:
+        raise ValidationError({'statut': (
+            f"Approbation de remise en attente (étape {etape.niveau}) : "
+            "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
+
+
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER (voir la docstring) : ils s'exécutent après toutes
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
 # lire un module à moitié construit. Chacun vise le module qui PORTE le corps —
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
 from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
-# Encore dans `services.py` : les deux partent au rangement final (QJR76).
-from apps.ventes.services import (  # noqa: E402,F401
-    prix_applicable,
-    verifier_devis_envoyable,
-)
+from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401

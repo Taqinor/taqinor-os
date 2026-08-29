@@ -754,6 +754,38 @@ def resume_devis_depuis_bordereau(devis):
     }
 
 
+# ── QJR76 : la CONCEPTION électrique rejoint le bordereau qu'elle produit ────
+# `concevoir_electrique_du_devis` (PV41) écrit `devis.electrical_design`, dont
+# le bloc `bom` est exactement ce que lit `ajouter_lignes_boq_electrique`
+# (PV47, plus haut). Les deux moitiés de la même chaîne vivent désormais dans
+# le même module.
+def concevoir_electrique_du_devis(devis, *, origine=''):
+    """PV42 — enchaîne la conception ÉLECTRIQUE derrière le calepinage, SANS
+    jamais pouvoir casser le devis.
+
+    Le calepinage vient d'être rangé dans ``roof_layout`` : ses pans
+    (``_pans_geometry``) sont exactement ce que ``electrical_service`` attend
+    pour composer UN GROUPE DE CHAÎNES PAR PAN — deux orientations ne partagent
+    jamais une entrée MPPT (le moteur PV34 le refuse structurellement).
+
+    **Meilleur effort, et c'est structurel** : une panne d'étude électrique est
+    une pièce technique manquante, jamais une création (ou une resynchro) de
+    devis perdue. Toute exception est journalisée et avalée, et la fonction rend
+    ``None``. Elle n'écrit que ``electrical_design``/``electrical_design_hash``
+    (règle #4 : aucun statut, aucune ligne, aucun prix).
+    """
+    try:
+        from apps.ventes import electrical_service
+        return electrical_service.build_electrical_design(devis)
+    except Exception:
+        logger.warning(
+            'PV42: conception électrique indisponible pour le devis %s (%s) — '
+            'le devis est intact, la pièce technique sera recalculée à la '
+            'demande', getattr(devis, 'reference', '?'), origine or 'layout',
+            exc_info=True)
+        return None
+
+
 # ── PONT M3 : nom hébergé ailleurs ───────────────────────────────────────────
 # Import EN BAS DE FICHIER (voir la docstring) : il s'exécute après toutes les
 # définitions de ce module, donc ``services.py`` peut le ré-exporter sans jamais

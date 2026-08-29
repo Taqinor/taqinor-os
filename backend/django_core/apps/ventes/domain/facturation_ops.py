@@ -701,8 +701,21 @@ def generer_facture_intervention(*, intervention, user):
     return facture
 
 
-# ── PONT M3 : noms encore hébergés par ``services.py`` ───────────────────────
-# Import EN BAS DE FICHIER (voir la docstring). ``_add_months`` est une
-# arithmétique de date locale à ventes, qui n'appartient à aucun des domaines
-# extraits : elle reste dans ``services.py`` jusqu'au rangement final (QJR76).
-from apps.ventes.services import _add_months  # noqa: E402,F401
+# ── QJR76 : l'arithmétique de date rejoint son SEUL lecteur ─────────────────
+# `_add_months` sert uniquement `calculer_date_echeance` (plus haut) : ce
+# module l'importait par un pont, qui disparaît avec ce déplacement.
+def _add_months(d, months):
+    """YSUBS9 — `d` décalée de `months` mois (jour recadré fin de mois).
+
+    Fonction pure stdlib (pas de dépendance ajoutée), même calcul que
+    `apps.sav.dateutils.add_months` mais gardée locale pour ne pas coupler
+    `ventes` à `sav` pour une simple arithmétique de date."""
+    if d is None or months is None:
+        return None
+    import calendar
+    total = d.month - 1 + int(months)
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    from datetime import date
+    return date(year, month, day)

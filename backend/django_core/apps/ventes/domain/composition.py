@@ -1497,6 +1497,4 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
 )
-# Encore dans `services.py` : `SyncLayoutError` part au rangement final
-# (QJR76) — cet import suivra alors SON module.
-from apps.ventes.services import SyncLayoutError  # noqa: E402,F401
+from apps.ventes.domain.resynchronisation import SyncLayoutError  # noqa: E402,F401

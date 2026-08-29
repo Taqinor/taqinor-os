@@ -421,7 +421,70 @@ def refresh_marge_snapshot(devis):
                        getattr(devis, 'reference', '?'), exc)
 
 
-# ── PONT M3 : nom encore hébergé par ``services.py`` ─────────────────────────
-# Import EN BAS DE FICHIER. `entrees_dimensionnement_du_devis` part au
-# rangement final (QJR76) — cet import suivra alors SON module.
-from apps.ventes.services import entrees_dimensionnement_du_devis  # noqa: E402,F401
+# ── QJR76 : les ENTRÉES des études, et le prédicat de profil réel ───────────
+# `entrees_dimensionnement_du_devis` alimente `rafraichir_dimensionnement_devis`
+# (plus haut) : il vivait dans `services.py`, ce module l'importait par un pont.
+# `profil_reel_existe` arrive ici SANS être supprimé — sa suppression est
+# QJR107 (R4-C.5), et ce commit ne fait que déplacer.
+def profil_reel_existe(lead):
+    """CJ2a — le lead porte-t-il un PROFIL réel, et non juste une facture ?
+
+    « Profil » = ce que le script d'appel a réellement recueilli et qui change
+    la forme de la consommation heure par heure :
+
+    * la présence en journée (``occupation_jour``) — le signal le plus fort :
+      à facture égale, un foyer présent en journée autoconsomme presque le
+      double d'un foyer absent ;
+    * un équipement déclaré AVEC sa grandeur (piscine + kW, clim + pièces, VE +
+      km/semaine) — les seules couches que le moteur sait composer ;
+    * douze factures mensuelles réelles saisies sur le devis.
+
+    NE CONDITIONNE PLUS AUCUN DIMENSIONNEMENT (ordre fondateur du 29/08/2026 :
+    « ALL sizing should go through the new sizing tool »). Cette fonction était
+    la porte du chemin horaire dans ``build_devis_auto`` ; elle n'y est plus
+    appelée, car un lead SANS profil se dimensionne désormais lui aussi par le
+    moteur (facture d'hiver inversée au barème ONEE + silhouette du DÉFAUT
+    RÉSIDENTIEL FONDATEUR ``courbes_journalieres.DEFAUT_RESIDENTIEL``, QJR10 /
+    D4), et non plus par la règle des 900 DH/mois — qui n'existe plus.
+
+    Elle reste EXPOSÉE comme lecture de qualité de fiche (« ce lead porte-t-il
+    autre chose qu'une facture ? »), utile pour nuancer un affichage ou
+    relancer un commercial, jamais pour décider d'une taille.
+    """
+    if lead is None:
+        return False
+    if getattr(lead, 'occupation_jour', None) in ('present', 'absent', 'partiel'):
+        return True
+    couples = (
+        ('equip_piscine', 'equip_piscine_pompe_kw'),
+        ('equip_clim', 'equip_clim_pieces'),
+        ('equip_voiture_electrique', 'equip_ve_km_semaine'),
+    )
+    for drapeau, grandeur in couples:
+        if getattr(lead, drapeau, None) is True:
+            valeur = getattr(lead, grandeur, None)
+            if valeur not in (None, ''):
+                try:
+                    if float(valeur) > 0:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+    return False
+
+
+def entrees_dimensionnement_du_devis(devis, *, contexte=True):
+    """RÉ-EXPORT (QJR42) de ``apps.ventes.domain.entrees.entrees_depuis_devis``.
+
+    Le corps a été DÉPLACÉ TEL QUEL dans ``domain/entrees.py``, où il partage
+    désormais sa forme (:class:`~apps.ventes.domain.entrees.EntreesMoteur`)
+    avec l'adaptateur LEAD du chemin auto-devis / tunnel. Ce nom reste ici
+    parce que trois modules l'importent depuis ``services``
+    (``dimensionnement``, ``offres_tailles``, et ce module) — le pin
+    ``tests/test_services_surface.py`` le vérifie.
+
+    ``contexte=False`` est CONSERVÉ : il saute les lectures de localisation /
+    occupation / équipements pour l'appelant qui n'a besoin que de la GARDE
+    (voir la docstring de l'original).
+    """
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+    return entrees_depuis_devis(devis, contexte=contexte)
