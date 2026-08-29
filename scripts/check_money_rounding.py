@@ -96,12 +96,21 @@ BASELINE_ALLOWLIST = {
     # par ce lot.
     "backend/django_core/apps/ventes/services.py:1151",
     "backend/django_core/apps/ventes/services.py:1154",
-    "backend/django_core/apps/ventes/services.py:4011",  # recale 29/08 (edits cible_exacte, meme formule kWc)
-    "backend/django_core/apps/ventes/services.py:4153",  # recale 29/08 (idem)
+    # Recale QJR (29/08/2026, vague M1) : QJR33 a allonge le docstring de
+    # `cible_depuis_lignes` et QJR20 a ajoute
+    # `_resynchroniser_instance_appelante` AVANT ces sites -- decalage pur, +53
+    # lignes. Verifie par CONTENU contre origin/main : les deux lignes sont
+    # BYTE-IDENTIQUES a 4011/4153 d'avant le lot (memes
+    # `round(total_panneaux * watt / 1000.0, 3)`). Aucun round() nouveau.
+    "backend/django_core/apps/ventes/services.py:4064",  # recale 29/08 (edits cible_exacte, meme formule kWc)
+    "backend/django_core/apps/ventes/services.py:4206",  # recale 29/08 (idem)
     # BATHOMO (26/08/2026, revu en fold) — clé de COMPARAISON des candidates de
     # banc batterie (le moins cher gagne) ; la valeur arrondie n'est jamais
     # servie ni stockée, le prix de ligne réel passe par la chaîne de pricing.
-    "backend/django_core/apps/ventes/services.py:2756",
+    # Recale QJR (29/08/2026) : +19 lignes (docstring QJR33 en amont). Verifie
+    # par CONTENU contre origin/main:2756 -- `return (round(prix_ttc, 2), n,
+    # calibre, produit)`, byte-identique.
+    "backend/django_core/apps/ventes/services.py:2775",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa Ã—N (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
