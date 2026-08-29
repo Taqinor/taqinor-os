@@ -24,6 +24,28 @@ def _qty_par_designation(items):
     return out
 
 
+def _identite_par_designation(items):
+    """{désignation: (quantité TOTALE, prix unitaires HT triés)}.
+
+    QJR29 — L'IDENTITÉ DE FACTURATION D'UNE LIGNE INCLUT SON PRIX. La quantité
+    seule ne suffit pas : une même désignation, en même quantité, mais
+    FACTURÉE À DEUX PRIX différents d'une option à l'autre n'est pas la même
+    ligne. ``prix_unit_ht`` porte DÉJÀ la remise de ligne (voir
+    ``builder._line_to_item`` : ``pu × (1 − remise/100)``), donc ce seul
+    nombre couvre le prix ET la remise.
+    """
+    qtes = _qty_par_designation(items)
+    prix = {}
+    for it in items:
+        try:
+            p = round(float(it.get("prix_unit_ht") or 0), 2)
+        except (TypeError, ValueError):
+            p = 0.0
+        prix.setdefault(it["designation"], []).append(p)
+    return {nom: (qtes[nom], tuple(sorted(prix.get(nom, ()))))
+            for nom in qtes}
+
+
 def _split_items(sans_items, avec_items):
     """Partition lines by designation AND quantity across the two options.
 
@@ -39,11 +61,19 @@ def _split_items(sans_items, avec_items):
     qu'UNE quantité — celle du côté sans — pour les deux options : le client
     lisait 22 panneaux sur une option qui en compte 26.
 
-    Quantités égales ⇒ ``shared``, exactement comme avant (tout devis dont
-    aucune ligne ne porte de variante est rendu au bit près).
+    QJR29 — LE PRIX FAIT PARTIE DE L'IDENTITÉ. Le découpage ignorait le prix
+    unitaire : une ligne facturée à DEUX PRIX différents dans les deux
+    variantes était déclarée « commune » et imprimée UNE fois, au prix du côté
+    SANS, pendant que le total de l'option 2 était calculé avec le prix AVEC —
+    le tableau de la page 2 ne se réconciliait plus avec un total que le client
+    peut additionner. Elle part désormais en delta de chaque option (puis
+    ``_pair_divergents`` en fait UNE ligne à deux valeurs, prix compris).
+
+    Quantités ET prix égaux ⇒ ``shared``, exactement comme avant (tout devis
+    dont aucune ligne ne porte de variante est rendu au bit près).
     """
-    sans_q = _qty_par_designation(sans_items)
-    avec_q = _qty_par_designation(avec_items)
+    sans_q = _identite_par_designation(sans_items)
+    avec_q = _identite_par_designation(avec_items)
     common = {n for n in (sans_q.keys() & avec_q.keys())
               if sans_q[n] == avec_q[n]}
 

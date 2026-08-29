@@ -1063,6 +1063,76 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('Consultez votre proposition interactive', html)
 
 
+class TestQjr29PrixDansLIdentiteDeLigne(SimpleTestCase):
+    """QJR29 — ``_split_items`` fusionnait deux lignes de PRIX différents.
+
+    L'appartenance au tableau « équipement commun » se jugeait sur la
+    désignation et la quantité SEULEMENT : une ligne facturée à deux prix
+    d'une option à l'autre était imprimée UNE fois, au prix du côté SANS,
+    pendant que le total de l'option 2 se calculait avec le prix AVEC.
+    """
+
+    @staticmethod
+    def _item(desig, q, pu, taux=20.0):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _jeu_divergent(self):
+        """Même désignation, MÊME quantité, deux prix : 400 sans / 450 avec."""
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 450)]
+        return sans, avec
+
+    def test_deux_prix_differents_ne_sont_plus_une_seule_ligne(self):
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual([it['designation'] for it in shared],
+                         ['Installation'])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_sans], [400.0])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_avec], [450.0])
+
+    def test_la_somme_des_lignes_imprimees_egale_le_total_de_chaque_option(self):
+        """LE TEST DE LA MISSION : ce que la page 2 imprime pour une option
+        s'additionne EXACTEMENT au total de cette option."""
+        from apps.ventes.quote_engine.residential.options import (
+            _pair_divergents, _split_items,
+        )
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        paires, seul_sans, seul_avec = _pair_divergents(delta_sans, delta_avec)
+
+        def _somme(rows):
+            return round(sum(it['prix_unit_ht'] * it['quantite']
+                             for it in rows), 2)
+
+        imprime_sans = _somme(shared + [s for s, _ in paires] + seul_sans)
+        imprime_avec = _somme(shared + [a for _, a in paires] + seul_avec)
+        self.assertEqual(imprime_sans, _somme(sans))
+        self.assertEqual(imprime_avec, _somme(avec))
+        # et les deux prix sont bien tous les deux imprimés (ligne appariée)
+        self.assertEqual(len(paires), 1)
+        self.assertEqual(paires[0][0]['prix_unit_ht'], 400.0)
+        self.assertEqual(paires[0][1]['prix_unit_ht'], 450.0)
+
+    def test_des_lignes_strictement_identiques_restent_communes(self):
+        """Non-régression : même désignation, même quantité, MÊME prix ⇒
+        tableau commun, exactement comme avant."""
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [dict(it) for it in sans]
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual(len(shared), 2)
+        self.assertEqual(delta_sans, [])
+        self.assertEqual(delta_avec, [])
+
+
 class TestQjr17PuissanceUnitaireIllisible(SimpleTestCase):
     """QJR17 (c)/(d) — une puissance unitaire ILLISIBLE (``None`` depuis M3,
     qui a supprimé le défaut catalogue 710 W) ne s'imprime pas et ne tue plus
