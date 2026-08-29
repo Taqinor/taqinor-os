@@ -1048,6 +1048,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     puissance_des_lignes = nb_panneaux > 0
     if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
+        # QJR63 — LE REGISTRE DE SURCHARGES PASSE DEVANT (décision fondateur
+        # D12). C'est le MÊME propriétaire que celui qui STOCKE la clé
+        # (``services.puissance_kwc_du_devis``) : sans cela le rendu et la
+        # donnée rangée pouvaient de nouveau diverger — le défaut même que
+        # cette tâche ferme. Aucun override posé ⇒ la dérivation des lignes,
+        # byte-identique à avant.
+        try:
+            from apps.ventes.domain.overrides import effectif as _effectif
+            _kwc_impose, _source_kwc = _effectif(devis, 'taille.kwc', None)
+            if _source_kwc != 'auto' and _kwc_impose:
+                puissance_kwc = round(float(_kwc_impose), 2)
+        except Exception:  # noqa: BLE001 — un registre illisible ne casse
+            # jamais un PDF : on garde la dérivation des lignes.
+            pass
     else:
         # M3 — des panneaux comptés mais aucune puissance unitaire LUE : le
         # compte reste vrai, le kWc devient inconnu. « 14 panneaux », sans

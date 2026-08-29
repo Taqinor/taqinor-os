@@ -195,9 +195,14 @@ SURFACE_PUBLIQUE = (
     "plafond_physique_du_contour",
     "planifier_devis_automatique_pour_lead",
     "planifier_resynchronisation_produit",
+    # QJR63 — l'UNIQUE propriétaire du kWc d'un devis : son écriture
+    # (``poser_puissance_kwc``, un cache estampillé) et sa lecture
+    # (``puissance_kwc_du_devis``, registre sinon dérivation PVUNI, plus bas).
+    "poser_puissance_kwc",
     "prix_applicable",
     "prix_forfait_ht",
     "profil_reel_existe",
+    "puissance_kwc_du_devis",
     "qr_svg_for_facture_pdf",
     "rafraichir_dimensionnement_devis",
     "rafraichir_etude_horaire",

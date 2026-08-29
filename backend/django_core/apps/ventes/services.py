@@ -3522,6 +3522,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         return devis
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
+    # QJR63 — LE kWc EST RE-POSÉ PAR SON PROPRIÉTAIRE, sur les LIGNES qui
+    # viennent d'être créées. Le kWc du calepinage 3D est celui de roofPro
+    # (720 W constants) ; le devis, lui, vend le panneau RÉEL (710 W sur
+    # DEV-202608-0007). Les stocker tous les deux mettait deux bases de
+    # puissance dans le même document — c'est exactement ce que PVUNI corrige
+    # au RENDU, et que la donnée STOCKÉE contredisait jusqu'ici.
+    poser_puissance_kwc(devis)
     # QX23be — fige la marge interne dès la création (manager-only).
     refresh_marge_snapshot(devis)
     # PV42 — la boucle se ferme ici : calepinage rangé → conception électrique
@@ -3859,6 +3866,82 @@ def _resynchroniser_instance_appelante(devis, verrou):
                        getattr(devis, 'pk', '?'), exc_info=True)
         return
     devis._prefetched_objects_cache = {}
+
+
+def puissance_kwc_du_devis(devis):
+    """QJR63 — LE kWc D'UN DEVIS. Une règle, un propriétaire, deux sources.
+
+    CE QUI ÉTAIT FAUX. ``etude_params['puissance_kwc']`` avait QUATRE
+    écrivains : ``build_devis_from_layout`` (depuis le layout),
+    ``sync_devis_from_layout`` (depuis le layout, MÊME quand la règle de
+    plafond de variante avait fait atterrir le devis sur un AUTRE compte),
+    ``build_devis_auto`` (depuis ``target_kwc`` / la taille souhaitée du lead),
+    et une RE-DÉRIVATION au rendu par ``quote_engine.builder`` (PVUNI, depuis
+    les LIGNES — qui recalibrait et gagnait). Le kWc STOCKÉ pouvait donc
+    décrire une installation NON VENDUE, et ``models.Devis.save`` le figeait
+    ensuite pour toujours dans ``prix_par_kwc``.
+
+    LA RÈGLE, désormais unique :
+
+    1. le REGISTRE de surcharges (décision fondateur D12) — ``taille.kwc`` s'il
+       est posé, sinon ``taille.nb_panneaux`` × le wattage RÉELLEMENT LU sur
+       les lignes ;
+    2. sinon la DÉRIVATION DEPUIS LES LIGNES —
+       ``quote_engine.builder.panneaux_et_watt_lu``, exactement celle de PVUNI
+       (« les lignes sont la source unique ») ; jamais une seconde dérivation.
+
+    ``None`` quand rien n'est lisible : aucun panneau, ou un compte sans
+    wattage. On n'invente pas un kWc à partir d'un wattage supposé (M3), et le
+    calepinage 3D n'est PAS une source ici — il modélise à 720 W constants,
+    ce n'est pas le panneau vendu.
+
+    LECTURE PURE (règle #4).
+    """
+    from apps.ventes.domain.overrides import effectif
+    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
+    lignes = [li for li in devis.lignes.select_related(
+        'produit', 'produit__fiche_technique').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit'
+        and not getattr(li, 'optionnelle', False)]
+    nb_lu, watt_lu = panneaux_et_watt_lu(lignes)
+    auto = (round(nb_lu * watt_lu / 1000, 2)
+            if nb_lu > 0 and watt_lu else None)
+
+    kwc_surcharge, source = effectif(devis, 'taille.kwc', None)
+    if source != 'auto' and kwc_surcharge:
+        try:
+            return round(float(kwc_surcharge), 2)
+        except (TypeError, ValueError):
+            pass
+    nb_surcharge, source_nb = effectif(devis, 'taille.nb_panneaux', None)
+    if source_nb != 'auto' and nb_surcharge and watt_lu:
+        try:
+            return round(int(nb_surcharge) * float(watt_lu) / 1000, 2)
+        except (TypeError, ValueError):
+            pass
+    return auto
+
+
+def poser_puissance_kwc(devis):
+    """QJR63 — L'UNIQUE ÉCRIVAIN de ``etude_params['puissance_kwc']``.
+
+    La clé devient un CACHE de :func:`puissance_kwc_du_devis` : elle n'est plus
+    une valeur d'origine différente selon le chemin qui l'a posée. Écrite par
+    l'écrivain unique d'``etude_params`` (QJR62), donc en fusion et sans
+    toucher ni statut, ni ligne, ni total (règle #4).
+
+    ``None`` (rien de lisible) RETIRE la clé — règle Z2 : mieux vaut une
+    absence qu'un kWc qui décrit une autre installation. Ne lève jamais.
+    """
+    from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
+    try:
+        ecrire(devis, proprietaire=CALEPINAGE,
+               puissance_kwc=puissance_kwc_du_devis(devis))
+    except Exception:  # noqa: BLE001 — un cache raté ne casse jamais un devis
+        logger.warning('puissance_kwc non posée sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+    return (devis.etude_params or {}).get('puissance_kwc')
 
 
 def _quantite_verrouillee(ligne):
@@ -4593,7 +4676,17 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
             etude['production_annuelle'] = int(result['annualKwh'])
         if result.get('savings') is not None:
             etude['economies_annuelles'] = int(result['savings'])
-        if kwc:
+        # QJR63 — LE kWc VIENT DE SON PROPRIÉTAIRE, PLUS DU LAYOUT. Ce site
+        # écrivait ``kwc`` — celui du CALEPINAGE — même quand la règle de
+        # plafond de variante venait de faire atterrir le devis sur un AUTRE
+        # compte de panneaux : le kWc stocké décrivait alors une installation
+        # NON VENDUE, que ``Devis.save`` figeait ensuite dans ``prix_par_kwc``.
+        # Les lignes sont déjà resynchronisées à ce point : le propriétaire lit
+        # donc l'état RÉEL (registre de surcharges, sinon dérivation PVUNI).
+        _kwc_proprietaire = puissance_kwc_du_devis(verrou)
+        if _kwc_proprietaire:
+            etude['puissance_kwc'] = _kwc_proprietaire
+        elif kwc:
             etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
@@ -5922,6 +6015,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         dimensionnement_avec=optimum_avec)
     for avertissement in journal.get('avertissements') or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
+
+    # QJR63 — LE kWc EST POSÉ PAR SON PROPRIÉTAIRE, sur les lignes RÉELLEMENT
+    # composées : ni ``target_kwc``, ni ``lead.taille_souhaitee_kwc``, qui sont
+    # des DEMANDES et non ce que le catalogue a su servir (l'arrondi au palier
+    # et le plafond de toit peuvent faire atterrir ailleurs).
+    poser_puissance_kwc(devis)
 
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
     # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
