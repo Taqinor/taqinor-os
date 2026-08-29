@@ -61,7 +61,7 @@ apps/ventes/quote_engine/residential/renderer.py
 apps/ventes/quote_engine/residential/sample_data.py
 apps/ventes/quote_engine/residential/theme.py
 apps/ventes/quote_engine/residential/trust.py
-apps/ventes/services.py
+apps/ventes/domain/recouvrement.py
 apps/ventes/utils/filenames.py
 apps/ventes/views/roof_config.py
 frontend/src/components/layout/Sidebar.jsx

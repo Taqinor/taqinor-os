@@ -39,12 +39,30 @@
 # `round()` restants de ce bloc -- le prix BARRE `ttc_avant` -- gardent la
 # meme expression, donc la meme cle).
 
-# --- backend/django_core/apps/ventes/services.py
-backend/django_core/apps/ventes/services.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
-backend/django_core/apps/ventes/services.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
-backend/django_core/apps/ventes/services.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
+# --- backend/django_core/apps/ventes/domain/geometrie.py
+#
+# 29/08/2026 (QJR72) : ces DEUX cles ont ete RE-CLEES, pas re-capturees. La
+# vague M3 deplace `extract_roof_config` de `services.py` vers
+# `domain/geometrie.py` sans toucher une ligne de son corps : le qualname et
+# le sha1 de contenu sont donc RIGOUREUSEMENT identiques a l'avant
+# (4ccf19c2f770 / 7f663ec40580) et seul le segment <chemin> change. C'est la
+# preuve, dans la cle elle-meme, qu'aucune expression n'a bouge -- et la
+# raison humaine ecrite en QJR4 reste donc valable telle quelle.
+backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
+backend/django_core/apps/ventes/domain/geometrie.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
+#
+# QJR74 : meme re-cle, meme preuve -- `composition_residentielle` a change
+# de fichier, pas d'expression (qualname et sha1 cd82504b8a45 inchanges).
+backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
+
+# --- backend/django_core/apps/ventes/domain/resynchronisation.py
+#
+# QJR76 : meme re-cle, meme preuve -- `sync_devis_from_layout` a change de
+# fichier, pas d'expression (qualname et sha1 9f86a510d34c inchanges).
+# `services.py` est desormais une pure facade : elle ne porte plus aucun
+# `round()`, et c'est pourquoi QJR72 a elargi le scan a tout `domain/`.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
 
 # --- backend/django_core/apps/ventes/quote_engine/builder.py
 backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.

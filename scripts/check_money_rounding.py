@@ -61,6 +61,15 @@ NEW_SITE_REASON = "A RELIRE -- capture par --regenerate, raison a completer."
 # Modules scannes : ceux qui calculent OU publient un montant client-facing.
 # QJR4 elargit la liste d'origine (services/builder/compta) aux cinq modules
 # ventes qui rendent aussi de l'argent au client et n'etaient pas scannes.
+#
+# QJR72 AJOUTE TOUT `apps/ventes/domain/` -- SANS CELA LA GARDE SE VIDE TOUTE
+# SEULE. La vague M3 deplace le corps de `services.py` vers `domain/`, un
+# domaine par tache : `extract_roof_config` (2 sites) est parti en QJR72,
+# `composition_residentielle` part en QJR74, `sync_devis_from_layout` en QJR76.
+# A la fin de la vague, `services.py` est une pure facade -- zero `round()` --
+# et une liste figee sur ce seul fichier ne surveillerait plus RIEN dans ventes
+# tout en restant verte. Le sous-paquet entier est donc scanne : un module de
+# `domain/` cree demain est couvert d'office.
 TARGET_FILES = [
     VENTES / "services.py",
     VENTES / "quote_engine" / "builder.py",
@@ -70,7 +79,7 @@ TARGET_FILES = [
     VENTES / "utils" / "options.py",
     VENTES / "selectors.py",
     DJANGO_CORE / "apps" / "compta" / "services.py",
-]
+] + sorted(p for p in (VENTES / "domain").glob("*.py"))
 
 MONEY_NAME_RE = re.compile(
     r"(prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|"
