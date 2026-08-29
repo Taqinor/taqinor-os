@@ -142,6 +142,44 @@ class ContratRoundTripEcran(SimpleTestCase):
         self.assertEqual(len(S.valider({'repartition_mt': [10, 50, 40]})), 1)
 
 
+class EntreesDuMoteurTests(SimpleTestCase):
+    """QJR66 / passe Fable — QUELLES clés font vieillir les études.
+
+    La liste vit DANS le schéma (drapeau ``moteur``), pas dans l'endpoint :
+    une clé ajoutée demain se déclare une seule fois, à côté de sa règle.
+    """
+
+    def test_les_entrees_du_moteur_sont_declarees(self):
+        du_moteur = S.entrees_du_moteur()
+        for cle in ('factures_mensuelles_reelles', 'conso_kwh_mensuelles',
+                    'conso_annuelle', 'distributeur', 'scenario',
+                    'nombre_proprietes'):
+            with self.subTest(cle=cle):
+                self.assertIn(cle, du_moteur)
+
+    def test_une_cle_de_confort_n_est_PAS_du_moteur(self):
+        """Sinon chaque frappe relancerait les quatre études pour rien."""
+        du_moteur = S.entrees_du_moteur()
+        for cle in ('origine', 'type_pompe', 'categorie_commerciale',
+                    'recommended_option', 'region'):
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, du_moteur)
+
+    def test_aucune_DERIVEE_n_est_une_entree_du_moteur(self):
+        """Une sortie du moteur ne peut pas être ce qui le fait tourner."""
+        for cle in S.entrees_du_moteur():
+            with self.subTest(cle=cle):
+                self.assertEqual(S.SCHEMA[cle]['nature'], S.ENTREE)
+
+    def test_l_intersection_repond_faut_il_recalculer(self):
+        self.assertEqual(
+            S.entrees_du_moteur(['gamme', 'factures_mensuelles_reelles']),
+            {'factures_mensuelles_reelles'})
+        self.assertEqual(S.entrees_du_moteur(['gamme', 'origine']), set())
+        # Une clé hors schéma n'est jamais du moteur.
+        self.assertEqual(S.entrees_du_moteur(['chiffre_invente']), set())
+
+
 class ValiderTests(SimpleTestCase):
 
     def test_un_bloc_vide_ou_nul_ne_reproche_rien(self):
@@ -370,6 +408,44 @@ class EndpointFusionTests(TestCase):
         self.assertNotIn('gamme', resp.data['etude_params'])
         self.assertIn('factures_mensuelles_reelles',
                       resp.data['etude_params'])
+
+    def test_une_entree_du_moteur_relance_les_etudes(self):
+        """QJR66 / passe Fable — LES ÉTUDES SUIVENT LEURS ENTRÉES.
+
+        L'écran écrit désormais ses factures réelles par CET endpoint, donc
+        APRÈS le rafraîchissement déclenché par l'écriture des lignes : sans ce
+        rappel, le PDF servait des économies dérivées d'entrées PÉRIMÉES.
+        """
+        from unittest.mock import patch as _patch
+        with _patch('apps.ventes.services.rafraichir_etudes_du_devis') as faux:
+            resp = self.api.patch(
+                self.url, {'factures_mensuelles_reelles': [700] * 12},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(faux.call_count, 1)
+        self.assertEqual(faux.call_args.args[0].pk, self.devis.pk)
+
+    def test_une_cle_hors_moteur_ne_relance_RIEN(self):
+        """Sinon chaque frappe paierait les quatre études pour rien."""
+        from unittest.mock import patch as _patch
+        with _patch('apps.ventes.services.rafraichir_etudes_du_devis') as faux:
+            resp = self.api.patch(self.url, {'origine': 'salon'},
+                                  format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        faux.assert_not_called()
+
+    def test_une_etude_qui_echoue_n_annule_pas_l_entree(self):
+        """Best-effort : l'entrée du vendeur est enregistrée quoi qu'il arrive."""
+        from unittest.mock import patch as _patch
+        with _patch('apps.ventes.services.rafraichir_etudes_du_devis',
+                    side_effect=RuntimeError('moteur cassé')):
+            resp = self.api.patch(
+                self.url, {'factures_mensuelles_reelles': [700] * 12},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params['factures_mensuelles_reelles'],
+                         [700] * 12)
 
     def test_isolation_multi_societe(self):
         autre = DevisFactory(company=CompanyFactory())

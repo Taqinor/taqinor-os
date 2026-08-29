@@ -54,12 +54,26 @@ const CLES_RELUES = new Set(
 
 // Clés RELUES que l'écran n'écrit VOLONTAIREMENT pas : chacune a un AUTRE
 // propriétaire déclaré. Toute nouvelle exemption doit être motivée ICI.
+//
+// `scenario` A ÉTÉ RETIRÉ DE CETTE LISTE (passe Fable pré-merge) : l'exempter
+// était le bug. Sans écrivain, `etude_params['scenario']` disparaissait, et
+// `quote_engine/builder.py` (`_stored_choice`) prenait la branche ARTEFACT —
+// total = TOUTES les lignes (deux onduleurs + batterie) pendant que le total
+// d'affichage montrait l'option choisie. L'assertion INVERSE est faite plus
+// bas (`CHOIX_ECRITS`).
 const EXEMPTIONS = {
   gamme: 'écrite par le serveur (`services._set_gamme`), jamais par l\'écran',
-  scenario: 'registre de surcharges D12 (QJR64) — plus un champ d\'étude',
-  recommended_choice: 'hors schéma ; D12 le porte sous `recommended_option`',
+  recommended_choice: 'hors schéma ; l\'écran écrit `recommended_option`, la '
+    + 'clé DÉCLARÉE — `recommended_choice` reste une lecture tolérante des '
+    + 'devis d\'hier',
   injection_82_21: 'drapeau dérivé — le round-trip passe par `injection_dh_an`',
 }
+
+//: Les CHOIX du commercial : écrits pour TOUS les marchés (QF7), jamais null.
+const CHOIX_ECRITS = new Set(
+  [...DG.slice(DG.indexOf('const choixEcran = () => {'),
+               DG.indexOf('const entreesReellesEcran ='))
+      .matchAll(/choix\.([a-z0-9_]+) =/g)].map(m => m[1]))
 
 // ── Ce que l'écran ÉCRIT, par marché ────────────────────────────────────────
 // Toutes les découpes se font DANS `blocEtudeMarche` : `modeInstallation ===
@@ -98,7 +112,7 @@ const CLES_AGRI = clesDe(
 CLES_IC.add('categorie_commerciale')
 
 const CLES_ECRITES = new Set([
-  ...CLES_COMMUNES, ...CLES_IC, ...CLES_AGRI,
+  ...CHOIX_ECRITS, ...CLES_COMMUNES, ...CLES_IC, ...CLES_AGRI,
   ...Object.values(COMMERCIAL_CATEGORY_QUESTIONS).flat().map(q => q.key),
 ])
 
@@ -170,10 +184,56 @@ test('INDUSTRIEL / COMMERCIAL — MT et catégorie font l\'aller-retour', () => 
   assert.match(bloc, /if \(tensionRaccordement !== 'mt'\) return null/)
 })
 
-test('RÉSIDENTIEL — aucune clé de marché, seulement les entrées réelles', () => {
+test('BLOQUANT FABLE — `scenario` et `recommended_option` ONT un écrivain, pour les QUATRE marchés', () => {
+  // Sans `etude_params['scenario']`, `quote_engine/builder.py` prend la
+  // branche ARTEFACT et totalise TOUTES les lignes (deux onduleurs +
+  // batterie) pendant que le total d'affichage montre l'option choisie.
+  for (const cle of ['scenario', 'recommended_option']) {
+    assert.ok(CHOIX_ECRITS.has(cle), `l'écran n'écrit plus ${cle}`)
+    assert.ok(CLES_SCHEMA.has(cle), `le schéma ne déclare pas ${cle}`)
+    assert.ok(!(cle in EXEMPTIONS), `${cle} ne doit plus être exemptée`)
+  }
+  // Les trois branches de marché les fusionnent (QF7 : tous les modes).
+  // On compte dans le CODE, pas dans les commentaires (le bloc en PARLE).
+  const codeMarche = BLOC_MARCHE.split(/\r?\n/)
+    .filter(l => !/^\s*\/\//.test(l)).join('\n')
+  assert.equal((codeMarche.match(/choixEcran\(\)/g) || []).length, 3,
+    'les quatre marchés doivent tous porter le choix de l\'écran')
+  // JAMAIS `null` pour CES DEUX clés : elles ne sont posées que si l'écran les
+  // possède (les envoyer à null les SUPPRIMERAIT et rouvrirait le bug).
+  // `nombre_proprietes` est la seule exception assumée du bloc — son propre
+  // test, plus bas, explique pourquoi.
+  const bloc = DG.slice(DG.indexOf('const choixEcran = () => {'),
+                        DG.indexOf('const entreesReellesEcran ='))
+  assert.ok(!/choix\.(scenario|recommended_option) = null/.test(bloc),
+    'un choix envoyé à null SUPPRIMERAIT la clé côté serveur')
+  assert.match(bloc, /if \(scenario\) choix\.scenario = scenario/)
+  assert.match(bloc, /if \(recommended\) choix\.recommended_option = recommended/)
+})
+
+test('BLOQUANT FABLE — `nombre_proprietes` (×N villas) est écrit, RETIRÉ à N=1, et relu par `?edit=`', () => {
+  // `selectors.py` multiplie le total par cette clé (défaut 1) : sans
+  // écrivain, un devis ×4 rendait le total d'UNE villa.
+  assert.ok(CHOIX_ECRITS.has('nombre_proprietes'), 'clé plus écrite')
+  assert.ok(CLES_SCHEMA.has('nombre_proprietes'), 'clé absente du schéma')
+  const bloc = DG.slice(DG.indexOf('const choixEcran = () => {'),
+                        DG.indexOf('const entreesReellesEcran ='))
+  // Écrite avec sa valeur en mode ×N, RETIRÉE (null → règle Z2) sinon : le ×4
+  // d'hier ne doit pas survivre à un retour en mono-système.
+  assert.match(bloc, /multiMode === 'multiplier' \? parseInt\(nombreProprietes, 10\) : 1/)
+  assert.match(bloc,
+    /choix\.nombre_proprietes = \(Number\.isFinite\(n\) && n > 1\) \? n : null/)
+  // Et le mappeur la relit — sans quoi rouvrir un devis ×4 enverrait `null`
+  // au premier enregistrement et DÉTRUIRAIT le ×N en base.
+  assert.ok(CLES_RELUES.has('nombre_proprietes'),
+    'le mappeur `?edit=` ne relit pas nombre_proprietes')
+  assert.match(blocMappeur(), /setMultiMode\('multiplier'\)/)
+})
+
+test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entrées réelles', () => {
   const start = BLOC_MARCHE.indexOf('// Résidentiel : le serveur est propriétaire')
   assert.ok(start > -1, 'la branche résidentielle est introuvable')
   const bloc = BLOC_MARCHE.slice(start)
-  assert.match(bloc, /entreesReellesEcran\(null\)/)
+  assert.match(bloc, /\{ \.\.\.choixEcran\(\), \.\.\.entreesReellesEcran\(null\) \}/)
   assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
 })

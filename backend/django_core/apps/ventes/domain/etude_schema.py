@@ -50,9 +50,24 @@ ENTREE = 'entree'
 DERIVEE = 'derivee'
 
 
-def _cle(type_attendu, proprietaire, nature, note=''):
+def _cle(type_attendu, proprietaire, nature, note='', moteur=False):
+    """Une règle de clé. ``moteur=True`` la déclare ENTRÉE DU MOTEUR.
+
+    QJR66 / passe Fable pré-merge (29/08/2026) — POURQUOI CE QUATRIÈME
+    ATTRIBUT. Depuis que l'écran écrit ``etude_params`` par l'endpoint de
+    FUSION (et non plus dans le corps atomique du devis), ses factures réelles
+    arrivent APRÈS le rafraîchissement des quatre études : le PDF servait alors
+    des économies dérivées d'entrées PÉRIMÉES — une régression franche par
+    rapport au chemin d'hier. L'endpoint doit donc relancer les études quand,
+    et seulement quand, une clé qui NOURRIT le moteur vient de bouger.
+
+    Ce drapeau met cette liste LÀ OÙ ELLE APPARTIENT : dans le schéma, à côté
+    de la clé, avec la trace de son consommateur. L'endpoint interroge
+    :func:`entrees_du_moteur` — il n'en code aucune en dur, et une clé ajoutée
+    demain se déclare ici, une seule fois.
+    """
     return {'type': type_attendu, 'proprietaire': proprietaire,
-            'nature': nature, 'note': note}
+            'nature': nature, 'note': note, 'moteur': bool(moteur)}
 
 
 #: LE SCHÉMA des clés de TÊTE d'``etude_params``, relevé par scan de l'arbre
@@ -63,20 +78,37 @@ SCHEMA = {
     # ── Les CHOIX du commercial (ENTRÉES) ────────────────────────────────────
     'scenario': _cle((str,), ECRAN, ENTREE,
                      'Sans batterie / Avec batterie / Les deux — QJR64 le fait '
-                     'passer par le registre de surcharges.'),
+                     'passer par le registre de surcharges. MOTEUR : '
+                     '`quote_engine/builder.py` (`_stored_choice`) et '
+                     '`utils/options.py` en tirent les lignes de l’option '
+                     'vendue.', moteur=True),
     'recommended_option': _cle((str,), ECRAN, ENTREE),
     'gamme': _cle((str, dict), ECRAN, ENTREE),
     'mode_installation': _cle((str,), ECRAN, ENTREE),
     'tension_raccordement': _cle((str,), ECRAN, ENTREE),
-    'distributeur': _cle((str,), ECRAN, ENTREE),
+    'distributeur': _cle((str,), ECRAN, ENTREE,
+                         'MOTEUR : le barème qui chiffre la facture « avant » '
+                         '(`quote_engine`, page client).', moteur=True),
     'categorie_commerciale': _cle((str,), ECRAN, ENTREE),
     'origine': _cle((str,), ECRAN, ENTREE),
-    'nombre_proprietes': _cle((int,), ECRAN, ENTREE),
+    'nombre_proprietes': _cle((int,), ECRAN, ENTREE,
+                              'MOTEUR : `selectors.py` multiplie le total du '
+                              'devis par ce nombre (×N villas).', moteur=True),
     'factures_mensuelles_reelles': _cle((list,), ECRAN, ENTREE,
                                         'Les factures RÉELLES du client — la '
-                                        'donnée la plus précieuse du dossier.'),
-    'conso_kwh_mensuelles': _cle((list,), ECRAN, ENTREE),
-    'conso_annuelle': _cle((int, float), ECRAN, ENTREE),
+                                        'donnée la plus précieuse du dossier. '
+                                        'MOTEUR : `domain/entrees.py`, '
+                                        '`etude_horaire`, '
+                                        '`profils_comparatifs`.',
+                                        moteur=True),
+    'conso_kwh_mensuelles': _cle((list,), ECRAN, ENTREE,
+                                 'MOTEUR : `domain/entrees.py`, '
+                                 '`dimensionnement`, `offres_tailles`.',
+                                 moteur=True),
+    'conso_annuelle': _cle((int, float), ECRAN, ENTREE,
+                           'MOTEUR : les rendus industriel / commercial et '
+                           '`generate_devis_premium` l’impriment.',
+                           moteur=True),
     'toiture': _cle((dict,), ECRAN, ENTREE),
     'attribution': _cle((dict,), ECRAN, ENTREE),
     # ``{'date': <iso>}`` — un « depuis quand », écrasé à chaque resynchro
@@ -184,6 +216,21 @@ SCHEMA = {
         "consommateur du dépôt ne la lit. Déclarée ici pour qu'un devis "
         "ANCIEN qui la porte encore ne soit pas signalé comme invalide."),
 }
+
+
+def entrees_du_moteur(cles=None):
+    """Les clés qui NOURRISSENT le moteur — déclarées, jamais codées en dur.
+
+    Sans argument : l'ensemble complet. Avec ``cles`` (ce qu'un PATCH vient de
+    poser) : l'INTERSECTION, c'est-à-dire « faut-il relancer les études ? ».
+
+    Une clé absente du schéma n'est jamais du moteur (elle ne passe pas
+    :func:`valider` de toute façon).
+    """
+    du_moteur = {cle for cle, regle in SCHEMA.items() if regle.get('moteur')}
+    if cles is None:
+        return du_moteur
+    return du_moteur & set(cles)
 
 
 def valider(etude_params):
