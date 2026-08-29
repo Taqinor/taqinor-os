@@ -4042,6 +4042,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       ecoMadMonthHigh: est.savingsMonthlyHigh,
       paybackLabel: est.paybackLabel,
     };
+    // WJ129 (finding 6) — DÉCALAGE SÉMANTIQUE ASSUMÉ, documenté sans changer le
+    // comportement : en parcours public gaté, « estimation/viewed » part alors
+    // qu'AUCUN chiffre n'est rendu à l'écran (seul le teaser s'affiche), puis
+    // « contact/reached » part au MÊME instant deux lignes plus bas. Dans un
+    // dashboard funnel les deux étapes semblent franchies d'un coup — cette
+    // discontinuité de conversion se lit « estimation calculée en coulisse +
+    // bascule immédiate vers le contact », pas comme deux actions distinctes
+    // du visiteur.
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();

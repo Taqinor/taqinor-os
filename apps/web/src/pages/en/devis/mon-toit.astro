@@ -3783,6 +3783,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       ecoMadMonthHigh: est.savingsMonthlyHigh,
       paybackLabel: est.paybackLabel,
     };
+    // WJ129 (finding 6) — KNOWN SEMANTIC OFFSET, documented without changing
+    // behaviour: on the gated public path, "estimation/viewed" fires although
+    // NO figure is rendered on screen (only the teaser shows), and
+    // "contact/reached" fires at the SAME instant two lines below. In a funnel
+    // dashboard both steps appear crossed at once — read this conversion
+    // discontinuity as "estimate computed off-screen + immediate hand-off to
+    // contact", not as two distinct visitor actions.
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
