@@ -52,7 +52,7 @@ backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
 
 # --- backend/django_core/apps/ventes/public_views.py
-backend/django_core/apps/ventes/public_views.py::_variant_summaries::a38945ef1808 | ELARGISSEMENT QJR4 : TTC d'affichage recalcule par variante pour le resume de la proposition (HT x (1 - remise) x (1 + TVA)). Capture ADVISORY -- c'est une des chaines monetaires paralleles que la vague M2 doit ramener sur l'API monnaie canonique ; ne pas ajouter de site voisin ici.
+backend/django_core/apps/ventes/public_views.py::_variant_summaries::d9ea0585d95f | affichage relu : TTC du frere arrondi au MAD pour la carte des autres tailles (QJR11 - la valeur vient desormais de option_totaux, arrondi d'affichage inchange)
 backend/django_core/apps/ventes/public_views.py::_gammes_public::843ba953c327 | ELARGISSEMENT QJR4 : arrondi d'affichage du total rendu par display_totals() pour la gamme soeur.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::52b70f6bdf9c | ELARGISSEMENT QJR4 : meme arrondi d'affichage pour le total de la gamme courante.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::363a93bf620d | ELARGISSEMENT QJR4 : ecart d'AFFICHAGE entre les deux gammes (difference des deux totaux deja arrondis ci-dessus).

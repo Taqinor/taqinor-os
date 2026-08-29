@@ -83,6 +83,7 @@ from apps.parametres.pvgis_profils import (
     vers_heure_locale,
 )
 from apps.ventes.courbes_journalieres import (
+    COUCHES_REDISTRIBUTION,
     contexte_ramadan_du_mois,
     equipements_du_devis,
     forme_consommation_detaillee,
@@ -1076,8 +1077,9 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     couche d'équipement n'est active (rien à décomposer — la page garde alors
     son affichage actuel, un seul total sans détail).
 
-    LA RÈGLE : les couches de REDISTRIBUTION (piscine, clim, chauffe_eau —
-    voir ``courbes_journalieres._equipements``) sont DÉJÀ dans la facture :
+    LA RÈGLE : les couches de REDISTRIBUTION
+    (``courbes_journalieres.COUCHES_REDISTRIBUTION`` — piscine, clim,
+    chauffe_eau) sont DÉJÀ dans la facture :
     leur « ajout » mensuel est donc RETIRÉ du ``base_mensuelle`` pour ne
     jamais compter deux fois la même énergie — la ligne « ajout » n'est qu'un
     ÉCLAIRAGE de ce que la facture contient déjà. Le véhicule électrique
@@ -1088,10 +1090,21 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     ``conso_kwh_mensuelles`` pour les mois sans VE, et l'excède seulement de
     la charge VE de ce mois.
 
-    L'énergie mensuelle d'une couche de redistribution = puissance déclarée
-    (kW) × nombre d'heures de sa fenêtre × nombre de jours du mois, UNIQUEMENT
-    dans les mois de sa saison active (``PISCINE_SAISONS``/``CLIM_SAISONS`` =
-    été seulement ; le chauffe-eau L-BACK n'a pas de restriction saisonnière).
+    QJR16 (29/08/2026) — L'ÉNERGIE PUBLIÉE EST CELLE QUE LE MOTEUR PLACE.
+    L'énergie BRUTE d'une couche de redistribution est ``kW × heures de sa
+    fenêtre × jours du mois``, UNIQUEMENT dans les mois de sa saison active
+    (``PISCINE_SAISONS``/``CLIM_SAISONS`` = été seulement ; le chauffe-eau
+    L-BACK n'a pas de restriction saisonnière) — mais ce n'est PAS ce que la
+    forme 24 h place. :func:`courbes_journalieres.forme_consommation_detaillee`
+    pose les bosses PUIS RENORMALISE la journée au niveau facture : la couche
+    y pèse ``brute × facteur`` avec ``facteur = conso ÷ (conso + brutes)``.
+    Publier la brute faisait dépasser ``totale_mensuelle`` au-dessus de la
+    consommation réelle du client dès que les équipements déclarés pesaient
+    lourd — l'écrêtage ``max(0, …)`` de la base masquait le dépassement au
+    lieu de l'empêcher, en contradiction avec la garantie ci-dessus. Le MÊME
+    facteur est donc appliqué ici, et l'écrêtage devenu inatteignable est
+    remplacé par un avertissement NOMMÉ (journalisé).
+
     Ne lève jamais.
     """
     if not conso_kwh_mensuelles or len(conso_kwh_mensuelles) != 12:
@@ -1106,8 +1119,14 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
         numero = index + 1
         saison = saison_du_mois(numero)
         jours = JOURS_PAR_MOIS[index]
+        conso_mois = base[index]
 
-        for cle in ('piscine', 'clim', 'chauffe_eau'):
+        # QJR15 — MÊME liste que le composeur de forme : ce qui est publié ici
+        # comme un ajout mensuel est exactement ce que la forme 24 h place.
+        # QJR16 — en DEUX temps : les énergies BRUTES d'abord, puis le facteur
+        # de renormalisation du composeur, appliqué à toutes.
+        brutes = {}
+        for cle in COUCHES_REDISTRIBUTION:
             couche = couches.get(cle)
             if not couche or couche.get('mode') != 'redistribution':
                 continue
@@ -1118,10 +1137,35 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 continue
             if saisons and saison not in saisons:
                 continue
-            kwh_mois = round(kw * len(heures) * jours, 2)
+            brutes[cle] = kw * len(heures) * jours
+
+        # LE FACTEUR — identique à celui du composeur de forme, à l'échelle du
+        # mois : ``conso_jour ÷ (conso_jour + bosses_jour)`` multiplié en haut
+        # et en bas par le nombre de jours donne exactement l'expression
+        # ci-dessous. Sans bosse (ou sans consommation), il vaut 1,0 et le
+        # calcul retrouve son chemin d'avant, à l'octet.
+        brute_totale = sum(brutes.values())
+        facteur = 1.0
+        if brute_totale > 0 and conso_mois > 0:
+            facteur = conso_mois / (conso_mois + brute_totale)
+
+        for cle, brute in brutes.items():
+            kwh_mois = round(brute * facteur, 2)
             ajouts.setdefault(cle, [0.0] * 12)
             ajouts[cle][index] = kwh_mois
-            base[index] = max(0.0, base[index] - kwh_mois)
+            base[index] -= kwh_mois
+
+        if base[index] < 0:
+            # INATTEIGNABLE par construction (la renormalisation garantit
+            # ``Σ ajouts ≤ conso``) : si cette ligne parle un jour, c'est que
+            # le composeur de forme et cette décomposition ont divergé — on le
+            # DIT au lieu de l'écrêter en silence.
+            logger.warning(
+                'estimation_conso_mensuelle: base négative après '
+                'renormalisation (mois %d, conso %.2f kWh, ajouts %.2f kWh) — '
+                'décomposition et composeur de forme ont divergé',
+                numero, conso_mois, conso_mois - base[index])
+            base[index] = 0.0
 
         ve = couches.get('ve')
         if ve and ve.get('mode') == 'addition':

@@ -595,6 +595,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # bloc horaire, sans quoi le schéma unifilaire de la page client
             # décrirait la composition d'avant (best-effort, jamais bloquant —
             # voir ``services.rafraichir_etudes_du_devis``).
+            # QJR20 — « composition COURANTE » est désormais GARANTI et non
+            # espéré : ``sync_devis_from_layout`` recale l'instance qu'on lui a
+            # passée sur la ligne qu'il a verrouillée et écrite
+            # (``_resynchroniser_instance_appelante``). Sans ce recalage,
+            # ``devis`` gardait les lignes PRÉCHARGÉES en début de requête
+            # (``prefetch_related('lignes')`` du queryset) et les quatre études
+            # se recalculaient — puis se PERSISTAIENT — sur la composition
+            # d'AVANT la resynchro.
             from ..services import rafraichir_etudes_du_devis
             rafraichir_etudes_du_devis(devis)
         return Response(resultat)
@@ -3133,27 +3141,40 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """XFAC10 — facture PRO-FORMA NON comptabilisée : layout facture
         legacy filigrané « PRO-FORMA — ne constitue pas une facture »,
         numérotation propre PF- (utils/references.py), AUCUN impact sur les
-        statuts/GL/numérotation des vraies factures. Trace au chatter."""
+        statuts/GL/numérotation des vraies factures. Trace au chatter.
+
+        QJR19 (décision fondateur D1 du 29/08/2026 — l'endpoint est CONSERVÉ) :
+        LE RENDU D'ABORD, LE DOCUMENT ENSUITE. Le ``ProformaDocument`` et sa
+        référence ``PF-`` étaient créés AVANT le rendu : un gabarit qui plantait
+        (ligne de section/note, XSAL14) consommait quand même le numéro, et la
+        séquence de la société avançait pour un document qui n'a jamais existé.
+        Le rendu se fait donc À L'INTÉRIEUR de la fabrique passée à
+        ``create_with_reference`` — ce qui garantit AUSSI que le numéro IMPRIMÉ
+        sur le PDF est exactement celui qui est enregistré, même en cas de
+        course sur la référence.
+        """
         from ..models import ProformaDocument
         from ..utils.pdf import generate_proforma_pdf
 
         devis = self.get_object()
         company = request.user.company
+        rendu = {}
 
-        def _create(ref):
+        def _rendre_puis_creer(ref):
+            rendu['pdf'] = generate_proforma_pdf(devis, ref)
             return ProformaDocument.objects.create(
                 company=company, devis=devis, reference=ref,
                 created_by=request.user,
             )
 
-        proforma = create_with_reference(
-            ProformaDocument, 'PF', company, _create, period='monthly')
-
         try:
-            pdf_bytes = generate_proforma_pdf(devis, proforma.reference)
+            proforma = create_with_reference(
+                ProformaDocument, 'PF', company, _rendre_puis_creer,
+                period='monthly')
         except Exception as exc:
             return Response({'detail': f'PDF indisponible : {exc}'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        pdf_bytes = rendu['pdf']
 
         from .. import activity
         activity.log_devis_note(
