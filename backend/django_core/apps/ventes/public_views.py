@@ -2956,6 +2956,27 @@ def _data_pour_taille_detail(devis, link):
     return data, resid
 
 
+# YAPIC6 — LA FORME EST DÉCLARÉE, PAS DEVINÉE. Le générateur OpenAPI ne sait
+# rien tirer d'une vue fonction qui rend un dict libre : il émettait
+# l'avertissement NEUF « proposal_taille_detail: unable to guess serializer »,
+# et ce job échoue sur toute signature nouvelle. On déclare donc le contrat que
+# ``apps/ventes/contract_samples/taille_detail.json`` fige déjà — les deux
+# séries profondes (``economies_mensuelles``, ``cashflow``) et la ``carte``
+# restent des objets libres : leurs clés varient avec la taille servie, et les
+# figer champ par champ ici créerait une SECONDE déclaration de contrat à côté
+# de l'échantillon, donc, tôt ou tard, deux contrats.
+_TAILLE_DETAIL_RESPONSE = inline_serializer('PublicTailleDetail', {
+    'cle': drf_serializers.CharField(),
+    'titre': drf_serializers.CharField(allow_null=True),
+    'variante': drf_serializers.CharField(),
+    'est_le_devis': drf_serializers.BooleanField(),
+    'carte': drf_serializers.DictField(),
+    'economies_mensuelles': drf_serializers.DictField(required=False),
+    'cashflow': drf_serializers.DictField(required=False),
+})
+
+
+@extend_schema(responses={200: _TAILLE_DETAIL_RESPONSE})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
