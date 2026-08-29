@@ -814,6 +814,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <p class="mt-teaser-hook" id="mt-teaser-hook-pump" hidden>
               Solar can power your pumping as the sun moves.
             </p>
+            <!-- WJ127 — HONEST FALLBACK for the paths with NO estimate. The
+                 error/edge cards (`mt-estimate-toolarge`, `-toolarge-pro`, the
+                 agricultural callback) live INSIDE `#mt-doc`, which the WJ125
+                 gating hides: a visitor whose site is beyond the simulator's
+                 scale no longer saw the honest "at this scale, dedicated study"
+                 message — only the generic hook. Worse, a11y parity was
+                 INVERTED: `announceEstimate` told the screen reader the truth
+                 while the screen did not show it. These two fallback hooks say
+                 EXACTLY what the announcement says, and disclose no figure.
+                 This comment sits INSIDE the teaser block read by
+                 teaserGateWJ125.test.ts: it must itself carry no unit and no
+                 amount. -->
+            <p class="mt-teaser-hook" id="mt-teaser-hook-etude" hidden>
+              At this scale, your project calls for a dedicated study — an adviser will call you back.
+            </p>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-rappel" hidden>
+              Your pumping is sized from your borehole — an adviser will call you back with a calculation that fits.
+            </p>
             <p class="mt-teaser-headline">
               Get your complete, personalised study
             </p>
@@ -3142,7 +3160,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    *  installation, cost of waiting, Print button), then reveals the locked
    *  teaser card (figure-free hook adapted to pumping vs roof). The CALCULATION
    *  is unchanged — only the public RENDER changes. */
-  function showEstimateTeaser(m: string) {
+  /** WJ127 — the three possible hooks. 'standard' = an estimate exists (roof or
+   *  pumping hook); 'etude' = no estimate because the project is beyond the
+   *  simulator's scale; 'rappel' = no estimate because the hydraulics are
+   *  missing. Both fallbacks say the SAME thing as `announceEstimate` on those
+   *  paths — sighted / screen-reader parity. */
+  type VarianteTeaser = 'standard' | 'etude' | 'rappel';
+  function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard') {
     docRendered = true;
     const doc = $('mt-doc');
     if (doc) doc.hidden = true;
@@ -3155,10 +3179,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const teaser = $('mt-teaser');
     if (teaser) teaser.hidden = false;
     const isAgri = m === 'agricole';
+    const etudeHook = $('mt-teaser-hook-etude');
+    if (etudeHook) etudeHook.hidden = variante !== 'etude';
+    const rappelHook = $('mt-teaser-hook-rappel');
+    if (rappelHook) rappelHook.hidden = variante !== 'rappel';
     const roofHook = $('mt-teaser-hook-roof');
-    if (roofHook) roofHook.hidden = isAgri;
+    if (roofHook) roofHook.hidden = isAgri || variante !== 'standard';
     const pumpHook = $('mt-teaser-hook-pump');
-    if (pumpHook) pumpHook.hidden = !isAgri;
+    if (pumpHook) pumpHook.hidden = !isAgri || variante !== 'standard';
   }
   // QX — MAD/kWh tariff of the last PRO estimate shown (engine assumptions):
   // used to derive a consistent billRange when consumption is in kWh.
@@ -3344,6 +3372,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ121 — cap of the active C&I mode (industrial and commercial share 1M MAD).
     if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
+      // WJ127 — `#mt-doc` (so this card) is hidden on the gated public journey:
+      // without this, an industrial visitor at 2,000,000 MAD only saw the
+      // generic hook, while the screen reader did receive the honest message
+      // below. The "dedicated study" hook restores parity, still with no figure.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       clearShown();
       fillDocChrome();
       updatePanels3dVisibility();
@@ -3368,6 +3401,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
         if (toolargePro) toolargePro.hidden = false;
+        // WJ127 — same honest fallback (see above).
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
         clearShown();
         fillDocChrome();
         updatePanels3dVisibility();
@@ -3655,8 +3690,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const ag = computeAgricoleEstimate();
       if (!ag) {
         // Missing hydraulics -> a warm card INSIDE the document (never a
-        // fabricated residential figure).
+        // fabricated residential figure). WJ127 — that document being hidden on
+        // the gated public journey, the teaser hook carries the SAME message as
+        // the announcement below: the sighted visitor reads what the screen
+        // reader hears, and no figure is disclosed.
         if (agricoleEl) agricoleEl.hidden = false;
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'rappel');
         lastKwcLabel = '';
         lastSavingsLabel = '';
         lastKwc = null;
@@ -3688,6 +3727,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (note) note.hidden = true;
       if (unavail) unavail.hidden = true;
       if (toolarge) toolarge.hidden = false;
+      // WJ127 — `#mt-doc` (so this card) is hidden on the gated public journey:
+      // the teaser hook says the same thing, with no figure disclosed.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'Please check the amount entered.');
       lastKwcLabel = '';
       lastSavingsLabel = '';

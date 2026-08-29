@@ -804,6 +804,28 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               data-ar="يمكن للطاقة الشمسية أن تشغّل ضخّكم على مدار الشمس.">
               Le solaire peut alimenter votre pompage au fil du soleil.
             </p>
+            <!-- WJ127 — REPLI HONNETE pour les chemins SANS estimation. Les
+                 cartes d'erreur/edge (`mt-estimate-toolarge`, `-toolarge-pro`,
+                 le rappel agricole) vivent DANS `#mt-doc`, que le gating WJ125
+                 masque : un visiteur dont le site depasse l'echelle du
+                 simulateur ne voyait donc plus le message honnete « a cette
+                 echelle, etude dediee » — seulement l'accroche generique. Pire,
+                 la parite a11y etait INVERSEE : `announceEstimate` disait bien
+                 la verite au lecteur d'ecran, l'ecran ne la montrait pas. Ces
+                 deux accroches de repli disent EXACTEMENT ce que la voix
+                 annonce, et ne divulguent aucun chiffre. Ce commentaire vit
+                 DANS le bloc teaser lu par teaserGateWJ125.test.ts : il ne doit
+                 lui-meme porter ni unite ni montant. -->
+            <p class="mt-teaser-hook" id="mt-teaser-hook-etude" hidden data-i18n
+              data-fr="À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle."
+              data-ar="على هذا النطاق، مشروعكم يستدعي دراسة مخصّصة — سيتصل بكم مستشار.">
+              À cette échelle, votre projet relève d'une étude dédiée — un conseiller vous rappelle.
+            </p>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-rappel" hidden data-i18n
+              data-fr="Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté."
+              data-ar="يُحدَّد حجم ضخّكم انطلاقاً من ثقبكم — سيتصل بكم مستشار بحساب مناسب.">
+              Votre pompage se dimensionne sur votre forage — un conseiller vous rappelle avec un calcul adapté.
+            </p>
             <p class="mt-teaser-headline" data-i18n
               data-fr="Recevez votre étude complète et personnalisée"
               data-ar="استلموا دراستكم الكاملة والمخصّصة">
@@ -3053,7 +3075,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    *  chiffré ET les zones hors-#mt-doc qui fuiraient des chiffres, puis révèle
    *  la carte teaser verrouillée (accroche figure-free adaptée au profil). Le
    *  CALCUL reste inchangé — seul le RENDU public change. */
-  function showEstimateTeaser(m: string) {
+  /** WJ127 — les trois accroches possibles. 'standard' = une estimation existe
+   *  (accroche toit ou pompage) ; 'etude' = aucune estimation parce que le
+   *  projet dépasse l'échelle du simulateur ; 'rappel' = aucune estimation
+   *  parce que l'hydraulique manque. Les deux replis disent la MÊME chose que
+   *  `announceEstimate` sur ces chemins — parité voyant / lecteur d'écran. */
+  type VarianteTeaser = 'standard' | 'etude' | 'rappel';
+  function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard') {
     docRendered = true;
     const doc = $('mt-doc');
     if (doc) doc.hidden = true;
@@ -3066,10 +3094,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const teaser = $('mt-teaser');
     if (teaser) teaser.hidden = false;
     const isAgri = m === 'agricole';
+    const etudeHook = $('mt-teaser-hook-etude');
+    if (etudeHook) etudeHook.hidden = variante !== 'etude';
+    const rappelHook = $('mt-teaser-hook-rappel');
+    if (rappelHook) rappelHook.hidden = variante !== 'rappel';
     const roofHook = $('mt-teaser-hook-roof');
-    if (roofHook) roofHook.hidden = isAgri;
+    if (roofHook) roofHook.hidden = isAgri || variante !== 'standard';
     const pumpHook = $('mt-teaser-hook-pump');
-    if (pumpHook) pumpHook.hidden = !isAgri;
+    if (pumpHook) pumpHook.hidden = !isAgri || variante !== 'standard';
   }
   let lastProTarifMadKwh: number | null = null;
   function announceEstimate(message: string) {
@@ -3236,6 +3268,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ121 — plafond du mode C&I actif (industriel et commercial partagent 1 M MAD).
     if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
+      // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
+      // sans ceci, un visiteur industriel à 2 000 000 MAD ne voyait que
+      // l'accroche générique, alors que le lecteur d'écran, lui, recevait bien
+      // le message honnête ci-dessous. L'accroche « étude dédiée » rétablit la
+      // parité, toujours sans le moindre chiffre.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       clearShown();
       fillDocChrome();
       updatePanels3dVisibility();
@@ -3260,6 +3298,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
         if (toolargePro) toolargePro.hidden = false;
+        // WJ127 — même repli honnête (cf. ci-dessus).
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
         clearShown();
         fillDocChrome();
         updatePanels3dVisibility();
@@ -3536,8 +3576,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
       const ag = computeAgricoleEstimate();
       if (!ag) {
-        // Hydraulique manquante → carte chaleureuse DANS le document.
+        // Hydraulique manquante → carte chaleureuse DANS le document. WJ127 —
+        // ce document étant masqué en parcours public gaté, l'accroche du
+        // teaser porte le MÊME message que l'annonce plus bas : le visiteur
+        // voyant lit ce que le lecteur d'écran entend, sans aucun chiffre.
         if (agricoleEl) agricoleEl.hidden = false;
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'rappel');
         lastKwcLabel = '';
         lastSavingsLabel = '';
         lastKwc = null;
@@ -3565,6 +3609,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (note) note.hidden = true;
       if (unavail) unavail.hidden = true;
       if (toolarge) toolarge.hidden = false;
+      // WJ127 — `#mt-doc` (donc cette carte) est masqué en parcours public :
+      // l'accroche du teaser dit la même chose, sans divulguer de chiffre.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'تحققوا من المبلغ المُدخَل.');
       lastKwcLabel = '';
       lastSavingsLabel = '';
