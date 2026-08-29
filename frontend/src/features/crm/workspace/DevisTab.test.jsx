@@ -919,8 +919,8 @@ describe('LANE E — SUBSTITUTIONS : catalogue chargé paresseusement pour « Mo
     date_creation: '2026-01-01', chantier: null,
   }
 
-  // Un devis « éditable » avec un rôle 'panneau' substituable — MÊME forme
-  // que le contrat offres_tailles.json (miroir de DevisOffresTailles.test.jsx).
+  // Un devis « éditable » avec un rôle 'panneau' substituable, de la forme
+  // du contrat offres_tailles.json (comme dans DevisOffresTailles.test.jsx).
   const blocEditable = {
     editable: true,
     offres_tailles: {
