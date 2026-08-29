@@ -7616,8 +7616,19 @@ def contexte_clauses_devis(devis):
     Clés exposées : ``type_deal`` (= ``mode_installation``), ``montant``
     (= total TTC), ``total_ht``, ``total_ttc``, ``remise_globale``,
     ``puissance_kwc``, ``devise``. Aucun prix d'achat / aucune marge (donnée
-    interne — jamais dans un texte destiné au client)."""
+    interne — jamais dans un texte destiné au client).
+
+    QJR54 (29/08/2026) — LE MONTANT QUI CHOISIT LA TRANCHE EST LE **NET**. Ces
+    clauses sont sélectionnées par tranche de montant PUIS IMPRIMÉES sur le PDF
+    client : alimenter le moteur avec un total non remisé pouvait figer un
+    devis remisé avec le jeu de CGV d'une tranche SUPÉRIEURE. La lecture passe
+    donc par la vue NET NOMMÉE de ``domain.argent`` — remise globale honorée et
+    option effective — au lieu de dépendre de ce que ``Devis.total_*`` veut
+    dire ce mois-ci.
+    """
     from decimal import Decimal, InvalidOperation
+
+    from apps.ventes.domain.argent import Vue, totaux as totaux_argent
 
     etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
     try:
@@ -7625,8 +7636,9 @@ def contexte_clauses_devis(devis):
     except (TypeError, ValueError):
         kwc = 0.0
     try:
-        total_ht = float(devis.total_ht or 0)
-        total_ttc = float(devis.total_ttc or 0)
+        vue = totaux_argent(devis, vue=Vue.NET)
+        total_ht = float(vue.ht_net or 0)
+        total_ttc = float(vue.ttc or 0)
     except (TypeError, ValueError, InvalidOperation):
         total_ht = total_ttc = 0.0
     return {
