@@ -233,6 +233,54 @@ class TestBuildQuoteData(TestCase):
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         self.assertEqual(data['nb_options'], 1)
 
+    # ── QJR18 — le productible imprimé décrit la production imprimée ───────
+    _LIGNES_770 = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+    ]
+
+    def _productible_imprime(self, data):
+        """Le nombre RÉELLEMENT écrit dans « ≈ N kWh par kWc et par an »."""
+        lignes = [h for h in data['hypotheses']['items']
+                  if 'kWh par kWc' in h]
+        self.assertEqual(len(lignes), 1, data['hypotheses']['items'])
+        chiffre = lignes[0].split('≈')[1].split('kWh')[0]
+        return int(re.sub(r'[^0-9]', '', chiffre))
+
+    def test_qjr18_le_productible_imprime_egale_production_sur_kwc_horaire(self):
+        """Sur le chemin ÉTUDE HORAIRE, ``roi['productible']`` est DÉJÀ net :
+        la ligne lui réappliquait les 20 % de pertes et annonçait ~7 % de
+        moins que la production annuelle imprimée sur la MÊME page."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        attendu = round(data['prod_kwh'] / data['puissance_kwc'])
+        self.assertEqual(self._productible_imprime(data), attendu)
+        # la pastille PVGIS de la ville annonce EXACTEMENT le même nombre
+        _pvgis = data['hypotheses']['productible_net_kwh_kwc']
+        if _pvgis is not None:
+            self.assertEqual(_pvgis, attendu)
+
+    def test_qjr18_le_chemin_ordinaire_garde_la_meme_egalite(self):
+        """Non-régression : hors étude horaire, la ligne disait déjà la
+        production nette — l'égalité doit rester vraie à l'arrondi près."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-N', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        self.assertNotEqual(data['savings_model'], 'horaire')
+        self.assertEqual(
+            self._productible_imprime(data),
+            round(data['prod_kwh'] / data['puissance_kwc']))
+
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
         l'option avec batterie est indisponible."""

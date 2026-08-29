@@ -1845,6 +1845,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
                   if isinstance(_tarif_val, (int, float)) else None)
     _prod_factor = roi.get("productible")
+    # ── QJR18 — LE PRODUCTIBLE IMPRIMÉ EST CELUI DE CE DOCUMENT ─────────────
+    # ``roi['productible']`` CHANGE DE SENS selon le modèle d'économies : sur
+    # le chemin ordinaire c'est le productible du repère (déjà net des 14 %
+    # PVGIS, à qui il reste le complément ``PRODUCTION_DERATE`` à appliquer),
+    # mais sur le chemin ÉTUDE HORAIRE ``pricing`` y pose
+    # ``production_annuelle / kwc`` — une valeur DÉJÀ NETTE. Lui réappliquer
+    # le derate appliquait les pertes une SECONDE fois : le « ≈ N kWh par kWc
+    # et par an » imprimé tombait ~7 % sous la production annuelle imprimée
+    # sur la MÊME page (et la pastille PVGIS de la ville avec lui).
+    # On le dérive donc de la SEULE source qui fait foi — la production
+    # annuelle RENDUE ÷ la puissance rendue : les deux nombres du document se
+    # réconcilient alors par construction, quel que soit le modèle, y compris
+    # quand une étude saisie a écrasé la production. Puissance inconnue ⇒
+    # ancien calcul (le productible est alors resté brut, aucun double emploi).
+    _prod_net_kwc = None
+    if (puissance_kwc or 0) > 0 and roi.get("prod_kwh"):
+        _prod_net_kwc = float(roi["prod_kwh"]) / float(puissance_kwc)
+    elif _prod_factor:
+        from .pricing import PRODUCTION_DERATE as _DERATE_REPLI
+        _prod_net_kwc = float(_prod_factor) * _DERATE_REPLI
     hypotheses = []
     if savings_model == "factures" and _util_name:
         hypotheses.append(
@@ -1884,16 +1904,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
         "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
         "intégré, rachat BT non publié).")
-    if _prod_factor:
+    if _prod_net_kwc:
         # Production NETTE affichée, la même que TOUS les calculs du document :
         # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
         # rendu doit dire le total réel — l'ancienne mention « 14 % » était
         # doublement fausse (elle nommait les seules pertes PVGIS alors que le
         # moteur en retranchait 14 % de plus, soit 26 % cumulés).
-        from .pricing import PRODUCTION_DERATE as _DERATE
+        # QJR18 — la valeur vient de ``_prod_net_kwc`` (production rendue ÷
+        # puissance rendue), plus d'un second derate appliqué au productible.
         from .pricing import SYSTEM_LOSS_TOTAL as _LOSS
         hypotheses.append(
-            f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
+            f"Production estimée : ≈ {_fr_int(_prod_net_kwc)} "
             f"kWh par kWc et par an, pertes système de "
             f"{int(round(_LOSS * 100))} % déduites.")
     # Q6 — le productible PVGIS de la ville du client, prêt à imprimer, ou None.
@@ -1903,13 +1924,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # une donnée PVGIS). Sinon : None ⇒ omission.
     _productible_net_pvgis = None
     _ville_pvgis = None
-    if _prod_factor:
+    if _prod_net_kwc:
         from .productible import ville_reconnue as _ville_ok
-        from .pricing import PRODUCTION_DERATE as _DR
         _force_societe = bool(
             _co_productible and abs(float(_co_productible) - 1600) > 0.5)
         if _ville_ok(_client_city) and not _force_societe:
-            _productible_net_pvgis = int(round(_prod_factor * _DR))
+            # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :
+            # deux phrases du même document ne peuvent pas annoncer deux
+            # productibles différents pour la même installation.
+            _productible_net_pvgis = int(round(_prod_net_kwc))
             _ville_pvgis = _client_city
 
     _ac_s = roi.get("autoconso_sans")
