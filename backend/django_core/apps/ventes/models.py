@@ -386,7 +386,16 @@ class Devis(models.Model):
         fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
         une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
         qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
-        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF)."""
+        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF).
+
+        QJR52 / décision fondateur D2 — LE GEL LIT DÉSORMAIS LE NET. Il lit
+        ``self.total_ttc``, qui honore ``remise_globale`` depuis QJR51 : un
+        devis remisé n'est plus figé à jamais sur un prix par kWc gonflé.
+        Comme le champ est write-once, les devis DÉJÀ gelés au brut sont
+        corrigés par la data-migration ``0106_qjr52_prix_par_kwc_net``
+        (réversible), qui re-dérive la valeur des lignes et de la remise —
+        correction d'un nombre stocké faux, jamais invention d'un nombre.
+        """
         from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
         super().save(*args, **kwargs)
         if self.prix_par_kwc is not None:
