@@ -22,9 +22,10 @@ from unittest import mock
 
 from django.apps import apps as registre_django
 from django.db import IntegrityError, connection, transaction
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from apps.stock.models import Produit
+from core.test_utils import WideTeardownTimeoutMixin
 
 MIGRATION_DEDOUBLONNAGE = 'apps.stock.migrations.0134_dedoublonnage_produit_nom_sans_sku'
 CONTRAINTE = 'stock_produit_company_nom_sans_sku_uniq'
@@ -49,26 +50,63 @@ def _contrainte():
     raise AssertionError(f'contrainte {CONTRAINTE} absente de Produit.Meta')
 
 
+def _contrainte_presente():
+    """L'unicité conditionnelle est matérialisée par un INDEX UNIQUE PARTIEL
+    portant le nom de la contrainte : sa présence dans ``pg_class`` suffit."""
+    with connection.cursor() as cur:
+        cur.execute('SELECT 1 FROM pg_class WHERE relname = %s', [CONTRAINTE])
+        return cur.fetchone() is not None
+
+
 class _SansContrainteMixin:
     """Retire temporairement la contrainte pour pouvoir FABRIQUER l'état
     « base historique avec doublons » que la migration 0134 doit nettoyer.
-    Le DDL est transactionnel sous PostgreSQL : il est de toute façon annulé
-    avec le test, mais il est remis explicitement."""
+
+    Pourquoi ``TransactionTestCase`` et non ``TestCase`` (idiome maison, cf.
+    ``core/tests/test_rls.py`` et ``apps/ventes/tests/test_premium_security``) :
+    sous ``TestCase`` tout le test vit dans UNE transaction, les INSERT y
+    laissent des déclencheurs de clés étrangères EN ATTENTE, et le DDL de
+    remise de la contrainte échoue alors avec « cannot CREATE INDEX … because
+    it has pending trigger events ». En autocommit, les lignes sont commitées
+    avant le DDL et le problème disparaît.
+
+    Conséquence : le DDL est commité, lui aussi. La remise de la contrainte ne
+    peut donc PAS se faire à la sortie du bloc ``with`` — certains tests y
+    laissent volontairement des doublons (le sens inverse de 0134 les
+    recrée), et PostgreSQL refuserait l'index. Elle est faite au NETTOYAGE,
+    après avoir effacé les fiches fabriquées : une base ``--keepdb`` ne reste
+    jamais sans sa contrainte entre deux tests.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Enregistré AVANT toute fabrication : même un test qui échoue en
+        # cours de route rend la base à son état contraint.
+        self.addCleanup(self._remettre_contrainte)
 
     def _sans_contrainte(self):
         contrainte = _contrainte()
 
         class _Ctx:
             def __enter__(_self):
-                with connection.schema_editor(atomic=False) as se:
-                    se.remove_constraint(Produit, contrainte)
+                if _contrainte_presente():
+                    with connection.schema_editor(atomic=False) as se:
+                        se.remove_constraint(Produit, contrainte)
 
             def __exit__(_self, *exc):
-                with connection.schema_editor(atomic=False) as se:
-                    se.add_constraint(Produit, contrainte)
+                # Remise déléguée au nettoyage (cf. docstring de la classe).
                 return False
 
         return _Ctx()
+
+    def _remettre_contrainte(self):
+        # Les fiches fabriquées violent DÉLIBÉRÉMENT l'unicité (c'est l'état
+        # historique que 0134 nettoie) : les effacer d'abord, sinon l'index
+        # partiel est refusé.
+        Produit.objects.all().delete()
+        if not _contrainte_presente():
+            with connection.schema_editor(atomic=False) as se:
+                se.add_constraint(Produit, _contrainte())
 
 
 class TestContrainteNomSansSku(TestCase):
@@ -113,10 +151,13 @@ class TestContrainteNomSansSku(TestCase):
             Produit.objects.filter(nom='Frais refacturés').count(), 2)
 
 
-class TestMigrationDedoublonnage(_SansContrainteMixin, TestCase):
+class TestMigrationDedoublonnage(_SansContrainteMixin,
+                                 WideTeardownTimeoutMixin,
+                                 TransactionTestCase):
     """``stock.0134`` — renomme, ne supprime JAMAIS."""
 
     def setUp(self):
+        super().setUp()
         self.company = make_company('uniq-nom-mig', 'Uniq Nom Mig')
         self.migration = importlib.import_module(MIGRATION_DEDOUBLONNAGE)
 
