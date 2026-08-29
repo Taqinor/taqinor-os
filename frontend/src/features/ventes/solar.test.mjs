@@ -1057,7 +1057,7 @@ test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
   // 850 MAD/mois tombe dans un TROU du barème : la bande 301-500 plafonne à
-  // 510 × 1,405116 = 716,60916 MAD et la bande supérieure démarre au-dessus de
+  // 510 × 1,381704 = 704,66904 MAD et la bande supérieure démarre au-dessus de
   // 511 × 1,622856 = 829,279416 MAD… mais 850 MAD EST atteignable au-dessus de
   // 510 : 850 / 1,622856 = 523,7998… kWh (> 510, donc bien dans sa bande) →
   // arrondi 523,8.
@@ -1128,10 +1128,21 @@ test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, av
 // fichiers portent les MÊMES entrées et les MÊMES attendus, tous DÉRIVÉS À LA
 // MAIN de la grille officielle (jamais copiés d'une sortie de code).
 //
+// ÉCART TEMPORAIRE ASSUMÉ ET DATÉ (QJR26, 29/08/2026) : la correction T5
+// ci-dessous est portée sur les DEUX branches ERP (ce fichier + le jumeau
+// Python), PAS sur la branche site — apps/web/** est une tâche séparée (QJW).
+// Tant qu'elle n'a pas atterri, savingsTranchesFondateur.test.ts reste sur
+// l'ancienne valeur. Le verrou à trois branches se referme avec QJW.
+//
 // Grille (TTC, 2026 — TVA 20 %) : progressif 0-100 = 0,916272 ·
 // 101-150 = 1,091388 ; sélectif (toute la conso au tarif de sa tranche,
 // tolérance 10 kWh) : 151-210 = 1,091388 · 211-310 = 1,187388 ·
-// 311-510 = 1,405116 · > 510 = 1,622856.
+// 311-510 = 1,381704 · > 510 = 1,622856.
+//
+// DÉCISION FONDATEUR D5 (29/08/2026) — T5 RECALÉE SUR LA FACTURE : 311-510
+// vaut 1,381704 (facture SRM n° 643769639 du 08/05/2026 : 359 kWh × 1,15142 HT
+// = 496,03 TTC ⇒ 1,15142 × 1,20), et non l'extrapolation « HT constant ». TOUS
+// les attendus T5 ci-dessous ont été RE-DÉRIVÉS À LA MAIN de 1,381704.
 const BAREME_FIXTURE = [
   [100, 91.6272],      // progressif : 100 × 0,916272
   [150, 146.1966],     // progressif : 91,6272 + 50 × 1,091388 (= 54,5694)
@@ -1139,11 +1150,11 @@ const BAREME_FIXTURE = [
   [210, 229.19148],    // haut de bande (tolérance) : 210 × 1,091388
   [211, 250.538868],   // bande suivante, TOUTE la conso : 211 × 1,187388
   [310, 368.09028],    // 310 × 1,187388
-  [311, 436.991076],   // 311 × 1,405116
-  [499, 701.152884],   // 499 × 1,405116
-  [500, 702.558],      // 500 × 1,405116 — le seuil « 500 » du fondateur
-  [501, 703.963116],   // 501 × 1,405116 (encore dans sa bande : borne effective 510)
-  [510, 716.60916],    // 510 × 1,405116
+  [311, 429.709944],   // 311 × 1,381704
+  [499, 689.470296],   // 499 × 1,381704
+  [500, 690.852],      // 500 × 1,381704 — le seuil « 500 » du fondateur
+  [501, 692.233704],   // 501 × 1,381704 (encore dans sa bande : borne effective 510)
+  [510, 704.66904],    // 510 × 1,381704
   [511, 829.279416],   // 511 × 1,622856 — la marche du haut de grille
   [700, 1135.9992],    // 700 × 1,622856
 ]
@@ -1157,9 +1168,11 @@ test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à l
   for (let i = 1; i < BAREME_FIXTURE.length; i++) {
     assert.ok(BAREME_FIXTURE[i][1] > BAREME_FIXTURE[i - 1][1])
   }
-  // 511 kWh coûte 112,670256 MAD de plus que 510 kWh pour UN kWh de plus :
-  // c'est la marche sélective (829,279416 − 716,60916), pas une erreur d'arrondi.
-  assert.ok(Math.abs((829.279416 - 716.60916) - 112.670256) < 1e-9)
+  // 511 kWh coûte 124,610376 MAD de plus que 510 kWh pour UN kWh de plus :
+  // c'est la marche sélective (829,279416 − 704,66904), pas une erreur d'arrondi.
+  // La marche a GRANDI avec la correction D5 : son bas est descendu à 1,381704
+  // alors que son haut (1,622856) n'a pas bougé.
+  assert.ok(Math.abs((829.279416 - 704.66904) - 124.610376) < 1e-9)
 })
 
 test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-retour)', () => {

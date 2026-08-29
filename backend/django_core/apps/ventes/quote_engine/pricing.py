@@ -139,10 +139,32 @@ class TrancheTable(list):
 #     0–100 kWh   : HT 0,76356 → 2025 (18 %) 0,9010  → 2026 (20 %) 0,916272
 #     101–210 kWh : HT 0,90949 → 2025 (18 %) 1,0732  → 2026 (20 %) 1,091388
 #     211–310 kWh : HT 0,98949 → 2025 (18 %) 1,1676  → 2026 (20 %) 1,187388
-#     311–510 kWh : HT 1,17093 → 2025 (18 %) 1,3817  → 2026 (20 %) 1,405116
+#     311–510 kWh : voir la CORRECTION ci-dessous — l'extrapolation « HT
+#                   constant » (qui donnait 1,405116) est RÉFUTÉE par facture
 #     > 510 kWh   : HT 1,35238 → 2025 (18 %) 1,5958  → 2026 (20 %) 1,622856 ✓ ancre
-#   PROCHAINE HAUSSE DE TVA : refaire exactement ce calcul (HT × nouveau taux)
-#   sur les six bases HT ci-dessus — jamais repartir d'un TTC déjà taxé.
+#   PROCHAINE HAUSSE DE TVA : ce calcul (HT × nouveau taux) reste la méthode de
+#   DÉFAUT pour une tranche sans facture — jamais repartir d'un TTC déjà taxé —
+#   mais une facture réelle le SUPPLANTE toujours (cf. T5 ci-dessous).
+#
+# ═══ CORRECTION T5 2026 — DÉCISION FONDATEUR D5 (29/08/2026) ════════════════
+# La tranche 311–510 (T5) vaut 1,381704 MAD/kWh TTC, PAS 1,405116.
+#
+#   PREUVE : facture SRM Casablanca-Settat n° 643769639 du 08/05/2026 (période
+#   22/03→21/04/2026, 30 j, 359 kWh, BT domestique, TVA 20 %) — ligne énergie
+#   359 × 1,15142 HT = 413,36 HT / 496,03 TTC, soit un TTC unitaire de
+#   1,15142 × 1,20 = 1,381704. CORROBORÉE par la facture du 20/01/2026
+#   (T5 2025 = 1,17094 HT × 1,18 = 1,3817 TTC).
+#
+#   CE QUE LA FACTURE RÉFUTE : au passage de TVA 18 → 20 %, le repo avait
+#   supposé le HT constant (1,17093 × 1,20 = 1,405116, d'où le TTC monte). Les
+#   deux factures montrent l'INVERSE : c'est le TTC qui est resté CONSTANT
+#   (1,3817 des deux côtés) et le HT qui a été ABAISSÉ (1,17094 → 1,15142).
+#   L'extrapolation gonflait donc la facture actuelle ET les économies de tout
+#   client T5 d'environ 1,7 %.
+#
+#   Les cinq autres tranches gardent leur valeur extrapolée : AUCUNE facture
+#   2026 ne les couvre, et on ne bouge pas un chiffre sans preuve (le conflit
+#   ouvert sur T6 est publié dans ``bareme.DIVERGENCES_PRICING``).
 #
 # ÉDITABLE PAR SOCIÉTÉ (19/08/2026) — ces six valeurs restent le DÉFAUT codé
 # en dur ; une société peut les surcharger dans Paramètres → Tarification &
@@ -158,15 +180,20 @@ class TrancheTable(list):
 # (hors périmètre) — verrouillées d'accord par
 # apps/ventes/tests/test_tariff_drift_lock.py : si l'une bouge seule, ce test
 # passe au rouge. Le miroir JS frontend/src/features/ventes/solar.js
-# ONEE_TRANCHES et le miroir site apps/web/src/lib/estimatorBrainV2.ts
-# REGIE_TARIFF portent les MÊMES six valeurs 2026.
+# ONEE_TRANCHES porte les MÊMES six valeurs 2026 (T5 corrigée comprise).
+# MIROIR SITE — ÉCART CONNU ET DATÉ : apps/web/src/lib/estimatorBrainV2.ts
+# REGIE_TARIFF et apps/web/src/lib/regieTariff.ts portent ENCORE 1,405116 sur
+# T5. La correction D5 y est portée par la tâche QJW (moitié site), hors du
+# périmètre ERP : tant qu'elle n'a pas atterri, l'estimateur public annonce une
+# facture T5 ~1,7 % plus haute que l'ERP.
 ONEE_TRANCHES = TrancheTable(
     [
         (100, 0.916272),    # progressif   0–100  — HT 0,76356 × TVA 20 % (2026)
         (150, 1.091388),    # progressif 101–150  — HT 0,90949 × TVA 20 % (2026)
         (200, 1.091388),    # sélectif 151–200, effectif 151–210 — idem
         (300, 1.187388),    # sélectif 201–300, effectif 211–310 — HT 0,98949 × 1,20
-        (500, 1.405116),    # sélectif 301–500, effectif 311–510 — HT 1,17093 × 1,20
+        (500, 1.381704),    # sélectif 301–500, effectif 311–510 — PROUVÉ facture
+                            # SRM 08/05/2026 : 1,15142 HT × 1,20 (D5, 29/08/2026)
         (None, 1.622856),   # sélectif > 500,   effectif > 510   — HT 1,35238 × 1,20 (ancre fondateur)
     ],
     selective_threshold=150,

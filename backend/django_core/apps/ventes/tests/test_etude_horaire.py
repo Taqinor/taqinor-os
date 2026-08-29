@@ -13,9 +13,13 @@ Ce module garde CINQ promesses faites au fondateur :
    restitue jamais plus que 0,90 × ce qu'elle a chargé.
 4. **Rien n'est inventé quand rien n'est connu** — sans facture, le moteur
    renvoie ``None`` et le moteur de devis garde son forfait ÉTIQUETÉ (règle Z2).
-5. **Rien d'existant ne bouge** — ``pricing.ONEE_TRANCHES`` est intacte (donc
-   ``test_tariff_drift_lock`` reste vert), un devis sans bloc horaire calcule
-   exactement comme avant, et les chemins industriel/agricole sont épinglés.
+5. **Rien d'existant ne bouge SANS DÉCISION** — un devis sans bloc horaire
+   calcule exactement comme avant et les chemins industriel/agricole sont
+   épinglés. SEULE exception, tranchée par le fondateur (D5, 29/08/2026,
+   QJR26) : le tarif T5 de ``pricing.ONEE_TRANCHES`` a été aligné sur la valeur
+   prouvée par facture que ce module portait déjà (1,381704) — la divergence
+   assumée est devenue une propagation, et ``test_tariff_drift_lock`` a été
+   recalé en conséquence.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
@@ -145,20 +149,29 @@ class BaremeInversionTest(SimpleTestCase):
 
 
 class BaremeDivergencesTest(SimpleTestCase):
-    """Ce que les factures corrigent est VISIBLE, et rien d'existant ne bouge."""
+    """Ce que les factures corrigent est VISIBLE, et la correction a été PROPAGÉE."""
 
-    def test_pricing_onee_tranches_intacte(self):
-        """Le drift lock reste vert PAR CONSTRUCTION : on n'a pas touché la
-        table du moteur de devis. Si quelqu'un la corrige un jour, ce test le
-        force à mettre DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
+    def test_pricing_onee_tranches_alignee_sur_le_bareme(self):
+        """QJR26 / décision fondateur D5 (29/08/2026) : la table du moteur de
+        devis a REJOINT la valeur prouvée par la facture.
+
+        Ce test disait l'inverse jusqu'au 29/08 (« ONEE_TRANCHES intacte » à
+        1,405116, la divergence assumée). Le fondateur a tranché : il n'y a
+        plus qu'UNE valeur T5 dans l'ERP, celle de bareme.TRANCHES_2026. Si
+        quelqu'un les fait diverger à nouveau, ce test le force à mettre
+        DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
         prix = dict((plafond, prix) for plafond, prix in pricing.ONEE_TRANCHES)
-        self.assertAlmostEqual(prix[500], 1.405116, places=6)
+        reference = dict((c, p) for c, p in B.TRANCHES_2026)
+        self.assertAlmostEqual(prix[500], 1.381704, places=6)
+        self.assertAlmostEqual(prix[500], reference[500], places=9)
         self.assertAlmostEqual(prix[None], 1.622856, places=6)
 
     def test_t5_2026_corrigee_par_la_facture(self):
-        """1,381704 (prouvé) et non 1,405116 (extrapolé à HT constant)."""
+        """1,381704 = 1,15142 HT × 1,20 (facture A), pas l'extrapolation à HT
+        constant qui donnait 1,17093 × 1,20."""
         prix = dict((plafond, prix) for plafond, prix in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[500], 1.381704, places=6)
+        self.assertAlmostEqual(1.15142 * 1.20, prix[500], places=9)
 
     def test_t5_ttc_constante_a_travers_le_changement_de_tva(self):
         """LE mécanisme prouvé : au passage 18 → 20 %, le TTC n'a pas bougé."""
@@ -170,10 +183,24 @@ class BaremeDivergencesTest(SimpleTestCase):
         statuts = {d['tranche']: d for d in B.DIVERGENCES_PRICING}
         self.assertEqual(len(statuts), 2)
         for detail in B.DIVERGENCES_PRICING:
+            # 'propagé' (D5) = l'écart a été RÉSORBÉ dans pricing.py ; il reste
+            # listé pour garder la trace de la correction et de sa preuve.
             self.assertIn(detail['statut'],
-                          ('corrigé', 'conflit_non_tranché'))
+                          ('corrigé', 'propagé', 'conflit_non_tranché'))
             self.assertTrue(detail['preuve'].strip(),
                             'une divergence sans preuve écrite est interdite')
+            if detail['statut'] == 'propagé':
+                self.assertAlmostEqual(detail['valeur_pricing'],
+                                       detail['valeur_moteur'], places=9)
+
+    def test_t5_est_propagee_et_non_plus_divergente(self):
+        """QJR26 / D5 : l'écart T5 n'existe plus — il est marqué comme tel."""
+        t5 = [d for d in B.DIVERGENCES_PRICING
+              if d['tranche'].startswith('311-510')]
+        self.assertEqual(len(t5), 1)
+        self.assertEqual(t5[0]['statut'], 'propagé')
+        prix = dict((c, p) for c, p in pricing.ONEE_TRANCHES)
+        self.assertAlmostEqual(t5[0]['valeur_pricing'], prix[500], places=9)
 
     def test_conflit_t6_reste_sur_la_valeur_du_repo(self):
         """On ne tranche RIEN sans facture : T6 garde 1,622856 et le conflit

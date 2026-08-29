@@ -240,8 +240,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
 | `backend/django_core/apps/parametres/models_pos.py:72` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_relance.py:80` | get_or_create | cls.objects | company, ordre |
-| `backend/django_core/apps/parametres/models_tariff.py:181` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_tariff.py:183` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_tariff.py:187` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_tariff.py:189` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/models_units.py:83` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/views_config.py:166` | get_or_create | DocumentTemplates.objects | company |
