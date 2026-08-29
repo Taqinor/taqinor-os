@@ -208,7 +208,7 @@ export default function AvanceSection({
               <Input id="pe-rendement" type="number" step="any"
                      name="rendement_global" value={form.rendement_global} onChange={set} />
             </Field>
-            <Field label="Panneaux par tranche de 900 MAD (auto-remplir)" htmlFor="pe-panneaux900">
+            <Field label="Panneaux par tranche de 900 MAD (sans effet — voir note ci-dessous)" htmlFor="pe-panneaux900">
               <Input id="pe-panneaux900" type="number" step="any"
                      name="panneaux_par_900mad" value={form.panneaux_par_900mad} onChange={set} />
             </Field>
@@ -225,9 +225,17 @@ export default function AvanceSection({
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Le rendement et le tarif ONEE (ci-dessus) pilotent les économies
-            estimées ; le ratio de dimensionnement pilote la suggestion de
-            panneaux du devis auto ; le prix cible pré-remplit le générateur ;
-            la limite de remise affiche un repère (sans bloquer la saisie).
+            estimées ; le prix cible pré-remplit le générateur ; la limite de
+            remise affiche un repère (sans bloquer la saisie).
+            {' '}
+            <strong>Panneaux par tranche de 900 MAD</strong> — U3-900 (fondateur
+            29/08/2026) : ce ratio ne dimensionne plus AUCUN devis. Le
+            dimensionnement (résidentiel) passe désormais entièrement par le
+            moteur horaire serveur, qui chiffre une taille réelle à partir de la
+            facture et du site plutôt que d'une règle forfaitaire par tranche.
+            Le champ reste modifiable mais n'a plus d'effet — conservé pour un
+            usage futur éventuel, à confirmer avec le founder.
+            {' '}
             Les tables tarifaires ONEE par tranche et les facteurs de
             production par région restent un raffinement futur (modèle de
             calcul à valider avec le founder).
