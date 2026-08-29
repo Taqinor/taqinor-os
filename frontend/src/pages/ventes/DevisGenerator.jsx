@@ -1587,10 +1587,18 @@ export default function DevisGenerator({
   // strict : le comportement historique est inchangé.
   const applySiteProfile = (p) => {
     if (!p) return
-    if (!modeTouched.current
-        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]) {
-      onModeChange(LEAD_TYPE_TO_MODE[p.type_installation])
-    }
+    const modeLead = !modeTouched.current
+        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
+      ? LEAD_TYPE_TO_MODE[p.type_installation] : null
+    if (modeLead) onModeChange(modeLead)
+    // QJR38 — Mode RÉELLEMENT visé par ce pré-remplissage : `modeInstallation`
+    // est encore la valeur du rendu courant après `onModeChange` (setState ne
+    // rafraîchit pas la constante fermée) — même patron qu'applyLead (le bug
+    // vivait ici : la branche `attenteSizingServeur` ci-dessous lisait
+    // `modeInstallation`, donc un profil industriel/commercial prenait encore
+    // le chemin résidentiel et armait une attente que le moteur résidentiel-
+    // only ne satisferait jamais).
+    const modeCible = modeLead || modeInstallation
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
       if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
@@ -1610,7 +1618,7 @@ export default function DevisGenerator({
       // (voir computeAutoSizing) ; sous le seuil, attend le moteur horaire
       // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
       if (!nbPanneauxTouched.current) {
-        if (modeInstallation === 'residentiel') {
+        if (modeCible === 'residentiel') {
           // U3-MOTEUR — même règle qu'applyLead : le résidentiel ne se
           // dimensionne plus ici, il attend le moteur horaire serveur.
           setSizingInfo(null)
