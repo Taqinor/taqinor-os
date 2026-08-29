@@ -2,9 +2,11 @@
 
 LE TROU QUE CECI FERME. ``DevisWriteSerializer.Meta`` était
 ``exclude = ['reference', 'fichier_pdf']`` : CHAQUE autre colonne du modèle
-était donc écrivable depuis le corps de la requête, y compris cinq JSONField
+était donc écrivable depuis le corps de la requête, y compris cinq champs
 BRUTS sans forme ni provenance — ``etude_params``, ``roof_layout``,
-``layout_hash``, ``offres_tailles_config``, ``marge_snapshot``. Le navigateur
+``offres_tailles_config`` (JSONField), ``layout_hash`` (CharField) et
+``marge_snapshot`` (DecimalField : la MARGE HT interne, manager-only —
+règle #4, elle ne paraît dans aucune sortie client). Le navigateur
 pouvait poster n'importe quel chiffre CLIENT-FACING (``puissance_kwc``,
 ``production_annuelle``, ``economies_annuelles``, ``scenario``,
 ``etude_horaire``…) directement dans les entrées du PDF et de la page
@@ -159,7 +161,11 @@ class PatchBrutIgnore(TestCase):
             roof_layout={'pans': ['serveur']},
             layout_hash='hash-serveur',
             offres_tailles_config={'eco': {'nb_panneaux': 10}},
-            marge_snapshot={'marge_pct': 12.5})
+            # ``marge_snapshot`` est un DecimalField (marge HT figée en MAD,
+            # manager-only — QX23be), PAS un JSONField : un dict y lève
+            # « conversion from dict to Decimal is not supported » dès la
+            # création. Montant volontairement sous 1000 MAD (R4-B3).
+            marge_snapshot=Decimal('12.50'))
 
     def _patch(self, corps):
         return self.api.patch(
@@ -193,7 +199,7 @@ class PatchBrutIgnore(TestCase):
             'roof_layout': {'pans': ['navigateur']},
             'layout_hash': 'hash-navigateur',
             'offres_tailles_config': {'eco': {'nb_panneaux': 999}},
-            'marge_snapshot': {'marge_pct': 99.9},
+            'marge_snapshot': '999.90',
         })
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.devis.refresh_from_db()
@@ -201,7 +207,7 @@ class PatchBrutIgnore(TestCase):
         self.assertEqual(self.devis.layout_hash, 'hash-serveur')
         self.assertEqual(self.devis.offres_tailles_config,
                          {'eco': {'nb_panneaux': 10}})
-        self.assertEqual(self.devis.marge_snapshot, {'marge_pct': 12.5})
+        self.assertEqual(self.devis.marge_snapshot, Decimal('12.50'))
 
     def test_le_reste_du_corps_passe_toujours(self):
         """La fermeture ne doit RIEN casser du chemin d'écriture normal."""
