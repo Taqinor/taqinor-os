@@ -7913,24 +7913,32 @@ const signConfig = ok
   // mensualité, aucun crédit) : son import client `installmentSplit` disparaît
   // avec lui. `formatMAD` reste importé ici — le curseur batterie le réutilise.
   // `formatNumber` sert au sélecteur de paliers batterie (P2-C, 25/08/2026).
-  // OPTIONS CHARGEABLES (29/08/2026) — `formatPercent`/`formatPayback` sont
-  // les MÊMES fonctions que celles du rendu serveur : un pourcentage ou un
-  // payback chargé pour une autre taille s'écrit exactement comme celui du
-  // devis officiel s'écrivait, jamais avec un second formatage maison.
+  // QJW9 (29/08/2026) — `formatPercent`, `formatPayback` et `dasharrayDonut`
+  // ne sont plus importés ICI : le formatage des chapitres profonds et la
+  // longueur d'arc de l'anneau vivent maintenant dans les `peindre` de
+  // `lib/proposition/liaisons.ts`, qui appelle les MÊMES fonctions que le
+  // rendu serveur — jamais un second formatage maison.
   import {
     buildContactBody,
     formatMAD,
     formatNumber,
-    formatPayback,
-    formatPercent,
     type ContactChannel,
   } from '../../lib/proposition';
-  // OPTIONS CHARGEABLES — lecture du contrat `taille_detail.json` + longueur
-  // d'arc de l'anneau (la MÊME que le rendu serveur appelle plus haut).
+  // OPTIONS CHARGEABLES — lecture du contrat `taille_detail.json`.
   import {
-    cleCacheDetail, dasharrayDonut, detailProxyUrl, estChargeable, tailleDetail,
+    cleCacheDetail, detailProxyUrl, estChargeable, tailleDetail,
     type TailleDetail,
   } from '../../lib/tailleDetail';
+  // QJW7/QJW8 — les deux TABLES de liaison de cette page (chiffres de tête et
+  // chapitres profonds) et le moteur générique qui les applique, les restaure
+  // et les marque en chargement. `appliquer` est aliasé : cet îlot a déjà sa
+  // propre fonction `appliquer()`, qui orchestre l'affichage des variantes.
+  import {
+    HERO, PROFONDS, liaisonsHero, type ContexteHero,
+  } from '../../lib/proposition/liaisons';
+  import {
+    appliquer as appliquerLiaisons, capturerOriginaux, marquerChargement, restaurer,
+  } from '../../lib/proposition/swap';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
@@ -8356,157 +8364,92 @@ const signConfig = ok
     // page garde ses artefacts uniques — jamais un cadre vide.
     const details = Array.from(document.querySelectorAll<HTMLElement>('[data-taille-detail]'));
 
-    // ── LANE W (28/08/2026) — « le détail de la page suit la carte » ────────
-    // Les SEULS nœuds hors de la section #tailles que ce script touche, en
-    // plus des deux chemins déjà documentés ci-dessus (WJ54, curseur
-    // batterie) : le bloc de chiffres du héros et la légende kWc/panneaux
-    // de « Votre installation ». Ce script ne CALCULE ni ne FORMATE rien ici
-    // non plus : il COPIE le texte DÉJÀ RENDU par la carte sélectionnée
-    // (même `formatMAD`/`formatNumber` que la carte elle-même) — jamais un
-    // second calcul.
+    // ── LA RÉGION DE SWAP, DÉSORMAIS DÉCLARATIVE (QJW9, 29/08/2026) ─────────
     //
-    // REVUE ADVERSARIALE (correction, zéro-chiffre-inventé) — une carte qui
-    // NE SERT PAS un champ ne doit JAMAIS laisser voir le chiffre du DEVIS
-    // OFFICIEL à sa place : ce serait un nombre RÉEL mais ATTRIBUÉ à la
-    // MAUVAISE offre. `masquer()` MASQUE donc l'item entier au lieu de
-    // repartir sur l'original — l'omission honnête, la même discipline que
-    // les cartes elles-mêmes. Et le créneau « Économie / an » ne mélange
-    // JAMAIS un payback sous un libellé pensé pour une économie (ou
-    // l'inverse) : `data-hero-eco-kind`, figé au chargement, dit lequel des
-    // deux CE bloc a réellement rendu, et seul le champ HOMONYME de la carte
-    // sélectionnée peut s'y substituer. La ligne MAD/mois du héros
-    // (`data-hero-eco-sub`) porte du texte traduit qu'aucune carte Éco/Max
-    // ne sert : elle reste MASQUÉE hors de Recommandé (jamais reconstruite
-    // en JS). Sur Recommandé + la variante par défaut, tout est DÉMASQUÉ et
-    // restauré au texte ORIGINAL mis en cache au chargement — jamais
-    // recalculé depuis la carte — ce qui garantit l'identité byte-à-byte de
-    // la page au chargement et après un aller-retour.
-    const heroTtcCard = document.querySelector<HTMLElement>('[data-hero-ttc-card]');
-    const heroTtcValue = document.querySelector<HTMLElement>('[data-hero-ttc-value]');
-    const heroEcoCard = document.querySelector<HTMLElement>('[data-hero-eco-card]');
-    const heroEcoValue = document.querySelector<HTMLElement>('[data-hero-eco-value]');
-    const heroEcoKind = heroEcoCard?.dataset.heroEcoKind === 'payback' ? 'payback' : 'eco';
+    // CE QUI A CHANGÉ. Cette région portait quatre fonctions câblées à la main
+    // — `synchroniserDetailPage`, `marquerChargement`, `restaurerDetail`,
+    // `appliquerDetail` — et une cinquantaine de constantes de nœuds : il
+    // fallait informer CHACUNE de CHAQUE champ. Un champ y a été oublié à la
+    // première livraison (le tableau de trésorerie année par année, rattrapé
+    // après coup), parce qu'un câblage ne s'énumère pas. Deux TABLES
+    // (`lib/proposition/liaisons.ts`) et UN moteur
+    // (`lib/proposition/swap.ts`) les remplacent — et une table, elle,
+    // s'énumère : `tests/propositionLiaisons.test.ts` exige désormais que
+    // CHAQUE clé du contrat soit liée ou justifiée par écrit.
+    //
+    // CE QUI N'A PAS CHANGÉ, ET NE CHANGERA PAS. Ce script ne CALCULE ni ne
+    // FORMATE rien de neuf : les chiffres de tête RECOPIENT le texte DÉJÀ
+    // RENDU par la carte sélectionnée (mêmes `formatMAD`/`formatNumber`
+    // qu'elle), les chapitres profonds viennent du contrat
+    // `taille_detail.json`, et la seule arithmétique reste la longueur d'arc
+    // de l'anneau, définie UNE fois dans `lib/tailleDetail.ts` et partagée
+    // avec le rendu serveur. Surtout, la règle fondatrice est maintenant
+    // ENCODÉE dans le moteur : une carte qui NE SERT PAS un champ fait
+    // MASQUER son enveloppe — jamais un readback sur le chiffre du DEVIS
+    // OFFICIEL, qui serait un nombre RÉEL attribué à la MAUVAISE offre.
+    //
+    // Les SEULS nœuds hors de la section #tailles que ce script touche restent
+    // ceux que les deux tables déclarent, plus les deux chemins déjà
+    // documentés ci-dessus (WJ54, curseur batterie).
+    //
+    // Le créneau « Économie / an » a rendu au chargement SOIT une économie
+    // SOIT un payback : `data-hero-eco-kind`, figé côté serveur, choisit
+    // laquelle des deux lignes homonymes de la table HERO est active — jamais
+    // un payback sous un libellé pensé pour une économie.
+    const heroEcoKind = document.querySelector<HTMLElement>('[data-hero-eco-card]')
+      ?.dataset.heroEcoKind === 'payback' ? 'payback' : 'eco';
+    const heroLiaisons = liaisonsHero(heroEcoKind);
+    // La ligne MAD/mois du héros porte du texte TRADUIT qu'aucune carte
+    // Éco/Max ne sert : ce n'est pas une liaison, c'est une ligne simplement
+    // masquée hors de Recommandé — jamais reconstruite en JS.
     const heroEcoSub = document.querySelector<HTMLElement>('[data-hero-eco-sub]');
-    const heroKwcItem = document.querySelector<HTMLElement>('[data-hero-kwc-item]');
-    const heroKwcValue = document.querySelector<HTMLElement>('[data-hero-kwc-value]');
-    const heroPanneauxItem = document.querySelector<HTMLElement>('[data-hero-panneaux-item]');
-    const heroPanneauxValue = document.querySelector<HTMLElement>('[data-hero-panneaux-value]');
+    // Le séparateur entre kWc et panneaux n'est pas une donnée non plus : il
+    // ne survit que si les DEUX items qu'il sépare sont visibles — jamais un
+    // point orphelin à côté d'un item masqué. Sa condition se lit sur les
+    // enveloppes que la table HERO déclare, jamais sur un second sélecteur.
     const heroLegendSep = document.querySelector<HTMLElement>('[data-hero-legend-sep]');
-    // EXTENSION (revue Fable) — le bandeau « Production estimée / an » et le
-    // bandeau « Économie estimée / an » du chapitre production sont des
-    // NŒUDS DISTINCTS du héros (`#prop-fold-figures`) : même donnée, deux
-    // endroits de page, donc deux crochets `data-hero-*` propres — jamais un
-    // sélecteur partagé qui masquerait l'un en croyant piloter l'autre.
-    const heroProductionCard = document.querySelector<HTMLElement>('[data-hero-production-card]');
-    const heroProductionValue = document.querySelector<HTMLElement>('[data-hero-production-value]');
-    const heroEcoAnnualCard = document.querySelector<HTMLElement>('[data-hero-eco-annual-card]');
-    const heroEcoAnnualValue = document.querySelector<HTMLElement>('[data-hero-eco-annual-value]');
-    // La carte « Couverture solaire » porte un ANNEAU SVG dont l'arc
-    // (`stroke-dasharray`) est une géométrie PRÉCALCULÉE au chargement — la
-    // recalculer en JS pour suivre une autre carte serait exactement le
-    // calcul côté client interdit. Elle n'a donc PAS de crochet de valeur :
-    // elle est MASQUÉE en bloc hors de Recommandé (jamais un anneau figé
-    // sous un nouveau pourcentage), et redémasquée au retour.
-    const heroCouvertureCard = document.querySelector<HTMLElement>('[data-hero-couverture-card]');
-    const heroTtcOriginal = heroTtcValue?.textContent ?? null;
-    const heroEcoOriginal = heroEcoValue?.textContent ?? null;
-    const heroKwcOriginal = heroKwcValue?.textContent ?? null;
-    const heroPanneauxOriginal = heroPanneauxValue?.textContent ?? null;
-    const heroProductionOriginal = heroProductionValue?.textContent ?? null;
-    const heroEcoAnnualOriginal = heroEcoAnnualValue?.textContent ?? null;
+    const enveloppeHeroVisible = (cleHero: string): boolean => {
+      const h = HERO.find((x) => x.cle === cleHero);
+      const el = h ? document.querySelector<HTMLElement>(h.enveloppe) : null;
+      return !!el && !el.hidden;
+    };
+
+    // Les originaux : moissonnés UNE fois, ICI, avant que quoi que ce soit
+    // n'ait bougé. C'est ce qui garantit l'identité byte-à-byte de la page au
+    // chargement et après un aller-retour.
+    const originauxHero = capturerOriginaux(heroLiaisons);
 
     let variante: 'sans' | 'avec' = varianteDefaut;
     let cle = cleDefaut;
 
-    /** Le texte DÉJÀ RENDU par la carte sélectionnée, pour ce sélecteur — ou
-     *  `null` si cette carte ne sert pas ce champ (discipline d'omission). */
-    function texteDeLaCarteSelectionnee(selecteur: string): string | null {
-      const carte = cartes.find((c) => c.dataset.tailleCle === cle);
-      const bloc = carte?.querySelector<HTMLElement>(
-        `[data-taille-bloc][data-taille-variante="${variante}"]`,
-      );
-      const noeud = bloc?.querySelector<HTMLElement>(selecteur);
-      return noeud ? noeud.textContent : null;
-    }
-
     /**
-     * Applique UN champ du héros : restauration sur Recommandé, sinon copie
-     * du texte de la carte OU masquage de l'item entier quand la carte ne
-     * sert pas ce champ — JAMAIS un readback sur l'original sous une autre
-     * carte (le bug corrigé par cette revue).
+     * Ce dont les liaisons de tête ont besoin, et rien d'autre : le texte DÉJÀ
+     * RENDU par la carte sélectionnée pour ce champ — ou `null` si cette carte
+     * ne le sert pas. C'est le moteur qui en tire la conséquence (masquer sans
+     * rien écrire), pas ce contexte.
      */
-    function appliquerChampHero(
-      valeur: HTMLElement | null,
-      item: HTMLElement | null,
-      original: string | null,
-      surLeDefaut: boolean,
-      texteCarte: string | null,
-    ): void {
-      if (!valeur) return;
-      if (surLeDefaut) {
-        valeur.textContent = original;
-        if (item) item.hidden = false;
-        return;
-      }
-      if (texteCarte === null) {
-        if (item) item.hidden = true;
-        return;
-      }
-      if (item) item.hidden = false;
-      valeur.textContent = texteCarte;
-    }
+    const contexteHero: ContexteHero = {
+      texteCarte(selecteur: string): string | null {
+        const carte = cartes.find((c) => c.dataset.tailleCle === cle);
+        const bloc = carte?.querySelector<HTMLElement>(
+          `[data-taille-bloc][data-taille-variante="${variante}"]`,
+        );
+        const noeud = bloc?.querySelector<HTMLElement>(selecteur);
+        return noeud ? noeud.textContent : null;
+      },
+    };
 
     function synchroniserDetailPage(): void {
       const surLeDefaut = cle === cleDefaut && variante === varianteDefaut;
-      appliquerChampHero(
-        heroTtcValue, heroTtcCard, heroTtcOriginal, surLeDefaut,
-        texteDeLaCarteSelectionnee('[data-taille-ttc-value]'),
-      );
-      // Le créneau économie ne lit QUE le champ homonyme de ce qui a été
-      // rendu au chargement (`heroEcoKind`) — jamais l'autre.
-      const ecoTexteCarte = heroEcoKind === 'payback'
-        ? texteDeLaCarteSelectionnee('[data-taille-payback-value]')
-        : texteDeLaCarteSelectionnee('[data-taille-eco-value]');
-      appliquerChampHero(heroEcoValue, heroEcoCard, heroEcoOriginal, surLeDefaut, ecoTexteCarte);
+      // Sur « Recommandé » + variante par défaut : on REPOSE les originaux
+      // moissonnés au chargement — jamais un texte recalculé depuis la carte.
+      // Ailleurs : chaque champ suit la carte, ou disparaît.
+      if (surLeDefaut) restaurer(heroLiaisons, originauxHero);
+      else appliquerLiaisons(heroLiaisons, contexteHero);
       if (heroEcoSub) heroEcoSub.hidden = !surLeDefaut;
-      appliquerChampHero(
-        heroKwcValue, heroKwcItem, heroKwcOriginal, surLeDefaut,
-        texteDeLaCarteSelectionnee('[data-taille-kwc-value]'),
-      );
-      appliquerChampHero(
-        heroPanneauxValue, heroPanneauxItem, heroPanneauxOriginal, surLeDefaut,
-        texteDeLaCarteSelectionnee('[data-taille-panneaux-value]'),
-      );
-      // Le séparateur entre kWc et panneaux ne survit QUE si les deux items
-      // sont visibles — jamais un point orphelin à côté d'un item masqué.
       if (heroLegendSep) {
-        const kwcVisible = !!heroKwcItem && !heroKwcItem.hidden;
-        const panneauxVisible = !!heroPanneauxItem && !heroPanneauxItem.hidden;
-        heroLegendSep.hidden = !(kwcVisible && panneauxVisible);
+        heroLegendSep.hidden = !(enveloppeHeroVisible('kwc') && enveloppeHeroVisible('panneaux'));
       }
-
-      // EXTENSION (revue Fable) — même discipline pour le bandeau
-      // « Production estimée / an » du chapitre production.
-      appliquerChampHero(
-        heroProductionValue, heroProductionCard, heroProductionOriginal, surLeDefaut,
-        texteDeLaCarteSelectionnee('[data-taille-production-value]'),
-      );
-      // « Économie estimée / an » lit le MÊME champ carte que le héros
-      // (`data-taille-eco-value`) : ce bandeau n'a jamais rendu de payback au
-      // chargement (il n'existe que sous `ecoHero`), donc aucun risque de
-      // croisement eco/payback ici — pas besoin d'un `data-hero-*-kind`.
-      appliquerChampHero(
-        heroEcoAnnualValue, heroEcoAnnualCard, heroEcoAnnualOriginal, surLeDefaut,
-        texteDeLaCarteSelectionnee('[data-taille-eco-value]'),
-      );
-
-      // L'anneau de couverture SUIT désormais la carte chargée (OPTIONS
-      // CHARGEABLES, 29/08/2026) : son pourcentage est SERVI et sa longueur
-      // d'arc vient de `dasharrayDonut`, la MÊME fonction que le rendu
-      // serveur. Il reste MASQUÉ tant qu'aucun détail n'a été chargé pour la
-      // carte sélectionnée — c'est `appliquerDetail` qui décide, jamais un
-      // anneau figé sous un nouveau pourcentage.
-      if (heroCouvertureCard && surLeDefaut) heroCouvertureCard.hidden = false;
     }
 
     // ── OPTIONS CHARGEABLES (ordre fondateur, 29/08/2026) ────────────────────
@@ -8523,183 +8466,39 @@ const signConfig = ok
     //  2. OMISSION PLUTÔT QUE MENSONGE. Un champ que la taille chargée ne sert
     //     pas fait MASQUER son bloc — jamais un readback sur le chiffre du
     //     devis officiel, qui serait un nombre réel attribué à la mauvaise
-    //     offre (la même discipline que `appliquerChampHero`).
+    //     offre. Cette règle vit maintenant DANS le moteur (`swap.ts`), donc
+    //     aucune liaison future ne peut s'en dispenser.
     //  3. RETOUR EXACT. « Recommandé » + variante par défaut RESTAURE les
     //     textes ORIGINAUX mis en cache au chargement : la page après un
     //     aller-retour est byte-identique à la page au chargement.
     const jetonTailles = section.dataset.taillesToken ?? '';
-    const ecoMoisSans = Array.from(document.querySelectorAll<HTMLElement>('[data-detail-eco-mois]'));
-    const ecoMoisAvec = Array.from(document.querySelectorAll<HTMLElement>('[data-detail-eco-mois-avec]'));
-    const ecoTotal = document.querySelector<HTMLElement>('[data-detail-eco-total]');
-    const ecoTotalAvec = document.querySelector<HTMLElement>('[data-detail-eco-total-avec-bloc]');
-    const ecoBanque = document.querySelector<HTMLElement>('[data-detail-banque]');
+    // LE SEUL nœud profond qui n'est pas une liaison : le message de réessai.
+    // Ce n'est pas une donnée servie, c'est l'état de l'appel — et son bouton
+    // porte son propre écouteur plus bas. Les ~50 autres constantes de nœuds
+    // que portait cette région sont parties avec le câblage : elles vivent
+    // désormais, déclarées une fois, dans la table PROFONDS.
     const ecoEchec = document.querySelector<HTMLElement>('[data-detail-echec]');
-    const ecoBloc = document.querySelector<HTMLElement>('[data-detail-eco-bloc]');
-    const couvArc = document.querySelector<SVGElement>('[data-detail-couverture-arc]');
-    const couvValue = document.querySelector<HTMLElement>('[data-detail-couverture-value]');
-    const cumulCard = document.querySelector<HTMLElement>('[data-detail-cumul-card]');
-    const cumulValue = document.querySelector<HTMLElement>('[data-detail-cumul-value]');
-    const paybackCard = document.querySelector<HTMLElement>('[data-detail-payback-card]');
-    const paybackValue = document.querySelector<HTMLElement>('[data-detail-payback-value]');
-    // F2 (revue Fable 29/08/2026) — LE TABLEAU ANNÉE PAR ANNÉE SUIT LA CARTE.
-    // Il était rendu au SSR depuis `quote.cashflow_sans/avec` (le DEVIS
-    // OFFICIEL) et l'îlot ne le touchait pas : on cliquait « Éco », le grand
-    // chiffre du cumul changeait, et les 25 lignes en dessous continuaient
-    // d'afficher la série du Recommandé. Des chiffres RÉELS attribués à la
-    // mauvaise offre — exactement ce que cette section corrige ailleurs.
-    const cumulAnnuelBloc = document.querySelector<HTMLElement>('[data-cumul-annuel]');
-    const cumulAnnuelCorps = cumulAnnuelBloc?.querySelector<HTMLElement>('tbody') ?? null;
 
-    const originaux = {
-      moisSans: ecoMoisSans.map((n) => n.textContent),
-      total: ecoTotal?.textContent ?? null,
-      couvArc: couvArc?.getAttribute('stroke-dasharray') ?? null,
-      couvValue: couvValue?.textContent ?? null,
-      cumul: cumulValue?.textContent ?? null,
-      payback: paybackValue?.textContent ?? null,
-      // Les lignes du devis officiel, telles que le serveur les a rendues :
-      // le retour sur « Recommandé » les remet à l'identique (aucun re-rendu).
-      cumulAnnuel: cumulAnnuelCorps?.innerHTML ?? null,
-    };
-
-    /**
-     * Réécrit le tableau année par année depuis la série SERVIE
-     * (`detail.cashflow.cumulative`, contrat `taille_detail.json`). AUCUN
-     * calcul : on numérote les années comme le SSR (`i + 1`, même convention
-     * que `cumulAnnuelServi`) et on formate avec le MÊME `formatMAD` partagé.
-     * Série absente ⇒ le bloc entier disparaît, jamais la série d'une autre
-     * offre laissée en place.
-     */
-    function peindreCumulAnnuel(serieCumul: number[] | null): void {
-      if (!cumulAnnuelBloc || !cumulAnnuelCorps) return;
-      if (!serieCumul || serieCumul.length === 0) { cumulAnnuelBloc.hidden = true; return; }
-      const frag = document.createDocumentFragment();
-      serieCumul.forEach((cumulAnnee, i) => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-t border-white/10';
-        const tdAnnee = document.createElement('td');
-        tdAnnee.className = 'py-1.5 text-lune-soft';
-        tdAnnee.setAttribute('dir', 'ltr');
-        tdAnnee.textContent = String(i + 1);
-        const tdVal = document.createElement('td');
-        tdVal.className = `py-1.5 text-end fig ${cumulAnnee >= 0 ? 'text-brass-300' : 'text-lune-faint'}`;
-        tdVal.setAttribute('dir', 'ltr');
-        tdVal.textContent = formatMAD(cumulAnnee);
-        tr.append(tdAnnee, tdVal);
-        frag.append(tr);
-      });
-      cumulAnnuelCorps.replaceChildren(frag);
-      cumulAnnuelBloc.hidden = false;
-    }
+    // Les originaux des chapitres profonds : textes des douze mois et du
+    // total, corps HTML du tableau année par année, arc de l'anneau, et la
+    // visibilité que le serveur a rendue pour chacun. Moissonnés en UNE passe.
+    const originauxProfonds = capturerOriginaux(PROFONDS);
 
     /** `null` mis en cache = échec DÉJÀ constaté : on ne martèle pas le réseau. */
     const cacheDetail = new Map<string, TailleDetail | null>();
 
-    /**
-     * ÉTAT DE CHARGEMENT — ET IL MASQUE, IL NE GRISE PAS.
-     *
-     * Pendant l'appel, les chapitres profonds portent encore les nombres du
-     * DEVIS OFFICIEL. Les laisser lisibles (même atténués) sous une carte Éco
-     * ou Max, c'est afficher un chiffre réel attribué à la mauvaise offre —
-     * exactement ce que cette lane corrige. On les MASQUE donc le temps de la
-     * réponse, en annonçant l'attente aux lecteurs d'écran (`aria-busy`).
-     */
-    function marquerChargement(enCours: boolean): void {
-      for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) {
-        if (!n) continue;
-        if (enCours) { n.setAttribute('aria-busy', 'true'); n.hidden = true; }
-        else n.removeAttribute('aria-busy');
-      }
-      if (enCours && heroCouvertureCard) heroCouvertureCard.hidden = true;
-    }
-
     /** Remet la page EXACTEMENT dans l'état de son chargement. */
     function restaurerDetail(): void {
-      ecoMoisSans.forEach((n, i) => { n.textContent = originaux.moisSans[i]; n.hidden = false; });
-      for (const n of ecoMoisAvec) n.hidden = false;
-      if (ecoTotal) { ecoTotal.textContent = originaux.total; ecoTotal.hidden = false; }
-      if (ecoTotalAvec) ecoTotalAvec.hidden = false;
-      for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) n?.removeAttribute('aria-busy');
-      if (ecoBanque) { ecoBanque.hidden = true; ecoBanque.textContent = ''; }
+      restaurer(PROFONDS, originauxProfonds);
       if (ecoEchec) ecoEchec.hidden = true;
-      if (ecoBloc) ecoBloc.hidden = false;
-      if (couvArc && originaux.couvArc !== null) couvArc.setAttribute('stroke-dasharray', originaux.couvArc);
-      if (couvValue) couvValue.textContent = originaux.couvValue;
-      if (heroCouvertureCard) heroCouvertureCard.hidden = false;
-      if (cumulValue) cumulValue.textContent = originaux.cumul;
-      if (cumulCard) cumulCard.hidden = false;
-      if (paybackValue) paybackValue.textContent = originaux.payback;
-      if (paybackCard) paybackCard.hidden = false;
-      // F2 — restauration EXACTE du tableau année par année : on remet le HTML
-      // rendu par le serveur, jamais une série reconstruite à la main.
-      if (cumulAnnuelCorps && originaux.cumulAnnuel !== null) {
-        cumulAnnuelCorps.innerHTML = originaux.cumulAnnuel;
-      }
-      if (cumulAnnuelBloc) cumulAnnuelBloc.hidden = false;
     }
 
     /** Pose le détail SERVI d'une taille — ou masque tout ce qu'il ne sert pas. */
     function appliquerDetail(detail: TailleDetail | null): void {
-      const echec = detail === null;
-      if (ecoEchec) ecoEchec.hidden = !echec;
-
-      const mensuelles = detail?.economiesMensuelles ?? null;
-      if (mensuelles) {
-        ecoMoisSans.forEach((n, i) => {
-          n.textContent = formatMAD(mensuelles.valeurs[i]);
-          n.hidden = false;
-        });
-        if (ecoTotal) { ecoTotal.textContent = formatMAD(mensuelles.total); ecoTotal.hidden = false; }
-        if (ecoBloc) ecoBloc.hidden = false;
-      } else if (ecoBloc) {
-        // Pas de série pour cette taille ⇒ le bloc entier disparaît. Le laisser
-        // afficher les douze mois du devis officiel sous une autre carte
-        // serait un chiffre réel attribué à la mauvaise offre.
-        ecoBloc.hidden = !echec;
-        if (echec) ecoMoisSans.forEach((n) => { n.hidden = true; });
-        if (echec && ecoTotal) ecoTotal.hidden = true;
-      }
-      // La ligne « avec batterie » de chaque cellule et le total « avec » sont
-      // des chiffres d'une AUTRE variante : un détail n'en porte qu'une.
-      for (const n of ecoMoisAvec) n.hidden = true;
-      if (ecoTotalAvec) ecoTotalAvec.hidden = true;
-
-      const banque = detail?.carte?.batterie ?? null;
-      if (ecoBanque) {
-        const morceaux: string[] = [];
-        if (banque && banque.nbModules !== null && banque.moduleKwh !== null) {
-          morceaux.push(`${formatNumber(banque.nbModules)} × ${formatNumber(banque.moduleKwh, 1)} kWh`);
-        }
-        if (banque && banque.capaciteUtileKwh !== null) {
-          morceaux.push(`${formatNumber(banque.capaciteUtileKwh, 1)} kWh utiles`);
-        }
-        ecoBanque.textContent = morceaux.length ? `Batterie · ${morceaux.join(' · ')}` : '';
-        ecoBanque.hidden = morceaux.length === 0;
-      }
-
-      const pct = detail?.carte?.couverturePct ?? null;
-      if (heroCouvertureCard) heroCouvertureCard.hidden = pct === null;
-      if (pct !== null && couvArc && couvValue) {
-        const rayon = Number(couvArc.getAttribute('data-detail-donut-r'));
-        if (Number.isFinite(rayon) && rayon > 0) {
-          couvArc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));
-        }
-        couvValue.textContent = formatPercent(pct, 0);
-      }
-
-      const cumul = detail?.carte?.economiesCumulees25AnsMad ?? null;
-      if (cumulCard) cumulCard.hidden = cumul === null;
-      if (cumul !== null && cumulValue) cumulValue.textContent = formatMAD(cumul);
-
-      const payback = formatPayback(detail?.carte?.paybackAnnees ?? null);
-      if (paybackCard) paybackCard.hidden = payback === null;
-      if (payback !== null && paybackValue) paybackValue.textContent = payback;
-
-      // F2 — le tableau année par année suit la carte : il est REPEINT depuis
-      // la série servie de CETTE taille, ou masqué si le serveur n'en sert
-      // pas (`lireCashflow` omet un cashflow vide ou troué — jamais un
-      // remplissage). Même discipline que les autres chapitres profonds.
-      peindreCumulAnnuel(detail?.cashflow?.cumulative ?? null);
+      // Un échec laisse voir le « Réessayer » que porte le bloc des économies,
+      // pendant que sa liaison masque les douze chiffres du devis officiel.
+      if (ecoEchec) ecoEchec.hidden = detail !== null;
+      appliquerLiaisons(PROFONDS, detail);
     }
 
     async function chargerDetail(): Promise<void> {
@@ -8717,7 +8516,11 @@ const signConfig = ok
         return;
       }
       const demande = clef;
-      marquerChargement(true);
+      // ÉTAT DE CHARGEMENT — ET IL MASQUE, IL NE GRISE PAS : pendant l'appel,
+      // les chapitres portent encore les nombres du DEVIS OFFICIEL, et les
+      // laisser lisibles sous une carte Éco ou Max afficherait un chiffre réel
+      // attribué à la mauvaise offre.
+      marquerChargement(PROFONDS, true);
       let detail: TailleDetail | null = null;
       try {
         const res = await fetch(detailProxyUrl(jetonTailles, cle, variante), {
@@ -8729,7 +8532,7 @@ const signConfig = ok
         detail = null;
       }
       cacheDetail.set(demande, detail);
-      marquerChargement(false);
+      marquerChargement(PROFONDS, false);
       // La sélection a pu changer PENDANT l'appel : on ne repeint que si la
       // réponse est encore celle de la carte affichée (sinon deux réponses
       // dans le désordre feraient clignoter deux tailles l'une sur l'autre).

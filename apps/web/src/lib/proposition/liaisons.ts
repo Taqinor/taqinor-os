@@ -267,9 +267,11 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
         return;
       }
       mois.forEach((el, i) => {
-        const v = valeur.valeurs[i];
-        if (v === undefined) { el.hidden = true; return; }
-        el.textContent = formatMAD(v);
+        const montantDuMois = valeur.valeurs[i];
+        // Une cellule sans montant SERVI est masquée, jamais remplie : une
+        // grille plus longue que la série ne fabrique pas les mois manquants.
+        if (montantDuMois === undefined) { el.hidden = true; return; }
+        el.textContent = formatMAD(montantDuMois);
         el.hidden = false;
       });
       if (total) {
