@@ -228,8 +228,9 @@ export function estimerMois(hiver, ete) {
 // ses tests historiques (`solar.test.mjs`) et pour ne pas casser un
 // paramétrage explicite en nombre de panneaux qui l'appellerait directement
 // depuis ailleurs (grep vérifié 29/08/2026 : aucun). NE PLUS L'UTILISER pour
-// dimensionner quoi que ce soit — voir `panneaux_par_900mad`
-// (apps/parametres/models_company.py) pour le réglage qui l'alimentait.
+// dimensionner quoi que ce soit — le réglage qui l'alimentait
+// (`panneaux_par_900mad`, apps/parametres/models_company.py) a lui-même été
+// supprimé le même jour (plus aucun lecteur, plus aucun effet).
 export function estimerPanneaux(factureHiver, perTranche = 8) {
   const n = Number(perTranche)
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)

@@ -174,8 +174,11 @@ class CompanyProfile(models.Model):
     # Rendement global (productible appliqué à la production) — défaut 0.8.
     rendement_global = models.DecimalField(
         max_digits=4, decimal_places=3, default=Decimal('0.8'))
-    # Auto-remplir : nombre de panneaux par tranche de 900 MAD (facture hiver).
-    panneaux_par_900mad = models.PositiveSmallIntegerField(default=8)
+    # U3-900 (fondateur 29/08/2026) — l'ancien réglage `panneaux_par_900mad`
+    # (panneaux par tranche de 900 MAD de facture hiver) alimentait
+    # `estimerPanneaux`, retirée le même jour du dimensionnement résidentiel
+    # (voir frontend/src/features/ventes/solar.js) : le champ ne servait plus
+    # à rien et a été supprimé (migration 00xx_remove_panneaux_par_900mad).
     # Prix cible /kWc par défaut (pré-remplit le générateur). NULL/vide = aucun
     # (comportement actuel : pas de prix cible pré-réglé).
     prix_cible_kwc_defaut = models.DecimalField(

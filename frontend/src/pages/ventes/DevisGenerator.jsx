@@ -578,10 +578,10 @@ export default function DevisGenerator({
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
-  // édité. kwhPrice/efficiency/panneauxParTranche alimentent les calculs ;
-  // prixCibleDefaut pré-remplit le prix cible ; remiseMax = limite indicative.
+  // édité. kwhPrice/efficiency alimentent les calculs ; prixCibleDefaut
+  // pré-remplit le prix cible ; remiseMax = limite indicative.
   const [quoteLogic, setQuoteLogic] = useState({
-    kwhPrice: KWH_PRICE, efficiency: EFFICIENCY, panneauxParTranche: 8,
+    kwhPrice: KWH_PRICE, efficiency: EFFICIENCY,
     // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
@@ -1828,13 +1828,11 @@ export default function DevisGenerator({
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
       const kwh = parseFloat(data?.onee_tarif_kwh)
       const rend = parseFloat(data?.rendement_global)
-      const perTr = parseInt(data?.panneaux_par_900mad, 10)
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
         efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
-        panneauxParTranche: (Number.isFinite(perTr) && perTr > 0) ? perTr : 8,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
       })
