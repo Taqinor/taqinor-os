@@ -254,6 +254,12 @@ const ventesApi = {
     api.patch(`/ventes/devis/${id}/offres-tailles/config/`, { cle, config }),
   regenererOffreTaille: (id, cle) =>
     api.post(`/ventes/devis/${id}/offres-tailles/regenerer/`, { cle }),
+  // `appliquerOffreTailleAuDevis` est l'INVERSE de `patchOffreTailleConfig` :
+  // il RECOMPOSE le devis officiel (lignes, totaux, études, donc PDF et page
+  // client) sur la configuration ajustée de « Recommandé ». Réservé à cette
+  // taille — Éco et Max restent des explorations montrées au client.
+  appliquerOffreTailleAuDevis: (id, cle) =>
+    api.post(`/ventes/devis/${id}/offres-tailles/appliquer/`, { cle }),
   // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
   approbationDevis: (id) => api.get(`/ventes/devis/${id}/approbation/`),
   approuverEtapeDevis: (id, commentaire = '') =>

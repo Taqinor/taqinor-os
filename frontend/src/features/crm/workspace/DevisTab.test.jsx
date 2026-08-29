@@ -861,6 +861,32 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     expect(screen.getByText(/Modifier les options — DEV-1/)).toBeInTheDocument()
     await waitFor(() => expect(getOffresTaillesDevis).toHaveBeenCalledWith(1))
   })
+
+  // LA BOÎTE DOIT ÊTRE LARGE, ET LA CLASSE SEULE NE LE PROUVE PAS.
+  // `lw-context-devis-edit-tailles` était POSÉE ici et DÉFINIE NULLE PART : la
+  // boîte retombait sur le `max-w-lg` du composant de base et écrasait ses trois
+  // cartes (incident fondateur, 29/08/2026, DEV-202608-0042). Un test qui ne
+  // vérifierait que l'attribut `class` serait passé au vert pendant tout le bug —
+  // c'est la DÉFINITION CSS qui manquait, donc c'est elle qu'on épingle.
+  it('la boîte « Modifier les options » porte une classe de largeur RÉELLEMENT définie', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+
+    const boite = screen.getByText(/Modifier les options — DEV-1/).closest('[role="dialog"]')
+    expect(boite).not.toBeNull()
+    expect(boite.className).toMatch(/lw-context-devis-edit-tailles/)
+
+    // `process.cwd()` est la racine `frontend/` sous vitest (`root` du config).
+    const css = readFileSync(
+      join(globalThis.process.cwd(), 'src', 'index.css'), 'utf8')
+    const regle = css.match(/\.lw-context-devis-edit-tailles\s*\{[^}]*\}/)
+    expect(regle, '.lw-context-devis-edit-tailles doit être DÉFINIE dans index.css').not.toBeNull()
+    expect(regle[0]).toMatch(/max-width/)
+  })
 })
 
 /* Fonctions pures — testables sans rendu (même patron que sectionsDepuisServeur). */
