@@ -265,6 +265,8 @@ def next_tranche(devis, lignes=None):
     # A3 — l'option acceptée est autoritative : on facture UNIQUEMENT les lignes
     # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
     # Sans vraie deuxième option, ce sont les totaux complets — inchangé.
+    # QJR24/D9 — avant acceptation, ce sont les totaux du TOTAL AFFICHÉ
+    # (option recommandée / AVEC), jamais la somme des deux options.
     from apps.ventes.utils.options import option_totaux
     opt = option_totaux(devis, lignes=lignes)
     total_ht = Decimal(str(opt['ht']))
@@ -358,7 +360,12 @@ def solde_devis(devis):
     """Solde du devis : total, facturé, payé, restant (Decimals).
 
     A3 — le total de référence est celui de l'option acceptée (mêmes lignes que
-    les factures de l'échéancier) ; sans vraie deuxième option, total complet."""
+    les factures de l'échéancier) ; sans vraie deuxième option, total complet.
+
+    QJR24/D9 — AVANT acceptation, un devis à deux options suit le TOTAL
+    AFFICHÉ (l'option recommandée / AVEC, cf. ``options.option_effective``) et
+    plus jamais la somme des deux paniers : le solde décrivait une vente qui
+    n'existe pas."""
     from apps.ventes.utils.options import option_totaux
     actives = factures_actives(devis)
     total = Decimal(str(option_totaux(devis)['ttc']))
