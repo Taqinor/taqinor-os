@@ -2689,8 +2689,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         Ce correctif est SERVEUR et ne dépend d'aucun changement d'écran.
         L'écriture est chirurgicale (``update_fields=['etude_params']``) :
         aucune ligne, aucun total, aucun statut ne bouge (règle #4).
+
+        QJR66 / passe Fable pré-merge — LES ÉTUDES SUIVENT LEURS ENTRÉES.
+        Depuis que l'écran écrit par ICI (et non plus dans le corps atomique du
+        devis), ses factures réelles arrivent APRÈS le rafraîchissement des
+        quatre études déclenché par l'écriture des lignes : le PDF servait
+        alors des économies dérivées d'entrées PÉRIMÉES — une régression franche
+        par rapport au chemin d'hier. On relance donc les études quand, et
+        seulement quand, une clé qui NOURRIT le moteur vient de bouger. La
+        liste vit dans le SCHÉMA (``entrees_du_moteur``), pas ici. L'appel est
+        quasi gratuit quand rien n'a réellement changé : les empreintes
+        QJR43/QJR44 court-circuitent chaque étude dont les entrées sont
+        identiques — c'est exactement leur rôle.
         """
-        from ..domain.etude_schema import ECRAN, ecrire
+        from ..domain.etude_schema import ECRAN, ecrire, entrees_du_moteur
 
         devis = self.get_object()
         if request.method == 'GET':
@@ -2712,6 +2724,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': "Clé d'étude invalide : les noms de clés doivent "
                            'être des identifiants simples.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        if entrees_du_moteur(corps.keys()):
+            # Best-effort, comme sur les trois autres chemins d'écriture : une
+            # étude qui échoue ne doit JAMAIS annuler une entrée correctement
+            # enregistrée.
+            from ..services import rafraichir_etudes_du_devis
+            try:
+                rafraichir_etudes_du_devis(devis)
+            except Exception:  # noqa: BLE001
+                pass
+        # La réponse reste LE BLOC FUSIONNÉ — ce que l'appelant vient de poser,
+        # plus ce qui était déjà là. Délibéré : c'est le contrat de cet endpoint
+        # (`contract_samples`), et y injecter les blocs dérivés fraîchement
+        # recalculés en changerait la forme sans que personne les lise. Ils sont
+        # en base, à leur place, pour le moteur PDF.
         return Response({'etude_params': bloc})
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
