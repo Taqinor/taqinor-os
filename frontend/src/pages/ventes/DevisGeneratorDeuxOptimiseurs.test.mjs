@@ -57,7 +57,14 @@ test('computeAutoSizing : calcule les DEUX optima (sans + avec), le SANS reste a
   assert.match(body, /avecPart = \(optAvec\.nbPanneaux > 0\) \? \{ besoinKwc, \.\.\.optAvec \} : sansPart/)
 })
 
-test('resolveKwcAvec : respecte nbPanneauxTouched, priorise le serveur (recommandation_avec), replie sur le local puis kwc_sans', () => {
+// U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+// tool ») — le repli LOCAL de `resolveKwcAvec` (balayage par paliers,
+// objectif avecBatterie) a été RETIRÉ : ce kWc part au serveur en `body.kwc`
+// pour composer la seconde option, c'est donc un dimensionnement, et le seul
+// dimensionneur est désormais le moteur horaire. Sans `recommandation_avec`,
+// l'option AVEC se compose à la taille SANS — jamais une divergence fabriquée
+// par une seconde méthode de calcul.
+test('resolveKwcAvec : respecte nbPanneauxTouched, lit UNIQUEMENT le serveur (recommandation_avec), sinon kwc_sans — plus aucun balayage local', () => {
   const needle = 'const resolveKwcAvec = () => {'
   const start = DG.indexOf(needle)
   assert.ok(start > -1, 'resolveKwcAvec introuvable')
@@ -67,10 +74,13 @@ test('resolveKwcAvec : respecte nbPanneauxTouched, priorise le serveur (recomman
   assert.match(body, /if \(nbPanneauxTouched\.current\) return kwp/)
   // 2. le moteur horaire serveur (source de vérité) prime dès qu'il a répondu.
   assert.match(body, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation_avec/)
-  // 3. repli local (même balayage payback que computeAutoSizing, objectif avec).
-  assert.match(body, /computeAutoSizing\(fHiver, fEte\)/)
-  assert.match(body, /sizing\?\.avec\?\.kwcOptimal/)
-  // 4. repli ultime : kwc_sans (jamais un chiffre inventé).
+  // 3. AUCUN balayage local : ce kWc est un dimensionnement (il part en
+  //    `body.kwc` au serveur), donc il ne peut venir que du moteur.
+  assert.doesNotMatch(body, /computeAutoSizing\(/,
+    "le repli local est retiré — U3-MOTEUR : tout dimensionnement passe par le moteur horaire")
+  assert.doesNotMatch(body, /kwcOptimal/,
+    "aucun optimum de palier chiffré à l'écran ne doit alimenter la taille de l'option AVEC")
+  // 4. repli : kwc_sans (jamais un chiffre inventé).
   const lastReturn = body.lastIndexOf('return kwp')
   assert.ok(lastReturn > -1)
 })

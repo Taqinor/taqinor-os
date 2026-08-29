@@ -156,7 +156,26 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     let panels = 0
     if (tailleKwc > 0) {
       panels = panneauxPourKwc(tailleKwc, 710)
-    } else {
+    } else if (mode !== 'residentiel') {
+      // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new
+      // sizing tool ») — LE BALAYAGE LOCAL PAR PALIERS N'EST PLUS LA SOURCE DE
+      // DIMENSIONNEMENT DU RÉSIDENTIEL. C'était le dernier contournement : au
+      // -dessus du seuil de facture, cet écran chiffrait lui-même les paliers
+      // de 5 kWc (`optimalKwcByPayback`) et expédiait le résultat en
+      // `target_kwc` SOUVERAIN — ces devis-là ne touchaient jamais le moteur
+      // horaire (PVGIS × consommation réelle heure par heure), donc deux
+      // méthodes de dimensionnement coexistaient selon le montant de la
+      // facture. Désormais, en résidentiel, `panels` reste à 0 : `target_kwc`
+      // est OMIS plus bas et c'est `build_devis_auto` (moteur horaire) qui
+      // dimensionne — ou refuse en NOMMANT la donnée manquante.
+      // Une taille EXPLICITE (cible tapée pour ce devis, ou `taille_souhaitee_kwc`
+      // du lead) reste SOUVERAINE : elle est traitée par la branche ci-dessus,
+      // avant celle-ci, et part telle quelle. Seule la valeur AUTO-CALCULÉE
+      // cesse d'être expédiée.
+      // Industriel/commercial gardent ce balayage : aucun moteur serveur ne
+      // les dimensionne (`build_devis_auto` ne gère que le résidentiel), et
+      // sans lui ils n'auraient plus AUCUNE taille (voir le refus explicite
+      // plus bas).
       const besoinKwc = estimerKwcDepuisFacture(hiver)
       if (besoinKwc > 0) {
         const eteVal = (lead.ete_differente && lead.facture_ete)
@@ -184,17 +203,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
             facturesBalayage, distributeurBalayage),
           utility: distributeurBalayage,
         })
-        // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new
-        // sizing tool ») — plus de repli `estimerPanneaux` (panneaux/900 MAD,
-        // supprimé du backend le même jour). `panels` reste à 0 quand
-        // l'optimiseur local n'a rien retenu : en résidentiel, le serveur
-        // (moteur horaire de `build_devis_auto`) dimensionne alors lui-même,
-        // et refuse en NOMMANT la donnée manquante plutôt que de deviner une
-        // taille sur une règle qui n'existe plus.
+        // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`
+        // (panneaux/900 MAD, supprimé du backend le même jour). `panels`
+        // reste à 0 quand l'optimiseur local n'a rien retenu : sur ces
+        // marchés (industriel/commercial) c'est un refus EXPLICITE plus bas,
+        // jamais une taille devinée sur une règle qui n'existe plus.
         panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : 0
       }
       // besoinKwc <= 0 (facture sous le seuil du balayage local) : `panels`
-      // reste à 0, MÊME raison — voir la note U3-900 ci-dessus.
+      // reste à 0, MÊME raison — voir la note ci-dessus.
     }
     // U3-900 — un `panels` nul n'est PAS une composition « à 0 panneau » : en
     // résidentiel il veut dire « le serveur dimensionne » (target_kwc omis
@@ -252,14 +269,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         reponse = await ventesApi.creerDevisAuto({
           lead: lead.id,
           remise_globale: discountStr || '0',
-          // La puissance retenue par le dimensionnement local ci-dessus, s'il
-          // y en a une — le serveur en redérive le MÊME nombre de panneaux
-          // (plafond tolérant au flottant, verrouillé des deux côtés par un
-          // test d'aller-retour). U3-900 — `kwpAuto` à 0 (aucune taille locale
-          // exploitable) n'envoie PAS `target_kwc` : c'est alors le serveur
-          // (moteur horaire de `build_devis_auto`) qui dimensionne, et refuse
-          // en nommant la donnée manquante plutôt que de recevoir une
-          // puissance devinée sur la règle des 900 DH (supprimée).
+          // U3-MOTEUR — `kwpAuto` ne peut plus venir ici que d'une taille
+          // EXPLICITEMENT choisie par un humain (cible tapée pour ce devis, ou
+          // `taille_souhaitee_kwc` du lead) : elle reste souveraine et le
+          // serveur en redérive le MÊME nombre de panneaux (plafond tolérant
+          // au flottant, verrouillé des deux côtés par un test d'aller-retour).
+          // Sans taille explicite, `kwpAuto` vaut 0 et `target_kwc` est OMIS :
+          // c'est le moteur horaire de `build_devis_auto` qui dimensionne (et
+          // refuse en nommant la donnée manquante) — plus AUCUNE puissance
+          // auto-calculée côté écran n'est expédiée.
           ...(kwpAuto > 0 ? { target_kwc: kwpAuto } : {}),
           ...(Object.keys(etudeExtra).length ? { etude_params: etudeExtra } : {}),
         })

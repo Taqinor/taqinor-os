@@ -299,6 +299,51 @@ describe('page — les chapitres profonds suivent la carte cliquée', () => {
   });
 });
 
+// ── 7bis. F2 — LE TABLEAU ANNÉE PAR ANNÉE SUIT LA CARTE ────────────────────
+// Revue Fable du 29/08/2026 : `data-cumul-annuel` était rendu au SSR depuis
+// `quote.cashflow_sans/avec` (le DEVIS OFFICIEL) et l'îlot ne le touchait pas.
+// On cliquait « Éco », le grand chiffre du cumul changeait, et les 25 lignes
+// en dessous restaient celles du Recommandé : des chiffres RÉELS attribués à
+// la mauvaise offre. La série de la taille servie existe pourtant déjà dans le
+// contrat (`detail.cashflow.cumulative`) — elle n'était lue par personne.
+
+describe('page — F2 : le tableau année par année suit la taille chargée', () => {
+  it('l’îlot tient le bloc ET son corps de tableau', () => {
+    expect(CODE).toContain("document.querySelector<HTMLElement>('[data-cumul-annuel]')");
+    expect(CODE).toContain("cumulAnnuelBloc?.querySelector<HTMLElement>('tbody')");
+  });
+
+  it('il est REPEINT depuis la série SERVIE, jamais recalculé', () => {
+    expect(CODE).toContain('peindreCumulAnnuel(detail?.cashflow?.cumulative ?? null);');
+    // Formatage par la fonction PARTAGÉE avec le SSR — aucun formatage maison.
+    expect(CODE).toContain('tdVal.textContent = formatMAD(cumulAnnee);');
+    // Numérotation IDENTIQUE au SSR (`cumulAnnuelServi` : annee = i + 1).
+    expect(CODE).toContain('tdAnnee.textContent = String(i + 1);');
+  });
+
+  it('série absente ⇒ le bloc entier est MASQUÉ (jamais celui d’une autre offre)', () => {
+    expect(CODE).toContain('if (!serieCumul || serieCumul.length === 0) { cumulAnnuelBloc.hidden = true; return; }');
+  });
+
+  it('il est masqué pendant l’attente, comme les autres chapitres profonds', () => {
+    expect(CODE).toContain('for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) {');
+  });
+
+  it('« Recommandé » le RESTAURE à l’identique (le HTML rendu par le serveur)', () => {
+    expect(CODE).toContain('cumulAnnuel: cumulAnnuelCorps?.innerHTML ?? null,');
+    expect(CODE).toContain('cumulAnnuelCorps.innerHTML = originaux.cumulAnnuel;');
+    expect(CODE).toContain('if (cumulAnnuelBloc) cumulAnnuelBloc.hidden = false;');
+  });
+
+  it('PRÉSERVATION — le rendu SSR d’origine est intact (mêmes classes, même source)', () => {
+    // Le tableau reste rendu par le serveur au premier affichage : l'îlot ne
+    // fait que le suivre. Les classes repeintes sont EXACTEMENT celles du SSR.
+    expect(CODE).toContain('{cumul25.map((p) => (');
+    expect(CODE).toContain("tr.className = 'border-t border-white/10';");
+    expect(CODE).toContain("tdVal.className = `py-1.5 text-end fig ${cumulAnnee >= 0 ? 'text-brass-300' : 'text-lune-faint'}`;");
+  });
+});
+
 // ── 8. LA CARTE RÉCAPITULATIVE MONO-OPTION ─────────────────────────────────
 
 describe('page — le récapitulatif « Recommandé » quand une seule option est envoyée', () => {
