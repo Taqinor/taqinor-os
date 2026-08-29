@@ -1383,10 +1383,11 @@ def cible_depuis_lignes(devis, variante='sans'):
     * ``panneaux`` — somme des quantités des lignes classées « panneau » par le
       classifieur partagé ``_is_panel`` (aligné sur ``quote_engine/builder.py``).
       Les lignes de SECTION/NOTE (sans prix ni quantité) sont ignorées.
-    * ``panel_watt`` — wattage unitaire, dans cet ordre : la fiche technique du
-      produit dominant (``pmax_wc``), sinon le wattage lu dans le libellé
-      (désignation puis nom du produit), sinon déduit du kWc de l'étude, sinon
-      ``CIBLE_WATT_DEFAUT`` — et là SEULEMENT un avertissement est levé.
+    * ``panel_watt`` — wattage unitaire de la ligne dominante DE CETTE OPTION
+      (QJR33), dans cet ordre : la fiche technique du produit dominant
+      (``pmax_wc``), sinon le wattage lu dans le libellé (désignation puis nom
+      du produit), sinon déduit du kWc de l'étude, sinon ``CIBLE_WATT_DEFAUT``
+      — et là SEULEMENT un avertissement est levé.
     * ``kwc`` — puissance recalculée DEPUIS LES LIGNES (``panneaux × watt``),
       pas recopiée de l'étude : c'est le devis qui fait foi ici, pas un
       paramètre d'étude qui a pu se désynchroniser.
@@ -1409,6 +1410,13 @@ def cible_depuis_lignes(devis, variante='sans'):
     ``panneaux`` = l'option SANS accompagné de ``scenario='avec_batterie'`` —
     une cible que rien ne décrit, envoyée telle quelle à l'écran 3D (PV17). Les
     quatre grandeurs viennent désormais du MÊME sous-ensemble de lignes.
+
+    QJR33 (29/08/2026) — ``panel_watt`` REJOINT ENFIN CE SOUS-ENSEMBLE. La ligne
+    DOMINANTE (celle qui porte le wattage) se cherchait encore dans TOUTES les
+    lignes panneau du devis : sur un devis « Les deux » à DEUX modèles de
+    panneau, le ``kwc`` rendu mariait le COMPTE d'une option au WATTAGE de
+    l'autre (5,68 kWc observés au lieu de 4,40), et ce kWc partait tel quel dans
+    le contrat 3D. Les CINQ grandeurs viennent maintenant de la même variante.
 
     ``variante`` choisit ce sous-ensemble : ``'sans'`` (défaut — l'option 1,
     celle que l'écran dessine, comportement historique) ou ``'avec'``. Sur un
@@ -1470,10 +1478,17 @@ def cible_depuis_lignes(devis, variante='sans'):
 
     # Ligne dominante = la plus GROSSE quantité : c'est elle qui porte le
     # wattage de référence, et c'est elle que PV18 ajustera en cas d'écart.
+    #
+    # QJR33 (29/08/2026) — ELLE SE LIT DANS LE PANIER DE CETTE OPTION, comme le
+    # COMPTE juste au-dessus. Elle était cherchée dans TOUTES les lignes
+    # panneau du devis : sur un devis « Les deux » à DEUX modèles de panneau
+    # (8 × 710 Wc en « sans », 10 × 440 Wc en « avec »), le ``kwc`` rendu
+    # mariait le compte d'une option au wattage de l'AUTRE — 5,68 kWc au lieu
+    # de 4,40 — et ce kWc partait tel quel dans le contexte 3D (PV17).
     dominante = None
-    if lignes_panneau:
+    if lignes_panneau_option:
         dominante = max(
-            lignes_panneau,
+            lignes_panneau_option,
             key=lambda li: Decimal(str(li.quantite or 0)))
 
     # Deux modèles de panneau différents dans un même devis : le calepinage ne
@@ -1488,7 +1503,11 @@ def cible_depuis_lignes(devis, variante='sans'):
         (li.produit_id, (li.designation or '').strip().lower())
         for li in lignes_panneau
     }
-    if len(identites) > 1:
+    # QJR33 — ``dominante`` est désormais celle de CETTE option : elle peut être
+    # absente (option sans aucune ligne panneau) alors que le devis, lui, porte
+    # plusieurs modèles. On ne nomme alors aucune ligne plutôt que d'en inventer
+    # une (et surtout plutôt que de planter sur ``None``).
+    if len(identites) > 1 and dominante is not None:
         avertissements.append(
             'Ce devis porte %d modèles de panneau différents : l\'écart de '
             'calepinage sera appliqué à la ligne la plus grosse (« %s »).'
@@ -3804,6 +3823,40 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
             revision_possible=False)
 
 
+def _resynchroniser_instance_appelante(devis, verrou):
+    """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
+    d'être écrit sous verrou.
+
+    LE DÉFAUT CORRIGÉ. :func:`sync_devis_from_layout` recharge le devis sous
+    ``select_for_update()`` et mute CETTE instance-là (``verrou``) ; l'objet que
+    l'appelant tient est celui chargé en début de requête — et le viewset le
+    charge avec ``prefetch_related('lignes', 'lignes__produit')``, si bien que
+    ``devis.lignes.all()`` continue de servir la composition d'AVANT même après
+    la resynchro. Les quatre études rafraîchies juste après
+    (``rafraichir_etudes_du_devis``) repartaient donc de l'ancienne
+    composition, et RÉÉCRIVAIENT ``etude_params`` par-dessus ce que la
+    resynchro venait d'y poser. La conception électrique — seule des quatre à
+    n'être jamais recalculée à la lecture, et pourtant lue par la page publique
+    et l'annexe PDF depuis L-1V — pouvait ainsi PERSISTER un schéma faux
+    jusqu'à ce qu'un humain rouvre l'onglet électrique.
+
+    ``refresh_from_db()`` sans ``fields`` VIDE ``_prefetched_objects_cache``
+    (Django) : la prochaine lecture de ``devis.lignes`` repart en base. Le vidage
+    explicite qui suit n'est qu'une ceinture, pour que ce contrat ne dépende pas
+    d'un détail d'implémentation du framework. Best-effort : un devis
+    entre-temps supprimé ne doit pas transformer une resynchro RÉUSSIE en erreur.
+    """
+    if devis is None or devis is verrou:
+        return
+    try:
+        devis.refresh_from_db()
+    except Exception:  # noqa: BLE001 — la resynchro est déjà validée en base
+        logger.warning('QJR20: instance appelante non rechargeable (devis %s)',
+                       getattr(devis, 'pk', '?'), exc_info=True)
+        return
+    devis._prefetched_objects_cache = {}
+
+
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -4543,6 +4596,10 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     # panne ne doit ni annuler la resynchro déjà validée, ni salir sa
     # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
     concevoir_electrique_du_devis(verrou, origine='resynchronisation')
+    # QJR20 — l'appelant repart de CE QUI VIENT D'ÊTRE ÉCRIT (voir
+    # ``_resynchroniser_instance_appelante`` : sans cela, les études
+    # rafraîchies juste après décrivent la composition d'AVANT la resynchro).
+    _resynchroniser_instance_appelante(devis, verrou)
     return resultat
 
 
@@ -4837,9 +4894,9 @@ def profil_reel_existe(lead):
     « ALL sizing should go through the new sizing tool »). Cette fonction était
     la porte du chemin horaire dans ``build_devis_auto`` ; elle n'y est plus
     appelée, car un lead SANS profil se dimensionne désormais lui aussi par le
-    moteur (facture d'hiver inversée au barème ONEE + silhouette de repli
-    DOCUMENTÉE ``courbes_journalieres.OCCUPATION_REPLI``), et non plus par la
-    règle des 900 DH/mois — qui n'existe plus.
+    moteur (facture d'hiver inversée au barème ONEE + silhouette du DÉFAUT
+    RÉSIDENTIEL FONDATEUR ``courbes_journalieres.DEFAUT_RESIDENTIEL``, QJR10 /
+    D4), et non plus par la règle des 900 DH/mois — qui n'existe plus.
 
     Elle reste EXPOSÉE comme lecture de qualité de fiche (« ce lead porte-t-il
     autre chose qu'une facture ? »), utile pour nuancer un affichage ou
@@ -4939,11 +4996,13 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     sélectives, location + entretien, TPPAN) — JAMAIS une division par un prix
     moyen, jamais un tarif écrit ici.
 
-    REPLI DE FORME, DOCUMENTÉ. Sans drapeau d'occupation lisible, la silhouette
-    24 h est ``courbes_journalieres.OCCUPATION_REPLI`` = présence PARTIELLE,
-    le milieu honnête des trois (jamais « présent », qui flatterait
-    l'autoconsommation). Un équipement déclaré sans sa grandeur n'ajoute
-    aucune couche. C'est le SEUL repli : rien d'autre n'est supposé.
+    DÉFAUT DE FORME, DOCUMENTÉ (QJR10 / décision fondateur D4 du 29/08/2026).
+    Sans réponse d'occupation sur la fiche, la silhouette 24 h est celle du
+    DÉFAUT RÉSIDENTIEL FONDATEUR (``courbes_journalieres.DEFAUT_RESIDENTIEL``
+    = présence en journée), exactement comme sur l'aperçu écran : le même lead
+    ne peut plus être dimensionné sur deux journées différentes selon le chemin
+    emprunté. Un équipement déclaré sans sa grandeur n'ajoute aucune couche.
+    C'est le SEUL défaut : rien d'autre n'est supposé.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
     recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
@@ -4966,10 +5025,9 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
     """
     try:
-        from apps.crm.selectors import equipements_pour_devis  # noqa: F401
+        from apps.crm.selectors import equipements_pour_lead
         from apps.ventes.courbes_journalieres import (
-            OCCUPATION_ABSENCE, OCCUPATION_PARTIELLE, OCCUPATION_PRESENCE,
-            composer_equipements,
+            composer_equipements, occupation_du_lead,
         )
         from apps.ventes.dimensionnement import recommander_taille
         from apps.ventes.etude_horaire import profil_depuis_factures
@@ -4981,18 +5039,16 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
         if not conso:
             return 0, None, MOTIF_FACTURE_ABSENTE, None
 
-        drapeaux = {'present': OCCUPATION_PRESENCE,
-                    'absent': OCCUPATION_ABSENCE,
-                    'partiel': OCCUPATION_PARTIELLE}
-        occupation = drapeaux.get(getattr(lead, 'occupation_jour', None))
-        equipements = composer_equipements({
-            'piscine': getattr(lead, 'equip_piscine', None),
-            'piscine_pompe_kw': getattr(lead, 'equip_piscine_pompe_kw', None),
-            'voiture_electrique': getattr(lead, 'equip_voiture_electrique', None),
-            've_km_semaine': getattr(lead, 'equip_ve_km_semaine', None),
-            'clim': getattr(lead, 'equip_clim', None),
-            'clim_pieces': getattr(lead, 'equip_clim_pieces', None),
-        })
+        # QJR10 / D4 — MÊME lecteur d'occupation que l'aperçu écran, et MÊME
+        # défaut : sans réponse du client on retient le défaut fondateur
+        # PRÉSENCE, jamais la silhouette de repli PARTIELLE (les deux chemins
+        # dimensionnaient sinon le même lead sur deux journées différentes).
+        occupation, _source_occupation = occupation_du_lead(lead)
+        # QJR9 — la MÊME lecture d'équipements que l'aperçu écran : les 15
+        # champs du sélecteur CRM, jamais une recomposition locale à 6 clés
+        # (les grandeurs L-BACK/L-BACK2 n'atteignaient sinon jamais le moteur
+        # sur le chemin auto-devis/tunnel).
+        equipements = composer_equipements(equipements_pour_lead(lead))
 
         resultat = recommander_taille(
             company=company, conso_kwh_mensuelles=conso,

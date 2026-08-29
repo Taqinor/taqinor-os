@@ -106,7 +106,12 @@
       </tr>
     </thead>
     <tbody>
-      {% for ligne in devis.lignes.all() %}
+      {# QJR19 — LES LIGNES VIENNENT DE LA CHAÎNE CANONIQUE (`lignes`, posées
+         par utils/pdf.generate_proforma_pdf via utils.options.option_lines) :
+         option retenue, lignes de section/note et options non activées déjà
+         écartées. `devis.lignes.all()` faisait planter le gabarit sur une
+         ligne sans prix (XSAL14) et imprimait les DEUX options. #}
+      {% for ligne in lignes %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ ligne.designation }}</td>
@@ -118,20 +123,31 @@
     </tbody>
   </table>
 
+  {# QJR19 — LA MÊME CHAÎNE D'ARGENT QUE LE PDF CLIENT, visible ligne à ligne :
+     Sous-total HT → Remise → Total HT → TVA → Total TTC. Aucun total n'est
+     calculé ici ; `totaux` vient de utils.options.option_totaux. #}
   <div class="totaux">
     <div class="totaux-row">
       <span>Sous-total HT</span>
-      <span>{{ "%.2f"|format(devis.total_ht) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ht_brut) }} MAD</span>
     </div>
-    {% for b in devis.tva_par_taux %}
+    {% if totaux.remise and totaux.remise > 0 %}
     <div class="totaux-row">
-      <span>TVA ({{ b.taux }}%)</span>
-      <span>{{ "%.2f"|format(b.montant) }} MAD</span>
+      <span>Remise globale ({{ devis.remise_globale }} %)</span>
+      <span>- {{ "%.2f"|format(totaux.remise) }} MAD</span>
     </div>
-    {% endfor %}
+    <div class="totaux-row">
+      <span>Total HT</span>
+      <span>{{ "%.2f"|format(totaux.ht) }} MAD</span>
+    </div>
+    {% endif %}
+    <div class="totaux-row">
+      <span>TVA</span>
+      <span>{{ "%.2f"|format(totaux.tva) }} MAD</span>
+    </div>
     <div class="totaux-row total-ttc">
       <span>Total TTC (indicatif)</span>
-      <span>{{ "%.2f"|format(devis.total_ttc) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ttc) }} MAD</span>
     </div>
   </div>
 

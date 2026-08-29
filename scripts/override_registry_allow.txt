@@ -1,0 +1,37 @@
+# Base de reference de scripts/check_override_registry.py (QJR6).
+#
+# FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
+# `|` (patron de scripts/money_rounding_allow.txt). Les lignes vides et celles
+# commencant par `#` sont ignorees.
+#
+#   <chemin>::<qualname englobant>::<famille>::<cible> | raison
+#
+# La cle est une IDENTITE DE CONTENU, jamais un numero de ligne : inserer du
+# code en amont ne perime pas la base. Renommer la fonction englobante ou
+# changer la cible change la cle -- c'est voulu, ce sont les deux evenements
+# qu'un humain doit relire.
+#
+# La garde est ADVISORY (v1) : le registre unique `Devis.overrides` (QJR58)
+# n'existe pas encore, les sites ci-dessous sont l'existant releve au moment de
+# la capture. Un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
+# ecrive sa raison ici -- ou, mieux, passe l'ecriture par
+# apps/ventes/domain/overrides.py / lignes.py (les modules sanctionnes).
+#
+# Les chemins gardes viennent du contrat QJR1
+# (apps/ventes/contract_samples/devis_overrides.json), jamais de ce fichier.
+#
+# Regenerer apres une revue :
+#   python scripts/check_override_registry.py --regenerate
+
+# --- backend/django_core/apps/ventes/offres_tailles.py
+backend/django_core/apps/ventes/offres_tailles.py::_porter_modules_batterie::ligne::dominante.quantite | Existant 29/08/2026 : porte le nombre de modules batterie sur la plus grosse ligne batterie du devis. Migrera vers domain/lignes.py (QJR59 pose quantite_manuelle).
+backend/django_core/apps/ventes/offres_tailles.py::_substituer_sur_le_devis::ligne::ligne.prix_unitaire | Existant 29/08/2026 : substitution de produit (gamme) -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+
+# --- backend/django_core/apps/ventes/services.py
+backend/django_core/apps/ventes/services.py::build_devis_from_layout::etude_params::scenario#1 | Existant 29/08/2026 : le generateur PERSISTE le scenario a la creation (libelle LES DEUX). Chemin du registre ecrit hors registre -- cible de la bascule QJR58.
+backend/django_core/apps/ventes/services.py::build_devis_from_layout::etude_params::scenario#2 | Existant 29/08/2026 : meme fonction, branche mono-option (`_scenario_stocke`). Meme cible de bascule que #1.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/services.py::resynchroniser_devis_pour_produit::ligne::ligne.prix_unitaire | Existant 29/08/2026 : le prix ne suit le catalogue que si la ligne etait AU PRIX CATALOGUE sans remise (un prix negocie reste intouchable). Migrera vers domain/lignes.py.

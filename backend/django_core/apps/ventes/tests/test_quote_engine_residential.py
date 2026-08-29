@@ -13,6 +13,8 @@ Run:
         apps.ventes.tests.test_quote_engine_residential -v 2
 """
 
+import re
+
 from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
@@ -1061,6 +1063,220 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('class="c1-qrbox"', html)
         self.assertNotIn('class="c1-qr-cell"', html)   # pas de carte facture
         self.assertIn('Consultez votre proposition interactive', html)
+
+
+class TestQjr31TauxTvaParColonne(SimpleTestCase):
+    """QJR31 — ``_row_pair`` imprimait UN seul taux pour une ligne à deux
+    valeurs : celui de la colonne SANS, y compris quand les deux variantes
+    portent des taux différents (10 % panneaux / 20 % le reste). La chaîne
+    des totaux, elle, était déjà juste — c'est l'affichage par ligne qui
+    mentait."""
+
+    @staticmethod
+    def _item(desig, q, pu, taux):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _ligne(self, taux_sans, taux_avec):
+        from apps.ventes.quote_engine.residential import options, theme
+        paire = (self._item('Panneau Canadien Solar 710W', 16, 1272.73,
+                            taux_sans),
+                 self._item('Panneau Canadien Solar 710W', 20, 1272.73,
+                            taux_avec))
+        return options._row_pair(paire, theme.fmt)
+
+    @staticmethod
+    def _cellule_tva(html):
+        m = re.search(r'<td class="p2-c p2-tva">(.*?)</td>', html)
+        assert m, html
+        return m.group(1)
+
+    def test_deux_taux_differents_sont_tous_les_deux_imprimes(self):
+        cellule = self._cellule_tva(self._ligne(10, 20))
+        self.assertIn('10%', cellule)
+        self.assertIn('20%', cellule)
+
+    def test_un_taux_unique_reste_ecrit_une_seule_fois(self):
+        """Non-régression : deux variantes au même taux ⇒ cellule inchangée."""
+        self.assertEqual(self._cellule_tva(self._ligne(20, 20)), '20%')
+
+    def test_les_totaux_de_la_ligne_ne_bougent_pas(self):
+        """La chaîne P.U. → Total HT par colonne est intacte au centime."""
+        from apps.ventes.quote_engine.residential import theme
+        html = self._ligne(10, 20)
+        self.assertIn(theme.fmt(1272.73 * 16), html)
+        self.assertIn(theme.fmt(1272.73 * 20), html)
+
+
+class TestQjr30EchappementTextesClient(SimpleTestCase):
+    """QJR30 — les renderers « maison » recevaient les textes client BRUTS.
+
+    L'échappement ERR37 n'existait que dans le moteur legacy : le résidentiel,
+    l'industriel et le commercial émettaient désignations, marques, NOM et
+    ADRESSE du client directement dans le HTML du PDF, et les puces d'option
+    n'étaient échappées dans AUCUN des deux moteurs. Le puits est WeasyPrint
+    côté serveur : le risque est la CORRUPTION du document (un « < » non
+    apparié mange une page), pas du XSS.
+    """
+
+    NOM_PIEGE = 'dupont <&> "fils"'
+    DESIG_PIEGE = 'Installation <toit> & "pose"'
+
+    def _donnees_piegees(self):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = d['client_full'] = self.NOM_PIEGE
+        d['client_addr'] = '12 rue <Test> & Cie'
+        for _cle in ('sans_items', 'avec_items'):
+            d[_cle] = [{**it, 'designation': self.DESIG_PIEGE} if i == 0 else it
+                       for i, it in enumerate(d[_cle])]
+        d['sans_bullets'] = ['16 panneaux <710> W & co'] + d['sans_bullets'][1:]
+        return echapper_textes_client(d)
+
+    def test_aucun_chevron_client_brut_dans_le_html_rendu(self):
+        from apps.ventes.quote_engine.residential import render, renderer
+        html = render.build_html(renderer._augment(self._donnees_piegees()))
+        for brut in ('<toit>', '<Test>', '<&>', '<710>'):
+            self.assertNotIn(brut, html, f'{brut} atteint le HTML tel quel')
+        self.assertIn('&lt;toit&gt; &amp; &quot;pose&quot;', html)
+        self.assertIn('12 rue &lt;Test&gt; &amp; Cie', html)
+
+    def test_l_echappement_ne_touche_que_les_caracteres_dangereux(self):
+        """Un devis normal traverse l'échappement au bit près — c'est ce qui
+        rend la garde posable au point de rendu sans rien changer d'autre."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        d = sample_data.build()
+        avant = render.build_html(renderer._augment(d))
+        apres = render.build_html(
+            renderer._augment(echapper_textes_client(sample_data.build())))
+        self.assertEqual(avant, apres)
+
+    def test_le_dict_public_n_est_jamais_echappe(self):
+        """La MÊME structure part en JSON à la proposition publique : des
+        entités HTML s'y afficheraient telles quelles au client. L'échappement
+        est donc posé au rendu, jamais dans ``build_quote_data``."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = self.NOM_PIEGE
+        echappe = echapper_textes_client(d)
+        self.assertEqual(d['client_name'], self.NOM_PIEGE)   # source intacte
+        self.assertNotEqual(echappe['client_name'], self.NOM_PIEGE)
+
+
+class TestQjr29PrixDansLIdentiteDeLigne(SimpleTestCase):
+    """QJR29 — ``_split_items`` fusionnait deux lignes de PRIX différents.
+
+    L'appartenance au tableau « équipement commun » se jugeait sur la
+    désignation et la quantité SEULEMENT : une ligne facturée à deux prix
+    d'une option à l'autre était imprimée UNE fois, au prix du côté SANS,
+    pendant que le total de l'option 2 se calculait avec le prix AVEC.
+    """
+
+    @staticmethod
+    def _item(desig, q, pu, taux=20.0):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _jeu_divergent(self):
+        """Même désignation, MÊME quantité, deux prix : 400 sans / 450 avec."""
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 450)]
+        return sans, avec
+
+    def test_deux_prix_differents_ne_sont_plus_une_seule_ligne(self):
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual([it['designation'] for it in shared],
+                         ['Installation'])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_sans], [400.0])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_avec], [450.0])
+
+    def test_la_somme_des_lignes_imprimees_egale_le_total_de_chaque_option(self):
+        """LE TEST DE LA MISSION : ce que la page 2 imprime pour une option
+        s'additionne EXACTEMENT au total de cette option."""
+        from apps.ventes.quote_engine.residential.options import (
+            _pair_divergents, _split_items,
+        )
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        paires, seul_sans, seul_avec = _pair_divergents(delta_sans, delta_avec)
+
+        def _somme(rows):
+            return round(sum(it['prix_unit_ht'] * it['quantite']
+                             for it in rows), 2)
+
+        imprime_sans = _somme(shared + [s for s, _ in paires] + seul_sans)
+        imprime_avec = _somme(shared + [a for _, a in paires] + seul_avec)
+        self.assertEqual(imprime_sans, _somme(sans))
+        self.assertEqual(imprime_avec, _somme(avec))
+        # et les deux prix sont bien tous les deux imprimés (ligne appariée)
+        self.assertEqual(len(paires), 1)
+        self.assertEqual(paires[0][0]['prix_unit_ht'], 400.0)
+        self.assertEqual(paires[0][1]['prix_unit_ht'], 450.0)
+
+    def test_des_lignes_strictement_identiques_restent_communes(self):
+        """Non-régression : même désignation, même quantité, MÊME prix ⇒
+        tableau commun, exactement comme avant."""
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [dict(it) for it in sans]
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual(len(shared), 2)
+        self.assertEqual(delta_sans, [])
+        self.assertEqual(delta_avec, [])
+
+
+class TestQjr17PuissanceUnitaireIllisible(SimpleTestCase):
+    """QJR17 (c)/(d) — une puissance unitaire ILLISIBLE (``None`` depuis M3,
+    qui a supprimé le défaut catalogue 710 W) ne s'imprime pas et ne tue plus
+    le renderer : la vignette de la page 1 écrivait « × None W », et la bande
+    de la page 2 formatait ``None`` sans garde (``f'{None:g}'`` → TypeError),
+    ce qui renvoyait tout le document sur le moteur legacy."""
+
+    def _donnees(self, **surcharges):
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        d = renderer._augment(sample_data.build())
+        # Posé APRÈS ``_augment`` : celui-ci refuse justement ce devis (c'est
+        # le repli que QJR17 rend bruyant côté builder) — on exerce ici les
+        # GABARITS, qui doivent rendre le document sans inventer un watt.
+        d.update(surcharges)
+        return d
+
+    def _page2(self, **surcharges):
+        from apps.ventes.quote_engine.residential import options, render
+        return options.build(render.build_ctx(self._donnees(**surcharges)))
+
+    def test_la_page_1_ecrit_n_panneaux_sans_watt_invente(self):
+        from apps.ventes.quote_engine.residential import render
+        html = render.build_html(self._donnees(watt_par_panneau=None))
+        self.assertNotIn('None', html)
+        self.assertIn('panneaux', html)
+
+    def test_la_page_2_omet_la_vignette_plutot_que_de_planter(self):
+        html = self._page2(puissance_kwc=None, watt_par_panneau=None)
+        self.assertNotIn('None', html)
+        self.assertNotIn('kWc installés', html)   # vignette OMISE, pas à zéro
+        self.assertIn('kWh / an produits', html)  # les autres restent
+        self.assertIn('panneaux', html)           # le COMPTE reste vrai
+
+    def test_un_devis_normal_est_inchange(self):
+        html = self._page2()
+        self.assertIn('kWc installés', html)
+        self.assertNotIn('None', html)
 
 
 class TestCalepinageSurLaPageDetail(SimpleTestCase):

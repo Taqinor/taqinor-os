@@ -129,14 +129,50 @@ def has_two_options(devis) -> bool:
         return False
 
 
+def option_effective(devis) -> str:
+    """QJR24 / D9 — L'OPTION QUE SUIT L'ARGENT D'UN DEVIS.
+
+    Décision fondateur D9 du 29/08/2026 :
+
+      * APRÈS acceptation → l'option acceptée (comportement A3, inchangé) ;
+      * AVANT acceptation → l'option du TOTAL AFFICHÉ, c'est-à-dire celle mise
+        en avant : l'option AVEC (``quote_engine.builder`` pose
+        ``display_total = totaux_avec['ttc']`` dès qu'il y a deux options —
+        LANE CHOIX-AVEC du 25/08, d'où la liste, le une-page et le PDF tirent
+        déjà le MÊME nombre).
+
+    PLUS JAMAIS la somme des deux paniers : jusqu'ici, un devis à deux options
+    non accepté renvoyait ``''`` ici, donc AUCUN filtre, donc un solde et un
+    échéancier construits sur l'addition des deux options — un montant qui
+    n'existe dans aucun document et que le client ne paiera jamais.
+
+    Un devis à option unique (ou pompage / liste libre) renvoie ``''`` : aucun
+    filtre, périmètre complet, comportement historique strictement inchangé.
+
+    COÛT — un devis NON accepté consulte désormais ``has_two_options`` (avant,
+    l'option vide court-circuitait le prédicat). Sur la liste des devis, le
+    sérialiseur traverse déjà ``build_quote_data`` une fois par ligne
+    (``total_affiche``) ; QJR55 ramène ce prédicat au prédicat LÉGER unique et
+    supprimera cet appel supplémentaire.
+    """
+    acceptee = getattr(devis, 'option_acceptee', '') or ''
+    if acceptee:
+        return acceptee
+    return AVEC_BATTERIE if has_two_options(devis) else ''
+
+
 def option_lines(devis, option=None):
     """Lignes RÉELLES du devis pour l'option retenue (nomenclature du chantier).
 
     Ne filtre que pour un vrai devis à deux options ; sinon renvoie toutes les
     lignes (option unique, pompage, liste libre → périmètre complet inchangé).
+
+    QJR24/D9 — l'option par défaut est celle d'``option_effective`` (acceptée,
+    sinon celle du total affiché) : les LIGNES et l'ARGENT décrivent toujours
+    la même vente, jamais l'une les deux options et l'autre une seule.
     """
     if option is None:
-        option = getattr(devis, 'option_acceptee', '') or ''
+        option = option_effective(devis)
     # XSAL5/XSAL14 — la nomenclature aval ne contient QUE des lignes produit
     # effectives : on exclut les lignes de section/note (sans produit) et les
     # options non activées (``compte_dans_totaux``). Une option activée
@@ -184,9 +220,16 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     chaque appel refaisant sa propre requête lignes+produit sur des lignes qui
     ne bougent pas pendant l'acceptation. Paramètre ABSENT (tous les autres
     appelants) ⇒ la requête d'hier, résultat identique.
+
+    QJR24 (29/08/2026) — L'OPTION PAR DÉFAUT N'EST PLUS « aucune ». Un devis à
+    deux options NON accepté tombait ici sur ``option = ''`` : aucun filtre,
+    donc les totaux de l'ADDITION des deux options — c'est ce montant sans
+    signification qui alimentait le solde et l'échéancier affichés. La
+    résolution passe désormais par ``option_effective`` (décision fondateur
+    D9). Un devis accepté et un devis à option unique sont inchangés.
     """
     if option is None:
-        option = getattr(devis, 'option_acceptee', '') or ''
+        option = option_effective(devis)
     if lignes is None:
         lignes = list(devis.lignes.select_related('produit').all())
     else:

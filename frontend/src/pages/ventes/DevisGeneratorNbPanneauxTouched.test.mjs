@@ -34,7 +34,11 @@ test('applyLead()/applySiteProfile() respectent déjà nbPanneauxTouched (réfé
   assert.match(DG, /!nbPanneauxTouched\.current && tailleKwc > 0/, 'applyLead : garde absente')
   const spStart = DG.indexOf('const applySiteProfile = (p) => {')
   assert.ok(spStart > -1, 'applySiteProfile introuvable')
-  assert.match(DG.slice(spStart, spStart + 1600), /if \(!nbPanneauxTouched\.current\) \{/)
+  // QJR38 — la fenêtre est élargie (1600→2200) : le correctif QJR38 a ajouté
+  // le calcul local `modeCible` + son commentaire juste après l'ouverture de
+  // la fonction, repoussant d'autant la position du garde nbPanneauxTouched
+  // ci-dessous ; le contenu vérifié, lui, est inchangé.
+  assert.match(DG.slice(spStart, spStart + 2200), /if \(!nbPanneauxTouched\.current\) \{/)
 })
 
 // Extrait le contenu d'un bloc `{ ... }` en comptant les accolades (fiable

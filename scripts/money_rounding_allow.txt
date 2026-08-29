@@ -1,0 +1,78 @@
+# Base de reference de scripts/check_money_rounding.py (YDATA8 / QJR4).
+#
+# FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
+# `|` (patron de scripts/read_modify_write_allow.txt). Les lignes vides et
+# celles commencant par `#` sont ignorees.
+#
+#   <chemin>::<qualname englobant>::<sha1(expression normalisee)[:12]> | raison
+#
+# La cle est une IDENTITE DE CONTENU, jamais un numero de ligne : inserer du
+# code en amont ne perime plus la base (l'ancienne base file:line a coute dix
+# recalages manuels sur le seul mois d'aout 2026, dont deux faux). Renommer la
+# fonction englobante ou changer l'expression change la cle -- c'est voulu :
+# ce sont les deux evenements qu'un humain doit relire.
+#
+# La garde est ADVISORY : le moteur de devis travaille en float de bout en
+# bout, `quantize_mad` est la convention des MODELES. Un site inscrit ici a
+# ete relu ; un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
+# ecrive sa raison ici (ou corrige le calcul).
+#
+# Regenerer apres une revue : python scripts/check_money_rounding.py --regenerate
+#
+# 29/08/2026 (QJR4) : population des trois modules d'origine PROUVEE identique
+# a l'ancienne base file:line (25 sites, memes fichiers, memes lignes, memes
+# expressions). Les 13 sites supplementaires viennent de l'ELARGISSEMENT du
+# scan aux modules ventes qui publient aussi de l'argent au client
+# (public_views.py, offres_tailles.py, taille_detail.py, utils/options.py,
+# selectors.py -- les trois derniers ne portent aujourd'hui aucun round()
+# monetaire). Ils sont captures ADVISORY : les inscrire ne dit pas qu'ils sont
+# justes, cela dit qu'ils existaient avant la garde ; la chaine monetaire
+# canonique est le chantier M2 du groupe QJR.
+
+# --- backend/django_core/apps/ventes/services.py
+backend/django_core/apps/ventes/services.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
+backend/django_core/apps/ventes/services.py::extract_roof_config::7f663ec40580 | round(total_kwc, 2) -- une PUISSANCE en kWc, pas un montant.
+backend/django_core/apps/ventes/services.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
+backend/django_core/apps/ventes/services.py::sync_devis_from_layout::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
+
+# --- backend/django_core/apps/ventes/quote_engine/builder.py
+backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.
+backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::56d1c0aaf98f | Arrondi d'AFFICHAGE du prix unitaire HT d'une ligne (moteur vendore, regle #4) ; le montant persiste passe par les modeles.
+backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::973e2966d082 | Chaine de totaux d'AFFICHAGE du moteur : HT brut = somme(quantite x PU HT).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::5d2eb1883e2e | Chaine de totaux d'AFFICHAGE : HT net = HT brut - remise.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::e562a3b78872 | Chaine de totaux d'AFFICHAGE : montant de TVA = somme des blocs par taux.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::f24189160bd7 | Chaine de totaux d'AFFICHAGE : TTC exact = HT net + TVA.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::de15cf116981 | Ratio d'AFFICHAGE : prix au kWc (total de reference / puissance kWc).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a598356ce | Multi-villa : total d'affichage multiplie par le nombre de villas.
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18a5faf41 | Total HT d'AFFICHAGE d'une ligne d'option (PU HT x quantite).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
+
+# --- backend/django_core/apps/ventes/public_views.py
+backend/django_core/apps/ventes/public_views.py::_variant_summaries::d9ea0585d95f | affichage relu : TTC du frere arrondi au MAD pour la carte des autres tailles (QJR11 - la valeur vient desormais de option_totaux, arrondi d'affichage inchange)
+backend/django_core/apps/ventes/public_views.py::_gammes_public::843ba953c327 | ELARGISSEMENT QJR4 : arrondi d'affichage du total rendu par display_totals() pour la gamme soeur.
+backend/django_core/apps/ventes/public_views.py::_gammes_public::52b70f6bdf9c | ELARGISSEMENT QJR4 : meme arrondi d'affichage pour le total de la gamme courante.
+backend/django_core/apps/ventes/public_views.py::_gammes_public::363a93bf620d | ELARGISSEMENT QJR4 : ecart d'AFFICHAGE entre les deux gammes (difference des deux totaux deja arrondis ci-dessus).
+
+# --- backend/django_core/apps/ventes/offres_tailles.py
+backend/django_core/apps/ventes/offres_tailles.py::_payback::aa407a28ffac | ELARGISSEMENT QJR4 : payback en ANNEES (cout / economie), un ratio, pas un montant.
+backend/django_core/apps/ventes/offres_tailles.py::_prix_par_kwc::2f94df2fe5bd | ELARGISSEMENT QJR4 : reprend DELIBEREMMENT l'expression du moteur (round(total / kwc)) pour que la carte et le PDF ne puissent pas differer d'une unite -- la page ne cree pas une seconde surface d'arrondi.
+backend/django_core/apps/ventes/offres_tailles.py::_cumul_servi::a2780f854444 | ELARGISSEMENT QJR4 : cumul 25 ans d'AFFICHAGE lu sur la serie servie (dernier point + prix TTC) ; jamais persiste.
+backend/django_core/apps/ventes/offres_tailles.py::_cumul_moteur::4064b8019aa8 | ELARGISSEMENT QJR4 : meme cumul 25 ans, calcule par le moteur ; jamais persiste.
+backend/django_core/apps/ventes/offres_tailles.py::_cout_onduleur_ttc::5a537e209151 | ELARGISSEMENT QJR4 : somme TTC des lignes onduleur (meme provision de remplacement que builder._cout_onduleur ; meme expression, donc meme sha, cle distincte par le chemin et le qualname).
+backend/django_core/apps/ventes/offres_tailles.py::_carte_moteur::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue moteur).
+backend/django_core/apps/ventes/offres_tailles.py::_substituer::3d1d890448d1 | ELARGISSEMENT QJR4 : cout HT d'AFFICHAGE d'une vue apres substitution de composant.
+backend/django_core/apps/ventes/offres_tailles.py::_substituer::65a20b36c25d | ELARGISSEMENT QJR4 : cout TTC d'AFFICHAGE de la meme vue substituee.
+backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552 | ELARGISSEMENT QJR4 : prix TTC d'AFFICHAGE de la carte de taille (vue devis) ; meme expression que _carte_moteur, cle distincte par le qualname.
+
+# --- backend/django_core/apps/compta/services.py
+backend/django_core/apps/compta/services.py::roi_campagne::f5573d337c53 | ROI en POURCENTAGE d'une campagne, pas un montant.
+backend/django_core/apps/compta/services.py::roi_campagne::db0a0a3deffb | Cout par lead d'AFFICHAGE (cout / nombre de leads) dans le reporting ; jamais persiste.
+backend/django_core/apps/compta/services.py::reporting_campagnes::07de69138218 | POURCENTAGE de clics dans le reporting campagnes.
+backend/django_core/apps/compta/services.py::reporting_campagnes::9bcb61d08cad | POURCENTAGE de delivrabilite dans le reporting campagnes.
+backend/django_core/apps/compta/services.py::score_nps::3f0f929a3010 | Score NPS (promoteurs - detracteurs sur total), un score, pas un montant.
+backend/django_core/apps/compta/services.py::taux_completion_enquete::5f05f07ebb51 | POURCENTAGE de completion d'une enquete.
+backend/django_core/apps/compta/services.py::kpi_campagne_mere::80cea040fbbb | ROI en POURCENTAGE de la campagne mere.

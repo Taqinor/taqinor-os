@@ -11,6 +11,7 @@ and orders are untouched.
 from __future__ import annotations
 
 import copy
+import html
 import logging
 import re
 import tempfile
@@ -1662,6 +1663,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # principal, qui décrit la branche mise en avant par le document.
     # Options égales — tout l'existant — ⇒ AUCUN second appel, byte-identique.
     prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
+    # QJR28 — modèle d'économies RÉELLEMENT employé par chaque colonne, quand
+    # les deux options sont chiffrées séparément. None ⇒ une seule dérivation,
+    # donc un seul modèle : celui du document (cas de tous les devis non
+    # divergents, rendu byte-identique).
+    _modeles_par_option = None
     if panneaux_divergents:
         def _roi_pour(kwc):
             # Jamais deux fois le même calcul : la branche déjà chiffrée par
@@ -1682,6 +1688,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi[_cle] = _roi_a[_cle]
         prod_kwh_sans = _roi_s["prod_kwh"]
         prod_kwh_avec = _roi_a["prod_kwh"]
+        # ── QJR28 — DEUX COLONNES, DEUX MOTEURS : LE DOCUMENT LE DIT ────────
+        # Le bloc d'étude horaire porte LA puissance pour laquelle il a été
+        # calculé, et ``pricing`` le refuse (garde de fraîcheur) dès que
+        # l'option rejouée ne fait plus cette puissance. Sur un devis à
+        # champs PV divergents, la colonne qui ne correspond pas au bloc
+        # retombait donc EN SILENCE sur le forfait « estimation » pendant que
+        # le document continuait de déclarer ``savings_model='horaire'`` et
+        # ``savings_estimated=False`` pour tout le tableau. On enregistre ici
+        # le modèle EFFECTIF de chaque colonne : plus aucun modèle n'est
+        # déclaré au nom d'une autre colonne.
+        _modeles_par_option = {
+            "sans": (_roi_s.get("savings_model", "estimation"),
+                     bool(_roi_s.get("savings_estimated"))),
+            "avec": (_roi_a.get("savings_model", "estimation"),
+                     bool(_roi_a.get("savings_estimated"))),
+        }
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         # Une production SAISIE par un humain est UN chiffre, pas deux : elle
@@ -1749,6 +1771,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     savings_model = roi.get("savings_model", "estimation")
     if etude.get("production_annuelle") and etude.get("economies_annuelles"):
         savings_model = "etude"
+    # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
+    # impose UN chiffre aux deux options : les deux colonnes sont alors
+    # 'etude'. Sinon, chaque colonne déclare le modèle qui l'a réellement
+    # chiffrée (identique au modèle du document tant que rien ne diverge).
+    _sm_defaut = (savings_model, bool(roi.get("savings_estimated")))
+    if savings_model == "etude" or not _modeles_par_option:
+        savings_model_sans = savings_model_avec = _sm_defaut[0]
+        savings_estimated_sans = savings_estimated_avec = _sm_defaut[1]
+    else:
+        savings_model_sans, savings_estimated_sans = _modeles_par_option["sans"]
+        savings_model_avec, savings_estimated_avec = _modeles_par_option["avec"]
     if savings_model == "factures":
         # Persistance dans les paramètres d'étude RENDUS : la page étude et la
         # proposition web reprennent exactement les mêmes chiffres (une seule
@@ -1793,6 +1826,41 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} MAD/an → "
                 f"avec solaire ≈ {_fr_int(_sm_avec)} MAD/an → économie ≈ "
                 f"{_fr_int(roi['facture_sans'] - _sm_avec)} MAD/an"),
+        }
+    elif savings_model == "horaire":
+        # ── QJR27 — LE BLOC DÉCRIT LA MÉTHODE RÉELLEMENT EMPLOYÉE ───────────
+        # Le modèle HORAIRE (CJ2a : production PVGIS du site intégrée heure par
+        # heure contre la courbe de consommation du client, chaque mois
+        # valorisé au barème) est le PLUS FORT du moteur, et il est ancré sur
+        # une facture RÉELLE. Faute de branche, il tombait dans le repli
+        # « estimation » : le bloc annonçait au client une approximation et lui
+        # RÉCLAMAIT une facture qu'il avait déjà fournie, pendant que la
+        # couverture du même PDF affichait « calculée ». Une phrase de méthode
+        # fausse, plus une demande d'un document déjà reçu.
+        _sm_sans_h = roi.get("facture_sans")
+        _sm_avec_h = (roi.get("facture_avec_a") if scenario == "Avec batterie"
+                      else roi.get("facture_avec_s"))
+        # L'exemple chiffré n'existe que si les DEUX factures sont lisibles :
+        # sans elles on garde la phrase de méthode, jamais un montant fabriqué.
+        _paire_h = bool(_sm_sans_h) and _sm_avec_h is not None
+        savings_method = {
+            "model": "horaire",
+            "facture_actuelle": _sm_sans_h if _paire_h else None,
+            "facture_avec_solaire": _sm_avec_h if _paire_h else None,
+            "economie": ((_sm_sans_h - _sm_avec_h) if _paire_h
+                         else _sm_eco_ref),
+            "approximatif": False,
+            "ligne_methode": (
+                "Économies intégrées heure par heure : la production solaire "
+                "de votre site (données PVGIS) confrontée à votre courbe de "
+                "consommation, mois par mois, chaque mois valorisé au barème "
+                "réel du distributeur. Le point de départ est VOTRE facture — "
+                "c'est la méthode la plus fine de ce document."),
+            "exemple": ((
+                f"Facture actuelle ≈ {_fr_int(_sm_sans_h)} MAD/an → "
+                f"avec solaire ≈ {_fr_int(_sm_avec_h)} MAD/an → économie ≈ "
+                f"{_fr_int(_sm_sans_h - _sm_avec_h)} MAD/an")
+                if _paire_h else None),
         }
     elif savings_model == "etude":
         savings_method = {
@@ -1845,6 +1913,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
                   if isinstance(_tarif_val, (int, float)) else None)
     _prod_factor = roi.get("productible")
+    # ── QJR18 — LE PRODUCTIBLE IMPRIMÉ EST CELUI DE CE DOCUMENT ─────────────
+    # ``roi['productible']`` CHANGE DE SENS selon le modèle d'économies : sur
+    # le chemin ordinaire c'est le productible du repère (déjà net des 14 %
+    # PVGIS, à qui il reste le complément ``PRODUCTION_DERATE`` à appliquer),
+    # mais sur le chemin ÉTUDE HORAIRE ``pricing`` y pose
+    # ``production_annuelle / kwc`` — une valeur DÉJÀ NETTE. Lui réappliquer
+    # le derate appliquait les pertes une SECONDE fois : le « ≈ N kWh par kWc
+    # et par an » imprimé tombait ~7 % sous la production annuelle imprimée
+    # sur la MÊME page (et la pastille PVGIS de la ville avec lui).
+    # On le dérive donc de la SEULE source qui fait foi — la production
+    # annuelle RENDUE ÷ la puissance rendue : les deux nombres du document se
+    # réconcilient alors par construction, quel que soit le modèle, y compris
+    # quand une étude saisie a écrasé la production. Puissance inconnue ⇒
+    # ancien calcul (le productible est alors resté brut, aucun double emploi).
+    _prod_net_kwc = None
+    if (puissance_kwc or 0) > 0 and roi.get("prod_kwh"):
+        _prod_net_kwc = float(roi["prod_kwh"]) / float(puissance_kwc)
+    elif _prod_factor:
+        from .pricing import PRODUCTION_DERATE as _DERATE_REPLI
+        _prod_net_kwc = float(_prod_factor) * _DERATE_REPLI
     hypotheses = []
     if savings_model == "factures" and _util_name:
         hypotheses.append(
@@ -1884,16 +1972,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
         "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
         "intégré, rachat BT non publié).")
-    if _prod_factor:
+    if _prod_net_kwc:
         # Production NETTE affichée, la même que TOUS les calculs du document :
         # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
         # rendu doit dire le total réel — l'ancienne mention « 14 % » était
         # doublement fausse (elle nommait les seules pertes PVGIS alors que le
         # moteur en retranchait 14 % de plus, soit 26 % cumulés).
-        from .pricing import PRODUCTION_DERATE as _DERATE
+        # QJR18 — la valeur vient de ``_prod_net_kwc`` (production rendue ÷
+        # puissance rendue), plus d'un second derate appliqué au productible.
         from .pricing import SYSTEM_LOSS_TOTAL as _LOSS
         hypotheses.append(
-            f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
+            f"Production estimée : ≈ {_fr_int(_prod_net_kwc)} "
             f"kWh par kWc et par an, pertes système de "
             f"{int(round(_LOSS * 100))} % déduites.")
     # Q6 — le productible PVGIS de la ville du client, prêt à imprimer, ou None.
@@ -1903,13 +1992,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # une donnée PVGIS). Sinon : None ⇒ omission.
     _productible_net_pvgis = None
     _ville_pvgis = None
-    if _prod_factor:
+    if _prod_net_kwc:
         from .productible import ville_reconnue as _ville_ok
-        from .pricing import PRODUCTION_DERATE as _DR
         _force_societe = bool(
             _co_productible and abs(float(_co_productible) - 1600) > 0.5)
         if _ville_ok(_client_city) and not _force_societe:
-            _productible_net_pvgis = int(round(_prod_factor * _DR))
+            # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :
+            # deux phrases du même document ne peuvent pas annoncer deux
+            # productibles différents pour la même installation.
+            _productible_net_pvgis = int(round(_prod_net_kwc))
             _ville_pvgis = _client_city
 
     _ac_s = roi.get("autoconso_sans")
@@ -2142,6 +2233,49 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for it in onepage_source if it["quantite"] > 0
     ]
 
+    # Puces des cartes d'option de la page 1 — générées depuis l'équipement
+    # RÉEL de chaque option, jamais du texte boilerplate.
+    #
+    # QJR17 — CALCULÉES ICI, AVANT que ``_produit_nom`` soit retiré des items :
+    # la classification panneau doit voir les MÊMES entrées que le total compté
+    # (``panneaux_et_watt_lu`` : désignation ET nom du produit lié). Au point où
+    # ces puces étaient construites, la clé interne avait déjà été effacée —
+    # d'où les deux lectures divergentes du même document.
+    def _bullets(rows):
+        out = []
+        # QJR17 (b) — MÊME PRÉDICAT, MÊMES ENTRÉES que le total compté :
+        # « Module PV 550 W » était compté comme panneau par le scalaire et
+        # ABSENT de la puce du même document (celle-ci ne lisait que la
+        # désignation, et via une seconde écriture de la règle).
+        panels = [r for r in rows
+                  if _is_panel(r["designation"], r.get("_produit_nom", ""))
+                  and r["quantite"] > 0]
+        if panels:
+            n = int(sum(r["quantite"] for r in panels))
+            # QJR17 (a) — puissance unitaire ILLISIBLE (``watt`` vaut None
+            # depuis M3) : la puce imprimait littéralement « 16 panneaux
+            # None W ». Même doctrine que la vignette du moteur legacy — on
+            # écrit « N panneaux » tout court, jamais un défaut catalogue.
+            out.append(f"{n} panneaux {watt} W" if watt else f"{n} panneaux")
+        for r in rows:
+            if r["quantite"] <= 0:
+                continue
+            d = r["designation"]
+            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {d}" if q > 1 else d)
+        for r in rows:
+            if _is_battery(r["designation"]) and r["quantite"] > 0:
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
+        if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
+            out.append("Smart Meter + monitoring")
+        out.append("Structures + installation complète")
+        return out[:6]
+
+    sans_bullets = _bullets(sans_items)
+    avec_bullets = _bullets(avec_items)
+
     # Strip the internal helper key before handing items to the generator.
     for rows in (sans_items, avec_items):
         for r in rows:
@@ -2177,30 +2311,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Copie défensive : le rendu ne doit jamais pouvoir muter l'étude
         # stockée sur le devis (le builder ne fait que LIRE — règle #4).
         etude["bankable"] = copy.deepcopy(_simulation)
-
-    # Puces des cartes d'option de la page 1 — générées depuis l'équipement
-    # RÉEL de chaque option, jamais du texte boilerplate.
-    def _bullets(rows):
-        out = []
-        panels = [r for r in rows if _is_panel(r["designation"]) and r["quantite"] > 0]
-        if panels:
-            n = int(sum(r["quantite"] for r in panels))
-            out.append(f"{n} panneaux {watt} W")
-        for r in rows:
-            if r["quantite"] <= 0:
-                continue
-            d = r["designation"]
-            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
-                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
-                out.append(f"{q} × {d}" if q > 1 else d)
-        for r in rows:
-            if _is_battery(r["designation"]) and r["quantite"] > 0:
-                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
-                out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
-        if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
-            out.append("Smart Meter + monitoring")
-        out.append("Structures + installation complète")
-        return out[:6]
 
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
@@ -2430,6 +2540,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
         # Les factures sont None hors modèle 'factures' — jamais inventées.
         "savings_model": savings_model,
+        # QJR28 — le modèle EFFECTIF de chaque colonne du comparatif. Sur un
+        # devis à champs PV divergents portant une étude horaire, la colonne
+        # qui ne correspond pas au bloc retombe sur le forfait : le document
+        # ne peut plus déclarer un modèle unique pour les deux. Devis non
+        # divergent ⇒ les trois clés portent la même valeur.
+        "savings_model_sans": savings_model_sans,
+        "savings_model_avec": savings_model_avec,
+        "savings_estimated_sans": savings_estimated_sans,
+        "savings_estimated_avec": savings_estimated_avec,
         "facture_sans_solaire": (
             roi.get("facture_sans") if savings_model == "factures" else None),
         "facture_avec_solaire_s": (
@@ -2472,8 +2591,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "source_consommation": _source_conso,
         "sans_items": sans_items,
         "avec_items": avec_items,
-        "sans_bullets": _bullets(sans_items),
-        "avec_bullets": _bullets(avec_items),
+        "sans_bullets": sans_bullets,
+        "avec_bullets": avec_bullets,
         "scenario": scenario,
         "recommended": recommended,
         # QX5 — drapeaux d'option RÉELS (après repli/QF6) : le rendu résidentiel
@@ -2774,6 +2893,61 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     return data
 
 
+# ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
+#: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
+#: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
+_CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
+#: Scalaires client rendus tels quels par les gabarits.
+_CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
+                        "client_city", "client_phone", "client_ice")
+
+
+def echapper_textes_client(data: dict) -> dict:
+    """Copie de ``data`` dont les textes CONTRÔLÉS PAR L'UTILISATEUR sont
+    échappés HTML, pour les renderers qui écrivent leur HTML à la main
+    (résidentiel, industriel, commercial, agricole).
+
+    L'échappement ERR37 n'existait QUE dans le moteur legacy (à son ingestion,
+    ``generate_devis_premium.apply_quote_data``) : les autres renderers
+    émettaient les désignations, les marques, le NOM et l'ADRESSE du client
+    directement dans le HTML du PDF. Le puits est WeasyPrint côté serveur, pas
+    un navigateur : le risque n'est pas du XSS mais la CORRUPTION du document —
+    un « < » non apparié dans une désignation mange une page entière.
+
+    APPLIQUÉ AU POINT DE RENDU, jamais dans ``build_quote_data`` : le MÊME dict
+    est servi en JSON par la proposition publique (``public_views``), où des
+    entités HTML s'afficheraient telles quelles au client. Le legacy, lui,
+    garde son propre échappement — il reçoit donc les données brutes, sinon il
+    échapperait deux fois (« &amp;lt; »).
+
+    ``html.escape`` ne touche que ``&<>"'`` : un texte normal est rendu au bit
+    près, et les mots-clés de classification (panneau, batterie…) sont intacts.
+    """
+    def _e(v):
+        return html.escape(str(v)) if v is not None else v
+
+    sortie = dict(data)
+    for _cle in _CHAMPS_TEXTE_CLIENT:
+        if sortie.get(_cle) is not None:
+            sortie[_cle] = _e(sortie[_cle])
+    for _cle in ("sans_items", "avec_items", "all_items", "options_proposees"):
+        _rows = sortie.get(_cle)
+        if isinstance(_rows, list):
+            sortie[_cle] = [
+                ({**it, **{c: _e(it[c]) for c in _CHAMPS_TEXTE_LIGNE
+                           if it.get(c) is not None}}
+                 if isinstance(it, dict) else it)
+                for it in _rows
+            ]
+    # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
+    # elles n'étaient échappées par aucun des deux moteurs.
+    for _cle in ("sans_bullets", "avec_bullets"):
+        _vals = sortie.get(_cle)
+        if isinstance(_vals, list):
+            sortie[_cle] = [_e(v) for v in _vals]
+    return sortie
+
+
 def display_totals(devis) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
@@ -2961,14 +3135,43 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # residential quotes (full format); the legacy renderer serves every other
     # market mode / format (industriel, agricole, one-page, étude) and is also
     # the automatic fall-back, so a client PDF is never broken.
+    #
+    # QJR30 — les renderers « maison » (agricole/industriel/commercial/
+    # résidentiel) écrivent leur HTML à la main : ils reçoivent les textes
+    # client ÉCHAPPÉS, une fois, ici. Le moteur legacy garde son propre
+    # échappement d'ingestion (ERR37) et reçoit donc ``data`` tel quel — sinon
+    # il échapperait deux fois. ``empreinte_donnees_pdf`` et la persistance
+    # lisent aussi ``data`` (l'empreinte ne change pas).
+    data_rendu = echapper_textes_client(data)
+    # QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ. ``build_quote_data`` DÉGRADE
+    # certaines demandes (un devis agricole demandé en « full » est bâti en
+    # format UNE PAGE : le format à options n'a pas de sens sans onduleur), et
+    # publie le mode retenu dans ``data['pdf_mode']``. Les prédicats
+    # ``is_*`` lisaient encore la demande BRUTE : ils voyaient « full » et
+    # lançaient le renderer premium multi-pages sur des données bâties pour une
+    # page — la dégradation que le builder annonce était MORTE pour la
+    # sélection du renderer. On leur donne le mode réellement retenu ; les
+    # autres options (include_etude, toggles) restent celles de l'appelant.
+    _opts_dispatch = dict(pdf_options or {})
+    _opts_dispatch['pdf_mode'] = (
+        data.get('pdf_mode') or _opts_dispatch.get('pdf_mode') or 'full')
     pdf_bytes = None
     # Agricole premium multi-page proposal (full format). One-page agricole and
     # every other mode/format stay on the legacy engine / residential renderer.
     from .agricole import renderer as agricole
-    if agricole.is_agricultural(devis, pdf_options):
+    if agricole.is_agricultural(devis, _opts_dispatch):
         try:
-            pdf_bytes = agricole.render_pdf_bytes(data)
-        except agricole.Unsupported:
+            pdf_bytes = agricole.render_pdf_bytes(data_rendu)
+        except agricole.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer agricole refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -2978,10 +3181,19 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # QX45 — renderer INDUSTRIEL (CFO) : full/premium seulement, intercepté APRÈS
     # l'agricole et AVANT le repli legacy (qui reste l'off-switch / one-page).
     from .industriel import renderer as industriel
-    if pdf_bytes is None and industriel.is_industrial(devis, pdf_options):
+    if pdf_bytes is None and industriel.is_industrial(devis, _opts_dispatch):
         try:
-            pdf_bytes = industriel.render_pdf_bytes(data)
-        except industriel.Unsupported:
+            pdf_bytes = industriel.render_pdf_bytes(data_rendu)
+        except industriel.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer industriel refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -2991,10 +3203,19 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # QX46 — renderer COMMERCIAL (catégorie-aware) : full/premium seulement,
     # intercepté AVANT le repli legacy (comme QX45).
     from .commercial import renderer as commercial
-    if pdf_bytes is None and commercial.is_commercial(devis, pdf_options):
+    if pdf_bytes is None and commercial.is_commercial(devis, _opts_dispatch):
         try:
-            pdf_bytes = commercial.render_pdf_bytes(data)
-        except commercial.Unsupported:
+            pdf_bytes = commercial.render_pdf_bytes(data_rendu)
+        except commercial.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer commercial refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -3002,10 +3223,19 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
                 getattr(devis, "reference", devis_id), exc_info=True)
             pdf_bytes = None
     from .residential import renderer as residential
-    if pdf_bytes is None and residential.is_residential(devis, pdf_options):
+    if pdf_bytes is None and residential.is_residential(devis, _opts_dispatch):
         try:
-            pdf_bytes = residential.render_pdf_bytes(data)
-        except residential.Unsupported:
+            pdf_bytes = residential.render_pdf_bytes(data_rendu)
+        except residential.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer residential refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(

@@ -244,14 +244,26 @@ function GenCardHeader({ icon: Icon, title, children }) {
   )
 }
 
-function MetricCard({ label, value, unit, recommended, accent }) {
+function MetricCard({ label, value, unit, recommended, accent, badge }) {
   return (
     <div className={`gen-metric${accent ? ' gen-metric-accent' : ''}${recommended ? ' gen-metric-rec' : ''}`}>
       <div className="gen-metric-label">
         {label}
         {recommended && <span className="gen-rec-badge">★ Recommandé</span>}
       </div>
-      <div className="gen-metric-value">{value}</div>
+      <div className="gen-metric-value">
+        {value}
+        {/* QJR35 — la carte lit une économie/payback dérivé LOCALEMENT
+            (miroir `roi`, jamais serveur) sans facture réelle saisie ni
+            étude horaire serveur : puce visible À CÔTÉ de la valeur, la
+            carte reste rendue (le vendeur s'en sert comme repère). */}
+        {badge && (
+          <span className="ml-1.5 align-middle rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning"
+                data-testid="gen-metric-badge-exemple">
+            {badge}
+          </span>
+        )}
+      </div>
       <div className="gen-metric-unit">{unit}</div>
     </div>
   )
@@ -495,6 +507,14 @@ export default function DevisGenerator({
   // chargement dédié pendant l'aller-retour réseau (le bouton porte
   // `loading={autoFillLoading}`).
   const [autoFillLoading, setAutoFillLoading] = useState(false)
+  // QJR36 — même patron que `sizingServeurMessage` : quand le dry-run serveur
+  // (`ventesApi.composerDevis`) échoue et que l'écran retombe sur
+  // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
+  // documente lui-même comme divergente du serveur (câbles, marques épinglées,
+  // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
+  // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
+  // Ne change PAS le comportement du repli, seulement le rend visible.
+  const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
   // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
   // best-effort : une société sans réglage ou un rôle non responsable/admin
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
@@ -1149,6 +1169,14 @@ export default function DevisGenerator({
         ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
     : roiPourAvec?.payback_avec
 
+  // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
+  // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
+  // chiffre dérivé du MIROIR LOCAL sans qu'aucune facture réelle ni étude
+  // horaire serveur n'existe encore. Ni caché (le vendeur s'en sert comme
+  // repère) ni remplacé par un autre chiffre — étiqueté. QJR89/QJR90 rendent
+  // cette règle structurelle ; ceci est l'intérim minimal.
+  const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur
+
   const chartData = useMemo(() => {
     if (!roi) return []
     // L-2OPT — la courbe « avec batterie » suit le kWc de SA branche quand les
@@ -1559,10 +1587,18 @@ export default function DevisGenerator({
   // strict : le comportement historique est inchangé.
   const applySiteProfile = (p) => {
     if (!p) return
-    if (!modeTouched.current
-        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]) {
-      onModeChange(LEAD_TYPE_TO_MODE[p.type_installation])
-    }
+    const modeLead = !modeTouched.current
+        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
+      ? LEAD_TYPE_TO_MODE[p.type_installation] : null
+    if (modeLead) onModeChange(modeLead)
+    // QJR38 — Mode RÉELLEMENT visé par ce pré-remplissage : `modeInstallation`
+    // est encore la valeur du rendu courant après `onModeChange` (setState ne
+    // rafraîchit pas la constante fermée) — même patron qu'applyLead (le bug
+    // vivait ici : la branche `attenteSizingServeur` ci-dessous lisait
+    // `modeInstallation`, donc un profil industriel/commercial prenait encore
+    // le chemin résidentiel et armait une attente que le moteur résidentiel-
+    // only ne satisferait jamais).
+    const modeCible = modeLead || modeInstallation
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
       if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
@@ -1582,7 +1618,7 @@ export default function DevisGenerator({
       // (voir computeAutoSizing) ; sous le seuil, attend le moteur horaire
       // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
       if (!nbPanneauxTouched.current) {
-        if (modeInstallation === 'residentiel') {
+        if (modeCible === 'residentiel') {
           // U3-MOTEUR — même règle qu'applyLead : le résidentiel ne se
           // dimensionne plus ici, il attend le moteur horaire serveur.
           setSizingInfo(null)
@@ -1830,11 +1866,22 @@ export default function DevisGenerator({
       const rend = parseFloat(data?.rendement_global)
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
+      // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
+      // CompanyProfileSerializer, fields='__all__') : ce setQuoteLogic
+      // RECONSTRUIT l'objet entier (repli des 4 champs ci-dessus, historique),
+      // ce qui EFFAÇAIT silencieusement le `productible: null` de l'état
+      // initial et rendait le réglage société mort à l'écran — le générateur
+      // et le PDF citaient alors deux productibles différents pour le même
+      // devis. Repli EXPLICITE sur `null` (jamais une constante d'écran) :
+      // `productibleForCity` (solar.js) sait déjà retomber sur le PVGIS par
+      // ville quand aucune surcharge société réelle n'existe.
+      const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
         efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
+        productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
       if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
@@ -2363,8 +2410,15 @@ export default function DevisGenerator({
   const buildDimensionnementAvec = (kwpAvec) => {
     const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
     const panelWNum = parseFloat(panelW) || 710
-    const nbPanneauxAvec = Number(backendAvec?.nb_panneaux) > 0
-      ? Math.round(Number(backendAvec.nb_panneaux))
+    // QJR37 — le moteur horaire (recommandation/recommandation_avec) émet la
+    // clé `panneaux` (vérifié contre apps/ventes/contract_samples/
+    // etude_horaire.json : "recommandation_avec": {"panneaux": 17, …}), jamais
+    // `nb_panneaux` — cette dernière n'existe QUE côté REQUÊTE de
+    // POST /ventes/devis/composition/ (contract_samples/devis_composition.json,
+    // champ d'entrée `dimensionnement_avec: {nb_panneaux?, kwc?, …}`), une
+    // forme différente qu'on continue de PRODUIRE ci-dessous inchangée.
+    const nbPanneauxAvec = Number(backendAvec?.panneaux) > 0
+      ? Math.round(Number(backendAvec.panneaux))
       : Math.round((kwpAvec * 1000) / panelWNum)
     const dims = { nb_panneaux: nbPanneauxAvec, kwc: kwpAvec }
     const battKwh = Number(backendAvec?.batterie_kwh)
@@ -2502,10 +2556,15 @@ export default function DevisGenerator({
           }
         }
         const { data } = await ventesApi.composerDevis(body)
+        setCompositionSourceLocale(null)
         appliquerCompositionServeur(data)
       } catch (err) {
         // REPLI — jamais un écran sans Auto-remplir pour une panne réseau.
         console.error('composerDevis (dry-run) indisponible, repli local :', err)
+        // QJR36 — la raison est posée dans l'état (comme `sizingServeurMessage`
+        // pour le refus serveur) ; le vendeur reçoit désormais la bannière
+        // visible ci-dessous au lieu d'un simple console.error silencieux.
+        setCompositionSourceLocale(err?.message || 'panne réseau/serveur')
         composeLocalement()
       } finally {
         setAutoFillLoading(false)
@@ -3039,7 +3098,7 @@ export default function DevisGenerator({
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
-    || (avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
+    || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
   const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
       && consoKwhDerivee > 0)
@@ -4112,6 +4171,18 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
+            {/* QJR36 — même patron que le refus serveur `sizingServeurMessage`
+                ci-dessus : le dry-run serveur a échoué et l'écran a composé
+                localement (composeLocalement) — comportement de repli
+                INCHANGÉ, seule sa visibilité change (avant : console.error
+                silencieux uniquement). */}
+            {compositionSourceLocale && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+                   data-testid="composition-source-locale">
+                Composition établie localement (serveur indisponible) — les
+                quantités peuvent différer du devis serveur.
+              </div>
+            )}
             {onduleursIncomplets.length > 0 && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                 <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
@@ -4460,6 +4531,19 @@ export default function DevisGenerator({
                 )}
               </div>
             )}
+            {/* QJR34 — l'étude industriel/commercial EXIGE une consommation
+                réelle (saisie directe ou factures réelles) : sans elle,
+                consoKwhDerivee reste à 0 et etudeCI/etudeIndustrielle/
+                etudeCommerciale court-circuitent déjà vers null (jamais un
+                repli forfaitaire) — cet avis rend la raison visible au
+                vendeur au lieu de laisser le panneau simplement vide. */}
+            {(modeInstallation === 'industriel' || modeInstallation === 'commercial')
+              && !etudeCI && (
+              <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
+                 data-testid="etude-ci-indisponible">
+                Étude indisponible : saisissez la consommation ou les factures réelles.
+              </p>
+            )}
             {etudeCI?.etude_mt_motif && (
               <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
                  data-testid="etude-mt-motif">
@@ -4529,10 +4613,12 @@ export default function DevisGenerator({
                       </div>
                       <MetricCard label="Économies"
                                   value={fmtNum(Math.round(apercuEcoSans))}
-                                  unit="MAD / an" />
+                                  unit="MAD / an"
+                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                       <MetricCard label="ROI"
                                   value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
-                                  unit="retour sur invest." accent />
+                                  unit="retour sur invest." accent
+                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                       <MetricCard label="Coût"
                                   value={fmtNum(Math.round(totals.totalSans))}
                                   unit="MAD TTC" />
@@ -4559,10 +4645,12 @@ export default function DevisGenerator({
                         <>
                           <MetricCard label="Économies"
                                       value={fmtNum(Math.round(apercuEcoAvec))}
-                                      unit="MAD / an" />
+                                      unit="MAD / an"
+                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                           <MetricCard label="ROI"
                                       value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
-                                      unit="retour sur invest." accent />
+                                      unit="retour sur invest." accent
+                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
                           <MetricCard label="Coût"
                                       value={fmtNum(Math.round(totals.totalAvec))}
                                       unit="MAD TTC" />

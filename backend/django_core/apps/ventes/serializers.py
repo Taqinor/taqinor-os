@@ -128,7 +128,73 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class DevisSerializer(serializers.ModelSerializer):
+class EcheancierTrancheSerializer(serializers.Serializer):
+    """QJR21 — contrat de saisie d'UNE tranche d'échéancier (``Devis.echeancier``).
+
+    Sérialiseur DÉDIÉ : le champ est un JSONField, donc rien ne validait sa
+    forme. ``pct_or_montant`` porte désormais son unité :
+
+      * ``unite`` (ou ``type``) = « pct » → pourcentage, ≤ 100 ;
+      * ``unite`` (ou ``type``) = « montant » → montant TTC en dirhams ;
+      * rien de déclaré → pourcentage, mais SEULEMENT jusqu'à 100 (au-delà la
+        valeur est ambiguë et refusée — c'est le correctif QJR21).
+
+    ``type`` garde sa signification historique de NATURE de la tranche
+    ('acompte' / 'intermediaire' / 'solde') : seule une valeur d'unité y est
+    lue comme une déclaration d'unité.
+    """
+    libelle = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    type = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    unite = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    # JSONField (et non FloatField) : la valeur brute doit atteindre
+    # ``normaliser_tranche``, seule source de la règle ET des messages FR.
+    pct_or_montant = serializers.JSONField(required=False)
+
+    def validate(self, attrs):
+        from .utils.echeancier import EcheancierInvalide, normaliser_tranche
+        try:
+            normaliser_tranche(dict(attrs), self.context.get('index', 0))
+        except EcheancierInvalide as exc:
+            raise serializers.ValidationError(str(exc))
+        return attrs
+
+
+class EcheancierValidationMixin:
+    """QJR21 — refuse en 400 un échéancier dont une valeur est ambiguë.
+
+    Monté sur les DEUX sérialiseurs Devis (lecture et écriture) : le champ
+    ``echeancier`` est un JSONField accepté tel quel depuis le corps de la
+    requête, une saisie en dirhams y passait donc sans aucun contrôle.
+    """
+
+    def validate_echeancier(self, value):
+        if value is None or value == '' or value == []:
+            return value
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "L'échéancier doit être une liste de tranches "
+                "[{libelle, type, pct_or_montant}].")
+        for index, entree in enumerate(value):
+            if not isinstance(entree, dict):
+                raise serializers.ValidationError(
+                    f"Tranche n°{index + 1} : chaque tranche doit être un "
+                    "objet {libelle, type, pct_or_montant}.")
+            tranche = EcheancierTrancheSerializer(
+                data=entree, context={'index': index})
+            if not tranche.is_valid():
+                # Message PLAT sous la clé « echeancier » : l'écran affiche la
+                # phrase telle quelle, sans dépiler un non_field_errors imbriqué.
+                raise serializers.ValidationError(
+                    [str(m) for msgs in tranche.errors.values()
+                     for m in (msgs if isinstance(msgs, (list, tuple))
+                               else [msgs])])
+        return value
+
+
+class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -567,13 +633,17 @@ class AvenantDevisSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class DevisWriteSerializer(serializers.ModelSerializer):
+class DevisWriteSerializer(EcheancierValidationMixin,
+                           serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
     Le client devient optionnel À LA CRÉATION quand un lead est fourni : il est
     alors résolu côté serveur depuis le lead (apps.crm.services), jamais déduit
     côté navigateur. La vue garantit qu'au moins l'un des deux est présent et
     que lead/client appartiennent à la société de l'utilisateur.
+
+    QJR21 — ``echeancier`` passe par ``EcheancierValidationMixin`` : c'est LE
+    chemin d'écriture du champ (``DevisViewSet.get_serializer_class``).
     """
     class Meta:
         model = Devis

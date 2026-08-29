@@ -77,6 +77,13 @@ _OCCUPATION_JOUR_VERS_DRAPEAU = {
     'partiel': OCCUPATION_PARTIELLE,
 }
 
+# QJR10 / décision fondateur D4 (29/08/2026) — le défaut RÉSIDENTIEL, un seul
+# couple (drapeau, source) pour tous les chemins qui n'ont pas la réponse du
+# client. C'est l'observation de terrain du fondateur (clientèle majoritairement
+# présente en journée), pas une statistique : la source le DIT, pour que la page
+# puisse l'étiqueter honnêtement.
+DEFAUT_RESIDENTIEL = (OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur')
+
 
 def _nombre(valeur):
     """Flottant strictement positif, ou ``None``."""
@@ -140,6 +147,41 @@ def _options_reelles(data, batterie_kwh):
     return []
 
 
+def occupation_depuis_reponse(reponse, defaut=None):
+    """QJR10 — LE traducteur unique de ``crm.Lead.occupation_jour``.
+
+    ``reponse`` est la valeur BRUTE du script d'appel (``present`` / ``absent``
+    / ``partiel``). Rend ``(drapeau, source)`` quand la question a une réponse
+    lisible, sinon ``defaut`` tel quel (``None`` par défaut : « pas de
+    réponse », à l'appelant de dire ce qu'il en fait).
+
+    Avant QJR10 cette traduction existait DEUX fois — ici et dans un dict
+    ``drapeaux`` local de ``services._panneaux_dimensionnement_horaire``, dont
+    le silence retombait sur la silhouette de repli PARTIELLE alors que l'écran
+    retombait sur le défaut fondateur PRÉSENCE : le même lead était dimensionné
+    sur deux formes de journée différentes selon le chemin emprunté.
+    """
+    if reponse in _OCCUPATION_JOUR_VERS_DRAPEAU:
+        return (_OCCUPATION_JOUR_VERS_DRAPEAU[reponse],
+                'lead_occupation_jour:%s' % reponse)
+    return defaut
+
+
+def occupation_du_lead(lead):
+    """QJR10 — ``(drapeau, source)`` d'occupation lisible sur un LEAD SEUL.
+
+    Façade des chemins qui n'ont pas encore de devis persisté (devis
+    automatique, tunnel) : réponse RÉELLE du lead d'abord, sinon le défaut
+    fondateur résidentiel :data:`DEFAUT_RESIDENTIEL` — **décision fondateur D4
+    du 29/08/2026 : PRÉSENCE partout**, le repli PARTIELLE de l'ancien chemin
+    auto disparaît. Ces chemins sont résidentiels par construction
+    (``services.build_devis_auto`` refuse tout autre marché), le défaut
+    résidentiel est donc le bon.
+    """
+    return occupation_depuis_reponse(
+        getattr(lead, 'occupation_jour', None), DEFAUT_RESIDENTIEL)
+
+
 def _occupation(devis, data):
     """(drapeau, source) — le client est-il chez lui en journée ?
 
@@ -166,13 +208,14 @@ def _occupation(devis, data):
     résidentiels quand le lead le porte ET qu'``occupation_jour`` est absent.
     Sinon, hors résidentiel, le défaut reste ``absence_jour``.
     """
-    lead_occ = _occupation_jour_lead(devis)
-    if lead_occ in _OCCUPATION_JOUR_VERS_DRAPEAU:
-        return _OCCUPATION_JOUR_VERS_DRAPEAU[lead_occ], 'lead_occupation_jour:%s' % lead_occ
+    # QJR10 — MÊME traducteur que le chemin lead seul (aucun dict local).
+    reponse = occupation_depuis_reponse(_occupation_jour_lead(devis))
+    if reponse is not None:
+        return reponse
 
     mode = str(data.get('mode_installation') or '').strip().lower()
     if mode == 'residentiel':
-        return OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur'
+        return DEFAUT_RESIDENTIEL
 
     try:
         from apps.crm.selectors import profil_activite_pour_devis
@@ -346,6 +389,17 @@ CLIM_CRENEAUX = {
 # Heures de DÉPART par créneau piscine — la LONGUEUR de la fenêtre reste
 # pilotée par equip_piscine_heures_jour (ou le défaut 8h, PISCINE_HEURES) ;
 # le créneau ne déplace que le départ, jamais la durée.
+#: QJR15 (29/08/2026) — LES COUCHES DE REDISTRIBUTION, UNE SEULE LISTE.
+#: Ces couches décrivent une consommation DÉJÀ contenue dans la facture : elles
+#: déforment la journée sans en changer le total. Elles doivent être les MÊMES
+#: partout — dans le composeur de forme (:func:`forme_consommation_detaillee`)
+#: et dans la décomposition mensuelle publiée
+#: (``etude_horaire.estimation_conso_mensuelle``). Avant QJR15 le chauffe-eau
+#: était publié comme un ajout mensuel en kWh mais IGNORÉ par le composeur : la
+#: répartition montrée au client et la forme sur laquelle ses économies étaient
+#: calculées décrivaient deux clients différents.
+COUCHES_REDISTRIBUTION = ('piscine', 'clim', 'chauffe_eau')
+
 PISCINE_CRENEAUX_DEPART = {
     'matin': 6,
     'apres_midi': 12,
@@ -876,7 +930,8 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     applique EXACTEMENT la règle L4 déjà tenue côté page
     (``proposalCurve.equipmentAdjustedConsumptionKwhShape``), en DEUX PASSES :
 
-    1. **REDISTRIBUTION** (piscine, climatisation) — chaque couche ajoute sa
+    1. **REDISTRIBUTION** (:data:`COUCHES_REDISTRIBUTION` — piscine,
+       climatisation, chauffe-eau) — chaque couche ajoute sa
        puissance RÉELLE (``kw``, saisie par le commercial) sur ses heures
        sourcées, puis l'ensemble est renormalisé pour que la somme retombe
        EXACTEMENT sur le niveau facture (VE exclu) : ces heures grossissent, le
@@ -900,7 +955,11 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     donc à UN seul propriétaire : ce module. Le VE en est absent
     volontairement — sa couche porte une ÉNERGIE (kWh/jour) et aucune puissance
     de chargeur n'est collectée, donc rien à concentrer (voir
-    ``etude_horaire.PROFILS_RAFALE``).
+    ``etude_horaire.PROFILS_RAFALE``). Le chauffe-eau, lui, EST rendu depuis
+    QJR15 : le moteur le laisse plat (``PROFILS_RAFALE['chauffe_eau']`` est
+    ``actif: False`` — un chauffe-eau ne cycle pas comme un compresseur), mais
+    sa part de l'heure est désormais NOMMÉE au lieu d'être noyée dans le
+    résiduel.
     """
     try:
         total = float(kwh_jour)
@@ -928,10 +987,10 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
 
     sortie = [part * base_total for part in forme]
 
-    # ── Passe 1 : redistribution (piscine / clim) ──
+    # ── Passe 1 : redistribution (piscine / clim / chauffe-eau) ──
     bosse = [0.0] * 24
     actives = {}
-    for cle in ('piscine', 'clim'):
+    for cle in COUCHES_REDISTRIBUTION:
         couche = couches.get(cle)
         if not couche or couche.get('mode') != 'redistribution':
             continue

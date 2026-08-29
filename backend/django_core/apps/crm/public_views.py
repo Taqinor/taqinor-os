@@ -6,7 +6,12 @@ un jeton long/imprévisible (``SalleVente.token``) est le SEUL secret d'accès.
 distinct pour un mot de passe manquant/faux (le lien existe mais est
 protégé). Le contenu retourné n'expose JAMAIS de prix d'achat/marge — les
 devis sont résolus via ``apps.ventes.selectors`` (jamais ``ventes.models``
-directement), et le total exposé est TOUJOURS le TTC client existant.
+directement).
+
+QJR23 (29/08/2026, décisions fondateur D2/D9) — le total exposé est le total
+AFFICHÉ du devis (``display_totals``, la MÊME chaîne canonique par option que
+la liste/le Kanban) : remise globale honorée, et sur un devis à deux options,
+JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 """
 import hashlib
 
@@ -86,12 +91,17 @@ def _item_payload(item):
         # est le point d'entrée cross-app sanctionné (lecture seule) ; le
         # rendu client complet reste le canal `/proposal` existant (règle #4).
         from apps.ventes.selectors import get_devis_by_pk
+        # QJR23 — `display_totals` est LA fonction canonique du total affiché
+        # (même chemin que `DevisSerializer.total_affiche`, la liste et le
+        # Kanban) : chaîne canonique par option, remise honorée, jamais la
+        # somme des deux options d'un devis à deux options (D2/D9).
+        from apps.ventes.quote_engine.builder import display_totals
         devis = get_devis_by_pk(item.reference)
         if devis is not None and str(devis.company_id) == str(item.salle.company_id):
             payload.update({
                 'reference': devis.reference,
                 'statut': devis.statut,
-                'total_ttc': str(devis.total_ttc),
+                'total_ttc': str(display_totals(devis)['total']),
                 'proposal_path': f'/api/django/ventes/devis/{devis.pk}/proposal/',
             })
         else:

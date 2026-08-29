@@ -24,6 +24,28 @@ def _qty_par_designation(items):
     return out
 
 
+def _identite_par_designation(items):
+    """{désignation: (quantité TOTALE, prix unitaires HT triés)}.
+
+    QJR29 — L'IDENTITÉ DE FACTURATION D'UNE LIGNE INCLUT SON PRIX. La quantité
+    seule ne suffit pas : une même désignation, en même quantité, mais
+    FACTURÉE À DEUX PRIX différents d'une option à l'autre n'est pas la même
+    ligne. ``prix_unit_ht`` porte DÉJÀ la remise de ligne (voir
+    ``builder._line_to_item`` : ``pu × (1 − remise/100)``), donc ce seul
+    nombre couvre le prix ET la remise.
+    """
+    qtes = _qty_par_designation(items)
+    prix = {}
+    for it in items:
+        try:
+            p = round(float(it.get("prix_unit_ht") or 0), 2)
+        except (TypeError, ValueError):
+            p = 0.0
+        prix.setdefault(it["designation"], []).append(p)
+    return {nom: (qtes[nom], tuple(sorted(prix.get(nom, ()))))
+            for nom in qtes}
+
+
 def _split_items(sans_items, avec_items):
     """Partition lines by designation AND quantity across the two options.
 
@@ -39,11 +61,19 @@ def _split_items(sans_items, avec_items):
     qu'UNE quantité — celle du côté sans — pour les deux options : le client
     lisait 22 panneaux sur une option qui en compte 26.
 
-    Quantités égales ⇒ ``shared``, exactement comme avant (tout devis dont
-    aucune ligne ne porte de variante est rendu au bit près).
+    QJR29 — LE PRIX FAIT PARTIE DE L'IDENTITÉ. Le découpage ignorait le prix
+    unitaire : une ligne facturée à DEUX PRIX différents dans les deux
+    variantes était déclarée « commune » et imprimée UNE fois, au prix du côté
+    SANS, pendant que le total de l'option 2 était calculé avec le prix AVEC —
+    le tableau de la page 2 ne se réconciliait plus avec un total que le client
+    peut additionner. Elle part désormais en delta de chaque option (puis
+    ``_pair_divergents`` en fait UNE ligne à deux valeurs, prix compris).
+
+    Quantités ET prix égaux ⇒ ``shared``, exactement comme avant (tout devis
+    dont aucune ligne ne porte de variante est rendu au bit près).
     """
-    sans_q = _qty_par_designation(sans_items)
-    avec_q = _qty_par_designation(avec_items)
+    sans_q = _identite_par_designation(sans_items)
+    avec_q = _identite_par_designation(avec_items)
     common = {n for n in (sans_q.keys() & avec_q.keys())
               if sans_q[n] == avec_q[n]}
 
@@ -156,7 +186,15 @@ def _row_pair(pair, fmt, produits_base="taqinor.ma/produits"):
     marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
     qte = _deux_valeurs(f'{s["quantite"]:g}', f'{a["quantite"]:g}')
     pu = _deux_valeurs(fmt(s["prix_unit_ht"]), fmt(a["prix_unit_ht"]))
-    tva = f"{int(round(s['taux_tva']))}%"
+    # QJR31 — LE TAUX AUSSI EST PAR COLONNE. Seule cellule de cette ligne à
+    # n'avoir qu'UNE valeur, elle imprimait TOUJOURS le taux du côté SANS : sur
+    # une paire dont les deux variantes ne portent pas le même taux (10 %
+    # panneaux / 20 % le reste), le taux affiché ne décrivait pas la moitié du
+    # couple. ``_deux_valeurs`` rend un seul nombre quand les deux coïncident :
+    # tout l'existant est byte-identique. La chaîne des totaux, elle, était
+    # déjà juste (``tva_par_taux``) — c'est l'affichage par ligne qui mentait.
+    tva = _deux_valeurs(f"{int(round(s['taux_tva']))}%",
+                        f"{int(round(a['taux_tva']))}%")
     tot = _deux_valeurs(fmt(s["prix_unit_ht"] * s["quantite"]),
                         fmt(a["prix_unit_ht"] * a["quantite"]))
     return (
@@ -314,11 +352,20 @@ def build_pages(ctx) -> list:
     def _num(v):
         return f'{v:g}'.replace(".", ",")
 
+    # QJR17 (d) — VIGNETTES CONDITIONNELLES, comme partout ailleurs dans le
+    # moteur. Ces deux vignettes formataient leur valeur SANS garde : depuis M2
+    # (puissance jamais déduite du prix) et M3 (watt jamais forfaitaire), la
+    # valeur peut être ``None`` — ``f'{None:g}'`` lève alors une TypeError, le
+    # renderer résidentiel meurt et le document repart sur le moteur legacy.
+    # Donnée absente ⇒ vignette OMISE (jamais un « 0 », jamais un « None W ») ;
+    # devis normal ⇒ chaîne byte-identique à avant.
     if _divergent and _kwc_s and _kwc_a:
         spec_kwc = (f'{_num(_kwc_s)} · {_num(_kwc_a)}',
                     "kWc installés (sans · avec)")
-    else:
+    elif d.get("puissance_kwc"):
         spec_kwc = (_num(d["puissance_kwc"]), "kWc installés")
+    else:
+        spec_kwc = None
     _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
     if _divergent and _nb_s and _nb_a:
         # Puissance unitaire écrite seulement si elle est LA MÊME des deux
@@ -327,9 +374,12 @@ def build_pages(ctx) -> list:
         _wtxt = f' · {_w_s:g} W' if (_w_s and _w_s == _w_a) else ''
         spec_pan = (f'{_nb_s:g} · {_nb_a:g}',
                     f'panneaux (sans · avec){_wtxt}')
+    elif d.get("nb_panneaux"):
+        _wp = d.get("watt_par_panneau")
+        _wp_txt = f' · {_wp:g} W' if _wp else ''
+        spec_pan = (f'{d["nb_panneaux"]:g}', f'panneaux{_wp_txt}')
     else:
-        spec_pan = (f'{d["nb_panneaux"]:g}',
-                    f'panneaux · {d["watt_par_panneau"]:g} W')
+        spec_pan = None
     # PDFPROD (27/08/2026) — la production DÉRIVE du kWc : quand les champs PV
     # divergent, le scalaire ``prod_kwh`` ne décrit qu'UNE des deux options
     # (celle de l'AVEC, repli documenté du builder) — la bande annonçait donc
@@ -346,11 +396,8 @@ def build_pages(ctx) -> list:
                      "kWh / an produits (sans · avec)")
     else:
         spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
-    specs = [
-        spec_kwc,
-        spec_pan,
-        spec_prod,
-    ]
+    # QJR17 (d) — une vignette sans donnée n'existe pas (``None`` ci-dessus).
+    specs = [s for s in (spec_kwc, spec_pan, spec_prod) if s]
     spec_html = "".join(
         f'<div class="p2-spec"><span class="p2-spec-v">{v}</span>'
         f'<span class="p2-spec-l">{l}</span></div>'

@@ -437,11 +437,15 @@ class TestProposalMonthlyArrays(TestCase):
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
         # M10 — barème RÉEL exigé (le lead porte son distributeur), donc
-        # conversion par tranches : 1200 MAD → 739 kWh, 600 MAD → 427 kWh.
+        # conversion par tranches : 1200 MAD → 739 kWh, 600 MAD → 434 kWh.
+        # (QJR26/D5 : T5 = 1,381704 prouvé facture — 600 MAD tombe dans cette
+        # tranche sélective : 600 / 1,381704 = 434,2 → 434 ; l'ancienne
+        # extrapolation 1,405116 donnait 427. 1200 MAD traverse d'autres
+        # tranches, inchangées, d'où 739 stable.)
         # Ce que ce test protège est la MÉCANIQUE de répartition, pas le
         # tarif : un mois d'été (index 5 = Juin) reste sous un mois d'hiver.
         self.assertEqual(conso[0], 739)
-        self.assertEqual(conso[5], 427)
+        self.assertEqual(conso[5], 434)
         self.assertLess(conso[5], conso[0])
 
     def test_consumption_resolves_via_client_when_no_direct_lead(self):

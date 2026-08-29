@@ -90,16 +90,32 @@ function leadToBuilderPayload(lead) {
   }
 }
 
+// QJR40 (décision fondateur D8, 29/08/2026 ; jumelle backend = QJR25,
+// `electrical_service._option_choisie`) — sur un devis « Les deux »,
+// `contexte.cible_avec` (CTX3D, `selectors.contexte_conception_devis`) n'est
+// présente QUE quand l'option AVEC (onduleur hybride + batterie) est
+// réellement servable — MÊME critère que le schéma unifilaire. La cible 3D
+// DOIT alors cibler la MÊME option que le SLD : AVEC. Un devis mono-option
+// ne porte JAMAIS `cible_avec` : `cible` reste l'UNIQUE option vendue,
+// comportement strictement inchangé. Avant ce correctif, l'écran ne lisait
+// QUE `cible` (option SANS par construction de CTX3D) — exactement le bug
+// que la docstring de CTX3D dit corriger.
+function cibleActiveDuContexte(contexte) {
+  return contexte?.cible_avec ?? contexte?.cible ?? {}
+}
+
 // PV20 — MODE DEVIS. Le builder s'hydrate depuis un `DevisPayload` (PV19 :
 // `geometrie.roof_layout | roof_point | roof_outline` + `cible.panneaux |
 // panel_watt | scenario`). Le contexte serveur (contrat
 // `contract_samples/devis_design_context.json`) nomme le repère `pin` et le
 // contour `outline` : cette projection est le SEUL endroit qui les renomme —
-// l'écran ne devine ni ne complète aucune clé absente.
+// l'écran ne devine ni ne complète aucune clé absente. QJR40 : `cible` vient
+// de `cibleActiveDuContexte` — AVEC quand ce devis la sert, SANS/mono-option
+// sinon (voir le commentaire ci-dessus).
 function contexteToDevisPayload(contexte) {
   if (!contexte) return null
   const geo = contexte.geometrie ?? {}
-  const cible = contexte.cible ?? {}
+  const cible = cibleActiveDuContexte(contexte)
   const nom = (contexte.devis?.client_nom ?? '').trim()
   // PV23bis (fondateur 20/08) — téléphone + ville du client, au même titre
   // que `fullName` ci-dessus et que `leadToBuilderPayload` en mode lead : le
@@ -664,7 +680,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
     // lignes/câbles/structures du devis ; annuler = AUCUN appel réseau. Cible/posé
     // égaux (le cas courant) → aucun dialogue, comportement inchangé.
     const panneauxPoses = Number(layout?.result?.panels) || 0
-    const panneauxDevis = Number(contexte?.cible?.panneaux) || 0
+    // QJR40 — MÊME cible que celle booté dans le builder (cibleActiveDuContexte :
+    // AVEC quand ce devis la sert, sinon `cible`). Comparer contre `contexte.cible`
+    // seul recréerait ici la divergence SANS/AVEC que ce correctif supprime côté
+    // boot : un devis « Les deux » déclencherait alors ce dialogue à CHAQUE
+    // enregistrement, même sans aucun écart réel.
+    const panneauxDevis = Number(cibleActiveDuContexte(contexte).panneaux) || 0
     if (panneauxPoses !== panneauxDevis) {
       const ok = await confirm({
         title: 'Le calepinage diverge du devis',

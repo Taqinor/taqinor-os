@@ -304,12 +304,17 @@ export default function TarificationSection() {
 // (HT × 1,20, voir apps/ventes/quote_engine/pricing.py ONEE_TRANCHES pour la
 // dérivation). Affichés quand rien n'est encore enregistré ; enregistrer =
 // mêmes valeurs.
+// DÉCISION FONDATEUR D5 (29/08/2026) : la tranche 311-510 vaut 1,381704 —
+// PROUVÉE par la facture SRM du 08/05/2026 (1,15142 HT × 1,20), et non
+// l'extrapolation « HT constant ». Ce tableau doit rester le miroir EXACT de
+// DEFAULT_RESIDENTIAL_TIERS (models_tariff.py) : un écart ici afficherait à la
+// société un barème que le serveur n'applique pas.
 const DEFAULT_TIERS = [
   { max_kwh: '100', prix_kwh_ttc: '0.916272' },
   { max_kwh: '150', prix_kwh_ttc: '1.091388' },
   { max_kwh: '210', prix_kwh_ttc: '1.091388' },
   { max_kwh: '310', prix_kwh_ttc: '1.187388' },
-  { max_kwh: '510', prix_kwh_ttc: '1.405116' },
+  { max_kwh: '510', prix_kwh_ttc: '1.381704' },
   { max_kwh: '', prix_kwh_ttc: '1.622856' },
 ]
 

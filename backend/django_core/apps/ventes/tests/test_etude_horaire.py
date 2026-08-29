@@ -13,9 +13,13 @@ Ce module garde CINQ promesses faites au fondateur :
    restitue jamais plus que 0,90 × ce qu'elle a chargé.
 4. **Rien n'est inventé quand rien n'est connu** — sans facture, le moteur
    renvoie ``None`` et le moteur de devis garde son forfait ÉTIQUETÉ (règle Z2).
-5. **Rien d'existant ne bouge** — ``pricing.ONEE_TRANCHES`` est intacte (donc
-   ``test_tariff_drift_lock`` reste vert), un devis sans bloc horaire calcule
-   exactement comme avant, et les chemins industriel/agricole sont épinglés.
+5. **Rien d'existant ne bouge SANS DÉCISION** — un devis sans bloc horaire
+   calcule exactement comme avant et les chemins industriel/agricole sont
+   épinglés. SEULE exception, tranchée par le fondateur (D5, 29/08/2026,
+   QJR26) : le tarif T5 de ``pricing.ONEE_TRANCHES`` a été aligné sur la valeur
+   prouvée par facture que ce module portait déjà (1,381704) — la divergence
+   assumée est devenue une propagation, et ``test_tariff_drift_lock`` a été
+   recalé en conséquence.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
@@ -145,20 +149,29 @@ class BaremeInversionTest(SimpleTestCase):
 
 
 class BaremeDivergencesTest(SimpleTestCase):
-    """Ce que les factures corrigent est VISIBLE, et rien d'existant ne bouge."""
+    """Ce que les factures corrigent est VISIBLE, et la correction a été PROPAGÉE."""
 
-    def test_pricing_onee_tranches_intacte(self):
-        """Le drift lock reste vert PAR CONSTRUCTION : on n'a pas touché la
-        table du moteur de devis. Si quelqu'un la corrige un jour, ce test le
-        force à mettre DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
+    def test_pricing_onee_tranches_alignee_sur_le_bareme(self):
+        """QJR26 / décision fondateur D5 (29/08/2026) : la table du moteur de
+        devis a REJOINT la valeur prouvée par la facture.
+
+        Ce test disait l'inverse jusqu'au 29/08 (« ONEE_TRANCHES intacte » à
+        1,405116, la divergence assumée). Le fondateur a tranché : il n'y a
+        plus qu'UNE valeur T5 dans l'ERP, celle de bareme.TRANCHES_2026. Si
+        quelqu'un les fait diverger à nouveau, ce test le force à mettre
+        DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
         prix = dict((plafond, prix) for plafond, prix in pricing.ONEE_TRANCHES)
-        self.assertAlmostEqual(prix[500], 1.405116, places=6)
+        reference = dict((c, p) for c, p in B.TRANCHES_2026)
+        self.assertAlmostEqual(prix[500], 1.381704, places=6)
+        self.assertAlmostEqual(prix[500], reference[500], places=9)
         self.assertAlmostEqual(prix[None], 1.622856, places=6)
 
     def test_t5_2026_corrigee_par_la_facture(self):
-        """1,381704 (prouvé) et non 1,405116 (extrapolé à HT constant)."""
+        """1,381704 = 1,15142 HT × 1,20 (facture A), pas l'extrapolation à HT
+        constant qui donnait 1,17093 × 1,20."""
         prix = dict((plafond, prix) for plafond, prix in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[500], 1.381704, places=6)
+        self.assertAlmostEqual(1.15142 * 1.20, prix[500], places=9)
 
     def test_t5_ttc_constante_a_travers_le_changement_de_tva(self):
         """LE mécanisme prouvé : au passage 18 → 20 %, le TTC n'a pas bougé."""
@@ -170,10 +183,24 @@ class BaremeDivergencesTest(SimpleTestCase):
         statuts = {d['tranche']: d for d in B.DIVERGENCES_PRICING}
         self.assertEqual(len(statuts), 2)
         for detail in B.DIVERGENCES_PRICING:
+            # 'propagé' (D5) = l'écart a été RÉSORBÉ dans pricing.py ; il reste
+            # listé pour garder la trace de la correction et de sa preuve.
             self.assertIn(detail['statut'],
-                          ('corrigé', 'conflit_non_tranché'))
+                          ('corrigé', 'propagé', 'conflit_non_tranché'))
             self.assertTrue(detail['preuve'].strip(),
                             'une divergence sans preuve écrite est interdite')
+            if detail['statut'] == 'propagé':
+                self.assertAlmostEqual(detail['valeur_pricing'],
+                                       detail['valeur_moteur'], places=9)
+
+    def test_t5_est_propagee_et_non_plus_divergente(self):
+        """QJR26 / D5 : l'écart T5 n'existe plus — il est marqué comme tel."""
+        t5 = [d for d in B.DIVERGENCES_PRICING
+              if d['tranche'].startswith('311-510')]
+        self.assertEqual(len(t5), 1)
+        self.assertEqual(t5[0]['statut'], 'propagé')
+        prix = dict((c, p) for c, p in pricing.ONEE_TRANCHES)
+        self.assertAlmostEqual(t5[0]['valeur_pricing'], prix[500], places=9)
 
     def test_conflit_t6_reste_sur_la_valeur_du_repo(self):
         """On ne tranche RIEN sans facture : T6 garde 1,622856 et le conflit
@@ -1546,6 +1573,112 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
         equip = {'piscine': {'kw': 0, 'heures': [], 'saisons': ['ete'],
                              'mode': 'redistribution'}}
         self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, equip))
+
+
+class EstimationConsoRenormaliseeTests(SimpleTestCase):
+    """QJR16 (29/08/2026) — l'énergie PUBLIÉE est celle que le moteur PLACE.
+
+    ``estimation_conso_mensuelle`` publiait l'énergie BRUTE des équipements
+    (``kW × heures × jours``) alors que le composeur de forme pose les bosses
+    PUIS RENORMALISE la journée au niveau facture : la couche y pèse
+    ``brute × conso ÷ (conso + brutes)``. Sur un client aux équipements
+    lourds, ``totale_mensuelle`` dépassait donc sa consommation réelle — ce que
+    la docstring de la fonction garantit impossible — et l'écrêtage
+    ``max(0, …)`` de la base masquait le dépassement au lieu de l'empêcher.
+    """
+
+    #: Consommation MODESTE face à des équipements lourds : c'est exactement le
+    #: cas où la brute dépassait la facture (clim seule = 1,4 kW × 8 h × 31 j
+    #: = 347,2 kWh en juillet, pour 300 kWh consommés).
+    CONSO_MODESTE = [300.0] * 12
+
+    CLIM = {'clim': {'kw': 1.4, 'heures': list(range(13, 21)),
+                     'saisons': ['ete'], 'mode': 'redistribution'}}
+
+    def test_le_total_ne_depasse_JAMAIS_la_consommation_reelle(self):
+        """ROUGE avant QJR16 : juillet sortait à 347,2 kWh pour 300 consommés
+        (base écrêtée à zéro, ajout brut publié par-dessus)."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        self.assertIsNotNone(bloc)
+        for index, conso in enumerate(self.CONSO_MODESTE):
+            self.assertLessEqual(
+                bloc['totale_mensuelle'][index], conso + 0.02,
+                'mois %d : le total publié dépasse la consommation réelle'
+                % (index + 1))
+
+    def test_la_base_n_est_plus_ecretee_a_zero(self):
+        """L'écrêtage silencieux était le SYMPTÔME : une base à zéro disait
+        « ce client ne consomme QUE sa clim », ce qui est faux."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        mois_ete = [i for i, v in enumerate(bloc['ajouts']['clim']) if v > 0]
+        self.assertTrue(mois_ete)
+        for index in mois_ete:
+            self.assertGreater(bloc['base_mensuelle'][index], 0.0,
+                               'mois %d' % (index + 1))
+
+    def test_l_ajout_publie_egale_ce_que_le_composeur_place(self):
+        """LA propriété du correctif : même facteur des deux côtés. On compare
+        l'ajout mensuel publié à l'énergie que
+        ``forme_consommation_detaillee`` place RÉELLEMENT dans la journée du
+        même mois, multipliée par le nombre de jours."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        for index, conso_mois in enumerate(self.CONSO_MODESTE):
+            jours = EH.JOURS_PAR_MOIS[index]
+            saison = EH.saison_du_mois(index + 1)
+            _forme, couches = CJ.forme_consommation_detaillee(
+                conso_mois / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
+                equipements=self.CLIM)
+            place = sum(couches.get('clim', {}).get('heures_kwh')
+                        or [0.0]) * jours
+            self.assertAlmostEqual(
+                bloc['ajouts']['clim'][index], place, delta=0.05,
+                msg='mois %d' % (index + 1))
+
+    def test_le_facteur_est_bien_celui_de_la_renormalisation(self):
+        """Juillet, dérivation complète : brute 1,4 × 8 × 31 = 347,2 kWh,
+        facteur 300 ÷ (300 + 347,2) = 0,4635352, ajout 160,94 kWh, base
+        139,06 kWh — et 160,94 + 139,06 = 300,00 kWh."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        juillet = 6
+        self.assertAlmostEqual(bloc['ajouts']['clim'][juillet], 160.94,
+                               delta=0.02)
+        self.assertAlmostEqual(bloc['base_mensuelle'][juillet], 139.06,
+                               delta=0.02)
+        self.assertAlmostEqual(bloc['totale_mensuelle'][juillet], 300.0,
+                               delta=0.02)
+
+    def test_sans_bosse_le_calcul_est_celui_d_avant_a_l_octet(self):
+        """Non-régression : sans couche de redistribution active, le facteur
+        vaut 1,0 et la base reste la consommation brute."""
+        equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
+                        'saisons': None, 'mode': 'addition'}}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        self.assertEqual(bloc['base_mensuelle'], list(self.CONSO_MODESTE))
+
+    def test_le_ve_reste_le_seul_ajout_qui_depasse_la_facture(self):
+        equip = dict(self.CLIM)
+        equip['ve'] = {'kwh_jour': 4.0, 'heures': [21, 22, 23],
+                       'saisons': None, 'mode': 'addition'}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        for index, conso in enumerate(self.CONSO_MODESTE):
+            attendu = conso + bloc['ajouts']['ve'][index]
+            self.assertAlmostEqual(bloc['totale_mensuelle'][index], attendu,
+                                   delta=0.02, msg='mois %d' % (index + 1))
+
+    def test_les_fixtures_existantes_restent_bornees_par_leur_facture(self):
+        """``totale_mensuelle <= conso`` sur les couches déjà épinglées
+        ailleurs dans ce module (piscine + clim, grandeurs réelles)."""
+        equip = CJ.composer_equipements({
+            'piscine': True, 'piscine_pompe_kw': 1.1,
+            'clim': True, 'clim_pieces': 5,
+        })
+        for conso in ([400.0] * 12, [300.0] * 12, [1200.0] * 12):
+            bloc = EH.estimation_conso_mensuelle(conso, equip)
+            self.assertIsNotNone(bloc)
+            for index, valeur in enumerate(conso):
+                self.assertLessEqual(bloc['totale_mensuelle'][index],
+                                     valeur + 0.02,
+                                     'conso %s, mois %d' % (valeur, index + 1))
 
 
 class JoursTypesPublicsTests(SimpleTestCase):
