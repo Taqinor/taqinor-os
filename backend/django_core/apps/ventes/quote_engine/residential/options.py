@@ -186,7 +186,15 @@ def _row_pair(pair, fmt, produits_base="taqinor.ma/produits"):
     marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
     qte = _deux_valeurs(f'{s["quantite"]:g}', f'{a["quantite"]:g}')
     pu = _deux_valeurs(fmt(s["prix_unit_ht"]), fmt(a["prix_unit_ht"]))
-    tva = f"{int(round(s['taux_tva']))}%"
+    # QJR31 — LE TAUX AUSSI EST PAR COLONNE. Seule cellule de cette ligne à
+    # n'avoir qu'UNE valeur, elle imprimait TOUJOURS le taux du côté SANS : sur
+    # une paire dont les deux variantes ne portent pas le même taux (10 %
+    # panneaux / 20 % le reste), le taux affiché ne décrivait pas la moitié du
+    # couple. ``_deux_valeurs`` rend un seul nombre quand les deux coïncident :
+    # tout l'existant est byte-identique. La chaîne des totaux, elle, était
+    # déjà juste (``tva_par_taux``) — c'est l'affichage par ligne qui mentait.
+    tva = _deux_valeurs(f"{int(round(s['taux_tva']))}%",
+                        f"{int(round(a['taux_tva']))}%")
     tot = _deux_valeurs(fmt(s["prix_unit_ht"] * s["quantite"]),
                         fmt(a["prix_unit_ht"] * a["quantite"]))
     return (

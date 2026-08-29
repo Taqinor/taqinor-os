@@ -13,6 +13,8 @@ Run:
         apps.ventes.tests.test_quote_engine_residential -v 2
 """
 
+import re
+
 from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
@@ -1061,6 +1063,52 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('class="c1-qrbox"', html)
         self.assertNotIn('class="c1-qr-cell"', html)   # pas de carte facture
         self.assertIn('Consultez votre proposition interactive', html)
+
+
+class TestQjr31TauxTvaParColonne(SimpleTestCase):
+    """QJR31 — ``_row_pair`` imprimait UN seul taux pour une ligne à deux
+    valeurs : celui de la colonne SANS, y compris quand les deux variantes
+    portent des taux différents (10 % panneaux / 20 % le reste). La chaîne
+    des totaux, elle, était déjà juste — c'est l'affichage par ligne qui
+    mentait."""
+
+    @staticmethod
+    def _item(desig, q, pu, taux):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _ligne(self, taux_sans, taux_avec):
+        from apps.ventes.quote_engine.residential import options, theme
+        paire = (self._item('Panneau Canadien Solar 710W', 16, 1272.73,
+                            taux_sans),
+                 self._item('Panneau Canadien Solar 710W', 20, 1272.73,
+                            taux_avec))
+        return options._row_pair(paire, theme.fmt)
+
+    @staticmethod
+    def _cellule_tva(html):
+        m = re.search(r'<td class="p2-c p2-tva">(.*?)</td>', html)
+        assert m, html
+        return m.group(1)
+
+    def test_deux_taux_differents_sont_tous_les_deux_imprimes(self):
+        cellule = self._cellule_tva(self._ligne(10, 20))
+        self.assertIn('10%', cellule)
+        self.assertIn('20%', cellule)
+
+    def test_un_taux_unique_reste_ecrit_une_seule_fois(self):
+        """Non-régression : deux variantes au même taux ⇒ cellule inchangée."""
+        self.assertEqual(self._cellule_tva(self._ligne(20, 20)), '20%')
+
+    def test_les_totaux_de_la_ligne_ne_bougent_pas(self):
+        """La chaîne P.U. → Total HT par colonne est intacte au centime."""
+        from apps.ventes.quote_engine.residential import theme
+        html = self._ligne(10, 20)
+        self.assertIn(theme.fmt(1272.73 * 16), html)
+        self.assertIn(theme.fmt(1272.73 * 20), html)
 
 
 class TestQjr30EchappementTextesClient(SimpleTestCase):
