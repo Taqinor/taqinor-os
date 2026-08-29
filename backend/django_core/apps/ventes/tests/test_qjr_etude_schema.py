@@ -66,6 +66,82 @@ class SchemaTests(SimpleTestCase):
                 self.assertIn(cle, S.SCHEMA)
 
 
+class ContratRoundTripEcran(SimpleTestCase):
+    """QJR66 / arbitrage orchestrateur (29/08/2026) — LE CONTRAT `?edit=`.
+
+    Le mappeur de réouverture de brouillon (`DevisGenerator.jsx`) réinjecte ces
+    clés de TÊTE dans le formulaire. Non déclarées, la fusion QJR62 les refuse
+    en 400 et le round-trip meurt EN SILENCE : l'écran repose ses défauts
+    (pompe immergée / triphasé / 20 m, raccordement BT) par-dessus le choix du
+    vendeur, et l'enregistrement suivant les fige.
+
+    Le pendant côté écran vit dans
+    ``frontend/src/pages/ventes/DevisGeneratorRoundTripEtude.test.mjs``, qui
+    lit CE fichier : les deux moitiés du contrat sont épinglées, chacune dans
+    son langage.
+    """
+
+    #: Les entrées du marché AGRICOLE que `?edit=` relit.
+    AGRICOLE = ('debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
+                'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
+                'current_fuel', 'fuel_spend_current', 'hmt_static',
+                'hmt_drawdown')
+    #: Les entrées du marché INDUSTRIEL / COMMERCIAL que `?edit=` relit
+    #: (`tension_raccordement` est déclaré parmi les entrées générales).
+    INDUSTRIEL_COMMERCIAL = ('tension_raccordement', 'repartition_mt',
+                             'categorie_commerciale')
+    #: Les réponses par catégorie commerciale
+    #: (`solar.js: COMMERCIAL_CATEGORY_QUESTIONS`), relues à plat `e[q.key]`.
+    REPONSES_COMMERCIALES = (
+        'chambres', 'occupation_pct', 'piscine', 'chambres_froides',
+        'horaires', 'cuisson', 'surface_vente_m2', 'effectif', 'clim', 'lits',
+        'garde_nuit', 'internat', 'fermeture_estivale', 'surface_m2',
+        'chauffe', 'four', 'cuisson_nocturne', 'temperature_consigne',
+        'volume_m3', 'saisonnalite_recolte')
+
+    def test_toutes_les_cles_du_round_trip_sont_declarees(self):
+        for cle in (self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
+                    + self.REPONSES_COMMERCIALES):
+            with self.subTest(cle=cle):
+                self.assertIn(cle, S.SCHEMA)
+
+    def test_ce_sont_des_ENTREES_de_l_ecran_jamais_des_derivees(self):
+        """Aucune n'est calculée par le moteur : le commercial les TAPE."""
+        for cle in (self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
+                    + self.REPONSES_COMMERCIALES):
+            with self.subTest(cle=cle):
+                self.assertEqual(S.SCHEMA[cle]['nature'], S.ENTREE)
+                self.assertEqual(S.SCHEMA[cle]['proprietaire'], S.ECRAN)
+
+    def test_l_ecran_peut_donc_toutes_les_ecrire(self):
+        self.assertEqual(
+            S.cles_refusees_pour(
+                S.ECRAN, self.AGRICOLE + self.INDUSTRIEL_COMMERCIAL
+                + self.REPONSES_COMMERCIALES), [])
+
+    def test_un_bloc_de_marche_complet_passe_le_validateur(self):
+        self.assertEqual(S.valider({
+            'categorie_commerciale': 'hotel', 'chambres': 40,
+            'occupation_pct': 62.5, 'piscine': True,
+            'tension_raccordement': 'mt',
+            'repartition_mt': {'pointe': 10, 'pleines': 50, 'creuses': 40},
+        }), [])
+        self.assertEqual(S.valider({
+            'pompe_cv': 7.5, 'hmt_m': 60, 'debit_souhaite_m3h': 30,
+            'heures_pompage': 7, 'type_pompe': 'immergee', 'alim': 'tri',
+            'profondeur_m': 45, 'distance_m': 20, 'region': 'souss-massa',
+            'crop': 'agrumes', 'surface_ha': 5, 'current_fuel': 'butane',
+            'fuel_spend_current': 42000, 'hmt_static': 40,
+            'hmt_drawdown': 15, 'irrigation_method': 'goutte',
+        }), [])
+
+    def test_un_booleen_deguise_en_nombre_reste_refuse(self):
+        """La déclaration de type est utile, pas décorative."""
+        self.assertEqual(len(S.valider({'chambres': True})), 1)
+        self.assertEqual(len(S.valider({'piscine': 3})), 1)
+        self.assertEqual(len(S.valider({'repartition_mt': [10, 50, 40]})), 1)
+
+
 class ValiderTests(SimpleTestCase):
 
     def test_un_bloc_vide_ou_nul_ne_reproche_rien(self):

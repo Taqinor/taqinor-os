@@ -1846,6 +1846,20 @@ export default function DevisGenerator({
       if (e.hmt_static != null && e.hmt_static !== '') setFarmHmtStatic(String(e.hmt_static))
       if (e.hmt_drawdown != null && e.hmt_drawdown !== '') setFarmHmtDrawdown(String(e.hmt_drawdown))
       if (e.profondeur_m != null && e.profondeur_m !== '') setPompeProfondeur(String(e.profondeur_m))
+      // QJR66 — les trois dernières entrées pompage du formulaire. Elles
+      // partaient déjà dans `etude_params` (`buildEtudePompage`) mais n'étaient
+      // JAMAIS relues : rouvrir un brouillon agricole reposait les défauts
+      // (immergée / triphasé / 20 m) par-dessus le choix du vendeur, et
+      // l'enregistrement suivant les figeait. `alim` porte en plus le
+      // drapeau « touché » : une valeur restaurée est un choix humain, pas un
+      // défaut, et la déduction depuis le raccordement du lead ne doit plus
+      // l'écraser.
+      if (e.type_pompe) setPompeType(String(e.type_pompe))
+      if (e.alim) {
+        pompeAlimTouched.current = true
+        setPompeAlim(String(e.alim))
+      }
+      if (e.distance_m != null && e.distance_m !== '') setPompeDistance(String(e.distance_m))
     }).catch(() => {
       setErrors(prev => ({
         ...prev,
@@ -2906,6 +2920,20 @@ export default function DevisGenerator({
     return entrees
   }
 
+  // QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
+  // site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
+  // laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
+  // omet alors économies et payback plutôt que d'inventer un barème.
+  const repartitionMtSaisie = () => {
+    if (tensionRaccordement !== 'mt') return null
+    const parts = {}
+    for (const creneau of ['pointe', 'pleines', 'creuses']) {
+      const n = parseFloat(repartitionMt[creneau])
+      if (Number.isFinite(n)) parts[creneau] = n
+    }
+    return Object.keys(parts).length ? parts : null
+  }
+
   const blocEtudeMarche = () => {
     const nombre = (v) => {
       const n = parseFloat(v)
@@ -2921,9 +2949,26 @@ export default function DevisGenerator({
         payback: nombre(etude.payback),
         injection_kwh_an: nombre(etude.injection_kwh_an),
         injection_dh_an: nombre(etude.injection_dh_an),
+        // QXMT — raccordement du site + répartition horaire : le mappeur
+        // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
+        // devis MT rouvert repartait silencieusement au barème BT. On stocke
+        // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
+        // par l'étude : c'est la forme que le formulaire réinjecte.
+        tension_raccordement: tensionRaccordement || null,
+        repartition_mt: repartitionMtSaisie(),
       }
       if (modeInstallation === 'commercial') {
+        // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
+        // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
+        // IDENTIQUE à celle d'avant, jamais de `prix_achat`.
         bloc.categorie_commerciale = categorieCommerciale || null
+        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
+          const brut = commercialAnswers[q.key]
+          if (brut === undefined || brut === '' || brut === null) continue
+          bloc[q.key] = q.type === 'number'
+            ? (parseFloat(brut) || 0)
+            : q.type === 'bool' ? !!brut : String(brut)
+        }
       }
       return bloc
     }
@@ -2940,13 +2985,32 @@ export default function DevisGenerator({
         : {}
       return {
         ...entreesReellesEcran(null),
+        // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
         pompe_cv: nombre(p.pompe_cv),
         pompe_kw: nombre(p.pompe_kw),
-        hmt_m: nombre(p.hmt_m),
         debit_hmt_m3h: nombre(p.debit_hmt_m3h),
         m3_jour: nombre(p.m3_jour),
         champ_kwc: nombre(p.champ_kwc),
+        // ENTRÉES du vendeur, prises à l'ÉTAT de l'écran (pas au
+        // dimensionnement) : ce sont elles que le mappeur `?edit=` réinjecte
+        // dans le formulaire, et elles existent même quand aucune pompe à
+        // courbe ne peut être retenue.
+        hmt_m: nombre(pompeHmt),
+        debit_souhaite_m3h: nombre(pompeDebit),
+        heures_pompage: nombre(pompeHeures),
+        type_pompe: pompeType || null,
+        alim: pompeAlim || null,
+        profondeur_m: nombre(pompeProfondeur),
+        distance_m: nombre(pompeDistance),
+        // Exploitation guidée (toutes optionnelles, toutes relues par `?edit=`).
         irrigation_method: farmIrrigation || null,
+        region: farmRegion || null,
+        crop: farmCrop || null,
+        surface_ha: nombre(farmSurfaceHa),
+        current_fuel: farmFuel || null,
+        fuel_spend_current: nombre(farmFuelSpendAnnual),
+        hmt_static: nombre(farmHmtStatic),
+        hmt_drawdown: nombre(farmHmtDrawdown),
       }
     }
     // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des

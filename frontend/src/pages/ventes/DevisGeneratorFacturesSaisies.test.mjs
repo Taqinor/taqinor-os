@@ -142,10 +142,12 @@ test('QJR66 — l\'écran écrit les entrées réelles pour TOUS les marchés, e
   }
   // Aucune clé DÉRIVÉE dont l'écran n'est PAS propriétaire (le serveur les
   // calcule ; le schéma les refuserait en 400 — on ne les envoie même pas).
+  // On scanne le CODE, pas les commentaires : le bloc PARLE de ces notions.
+  const code = bloc.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n')
   for (const interdite of ['puissance_kwc', 'production_annuelle',
                            'economies_annuelles', 'etude_horaire',
                            'dimensionnement', 'profils_comparatifs']) {
-    assert.ok(!bloc.includes(interdite),
+    assert.ok(!code.includes(interdite),
       `clé dérivée non-propriétaire envoyée par l'écran : ${interdite}`)
   }
 })
