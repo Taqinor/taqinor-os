@@ -4837,9 +4837,9 @@ def profil_reel_existe(lead):
     « ALL sizing should go through the new sizing tool »). Cette fonction était
     la porte du chemin horaire dans ``build_devis_auto`` ; elle n'y est plus
     appelée, car un lead SANS profil se dimensionne désormais lui aussi par le
-    moteur (facture d'hiver inversée au barème ONEE + silhouette de repli
-    DOCUMENTÉE ``courbes_journalieres.OCCUPATION_REPLI``), et non plus par la
-    règle des 900 DH/mois — qui n'existe plus.
+    moteur (facture d'hiver inversée au barème ONEE + silhouette du DÉFAUT
+    RÉSIDENTIEL FONDATEUR ``courbes_journalieres.DEFAUT_RESIDENTIEL``, QJR10 /
+    D4), et non plus par la règle des 900 DH/mois — qui n'existe plus.
 
     Elle reste EXPOSÉE comme lecture de qualité de fiche (« ce lead porte-t-il
     autre chose qu'une facture ? »), utile pour nuancer un affichage ou
@@ -4939,11 +4939,13 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     sélectives, location + entretien, TPPAN) — JAMAIS une division par un prix
     moyen, jamais un tarif écrit ici.
 
-    REPLI DE FORME, DOCUMENTÉ. Sans drapeau d'occupation lisible, la silhouette
-    24 h est ``courbes_journalieres.OCCUPATION_REPLI`` = présence PARTIELLE,
-    le milieu honnête des trois (jamais « présent », qui flatterait
-    l'autoconsommation). Un équipement déclaré sans sa grandeur n'ajoute
-    aucune couche. C'est le SEUL repli : rien d'autre n'est supposé.
+    DÉFAUT DE FORME, DOCUMENTÉ (QJR10 / décision fondateur D4 du 29/08/2026).
+    Sans réponse d'occupation sur la fiche, la silhouette 24 h est celle du
+    DÉFAUT RÉSIDENTIEL FONDATEUR (``courbes_journalieres.DEFAUT_RESIDENTIEL``
+    = présence en journée), exactement comme sur l'aperçu écran : le même lead
+    ne peut plus être dimensionné sur deux journées différentes selon le chemin
+    emprunté. Un équipement déclaré sans sa grandeur n'ajoute aucune couche.
+    C'est le SEUL défaut : rien d'autre n'est supposé.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
     recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
@@ -4968,8 +4970,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     try:
         from apps.crm.selectors import equipements_pour_lead
         from apps.ventes.courbes_journalieres import (
-            OCCUPATION_ABSENCE, OCCUPATION_PARTIELLE, OCCUPATION_PRESENCE,
-            composer_equipements,
+            composer_equipements, occupation_du_lead,
         )
         from apps.ventes.dimensionnement import recommander_taille
         from apps.ventes.etude_horaire import profil_depuis_factures
@@ -4981,10 +4982,11 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
         if not conso:
             return 0, None, MOTIF_FACTURE_ABSENTE, None
 
-        drapeaux = {'present': OCCUPATION_PRESENCE,
-                    'absent': OCCUPATION_ABSENCE,
-                    'partiel': OCCUPATION_PARTIELLE}
-        occupation = drapeaux.get(getattr(lead, 'occupation_jour', None))
+        # QJR10 / D4 — MÊME lecteur d'occupation que l'aperçu écran, et MÊME
+        # défaut : sans réponse du client on retient le défaut fondateur
+        # PRÉSENCE, jamais la silhouette de repli PARTIELLE (les deux chemins
+        # dimensionnaient sinon le même lead sur deux journées différentes).
+        occupation, _source_occupation = occupation_du_lead(lead)
         # QJR9 — la MÊME lecture d'équipements que l'aperçu écran : les 15
         # champs du sélecteur CRM, jamais une recomposition locale à 6 clés
         # (les grandeurs L-BACK/L-BACK2 n'atteignaient sinon jamais le moteur

@@ -77,6 +77,13 @@ _OCCUPATION_JOUR_VERS_DRAPEAU = {
     'partiel': OCCUPATION_PARTIELLE,
 }
 
+# QJR10 / décision fondateur D4 (29/08/2026) — le défaut RÉSIDENTIEL, un seul
+# couple (drapeau, source) pour tous les chemins qui n'ont pas la réponse du
+# client. C'est l'observation de terrain du fondateur (clientèle majoritairement
+# présente en journée), pas une statistique : la source le DIT, pour que la page
+# puisse l'étiqueter honnêtement.
+DEFAUT_RESIDENTIEL = (OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur')
+
 
 def _nombre(valeur):
     """Flottant strictement positif, ou ``None``."""
@@ -140,6 +147,41 @@ def _options_reelles(data, batterie_kwh):
     return []
 
 
+def occupation_depuis_reponse(reponse, defaut=None):
+    """QJR10 — LE traducteur unique de ``crm.Lead.occupation_jour``.
+
+    ``reponse`` est la valeur BRUTE du script d'appel (``present`` / ``absent``
+    / ``partiel``). Rend ``(drapeau, source)`` quand la question a une réponse
+    lisible, sinon ``defaut`` tel quel (``None`` par défaut : « pas de
+    réponse », à l'appelant de dire ce qu'il en fait).
+
+    Avant QJR10 cette traduction existait DEUX fois — ici et dans un dict
+    ``drapeaux`` local de ``services._panneaux_dimensionnement_horaire``, dont
+    le silence retombait sur la silhouette de repli PARTIELLE alors que l'écran
+    retombait sur le défaut fondateur PRÉSENCE : le même lead était dimensionné
+    sur deux formes de journée différentes selon le chemin emprunté.
+    """
+    if reponse in _OCCUPATION_JOUR_VERS_DRAPEAU:
+        return (_OCCUPATION_JOUR_VERS_DRAPEAU[reponse],
+                'lead_occupation_jour:%s' % reponse)
+    return defaut
+
+
+def occupation_du_lead(lead):
+    """QJR10 — ``(drapeau, source)`` d'occupation lisible sur un LEAD SEUL.
+
+    Façade des chemins qui n'ont pas encore de devis persisté (devis
+    automatique, tunnel) : réponse RÉELLE du lead d'abord, sinon le défaut
+    fondateur résidentiel :data:`DEFAUT_RESIDENTIEL` — **décision fondateur D4
+    du 29/08/2026 : PRÉSENCE partout**, le repli PARTIELLE de l'ancien chemin
+    auto disparaît. Ces chemins sont résidentiels par construction
+    (``services.build_devis_auto`` refuse tout autre marché), le défaut
+    résidentiel est donc le bon.
+    """
+    return occupation_depuis_reponse(
+        getattr(lead, 'occupation_jour', None), DEFAUT_RESIDENTIEL)
+
+
 def _occupation(devis, data):
     """(drapeau, source) — le client est-il chez lui en journée ?
 
@@ -166,13 +208,14 @@ def _occupation(devis, data):
     résidentiels quand le lead le porte ET qu'``occupation_jour`` est absent.
     Sinon, hors résidentiel, le défaut reste ``absence_jour``.
     """
-    lead_occ = _occupation_jour_lead(devis)
-    if lead_occ in _OCCUPATION_JOUR_VERS_DRAPEAU:
-        return _OCCUPATION_JOUR_VERS_DRAPEAU[lead_occ], 'lead_occupation_jour:%s' % lead_occ
+    # QJR10 — MÊME traducteur que le chemin lead seul (aucun dict local).
+    reponse = occupation_depuis_reponse(_occupation_jour_lead(devis))
+    if reponse is not None:
+        return reponse
 
     mode = str(data.get('mode_installation') or '').strip().lower()
     if mode == 'residentiel':
-        return OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur'
+        return DEFAUT_RESIDENTIEL
 
     try:
         from apps.crm.selectors import profil_activite_pour_devis

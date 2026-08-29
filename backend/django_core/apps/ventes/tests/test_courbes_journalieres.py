@@ -269,6 +269,140 @@ class OccupationLeadTests(_CourbesBase):
         self.assertEqual(bloc['occupation_source'], 'defaut_residentiel_fondateur')
 
 
+# ── QJR10 (29/08/2026) — UN SEUL lecteur d'occupation, défaut PRÉSENCE ───────
+#
+# Avant QJR10, ``services._panneaux_dimensionnement_horaire`` traduisait
+# ``lead.occupation_jour`` avec un dict ``drapeaux`` LOCAL et laissait
+# ``occupation=None`` quand la question n'avait pas été posée : le moteur
+# retombait alors sur la silhouette de repli PARTIELLE, tandis que l'aperçu
+# écran retombait, lui, sur le défaut fondateur PRÉSENCE. Le même lead était
+# donc dimensionné sur deux journées différentes selon le chemin emprunté.
+# Décision fondateur D4 du 29/08/2026 : PRÉSENCE partout.
+
+class _LeadFactice:
+    """Lead minimal : ``occupation_jour`` + les 15 champs d'équipement à
+    ``None`` (ce que ``crm.selectors.equipements_pour_lead`` lit)."""
+
+    CHAMPS_EQUIP = (
+        'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique',
+        'equip_ve_km_semaine', 'equip_clim', 'equip_clim_pieces',
+        'equip_chauffe_eau_electrique', 'equip_chauffe_eau_kw',
+        'equip_chauffe_eau_creneau', 'equip_ve_chargeur_kw', 'equip_ve_creneau',
+        'equip_clim_kw', 'equip_piscine_heures_jour', 'equip_clim_creneau',
+        'equip_piscine_creneau',
+    )
+
+    def __init__(self, occupation_jour=None):
+        self.occupation_jour = occupation_jour
+        self.facture_hiver = 1800
+        self.facture_ete = None
+        self.ete_differente = False
+        self.ville = 'Casablanca'
+        self.gps_lat = None
+        self.gps_lng = None
+        for champ in self.CHAMPS_EQUIP:
+            setattr(self, champ, None)
+
+
+class OccupationLecteurUniqueTests(SimpleTestCase):
+    """CHEMIN 1 — le lecteur de lead seul (devis automatique / tunnel)."""
+
+    def test_les_trois_drapeaux_sont_traduits(self):
+        self.assertEqual(cj.occupation_du_lead(_LeadFactice('present')),
+                         ('presence_jour', 'lead_occupation_jour:present'))
+        self.assertEqual(cj.occupation_du_lead(_LeadFactice('absent')),
+                         ('absence_jour', 'lead_occupation_jour:absent'))
+        self.assertEqual(cj.occupation_du_lead(_LeadFactice('partiel')),
+                         ('presence_partielle', 'lead_occupation_jour:partiel'))
+
+    def test_lead_sans_reponse_retombe_sur_le_defaut_fondateur(self):
+        self.assertEqual(cj.occupation_du_lead(_LeadFactice(None)),
+                         cj.DEFAUT_RESIDENTIEL)
+        self.assertEqual(cj.DEFAUT_RESIDENTIEL,
+                         ('presence_jour', 'defaut_residentiel_fondateur'))
+
+    def test_valeur_non_reconnue_ou_lead_absent_retombe_sur_le_defaut(self):
+        self.assertEqual(cj.occupation_du_lead(_LeadFactice('n_importe_quoi')),
+                         cj.DEFAUT_RESIDENTIEL)
+        self.assertEqual(cj.occupation_du_lead(None), cj.DEFAUT_RESIDENTIEL)
+
+    def test_le_repli_partielle_ne_sert_plus_de_defaut_a_ce_chemin(self):
+        """La silhouette de repli existe toujours pour un drapeau ILLISIBLE
+        en aval, mais elle n'est plus ce que ce chemin CHOISIT par défaut."""
+        self.assertEqual(cj.OCCUPATION_REPLI, cj.OCCUPATION_PARTIELLE)
+        self.assertNotEqual(cj.occupation_du_lead(_LeadFactice(None))[0],
+                            cj.OCCUPATION_REPLI)
+
+
+class OccupationDevisMemeLecteurTests(_CourbesBase):
+    """CHEMIN 2 — l'aperçu écran (devis) passe par le MÊME traducteur."""
+
+    def _source(self, occ):
+        with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
+                        return_value=occ):
+            return cj.occupation_du_devis(object(), _data())
+
+    def test_les_trois_drapeaux_donnent_le_meme_couple_que_le_lecteur_lead(self):
+        for reponse in ('present', 'absent', 'partiel'):
+            self.assertEqual(
+                self._source(reponse),
+                cj.occupation_du_lead(_LeadFactice(reponse)), msg=reponse)
+
+    def test_sans_reponse_le_defaut_est_le_meme_couple(self):
+        self.assertEqual(self._source(None), cj.DEFAUT_RESIDENTIEL)
+        self.assertEqual(self._source(None),
+                         cj.occupation_du_lead(_LeadFactice(None)))
+
+    def test_le_defaut_non_residentiel_reste_intact(self):
+        """Non-régression : hors résidentiel et sans réponse du lead, le
+        défaut historique ``absence_jour`` ne bouge PAS (D4 ne concerne que
+        les deux chemins résidentiels)."""
+        with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
+                        return_value=None):
+            self.assertEqual(
+                cj.occupation_du_devis(
+                    object(), _data(mode_installation='industriel')),
+                ('absence_jour', 'defaut_non_residentiel'))
+
+
+class OccupationPipelineAutoTests(SimpleTestCase):
+    """Le pipeline auto/tunnel remet bien au moteur ce que le lecteur unique
+    a résolu — c'est CE branchement qui manquait (dict ``drapeaux`` local)."""
+
+    def _occupation_remise_au_moteur(self, lead):
+        from apps.ventes import services
+
+        vu = {}
+
+        def _espion(**kwargs):
+            vu.update(kwargs)
+            return {'recommandation': {'panneaux': 12, 'panel_watt': 550}}
+
+        with mock.patch('apps.ventes.dimensionnement.recommander_taille',
+                        _espion):
+            nb, _watt, source, _avec = (
+                services._panneaux_dimensionnement_horaire(
+                    lead=lead, company=object(), phase=None))
+        self.assertEqual(source, 'moteur_horaire')
+        self.assertEqual(nb, 12)
+        return vu.get('occupation')
+
+    def test_sans_reponse_le_moteur_recoit_le_defaut_fondateur_presence(self):
+        """ROUGE avant QJR10 : le moteur recevait ``None`` (⇒ repli
+        PARTIELLE), alors que l'écran dimensionnait sur PRÉSENCE."""
+        self.assertEqual(
+            self._occupation_remise_au_moteur(_LeadFactice(None)),
+            cj.DEFAUT_RESIDENTIEL[0])
+
+    def test_les_trois_reponses_reelles_du_lead_restent_souveraines(self):
+        for reponse, attendu in (('present', 'presence_jour'),
+                                 ('absent', 'absence_jour'),
+                                 ('partiel', 'presence_partielle')):
+            self.assertEqual(
+                self._occupation_remise_au_moteur(_LeadFactice(reponse)),
+                attendu, msg=reponse)
+
+
 # ── CJ2b (21/08/2026) — la forme de base de consommation devient SERVEUR ────
 class FormeConsommationServieTests(_CourbesBase):
     """Le serveur sert désormais la silhouette d'occupation (24 parts, somme
