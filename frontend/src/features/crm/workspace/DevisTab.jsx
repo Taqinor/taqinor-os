@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3,
 } from 'lucide-react'
@@ -11,6 +11,8 @@ import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
 import installationsApi from '../../../api/installationsApi'
+import stockApi from '../../../api/stockApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 // LANE E (fondateur 28/08/2026, spec_3_options.md) — réutilise TEL QUEL l'écran
 // vendeur existant des tailles Éco/Recommandé/Max (nb_panneaux, batterie,
 // équipements par taille) comme point d'entrée « Modifier les options » du
@@ -265,6 +267,32 @@ export default function DevisTab({
   // que `sectionsSel` (choix local prime, sinon état réel du dernier lien).
   const [taillesSel, setTaillesSel] = useState({}) // id -> { taille_eco, taille_max }
   const [editTaillesOuvert, setEditTaillesOuvert] = useState(null) // id du devis | null
+
+  // LANE E — SUBSTITUTIONS (fondateur 29/08/2026) — « Modifier les options »
+  // (DevisOffresTailles.jsx) ne propose de remplacer un équipement que si on
+  // lui passe `produits` (le catalogue société) : sans lui, ses selects par
+  // rôle ne rendent RIEN (produitsParRole([]) → listes vides). DevisGenerator
+  // charge ce même catalogue AU MONTAGE (`fetchAllPages` + `stockApi.
+  // getProduits`, VX54 — la pagination DRF simple perd silencieusement les
+  // familles triées après la page 1 au-delà de 50 références), mais cet onglet
+  // reste chaud en permanence sur la fiche lead alors que ce dialogue est
+  // rare : on ne le charge qu'À L'OUVERTURE du dialogue, une seule fois par
+  // session d'écran (le ref empêche tout second aller-retour réseau à la
+  // réouverture, y compris pour un autre devis de la même fiche — même
+  // catalogue société pour tous). Un échec réseau dégrade SANS bloquer le
+  // dialogue : `produits` reste `null`, l'écran se comporte comme avant
+  // (éditeur sans substitutions).
+  const produitsFetchStarted = useRef(false)
+  const [produitsCatalogue, setProduitsCatalogue] = useState(null)
+  useEffect(() => {
+    if (editTaillesOuvert == null) return
+    if (produitsFetchStarted.current) return
+    produitsFetchStarted.current = true
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+      .then(setProduitsCatalogue)
+      .catch(() => { /* dégrade : éditeur sans substitutions, jamais un dialogue cassé */ })
+  }, [editTaillesOuvert])
+
   const getTailles = (d) => (
     taillesSel[d.id] ?? taillesDepuisServeur(currentLinkMeta(d)?.sections)
   )
@@ -831,7 +859,11 @@ export default function DevisTab({
                       taille avant d’envoyer la page au client.
                     </DialogDescription>
                   </DialogHeader>
-                  <DevisOffresTailles devisId={d.id} modeInstallation="residentiel" />
+                  <DevisOffresTailles
+                    devisId={d.id}
+                    modeInstallation="residentiel"
+                    produits={produitsCatalogue}
+                  />
                 </DialogContent>
               </Dialog>
               {d.statut === 'accepte' && (
