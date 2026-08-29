@@ -1043,8 +1043,16 @@ export default function DevisGenerator({
     }
     if (etudeHoraireDonnees || etudeHoraireErreur) {
       attenteSizingServeur.current = false
+      // F4 (revue Fable 29/08) — un refus PROPRE du moteur (catalogue
+      // incomplet, localisation inconnue…) arrive en
+      // `dimensionnement.motivation` : une phrase FRANÇAISE qui NOMME la
+      // cause, et AUCUN `avertissements`. Ne lire que `avertissements[0]`
+      // remplaçait donc la cause réelle par le message générique de repli —
+      // le commercial voyait « indisponible » au lieu de « ville manquante ».
+      // Les deux formes sont lues, et rendues VERBATIM (texte du serveur).
       setSizingServeurMessage(
         etudeHoraireDonnees?.avertissements?.[0]
+        || etudeHoraireDonnees?.dimensionnement?.motivation
         || etudeHoraireErreur
         || "Dimensionnement indisponible : le serveur n'a pas pu chiffrer de recommandation.")
     }

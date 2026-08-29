@@ -77,6 +77,42 @@ test('DevisGenerator.jsx : un effet applique la recommandation SERVEUR ou son re
   assert.doesNotMatch(bloc, /setNbPanneaux\(String\(8\)\)/, 'aucun défaut forfaitaire (8 panneaux) ne doit être posé')
 })
 
+// F4 (revue Fable 29/08/2026) — LES DEUX FORMES DE REFUS. Le moteur décline de
+// deux manières :
+//   (a) avec `avertissements` (donnée d'entrée douteuse) ;
+//   (b) PROPREMENT, en `dimensionnement.motivation` — « aucune taille
+//       recommandable : le catalogue ne compose aucune variante chiffrable et
+//       électriquement conforme pour ce profil » (choisir_recommandation,
+//       backend/django_core/apps/ventes/dimensionnement.py) — recommandation
+//       à `None` et AUCUN avertissement.
+// Ne lire que (a) affichait le message générique de repli à la place de la
+// cause NOMMÉE par le serveur.
+test('F4 — le refus serveur affiche la cause NOMMÉE : avertissements OU dimensionnement.motivation, jamais le générique quand le serveur a parlé', () => {
+  const idx = DG.indexOf('if (!attenteSizingServeur.current) return')
+  assert.ok(idx > -1, "l'effet attenteSizingServeur est introuvable")
+  const bloc = DG.slice(idx, idx + 3200)
+  // (le fichier source est en CRLF : on repère l'appel MULTILIGNE par regex)
+  const setIdx = bloc.search(/setSizingServeurMessage\(\r?\n/)
+  assert.ok(setIdx > -1, 'la pose du message de refus est introuvable')
+  const chaine = bloc.slice(setIdx, setIdx + 500)
+  // Forme (a) : un avertissement du serveur, en premier (le plus spécifique).
+  assert.match(chaine, /etudeHoraireDonnees\?\.avertissements\?\.\[0\]/)
+  // Forme (b) : le refus propre, NOMMÉ, sans avertissement.
+  assert.match(chaine, /etudeHoraireDonnees\?\.dimensionnement\?\.motivation/)
+  // Puis seulement l'erreur réseau, puis le générique en tout dernier recours.
+  const ordre = ['avertissements', 'motivation', 'etudeHoraireErreur',
+    'Dimensionnement indisponible']
+  let pos = -1
+  for (const jalon of ordre) {
+    const p = chaine.indexOf(jalon)
+    assert.ok(p > pos, `« ${jalon} » doit venir après « ${ordre[ordre.indexOf(jalon) - 1]} »`)
+    pos = p
+  }
+  // Le texte serveur est rendu VERBATIM (aucune reformulation/concaténation).
+  assert.doesNotMatch(chaine, /motivation[^\n]*\+/,
+    'le message du serveur doit être rendu tel quel, jamais rhabillé')
+})
+
 test('DevisGenerator.jsx : le message de refus serveur est rendu, résidentiel uniquement, jamais quand il est null', () => {
   const idx = DG.indexOf('data-testid="sizing-serveur-refus"')
   assert.ok(idx > -1, 'le bloc de refus serveur est introuvable')
