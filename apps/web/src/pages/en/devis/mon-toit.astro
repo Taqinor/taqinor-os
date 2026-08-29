@@ -4065,7 +4065,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // water engine falls back to its default efficiency; the sales rep
       // fills it in the ERP.
       culture: val('mt-culture') || undefined,
-      // WJ124 — agronomy region (drives the FAO-56 water engine on the proposal).
+      // WJ124 — agronomy region (8 FAO zones). It drives THIS FUNNEL's water
+      // engine (`lib/agronomy.ts`, the live estimate preview) — NOT the
+      // proposal page, which never reads it (verified). It travels to the
+      // webhook for forward compatibility: `lib/lead.ts` validates and carries
+      // it, but `crm/webhooks.py _extract_web_questionnaire` does not PERSIST
+      // it yet (see the review note in `lib/lead.ts`).
       regionAgricole: regionAgricole || undefined,
       surfaceHa: num('mt-surface-ha') ?? undefined,
       // `pompeActuelle` / `pompeCvActuelle` are removed from the funnel

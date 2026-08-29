@@ -3797,7 +3797,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // `irrigation` retirée du tunnel (coupe fondateur 18/08) — le moteur eau
       // retombe sur son efficience par défaut ; le commercial la complète dans l'ERP.
       culture: val('mt-culture') || undefined,
-      // WJ124 — région agronomique (pilote le moteur eau FAO-56 côté proposition).
+      // WJ124 — région agronomique (8 zones FAO). Elle pilote le moteur eau
+      // DE CE TUNNEL (`lib/agronomy.ts`, l'aperçu d'estimation en direct) —
+      // PAS la page proposition, qui ne la lit nulle part (vérifié). Elle
+      // voyage au webhook par compatibilité ascendante : `lib/lead.ts` la
+      // valide et la transporte, mais `crm/webhooks.py
+      // _extract_web_questionnaire` ne la PERSISTE pas encore (cf. la note de
+      // revue dans `lib/lead.ts`).
       regionAgricole: regionAgricole || undefined,
       surfaceHa: num('mt-surface-ha') ?? undefined,
       // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
