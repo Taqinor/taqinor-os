@@ -314,11 +314,20 @@ def build_pages(ctx) -> list:
     def _num(v):
         return f'{v:g}'.replace(".", ",")
 
+    # QJR17 (d) — VIGNETTES CONDITIONNELLES, comme partout ailleurs dans le
+    # moteur. Ces deux vignettes formataient leur valeur SANS garde : depuis M2
+    # (puissance jamais déduite du prix) et M3 (watt jamais forfaitaire), la
+    # valeur peut être ``None`` — ``f'{None:g}'`` lève alors une TypeError, le
+    # renderer résidentiel meurt et le document repart sur le moteur legacy.
+    # Donnée absente ⇒ vignette OMISE (jamais un « 0 », jamais un « None W ») ;
+    # devis normal ⇒ chaîne byte-identique à avant.
     if _divergent and _kwc_s and _kwc_a:
         spec_kwc = (f'{_num(_kwc_s)} · {_num(_kwc_a)}',
                     "kWc installés (sans · avec)")
-    else:
+    elif d.get("puissance_kwc"):
         spec_kwc = (_num(d["puissance_kwc"]), "kWc installés")
+    else:
+        spec_kwc = None
     _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
     if _divergent and _nb_s and _nb_a:
         # Puissance unitaire écrite seulement si elle est LA MÊME des deux
@@ -327,9 +336,12 @@ def build_pages(ctx) -> list:
         _wtxt = f' · {_w_s:g} W' if (_w_s and _w_s == _w_a) else ''
         spec_pan = (f'{_nb_s:g} · {_nb_a:g}',
                     f'panneaux (sans · avec){_wtxt}')
+    elif d.get("nb_panneaux"):
+        _wp = d.get("watt_par_panneau")
+        _wp_txt = f' · {_wp:g} W' if _wp else ''
+        spec_pan = (f'{d["nb_panneaux"]:g}', f'panneaux{_wp_txt}')
     else:
-        spec_pan = (f'{d["nb_panneaux"]:g}',
-                    f'panneaux · {d["watt_par_panneau"]:g} W')
+        spec_pan = None
     # PDFPROD (27/08/2026) — la production DÉRIVE du kWc : quand les champs PV
     # divergent, le scalaire ``prod_kwh`` ne décrit qu'UNE des deux options
     # (celle de l'AVEC, repli documenté du builder) — la bande annonçait donc
@@ -346,11 +358,8 @@ def build_pages(ctx) -> list:
                      "kWh / an produits (sans · avec)")
     else:
         spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
-    specs = [
-        spec_kwc,
-        spec_pan,
-        spec_prod,
-    ]
+    # QJR17 (d) — une vignette sans donnée n'existe pas (``None`` ci-dessus).
+    specs = [s for s in (spec_kwc, spec_pan, spec_prod) if s]
     spec_html = "".join(
         f'<div class="p2-spec"><span class="p2-spec-v">{v}</span>'
         f'<span class="p2-spec-l">{l}</span></div>'

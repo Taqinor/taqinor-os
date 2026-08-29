@@ -2142,6 +2142,49 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for it in onepage_source if it["quantite"] > 0
     ]
 
+    # Puces des cartes d'option de la page 1 — générées depuis l'équipement
+    # RÉEL de chaque option, jamais du texte boilerplate.
+    #
+    # QJR17 — CALCULÉES ICI, AVANT que ``_produit_nom`` soit retiré des items :
+    # la classification panneau doit voir les MÊMES entrées que le total compté
+    # (``panneaux_et_watt_lu`` : désignation ET nom du produit lié). Au point où
+    # ces puces étaient construites, la clé interne avait déjà été effacée —
+    # d'où les deux lectures divergentes du même document.
+    def _bullets(rows):
+        out = []
+        # QJR17 (b) — MÊME PRÉDICAT, MÊMES ENTRÉES que le total compté :
+        # « Module PV 550 W » était compté comme panneau par le scalaire et
+        # ABSENT de la puce du même document (celle-ci ne lisait que la
+        # désignation, et via une seconde écriture de la règle).
+        panels = [r for r in rows
+                  if _is_panel(r["designation"], r.get("_produit_nom", ""))
+                  and r["quantite"] > 0]
+        if panels:
+            n = int(sum(r["quantite"] for r in panels))
+            # QJR17 (a) — puissance unitaire ILLISIBLE (``watt`` vaut None
+            # depuis M3) : la puce imprimait littéralement « 16 panneaux
+            # None W ». Même doctrine que la vignette du moteur legacy — on
+            # écrit « N panneaux » tout court, jamais un défaut catalogue.
+            out.append(f"{n} panneaux {watt} W" if watt else f"{n} panneaux")
+        for r in rows:
+            if r["quantite"] <= 0:
+                continue
+            d = r["designation"]
+            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {d}" if q > 1 else d)
+        for r in rows:
+            if _is_battery(r["designation"]) and r["quantite"] > 0:
+                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
+                out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
+        if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
+            out.append("Smart Meter + monitoring")
+        out.append("Structures + installation complète")
+        return out[:6]
+
+    sans_bullets = _bullets(sans_items)
+    avec_bullets = _bullets(avec_items)
+
     # Strip the internal helper key before handing items to the generator.
     for rows in (sans_items, avec_items):
         for r in rows:
@@ -2177,30 +2220,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Copie défensive : le rendu ne doit jamais pouvoir muter l'étude
         # stockée sur le devis (le builder ne fait que LIRE — règle #4).
         etude["bankable"] = copy.deepcopy(_simulation)
-
-    # Puces des cartes d'option de la page 1 — générées depuis l'équipement
-    # RÉEL de chaque option, jamais du texte boilerplate.
-    def _bullets(rows):
-        out = []
-        panels = [r for r in rows if _is_panel(r["designation"]) and r["quantite"] > 0]
-        if panels:
-            n = int(sum(r["quantite"] for r in panels))
-            out.append(f"{n} panneaux {watt} W")
-        for r in rows:
-            if r["quantite"] <= 0:
-                continue
-            d = r["designation"]
-            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
-                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
-                out.append(f"{q} × {d}" if q > 1 else d)
-        for r in rows:
-            if _is_battery(r["designation"]) and r["quantite"] > 0:
-                q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
-                out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
-        if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
-            out.append("Smart Meter + monitoring")
-        out.append("Structures + installation complète")
-        return out[:6]
 
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
@@ -2472,8 +2491,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "source_consommation": _source_conso,
         "sans_items": sans_items,
         "avec_items": avec_items,
-        "sans_bullets": _bullets(sans_items),
-        "avec_bullets": _bullets(avec_items),
+        "sans_bullets": sans_bullets,
+        "avec_bullets": avec_bullets,
         "scenario": scenario,
         "recommended": recommended,
         # QX5 — drapeaux d'option RÉELS (après repli/QF6) : le rendu résidentiel
@@ -2968,7 +2987,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     if agricole.is_agricultural(devis, pdf_options):
         try:
             pdf_bytes = agricole.render_pdf_bytes(data)
-        except agricole.Unsupported:
+        except agricole.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer agricole refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -2981,7 +3009,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     if pdf_bytes is None and industriel.is_industrial(devis, pdf_options):
         try:
             pdf_bytes = industriel.render_pdf_bytes(data)
-        except industriel.Unsupported:
+        except industriel.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer industriel refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -2994,7 +3031,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     if pdf_bytes is None and commercial.is_commercial(devis, pdf_options):
         try:
             pdf_bytes = commercial.render_pdf_bytes(data)
-        except commercial.Unsupported:
+        except commercial.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer commercial refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(
@@ -3005,7 +3051,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     if pdf_bytes is None and residential.is_residential(devis, pdf_options):
         try:
             pdf_bytes = residential.render_pdf_bytes(data)
-        except residential.Unsupported:
+        except residential.Unsupported as _hors_perimetre:
+            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
+            # ramène le document sur le moteur legacy : sans trace, une
+            # proposition premium se dégradait sans que personne ne le
+            # sache (un champ manquant, un None, et le devis sortait sur
+            # l'autre moteur en silence).
+            logger.warning(
+                "Repli moteur legacy pour %s : le renderer residential refuse "
+                "ce devis (%s)",
+                getattr(devis, "reference", devis_id), _hors_perimetre)
             pdf_bytes = None
         except Exception:
             logger.warning(

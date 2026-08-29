@@ -199,7 +199,16 @@ def build(ctx):
 
     _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
     kpi_kwc_v = kwc_str
-    kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+    # QJR17 (c) — MÊME DOCTRINE que la vignette du moteur legacy (M3) et que la
+    # puce du builder : une puissance unitaire ILLISIBLE (None) s'imprimait
+    # littéralement « × None W ». On écrit « N panneaux » tout court, et rien
+    # du tout quand le compte lui-même manque — jamais un défaut catalogue.
+    if nb_pan and wp:
+        kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+    elif nb_pan:
+        kpi_kwc_l = f"Puissance · {nb_pan} panneaux"
+    else:
+        kpi_kwc_l = "Puissance"
     # La vignette ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
     # du nombre (17 → 13 pt, style en ligne), et la ligne de légende reste sur
     # UNE ligne — la page 1 est une page pleine, un retour à la ligne de plus y

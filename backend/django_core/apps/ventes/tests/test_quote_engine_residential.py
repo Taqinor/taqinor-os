@@ -1063,6 +1063,45 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('Consultez votre proposition interactive', html)
 
 
+class TestQjr17PuissanceUnitaireIllisible(SimpleTestCase):
+    """QJR17 (c)/(d) — une puissance unitaire ILLISIBLE (``None`` depuis M3,
+    qui a supprimé le défaut catalogue 710 W) ne s'imprime pas et ne tue plus
+    le renderer : la vignette de la page 1 écrivait « × None W », et la bande
+    de la page 2 formatait ``None`` sans garde (``f'{None:g}'`` → TypeError),
+    ce qui renvoyait tout le document sur le moteur legacy."""
+
+    def _donnees(self, **surcharges):
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        d = renderer._augment(sample_data.build())
+        # Posé APRÈS ``_augment`` : celui-ci refuse justement ce devis (c'est
+        # le repli que QJR17 rend bruyant côté builder) — on exerce ici les
+        # GABARITS, qui doivent rendre le document sans inventer un watt.
+        d.update(surcharges)
+        return d
+
+    def _page2(self, **surcharges):
+        from apps.ventes.quote_engine.residential import options, render
+        return options.build(render.build_ctx(self._donnees(**surcharges)))
+
+    def test_la_page_1_ecrit_n_panneaux_sans_watt_invente(self):
+        from apps.ventes.quote_engine.residential import render
+        html = render.build_html(self._donnees(watt_par_panneau=None))
+        self.assertNotIn('None', html)
+        self.assertIn('panneaux', html)
+
+    def test_la_page_2_omet_la_vignette_plutot_que_de_planter(self):
+        html = self._page2(puissance_kwc=None, watt_par_panneau=None)
+        self.assertNotIn('None', html)
+        self.assertNotIn('kWc installés', html)   # vignette OMISE, pas à zéro
+        self.assertIn('kWh / an produits', html)  # les autres restent
+        self.assertIn('panneaux', html)           # le COMPTE reste vrai
+
+    def test_un_devis_normal_est_inchange(self):
+        html = self._page2()
+        self.assertIn('kWc installés', html)
+        self.assertNotIn('None', html)
+
+
 class TestCalepinageSurLaPageDetail(SimpleTestCase):
     """CALEPDF — l'affiche de calepinage rendue par le calepineur (la MÊME que
     la page proposition sert au client via ``roof_image_url``) est embarquée en
