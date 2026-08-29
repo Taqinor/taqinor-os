@@ -55,7 +55,7 @@ import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
+  formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
@@ -452,8 +452,21 @@ export default function DevisGenerator({
   // Règle fondateur du 18/08 — justificatif du palier retenu (kWc, besoin lu
   // sur la facture, payback) quand le nombre de panneaux vient du nouveau
   // dimensionnement facture → paliers. Null = pas de justificatif à montrer
-  // (taille posée à la main, ou sous le seuil de 900 MAD → repli historique).
+  // (taille posée à la main, ou sous le seuil du balayage local → moteur
+  // horaire serveur, voir attenteSizingServeur ci-dessous).
   const [sizingInfo, setSizingInfo] = useState(null)
+  // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+  // tool ») — REMPLACE le repli `estimerPanneaux` (panneaux/900 MAD, supprimé
+  // du backend le même jour). Sous le seuil du balayage local
+  // (`computeAutoSizing` → `null`), l'écran n'invente plus de taille : il
+  // attend la recommandation du moteur horaire SERVEUR (`etudeHoraireDonnees`,
+  // déjà interrogé dès que fHiver/lead est posé — l'effet plus bas applique le
+  // résultat) — posé par applyLead/applySiteProfile/syncBillEstimator, lu et
+  // effacé par cet effet. `sizingServeurMessage` porte le message FRANÇAIS
+  // EXACT du serveur quand il décline (donnée nommée), pour qu'un vide honnête
+  // remplace la supposition sur 900 DH plutôt que de rester silencieux.
+  const attenteSizingServeur = useRef(false)
+  const [sizingServeurMessage, setSizingServeurMessage] = useState(null)
   // Cache du dernier calcul (optimalKwcByPayback chiffre CHAQUE palier avec
   // le catalogue réel — pas gratuit) : évite de le rejouer à chaque frappe
   // de `syncBillEstimator` quand rien de pertinent n'a changé depuis.
@@ -989,6 +1002,40 @@ export default function DevisGenerator({
   } = useEtudeHorairePreview(etudeHoraireCorps)
   const { donnees: etudeHoraireDonneesAvec } =
     useEtudeHorairePreview(etudeHoraireCorpsAvec)
+  // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+  // tool ») — LE SEUL remplaçant du repli `estimerPanneaux` (panneaux/900 MAD,
+  // supprimé du backend le même jour, cf. apps/ventes/dimensionnement.py).
+  // `attenteSizingServeur` est posé par applyLead/applySiteProfile/
+  // syncBillEstimator quand le balayage local (`computeAutoSizing`) ne peut
+  // rien chiffrer : cet effet applique alors la recommandation du moteur
+  // horaire SERVEUR (`etudeHoraireDonnees`, déjà interrogé dès que fHiver/lead
+  // est posé — AUCUN appel réseau supplémentaire) dès qu'elle répond. Un
+  // devis dry-run qui décline (ville manquante, catalogue incomplet…) affiche
+  // son message FRANÇAIS EXACT (`avertissements`, nommant la donnée
+  // manquante) et ne préremplit RIEN — un vide honnête plutôt qu'une
+  // supposition sur 900 DH (règle #4 CLAUDE.md). Une frappe manuelle
+  // (`nbPanneauxTouched`) gagne toujours, comme partout ailleurs sur ce champ.
+  useEffect(() => {
+    if (!attenteSizingServeur.current) return
+    if (nbPanneauxTouched.current) { attenteSizingServeur.current = false; return }
+    if (etudeHoraireChargement) return // réponse en vol — on ne décide rien
+    const reco = etudeHoraireDonnees?.dimensionnement?.recommandation
+    if (Number(reco?.panneaux) > 0) {
+      attenteSizingServeur.current = false
+      setSizingServeurMessage(null)
+      setNbPanneaux(String(reco.panneaux))
+      if (reco.panel_watt) setPanelW(String(reco.panel_watt))
+      if (reco.kwc != null) setKwcCible(String(reco.kwc))
+      return
+    }
+    if (etudeHoraireDonnees || etudeHoraireErreur) {
+      attenteSizingServeur.current = false
+      setSizingServeurMessage(
+        etudeHoraireDonnees?.avertissements?.[0]
+        || etudeHoraireErreur
+        || "Dimensionnement indisponible : le serveur n'a pas pu chiffrer de recommandation.")
+    }
+  }, [etudeHoraireDonnees, etudeHoraireChargement, etudeHoraireErreur])
   // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
   // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
@@ -1212,7 +1259,8 @@ export default function DevisGenerator({
   // payback le plus court, partagé par les trois pré-remplissages (lead,
   // profil site, saisie manuelle des factures). Retourne null quand la
   // facture d'hiver est sous le seuil de 900 MAD (aucun palier chiffrable —
-  // les appelants gardent alors le repli historique `estimerPanneaux`).
+  // les appelants attendent alors le moteur horaire SERVEUR, U3-900 :
+  // attenteSizingServeur).
   // Mémoïsé via `sizingCacheRef` : `syncBillEstimator` tourne à chaque frappe
   // sur le champ facture, or chaque palier est chiffré avec le catalogue
   // réel (autoFillLines + ROI) — pas gratuit à rejouer si rien n'a changé.
@@ -1432,7 +1480,8 @@ export default function DevisGenerator({
       // L'estimation par facture ne s'applique que si la taille souhaitée n'a
       // pas déjà fourni un nombre de panneaux (taille prioritaire). Règle
       // fondateur du 18/08 — dimensionnement par paliers de 5 kWc au payback
-      // le plus court ; sous le seuil de 900 MAD, repli sur `estimerPanneaux`.
+      // le plus court ; sous ce seuil, attend le moteur horaire SERVEUR
+      // (U3-900 — plus de repli `estimerPanneaux`, voir attenteSizingServeur).
       if (fromTaille <= 0) {
         const sizing = computeAutoSizing(hiver, ete)
         if (sizing) {
@@ -1443,9 +1492,8 @@ export default function DevisGenerator({
           setNbPanneaux(String(retenu.nbPanneaux))
           setSizingInfo(retenu)
         } else {
-          const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
-          if (suggested > 0) setNbPanneaux(String(suggested))
           setSizingInfo(null)
+          attenteSizingServeur.current = true
         }
       }
       setMonthly(estimerMois(hiver, ete))
@@ -1480,7 +1528,8 @@ export default function DevisGenerator({
       setFHiver(String(p.facture_hiver))
       setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
       // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead
-      // (voir computeAutoSizing) ; repli sur estimerPanneaux sous le seuil.
+      // (voir computeAutoSizing) ; sous le seuil, attend le moteur horaire
+      // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
       if (!nbPanneauxTouched.current) {
         const sizing = computeAutoSizing(hiver, ete)
         if (sizing) {
@@ -1491,9 +1540,8 @@ export default function DevisGenerator({
           setNbPanneaux(String(retenu.nbPanneaux))
           setSizingInfo(retenu)
         } else {
-          const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
-          if (suggested > 0) setNbPanneaux(String(suggested))
           setSizingInfo(null)
+          attenteSizingServeur.current = true
         }
       }
       setMonthly(estimerMois(hiver, ete))
@@ -1769,8 +1817,8 @@ export default function DevisGenerator({
   // ── Factures : estimation hiver/été + suggestion panneaux ──
   // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead/
   // applySiteProfile (computeAutoSizing, mémoïsée — cette fonction tourne à
-  // chaque frappe sur le champ facture) ; repli sur estimerPanneaux sous le
-  // seuil de 900 MAD.
+  // chaque frappe sur le champ facture) ; sous le seuil, attend le moteur
+  // horaire SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
   const syncBillEstimator = (hiverVal, eteVal) => {
     const hiver = parseFloat(hiverVal) || 0
     const ete = parseFloat(eteVal) || 0
@@ -1794,9 +1842,8 @@ export default function DevisGenerator({
           setSizingInfo(sizing)
         }
       } else {
-        const suggested = estimerPanneaux(hiver)
-        if (suggested > 0) setNbPanneaux(String(suggested))
         setSizingInfo(null)
+        attenteSizingServeur.current = true
       }
     }
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
@@ -3939,6 +3986,14 @@ export default function DevisGenerator({
                     {' '}· {formatNumber(deuxValeursDim.avec.kwc, { decimals: 2 })} kWc
                   </div>
                 )}
+              </div>
+            )}
+            {/* U3-900 — le moteur horaire serveur a décliné le dimensionnement
+                (donnée nommée : ville, facture…) au lieu de deviner une
+                taille : message FRANÇAIS EXACT, aucun panneau prérempli. */}
+            {modeInstallation === 'residentiel' && sizingServeurMessage && (
+              <div className="mt-2 text-xs text-warning" data-testid="sizing-serveur-refus">
+                {sizingServeurMessage}
               </div>
             )}
             <div className="gen-slider-row">

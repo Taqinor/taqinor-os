@@ -74,11 +74,17 @@ test('devis auto sans taille explicite : la taille retenue est un palier de 5 kW
   assert.ok(res.nbPanneaux > 0)
 })
 
-test('devis auto sous le seuil de 900 MAD : aucun palier chiffrable, on retombe sur le repli historique', () => {
+// U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+// tool ») — sous le seuil, createAutoQuote n'invente PLUS de taille locale
+// (`estimerPanneaux`/panneaux-900MAD, supprimé) : `panels` reste à 0 et,
+// pour un lead résidentiel, `target_kwc` n'est même plus envoyé — c'est le
+// moteur horaire SERVEUR (`build_devis_auto`) qui dimensionne, ou refuse en
+// nommant la donnée manquante. Voir autoQuote.Panneaux900.test.mjs.
+test('devis auto sous le seuil de 900 MAD : aucun palier chiffrable localement (le serveur dimensionne)', () => {
   const hiver = 500 // < 900 MAD → besoin 0
   assert.equal(estimerKwcDepuisFacture(hiver), 0)
   const res = sizeFromBillLikeAutoQuote(hiver)
-  assert.equal(res, null, 'sous le seuil, createAutoQuote garde estimerPanneaux (comportement historique)')
+  assert.equal(res, null, 'sous le seuil, aucun palier local — plus de repli estimerPanneaux (U3-900)')
 })
 
 test('devis auto AVEC taille explicite (cible ou lead) : toujours ramenée au palier de 5 kWc le plus proche', () => {
