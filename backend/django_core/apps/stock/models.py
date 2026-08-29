@@ -913,6 +913,28 @@ class Produit(models.Model):
                 condition=~models.Q(
                     code_barres__isnull=True) & ~models.Q(code_barres=''),
                 name='stock_produit_company_code_barres_uniq'),
+            # ── Course get_or_create(company, nom) — produits SANS SKU ───────
+            # ``apps.ventes.services`` crée à la volée des produits de SERVICE
+            # (« Frais refacturés ») identifiés par leur seul NOM, sans SKU :
+            # sans contrainte, deux requêtes concurrentes (webhook, tâche
+            # Celery) créaient DEUX fiches homonymes (course documentée de
+            # ``get_or_create``). La contrainte est volontairement CONDITIONNELLE
+            # — un UNIQUE nu sur (company, nom) serait FAUX ici :
+            #   * un produit ARCHIVÉ libère son nom pour l'article catalogue
+            #     (règle explicite du seeder : `nom__iexact` n'y filtre que les
+            #     produits ACTIFS ; les 6 coffrets placeholders archivés en
+            #     vivent) → ``is_archived=False`` ;
+            #   * deux SKU distincts peuvent porter le même nom (le catalogue
+            #     réel contient des quasi-jumeaux câble 6 mm²) — l'unicité des
+            #     produits SKUés est déjà assurée par ``unique_together
+            #     ('company', 'sku')`` → seuls les produits SANS SKU (NULL ou
+            #     vide) sont contraints ici.
+            # C'est donc exactement la surface de la course, et rien de plus.
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                condition=models.Q(is_archived=False) & (
+                    models.Q(sku__isnull=True) | models.Q(sku='')),
+                name='stock_produit_company_nom_sans_sku_uniq'),
         ]
 
     def __str__(self):
