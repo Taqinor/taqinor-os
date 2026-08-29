@@ -13,6 +13,14 @@ Règles :
     que la somme des factures égale toujours le total du devis, au centime près ;
   * le TVA/HT de chaque tranche est le total devis × pourcentage, ce qui
     conserve le poids du split 10/20 ; le taux affiché est le taux mélangé.
+
+QJR21 (29/08/2026) — ``pct_or_montant`` PORTE SON UNITÉ. Le champ s'appelle
+« pct OU montant » mais était TOUJOURS lu comme un pourcentage : une tranche
+saisie en dirhams (p. ex. 5000) produisait une facture de 5000 % du devis. Une
+tranche déclare donc désormais son unité (``pct`` / ``montant``) et toute
+valeur AMBIGUË — au-delà de 100 sans déclaration — est refusée en 400 à
+l'écriture (``valider_echeancier``, câblé au sérialiseur). Rétro-compatible :
+sans déclaration et ≤ 100, la valeur reste un pourcentage, mot pour mot.
 """
 from __future__ import annotations
 
@@ -33,38 +41,170 @@ TRANCHE_TYPE = {
     'solde': Facture.TypeFacture.SOLDE,
 }
 
+# ── QJR21 — unité d'une tranche ─────────────────────────────────────────────
+#: Les deux unités qu'une tranche peut déclarer.
+UNITE_PCT = 'pct'
+UNITE_MONTANT = 'montant'
+
+#: Mots acceptés pour DÉCLARER l'unité. La clé dédiée ``unite`` est lue en
+#: premier ; la clé historique ``type`` (qui porte la NATURE de la tranche —
+#: 'acompte' / 'intermediaire' / 'solde') vaut aussi déclaration d'unité quand
+#: sa valeur est l'un de ces mots. Une nature reste une nature : 'acompte' ne
+#: déclare RIEN, la règle rétro-compatible ci-dessous s'applique alors.
+_MOTS_PCT = frozenset({'pct', 'pourcentage', 'pourcent', 'percent', '%'})
+_MOTS_MONTANT = frozenset({'montant', 'mad', 'dh', 'dhs', 'amount', 'fixe'})
+
+
+class EcheancierInvalide(ValueError):
+    """Échéancier refusé. Le message porté est en FRANÇAIS, prêt pour un 400."""
+
+
+def _mot_unite(valeur):
+    """Unité portée par une chaîne, ou None si ce n'en est pas une."""
+    if not isinstance(valeur, str):
+        return None
+    mot = valeur.strip().lower()
+    if mot in _MOTS_PCT:
+        return UNITE_PCT
+    if mot in _MOTS_MONTANT:
+        return UNITE_MONTANT
+    return None
+
+
+def unite_declaree(entree):
+    """Unité DÉCLARÉE d'une tranche, ou ``None`` quand rien n'est déclaré."""
+    for clef in ('unite', 'type'):
+        unite = _mot_unite(entree.get(clef))
+        if unite is not None:
+            return unite
+    return None
+
+
+def normaliser_tranche(entree, index=0) -> dict:
+    """Valide UNE tranche et renvoie sa forme normalisée.
+
+    Renvoie ``{key, libelle, valeur, unite}``. Lève ``EcheancierInvalide``
+    (message FR) sur une tranche non exploitable :
+
+      * ce n'est pas un objet, ou ``pct_or_montant`` n'est pas un nombre ;
+      * la valeur est négative ;
+      * un POURCENTAGE déclaré dépasse 100 ;
+      * la valeur dépasse 100 SANS unité déclarée — le cœur de QJR21 : une
+        telle valeur ne peut pas être un pourcentage, et la lire comme tel
+        facturait des centaines de fois le devis.
+    """
+    if not isinstance(entree, dict):
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : chaque tranche doit être un objet "
+            "{libelle, type, pct_or_montant}.")
+
+    brut = entree.get('pct_or_montant', 0)
+    if brut is None or brut == '':
+        brut = 0
+    if isinstance(brut, bool):  # True/False n'est pas un montant
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « pct_or_montant » doit être un nombre.")
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « pct_or_montant » doit être un nombre "
+            f"(reçu « {brut} »).")
+    if valeur != valeur or valeur in (float('inf'), float('-inf')):
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « pct_or_montant » doit être un nombre.")
+    if valeur < 0:
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « pct_or_montant » ne peut pas être "
+            "négatif.")
+
+    unite = unite_declaree(entree)
+    if unite == UNITE_PCT and valeur > 100:
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : un pourcentage ne peut pas dépasser 100 "
+            f"(reçu {valeur:g}). Pour un montant en dirhams, déclarez "
+            "« type » : « montant ».")
+    if unite is None:
+        if valeur > 100:
+            raise EcheancierInvalide(
+                f"Tranche n°{index + 1} : la valeur {valeur:g} est ambiguë — "
+                "au-delà de 100 elle ne peut pas être un pourcentage. "
+                "Déclarez « type » : « montant » pour un montant en dirhams, "
+                "ou « pct » pour un pourcentage (≤ 100).")
+        # Rétro-compatibilité stricte : sans déclaration et ≤ 100, la valeur
+        # reste un POURCENTAGE — toutes les données d'hier sont inchangées.
+        unite = UNITE_PCT
+
+    # Nature de la tranche ('acompte' / 'intermediaire' / 'solde'). Une valeur
+    # de ``type`` consommée comme UNITÉ n'est pas une nature : on retombe alors
+    # sur la clé positionnelle, comme une tranche sans ``type``.
+    nature = entree.get('type')
+    if not isinstance(nature, str) or not nature.strip() \
+            or _mot_unite(nature) is not None:
+        nature = None
+    key = nature or f'tranche_{index}'
+    libelle = entree.get('libelle') or TRANCHE_LABELS.get(key, key)
+    return {'key': key, 'libelle': libelle, 'valeur': valeur, 'unite': unite}
+
+
+def valider_echeancier(entries) -> list:
+    """Valide un échéancier saisi et renvoie ses tranches normalisées.
+
+    Point d'entrée du sérialiseur (``EcheancierValidationMixin``) : une entrée
+    refusée devient un 400 en français. ``None`` / vide = « pas d'échéancier
+    personnalisé » (comportement par défaut), jamais une erreur.
+    """
+    if entries is None or entries == '' or entries == []:
+        return []
+    if not isinstance(entries, (list, tuple)):
+        raise EcheancierInvalide(
+            "L'échéancier doit être une liste de tranches "
+            "[{libelle, type, pct_or_montant}].")
+    return [normaliser_tranche(e, i) for i, e in enumerate(entries)]
+
 
 def _q(amount) -> Decimal:
     return Decimal(amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def schedule_for_devis(devis):
-    """Liste ordonnée [(clé, pourcentage)] selon le mode du devis.
+def tranches_normalisees(devis) -> list:
+    """SOURCE UNIQUE des tranches d'un devis : ``[{key, libelle, valeur, unite}]``.
 
     Si le devis porte un ``echeancier`` JSON personnalisé (FG46), il prend le
-    dessus et est converti en liste de (libelle, pct_or_montant) avec les clés
-    canoniques. La dernière tranche est toujours recalculée comme « reste »
-    dans ``next_tranche`` — le pourcentage ici est indicatif.
+    dessus ; sinon on lit l'échéancier éditable de la société (Paramètres →
+    Devis), avec repli sur PAYMENT_TERMS_BY_MODE (comportement historique).
 
-    Sinon, lit l'échéancier éditable de la société (Paramètres → Devis) ;
-    repli sur PAYMENT_TERMS_BY_MODE si non configuré (comportement historique).
+    LECTURE TOLÉRANTE, ÉCRITURE STRICTE : un échéancier stocké non exploitable
+    (malformé, ou porteur d'une valeur ambiguë > 100 antérieure à la garde
+    QJR21) retombe sur l'échéancier par défaut au lieu de facturer un montant
+    absurde — la garde 400 empêche d'en créer de nouveaux.
     """
     custom = getattr(devis, 'echeancier', None)
     if custom:
         try:
-            entries = list(custom)
-            if entries:
-                return [
-                    (e.get('type', f'tranche_{i}'), float(e.get('pct_or_montant', 0)))
-                    for i, e in enumerate(entries)
-                ]
-        except (TypeError, AttributeError):
-            pass  # écheancier malformé → repli sur le défaut
+            tranches = valider_echeancier(custom)
+        except EcheancierInvalide:
+            tranches = []  # échéancier inexploitable → repli sur le défaut
+        if tranches:
+            return tranches
 
     from apps.ventes.utils.company_settings import payment_terms_for
     mode = devis.mode_installation or 'residentiel'
     terms = payment_terms_for(getattr(devis, 'company', None), mode)
-    return [(key, terms[key]) for key in TRANCHE_ORDER]
+    return [{'key': key,
+             'libelle': TRANCHE_LABELS.get(key, key.capitalize()),
+             'valeur': terms[key],
+             'unite': UNITE_PCT}
+            for key in TRANCHE_ORDER]
+
+
+def schedule_for_devis(devis):
+    """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
+
+    Conservée pour ses appelants (dont la longueur de l'échéancier dans
+    ``solde_devis``) ; l'unité de chaque valeur vit dans la forme normalisée.
+    """
+    return [(t['key'], t['valeur']) for t in tranches_normalisees(devis)]
 
 
 def factures_actives(devis):
@@ -93,17 +233,6 @@ def blended_tva_pct(devis) -> Decimal:
     return _q(Decimal(str(opt['tva'])) / ht * 100)
 
 
-def _tranche_label(key, devis, index):
-    """Libellé d'une tranche : extrait du custom écheancier ou depuis TRANCHE_LABELS."""
-    custom = getattr(devis, 'echeancier', None)
-    if custom:
-        try:
-            return list(custom)[index].get('libelle') or TRANCHE_LABELS.get(key, key)
-        except (IndexError, TypeError):
-            pass
-    return TRANCHE_LABELS.get(key, key.capitalize())
-
-
 def _tranche_type(key):
     """Type Facture d'une tranche : depuis TRANCHE_TYPE ou INTERMEDIAIRE par défaut."""
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
@@ -117,25 +246,34 @@ def next_tranche(devis, lignes=None):
     NPLUS1 (27/08/2026) — ``lignes`` (optionnel) est propagé tel quel à
     ``option_totaux`` : un appelant qui a déjà les lignes en main (chemin
     d'acceptation) évite une requête de plus. Absent ⇒ comportement d'hier.
+
+    QJR21 — une tranche qui DÉCLARE un montant vaut ce montant TTC ; son
+    ``pourcentage`` est alors DÉRIVÉ (montant ÷ total TTC), jamais la valeur
+    brute lue comme un pourcentage. Une tranche en pourcentage (tout
+    l'existant) est calculée exactement comme hier.
     """
-    schedule = schedule_for_devis(devis)
+    tranches = tranches_normalisees(devis)
     existantes = list(factures_actives(devis))
     index = len(existantes)
-    if index >= len(schedule):
+    if index >= len(tranches):
         return None
 
-    key, pct = schedule[index]
-    is_last = index == len(schedule) - 1
+    tranche = tranches[index]
+    key, valeur, unite = tranche['key'], tranche['valeur'], tranche['unite']
+    is_last = index == len(tranches) - 1
 
     # A3 — l'option acceptée est autoritative : on facture UNIQUEMENT les lignes
     # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
     # Sans vraie deuxième option, ce sont les totaux complets — inchangé.
+    # QJR24/D9 — avant acceptation, ce sont les totaux du TOTAL AFFICHÉ
+    # (option recommandée / AVEC), jamais la somme des deux options.
     from apps.ventes.utils.options import option_totaux
     opt = option_totaux(devis, lignes=lignes)
     total_ht = Decimal(str(opt['ht']))
     total_tva = Decimal(str(opt['tva']))
     total_ttc = Decimal(str(opt['ttc']))
 
+    pourcentage = Decimal(str(valeur))
     if is_last:
         # Le solde = reste exact pour que la somme égale le total du devis.
         deja_ht = sum((Decimal(str(f.total_ht)) for f in existantes), Decimal('0'))
@@ -144,17 +282,31 @@ def next_tranche(devis, lignes=None):
         ht = _q(total_ht - deja_ht)
         tva = _q(total_tva - deja_tva)
         ttc = _q(total_ttc - deja_ttc)
+        if unite == UNITE_MONTANT:
+            # Un montant déclaré n'est PAS un pourcentage : la dernière tranche
+            # vaut le reste, on n'en publie donc que le poids réel.
+            pourcentage = _q(ttc / total_ttc * 100) if total_ttc > 0 \
+                else Decimal('0')
+    elif unite == UNITE_MONTANT:
+        # QJR21 — montant TTC déclaré : HT/TVA suivent au prorata pour que la
+        # somme des tranches égale toujours le total, au centime.
+        montant = Decimal(str(valeur))
+        frac = montant / total_ttc if total_ttc > 0 else Decimal('0')
+        ht = _q(total_ht * frac)
+        tva = _q(total_tva * frac)
+        ttc = _q(montant) if total_ttc > 0 else Decimal('0.00')
+        pourcentage = _q(frac * 100)
     else:
-        frac = Decimal(str(pct)) / Decimal('100')
+        frac = Decimal(str(valeur)) / Decimal('100')
         ht = _q(total_ht * frac)
         tva = _q(total_tva * frac)
         ttc = _q(total_ttc * frac)
 
     return {
         'key': key,
-        'label': _tranche_label(key, devis, index),
+        'label': tranche['libelle'],
         'type': _tranche_type(key),
-        'pourcentage': Decimal(str(pct)),
+        'pourcentage': pourcentage,
         'ht': ht,
         'tva': tva,
         'ttc': ttc,
@@ -208,7 +360,12 @@ def solde_devis(devis):
     """Solde du devis : total, facturé, payé, restant (Decimals).
 
     A3 — le total de référence est celui de l'option acceptée (mêmes lignes que
-    les factures de l'échéancier) ; sans vraie deuxième option, total complet."""
+    les factures de l'échéancier) ; sans vraie deuxième option, total complet.
+
+    QJR24/D9 — AVANT acceptation, un devis à deux options suit le TOTAL
+    AFFICHÉ (l'option recommandée / AVEC, cf. ``options.option_effective``) et
+    plus jamais la somme des deux paniers : le solde décrivait une vente qui
+    n'existe pas."""
     from apps.ventes.utils.options import option_totaux
     actives = factures_actives(devis)
     total = Decimal(str(option_totaux(devis)['ttc']))
