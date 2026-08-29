@@ -237,6 +237,11 @@ PRIVES_IMPORTES_AILLEURS = {
     "_advance_lead_on_expiry": ("apps/ventes/tests/test_qj5_expiry_funnel.py",),
     "_azimut_boussole_vers_aspect": ("apps/ventes/tasks.py",),
     "_batterie_compatible": ("apps/ventes/compatibilites.py",),
+    # QJR44 — le prédicat de fraîcheur du bloc horaire est exercé
+    # directement par son test (tolérance moteur + estampille des entrées).
+    "_bloc_horaire_deja_a_jour": (
+        "apps/ventes/tests/test_qjr_empreintes_etudes.py",
+    ),
     "_boq_apparier": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
     "_boq_famille": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
     "_build_acceptance_wa_url": ("apps/crm/tests_qj2_seller_notifications.py",),

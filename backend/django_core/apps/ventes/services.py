@@ -5107,7 +5107,13 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
     puissance) ⇒ la clé est RETIRÉE plutôt que laissée périmée, et l'appelant
     retombe sur le forfait étiqueté (règle Z2). Ne lève jamais : une étude
     n'empêche pas d'enregistrer un devis.
+
+    QJR44 — le bloc RANGÉ porte en plus ``_empreinte_entrees`` (l'estampille
+    des entrées du moteur). La SORTIE du moteur
+    (``etude_horaire_pour_devis``) reste byte-identique : l'estampille est
+    posée ici, sur la copie persistée, jamais dans le moteur.
     """
+    from apps.ventes.domain.entrees import empreinte_entrees_du_devis
     from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
         bloc = etude_horaire_pour_devis(
@@ -5118,6 +5124,8 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
                 return None
             etude.pop('etude_horaire', None)
         else:
+            bloc = dict(bloc)
+            bloc['_empreinte_entrees'] = empreinte_entrees_du_devis(devis)
             etude['etude_horaire'] = bloc
         devis.etude_params = etude
         devis.save(update_fields=['etude_params'])
@@ -5150,6 +5158,17 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
     toutes les économies, sans toucher au kWc (remplacer une batterie 5 kWh par
     une 10 kWh ne bouge pas la puissance PV).
 
+    QJR44 — L'EMPREINTE DES ENTRÉES S'AJOUTE, ELLE NE REMPLACE RIEN. Les deux
+    contrôles ci-dessus lisent la COMPOSITION (kWc, capacité batterie) ; ils
+    ne voient PAS un changement de PROFIL (facture, localisation, occupation,
+    équipements), qui change pourtant toutes les économies du bloc. Le bloc
+    n'est donc à jour que si, EN PLUS, l'estampille ``_empreinte_entrees``
+    qu'il porte égale l'empreinte des entrées d'aujourd'hui. Un bloc sans
+    estampille (antérieur à QJR44) est PÉRIMÉ — un recalcul, une fois.
+    La tolérance ``pricing._HORAIRE_TOLERANCE_KWC`` reste celle du moteur :
+    deux seuils différents rouvriraient la zone où un devis se retrouve sans
+    économies sans raison visible.
+
     Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
     servir un bloc qui ne décrit plus le devis.
     """
@@ -5169,6 +5188,10 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
         if (actuelle is None) != (rangee is None):
             return False
         if actuelle is not None and abs(float(actuelle) - float(rangee)) > 0.05:
+            return False
+        from apps.ventes.domain.entrees import empreinte_entrees_du_devis
+        empreinte = empreinte_entrees_du_devis(devis)
+        if not empreinte or bloc.get('_empreinte_entrees') != empreinte:
             return False
         return True
     except Exception:  # noqa: BLE001 — au moindre doute, on recalcule

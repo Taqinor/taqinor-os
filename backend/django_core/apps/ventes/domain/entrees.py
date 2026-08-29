@@ -310,3 +310,18 @@ def empreinte_entrees(e):
     canonique = json.dumps(charge, sort_keys=True, separators=(',', ':'),
                            default=str, ensure_ascii=False)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
+
+
+def empreinte_entrees_du_devis(devis):
+    """QJR44 — l'empreinte des entrées de CE devis, en une lecture.
+
+    ``None`` quand le devis n'est pas dimensionnable (mode, société) ou que
+    son profil de consommation n'est pas exploitable : aucun bloc dérivé ne
+    peut alors être déclaré frais, et l'appelant recalcule (ou retire sa clé).
+    Jamais une empreinte de repli : « pas d'entrées » ne vaut pas « entrées
+    inchangées ».
+    """
+    entrees = entrees_depuis_devis(devis)
+    if entrees is None or not entrees.conso_kwh_mensuelles:
+        return None
+    return empreinte_entrees(entrees)
