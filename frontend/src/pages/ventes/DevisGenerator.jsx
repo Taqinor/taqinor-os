@@ -3039,7 +3039,7 @@ export default function DevisGenerator({
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
-    || (avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
+    || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
   const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
       && consoKwhDerivee > 0)
@@ -4459,6 +4459,19 @@ export default function DevisGenerator({
                               unit="retour sur invest." />
                 )}
               </div>
+            )}
+            {/* QJR34 — l'étude industriel/commercial EXIGE une consommation
+                réelle (saisie directe ou factures réelles) : sans elle,
+                consoKwhDerivee reste à 0 et etudeCI/etudeIndustrielle/
+                etudeCommerciale court-circuitent déjà vers null (jamais un
+                repli forfaitaire) — cet avis rend la raison visible au
+                vendeur au lieu de laisser le panneau simplement vide. */}
+            {(modeInstallation === 'industriel' || modeInstallation === 'commercial')
+              && !etudeCI && (
+              <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
+                 data-testid="etude-ci-indisponible">
+                Étude indisponible : saisissez la consommation ou les factures réelles.
+              </p>
             )}
             {etudeCI?.etude_mt_motif && (
               <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
