@@ -659,20 +659,28 @@ class DevisWriteSerializer(EcheancierValidationMixin,
 
     QJR67 (audit L3 du 29/08/2026) — ``exclude`` → ``fields`` EXPLICITES.
     ``exclude = ['reference', 'fichier_pdf']`` faisait de CHAQUE autre colonne
-    du modèle une surface d'écriture ouverte, y compris cinq JSONField BRUTS
+    du modèle une surface d'écriture ouverte, y compris SIX JSONField BRUTS
     sans forme ni provenance : ``etude_params``, ``roof_layout``,
-    ``layout_hash``, ``offres_tailles_config`` et ``marge_snapshot``. Le
-    navigateur pouvait donc poster n'importe quel chiffre CLIENT-FACING
-    (``puissance_kwc``, ``production_annuelle``, ``economies_annuelles``,
-    ``scenario``, ``etude_horaire``…) DIRECTEMENT dans les entrées du PDF et de
-    la page proposition — en contournant toute la garde « zéro chiffre
-    inventé » que les sérialiseurs dédiés appliquent. Ces cinq champs passent
-    en LECTURE SEULE : chacun a son chemin d'écriture nommé et gardé —
-    ``PATCH /devis/<id>/etude-params/`` (fusion validée par
+    ``layout_hash``, ``offres_tailles_config``, ``marge_snapshot`` et
+    ``overrides``. Le navigateur pouvait donc poster n'importe quel chiffre
+    CLIENT-FACING (``puissance_kwc``, ``production_annuelle``,
+    ``economies_annuelles``, ``scenario``, ``etude_horaire``…) DIRECTEMENT dans
+    les entrées du PDF et de la page proposition — en contournant toute la
+    garde « zéro chiffre inventé » que les sérialiseurs dédiés appliquent. Ces
+    six champs passent en LECTURE SEULE : chacun a son chemin d'écriture nommé
+    et gardé — ``PATCH /devis/<id>/etude-params/`` (fusion validée par
     ``domain.etude_schema``), ``POST /devis/<id>/layout/`` (qui pose aussi
     ``layout_hash``), ``PATCH /devis/<id>/offres-tailles/config/``
-    (``OffreTailleConfigSerializer``), et ``services.refresh_marge_snapshot``
-    (interne, jamais client).
+    (``OffreTailleConfigSerializer``), ``services.refresh_marge_snapshot``
+    (interne, jamais client), et ``PATCH /devis/<id>/overrides/``.
+
+    ``overrides`` (colonne QJR58, décision fondateur D12) EST le sixième —
+    ajouté par ARBITRAGE ORCHESTRATEUR du 29/08/2026, même classe et même
+    vague que les cinq autres. Laissé ouvert, il contournait exactement la
+    garde qui fait sa valeur : ``OverridesSerializer.to_internal_value`` refuse
+    en 400 tout ``CHAMPS_DERIVES`` et tout chemin inconnu, et un PATCH y
+    FUSIONNE au lieu de remplacer. Un corps de devis brut n'aurait respecté ni
+    l'un ni l'autre — et ce registre alimente des nombres client-facing.
 
     ``echeancier`` RESTE ÉCRIVABLE ICI, délibérément : ce n'est PAS un champ
     brut. C'est le chemin d'écriture prévu du champ (le vendeur édite
@@ -732,12 +740,13 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
                             'variante_de', 'variante_tier',
-                            # QJR67 — les cinq JSONField BRUTS : chacun a son
+                            # QJR67 — les SIX JSONField BRUTS : chacun a son
                             # endpoint dédié et gardé (voir la docstring).
                             # ``echeancier`` n'en fait PAS partie : il est
                             # validé, pas brut.
                             'etude_params', 'roof_layout', 'layout_hash',
-                            'offres_tailles_config', 'marge_snapshot']
+                            'offres_tailles_config', 'marge_snapshot',
+                            'overrides']
         extra_kwargs = {'client': {'required': False}}
 
 

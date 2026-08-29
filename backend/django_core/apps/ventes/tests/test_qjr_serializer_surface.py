@@ -49,10 +49,13 @@ from apps.ventes.serializers import DevisWriteSerializer
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 
-#: Les cinq JSONField BRUTS refermés par QJR67. ``echeancier`` n'en fait PAS
+#: Les SIX JSONField BRUTS refermés par QJR67. ``echeancier`` n'en fait PAS
 #: partie : il est VALIDÉ (voir la classe ``EcheancierResteEcrivable``).
+#: ``overrides`` (colonne QJR58 / décision fondateur D12) a été ajouté par
+#: arbitrage de l'orchestrateur du 29/08/2026 : même classe, même vague, et
+#: laissé ouvert il contournait la garde 400 d'``OverridesSerializer``.
 CHAMPS_BRUTS = ('etude_params', 'roof_layout', 'layout_hash',
-                'offres_tailles_config', 'marge_snapshot')
+                'offres_tailles_config', 'marge_snapshot', 'overrides')
 
 #: Jamais exposés à l'écriture (la référence est numérotée côté serveur, le PDF
 #: est un artefact de rendu).
@@ -93,7 +96,7 @@ class SurfaceDeclaree(SimpleTestCase):
         for nom in JAMAIS_EXPOSES:
             self.assertNotIn(nom, DevisWriteSerializer().fields, nom)
 
-    def test_les_cinq_champs_bruts_sont_en_lecture_seule(self):
+    def test_les_six_champs_bruts_sont_en_lecture_seule(self):
         champs = DevisWriteSerializer().fields
         for nom in CHAMPS_BRUTS:
             self.assertIn(nom, champs, nom)
@@ -208,6 +211,32 @@ class PatchBrutIgnore(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.note, 'Note du vendeur')
         self._assert_etude_serveur_intacte()
+
+    def test_overrides_poste_en_corps_est_ignore(self):
+        """Le 6e brut (QJR58/D12) : le corps du devis n'est pas sa porte.
+
+        Ouvert, il contournait la garde qui fait toute la valeur du registre :
+        ``OverridesSerializer`` refuse en 400 un champ DÉRIVÉ et un chemin
+        inconnu, et un PATCH y FUSIONNE au lieu de remplacer.
+        """
+        reponse = self._patch({'overrides': {
+            'prix_ttc': {'valeur': 1},
+            'taille.nb_panneaux': {'valeur': 999}}})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.devis.refresh_from_db()
+        self.assertIn(self.devis.overrides, (None, {}))
+
+    def test_le_chemin_dedie_ecrit_toujours_les_overrides(self):
+        """La porte n'est pas murée : elle est NOMMÉE, et elle garde."""
+        url = f'/api/django/ventes/devis/{self.devis.id}/overrides/'
+        pose = self.api.patch(url, {'taille.nb_panneaux': 14}, format='json')
+        self.assertEqual(pose.status_code, 200, pose.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            self.devis.overrides['taille.nb_panneaux']['valeur'], 14)
+        # Et la garde du sérialiseur dédié est toujours là.
+        refus = self.api.patch(url, {'prix_ttc': 120000}, format='json')
+        self.assertEqual(refus.status_code, 400, refus.data)
 
     def test_le_chemin_dedie_ecrit_toujours_l_etude(self):
         """La porte n'est pas murée : elle est NOMMÉE (QJR62, fusion)."""
