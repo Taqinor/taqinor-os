@@ -15,6 +15,14 @@ l'ordre de chargement, dans les DEUX sens) :
   (``# noqa: E402``). Que l'un ou l'autre soit importé le premier, chaque
   attribut lu à l'import existe déjà.
 
+IMPORTS RELATIFS RE-ANCRÉS D'UN NIVEAU. Un corps qui descend d'un cran dans
+l'arborescence (`apps/ventes/` → `apps/ventes/domain/`) voit son point de
+départ relatif descendre avec lui : `from .models import …` désignerait
+désormais `apps.ventes.domain.models`, qui n'existe pas. Toutes les lignes
+concernées passent donc de `from .` à `from ..` — la MÊME cible qu'avant
+(`apps.ventes.…`), au caractère près. C'est la seule retouche que subit un
+corps déplacé, et elle est purement mécanique.
+
 NOM DU LOGGER FIGÉ. ``logging.getLogger('apps.ventes.services')`` — et non
 ``__name__`` — parce que des tests capturent ce nom précis
 (``assertLogs('apps.ventes.services')`` dans ``test_calepinage_bascule.py`` et
@@ -279,7 +287,7 @@ def ajouter_lignes_boq_electrique(devis, user=None):
     l'écran comme sur le PDF.
     """
     from django.db import transaction
-    from .models import LigneDevis
+    from ..models import LigneDevis
 
     design = getattr(devis, 'electrical_design', None)
     bom = (design or {}).get('bom') if isinstance(design, dict) else None
