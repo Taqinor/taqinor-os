@@ -1744,6 +1744,17 @@ export default function DevisGenerator({
           // pas encore accepté par TOUS les backends — `?? ''` en repli,
           // comportement historique inchangé tant qu'il est absent).
           variante: l.variante ?? '',
+          // QJR65 / décision fondateur D12 — LE PRIX TAPÉ À LA MAIN SURVIT À
+          // `?edit=`. Ce mappeur ne rendait PAS `prixManuel` : le drapeau
+          // revenait `undefined → false`, et l'effet listes-de-prix
+          // ([clientId, lines.length]) relançait `refreshTarif` sur CHAQUE
+          // ligne au montage — le tarif catalogue écrasait en silence le prix
+          // négocié que le vendeur avait tapé ET enregistré. `prix_manuel` est
+          // servi par la ligne (QJR59, `LigneDevisSerializer` `__all__`) ; la
+          // garde vit, elle, dans `refreshTarif` (`!l.prixManuel`). Champ
+          // absent d'un backend plus ancien ⇒ `false`, comportement historique
+          // strictement inchangé.
+          prixManuel: !!l.prix_manuel,
         }))
       setLines(withKeys(rows))
       linesInitialized.current = true
@@ -2951,6 +2962,13 @@ export default function DevisGenerator({
           // divergent. Envoyée systématiquement (le champ absent d'un ancien
           // backend est simplement ignoré par le serializer — jamais bloquant).
           variante: l.variante || '',
+          // QJR65 / décision fondateur D12 — le PRIX est une entrée commerciale
+          // PERSISTANTE : le marqueur part avec la ligne (`prix_manuel`, accepté
+          // par `_replace_lines_atomic`, QJR59/QJR60) pour que la réouverture en
+          // `?edit=` le repose et qu'aucun rafraîchissement tarifaire ne
+          // réécrive le prix négocié. Sans lui, le marqueur serait remis à
+          // `False` à CHAQUE enregistrement — le trou que D12 referme.
+          prix_manuel: !!l.prixManuel,
         }
       })
 
