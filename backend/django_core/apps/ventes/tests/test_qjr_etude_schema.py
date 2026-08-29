@@ -17,13 +17,13 @@ Lancer :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr_etude_schema -v 2
 """
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain import etude_schema as S
 from apps.ventes.models import Devis
-from testkit.factories import CompanyFactory, DevisFactory
+from testkit.factories import CompanyFactory, DevisFactory, LigneDevisFactory
 
 
 class _DevisEnMemoire:
@@ -308,12 +308,36 @@ class EcritureChirurgicaleTests(TestCase):
 
     def test_le_gel_prix_par_kwc_reste_possible_apres(self):
         """``ecrire`` passe par ``Devis.save`` : le gel write-once garde donc
-        son comportement d'origine — on ne le désactive pas en douce."""
+        son comportement d'origine — on ne le désactive pas en douce.
+
+        QJR63 — CE TEST PASSE PAR LE PROPRIÉTAIRE DE LA CLÉ (29/08/2026). Il
+        écrivait ``puissance_kwc`` sous ``proprietaire=ECRAN`` ; le schéma le
+        REFUSE, et il a raison : QJR63 donne à cette clé DÉRIVÉE un
+        propriétaire unique — le calepinage (registre, sinon dérivation depuis
+        les LIGNES). L'écran qui la posait est exactement le défaut que la
+        tâche ferme ; le gel, lui, s'exerce ici par son écrivain légitime.
+        """
         self.assertIsNone(
             Devis.objects.get(pk=self.devis.pk).prix_par_kwc)
-        S.ecrire(self.devis, proprietaire=S.ECRAN, puissance_kwc=None)
+        # (a) Sans kWc, le gel S'ABSTIENT — il n'est jamais forcé.
+        S.ecrire(self.devis, proprietaire=S.ECRAN, scenario='Sans batterie')
         self.assertIsNone(
             Devis.objects.get(pk=self.devis.pk).prix_par_kwc)
+
+        # (b) Avec un kWc posé par SON propriétaire et un total à diviser, le
+        #     gel joue : ``ecrire`` n'a pas neutralisé ``Devis.save``.
+        LigneDevisFactory(devis=self.devis, quantite=Decimal('1'),
+                          prix_unitaire=Decimal('600.00'),
+                          remise=Decimal('0'))
+        S.ecrire(self.devis, proprietaire=S.CALEPINAGE, puissance_kwc=6)
+        gele = Devis.objects.get(pk=self.devis.pk).prix_par_kwc
+        self.assertIsNotNone(gele)
+        # Dérivé du total RÉEL du devis (jamais un littéral épinglé) : le test
+        # surveille le GEL, pas la chaîne monétaire — QJR51 l'a déjà changée.
+        self.assertEqual(
+            gele,
+            (Decimal(str(self.devis.total_ttc)) / Decimal('6')).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     def test_un_devis_sans_pk_n_est_pas_persiste(self):
         devis = Devis(company=self.company, reference='DEV-QJR61-X',
