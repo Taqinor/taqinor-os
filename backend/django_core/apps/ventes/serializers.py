@@ -1516,3 +1516,48 @@ class PlanCommissionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'taux_pct': 'Requis pour un plan au pourcentage.'})
         return attrs
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# QJR57 — LE REGISTRE DE SURCHARGES D'UN DEVIS (décision fondateur D12)
+# ════════════════════════════════════════════════════════════════════════════
+
+class OverridesSerializer(serializers.Serializer):
+    """PATCH ``/ventes/devis/<id>/overrides/`` — la seule porte d'écriture.
+
+    LE CORPS est une carte ``{chemin: valeur}`` ou ``{chemin: {valeur,
+    origine?}}``, **FUSIONNÉE** dans le registre existant : envoyer
+    ``{"taille.nb_panneaux": {"valeur": 14}}`` ne touche AUCUN autre chemin
+    déjà posé. Jamais un remplacement intégral, jamais une clé indexée par la
+    POSITION d'une ligne.
+
+    LE REFUS SE FAIT DANS ``to_internal_value``, ET C'EST LA SEULE PLACE QUI
+    MARCHE — même raison qu'``OffreTailleConfigSerializer`` juste au-dessus :
+    imbriqué comme CHAMP d'un parent, DRF n'expose pas ``initial_data``, et il
+    ÉCARTE les clés inconnues. Une garde posée dans ``validate()`` serait donc
+    SILENCIEUSEMENT inopérante en production — un champ DÉRIVÉ passerait en
+    200 « ignoré », le vendeur croirait avoir fixé une valeur et l'écran en
+    afficherait une autre. Une garde qui ne garde plus rien est pire que pas de
+    garde : elle rassure.
+
+    Les RÈGLES elles-mêmes vivent avec la liste blanche qu'elles appliquent
+    (``apps.ventes.domain.overrides``) : ce sérialiseur ne fait que les
+    traduire en 400 avec un message FR qui NOMME le chemin refusé.
+    """
+
+    def to_internal_value(self, data):
+        from .domain.overrides import erreurs_de_chemins, normaliser_patch
+
+        if not isinstance(data, dict):
+            raise serializers.ValidationError(
+                'Corps invalide : un objet {chemin: valeur} est attendu.')
+        if not data:
+            raise serializers.ValidationError(
+                'Aucune surcharge à poser : corps vide.')
+        erreurs = erreurs_de_chemins(data)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        try:
+            return normaliser_patch(data)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
