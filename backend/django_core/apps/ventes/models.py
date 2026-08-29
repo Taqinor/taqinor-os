@@ -629,6 +629,32 @@ class LigneDevis(models.Model):
                   "deux options (défaut), « sans » ou « avec » = propre à "
                   "cette option-là.")
 
+    # ── QJR59 / décision fondateur D12 — CE QUE LE COMMERCIAL A TAPÉ ─────────
+    # Une ligne ne portait AUCUN marqueur de saisie manuelle : la resynchro
+    # réécrivait librement les QUANTITÉS (panneaux, mètres de câble, structures)
+    # pendant que le PRIX tapé sur la MÊME ligne était sacré — deux entrées
+    # commerciales, deux traitements opposés. D12 tranche : le commercial garde
+    # la main TOTALE sur les prix ET les quantités, et ces choix sont
+    # PERSISTANTS (ils survivent à ``?edit=`` et à la resynchro).
+    #
+    # ``default=False`` et AUCUN backfill : toutes les lignes existantes valent
+    # False sur les deux, donc rien ne change sur les données actuelles — c'est
+    # ``services._est_au_prix_catalogue`` qui continue de décider pour elles
+    # (le repli RESTE : le supprimer traiterait rétroactivement des milliers de
+    # prix négociés comme des prix catalogue).
+    quantite_manuelle = models.BooleanField(
+        default=False,
+        verbose_name='Quantité saisie à la main',
+        help_text="La quantité de cette ligne a été TAPÉE par le commercial : "
+                  "la resynchro du calepinage ne la réécrit plus (décision "
+                  "fondateur D12).")
+    prix_manuel = models.BooleanField(
+        default=False,
+        verbose_name='Prix saisi à la main',
+        help_text="Le prix unitaire de cette ligne a été TAPÉ par le "
+                  "commercial : aucun rafraîchissement tarifaire ne l'écrase "
+                  "(décision fondateur D12).")
+
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
     # un devis sans lot ne connaît aucun sous-total de lot).

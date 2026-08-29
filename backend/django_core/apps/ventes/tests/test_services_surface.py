@@ -249,7 +249,12 @@ PRIVES_IMPORTES_AILLEURS = {
     "_classe_ligne": ("apps/ventes/management/commands/reparer_devis_deux_options.py",),
     "_ecart_dans_la_tolerance": ("apps/ventes/tests/test_calepinage_bascule.py",),
     "_esign_otp_enabled": ("apps/ventes/tests/test_qj11_otp.py",),
-    "_est_au_prix_catalogue": ("apps/ventes/offres_tailles.py",),
+    "_est_au_prix_catalogue": (
+        "apps/ventes/offres_tailles.py",
+        # QJR59 — le repli RESTE pour les lignes antérieures aux marqueurs
+        # ``prix_manuel``/``quantite_manuelle`` : son test l'exerce directement.
+        "apps/ventes/tests/test_qjr_ligne_manuelle.py",
+    ),
     "_est_triphase": (
         "apps/ventes/compatibilites.py",
         "apps/ventes/dimensionnement.py",

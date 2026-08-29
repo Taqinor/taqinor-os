@@ -68,6 +68,18 @@ def _fallback_taux_tva(company, designation):
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
+    """La ligne d'un devis, telle que l'écran la lit et l'écrit.
+
+    QJR59 / décision fondateur D12 — ``quantite_manuelle`` et ``prix_manuel``
+    voyagent des DEUX côtés (``fields = '__all__'``) : une quantité ou un prix
+    TAPÉS par le commercial sont des ENTRÉES commerciales PERSISTANTES, elles
+    doivent revenir dans la lecture pour que l'écran les repose à
+    l'enregistrement (sans quoi le premier rafraîchissement tarifaire ou la
+    première resynchro les écraserait). Elles ne portent AUCUNE valeur : ce
+    sont des marqueurs — le prix et la quantité restent, eux, dans leurs
+    propres colonnes.
+    """
+
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:

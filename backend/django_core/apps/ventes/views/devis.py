@@ -1036,7 +1036,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 quantite=qte, prix_unitaire=pu, remise=remise,
                 taux_tva=Decimal(str(taux)) if taux is not None else None,
                 optionnelle=bool(li.get('optionnelle', False)),
-                type_ligne='produit', ordre=ordre, variante=variante)
+                type_ligne='produit', ordre=ordre, variante=variante,
+                # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
+                # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
+                # l'écran, création comme édition) les remettrait à False à
+                # chaque enregistrement : le prix et la quantité tapés par le
+                # commercial redeviendraient réécrivables au premier
+                # rafraîchissement — exactement le trou que D12 referme.
+                # Absents (tous les appelants d'hier) ⇒ False, comportement
+                # historique strictement inchangé.
+                quantite_manuelle=bool(li.get('quantite_manuelle', False)),
+                prix_manuel=bool(li.get('prix_manuel', False)))
 
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
