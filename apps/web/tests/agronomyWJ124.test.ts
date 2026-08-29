@@ -22,6 +22,8 @@ import {
 } from '../src/lib/agronomy';
 import { estimateAgricole } from '../src/lib/estimatorAgricole';
 import { validateLead, REGIONS_AGRICOLES } from '../src/lib/lead';
+import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -145,8 +147,10 @@ describe.each(LOCALES)('WJ124 — panneau agricole enrichi dans mon-toit.astro (
     expect(src).toContain('agroPeak == null || PUBLIC_ESTIMATE_GATED');
   });
 
-  it('envoie regionAgricole au payload + suggère un bassin', () => {
-    expect(src).toContain('regionAgricole: regionAgricole || undefined');
+  it('suggère un bassin', () => {
+    // QJW5 — « la région part au payload » ne se vérifie plus sur la source de
+    // chaque page : le corps vient du registre partagé, et c'est le
+    // comportement qui est épinglé (describe suivant, hors boucle par locale).
     expect(src).toContain('s.bassinM3 = ag.m3Jour');
   });
 
@@ -155,5 +159,22 @@ describe.each(LOCALES)('WJ124 — panneau agricole enrichi dans mon-toit.astro (
     expect(ids).toHaveLength(1);
     const surf = src.match(/id="mt-surface-ha"/g) ?? [];
     expect(surf).toHaveLength(1);
+  });
+});
+
+// QJW5 — le corps du lead est le même pour les trois locales : une seule
+// assertion de COMPORTEMENT remplace les trois épingles de source.
+describe('WJ124 — regionAgricole dans le corps du lead (module partagé)', () => {
+  const corps = (etat: Partial<EtatTunnel>) =>
+    construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+      .body;
+
+  it('une région choisie part au webhook', () => {
+    expect(corps({ mode: 'agricole', regionAgricole: 'gharb-loukkos' }).regionAgricole)
+      .toBe('gharb-loukkos');
+  });
+
+  it('aucune région choisie = clé ABSENTE, jamais une région fabriquée', () => {
+    expect(corps({ mode: 'agricole' })).not.toHaveProperty('regionAgricole');
   });
 });

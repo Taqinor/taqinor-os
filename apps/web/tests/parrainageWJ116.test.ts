@@ -17,6 +17,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateLead } from '../src/lib/lead';
+import { etatVide } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
@@ -71,17 +73,29 @@ describe('WJ116 — devis/mon-toit (funnel principal) transmet enfin fbclid/UTM'
     ['FR', MON_TOIT_FR],
     ['EN', MON_TOIT_EN],
     ['AR', MON_TOIT_AR],
-  ])('%s : buildBody lit sessionStorage.getItem("tq_"+k) et joint les 6 TRACK_KEYS', (_label, src) => {
+  ])('%s : la page lit sessionStorage.getItem("tq_"+k) et donne les 6 TRACK_KEYS à son état', (_label, src) => {
     expect(src).toContain("sessionStorage.getItem('tq_'");
     for (const k of TRACK_KEYS) {
       expect(src).toContain(k);
     }
-    // La jonction se fait bien DANS buildBody, avant le point d'insertion du
-    // repère GPS facultatif (WJ4) qui suit immédiatement la fermeture du corps.
-    const buildBodyIdx = src.indexOf('function buildBody(');
-    const mergeCallIdx = src.indexOf('Object.assign(body, readTrackingParams())');
-    expect(buildBodyIdx).toBeGreaterThan(0);
-    expect(mergeCallIdx).toBeGreaterThan(buildBodyIdx);
+    // QJW5 — la JONCTION des clés au corps n'est plus recopiée par locale :
+    // elle vit dans le registre partagé, vérifiée par le comportement ci-dessous.
+    expect(src).toContain('readTrackingParams()');
+  });
+
+  it('le corps du lead joint les clés PRÉSENTES et rien d’autre', () => {
+    const corps = (tracking: Record<string, string>) =>
+      construireCorps(
+        { ...etatVide(), tracking },
+        { messages: { nomComplet: 'Nom complet requis' } },
+      ).body;
+    const avec = corps({ utm_source: 'parrainage', utm_campaign: 'TQ-482' });
+    expect(avec.utm_source).toBe('parrainage');
+    expect(avec.utm_campaign).toBe('TQ-482');
+    // Un visiteur sans paramètre de tracking envoie un corps sans AUCUNE de ces
+    // clés — « absent plutôt que vide », convention WJ30/WJ31.
+    const sans = corps({});
+    for (const k of TRACK_KEYS) expect(sans, k).not.toHaveProperty(k);
   });
 });
 
