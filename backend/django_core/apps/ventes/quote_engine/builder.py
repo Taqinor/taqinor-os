@@ -315,6 +315,30 @@ def _cout_onduleur(rows, blob=None):
     return round(total, 2) if total > 0 else None
 
 
+class _LigneArgentPdf:
+    """QJR53 — UNE ligne d'items du PDF, vue par le NOYAU monétaire.
+
+    ``domain.argent`` (donc ``selectors._canonical_totaux``) lit deux
+    attributs sur une ligne : ``total_ht`` et ``taux_tva_effectif``. Les
+    « lignes » du moteur PDF sont des dicts (``quantite`` × ``prix_unit_ht``,
+    déjà nets de la remise de LIGNE) : cet adaptateur les présente sous la
+    forme attendue, sans copier une seule règle de calcul.
+
+    Il ne porte NI ``optionnelle`` NI ``type_ligne`` : le noyau les lit par
+    ``getattr(..., défaut)`` et compte donc chaque ligne fournie — c'est
+    exactement ce que le moteur veut, ses ``rows`` étant DÉJÀ la population
+    qu'il a décidé d'imprimer.
+    """
+
+    __slots__ = ("total_ht", "taux_tva_effectif")
+
+    def __init__(self, row, taux_defaut):
+        from decimal import Decimal as _D
+        self.total_ht = (_D(str(row.get("quantite") or 0))
+                         * _D(str(row.get("prix_unit_ht") or 0)))
+        self.taux_tva_effectif = _D(str(row.get("taux_tva", taux_defaut)))
+
+
 def _is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -1333,54 +1357,62 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     tva_pct = float(taux_tva)
 
     def _canonical_totaux(rows):
-        """Chaîne HT → remise → TVA (par taux) → TTC, calculée UNE fois.
+        """QJR53 — la chaîne monétaire vient du NOYAU, plus d'ici.
 
-        Un seul taux présent (tous les devis historiques) : calcul strictement
-        identique à l'ancien. Taux mixtes (réforme 10/20) : la remise globale
-        s'applique proportionnellement à chaque ligne, donc chaque panier de
-        taux se réduit du même % ; les paniers nets sont réconciliés au
-        centime avec le HT net global avant de calculer chaque TVA.
+        CE QUI ÉTAIT FAUX. Ce module portait une SECONDE implémentation en
+        ``float`` de la chaîne canonique, qui arrondissait le TTC au DIRHAM
+        ENTIER (``ttc = round(ttc_exact)``) alors que toutes les autres lignes
+        du même bloc de totaux — et toutes les factures aval — sont au CENTIME :
+        le devis du client ne s'additionnait pas, et ses trois factures de
+        tranche ne sommaient pas au total imprimé. Le calcul passe désormais par
+        ``domain.argent.totaux(vue=Vue.AFFICHAGE)``, c'est-à-dire par le noyau
+        ``selectors._canonical_totaux``, et ``ttc`` est au centime.
+
+        Les lignes sont FOURNIES (``lignes=``) : ce sont celles que le moteur
+        a déjà découpées par option — la façade n'y réapplique donc aucun
+        filtre (et ne rappelle pas ``has_two_options``, qui ré-entrerait ici).
+
+        La FORME rendue ne bouge pas d'un nom : ``tva_par_taux`` garde ses
+        entrées ``{taux, montant, ht_net}`` (les renderers et le bloc
+        multi-villa les lisent ainsi) et les montants restent des ``float``
+        (``_scale_tot`` teste ``isinstance(..., (int, float))`` — un Decimal y
+        désactiverait silencieusement la mise à l'échelle multi-propriétés).
         """
-        ht_brut = round(sum(r["quantite"] * r["prix_unit_ht"] for r in rows), 2)
-        remise = round(ht_brut * discount_pct / 100, 2) if discount_pct > 0 else 0.0
-        ht_net = round(ht_brut - remise, 2)
+        from apps.ventes.domain.argent import Vue as _Vue
+        from apps.ventes.domain.argent import totaux as _totaux_noyau
 
+        vue = _totaux_noyau(devis, vue=_Vue.AFFICHAGE,
+                            lignes=[_LigneArgentPdf(r, tva_pct) for r in rows])
+        tva_par_taux = [
+            {"taux": float(e["taux"]), "montant": float(e["montant"]),
+             "ht_net": float(e["base"])}
+            for e in vue.tva_par_taux
+        ]
+        ht_brut = float(vue.ht_brut)
+
+        # ``ttc_avant`` — LE PRIX BARRÉ (le TTC qu'on paierait SANS la remise
+        # globale). Ce n'est pas un étage de la chaîne canonique : c'est un
+        # artefact d'AFFICHAGE, arrondi au dirham comme le formateur du
+        # document, et il reste donc calculé ici.
         buckets_brut = {}
         for r in rows:
             rate = float(r.get("taux_tva", tva_pct))
             buckets_brut[rate] = (
                 buckets_brut.get(rate, 0.0) + r["quantite"] * r["prix_unit_ht"])
-
-        if len(buckets_brut) <= 1:
-            rate = next(iter(buckets_brut), tva_pct)
-            tva_amt = round(ht_net * rate / 100, 2)
-            tva_par_taux = [{"taux": rate, "montant": tva_amt, "ht_net": ht_net}]
-        else:
-            rates = sorted(buckets_brut)
-            nets = {
-                rate: round(buckets_brut[rate] * (1 - discount_pct / 100), 2)
-                for rate in rates
-            }
-            residu = round(ht_net - sum(nets.values()), 2)
-            nets[rates[-1]] = round(nets[rates[-1]] + residu, 2)
-            tva_par_taux = [
-                {"taux": rate, "montant": round(nets[rate] * rate / 100, 2),
-                 "ht_net": nets[rate]}
-                for rate in rates
-            ]
-            tva_amt = round(sum(b["montant"] for b in tva_par_taux), 2)
-
-        ttc_exact = round(ht_net + tva_amt, 2)
-        ttc = round(ttc_exact)
         if len(buckets_brut) <= 1:
             _rate0 = next(iter(buckets_brut), tva_pct)
-            ttc_avant = round(ht_brut * (1 + _rate0 / 100))  # = calcul historique
+            ttc_avant = round(ht_brut * (1 + _rate0 / 100))
         else:
             ttc_avant = round(sum(
                 buckets_brut[rate] * (1 + rate / 100) for rate in buckets_brut))
-        return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
-                "tva": tva_amt, "tva_par_taux": tva_par_taux,
-                "ttc": ttc, "ttc_exact": ttc_exact, "ttc_avant": ttc_avant}
+        # ``ttc`` et ``ttc_exact`` sont désormais LA MÊME valeur, au centime :
+        # la clé historique est conservée pour ses lecteurs, plus jamais pour
+        # dire « et voici la version non arrondie ».
+        ttc = float(vue.ttc)
+        return {"ht_brut": ht_brut, "remise": float(vue.remise),
+                "ht_net": float(vue.ht_net),
+                "tva": float(vue.tva), "tva_par_taux": tva_par_taux,
+                "ttc": ttc, "ttc_exact": ttc, "ttc_avant": ttc_avant}
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
@@ -2778,8 +2810,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 for k in ("ht_brut", "remise", "ht_net", "tva", "ttc",
                           "ttc_exact", "ttc_avant"):
                     if isinstance(out.get(k), (int, float)):
-                        out[k] = round(out[k] * _n, 2) if k not in (
-                            "ttc", "ttc_avant") else round(out[k] * _n)
+                        # QJR53 — ``ttc`` est au CENTIME comme les autres
+                        # étages ; seul ``ttc_avant`` (le prix BARRÉ, artefact
+                        # d'affichage) reste arrondi au dirham.
+                        out[k] = (round(out[k] * _n)
+                                  if k == "ttc_avant"
+                                  else round(out[k] * _n, 2))
                 if isinstance(out.get("tva_par_taux"), list):
                     out["tva_par_taux"] = [
                         {**b, "montant": round(b.get("montant", 0) * _n, 2),
@@ -2788,7 +2824,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 return out
             data["nombre_proprietes"] = _n
             data["display_total_unitaire"] = display_total
-            data["display_total_multi"] = round(display_total * _n)
+            # QJR53 — au CENTIME, comme le total unitaire dont il dérive.
+            data["display_total_multi"] = round(display_total * _n, 2)
             data["totaux_multi"] = {
                 "sans": _scale_tot(totaux_sans),
                 "avec": _scale_tot(totaux_avec),

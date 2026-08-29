@@ -186,6 +186,15 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     :attr:`Vue.BRUT`, qui n'a par définition aucun filtre.
 
     ``lignes`` — lignes déjà chargées par l'appelant (aucune requête de plus).
+    **QJR53 — DES LIGNES FOURNIES SONT LA POPULATION DE L'APPELANT** : aucun
+    filtre d'option n'est alors ré-appliqué, et l'option effective n'est même
+    pas résolue. Deux raisons, toutes deux dures :
+
+    * filtrer une seconde fois une liste déjà découpée n'a aucun sens ;
+    * ``option_effective`` traverse ``has_two_options``, donc le moteur PDF —
+      et l'appelant qui fournit ses lignes est justement, la plupart du temps,
+      le moteur PDF lui-même (``quote_engine.builder``). Résoudre l'option ici
+      le ferait se rappeler lui-même.
 
     LECTURE PURE : n'écrit rien, ne change aucun statut, ne porte aucun
     ``prix_achat`` ni aucune marge (règle #4).
@@ -199,6 +208,8 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
         return _totaux_brut(
             devis, _lignes_du_devis(devis, lignes, avec_produit=False))
 
+    if lignes is not None:
+        return _totaux_canoniques(devis, list(lignes), option=None)
     if not option:
         from apps.ventes.utils.options import option_effective
         option = option_effective(devis)
