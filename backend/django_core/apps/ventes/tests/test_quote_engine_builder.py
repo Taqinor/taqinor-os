@@ -281,6 +281,44 @@ class TestBuildQuoteData(TestCase):
             self._productible_imprime(data),
             round(data['prod_kwh'] / data['puissance_kwc']))
 
+    # ── QJR27 — la méthode annoncée est la méthode employée ────────────────
+    def test_qjr27_le_modele_horaire_ne_se_presente_plus_en_estimation(self):
+        """Faute de branche, le modèle horaire tombait dans le repli
+        « estimation » : le bloc annonçait une approximation et réclamait une
+        facture DÉJÀ fournie, pendant que la couverture du même PDF affichait
+        « calculée »."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'horaire')
+        self.assertFalse(sm['approximatif'])
+        self.assertNotIn('Estimation', sm['ligne_methode'])
+        self.assertNotIn('Fournissez une facture', sm['ligne_methode'])
+        self.assertIn('heure par heure', sm['ligne_methode'])
+        # le devis PORTE les deux factures : l'exemple chiffré les reprend
+        self.assertIsNotNone(sm['exemple'])
+        self.assertEqual(sm['economie'],
+                         sm['facture_actuelle'] - sm['facture_avec_solaire'])
+
+    def test_qjr27_le_modele_forfaitaire_redemande_toujours_une_facture(self):
+        """L'autre moitié de la règle : sans aucune donnée réelle, le bloc
+        reste une estimation ASSUMÉE et demande la facture qui manque."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-F', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'estimation')
+        self.assertTrue(sm['approximatif'])
+        self.assertIn('Fournissez une facture', sm['ligne_methode'])
+
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
         l'option avec batterie est indisponible."""

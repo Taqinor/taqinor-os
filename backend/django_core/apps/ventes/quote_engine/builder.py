@@ -1794,6 +1794,41 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 f"avec solaire ≈ {_fr_int(_sm_avec)} MAD/an → économie ≈ "
                 f"{_fr_int(roi['facture_sans'] - _sm_avec)} MAD/an"),
         }
+    elif savings_model == "horaire":
+        # ── QJR27 — LE BLOC DÉCRIT LA MÉTHODE RÉELLEMENT EMPLOYÉE ───────────
+        # Le modèle HORAIRE (CJ2a : production PVGIS du site intégrée heure par
+        # heure contre la courbe de consommation du client, chaque mois
+        # valorisé au barème) est le PLUS FORT du moteur, et il est ancré sur
+        # une facture RÉELLE. Faute de branche, il tombait dans le repli
+        # « estimation » : le bloc annonçait au client une approximation et lui
+        # RÉCLAMAIT une facture qu'il avait déjà fournie, pendant que la
+        # couverture du même PDF affichait « calculée ». Une phrase de méthode
+        # fausse, plus une demande d'un document déjà reçu.
+        _sm_sans_h = roi.get("facture_sans")
+        _sm_avec_h = (roi.get("facture_avec_a") if scenario == "Avec batterie"
+                      else roi.get("facture_avec_s"))
+        # L'exemple chiffré n'existe que si les DEUX factures sont lisibles :
+        # sans elles on garde la phrase de méthode, jamais un montant fabriqué.
+        _paire_h = bool(_sm_sans_h) and _sm_avec_h is not None
+        savings_method = {
+            "model": "horaire",
+            "facture_actuelle": _sm_sans_h if _paire_h else None,
+            "facture_avec_solaire": _sm_avec_h if _paire_h else None,
+            "economie": ((_sm_sans_h - _sm_avec_h) if _paire_h
+                         else _sm_eco_ref),
+            "approximatif": False,
+            "ligne_methode": (
+                "Économies intégrées heure par heure : la production solaire "
+                "de votre site (données PVGIS) confrontée à votre courbe de "
+                "consommation, mois par mois, chaque mois valorisé au barème "
+                "réel du distributeur. Le point de départ est VOTRE facture — "
+                "c'est la méthode la plus fine de ce document."),
+            "exemple": ((
+                f"Facture actuelle ≈ {_fr_int(_sm_sans_h)} MAD/an → "
+                f"avec solaire ≈ {_fr_int(_sm_avec_h)} MAD/an → économie ≈ "
+                f"{_fr_int(_sm_sans_h - _sm_avec_h)} MAD/an")
+                if _paire_h else None),
+        }
     elif savings_model == "etude":
         savings_method = {
             "model": "etude",
