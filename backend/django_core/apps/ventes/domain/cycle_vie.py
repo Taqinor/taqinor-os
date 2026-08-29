@@ -1393,15 +1393,14 @@ def mark_devis_sent(*, devis, user=None):
     return devis
 
 
-# ── PONT M3 : noms encore hébergés par ``services.py`` ───────────────────────
-# Import EN BAS DE FICHIER (voir la docstring) : il s'exécute après toutes les
-# définitions de ce module, donc l'ordre de chargement ne peut jamais faire
-# lire un module à moitié construit. Ces trois noms partiront à leur tour
-# (`refresh_marge_snapshot` en QJR75) : cet import suivra alors leur nouveau
-# module, jamais la façade — un import croisé via `services.py` lirait un nom
-# pas encore ré-exporté.
+# ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
+# Imports EN BAS DE FICHIER (voir la docstring) : ils s'exécutent après toutes
+# les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
+# lire un module à moitié construit. Chacun vise le module qui PORTE le corps —
+# jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
+from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+# Encore dans `services.py` : les deux partent au rangement final (QJR76).
 from apps.ventes.services import (  # noqa: E402,F401
     prix_applicable,
-    refresh_marge_snapshot,
     verifier_devis_envoyable,
 )

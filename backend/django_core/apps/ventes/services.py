@@ -47,6 +47,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ── LA SEULE EXCEPTION À « LES IMPORTS DE ``domain/`` SONT EN FIN DE FICHIER » ─
+# ``composer_devis_residentiel`` (plus bas) porte ``panel_watt=_AUTO_PANEL_WATT``
+# comme VALEUR PAR DÉFAUT : une valeur par défaut est évaluée à la définition de
+# la fonction, donc AU CHARGEMENT DU MODULE — bien avant le bloc de ré-exports.
+# Le nom doit exister ici, pas à la fin. ``domain/taille`` est une FEUILLE (il
+# n'importe que ``domain/catalogue``, qui n'importe rien de ``ventes``) : cet
+# import amont ne peut donc pas boucler. Le ré-export prend la forme d'une
+# AFFECTATION, comme tous les autres, pour rester visible du pin de surface.
+from apps.ventes.domain import taille as _taille_amont  # noqa: E402
+_AUTO_PANEL_WATT = _taille_amont._AUTO_PANEL_WATT
+
 
 def _add_months(d, months):
     """YSUBS9 — `d` décalée de `months` mois (jour recadré fin de mois).
@@ -2044,37 +2055,6 @@ def planifier_resynchronisation_produit(produit_id, company_id, champs,
             produit_id)
 
 
-# ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
-# Le Copilote ne doit JAMAIS créer un devis vide : il passe toujours par ce
-# dimensionnement automatique, puis délègue à build_devis_from_layout
-# (catalogue, numérotation, brouillon).
-#
-# ORDRE FONDATEUR (29/08/2026) — « ALL sizing should go through the new sizing
-# tool, and i said ALL sizing ». La règle historique « 8 panneaux par tranche de
-# 900 MAD de facture d'hiver » (port de ``estimerPanneaux`` de solar.js) NE
-# DIMENSIONNE PLUS AUCUN DEVIS : elle a été SUPPRIMÉE de ce module. Deux leads
-# portant la MÊME facture repartaient sinon avec deux tailles issues de deux
-# règles différentes selon qu'un profil d'appel avait été rempli ou non
-# (incident test18/test19 : 15/14 panneaux par le moteur contre 16/16 par la
-# tranche). Désormais : le moteur horaire dimensionne DÈS QU'UNE DONNÉE DE
-# CONSOMMATION EXISTE (la facture d'hiver suffit), et seule une puissance
-# demandée — ``target_kwc`` pour ce devis, ou ``taille_souhaitee_kwc`` sur la
-# fiche — reste souveraine (le commercial sait ce qu'il vend).
-
-_AUTO_PANEL_WATT = 710        # Wc — panneau catalogue par défaut (cf. solar.js)
-
-
-class AutoDevisError(Exception):
-    """Le devis automatique ne peut pas être dimensionné (donnée manquante ou
-    marché non géré). L'endpoint la traduit en 422 et l'agent demande la donnée
-    (ou oriente vers le générateur) plutôt que de produire un devis vide."""
-
-    def __init__(self, message, *, field=None):
-        super().__init__(message)
-        self.message = message
-        self.field = field
-
-
 def profil_reel_existe(lead):
     """CJ2a — le lead porte-t-il un PROFIL réel, et non juste une facture ?
 
@@ -2121,367 +2101,6 @@ def profil_reel_existe(lead):
     return False
 
 
-def phase_client_pour_dimensionnement(lead):
-    """Raccordement normalisé du lead (mono/tri/None) — PVCOMPAT, une seule
-    lecture. Isolé pour être appelable AVANT le dimensionnement, alors que
-    ``build_devis_auto`` ne résout la phase qu'au moment de composer."""
-    from apps.ventes.compatibilites import normaliser_phase
-    return normaliser_phase(getattr(lead, 'raccordement', None))
-
-
-#: Motifs d'ABSTENTION du moteur horaire — la donnée exacte qui manque, pour
-#: que ``build_devis_auto`` puisse la NOMMER au commercial au lieu de retomber
-#: en silence sur une autre règle (ordre fondateur du 29/08/2026 : il n'y a
-#: plus d'autre règle).
-MOTIF_FACTURE_ABSENTE = 'facture_absente'
-MOTIF_LOCALISATION = 'localisation_inconnue'
-MOTIF_CATALOGUE = 'catalogue_incomplet'
-MOTIF_MOTEUR_INDISPONIBLE = 'moteur_indisponible'
-
-#: Ce que l'agent doit demander pour chaque motif : ``{motif: (message, champ)}``.
-#: Un refus NOMME la donnée manquante — c'est ce qui remplace l'ancien repli
-#: silencieux sur la règle des 900 DH/mois.
-_REFUS_DIMENSIONNEMENT = {
-    MOTIF_FACTURE_ABSENTE: (
-        "Données insuffisantes pour dimensionner le devis : renseignez la "
-        "facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead.",
-        'facture_hiver'),
-    MOTIF_LOCALISATION: (
-        "Le chantier n'est pas localisé : renseignez la ville (ou les "
-        "coordonnées GPS) du lead — sans elle, le productible solaire du site "
-        "est inconnu et aucune taille ne peut être calculée.",
-        'ville'),
-    MOTIF_CATALOGUE: (
-        "Le catalogue de la société ne permet de composer aucune installation "
-        "résidentielle pour ce lead : complétez-le (panneau, onduleur) puis "
-        "relancez le devis automatique.",
-        'catalogue'),
-    MOTIF_MOTEUR_INDISPONIBLE: (
-        "Le moteur de dimensionnement est momentanément indisponible : le "
-        "devis n'a pas été créé plutôt que d'être dimensionné par une autre "
-        "règle. Réessayez, ou précisez la taille souhaitée (kWc) du lead.",
-        'dimensionnement'),
-}
-
-
-def _refus_dimensionnement(motif):
-    """L'``AutoDevisError`` (→ 422) correspondant à un motif d'abstention.
-
-    Motif inconnu ⇒ on refuse quand même, en le citant : on ne crée JAMAIS un
-    devis dont la taille viendrait d'ailleurs que du moteur.
-    """
-    message, champ = _REFUS_DIMENSIONNEMENT.get(
-        motif,
-        ("Le devis n'a pas pu être dimensionné (motif « %s »)." % motif,
-         'dimensionnement'))
-    return AutoDevisError(message, field=champ)
-
-
-def _panneaux_dimensionnement_horaire(*, lead, company, phase):
-    """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
-
-    C'EST LE SEUL DIMENSIONNEMENT du devis automatique quand aucune puissance
-    n'est demandée (ordre fondateur du 29/08/2026). Il n'exige PAS un profil
-    d'appel rempli : la seule donnée de consommation nécessaire est la facture
-    d'hiver du lead.
-
-    D'OÙ VIENNENT LES kWh QUAND LE LEAD N'A QU'UNE FACTURE. De
-    ``etude_horaire.profil_depuis_factures`` → ``serie_mad_mensuelle`` (la
-    facture d'hiver répétée sur les douze mois, remplacée par la facture d'été
-    sur mai→octobre quand ``ete_differente`` en déclare une distincte) →
-    ``serie_kwh_depuis_mad``, qui inverse le VRAI barème ONEE
-    (``quote_engine.bareme.kwh_depuis_facture_mad`` : tranches progressives/
-    sélectives, location + entretien, TPPAN) — JAMAIS une division par un prix
-    moyen, jamais un tarif écrit ici.
-
-    DÉFAUT DE FORME, DOCUMENTÉ (QJR10 / décision fondateur D4 du 29/08/2026).
-    Sans réponse d'occupation sur la fiche, la silhouette 24 h est celle du
-    DÉFAUT RÉSIDENTIEL FONDATEUR (``courbes_journalieres.DEFAUT_RESIDENTIEL``
-    = présence en journée), exactement comme sur l'aperçu écran : le même lead
-    ne peut plus être dimensionné sur deux journées différentes selon le chemin
-    emprunté. Un équipement déclaré sans sa grandeur n'ajoute aucune couche.
-    C'est le SEUL défaut : rien d'autre n'est supposé.
-
-    Traduit la fiche du lead en entrées du dimensionnement, puis lit la
-    recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
-    balayage a décidé : l'appelant doit composer avec le MÊME, sinon la
-    puissance livrée ne serait pas celle qui a été évaluée.
-
-    L-2OPT — ``avec`` est le QUATRIÈME élément, et c'est la nouveauté : la
-    recommandation de l'axe AVEC BATTERIE (``recommandation_avec``, le balayage
-    CONJOINT champ × stockage de DIM2), rendue sous la forme
-    ``{'nb_panneaux', 'kwc', 'panel_watt', 'batterie_kwh'}``. Ce gagnant
-    existait depuis DIM2 mais n'alimentait AUCUN chemin de génération de
-    lignes — il ne servait qu'à l'affichage. ``None`` quand le moteur n'a
-    trouvé aucune configuration avec batterie livrable : l'appelant compose
-    alors l'option « avec » sur le MÊME champ que l'option « sans »
-    (comportement historique — jamais un chiffre inventé pour combler le trou).
-
-    IMPOSSIBILITÉ ⇒ ``(0, None, <motif>, None)`` où ``<motif>`` est l'un des
-    ``MOTIF_*`` ci-dessus — la donnée qui manque, NOMMÉE. Il n'y a plus de
-    repli : l'appelant refuse le devis en citant ce motif (ordre fondateur —
-    « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
-    """
-    try:
-        from apps.ventes.dimensionnement import recommander_taille
-        from apps.ventes.domain.entrees import entrees_depuis_lead
-
-        # QJR42 — LECTURE UNIQUE de la fiche : le MÊME adaptateur que le chemin
-        # devis (``EntreesMoteur``), donc la même facture, la même
-        # localisation, la même occupation (QJR10 / D4 — défaut PRÉSENCE) et
-        # les 15 champs d'équipement du sélecteur CRM (QJR9). Il n'y a plus de
-        # seconde traduction lead → entrées dans ce module.
-        entrees = entrees_depuis_lead(lead, company)
-        conso = entrees.conso_kwh_mensuelles if entrees else None
-        if not conso:
-            return 0, None, MOTIF_FACTURE_ABSENTE, None
-
-        resultat = recommander_taille(
-            company=entrees.company, conso_kwh_mensuelles=conso,
-            ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
-            occupation=entrees.occupation, equipements=entrees.equipements,
-            phase=phase, source_conso=entrees.source_conso,
-            jour_reference=entrees.jour_reference,
-            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
-            tranches=entrees.tranches,
-            charges_fixes_mad=entrees.charges_fixes_mad)
-        recommandation = resultat.get('recommandation')
-        if not recommandation:
-            # Le tableau est vide pour DEUX raisons distinctes, et le
-            # commercial n'a pas le même geste à faire : un ancrage de
-            # productible introuvable se corrige sur la FICHE (ville ou tracé
-            # GPS), un catalogue incomplet se corrige dans le CATALOGUE. On
-            # relit donc la localisation — lecture en table/cache, pas un
-            # second dimensionnement — pour nommer la bonne.
-            from apps.parametres.pvgis_profils import productible_mensuel
-            situe = productible_mensuel(
-                ville=entrees.ville, lat=entrees.lat, lon=entrees.lon)
-            return (0, None,
-                    MOTIF_CATALOGUE if situe else MOTIF_LOCALISATION, None)
-        return (int(recommandation['panneaux']),
-                recommandation.get('panel_watt'), 'moteur_horaire',
-                _recommandation_avec_rendue(resultat.get('recommandation_avec')))
-    except Exception:  # noqa: BLE001 — l'appelant REFUSE le devis (il n'y a
-        # plus de règle de repli) : on ne masque pas la panne, on la nomme.
-        logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, None, MOTIF_MOTEUR_INDISPONIBLE, None
-
-
-def _recommandation_avec_rendue(recommandation_avec):
-    """L-2OPT — la ligne ``recommandation_avec`` du moteur, réduite à ce que la
-    composition sait consommer : ``{nb_panneaux, kwc, panel_watt,
-    batterie_kwh}``.
-
-    ``None`` dès que la recommandation est absente ou ne porte pas de nombre de
-    panneaux exploitable — REPLI EXPLICITE : l'appelant compose alors l'option
-    « avec » sur le champ de l'option « sans », comme aujourd'hui. Aucun
-    chiffre n'est ni inventé ni arrondi ici : tout vient du moteur.
-    """
-    if not isinstance(recommandation_avec, dict):
-        return None
-    try:
-        panneaux = int(recommandation_avec.get('panneaux') or 0)
-    except (TypeError, ValueError):
-        return None
-    if panneaux <= 0:
-        return None
-    batterie = recommandation_avec.get('batterie_kwh')
-    try:
-        batterie = float(batterie) if batterie not in (None, '') else None
-    except (TypeError, ValueError):
-        batterie = None
-    return {
-        'nb_panneaux': panneaux,
-        'kwc': recommandation_avec.get('kwc'),
-        'panel_watt': recommandation_avec.get('panel_watt'),
-        'batterie_kwh': batterie if batterie and batterie > 0 else None,
-    }
-
-
-def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
-    """CJ2a — (re)calcule ``etude_params['etude_horaire']`` et le RANGE.
-
-    Point d'entrée unique pour poser le bloc canonique sur un devis. Écrit avec
-    ``update_fields=['etude_params']`` UNIQUEMENT : ce chemin ne peut donc
-    toucher NI le statut du devis, NI ses lignes, NI ses totaux (règle #4).
-
-    Bloc non calculable (pas de facture, pas de localisation PVGIS, pas de
-    puissance) ⇒ la clé est RETIRÉE plutôt que laissée périmée, et l'appelant
-    retombe sur le forfait étiqueté (règle Z2). Ne lève jamais : une étude
-    n'empêche pas d'enregistrer un devis.
-
-    QJR44 — le bloc RANGÉ porte en plus ``_empreinte_entrees`` (l'estampille
-    des entrées du moteur). La SORTIE du moteur
-    (``etude_horaire_pour_devis``) reste byte-identique : l'estampille est
-    posée ici, sur la copie persistée, jamais dans le moteur.
-
-    QJR45 — les entrées sont lues UNE fois : le ``jour_reference`` qui part au
-    moteur est EXACTEMENT celui que l'empreinte trace (une seconde lecture
-    d'horloge pourrait tomber le lendemain et estampiller une date qui n'a pas
-    servi).
-    """
-    from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
-    from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE, ecrire
-    from apps.ventes.etude_horaire import etude_horaire_pour_devis
-    try:
-        entrees = entrees_depuis_devis(devis)
-        bloc = etude_horaire_pour_devis(
-            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
-            jour_reference=(entrees.jour_reference if entrees else None))
-        if bloc is None:
-            if 'etude_horaire' not in (getattr(devis, 'etude_params', None)
-                                       or {}):
-                return None
-        else:
-            bloc = dict(bloc)
-            bloc['_empreinte_entrees'] = (
-                empreinte_entrees(entrees)
-                if entrees is not None and entrees.conso_kwh_mensuelles
-                else None)
-        # QJR62 — ÉCRIVAIN UNIQUE : la fusion (et le retrait d'une clé posée à
-        # ``None``, règle Z2) vit dans ``domain.etude_schema``, plus ici.
-        ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc)
-        return bloc
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
-        logger.warning('etude_horaire non rafraîchie sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return None
-
-
-def _bloc_horaire_deja_a_jour(devis, kwc):
-    """CJ2b — le bloc rangé sur ce devis décrit-il DÉJÀ cette composition ?
-
-    RAISON D'ÊTRE : ÉVITER UN RECALCUL INUTILE DANS UN HANDLER HTTP. Un calcul
-    horaire résout la localisation PVGIS du chantier, ce qui peut coûter un
-    appel réseau (cache système de 30 jours, mais un cache froid part sur le
-    réseau). Le déclencher à CHAQUE ligne ajoutée/modifiée/retirée ferait payer
-    cette latence à l'utilisateur pour un bloc qui n'aurait pas bougé d'un
-    chiffre — c'est exactement le genre d'appel qu'on ne veut pas voir
-    apparaître dans une boucle d'édition.
-
-    LE CRITÈRE EST CELUI DU MOTEUR, PAS UN SECOND. La tolérance vient de
-    ``pricing._HORAIRE_TOLERANCE_KWC`` : ce qui rend un bloc PÉRIMÉ pour le
-    document est exactement ce qui le rend À RECALCULER ici. Deux seuils
-    différents laisseraient une zone où le document refuse un bloc que ce
-    garde-fou juge encore frais — donc un devis sans économies, sans raison
-    visible.
-
-    La capacité batterie compte AUSSI : elle change l'autoconsommation et donc
-    toutes les économies, sans toucher au kWc (remplacer une batterie 5 kWh par
-    une 10 kWh ne bouge pas la puissance PV).
-
-    QJR44 — L'EMPREINTE DES ENTRÉES S'AJOUTE, ELLE NE REMPLACE RIEN. Les deux
-    contrôles ci-dessus lisent la COMPOSITION (kWc, capacité batterie) ; ils
-    ne voient PAS un changement de PROFIL (facture, localisation, occupation,
-    équipements), qui change pourtant toutes les économies du bloc. Le bloc
-    n'est donc à jour que si, EN PLUS, l'estampille ``_empreinte_entrees``
-    qu'il porte égale l'empreinte des entrées d'aujourd'hui. Un bloc sans
-    estampille (antérieur à QJR44) est PÉRIMÉ — un recalcul, une fois.
-    La tolérance ``pricing._HORAIRE_TOLERANCE_KWC`` reste celle du moteur :
-    deux seuils différents rouvriraient la zone où un devis se retrouve sans
-    économies sans raison visible.
-
-    Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
-    servir un bloc qui ne décrit plus le devis.
-    """
-    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
-    if not isinstance(bloc, dict) or not kwc:
-        return False
-    try:
-        from apps.ventes.quote_engine.pricing import _HORAIRE_TOLERANCE_KWC
-        kwc_bloc = float(bloc.get('kwc') or 0)
-        if kwc_bloc <= 0:
-            return False
-        if abs(kwc_bloc - float(kwc)) / float(kwc) > _HORAIRE_TOLERANCE_KWC:
-            return False
-        from apps.ventes.etude_horaire import capacite_batterie_du_devis
-        actuelle = capacite_batterie_du_devis(devis)
-        rangee = bloc.get('batterie_kwh_utile')
-        if (actuelle is None) != (rangee is None):
-            return False
-        if actuelle is not None and abs(float(actuelle) - float(rangee)) > 0.05:
-            return False
-        from apps.ventes.domain.entrees import empreinte_entrees_du_devis
-        empreinte = empreinte_entrees_du_devis(devis)
-        if not empreinte or bloc.get('_empreinte_entrees') != empreinte:
-            return False
-        return True
-    except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
-        return False
-
-
-def rafraichir_etude_horaire_devis(devis, *, force=False):
-    """CJ2b — pose le bloc horaire canonique après une écriture SERVEUR d'un
-    devis résidentiel (lignes ajoutées/modifiées/retirées, calepinage
-    resynchronisé, devis mis à jour).
-
-    Avant CJ2b, ``rafraichir_etude_horaire`` n'était appelé QUE par l'auto-devis
-    (voir plus haut) : un devis résidentiel ÉDITÉ ensuite — panneau ajouté ou
-    retiré, remplacement d'onduleur — gardait un bloc ``etude_horaire`` PÉRIMÉ
-    ou ABSENT, et la page/le PDF retombaient alors sur le modèle « facture »/
-    forfait alors qu'un calcul heure par heure exact restait possible. Ce point
-    d'entrée unique referme la boucle depuis les chemins d'écriture du devis
-    (``DevisViewSet.perform_update``, ``sync-layout``, ``LigneDevisViewSet``).
-
-    RÉSIDENTIEL STRICT (``mode_installation == 'residentiel'``), volontairement
-    PLUS STRICT que ``quote_engine.residential.renderer.is_residential`` (qui
-    traite un mode VIDE comme résidentiel — un défaut d'AFFICHAGE PDF choisi
-    pour ne jamais perdre le rendu d'un devis, pas une preuve que ce devis EST
-    résidentiel). Poser un calcul horaire sur un devis dont le marché n'a
-    simplement pas encore été choisi calculerait une étude sur une hypothèse
-    non confirmée ; un devis dont le mode passe plus tard à 'residentiel'
-    reçoit son bloc au prochain enregistrement — aucune perte, un calcul
-    seulement différé.
-
-    La puissance kWc vient EXCLUSIVEMENT de
-    ``quote_engine.builder.panneaux_et_watt_lu``, sur le MÊME filtre de lignes
-    que ``build_quote_data`` (lignes produit, non optionnelles) — jamais une
-    seconde règle de dérivation (l'incident DEV-202608-0007 est précisément né
-    de deux dérivations qui divergent). Sans panneau lisible, le rafraîchissement
-    est appelé QUAND MÊME avec ``kwc=None`` : c'est ``rafraichir_etude_horaire``
-    lui-même qui RETIRE alors le bloc devenu périmé plutôt que de le laisser
-    décrire une installation qui n'existe plus (règle Z2 appliquée à la
-    fraîcheur) — jamais un bloc laissé en place au hasard.
-
-    ``force`` — recalculer MÊME si la composition n'a pas bougé. Les chemins
-    « lignes » (ajout/modification/suppression, calepinage) ne touchent QUE la
-    composition : quand celle-ci est inchangée, le bloc l'est aussi et
-    ``_bloc_horaire_deja_a_jour`` court-circuite un calcul qui peut coûter un
-    appel PVGIS. Les chemins « devis » (``perform_update``, ``replace-lines``)
-    peuvent en revanche avoir changé les FACTURES ou le profil dans
-    ``etude_params`` — grandeurs qu'aucune lecture de lignes ne verrait : ils
-    passent ``force=True`` et acceptent le recalcul.
-
-    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux du devis
-    (règle #4) : appelable en toute sécurité juste après une sauvegarde.
-    """
-    try:
-        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-        if mode != 'residentiel':
-            return None
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
-        # Même filtre que build_quote_data : lignes PRODUIT non optionnelles
-        # (les sections/notes n'ont pas de produit, les add-ons XSAL5 non
-        # activés ne comptent pas encore dans la composition réelle).
-        lignes = [
-            li for li in devis.lignes.select_related(
-                'produit', 'produit__fiche_technique').all()
-            if getattr(li, 'type_ligne', 'produit') == 'produit'
-            and not getattr(li, 'optionnelle', False)
-        ]
-        nb_panneaux, watt = panneaux_et_watt_lu(lignes)
-        kwc = (round(nb_panneaux * watt / 1000, 2)
-               if nb_panneaux > 0 and watt else None)
-        if not force and _bloc_horaire_deja_a_jour(devis, kwc):
-            return (devis.etude_params or {}).get('etude_horaire')
-        return rafraichir_etude_horaire(devis, kwc=kwc)
-    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
-        # jamais une sauvegarde de devis/ligne.
-        logger.warning('rafraichir_etude_horaire_devis indisponible sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return None
-
-
 def entrees_dimensionnement_du_devis(devis, *, contexte=True):
     """RÉ-EXPORT (QJR42) de ``apps.ventes.domain.entrees.entrees_depuis_devis``.
 
@@ -2498,154 +2117,6 @@ def entrees_dimensionnement_du_devis(devis, *, contexte=True):
     """
     from apps.ventes.domain.entrees import entrees_depuis_devis
     return entrees_depuis_devis(devis, contexte=contexte)
-
-
-def rafraichir_dimensionnement_devis(devis, *, force=False):
-    """T5 (24/08/2026) — pose ``etude_params['dimensionnement']`` sur un devis
-    RÉSIDENTIEL, même point d'entrée-esprit que
-    :func:`rafraichir_etude_horaire_devis` (RÉSIDENTIEL STRICT, mêmes chemins
-    d'écriture) mais pour le TABLEAU de dimensionnement
-    (``apps.ventes.dimensionnement.recommander_taille``) plutôt que le bloc
-    horaire d'UNE taille : c'est ce que lit désormais le moteur PDF
-    (``ETUDE['dimensionnement']``) et le payload public (T4 — falaise,
-    tranche visée, régime batterie).
-
-    Contrairement à ``rafraichir_etude_horaire_devis``, aucune donnée de
-    LIGNES n'entre dans ce calcul (le tableau balaye TOUTES les tailles
-    candidates, il ne lit pas la composition posée).
-
-    QJR43 — L'EMPREINTE DES ENTRÉES DÉCIDE, PLUS LA PRÉSENCE DE LA CLÉ. Le
-    bloc rangé porte ``_empreinte`` (``domain.entrees.empreinte_entrees``) et
-    n'est recalculé QUE si l'empreinte des entrées d'aujourd'hui en diffère.
-    Avant, le test était ``'dimensionnement' in etude_params`` : corriger la
-    facture d'hiver, l'occupation ou les équipements du lead ne périmait RIEN,
-    et le tableau servi restait celui de la toute première lecture. Un bloc
-    SANS ``_empreinte`` (tout devis antérieur à QJR43) est traité comme PÉRIMÉ
-    — un recalcul, une seule fois, par devis existant.
-
-    ``force`` reste accepté et signifie désormais « recalcule même si
-    l'empreinte concorde » ; il devient inutile sur les chemins qui ne
-    changeaient que la composition (QJR47 les retire un par un).
-
-    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux
-    (règle #4). ``None`` (⇒ clé ABSENTE) quand le profil n'est pas
-    exploitable (pas de facture, pas de société, catalogue incomplet,
-    localisation non résolue) — jamais un tableau inventé.
-    """
-    try:
-        from apps.ventes.domain.entrees import empreinte_entrees
-        from apps.ventes.domain.etude_schema import (
-            MOTEUR_DIMENSIONNEMENT, ecrire)
-
-        # P2-A / QJR42 — LECTURE UNIQUE des entrées : l'échelle de paliers
-        # batterie part exactement des mêmes. Elle est faite AVEC contexte
-        # parce que l'empreinte a besoin de la localisation, de l'occupation
-        # et des équipements — c'est le prix (une lecture, pas un balayage)
-        # d'un cache qui se périme vraiment, et il remplace les DEUX lectures
-        # que faisait l'ancien chemin quand il recalculait.
-        entrees = entrees_dimensionnement_du_devis(devis)
-        if entrees is None:
-            return None
-        etude_params = entrees['etude_params']
-        conso = entrees['conso_kwh_mensuelles']
-        if not conso:
-            if not force and 'dimensionnement' not in etude_params:
-                return None
-            # QJR62 — ÉCRIVAIN UNIQUE : ``None`` RETIRE la clé (règle Z2).
-            ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
-                   dimensionnement=None)
-            return None
-
-        empreinte = empreinte_entrees(entrees)
-        bloc = etude_params.get('dimensionnement')
-        if (not force and isinstance(bloc, dict)
-                and bloc.get('_empreinte') == empreinte):
-            return bloc
-
-        from apps.ventes.dimensionnement import recommander_taille
-        resultat = recommander_taille(
-            company=entrees['company'], conso_kwh_mensuelles=conso,
-            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
-            occupation=entrees['occupation'],
-            equipements=entrees['equipements'],
-            source_conso=entrees['source_conso'],
-            jour_reference=entrees['jour_reference'],
-            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
-            tranches=entrees['tranches'],
-            charges_fixes_mad=entrees['charges_fixes_mad'])
-        resultat['_empreinte'] = empreinte
-        ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
-               dimensionnement=resultat)
-        return resultat
-    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
-        # jamais une sauvegarde de devis/ligne.
-        logger.warning('rafraichir_dimensionnement_devis indisponible sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return None
-
-
-def rafraichir_etudes_du_devis(devis, *, force=False):
-    """L-1V (24/08/2026) — LES QUATRE ÉTUDES D'UN DEVIS, EN UN SEUL GESTE.
-
-    LE TROU QUE CECI BOUCHE. Un devis porte quatre études dérivées de ses
-    lignes : le bloc horaire, le tableau de dimensionnement, les profils
-    comparatifs et la conception électrique. Trois chemins d'écriture les
-    posaient — ``atomic`` et ``replace-lines`` en rafraîchissaient les QUATRE
-    (deux listes recopiées à la main, donc deux occasions d'en oublier une),
-    tandis que ``LigneDevisViewSet`` (ajout/modification/suppression d'UNE
-    ligne) n'en rafraîchissait qu'UNE : le bloc horaire. Modifier une ligne
-    depuis l'écran de devis faisait donc bouger le graphe horaire de la page
-    client SANS toucher à la conception électrique — et le client voyait un
-    schéma unifilaire décrivant une composition qui n'existait plus. Une seule
-    fonction, appelée par TOUS les chemins : on ne peut plus en oublier une.
-
-    Chacune est BEST-EFFORT et indépendante (chaque rafraîchisseur avale déjà
-    ses propres erreurs) : une étude en échec n'empêche jamais les trois autres,
-    et n'annule JAMAIS l'enregistrement du devis ou de la ligne qui l'a
-    déclenchée. Aucun statut, aucune ligne, aucun prix n'est touché (règle #4).
-
-    L'ORDRE COMPTE, et il est celui que ``replace-lines`` avait déjà : le
-    dimensionnement après le bloc horaire, les profils comparatifs après le
-    dimensionnement (le profil RÉEL réutilise alors le tableau qui vient d'être
-    calculé au lieu d'en refaire un), la conception électrique en dernier.
-
-    Rend le dict des quatre résultats (``None`` pour celles qui n'ont rien
-    produit) — pour un appelant qui veut savoir, jamais pour décider.
-    """
-    from apps.ventes.profils_comparatifs import (
-        rafraichir_profils_comparatifs_devis)
-    from apps.ventes.electrical_service import (
-        rafraichir_conception_electrique_devis)
-
-    return {
-        'etude_horaire': rafraichir_etude_horaire_devis(devis, force=force),
-        'dimensionnement': rafraichir_dimensionnement_devis(devis,
-                                                            force=force),
-        'profils_comparatifs': rafraichir_profils_comparatifs_devis(
-            devis, force=force),
-        # Idempotente par empreinte : mêmes entrées ⇒ aucune écriture.
-        'conception_electrique': rafraichir_conception_electrique_devis(devis),
-    }
-
-
-def _residential_panel_count(*, taille_kwc=None, panel_watt=_AUTO_PANEL_WATT):
-    """CONVERSION SEULE : une puissance demandée (kWc) → un nombre de panneaux.
-
-    Ce n'est plus un dimensionnement — c'est de l'arithmétique. La branche
-    « facture d'hiver ÷ 900 MAD × 8 panneaux » a été RETIRÉE le 29/08/2026
-    (ordre fondateur « ALL sizing should go through the new sizing tool ») :
-    une facture se dimensionne désormais par ``_panneaux_dimensionnement_horaire``
-    et par rien d'autre. Ne subsiste ici que le chemin SOUVERAIN — la puissance
-    que le commercial demande (``target_kwc``) ou que la fiche du lead porte
-    (``taille_souhaitee_kwc``).
-
-    U1 — le compte est un PLAFOND (``plafond_panneaux``), comme
-    ``panneauxPourKwc`` / ``composition_residentielle`` : on ne descend jamais
-    sous la puissance vendue. Renvoie 0 sans taille exploitable (le caller lève
-    alors ``AutoDevisError``)."""
-    if taille_kwc not in (None, '') and Decimal(str(taille_kwc)) > 0:
-        return max(1, plafond_panneaux(float(taille_kwc) * 1000 / panel_watt))
-    return 0
 
 
 #: U3 — les trois scénarios batterie qu'un appelant peut demander POUR CE
@@ -3415,79 +2886,6 @@ def log_supplier_email(
     return ok, log
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# QJR48 (29/08/2026) — ``refresh_etude_consistency`` A ÉTÉ SUPPRIMÉE
-# ════════════════════════════════════════════════════════════════════════════
-# Elle écrivait ``etude_params['payback_annees']`` (TTC canonique ÷ économies
-# annuelles stockées) à CHAQUE sauvegarde et à CHAQUE suppression de
-# ``LigneDevis``, plus à chaque changement de remise globale — soit un
-# ``Devis.save()`` par ligne PLUS une recomputation complète d'``option_totaux``.
-#
-# CETTE CLÉ N'AVAIT AUCUN LECTEUR. Le balayage du dépôt (joint au commit, et
-# rejoué par ``tests/test_qjr_coherence_etude.py`` pour qu'il ne puisse pas
-# repartir en silence) ne trouve ``payback_annees`` QUE dans des blocs qui
-# portent leur PROPRE payback et le calculent eux-mêmes : les cartes
-# ``offres_tailles``, les paliers de ``dimensionnement``, les comparateurs
-# ``compta``/``parametres``. Le PDF et la page publique lisent, eux, la clé
-# ``payback`` (industriel/commercial), recalculée par ``quote_engine/builder``
-# — jamais ``payback_annees``.
-#
-# Les deux récepteurs QX24 (``apps/ventes/receivers.py``) ont été retirés dans
-# le même commit : aucun chemin ne subsiste. Aucun chiffre rendu au client ne
-# change.
-
-
-def compute_marge_snapshot(devis):
-    """QX23be — marge HT interne figée d'un devis (usage MANAGER UNIQUEMENT).
-
-    marge = Σ(HT ligne, option acceptée si applicable) − Σ(qté × prix_achat).
-    Renvoie un Decimal, ou None si AUCUN produit lié ne porte de prix_achat
-    exploitable (on ne veut pas figer une fausse marge = 100 % du CA). Best-
-    effort : jamais d'exception remontée.
-
-    RÈGLE #4 : ``prix_achat`` ne quitte JAMAIS cette fonction interne — le
-    résultat (une marge) n'est exposé qu'au responsable dans la vue liste,
-    jamais dans un PDF/une sortie client.
-    """
-    from decimal import Decimal
-    try:
-        from apps.ventes.utils.options import option_lines
-        lignes = option_lines(devis)
-    except Exception:  # noqa: BLE001
-        try:
-            lignes = list(devis.lignes.select_related('produit').all())
-        except Exception:  # noqa: BLE001
-            return None
-    ht = Decimal('0')
-    cout = Decimal('0')
-    a_un_cout = False
-    for li in lignes:
-        try:
-            ht += Decimal(str(li.total_ht))
-        except Exception:  # noqa: BLE001
-            continue
-        produit = getattr(li, 'produit', None)
-        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
-        if prix_achat is not None and Decimal(str(prix_achat)) > 0:
-            a_un_cout = True
-            cout += Decimal(str(li.quantite)) * Decimal(str(prix_achat))
-    if not a_un_cout:
-        return None
-    return (ht - cout).quantize(Decimal('0.01'))
-
-
-def refresh_marge_snapshot(devis):
-    """QX23be — recalcule et persiste ``marge_snapshot`` (best-effort)."""
-    try:
-        marge = compute_marge_snapshot(devis)
-        if devis.marge_snapshot != marge:
-            devis.marge_snapshot = marge
-            devis.save(update_fields=['marge_snapshot'])
-    except Exception as exc:  # noqa: BLE001 — jamais bloquant
-        logger.warning('QX23: marge_snapshot échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
-
-
 def verifier_devis_envoyable(devis):
     """NTCPQ7 — lève ``ValidationError`` si une étape d'approbation de remise
     est encore ``en_attente`` (blocage envoi/génération PDF).
@@ -4171,3 +3569,33 @@ _classe_kit_de_ligne = _composition._classe_kit_de_ligne
 _est_au_prix_catalogue = _composition._est_au_prix_catalogue
 _completer_kit_residentiel = _composition._completer_kit_residentiel
 _refuser_couple_panneau_onduleur_impossible = _composition._refuser_couple_panneau_onduleur_impossible
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RÉ-EXPORTS — QJR75 (1/2) : taille → ``domain/taille.py``
+# ═══════════════════════════════════════════════════════════════════════════
+from apps.ventes.domain import taille as _taille  # noqa: E402
+AutoDevisError = _taille.AutoDevisError
+phase_client_pour_dimensionnement = _taille.phase_client_pour_dimensionnement
+MOTIF_FACTURE_ABSENTE = _taille.MOTIF_FACTURE_ABSENTE
+MOTIF_LOCALISATION = _taille.MOTIF_LOCALISATION
+MOTIF_CATALOGUE = _taille.MOTIF_CATALOGUE
+MOTIF_MOTEUR_INDISPONIBLE = _taille.MOTIF_MOTEUR_INDISPONIBLE
+_REFUS_DIMENSIONNEMENT = _taille._REFUS_DIMENSIONNEMENT
+_refus_dimensionnement = _taille._refus_dimensionnement
+_panneaux_dimensionnement_horaire = _taille._panneaux_dimensionnement_horaire
+_recommandation_avec_rendue = _taille._recommandation_avec_rendue
+_residential_panel_count = _taille._residential_panel_count
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RÉ-EXPORTS — QJR75 (2/2) : études → ``domain/etudes.py``
+# ═══════════════════════════════════════════════════════════════════════════
+from apps.ventes.domain import etudes as _etudes  # noqa: E402
+rafraichir_etude_horaire = _etudes.rafraichir_etude_horaire
+_bloc_horaire_deja_a_jour = _etudes._bloc_horaire_deja_a_jour
+rafraichir_etude_horaire_devis = _etudes.rafraichir_etude_horaire_devis
+rafraichir_dimensionnement_devis = _etudes.rafraichir_dimensionnement_devis
+rafraichir_etudes_du_devis = _etudes.rafraichir_etudes_du_devis
+compute_marge_snapshot = _etudes.compute_marge_snapshot
+refresh_marge_snapshot = _etudes.refresh_marge_snapshot

@@ -754,10 +754,11 @@ def resume_devis_depuis_bordereau(devis):
     }
 
 
-# ── PONT M3 : noms encore hébergés par ``services.py`` ───────────────────────
+# ── PONT M3 : nom hébergé ailleurs ───────────────────────────────────────────
 # Import EN BAS DE FICHIER (voir la docstring) : il s'exécute après toutes les
-# définitions de ce module, donc ``services.py`` peut le ré-exporter sans
-# jamais lire un module à moitié construit. ``refresh_marge_snapshot`` partira
-# vers ``domain/etudes.py`` en QJR75 ; ce pont continuera de le trouver via le
-# ré-export de ``services.py``.
-from apps.ventes.services import refresh_marge_snapshot  # noqa: E402,F401
+# définitions de ce module, donc ``services.py`` peut le ré-exporter sans jamais
+# lire un module à moitié construit. Il vise le module qui PORTE le corps
+# (QJR75 a sorti ``refresh_marge_snapshot`` vers ``domain/etudes.py``) et non la
+# façade : les ré-exports de ``services.py`` s'exécutent dans l'ordre des
+# tâches, donc le bloc QJR68 ne porte pas encore les noms de QJR75.
+from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
