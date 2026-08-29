@@ -274,8 +274,10 @@ function runDay(
  * Déterministe et pur.
  */
 export function simulateBattery(input: BatterySimInput): BatterySimResult {
-  const etaOneWay = clamp01(input.oneWayEfficiency ?? BATTERY_ONE_WAY_EFFICIENCY, 0.5, 1);
-  const dod = clamp01(input.depthOfDischarge ?? BATTERY_DEPTH_OF_DISCHARGE, 0.1, 1);
+  const etaOneWay = clamp01(
+    input.oneWayEfficiency ?? BATTERY_ONE_WAY_EFFICIENCY, 0.5, 1, BATTERY_ONE_WAY_EFFICIENCY);
+  const dod = clamp01(
+    input.depthOfDischarge ?? BATTERY_DEPTH_OF_DISCHARGE, 0.1, 1, BATTERY_DEPTH_OF_DISCHARGE);
   const essentialW = Number.isFinite(input.essentialLoadW) && (input.essentialLoadW ?? 0) > 0
     ? (input.essentialLoadW as number)
     : ESSENTIAL_LOAD_W;
@@ -314,8 +316,21 @@ export function simulateBattery(input: BatterySimInput): BatterySimResult {
   };
 }
 
-function clamp01(v: number, lo: number, hi: number): number {
-  if (!Number.isFinite(v)) return hi;
+/**
+ * WJ129 (finding 5, NIT) — borne `v` dans [lo, hi] ; sur entrée NON-FINIE
+ * (NaN — le `??` des deux appels de `simulateBattery` ne rattrape que
+ * null/undefined, jamais un NaN explicite), retombe sur `fallback` plutôt que
+ * sur `hi`. `hi` (1.0) est la borne la plus OPTIMISTE — rendement/DoD à
+ * 100 % : y retomber en silence ferait passer une entrée invalide pour la
+ * MEILLEURE batterie possible. `fallback` doit être la CONSTANTE PAR DÉFAUT
+ * documentée de l'appelant (`BATTERY_ONE_WAY_EFFICIENCY` /
+ * `BATTERY_DEPTH_OF_DISCHARGE`), jamais une valeur inventée ici. Aujourd'hui
+ * inatteignable des deux appelants actuels (`?? DEFAUT` écarte déjà
+ * null/undefined avant d'arriver ici) — corrigé en prévision d'un futur
+ * appelant qui transmettrait un NaN explicite.
+ */
+function clamp01(v: number, lo: number, hi: number, fallback: number): number {
+  if (!Number.isFinite(v)) return fallback;
   return Math.max(lo, Math.min(hi, v));
 }
 

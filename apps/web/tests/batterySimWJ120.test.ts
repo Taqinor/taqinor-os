@@ -278,6 +278,35 @@ describe('WJ120 — resolveOfferBattery : capacité depuis les réfs catalogue, 
   });
 });
 
+describe('WJ129 (finding 5, NIT) — clamp01 interne : NaN retombe sur la CONSTANTE PAR DÉFAUT, jamais sur `hi`', () => {
+  // clamp01 n'est pas exporté ; on le prouve via l'API publique simulateBattery,
+  // qui l'appelle avec (v, lo, hi, fallback=CONSTANTE_DOCUMENTÉE). Le `??` des
+  // deux appels ne rattrape que null/undefined : un NaN explicite (aujourd'hui
+  // inatteignable des appelants réels de la page) doit produire EXACTEMENT le
+  // même résultat qu'omettre le paramètre (repli sur la constante), jamais un
+  // résultat identique à un rendement/DoD forcé à 100 % (`hi`).
+  it('oneWayEfficiency: NaN ⇒ identique à oneWayEfficiency omis (repli BATTERY_ONE_WAY_EFFICIENCY), jamais hi=1', () => {
+    // backupHours = usableCapacityKwh × etaOneWay ÷ charge essentielle : seul
+    // chiffre qui dépend DIRECTEMENT de etaOneWay sans dépendre aussi de dod
+    // (fromBatteryKwh dépend des deux à la fois via runDay).
+    const withNaN = simulateBattery(baseInput(2, { oneWayEfficiency: NaN }));
+    const withDefault = simulateBattery(baseInput(2, { oneWayEfficiency: undefined }));
+    const withHi = simulateBattery(baseInput(2, { oneWayEfficiency: 1 }));
+    expect(withNaN.backupHours).toBeCloseTo(withDefault.backupHours, 9);
+    expect(withNaN.fromBatteryKwh).toBeCloseTo(withDefault.fromBatteryKwh, 9);
+    expect(BATTERY_ONE_WAY_EFFICIENCY).not.toBe(1);
+    expect(withNaN.backupHours).not.toBeCloseTo(withHi.backupHours, 9);
+  });
+  it('depthOfDischarge: NaN ⇒ identique à depthOfDischarge omis (repli BATTERY_DEPTH_OF_DISCHARGE), jamais hi=1', () => {
+    const withNaN = simulateBattery(baseInput(2, { depthOfDischarge: NaN }));
+    const withDefault = simulateBattery(baseInput(2, { depthOfDischarge: undefined }));
+    const withHi = simulateBattery(baseInput(2, { depthOfDischarge: 1 }));
+    expect(withNaN.usableCapacityKwh).toBeCloseTo(withDefault.usableCapacityKwh, 9);
+    expect(BATTERY_DEPTH_OF_DISCHARGE).not.toBe(1);
+    expect(withNaN.usableCapacityKwh).not.toBeCloseTo(withHi.usableCapacityKwh, 9);
+  });
+});
+
 describe('WJ128 (finding 3, LOW) — resolveBatterySimMaxUnits : le plafond du curseur ne peut jamais être sous les unités offertes', () => {
   it('offre > 3 unités, aucun balayage/couverture servi → plafond ÉLARGI aux unités offertes (jamais bloqué à 3)', () => {
     expect(resolveBatterySimMaxUnits(5, 0, null)).toBe(5);
