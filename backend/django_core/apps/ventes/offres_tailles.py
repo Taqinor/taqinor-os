@@ -417,7 +417,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc):
+                  cout_onduleur_ttc, sortie=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -430,6 +430,13 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
     ``TARIFF_ESCALATION`` reste à 0 et n'est pas touché : la projection est à
     tarif PLAT, et le bloc sert ``escalade_tarifaire_pct`` pour que la page
     imprime « aucune hausse tarifaire supposée » AU-DESSUS du chiffre.
+
+    ``sortie`` (facultatif, OPTIONS CHARGEABLES 29/08/2026) reçoit la SÉRIE
+    cumulée complète sous la clé ``cumulative``. C'est le détail d'une taille
+    (:mod:`apps.ventes.taille_detail`) qui la lit, pour tracer la MÊME courbe
+    que la page trace déjà pour le devis : sans ce passe-plat, il aurait fallu
+    rappeler ``compute_cashflow_payback`` ailleurs, avec ses deux arguments de
+    discipline, donc se donner une seconde occasion d'en oublier un.
     """
     if not prix_ttc or not economie_annuelle:
         return None
@@ -445,6 +452,8 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
     cumul = (resultat or {}).get('cumulative') or []
     if not cumul:
         return None
+    if sortie is not None:
+        sortie['cumulative'] = [round(_num(v), 2) for v in cumul]
     return round(_num(cumul[-1]) + float(prix_ttc), 2)
 
 
@@ -745,7 +754,8 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
 # UNE CARTE — dérivée du moteur (Éco / Max) ou REPRISE du devis (Recommandé)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
+def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
+                  sortie_profonde=None):
     """Les deux variantes d'une taille, composées et chiffrées par le moteur.
 
     UN SEUL passage horaire pour les DEUX variantes : ``calculer_etude_horaire``
@@ -760,6 +770,16 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
     public non caché.
 
     Renvoie ``{'sans': carte|None, 'avec': carte|None}``.
+
+    ``sortie_profonde`` (facultatif, OPTIONS CHARGEABLES 29/08/2026) est un
+    dict que l'appelant fournit pour récupérer, EN PLUS des deux cartes, les
+    deux séries que la carte AGRÈGE mais ne publie pas : l'étude horaire
+    complète (``etude`` — ses douze mois portent les économies mois par mois)
+    et la courbe cumulée de chaque variante (``cashflow``). C'est le détail
+    d'une taille (:mod:`apps.ventes.taille_detail`) qui les lit, et c'est un
+    PASSE-PLAT DÉLIBÉRÉ : les faire recalculer là-bas aurait posé un second
+    passage moteur — donc, tôt ou tard, deux chiffres pour la même chose.
+    Absent (défaut) ⇒ comportement byte-identique à avant.
     """
     from apps.ventes.dimensionnement import _compter_modules_batterie
     from apps.ventes.dimensionnement import _lire_composition
@@ -819,6 +839,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
         etude = None
     annuel = (etude or {}).get('annuel') or {}
     production = _positif(annuel.get('production_kwh'))
+    if sortie_profonde is not None:
+        sortie_profonde['etude'] = etude
+        sortie_profonde['cashflow'] = {}
 
     cartes = {'sans': None, 'avec': None}
     for variante, vue, lignes in (('sans', vue_sans, lignes_sans),
@@ -848,6 +871,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
+        serie = {} if sortie_profonde is not None else None
         cumul = _cumul_moteur(
             prix, economie,
             stockage=bool(variante == 'avec' and capacite),
@@ -855,7 +879,10 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
                            else None),
             cout_onduleur_ttc=_cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise))
+                contexte.facteur_remise),
+            sortie=serie)
+        if serie and serie.get('cumulative'):
+            sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
             carte['economies_cumulees_25_ans_mad'] = cumul
         if variante == 'avec':
