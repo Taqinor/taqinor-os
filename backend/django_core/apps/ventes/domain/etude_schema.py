@@ -79,7 +79,10 @@ SCHEMA = {
     'conso_annuelle': _cle((int, float), ECRAN, ENTREE),
     'toiture': _cle((dict,), ECRAN, ENTREE),
     'attribution': _cle((dict,), ECRAN, ENTREE),
-    'resync_apres_envoi': _cle((bool,), CALEPINAGE, ENTREE),
+    # ``{'date': <iso>}`` — un « depuis quand », écrasé à chaque resynchro
+    # post-envoi (jamais un journal). Le booléen est toléré pour les devis
+    # anciens qui n'ont qu'un drapeau.
+    'resync_apres_envoi': _cle((bool, dict), CALEPINAGE, ENTREE),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
@@ -183,6 +186,39 @@ def cles_refusees_pour(proprietaire, cles):
     return refusees
 
 
+def fusionner(bloc, *, proprietaire=None, **cles):
+    """QJR62 — la FUSION seule : valide, refuse, fusionne. AUCUNE écriture.
+
+    Sortie de :func:`ecrire` pour les appelants qui persistent ``etude_params``
+    EN MÊME TEMPS que d'autres colonnes dans un seul ``save``
+    (``sync_devis_from_layout`` écrit ``roof_layout`` + ``layout_hash`` +
+    ``etude_params`` d'un bloc, et ``update_fields`` y EXCLUT ``statut`` — le
+    scinder en deux écritures ferait deux allers-retour et deux fenêtres de
+    course pour rien). La RÈGLE reste UNE : ils appellent tous cette fonction,
+    seule la persistance diffère.
+
+    Mêmes refus que :func:`ecrire` (``ValueError``), même sémantique du
+    ``None`` (retirer la clé). Rend le nouveau bloc, sans toucher l'entrée.
+    """
+    refusees = cles_refusees_pour(proprietaire, cles)
+    if refusees:
+        raise ValueError(
+            'Clé(s) dérivée(s) %s : seule l\'étape qui les CALCULE peut les '
+            'écrire (propriétaire déclaré : %s).'
+            % (', '.join(sorted(refusees)), proprietaire or 'aucun'))
+    reproches = valider(cles)
+    if reproches:
+        raise ValueError(' ; '.join(reproches))
+
+    resultat = dict(bloc or {})
+    for cle, valeur in cles.items():
+        if valeur is None:
+            resultat.pop(cle, None)
+        else:
+            resultat[cle] = valeur
+    return resultat
+
+
 def ecrire(devis, *, proprietaire=None, **cles):
     """L'UNIQUE écrivain d'``etude_params`` — il FUSIONNE, il ne remplace pas.
 
@@ -203,22 +239,8 @@ def ecrire(devis, *, proprietaire=None, **cles):
     Persiste en ``update_fields=['etude_params']`` : ni statut, ni ligne, ni
     total ne sont touchés (règle #4). Rend le bloc résultant.
     """
-    refusees = cles_refusees_pour(proprietaire, cles)
-    if refusees:
-        raise ValueError(
-            'Clé(s) dérivée(s) %s : seule l\'étape qui les CALCULE peut les '
-            'écrire (propriétaire déclaré : %s).'
-            % (', '.join(sorted(refusees)), proprietaire or 'aucun'))
-    reproches = valider(cles)
-    if reproches:
-        raise ValueError(' ; '.join(reproches))
-
-    bloc = dict(getattr(devis, 'etude_params', None) or {})
-    for cle, valeur in cles.items():
-        if valeur is None:
-            bloc.pop(cle, None)
-        else:
-            bloc[cle] = valeur
+    bloc = fusionner(getattr(devis, 'etude_params', None) or {},
+                     proprietaire=proprietaire, **cles)
     devis.etude_params = bloc
     if getattr(devis, 'pk', None) is not None:
         devis.save(update_fields=['etude_params'])

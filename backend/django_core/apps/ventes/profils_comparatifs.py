@@ -354,6 +354,7 @@ def rafraichir_profils_comparatifs_devis(devis, *, force=False):
     rangé est rendu tel quel, zéro balayage. Un bloc sans estampille
     (antérieur à QJR44) est PÉRIMÉ — un recalcul, une fois.
     """
+    from apps.ventes.domain.etude_schema import MOTEUR_PROFILS, ecrire
     try:
         empreinte = _empreinte_profils(devis)
         etude = dict(getattr(devis, 'etude_params', None) or {})
@@ -367,15 +368,14 @@ def rafraichir_profils_comparatifs_devis(devis, *, force=False):
         if bloc is None:
             if 'profils_comparatifs' not in etude:
                 return None
-            etude.pop('profils_comparatifs', None)
         else:
             bloc = dict(bloc)
             bloc['_empreinte'] = empreinte
             if not force and rangee == bloc:
                 return bloc
-            etude['profils_comparatifs'] = bloc
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion et le retrait d'une clé posée à
+        # ``None`` (règle Z2) vivent dans ``domain.etude_schema``, plus ici.
+        ecrire(devis, proprietaire=MOTEUR_PROFILS, profils_comparatifs=bloc)
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
         logger.warning('profils_comparatifs non rafraîchis sur %s',

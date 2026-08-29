@@ -192,13 +192,17 @@ def _set_gamme(devis, **champs):
     """Écrit (fusionne) les clés de gamme dans ``etude_params`` et sauvegarde.
 
     Copie le dict au lieu de le muter en place : ``dupliquer_variante`` passe
-    la MÊME référence de dict aux copies, une mutation fuirait sur le frère."""
+    la MÊME référence de dict aux copies, une mutation fuirait sur le frère.
+
+    QJR62 — passe par l'ÉCRIVAIN UNIQUE ``domain.etude_schema.ecrire`` : la
+    fusion et le refus des clés dérivées vivent à UN seul endroit, plus dans
+    chaque appelant."""
+    from apps.ventes.domain.etude_schema import ECRAN, ecrire
+
     params = dict(getattr(devis, 'etude_params', None) or {})
     gamme = dict(params.get('gamme') or {})
     gamme.update({k: v for k, v in champs.items() if v is not None})
-    params['gamme'] = gamme
-    devis.etude_params = params
-    devis.save(update_fields=['etude_params'])
+    ecrire(devis, proprietaire=ECRAN, gamme=gamme)
     return gamme
 
 
@@ -4623,7 +4627,21 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
 
         verrou.roof_layout = layout_stocke
         verrou.layout_hash = nouveau_hash or verrou.layout_hash
-        verrou.etude_params = etude
+        # QJR62 — la RÈGLE de fusion vient de l'écrivain unique
+        # (``domain.etude_schema``) ; seule la PERSISTANCE diffère ici, parce
+        # que ce chemin écrit ``roof_layout`` + ``layout_hash`` +
+        # ``etude_params`` d'un SEUL ``save`` (le scinder ferait deux
+        # allers-retour et deux fenêtres de course pour rien).
+        # On ne soumet au validateur que les clés que CE chemin a réellement
+        # CHANGÉES : une clé héritée d'un devis ancien (et pas encore déclarée
+        # au schéma) ne doit pas faire échouer une resynchro qui ne la touche
+        # même pas.
+        from apps.ventes.domain.etude_schema import CALEPINAGE, fusionner
+        _avant = dict(verrou.etude_params or {})
+        _modifiees = {cle: valeur for cle, valeur in etude.items()
+                      if cle not in _avant or _avant[cle] != valeur}
+        verrou.etude_params = fusionner(
+            _avant, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
         # même par accident (règle #4).
         verrou.save(update_fields=[
@@ -4819,12 +4837,12 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
         from django.utils import timezone
         horodatage = timezone.now().isoformat()
+        from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
         for devis in touches.values():
             if devis.statut == Devis.Statut.ENVOYE:
-                etude = dict(devis.etude_params or {})
-                etude['resync_apres_envoi'] = {'date': horodatage}
-                devis.etude_params = etude
-                devis.save(update_fields=['etude_params'])
+                # QJR62 — ÉCRIVAIN UNIQUE (fusion, jamais un remplacement).
+                ecrire(devis, proprietaire=CALEPINAGE,
+                       resync_apres_envoi={'date': horodatage})
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
         resultat['devis_touches'] = len(touches)
@@ -5184,26 +5202,26 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
     servi).
     """
     from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
+    from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE, ecrire
     from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
         entrees = entrees_depuis_devis(devis)
         bloc = etude_horaire_pour_devis(
             devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
             jour_reference=(entrees.jour_reference if entrees else None))
-        etude = dict(getattr(devis, 'etude_params', None) or {})
         if bloc is None:
-            if 'etude_horaire' not in etude:
+            if 'etude_horaire' not in (getattr(devis, 'etude_params', None)
+                                       or {}):
                 return None
-            etude.pop('etude_horaire', None)
         else:
             bloc = dict(bloc)
             bloc['_empreinte_entrees'] = (
                 empreinte_entrees(entrees)
                 if entrees is not None and entrees.conso_kwh_mensuelles
                 else None)
-            etude['etude_horaire'] = bloc
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion (et le retrait d'une clé posée à
+        # ``None``, règle Z2) vit dans ``domain.etude_schema``, plus ici.
+        ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc)
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
         logger.warning('etude_horaire non rafraîchie sur %s',
@@ -5397,6 +5415,8 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
     """
     try:
         from apps.ventes.domain.entrees import empreinte_entrees
+        from apps.ventes.domain.etude_schema import (
+            MOTEUR_DIMENSIONNEMENT, ecrire)
 
         # P2-A / QJR42 — LECTURE UNIQUE des entrées : l'échelle de paliers
         # batterie part exactement des mêmes. Elle est faite AVEC contexte
@@ -5412,10 +5432,9 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
         if not conso:
             if not force and 'dimensionnement' not in etude_params:
                 return None
-            etude = dict(etude_params)
-            etude.pop('dimensionnement', None)
-            devis.etude_params = etude
-            devis.save(update_fields=['etude_params'])
+            # QJR62 — ÉCRIVAIN UNIQUE : ``None`` RETIRE la clé (règle Z2).
+            ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
+                   dimensionnement=None)
             return None
 
         empreinte = empreinte_entrees(entrees)
@@ -5436,11 +5455,8 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             tranches=entrees['tranches'],
             charges_fixes_mad=entrees['charges_fixes_mad'])
         resultat['_empreinte'] = empreinte
-
-        etude = dict(etude_params)
-        etude['dimensionnement'] = resultat
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
+               dimensionnement=resultat)
         return resultat
     except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
         # jamais une sauvegarde de devis/ligne.
@@ -5912,13 +5928,22 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # l'étude déjà écrite par la construction. Elles ne peuvent pas écraser le
     # `scenario`, arrêté plus haut : c'est lui qui pilote le rendu du PDF.
     if isinstance(etude_extra, dict) and etude_extra:
-        etude = dict(devis.etude_params or {})
-        _scenario_arrete = etude.get('scenario')
-        etude.update(etude_extra)
-        if _scenario_arrete:
-            etude['scenario'] = _scenario_arrete
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans
+        # ``domain.etude_schema``. Le ``scenario`` déjà arrêté plus haut n'est
+        # pas renvoyé à l'écrivain, donc l'appelant ne peut pas l'écraser —
+        # c'est lui qui pilote le rendu du PDF (QJR64 le fera passer par le
+        # registre de surcharges, où le cas particulier disparaîtra).
+        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+        _scenario_arrete = (devis.etude_params or {}).get('scenario')
+        _extra = {cle: valeur for cle, valeur in etude_extra.items()
+                  if not (_scenario_arrete and cle == 'scenario')}
+        if _extra:
+            try:
+                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
+            except ValueError as exc:
+                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
+                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
+                raise AutoDevisError(str(exc), field='etude_params')
 
     # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
     # comme sur les chemins d'écriture du générateur (``atomic``,

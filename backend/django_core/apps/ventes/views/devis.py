@@ -315,6 +315,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # ``permission_classes`` — qui déclare la MÊME classe — ne serait
             # JAMAIS consulté.
             'overrides',
+            # QJR62 — PATCH FUSIONNANT d'``etude_params`` (même périmètre que
+            # le générateur : responsable + admin). MÊME piège VX199.
+            'etude_params',
             # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
             # visites DISTINCTES par section de la proposition + alerte de
             # friction (relecture répétée d'une même section). Analytics
@@ -2660,6 +2663,56 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         registre_overrides.ecrire_colonne(devis, registre)
         return Response(self._overrides_reponse(devis))
+
+    @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
+            permission_classes=[IsResponsableOrAdmin])
+    def etude_params(self, request, pk=None):
+        """QJR62 — GET / PATCH **FUSIONNANT** d'``etude_params``.
+
+        LE TROU QUE CECI FERME. L'écran sauvegardait le devis en RECONSTRUISANT
+        ``etude_params`` de zéro et en le PATCHant sur un sérialiseur
+        permissif : chaque clé qu'il ne reconstruit pas lui-même —
+        ``factures_mensuelles_reelles``, ``gamme``, et tout ce que les quatre
+        rafraîchisseurs du serveur avaient écrit — DISPARAISSAIT à la
+        sauvegarde suivante du vendeur.
+
+        Ici, seules les clés REÇUES bougent ; les autres restent intouchées,
+        bit à bit. Une clé inconnue du schéma ou d'un type impossible est
+        refusée en 400 avec un message FR, jamais ignorée en silence ; une clé
+        DÉRIVÉE dont l'écran n'est pas propriétaire (le bloc horaire, le
+        tableau de dimensionnement, les profils comparatifs, la simulation)
+        l'est aussi — c'est le moteur qui les calcule.
+
+        Une valeur ``null`` RETIRE la clé (règle Z2 : une étude qui n'est plus
+        calculable est retirée, jamais laissée périmée).
+
+        Ce correctif est SERVEUR et ne dépend d'aucun changement d'écran.
+        L'écriture est chirurgicale (``update_fields=['etude_params']``) :
+        aucune ligne, aucun total, aucun statut ne bouge (règle #4).
+        """
+        from ..domain.etude_schema import ECRAN, ecrire
+
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response({'etude_params': devis.etude_params or {}})
+
+        corps = request.data
+        if not isinstance(corps, dict) or not corps:
+            return Response(
+                {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
+                           'est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bloc = ecrire(devis, proprietaire=ECRAN, **corps)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except TypeError:
+            return Response(
+                {'detail': "Clé d'étude invalide : les noms de clés doivent "
+                           'être des identifiants simples.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'etude_params': bloc})
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])

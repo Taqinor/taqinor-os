@@ -207,3 +207,115 @@ class EcritureChirurgicaleTests(TestCase):
         bloc = S.ecrire(devis, proprietaire=S.ECRAN, scenario='Sans batterie')
         self.assertEqual(bloc['scenario'], 'Sans batterie')
         self.assertIsNone(devis.pk)
+
+
+class FusionnerPureTests(SimpleTestCase):
+    """QJR62 — la RÈGLE sans la persistance, pour les écrivains multi-colonnes."""
+
+    def test_fusionner_ne_touche_pas_le_bloc_d_entree(self):
+        depart = {'gamme': 'premium'}
+        resultat = S.fusionner(depart, proprietaire=S.ECRAN,
+                               scenario='Sans batterie')
+        self.assertEqual(depart, {'gamme': 'premium'})
+        self.assertEqual(set(resultat), {'gamme', 'scenario'})
+
+    def test_fusionner_applique_les_memes_refus(self):
+        with self.assertRaises(ValueError):
+            S.fusionner({}, proprietaire=S.ECRAN,
+                        dimensionnement={'tableau': []})
+        with self.assertRaises(ValueError):
+            S.fusionner({}, proprietaire=S.ECRAN, chiffre_invente=1)
+
+
+class EndpointFusionTests(TestCase):
+    """QJR62 — ``PATCH /ventes/devis/<id>/etude-params/`` FUSIONNE.
+
+    L'écran reconstruisait ``etude_params`` de zéro et le PATCHait sur un
+    sérialiseur permissif : chaque clé qu'il ne reconstruit pas lui-même
+    DISPARAISSAIT à la sauvegarde suivante du vendeur.
+    """
+
+    DEPART = {
+        'factures_mensuelles_reelles': [640, 610, 590],
+        'gamme': 'premium',
+        'etude_horaire': {'kwc': 8.52},
+        'dimensionnement': {'tableau': [1, 2, 3]},
+    }
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from authentication.models import CustomUser
+        from testkit.factories import UserFactory
+
+        self.company = CompanyFactory()
+        self.user = UserFactory(company=self.company,
+                                role_legacy=CustomUser.ROLE_RESPONSABLE)
+        self.devis = DevisFactory(company=self.company,
+                                  etude_params=dict(self.DEPART))
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.url = f'/api/django/ventes/devis/{self.devis.id}/etude-params/'
+
+    def test_un_patch_minimal_ne_perd_aucune_autre_cle(self):
+        resp = self.api.patch(self.url, {'scenario': 'Sans batterie'},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        bloc = resp.data['etude_params']
+        self.assertEqual(bloc['scenario'], 'Sans batterie')
+        for cle, valeur in self.DEPART.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(bloc[cle], valeur)
+
+    def test_le_get_rend_le_bloc_courant(self):
+        resp = self.api.get(self.url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['etude_params'], self.DEPART)
+
+    def test_une_cle_derivee_du_moteur_est_refusee_en_400(self):
+        resp = self.api.patch(self.url, {'etude_horaire': {'kwc': 1}},
+                              format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('etude_horaire', resp.data['detail'])
+
+    def test_une_cle_inconnue_est_refusee_en_400(self):
+        resp = self.api.patch(self.url, {'chiffre_invente': 42},
+                              format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_un_corps_vide_est_refuse(self):
+        resp = self.api.patch(self.url, {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_null_retire_la_cle(self):
+        resp = self.api.patch(self.url, {'gamme': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('gamme', resp.data['etude_params'])
+        self.assertIn('factures_mensuelles_reelles',
+                      resp.data['etude_params'])
+
+    def test_isolation_multi_societe(self):
+        autre = DevisFactory(company=CompanyFactory())
+        resp = self.api.get(
+            f'/api/django/ventes/devis/{autre.id}/etude-params/')
+        self.assertEqual(resp.status_code, 404)
+
+
+class EcrivainsRoutesTests(TestCase):
+    """QJR62 — les écrivains backend passent par ``ecrire()``."""
+
+    def setUp(self):
+        self.company = CompanyFactory()
+        self.devis = DevisFactory(
+            company=self.company,
+            etude_params={'factures_mensuelles_reelles': [640, 610]})
+
+    def test_set_gamme_fusionne_au_lieu_de_remplacer(self):
+        from apps.ventes.services import _set_gamme
+
+        _set_gamme(self.devis, nom='Premium')
+        relu = Devis.objects.get(pk=self.devis.pk)
+        self.assertEqual(relu.etude_params['gamme'], {'nom': 'Premium'})
+        self.assertEqual(relu.etude_params['factures_mensuelles_reelles'],
+                         [640, 610])
