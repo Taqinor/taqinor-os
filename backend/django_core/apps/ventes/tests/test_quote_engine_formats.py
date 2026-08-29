@@ -683,8 +683,12 @@ class TestPdfFormats(TestCase):
             'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
             'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
         },
+        # QJR13 — cette combinaison DÉCRIT le devis de ce module : 14 panneaux
+        # 550 W (7,7 kWc) et « Batterie 5 kWh » dans ses lignes. Sans cette
+        # concordance, ses chiffres ne sont plus publiés (le PDF ne parle plus
+        # de « ce dimensionnement » à propos d'une combinaison non vendue).
         'meilleure_falaise': {
-            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 10.0,
+            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 5.0,
             'residuel_kwh_mois': 420.0,
             'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
             'remplissage': {
@@ -790,6 +794,70 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
         self.assertNotIn('R&#233;siduel vis&#233;', html)
+
+    # ── QJR13 — un optimum du moteur ne se publie que s'il DÉCRIT ce devis ──
+    # ``meilleure_falaise`` est une combinaison champ + stockage que le
+    # BALAYAGE a trouvée : le PDF l'imprimait comme « ce dimensionnement »
+    # quelle que soit la taille et la batterie réellement vendues.
+    def _dim_divergent(self, **remplace):
+        return {
+            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
+            'meilleure_falaise': {
+                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
+                **remplace,
+            },
+        }
+
+    def test_qjr13_falaise_concordante_reste_imprimee_sur_les_deux_formats(self):
+        """Combinaison = configuration vendue (14 panneaux, 5 kWh) ⇒ inchangé."""
+        self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Résiduel sous la marche', html)
+        self.assertIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dune_autre_batterie_disparait_des_deux_formats(self):
+        """Le devis vend 5 kWh, la combinaison en suppose 10 : rien n'est
+        publié — ni carte, ni phrase, ni cellule une page. Jamais un chiffre
+        de repli, la mention DISPARAÎT."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(batterie_kwh=10.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        for texte in ('Résiduel sous la marche', 'fait atterrir',
+                      'Remplissage batterie'):
+            self.assertNotIn(texte, html)
+        # La tranche ACTUELLE décrit la facture du client, pas une combinaison
+        # du balayage : elle reste vraie et reste imprimée.
+        self.assertIn('Tranche 6', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dun_autre_champ_pv_disparait_des_deux_formats(self):
+        """Même règle sur le compte de panneaux (20 trouvés, 14 vendus)."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(panneaux=20, kwc=11.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
+        self.assertNotIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_combinaison_sans_configuration_nest_pas_publiee(self):
+        """Contexte identifiant absent ⇒ inpublié : on ne peut pas prouver
+        qu'il décrit ce devis, donc on omet (zéro chiffre inventé)."""
+        dim = self._dim_divergent()
+        dim['meilleure_falaise'].pop('panneaux')
+        self._devis_avec_falaise(dimensionnement=dim)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
 
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
