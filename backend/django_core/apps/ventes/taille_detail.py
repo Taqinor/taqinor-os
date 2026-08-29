@@ -40,30 +40,96 @@ CLES_CHARGEABLES = ('eco', 'max')
 VARIANTES = ('sans', 'avec')
 
 #: Durée de mémoïsation du détail dérivé. Court DÉLIBÉRÉMENT : la clé porte
-#: déjà l'empreinte de la configuration stockée (donc un ajustement vendeur
-#: invalide immédiatement), et un quart d'heure suffit à couvrir la session de
-#: lecture d'un client — au-delà, mieux vaut re-dériver que servir vieux.
+#: déjà l'empreinte de la configuration stockée ET celle des LIGNES (donc un
+#: ajustement vendeur comme une édition de ligne invalide immédiatement), et un
+#: quart d'heure suffit à couvrir la session de lecture d'un client — au-delà,
+#: mieux vaut re-dériver que servir vieux.
 CACHE_SECONDES = 900
+
+#: Les colonnes de ``LigneDevis`` dont dépend un chiffre SERVI par ce module.
+#: Les montants (``quantite``/``prix_unitaire``/``remise``) décident le facteur
+#: de remise appliqué à chaque palier
+#: (``dimensionnement.facteur_remise_du_devis``), donc le ``prix_ttc`` des
+#: cartes Éco/Max ; ``designation`` décide la capacité batterie lue sur les
+#: lignes réelles (``capacite_batterie_des_lignes``) ; ``variante`` décide
+#: QUELLES lignes comptent pour l'option demandée (L-2OPT) ;
+#: ``type_ligne``/``optionnelle`` décident si la ligne compte dans les totaux ;
+#: ``taux_tva`` décide le TTC lui-même. ``pk`` y est pour qu'un AJOUT ou un
+#: RETRAIT de ligne bouge la signature même quand les montants se compensent.
+_COLONNES_LIGNE = (
+    'pk', 'produit_id', 'designation', 'type_ligne', 'optionnelle',
+    'variante', 'quantite', 'prix_unitaire', 'remise', 'taux_tva',
+)
+
+#: Signature servie quand les lignes ne sont PAS lisibles (devis absent, objet
+#: détaché, base indisponible). Une CONSTANTE, pas un aléa : la clé doit rester
+#: la même entre le ``cache.get`` et le ``cache.set`` du même appel, sinon
+#: chaque lecture écrirait une entrée que personne ne relira jamais.
+_LIGNES_ILLISIBLES = 'x'
 
 
 def _empreinte_config(devis):
-    """Ce qui, sur ce devis, peut changer un détail sans changer son URL.
+    """Ce que le vendeur peut changer sur le DEVIS sans changer l'URL.
 
-    La configuration des tailles (``offres_tailles_config``) est la SEULE
-    entrée que le vendeur peut modifier entre deux lectures sans que le jeton,
-    la taille ou la variante ne bougent. La faire entrer dans la clé de cache,
-    c'est garantir qu'un « Régénérer » côté vendeur se voit tout de suite chez
-    le client — sans aucune invalidation à écrire à la main (donc sans le
-    risque d'oublier de l'écrire).
+    La configuration des tailles (``offres_tailles_config``) se modifie entre
+    deux lectures sans que le jeton, la taille ou la variante ne bougent. La
+    faire entrer dans la clé de cache, c'est garantir qu'un « Régénérer » côté
+    vendeur se voit tout de suite chez le client — sans aucune invalidation à
+    écrire à la main (donc sans le risque d'oublier de l'écrire).
 
     ``updated_at`` du devis y entre aussi : re-dimensionner le devis change les
     trois cartes, pas seulement celle qu'on a ajustée.
+
+    CE QUE CETTE EMPREINTE NE VOIT PAS, ET POURQUOI IL EN FAUT UNE SECONDE :
+    les LIGNES. Ni ``offres_tailles_config`` ni ``updated_at`` ne bougent quand
+    un vendeur édite une ligne — ``offres_tailles._ecrire_colonne`` évite
+    délibérément ``updated_at`` (VX98), et les récepteurs de ``LigneDevis``
+    enregistrent le devis en ``update_fields=['etude_params']``, ce qu'un champ
+    ``auto_now`` ne suit pas. Voir :func:`_empreinte_lignes`.
     """
     brut = getattr(devis, 'offres_tailles_config', None)
     maj = getattr(devis, 'updated_at', None)
     graine = json.dumps(
         {'config': brut, 'maj': maj.isoformat() if maj else None},
         sort_keys=True, default=str)
+    return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
+
+
+def _empreinte_lignes(devis):
+    """Ce que les LIGNES du devis décident du détail servi.
+
+    LE TROU QUE CECI BOUCHE (QJR56, origine QB47). Le ``prix_ttc`` des cartes
+    Éco et Max n'est pas un prix catalogue : le facteur de remise RÉEL du devis
+    — lu sur les lignes (``quantite``, ``prix_unitaire``, ``remise``) — leur
+    est appliqué, et la capacité batterie affichée est celle des lignes
+    vendues. Or AUCUNE des deux entrées de :func:`_empreinte_config` ne bouge
+    quand une ligne bouge : un vendeur qui corrigeait un prix laissait donc son
+    client lire, pendant un quart d'heure, le prix d'avant — juste à côté de
+    chiffres d'en-tête, eux, fraîchement dérivés.
+
+    UNE SIGNATURE DE CONTENU, PAS UN HORODATAGE. ``LigneDevis`` n'a AUCUN champ
+    de dernière modification (ni ``updated_at``, ni ``created_at``), et en
+    inventer un demanderait une migration pour une donnée que le contenu porte
+    déjà — même raisonnement que ``sections`` dans :func:`_empreinte_lien`.
+
+    LE COÛT, ASSUMÉ : une requête courte (les colonnes ci-dessus, ordonnées par
+    ``pk``) à chaque appel, y compris quand le cache va répondre. C'est le prix
+    d'une invalidation qui n'a rien à oublier — et il reste très inférieur au
+    passage moteur que le cache évite.
+
+    Illisible ⇒ ``_LIGNES_ILLISIBLES`` : le cache continue de fonctionner sur
+    les seules entrées lisibles plutôt que de tomber. Sur le chemin réel, le
+    lien porte toujours son devis, donc les lignes sont toujours lues.
+    """
+    lignes = getattr(devis, 'lignes', None)
+    if lignes is None:
+        return _LIGNES_ILLISIBLES
+    try:
+        rangs = list(
+            lignes.all().order_by('pk').values_list(*_COLONNES_LIGNE))
+    except Exception:  # noqa: BLE001 — devis détaché, base indisponible
+        return _LIGNES_ILLISIBLES
+    graine = json.dumps(rangs, sort_keys=True, default=str)
     return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
 
 
@@ -104,11 +170,19 @@ def cle_cache(link, cle, variante):
     :func:`_empreinte_lien`). Leur contenu entre donc dans la clé, si bien
     qu'une case décochée invalide d'elle-même — sans invalidation à écrire à
     la main, donc sans le risque de l'oublier.
+
+    TROIS EMPREINTES, PARCE QU'IL Y A TROIS FAÇONS DE PÉRIMER UN DÉTAIL SANS
+    TOUCHER À SON URL : le LIEN (:func:`_empreinte_lien`), la configuration des
+    tailles (:func:`_empreinte_config`) et les LIGNES du devis
+    (:func:`_empreinte_lignes` — QJR56 : c'est elle qui manquait, et sans elle
+    un prix corrigé restait invisible au client un quart d'heure).
     """
-    return 'taille-detail:%s:%s:%s:%s:%s' % (
+    devis = getattr(link, 'devis', None)
+    return 'taille-detail:%s:%s:%s:%s:%s:%s' % (
         getattr(link, 'pk', 'x'), cle, variante,
         _empreinte_lien(link),
-        _empreinte_config(getattr(link, 'devis', None)))
+        _empreinte_config(devis),
+        _empreinte_lignes(devis))
 
 
 def _economies_mensuelles(etude, variante):
