@@ -444,6 +444,16 @@ jobs:
         run: python scripts/check_money_rounding.py
       - name: Test the money-rounding checker itself (QJR4)
         run: python -m unittest scripts.tests.test_check_money_rounding -v
+      # QJR6 — advisory: a path of the override registry (whitelist read from
+      # the PACT10 contract apps/ventes/contract_samples/devis_overrides.json,
+      # never copied into the script) may only be written in the sanctioned
+      # modules apps/ventes/domain/{overrides,lignes}.py. Baseline lives in
+      # scripts/override_registry_allow.txt, keyed by CONTENT identity
+      # (path::qualname::family::target); fails only on a NEW site.
+      - name: Check override-registry write sites (QJR6, advisory)
+        run: python scripts/check_override_registry.py
+      - name: Test the override-registry checker itself (QJR6)
+        run: python -m unittest scripts.tests.test_check_override_registry -v
       # YDATA10/11 — timezone.now() everywhere (no naive datetime.now()/
       # utcnow()/datetime(...) ctor); timestamp columns are aware
       # DateTimeField, never DateField(auto_now[_add]=True).
