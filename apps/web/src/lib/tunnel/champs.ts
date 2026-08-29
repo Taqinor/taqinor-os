@@ -31,6 +31,7 @@
 // une erreur `tsc`, pas une omission silencieuse. L'ordre de déclaration est
 // l'ordre d'émission des clés du corps (celui du littéral `buildBody()` FR).
 
+import { billRangeFromExact } from '../billRange';
 import type { LeadModeId } from '../lead';
 
 /** Les modes du tunnel dans lesquels une question peut être posée. */
@@ -270,6 +271,24 @@ export function adresseRetenue(etat: EtatTunnel): string {
   return (etat.ville || etat.adresseCarte.trim() || etat.adresseSecours.trim() || '').trim();
 }
 
+/**
+ * La tranche de facture C&I, DÉRIVÉE de la conso réellement saisie — jamais
+ * d'une hypothèse. Une saisie en MAD est déjà un montant ; une saisie en kWh
+ * n'est convertie QUE si le tarif des hypothèses du moteur est connu (le même
+ * chiffre que celui qui a piloté l'estimation affichée). Sans tarif connu, on
+ * rend `''` : pas de tranche fabriquée. Au-delà du dernier palier, 'gt10000'
+ * reste factuellement vrai pour tout gros compte.
+ */
+export function trancheFactureProfessionnelle(etat: EtatTunnel): string {
+  const v = etat.factureProValeur;
+  if (v == null || !Number.isFinite(v) || v <= 0) return '';
+  let mad: number | null = null;
+  if (etat.factureProUnite === 'mad') mad = v;
+  else if (etat.tarifProMadKwh != null && etat.tarifProMadKwh > 0) mad = v * etat.tarifProMadKwh;
+  if (mad == null || !(mad > 0)) return '';
+  return billRangeFromExact(mad) ?? (mad > 10_000 ? 'gt10000' : '');
+}
+
 // ——— les descripteurs, dans l'ordre d'émission ————————————————————————
 
 const G_IDENTITE = {
@@ -302,17 +321,20 @@ const G_IDENTITE = {
 const G_FACTURE = {
   /**
    * La tranche est TOUJOURS cohérente avec ce qui a piloté l'estimation
-   * affichée : résidentiel = le `<select>` (auto-dérivé du montant exact) ;
-   * C&I = dérivée de la conso saisie ; agricole = plus requise (`lead.ts`,
-   * mode 'agricole'). La dérivation C&I a besoin du catalogue de tranches et
-   * vit donc dans `corps.ts` (`trancheProDepuisEtat`), qui SURCHARGE ce `lire`
-   * pour les profils pro — le registre reste sans dépendance métier.
+   * affichée : résidentiel = le `<select>` (lui-même auto-dérivé du montant
+   * exact) ; C&I = dérivée de la conso saisie (`trancheFactureProfessionnelle`) ;
+   * agricole = plus requise du tout (`lead.ts`, mode 'agricole') — un projet
+   * pompage se dimensionne sur HMT × débit, jamais sur une facture fabriquée.
    */
   trancheFacture: {
     webhookKey: 'billRange',
     domId: 'mt-bill',
     modes: ['residentiel'],
-    lire: (e) => (estModePro(e.mode) || e.mode === 'agricole' ? '' : e.trancheFacture),
+    lire: (e) => {
+      if (estModePro(e.mode)) return trancheFactureProfessionnelle(e);
+      if (e.mode === 'agricole') return '';
+      return e.trancheFacture;
+    },
     nettoyer: chaineRequise,
     requis: true,
   },
