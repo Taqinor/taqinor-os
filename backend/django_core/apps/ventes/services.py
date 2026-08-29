@@ -4966,7 +4966,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
     """
     try:
-        from apps.crm.selectors import equipements_pour_devis  # noqa: F401
+        from apps.crm.selectors import equipements_pour_lead
         from apps.ventes.courbes_journalieres import (
             OCCUPATION_ABSENCE, OCCUPATION_PARTIELLE, OCCUPATION_PRESENCE,
             composer_equipements,
@@ -4985,14 +4985,11 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
                     'absent': OCCUPATION_ABSENCE,
                     'partiel': OCCUPATION_PARTIELLE}
         occupation = drapeaux.get(getattr(lead, 'occupation_jour', None))
-        equipements = composer_equipements({
-            'piscine': getattr(lead, 'equip_piscine', None),
-            'piscine_pompe_kw': getattr(lead, 'equip_piscine_pompe_kw', None),
-            'voiture_electrique': getattr(lead, 'equip_voiture_electrique', None),
-            've_km_semaine': getattr(lead, 'equip_ve_km_semaine', None),
-            'clim': getattr(lead, 'equip_clim', None),
-            'clim_pieces': getattr(lead, 'equip_clim_pieces', None),
-        })
+        # QJR9 — la MÊME lecture d'équipements que l'aperçu écran : les 15
+        # champs du sélecteur CRM, jamais une recomposition locale à 6 clés
+        # (les grandeurs L-BACK/L-BACK2 n'atteignaient sinon jamais le moteur
+        # sur le chemin auto-devis/tunnel).
+        equipements = composer_equipements(equipements_pour_lead(lead))
 
         resultat = recommander_taille(
             company=company, conso_kwh_mensuelles=conso,

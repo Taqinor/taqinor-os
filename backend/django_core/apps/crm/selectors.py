@@ -1255,19 +1255,24 @@ def occupation_jour_pour_devis(devis):
     return valeur if valeur in ('present', 'absent', 'partiel') else None
 
 
-def equipements_pour_devis(devis):
-    """L4 (21/08/2026) — équipements électriques du lead d'un devis, ou ``{}``.
+def equipements_pour_lead(lead):
+    """QJR9 — équipements électriques d'un LEAD, ou ``{}`` (lead absent).
 
-    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
-    ``apps.crm.models``) : ``apps/ventes/courbes_journalieres.py`` compose ses
-    couches d'équipement à partir de ce dict. Valeurs BRUTES du lead — script
-    d'appel du commercial (piscine/VE/clim/chauffe-eau), DISTINCT de
-    ``futures_charges`` (case du questionnaire web, sans paramètre). Chaque
-    valeur est ``None`` quand la question n'a pas été posée ou que le lead
-    n'existe pas : aucune valeur n'est devinée ici, l'appelant décide de son
-    propre repli (généralement : omettre la couche).
+    Point d'entrée cross-app LECTURE SEULE, jumeau de
+    :func:`equipements_pour_devis` pour les chemins qui n'ont PAS encore de
+    devis persisté (devis automatique, tunnel) : jusqu'ici ces chemins
+    recomposaient la couche équipement à la main sur SIX clés, et les huit
+    grandeurs L-BACK/L-BACK2 (chauffe-eau kW/créneau, chargeur VE kW/créneau,
+    clim kW/créneau, piscine heures/créneau) plus ``chauffe_eau_electrique``
+    n'atteignaient jamais le moteur. Il n'y a donc plus qu'UNE liste de champs
+    lue, ici, pour les deux chemins.
+
+    Valeurs BRUTES du lead — script d'appel du commercial (piscine/VE/clim/
+    chauffe-eau), DISTINCT de ``futures_charges`` (case du questionnaire web,
+    sans paramètre). Chaque valeur est ``None`` quand la question n'a pas été
+    posée : aucune valeur n'est devinée ici, l'appelant décide de son propre
+    repli (généralement : omettre la couche).
     """
-    lead = getattr(devis, 'lead', None)
     if lead is None:
         return {}
     return {
@@ -1292,6 +1297,21 @@ def equipements_pour_devis(devis):
         'clim_creneau': lead.equip_clim_creneau,
         'piscine_creneau': lead.equip_piscine_creneau,
     }
+
+
+def equipements_pour_devis(devis):
+    """L4 (21/08/2026) — équipements électriques du lead d'un devis, ou ``{}``.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
+    ``apps.crm.models``) : ``apps/ventes/courbes_journalieres.py`` compose ses
+    couches d'équipement à partir de ce dict.
+
+    QJR9 — sortie INCHANGÉE : simple application de
+    :func:`equipements_pour_lead` au lead du devis, pour que le chemin « devis
+    persisté » et le chemin « lead seul » (devis automatique / tunnel) lisent
+    exactement les mêmes champs.
+    """
+    return equipements_pour_lead(getattr(devis, 'lead', None))
 
 
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
