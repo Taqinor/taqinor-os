@@ -65,22 +65,61 @@ test('la formule facturesSaisies, rejouée avec les VRAIES constantes solar.js :
   assert.equal(facturesSaisies(hiverEteReels), true)
 })
 
-test('N1 — handleSubmit sème factures_mensuelles_reelles UNIQUEMENT si facturesSaisies, jamais un changement de payload sinon', () => {
-  const idx = DG.indexOf('if (facturesSaisies) {')
-  assert.ok(idx > -1, 'bloc de seed N1 introuvable dans handleSubmit')
-  const bloc = DG.slice(idx, idx + 900)
-  assert.match(bloc, /const facturesReelles = monthly\.map\(v => parseFloat\(v\) \|\| 0\)/)
-  assert.match(bloc, /factures_mensuelles_reelles:\s*facturesReelles,/)
-  // conso_annuelle dérivée via kwhFromBill (même patron que S1/autoQuote.js),
-  // jamais un chiffre supposé — et jamais si une source plus directe existe déjà.
-  assert.match(bloc, /if \(etudeParams\.conso_annuelle == null\) \{/)
-  assert.match(bloc, /kwhFromBill\(bill, distributeur\)\.kwhMensuel \|\| 0/)
+// ── N1 EST SUPERSÉDÉ PAR QJR66 (audit L3 du 29/08/2026) ──────────────────────
+// Le seed N1 vivait dans le bloc `etude_params` que `persisterDevis` posait EN
+// BLOC dans le corps du devis — le mécanisme même qui EFFAÇAIT `gamme`,
+// `etude_horaire`, `dimensionnement` et tout ce que les rafraîchisseurs
+// serveur avaient écrit, à chaque sauvegarde du vendeur. QJR66 supprime ce
+// bloc : l'écran n'écrit plus que la sous-clé d'étude de SON marché, par
+// l'endpoint de FUSION `PATCH /ventes/devis/<id>/etude-params/` (QJR62), et
+// RIEN en résidentiel. Les entrées du commercial (factures réelles, conso,
+// distributeur, scénario, option recommandée) passent désormais par le
+// REGISTRE DE SURCHARGES de la décision fondateur D12
+// (`profil.factures_mensuelles_reelles`, `profil.conso_annuelle`,
+// `tarif.distributeur`, `scenario`, `recommended_option`).
+// Le drapeau `facturesSaisies` lui-même NE BOUGE PAS (tests ci-dessus) : il
+// garde toujours le graphique N4, et c'est lui qui dira quelles factures sont
+// réelles quand le chemin de surcharge sera câblé.
+test('QJR66 — persisterDevis ne pose plus AUCUN etude_params dans le corps du devis (fin du remplacement en bloc)', () => {
+  const start = DG.indexOf('const payload = {')
+  assert.ok(start > -1, 'le payload de persisterDevis est introuvable')
+  const bloc = DG.slice(start, DG.indexOf('}', DG.indexOf('prix_cible_kwc', start)))
+  assert.doesNotMatch(bloc, /etude_params/,
+    'le corps du devis ne doit plus porter etude_params (il écrasait tout le bloc)')
+  // Et le seed N1 d'origine a bien disparu avec lui.
+  assert.equal(DG.indexOf('factures_mensuelles_reelles: facturesReelles'), -1,
+    'le seed N1 doit avoir disparu avec le bloc etude_params')
+  assert.equal(DG.indexOf('buildEtudeParamsChoice('), -1,
+    "buildEtudeParamsChoice n'a plus d'appelant sur ce chemin d'enregistrement")
+})
 
-  // Le bloc vit AVANT buildEtudeParamsChoice (qui doit voir conso_annuelle
-  // déjà posé pour ne pas le perdre) et APRÈS la construction des etudeParams
-  // par mode (industriel/commercial/agricole).
-  const buildChoiceIdx = DG.indexOf('etudeParams = buildEtudeParamsChoice(etudeParams, {')
-  assert.ok(buildChoiceIdx > idx, 'le seed N1 doit précéder buildEtudeParamsChoice')
+test('QJR66 — l\'écran écrit UNIQUEMENT la sous-clé de son marché, par l\'endpoint de fusion (résidentiel : rien)', () => {
+  const start = DG.indexOf('const blocEtudeMarche = () => {')
+  assert.ok(start > -1, 'blocEtudeMarche introuvable')
+  const bloc = DG.slice(start, DG.indexOf('const persisterDevis', start))
+  // Résidentiel : aucune écriture (le serveur est propriétaire de son étude).
+  assert.match(bloc, /\r?\n {4}return null\r?\n {2}\}/)
+  // Industriel / commercial : les cinq dérivées du marché (+ la catégorie).
+  for (const cle of ['taux_autoconso', 'taux_couverture', 'payback',
+                     'injection_kwh_an', 'injection_dh_an',
+                     'categorie_commerciale']) {
+    assert.ok(bloc.includes(cle), `clé industriel/commercial manquante : ${cle}`)
+  }
+  // Agricole : le bloc pompage du schéma.
+  for (const cle of ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
+                     'm3_jour', 'champ_kwc', 'irrigation_method']) {
+    assert.ok(bloc.includes(cle), `clé agricole manquante : ${cle}`)
+  }
+  // Aucune clé DÉRIVÉE dont l'écran n'est PAS propriétaire (le serveur les
+  // calcule ; le schéma les refuserait en 400 — on ne les envoie même pas).
+  for (const interdite of ['puissance_kwc', 'production_annuelle',
+                           'economies_annuelles', 'etude_horaire',
+                           'dimensionnement', 'profils_comparatifs']) {
+    assert.ok(!bloc.includes(interdite),
+      `clé dérivée non-propriétaire envoyée par l'écran : ${interdite}`)
+  }
+  // Le bloc part par l'endpoint de FUSION, jamais par le corps du devis.
+  assert.match(DG, /await ventesApi\.patchEtudeParams\(devisId, etudeMarche\)/)
 })
 
 test('N1 — kwhFromBill est bien importé (réutilisé, jamais réécrit) dans DevisGenerator.jsx', () => {
