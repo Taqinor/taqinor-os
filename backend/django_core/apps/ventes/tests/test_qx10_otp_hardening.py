@@ -44,7 +44,7 @@ class Qx10OtpHardeningTests(TestCase):
         self.client_obj.email = ''
         self.client_obj.save(update_fields=['email'])
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
-            with patch('apps.ventes.services._send_otp_email',
+            with patch('apps.ventes.domain.cycle_vie._send_otp_email',
                        return_value=True) as em:
                 request_esign_otp(self.link)
         em.assert_called_once()
@@ -63,9 +63,9 @@ class Qx10OtpHardeningTests(TestCase):
     def test_new_code_resets_lockout(self):
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             cache.set(_otp_attempts_key(self.link.token), OTP_MAX_ATTEMPTS, 600)
-            with patch('apps.ventes.services._send_otp_whatsapp',
+            with patch('apps.ventes.domain.cycle_vie._send_otp_whatsapp',
                        return_value=False), \
-                    patch('apps.ventes.services._send_otp_email',
+                    patch('apps.ventes.domain.cycle_vie._send_otp_email',
                           return_value=True):
                 request_esign_otp(self.link)
             self.assertIsNone(cache.get(_otp_attempts_key(self.link.token)))

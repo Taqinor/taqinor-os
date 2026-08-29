@@ -27,6 +27,20 @@ attribut lu à l'import existe déjà.
 NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom
 précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
+
+CIBLE DE ``mock.patch`` — LA RÈGLE, POUR TOUTE LA VAGUE M3. Un patch sur
+l'attribut d'un module ne change QUE les lectures qui passent par CE module.
+Le ré-export de ``services.py`` est une AFFECTATION, donc un cliché : il ne
+suit pas un patch posé ici, et réciproquement. D'où la règle :
+
+* un nom appelé depuis l'INTÉRIEUR de ce module se patche ICI
+  (``apps.ventes.domain.cycle_vie.X``) — c'est le cas de ``_store_signed_pdf``,
+  ``_send_acceptance_emails``, ``_notify_seller_accepted``, ``_send_otp_email``
+  et ``_send_otp_whatsapp``, tous appelés par ``accept_devis`` /
+  ``request_esign_otp`` ;
+* un nom appelé seulement de l'EXTÉRIEUR, par un appelant qui l'importe depuis
+  la façade au moment de l'appel (import fonction-local), continue de se patcher
+  sur ``apps.ventes.services.X`` — inchangé.
 """
 import logging
 import os

@@ -288,7 +288,7 @@ class TestDevisSignatureEmail(TestCase):
         self.client_obj = _make_client(self.company, 'QJ10 F Client')
         self.user = _make_user(self.company, 'qj10fu')
 
-    @patch('apps.ventes.services._send_acceptance_emails')
+    @patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
     def test_acceptance_email_called(self, mock_email):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ10-F01')
         accept_devis(devis=devis, user=self.user, nom='Test')
@@ -300,7 +300,7 @@ class TestDevisSignatureEmail(TestCase):
         # (même PK). On vérifie l'identité MÉTIER (PK), pas l'identité objet.
         self.assertEqual(call_kwargs['devis'].pk, devis.pk)
 
-    @patch('apps.ventes.services._send_acceptance_emails',
+    @patch('apps.ventes.domain.cycle_vie._send_acceptance_emails',
            side_effect=Exception('email down'))
     def test_email_failure_does_not_block_acceptance(self, mock_email):
         """Best-effort: email failure does NOT prevent the devis from being accepted."""
@@ -323,7 +323,7 @@ class TestDevisSignatureSellerNotification(TestCase):
         self.client_obj = _make_client(self.company, 'QJ10 G Client')
         self.seller = _make_user(self.company, 'qj10gs')
 
-    @patch('apps.ventes.services._notify_seller_accepted')
+    @patch('apps.ventes.domain.cycle_vie._notify_seller_accepted')
     def test_seller_notified_on_acceptance(self, mock_notify):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ10-G01')
         devis.created_by = self.seller

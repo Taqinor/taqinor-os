@@ -403,7 +403,7 @@ class TestVuePubliqueVariante(_Base):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestSignatureNeRetrecitPasLeTelechargement(_Base):
-    @patch('apps.ventes.services._store_signed_pdf')
+    @patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
     def test_apres_acceptation_avec_batterie_le_pdf_par_defaut_reste_complet(
             self, _mock_pdf):
         from apps.ventes.services import accept_devis
@@ -419,7 +419,7 @@ class TestSignatureNeRetrecitPasLeTelechargement(_Base):
         self.assertEqual(data['scenario'], SCENARIO_LES_DEUX)
         self.assertIn(DESIGNATION_RESEAU, _designations(data['sans_items']))
 
-    @patch('apps.ventes.services._store_signed_pdf')
+    @patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
     def test_le_moteur_ne_change_aucun_statut(self, _mock_pdf):
         """Règle #4 : rendre une variante ne touche à rien."""
         avant = (self.devis.statut, self.devis.option_acceptee)
