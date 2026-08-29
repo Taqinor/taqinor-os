@@ -65,40 +65,70 @@ test('la formule facturesSaisies, rejouée avec les VRAIES constantes solar.js :
   assert.equal(facturesSaisies(hiverEteReels), true)
 })
 
-// ── N1 EST SUPERSÉDÉ PAR QJR66 (audit L3 du 29/08/2026) ──────────────────────
+// ── N1 SURVIT À QJR66 — IL A SEULEMENT CHANGÉ DE CANAL ───────────────────────
 // Le seed N1 vivait dans le bloc `etude_params` que `persisterDevis` posait EN
 // BLOC dans le corps du devis — le mécanisme même qui EFFAÇAIT `gamme`,
 // `etude_horaire`, `dimensionnement` et tout ce que les rafraîchisseurs
-// serveur avaient écrit, à chaque sauvegarde du vendeur. QJR66 supprime ce
-// bloc : l'écran n'écrit plus que la sous-clé d'étude de SON marché, par
-// l'endpoint de FUSION `PATCH /ventes/devis/<id>/etude-params/` (QJR62), et
-// RIEN en résidentiel. Les entrées du commercial (factures réelles, conso,
-// distributeur, scénario, option recommandée) passent désormais par le
-// REGISTRE DE SURCHARGES de la décision fondateur D12
-// (`profil.factures_mensuelles_reelles`, `profil.conso_annuelle`,
-// `tarif.distributeur`, `scenario`, `recommended_option`).
-// Le drapeau `facturesSaisies` lui-même NE BOUGE PAS (tests ci-dessus) : il
-// garde toujours le graphique N4, et c'est lui qui dira quelles factures sont
-// réelles quand le chemin de surcharge sera câblé.
+// serveur avaient écrit, à chaque sauvegarde du vendeur. QJR66 supprime CE
+// MÉCANISME, pas la fonctionnalité : les 12 factures réelles partent
+// désormais par l'endpoint de FUSION `PATCH /ventes/devis/<id>/etude-params/`
+// (QJR62), où seules les clés envoyées bougent.
+// ARBITRAGE ORCHESTRATEUR (29/08/2026) — « zéro perte » : ces entrées sont
+// écrites pour TOUS les marchés, résidentiel COMPRIS. Un devis créé à la main
+// (hors devis auto d'un lead) doit garder son moyen d'alimenter
+// `factures_mensuelles_reelles`, sans quoi le moteur PDF reconstruit la
+// facture « avant » depuis l'économie SUPPOSÉE — un proxy circulaire.
 test('QJR66 — persisterDevis ne pose plus AUCUN etude_params dans le corps du devis (fin du remplacement en bloc)', () => {
   const start = DG.indexOf('const payload = {')
   assert.ok(start > -1, 'le payload de persisterDevis est introuvable')
   const bloc = DG.slice(start, DG.indexOf('}', DG.indexOf('prix_cible_kwc', start)))
   assert.doesNotMatch(bloc, /etude_params/,
     'le corps du devis ne doit plus porter etude_params (il écrasait tout le bloc)')
-  // Et le seed N1 d'origine a bien disparu avec lui.
-  assert.equal(DG.indexOf('factures_mensuelles_reelles: facturesReelles'), -1,
-    'le seed N1 doit avoir disparu avec le bloc etude_params')
   assert.equal(DG.indexOf('buildEtudeParamsChoice('), -1,
     "buildEtudeParamsChoice n'a plus d'appelant sur ce chemin d'enregistrement")
+  // Le bloc part par l'endpoint de FUSION, jamais par le corps du devis.
+  assert.match(DG, /await ventesApi\.patchEtudeParams\(devisId, etudeMarche\)/)
 })
 
-test('QJR66 — l\'écran écrit UNIQUEMENT la sous-clé de son marché, par l\'endpoint de fusion (résidentiel : rien)', () => {
+// Les entrées RÉELLES de l'écran, tous marchés (`entreesReellesEcran`).
+function entreesReelles() {
+  const start = DG.indexOf('const entreesReellesEcran = (consoDejaConnue) => {')
+  assert.ok(start > -1, 'entreesReellesEcran introuvable')
+  const end = DG.indexOf('const blocEtudeMarche = () => {', start)
+  assert.ok(end > start, 'la fin de entreesReellesEcran est introuvable')
+  return DG.slice(start, end)
+}
+
+test('N1 — les 12 factures RÉELLES sont semées UNIQUEMENT si facturesSaisies (jamais les valeurs d\'exemple)', () => {
+  const bloc = entreesReelles()
+  assert.match(bloc, /if \(facturesSaisies\) \{/)
+  assert.match(bloc,
+    /entrees\.factures_mensuelles_reelles = monthly\.map\(v => parseFloat\(v\) \|\| 0\)/)
+  // conso_annuelle dérivée via kwhFromBill (même patron que S1/autoQuote.js),
+  // jamais un chiffre supposé — et jamais si une source plus directe existe.
+  assert.match(bloc, /kwhFromBill\(bill, distributeur\)\.kwhMensuel \|\| 0/)
+  assert.match(bloc, /if \(conso == null && consoAnnuelleReelle > 0\)/)
+})
+
+test('N1 — aucune de ces entrées n\'est jamais envoyée à null (null SUPPRIME côté serveur, règle Z2)', () => {
+  const bloc = entreesReelles()
+  // Le bloc n'ASSIGNE jamais null à une clé d'entrée : une clé inconnue de
+  // l'écran est ABSENTE du corps, donc laissée intacte par la fusion — sinon
+  // ré-enregistrer un devis auto effacerait les factures qu'il avait semées.
+  assert.ok(!/entrees\.\w+ = null/.test(bloc),
+    'une entrée envoyée à null supprimerait la donnée du serveur')
+  assert.match(bloc, /if \(conso != null\) \{/)
+})
+
+test('QJR66 — l\'écran écrit les entrées réelles pour TOUS les marchés, et la sous-clé d\'étude de SON marché', () => {
   const start = DG.indexOf('const blocEtudeMarche = () => {')
   assert.ok(start > -1, 'blocEtudeMarche introuvable')
   const bloc = DG.slice(start, DG.indexOf('const persisterDevis', start))
-  // Résidentiel : aucune écriture (le serveur est propriétaire de son étude).
-  assert.match(bloc, /\r?\n {4}return null\r?\n {2}\}/)
+  // Les trois branches de marché fusionnent les entrées réelles.
+  assert.equal((bloc.match(/entreesReellesEcran\(/g) || []).length, 3,
+    'les trois marchés doivent tous fusionner les entrées réelles de l\'écran')
+  // Résidentiel : les entrées réelles SEULES — et rien du tout si rien tapé.
+  assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
   // Industriel / commercial : les cinq dérivées du marché (+ la catégorie).
   for (const cle of ['taux_autoconso', 'taux_couverture', 'payback',
                      'injection_kwh_an', 'injection_dh_an',
@@ -118,8 +148,6 @@ test('QJR66 — l\'écran écrit UNIQUEMENT la sous-clé de son marché, par l\'
     assert.ok(!bloc.includes(interdite),
       `clé dérivée non-propriétaire envoyée par l'écran : ${interdite}`)
   }
-  // Le bloc part par l'endpoint de FUSION, jamais par le corps du devis.
-  assert.match(DG, /await ventesApi\.patchEtudeParams\(devisId, etudeMarche\)/)
 })
 
 test('N1 — kwhFromBill est bien importé (réutilisé, jamais réécrit) dans DevisGenerator.jsx', () => {

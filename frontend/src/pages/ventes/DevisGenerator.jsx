@@ -2836,17 +2836,27 @@ export default function DevisGenerator({
   // tout ; l'écran écrit UNIQUEMENT la sous-clé de SON marché, par l'endpoint
   // de FUSION `PATCH /ventes/devis/<id>/etude-params/` (QJR62) — seules les
   // clés envoyées bougent, les autres restent intouchées bit à bit.
-  //   • résidentiel — AUCUNE écriture : le serveur est propriétaire de son
-  //     étude (dimensionnement, bloc horaire, profils, calepinage) ; les
-  //     entrées du commercial (factures réelles, conso, distributeur,
-  //     scénario, option recommandée) passent désormais par le REGISTRE DE
-  //     SURCHARGES de la décision fondateur D12 (`profil.*`, `tarif.*`,
-  //     `scenario`, `recommended_option`), jamais par ce bloc.
+  //   • TOUS LES MARCHÉS — les ENTRÉES RÉELLES tapées par le vendeur sur CET
+  //     écran, et elles seules : les 12 factures du client, la consommation
+  //     annuelle et le distributeur (voir `entreesReellesEcran` ci-dessous).
+  //     ARBITRAGE ORCHESTRATEUR (QJR66, 29/08/2026) : « zéro perte ». Une
+  //     première version de cette tâche n'écrivait RIEN en résidentiel, ce qui
+  //     re-rouvrait le trou N1 — un devis créé À LA MAIN (hors devis auto d'un
+  //     lead) n'avait plus AUCUN moyen d'alimenter
+  //     `factures_mensuelles_reelles`, la donnée la plus précieuse du dossier,
+  //     et le moteur PDF retombait sur une facture « avant » reconstruite
+  //     depuis l'économie SUPPOSÉE (proxy circulaire). Ces trois clés sont des
+  //     ENTRÉES déclarées `ECRAN` dans le schéma : c'est leur chemin.
+  //     Le RESTE des entrées résidentielles (scénario, option recommandée)
+  //     passe, lui, par le REGISTRE DE SURCHARGES D12 — pas par ici.
   //   • industriel / commercial — les cinq dérivées de leur étude
   //     d'autoconsommation (+ la catégorie commerciale, qui EST l'entrée de
   //     cette étude : elle choisit l'archétype de part diurne).
   //   • agricole — le bloc pompage (pompe, HMT, débit à la HMT, m³/jour,
   //     champ kWc, méthode d'irrigation).
+  //   • résidentiel — RIEN DE PLUS que les entrées réelles ci-dessus : le
+  //     serveur est propriétaire de son étude (dimensionnement, bloc horaire,
+  //     profils, calepinage).
   // Le schéma serveur (`apps/ventes/domain/etude_schema.py`) est la SEULE
   // porte : une clé hors schéma ou une clé DÉRIVÉE dont l'écran n'est pas
   // propriétaire (`puissance_kwc`, `production_annuelle`,
@@ -2856,6 +2866,46 @@ export default function DevisGenerator({
   // `null` RETIRE la clé (règle Z2) : une étude qui n'est plus calculable est
   // retirée, jamais laissée périmée — on envoie donc le bloc du marché même
   // quand l'étude est indisponible, pour effacer un chiffre devenu faux.
+  //
+  // LES ENTRÉES RÉELLES DE L'ÉCRAN — tous marchés (arbitrage « zéro perte »).
+  // Reprend MOT POUR MOT les deux règles d'avant, sans en inventer une
+  // troisième : le seed N1 (`facturesSaisies` — jamais les valeurs D'EXEMPLE
+  // de `DEFAULT_MONTHLY_BILLS`) et la règle QF4 de `buildEtudeParamsChoice`
+  // (une conso annuelle déjà connue ⇒ on n'envoie que le distributeur ; une
+  // facture réelle saisie ⇒ les deux ; sinon le distributeur seulement s'il
+  // n'est pas le défaut ONEE).
+  //
+  // AUCUNE CLÉ N'EST ENVOYÉE À `null` ICI : `null` SUPPRIME (règle Z2), et
+  // supprimer les factures semées par le devis auto parce que CE vendeur n'a
+  // rien retapé serait exactement la perte que cette tâche referme. Une clé
+  // que l'écran ne connaît pas est simplement ABSENTE du corps — la fusion la
+  // laisse alors intacte, bit à bit.
+  const entreesReellesEcran = (consoDejaConnue) => {
+    const entrees = {}
+    if (facturesSaisies) {
+      entrees.factures_mensuelles_reelles = monthly.map(v => parseFloat(v) || 0)
+    }
+    // Conso annuelle : la source la plus DIRECTE d'abord (l'étude du marché,
+    // qui descend de la saisie « consommation »), puis la facture réelle QF4,
+    // puis la dérivation depuis les 12 factures (kwhFromBill au barème réel du
+    // distributeur choisi — même patron que `autoQuote.js`, jamais un chiffre
+    // supposé).
+    let conso = consoDejaConnue ?? null
+    if (conso == null && consoAnnuelleReelle > 0) conso = consoAnnuelleReelle
+    if (conso == null && entrees.factures_mensuelles_reelles) {
+      const derivee = Math.round(entrees.factures_mensuelles_reelles.reduce(
+        (somme, bill) => somme + (kwhFromBill(bill, distributeur).kwhMensuel || 0), 0))
+      if (derivee > 0) conso = derivee
+    }
+    if (conso != null) {
+      entrees.conso_annuelle = conso
+      entrees.distributeur = distributeur
+    } else if (distributeur && distributeur !== 'onee') {
+      entrees.distributeur = distributeur
+    }
+    return entrees
+  }
+
   const blocEtudeMarche = () => {
     const nombre = (v) => {
       const n = parseFloat(v)
@@ -2865,6 +2915,7 @@ export default function DevisGenerator({
       const etude = (modeInstallation === 'industriel'
         ? etudeIndustrielle : etudeCommerciale) || {}
       const bloc = {
+        ...entreesReellesEcran(nombre(etude.conso_annuelle)),
         taux_autoconso: nombre(etude.taux_autoconso),
         taux_couverture: nombre(etude.taux_couverture),
         payback: nombre(etude.payback),
@@ -2888,6 +2939,7 @@ export default function DevisGenerator({
           })
         : {}
       return {
+        ...entreesReellesEcran(null),
         pompe_cv: nombre(p.pompe_cv),
         pompe_kw: nombre(p.pompe_kw),
         hmt_m: nombre(p.hmt_m),
@@ -2897,8 +2949,11 @@ export default function DevisGenerator({
         irrigation_method: farmIrrigation || null,
       }
     }
-    // Résidentiel : le serveur est propriétaire de son étude.
-    return null
+    // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
+    // entrées réelles que le vendeur vient de taper (arbitrage « zéro perte »).
+    // Rien de tapé ⇒ objet vide ⇒ aucun appel du tout (voir `persisterDevis`).
+    const entrees = entreesReellesEcran(null)
+    return Object.keys(entrees).length ? entrees : null
   }
 
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
