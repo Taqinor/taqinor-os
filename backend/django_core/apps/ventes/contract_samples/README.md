@@ -67,3 +67,9 @@ doute, elle vérifie dès que la vue existe et devient lisible.
 Côté frontend, un test n'écrit plus son `PAYLOAD` à la main : il importe cet
 exemple (`frontend/src/test/fixtures/`). Un mock écrit à la main est une
 DEUXIÈME source de vérité — c'est elle qu'il faut supprimer.
+
+QJR1 (M0 du Groupe QJR, `docs/PLAN2.md`) illustre un contrat posé AVANT que les
+deux moitiés qui l'implémentent n'existent : `devis_overrides.json` et
+`devis_totaux.json` décrivent le futur registre de surcharges d'un devis et sa
+future vue argent unique — aucun consommateur dans leur commit, la garde ne
+rougit pas tant que la route n'existe pas.
