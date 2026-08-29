@@ -389,6 +389,17 @@ CLIM_CRENEAUX = {
 # Heures de DÉPART par créneau piscine — la LONGUEUR de la fenêtre reste
 # pilotée par equip_piscine_heures_jour (ou le défaut 8h, PISCINE_HEURES) ;
 # le créneau ne déplace que le départ, jamais la durée.
+#: QJR15 (29/08/2026) — LES COUCHES DE REDISTRIBUTION, UNE SEULE LISTE.
+#: Ces couches décrivent une consommation DÉJÀ contenue dans la facture : elles
+#: déforment la journée sans en changer le total. Elles doivent être les MÊMES
+#: partout — dans le composeur de forme (:func:`forme_consommation_detaillee`)
+#: et dans la décomposition mensuelle publiée
+#: (``etude_horaire.estimation_conso_mensuelle``). Avant QJR15 le chauffe-eau
+#: était publié comme un ajout mensuel en kWh mais IGNORÉ par le composeur : la
+#: répartition montrée au client et la forme sur laquelle ses économies étaient
+#: calculées décrivaient deux clients différents.
+COUCHES_REDISTRIBUTION = ('piscine', 'clim', 'chauffe_eau')
+
 PISCINE_CRENEAUX_DEPART = {
     'matin': 6,
     'apres_midi': 12,
@@ -919,7 +930,8 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     applique EXACTEMENT la règle L4 déjà tenue côté page
     (``proposalCurve.equipmentAdjustedConsumptionKwhShape``), en DEUX PASSES :
 
-    1. **REDISTRIBUTION** (piscine, climatisation) — chaque couche ajoute sa
+    1. **REDISTRIBUTION** (:data:`COUCHES_REDISTRIBUTION` — piscine,
+       climatisation, chauffe-eau) — chaque couche ajoute sa
        puissance RÉELLE (``kw``, saisie par le commercial) sur ses heures
        sourcées, puis l'ensemble est renormalisé pour que la somme retombe
        EXACTEMENT sur le niveau facture (VE exclu) : ces heures grossissent, le
@@ -943,7 +955,11 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     donc à UN seul propriétaire : ce module. Le VE en est absent
     volontairement — sa couche porte une ÉNERGIE (kWh/jour) et aucune puissance
     de chargeur n'est collectée, donc rien à concentrer (voir
-    ``etude_horaire.PROFILS_RAFALE``).
+    ``etude_horaire.PROFILS_RAFALE``). Le chauffe-eau, lui, EST rendu depuis
+    QJR15 : le moteur le laisse plat (``PROFILS_RAFALE['chauffe_eau']`` est
+    ``actif: False`` — un chauffe-eau ne cycle pas comme un compresseur), mais
+    sa part de l'heure est désormais NOMMÉE au lieu d'être noyée dans le
+    résiduel.
     """
     try:
         total = float(kwh_jour)
@@ -971,10 +987,10 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
 
     sortie = [part * base_total for part in forme]
 
-    # ── Passe 1 : redistribution (piscine / clim) ──
+    # ── Passe 1 : redistribution (piscine / clim / chauffe-eau) ──
     bosse = [0.0] * 24
     actives = {}
-    for cle in ('piscine', 'clim'):
+    for cle in COUCHES_REDISTRIBUTION:
         couche = couches.get(cle)
         if not couche or couche.get('mode') != 'redistribution':
             continue

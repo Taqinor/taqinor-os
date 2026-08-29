@@ -83,6 +83,7 @@ from apps.parametres.pvgis_profils import (
     vers_heure_locale,
 )
 from apps.ventes.courbes_journalieres import (
+    COUCHES_REDISTRIBUTION,
     contexte_ramadan_du_mois,
     equipements_du_devis,
     forme_consommation_detaillee,
@@ -1076,8 +1077,9 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     couche d'équipement n'est active (rien à décomposer — la page garde alors
     son affichage actuel, un seul total sans détail).
 
-    LA RÈGLE : les couches de REDISTRIBUTION (piscine, clim, chauffe_eau —
-    voir ``courbes_journalieres._equipements``) sont DÉJÀ dans la facture :
+    LA RÈGLE : les couches de REDISTRIBUTION
+    (``courbes_journalieres.COUCHES_REDISTRIBUTION`` — piscine, clim,
+    chauffe_eau) sont DÉJÀ dans la facture :
     leur « ajout » mensuel est donc RETIRÉ du ``base_mensuelle`` pour ne
     jamais compter deux fois la même énergie — la ligne « ajout » n'est qu'un
     ÉCLAIRAGE de ce que la facture contient déjà. Le véhicule électrique
@@ -1107,7 +1109,9 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
         saison = saison_du_mois(numero)
         jours = JOURS_PAR_MOIS[index]
 
-        for cle in ('piscine', 'clim', 'chauffe_eau'):
+        # QJR15 — MÊME liste que le composeur de forme : ce qui est publié ici
+        # comme un ajout mensuel est exactement ce que la forme 24 h place.
+        for cle in COUCHES_REDISTRIBUTION:
             couche = couches.get(cle)
             if not couche or couche.get('mode') != 'redistribution':
                 continue

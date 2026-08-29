@@ -742,3 +742,204 @@ class EquipementsLBack2Tests(_CourbesBase):
                          list(range(10, 18)))
         self.assertEqual(bloc['equipements']['piscine']['source'],
                          'memo_2026-08-21_etage2:piscine_bloc_10_18h')
+
+
+# ── QJR15 (29/08/2026) — la couche chauffe-eau ENTRE dans la forme ───────────
+#
+# LE DÉFAUT : ``_equipements`` composait bien une couche ``chauffe_eau``
+# (mode ``redistribution``) depuis les données RÉELLES du client, et
+# ``etude_horaire.estimation_conso_mensuelle`` la publiait comme un ajout
+# mensuel en kWh — mais le composeur de forme n'itérait que sur
+# ``('piscine', 'clim')`` : la répartition MONTRÉE et la forme sur laquelle les
+# économies étaient CALCULÉES décrivaient deux clients différents.
+
+CHAUFFE_EAU_COUCHE = {
+    'chauffe_eau': {
+        'kw': 2.4,
+        'heures': list(cj.CHAUFFE_EAU_CRENEAUX['soir']),   # 18h, 19h, 20h
+        'saisons': None,
+        'mode': 'redistribution',
+        'source': 'lead:equip_chauffe_eau_kw+creneau',
+    },
+}
+
+PISCINE_COUCHE = {
+    'piscine': {'kw': 1.1, 'heures': list(range(10, 18)), 'saisons': ['ete'],
+                'mode': 'redistribution', 'source': 'test'},
+}
+
+CLIM_COUCHE = {
+    'clim': {'kw': 1.4, 'heures': list(range(13, 21)), 'saisons': ['ete'],
+             'mode': 'redistribution', 'source': 'test'},
+}
+
+VE_COUCHE = {
+    've': {'kwh_jour': 4.0, 'heures': [21, 22, 23, 0, 1, 2], 'saisons': None,
+           'mode': 'addition', 'source': 'test'},
+}
+
+
+class ChauffeEauDansLaFormeTests(SimpleTestCase):
+    """La couche chauffe-eau est PLACÉE par le composeur, pas seulement
+    publiée."""
+
+    def test_la_couche_chauffe_eau_est_rendue_par_le_composeur(self):
+        """ROUGE avant QJR15 : ``couches`` ne contenait que piscine/clim."""
+        _forme, couches = cj.forme_consommation_detaillee(
+            20.0, cj.OCCUPATION_PRESENCE, saison='ete',
+            equipements=CHAUFFE_EAU_COUCHE)
+        self.assertIn('chauffe_eau', couches)
+        self.assertEqual(couches['chauffe_eau']['kw'], 2.4)
+        self.assertEqual(couches['chauffe_eau']['heures'], [18, 19, 20])
+
+    def test_l_energie_placee_est_la_bosse_RENORMALISEE(self):
+        """Dérivation, pas un chiffre posé : 20 kWh de base + une bosse de
+        2,4 kW × 3 h = 7,2 kWh ⇒ facteur 20 ÷ 27,2 ; la couche pèse donc
+        2,4 × 20 ÷ 27,2 = 1,764706 kWh dans CHACUNE de ses trois heures."""
+        _forme, couches = cj.forme_consommation_detaillee(
+            20.0, cj.OCCUPATION_PRESENCE, saison='ete',
+            equipements=CHAUFFE_EAU_COUCHE)
+        heures_kwh = couches['chauffe_eau']['heures_kwh']
+        for heure in (18, 19, 20):
+            self.assertAlmostEqual(heures_kwh[heure], 1.764706, places=6)
+        for heure in range(24):
+            if heure not in (18, 19, 20):
+                self.assertEqual(heures_kwh[heure], 0.0, 'heure %d' % heure)
+
+    def test_la_forme_grossit_sur_la_fenetre_du_chauffe_eau(self):
+        nu = cj.forme_consommation_kwh(20.0, cj.OCCUPATION_PRESENCE,
+                                       saison='ete')
+        avec = cj.forme_consommation_kwh(
+            20.0, cj.OCCUPATION_PRESENCE, saison='ete',
+            equipements=CHAUFFE_EAU_COUCHE)
+        fenetre = (18, 19, 20)
+        self.assertGreater(sum(avec[h] for h in fenetre),
+                           sum(nu[h] for h in fenetre))
+
+    def test_le_total_du_jour_ne_bouge_pas_d_un_kwh(self):
+        """Le chauffe-eau existe DÉJÀ dans la facture : seule la forme change."""
+        forme = cj.forme_consommation_kwh(
+            20.0, cj.OCCUPATION_PRESENCE, saison='ete',
+            equipements=CHAUFFE_EAU_COUCHE)
+        self.assertAlmostEqual(sum(forme), 20.0, places=9)
+
+    def test_le_chauffe_eau_n_est_pas_saisonnier(self):
+        """Contrairement à la piscine et à la clim, sa couche n'a pas de
+        saison : elle est placée en hiver comme en été."""
+        for saison in cj.SAISONS:
+            _forme, couches = cj.forme_consommation_detaillee(
+                20.0, cj.OCCUPATION_PRESENCE, saison=saison,
+                equipements=CHAUFFE_EAU_COUCHE)
+            self.assertIn('chauffe_eau', couches, msg=saison)
+
+
+class CouchesPublieesEgalesCouchesIntegreesTests(SimpleTestCase):
+    """« Ce qui est publié est ce qui est intégré » — la liste des couches de
+    redistribution a UN seul propriétaire (``cj.COUCHES_REDISTRIBUTION``), lu
+    par le composeur de forme ET par la décomposition mensuelle."""
+
+    def _tout(self):
+        equip = {}
+        equip.update(PISCINE_COUCHE)
+        equip.update(CLIM_COUCHE)
+        equip.update(CHAUFFE_EAU_COUCHE)
+        return equip
+
+    def test_le_composeur_et_la_decomposition_lisent_la_meme_liste(self):
+        from apps.ventes import etude_horaire as eh
+
+        self.assertEqual(cj.COUCHES_REDISTRIBUTION,
+                         ('piscine', 'clim', 'chauffe_eau'))
+        self.assertIs(eh.COUCHES_REDISTRIBUTION, cj.COUCHES_REDISTRIBUTION)
+
+    def test_en_ete_les_couches_publiees_sont_exactement_les_integrees(self):
+        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+
+        equip = self._tout()
+        _forme, couches = cj.forme_consommation_detaillee(
+            30.0, cj.OCCUPATION_PRESENCE, saison='ete', equipements=equip)
+        estimation = estimation_conso_mensuelle(CASA_CONSO, equip)
+        self.assertEqual(set(estimation['ajouts']), set(couches))
+        self.assertEqual(set(couches), {'piscine', 'clim', 'chauffe_eau'})
+
+    def test_en_hiver_seul_le_chauffe_eau_reste_integre(self):
+        """Piscine et clim sont hors saison : elles ne sont ni placées ni
+        publiées ce mois-là (leur ajout de janvier vaut zéro)."""
+        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+
+        equip = self._tout()
+        _forme, couches = cj.forme_consommation_detaillee(
+            30.0, cj.OCCUPATION_PRESENCE, saison='hiver', equipements=equip)
+        self.assertEqual(set(couches), {'chauffe_eau'})
+        estimation = estimation_conso_mensuelle(CASA_CONSO, equip)
+        self.assertEqual(estimation['ajouts']['piscine'][0], 0.0)
+        self.assertEqual(estimation['ajouts']['clim'][0], 0.0)
+        self.assertGreater(estimation['ajouts']['chauffe_eau'][0], 0.0)
+
+    def test_le_total_publie_retombe_sur_la_facture_chauffe_eau_compris(self):
+        """La somme des couches publiées (base + ajouts de redistribution)
+        égale la consommation réelle — donc la même énergie que la forme
+        intégrée, qui somme elle aussi au niveau facture."""
+        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+
+        estimation = estimation_conso_mensuelle(CASA_CONSO, self._tout())
+        for index, attendu in enumerate(CASA_CONSO):
+            self.assertAlmostEqual(
+                estimation['totale_mensuelle'][index], float(attendu),
+                delta=0.02, msg='mois %d' % (index + 1))
+
+    def test_le_ve_reste_le_seul_ajout_par_dessus_le_total(self):
+        """Non-régression de la distinction redistribution/addition : le VE
+        n'entre PAS dans COUCHES_REDISTRIBUTION."""
+        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+
+        self.assertNotIn('ve', cj.COUCHES_REDISTRIBUTION)
+        equip = dict(VE_COUCHE)
+        equip.update(CHAUFFE_EAU_COUCHE)
+        estimation = estimation_conso_mensuelle(CASA_CONSO, equip)
+        for index, attendu in enumerate(CASA_CONSO):
+            self.assertGreater(estimation['totale_mensuelle'][index],
+                               float(attendu), 'mois %d' % (index + 1))
+
+
+class SansChauffeEauRienNeChangeTests(SimpleTestCase):
+    """« Golden inchangé pour un lead sans chauffe-eau » : aucun chemin sans
+    couche chauffe-eau utilisable ne bouge d'un chiffre."""
+
+    def _formes(self, equipements, saison='ete'):
+        return cj.forme_consommation_detaillee(
+            20.0, cj.OCCUPATION_PRESENCE, saison=saison,
+            equipements=equipements)
+
+    def _piscine_clim(self):
+        equip = {}
+        equip.update(PISCINE_COUCHE)
+        equip.update(CLIM_COUCHE)
+        return equip
+
+    def test_lead_sans_chauffe_eau_forme_identique(self):
+        forme, couches = self._formes(self._piscine_clim())
+        self.assertEqual(set(couches), {'piscine', 'clim'})
+        self.assertAlmostEqual(sum(forme), 20.0, places=9)
+
+    def test_une_couche_chauffe_eau_sans_puissance_est_ignoree(self):
+        """Le composeur n'invente rien : sans ``kw`` utilisable, la couche est
+        absente et la forme est celle d'un lead sans chauffe-eau, à l'octet."""
+        avec_couche_vide = self._piscine_clim()
+        avec_couche_vide['chauffe_eau'] = {
+            'kw': 0, 'heures': [18, 19, 20], 'saisons': None,
+            'mode': 'redistribution', 'source': 'test'}
+        attendue, couches_attendues = self._formes(self._piscine_clim())
+        obtenue, couches_obtenues = self._formes(avec_couche_vide)
+        self.assertEqual([round(v, 12) for v in obtenue],
+                         [round(v, 12) for v in attendue])
+        self.assertEqual(set(couches_obtenues), set(couches_attendues))
+
+    def test_aucun_equipement_forme_de_base_intacte(self):
+        nu, couches = self._formes(None)
+        self.assertEqual(couches, {})
+        self.assertEqual(
+            [round(v, 12) for v in nu],
+            [round(part * 20.0, 12)
+             for part in cj.silhouette_jour(cj.OCCUPATION_PRESENCE,
+                                            saison='ete')])
