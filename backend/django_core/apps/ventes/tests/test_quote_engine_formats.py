@@ -1333,3 +1333,79 @@ class TestPdfFormats(TestCase):
         self.assertEqual(opts['payment_mode'], 'standard')
         self.assertIsNone(opts['custom_acompte'])
         self.assertNotIn('junk', opts)
+
+
+class TestQjr32DispatchModeNormalise(TestCase):
+    """QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ.
+
+    ``build_quote_data`` dégrade un devis agricole demandé en « full » vers le
+    format UNE PAGE (le format à options n'a pas de sens sans onduleur) et
+    publie le mode retenu dans ``data['pdf_mode']``. Les prédicats ``is_*``
+    lisaient encore la demande BRUTE : ils voyaient « full » et lançaient le
+    renderer agricole premium multi-pages sur des données bâties pour une
+    page — la dégradation annoncée par le builder était MORTE pour la
+    sélection du renderer.
+    """
+
+    LIGNES_POMPAGE = [
+        ('Pompe immergée 5,5 CV', '1', '18000'),
+        ('Variateur VEICHI 5,5 kW', '1', '9000'),
+        ('Panneau mono 550W', '12', '1100'),
+        ('Structures acier', '12', '375'),
+    ]
+    ETUDE_POMPAGE = {
+        'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+        'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.LIGNES_POMPAGE,
+            reference='DEV-QJR32-AGRI', etude_params=dict(self.ETUDE_POMPAGE))
+        self.devis.mode_installation = 'agricole'
+        self.devis.save(update_fields=['mode_installation'])
+
+    def test_le_dispatch_suit_la_degradation_annoncee_par_le_builder(self):
+        from apps.ventes.quote_engine.agricole import renderer as agricole
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        # le builder DÉGRADE : les données sont bâties pour UNE page…
+        self.assertEqual(data['pdf_mode'], 'onepage')
+        # …et le prédicat, lu sur le mode RETENU, ne réclame plus le renderer
+        # premium multi-pages (il le faisait sur la demande brute).
+        self.assertFalse(
+            agricole.is_agricultural(self.devis,
+                                     {'pdf_mode': data['pdf_mode']}))
+        self.assertTrue(
+            agricole.is_agricultural(self.devis, {'pdf_mode': 'full'}))
+
+    @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    def test_un_seul_renderer_est_choisi_et_il_rend_bien_le_pdf(self, up, _b):
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        from apps.ventes.quote_engine.agricole import renderer as agricole
+        with patch.object(agricole, 'render_pdf_bytes') as rendu_premium:
+            generate_premium_devis_pdf(self.devis.id,
+                                       pdf_options={'pdf_mode': 'full'})
+        rendu_premium.assert_not_called()
+        up.assert_called_once()
+        self.assertEqual(up.call_args[0][0][:4], b'%PDF')
+
+    def test_le_compte_de_pages_est_celui_que_la_degradation_annonce(self):
+        """Une page — exactement ce que le builder a construit."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr32_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)
