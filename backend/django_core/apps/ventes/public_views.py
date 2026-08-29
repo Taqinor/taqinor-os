@@ -1123,6 +1123,42 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
         return None
 
 
+def _variant_total_ttc(frere):
+    """QJR11 — total TTC AFFICHÉ d'un devis frère, par la chaîne canonique.
+
+    UNE seule chaîne monétaire (``utils.options.option_totaux`` →
+    ``selectors._canonical_totaux``) : HT brut des lignes qui COMPTENT
+    (``compte_dans_totaux`` — donc jamais une option non activée ni une ligne
+    de section/note) → remise globale → TVA **par ligne** → TTC au centime.
+
+    L'option retenue est celle que porte le total d'affichage canonique
+    (``builder.display_total`` / ``utils.options.totaux_affichage_repli``,
+    LANE CHOIX-AVEC du 25/08) : sur un devis à DEUX options c'est l'option
+    AVEC batterie — jamais la somme des deux, un montant qui n'existe dans
+    aucun document. Le prédicat utilisé est le prédicat LÉGER
+    (``deux_options_declarees``) : la bande des variantes ne doit pas payer un
+    rendu PDF complet par frère, et un moteur en échec ne doit pas la faire
+    retomber silencieusement sur la somme des deux options.
+    """
+    from .utils.options import (
+        AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees,
+        filter_lines_for_option, option_totaux,
+    )
+    lignes = list(frere.lignes.select_related('produit', 'devis').all())
+    if not deux_options_declarees(frere):
+        # Option unique / pompage / liste libre : tout le devis, comme la liste.
+        return option_totaux(frere, option='', lignes=lignes)['ttc']
+    avec = option_totaux(
+        frere, option='',
+        lignes=filter_lines_for_option(lignes, AVEC_BATTERIE))['ttc']
+    if avec:
+        return avec
+    # Panier « avec » sans total lisible → l'autre option, jamais un forfait.
+    return option_totaux(
+        frere, option='',
+        lignes=filter_lines_for_option(lignes, SANS_BATTERIE))['ttc']
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -1131,12 +1167,23 @@ def _variant_summaries(devis) -> list:
     vide si le devis est isolé (pas de version_parent, pas de frère/sœur actif).
 
     Le summary est volontairement minimal : id, reference, version, note,
-    total_ttc (somme brute sans remise globale, bonne pour une comparaison
-    relative côte-à-côte). Jamais de prix d'achat ni de marge (règle #4).
+    total_ttc. Jamais de prix d'achat ni de marge (règle #4).
+
+    QJR11 (29/08/2026) — ``total_ttc`` passait par une SEPTIÈME chaîne
+    monétaire écrite ici à la main (``.values('quantite', ...)`` puis produit
+    en Python) : elle ne filtrait pas ``compte_dans_totaux`` (donc comptait les
+    options non activées et plantait sur une ligne de section, ``quantite``
+    NULL), appliquait le taux de TVA du DEVIS au lieu du taux par ligne, et sur
+    un frère à deux options additionnait les DEUX paniers. Elle est remplacée
+    par la chaîne canonique (:func:`_variant_total_ttc`). Un frère dont le
+    total est illisible est OMIS de la bande — jamais un chiffre de repli
+    (règle fondateur « zéro chiffre inventé ») — et un frère en échec ne
+    supprime plus la bande entière (constat V1 : l'``except`` de sortie
+    renvoyait ``[]``).
     """
     root = devis.version_parent_id or devis.pk
     try:
-        from .models import Devis as DevisModel, LigneDevis
+        from .models import Devis as DevisModel
         # Include root + all siblings with the same version_parent.
         siblings = list(
             DevisModel.objects
@@ -1166,27 +1213,26 @@ def _variant_summaries(devis) -> list:
             return []
         out = []
         for s in siblings:
-            # Approximate total TTC (no access to build_quote_data for speed)
-            lines = LigneDevis.objects.filter(devis=s).values(
-                'quantite', 'prix_unitaire', 'remise', 'taux_tva')
-            total_ht = sum(
-                float(ln['quantite']) * float(ln['prix_unitaire'])
-                * (1 - float(ln['remise'] or 0) / 100)
-                for ln in lines
-            )
-            remise_g = float(s.remise_globale or 0)
-            total_ht_after_remise = total_ht * (1 - remise_g / 100)
-            taux = float(s.taux_tva or 20)
-            total_ttc = total_ht_after_remise * (1 + taux / 100)
+            try:
+                total_ttc = _variant_total_ttc(s)
+            except Exception:  # noqa: BLE001 — un frère illisible n'efface
+                # pas la bande : il est simplement OMIS (jamais un forfait).
+                logger.warning(
+                    "Total de variante illisible pour le devis %s — frère omis",
+                    getattr(s, 'pk', None))
+                continue
             out.append({
                 'id': s.id,
                 'reference': s.reference,
                 'version': s.version,
                 'note': (s.note or ''),
-                'total_ttc': round(total_ttc, 2),
+                'total_ttc': round(float(total_ttc), 2),
             })
         return out
     except Exception:  # noqa: BLE001 — best-effort, never break the proposal
+        logger.warning(
+            "Bande des variantes indisponible pour le devis %s",
+            getattr(devis, 'pk', None))
         return []
 
 
