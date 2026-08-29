@@ -999,7 +999,12 @@ export default function DevisGenerator({
     donnees: etudeHoraireDonnees,
     chargement: etudeHoraireChargement,
     erreur: etudeHoraireErreur,
+    corpsServi: etudeHoraireCorpsServi,
   } = useEtudeHorairePreview(etudeHoraireCorps)
+  // Clé du corps ACTUELLEMENT à l'écran, à comparer à celui qui a produit la
+  // réponse (`corpsServi`) : mêmes règles de sérialisation que le hook.
+  const etudeHoraireCorpsKey = etudeHoraireCorps
+    ? JSON.stringify(etudeHoraireCorps) : null
   const { donnees: etudeHoraireDonneesAvec } =
     useEtudeHorairePreview(etudeHoraireCorpsAvec)
   // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
@@ -1019,6 +1024,13 @@ export default function DevisGenerator({
     if (!attenteSizingServeur.current) return
     if (nbPanneauxTouched.current) { attenteSizingServeur.current = false; return }
     if (etudeHoraireChargement) return // réponse en vol — on ne décide rien
+    // U3-MOTEUR — LA RÉPONSE DOIT DÉCRIRE CE QU'ON A SOUS LES YEUX. Une
+    // réponse déjà EN VOL quand la nouvelle facture est tapée arrive après,
+    // parfaitement valide, mais pour l'ANCIENNE : la consommer posait un
+    // nombre de panneaux RÉEL pour un AUTRE profil, et refermait le drapeau
+    // avant l'arrivée de la bonne réponse (reproduit : 1200 → 3000 restait
+    // bloqué sur 9 panneaux). On attend SA réponse.
+    if (etudeHoraireDonnees && etudeHoraireCorpsServi !== etudeHoraireCorpsKey) return
     const reco = etudeHoraireDonnees?.dimensionnement?.recommandation
     if (Number(reco?.panneaux) > 0) {
       attenteSizingServeur.current = false
@@ -1056,7 +1068,8 @@ export default function DevisGenerator({
         || etudeHoraireErreur
         || "Dimensionnement indisponible : le serveur n'a pas pu chiffrer de recommandation.")
     }
-  }, [etudeHoraireDonnees, etudeHoraireChargement, etudeHoraireErreur])
+  }, [etudeHoraireDonnees, etudeHoraireChargement, etudeHoraireErreur,
+    etudeHoraireCorpsServi, etudeHoraireCorpsKey])
   // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
   // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null

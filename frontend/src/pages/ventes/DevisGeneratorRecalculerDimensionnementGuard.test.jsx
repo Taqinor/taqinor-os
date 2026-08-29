@@ -46,16 +46,36 @@ vi.mock('../../api/parametresApi', () => ({
 // vrai réseau indisponible. Ce choix rend le test déterministe (aucune
 // promesse réseau à attendre) tout en exerçant EXACTEMENT le chemin de code
 // que F1/F2 concernent (la fenêtre de déverrouillage autour de cet appel).
+// U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+// tool ») — EN RÉSIDENTIEL, L'ÉCRAN NE DIMENSIONNE PLUS LUI-MÊME : le nombre
+// de panneaux vient de la recommandation du moteur horaire SERVEUR (dry-run
+// `postEtudeHorairePreview`), que ce soit à la frappe sur la facture ou au
+// clic sur « Recalculer ». Ce mock est donc INDISPENSABLE ici : sans lui,
+// l'écran resterait vide — comportement voulu (omission honnête), mais qui ne
+// permettrait plus d'observer le garde-fou F1. La recommandation servie suit
+// la facture demandée pour que deux factures très différentes donnent deux
+// tailles différentes, exactement comme le vrai moteur.
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(() => Promise.resolve({ data: { source: 'standard' } })),
     getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
+    postEtudeHorairePreview: vi.fn((body) => {
+      const n = Number(body?.facture_hiver) >= 2500 ? 21 : 9
+      return Promise.resolve({
+        data: {
+          dimensionnement: {
+            recommandation: { panneaux: n, kwc: (n * 710) / 1000, panel_watt: 710 },
+          },
+        },
+      })
+    }),
   },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
+import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
 
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
@@ -118,6 +138,22 @@ const nbPanneauxField = () => screen.getByLabelText(/Nombre de panneaux/)
 const hiverField = () => screen.getByLabelText(/Facture Hiver/)
 const recalcButton = () => screen.getByRole('button', { name: /Recalculer le dimensionnement/i })
 
+// U3-MOTEUR — le recalcul RÉSIDENTIEL lit la recommandation du moteur SERVEUR.
+// Si un dry-run est encore EN VOL au moment du clic (le débounce de 500 ms
+// vient d'être relancé par un changement de composition), le bouton refuse
+// honnêtement (« Dimensionnement en cours de calcul — réessayez dans un
+// instant. ») au lieu d'inventer une taille. On reclique donc jusqu'à ce que
+// la composition parte : c'est EXACTEMENT ce que fait un commercial, et cela
+// rend le test déterministe sous charge sans rien relâcher du contrat F1.
+async function cliquerRecalculJusquaComposition() {
+  await waitFor(() => {
+    fireEvent.click(recalcButton())
+    // L'onduleur réseau du stock n'apparaît dans les lignes que si la
+    // composition est réellement partie.
+    screen.getByDisplayValue(/Onduleur réseau Huawei/)
+  }, { timeout: 10000 })
+}
+
 describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACTE d\'avant le clic (jamais figé à true)', () => {
   it('création (garde-fou OUVERT avant le clic) : le redimensionnement en direct facture→panneaux SURVIT à un clic sur Recalculer', async () => {
     renderGenerator()
@@ -129,14 +165,14 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     // taper une facture le redimensionne déjà tout seul (comportement N3
     // existant, pas ce qui est sous test ici).
     fireEvent.change(hiverField(), { target: { value: '1200' } })
-    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0))
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
     const avantClic = nbPanneauxField().value
 
-    fireEvent.click(recalcButton())
     // Preuve que la composition déclenchée par le clic est allée à son terme
     // (repli composeLocalement synchrone — voir le mock ventesApi ci-dessus) :
     // l'onduleur réseau du stock apparaît dans les lignes.
-    await screen.findByDisplayValue(/Onduleur réseau Huawei/)
+    await cliquerRecalculJusquaComposition()
     const apresClic = nbPanneauxField().value
     expect(parseFloat(apresClic) || 0).toBeGreaterThan(0)
     // Même facture qu'avant le clic (rien n'a changé entre-temps) : le
@@ -150,11 +186,14 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     // reverrouillé à `true` en dur (l'ancienne régression), cette frappe
     // resterait silencieuse et `apresRecalculConstitue` == `apresClic`.
     fireEvent.change(hiverField(), { target: { value: '3000' } })
+    // U3-MOTEUR — le redimensionnement passe désormais par un aller-retour
+    // SERVEUR débondi (~500 ms, `useEtudeHorairePreview`) : le budget par
+    // défaut de `waitFor` (1 s) est trop juste sous charge CI.
     await waitFor(() => {
       const v = nbPanneauxField().value
       expect(v).not.toBe(apresClic)
       expect(parseFloat(v) || 0).toBeGreaterThan(0)
-    })
+    }, { timeout: 5000 })
   })
 
   it('un nombre de panneaux tapé À LA MAIN avant le clic (garde-fou FERMÉ) reste verrouillé APRÈS le clic — la frappe suivante sur la facture reste silencieuse', async () => {
@@ -162,7 +201,8 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     await screen.findByDisplayValue('Installation')
 
     fireEvent.change(hiverField(), { target: { value: '1200' } })
-    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0))
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
 
     // Ferme le garde-fou EXPLICITEMENT, comme un commercial qui ajuste le
     // compte à la main (onNbPanneauxChange).
@@ -173,18 +213,23 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     // — remplace même une valeur manuelle), MAIS doit reverrouiller le
     // garde-fou à ce qu'il était AVANT ce clic (fermé), pas à `true` en dur
     // ni à `false` en dur.
-    fireEvent.click(recalcButton())
-    await screen.findByDisplayValue(/Onduleur réseau Huawei/)
-    await waitFor(() => expect(nbPanneauxField().value).not.toBe('99'))
+    await cliquerRecalculJusquaComposition()
+    await waitFor(() => expect(nbPanneauxField().value).not.toBe('99'),
+      { timeout: 5000 })
     const apresClic = nbPanneauxField().value
 
     // Une facture différente ne doit RIEN changer : le garde-fou était fermé
     // avant le clic, il doit le rester après (restauration EXACTE, pas un
     // `false` en dur qui rouvrirait le redimensionnement en direct par erreur).
     fireEvent.change(hiverField(), { target: { value: '3000' } })
-    // Laisse le temps à un éventuel (mauvais) recalcul de se produire avant
-    // de constater qu'il n'a PAS eu lieu.
-    await waitFor(() => expect(hiverField().value).toBe('3000'))
+    // U3-MOTEUR — l'assertion NÉGATIVE ne vaut que si le redimensionnement a
+    // réellement eu SA CHANCE : on attend que le dry-run serveur de la
+    // NOUVELLE facture soit parti (le débounce de 500 ms écoulé et l'appel
+    // émis). Sans cette preuve, le test passerait à vide.
+    await waitFor(() => {
+      const appels = ventesApi.postEtudeHorairePreview.mock.calls
+      expect(appels.some(([corps]) => Number(corps?.facture_hiver) === 3000)).toBe(true)
+    }, { timeout: 5000 })
     expect(nbPanneauxField().value).toBe(apresClic)
   })
 })

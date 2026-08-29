@@ -41,14 +41,24 @@ export function useEtudeHorairePreview(corps) {
   const [donnees, setDonnees] = useState(null)
   const [chargement, setChargement] = useState(false)
   const [erreur, setErreur] = useState(null)
+  // U3-MOTEUR (29/08/2026) — LA CLÉ DU CORPS QUI A PRODUIT `donnees`. Sans
+  // elle, un appelant ne peut pas savoir SI la réponse qu'il lit décrit encore
+  // ce qu'il a sous les yeux : une réponse DÉJÀ EN VOL au moment d'une
+  // nouvelle saisie arrive après, parfaitement valide, mais pour l'ANCIENNE
+  // facture. Le générateur s'en servait pour préremplir le nombre de panneaux
+  // — un chiffre RÉEL posé pour un AUTRE profil (incident reproduit par
+  // DevisGeneratorRecalculerDimensionnementGuard : facture 1200 → 3000
+  // laissait 9 panneaux). L'appelant compare, et attend sa propre réponse.
+  const [corpsServi, setCorpsServi] = useState(null)
 
   useEffect(() => {
     if (!debouncedKey) {
+      // UNE seule dérogation par bloc : la règle ne signale que le PREMIER
+      // setState, et une par ligne déclencherait `reportUnusedDisableDirectives`.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence d'ancrage
       setDonnees(null)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCorpsServi(null)
       setChargement(false)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErreur(null)
       return undefined
     }
@@ -61,14 +71,20 @@ export function useEtudeHorairePreview(corps) {
 
     let cancelled = false
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // La dérogation du bloc ci-dessus couvre DÉJÀ tout cet effet (la règle ne
+    // signale que son premier setState) : en poser une seconde ici la
+    // rendrait « inutile » (`reportUnusedDisableDirectives`).
+    // Jamais de résultat périmé pendant le recalcul : on efface avant l'appel.
     setChargement(true)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setErreur(null)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- jamais de résultat périmé pendant le recalcul
     setDonnees(null)
+    setCorpsServi(null)
     ventesApi.postEtudeHorairePreview(body, { signal: controller.signal })
-      .then((res) => { if (!cancelled) setDonnees(res.data) })
+      .then((res) => {
+        if (cancelled) return
+        setDonnees(res.data)
+        setCorpsServi(debouncedKey)
+      })
       .catch((err) => {
         if (cancelled) return
         if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
@@ -78,5 +94,5 @@ export function useEtudeHorairePreview(corps) {
     return () => { cancelled = true; controller.abort() }
   }, [debouncedKey])
 
-  return { donnees, chargement, erreur }
+  return { donnees, chargement, erreur, corpsServi }
 }

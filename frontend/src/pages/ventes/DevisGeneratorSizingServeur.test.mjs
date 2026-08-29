@@ -87,6 +87,31 @@ test('DevisGenerator.jsx : un effet applique la recommandation SERVEUR ou son re
 //       à `None` et AUCUN avertissement.
 // Ne lire que (a) affichait le message générique de repli à la place de la
 // cause NOMMÉE par le serveur.
+// U3-MOTEUR — RÉPONSE EN VOL. Une réponse déjà partie quand une nouvelle
+// facture est tapée arrive APRÈS, parfaitement valide, mais pour l'ANCIENNE
+// facture. La consommer posait un nombre de panneaux RÉEL pour un AUTRE
+// profil, ET refermait le drapeau d'attente avant l'arrivée de la bonne
+// réponse (bug reproduit : facture 1200 → 3000 restait bloqué sur la taille
+// du 1200 — voir DevisGeneratorRecalculerDimensionnementGuard.test.jsx).
+test("U3-MOTEUR — l'effet n'applique QUE la réponse du corps affiché (aucune réponse en vol d'une facture précédente)", () => {
+  // Le hook expose le corps qui a produit la réponse…
+  const HOOK = readFileSync(
+    join(HERE, '../../features/ventes/etudeHorairePreview.js'), 'utf8')
+  assert.match(HOOK, /setCorpsServi\(debouncedKey\)/,
+    'le hook doit mémoriser le corps qui a produit la réponse')
+  assert.match(HOOK, /return \{ donnees, chargement, erreur, corpsServi \}/,
+    'le hook doit exposer corpsServi à ses appelants')
+  // …et l'écran ne consomme la réponse que si elle décrit le corps AFFICHÉ.
+  const idx = DG.indexOf('if (!attenteSizingServeur.current) return')
+  assert.ok(idx > -1, "l'effet attenteSizingServeur est introuvable")
+  const bloc = DG.slice(idx, idx + 3200)
+  assert.match(bloc,
+    /if \(etudeHoraireDonnees && etudeHoraireCorpsServi !== etudeHoraireCorpsKey\) return/,
+    "une réponse servie pour un autre corps ne doit ni être appliquée ni fermer l'attente")
+  // La comparaison porte sur la MÊME sérialisation que le hook.
+  assert.match(DG, /const etudeHoraireCorpsKey = etudeHoraireCorps\s*\n?\s*\? JSON\.stringify\(etudeHoraireCorps\) : null/)
+})
+
 test('F4 — le refus serveur affiche la cause NOMMÉE : avertissements OU dimensionnement.motivation, jamais le générique quand le serveur a parlé', () => {
   const idx = DG.indexOf('if (!attenteSizingServeur.current) return')
   assert.ok(idx > -1, "l'effet attenteSizingServeur est introuvable")
