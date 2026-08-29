@@ -139,10 +139,39 @@ test('F1 (BLOQUANT, revue adversariale) — recalculerDimensionnement() CAPTURE 
   const setNbIdx = bloc.indexOf('setNbPanneaux(String(retenu.nbPanneaux))')
   assert.ok(setNbIdx > -1)
   assert.ok(unlockIdx < setNbIdx, 'le déverrouillage doit précéder la pose du nombre de panneaux')
-  // Choix sans/avec : même patron que applyLead/applySiteProfile/syncBillEstimator.
-  assert.match(bloc, /const retenu = \(modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC\)\s*\n\s*\? sizing\.avec : sizing/)
-  assert.match(bloc, /setSizingInfo\(retenu\)/)
+  // U3-MOTEUR — en résidentiel `sizingInfo` reste NUL (son encart décrit le
+  // balayage local : « palier retenu / besoin lu sur la facture », deux
+  // notions qui ne décrivent pas ce que le moteur a fait).
+  assert.match(bloc, /setSizingInfo\(modeInstallation === 'residentiel' \? null : retenu\)/)
   assert.match(bloc, /setKwcCible\(retenu\.kwcOptimal/)
+})
+
+// U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+// tool ») — le bouton « Recalculer le dimensionnement » était le DERNIER
+// endroit où un nombre de panneaux chiffré à l'écran (balayage par paliers de
+// 5 kWc) pouvait encore écraser celui du moteur horaire, quelle que soit la
+// facture. En résidentiel il relit désormais la recommandation SERVEUR (déjà
+// obtenue par le dry-run d'aperçu — aucun appel réseau supplémentaire).
+test("U3-MOTEUR — recalculerDimensionnement() : en résidentiel la taille vient du MOTEUR SERVEUR, le balayage local ne sert plus qu'aux marchés sans moteur", () => {
+  const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
+  const residIdx = bloc.indexOf("if (modeInstallation === 'residentiel') {")
+  assert.ok(residIdx > -1, 'la branche résidentielle du recalcul est introuvable')
+  const elseIdx = bloc.indexOf('} else {', residIdx)
+  assert.ok(elseIdx > -1, 'la branche des autres marchés est introuvable')
+  const brancheResid = bloc.slice(residIdx, elseIdx)
+  // Résidentiel : uniquement la recommandation du moteur, jamais un palier local.
+  assert.match(brancheResid, /etudeHoraireDonnees\?\.dimensionnement/)
+  assert.match(brancheResid, /recommandation_avec/)
+  assert.ok(!/computeAutoSizing\(/.test(brancheResid),
+    "la branche résidentielle ne doit plus chiffrer de palier localement")
+  // Refus : message FRANÇAIS du serveur (motivation/avertissements) en priorité.
+  assert.match(brancheResid, /recalcDim: dim\?\.motivation/)
+  assert.match(brancheResid, /etudeHoraireDonnees\?\.avertissements\?\.\[0\]/)
+  // Aucun chiffre posé sans recommandation exploitable.
+  assert.match(brancheResid, /if \(!\(Number\(source\?\.panneaux\) > 0\)\) \{/)
+  // Les autres marchés (aucun moteur serveur pour eux) gardent le balayage.
+  const brancheAutres = bloc.slice(elseIdx)
+  assert.match(brancheAutres, /const sizing = computeAutoSizing\(fHiver, fEte\)/)
 })
 
 test('recalculerDimensionnement() : déclenche la recomposition via un COMPTEUR dédié (jamais un effet calé sur nbPanneaux qui pourrait ne pas se redéclencher à compte inchangé)', () => {
