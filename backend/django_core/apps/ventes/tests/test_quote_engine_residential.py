@@ -1063,6 +1063,65 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('Consultez votre proposition interactive', html)
 
 
+class TestQjr30EchappementTextesClient(SimpleTestCase):
+    """QJR30 — les renderers « maison » recevaient les textes client BRUTS.
+
+    L'échappement ERR37 n'existait que dans le moteur legacy : le résidentiel,
+    l'industriel et le commercial émettaient désignations, marques, NOM et
+    ADRESSE du client directement dans le HTML du PDF, et les puces d'option
+    n'étaient échappées dans AUCUN des deux moteurs. Le puits est WeasyPrint
+    côté serveur : le risque est la CORRUPTION du document (un « < » non
+    apparié mange une page), pas du XSS.
+    """
+
+    NOM_PIEGE = 'dupont <&> "fils"'
+    DESIG_PIEGE = 'Installation <toit> & "pose"'
+
+    def _donnees_piegees(self):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = d['client_full'] = self.NOM_PIEGE
+        d['client_addr'] = '12 rue <Test> & Cie'
+        for _cle in ('sans_items', 'avec_items'):
+            d[_cle] = [{**it, 'designation': self.DESIG_PIEGE} if i == 0 else it
+                       for i, it in enumerate(d[_cle])]
+        d['sans_bullets'] = ['16 panneaux <710> W & co'] + d['sans_bullets'][1:]
+        return echapper_textes_client(d)
+
+    def test_aucun_chevron_client_brut_dans_le_html_rendu(self):
+        from apps.ventes.quote_engine.residential import render, renderer
+        html = render.build_html(renderer._augment(self._donnees_piegees()))
+        for brut in ('<toit>', '<Test>', '<&>', '<710>'):
+            self.assertNotIn(brut, html, f'{brut} atteint le HTML tel quel')
+        self.assertIn('&lt;toit&gt; &amp; &quot;pose&quot;', html)
+        self.assertIn('12 rue &lt;Test&gt; &amp; Cie', html)
+
+    def test_l_echappement_ne_touche_que_les_caracteres_dangereux(self):
+        """Un devis normal traverse l'échappement au bit près — c'est ce qui
+        rend la garde posable au point de rendu sans rien changer d'autre."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        d = sample_data.build()
+        avant = render.build_html(renderer._augment(d))
+        apres = render.build_html(
+            renderer._augment(echapper_textes_client(sample_data.build())))
+        self.assertEqual(avant, apres)
+
+    def test_le_dict_public_n_est_jamais_echappe(self):
+        """La MÊME structure part en JSON à la proposition publique : des
+        entités HTML s'y afficheraient telles quelles au client. L'échappement
+        est donc posé au rendu, jamais dans ``build_quote_data``."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = self.NOM_PIEGE
+        echappe = echapper_textes_client(d)
+        self.assertEqual(d['client_name'], self.NOM_PIEGE)   # source intacte
+        self.assertNotEqual(echappe['client_name'], self.NOM_PIEGE)
+
+
 class TestQjr29PrixDansLIdentiteDeLigne(SimpleTestCase):
     """QJR29 — ``_split_items`` fusionnait deux lignes de PRIX différents.
 

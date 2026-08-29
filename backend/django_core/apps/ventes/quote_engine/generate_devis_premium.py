@@ -3477,8 +3477,12 @@ def apply_quote_data(data: dict) -> None:
         for s in (data.get("lignes_structure") or [])
         if isinstance(s, dict)]
     OPTIONS_PROPOSEES = _esc_items(data.get("options_proposees") or [])
-    SANS_BULLETS = data.get("sans_bullets") or []
-    AVEC_BULLETS = data.get("avec_bullets") or []
+    # QJR30 — les puces d'option sont BÂTIES depuis des désignations de lignes
+    # (donc du texte contrôlé par l'utilisateur) et étaient rendues telles
+    # quelles en HTML : un « < » non apparié dans une désignation mangeait la
+    # carte d'option. Même échappement ERR37 que les items ci-dessous.
+    SANS_BULLETS = [_esc(b) for b in (data.get("sans_bullets") or [])]
+    AVEC_BULLETS = [_esc(b) for b in (data.get("avec_bullets") or [])]
     # D2/N60/N67/N59 — textes éditables du devis : fusion défaut + surcharges
     # société. Toute clé absente/None retombe sur le littéral historique, donc
     # un appel sans `doc_texts` (ou avec des surcharges vides) reste byte-identique.

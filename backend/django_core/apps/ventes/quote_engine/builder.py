@@ -11,6 +11,7 @@ and orders are untouched.
 from __future__ import annotations
 
 import copy
+import html
 import logging
 import re
 import tempfile
@@ -2892,6 +2893,61 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     return data
 
 
+# ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
+#: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
+#: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
+_CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
+#: Scalaires client rendus tels quels par les gabarits.
+_CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
+                        "client_city", "client_phone", "client_ice")
+
+
+def echapper_textes_client(data: dict) -> dict:
+    """Copie de ``data`` dont les textes CONTRÔLÉS PAR L'UTILISATEUR sont
+    échappés HTML, pour les renderers qui écrivent leur HTML à la main
+    (résidentiel, industriel, commercial, agricole).
+
+    L'échappement ERR37 n'existait QUE dans le moteur legacy (à son ingestion,
+    ``generate_devis_premium.apply_quote_data``) : les autres renderers
+    émettaient les désignations, les marques, le NOM et l'ADRESSE du client
+    directement dans le HTML du PDF. Le puits est WeasyPrint côté serveur, pas
+    un navigateur : le risque n'est pas du XSS mais la CORRUPTION du document —
+    un « < » non apparié dans une désignation mange une page entière.
+
+    APPLIQUÉ AU POINT DE RENDU, jamais dans ``build_quote_data`` : le MÊME dict
+    est servi en JSON par la proposition publique (``public_views``), où des
+    entités HTML s'afficheraient telles quelles au client. Le legacy, lui,
+    garde son propre échappement — il reçoit donc les données brutes, sinon il
+    échapperait deux fois (« &amp;lt; »).
+
+    ``html.escape`` ne touche que ``&<>"'`` : un texte normal est rendu au bit
+    près, et les mots-clés de classification (panneau, batterie…) sont intacts.
+    """
+    def _e(v):
+        return html.escape(str(v)) if v is not None else v
+
+    sortie = dict(data)
+    for _cle in _CHAMPS_TEXTE_CLIENT:
+        if sortie.get(_cle) is not None:
+            sortie[_cle] = _e(sortie[_cle])
+    for _cle in ("sans_items", "avec_items", "all_items", "options_proposees"):
+        _rows = sortie.get(_cle)
+        if isinstance(_rows, list):
+            sortie[_cle] = [
+                ({**it, **{c: _e(it[c]) for c in _CHAMPS_TEXTE_LIGNE
+                           if it.get(c) is not None}}
+                 if isinstance(it, dict) else it)
+                for it in _rows
+            ]
+    # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
+    # elles n'étaient échappées par aucun des deux moteurs.
+    for _cle in ("sans_bullets", "avec_bullets"):
+        _vals = sortie.get(_cle)
+        if isinstance(_vals, list):
+            sortie[_cle] = [_e(v) for v in _vals]
+    return sortie
+
+
 def display_totals(devis) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
@@ -3079,13 +3135,21 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # residential quotes (full format); the legacy renderer serves every other
     # market mode / format (industriel, agricole, one-page, étude) and is also
     # the automatic fall-back, so a client PDF is never broken.
+    #
+    # QJR30 — les renderers « maison » (agricole/industriel/commercial/
+    # résidentiel) écrivent leur HTML à la main : ils reçoivent les textes
+    # client ÉCHAPPÉS, une fois, ici. Le moteur legacy garde son propre
+    # échappement d'ingestion (ERR37) et reçoit donc ``data`` tel quel — sinon
+    # il échapperait deux fois. ``empreinte_donnees_pdf`` et la persistance
+    # lisent aussi ``data`` (l'empreinte ne change pas).
+    data_rendu = echapper_textes_client(data)
     pdf_bytes = None
     # Agricole premium multi-page proposal (full format). One-page agricole and
     # every other mode/format stay on the legacy engine / residential renderer.
     from .agricole import renderer as agricole
     if agricole.is_agricultural(devis, pdf_options):
         try:
-            pdf_bytes = agricole.render_pdf_bytes(data)
+            pdf_bytes = agricole.render_pdf_bytes(data_rendu)
         except agricole.Unsupported as _hors_perimetre:
             # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
             # ramène le document sur le moteur legacy : sans trace, une
@@ -3107,7 +3171,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     from .industriel import renderer as industriel
     if pdf_bytes is None and industriel.is_industrial(devis, pdf_options):
         try:
-            pdf_bytes = industriel.render_pdf_bytes(data)
+            pdf_bytes = industriel.render_pdf_bytes(data_rendu)
         except industriel.Unsupported as _hors_perimetre:
             # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
             # ramène le document sur le moteur legacy : sans trace, une
@@ -3129,7 +3193,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     from .commercial import renderer as commercial
     if pdf_bytes is None and commercial.is_commercial(devis, pdf_options):
         try:
-            pdf_bytes = commercial.render_pdf_bytes(data)
+            pdf_bytes = commercial.render_pdf_bytes(data_rendu)
         except commercial.Unsupported as _hors_perimetre:
             # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
             # ramène le document sur le moteur legacy : sans trace, une
@@ -3149,7 +3213,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     from .residential import renderer as residential
     if pdf_bytes is None and residential.is_residential(devis, pdf_options):
         try:
-            pdf_bytes = residential.render_pdf_bytes(data)
+            pdf_bytes = residential.render_pdf_bytes(data_rendu)
         except residential.Unsupported as _hors_perimetre:
             # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
             # ramène le document sur le moteur legacy : sans trace, une
