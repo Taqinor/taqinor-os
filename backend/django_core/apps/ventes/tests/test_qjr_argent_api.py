@@ -279,6 +279,26 @@ class DelegationDesProprietesTests(_ArgentBase):
             self.assertEqual(totaux(prefetche, vue=Vue.BRUT).ttc,
                              Decimal('12000'))
 
+    def test_la_vue_net_reutilise_aussi_un_prefetch(self):
+        """NPLUS1 (29/08/2026) — MÊME GARDE POUR LA VUE NET, qui est celle que
+        ``Devis.total_ttc`` lit depuis la décision D2.
+
+        La bascule QJR51 avait fait payer DEUX requêtes par devis à toute liste
+        préchargée (« 23 (5 leads) → 33 (10 leads) » sur ``LeadViewSet``) :
+        ``deux_options_declarees`` sondait ``lignes.exclude(variante='')
+        .exists()`` et la façade rechargeait ``lignes.select_related('produit')``
+        — deux formes qui CLONENT le queryset et jettent le cache de prefetch.
+        Un devis mono-option n'a aucun filtre d'option à appliquer, donc aucun
+        besoin du produit : il doit se lire à ZÉRO requête, exactement comme la
+        vue BRUT au-dessus."""
+        devis = self._devis('qjr51-prefetch')
+        self._ligne(devis, 'Panneau 550 W', 10, 1000)
+        prefetche = Devis.objects.prefetch_related('lignes').get(pk=devis.pk)
+        with self.assertNumQueries(0):
+            self.assertEqual(totaux(prefetche, vue=Vue.NET).ttc,
+                             Decimal('12000'))
+            self.assertEqual(prefetche.total_ttc, Decimal('12000'))
+
 
 class BasculeNetTests(_ArgentBase):
     """QJR51 / décision fondateur D2 — ``Devis.total_*`` passent au NET.

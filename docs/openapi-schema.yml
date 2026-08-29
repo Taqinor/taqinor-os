@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9572, operations: 17225, components: 5060}
+counts: {paths: 9576, operations: 17235, components: 5060}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8408,6 +8408,8 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
 - get /api/django/ventes/devis/{id}/etat-pdf/ -> django_ventes_devis_etat_pdf_retrieve
+- get /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_retrieve
+- patch /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_partial_update
 - post /api/django/ventes/devis/{id}/generer-facture/ -> django_ventes_devis_generer_facture_create
 - post /api/django/ventes/devis/{id}/generer-pdf/ -> django_ventes_devis_generer_pdf_create
 - get /api/django/ventes/devis/{id}/historique-configuration/ -> django_ventes_devis_historique_configuration_retrieve
@@ -8422,6 +8424,9 @@ operations:
 - post /api/django/ventes/devis/{id}/offres-tailles/appliquer/ -> django_ventes_devis_offres_tailles_appliquer_create
 - patch /api/django/ventes/devis/{id}/offres-tailles/config/ -> django_ventes_devis_offres_tailles_config_partial_update
 - post /api/django/ventes/devis/{id}/offres-tailles/regenerer/ -> django_ventes_devis_offres_tailles_regenerer_create
+- delete /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_destroy
+- get /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_retrieve
+- patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/refuser/ -> django_ventes_devis_refuser_create
@@ -17011,6 +17016,8 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
 - get /api/v1/ventes/devis/{id}/etat-pdf/ -> v1_ventes_devis_etat_pdf_retrieve
+- get /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_retrieve
+- patch /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_partial_update
 - post /api/v1/ventes/devis/{id}/generer-facture/ -> v1_ventes_devis_generer_facture_create
 - post /api/v1/ventes/devis/{id}/generer-pdf/ -> v1_ventes_devis_generer_pdf_create
 - get /api/v1/ventes/devis/{id}/historique-configuration/ -> v1_ventes_devis_historique_configuration_retrieve
@@ -17025,6 +17032,9 @@ operations:
 - post /api/v1/ventes/devis/{id}/offres-tailles/appliquer/ -> v1_ventes_devis_offres_tailles_appliquer_create
 - patch /api/v1/ventes/devis/{id}/offres-tailles/config/ -> v1_ventes_devis_offres_tailles_config_partial_update
 - post /api/v1/ventes/devis/{id}/offres-tailles/regenerer/ -> v1_ventes_devis_offres_tailles_regenerer_create
+- delete /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_destroy
+- get /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_retrieve
+- patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/refuser/ -> v1_ventes_devis_refuser_create

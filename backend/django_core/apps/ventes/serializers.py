@@ -1636,18 +1636,32 @@ class OverridesSerializer(serializers.Serializer):
     """
 
     def to_internal_value(self, data):
+        """LES REFUS SONT DES DICTS, JAMAIS DES CHAÎNES NUES.
+
+        ``ValidationError('texte')`` range son détail dans une LISTE. Un
+        ``Serializer`` racine, lui, rend ``.errors`` via ``ReturnDict(detail)``
+        — et ``dict(['texte'])`` explose en ``ValueError: dictionary update
+        sequence element #0 has length 38; 2 is required``. Le refus légitime
+        devenait donc un 500 illisible au lieu du 400 FR attendu (deux tests
+        QJR en ERROR, CI M2). Chaque refus nomme donc SA clé : le chemin fautif
+        quand on le connaît (patron d'``OffreTailleConfigSerializer``), sinon
+        ``NON_FIELD_ERRORS_KEY``. Les messages FR sont inchangés.
+        """
+        from rest_framework.settings import api_settings
+
         from .domain.overrides import erreurs_de_chemins, normaliser_patch
 
+        non_field = api_settings.NON_FIELD_ERRORS_KEY
         if not isinstance(data, dict):
-            raise serializers.ValidationError(
-                'Corps invalide : un objet {chemin: valeur} est attendu.')
+            raise serializers.ValidationError({non_field: [
+                'Corps invalide : un objet {chemin: valeur} est attendu.']})
         if not data:
-            raise serializers.ValidationError(
-                'Aucune surcharge à poser : corps vide.')
+            raise serializers.ValidationError({non_field: [
+                'Aucune surcharge à poser : corps vide.']})
         erreurs = erreurs_de_chemins(data)
         if erreurs:
             raise serializers.ValidationError(erreurs)
         try:
             return normaliser_patch(data)
         except ValueError as exc:
-            raise serializers.ValidationError(str(exc))
+            raise serializers.ValidationError({non_field: [str(exc)]})

@@ -262,9 +262,25 @@ def deux_options_declarees(devis) -> bool:
 
     Ne lève JAMAIS : dans le doute il répond False, et l'affichage retombe sur
     le total complet — le comportement d'avant.
+
+    NPLUS1 (29/08/2026, QJR51) — LE SCAN DES VARIANTES SE FAIT EN PYTHON, PAS
+    EN SQL. Ce contrôle s'écrivait ``devis.lignes.exclude(variante='')
+    .exists()`` : chaîner ``exclude`` construit un nouveau queryset, donc une
+    requête NEUVE qui IGNORE le ``prefetch_related('devis__lignes')`` de
+    l'appelant — et comme ``Devis.total_ttc`` traverse ce prédicat depuis la
+    décision D2, la liste des leads repayait cette requête pour CHAQUE devis
+    (moitié de la régression « 23 (5 leads) → 33 (10 leads) »). ``.all()`` nu
+    est la seule forme que le gestionnaire de relation sert depuis
+    ``_prefetched_objects_cache``. Le verdict est IDENTIQUE au bit :
+    ``LigneDevis.variante`` est un ``CharField(blank=True, default='')`` NON
+    NULLABLE, donc « exclure la chaîne vide » et « une variante non vide en
+    Python » désignent exactement les mêmes lignes. Sans prefetch, c'est une
+    requête comme avant (un SELECT complet au lieu d'un ``EXISTS`` — les
+    lignes sont de toute façon relues juste après par l'appelant).
     """
     try:
-        if devis is not None and devis.lignes.exclude(variante='').exists():
+        if devis is not None and any(
+                _variante(li) for li in devis.lignes.all()):
             return True
     except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
         pass
