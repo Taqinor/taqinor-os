@@ -2874,6 +2874,137 @@ def proposal_data(request, token):
     return _noindex(Response(payload))
 
 
+def _data_pour_taille_detail(devis, link):
+    """La charge utile moteur, préparée COMME ``proposal_data`` la prépare.
+
+    OPTIONS CHARGEABLES (29/08/2026). Le détail d'une taille redérive le bloc
+    ``offres_tailles`` pour décider ce que ce lien sert ; il doit donc partir
+    d'un ``data`` IDENTIQUE à celui de la page, sans quoi la carte « Recommandé »
+    — l'ancre contre laquelle « ce qui change » et la convergence se calculent —
+    ne serait pas la même des deux côtés, et deux tailles voisines pourraient
+    diverger d'un arrondi.
+
+    Ce sont les SEULES étapes de ``proposal_data`` que la dérivation des tailles
+    lit : l'assainissement récursif règle #4, l'omission Z2 (aucun ancrage réel
+    ⇒ aucune économie ni payback republié), l'omission CJ2b (option batterie non
+    vendable ⇒ aucun chiffre « avec »), et la mise à néant du panier non retenu
+    d'un devis mono-option. Les autres (agrégation kit, financement, URL de
+    rendu, sections d'affichage) ne touchent rien que ``deriver`` regarde.
+
+    LA DUPLICATION EST PROUVÉE, PAS ESPÉRÉE : un test dérive le bloc depuis
+    cette fonction et le compare, clé par clé, à ``payload['offres_tailles']``
+    de ``proposal_data`` sur le même lien. Le jour où l'une des deux
+    préparations bouge sans l'autre, ce test tombe.
+    """
+    from .quote_engine.builder import build_quote_data
+    from .quote_engine.residential.renderer import (
+        ancrage_reel_absent, is_residential,
+    )
+
+    data = _strip_confidential_deep(build_quote_data(devis, {'pdf_mode':
+                                                             'full'}))
+    data = _sans_internes_bancables(data)
+    resid = is_residential(devis, {'pdf_mode': 'full'})
+    if resid and ancrage_reel_absent(data):
+        for cle in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
+                    'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
+            data[cle] = None
+    if data.get('nb_options') == 1:
+        if not data.get('avec_ok'):
+            data['totaux_avec'] = None
+            data['avec_items'] = []
+        if not data.get('sans_ok'):
+            data['totaux_sans'] = None
+            data['sans_items'] = []
+    if not data.get('avec_ok'):
+        for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
+                    'roi_a', 'cashflow_avec', 'net_gain_avec',
+                    'facture_avec_solaire_a'):
+            data[cle] = None
+    return data, resid
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_taille_detail(request, token, cle):
+    """OPTIONS CHARGEABLES (fondateur, 29/08/2026) — le DÉTAIL d'UNE taille.
+
+    ``GET proposal/<token>/taille/<cle>/?variante=sans|avec`` — contrat
+    ``apps/ventes/contract_samples/taille_detail.json``. Un clic sur une carte
+    Éco/Max charge ce bloc et la page profonde suit l'option choisie (économies
+    mois par mois, couverture, banque, cumul 25 ans) au lieu de continuer à
+    montrer les nombres du devis officiel sous une carte qui n'est pas lui.
+
+    LECTURE PURE, ET SANS TRACE. Aucune écriture (règle #4), et — délibérément —
+    AUCUN ``_stamp_view`` : la page a déjà compté cette consultation à son
+    chargement ; un clic de carte n'en est pas une seconde. L'OTP de lecture,
+    lui, garde exactement la même porte que ``proposal_data`` — sinon ce chemin
+    serait la fenêtre ouverte à côté de la porte fermée.
+
+    404 GÉNÉRIQUE POUR TOUT REFUS, SANS DISTINCTION : jeton inconnu/expiré,
+    devis non résidentiel, ``cle=recommande`` (cette carte EST le devis : la
+    page la restaure, elle ne la charge pas), taille non ENVOYÉE à ce client
+    (cases ``taille_eco``/``taille_max``), case « Économies » décochée, variante
+    absente, ou dérivation impossible. Rien ne distingue les cas — la raison
+    d'un refus est elle-même une information.
+    """
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+
+    from .services import otp_lecture_verified
+    if not link.via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
+    variante = (request.query_params.get('variante') or 'sans').strip()
+    from .taille_detail import (
+        CACHE_SECONDES, CLES_CHARGEABLES, VARIANTES, cle_cache,
+        detail_publique,
+    )
+    if cle not in CLES_CHARGEABLES or variante not in VARIANTES:
+        return _not_found()
+
+    # MÉMOÏSATION — l'appel refait le passage moteur de cette taille
+    # (composition + étude horaire). La clé porte le LIEN (donc son niveau et
+    # ses cases de section), la taille, la variante et l'empreinte de la
+    # configuration stockée : un « Régénérer » côté vendeur invalide donc tout
+    # seul, sans invalidation à écrire — donc sans risque de l'oublier. Le
+    # cache est best-effort des deux côtés : indisponible, on re-dérive.
+    memo = None
+    try:
+        from django.core.cache import cache
+        memo = cle_cache(link, cle, variante)
+        depuis_cache = cache.get(memo)
+        if depuis_cache is not None:
+            return _noindex(Response(depuis_cache))
+    except Exception:  # noqa: BLE001
+        memo = None
+
+    try:
+        devis = link.devis
+        data, resid = _data_pour_taille_detail(devis, link)
+        bloc = (_offres_tailles_publique(devis, data, resid,
+                                         _tailles_servies(link))
+                if _section_servie(link, 'economies') else None)
+        detail = detail_publique(devis, data, bloc, cle, variante)
+    except Exception:  # noqa: BLE001 — un détail indisponible n'est jamais
+        # une erreur serveur pour le client : la page retombe sur la
+        # synchronisation des chiffres de tête et propose de réessayer.
+        logger.warning('détail de taille indisponible', exc_info=True)
+        return _not_found()
+    if detail is None:
+        return _not_found()
+    if memo:
+        try:
+            from django.core.cache import cache
+            cache.set(memo, detail, CACHE_SECONDES)
+        except Exception:  # noqa: BLE001
+            pass
+    return _noindex(Response(detail))
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])

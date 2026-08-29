@@ -2,6 +2,7 @@ from django.urls import path
 from .public_views import (
     public_document, public_bcf_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
+    proposal_taille_detail,  # OPTIONS CHARGEABLES (29/08/2026)
     proposal_contact_request, proposal_request_otp,
     proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
     proposal_engagement,  # XSAL16
@@ -18,6 +19,12 @@ urlpatterns = [
     # Q6/Q7 — proposition tokenisée (données + PDF + e-signature).
     path('proposal/<str:token>/data/', proposal_data, name='public-proposal-data'),
     path('proposal/<str:token>/pdf/', proposal_pdf, name='public-proposal-pdf'),
+    # OPTIONS CHARGEABLES (fondateur, 29/08/2026) — le DÉTAIL d'UNE taille
+    # explorable (eco|max), chargé quand le client clique sa carte. Lecture
+    # pure, jeton-bornée, sans trace d'ouverture. Contrat :
+    # apps/ventes/contract_samples/taille_detail.json.
+    path('proposal/<str:token>/taille/<str:cle>/', proposal_taille_detail,
+         name='public-proposal-taille'),
     # QJ27 — le client demande à être contacté (notifie handler + supérieur).
     path('proposal/<str:token>/contact/', proposal_contact_request,
          name='public-proposal-contact'),

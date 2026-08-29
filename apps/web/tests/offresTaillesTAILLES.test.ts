@@ -589,8 +589,16 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
     const corps = script.slice(0, script.indexOf('})();'));
     expect(corps).toContain('[data-revision-token]');
     expect(corps).toContain('data-revision-kind=');
-    // Le script des tailles n'ouvre AUCUNE requête réseau.
-    for (const interdit of ['fetch(', 'XMLHttpRequest', 'navigator.sendBeacon']) {
+    // OPTIONS CHARGEABLES (29/08/2026) — le script ouvre DÉSORMAIS une
+    // requête, et une seule : le DÉTAIL d'une taille que le client a cliquée
+    // (ordre fondateur « i want the 3 options to be LOADABLE »). Ce que cette
+    // garde protège reste entier : elle passe par le proxy SAME-ORIGIN
+    // (`detailProxyUrl`, comme les quatre autres proxies `proposition-*`),
+    // jamais par une URL backend écrite ici, et la DEMANDE DE MODIFICATION
+    // continue de passer par le flux EXISTANT — aucun second canal.
+    expect(corps).toContain('detailProxyUrl(jetonTailles, cle, variante)');
+    for (const interdit of ['XMLHttpRequest', 'navigator.sendBeacon',
+      'api.taqinor.ma', '/api/django/']) {
       expect(corps, interdit).not.toContain(interdit);
     }
   });
@@ -603,8 +611,12 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
     expect(bloc).toContain('hidden={v !== tailleVarianteDefaut}');
     const script = CODE.slice(CODE.indexOf('function setupTaillesOffres'));
     const corps = script.slice(0, script.indexOf('})();'));
-    // Aucun formatage monétaire, aucune arithmétique de montant dans le script.
-    for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'toFixed', 'Math.round']) {
+    // OPTIONS CHARGEABLES — le script FORMATE désormais des nombres SERVIS
+    // (contrat `taille_detail.json`), avec les mêmes fonctions que le rendu
+    // serveur. Ce qui reste interdit, et qui était le vrai sujet : qu'il en
+    // CALCULE un. Aucun arrondi, aucune somme, aucun pourcentage refait.
+    for (const interdit of ['toFixed', 'Math.round', 'Math.floor', 'Math.ceil',
+      '* 100', '/ 100', '.reduce(']) {
       expect(corps, interdit).not.toContain(interdit);
     }
   });
@@ -787,11 +799,18 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
     //     de #tailles que `synchroniserDetailPage` touche, chacun repéré par
     //     un `data-hero-*` propre à cette sortie (jamais un `data-taille-*`
     //     réutilisé, qui aurait fait croire à un nœud interne à la section).
+    //   · OPTIONS CHARGEABLES (29/08/2026) — les chapitres PROFONDS suivent
+    //     désormais la carte cliquée (économies mois par mois, anneau de
+    //     couverture, banque, cumul 25 ans, payback). Comme pour LANE W, ces
+    //     sorties portent UN SEUL préfixe documenté, `data-detail-`, jamais un
+    //     id brut : le préfixe EST la déclaration de ce que la lane a le droit
+    //     de toucher hors de #tailles.
     const SORTIES_DOCUMENTEES = [
       'data-revision-token', 'revision-detail',
       'battery-sim-slider', 'prod-battery-toggle', 'battery-sim',
       'roof3d-stale-request',
       'data-hero-',
+      'data-detail-',
     ];
     // TOUT le jeu de méthodes de requête, pas seulement les trois évidentes.
     const REQUETES = String.raw`(?:getElementById|querySelectorAll|querySelector|getElementsByTagName|getElementsByClassName|getElementsByName|closest)`;
@@ -817,13 +836,49 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
     expect(verifiees).toBeGreaterThan(8);
   });
 
-  it('aucune fonction de la lane n’écrit un nombre : zéro formatage, zéro arithmétique', () => {
+  it('aucune fonction de la lane ne FABRIQUE un nombre : zéro arithmétique', () => {
+    // CE QUI A CHANGÉ, ET CE QUI N'A PAS CHANGÉ (OPTIONS CHARGEABLES,
+    // 29/08/2026). Cette garde interdisait AUSSI les fonctions de formatage,
+    // parce que la lane ne faisait alors que RECOPIER du texte déjà rendu.
+    // Depuis que le client peut CHARGER une autre taille, la page reçoit des
+    // NOMBRES servis (contrat `taille_detail.json`) et doit bien les écrire :
+    // elle les formate avec les MÊMES `formatMAD`/`formatNumber`/
+    // `formatPercent`/`formatPayback` que le rendu serveur, importés du même
+    // module — donc jamais un second formatage maison.
+    //
+    // LA RÈGLE DE FOND EST INTACTE, et c'est elle que ce test protège
+    // maintenant : la lane ne CALCULE rien. Aucun arrondi, aucune somme,
+    // aucun pourcentage reconstitué, aucune longueur d'arc recalculée (elle
+    // vient de `dasharrayDonut`, défini UNE fois et partagé avec le SSR).
     for (const nom of FONCTIONS_DE_LA_LANE) {
       const corps = corpsDe(nom);
-      for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'toFixed', 'toLocaleString']) {
+      for (const interdit of ['toFixed', 'toLocaleString', 'Math.round',
+        'Math.floor', 'Math.ceil', 'Math.PI', '* 100', '/ 100',
+        '.reduce(']) {
         expect(corps, `${nom} : ${interdit}`).not.toContain(interdit);
       }
     }
+  });
+
+  it('les valeurs écrites par la lane viennent TOUTES du contrat servi', () => {
+    // Chaque écriture de texte de la lane lit soit une valeur SERVIE (`detail`
+    // / `mensuelles` / `banque` / `pct` / `cumul` / `payback`), soit un
+    // ORIGINAL mis en cache au chargement. Un `formatMAD(quelqueChose)` dont
+    // l'argument ne serait ni l'un ni l'autre serait un chiffre fabriqué.
+    const corps = corpsDe('function setupTaillesOffres');
+    const appels = corps.match(/format(?:MAD|Number|Percent|Payback)\s*\(([^)]*)\)/g) || [];
+    expect(appels.length).toBeGreaterThan(3);
+    for (const appel of appels) {
+      const source =
+        appel.includes('mensuelles.')
+        || appel.includes('banque.')
+        || appel.includes('detail?.')
+        || appel.includes('pct')
+        || appel.includes('cumul');
+      expect(source, `argument non servi : ${appel}`).toBe(true);
+    }
+    // Et la longueur d'arc n'est JAMAIS réécrite ici : elle est importée.
+    expect(corps).toContain('dasharrayDonut(pct, rayon)');
   });
 
   it('les blocs EXISTANTS gardent leurs valeurs rendues au serveur', () => {
@@ -968,7 +1023,13 @@ describe('LIENS ERP — les chemins tokenisés émis par la page sont intacts', 
   });
 
   it('la section des tailles n’émet AUCUN lien tokenisé de son cru', () => {
-    const bloc = sectionTailles(CODE);
+    // OPTIONS CHARGEABLES — la section porte `data-tailles-token={token}` :
+    // c'est le token DÉJÀ dans la route, relu par l'îlot pour appeler le proxy
+    // same-origin. Aucun identifiant NOUVEAU n'est fabriqué, et aucune URL
+    // backend n'est écrite dans le balisage — c'est bien ce que cette garde
+    // protège. On la retire donc du texte examiné, plutôt que d'assouplir la
+    // règle pour tout le reste.
+    const bloc = sectionTailles(CODE).replace('data-tailles-token={token}', ' ');
     for (const interdit of ['/api/', 'api.taqinor.ma', 'token=', '/proposition/']) {
       expect(bloc, interdit).not.toContain(interdit);
     }
@@ -1087,10 +1148,19 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     expect(corps).toContain('function synchroniserDetailPage');
     expect(corps).toContain('texteDeLaCarteSelectionnee');
     expect(corps).toContain('.textContent');
-    // La discipline « zéro chiffre calculé côté client », déjà vérifiée pour
-    // tout le script, vaut nommément pour cette nouvelle fonction.
-    for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'toFixed', 'Math.round', 'fetch(']) {
+    // La discipline « zéro chiffre CALCULÉ côté client » vaut toujours. Ce qui
+    // a changé (OPTIONS CHARGEABLES, 29/08/2026) : les chiffres de TÊTE
+    // continuent d'être COPIÉS de la carte, tandis que les chapitres PROFONDS
+    // sont désormais CHARGÉS et formatés — deux mécanismes distincts, la
+    // copie restant celui du héros. Ni l'un ni l'autre ne calcule.
+    for (const interdit of ['toFixed', 'Math.round', 'Math.floor', 'Math.ceil',
+      '* 100', '/ 100']) {
       expect(corps, interdit).not.toContain(interdit);
+    }
+    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'),
+      corps.indexOf('const jetonTailles ='));
+    for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'fetch(']) {
+      expect(synchro, interdit).not.toContain(interdit);
     }
   });
 
@@ -1264,26 +1334,32 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     );
   });
 
-  it('COUVERTURE — l’anneau NE PEUT PAS suivre honnêtement : la carte entière est MASQUÉE, jamais un arc figé', () => {
-    // Branche prise : HIDE. L'arc `stroke-dasharray` est une géométrie
-    // précalculée (circonférence × pourcentage) au chargement — la
-    // recalculer en JS serait exactement le calcul côté client interdit, et
-    // laisser l'ancien arc sous un nouveau pourcentage serait un mensonge
-    // visuel. Donc : ni lecture de carte, ni readback — un simple masquage
-    // inconditionnel hors de Recommandé + variante par défaut.
+  it('COUVERTURE — l’anneau suit la taille CHARGÉE, et sa géométrie n’existe qu’UNE fois', () => {
+    // CE QUI A CHANGÉ (OPTIONS CHARGEABLES, 29/08/2026). LANE W MASQUAIT cet
+    // anneau hors de « Recommandé », faute de pouvoir le redessiner sans
+    // écrire une SECONDE expression de sa géométrie dans l'îlot. Le fondateur
+    // veut désormais que cliquer une carte CHARGE l'option ; l'anneau devait
+    // donc suivre. La règle n'a pas été assouplie — la duplication a été
+    // supprimée : la longueur d'arc vit dans `lib/tailleDetail.ts`
+    // (`dasharrayDonut`), appelée par le rendu SERVEUR et par l'îlot. UNE
+    // définition, deux lecteurs, aucun calcul écrit ici.
+    //
+    // ET LE POURCENTAGE, LUI, N'EST TOUJOURS CALCULÉ NULLE PART : il est
+    // SERVI (`carte.couverture_pct`), et la carte reste MASQUÉE quand la
+    // taille chargée ne le sert pas — l'omission, jamais un arc figé sous un
+    // pourcentage qui n'est pas le sien.
     expect(CODE).toContain('data-hero-couverture-card');
     const corps = scriptTailles();
     expect(corps).toContain("querySelector<HTMLElement>('[data-hero-couverture-card]')");
-    const synchro = corps.slice(corps.indexOf('function synchroniserDetailPage'));
-    expect(synchro).toContain('heroCouvertureCard.hidden = !surLeDefaut');
-    // AUCUNE lecture de carte pour ce champ (ni valeur, ni texte de
-    // remplacement) — la garde-fou du bloc entier est la seule logique.
-    expect(synchro).not.toContain('heroCouvertureValue');
-    expect(synchro).not.toContain("texteDeLaCarteSelectionnee('[data-taille-couverture");
-    // Et surtout : aucun calcul de géométrie (circonférence, dasharray) dans
-    // TOUT le script de la section — la règle « zéro calcul » vérifiée pour
-    // le script entier vaut nommément ici.
-    for (const interdit of ['donutDash', 'donutCirc', 'stroke-dasharray', 'Math.PI']) {
+    expect(corps).toContain('const pct = detail?.carte?.couverturePct ?? null;');
+    expect(corps).toContain('if (heroCouvertureCard) heroCouvertureCard.hidden = pct === null;');
+    expect(corps).toContain("couvArc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));");
+    // AUCUNE lecture de TEXTE de carte pour ce champ : le pourcentage vient
+    // du contrat, jamais d'un readback sur le DOM d'une carte.
+    expect(corps).not.toContain("texteDeLaCarteSelectionnee('[data-taille-couverture");
+    // Et surtout : aucun calcul de géométrie ÉCRIT dans le script — le rayon
+    // est LU sur le DOM, la longueur d'arc est IMPORTÉE.
+    for (const interdit of ['donutDash', 'donutCirc', 'Math.PI', '2 * Math.']) {
       expect(corps, interdit).not.toContain(interdit);
     }
   });
