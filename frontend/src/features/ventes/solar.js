@@ -742,12 +742,24 @@ function trancheTable(pairs, selectif) {
 // ONEE_TRANCHES (miroir exact). Prochaine hausse de TVA : refaire HT × nouveau
 // taux sur les six bases HT documentées là-bas — jamais repartir d'un TTC
 // déjà taxé. ÉDITABLE PAR SOCIÉTÉ : Paramètres → Tarification & ROI.
+//
+// DÉCISION FONDATEUR D5 (29/08/2026) — TRANCHE 5 RECALÉE SUR LA FACTURE. La
+// tranche 311-510 vaut 1,381704 et NON l'extrapolation « HT constant » : la
+// facture SRM Casablanca-Settat n° 643769639 du 08/05/2026 (359 kWh × 1,15142
+// HT = 496,03 TTC) donne 1,15142 × 1,20 = 1,381704, et la facture du
+// 20/01/2026 corrobore (T5 2025 = 1,3817 TTC). Au passage TVA 18 → 20 %, c'est
+// le TTC qui est resté CONSTANT et le HT qui a baissé — l'inverse de ce que le
+// repo supposait. Une FACTURE RÉELLE supplante toujours une extrapolation ; les
+// cinq autres tranches, sans facture 2026, gardent leur valeur dérivée.
+// La valeur de référence vit côté serveur dans
+// apps/ventes/quote_engine/bareme.py (barème étalonné sur trois factures).
 export const ONEE_TRANCHES = trancheTable([
   [100, 0.916272],   // progressif   0-100          — HT 0,76356 × TVA 20% (2026)
   [150, 1.091388],   // progressif 101-150          — HT 0,90949 × TVA 20% (2026)
   [200, 1.091388],   // sélectif 151-200 (eff. 210) — idem
   [300, 1.187388],   // sélectif 201-300 (eff. 310) — HT 0,98949 × TVA 20% (2026)
-  [500, 1.405116],   // sélectif 301-500 (eff. 510) — HT 1,17093 × TVA 20% (2026)
+  [500, 1.381704],   // sélectif 301-500 (eff. 510) — PROUVÉ FACTURE (D5) :
+                     // 1,15142 HT × TVA 20% ; voir la note ci-dessus
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
 // Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles

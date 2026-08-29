@@ -59,31 +59,37 @@ test('capacité inconnue : repli documenté sur l\'ancien forfait 85 %', () => {
 
 // ── VERROU DE DÉRIVE JS ↔ Python ─────────────────────────────────────────────
 // Valeurs dérivées À LA MAIN du barème ONEE SÉLECTIF **TTC 2026** (TVA 20 %
-// depuis le 01/01/2026 — bases HT inchangées, cf. solar.js/pricing.py) :
-// progressif ≤ 150 : 0,916272 puis 1,091388 ; sélectif au-delà — TOUTE la
-// conso au tarif de sa tranche : 151-210 = 1,091388 · 211-310 = 1,187388 ·
-// 311-510 = 1,405116 · > 510 = 1,622856) — le jumeau Python
-// (test_battery_autoconso.py, test_miroir_js_meme_fixture_memes_chiffres)
-// attend EXACTEMENT les mêmes.
+// depuis le 01/01/2026 — cf. solar.js/pricing.py) : progressif ≤ 150 :
+// 0,916272 puis 1,091388 ; sélectif au-delà — TOUTE la conso au tarif de sa
+// tranche : 151-210 = 1,091388 · 211-310 = 1,187388 · 311-510 = 1,381704 ·
+// > 510 = 1,622856) — le jumeau Python (test_battery_autoconso.py,
+// test_miroir_js_meme_fixture_memes_chiffres) attend EXACTEMENT les mêmes.
 //
 //  facture sans solaire  : 15 000/12 = 1 250 kWh/mois → > 510
 //      1 250 × 1,622856 = 2 028,57 MAD/mois × 12 = 24 342,84 → 24 343 MAD/an
 //  option SANS (60 %)    : autoconsommé 9 214,8 → résiduel 5 785,2
-//      → 482,1 kWh/mois → bande 311-510 : 482,1 × 1,405116 = 677,40642
-//      × 12 = 8 128,88 → 8 129
-//      ⇒ économie 24 343 − 8 129 = 16 214 MAD/an
+//      → 482,1 kWh/mois → bande 311-510 : 482,1 × 1,381704 = 666,1194984
+//      × 12 = 7 993,43 → 7 993
+//      ⇒ économie 24 343 − 7 993 = 16 350 MAD/an
 //  option AVEC (83,8 %)  : autoconsommé 12 864,8 → résiduel 2 135,2
-//      → 177,9333 kWh/mois → bande 151-210 : 177,9333 × 1,091388 = 194,19432
+//      → 177,9333 kWh/mois → bande 151-210 : 177,9333 × 1,091388 = 194,19430
 //      × 12 = 2 330,33 → 2 330
 //      ⇒ économie 24 343 − 2 330 = 22 013 MAD/an
-//  (la batterie fait franchir DEUX marches vers le bas : 1,405116 → 1,091388
+//  (la batterie fait franchir DEUX marches vers le bas : 1,381704 → 1,091388
 //   sur la totalité du résiduel — c'est là que le modèle sélectif change tout.)
+//
+// RECALAGE QJR26 / DÉCISION FONDATEUR D5 (29/08/2026) : le tarif T5 est passé
+// de l'extrapolation « HT constant » à la valeur PROUVÉE par la facture SRM du
+// 08/05/2026 (1,15142 HT × 1,20 = 1,381704). SEULE l'option SANS traverse T5 —
+// sa facture passe de 8 129 à 7 993 et son économie de 16 214 à 16 350. L'option
+// AVEC retombe en 151-210, hors T5 : ses 2 330 / 22 013 sont RECALCULÉS et
+// confirmés INCHANGÉS, pas supposés tels.
 test('MIROIR Python — mêmes entrées, mêmes factures et mêmes économies', () => {
   const sans = twoBillsSavings(PROD, CONSO, AUTOCONSO_SANS, 'onee')
   const avec = twoBillsSavings(PROD, CONSO, autoconsoAvecRatio(PROD, BATTERY), 'onee')
   assert.equal(sans.factureSans, 24343)
-  assert.equal(sans.factureAvec, 8129)
-  assert.equal(sans.economie, 16214)
+  assert.equal(sans.factureAvec, 7993)
+  assert.equal(sans.economie, 16350)
   assert.equal(avec.autoconsoKwh, 12865)
   assert.equal(avec.factureAvec, 2330)
   assert.equal(avec.economie, 22013)
@@ -107,7 +113,7 @@ test('computeROI (modèle « deux factures ») : taux avec batterie dérivé, pa
   // le PDF : à l'écran comme sur le document, 0,60 + 3 650/15 358.
   assert.equal(Math.abs(roi.autoconso_avec - 0.8376611538) < 1e-9, true)
   assert.equal(roi.autoconso_avec, autoconsoAvecRatio(PROD, BATTERY))
-  assert.equal(roi.eco_annuelle_sans, 16214)
+  assert.equal(roi.eco_annuelle_sans, 16350)
   assert.equal(roi.eco_annuelle_avec, 22013)
   assert.notEqual(roi.autoconso_avec, AUTOCONSO_AVEC)
 })
