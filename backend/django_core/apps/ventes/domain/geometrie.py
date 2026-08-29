@@ -880,13 +880,14 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _pick_product,
     _plage_batterie_de_l_onduleur,
 )
-# Encore dans `services.py` : `_lignes_produit`/`_classe_ligne`/
-# `CIBLE_WATT_DEFAUT` partent en QJR73, `_v_txt` en QJR74, `gamme_nom` en
-# QJR76 — chaque import suivra SON module, jamais la façade.
-from apps.ventes.services import (  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402,F401
     CIBLE_WATT_DEFAUT,
     _classe_ligne,
     _lignes_produit,
+)
+# Encore dans `services.py` : `_v_txt` part en QJR74, `gamme_nom` en QJR76 —
+# chaque import suivra SON module, jamais la façade.
+from apps.ventes.services import (  # noqa: E402,F401
     _v_txt,
     gamme_nom,
 )
