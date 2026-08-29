@@ -69,7 +69,14 @@ test('syncBillEstimator() ne resynchronise plus nbPanneaux/sizingInfo quand nbPa
   // ENTIÈREMENT contenu dans le bloc protégé.
   assert.match(guardedBlock, /setNbPanneaux\(String\(sizing\.nbPanneaux\)\)/)
   assert.match(guardedBlock, /setSizingInfo\(sizing\)/)
-  assert.match(guardedBlock, /setNbPanneaux\(String\(suggested\)\)/)
+  // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux` (panneaux/
+  // 900 MAD, supprimé) : sous le seuil du balayage local, le garde-fou pose
+  // `attenteSizingServeur` (repris par l'effet qui applique la recommandation
+  // du moteur horaire SERVEUR, ou son message de refus) au lieu de deviner un
+  // nombre de panneaux.
+  assert.doesNotMatch(guardedBlock, /estimerPanneaux/,
+    'le repli estimerPanneaux (règle des 900 MAD) doit être totalement retiré')
+  assert.match(guardedBlock, /attenteSizingServeur\.current = true/)
 
   // setMonthly, lui, reste appelé INCONDITIONNELLEMENT, APRÈS le bloc protégé
   // (donc jamais sauté) — les factures continuent de se mettre à jour même
