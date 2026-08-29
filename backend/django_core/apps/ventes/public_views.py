@@ -1123,6 +1123,42 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
         return None
 
 
+def _variant_total_ttc(frere):
+    """QJR11 — total TTC AFFICHÉ d'un devis frère, par la chaîne canonique.
+
+    UNE seule chaîne monétaire (``utils.options.option_totaux`` →
+    ``selectors._canonical_totaux``) : HT brut des lignes qui COMPTENT
+    (``compte_dans_totaux`` — donc jamais une option non activée ni une ligne
+    de section/note) → remise globale → TVA **par ligne** → TTC au centime.
+
+    L'option retenue est celle que porte le total d'affichage canonique
+    (``builder.display_total`` / ``utils.options.totaux_affichage_repli``,
+    LANE CHOIX-AVEC du 25/08) : sur un devis à DEUX options c'est l'option
+    AVEC batterie — jamais la somme des deux, un montant qui n'existe dans
+    aucun document. Le prédicat utilisé est le prédicat LÉGER
+    (``deux_options_declarees``) : la bande des variantes ne doit pas payer un
+    rendu PDF complet par frère, et un moteur en échec ne doit pas la faire
+    retomber silencieusement sur la somme des deux options.
+    """
+    from .utils.options import (
+        AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees,
+        filter_lines_for_option, option_totaux,
+    )
+    lignes = list(frere.lignes.select_related('produit', 'devis').all())
+    if not deux_options_declarees(frere):
+        # Option unique / pompage / liste libre : tout le devis, comme la liste.
+        return option_totaux(frere, option='', lignes=lignes)['ttc']
+    avec = option_totaux(
+        frere, option='',
+        lignes=filter_lines_for_option(lignes, AVEC_BATTERIE))['ttc']
+    if avec:
+        return avec
+    # Panier « avec » sans total lisible → l'autre option, jamais un forfait.
+    return option_totaux(
+        frere, option='',
+        lignes=filter_lines_for_option(lignes, SANS_BATTERIE))['ttc']
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -1131,12 +1167,23 @@ def _variant_summaries(devis) -> list:
     vide si le devis est isolé (pas de version_parent, pas de frère/sœur actif).
 
     Le summary est volontairement minimal : id, reference, version, note,
-    total_ttc (somme brute sans remise globale, bonne pour une comparaison
-    relative côte-à-côte). Jamais de prix d'achat ni de marge (règle #4).
+    total_ttc. Jamais de prix d'achat ni de marge (règle #4).
+
+    QJR11 (29/08/2026) — ``total_ttc`` passait par une SEPTIÈME chaîne
+    monétaire écrite ici à la main (``.values('quantite', ...)`` puis produit
+    en Python) : elle ne filtrait pas ``compte_dans_totaux`` (donc comptait les
+    options non activées et plantait sur une ligne de section, ``quantite``
+    NULL), appliquait le taux de TVA du DEVIS au lieu du taux par ligne, et sur
+    un frère à deux options additionnait les DEUX paniers. Elle est remplacée
+    par la chaîne canonique (:func:`_variant_total_ttc`). Un frère dont le
+    total est illisible est OMIS de la bande — jamais un chiffre de repli
+    (règle fondateur « zéro chiffre inventé ») — et un frère en échec ne
+    supprime plus la bande entière (constat V1 : l'``except`` de sortie
+    renvoyait ``[]``).
     """
     root = devis.version_parent_id or devis.pk
     try:
-        from .models import Devis as DevisModel, LigneDevis
+        from .models import Devis as DevisModel
         # Include root + all siblings with the same version_parent.
         siblings = list(
             DevisModel.objects
@@ -1166,27 +1213,26 @@ def _variant_summaries(devis) -> list:
             return []
         out = []
         for s in siblings:
-            # Approximate total TTC (no access to build_quote_data for speed)
-            lines = LigneDevis.objects.filter(devis=s).values(
-                'quantite', 'prix_unitaire', 'remise', 'taux_tva')
-            total_ht = sum(
-                float(ln['quantite']) * float(ln['prix_unitaire'])
-                * (1 - float(ln['remise'] or 0) / 100)
-                for ln in lines
-            )
-            remise_g = float(s.remise_globale or 0)
-            total_ht_after_remise = total_ht * (1 - remise_g / 100)
-            taux = float(s.taux_tva or 20)
-            total_ttc = total_ht_after_remise * (1 + taux / 100)
+            try:
+                total_ttc = _variant_total_ttc(s)
+            except Exception:  # noqa: BLE001 — un frère illisible n'efface
+                # pas la bande : il est simplement OMIS (jamais un forfait).
+                logger.warning(
+                    "Total de variante illisible pour le devis %s — frère omis",
+                    getattr(s, 'pk', None))
+                continue
             out.append({
                 'id': s.id,
                 'reference': s.reference,
                 'version': s.version,
                 'note': (s.note or ''),
-                'total_ttc': round(total_ttc, 2),
+                'total_ttc': round(float(total_ttc), 2),
             })
         return out
     except Exception:  # noqa: BLE001 — best-effort, never break the proposal
+        logger.warning(
+            "Bande des variantes indisponible pour le devis %s",
+            getattr(devis, 'pk', None))
         return []
 
 
@@ -1569,6 +1615,112 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
         'remplissage_moyen_pct': remplissage_pct,
         'couverture_glitch_pct': couverture_pct,
     }
+
+
+# ── QJR14 (audit L3 du 29/08/2026) — un chiffre publié DÉCRIT CE DEVIS ───────
+# Le moteur de dimensionnement rend deux blocs qui décrivent une configuration
+# qu'il a TROUVÉE, pas celle que le devis VEND :
+#   · ``recommandation_avec`` — la batterie OPTIMALE ; son ``remplissage.moyen``
+#     alimente ``batterie_regime.remplissage_moyen_pct`` ;
+#   · ``meilleure_falaise`` — LA combinaison champ + stockage qui franchit la
+#     marche du barème ; son ``residuel_kwh_mois`` alimente
+#     ``tranche_tarifaire.residuel_kwh_mois``.
+# Les deux étaient publiés SANS AUCUNE GARDE : un devis qui vend une autre
+# capacité — ou aucune batterie du tout — recevait quand même le pourcentage de
+# remplissage et le résiduel d'une AUTRE installation. Règle fondateur « zéro
+# chiffre inventé » : on publie SEULEMENT quand le contexte identifiant du bloc
+# ÉGALE la configuration vendue ; sinon la clé est ABSENTE — jamais zéro,
+# jamais un repli. (Le PDF porte la même garde côté moteur, QJR13.)
+
+#: Tolérance de comparaison des capacités batterie, en kWh — LA MÊME que le
+#: marquage « retenu » des paliers (``dimensionnement.echelle_paliers_batterie``)
+#: pour que l'écran, le PDF et cette charge utile tranchent identiquement.
+_TOLERANCE_CAPACITE_KWH = 0.05
+
+
+def _capacite_batterie_vendue(devis):
+    """Capacité batterie (kWh) des LIGNES RÉELLES de ce devis, ou ``None``.
+
+    Source unique : ``dimensionnement.capacite_batterie_des_lignes`` — ce que
+    le client ACHÈTE, jamais l'optimum du moteur. ``None`` quand le devis ne
+    porte aucune ligne batterie. Ne lève jamais."""
+    try:
+        from .dimensionnement import capacite_batterie_des_lignes
+        return _nombre_publiable(capacite_batterie_des_lignes(devis))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning("Capacité batterie vendue illisible (devis %s)",
+                       getattr(devis, 'pk', None))
+        return None
+
+
+def _panneaux_vendus(devis):
+    """Nombre de panneaux LU sur les lignes de ce devis, ou ``None``.
+
+    MÊME lecture que le moteur de devis et que ``profils_comparatifs``
+    (``quote_engine.builder.panneaux_et_watt_lu`` sur les lignes produit non
+    optionnelles) — jamais une seconde dérivation. Ne lève jamais."""
+    try:
+        from .quote_engine.builder import panneaux_et_watt_lu
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, _watt = panneaux_et_watt_lu(lignes)
+        nb_panneaux = _nombre_publiable(nb_panneaux)
+        if nb_panneaux is None or nb_panneaux <= 0:
+            return None
+        return int(round(nb_panneaux))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning("Panneaux vendus illisibles (devis %s)",
+                       getattr(devis, 'pk', None))
+        return None
+
+
+def _meme_capacite_batterie(bloc, devis) -> bool:
+    """Le bloc moteur décrit-il la capacité batterie RÉELLEMENT vendue ?
+
+    ``False`` dès qu'un des deux côtés est illisible — en particulier quand le
+    devis ne vend AUCUNE batterie (``capacite_batterie_des_lignes`` rend alors
+    ``None``) : il n'y a rien à décrire, donc rien à publier."""
+    if not isinstance(bloc, dict):
+        return False
+    capacite_bloc = _nombre_publiable(bloc.get('batterie_kwh'))
+    capacite_vendue = _capacite_batterie_vendue(devis)
+    if capacite_bloc is None or capacite_vendue is None:
+        return False
+    return abs(capacite_bloc - capacite_vendue) < _TOLERANCE_CAPACITE_KWH
+
+
+def _remplissage_batterie_publiable(dimensionnement, devis) -> bool:
+    """``batterie_regime.remplissage_moyen_pct`` décrit-il CE devis ?
+
+    Il vient de ``recommandation_avec`` — la batterie que le moteur CONSEILLE.
+    Publiable seulement quand cette capacité est celle des lignes vendues."""
+    if not isinstance(dimensionnement, dict):
+        return False
+    return _meme_capacite_batterie(
+        dimensionnement.get('recommandation_avec'), devis)
+
+
+def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
+    """``tranche_tarifaire.residuel_kwh_mois`` décrit-il CE devis ?
+
+    Il vient de ``meilleure_falaise`` — une combinaison champ + stockage que le
+    balayage a seulement TROUVÉE. Publiable seulement quand SON contexte
+    identifiant (panneaux ET capacité batterie) égale la configuration vendue,
+    exactement la règle que le PDF applique (QJR13)."""
+    if not isinstance(dimensionnement, dict):
+        return False
+    bloc = dimensionnement.get('meilleure_falaise')
+    if not _meme_capacite_batterie(bloc, devis):
+        return False
+    panneaux_bloc = _nombre_publiable(bloc.get('panneaux'))
+    panneaux_vendus = _panneaux_vendus(devis)
+    if panneaux_bloc is None or panneaux_vendus is None:
+        return False
+    return int(round(panneaux_bloc)) == panneaux_vendus
 
 
 #: L-PCMP — la note de méthode des variantes d'occupation, par niveau. Les
@@ -2759,9 +2911,24 @@ def proposal_data(request, token):
         _dimensionnement = _etude_params_devis.get('dimensionnement')
         _tranche = _tranche_tarifaire_publique(_dimensionnement)
         if _tranche is not None:
+            # QJR14 — le résiduel vient de ``meilleure_falaise`` : une
+            # combinaison seulement TROUVÉE par le balayage. Il ne franchit la
+            # frontière que s'il décrit la configuration VENDUE ; sinon la clé
+            # est retirée (absente), jamais mise à zéro.
+            if not _residuel_falaise_publiable(_dimensionnement, devis):
+                _tranche.pop('residuel_kwh_mois', None)
             payload['tranche_tarifaire'] = _tranche
         _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
         _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        if _regime is not None:
+            # QJR14 — même règle pour le taux de remplissage, tiré de la
+            # batterie OPTIMALE (``recommandation_avec``) et non de celle que
+            # ce devis vend. Le bloc entier disparaît s'il ne reste plus rien
+            # de vrai à montrer.
+            if not _remplissage_batterie_publiable(_dimensionnement, devis):
+                _regime.pop('remplissage_moyen_pct', None)
+            if not any(v is not None for v in _regime.values()):
+                _regime = None
         if _regime is not None:
             payload['batterie_regime'] = _regime
         # ORDRE FONDATEUR (24/08/2026, soir) — sélection de plusieurs packs de
