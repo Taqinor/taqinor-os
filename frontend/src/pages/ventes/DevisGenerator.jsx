@@ -2391,8 +2391,15 @@ export default function DevisGenerator({
   const buildDimensionnementAvec = (kwpAvec) => {
     const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
     const panelWNum = parseFloat(panelW) || 710
-    const nbPanneauxAvec = Number(backendAvec?.nb_panneaux) > 0
-      ? Math.round(Number(backendAvec.nb_panneaux))
+    // QJR37 — le moteur horaire (recommandation/recommandation_avec) émet la
+    // clé `panneaux` (vérifié contre apps/ventes/contract_samples/
+    // etude_horaire.json : "recommandation_avec": {"panneaux": 17, …}), jamais
+    // `nb_panneaux` — cette dernière n'existe QUE côté REQUÊTE de
+    // POST /ventes/devis/composition/ (contract_samples/devis_composition.json,
+    // champ d'entrée `dimensionnement_avec: {nb_panneaux?, kwc?, …}`), une
+    // forme différente qu'on continue de PRODUIRE ci-dessous inchangée.
+    const nbPanneauxAvec = Number(backendAvec?.panneaux) > 0
+      ? Math.round(Number(backendAvec.panneaux))
       : Math.round((kwpAvec * 1000) / panelWNum)
     const dims = { nb_panneaux: nbPanneauxAvec, kwc: kwpAvec }
     const battKwh = Number(backendAvec?.batterie_kwh)
