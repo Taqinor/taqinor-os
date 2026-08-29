@@ -1,0 +1,39 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/totaux/",
+  "pourquoi": "QJR1 (M0, audit L3 du 29/08/2026) — PACT10 pour LA future vue argent unique d'un devis. L'audit a trouvé SEPT chaînes monétaires (écran générateur, PDF premium, page proposition publique, export compta, reporting, chatter, rappel WhatsApp) qui recomposent chacune HT → remise → TVA → TTC à leur façon et rendent parfois trois réponses différentes pour le MÊME devis. Cet endpoint est le porteur partagé (une des cibles de convergence QJR42-QJR67) : chaque appelant migré lui pose `vue` (un jeton NOMMANT le contexte appelant — voir `notes.vue`) et `option`, et reçoit la MÊME chaîne de calcul HT/remise/TVA/TTC que tous les autres. Ce commit ne pose QUE le contrat — la fonction qui le sert n'existe pas encore sur `main`, aucune migration, aucun consommateur.",
+  "notes": {
+    "chaine": "L'ordre est FIGÉ et NOMMÉ par les clés elles-mêmes : `ht_brut` (somme des lignes avant remise globale) → `remise` (le montant retiré, jamais un pourcentage brut) → `ht_net` (`ht_brut - remise`) → `tva_par_taux` (la ventilation, un taux pouvant ne jamais se mélanger avec un autre) → `tva` (somme de `tva_par_taux[].montant`) → `ttc` (`ht_net + tva`). Chaque étage est dérivé du précédent DANS CETTE VUE — jamais recalculé indépendamment par l'appelant.",
+    "tva_par_taux": "Liste ordonnée par taux CROISSANT, une entrée par taux de TVA réellement présent sur les lignes de cette option (jamais une entrée à `montant: 0` pour un taux absent). Chaque entrée : `{taux, base, montant}` où `base` est la part de `ht_net` imposée à CE taux et `montant = round(base * taux / 100, 2)`.",
+    "ttc_affiche": "`ttc` est le TTC EXACT de la chaîne ci-dessus (non arrondi au-delà du centime) ; `ttc_affiche` est ce que CETTE vue montre réellement au lecteur (peut différer de `ttc` sur une vue qui arrondit à la dizaine de MAD pour un affichage commercial, ou qui applique un arrondi psychologique — jamais l'inverse : `ttc_affiche` ne peut JAMAIS être la source, seulement une présentation dérivée de `ttc`). Sur toute vue qui n'arrondit pas différemment, `ttc_affiche == ttc`.",
+    "vue": "Jeton LIBRE qui NOMME le contexte appelant — introduit PAR ce contrat (QJR1), pas un vocabulaire déjà en usage dans le code aujourd'hui. Chaque chaîne monétaire migrée sur cet endpoint (QJR42-QJR67) enregistre SON PROPRE jeton en le documentant ici au moment de sa migration (ex. `ecran_generateur`, `pdf_premium`, `proposition_publique`, `export_compta`) — cette liste grandit UNE convergence à la fois, jamais posée en bloc par anticipation. `vue` est un paramètre de la REQUÊTE, echo dans la réponse : il ne change AUCUN chiffre, seulement l'identité de qui demande (utile pour tracer, côté serveur, quelle chaîne appelle encore l'ancien calcul le jour de la bascule).",
+    "option": "`sans` ou `avec` — MÊME vocabulaire que `variantes_servables` (`apps/ventes/contract_samples/variantes_servables.json`) : jamais un second jeton pour dire la même chose. Demander une option que ce devis ne sert pas (`option` absente de `variantes_servables`) est un 400, jamais un total inventé.",
+    "argent": "Aucun `prix_achat` ni marge ici, JAMAIS (règle #4) : cette vue ne porte que des montants CLIENT."
+  },
+  "exemple": {
+    "ht_brut": 97500.0,
+    "remise": 2500.0,
+    "ht_net": 95000.0,
+    "tva_par_taux": [
+      {"taux": 20, "base": 95000.0, "montant": 19000.0}
+    ],
+    "tva": 19000.0,
+    "ttc": 114000.0,
+    "ttc_affiche": 114000.0,
+    "vue": "ecran_generateur",
+    "option": "avec"
+  },
+  "exemple_deux_taux": {
+    "ht_brut": 62000.0,
+    "remise": 0.0,
+    "ht_net": 62000.0,
+    "tva_par_taux": [
+      {"taux": 10, "base": 8000.0, "montant": 800.0},
+      {"taux": 20, "base": 54000.0, "montant": 10800.0}
+    ],
+    "tva": 11600.0,
+    "ttc": 73600.0,
+    "ttc_affiche": 73600.0,
+    "vue": "pdf_premium",
+    "option": "sans"
+  }
+}
