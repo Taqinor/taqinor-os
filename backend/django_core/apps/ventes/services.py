@@ -3857,6 +3857,33 @@ def _resynchroniser_instance_appelante(devis, verrou):
     devis._prefetched_objects_cache = {}
 
 
+def _quantite_verrouillee(ligne):
+    """QJR60 / décision fondateur D12 — la quantité de cette ligne a-t-elle été
+    TAPÉE par le commercial ?
+
+    Lu par ``getattr`` : une ligne d'un autre modèle (ou d'un test qui n'en
+    porte pas) répond ``False``, donc la resynchro garde exactement le
+    comportement d'avant les marqueurs QJR59.
+    """
+    return bool(getattr(ligne, 'quantite_manuelle', False))
+
+
+def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
+    """L'AVERTISSEMENT FR NOMMÉ d'une resynchro qui refuse d'écraser une saisie.
+
+    Le vendeur doit apprendre l'écart AU MOMENT de la resynchro : une quantité
+    verrouillée qui ne suit pas le calepinage est une divergence réelle entre
+    le dessin et le devis — la taire la ferait découvrir sur le PDF client.
+    Les lignes sont NOMMÉES (leur désignation), jamais un « une ligne » anonyme.
+    """
+    noms = ', '.join(
+        sorted({(getattr(li, 'designation', '') or '?') for li in lignes}))
+    avertissements.append(
+        'Quantité verrouillée par le vendeur sur : %s. %s n\'a pas été '
+        'appliqué — corrigez la quantité à la main si le calepinage fait foi.'
+        % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
+
+
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -4144,8 +4171,19 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
                 # tient peut-être sur le toit.
                 propres = [li for li in vue if _var(li) == variante]
+                # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
+                # réécrite : elle sort du vivier, et si tout le vivier est
+                # verrouillé l'écart est NOMMÉ au lieu d'être appliqué.
+                libres = [li for li in (propres or vue)
+                          if not _quantite_verrouillee(li)]
+                if not libres:
+                    _avertir_verrouillee(
+                        avertissements, (propres or vue),
+                        "l'écart de %d panneau(x) de l'option « %s »"
+                        % (abs(total_vue - cible_panneaux), variante))
+                    continue
                 dominante = max(
-                    propres or vue,
+                    libres,
                     key=lambda li: Decimal(str(li.quantite or 0)))
                 nouvelle = int(dominante.quantite or 0) - (
                     total_vue - cible_panneaux)
@@ -4167,25 +4205,36 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
         elif lignes_panneau and cible_panneaux != total_panneaux:
             # L'écart va sur la PLUS GROSSE ligne, elle seule : les autres
             # lignes panneau restent telles que le commercial les a posées.
-            dominante = max(lignes_panneau,
-                            key=lambda li: Decimal(str(li.quantite or 0)))
-            ecart = cible_panneaux - total_panneaux
-            nouvelle = int(dominante.quantite or 0) + ecart
-            if nouvelle < 0:
-                # Un retrait plus grand que la ligne dominante : on ne descend
-                # jamais sous zéro (et le compte final est renvoyé tel quel).
-                nouvelle = 0
-                avertissements.append(
-                    'Le retrait demandé dépasse la plus grosse ligne de '
-                    'panneaux : elle a été ramenée à 0, les autres lignes '
-                    'n\'ont pas été touchées.')
-            dominante.quantite = Decimal(str(nouvelle))
-            dominante.save(update_fields=['quantite'])
-            lignes_modifiees += 1
-            total_panneaux = sum(
-                int(li.quantite or 0) for li in lignes_panneau)
-            total_panneaux_avec = total_panneaux
-            panneaux_ont_change = True
+            # QJR60 / D12 — et jamais sur une ligne dont la quantité a été
+            # TAPÉE : elle sort du vivier.
+            libres = [li for li in lignes_panneau
+                      if not _quantite_verrouillee(li)]
+            if not libres:
+                _avertir_verrouillee(
+                    avertissements, lignes_panneau,
+                    "l'écart de %d panneau(x)"
+                    % abs(cible_panneaux - total_panneaux))
+            else:
+                dominante = max(libres,
+                                key=lambda li: Decimal(str(li.quantite or 0)))
+                ecart = cible_panneaux - total_panneaux
+                nouvelle = int(dominante.quantite or 0) + ecart
+                if nouvelle < 0:
+                    # Un retrait plus grand que la ligne dominante : on ne
+                    # descend jamais sous zéro (et le compte final est renvoyé
+                    # tel quel).
+                    nouvelle = 0
+                    avertissements.append(
+                        'Le retrait demandé dépasse la plus grosse ligne de '
+                        'panneaux : elle a été ramenée à 0, les autres lignes '
+                        'n\'ont pas été touchées.')
+                dominante.quantite = Decimal(str(nouvelle))
+                dominante.save(update_fields=['quantite'])
+                lignes_modifiees += 1
+                total_panneaux = sum(
+                    int(li.quantite or 0) for li in lignes_panneau)
+                total_panneaux_avec = total_panneaux
+                panneaux_ont_change = True
 
         # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
         # panneaux est la décision commerciale la plus lourde de cet écran
@@ -4240,9 +4289,21 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                          and (variante is None or _var(li) == variante)]
             if not candidats:
                 return False
+            # QJR60 / D12 — LA QUANTITÉ TAPÉE PAR LE VENDEUR EST UNE ENTRÉE.
+            # C'est ce chemin qui réécrivait les mètres de câble DC/terre et
+            # les comptes structure/socle : une ligne verrouillée en sort, et
+            # si la famille entière est verrouillée l'écart est NOMMÉ dans les
+            # avertissements plutôt qu'appliqué en silence.
+            libres = [li for li in candidats
+                      if not _quantite_verrouillee(li)]
+            if not libres:
+                _avertir_verrouillee(
+                    avertissements, candidats,
+                    'la quantité %s demandée par le calepinage' % cible)
+                return False
             # Plusieurs lignes de la même famille (rare) : seule la PLUS
             # GROSSE bouge, même politique que les panneaux ci-dessus.
-            dominante = max(candidats,
+            dominante = max(libres,
                             key=lambda li: Decimal(str(li.quantite or 0)))
             nouvelle = Decimal(str(cible))
             if Decimal(str(dominante.quantite or 0)) == nouvelle:
