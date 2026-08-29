@@ -106,12 +106,76 @@ SCHEMA = {
     'champ_kwc': _cle((int, float), ECRAN, DERIVEE),
     'irrigation_method': _cle((str,), ECRAN, ENTREE),
 
+    # ── QJR66 / ARBITRAGE ORCHESTRATEUR (29/08/2026) — LE CONTRAT DE
+    #    ROUND-TRIP `?edit=`. Le mappeur de réouverture de brouillon
+    #    (`DevisGenerator.jsx`, effet `?edit=`) RELIT ces clés de TÊTE pour
+    #    reposer le formulaire tel que le vendeur l'avait laissé. Elles étaient
+    #    écrites par l'ancien remplacement EN BLOC et n'ont jamais eu de
+    #    déclaration : hors schéma, la fusion QJR62 les refusait en 400 et le
+    #    round-trip mourait en silence. Ce sont toutes des ENTRÉES du
+    #    commercial (ce qu'il a TAPÉ), propriétaire ECRAN — JAMAIS des
+    #    dérivées : aucun de ces nombres n'est calculé par le moteur.
+    #
+    #    Entrées du marché AGRICOLE (pompage + exploitation guidée).
+    'debit_souhaite_m3h': _cle((int, float), ECRAN, ENTREE,
+                               'Le débit VOULU par le client — à ne pas '
+                               'confondre avec `debit_hmt_m3h`, qui est ce '
+                               'que la pompe retenue délivre à cette HMT.'),
+    'heures_pompage': _cle((int, float), ECRAN, ENTREE),
+    'type_pompe': _cle((str,), ECRAN, ENTREE),
+    'alim': _cle((str,), ECRAN, ENTREE),
+    'profondeur_m': _cle((int, float), ECRAN, ENTREE),
+    'distance_m': _cle((int, float), ECRAN, ENTREE),
+    'region': _cle((str,), ECRAN, ENTREE),
+    'crop': _cle((str,), ECRAN, ENTREE),
+    'surface_ha': _cle((int, float), ECRAN, ENTREE),
+    'current_fuel': _cle((str,), ECRAN, ENTREE),
+    'fuel_spend_current': _cle((int, float), ECRAN, ENTREE,
+                               'Dépense carburant ACTUELLE, en MAD/AN.'),
+    'hmt_static': _cle((int, float), ECRAN, ENTREE),
+    'hmt_drawdown': _cle((int, float), ECRAN, ENTREE),
+
     # ── Les DÉRIVÉES du marché industriel / commercial ───────────────────────
     'taux_autoconso': _cle((int, float), ECRAN, DERIVEE),
     'taux_couverture': _cle((int, float), ECRAN, DERIVEE),
     'payback': _cle((int, float), ECRAN, DERIVEE),
     'injection_kwh_an': _cle((int, float), ECRAN, DERIVEE),
     'injection_dh_an': _cle((int, float), ECRAN, DERIVEE),
+
+    # ── QJR66 (même arbitrage) — les ENTRÉES du marché industriel/commercial.
+    #    `tension_raccordement` est déclaré plus haut (entrée générale) ; la
+    #    RÉPARTITION horaire MT, elle, est la saisie qui l'accompagne : sans
+    #    elle l'étude MT OMET économies et payback (aucune plage horaire MT
+    #    officielle n'étant publiée, on n'en invente pas).
+    'repartition_mt': _cle((dict,), ECRAN, ENTREE),
+
+    # ── QJR66 (même arbitrage) — les RÉPONSES par catégorie commerciale
+    #    (`solar.js: COMMERCIAL_CATEGORY_QUESTIONS`). Le mappeur `?edit=` les
+    #    relit en clés de TÊTE (`e[q.key]`), une par question de la catégorie
+    #    retenue : elles sont donc déclarées à plat, à l'identique. Ce sont des
+    #    faits que le client DÉCLARE sur son site, jamais des calculs — un
+    #    booléen y est déclaré `(bool,)` pour que `valider` refuse un nombre
+    #    déguisé, et un nombre `(int, float)` pour qu'il refuse un booléen.
+    'chambres': _cle((int, float), ECRAN, ENTREE),
+    'occupation_pct': _cle((int, float), ECRAN, ENTREE),
+    'piscine': _cle((bool,), ECRAN, ENTREE),
+    'chambres_froides': _cle((int, float), ECRAN, ENTREE),
+    'horaires': _cle((str,), ECRAN, ENTREE),
+    'cuisson': _cle((str,), ECRAN, ENTREE),
+    'surface_vente_m2': _cle((int, float), ECRAN, ENTREE),
+    'effectif': _cle((int, float), ECRAN, ENTREE),
+    'clim': _cle((bool,), ECRAN, ENTREE),
+    'lits': _cle((int, float), ECRAN, ENTREE),
+    'garde_nuit': _cle((bool,), ECRAN, ENTREE),
+    'internat': _cle((bool,), ECRAN, ENTREE),
+    'fermeture_estivale': _cle((bool,), ECRAN, ENTREE),
+    'surface_m2': _cle((int, float), ECRAN, ENTREE),
+    'chauffe': _cle((str,), ECRAN, ENTREE),
+    'four': _cle((str,), ECRAN, ENTREE),
+    'cuisson_nocturne': _cle((bool,), ECRAN, ENTREE),
+    'temperature_consigne': _cle((int, float), ECRAN, ENTREE),
+    'volume_m3': _cle((int, float), ECRAN, ENTREE),
+    'saisonnalite_recolte': _cle((bool,), ECRAN, ENTREE),
 
     # ── Clé HISTORIQUE sans écrivain ─────────────────────────────────────────
     'payback_annees': _cle(

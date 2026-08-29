@@ -65,22 +65,91 @@ test('la formule facturesSaisies, rejouée avec les VRAIES constantes solar.js :
   assert.equal(facturesSaisies(hiverEteReels), true)
 })
 
-test('N1 — handleSubmit sème factures_mensuelles_reelles UNIQUEMENT si facturesSaisies, jamais un changement de payload sinon', () => {
-  const idx = DG.indexOf('if (facturesSaisies) {')
-  assert.ok(idx > -1, 'bloc de seed N1 introuvable dans handleSubmit')
-  const bloc = DG.slice(idx, idx + 900)
-  assert.match(bloc, /const facturesReelles = monthly\.map\(v => parseFloat\(v\) \|\| 0\)/)
-  assert.match(bloc, /factures_mensuelles_reelles:\s*facturesReelles,/)
-  // conso_annuelle dérivée via kwhFromBill (même patron que S1/autoQuote.js),
-  // jamais un chiffre supposé — et jamais si une source plus directe existe déjà.
-  assert.match(bloc, /if \(etudeParams\.conso_annuelle == null\) \{/)
-  assert.match(bloc, /kwhFromBill\(bill, distributeur\)\.kwhMensuel \|\| 0/)
+// ── N1 SURVIT À QJR66 — IL A SEULEMENT CHANGÉ DE CANAL ───────────────────────
+// Le seed N1 vivait dans le bloc `etude_params` que `persisterDevis` posait EN
+// BLOC dans le corps du devis — le mécanisme même qui EFFAÇAIT `gamme`,
+// `etude_horaire`, `dimensionnement` et tout ce que les rafraîchisseurs
+// serveur avaient écrit, à chaque sauvegarde du vendeur. QJR66 supprime CE
+// MÉCANISME, pas la fonctionnalité : les 12 factures réelles partent
+// désormais par l'endpoint de FUSION `PATCH /ventes/devis/<id>/etude-params/`
+// (QJR62), où seules les clés envoyées bougent.
+// ARBITRAGE ORCHESTRATEUR (29/08/2026) — « zéro perte » : ces entrées sont
+// écrites pour TOUS les marchés, résidentiel COMPRIS. Un devis créé à la main
+// (hors devis auto d'un lead) doit garder son moyen d'alimenter
+// `factures_mensuelles_reelles`, sans quoi le moteur PDF reconstruit la
+// facture « avant » depuis l'économie SUPPOSÉE — un proxy circulaire.
+test('QJR66 — persisterDevis ne pose plus AUCUN etude_params dans le corps du devis (fin du remplacement en bloc)', () => {
+  const start = DG.indexOf('const payload = {')
+  assert.ok(start > -1, 'le payload de persisterDevis est introuvable')
+  const bloc = DG.slice(start, DG.indexOf('}', DG.indexOf('prix_cible_kwc', start)))
+  assert.doesNotMatch(bloc, /etude_params/,
+    'le corps du devis ne doit plus porter etude_params (il écrasait tout le bloc)')
+  assert.equal(DG.indexOf('buildEtudeParamsChoice('), -1,
+    "buildEtudeParamsChoice n'a plus d'appelant sur ce chemin d'enregistrement")
+  // Le bloc part par l'endpoint de FUSION, jamais par le corps du devis.
+  assert.match(DG, /await ventesApi\.patchEtudeParams\(devisId, etudeMarche\)/)
+})
 
-  // Le bloc vit AVANT buildEtudeParamsChoice (qui doit voir conso_annuelle
-  // déjà posé pour ne pas le perdre) et APRÈS la construction des etudeParams
-  // par mode (industriel/commercial/agricole).
-  const buildChoiceIdx = DG.indexOf('etudeParams = buildEtudeParamsChoice(etudeParams, {')
-  assert.ok(buildChoiceIdx > idx, 'le seed N1 doit précéder buildEtudeParamsChoice')
+// Les entrées RÉELLES de l'écran, tous marchés (`entreesReellesEcran`).
+function entreesReelles() {
+  const start = DG.indexOf('const entreesReellesEcran = (consoDejaConnue) => {')
+  assert.ok(start > -1, 'entreesReellesEcran introuvable')
+  const end = DG.indexOf('const blocEtudeMarche = () => {', start)
+  assert.ok(end > start, 'la fin de entreesReellesEcran est introuvable')
+  return DG.slice(start, end)
+}
+
+test('N1 — les 12 factures RÉELLES sont semées UNIQUEMENT si facturesSaisies (jamais les valeurs d\'exemple)', () => {
+  const bloc = entreesReelles()
+  assert.match(bloc, /if \(facturesSaisies\) \{/)
+  assert.match(bloc,
+    /entrees\.factures_mensuelles_reelles = monthly\.map\(v => parseFloat\(v\) \|\| 0\)/)
+  // conso_annuelle dérivée via kwhFromBill (même patron que S1/autoQuote.js),
+  // jamais un chiffre supposé — et jamais si une source plus directe existe.
+  assert.match(bloc, /kwhFromBill\(bill, distributeur\)\.kwhMensuel \|\| 0/)
+  assert.match(bloc, /if \(conso == null && consoAnnuelleReelle > 0\)/)
+})
+
+test('N1 — aucune de ces entrées n\'est jamais envoyée à null (null SUPPRIME côté serveur, règle Z2)', () => {
+  const bloc = entreesReelles()
+  // Le bloc n'ASSIGNE jamais null à une clé d'entrée : une clé inconnue de
+  // l'écran est ABSENTE du corps, donc laissée intacte par la fusion — sinon
+  // ré-enregistrer un devis auto effacerait les factures qu'il avait semées.
+  assert.ok(!/entrees\.\w+ = null/.test(bloc),
+    'une entrée envoyée à null supprimerait la donnée du serveur')
+  assert.match(bloc, /if \(conso != null\) \{/)
+})
+
+test('QJR66 — l\'écran écrit les entrées réelles pour TOUS les marchés, et la sous-clé d\'étude de SON marché', () => {
+  const start = DG.indexOf('const blocEtudeMarche = () => {')
+  assert.ok(start > -1, 'blocEtudeMarche introuvable')
+  const bloc = DG.slice(start, DG.indexOf('const persisterDevis', start))
+  // Les trois branches de marché fusionnent les entrées réelles.
+  assert.equal((bloc.match(/entreesReellesEcran\(/g) || []).length, 3,
+    'les trois marchés doivent tous fusionner les entrées réelles de l\'écran')
+  // Résidentiel : les entrées réelles SEULES — et rien du tout si rien tapé.
+  assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
+  // Industriel / commercial : les cinq dérivées du marché (+ la catégorie).
+  for (const cle of ['taux_autoconso', 'taux_couverture', 'payback',
+                     'injection_kwh_an', 'injection_dh_an',
+                     'categorie_commerciale']) {
+    assert.ok(bloc.includes(cle), `clé industriel/commercial manquante : ${cle}`)
+  }
+  // Agricole : le bloc pompage du schéma.
+  for (const cle of ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
+                     'm3_jour', 'champ_kwc', 'irrigation_method']) {
+    assert.ok(bloc.includes(cle), `clé agricole manquante : ${cle}`)
+  }
+  // Aucune clé DÉRIVÉE dont l'écran n'est PAS propriétaire (le serveur les
+  // calcule ; le schéma les refuserait en 400 — on ne les envoie même pas).
+  // On scanne le CODE, pas les commentaires : le bloc PARLE de ces notions.
+  const code = bloc.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n')
+  for (const interdite of ['puissance_kwc', 'production_annuelle',
+                           'economies_annuelles', 'etude_horaire',
+                           'dimensionnement', 'profils_comparatifs']) {
+    assert.ok(!code.includes(interdite),
+      `clé dérivée non-propriétaire envoyée par l'écran : ${interdite}`)
+  }
 })
 
 test('N1 — kwhFromBill est bien importé (réutilisé, jamais réécrit) dans DevisGenerator.jsx', () => {

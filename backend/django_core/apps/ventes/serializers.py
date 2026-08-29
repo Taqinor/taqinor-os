@@ -656,10 +656,81 @@ class DevisWriteSerializer(EcheancierValidationMixin,
 
     QJR21 — ``echeancier`` passe par ``EcheancierValidationMixin`` : c'est LE
     chemin d'écriture du champ (``DevisViewSet.get_serializer_class``).
+
+    QJR67 (audit L3 du 29/08/2026) — ``exclude`` → ``fields`` EXPLICITES.
+    ``exclude = ['reference', 'fichier_pdf']`` faisait de CHAQUE autre colonne
+    du modèle une surface d'écriture ouverte, y compris SIX JSONField BRUTS
+    sans forme ni provenance : ``etude_params``, ``roof_layout``,
+    ``layout_hash``, ``offres_tailles_config``, ``marge_snapshot`` et
+    ``overrides``. Le navigateur pouvait donc poster n'importe quel chiffre
+    CLIENT-FACING (``puissance_kwc``, ``production_annuelle``,
+    ``economies_annuelles``, ``scenario``, ``etude_horaire``…) DIRECTEMENT dans
+    les entrées du PDF et de la page proposition — en contournant toute la
+    garde « zéro chiffre inventé » que les sérialiseurs dédiés appliquent. Ces
+    six champs passent en LECTURE SEULE : chacun a son chemin d'écriture nommé
+    et gardé — ``PATCH /devis/<id>/etude-params/`` (fusion validée par
+    ``domain.etude_schema``), ``POST /devis/<id>/layout/`` (qui pose aussi
+    ``layout_hash``), ``PATCH /devis/<id>/offres-tailles/config/``
+    (``OffreTailleConfigSerializer``), ``services.refresh_marge_snapshot``
+    (interne, jamais client), et ``PATCH /devis/<id>/overrides/``.
+
+    ``overrides`` (colonne QJR58, décision fondateur D12) EST le sixième —
+    ajouté par ARBITRAGE ORCHESTRATEUR du 29/08/2026, même classe et même
+    vague que les cinq autres. Laissé ouvert, il contournait exactement la
+    garde qui fait sa valeur : ``OverridesSerializer.to_internal_value`` refuse
+    en 400 tout ``CHAMPS_DERIVES`` et tout chemin inconnu, et un PATCH y
+    FUSIONNE au lieu de remplacer. Un corps de devis brut n'aurait respecté ni
+    l'un ni l'autre — et ce registre alimente des nombres client-facing.
+
+    ``echeancier`` RESTE ÉCRIVABLE ICI, délibérément : ce n'est PAS un champ
+    brut. C'est le chemin d'écriture prévu du champ (le vendeur édite
+    l'échéancier depuis la fiche devis) et il est VALIDÉ par
+    ``EcheancierValidationMixin`` (QJR21) — forme imposée
+    ``[{libelle, type, pct_or_montant}]``, valeur ambiguë refusée en 400
+    français. Le passer en lecture seule le rendrait silencieusement
+    inécrivable (DRF ignore un champ read-only sans rien dire) et supprimerait
+    du même coup son 400 — cf. ``tests/test_qjr_echeancier_validation.py``,
+    classe ``ApiEcheancier``.
+
+    La liste ci-dessous est la surface d'écriture d'AVANT, mot pour mot, moins
+    ``reference``/``fichier_pdf`` : un champ de modèle ajouté demain n'y entre
+    plus tout seul — il faut l'y écrire, en connaissance de cause
+    (``tests/test_qjr_serializer_surface.py`` fait rougir l'oubli).
     """
     class Meta:
         model = Devis
-        exclude = ['reference', 'fichier_pdf']
+        fields = [
+            'id',
+            # Identité commerciale + statut du document.
+            'statut', 'date_creation', 'date_validite', 'taux_tva',
+            'remise_globale', 'note',
+            # Cycle de vie envoi / acceptation / refus.
+            'date_envoi', 'date_acceptation', 'accepte_par_nom', 'date_refus',
+            'motif_refus', 'option_acceptee',
+            # Marché + étude. ``etude_params`` est en LECTURE SEULE (voir la
+            # docstring) ; ``echeancier`` reste écrivable, VALIDÉ par le mixin.
+            'mode_installation', 'etude_params', 'echeancier',
+            'acompte_pct', 'acompte_montant',
+            # Prix cible + prix/kWc gelé (SCA47).
+            'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
+            # Versionnage / cycle de vie technique.
+            'version', 'is_active', 'custom_data', 'devise', 'taux_change',
+            # Calepinage 3D + rendus. ``roof_layout`` et ``layout_hash`` sont
+            # posés par ``POST /devis/<id>/layout/``, jamais par ce corps.
+            'roof_layout', 'roof_image', 'layout_hash', 'pdf_render_meta',
+            'electrical_design', 'electrical_design_hash',
+            # Marge interne (staff-only, figée côté serveur).
+            'marge_snapshot',
+            'updated_at',
+            # Variantes / renouvellements / clauses.
+            'variante_tier', 'numero_renouvellement', 'clauses_appliquees',
+            # Tailles Éco/Recommandé/Max + registre de surcharges D12.
+            'offres_tailles_config', 'overrides',
+            # Relations.
+            'company', 'client', 'lead', 'created_by', 'remise_approuvee_par',
+            'version_parent', 'superseded_by', 'updated_by', 'variante_de',
+            'devis_origine', 'entite',
+        ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
         # accepté du corps de requête.
@@ -668,7 +739,14 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             # NTCPQ11/13 — posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
-                            'variante_de', 'variante_tier']
+                            'variante_de', 'variante_tier',
+                            # QJR67 — les SIX JSONField BRUTS : chacun a son
+                            # endpoint dédié et gardé (voir la docstring).
+                            # ``echeancier`` n'en fait PAS partie : il est
+                            # validé, pas brut.
+                            'etude_params', 'roof_layout', 'layout_hash',
+                            'offres_tailles_config', 'marge_snapshot',
+                            'overrides']
         extra_kwargs = {'client': {'required': False}}
 
 
