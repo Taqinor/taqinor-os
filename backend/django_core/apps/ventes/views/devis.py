@@ -2602,8 +2602,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         son motif EN FRANÇAIS (``revision_possible`` dit si « Réviser » est la
         bonne suite). Éco et Max sont refusées : ce sont des explorations.
         """
-        from rest_framework.exceptions import ValidationError
-
         from ..offres_tailles import ApplicationImpossible, appliquer_au_devis
         from ..serializers import OffreTailleRegenerationSerializer
 
@@ -2614,10 +2612,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             resume = appliquer_au_devis(devis, serializer.validated_data['cle'],
                                         utilisateur=request.user)
         except ApplicationImpossible as erreur:
-            raise ValidationError({
-                'detail': erreur.detail,
-                'revision_possible': erreur.revision_possible,
-            })
+            # PAS de ``ValidationError`` ICI, ET C'EST DÉLIBÉRÉ. DRF passe le
+            # detail d'une ``ValidationError`` par ``_get_error_details``, qui
+            # transforme TOUTE feuille en ``ErrorDetail`` (une chaîne) et
+            # enveloppe les scalaires dans une liste : ``revision_possible``
+            # partait donc en ``["True"]`` sur le fil. L'écran teste un BOOLÉEN
+            # pour choisir entre « Réviser » et un refus sec — une chaîne
+            # « True » et une chaîne « False » sont toutes deux vraies en JS,
+            # et le bouton « Réviser » se serait affiché sur un devis clos.
+            return Response(
+                {'detail': erreur.detail,
+                 'revision_possible': bool(erreur.revision_possible)},
+                status=status.HTTP_400_BAD_REQUEST)
         devis.refresh_from_db()
         reponse = self._offres_tailles_reponse(devis)
         reponse['applique'] = resume
