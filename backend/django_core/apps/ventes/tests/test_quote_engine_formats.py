@@ -1039,8 +1039,17 @@ class TestPdfFormats(TestCase):
         self.assertEqual(dt['nb_options'], 2)
         self.assertEqual(dt['total'], full['totaux_avec']['ttc'])
         self.assertEqual(dt['total'], one['totaux_all']['ttc'])
-        # le total de liste n'est JAMAIS la somme mensongère des deux options
-        self.assertLess(dt['total'], float(devis.total_ttc))
+        # Le total de liste n'est JAMAIS la somme mensongère des deux options.
+        # QJR51 / décision fondateur D2 (29/08/2026) — PRÉMISSE RENVERSÉE, et
+        # l'assertion se DURCIT. C'était un ``assertLess`` : ``Devis.total_ttc``
+        # valait alors cette somme mensongère, donc strictement supérieure.
+        # Depuis QJR51 la propriété lit ``Vue.NET`` et rend l'option EFFECTIVE
+        # (D9 → AVEC) : le modèle dit désormais EXACTEMENT ce que dit le
+        # document. Dérivation (option AVEC, remise 5 %) : 14×1 272,73 +
+        # 23 333,33 + 25 000 + 4 000 = 70 151,55 HT ; −5 % → 66 643,97 net ;
+        # TVA 10 % sur les panneaux (1 692,73) + 20 % sur le reste (9 943,33)
+        # = 11 636,06 ; TTC = **78 280,03** des deux côtés.
+        self.assertEqual(dt['total'], float(devis.total_ttc))
 
         # une page : OPTION AVEC SEULE — un une-page avec deux onduleurs DOIT
         # échouer ce test (règle de sécurité demandée)
@@ -1253,7 +1262,17 @@ class TestPdfFormats(TestCase):
         # partout (les pages diffèrent seulement par le type d'espace fine)
         import re
         html, doc = self._render()
-        digits = str(data['totaux_sans']['ttc'])
+        # QJR53/D2 (29/08/2026) — LA DONNÉE EST AU CENTIME, L'EN-TÊTE IMPRIMÉE
+        # RESTE AU DIRHAM. ``totaux_sans['ttc']`` était un ENTIER (l'ancien
+        # ``round(ttc_exact)`` du builder) et ``str()`` en donnait directement
+        # les chiffres à grouper ; c'est désormais un float au centime, dont
+        # ``str()`` porte un point décimal — le motif groupait alors « .03 »
+        # comme un paquet de milliers et ne trouvait plus RIEN (0 occurrence).
+        # Ce test lit le RENDU : il doit donc partir de la valeur telle que le
+        # formateur l'imprime — ``generate_devis_premium.fmt`` fait
+        # ``int(round(float(v)))`` puis groupe par milliers. On reprend son
+        # expression à l'identique, ce qui garantit l'accord.
+        digits = str(int(round(data['totaux_sans']['ttc'])))
         pattern = r'[\s   ]?'.join(
             [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
              for i in range((len(digits) + 2) // 3 - 1, -1, -1)])

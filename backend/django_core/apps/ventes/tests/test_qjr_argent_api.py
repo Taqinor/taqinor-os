@@ -5,10 +5,14 @@ CE QUE CES TESTS TIENNENT.
 1. **La forme est celle du contrat PACT10** ``contract_samples/devis_totaux.json``
    — clés et ordre de dérivation, entrées ``tva_par_taux`` en ``{taux, base,
    montant}``.
-2. **``Vue.BRUT`` est le comportement d'AUJOURD'HUI, au bit** : elle rend
-   exactement ce que ``Devis.total_ht/total_tva/total_ttc`` rendent — y compris
-   sur le devis mono-taux, où le noyau canonique et ``tva_buckets`` divergent
-   d'un arrondi. C'est ce qui rend QJR50 sans effet sur les chiffres.
+2. **``Vue.BRUT`` est le calcul d'HIER, conservé et NOMMÉ** : somme des lignes,
+   remise par ligne honorée, ``remise_globale`` IGNORÉE, et sur un devis
+   mono-taux la formule d'origine ``HT × taux`` SANS arrondi (là où le noyau
+   canonique quantifie au centime). C'est ce qui rendait QJR50 sans effet sur
+   les chiffres. **QJR51/D2 a ensuite basculé ``Devis.total_*`` sur
+   ``Vue.NET``** : BRUT n'est donc plus l'ancre du modèle — sur un devis remisé
+   ou mono-taux les deux DOIVENT diverger, et les tests pinnent chaque chaîne
+   sur sa propre valeur dérivée.
 3. **``Vue.NET`` / ``Vue.PAR_OPTION`` égalent ``option_totaux`` AU CENTIME** —
    la façade NOMME, elle ne recalcule pas.
 4. **``ttc_affiche``** vaut ``ttc`` partout : aucune vue n'arrondit aujourd'hui.
@@ -98,26 +102,63 @@ class FormeDuContratTests(_ArgentBase):
 
 
 class VueBrutIdentiqueTests(_ArgentBase):
-    """``Vue.BRUT`` = ce que ``Devis.total_*`` rend AUJOURD'HUI, au bit."""
+    """``Vue.BRUT`` = le calcul d'HIER, conservé et NOMMÉ.
+
+    QJR51 / décision fondateur D2 (29/08/2026) — L'ANCRE A BOUGÉ. Cette classe
+    a été écrite pour QJR50, qui branchait ``Devis.total_*`` sur ``Vue.BRUT``
+    « au bit » ; QJR51 les a basculées sur ``Vue.NET`` (remise globale honorée,
+    option effective). Comparer BRUT à ``Devis.total_*`` ne prouve donc plus
+    l'identité de BRUT : sur un devis remisé, ou mono-taux, les deux DOIVENT
+    diverger. Les deux tests concernés pinnent désormais les DEUX chaînes,
+    chacune sur sa propre valeur dérivée — c'est plus fort que l'égalité
+    d'hier, pas plus faible.
+    """
 
     def test_mono_taux_sans_remise(self):
+        """Mono-taux : BRUT applique la formule d'origine (HT × taux, AUCUN
+        arrondi), le noyau canonique quantifie au centime.
+
+        Cette divergence est DOCUMENTÉE dans ``argent._totaux_brut`` — elle est
+        la raison d'être de la vue BRUT (« passer par le noyau ferait bouger
+        des montants, ce que QJR50 interdit »). Dérivation : 9 × 1 166,67 +
+        14 000 = 24 500,03 HT ; TVA 20 % = **4 900,006** en BRUT, **4 900,01**
+        une fois quantifiée par la chaîne canonique que lit ``total_tva``.
+        """
         devis = self._devis('qjr49-brut1')
         self._ligne(devis, 'Panneau 550 W', 9, 1166.67)
         self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000)
         devis = Devis.objects.get(pk=devis.pk)
         vue = totaux(devis, vue=Vue.BRUT)
+        # Sans remise, le HT ne peut pas diverger : les deux chaînes partent
+        # de la même somme de lignes.
+        self.assertEqual(vue.ht_brut, Decimal('24500.03'))
         self.assertEqual(vue.ht_brut, devis.total_ht)
-        self.assertEqual(vue.tva, devis.total_tva)
-        self.assertEqual(vue.ttc, devis.total_ttc)
+        # BRUT — la formule d'hier, non arrondie.
+        self.assertEqual(vue.tva, Decimal('4900.006'))
+        self.assertEqual(vue.ttc, Decimal('29400.036'))
+        # NET (ce que lit le modèle depuis QJR51) — quantifiée au centime.
+        self.assertEqual(devis.total_tva, Decimal('4900.01'))
+        self.assertEqual(devis.total_ttc, Decimal('29400.04'))
+        # …et l'écart reste STRICTEMENT sous le centime : c'est un arrondi,
+        # jamais deux arithmétiques qui partiraient l'une de l'autre.
+        self.assertLess(abs(devis.total_tva - vue.tva), Decimal('0.01'))
 
     def test_la_remise_globale_est_ignoree_par_la_vue_brut(self):
+        """BRUT ignore ``remise_globale`` — et depuis QJR51 le modèle, lui, la
+        HONORE : 10 000 HT ; BRUT = 10 000 + 2 000 = **12 000** ; NET =
+        9 000 + 1 800 = **10 800,00**. C'est exactement le changement assumé
+        par la décision D2, pinné des deux côtés.
+        """
         devis = self._devis('qjr49-brut2', remise=Decimal('10'))
         self._ligne(devis, 'Panneau 550 W', 10, 1000)
         devis = Devis.objects.get(pk=devis.pk)
         vue = totaux(devis, vue=Vue.BRUT)
         self.assertEqual(vue.remise, Decimal('0'))
         self.assertEqual(vue.ht_net, vue.ht_brut)
-        self.assertEqual(vue.ttc, devis.total_ttc)
+        self.assertEqual(vue.ttc, Decimal('12000'))
+        # Le modèle passe par Vue.NET : la remise est appliquée.
+        self.assertEqual(devis.total_ttc, Decimal('10800.00'))
+        self.assertEqual(totaux(devis, vue=Vue.NET).ttc, devis.total_ttc)
 
     def test_taux_mixtes(self):
         devis = self._devis('qjr49-brut3')

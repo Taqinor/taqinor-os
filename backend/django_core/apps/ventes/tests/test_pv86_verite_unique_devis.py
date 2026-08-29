@@ -119,8 +119,24 @@ class _Base(TestCase):
     @staticmethod
     def ttc_du_devis(devis):
         """Total TTC canonique du devis, calculé de ses LIGNES (le modèle
-        exclut déjà les lignes optionnelles/sections — XSAL5/XSAL14)."""
-        return round(float(devis.total_ttc))
+        exclut déjà les lignes optionnelles/sections — XSAL5/XSAL14).
+
+        QJR53 / D2 (29/08/2026) — AU CENTIME, PLUS AU DIRHAM. Cette aide
+        rendait ``round(float(devis.total_ttc))``, c'est-à-dire l'ancien
+        arrondi au DIRHAM ENTIER que ``builder._canonical_totaux`` appliquait
+        (``ttc = round(ttc_exact)``) pendant que tout le reste du bloc de
+        totaux — et toutes les factures de tranche aval — était au centime :
+        le devis du client ne s'additionnait pas. QJR53 a remplacé cette
+        seconde arithmétique par la façade ``argent.totaux(Vue.AFFICHAGE)``,
+        au centime. L'aide suit la même vérité.
+
+        Dérivation sur l'ARTEFACT : 11 700 + 24 000 + 14×1 100 + 14 000 +
+        14×375 + 30×67 + 1 667 + 4 000 + 1 000 = 79 027 HT ; TVA 20 % =
+        15 805,40 ; TTC = **94 832,40**. L'ancienne aide rendait 94 832 — le
+        dirham. Les deux côtés (liste et document) citent désormais le MÊME
+        94 832,40, et aucune égalité n'est desserrée pour y arriver.
+        """
+        return float(devis.total_ttc)
 
 
 class TestArtefactDeuxOnduleurs(_Base):
@@ -179,15 +195,24 @@ class TestArtefactDeuxOnduleurs(_Base):
 
     def test_remise_globale_le_total_reste_celui_des_lignes(self):
         """Avec remise globale, la vérité reste la chaîne canonique appliquée à
-        TOUTES les lignes (``Devis.total_ttc`` n'intègre pas la remise
-        globale — c'est le seul écart légitime au total modèle)."""
+        TOUTES les lignes.
+
+        QJR51/QJR53 / D2 (29/08/2026) — ``Devis.total_ttc`` HONORE désormais
+        la remise globale (il lit ``Vue.NET``) : ce n'est plus « le seul écart
+        légitime au total modèle », c'est le MÊME nombre. Et il est au
+        CENTIME. Dérivation : 79 027 HT − 10 % = 71 124,30 ; TVA 20 % =
+        14 224,86 ; TTC = **85 349,16** (l'attente d'hier, ``round(...)``,
+        disait 85 349 — le dirham).
+        """
         devis = self.make_devis(ARTEFACT_LIGNES, remise='10')
         data = self.build(devis)
         ht = sum(float(li.quantite) * float(li.prix_unitaire)
                  for li in devis.lignes.all())
         self.assertEqual(data['nb_options'], 1)
-        self.assertEqual(data['display_total'], round(ht * 0.9 * 1.2))
+        self.assertEqual(data['display_total'], round(ht * 0.9 * 1.2, 2))
         self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
+        # Le modèle dit le même chiffre que le document, remise comprise.
+        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
 
 
 class TestAlternativeDeclaree(_Base):
@@ -201,19 +226,31 @@ class TestAlternativeDeclaree(_Base):
         self.assertEqual(data['nb_options'], 2)
         self.assertEqual(data['scenario'], 'Les deux (Sans + Avec)')
         # Chaque option vaut la somme de SES lignes (communes + siennes).
+        # QJR53/D2 — au CENTIME (``prix_unit_ttc`` l'est déjà : le builder pose
+        # ``round(pu_ttc, 2)``), plus au dirham. Dérivation « sans » :
+        # 41 027 HT × 1,20 = **49 232,40** (l'attente d'hier disait 49 232) ;
+        # « avec » : 67 327 HT × 1,20 = **80 792,40**.
         self.assertEqual(
             data['totaux_sans']['ttc'],
             round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['sans_items'])))
+                      for it in data['sans_items']), 2))
         self.assertEqual(
             data['totaux_avec']['ttc'],
             round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['avec_items'])))
+                      for it in data['avec_items']), 2))
         # Le total de liste = option AVEC batterie (LANE CHOIX-AVEC, fondateur
         # 25/08/2026 : « choisis l'option avec quand tu dois choisir »),
         # jamais la somme mensongère des deux.
         self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
-        self.assertLess(data['display_total'], self.ttc_du_devis(devis))
+        # QJR51 / décision fondateur D2 (29/08/2026) — PRÉMISSE RENVERSÉE.
+        # Cette ligne était ``assertLess`` : ``Devis.total_ttc`` valait alors la
+        # SOMME des deux paniers (un montant qui n'apparaît dans aucun document
+        # et que le client ne paiera jamais), donc strictement supérieure au
+        # total d'une option. Depuis QJR51 la propriété lit ``Vue.NET`` et rend
+        # l'option EFFECTIVE (D9 : l'acceptée, sinon celle du total affiché,
+        # c'est-à-dire AVEC). Modèle et document citent donc le MÊME 80 792,40 :
+        # l'assertion se DURCIT en égalité, elle ne se desserre pas.
+        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
         # Un document à deux options n'est pas un devis à assainir.
         self.assertNotIn('avertissements_internes', data)
 
