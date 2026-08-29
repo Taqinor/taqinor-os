@@ -3804,7 +3804,7 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
             revision_possible=False)
 
 
-def sync_devis_from_layout(devis, layout, user=None):
+def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
     Sous ``transaction.atomic()`` + ``select_for_update`` sur la ligne du devis
@@ -3874,6 +3874,23 @@ def sync_devis_from_layout(devis, layout, user=None):
     Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
     historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
     à la baisse.
+
+    ``cible_exacte`` (défaut ``False`` — TOUS les appels d'hier, comportement
+    byte-identique) RETOURNE cette règle du plafond, et uniquement pour les
+    devis variantés : le compte du layout devient alors une CIBLE EXACTE que
+    CHAQUE option est portée à, à la hausse comme à la baisse.
+
+    POURQUOI CE COMMUTATEUR EXISTE (revue Fable, 29/08/2026). Le plafond est la
+    bonne règle quand la cible vient d'un CALEPINAGE : le toit dit ce qui tient
+    physiquement, et une option qui a délibérément choisi moins n'a pas à se
+    voir vendre des panneaux qu'elle a écartés. Il est la MAUVAISE règle quand
+    la cible vient d'un NOMBRE TAPÉ PAR LE VENDEUR sur la carte « Recommandé »
+    (:func:`~apps.ventes.offres_tailles.appliquer_au_devis`) : là, le vendeur
+    N'exprime PAS une contenance de toit, il exprime le devis qu'il veut. Sous
+    la règle du plafond, taper un compte PLUS GRAND que celui du devis ne
+    faisait STRICTEMENT RIEN — configuration consommée, message de succès,
+    devis inchangé : très exactement le « les modifications ne changent rien au
+    devis » que ce chemin existe pour clore.
 
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
@@ -4056,10 +4073,19 @@ def sync_devis_from_layout(devis, layout, user=None):
             # PHYSIQUEMENT pas posable), une option en dessous n'est jamais
             # augmentée — on ne rajoute pas au client des panneaux que
             # l'optimum a délibérément écartés.
+            # ``cible_exacte`` — la cible vient d'un NOMBRE TAPÉ, pas d'un
+            # toit : les DEUX options y sont portées, à la hausse comme à la
+            # baisse. Sans lui, une augmentation était un NO-OP SILENCIEUX
+            # (« une option qui reste EN DESSOUS n'est JAMAIS augmentée »),
+            # configuration consommée et message de succès compris.
             for variante in (VARIANTE_SANS, VARIANTE_AVEC):
                 vue = _lignes_de(variante)
                 total_vue = sum(int(li.quantite or 0) for li in vue)
-                if not vue or total_vue <= cible_panneaux:
+                if not vue:
+                    continue
+                if total_vue == cible_panneaux:
+                    continue
+                if not cible_exacte and total_vue < cible_panneaux:
                     continue
                 # Rogner d'abord une ligne PROPRE à cette variante : toucher la
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
@@ -6122,6 +6148,48 @@ def _liberer_marque_auto_devis(company, lead_id):
             'prochain essai sera refusé.', lead_id, exc_info=True)
 
 
+def corps_note_refus_auto_devis(exc):
+    """Le CORPS de la note d'abstention — pur, testable sans base.
+
+    Il NOMME le motif : le champ que le moteur a trouvé manquant, et le
+    message français qu'il oppose déjà au commercial sur l'écran de devis.
+    C'est délibérément le MÊME texte des deux côtés : un lead refusé et un
+    devis refusé le sont pour la même raison, et la lire deux fois formulée
+    autrement ferait croire à deux problèmes.
+
+    Le corps est DÉTERMINISTE (aucune date, aucun compteur) — c'est ce qui
+    permet à la garde anti-répétition de reconnaître le même motif d'un rejeu
+    à l'autre.
+    """
+    champ = getattr(exc, 'field', None) or 'donnée manquante'
+    message = (str(exc) or '').strip()
+    corps = ('Devis automatique NON créé depuis le tunnel — le '
+             'dimensionnement s\'abstient (%s).' % champ)
+    if message:
+        corps += ' Motif : %s' % message
+    corps += (' Complétez la fiche puis créez le devis à la main : rien n\'a '
+              'été écrit sur ce lead.')
+    return corps
+
+
+def _noter_refus_auto_devis(company, lead_id, lead, exc):
+    """Pose la note d'abstention. BEST-EFFORT : ne remonte jamais.
+
+    Un chemin d'observabilité n'a pas le droit de transformer une abstention
+    (cas normal) en erreur : l'appelant rend ``None`` dans les deux cas.
+    """
+    try:
+        from apps.crm.services import ajouter_note_lead_si_nouvelle
+        ajouter_note_lead_si_nouvelle(
+            company=company, lead_id=lead_id,
+            user=getattr(lead, 'owner', None),
+            body=corps_note_refus_auto_devis(exc))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'Auto-devis: note d\'abstention non posée sur le lead %s.',
+            lead_id, exc_info=True)
+
+
 def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     """AUTO-PIPELINE — le devis brouillon d'un lead arrivé du tunnel.
 
@@ -6230,6 +6298,20 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         logger.info(
             'Auto-devis: lead %s non chiffrable (%s) — aucun devis créé.',
             lead_id, exc.field or 'donnée manquante')
+        # ── F6 (revue Fable, 29/08/2026) — UN REFUS SE VOIT SUR LE LEAD ──
+        #
+        # Le refus ne laissait qu'une ligne de journal serveur. Côté
+        # commercial, le lead arrivait NU, sans devis et sans un mot — alors
+        # que la veille les mêmes leads en recevaient un. Le silence se lisait
+        # comme une panne ; c'est une ABSTENTION, et elle a un motif nommable.
+        #
+        # UNE FOIS PAR MOTIF, JAMAIS PAR REJEU : le refus relâche la marque de
+        # dédup (une donnée manquante aujourd'hui ne ferme pas le lead pour
+        # toujours), si bien qu'une re-livraison du webhook rejoue le même
+        # refus. ``ajouter_note_lead_si_nouvelle`` (apps.crm.services — la
+        # frontière cross-app, jamais ``crm.models``) ne repose pas un corps
+        # identique ; un motif DIFFÉRENT, lui, mérite bien sa note.
+        _noter_refus_auto_devis(company, lead_id, lead, exc)
         return None
     except Exception:  # noqa: BLE001 — relâcher AVANT de laisser remonter
         _liberer_marque_auto_devis(company, lead_id)

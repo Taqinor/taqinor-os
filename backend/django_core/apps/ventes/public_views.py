@@ -121,6 +121,29 @@ def _strip_confidential_deep(obj):
     return obj
 
 
+def _sans_cles_internes(obj):
+    """Retire RÉCURSIVEMENT toute clé de dict PRÉFIXÉE PAR ``_``.
+
+    LA CONVENTION EST DÉJÀ CELLE DU BUILDER : ``_company_id``, ``_produit_nom``,
+    ``_embed_roof_render`` — le souligné y signifie « donnée de plomberie
+    interne, jamais un champ de document ». Rien de tout cela n'a d'affaire
+    dans la charge utile d'une page publique : ``payload['quote']`` republie
+    ``data`` TEL QUEL, si bien qu'un identifiant de société sortait chez le
+    client (chemin ``.quote._company_id``) — une donnée de cloisonnement
+    multi-société, offerte à qui possède un jeton.
+
+    Le geste est GÉNÉRIQUE plutôt que nominatif : une prochaine clé de
+    plomberie ajoutée au builder sera retirée d'elle-même, sans qu'il faille
+    penser à l'inscrire ici — c'est-à-dire sans l'oublier.
+    """
+    if isinstance(obj, dict):
+        return {k: _sans_cles_internes(v) for k, v in obj.items()
+                if not str(k).startswith('_')}
+    if isinstance(obj, (list, tuple)):
+        return [_sans_cles_internes(v) for v in obj]
+    return obj
+
+
 def _resolve_share_link_by_token(token, *, select_related=()):
     """L-INTPREV (fondateur 25/08/2026) — résout un ShareLink par son jeton
     PUBLIC ou par son jeton INTERNE (aperçu commercial sans notification),
@@ -2519,7 +2542,16 @@ def proposal_data(request, token):
             'date': data['date'],
             'client_name': data['client_name'],
             'statut': devis.statut,
-            'quote': data,
+            # LA PLOMBERIE INTERNE NE FRANCHIT PAS LA FRONTIÈRE. ``data`` porte
+            # des clés de travail préfixées ``_`` (``_company_id``,
+            # ``_produit_nom``…) que le builder pose pour ses propres besoins ;
+            # republier ``data`` tel quel les servait au client — l'identifiant
+            # de société, donc une donnée de cloisonnement multi-société,
+            # sortait sous ``quote._company_id``. Le retrait se fait ICI, à la
+            # publication, et NON sur ``data`` lui-même : les classifications
+            # de ce même fichier (``_produit_nom``) lisent encore ``data`` en
+            # amont, et les amputer casserait la lecture du matériel.
+            'quote': _sans_cles_internes(data),
             # QX49 — mode d'installation + catégorie commerciale + bloc KPI par
             # mode (whitelist stricte, jamais prix_achat/marge). La page web rend
             # les 4 variantes sans re-calcul client.
@@ -2924,6 +2956,27 @@ def _data_pour_taille_detail(devis, link):
     return data, resid
 
 
+# YAPIC6 — LA FORME EST DÉCLARÉE, PAS DEVINÉE. Le générateur OpenAPI ne sait
+# rien tirer d'une vue fonction qui rend un dict libre : il émettait
+# l'avertissement NEUF « proposal_taille_detail: unable to guess serializer »,
+# et ce job échoue sur toute signature nouvelle. On déclare donc le contrat que
+# ``apps/ventes/contract_samples/taille_detail.json`` fige déjà — les deux
+# séries profondes (``economies_mensuelles``, ``cashflow``) et la ``carte``
+# restent des objets libres : leurs clés varient avec la taille servie, et les
+# figer champ par champ ici créerait une SECONDE déclaration de contrat à côté
+# de l'échantillon, donc, tôt ou tard, deux contrats.
+_TAILLE_DETAIL_RESPONSE = inline_serializer('PublicTailleDetail', {
+    'cle': drf_serializers.CharField(),
+    'titre': drf_serializers.CharField(allow_null=True),
+    'variante': drf_serializers.CharField(),
+    'est_le_devis': drf_serializers.BooleanField(),
+    'carte': drf_serializers.DictField(),
+    'economies_mensuelles': drf_serializers.DictField(required=False),
+    'cashflow': drf_serializers.DictField(required=False),
+})
+
+
+@extend_schema(responses={200: _TAILLE_DETAIL_RESPONSE})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])

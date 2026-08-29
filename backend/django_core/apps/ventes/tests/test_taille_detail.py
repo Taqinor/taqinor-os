@@ -211,10 +211,12 @@ class DerivationTests(SimpleTestCase):
 class CacheTests(SimpleTestCase):
     """La clé de mémoïsation : ce qui doit l'invalider l'invalide."""
 
-    def _lien(self, config=None):
+    def _lien(self, config=None, sections=None, niveau='standard',
+              otp=False):
         return SimpleNamespace(
-            pk=7, devis=SimpleNamespace(offres_tailles_config=config,
-                                        updated_at=None))
+            pk=7, sections=sections, niveau=niveau, otp_lecture=otp,
+            devis=SimpleNamespace(offres_tailles_config=config,
+                                  updated_at=None))
 
     def test_la_cle_distingue_taille_et_variante(self):
         lien = self._lien()
@@ -237,9 +239,38 @@ class CacheTests(SimpleTestCase):
         # seul aurait laissé un client lire le détail d'une taille que SON
         # lien ne sert pas.
         a = self._lien()
-        b = SimpleNamespace(pk=8, devis=a.devis)
+        b = SimpleNamespace(pk=8, sections=None, niveau='standard',
+                            otp_lecture=False, devis=a.devis)
         self.assertNotEqual(td.cle_cache(a, 'eco', 'sans'),
                             td.cle_cache(b, 'eco', 'sans'))
+
+    def test_DECOCHER_une_taille_invalide_la_cle_du_MEME_lien(self):
+        """F3 (revue Fable, 29/08/2026) — ``sections`` se modifie SUR PLACE.
+
+        Le ``pk`` ne bouge pas quand le commercial décoche « Taille Éco » : la
+        clé d'hier servait donc le détail révoqué pendant un quart d'heure
+        encore — une révocation qui ne révoque pas.
+        """
+        servie = self._lien(sections={'taille_eco': True})
+        revoquee = self._lien(sections={'taille_eco': False})
+        self.assertNotEqual(td.cle_cache(servie, 'eco', 'sans'),
+                            td.cle_cache(revoquee, 'eco', 'sans'))
+
+    def test_le_NIVEAU_et_l_OTP_du_lien_entrent_aussi_dans_la_cle(self):
+        base = self._lien()
+        self.assertNotEqual(td.cle_cache(base, 'eco', 'sans'),
+                            td.cle_cache(self._lien(niveau='confiance'),
+                                         'eco', 'sans'))
+        self.assertNotEqual(td.cle_cache(base, 'eco', 'sans'),
+                            td.cle_cache(self._lien(otp=True), 'eco', 'sans'))
+
+    def test_un_lien_INCHANGE_garde_sa_cle(self):
+        """Témoin — l'empreinte ne doit pas rendre le cache inutile."""
+        self.assertEqual(
+            td.cle_cache(self._lien(sections={'taille_eco': True}), 'eco',
+                         'sans'),
+            td.cle_cache(self._lien(sections={'taille_eco': True}), 'eco',
+                         'sans'))
 
 
 class ContratTests(SimpleTestCase):
@@ -390,6 +421,21 @@ class EndpointTests(_Base):
     def test_la_case_ECONOMIES_decochee_ferme_aussi_le_detail(self):
         devis = self._devis('det-eco-off')
         lien = self._lien(devis, sections={'economies': False})
+        self.assertEqual(self._appel(lien.token, 'eco').status_code, 404)
+
+    def test_DECOCHER_la_taille_APRES_une_lecture_la_revoque_AUSSITOT(self):
+        """F3 (revue Fable, 29/08/2026) — LA RÉVOCATION QUI NE RÉVOQUAIT PAS.
+
+        ``sections`` est mutable sur un lien DÉJÀ ÉMIS (c'est tout son
+        intérêt). La clé de cache ne portant que le ``pk``, un détail déjà
+        servi continuait de l'être un quart d'heure après que le commercial
+        eut décoché la case — le retrait ne prenait effet qu'à l'expiration.
+        """
+        devis = self._devis('det-revoque')
+        lien = self._lien(devis)
+        self.assertEqual(self._appel(lien.token, 'eco').status_code, 200)
+        lien.sections = {'taille_eco': False}
+        lien.save(update_fields=['sections'])
         self.assertEqual(self._appel(lien.token, 'eco').status_code, 404)
 
     def test_un_devis_POMPAGE_n_a_aucun_detail(self):
