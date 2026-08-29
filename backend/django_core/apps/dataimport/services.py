@@ -649,10 +649,27 @@ def _doublon_client(company, f):
 
 
 def _doublon_produit(company, f):
+    from django.db.models import Q
+
     from apps.stock.models import Produit
     if f.get('sku'):
         return Produit.objects.filter(company=company, sku=f['sku']).first()
+    # Ligne SANS SKU : depuis ``stock.0135``, (company, nom) est UNIQUE pour
+    # les produits ACTIFS sans SKU. Un homonyme doit donc être IGNORÉ comme
+    # doublon (le catalogue réel n'est jamais écrasé par un import — même
+    # doctrine que le doublon par SKU) plutôt que de faire échouer l'import
+    # entier sur une ``IntegrityError``.
+    if f.get('nom'):
+        return Produit.objects.filter(
+            company=company, nom=f['nom'], is_archived=False).filter(
+            Q(sku__isnull=True) | Q(sku='')).first()
     return None
+
+
+def _raison_doublon_produit(f):
+    """Motif d'ignorance affiché : dit VRAI sur la clé qui a matché."""
+    return ('doublon (SKU existe)' if f.get('sku')
+            else 'doublon (nom existe)')
 
 
 def _analyser_conflits(target, rows, mapped, company, mode, external_system,
@@ -711,7 +728,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
         elif target == 'products':
             existing = _doublon_produit(company, f)
             if existing is not None:
-                action, raison = 'ignoree', 'doublon (SKU existe)'
+                action, raison = 'ignoree', _raison_doublon_produit(f)
         else:
             continue
 
@@ -896,9 +913,11 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     continue
                 # Le catalogue réel n'est JAMAIS écrasé par un import : un SKU
                 # déjà présent fait ignorer la ligne (l'aperçu le dit, champ par
-                # champ, via le même ``_doublon_produit``).
+                # champ, via le même ``_doublon_produit``) — et, pour une ligne
+                # SANS SKU, un homonyme actif (contrainte stock.0135).
                 if _doublon_produit(company, f) is not None:
-                    skipped.append({'ligne': i, 'raison': 'doublon (SKU existe)'})
+                    skipped.append(
+                        {'ligne': i, 'raison': _raison_doublon_produit(f)})
                     continue
                 for k in ('prix_vente', 'prix_achat'):
                     if k in f:
