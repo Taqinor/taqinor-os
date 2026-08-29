@@ -595,6 +595,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # bloc horaire, sans quoi le schéma unifilaire de la page client
             # décrirait la composition d'avant (best-effort, jamais bloquant —
             # voir ``services.rafraichir_etudes_du_devis``).
+            # QJR20 — « composition COURANTE » est désormais GARANTI et non
+            # espéré : ``sync_devis_from_layout`` recale l'instance qu'on lui a
+            # passée sur la ligne qu'il a verrouillée et écrite
+            # (``_resynchroniser_instance_appelante``). Sans ce recalage,
+            # ``devis`` gardait les lignes PRÉCHARGÉES en début de requête
+            # (``prefetch_related('lignes')`` du queryset) et les quatre études
+            # se recalculaient — puis se PERSISTAIENT — sur la composition
+            # d'AVANT la resynchro.
             from ..services import rafraichir_etudes_du_devis
             rafraichir_etudes_du_devis(devis)
         return Response(resultat)

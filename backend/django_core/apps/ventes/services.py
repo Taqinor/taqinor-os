@@ -3804,6 +3804,40 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
             revision_possible=False)
 
 
+def _resynchroniser_instance_appelante(devis, verrou):
+    """QJR20 (29/08/2026) — recale l'instance de l'APPELANT sur ce qui vient
+    d'être écrit sous verrou.
+
+    LE DÉFAUT CORRIGÉ. :func:`sync_devis_from_layout` recharge le devis sous
+    ``select_for_update()`` et mute CETTE instance-là (``verrou``) ; l'objet que
+    l'appelant tient est celui chargé en début de requête — et le viewset le
+    charge avec ``prefetch_related('lignes', 'lignes__produit')``, si bien que
+    ``devis.lignes.all()`` continue de servir la composition d'AVANT même après
+    la resynchro. Les quatre études rafraîchies juste après
+    (``rafraichir_etudes_du_devis``) repartaient donc de l'ancienne
+    composition, et RÉÉCRIVAIENT ``etude_params`` par-dessus ce que la
+    resynchro venait d'y poser. La conception électrique — seule des quatre à
+    n'être jamais recalculée à la lecture, et pourtant lue par la page publique
+    et l'annexe PDF depuis L-1V — pouvait ainsi PERSISTER un schéma faux
+    jusqu'à ce qu'un humain rouvre l'onglet électrique.
+
+    ``refresh_from_db()`` sans ``fields`` VIDE ``_prefetched_objects_cache``
+    (Django) : la prochaine lecture de ``devis.lignes`` repart en base. Le vidage
+    explicite qui suit n'est qu'une ceinture, pour que ce contrat ne dépende pas
+    d'un détail d'implémentation du framework. Best-effort : un devis
+    entre-temps supprimé ne doit pas transformer une resynchro RÉUSSIE en erreur.
+    """
+    if devis is None or devis is verrou:
+        return
+    try:
+        devis.refresh_from_db()
+    except Exception:  # noqa: BLE001 — la resynchro est déjà validée en base
+        logger.warning('QJR20: instance appelante non rechargeable (devis %s)',
+                       getattr(devis, 'pk', '?'), exc_info=True)
+        return
+    devis._prefetched_objects_cache = {}
+
+
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -4543,6 +4577,10 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     # panne ne doit ni annuler la resynchro déjà validée, ni salir sa
     # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
     concevoir_electrique_du_devis(verrou, origine='resynchronisation')
+    # QJR20 — l'appelant repart de CE QUI VIENT D'ÊTRE ÉCRIT (voir
+    # ``_resynchroniser_instance_appelante`` : sans cela, les études
+    # rafraîchies juste après décrivent la composition d'AVANT la resynchro).
+    _resynchroniser_instance_appelante(devis, verrou)
     return resultat
 
 
