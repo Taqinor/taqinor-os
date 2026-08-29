@@ -308,6 +308,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # d'action pour ne pas hériter du niveau de garde de l'écriture.
             'offres_tailles', 'offres_tailles_config',
             'offres_tailles_regenerer', 'offres_tailles_appliquer',
+            # QJR58 (décision fondateur D12, 29/08/2026) — le REGISTRE de
+            # surcharges du vendeur (GET/PATCH/DELETE). Même périmètre que le
+            # générateur (responsable + admin). PIÈGE VX199 : sans ce nom ICI,
+            # l'action tomberait sur le repli ``IsAdminRole`` et son
+            # ``permission_classes`` — qui déclare la MÊME classe — ne serait
+            # JAMAIS consulté.
+            'overrides',
             # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
             # visites DISTINCTES par section de la proposition + alerte de
             # friction (relecture répétée d'une même section). Analytics
@@ -2554,6 +2561,95 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 ),
             }
         return {'offres_tailles': bloc, 'editable': True}
+
+    # ── QJR58 — LE REGISTRE DE SURCHARGES (décision fondateur D12) ───────────
+
+    @staticmethod
+    def _overrides_reponse(devis):
+        """La forme du contrat PACT10 ``contract_samples/devis_overrides.json``.
+
+        ``effectif`` est DÉRIVÉ À CHAQUE LECTURE, jamais stocké : la carte des
+        valeurs ``auto`` est celle que le moteur rendrait AUJOURD'HUI. QJR58 ne
+        branche AUCUNE dérivation (elles arrivent avec leurs propriétaires —
+        QJR63 pour le kWc, QJR64 pour le scénario) : la carte est donc vide, et
+        chaque chemin SURCHARGÉ apparaît quand même avec ``auto: null``. Rien
+        n'est inventé pour remplir le bloc.
+
+        ``lignes`` est une carte ``{id: {...}}`` — JAMAIS une liste indexée par
+        position (une ligne supprimée déplacerait la surcharge sur une autre).
+        Elle reste vide tant que ``LigneDevis.quantite_manuelle`` /
+        ``prix_manuel`` n'existent pas (QJR59).
+        """
+        from ..domain import overrides as registre_overrides
+
+        lignes = {}
+        for ligne in devis.lignes.all():
+            marques = {
+                champ: bool(getattr(ligne, champ))
+                for champ in ('quantite_manuelle', 'prix_manuel')
+                if hasattr(ligne, champ)
+            }
+            if any(marques.values()):
+                lignes[str(ligne.pk)] = marques
+        return {
+            'overrides': registre_overrides.registre_du_devis(devis),
+            'effectif': registre_overrides.vue_effective(devis, {}),
+            'lignes': lignes,
+        }
+
+    @action(detail=True, methods=['get', 'patch', 'delete'],
+            url_path='overrides',
+            permission_classes=[IsResponsableOrAdmin])
+    def overrides(self, request, pk=None):
+        """GET / PATCH / DELETE du REGISTRE de surcharges de CE devis.
+
+        * **GET** — le registre + le bloc ``effectif`` dérivé à la lecture.
+        * **PATCH** — FUSIONNE le sous-ensemble de chemins reçu : envoyer
+          ``{"taille.nb_panneaux": {"valeur": 14}}`` ne touche AUCUN autre
+          chemin déjà posé. Un champ DÉRIVÉ, un chemin hors liste blanche D12
+          ou une clé indexée par POSITION sont refusés en 400 avec un message
+          FR qui NOMME le chemin — jamais un silence.
+        * **DELETE ?chemin=<chemin>** — ``regenerer`` : SUPPRIME l'override de
+          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais par une
+          valeur calculée : reposer une valeur exige un nouveau PATCH explicite.
+
+        L'ÉCRITURE PASSE PAR UN ``UPDATE`` D'UNE SEULE COLONNE
+        (``domain.overrides.ecrire_colonne``) : ni ``updated_at`` ni le gel
+        ``prix_par_kwc`` ne bougent — les deux effets de bord de ``Devis.save``
+        sont faux pour une pose d'override. Aucune ligne, aucun total, aucun
+        statut n'est touché (règle #4).
+        """
+        from ..domain import overrides as registre_overrides
+        from ..serializers import OverridesSerializer
+
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(self._overrides_reponse(devis))
+
+        if request.method == 'DELETE':
+            chemin = request.query_params.get('chemin') or ''
+            if not chemin:
+                return Response(
+                    {'chemin': 'Paramètre requis : quel chemin régénérer ?'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if not registre_overrides.chemin_autorise(chemin):
+                return Response(
+                    {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
+                    status=status.HTTP_400_BAD_REQUEST)
+            registre_overrides.ecrire_colonne(
+                devis, registre_overrides.regenerer(devis, chemin))
+            return Response(self._overrides_reponse(devis))
+
+        serializer = OverridesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            registre = registre_overrides.fusionner(
+                devis, serializer.validated_data, utilisateur=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        registre_overrides.ecrire_colonne(devis, registre)
+        return Response(self._overrides_reponse(devis))
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])

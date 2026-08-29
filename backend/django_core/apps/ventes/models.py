@@ -343,6 +343,25 @@ class Devis(models.Model):
                   'le moteur les recalcule depuis cette configuration.',
     )
 
+    # QJR58 / décision fondateur D12 (29/08/2026) — LE REGISTRE UNIQUE des
+    # surcharges du vendeur, par CHEMIN :
+    # ``{chemin: {valeur, pose_le, pose_par, origine}}``. Il remplace les
+    # QUATRE mécanismes incompatibles que l'audit L3 a trouvés (dont
+    # ``saisie_manuelle``, noms à plat sans provenance).
+    # ENTRÉES SEULES : la liste blanche vit dans
+    # ``apps.ventes.domain.overrides`` et un champ DÉRIVÉ y est refusé en 400 —
+    # aucun nombre calculé par le moteur ne peut donc entrer ici, ni en
+    # ressortir sur une page client. NULL = aucun chemin surchargé, comportement
+    # strictement identique à avant (aucun backfill).
+    overrides = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Surcharges du vendeur (par chemin)',
+        help_text="Registre des surcharges du vendeur, par CHEMIN "
+                  "({valeur, pose_le, pose_par, origine}). Entrées seules : "
+                  "aucun nombre calculé par le moteur n'y entre jamais. Liste "
+                  "blanche : décision fondateur D12 du 29/08/2026.",
+    )
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — le comportement reste

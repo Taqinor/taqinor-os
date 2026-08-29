@@ -97,10 +97,11 @@ _MSG_DERIVE = (
     'Champ calculé par le moteur : il ne peut pas être surchargé. Modifiez '
     'les ENTRÉES (taille, profil, tarif) et le moteur le recalculera.'
 )
-_MSG_INCONNU = (
+MSG_CHEMIN_INCONNU = (
     "Chemin inconnu du registre de surcharges : la liste blanche (décision "
     "fondateur D12) est la seule porte."
 )
+_MSG_INCONNU = MSG_CHEMIN_INCONNU
 _MSG_POSITION = (
     "Interdit : une clé indexée par la POSITION d'une ligne déplacerait "
     "silencieusement la surcharge sur une autre ligne. Les surcharges de "
@@ -124,14 +125,19 @@ def chemin_autorise(chemin):
     return chemin in CHAMPS_OVERRIDABLES
 
 
-def _registre(devis):
+def registre_du_devis(devis):
     """Le registre RANGÉ sur ce devis, toujours un dict (jamais ``None``).
 
     Lu par ``getattr`` : la colonne ``Devis.overrides`` n'existe qu'à partir de
-    QJR58, ce module fonctionne donc AVANT elle comme APRÈS.
+    QJR58, ce module fonctionne donc AVANT elle comme APRÈS. Rendu par COPIE :
+    un appelant qui le modifie ne touche jamais l'instance.
     """
     brut = getattr(devis, 'overrides', None)
     return dict(brut) if isinstance(brut, dict) else {}
+
+
+#: Alias interne historique — ce module l'utilise sous ce nom court.
+_registre = registre_du_devis
 
 
 def effectif(devis, chemin, auto):
@@ -274,6 +280,29 @@ def _identite(utilisateur):
         return None
     return (getattr(utilisateur, 'email', None)
             or getattr(utilisateur, 'username', None) or None)
+
+
+def ecrire_colonne(devis, registre):
+    """QJR58 — écrit ``Devis.overrides`` — CETTE COLONNE, ET RIEN D'AUTRE.
+
+    POURQUOI PAS ``devis.save(update_fields=['overrides'])`` — copie mot pour
+    mot du raisonnement d'``offres_tailles._ecrire_colonne``, parce que les
+    DEUX effets de bord de ``Devis.save`` sont FAUX pour une pose d'override :
+
+    * SCA47 — ``save`` DÉRIVE ET GÈLE ``prix_par_kwc`` (write-once) dès qu'un
+      kWc et un total existent. Poser une surcharge d'ENTRÉE aurait donc pu
+      figer au passage un prix par kWc que ce geste ne concerne pas — et
+      write-once veut dire : pour toujours.
+    * VX98 — ``updated_at`` (``auto_now``) aurait avancé, et la page aurait
+      annoncé « modifié il y a N minutes » sur un devis dont AUCUNE ligne,
+      AUCUN total et AUCUN statut n'a bougé.
+
+    L'instance en mémoire est resynchronisée pour que l'appelant relise ce
+    qu'il vient d'écrire.
+    """
+    type(devis).objects.filter(pk=devis.pk).update(overrides=registre)
+    devis.overrides = registre
+    return registre
 
 
 def erreurs_de_chemins(data):
