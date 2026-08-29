@@ -191,10 +191,11 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     pas résolue. Deux raisons, toutes deux dures :
 
     * filtrer une seconde fois une liste déjà découpée n'a aucun sens ;
-    * ``option_effective`` traverse ``has_two_options``, donc le moteur PDF —
-      et l'appelant qui fournit ses lignes est justement, la plupart du temps,
-      le moteur PDF lui-même (``quote_engine.builder``). Résoudre l'option ici
-      le ferait se rappeler lui-même.
+    * ``option_effective`` interroge le prédicat « deux options », qui lit les
+      lignes du devis — et l'appelant qui fournit ses lignes est justement, la
+      plupart du temps, le moteur PDF lui-même (``quote_engine.builder``), qui
+      les a déjà découpées. Le laisser re-résoudre l'option lui ferait poser
+      une question à laquelle il vient de répondre.
 
     LECTURE PURE : n'écrit rien, ne change aucun statut, ne porte aucun
     ``prix_achat`` ni aucune marge (règle #4).

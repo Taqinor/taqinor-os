@@ -350,3 +350,75 @@ class TestChargeUtilePublique(_Base):
         self.assertEqual(ot['display_total'], ot['avec_batterie']['ttc'])
         self.assertNotEqual(
             ot['sans_batterie']['ttc'], ot['avec_batterie']['ttc'])
+
+
+class TestQjr55PredicatUnique(_Base):
+    """QJR55 — UN SEUL prédicat « devis à deux options ».
+
+    ``has_two_options`` et ``deux_options_declarees`` répondaient à la MÊME
+    question avec des règles DIFFÉRENTES (le premier construisait tout le
+    document PDF pour lire son ``nb_options``), et lequel s'exécutait décidait
+    si la liste montrait le total d'UNE option ou la somme sans signification
+    des DEUX. Les quatre combinaisons DÉCLARÉ × SERVABLE doivent donner la
+    MÊME réponse par les deux noms.
+    """
+
+    #: (libellé, lignes, etude_params, attendu)
+    def _cas(self):
+        return (
+            ('déclaré + servable', ARTEFACT_LIGNES,
+             {'scenario': 'Les deux (Sans + Avec)'}, True),
+            ('déclaré, NON servable (aucune batterie)', RESEAU_LIGNES,
+             {'scenario': 'Les deux (Sans + Avec)'}, False),
+            ('NON déclaré mais servable (artefact du fondateur)',
+             ARTEFACT_LIGNES, None, False),
+            ('ni déclaré ni servable', RESEAU_LIGNES, None, False),
+        )
+
+    def test_les_deux_noms_repondent_la_meme_chose(self):
+        from apps.ventes.utils.options import (
+            deux_options_declarees, has_two_options,
+        )
+        for libelle, lignes, etude, attendu in self._cas():
+            with self.subTest(cas=libelle):
+                devis = self.make_devis(lignes, etude)
+                self.assertIs(deux_options_declarees(devis), attendu)
+                self.assertIs(has_two_options(devis), attendu)
+
+    def test_une_ligne_variantee_suffit_meme_sans_scenario(self):
+        """L-2OPT — la variante DÉCLARÉE sur les lignes est une preuve plus
+        forte que ``etude_params['scenario']`` : elle n'existe que parce que la
+        composition a distingué les deux options."""
+        from apps.ventes.utils.options import (
+            deux_options_declarees, has_two_options,
+        )
+        devis = self.make_devis(ARTEFACT_LIGNES, None)
+        ligne = devis.lignes.filter(designation__icontains='hybride').first()
+        ligne.variante = 'avec'
+        ligne.save(update_fields=['variante'])
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertTrue(deux_options_declarees(devis))
+        self.assertTrue(has_two_options(devis))
+
+    def test_le_predicat_ne_traverse_plus_le_moteur_pdf(self):
+        """Le coût : chaque lecture d'argent d'un devis passait par un rendu
+        complet de document."""
+        from unittest.mock import patch
+
+        from apps.ventes.utils.options import has_two_options
+
+        devis = self.make_devis(ARTEFACT_LIGNES,
+                                {'scenario': 'Les deux (Sans + Avec)'})
+        with patch('apps.ventes.quote_engine.builder.build_quote_data') as m:
+            self.assertTrue(has_two_options(devis))
+        m.assert_not_called()
+
+    def test_l_option_effective_suit_le_meme_verdict(self):
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, option_effective,
+        )
+        declare = self.make_devis(ARTEFACT_LIGNES,
+                                  {'scenario': 'Les deux (Sans + Avec)'})
+        self.assertEqual(option_effective(declare), AVEC_BATTERIE)
+        artefact = self.make_devis(ARTEFACT_LIGNES, None)
+        self.assertEqual(option_effective(artefact), '')

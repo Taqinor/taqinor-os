@@ -110,23 +110,19 @@ def filter_lines_for_option(lignes, option):
 
 
 def has_two_options(devis) -> bool:
-    """True si le devis comporte deux VRAIES options (réseau ET hybride+batterie)
-    — seul cas où l'option retenue change réellement le périmètre facturé."""
-    # L-2OPT — une ligne VARIANTÉE est à elle seule la preuve d'un devis à deux
-    # options : elle n'existe que parce que la composition a distingué les deux.
-    # Contrôlé AVANT le moteur (une requête, aucun rendu) et sans jamais lever :
-    # un devis à deux champs PV doit être filtré même si le PDF échoue.
-    try:
-        if devis is not None and devis.lignes.exclude(variante='').exists():
-            return True
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
-        pass
-    try:
-        from apps.ventes.quote_engine.builder import build_quote_data
-        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        return data.get('nb_options', 1) == 2
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser sur le PDF
-        return False
+    """ALIAS DÉPRÉCIÉ de :func:`deux_options_declarees` (QJR55).
+
+    Ce nom répondait à la MÊME question avec des règles DIFFÉRENTES : il
+    traversait ``build_quote_data`` (le moteur PDF complet) pour lire son
+    ``nb_options``. Lequel des deux prédicats s'exécutait décidait si la liste
+    montrait le total d'UNE option ou la somme sans signification des DEUX —
+    et il coûtait un rendu de document à chaque lecture d'argent.
+
+    Il n'y a plus qu'UNE règle, celle de :func:`deux_options_declarees`.
+    Conservé comme alias parce que plusieurs appelants l'importent par ce nom ;
+    à retirer quand ils auront migré.
+    """
+    return deux_options_declarees(devis)
 
 
 def option_effective(devis) -> str:
@@ -149,11 +145,10 @@ def option_effective(devis) -> str:
     Un devis à option unique (ou pompage / liste libre) renvoie ``''`` : aucun
     filtre, périmètre complet, comportement historique strictement inchangé.
 
-    COÛT — un devis NON accepté consulte désormais ``has_two_options`` (avant,
-    l'option vide court-circuitait le prédicat). Sur la liste des devis, le
-    sérialiseur traverse déjà ``build_quote_data`` une fois par ligne
-    (``total_affiche``) ; QJR55 ramène ce prédicat au prédicat LÉGER unique et
-    supprimera cet appel supplémentaire.
+    COÛT — un devis NON accepté consulte le prédicat « deux options » (avant,
+    l'option vide le court-circuitait). QJR55 a ramené ce prédicat à UNE règle
+    LÉGÈRE (:func:`deux_options_declarees`, deux requêtes, aucun rendu) : la
+    lecture de l'argent d'un devis ne traverse plus le moteur PDF.
     """
     acceptee = getattr(devis, 'option_acceptee', '') or ''
     if acceptee:
@@ -242,22 +237,47 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
 # ── Repli SANS MOTEUR — l'affichage de la liste (PVAB, fondateur 20/08) ──────
 
 def deux_options_declarees(devis) -> bool:
-    """Prédicat LÉGER « devis à deux options », sans le moteur PDF.
+    """QJR55 — LE prédicat « devis à deux options ». Il n'y en a plus qu'un.
 
     Miroir volontairement PRUDENT de la décision de ``build_quote_data``
     (PV86) : l'alternative doit être DÉCLARÉE (``etude_params['scenario']``)
     ET les lignes doivent réellement porter les deux familles — onduleur
     réseau d'un côté, onduleur hybride AVEC batterie de l'autre (Z1 : sans
-    batterie réelle, jamais deux options). Consommé UNIQUEMENT quand le
-    moteur lève : dans le doute il répond False et l'affichage retombe sur le
-    total stocké, comme avant.
+    batterie réelle, jamais deux options).
+
+    L-2OPT — UNE LIGNE VARIANTÉE COURT-CIRCUITE TOUT : elle n'existe que parce
+    que la composition a DÉJÀ distingué les deux options, et c'est une preuve
+    plus forte que la déclaration. Ce contrôle vivait dans ``has_two_options``
+    et est repris ici, sinon un devis à deux champs PV dont
+    ``etude_params['scenario']`` a été perdu (le trou que QJR66 referme côté
+    écran) redeviendrait « mono-option » et son argent redeviendrait la somme
+    des DEUX paniers.
+
+    NE TRAVERSE PLUS LE MOTEUR PDF. ``has_two_options`` rendait ce verdict en
+    construisant tout le document (``build_quote_data``) : lequel des deux
+    prédicats s'exécutait décidait si la liste montrait le total d'UNE option
+    ou la somme sans signification des deux, et chaque lecture d'argent d'un
+    devis mono-option payait un rendu complet (``models.Devis.total_ttc`` →
+    ``domain.argent`` → ``option_effective`` → ici).
+
+    Ne lève JAMAIS : dans le doute il répond False, et l'affichage retombe sur
+    le total complet — le comportement d'avant.
     """
+    try:
+        if devis is not None and devis.lignes.exclude(variante='').exists():
+            return True
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        pass
     scenario = (getattr(devis, 'etude_params', None) or {}).get('scenario')
     if scenario not in ('Sans batterie', 'Avec batterie',
                         'Les deux (Sans + Avec)'):
         return False
-    blobs = [_blob(li) for li in devis.lignes.select_related('produit').all()
-             if li.compte_dans_totaux]
+    try:
+        blobs = [_blob(li)
+                 for li in devis.lignes.select_related('produit').all()
+                 if li.compte_dans_totaux]
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        return False
     return (any(_is_reseau_inverter(b) for b in blobs)
             and any(_is_hybrid_inverter(b) for b in blobs)
             and any(_is_battery(b) for b in blobs))

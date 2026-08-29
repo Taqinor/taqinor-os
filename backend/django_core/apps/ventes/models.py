@@ -441,9 +441,9 @@ class Devis(models.Model):
         déjà ``total_affiche``, la même chaîne canonique).
 
         COÛT, DIT HONNÊTEMENT : la vue NET résout l'option effective, donc
-        consulte ``utils.options.has_two_options``, qui traverse le moteur PDF
-        quand aucune ligne ne porte de variante. QJR55 ramène ce prédicat au
-        prédicat LÉGER unique et supprime cet appel.
+        consulte le prédicat « deux options ». Depuis QJR55 il n'y en a plus
+        qu'UN, LÉGER (``utils.options.deux_options_declarees`` : deux requêtes,
+        aucun rendu) — lire l'argent d'un devis ne traverse plus le moteur PDF.
 
         L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` avant lui :
         il s'exécute à l'appel, jamais au chargement du module, donc il ne peut
