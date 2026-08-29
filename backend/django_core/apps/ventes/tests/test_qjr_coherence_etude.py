@@ -50,6 +50,23 @@ LECTEURS_LEGITIMES = {
     'apps/parametres/tariff.py',
 }
 
+#: Les modules qui NOMMENT la clé sans jamais la LIRE (29/08/2026, vague M2).
+#: Distincts des lecteurs ci-dessus, et volontairement : ce ne sont pas des
+#: consommateurs, ce sont des DÉCLARATIONS — et chacune RENFORCE l'invariant
+#: de QJR48 au lieu de l'affaiblir.
+DECLARANTS_LEGITIMES = {
+    # QJR61 — le SCHÉMA d'``etude_params`` déclare ``payback_annees`` avec le
+    # propriétaire ``ORPHELINE`` (« personne ne l'écrit ») pour qu'un devis
+    # ANCIEN qui la porte encore ne soit pas signalé comme invalide par
+    # ``valider``. C'est une entrée de table, jamais une lecture.
+    'apps/ventes/domain/etude_schema.py',
+    # QJR58 — le registre de surcharges la liste dans ``CHAMPS_DERIVES``, sa
+    # liste de REFUS : toute tentative de poser ce nombre par override est
+    # rejetée en 400. Nommer la clé pour l'interdire, c'est l'inverse d'en
+    # dépendre.
+    'apps/ventes/domain/overrides.py',
+}
+
 
 def _fichiers_python():
     for chemin in RACINE.rglob('*.py'):
@@ -67,7 +84,7 @@ class AucunLecteurDeLaCleTests(TestCase):
     def test_aucun_module_de_production_ne_lit_payback_annees_hors_liste(self):
         coupables = []
         for relatif, chemin in _fichiers_python():
-            if relatif in LECTEURS_LEGITIMES:
+            if relatif in LECTEURS_LEGITIMES | DECLARANTS_LEGITIMES:
                 continue
             arbre = ast.parse(chemin.read_text(encoding='utf-8'))
             # AST, pas un grep : un COMMENTAIRE de suppression (il y en a un
@@ -82,10 +99,13 @@ class AucunLecteurDeLaCleTests(TestCase):
         self.assertEqual(
             coupables, [],
             "QJR48 : ``etude_params['payback_annees']`` n'est plus écrit. "
-            'Ces modules citent pourtant la clé sans être dans la liste des '
-            'lecteurs légitimes (qui portent leur PROPRE payback) : %s. Soit '
-            'ils lisent un autre bloc et doivent être déclarés ici, soit ils '
-            'attendent une clé que plus rien ne pose.' % coupables)
+            'Ces modules citent pourtant la clé sans figurer ni dans les '
+            'lecteurs légitimes (qui portent leur PROPRE payback) ni dans les '
+            'déclarants (schéma, liste de refus) : %s. Trois cas — ils lisent '
+            "un AUTRE bloc (à déclarer dans LECTEURS_LEGITIMES), ils NOMMENT "
+            'la clé sans la lire (DECLARANTS_LEGITIMES), ou ils attendent une '
+            'clé que plus rien ne pose — et là il faut corriger le code, pas '
+            'la liste.' % coupables)
 
     def test_le_service_et_ses_recepteurs_ont_bien_disparu(self):
         from apps.ventes import receivers, services
