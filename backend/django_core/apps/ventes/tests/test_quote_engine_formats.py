@@ -683,8 +683,12 @@ class TestPdfFormats(TestCase):
             'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
             'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
         },
+        # QJR13 — cette combinaison DÉCRIT le devis de ce module : 14 panneaux
+        # 550 W (7,7 kWc) et « Batterie 5 kWh » dans ses lignes. Sans cette
+        # concordance, ses chiffres ne sont plus publiés (le PDF ne parle plus
+        # de « ce dimensionnement » à propos d'une combinaison non vendue).
         'meilleure_falaise': {
-            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 10.0,
+            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 5.0,
             'residuel_kwh_mois': 420.0,
             'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
             'remplissage': {
@@ -790,6 +794,70 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
         self.assertNotIn('R&#233;siduel vis&#233;', html)
+
+    # ── QJR13 — un optimum du moteur ne se publie que s'il DÉCRIT ce devis ──
+    # ``meilleure_falaise`` est une combinaison champ + stockage que le
+    # BALAYAGE a trouvée : le PDF l'imprimait comme « ce dimensionnement »
+    # quelle que soit la taille et la batterie réellement vendues.
+    def _dim_divergent(self, **remplace):
+        return {
+            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
+            'meilleure_falaise': {
+                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
+                **remplace,
+            },
+        }
+
+    def test_qjr13_falaise_concordante_reste_imprimee_sur_les_deux_formats(self):
+        """Combinaison = configuration vendue (14 panneaux, 5 kWh) ⇒ inchangé."""
+        self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Résiduel sous la marche', html)
+        self.assertIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dune_autre_batterie_disparait_des_deux_formats(self):
+        """Le devis vend 5 kWh, la combinaison en suppose 10 : rien n'est
+        publié — ni carte, ni phrase, ni cellule une page. Jamais un chiffre
+        de repli, la mention DISPARAÎT."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(batterie_kwh=10.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        for texte in ('Résiduel sous la marche', 'fait atterrir',
+                      'Remplissage batterie'):
+            self.assertNotIn(texte, html)
+        # La tranche ACTUELLE décrit la facture du client, pas une combinaison
+        # du balayage : elle reste vraie et reste imprimée.
+        self.assertIn('Tranche 6', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dun_autre_champ_pv_disparait_des_deux_formats(self):
+        """Même règle sur le compte de panneaux (20 trouvés, 14 vendus)."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(panneaux=20, kwc=11.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
+        self.assertNotIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_combinaison_sans_configuration_nest_pas_publiee(self):
+        """Contexte identifiant absent ⇒ inpublié : on ne peut pas prouver
+        qu'il décrit ce devis, donc on omet (zéro chiffre inventé)."""
+        dim = self._dim_divergent()
+        dim['meilleure_falaise'].pop('panneaux')
+        self._devis_avec_falaise(dimensionnement=dim)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
 
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
@@ -1265,3 +1333,79 @@ class TestPdfFormats(TestCase):
         self.assertEqual(opts['payment_mode'], 'standard')
         self.assertIsNone(opts['custom_acompte'])
         self.assertNotIn('junk', opts)
+
+
+class TestQjr32DispatchModeNormalise(TestCase):
+    """QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ.
+
+    ``build_quote_data`` dégrade un devis agricole demandé en « full » vers le
+    format UNE PAGE (le format à options n'a pas de sens sans onduleur) et
+    publie le mode retenu dans ``data['pdf_mode']``. Les prédicats ``is_*``
+    lisaient encore la demande BRUTE : ils voyaient « full » et lançaient le
+    renderer agricole premium multi-pages sur des données bâties pour une
+    page — la dégradation annoncée par le builder était MORTE pour la
+    sélection du renderer.
+    """
+
+    LIGNES_POMPAGE = [
+        ('Pompe immergée 5,5 CV', '1', '18000'),
+        ('Variateur VEICHI 5,5 kW', '1', '9000'),
+        ('Panneau mono 550W', '12', '1100'),
+        ('Structures acier', '12', '375'),
+    ]
+    ETUDE_POMPAGE = {
+        'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+        'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.LIGNES_POMPAGE,
+            reference='DEV-QJR32-AGRI', etude_params=dict(self.ETUDE_POMPAGE))
+        self.devis.mode_installation = 'agricole'
+        self.devis.save(update_fields=['mode_installation'])
+
+    def test_le_dispatch_suit_la_degradation_annoncee_par_le_builder(self):
+        from apps.ventes.quote_engine.agricole import renderer as agricole
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        # le builder DÉGRADE : les données sont bâties pour UNE page…
+        self.assertEqual(data['pdf_mode'], 'onepage')
+        # …et le prédicat, lu sur le mode RETENU, ne réclame plus le renderer
+        # premium multi-pages (il le faisait sur la demande brute).
+        self.assertFalse(
+            agricole.is_agricultural(self.devis,
+                                     {'pdf_mode': data['pdf_mode']}))
+        self.assertTrue(
+            agricole.is_agricultural(self.devis, {'pdf_mode': 'full'}))
+
+    @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    def test_un_seul_renderer_est_choisi_et_il_rend_bien_le_pdf(self, up, _b):
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        from apps.ventes.quote_engine.agricole import renderer as agricole
+        with patch.object(agricole, 'render_pdf_bytes') as rendu_premium:
+            generate_premium_devis_pdf(self.devis.id,
+                                       pdf_options={'pdf_mode': 'full'})
+        rendu_premium.assert_not_called()
+        up.assert_called_once()
+        self.assertEqual(up.call_args[0][0][:4], b'%PDF')
+
+    def test_le_compte_de_pages_est_celui_que_la_degradation_annonce(self):
+        """Une page — exactement ce que le builder a construit."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr32_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)

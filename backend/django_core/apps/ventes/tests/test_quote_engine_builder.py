@@ -17,6 +17,7 @@ Run:
 
 import re
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, tag
 
@@ -87,6 +88,45 @@ class TestBuildQuoteData(TestCase):
         self.assertIsNone(data['puissance_kwc'])
         self.assertTrue(data['puissance_inconnue'])
 
+    # ── QJR17 — le PDF n'imprime plus « None W » et compte le panneau d'une
+    # SEULE façon. Quatre défauts d'une même famille (audit L3 du 29/08).
+    def test_qjr17_puce_option_sans_watt_lisible_nimprime_jamais_none(self):
+        """(a) La puce de la carte d'option imprimait « 12 panneaux None W »
+        sur le chemin EXACT où la puissance unitaire est illisible (M3). Même
+        doctrine que la vignette legacy : « 12 panneaux » tout court."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau photovoltaïque monocristallin', '12', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QJR17-A')
+        data = build_quote_data(devis)
+        self.assertIsNone(data['watt_par_panneau'])
+        puces = data['sans_bullets'] + data['avec_bullets']
+        self.assertIn('12 panneaux', puces)
+        for puce in puces:
+            self.assertNotIn('None', puce)
+
+    def test_qjr17_la_puce_compte_le_panneau_comme_le_total_du_document(self):
+        """(b) Le total comptait la ligne comme panneau (désignation ET nom du
+        produit lié) pendant que la puce ne lisait que la désignation : le même
+        document annonçait 14 panneaux et n'en listait aucun."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 550W', '14', '1100'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QJR17-B')
+        # désignation éditée à la main : seul le NOM DU PRODUIT lié dit encore
+        # que c'est un panneau (le cas que le total lisait déjà).
+        ligne = devis.lignes.get(designation='Panneau Canadien Solar 550W')
+        ligne.designation = 'Réf. CS7L-550MS'
+        ligne.save(update_fields=['designation'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertTrue(
+            any(p.startswith('14 panneaux') for p in data['sans_bullets']),
+            f"la puce doit compter les 14 panneaux du total : "
+            f"{data['sans_bullets']}")
+
     def test_le_repli_catalogue_survit_pour_le_seul_kpi_interne(self):
         """M3 — ``puissance_panneaux_lignes`` garde son repli documenté : il
         sert au KPI INTERNE « conçu vs vendu » (reports.py), qui n'imprime
@@ -151,6 +191,36 @@ class TestBuildQuoteData(TestCase):
                             for it in data['sans_items']), 2)
         self.assertAlmostEqual(data['totaux_sans']['ht_brut'], attendu, places=2)
 
+    @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    def test_qjr17_le_repli_sur_le_moteur_legacy_est_bruyant(self, _up, _bucket):
+        """(d) Le renderer résidentiel refuse un devis hors périmètre et le
+        document repart sur le moteur legacy. Ce repli était SILENCIEUX : un
+        champ manquant dégradait la proposition premium sans qu'aucune trace
+        ne le dise. Il porte désormais un avertissement NOMMÉ."""
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        from apps.ventes.quote_engine.residential import renderer as residential
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000'),
+        ], reference='DEV-QJR17-D', etude_params=DEUX_OPTIONS)
+        with patch.object(residential, 'render_pdf_bytes',
+                          side_effect=residential.Unsupported(
+                              'missing quote field: puissance_kwc')):
+            with self.assertLogs('apps.ventes.quote_engine.builder',
+                                 level='WARNING') as journal:
+                generate_premium_devis_pdf(devis.id)
+        trace = '\n'.join(journal.output)
+        self.assertIn('Repli moteur legacy', trace)
+        self.assertIn('residential', trace)
+        self.assertIn('DEV-QJR17-D', trace)
+        self.assertIn('missing quote field: puissance_kwc', trace)
+        # le PDF sort quand même (le repli reste un repli, pas une panne)
+        _up.assert_called_once()
+        self.assertEqual(_up.call_args[0][0][:4], b'%PDF')
+
     def test_hybrid_without_battery_still_renders_a_pdf(self):
         """Z1 — la règle dure « une option ne se rend jamais sans onduleur » ne
         doit PAS refuser un devis dont le seul onduleur est hybride : il porte
@@ -162,6 +232,92 @@ class TestBuildQuoteData(TestCase):
         ], reference='DEV-QE-HYBNOBAT')
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         self.assertEqual(data['nb_options'], 1)
+
+    # ── QJR18 — le productible imprimé décrit la production imprimée ───────
+    _LIGNES_770 = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+    ]
+
+    def _productible_imprime(self, data):
+        """Le nombre RÉELLEMENT écrit dans « ≈ N kWh par kWc et par an »."""
+        lignes = [h for h in data['hypotheses']['items']
+                  if 'kWh par kWc' in h]
+        self.assertEqual(len(lignes), 1, data['hypotheses']['items'])
+        chiffre = lignes[0].split('≈')[1].split('kWh')[0]
+        return int(re.sub(r'[^0-9]', '', chiffre))
+
+    def test_qjr18_le_productible_imprime_egale_production_sur_kwc_horaire(self):
+        """Sur le chemin ÉTUDE HORAIRE, ``roi['productible']`` est DÉJÀ net :
+        la ligne lui réappliquait les 20 % de pertes et annonçait ~7 % de
+        moins que la production annuelle imprimée sur la MÊME page."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        attendu = round(data['prod_kwh'] / data['puissance_kwc'])
+        self.assertEqual(self._productible_imprime(data), attendu)
+        # la pastille PVGIS de la ville annonce EXACTEMENT le même nombre
+        _pvgis = data['hypotheses']['productible_net_kwh_kwc']
+        if _pvgis is not None:
+            self.assertEqual(_pvgis, attendu)
+
+    def test_qjr18_le_chemin_ordinaire_garde_la_meme_egalite(self):
+        """Non-régression : hors étude horaire, la ligne disait déjà la
+        production nette — l'égalité doit rester vraie à l'arrondi près."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-N', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        self.assertNotEqual(data['savings_model'], 'horaire')
+        self.assertEqual(
+            self._productible_imprime(data),
+            round(data['prod_kwh'] / data['puissance_kwc']))
+
+    # ── QJR27 — la méthode annoncée est la méthode employée ────────────────
+    def test_qjr27_le_modele_horaire_ne_se_presente_plus_en_estimation(self):
+        """Faute de branche, le modèle horaire tombait dans le repli
+        « estimation » : le bloc annonçait une approximation et réclamait une
+        facture DÉJÀ fournie, pendant que la couverture du même PDF affichait
+        « calculée »."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'horaire')
+        self.assertFalse(sm['approximatif'])
+        self.assertNotIn('Estimation', sm['ligne_methode'])
+        self.assertNotIn('Fournissez une facture', sm['ligne_methode'])
+        self.assertIn('heure par heure', sm['ligne_methode'])
+        # le devis PORTE les deux factures : l'exemple chiffré les reprend
+        self.assertIsNotNone(sm['exemple'])
+        self.assertEqual(sm['economie'],
+                         sm['facture_actuelle'] - sm['facture_avec_solaire'])
+
+    def test_qjr27_le_modele_forfaitaire_redemande_toujours_une_facture(self):
+        """L'autre moitié de la règle : sans aucune donnée réelle, le bloc
+        reste une estimation ASSUMÉE et demande la facture qui manque."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-F', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'estimation')
+        self.assertTrue(sm['approximatif'])
+        self.assertIn('Fournissez une facture', sm['ligne_methode'])
 
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —

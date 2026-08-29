@@ -365,6 +365,12 @@ ONEPAGE_NOTE_BATTERIE = False
 # une page. Défaut None = aucune économie affichée sur le chemin autonome ;
 # le builder la pose TOUJOURS pour un vrai devis.
 ONEPAGE_BRANCHE = None
+# QJR13 — capacité batterie TOTALE des LIGNES du devis (``data
+# ['batterie_kwh_total']``, calculé par ``builder._battery_kwh_from_items`` sur
+# l'option AVEC). Défaut 0 = « aucune batterie connue » : un optimum du moteur
+# qui annonce du stockage ne peut alors PAS être prouvé conforme au devis, donc
+# il n'est pas publié (voir ``_optimum_decrit_ce_devis``).
+BATTERIE_KWH_TOTAL = 0.0
 # QRP1 — liens client-facing posés par le builder (``data['links']``). Le seul
 # consommé ici est ``signer`` : l'URL TOKENISÉE de la proposition en ligne
 # (ShareLink, ``utils.client_links.chemin_proposition``). Aucune URL n'est
@@ -2353,6 +2359,52 @@ def _bankable_block_html(bank):
         f'{ligne_html}{pertes_html}</div>')
 
 
+def _capacite_batterie_vendue():
+    """QJR13 — capacité batterie (kWh) de la configuration que CE document vend.
+
+    ``BATTERIE_KWH_TOTAL`` décrit l'option AVEC batterie. Quand le document ne
+    chiffre QUE la branche SANS (``ONEPAGE_BRANCHE == 'sans'`` — format une
+    page d'un devis sans alternative, scénario « Sans batterie »), la
+    configuration facturée ne porte aucune batterie : la capacité vendue est
+    alors 0, pas celle d'une option que ce document ne vend pas.
+    """
+    if ONEPAGE_BRANCHE == "sans":
+        return 0.0
+    return float(BATTERIE_KWH_TOTAL or 0.0)
+
+
+def _optimum_decrit_ce_devis(combinaison):
+    """QJR13 — ``combinaison`` (un optimum du moteur) décrit-elle CE devis ?
+
+    Un dict d'optimum de dimensionnement (``meilleure_falaise``) porte SA
+    configuration identifiante — ``panneaux``, ``kwc``, ``batterie_kwh`` : c'est
+    une combinaison champ + stockage que le BALAYAGE a trouvée, sans aucun
+    rapport garanti avec la taille et la batterie réellement vendues. Publier
+    ses chiffres comme ceux « de ce dimensionnement » décrit au client une
+    installation qu'il n'achète pas.
+
+    Règle (zéro chiffre inventé) : on ne publie que si la configuration de
+    l'optimum ÉGALE la configuration vendue (compte de panneaux + capacité
+    batterie des lignes). Tout ce qui n'est pas prouvé — contrat malformé,
+    compte de panneaux du devis inconnu, capacité illisible — rend ``False``,
+    et l'appelant OMET la mention : jamais un chiffre de repli.
+    """
+    if not isinstance(combinaison, dict):
+        return False
+    _pan = combinaison.get("panneaux")
+    _bat = combinaison.get("batterie_kwh")
+    if isinstance(_pan, bool) or not isinstance(_pan, (int, float)):
+        return False
+    if isinstance(_bat, bool) or not isinstance(_bat, (int, float)):
+        return False
+    if not NB_PAN:  # configuration vendue inconnue ⇒ rien à prouver, on omet
+        return False
+    if int(_pan) != int(NB_PAN):
+        return False
+    # 0,05 kWh : tolérance d'arrondi d'affichage, jamais un écart de palier.
+    return abs(float(_bat) - _capacite_batterie_vendue()) <= 0.05
+
+
 def _falaise_context():
     """CJ2b-bis — falaise tarifaire + remplissage batterie, lus À PLAT depuis
     ``etude_params['dimensionnement']`` (contrat DIM2 :
@@ -2382,7 +2434,13 @@ def _falaise_context():
         if isinstance(_ta, dict):
             tranche_actuelle = _ta.get("libelle")
     residuel = tranche_apres = remplissage_pct = None
-    if isinstance(meilleure, dict):
+    # QJR13 — les trois valeurs ci-dessous décrivent la combinaison
+    # ``meilleure_falaise`` du balayage, PAS le devis. Elles ne sont lues que
+    # si cette combinaison est exactement la configuration vendue ; sinon la
+    # carte et la phrase disparaissent (sur les DEUX formats, ce contexte étant
+    # la source unique du 3-pages et du une-page). ``tranche_actuelle``, elle,
+    # décrit la FACTURE ACTUELLE du client — vraie quel que soit le devis.
+    if _optimum_decrit_ce_devis(meilleure):
         residuel = meilleure.get("residuel_kwh_mois")
         _tap = meilleure.get("tranche_apres")
         if isinstance(_tap, dict):
@@ -3360,6 +3418,13 @@ def apply_quote_data(data: dict) -> None:
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")
     ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
+    # QJR13 — capacité batterie RÉELLE des lignes (jamais un défaut) : sert
+    # UNIQUEMENT à prouver qu'un optimum du moteur décrit bien ce devis.
+    global BATTERIE_KWH_TOTAL
+    try:
+        BATTERIE_KWH_TOTAL = float(data.get("batterie_kwh_total") or 0)
+    except (TypeError, ValueError):
+        BATTERIE_KWH_TOTAL = 0.0
     # ── L-2OPT (chantier « deux optimiseurs », 24/08/2026) — LA PUISSANCE SUIT
     # LA BRANCHE FACTURÉE ────────────────────────────────────────────────────
     # Même doctrine que M4 pour l'économie annuelle : la page UNE chiffre UNE
@@ -3412,8 +3477,12 @@ def apply_quote_data(data: dict) -> None:
         for s in (data.get("lignes_structure") or [])
         if isinstance(s, dict)]
     OPTIONS_PROPOSEES = _esc_items(data.get("options_proposees") or [])
-    SANS_BULLETS = data.get("sans_bullets") or []
-    AVEC_BULLETS = data.get("avec_bullets") or []
+    # QJR30 — les puces d'option sont BÂTIES depuis des désignations de lignes
+    # (donc du texte contrôlé par l'utilisateur) et étaient rendues telles
+    # quelles en HTML : un « < » non apparié dans une désignation mangeait la
+    # carte d'option. Même échappement ERR37 que les items ci-dessous.
+    SANS_BULLETS = [_esc(b) for b in (data.get("sans_bullets") or [])]
+    AVEC_BULLETS = [_esc(b) for b in (data.get("avec_bullets") or [])]
     # D2/N60/N67/N59 — textes éditables du devis : fusion défaut + surcharges
     # société. Toute clé absente/None retombe sur le littéral historique, donc
     # un appel sans `doc_texts` (ou avec des surcharges vides) reste byte-identique.
