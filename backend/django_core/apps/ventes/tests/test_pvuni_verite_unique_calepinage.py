@@ -452,3 +452,85 @@ class TestPdfStockeJamaisPerime(BaseDevisLive):
             cle_pdf_a_jour(devis)
 
         self.assertEqual(rendu.call_args[0][1]['pdf_mode'], 'onepage')
+
+
+class TestQjr63SouverainetéDuKwc(BaseDevisLive):
+    """QJR63 — QUATRE écrivains du kWc, UN propriétaire.
+
+    ``etude_params['puissance_kwc']`` était écrit par le calepinage (à la
+    création ET à la resynchro, même quand la règle de plafond de variante
+    faisait atterrir le devis sur un AUTRE compte), par l'auto-devis (depuis la
+    taille DEMANDÉE) et re-dérivé au rendu par PVUNI (depuis les LIGNES, qui
+    gagnait). Le kWc STOCKÉ pouvait donc décrire une installation NON VENDUE —
+    et ``Devis.save`` le figeait ensuite pour toujours dans ``prix_par_kwc``.
+    """
+
+    def test_le_proprietaire_derive_des_LIGNES_par_defaut(self):
+        from apps.ventes.services import puissance_kwc_du_devis
+
+        devis = self.devis_live()
+        self.assertAlmostEqual(puissance_kwc_du_devis(devis),
+                               KWC_DES_LIGNES, places=2)
+
+    def test_le_registre_de_surcharges_passe_devant(self):
+        """Décision fondateur D12 : ``taille.kwc`` posé fait autorité."""
+        from apps.ventes.domain.overrides import ecrire_colonne, poser
+        from apps.ventes.services import puissance_kwc_du_devis
+
+        devis = self.devis_live()
+        ecrire_colonne(devis, poser(devis, 'taille.kwc', 7.1))
+        self.assertAlmostEqual(puissance_kwc_du_devis(devis), 7.1, places=2)
+
+    def test_le_registre_par_compte_de_panneaux_utilise_le_watt_LU(self):
+        from apps.ventes.domain.overrides import ecrire_colonne, poser
+        from apps.ventes.services import puissance_kwc_du_devis
+
+        devis = self.devis_live()
+        ecrire_colonne(devis, poser(devis, 'taille.nb_panneaux', 12))
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(devis),
+            round(12 * WATT_PANNEAU_VENDU / 1000, 2), places=2)
+
+    def test_le_rendu_et_la_donnee_rangee_disent_le_MEME_kwc(self):
+        """Les quatre chemins convergent : le PDF lit ce que le devis range."""
+        from apps.ventes.services import poser_puissance_kwc
+
+        devis = self.devis_live()
+        poser_puissance_kwc(devis)
+        devis.refresh_from_db()
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertAlmostEqual(devis.etude_params['puissance_kwc'],
+                               KWC_DES_LIGNES, places=2)
+        self.assertAlmostEqual(data['puissance_kwc'], KWC_DES_LIGNES,
+                               places=2)
+
+    def test_le_rendu_honore_lui_aussi_le_registre(self):
+        from apps.ventes.domain.overrides import ecrire_colonne, poser
+
+        devis = self.devis_live()
+        ecrire_colonne(devis, poser(devis, 'taille.kwc', 7.1))
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        self.assertAlmostEqual(data['puissance_kwc'], 7.1, places=2)
+
+    def test_la_resynchro_ne_range_plus_le_kwc_du_calepinage(self):
+        """Le cas nommé : le calepinage annonce 6,48 kWc (720 W), les lignes
+        vendent 6,39 (710 W). Le kWc STOCKÉ suit les lignes."""
+        devis = self.devis_live()
+        sync_devis_from_layout(devis, layout_live(), self.user)
+        devis.refresh_from_db()
+        self.assertAlmostEqual(devis.etude_params['puissance_kwc'],
+                               KWC_DES_LIGNES, places=2)
+        self.assertNotAlmostEqual(devis.etude_params['puissance_kwc'],
+                                  KWC_CALEPINAGE, places=2)
+
+    def test_sans_panneau_lisible_la_cle_est_retiree(self):
+        """Règle Z2 : mieux vaut une absence qu'un kWc d'une autre
+        installation."""
+        from apps.ventes.services import poser_puissance_kwc
+
+        devis = self.devis_live()
+        devis.lignes.filter(designation__icontains='Panneau').delete()
+        devis = Devis.objects.get(pk=devis.pk)
+        poser_puissance_kwc(devis)
+        devis.refresh_from_db()
+        self.assertNotIn('puissance_kwc', devis.etude_params or {})

@@ -603,19 +603,28 @@ def taux_remise_global(devis):
     ``100 × (brut − net) / brut`` où ``brut`` = Σ(quantité × P.U.) des lignes
     comptées dans les totaux et ``net`` = total HT après remises de ligne puis
     remise globale. Aucun prix d'achat / aucune marge n'entre dans le calcul.
-    Devis sans ligne valorisée ⇒ 0."""
+    Devis sans ligne valorisée ⇒ 0.
+
+    QJR51 (29/08/2026) — RETRAIT D'UNE COMPENSATION, PAS UNE NOUVELLE RÈGLE.
+    Cette fonction ré-appliquait ``remise_globale`` À LA MAIN parce que
+    ``Devis.total_ht`` l'IGNORAIT. Depuis la bascule BRUT → NET (décision
+    fondateur D2), ``total_ht`` la porte déjà : garder le calcul manuel
+    l'appliquerait DEUX fois et gonflerait le taux — donc déclencherait des
+    approbations NTCPQ7 qui n'ont pas lieu d'être. Et le ``brut`` doit
+    désormais porter la MÊME population de lignes que le net : l'option
+    EFFECTIVE (``ventes.utils.options.option_lines``), sinon un devis à deux
+    options comparerait la somme des deux paniers à UN seul et afficherait une
+    remise fantôme."""
+    from apps.ventes.utils.options import option_lines
+
     brut = Decimal('0')
-    for ligne in devis.lignes.all():
-        if not ligne.compte_dans_totaux:
-            continue
+    for ligne in option_lines(devis):
         if ligne.quantite is None or ligne.prix_unitaire is None:
             continue
         brut += Decimal(str(ligne.quantite)) * Decimal(str(ligne.prix_unitaire))
     if brut <= 0:
         return Decimal('0')
     net = Decimal(str(devis.total_ht or 0))
-    remise_globale = Decimal(str(devis.remise_globale or 0))
-    net = net * (Decimal('1') - remise_globale / Decimal('100'))
     return ((brut - net) / brut * Decimal('100')).quantize(_CENT, ROUND_HALF_UP)
 
 

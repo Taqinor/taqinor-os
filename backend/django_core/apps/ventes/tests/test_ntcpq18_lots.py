@@ -114,3 +114,55 @@ class TestLotsDevis(TestCase):
         resp = auth(self.user).get(
             f'/api/django/ventes/devis/{autre.id}/lots/')
         self.assertEqual(resp.status_code, 404)
+
+
+class TestQjr54ClausesSurLeNet(TestCase):
+    """QJR54 — la TRANCHE de clauses/CGV se choisit sur le montant NET.
+
+    Ces clauses sont sélectionnées par tranche de montant PUIS IMPRIMÉES sur le
+    PDF client : alimenter le moteur avec un total NON remisé pouvait figer un
+    devis remisé avec le jeu de CGV d'une tranche supérieure.
+    """
+
+    def setUp(self):
+        self.company = CompanyFactory()
+        self.produit = ProduitFactory(company=self.company)
+
+    def _devis(self, remise):
+        devis = DevisFactory(company=self.company,
+                             remise_globale=Decimal(remise),
+                             taux_tva=Decimal('20'))
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produit, designation=self.produit.nom,
+            quantite=Decimal('10'), prix_unitaire=Decimal('10000.00'),
+            remise=Decimal('0'))
+        return devis
+
+    def test_le_contexte_porte_le_montant_net(self):
+        from apps.ventes.services import contexte_clauses_devis
+
+        devis = self._devis('20')
+        contexte = contexte_clauses_devis(devis)
+        # HT brut 100 000 → net 80 000 → TTC 96 000.
+        self.assertAlmostEqual(contexte['total_ht'], 80000.0, places=2)
+        self.assertAlmostEqual(contexte['total_ttc'], 96000.0, places=2)
+        self.assertEqual(contexte['montant'], contexte['total_ttc'])
+        self.assertAlmostEqual(contexte['remise_globale'], 20.0, places=2)
+
+    def test_un_devis_remise_franchit_un_seuil_vers_le_BAS(self):
+        """Le cas exact que QJR54 corrige : le brut passait au-dessus d'un
+        seuil de tranche que le NET ne franchit pas."""
+        from apps.ventes.services import contexte_clauses_devis
+
+        seuil = 100000.0
+        brut = contexte_clauses_devis(self._devis('0'))
+        net = contexte_clauses_devis(self._devis('20'))
+        self.assertGreaterEqual(brut['total_ht'], seuil)
+        self.assertLess(net['total_ht'], seuil)
+
+    def test_un_devis_sans_remise_est_inchange(self):
+        from apps.ventes.services import contexte_clauses_devis
+
+        contexte = contexte_clauses_devis(self._devis('0'))
+        self.assertAlmostEqual(contexte['total_ht'], 100000.0, places=2)
+        self.assertAlmostEqual(contexte['total_ttc'], 120000.0, places=2)

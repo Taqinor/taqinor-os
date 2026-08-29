@@ -192,13 +192,17 @@ def _set_gamme(devis, **champs):
     """Écrit (fusionne) les clés de gamme dans ``etude_params`` et sauvegarde.
 
     Copie le dict au lieu de le muter en place : ``dupliquer_variante`` passe
-    la MÊME référence de dict aux copies, une mutation fuirait sur le frère."""
+    la MÊME référence de dict aux copies, une mutation fuirait sur le frère.
+
+    QJR62 — passe par l'ÉCRIVAIN UNIQUE ``domain.etude_schema.ecrire`` : la
+    fusion et le refus des clés dérivées vivent à UN seul endroit, plus dans
+    chaque appelant."""
+    from apps.ventes.domain.etude_schema import ECRAN, ecrire
+
     params = dict(getattr(devis, 'etude_params', None) or {})
     gamme = dict(params.get('gamme') or {})
     gamme.update({k: v for k, v in champs.items() if v is not None})
-    params['gamme'] = gamme
-    devis.etude_params = params
-    devis.save(update_fields=['etude_params'])
+    ecrire(devis, proprietaire=ECRAN, gamme=gamme)
     return gamme
 
 
@@ -3518,6 +3522,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         return devis
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
+    # QJR63 — LE kWc EST RE-POSÉ PAR SON PROPRIÉTAIRE, sur les LIGNES qui
+    # viennent d'être créées. Le kWc du calepinage 3D est celui de roofPro
+    # (720 W constants) ; le devis, lui, vend le panneau RÉEL (710 W sur
+    # DEV-202608-0007). Les stocker tous les deux mettait deux bases de
+    # puissance dans le même document — c'est exactement ce que PVUNI corrige
+    # au RENDU, et que la donnée STOCKÉE contredisait jusqu'ici.
+    poser_puissance_kwc(devis)
     # QX23be — fige la marge interne dès la création (manager-only).
     refresh_marge_snapshot(devis)
     # PV42 — la boucle se ferme ici : calepinage rangé → conception électrique
@@ -3857,6 +3868,161 @@ def _resynchroniser_instance_appelante(devis, verrou):
     devis._prefetched_objects_cache = {}
 
 
+def scenario_effectif(devis, auto):
+    """QJR64 — LE SCÉNARIO QUI FAIT FOI : le registre d'abord, la dérivation
+    moteur seulement en son ABSENCE.
+
+    CE QUI ÉTAIT FAUX. ``etude_params['scenario']`` était protégé par un CAS
+    PARTICULIER CODÉ EN DUR dans la fusion ``etude_extra`` de
+    ``build_devis_auto``, et RE-DÉRIVÉ sans condition par la resynchro : selon
+    le chemin emprunté, un « Les deux (Sans + Avec) » déclaré par un humain
+    pouvait redevenir « Avec batterie » sans que personne ne l'ait demandé —
+    et le PDF cessait alors de rendre la comparaison.
+
+    LA RÈGLE (décision fondateur D12) : ``scenario`` est un chemin du REGISTRE
+    de surcharges. Un scénario DÉCLARÉ survit à TOUT recalcul aval ; la
+    dérivation moteur ne s'applique qu'en son absence. Un changement de marché
+    PROPOSE (il pose un override, ou n'en pose pas), il n'écrase plus.
+
+    Une valeur surchargée qui n'est pas un scénario connu est IGNORÉE (on
+    retombe sur ``auto``) : une surcharge illisible ne doit pas rendre un
+    document muet.
+    """
+    from apps.ventes.domain.overrides import effectif
+
+    connus = (SCENARIO_SANS_BATTERIE, SCENARIO_AVEC_BATTERIE,
+              SCENARIO_LES_DEUX)
+    try:
+        valeur, source = effectif(devis, 'scenario', auto)
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        return auto
+    if source == 'auto' or valeur not in connus:
+        return auto
+    return valeur
+
+
+def recommended_option_effective(devis, auto):
+    """QJR64 — jumelle de :func:`scenario_effectif` pour l'option MISE EN AVANT.
+
+    ``recommended_option`` désigne laquelle des deux options le document
+    recommande. Même règle : la déclaration du vendeur (registre) prime, la
+    dérivation moteur ne joue qu'à défaut. Une valeur inconnue est ignorée.
+    """
+    from apps.ventes.domain.overrides import effectif
+
+    connus = (SCENARIO_SANS_BATTERIE, SCENARIO_AVEC_BATTERIE)
+    try:
+        valeur, source = effectif(devis, 'recommended_option', auto)
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        return auto
+    if source == 'auto' or valeur not in connus:
+        return auto
+    return valeur
+
+
+def puissance_kwc_du_devis(devis):
+    """QJR63 — LE kWc D'UN DEVIS. Une règle, un propriétaire, deux sources.
+
+    CE QUI ÉTAIT FAUX. ``etude_params['puissance_kwc']`` avait QUATRE
+    écrivains : ``build_devis_from_layout`` (depuis le layout),
+    ``sync_devis_from_layout`` (depuis le layout, MÊME quand la règle de
+    plafond de variante avait fait atterrir le devis sur un AUTRE compte),
+    ``build_devis_auto`` (depuis ``target_kwc`` / la taille souhaitée du lead),
+    et une RE-DÉRIVATION au rendu par ``quote_engine.builder`` (PVUNI, depuis
+    les LIGNES — qui recalibrait et gagnait). Le kWc STOCKÉ pouvait donc
+    décrire une installation NON VENDUE, et ``models.Devis.save`` le figeait
+    ensuite pour toujours dans ``prix_par_kwc``.
+
+    LA RÈGLE, désormais unique :
+
+    1. le REGISTRE de surcharges (décision fondateur D12) — ``taille.kwc`` s'il
+       est posé, sinon ``taille.nb_panneaux`` × le wattage RÉELLEMENT LU sur
+       les lignes ;
+    2. sinon la DÉRIVATION DEPUIS LES LIGNES —
+       ``quote_engine.builder.panneaux_et_watt_lu``, exactement celle de PVUNI
+       (« les lignes sont la source unique ») ; jamais une seconde dérivation.
+
+    ``None`` quand rien n'est lisible : aucun panneau, ou un compte sans
+    wattage. On n'invente pas un kWc à partir d'un wattage supposé (M3), et le
+    calepinage 3D n'est PAS une source ici — il modélise à 720 W constants,
+    ce n'est pas le panneau vendu.
+
+    LECTURE PURE (règle #4).
+    """
+    from apps.ventes.domain.overrides import effectif
+    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
+    lignes = [li for li in devis.lignes.select_related(
+        'produit', 'produit__fiche_technique').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit'
+        and not getattr(li, 'optionnelle', False)]
+    nb_lu, watt_lu = panneaux_et_watt_lu(lignes)
+    auto = (round(nb_lu * watt_lu / 1000, 2)
+            if nb_lu > 0 and watt_lu else None)
+
+    kwc_surcharge, source = effectif(devis, 'taille.kwc', None)
+    if source != 'auto' and kwc_surcharge:
+        try:
+            return round(float(kwc_surcharge), 2)
+        except (TypeError, ValueError):
+            pass
+    nb_surcharge, source_nb = effectif(devis, 'taille.nb_panneaux', None)
+    if source_nb != 'auto' and nb_surcharge and watt_lu:
+        try:
+            return round(int(nb_surcharge) * float(watt_lu) / 1000, 2)
+        except (TypeError, ValueError):
+            pass
+    return auto
+
+
+def poser_puissance_kwc(devis):
+    """QJR63 — L'UNIQUE ÉCRIVAIN de ``etude_params['puissance_kwc']``.
+
+    La clé devient un CACHE de :func:`puissance_kwc_du_devis` : elle n'est plus
+    une valeur d'origine différente selon le chemin qui l'a posée. Écrite par
+    l'écrivain unique d'``etude_params`` (QJR62), donc en fusion et sans
+    toucher ni statut, ni ligne, ni total (règle #4).
+
+    ``None`` (rien de lisible) RETIRE la clé — règle Z2 : mieux vaut une
+    absence qu'un kWc qui décrit une autre installation. Ne lève jamais.
+    """
+    from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
+    try:
+        ecrire(devis, proprietaire=CALEPINAGE,
+               puissance_kwc=puissance_kwc_du_devis(devis))
+    except Exception:  # noqa: BLE001 — un cache raté ne casse jamais un devis
+        logger.warning('puissance_kwc non posée sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+    return (devis.etude_params or {}).get('puissance_kwc')
+
+
+def _quantite_verrouillee(ligne):
+    """QJR60 / décision fondateur D12 — la quantité de cette ligne a-t-elle été
+    TAPÉE par le commercial ?
+
+    Lu par ``getattr`` : une ligne d'un autre modèle (ou d'un test qui n'en
+    porte pas) répond ``False``, donc la resynchro garde exactement le
+    comportement d'avant les marqueurs QJR59.
+    """
+    return bool(getattr(ligne, 'quantite_manuelle', False))
+
+
+def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
+    """L'AVERTISSEMENT FR NOMMÉ d'une resynchro qui refuse d'écraser une saisie.
+
+    Le vendeur doit apprendre l'écart AU MOMENT de la resynchro : une quantité
+    verrouillée qui ne suit pas le calepinage est une divergence réelle entre
+    le dessin et le devis — la taire la ferait découvrir sur le PDF client.
+    Les lignes sont NOMMÉES (leur désignation), jamais un « une ligne » anonyme.
+    """
+    noms = ', '.join(
+        sorted({(getattr(li, 'designation', '') or '?') for li in lignes}))
+    avertissements.append(
+        'Quantité verrouillée par le vendeur sur : %s. %s n\'a pas été '
+        'appliqué — corrigez la quantité à la main si le calepinage fait foi.'
+        % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
+
+
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -4144,8 +4310,19 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
                 # tient peut-être sur le toit.
                 propres = [li for li in vue if _var(li) == variante]
+                # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
+                # réécrite : elle sort du vivier, et si tout le vivier est
+                # verrouillé l'écart est NOMMÉ au lieu d'être appliqué.
+                libres = [li for li in (propres or vue)
+                          if not _quantite_verrouillee(li)]
+                if not libres:
+                    _avertir_verrouillee(
+                        avertissements, (propres or vue),
+                        "l'écart de %d panneau(x) de l'option « %s »"
+                        % (abs(total_vue - cible_panneaux), variante))
+                    continue
                 dominante = max(
-                    propres or vue,
+                    libres,
                     key=lambda li: Decimal(str(li.quantite or 0)))
                 nouvelle = int(dominante.quantite or 0) - (
                     total_vue - cible_panneaux)
@@ -4167,25 +4344,36 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
         elif lignes_panneau and cible_panneaux != total_panneaux:
             # L'écart va sur la PLUS GROSSE ligne, elle seule : les autres
             # lignes panneau restent telles que le commercial les a posées.
-            dominante = max(lignes_panneau,
-                            key=lambda li: Decimal(str(li.quantite or 0)))
-            ecart = cible_panneaux - total_panneaux
-            nouvelle = int(dominante.quantite or 0) + ecart
-            if nouvelle < 0:
-                # Un retrait plus grand que la ligne dominante : on ne descend
-                # jamais sous zéro (et le compte final est renvoyé tel quel).
-                nouvelle = 0
-                avertissements.append(
-                    'Le retrait demandé dépasse la plus grosse ligne de '
-                    'panneaux : elle a été ramenée à 0, les autres lignes '
-                    'n\'ont pas été touchées.')
-            dominante.quantite = Decimal(str(nouvelle))
-            dominante.save(update_fields=['quantite'])
-            lignes_modifiees += 1
-            total_panneaux = sum(
-                int(li.quantite or 0) for li in lignes_panneau)
-            total_panneaux_avec = total_panneaux
-            panneaux_ont_change = True
+            # QJR60 / D12 — et jamais sur une ligne dont la quantité a été
+            # TAPÉE : elle sort du vivier.
+            libres = [li for li in lignes_panneau
+                      if not _quantite_verrouillee(li)]
+            if not libres:
+                _avertir_verrouillee(
+                    avertissements, lignes_panneau,
+                    "l'écart de %d panneau(x)"
+                    % abs(cible_panneaux - total_panneaux))
+            else:
+                dominante = max(libres,
+                                key=lambda li: Decimal(str(li.quantite or 0)))
+                ecart = cible_panneaux - total_panneaux
+                nouvelle = int(dominante.quantite or 0) + ecart
+                if nouvelle < 0:
+                    # Un retrait plus grand que la ligne dominante : on ne
+                    # descend jamais sous zéro (et le compte final est renvoyé
+                    # tel quel).
+                    nouvelle = 0
+                    avertissements.append(
+                        'Le retrait demandé dépasse la plus grosse ligne de '
+                        'panneaux : elle a été ramenée à 0, les autres lignes '
+                        'n\'ont pas été touchées.')
+                dominante.quantite = Decimal(str(nouvelle))
+                dominante.save(update_fields=['quantite'])
+                lignes_modifiees += 1
+                total_panneaux = sum(
+                    int(li.quantite or 0) for li in lignes_panneau)
+                total_panneaux_avec = total_panneaux
+                panneaux_ont_change = True
 
         # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
         # panneaux est la décision commerciale la plus lourde de cet écran
@@ -4240,9 +4428,21 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                          and (variante is None or _var(li) == variante)]
             if not candidats:
                 return False
+            # QJR60 / D12 — LA QUANTITÉ TAPÉE PAR LE VENDEUR EST UNE ENTRÉE.
+            # C'est ce chemin qui réécrivait les mètres de câble DC/terre et
+            # les comptes structure/socle : une ligne verrouillée en sort, et
+            # si la famille entière est verrouillée l'écart est NOMMÉ dans les
+            # avertissements plutôt qu'appliqué en silence.
+            libres = [li for li in candidats
+                      if not _quantite_verrouillee(li)]
+            if not libres:
+                _avertir_verrouillee(
+                    avertissements, candidats,
+                    'la quantité %s demandée par le calepinage' % cible)
+                return False
             # Plusieurs lignes de la même famille (rare) : seule la PLUS
             # GROSSE bouge, même politique que les panneaux ci-dessus.
-            dominante = max(candidats,
+            dominante = max(libres,
                             key=lambda li: Decimal(str(li.quantite or 0)))
             nouvelle = Decimal(str(cible))
             if Decimal(str(dominante.quantite or 0)) == nouvelle:
@@ -4528,7 +4728,17 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
             etude['production_annuelle'] = int(result['annualKwh'])
         if result.get('savings') is not None:
             etude['economies_annuelles'] = int(result['savings'])
-        if kwc:
+        # QJR63 — LE kWc VIENT DE SON PROPRIÉTAIRE, PLUS DU LAYOUT. Ce site
+        # écrivait ``kwc`` — celui du CALEPINAGE — même quand la règle de
+        # plafond de variante venait de faire atterrir le devis sur un AUTRE
+        # compte de panneaux : le kWc stocké décrivait alors une installation
+        # NON VENDUE, que ``Devis.save`` figeait ensuite dans ``prix_par_kwc``.
+        # Les lignes sont déjà resynchronisées à ce point : le propriétaire lit
+        # donc l'état RÉEL (registre de surcharges, sinon dérivation PVUNI).
+        _kwc_proprietaire = puissance_kwc_du_devis(verrou)
+        if _kwc_proprietaire:
+            etude['puissance_kwc'] = _kwc_proprietaire
+        elif kwc:
             etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
@@ -4546,10 +4756,17 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
             devis_deux_options and lignes_reseau and lignes_hybride
             and a_batterie)
         if deux_options_servies:
-            etude['scenario'] = SCENARIO_LES_DEUX
+            _scenario_auto = SCENARIO_LES_DEUX
         else:
-            etude['scenario'] = _scenario_stocke(
+            _scenario_auto = _scenario_stocke(
                 a_batterie and bool(lignes_hybride))
+        # QJR64 / décision fondateur D12 — UN SCÉNARIO DÉCLARÉ SURVIT À TOUT
+        # RECALCUL. Ce site RE-DÉRIVAIT le scénario sans condition : un
+        # « Les deux (Sans + Avec) » posé par un humain pouvait redevenir
+        # « Avec batterie » à la première resynchro, et le PDF cessait de
+        # rendre la comparaison. La dérivation ci-dessus reste le défaut ; elle
+        # ne s'applique plus qu'en l'ABSENCE de surcharge au registre.
+        etude['scenario'] = scenario_effectif(verrou, _scenario_auto)
 
         # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
         # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une
@@ -4562,7 +4779,21 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
 
         verrou.roof_layout = layout_stocke
         verrou.layout_hash = nouveau_hash or verrou.layout_hash
-        verrou.etude_params = etude
+        # QJR62 — la RÈGLE de fusion vient de l'écrivain unique
+        # (``domain.etude_schema``) ; seule la PERSISTANCE diffère ici, parce
+        # que ce chemin écrit ``roof_layout`` + ``layout_hash`` +
+        # ``etude_params`` d'un SEUL ``save`` (le scinder ferait deux
+        # allers-retour et deux fenêtres de course pour rien).
+        # On ne soumet au validateur que les clés que CE chemin a réellement
+        # CHANGÉES : une clé héritée d'un devis ancien (et pas encore déclarée
+        # au schéma) ne doit pas faire échouer une resynchro qui ne la touche
+        # même pas.
+        from apps.ventes.domain.etude_schema import CALEPINAGE, fusionner
+        _avant = dict(verrou.etude_params or {})
+        _modifiees = {cle: valeur for cle, valeur in etude.items()
+                      if cle not in _avant or _avant[cle] != valeur}
+        verrou.etude_params = fusionner(
+            _avant, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
         # même par accident (règle #4).
         verrou.save(update_fields=[
@@ -4758,12 +4989,12 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
         from django.utils import timezone
         horodatage = timezone.now().isoformat()
+        from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
         for devis in touches.values():
             if devis.statut == Devis.Statut.ENVOYE:
-                etude = dict(devis.etude_params or {})
-                etude['resync_apres_envoi'] = {'date': horodatage}
-                devis.etude_params = etude
-                devis.save(update_fields=['etude_params'])
+                # QJR62 — ÉCRIVAIN UNIQUE (fusion, jamais un remplacement).
+                ecrire(devis, proprietaire=CALEPINAGE,
+                       resync_apres_envoi={'date': horodatage})
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
         resultat['devis_touches'] = len(touches)
@@ -5025,38 +5256,28 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
     """
     try:
-        from apps.crm.selectors import equipements_pour_lead
-        from apps.ventes.courbes_journalieres import (
-            composer_equipements, occupation_du_lead,
-        )
         from apps.ventes.dimensionnement import recommander_taille
-        from apps.ventes.etude_horaire import profil_depuis_factures
+        from apps.ventes.domain.entrees import entrees_depuis_lead
 
-        conso, source, _detail = profil_depuis_factures(
-            facture_hiver_mad=getattr(lead, 'facture_hiver', None),
-            facture_ete_mad=getattr(lead, 'facture_ete', None),
-            ete_differente=getattr(lead, 'ete_differente', False))
+        # QJR42 — LECTURE UNIQUE de la fiche : le MÊME adaptateur que le chemin
+        # devis (``EntreesMoteur``), donc la même facture, la même
+        # localisation, la même occupation (QJR10 / D4 — défaut PRÉSENCE) et
+        # les 15 champs d'équipement du sélecteur CRM (QJR9). Il n'y a plus de
+        # seconde traduction lead → entrées dans ce module.
+        entrees = entrees_depuis_lead(lead, company)
+        conso = entrees.conso_kwh_mensuelles if entrees else None
         if not conso:
             return 0, None, MOTIF_FACTURE_ABSENTE, None
 
-        # QJR10 / D4 — MÊME lecteur d'occupation que l'aperçu écran, et MÊME
-        # défaut : sans réponse du client on retient le défaut fondateur
-        # PRÉSENCE, jamais la silhouette de repli PARTIELLE (les deux chemins
-        # dimensionnaient sinon le même lead sur deux journées différentes).
-        occupation, _source_occupation = occupation_du_lead(lead)
-        # QJR9 — la MÊME lecture d'équipements que l'aperçu écran : les 15
-        # champs du sélecteur CRM, jamais une recomposition locale à 6 clés
-        # (les grandeurs L-BACK/L-BACK2 n'atteignaient sinon jamais le moteur
-        # sur le chemin auto-devis/tunnel).
-        equipements = composer_equipements(equipements_pour_lead(lead))
-
         resultat = recommander_taille(
-            company=company, conso_kwh_mensuelles=conso,
-            ville=getattr(lead, 'ville', None),
-            lat=getattr(lead, 'gps_lat', None),
-            lon=getattr(lead, 'gps_lng', None),
-            occupation=occupation, equipements=equipements, phase=phase,
-            source_conso=source)
+            company=entrees.company, conso_kwh_mensuelles=conso,
+            ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
+            occupation=entrees.occupation, equipements=entrees.equipements,
+            phase=phase, source_conso=entrees.source_conso,
+            jour_reference=entrees.jour_reference,
+            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
+            tranches=entrees.tranches,
+            charges_fixes_mad=entrees.charges_fixes_mad)
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le
@@ -5067,9 +5288,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             # second dimensionnement — pour nommer la bonne.
             from apps.parametres.pvgis_profils import productible_mensuel
             situe = productible_mensuel(
-                ville=getattr(lead, 'ville', None),
-                lat=getattr(lead, 'gps_lat', None),
-                lon=getattr(lead, 'gps_lng', None))
+                ville=entrees.ville, lat=entrees.lat, lon=entrees.lon)
             return (0, None,
                     MOTIF_CATALOGUE if situe else MOTIF_LOCALISATION, None)
         return (int(recommandation['panneaux']),
@@ -5123,20 +5342,38 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
     puissance) ⇒ la clé est RETIRÉE plutôt que laissée périmée, et l'appelant
     retombe sur le forfait étiqueté (règle Z2). Ne lève jamais : une étude
     n'empêche pas d'enregistrer un devis.
+
+    QJR44 — le bloc RANGÉ porte en plus ``_empreinte_entrees`` (l'estampille
+    des entrées du moteur). La SORTIE du moteur
+    (``etude_horaire_pour_devis``) reste byte-identique : l'estampille est
+    posée ici, sur la copie persistée, jamais dans le moteur.
+
+    QJR45 — les entrées sont lues UNE fois : le ``jour_reference`` qui part au
+    moteur est EXACTEMENT celui que l'empreinte trace (une seconde lecture
+    d'horloge pourrait tomber le lendemain et estampiller une date qui n'a pas
+    servi).
     """
+    from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
+    from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE, ecrire
     from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
+        entrees = entrees_depuis_devis(devis)
         bloc = etude_horaire_pour_devis(
-            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile)
-        etude = dict(getattr(devis, 'etude_params', None) or {})
+            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
+            jour_reference=(entrees.jour_reference if entrees else None))
         if bloc is None:
-            if 'etude_horaire' not in etude:
+            if 'etude_horaire' not in (getattr(devis, 'etude_params', None)
+                                       or {}):
                 return None
-            etude.pop('etude_horaire', None)
         else:
-            etude['etude_horaire'] = bloc
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+            bloc = dict(bloc)
+            bloc['_empreinte_entrees'] = (
+                empreinte_entrees(entrees)
+                if entrees is not None and entrees.conso_kwh_mensuelles
+                else None)
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion (et le retrait d'une clé posée à
+        # ``None``, règle Z2) vit dans ``domain.etude_schema``, plus ici.
+        ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc)
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
         logger.warning('etude_horaire non rafraîchie sur %s',
@@ -5166,6 +5403,17 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
     toutes les économies, sans toucher au kWc (remplacer une batterie 5 kWh par
     une 10 kWh ne bouge pas la puissance PV).
 
+    QJR44 — L'EMPREINTE DES ENTRÉES S'AJOUTE, ELLE NE REMPLACE RIEN. Les deux
+    contrôles ci-dessus lisent la COMPOSITION (kWc, capacité batterie) ; ils
+    ne voient PAS un changement de PROFIL (facture, localisation, occupation,
+    équipements), qui change pourtant toutes les économies du bloc. Le bloc
+    n'est donc à jour que si, EN PLUS, l'estampille ``_empreinte_entrees``
+    qu'il porte égale l'empreinte des entrées d'aujourd'hui. Un bloc sans
+    estampille (antérieur à QJR44) est PÉRIMÉ — un recalcul, une fois.
+    La tolérance ``pricing._HORAIRE_TOLERANCE_KWC`` reste celle du moteur :
+    deux seuils différents rouvriraient la zone où un devis se retrouve sans
+    économies sans raison visible.
+
     Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
     servir un bloc qui ne décrit plus le devis.
     """
@@ -5185,6 +5433,10 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
         if (actuelle is None) != (rangee is None):
             return False
         if actuelle is not None and abs(float(actuelle) - float(rangee)) > 0.05:
+            return False
+        from apps.ventes.domain.entrees import empreinte_entrees_du_devis
+        empreinte = empreinte_entrees_du_devis(devis)
+        if not empreinte or bloc.get('_empreinte_entrees') != empreinte:
             return False
         return True
     except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
@@ -5264,85 +5516,21 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
 
 
 def entrees_dimensionnement_du_devis(devis, *, contexte=True):
-    """P2-A (25/08/2026) — LES ENTRÉES du moteur calibré pour CE devis, lues UNE
-    SEULE FOIS et par UNE SEULE fonction.
+    """RÉ-EXPORT (QJR42) de ``apps.ventes.domain.entrees.entrees_depuis_devis``.
 
-    RAISON D'ÊTRE : deux lectures ⇒ deux dimensionnements. Le tableau rangé par
-    :func:`rafraichir_dimensionnement_devis` et l'échelle de paliers batterie
-    (``dimensionnement.echelle_paliers_batterie``) doivent partir des MÊMES
-    factures, de la MÊME localisation, de la MÊME occupation et des MÊMES
-    équipements — sinon l'écran montrerait une échelle qui ne se raccorde pas au
-    palier « retenu » qu'il désigne. Cette fonction est cette lecture unique.
+    Le corps a été DÉPLACÉ TEL QUEL dans ``domain/entrees.py``, où il partage
+    désormais sa forme (:class:`~apps.ventes.domain.entrees.EntreesMoteur`)
+    avec l'adaptateur LEAD du chemin auto-devis / tunnel. Ce nom reste ici
+    parce que trois modules l'importent depuis ``services``
+    (``dimensionnement``, ``offres_tailles``, et ce module) — le pin
+    ``tests/test_services_surface.py`` le vérifie.
 
-    Renvoie ``None`` quand le devis n'est pas dimensionnable DU TOUT (mode non
-    résidentiel, ou aucune société), sinon un dict dont
-    ``conso_kwh_mensuelles`` peut valoir ``None`` — c'est-à-dire « société et
-    mode d'accord, mais aucun profil de consommation exploitable » : l'appelant
-    distingue ainsi les deux situations, qui n'appellent pas la même réaction
-    (l'une ne calcule rien, l'autre RETIRE une clé devenue périmée).
-
-    L'ORDRE DES LECTURES EST DÉLIBÉRÉ : la localisation, l'occupation et les
-    équipements ne sont lus qu'APRÈS que la consommation s'est avérée
-    exploitable — c'est une requête de moins sur le chemin qui ne calculera
-    rien de toute façon. ``contexte=False`` les saute complètement (ils restent
-    à ``None``) : c'est ce que veut un appelant qui n'a besoin que de la GARDE
-    (mode, société, profil exploitable) avant de décider s'il recalcule —
-    typiquement ``rafraichir_dimensionnement_devis`` sur son chemin de cache,
-    appelé à chaque enregistrement de ligne et qui ne doit y payer AUCUNE
-    requête de plus qu'avant.
-
-    Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
-    ligne, ni total (règle #4).
+    ``contexte=False`` est CONSERVÉ : il saute les lectures de localisation /
+    occupation / équipements pour l'appelant qui n'a besoin que de la GARDE
+    (voir la docstring de l'original).
     """
-    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-    if mode != 'residentiel':
-        return None
-    company = getattr(devis, 'company', None)
-    if company is None:
-        return None
-
-    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
-    from apps.ventes.courbes_journalieres import (
-        equipements_du_devis, occupation_du_devis)
-    from apps.ventes.etude_horaire import profil_depuis_factures
-
-    bills = lead_bills_for_devis(devis) or {}
-    etude_params = getattr(devis, 'etude_params', None) or {}
-    conso, source_conso, _detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
-
-    entrees = {
-        'company': company,
-        'mode': mode,
-        'etude_params': etude_params,
-        'conso_kwh_mensuelles': conso,
-        'source_conso': source_conso,
-        'ville': None, 'lat': None, 'lon': None,
-        'occupation': None, 'equipements': None,
-    }
-    if not conso or not contexte:
-        return entrees
-
-    localisation = site_location_for_devis(devis) or {}
-    # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
-    # ``mode_installation`` explicite, ``_occupation`` retombe sur le défaut
-    # NON résidentiel — on lui donne donc le mode du devis (déjà vérifié
-    # 'residentiel' ci-dessus) pour que le défaut fondateur résidentiel
-    # s'applique.
-    occupation, _source_occ = occupation_du_devis(
-        devis, {'mode_installation': mode})
-    entrees.update({
-        'ville': localisation.get('site_ville'),
-        'lat': localisation.get('gps_lat'),
-        'lon': localisation.get('gps_lng'),
-        'occupation': occupation,
-        'equipements': equipements_du_devis(devis),
-    })
-    return entrees
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+    return entrees_depuis_devis(devis, contexte=contexte)
 
 
 def rafraichir_dimensionnement_devis(devis, *, force=False):
@@ -5357,10 +5545,20 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
 
     Contrairement à ``rafraichir_etude_horaire_devis``, aucune donnée de
     LIGNES n'entre dans ce calcul (le tableau balaye TOUTES les tailles
-    candidates, il ne lit pas la composition posée) : ``force`` n'a donc de
-    sens ici que pour forcer un recalcul après un changement de profil
-    (factures/occupation/équipements) — inchangé sinon, on ne recalcule pas à
-    chaque sauvegarde de devis pour un profil qui n'a pas bougé.
+    candidates, il ne lit pas la composition posée).
+
+    QJR43 — L'EMPREINTE DES ENTRÉES DÉCIDE, PLUS LA PRÉSENCE DE LA CLÉ. Le
+    bloc rangé porte ``_empreinte`` (``domain.entrees.empreinte_entrees``) et
+    n'est recalculé QUE si l'empreinte des entrées d'aujourd'hui en diffère.
+    Avant, le test était ``'dimensionnement' in etude_params`` : corriger la
+    facture d'hiver, l'occupation ou les équipements du lead ne périmait RIEN,
+    et le tableau servi restait celui de la toute première lecture. Un bloc
+    SANS ``_empreinte`` (tout devis antérieur à QJR43) est traité comme PÉRIMÉ
+    — un recalcul, une seule fois, par devis existant.
+
+    ``force`` reste accepté et signifie désormais « recalcule même si
+    l'empreinte concorde » ; il devient inutile sur les chemins qui ne
+    changeaient que la composition (QJR47 les retire un par un).
 
     Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux
     (règle #4). ``None`` (⇒ clé ABSENTE) quand le profil n'est pas
@@ -5368,29 +5566,34 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
     localisation non résolue) — jamais un tableau inventé.
     """
     try:
-        # P2-A — LECTURE UNIQUE des entrées (voir
-        # ``entrees_dimensionnement_du_devis``) : l'échelle de paliers batterie
-        # part exactement des mêmes.
-        garde = entrees_dimensionnement_du_devis(devis, contexte=False)
-        if garde is None:
+        from apps.ventes.domain.entrees import empreinte_entrees
+        from apps.ventes.domain.etude_schema import (
+            MOTEUR_DIMENSIONNEMENT, ecrire)
+
+        # P2-A / QJR42 — LECTURE UNIQUE des entrées : l'échelle de paliers
+        # batterie part exactement des mêmes. Elle est faite AVEC contexte
+        # parce que l'empreinte a besoin de la localisation, de l'occupation
+        # et des équipements — c'est le prix (une lecture, pas un balayage)
+        # d'un cache qui se périme vraiment, et il remplace les DEUX lectures
+        # que faisait l'ancien chemin quand il recalculait.
+        entrees = entrees_dimensionnement_du_devis(devis)
+        if entrees is None:
             return None
-        etude_params = garde['etude_params']
-        if not garde['conso_kwh_mensuelles']:
+        etude_params = entrees['etude_params']
+        conso = entrees['conso_kwh_mensuelles']
+        if not conso:
             if not force and 'dimensionnement' not in etude_params:
                 return None
-            etude = dict(etude_params)
-            etude.pop('dimensionnement', None)
-            devis.etude_params = etude
-            devis.save(update_fields=['etude_params'])
+            # QJR62 — ÉCRIVAIN UNIQUE : ``None`` RETIRE la clé (règle Z2).
+            ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
+                   dimensionnement=None)
             return None
 
-        if not force and 'dimensionnement' in etude_params:
-            return etude_params['dimensionnement']
-
-        # On RECALCULE : c'est le seul chemin qui a besoin du contexte
-        # (localisation, occupation, équipements).
-        entrees = entrees_dimensionnement_du_devis(devis)
-        conso = entrees['conso_kwh_mensuelles']
+        empreinte = empreinte_entrees(entrees)
+        bloc = etude_params.get('dimensionnement')
+        if (not force and isinstance(bloc, dict)
+                and bloc.get('_empreinte') == empreinte):
+            return bloc
 
         from apps.ventes.dimensionnement import recommander_taille
         resultat = recommander_taille(
@@ -5398,12 +5601,14 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
             occupation=entrees['occupation'],
             equipements=entrees['equipements'],
-            source_conso=entrees['source_conso'])
-
-        etude = dict(etude_params)
-        etude['dimensionnement'] = resultat
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+            source_conso=entrees['source_conso'],
+            jour_reference=entrees['jour_reference'],
+            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
+            tranches=entrees['tranches'],
+            charges_fixes_mad=entrees['charges_fixes_mad'])
+        resultat['_empreinte'] = empreinte
+        ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
+               dimensionnement=resultat)
         return resultat
     except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
         # jamais une sauvegarde de devis/ligne.
@@ -5870,18 +6075,37 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     for avertissement in journal.get('avertissements') or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
 
+    # QJR63 — LE kWc EST POSÉ PAR SON PROPRIÉTAIRE, sur les lignes RÉELLEMENT
+    # composées : ni ``target_kwc``, ni ``lead.taille_souhaitee_kwc``, qui sont
+    # des DEMANDES et non ce que le catalogue a su servir (l'arrondi au palier
+    # et le plafond de toit peuvent faire atterrir ailleurs).
+    poser_puissance_kwc(devis)
+
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
     # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
-    # l'étude déjà écrite par la construction. Elles ne peuvent pas écraser le
-    # `scenario`, arrêté plus haut : c'est lui qui pilote le rendu du PDF.
+    # l'étude déjà écrite par la construction.
     if isinstance(etude_extra, dict) and etude_extra:
-        etude = dict(devis.etude_params or {})
-        _scenario_arrete = etude.get('scenario')
-        etude.update(etude_extra)
-        if _scenario_arrete:
-            etude['scenario'] = _scenario_arrete
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
+        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
+        # particulier codé en dur. Le scénario qui fait foi est
+        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
+        # construction vient d'arrêter) : un corps de requête ne peut plus
+        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
+        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+        _scenario_arrete = scenario_effectif(
+            devis, (devis.etude_params or {}).get('scenario'))
+        _extra = {cle: valeur for cle, valeur in etude_extra.items()
+                  if not (_scenario_arrete and cle == 'scenario')}
+        if _scenario_arrete and _scenario_arrete != (
+                devis.etude_params or {}).get('scenario'):
+            _extra['scenario'] = _scenario_arrete
+        if _extra:
+            try:
+                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
+            except ValueError as exc:
+                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
+                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
+                raise AutoDevisError(str(exc), field='etude_params')
 
     # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
     # comme sur les chemins d'écriture du générateur (``atomic``,
@@ -5895,7 +6119,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # dimensionnement), toujours APRÈS la construction (la puissance et le
     # stockage réellement composés), best-effort et non bloquant : un devis
     # reste parfaitement valide sans ses études.
-    rafraichir_etudes_du_devis(devis, force=True)
+    # QJR47 — ``force=True`` RETIRÉ : le devis vient de NAÎTRE, il ne porte
+    # aucun bloc estampillé, donc les quatre études se calculent de toute
+    # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
+    # l'empreinte des entrées).
+    rafraichir_etudes_du_devis(devis)
 
     logger.info(
         'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s, '
@@ -7542,47 +7770,26 @@ def log_supplier_email(
     return ok, log
 
 
-def refresh_etude_consistency(devis):
-    """QX24 — garde ``etude_params`` cohérent quand les lignes/remise changent.
-
-    Problème : ``production_annuelle``/``economies_annuelles`` sont figés à la
-    création tandis que le TOTAL du devis flotte avec les éditions de lignes/la
-    remise globale — le payback (= total ÷ économies) devient alors incohérent.
-
-    Correctif (option b) : on RECALCULE et REPERSISTE le payback dérivé à
-    partir du TTC canonique COURANT (chaîne QX1) et des économies annuelles
-    stockées, à chaque changement de ligne/remise. On garde tel quel toute
-    valeur explicitement saisie par le vendeur (préfixe ``*_override`` ou clé
-    ``etude_overrides``), qui reste autoritative.
-
-    Best-effort : jamais d'exception remontée. No-op si aucune économie connue
-    (rien à dériver) — comportement historique inchangé pour ces devis.
-    """
-    from decimal import Decimal
-    try:
-        params = dict(devis.etude_params or {})
-        eco = params.get('economies_annuelles')
-        if not eco:
-            return
-        eco = Decimal(str(eco))
-        if eco <= 0:
-            return
-        # Le vendeur a figé un payback à la main → on ne l'écrase jamais.
-        overrides = set(params.get('etude_overrides') or [])
-        if 'payback_annees' in overrides or 'payback_override' in params:
-            return
-        from apps.ventes.utils.options import option_totaux
-        ttc = Decimal(str(option_totaux(devis)['ttc']))
-        if ttc <= 0:
-            return
-        payback = (ttc / eco).quantize(Decimal('0.1'))
-        if params.get('payback_annees') != float(payback):
-            params['payback_annees'] = float(payback)
-            devis.etude_params = params
-            devis.save(update_fields=['etude_params'])
-    except Exception as exc:  # noqa: BLE001 — jamais bloquant
-        logger.warning('QX24: refresh étude échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+# ════════════════════════════════════════════════════════════════════════════
+# QJR48 (29/08/2026) — ``refresh_etude_consistency`` A ÉTÉ SUPPRIMÉE
+# ════════════════════════════════════════════════════════════════════════════
+# Elle écrivait ``etude_params['payback_annees']`` (TTC canonique ÷ économies
+# annuelles stockées) à CHAQUE sauvegarde et à CHAQUE suppression de
+# ``LigneDevis``, plus à chaque changement de remise globale — soit un
+# ``Devis.save()`` par ligne PLUS une recomputation complète d'``option_totaux``.
+#
+# CETTE CLÉ N'AVAIT AUCUN LECTEUR. Le balayage du dépôt (joint au commit, et
+# rejoué par ``tests/test_qjr_coherence_etude.py`` pour qu'il ne puisse pas
+# repartir en silence) ne trouve ``payback_annees`` QUE dans des blocs qui
+# portent leur PROPRE payback et le calculent eux-mêmes : les cartes
+# ``offres_tailles``, les paliers de ``dimensionnement``, les comparateurs
+# ``compta``/``parametres``. Le PDF et la page publique lisent, eux, la clé
+# ``payback`` (industriel/commercial), recalculée par ``quote_engine/builder``
+# — jamais ``payback_annees``.
+#
+# Les deux récepteurs QX24 (``apps/ventes/receivers.py``) ont été retirés dans
+# le même commit : aucun chemin ne subsiste. Aucun chiffre rendu au client ne
+# change.
 
 
 def compute_marge_snapshot(devis):
@@ -7657,8 +7864,19 @@ def contexte_clauses_devis(devis):
     Clés exposées : ``type_deal`` (= ``mode_installation``), ``montant``
     (= total TTC), ``total_ht``, ``total_ttc``, ``remise_globale``,
     ``puissance_kwc``, ``devise``. Aucun prix d'achat / aucune marge (donnée
-    interne — jamais dans un texte destiné au client)."""
+    interne — jamais dans un texte destiné au client).
+
+    QJR54 (29/08/2026) — LE MONTANT QUI CHOISIT LA TRANCHE EST LE **NET**. Ces
+    clauses sont sélectionnées par tranche de montant PUIS IMPRIMÉES sur le PDF
+    client : alimenter le moteur avec un total non remisé pouvait figer un
+    devis remisé avec le jeu de CGV d'une tranche SUPÉRIEURE. La lecture passe
+    donc par la vue NET NOMMÉE de ``domain.argent`` — remise globale honorée et
+    option effective — au lieu de dépendre de ce que ``Devis.total_*`` veut
+    dire ce mois-ci.
+    """
     from decimal import Decimal, InvalidOperation
+
+    from apps.ventes.domain.argent import Vue, totaux as totaux_argent
 
     etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
     try:
@@ -7666,8 +7884,9 @@ def contexte_clauses_devis(devis):
     except (TypeError, ValueError):
         kwc = 0.0
     try:
-        total_ht = float(devis.total_ht or 0)
-        total_ttc = float(devis.total_ttc or 0)
+        vue = totaux_argent(devis, vue=Vue.NET)
+        total_ht = float(vue.ht_net or 0)
+        total_ttc = float(vue.ttc or 0)
     except (TypeError, ValueError, InvalidOperation):
         total_ht = total_ttc = 0.0
     return {

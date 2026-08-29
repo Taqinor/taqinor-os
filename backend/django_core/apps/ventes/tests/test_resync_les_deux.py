@@ -269,3 +269,101 @@ class TestTemoinNegatifDevisMono(_BaseDeuxOptions):
                                         scenario='reseau'))
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertFalse(devis.lignes.filter(designation=BATTERIE).exists())
+
+
+class TestQjr60QuantiteVerrouillee(_BaseDeuxOptions):
+    """QJR60 / décision fondateur D12 — la resynchro RESPECTE une quantité
+    tapée à la main, et le DIT.
+
+    Avant : la resynchro réécrivait librement les quantités (panneaux, mètres
+    de câble, structures/socles) pendant que le PRIX tapé sur la MÊME ligne
+    était sacré. Deux entrées commerciales, deux traitements opposés.
+    """
+
+    def _verrouiller_panneaux(self, devis):
+        ligne = devis.lignes.get(designation=PANNEAU)
+        ligne.quantite_manuelle = True
+        ligne.save(update_fields=['quantite_manuelle'])
+        return ligne
+
+    def test_le_compte_de_panneaux_tape_survit_a_la_resynchro(self):
+        """ROUGE avant QJR60 : le calepinage écrasait la saisie."""
+        devis = self._devis(scenario_stocke=SCENARIO_AVEC_BATTERIE,
+                            reseau=False, panneaux=12)
+        ligne = self._verrouiller_panneaux(devis)
+
+        resp = self._post(devis, layout(panels=20, kwc=11.0,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ligne.refresh_from_db()
+        self.assertEqual(int(ligne.quantite), 12)
+
+    def test_un_avertissement_FR_nomme_la_ligne_et_l_ecart(self):
+        devis = self._devis(scenario_stocke=SCENARIO_AVEC_BATTERIE,
+                            reseau=False, panneaux=12)
+        self._verrouiller_panneaux(devis)
+
+        resp = self._post(devis, layout(panels=20, kwc=11.0,
+                                        scenario='avec_batterie'))
+        avertissements = ' | '.join(resp.data['avertissements'])
+        self.assertIn('verrouill', avertissements.lower())
+        self.assertIn(PANNEAU, avertissements)
+        self.assertIn('8', avertissements)
+
+    def test_sans_marqueur_le_comportement_est_celui_d_avant(self):
+        """Le témoin : aucune ligne verrouillée ⇒ la resynchro écrit, comme
+        avant les marqueurs QJR59."""
+        devis = self._devis(scenario_stocke=SCENARIO_AVEC_BATTERIE,
+                            reseau=False, panneaux=12)
+        ligne = devis.lignes.get(designation=PANNEAU)
+        self.assertFalse(ligne.quantite_manuelle)
+
+        resp = self._post(devis, layout(panels=20, kwc=11.0,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ligne.refresh_from_db()
+        self.assertEqual(int(ligne.quantite), 20)
+        self.assertNotIn(
+            'verrouill',
+            ' | '.join(resp.data['avertissements']).lower())
+
+    def test_une_structure_verrouillee_n_est_pas_recomptee(self):
+        """Le TROISIÈME écrivain (``_resynchroniser_quantite``) — celui des
+        mètres de câble et des comptes structure/socle."""
+        devis = self._devis(scenario_stocke=SCENARIO_AVEC_BATTERIE,
+                            reseau=False, panneaux=12)
+        structure = devis.lignes.create(
+            produit=self.produits['Structures acier'],
+            designation='Structures acier', quantite=Decimal('12'),
+            prix_unitaire=Decimal('500'), remise=Decimal('0'), ordre=8,
+            quantite_manuelle=True)
+
+        resp = self._post(devis, layout(panels=20, kwc=11.0,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        structure.refresh_from_db()
+        self.assertEqual(int(structure.quantite), 12)
+        avertissements = ' | '.join(resp.data['avertissements'])
+        self.assertIn('Structures acier', avertissements)
+        self.assertIn('verrouill', avertissements.lower())
+
+    def test_le_verrou_d_une_option_ne_bloque_pas_l_autre(self):
+        """Devis « Les deux » : verrouiller la ligne d'UNE variante ne fige
+        pas l'autre — le verrou est une propriété de LIGNE, pas de devis."""
+        devis = self._devis(scenario_stocke=SCENARIO_LES_DEUX, panneaux=20)
+        commune = devis.lignes.get(designation=PANNEAU)
+        commune.variante = 'sans'
+        commune.quantite_manuelle = True
+        commune.save(update_fields=['variante', 'quantite_manuelle'])
+        autre = devis.lignes.create(
+            produit=self.produits[PANNEAU], designation=PANNEAU,
+            quantite=Decimal('20'), prix_unitaire=Decimal('1100'),
+            remise=Decimal('0'), ordre=9, variante='avec')
+
+        resp = self._post(devis, layout(panels=12, kwc=6.6,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        commune.refresh_from_db()
+        autre.refresh_from_db()
+        self.assertEqual(int(commune.quantite), 20)
+        self.assertEqual(int(autre.quantite), 12)

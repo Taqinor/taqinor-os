@@ -343,6 +343,25 @@ class Devis(models.Model):
                   'le moteur les recalcule depuis cette configuration.',
     )
 
+    # QJR58 / décision fondateur D12 (29/08/2026) — LE REGISTRE UNIQUE des
+    # surcharges du vendeur, par CHEMIN :
+    # ``{chemin: {valeur, pose_le, pose_par, origine}}``. Il remplace les
+    # QUATRE mécanismes incompatibles que l'audit L3 a trouvés (dont
+    # ``saisie_manuelle``, noms à plat sans provenance).
+    # ENTRÉES SEULES : la liste blanche vit dans
+    # ``apps.ventes.domain.overrides`` et un champ DÉRIVÉ y est refusé en 400 —
+    # aucun nombre calculé par le moteur ne peut donc entrer ici, ni en
+    # ressortir sur une page client. NULL = aucun chemin surchargé, comportement
+    # strictement identique à avant (aucun backfill).
+    overrides = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Surcharges du vendeur (par chemin)',
+        help_text="Registre des surcharges du vendeur, par CHEMIN "
+                  "({valeur, pose_le, pose_par, origine}). Entrées seules : "
+                  "aucun nombre calculé par le moteur n'y entre jamais. Liste "
+                  "blanche : décision fondateur D12 du 29/08/2026.",
+    )
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — le comportement reste
@@ -386,7 +405,16 @@ class Devis(models.Model):
         fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
         une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
         qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
-        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF)."""
+        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF).
+
+        QJR52 / décision fondateur D2 — LE GEL LIT DÉSORMAIS LE NET. Il lit
+        ``self.total_ttc``, qui honore ``remise_globale`` depuis QJR51 : un
+        devis remisé n'est plus figé à jamais sur un prix par kWc gonflé.
+        Comme le champ est write-once, les devis DÉJÀ gelés au brut sont
+        corrigés par la data-migration ``0106_qjr52_prix_par_kwc_net``
+        (réversible), qui re-dérive la valeur des lignes et de la remise —
+        correction d'un nombre stocké faux, jamais invention d'un nombre.
+        """
         from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
         super().save(*args, **kwargs)
         if self.prix_par_kwc is not None:
@@ -407,12 +435,49 @@ class Devis(models.Model):
         type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
         self.prix_par_kwc = prix
 
+    def _totaux_argent(self):
+        """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.
+
+        ``apps.ventes.domain.argent`` NOMME les vues monétaires (BRUT / NET /
+        PAR_OPTION / AFFICHAGE). QJR50 a branché ces propriétés sur
+        :attr:`Vue.BRUT` (le calcul d'hier, à l'octet) pour que la bascule ne
+        soit qu'un changement d'UN mot ; **QJR51 est ce mot**.
+
+        DÉCISION FONDATEUR D2 (29/08/2026) — ``Devis.total_*`` LISENT LA VUE
+        NET. Deux conséquences, toutes deux ASSUMÉES :
+
+        1. ``remise_globale`` est HONORÉE. Le devis et la facture qu'il
+           engendre cessent de se contredire (la facture passe déjà par la
+           chaîne canonique, remise comprise).
+        2. Un devis à DEUX options ne rend plus la SOMME des deux paniers —
+           un montant qui n'apparaît dans AUCUN document et que le client ne
+           paiera jamais — mais le total de l'option EFFECTIVE (décision D9 :
+           l'option acceptée, sinon celle du total affiché).
+
+        CE QUI BAISSE, ET C'ÉTAIT FAUX : le reporting, le Kanban et le CA d'un
+        devis remisé ou à deux options. Le Kanban, qui affiche ``total_ttc``,
+        cesse par là même de montrer un prix différent de la liste (qui lit
+        déjà ``total_affiche``, la même chaîne canonique).
+
+        COÛT, DIT HONNÊTEMENT : la vue NET résout l'option effective, donc
+        consulte le prédicat « deux options ». Depuis QJR55 il n'y en a plus
+        qu'UN, LÉGER (``utils.options.deux_options_declarees`` : deux requêtes,
+        aucun rendu) — lire l'argent d'un devis ne traverse plus le moteur PDF.
+
+        L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` avant lui :
+        il s'exécute à l'appel, jamais au chargement du module, donc il ne peut
+        pas réintroduire le cycle modèle→modèle que le contrat import-linter
+        interdit.
+        """
+        from .domain.argent import Vue, totaux
+        return totaux(self, vue=Vue.NET)
+
     @property
     def total_ht(self):
         # XSAL5/XSAL14 — les lignes optionnelles non activées et les lignes de
         # section/note (sans prix) sont exclues du total (``compte_dans_totaux``).
-        return sum(ligne.total_ht for ligne in self.lignes.all()
-                   if ligne.compte_dans_totaux)
+        # QJR51/D2 — HT **NET** : remise globale honorée, option effective.
+        return self._totaux_argent().ht_net
 
     @property
     def total_tva(self):
@@ -421,8 +486,7 @@ class Devis(models.Model):
         # s'accordent au centime sur un devis à taux mixtes (10/20). Mono-taux
         # (anciens devis : toutes lignes NULL → un seul panier) → formule
         # d'origine HT×taux, rendu strictement inchangé.
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+        return self._totaux_argent().tva
 
     @property
     def tva_par_taux(self):
@@ -433,15 +497,22 @@ class Devis(models.Model):
         historiques strictement identiques) ; taux mixtes → un panier par taux,
         chaque TVA arrondie au centime, dont la somme est le total TVA.
 
-        DC23 — délègue au selector unique ``tva_buckets`` (une seule logique de
-        bucket partagée par Devis/Facture/Avoir + exports DGI/FEC).
+        DC23 — la logique de bucket reste celle du selector unique
+        ``tva_buckets`` (partagée par Devis/Facture/Avoir + exports DGI/FEC) ;
+        QJR50 y accède par la façade ``domain.argent``.
+
+        LA FORME RENDUE NE BOUGE PAS : la façade porte ``base`` (le mot du
+        contrat PACT10 ``devis_totaux.json``), les consommateurs historiques de
+        cette propriété — UBL, PDF facture, exports — lisent ``base_ht``. On
+        retraduit donc ici, plutôt que de renommer une clé lue ailleurs.
         """
-        from .selectors import tva_buckets
-        return tva_buckets(self.lignes.all(), fallback_taux=self.taux_tva)
+        return [{'taux': entree['taux'], 'base_ht': entree['base'],
+                 'montant': entree['montant']}
+                for entree in self._totaux_argent().tva_par_taux]
 
     @property
     def total_ttc(self):
-        return self.total_ht + self.total_tva
+        return self._totaux_argent().ttc
 
     @property
     def approbation_remise_en_attente(self):
@@ -557,6 +628,32 @@ class LigneDevis(models.Model):
         help_text="Option à laquelle la ligne appartient : vide = commune aux "
                   "deux options (défaut), « sans » ou « avec » = propre à "
                   "cette option-là.")
+
+    # ── QJR59 / décision fondateur D12 — CE QUE LE COMMERCIAL A TAPÉ ─────────
+    # Une ligne ne portait AUCUN marqueur de saisie manuelle : la resynchro
+    # réécrivait librement les QUANTITÉS (panneaux, mètres de câble, structures)
+    # pendant que le PRIX tapé sur la MÊME ligne était sacré — deux entrées
+    # commerciales, deux traitements opposés. D12 tranche : le commercial garde
+    # la main TOTALE sur les prix ET les quantités, et ces choix sont
+    # PERSISTANTS (ils survivent à ``?edit=`` et à la resynchro).
+    #
+    # ``default=False`` et AUCUN backfill : toutes les lignes existantes valent
+    # False sur les deux, donc rien ne change sur les données actuelles — c'est
+    # ``services._est_au_prix_catalogue`` qui continue de décider pour elles
+    # (le repli RESTE : le supprimer traiterait rétroactivement des milliers de
+    # prix négociés comme des prix catalogue).
+    quantite_manuelle = models.BooleanField(
+        default=False,
+        verbose_name='Quantité saisie à la main',
+        help_text="La quantité de cette ligne a été TAPÉE par le commercial : "
+                  "la resynchro du calepinage ne la réécrit plus (décision "
+                  "fondateur D12).")
+    prix_manuel = models.BooleanField(
+        default=False,
+        verbose_name='Prix saisi à la main',
+        help_text="Le prix unitaire de cette ligne a été TAPÉ par le "
+                  "commercial : aucun rafraîchissement tarifaire ne l'écrase "
+                  "(décision fondateur D12).")
 
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
