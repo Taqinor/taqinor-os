@@ -26,6 +26,15 @@ import { validateLead } from '../src/lib/lead';
 import { estimateFromBill } from '../src/lib/billEstimate';
 import { estimateAgricole } from '../src/lib/estimatorAgricole';
 import { monthlyWaterDemand } from '../src/lib/agronomy';
+// QJW5 — le corps du lead n'est plus construit DANS les pages : les trois
+// locales appellent le même `construireCorps`, piloté par le registre
+// `src/lib/tunnel/champs.ts`. Les épingles ci-dessous qui lisaient la source du
+// `buildBody()` de chaque page interrogent donc désormais ce module — et elles
+// y gagnent : elles portent sur le COMPORTEMENT (quelle clé part vraiment, sous
+// quelle condition) au lieu du texte d'une expression, et une seule assertion
+// couvre les trois locales par construction.
+import { CHAMPS_TUNNEL, etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -52,17 +61,14 @@ function slice(src: string, open: string, close: string): string {
   return b < 0 ? src.slice(a) : src.slice(a, b + close.length);
 }
 
-/** L'objet littéral construit par buildBody() — le corps RÉELLEMENT envoyé. */
-const payloadSrc = (src: string) =>
-  stripLineComments(slice(src, 'const body: Record<string, unknown> = {', "website_url: val('mt-hp'),"));
+/** Le corps RÉELLEMENT envoyé, construit par le module partagé. */
+const corpsDe = (etat: Partial<EtatTunnel>): Record<string, unknown> =>
+  construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+    .body;
 
-/** La ligne du payload qui porte `key:` (une seule par corps). Le `^[ \t]*`
- *  garantit qu'on ne confond jamais une clé avec le SUFFIXE d'une autre
- *  (`raccordement` vs `tensionRaccordement`, qui lui reste envoyé). */
-function payloadLine(src: string, key: string): string {
-  const m = payloadSrc(src).match(new RegExp(`^[ \\t]*${key}: .*$`, 'm'));
-  return m ? m[0] : '';
-}
+/** Le tunnel émet-il cette clé de webhook, sous UNE quelconque condition ? */
+const emet = (webhookKey: string): boolean =>
+  CHAMPS_TUNNEL.some((c) => c.webhookKey === webhookKey);
 
 const persistedText = (src: string) =>
   stripLineComments(slice(src, 'const PERSISTED_TEXT_FIELDS = [', '];'));
@@ -148,16 +154,8 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       for (const { dom: id } of ALL_CUT) expect(dom, id).not.toContain(id);
     });
 
-    it(`${lang} — leurs clés ne partent plus dans le corps du lead`, () => {
-      for (const { key } of ALL_CUT) {
-        if (key) expect(payloadLine(src, key), key).toBe('');
-      }
-      // `eteDifferente` et `hasMeterPhoto` étaient des raccourcis d'objet
-      // (`eteDifferente,`) : ils n'ont pas de ligne `clé: valeur` à chercher.
-      expect(payloadSrc(src)).not.toContain('eteDifferente');
-      expect(payloadSrc(src)).not.toContain('hasMeterPhoto');
-      // …et la surface commerciale par catégorie n'est plus lue du tout.
-      expect(payloadSrc(src)).not.toContain('readCommercialAnswers');
+    it(`${lang} — la page ne lit plus les questions par catégorie commerciale`, () => {
+      expect(stripLineComments(src)).not.toContain('readCommercialAnswers');
     });
 
     it(`${lang} — le brouillon ne les persiste plus`, () => {
@@ -192,8 +190,6 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       // technique reprend de toute façon. Le dérate reste dans billEstimate.ts
       // (autres appelants) — c'est le TUNNEL qui n'en produit plus.
       expect(dom).not.toContain('mt-ombrage');
-      // Clé ABSENTE du corps de lead — jamais une chaîne vide.
-      expect(payloadLine(src, 'ombrage')).toBe('');
     });
 
     it(`${lang} — la raison sociale est passée sur l'écran CONTACT`, () => {
@@ -201,20 +197,9 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       expect(form).toContain('id="mt-raison-sociale-wrap"');
       expect(form).toContain('id="mt-raison-sociale"');
       expect(form).toContain('name="raisonSociale"');
-      // …et elle part toujours au webhook, id/name inchangés.
-      expect(payloadLine(src, 'raisonSociale')).not.toBe('');
       // Affichée aux seuls profils professionnels (un particulier n'en a pas).
       expect(src).toContain('function syncRaisonSociale()');
       expect(src).toContain('wrap.hidden = !isProMode(mode)');
-    });
-
-    it(`${lang} — roofType est DÉRIVÉ, plus jamais demandé`, () => {
-      // validateLead EXIGE roofType : la question part, la valeur reste — et
-      // reste honnête ('autre', jamais une toiture précise inventée).
-      const fn = stripLineComments(slice(src, 'function resolveRoofType()', '\n  }'));
-      expect(fn).toContain("return 'autre';");
-      expect(fn).not.toContain("val('mt-roof')");
-      expect(payloadLine(src, 'roofType')).toContain('resolveRoofType()');
     });
 
     it(`${lang} — l'écran 1 n'exige plus qu'une facture (résidentiel)`, () => {
@@ -225,6 +210,43 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       expect(fn).toContain("val('mt-bill')");
     });
   }
+
+  // ——— LE CORPS DU LEAD — une seule fois pour les trois locales (QJW5).
+  // Ces épingles lisaient auparavant la source du `buildBody()` de CHAQUE page,
+  // et c'est précisément parce qu'elles étaient recopiées par locale qu'une
+  // divergence pouvait s'installer sans être vue. Le corps venant désormais du
+  // registre partagé, la question « cette clé part-elle ? » n'a plus qu'UNE
+  // réponse — et on la pose au comportement, pas au texte.
+  it('les questions coupées ne partent plus dans le corps du lead', () => {
+    for (const { key } of ALL_CUT) {
+      if (key) expect(emet(key), key).toBe(false);
+    }
+    // `eteDifferente` et `hasMeterPhoto` étaient des raccourcis d'objet : ils
+    // n'ont jamais eu de descripteur, et n'en ont toujours pas.
+    expect(emet('eteDifferente')).toBe(false);
+    expect(emet('hasMeterPhoto')).toBe(false);
+    // ORDRE FONDATEUR 21/08 — l'ombrage a quitté le tunnel : clé ABSENTE du
+    // corps, jamais une chaîne vide.
+    expect(emet('ombrage')).toBe(false);
+  });
+
+  it('la raison sociale part toujours au webhook', () => {
+    expect(corpsDe({ raisonSociale: 'SARL Atlas' }).raisonSociale).toBe('SARL Atlas');
+    // …et une raison sociale jamais saisie reste une clé ABSENTE.
+    expect(corpsDe({})).not.toHaveProperty('raisonSociale');
+  });
+
+  it('roofType est DÉRIVÉ, plus jamais demandé — et reste honnête', () => {
+    // validateLead EXIGE roofType : la valeur part toujours, mais elle n'est
+    // plus une réponse du visiteur. Sans question posée, c'est 'autre' — jamais
+    // une toiture précise inventée.
+    expect(corpsDe({}).roofType).toBe('autre');
+    expect(corpsDe({ mode: 'residentiel' }).roofType).toBe('autre');
+    // Un profil C&I dérive de sa VRAIE réponse sur le type de surface.
+    expect(corpsDe({ mode: 'industriel', typeSurface: 'bac_acier' }).roofType).toBe('hangar');
+    expect(corpsDe({ mode: 'industriel', typeSurface: 'terrasse' }).roofType).toBe('toit_plat');
+    expect(corpsDe({ mode: 'industriel', typeSurface: 'ombriere' }).roofType).toBe('autre');
+  });
 
   // ——— Le CONTRAT SERVEUR est intact : retirer une question du site ne doit
   // RIEN casser côté validation — d'autres sources alimentent encore ces champs.
@@ -390,46 +412,19 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
   for (const [lang, rel] of LOCALES) {
     const src = read(rel);
 
-    it(`${lang} — les jetons de dédoublonnage sont bien ENVOYÉS et persistés`, () => {
-      expect(payloadSrc(src)).toContain('idempotencyKey:');
-      expect(payloadSrc(src)).toContain('eventId:');
-      // …et repris du brouillon, sinon un rafraîchissement fabriquerait un
-      // second jeton pour la même saisie — le doublon qu'ils doivent empêcher.
+    it(`${lang} — les jetons de dédoublonnage sont repris du brouillon`, () => {
+      // Repris du brouillon, sinon un rafraîchissement fabriquerait un second
+      // jeton pour la même saisie — le doublon qu'ils doivent empêcher.
       expect(src).toContain('idempotencyKey: dedupIdempotencyKey');
       expect(src).toContain('eventId: dedupEventId');
       expect(src).toContain("savedWizard?.idempotencyKey ||");
       expect(src).toContain("savedWizard?.eventId ||");
     });
 
-    // Un visiteur qui a décrit son site industriel puis rebasculé sur un autre
-    // profil ne doit plus perdre ses réponses : ce qui est SAISI part, point.
-    // (La liste a maigri avec la coupe du 18/08 — weekend / cos φ / groupe
-    // électrogène / diesel ne sont tout simplement plus demandés.)
-    const UNGATED = ['equipes', 'surfaceToitureM2', 'ombriere', 'terrain'];
-    for (const key of UNGATED) {
-      it(`${lang} — ${key} ne dépend plus du profil actif au moment de l'envoi`, () => {
-        const line = payloadLine(src, key);
-        expect(line.length).toBeGreaterThan(0);
-        expect(line).not.toContain("mode === 'industriel'");
-        expect(line).not.toContain("mode === 'professionnel'");
-        expect(line).not.toContain("mode === 'agricole'");
-        expect(line).not.toContain('isProMode(mode)');
-      });
-    }
-
-    // …mais le dégattage s'arrête EXACTEMENT là où il fabriquerait une réponse.
-    // `heuresPompage` n'est pas une saisie vide par défaut : c'est un curseur
-    // <input type="range" value="7">, donc sa `.value` vaut « 7 » même si le
-    // panneau agricole n'a jamais été ouvert. Sans gate, un lead résidentiel
-    // partait avec « 7 h/j » que personne n'avait saisi, et le CRM l'affichait
-    // comme une réponse du visiteur (webhooks _num('heuresPompage') → note
-    // chatter + section « Réponses du questionnaire web »).
-    it(`${lang} — heuresPompage RESTE gaté sur le mode agricole (le curseur part à 7)`, () => {
-      const line = payloadLine(src, 'heuresPompage');
-      expect(line.length).toBeGreaterThan(0);
-      expect(line).toContain("mode === 'agricole'");
-      // …et le curseur porte bien la valeur par défaut qui rend ce gate
-      // nécessaire (si un jour l'attribut disparaît, ce test le dira).
+    // Le curseur d'heures de pompage porte bien la valeur par défaut qui rend
+    // son gate de mode nécessaire (si un jour l'attribut disparaît, ce test le
+    // dira ; le gate lui-même est vérifié une fois pour les trois, plus bas).
+    it(`${lang} — le curseur d'heures de pompage part bien à 7`, () => {
       const slider = stripHtmlComments(src).match(/<input id="mt-heures-pompage"[^>]*>/);
       expect(slider).not.toBeNull();
       expect(slider?.[0]).toContain('type="range"');
@@ -449,14 +444,65 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
       expect(code).toContain('id="mt-offline-banner"');
     });
 
-    it(`${lang} — mais le gate SÉMANTIQUE sur le type de surface est conservé`, () => {
-      // surface_toiture_m2 = surface de TOIT au sens strict : une ombrière ou un
-      // terrain ne doit jamais être décrit comme une toiture.
-      expect(payloadLine(src, 'surfaceToitureM2')).toContain("surfaceType === 'bac_acier'");
-      expect(payloadLine(src, 'ombriere')).toContain("surfaceType === 'ombriere'");
-      expect(payloadLine(src, 'terrain')).toContain("surfaceType === 'terrain'");
-    });
   }
+
+  // ——— Les gates du corps, une fois pour les trois locales (QJW5). Vérifiés
+  // par le COMPORTEMENT : ce que le tunnel émet vraiment, pas la forme d'une
+  // expression recopiée trois fois.
+  it("les jetons de dédoublonnage sont bien ENVOYÉS", () => {
+    const body = corpsDe({ idempotencyKey: 'idem-1', eventId: 'evt-1' });
+    expect(body.idempotencyKey).toBe('idem-1');
+    expect(body.eventId).toBe('evt-1');
+  });
+
+  // Un visiteur qui a décrit son site industriel puis rebasculé sur un autre
+  // profil ne doit plus perdre ses réponses : ce qui est SAISI part, point.
+  it("les réponses saisies ne dépendent plus du profil ACTIF au moment de l'envoi", () => {
+    // Décrit en industriel, envoyé en commercial : rien ne s'efface.
+    const body = corpsDe({
+      mode: 'commercial',
+      equipes: '3x8',
+      typeSurface: 'bac_acier',
+      surfaceM2: 900,
+    });
+    expect(body.equipes).toBe('3x8');
+    expect(body.surfaceToitureM2).toBe(900);
+    // …et même envoyé depuis un profil résidentiel.
+    const resid = corpsDe({ mode: 'residentiel', equipes: '3x8', typeSurface: 'ombriere' });
+    expect(resid.equipes).toBe('3x8');
+    expect(resid.ombriere).toBe(true);
+  });
+
+  // …mais le dégattage s'arrête EXACTEMENT là où il fabriquerait une réponse.
+  // `heuresPompage` n'est pas une saisie vide par défaut : c'est un curseur
+  // <input type="range" value="7">, donc sa `.value` vaut « 7 » même si le
+  // panneau agricole n'a jamais été ouvert. Sans gate, un lead résidentiel
+  // partait avec « 7 h/j » que personne n'avait saisi, et le CRM l'affichait
+  // comme une réponse du visiteur (webhooks _num('heuresPompage') → note
+  // chatter + section « Réponses du questionnaire web »).
+  it('heuresPompage RESTE gaté sur le mode agricole', () => {
+    expect(corpsDe({ mode: 'residentiel', heuresPompage: 7 })).not.toHaveProperty('heuresPompage');
+    expect(corpsDe({ mode: 'industriel', heuresPompage: 7 })).not.toHaveProperty('heuresPompage');
+    expect(corpsDe({ mode: 'agricole', heuresPompage: 7 }).heuresPompage).toBe(7);
+  });
+
+  it('le gate SÉMANTIQUE sur le type de surface est conservé', () => {
+    // surface_toiture_m2 = surface de TOIT au sens strict : une ombrière ou un
+    // terrain ne doit jamais être décrit comme une toiture.
+    for (const typeSurface of ['ombriere', 'terrain']) {
+      const body = corpsDe({ mode: 'industriel', typeSurface, surfaceM2: 900 });
+      expect(body, typeSurface).not.toHaveProperty('surfaceToitureM2');
+      // …mais la surface brute et le booléen descriptif partent bien.
+      expect(body.surfaceM2, typeSurface).toBe(900);
+      expect(body[typeSurface], typeSurface).toBe(true);
+    }
+    for (const typeSurface of ['bac_acier', 'terrasse']) {
+      const body = corpsDe({ mode: 'industriel', typeSurface, surfaceM2: 900 });
+      expect(body.surfaceToitureM2, typeSurface).toBe(900);
+      expect(body, typeSurface).not.toHaveProperty('ombriere');
+      expect(body, typeSurface).not.toHaveProperty('terrain');
+    }
+  });
 });
 
 // ———————————————————————————————————————————————————————————————————————————

@@ -16,6 +16,8 @@ import {
   ANRE_TARIF_HORS_POINTE,
   FRAIS_RESEAU_DH_KWH,
 } from '../src/lib/constants82_21';
+import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -177,10 +179,28 @@ describe.each(LOCALES)('WJ123 — panneau industriel v2 dans mon-toit.astro (%s)
     expect(src).toMatch(/1[.,]01/);
   });
 
-  it('l’estimateur reçoit equipes ; le payload l’envoie sans gate de mode', () => {
+  it('l’estimateur reçoit equipes', () => {
     expect(src).toContain("equipes: (mode === 'industriel' || mode === 'professionnel') && equipes ? equipes : undefined");
-    // Côté payload, `equipes` n'est plus gaté sur le profil ACTIF au moment de
-    // l'envoi : toute valeur saisie part (cf. monToitTunnel.test.ts, chantier 2).
-    expect(src).toContain('equipes: equipes || undefined,');
+    // QJW5 — « le payload l'envoie sans gate de mode » ne se vérifie plus sur
+    // la source de chaque page : le corps vient du registre partagé, et c'est
+    // le comportement qui est épinglé (describe suivant, hors boucle par locale).
+  });
+});
+
+// QJW5 — un seul corps pour les trois locales : la garde « toute valeur saisie
+// part » s'exprime sur le comportement, plus sur le texte de trois expressions.
+describe('WJ123 — equipes dans le corps du lead (module partagé)', () => {
+  const corps = (etat: Partial<EtatTunnel>) =>
+    construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+      .body;
+
+  it('part quel que soit le profil actif au moment de l’envoi', () => {
+    for (const mode of ['residentiel', 'industriel', 'commercial', 'agricole']) {
+      expect(corps({ mode, equipes: '3x8' }).equipes, mode).toBe('3x8');
+    }
+  });
+
+  it('aucune équipe choisie = clé ABSENTE', () => {
+    expect(corps({ mode: 'industriel' })).not.toHaveProperty('equipes');
   });
 });

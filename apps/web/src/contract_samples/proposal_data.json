@@ -1,0 +1,326 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
+  "notes": {
+    "structure_de_la_reponse": "44 clés TOUJOURS présentes (littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 17 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
+    "cles_additives_15_a_17": "Les ~15-17 clés additives (le nombre exact dépend de la façon dont on compte `dimensionnement_options`/`production_par_option`, toujours posées ENSEMBLE par le même bloc `if`) : `bankable`, `courbes_journalieres`, `economies_mensuelles`, `tranche_tarifaire`, `batterie_regime`, `balayage_stockage`, `profils_comparatifs`, `economies_periodes`, `estimation_conso`, `jours_types`, `dimensionnement_options`, `production_par_option`, `paliers_batterie`, `couverture_batterie`, `offres_tailles`, `calepinage_options`, `parametres_site`.",
+    "portee_de_quote": "`quote` republie PRESQUE tout le dict interne du moteur (`build_quote_data`, moins les clés confidentielles/internes retirées par `_sans_cles_internes`/`_strip_confidential_deep`/`_sans_internes_bancables` — jamais de `prix_achat`/`marge`, règle #4). Sa forme INTERNE (des dizaines de clés : `sans_items`/`avec_items`, la chaîne HT→TVA→TTC, les séries de cashflow…) est HORS PÉRIMÈTRE de ce contrat — c'est l'objet interne du moteur, documenté par d'autres contrats existants (`apps/ventes/contract_samples/devis_composition.json` pour la forme d'une ligne, `devis_totaux.json` pour la chaîne argent) : ce fichier-ci documente la carte du dict `proposal_data` qui EMBALLE `quote`, pas `quote` lui-même.",
+    "cles_avec_contrat_dedie": "Six des clés additives ont DÉJÀ leur propre contrat PACT10, plus détaillé que ce qui est repris ci-dessous (repris ici en version COMPACTE, illustrative de la NATURE seulement — le contrat dédié fait foi sur la forme complète) : `variantes_servables.json`, `profils_comparatifs.json`, `offres_tailles.json`, `calepinage_options.json`, `paliers_batterie.json`, `couverture_batterie.json`. `conception_electrique.json` documente de même la clé de BASE `conception_electrique`.",
+    "additif_vs_null": "Distinction importante que `exemple`/`exemple_standard`/`exemple_sections_masquees` illustrent ensemble : une clé de BASE (les 44) qui n'a rien à montrer vaut `null` (elle reste dans la réponse — ex. `roof_image_url: null`) ; une clé ADDITIVE (les ~17) qui n'a rien à montrer est ABSENTE de la réponse (elle n'apparaît PAS du tout — jamais `\"bankable\": null`). Un consommateur qui teste `'bankable' in reponse` pour savoir si le bloc bancable existe, et `reponse.roof_image_url === null` pour savoir si la photo manque, lit donc le contrat correctement.",
+    "argent": "Règle #4 partout : aucune clé de cette carte, à aucun niveau d'imbrication, ne porte `prix_achat` ni une marge — uniquement des montants CLIENT (TTC, ou HT explicitement nommé).",
+    "futur_test_de_forme": "QJR7 (M1) écrit le test qui exerce CETTE carte contre le code serveur réel — il n'est délibérément pas construit ici (M0 reste contrats seuls, aucun test)."
+  },
+  "exemple": {
+    "niveau": "confiance",
+    "apercu_interne": false,
+    "reference": "DEV-2026-000412",
+    "date": "2026-08-15",
+    "client_name": "Amine Benali",
+    "statut": "envoye",
+    "quote": {
+      "ref": "DEV-2026-000412",
+      "date": "2026-08-15",
+      "client_name": "Amine Benali",
+      "mode_installation": "residentiel",
+      "puissance_kwc": 8.52,
+      "nb_options": 2,
+      "avec_ok": true,
+      "sans_ok": true,
+      "totaux_sans": {"ht_net": 65000.0, "tva": 13000.0, "ttc": 78000.0},
+      "totaux_avec": {"ht_net": 95000.0, "tva": 19000.0, "ttc": 114000.0},
+      "display_total": 114000.0,
+      "scenario": "Les deux (Sans + Avec)"
+    },
+    "mode_installation": "residentiel",
+    "categorie_commerciale": "residentiel",
+    "mode_kpis": null,
+    "roof_image_url": "https://cdn.taqinor.ma/roofs/abc123.png",
+    "roof_layout": {"version": 2, "zones": []},
+    "layout_stale": false,
+    "layout_nb_panneaux": 14,
+    "sld_svg": "<svg viewBox=\"0 0 800 600\">…schéma unifilaire…</svg>",
+    "conception_electrique": {"chaines": [], "protections": [], "cables": []},
+    "option_totals": {
+      "sans_batterie": {"ht_net": 65000.0, "tva": 13000.0, "ttc": 78000.0},
+      "avec_batterie": {"ht_net": 95000.0, "tva": 19000.0, "ttc": 114000.0},
+      "display_total": 114000.0,
+      "nb_options": 2
+    },
+    "variantes_servables": ["sans", "avec"],
+    "accepted": false,
+    "accepte_par_nom": "",
+    "date_acceptation": "",
+    "monthly_production": [320, 380, 470, 540, 610, 650, 640, 600, 520, 430, 340, 300],
+    "monthly_consumption": [410, 400, 420, 450, 520, 610, 680, 660, 540, 460, 420, 400],
+    "savings_method": {
+      "model": "factures",
+      "facture_actuelle": 1450.0,
+      "facture_avec_solaire": 620.0,
+      "economie": 830.0,
+      "approximatif": false,
+      "ligne_methode": "Économie calculée par tranche tarifaire réelle (barème ONEE, sélectif au-delà de 150 kWh/mois).",
+      "exemple": null
+    },
+    "hypotheses": {
+      "titre": "Nos hypothèses",
+      "items": ["Autoconsommation prioritaire (loi 82-21)", "Tarif ONEE 2026"],
+      "tarif_kwh": 1.36,
+      "tarif_kwh_txt": "1,36 MAD/kWh (tranche 3)",
+      "tranche_source": "facture réelle",
+      "tranche_approximatif": false,
+      "autoconso_first": true,
+      "productible_kwh_kwc": 1650
+    },
+    "savings_model": "factures",
+    "facture_sans_solaire": 1450.0,
+    "facture_avec_solaire_s": 620.0,
+    "facture_avec_solaire_a": 180.0,
+    "pct_cut": 62.0,
+    "annual_before": 17400.0,
+    "annual_after": 6600.0,
+    "coverage_pct": 78.5,
+    "coverage_estimated": false,
+    "nombre_proprietes": null,
+    "display_total_multi": null,
+    "totaux_multi": null,
+    "multi_villa": null,
+    "variants": [
+      {"id": 413, "reference": "DEV-2026-000413", "version": 2, "note": "Variante confort", "total_ttc": 98000.0}
+    ],
+    "gammes": {
+      "envoi": "les_deux",
+      "courante": {"nom": "Essentielle", "recommandee": false, "reference": "DEV-2026-000412", "total_ttc": 114000.0},
+      "soeur": {
+        "nom": "Premium", "recommandee": true, "reference": "DEV-2026-000415",
+        "total_ttc": 138000.0, "proposition_path": "/proposition/abc789xyz", "ecart_ttc": 24000.0
+      },
+      "comparatif": {"familles_diff": ["panneau", "onduleur"]}
+    },
+    "resync_apres_envoi": null,
+    "options_proposees": [
+      {"libelle": "Extension garantie 10 ans", "prix_ttc": 3200.0}
+    ],
+    "lignes_structure": [
+      {"titre": "Kit solaire résidentiel", "position": 0}
+    ],
+    "niveau_masque": [],
+    "bankable": {"p50_kwh": 12480.0, "economies_25_ans": 210000.0, "source": "pvgis"},
+    "courbes_journalieres": {
+      "note_horaire": "Formes horaires PVGIS, niveaux réels.",
+      "unites": {"forme": "part du total du jour (somme = 1)", "kwh_jour": "kWh/jour", "pic_kw": "kW", "batterie_kwh": "kWh"},
+      "occupation": "presence_jour",
+      "occupation_source": "lead",
+      "production": {"forme": [0.0, 0.01, 0.05], "kwh_jour": 33.4, "pic_kw": 6.8},
+      "consommation": {"forme": [0.03, 0.02, 0.02], "kwh_jour": 28.6}
+    },
+    "economies_mensuelles": {
+      "sans": [820, 780, 900, 950, 1020, 1100, 1180, 1150, 1000, 900, 830, 800],
+      "avec": [1100, 1050, 1200, 1250, 1320, 1400, 1480, 1450, 1300, 1200, 1120, 1080],
+      "total_sans": 11430,
+      "total_avec": 14950,
+      "devise": "MAD",
+      "modele": "horaire",
+      "estimation": false,
+      "note": "Calculé heure par heure : production PVGIS contre votre courbe de consommation issue de vos factures mensuelles réelles."
+    },
+    "tranche_tarifaire": {
+      "tranche_actuelle": {"libelle": "Tranche 3 (201-300 kWh)"},
+      "tranche_visee": {"libelle": "Tranche 2 (101-200 kWh)"},
+      "cible_kwh_mois": 200,
+      "residuel_kwh_mois": 45
+    },
+    "batterie_regime": {"remplissage_moyen_pct": 87.0, "couverture_glitch_pct": 62.5},
+    "balayage_stockage": {
+      "paliers": [
+        {"nb_packs": 1, "capacite_kwh": 4.6, "cout_ttc": 19200.0, "remplissage_moyen_pct": 94.0, "payback_annees": 5.5, "economie_mad": 4200.0}
+      ],
+      "refuse": {"nb_packs": 3, "capacite_kwh": 13.8, "remplissage_pire_mois_pct": 41.0}
+    },
+    "profils_comparatifs": {
+      "profil_reel": "presence_jour",
+      "kwc_devis": 8.52,
+      "batterie_kwh_devis": 4.6,
+      "avec_batterie": true,
+      "devise": "MAD",
+      "note": "Simulation sur VOS factures réelles : seule la répartition de votre consommation dans la journée change d'un profil à l'autre.",
+      "profils": [
+        {
+          "occupation": "presence_jour", "est_profil_reel": true,
+          "economie_sans_mad": 11430, "economie_avec_mad": 14950,
+          "taux_autoconso_sans_pct": 58.0, "taux_autoconso_avec_pct": 82.0,
+          "couverture_sans_pct": 44.0, "couverture_avec_pct": 78.5,
+          "optimal": {"kwc": 8.52, "panneaux": 14, "batterie_kwh": 4.6, "avec_batterie": true, "economie_mad": 14950, "identique_au_devis": true}
+        }
+      ]
+    },
+    "economies_periodes": {
+      "devise": "MAD",
+      "source_mois": "jour type du mois affiché",
+      "source_retour_investissement": "quote.roi_s / quote.roi_a",
+      "modele": "horaire",
+      "estimation": false,
+      "sans": {"annuel_mad": 11430, "mois": [{"mois": 7, "mad": 1180}], "saisons": {"ete": 3430}, "retour_investissement_ans": 6.2},
+      "avec": {"annuel_mad": 14950, "mois": [{"mois": 7, "mad": 1480}], "saisons": {"ete": 4200}, "retour_investissement_ans": 5.5}
+    },
+    "estimation_conso": {
+      "base_mensuelle": [380, 370, 390, 410, 470, 560, 600, 590, 500, 430, 390, 380],
+      "ajouts": {"piscine": [0, 0, 0, 0, 0, 40, 60, 60, 20, 0, 0, 0]},
+      "totale_mensuelle": [410, 400, 420, 450, 520, 610, 680, 660, 540, 460, 420, 400]
+    },
+    "jours_types": {
+      "1": {"prod_kw": [0.0, 0.0, 1.2], "conso_kw": [0.4, 0.3, 0.5], "conso_jour_kwh": 12.5, "prod_jour_kwh": 30.1, "autoconsomme_kwh": 8.2, "surplus_kwh": 21.9},
+      "4": {"prod_kw": [0.0, 0.0, 2.1], "conso_kw": [0.4, 0.3, 0.5], "conso_jour_kwh": 13.0, "prod_jour_kwh": 38.0, "autoconsomme_kwh": 9.0, "surplus_kwh": 29.0},
+      "7": {"prod_kw": [0.0, 0.0, 2.6], "conso_kw": [0.5, 0.4, 0.6], "conso_jour_kwh": 19.5, "prod_jour_kwh": 42.4, "autoconsomme_kwh": 12.1, "surplus_kwh": 30.3},
+      "11": {"prod_kw": [0.0, 0.0, 1.6], "conso_kw": [0.4, 0.3, 0.5], "conso_jour_kwh": 14.0, "prod_jour_kwh": 33.0, "autoconsomme_kwh": 9.4, "surplus_kwh": 23.6}
+    },
+    "dimensionnement_options": {
+      "sans": {"nb_panneaux": 14, "puissance_kwc": 8.52, "nb_batteries": 0, "capacite_batterie_kwh": null, "production_annuelle_kwh": 14800.0},
+      "avec": {"nb_panneaux": 14, "puissance_kwc": 8.52, "nb_batteries": 1, "capacite_batterie_kwh": 4.6, "production_annuelle_kwh": 14800.0},
+      "divergent": false
+    },
+    "production_par_option": {"sans": null, "avec": null},
+    "paliers_batterie": [
+      {"capacite_kwh": 15.0, "nb_batteries_5": 3, "nb_batteries_10": 0, "nb_modules": 3, "module_kwh": 5.0, "nb_panneaux": 26, "puissance_kwc": 18.46, "prix_ttc": 148655.0, "economies_annuelles": 28088.0, "payback_annees": 5.5, "remplissage_ok": true, "retenu": true}
+    ],
+    "couverture_batterie": {
+      "capacite_utile_pack_kwh": 4.6,
+      "rendement": 0.9,
+      "conso_annuelle_kwh": 10289.0,
+      "mois_jours_types": [1, 4, 7, 11],
+      "nb_packs_max": 6,
+      "pas": [
+        {"nb_packs": 0, "capacite_kwh": 0.0, "couverture_pct": 44.0, "direct_annuel_kwh": 4532.14, "batterie_annuel_kwh": 0.0, "reseau_annuel_kwh": 5756.86, "se_remplit_tous_les_jours": true, "jours_types": {}}
+      ],
+      "autonomie_complete": {"nb_packs": 6, "capacite_kwh": 27.6, "deficit_jour_max_kwh": 21.36, "mois": 6, "se_remplit_tous_les_jours": false, "nb_packs_remplissables": 2, "capacite_remplissable_max_kwh": 13.46, "mois_remplissage_min": 1, "couverture_pct": 97.5, "dans_le_curseur": true}
+    },
+    "offres_tailles": {
+      "eco": {"nb_panneaux": 10, "recommande": false},
+      "recommande": {"nb_panneaux": 14, "recommande": true},
+      "max": {"nb_panneaux": 20, "recommande": false}
+    },
+    "calepinage_options": {
+      "eco": {"origine": "derive", "nb_panneaux_dessines": 10},
+      "recommande": {"origine": "devis"},
+      "max": {"origine": "derive", "nb_panneaux_dessines": 20, "plafonne": true}
+    },
+    "parametres_site": {
+      "orientation": "Sud", "inclinaison_deg": 30, "source_irradiation": "PVGIS"
+    }
+  },
+  "exemple_standard": {
+    "niveau": "standard",
+    "apercu_interne": false,
+    "reference": "DEV-2026-000412",
+    "date": "2026-08-15",
+    "client_name": "Amine Benali",
+    "statut": "envoye",
+    "quote": {
+      "ref": "DEV-2026-000412",
+      "sans_items": [
+        {"designation": "Kit de fixation, câblage et protection complet", "quantite": 1, "prix_unitaire_ttc": "8400.00"}
+      ]
+    },
+    "mode_installation": "residentiel",
+    "categorie_commerciale": "residentiel",
+    "mode_kpis": null,
+    "roof_image_url": "https://cdn.taqinor.ma/roofs/abc123.png",
+    "roof_layout": {"version": 2, "zones": []},
+    "layout_stale": false,
+    "layout_nb_panneaux": 14,
+    "sld_svg": "<svg viewBox=\"0 0 800 600\">…topologie simplifiée, calibres retirés…</svg>",
+    "conception_electrique": {"chaines": [], "protections": [{"repere": "Q1", "designation": "Disjoncteur DC"}], "cables": []},
+    "option_totals": {
+      "sans_batterie": {"ht_net": 65000.0, "tva": 13000.0, "ttc": 78000.0},
+      "avec_batterie": {"ht_net": 95000.0, "tva": 19000.0, "ttc": 114000.0},
+      "display_total": 114000.0,
+      "nb_options": 2
+    },
+    "variantes_servables": ["sans", "avec"],
+    "accepted": false,
+    "accepte_par_nom": "",
+    "date_acceptation": "",
+    "monthly_production": [320, 380, 470, 540, 610, 650, 640, 600, 520, 430, 340, 300],
+    "monthly_consumption": [410, 400, 420, 450, 520, 610, 680, 660, 540, 460, 420, 400],
+    "savings_method": {
+      "model": "factures", "facture_actuelle": 1450.0, "facture_avec_solaire": 620.0,
+      "economie": 830.0, "approximatif": false,
+      "ligne_methode": "Économie calculée par tranche tarifaire réelle.", "exemple": null
+    },
+    "hypotheses": {
+      "titre": "Nos hypothèses", "items": ["Autoconsommation prioritaire"], "tarif_kwh": 1.36,
+      "tarif_kwh_txt": "1,36 MAD/kWh", "tranche_source": "facture réelle",
+      "tranche_approximatif": false, "autoconso_first": true, "productible_kwh_kwc": 1650
+    },
+    "savings_model": "factures",
+    "facture_sans_solaire": 1450.0,
+    "facture_avec_solaire_s": 620.0,
+    "facture_avec_solaire_a": 180.0,
+    "pct_cut": 62.0,
+    "annual_before": 17400.0,
+    "annual_after": 6600.0,
+    "coverage_pct": 78.5,
+    "coverage_estimated": false,
+    "nombre_proprietes": null,
+    "display_total_multi": null,
+    "totaux_multi": null,
+    "multi_villa": null,
+    "variants": [],
+    "gammes": null,
+    "resync_apres_envoi": null,
+    "options_proposees": null,
+    "lignes_structure": null,
+    "niveau_masque": ["nomenclature_kit", "dimensionnement_electrique"],
+    "economies_mensuelles": {
+      "sans": [820, 780, 900, 950, 1020, 1100, 1180, 1150, 1000, 900, 830, 800],
+      "avec": [1100, 1050, 1200, 1250, 1320, 1400, 1480, 1450, 1300, 1200, 1120, 1080],
+      "total_sans": 11430, "total_avec": 14950, "devise": "MAD", "modele": "horaire", "estimation": false,
+      "note": "Estimation basée sur votre profil de consommation et la production estimée de votre installation, répartie sur les douze mois selon un profil saisonnier type."
+    }
+  },
+  "exemple_sections_masquees": {
+    "niveau": "confiance",
+    "apercu_interne": false,
+    "reference": "DEV-2026-000412",
+    "date": "2026-08-15",
+    "client_name": "Amine Benali",
+    "statut": "envoye",
+    "quote": {"ref": "DEV-2026-000412"},
+    "mode_installation": "residentiel",
+    "categorie_commerciale": "residentiel",
+    "mode_kpis": null,
+    "roof_image_url": null,
+    "roof_layout": null,
+    "layout_stale": false,
+    "layout_nb_panneaux": null,
+    "sld_svg": null,
+    "conception_electrique": null,
+    "option_totals": {"sans_batterie": {"ht_net": 65000.0, "tva": 13000.0, "ttc": 78000.0}, "avec_batterie": null, "display_total": 78000.0, "nb_options": 1},
+    "variantes_servables": ["sans"],
+    "accepted": false,
+    "accepte_par_nom": "",
+    "date_acceptation": "",
+    "monthly_production": [320, 380, 470, 540, 610, 650, 640, 600, 520, 430, 340, 300],
+    "monthly_consumption": [410, 400, 420, 450, 520, 610, 680, 660, 540, 460, 420, 400],
+    "savings_method": null,
+    "hypotheses": null,
+    "savings_model": null,
+    "facture_sans_solaire": null,
+    "facture_avec_solaire_s": null,
+    "facture_avec_solaire_a": null,
+    "pct_cut": null,
+    "annual_before": null,
+    "annual_after": null,
+    "coverage_pct": null,
+    "coverage_estimated": null,
+    "nombre_proprietes": null,
+    "display_total_multi": null,
+    "totaux_multi": null,
+    "multi_villa": null,
+    "variants": [],
+    "gammes": null,
+    "resync_apres_envoi": null,
+    "options_proposees": null,
+    "lignes_structure": null,
+    "niveau_masque": []
+  }
+}

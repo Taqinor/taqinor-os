@@ -4553,3 +4553,212 @@ export function occupancyScenarios(
     scenarios,
   };
 }
+
+// ── QJW11 — LE LECTEUR TYPÉ DU CONTRAT `proposal_data` ──────────────────────
+//
+// LE TROU QU'IL BOUCHE. `ProposalResponse`, plus haut, est une DÉCLARATION : la
+// page `.astro` fait `await res.json() as ProposalResponse` puis lit la charge
+// utile en dictionnaire libre. Une interface TypeScript n'existe pas à
+// l'exécution — donc un renommage de clé côté backend ne provoque AUCUNE
+// erreur : les champs deviennent silencieusement `undefined` et la page
+// s'affiche vide. C'est la moitié CLIENTE du contrat PACT10 que le groupe QJR
+// livre côté serveur, et elle manquait.
+//
+// LA FORME EST CELLE DE `lib/tailleDetail.ts` (`tailleDetail()`), délibérément :
+// des lecteurs minuscules qui VALIDENT et NOMMENT, jamais qui calculent. Aucune
+// valeur n'est fabriquée — un bloc absent reste `null`, et c'est à l'affichage
+// de l'omettre (règle fondateur « zéro chiffre inventé »).
+//
+// CE QU'IL COUVRE : L'ÉPINE DORSALE du payload — identité du devis, état,
+// totaux, séries mensuelles et grandeurs de facture que la page rend en tête.
+// Les blocs riches qui ont DÉJÀ leur propre lecteur typé dans ce module
+// (gammes, courbes journalières, tranche tarifaire, profils comparatifs,
+// dimensionnement…) ne sont pas redoublés ici : ils sont déjà lus, une fois, là
+// où ils vivent — deux lecteurs pour une même clé, ce serait le « 21 contre
+// 22 » sous une autre forme.
+
+/** Les totaux d'une option, lus et nommés. Chaque champ manque INDÉPENDAMMENT. */
+export interface ProposalTotauxLus {
+  htBrut: number | null;
+  remise: number | null;
+  htNet: number | null;
+  tva: number | null;
+  ttc: number | null;
+}
+
+/** Le sous-objet `quote`, réduit à ce que la page lit au niveau du devis. */
+export interface ProposalQuoteLu {
+  ref: string | null;
+  date: string | null;
+  clientName: string | null;
+  modeInstallation: string | null;
+  puissanceKwc: number | null;
+  nbPanneaux: number | null;
+  nbOptions: number | null;
+  displayTotal: number | null;
+  /** `null` quand le serveur ne se prononce pas — jamais un `false` fabriqué. */
+  sansOk: boolean | null;
+  avecOk: boolean | null;
+  scenario: string | null;
+  totauxSans: ProposalTotauxLus | null;
+  totauxAvec: ProposalTotauxLus | null;
+}
+
+/** `option_totals` : les totaux agrégés au niveau racine du payload. */
+export interface ProposalOptionTotalsLus {
+  sansBatterie: ProposalTotauxLus | null;
+  avecBatterie: ProposalTotauxLus | null;
+  displayTotal: number | null;
+  nbOptions: number | null;
+}
+
+/** L'épine dorsale du contrat `proposal_data`, validée à l'EXÉCUTION. */
+export interface Proposal {
+  /**
+   * Le niveau de partage. Défaut `'standard'` — le plus RESTRICTIF : si la clé
+   * disparaît, la page dégrade vers MOINS d'informations, jamais vers plus.
+   */
+  niveau: 'standard' | 'confiance';
+  /** Aperçu interne (le commercial relit sa proposition) — défaut `false`. */
+  apercuInterne: boolean;
+  reference: string;
+  date: string | null;
+  clientName: string | null;
+  statut: string | null;
+  modeInstallation: string | null;
+  categorieCommerciale: string | null;
+  roofImageUrl: string | null;
+  layoutStale: boolean | null;
+  layoutNbPanneaux: number | null;
+  sldSvg: string | null;
+  quote: ProposalQuoteLu | null;
+  optionTotals: ProposalOptionTotalsLus | null;
+  variantesServables: VarianteServable[];
+  accepted: boolean;
+  acceptedParNom: string | null;
+  dateAcceptation: string | null;
+  /** DOUZE OU RIEN : une série de onze mois se lirait comme une année. */
+  productionMensuelle: number[] | null;
+  consommationMensuelle: number[] | null;
+  savingsModel: string | null;
+  factureSansSolaire: number | null;
+  factureAvecSolaireSans: number | null;
+  factureAvecSolaireAvec: number | null;
+  pctCut: number | null;
+  annualBefore: number | null;
+  annualAfter: number | null;
+  coveragePct: number | null;
+  coverageEstimated: boolean | null;
+}
+
+function objetLu(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function booleenOuNull(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
+/** Douze nombres finis, ou `null`. Jamais onze, jamais un trou comblé par 0. */
+function douzeMoisOuNull(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== 12) return null;
+  const propres: number[] = [];
+  for (const x of v) {
+    const n = finiteOrNull(x);
+    if (n === null) return null;
+    propres.push(n);
+  }
+  return propres;
+}
+
+function lireTotaux(brut: unknown): ProposalTotauxLus | null {
+  const t = objetLu(brut);
+  if (!t) return null;
+  return {
+    htBrut: finiteOrNull(t.ht_brut),
+    remise: finiteOrNull(t.remise),
+    htNet: finiteOrNull(t.ht_net),
+    tva: finiteOrNull(t.tva),
+    ttc: finiteOrNull(t.ttc),
+  };
+}
+
+function lireQuote(brut: unknown): ProposalQuoteLu | null {
+  const q = objetLu(brut);
+  if (!q) return null;
+  return {
+    ref: nonEmptyStringOrNull(q.ref),
+    date: nonEmptyStringOrNull(q.date),
+    clientName: nonEmptyStringOrNull(q.client_name),
+    modeInstallation: nonEmptyStringOrNull(q.mode_installation),
+    puissanceKwc: finiteOrNull(q.puissance_kwc),
+    nbPanneaux: finiteOrNull(q.nb_panneaux),
+    nbOptions: finiteOrNull(q.nb_options),
+    displayTotal: finiteOrNull(q.display_total),
+    sansOk: booleenOuNull(q.sans_ok),
+    avecOk: booleenOuNull(q.avec_ok),
+    scenario: nonEmptyStringOrNull(q.scenario),
+    totauxSans: lireTotaux(q.totaux_sans),
+    totauxAvec: lireTotaux(q.totaux_avec),
+  };
+}
+
+function lireOptionTotals(brut: unknown): ProposalOptionTotalsLus | null {
+  const o = objetLu(brut);
+  if (!o) return null;
+  return {
+    sansBatterie: lireTotaux(o.sans_batterie),
+    avecBatterie: lireTotaux(o.avec_batterie),
+    displayTotal: finiteOrNull(o.display_total),
+    nbOptions: finiteOrNull(o.nb_options),
+  };
+}
+
+/**
+ * Lit la charge utile de `GET /api/django/public/proposal/<token>/data/`, ou
+ * `null` si ce n'en est PAS une.
+ *
+ * `reference` est le SEUL champ requis : sans lui, ce n'est pas une
+ * proposition, et rendre la page serait rendre un cadre vide sous un en-tête
+ * anonyme. Tout le reste manque INDÉPENDAMMENT et reste `null` — l'omission est
+ * héritée du serveur, jamais comblée.
+ */
+export function lireProposal(payload: unknown): Proposal | null {
+  const p = objetLu(payload);
+  if (!p) return null;
+  const reference = nonEmptyStringOrNull(p.reference);
+  if (reference === null) return null;
+  return {
+    niveau: p.niveau === 'confiance' ? 'confiance' : 'standard',
+    apercuInterne: p.apercu_interne === true,
+    reference,
+    date: nonEmptyStringOrNull(p.date),
+    clientName: nonEmptyStringOrNull(p.client_name),
+    statut: nonEmptyStringOrNull(p.statut),
+    modeInstallation: nonEmptyStringOrNull(p.mode_installation),
+    categorieCommerciale: nonEmptyStringOrNull(p.categorie_commerciale),
+    roofImageUrl: nonEmptyStringOrNull(p.roof_image_url),
+    layoutStale: booleenOuNull(p.layout_stale),
+    layoutNbPanneaux: finiteOrNull(p.layout_nb_panneaux),
+    sldSvg: nonEmptyStringOrNull(p.sld_svg),
+    quote: lireQuote(p.quote),
+    optionTotals: lireOptionTotals(p.option_totals),
+    variantesServables: Array.isArray(p.variantes_servables)
+      ? p.variantes_servables.filter((v): v is VarianteServable => v === 'sans' || v === 'avec')
+      : [],
+    accepted: p.accepted === true,
+    acceptedParNom: nonEmptyStringOrNull(p.accepte_par_nom),
+    dateAcceptation: nonEmptyStringOrNull(p.date_acceptation),
+    productionMensuelle: douzeMoisOuNull(p.monthly_production),
+    consommationMensuelle: douzeMoisOuNull(p.monthly_consumption),
+    savingsModel: nonEmptyStringOrNull(p.savings_model),
+    factureSansSolaire: finiteOrNull(p.facture_sans_solaire),
+    factureAvecSolaireSans: finiteOrNull(p.facture_avec_solaire_s),
+    factureAvecSolaireAvec: finiteOrNull(p.facture_avec_solaire_a),
+    pctCut: finiteOrNull(p.pct_cut),
+    annualBefore: finiteOrNull(p.annual_before),
+    annualAfter: finiteOrNull(p.annual_after),
+    coveragePct: finiteOrNull(p.coverage_pct),
+    coverageEstimated: booleenOuNull(p.coverage_estimated),
+  };
+}
