@@ -1548,6 +1548,112 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
         self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, equip))
 
 
+class EstimationConsoRenormaliseeTests(SimpleTestCase):
+    """QJR16 (29/08/2026) — l'énergie PUBLIÉE est celle que le moteur PLACE.
+
+    ``estimation_conso_mensuelle`` publiait l'énergie BRUTE des équipements
+    (``kW × heures × jours``) alors que le composeur de forme pose les bosses
+    PUIS RENORMALISE la journée au niveau facture : la couche y pèse
+    ``brute × conso ÷ (conso + brutes)``. Sur un client aux équipements
+    lourds, ``totale_mensuelle`` dépassait donc sa consommation réelle — ce que
+    la docstring de la fonction garantit impossible — et l'écrêtage
+    ``max(0, …)`` de la base masquait le dépassement au lieu de l'empêcher.
+    """
+
+    #: Consommation MODESTE face à des équipements lourds : c'est exactement le
+    #: cas où la brute dépassait la facture (clim seule = 1,4 kW × 8 h × 31 j
+    #: = 347,2 kWh en juillet, pour 300 kWh consommés).
+    CONSO_MODESTE = [300.0] * 12
+
+    CLIM = {'clim': {'kw': 1.4, 'heures': list(range(13, 21)),
+                     'saisons': ['ete'], 'mode': 'redistribution'}}
+
+    def test_le_total_ne_depasse_JAMAIS_la_consommation_reelle(self):
+        """ROUGE avant QJR16 : juillet sortait à 347,2 kWh pour 300 consommés
+        (base écrêtée à zéro, ajout brut publié par-dessus)."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        self.assertIsNotNone(bloc)
+        for index, conso in enumerate(self.CONSO_MODESTE):
+            self.assertLessEqual(
+                bloc['totale_mensuelle'][index], conso + 0.02,
+                'mois %d : le total publié dépasse la consommation réelle'
+                % (index + 1))
+
+    def test_la_base_n_est_plus_ecretee_a_zero(self):
+        """L'écrêtage silencieux était le SYMPTÔME : une base à zéro disait
+        « ce client ne consomme QUE sa clim », ce qui est faux."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        mois_ete = [i for i, v in enumerate(bloc['ajouts']['clim']) if v > 0]
+        self.assertTrue(mois_ete)
+        for index in mois_ete:
+            self.assertGreater(bloc['base_mensuelle'][index], 0.0,
+                               'mois %d' % (index + 1))
+
+    def test_l_ajout_publie_egale_ce_que_le_composeur_place(self):
+        """LA propriété du correctif : même facteur des deux côtés. On compare
+        l'ajout mensuel publié à l'énergie que
+        ``forme_consommation_detaillee`` place RÉELLEMENT dans la journée du
+        même mois, multipliée par le nombre de jours."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        for index, conso_mois in enumerate(self.CONSO_MODESTE):
+            jours = EH.JOURS_PAR_MOIS[index]
+            saison = EH.saison_du_mois(index + 1)
+            _forme, couches = CJ.forme_consommation_detaillee(
+                conso_mois / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
+                equipements=self.CLIM)
+            place = sum(couches.get('clim', {}).get('heures_kwh')
+                        or [0.0]) * jours
+            self.assertAlmostEqual(
+                bloc['ajouts']['clim'][index], place, delta=0.05,
+                msg='mois %d' % (index + 1))
+
+    def test_le_facteur_est_bien_celui_de_la_renormalisation(self):
+        """Juillet, dérivation complète : brute 1,4 × 8 × 31 = 347,2 kWh,
+        facteur 300 ÷ (300 + 347,2) = 0,4635352, ajout 160,94 kWh, base
+        139,06 kWh — et 160,94 + 139,06 = 300,00 kWh."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        juillet = 6
+        self.assertAlmostEqual(bloc['ajouts']['clim'][juillet], 160.94,
+                               delta=0.02)
+        self.assertAlmostEqual(bloc['base_mensuelle'][juillet], 139.06,
+                               delta=0.02)
+        self.assertAlmostEqual(bloc['totale_mensuelle'][juillet], 300.0,
+                               delta=0.02)
+
+    def test_sans_bosse_le_calcul_est_celui_d_avant_a_l_octet(self):
+        """Non-régression : sans couche de redistribution active, le facteur
+        vaut 1,0 et la base reste la consommation brute."""
+        equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
+                        'saisons': None, 'mode': 'addition'}}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        self.assertEqual(bloc['base_mensuelle'], list(self.CONSO_MODESTE))
+
+    def test_le_ve_reste_le_seul_ajout_qui_depasse_la_facture(self):
+        equip = dict(self.CLIM)
+        equip['ve'] = {'kwh_jour': 4.0, 'heures': [21, 22, 23],
+                       'saisons': None, 'mode': 'addition'}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        for index, conso in enumerate(self.CONSO_MODESTE):
+            attendu = conso + bloc['ajouts']['ve'][index]
+            self.assertAlmostEqual(bloc['totale_mensuelle'][index], attendu,
+                                   delta=0.02, msg='mois %d' % (index + 1))
+
+    def test_les_fixtures_existantes_restent_bornees_par_leur_facture(self):
+        """``totale_mensuelle <= conso`` sur les couches déjà épinglées
+        ailleurs dans ce module (piscine + clim, grandeurs réelles)."""
+        equip = CJ.composer_equipements({
+            'piscine': True, 'piscine_pompe_kw': 1.1,
+            'clim': True, 'clim_pieces': 5,
+        })
+        for conso in ([400.0] * 12, [300.0] * 12, [1200.0] * 12):
+            bloc = EH.estimation_conso_mensuelle(conso, equip)
+            self.assertIsNotNone(bloc)
+            for index, valeur in enumerate(conso):
+                self.assertLessEqual(bloc['totale_mensuelle'][index],
+                                     valeur + 0.02,
+                                     'conso %s, mois %d' % (valeur, index + 1))
+
+
 class JoursTypesPublicsTests(SimpleTestCase):
     """L-BACK T4 — les 4 mois publics (contrat ``jours_types``), Casablanca
     (table de référence PVGIS, aucun accès réseau)."""
