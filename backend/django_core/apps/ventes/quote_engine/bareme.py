@@ -37,18 +37,28 @@ CE QUE LES FACTURES TRANCHENT (des questions qui traînaient « à confirmer »)
 * Le timbre de 0,25 % est bien un FRAIS DE MODE DE PAIEMENT (espèces) et non
   une composante du kWh : exclu du calcul, comme prévu.
 
-CE QUE LES FACTURES CORRIGENT (voir :data:`DIVERGENCES_PRICING`) : la tranche 5
-2026 vaut 1,381704 TTC, PAS 1,405116. Le repo avait extrapolé le passage de TVA
-18 → 20 % « à HT constant » ; la facture A montre que c'est le TTC qui est resté
-constant (le HT a été ABAISSÉ de 1,17094 à 1,15142). Deux factures le prouvent
-sur la tranche 5 (A en 2026, C en 2025 : même TTC 1,3817).
+CE QUE LES FACTURES ONT CORRIGÉ (voir :data:`DIVERGENCES_PRICING`) : la
+tranche 5 2026 vaut 1,381704 TTC. Le repo avait extrapolé le passage de TVA
+18 → 20 % « à HT constant » et affichait 1,405116 (valeur HISTORIQUE, plus
+nulle part dans l'ERP depuis D5) ; la facture A montre que c'est le TTC qui est
+resté constant (le HT a été ABAISSÉ de 1,17094 à 1,15142). Deux factures le
+prouvent sur la tranche 5 (A en 2026, C en 2025 : même TTC 1,3817).
 
 PAS DE TROISIÈME IMPLÉMENTATION DU BARÈME. Ce module réutilise la mécanique
 progressif/sélectif de ``pricing._monthly_bill_from_kwh`` et son type
-``TrancheTable``. Il n'y touche pas : ``pricing.ONEE_TRANCHES`` reste
-INCHANGÉE, donc ``test_tariff_drift_lock`` reste vert et AUCUN devis existant
-ne change de chiffre. Les corrections prouvées vivent ici, dans le moteur
-CJ2a, et sont listées pour que le fondateur décide de les propager.
+``TrancheTable``.
+
+PROPAGATION DE LA CORRECTION T5 — DÉCISION FONDATEUR D5 (29/08/2026). La
+tranche 5 a longtemps vécu en plusieurs exemplaires : ce module portait SEUL la
+valeur prouvée (1,381704) pendant que ``pricing.ONEE_TRANCHES`` et
+``parametres.DEFAULT_RESIDENTIAL_TIERS`` gardaient l'extrapolation (1,405116) —
+un même document pouvait donc valoriser le kWh de deux façons selon le modèle
+d'économies qui gagnait. Le fondateur a tranché : TOUT LE PÉRIMÈTRE ERP
+S'ALIGNE SUR LA VALEUR DE CE MODULE. ``pricing.ONEE_TRANCHES``,
+``DEFAULT_RESIDENTIAL_TIERS`` et le miroir JS ``solar.js`` portent désormais
+1,381704 ; ``test_tariff_drift_lock`` a été recalé sur la valeur corrigée. La
+valeur de RÉFÉRENCE ci-dessous (TRANCHES_2026) n'a PAS bougé — c'est le reste
+du dépôt qui l'a rejointe.
 
 Fonctions PURES : aucun I/O, aucun ORM, aucun Django (comme ``pricing.py``).
 """
@@ -114,8 +124,9 @@ TRANCHES_2026 = TrancheTable(
         (150, 1.091388),    # extrapolé (repo, HT constant) — non prouvé 2026
         (200, 1.091388),    # extrapolé (repo, HT constant) — non prouvé 2026
         (300, 1.187388),    # extrapolé (repo, HT constant) — non prouvé 2026
-        (500, 1.381704),    # PROUVÉ facture A : 1,15142 HT × 1,20 — CORRIGE
-                            # le 1,405116 du repo (TTC constant, pas HT).
+        (500, 1.381704),    # PROUVÉ facture A : 1,15142 HT × 1,20. Valeur de
+                            # RÉFÉRENCE : depuis D5 (29/08/2026) tout l'ERP
+                            # l'a rejointe (elle-même n'a jamais bougé).
         (None, 1.622856),   # CONFLIT — voir DIVERGENCES_PRICING
     ],
     selective_threshold=150,
@@ -125,19 +136,25 @@ TRANCHES_2026 = TrancheTable(
 #: Ce que le moteur CJ2a calcule DIFFÉREMMENT de ``pricing.ONEE_TRANCHES``, et
 #: pourquoi. Rendu tel quel dans le bloc d'étude pour que l'écart soit VISIBLE
 #: et non enfoui. Un test épingle cette liste : elle ne peut pas dériver en
-#: silence, et le jour où le fondateur propage la correction dans
-#: ``pricing.py``, il faudra la mettre à jour EXPRÈS.
+#: silence. Le jour où le fondateur propage une correction dans ``pricing.py``,
+#: l'entrée passe de ``corrigé`` (écart actif) à ``propagé`` (écart résorbé) —
+#: EXPRÈS, jamais en silence : c'est ce qui vient d'arriver à T5 (D5, 29/08).
 DIVERGENCES_PRICING = (
     {
         'tranche': '311-510 kWh (T5), millésime 2026',
         'valeur_moteur': 1.381704,
-        'valeur_pricing': 1.405116,
-        'statut': 'corrigé',
+        'valeur_pricing': 1.381704,
+        'statut': 'propagé',
         'preuve': "facture SRM n° 643769639 du 08/05/2026 : 359 kWh × "
                   "1,15142 HT = 413,36 HT / 496,03 TTC. Corroboré par la "
                   "facture du 20/01/2026 (T5 2025 = 1,3817 TTC) : le TTC est "
                   "resté CONSTANT au passage TVA 18 → 20 %, le HT a baissé. "
-                  "Le repo avait supposé l'inverse (HT constant).",
+                  "Le repo avait supposé l'inverse (HT constant) et affichait "
+                  "1,405116. DÉCISION FONDATEUR D5 (29/08/2026) : tout le "
+                  "périmètre ERP (pricing.ONEE_TRANCHES, "
+                  "parametres.DEFAULT_RESIDENTIAL_TIERS, le miroir JS "
+                  "solar.js) est aligné sur 1,381704 — l'écart est RÉSORBÉ, "
+                  "il n'y a plus qu'une seule valeur T5 côté ERP.",
     },
     {
         'tranche': '> 510 kWh (T6), millésime 2026',
