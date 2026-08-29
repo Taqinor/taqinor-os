@@ -526,9 +526,29 @@ def multi_villa_totaux(devis):
                 fallback_taux=fallback),
         })
 
+    # QJR8 — les lignes SANS groupe_index ne disparaissent plus : elles
+    # rejoignent une rubrique nommée « Hors groupe » plutôt que d'être omises
+    # du détail par villa (elles restaient déjà comptées nulle part avant ce
+    # correctif, ni dans un sous-total, ni dans le total général).
+    hors_groupe = [
+        li for li in lignes if getattr(li, 'groupe_index', None) is None]
+    if hors_groupe:
+        groupes.append({
+            'index': None,
+            'label': 'Hors groupe',
+            'totaux': _canonical_totaux(
+                hors_groupe, remise_globale_pct=remise,
+                fallback_taux=fallback),
+        })
+
+    # QJR8 — le total général porte désormais la MÊME population de lignes que
+    # la chaîne canonique du document entier (`ligne_compte_dans_totaux`
+    # honoré via `_canonical_totaux`), groupées ou non : avant ce correctif, ne
+    # sommer que les lignes groupées rendait `grand_total` < total du document
+    # dès qu'une ligne hors groupe existait — deux chiffres irréconciliables
+    # sur la même page d'un PDF client.
     grand_total = _canonical_totaux(
-        [li for li in lignes if getattr(li, 'groupe_index', None) is not None],
-        remise_globale_pct=remise, fallback_taux=fallback)
+        lignes, remise_globale_pct=remise, fallback_taux=fallback)
     return {'groupes': groupes, 'grand_total': grand_total}
 
 
