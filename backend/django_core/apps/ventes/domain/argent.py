@@ -81,16 +81,26 @@ class Totaux:
     ttc_affiche: Decimal
 
 
-def _lignes_du_devis(devis, lignes):
+def _lignes_du_devis(devis, lignes, *, avec_produit):
     """Les lignes à considérer — celles fournies, sinon celles du devis.
 
     NPLUS1 : un appelant qui a DÉJÀ chargé ses lignes (patron YOPSB13) les
     passe et ne paie pas une seconde requête, exactement comme
     ``utils.options.option_totaux``.
+
+    ``avec_produit`` — ``select_related('produit')`` n'est demandé QUE par les
+    vues canoniques, dont le filtre d'option lit le NOM du produit lié
+    (``utils.options._blob``). :attr:`Vue.BRUT` s'en passe et lit
+    ``devis.lignes.all()`` mot pour mot comme ``Devis.total_ht`` : c'est ce qui
+    lui laisse RÉUTILISER un ``prefetch_related('lignes')` de la liste des
+    devis. Ajouter un ``select_related`` ici transformerait chaque total de la
+    liste en requête supplémentaire (N+1).
     """
-    if lignes is None:
+    if lignes is not None:
+        return list(lignes)
+    if avec_produit:
         return list(devis.lignes.select_related('produit').all())
-    return list(lignes)
+    return list(devis.lignes.all())
 
 
 def _entrees_tva(paniers):
@@ -185,14 +195,12 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
             'argent.totaux exige une Vue nommée (BRUT, NET, PAR_OPTION, '
             'AFFICHAGE), reçu %r.' % (vue,))
 
-    lignes = _lignes_du_devis(devis, lignes)
     if vue is Vue.BRUT:
-        return _totaux_brut(devis, lignes)
+        return _totaux_brut(
+            devis, _lignes_du_devis(devis, lignes, avec_produit=False))
 
-    if vue is Vue.PAR_OPTION and not option:
+    if not option:
         from apps.ventes.utils.options import option_effective
         option = option_effective(devis)
-    elif vue in (Vue.NET, Vue.AFFICHAGE) and option is None:
-        from apps.ventes.utils.options import option_effective
-        option = option_effective(devis)
-    return _totaux_canoniques(devis, lignes, option)
+    return _totaux_canoniques(
+        devis, _lignes_du_devis(devis, lignes, avec_produit=True), option)

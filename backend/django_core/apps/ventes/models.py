@@ -407,12 +407,31 @@ class Devis(models.Model):
         type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
         self.prix_par_kwc = prix
 
+    def _totaux_argent(self):
+        """QJR50 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE, PLUS PAR ICI.
+
+        ``apps.ventes.domain.argent`` NOMME les vues monétaires (BRUT / NET /
+        PAR_OPTION / AFFICHAGE) ; ces propriétés lisent :attr:`Vue.BRUT`, qui
+        REPRODUIT à l'octet le calcul historique — somme des lignes comptées,
+        remise de LIGNE honorée, ``remise_globale`` IGNORÉE, TVA par
+        ``selectors.tva_buckets`` (formule d'origine sans arrondi en mono-taux).
+        **Aucun chiffre ne change dans cette tâche** : elle existe pour que la
+        bascule QJR51 (BRUT → NET, décision fondateur D2) soit un changement
+        d'UN mot, au même endroit, au lieu d'une réécriture.
+
+        L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` juste avant
+        lui : il s'exécute à l'appel, jamais au chargement du module, donc il ne
+        peut pas réintroduire le cycle modèle→modèle que le contrat
+        import-linter interdit.
+        """
+        from .domain.argent import Vue, totaux
+        return totaux(self, vue=Vue.BRUT)
+
     @property
     def total_ht(self):
         # XSAL5/XSAL14 — les lignes optionnelles non activées et les lignes de
         # section/note (sans prix) sont exclues du total (``compte_dans_totaux``).
-        return sum(ligne.total_ht for ligne in self.lignes.all()
-                   if ligne.compte_dans_totaux)
+        return self._totaux_argent().ht_brut
 
     @property
     def total_tva(self):
@@ -421,8 +440,7 @@ class Devis(models.Model):
         # s'accordent au centime sur un devis à taux mixtes (10/20). Mono-taux
         # (anciens devis : toutes lignes NULL → un seul panier) → formule
         # d'origine HT×taux, rendu strictement inchangé.
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+        return self._totaux_argent().tva
 
     @property
     def tva_par_taux(self):
@@ -433,15 +451,22 @@ class Devis(models.Model):
         historiques strictement identiques) ; taux mixtes → un panier par taux,
         chaque TVA arrondie au centime, dont la somme est le total TVA.
 
-        DC23 — délègue au selector unique ``tva_buckets`` (une seule logique de
-        bucket partagée par Devis/Facture/Avoir + exports DGI/FEC).
+        DC23 — la logique de bucket reste celle du selector unique
+        ``tva_buckets`` (partagée par Devis/Facture/Avoir + exports DGI/FEC) ;
+        QJR50 y accède par la façade ``domain.argent``.
+
+        LA FORME RENDUE NE BOUGE PAS : la façade porte ``base`` (le mot du
+        contrat PACT10 ``devis_totaux.json``), les consommateurs historiques de
+        cette propriété — UBL, PDF facture, exports — lisent ``base_ht``. On
+        retraduit donc ici, plutôt que de renommer une clé lue ailleurs.
         """
-        from .selectors import tva_buckets
-        return tva_buckets(self.lignes.all(), fallback_taux=self.taux_tva)
+        return [{'taux': entree['taux'], 'base_ht': entree['base'],
+                 'montant': entree['montant']}
+                for entree in self._totaux_argent().tva_par_taux]
 
     @property
     def total_ttc(self):
-        return self.total_ht + self.total_tva
+        return self._totaux_argent().ttc
 
     @property
     def approbation_remise_en_attente(self):

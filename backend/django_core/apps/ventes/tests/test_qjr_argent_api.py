@@ -223,3 +223,55 @@ class TtcAfficheTests(_ArgentBase):
         devis = Devis.objects.get(pk=devis.pk)
         self.assertEqual(totaux(devis, vue=Vue.AFFICHAGE),
                          totaux(devis, vue=Vue.NET))
+
+
+class DelegationDesProprietesTests(_ArgentBase):
+    """QJR50 — ``Devis.total_*`` DÉLÈGUENT à la façade, sans changer un chiffre.
+
+    Aucune assertion de montant du dépôt n'a été touchée par QJR50 : ces tests
+    disent pourquoi — la vue BRUT reproduit la chaîne d'hier, y compris sa forme
+    de sortie.
+    """
+
+    def test_tva_par_taux_garde_sa_forme_historique(self):
+        """Les consommateurs (UBL, PDF facture, exports DGI/FEC) lisent
+        ``base_ht`` : la propriété retraduit, elle ne renomme rien chez eux."""
+        devis = self._devis('qjr50-forme')
+        self._ligne(devis, 'Panneau 550 W', 10, 1000, taux_tva=Decimal('20'))
+        self._ligne(devis, 'Pose', 1, 8000, taux_tva=Decimal('10'))
+        devis = Devis.objects.get(pk=devis.pk)
+        paniers = devis.tva_par_taux
+        self.assertIsInstance(paniers, list)
+        for panier in paniers:
+            with self.subTest(taux=panier['taux']):
+                self.assertEqual(set(panier), {'taux', 'base_ht', 'montant'})
+
+    def test_les_proprietes_lisent_bien_la_vue_brut(self):
+        devis = self._devis('qjr50-brut', remise=Decimal('15'))
+        self._ligne(devis, 'Panneau 550 W', 11, 1166.67)
+        self._ligne(devis, 'Pose', 1, 7000, taux_tva=Decimal('10'))
+        devis = Devis.objects.get(pk=devis.pk)
+        vue = totaux(devis, vue=Vue.BRUT)
+        self.assertEqual(devis.total_ht, vue.ht_brut)
+        self.assertEqual(devis.total_tva, vue.tva)
+        self.assertEqual(devis.total_ttc, vue.ttc)
+
+    def test_le_total_ttc_reste_la_somme_ht_plus_tva(self):
+        devis = self._devis('qjr50-somme')
+        self._ligne(devis, 'Panneau 550 W', 9, 1166.67)
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(devis.total_ttc, devis.total_ht + devis.total_tva)
+
+    def test_un_devis_sans_ligne_ne_leve_pas(self):
+        devis = self._devis('qjr50-vide')
+        self.assertEqual(devis.total_ht, 0)
+        self.assertEqual(devis.total_ttc, devis.total_tva)
+
+    def test_la_vue_brut_reutilise_un_prefetch(self):
+        """NPLUS1 — la liste des devis préfetche ``lignes`` ; la façade ne doit
+        pas repartir en base (un ``select_related`` ici ferait un N+1)."""
+        devis = self._devis('qjr50-prefetch')
+        self._ligne(devis, 'Panneau 550 W', 10, 1000)
+        prefetche = Devis.objects.prefetch_related('lignes').get(pk=devis.pk)
+        with self.assertNumQueries(0):
+            self.assertEqual(prefetche.total_ttc, Decimal('12000'))
