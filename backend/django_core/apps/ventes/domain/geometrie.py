@@ -885,9 +885,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
 )
-# Encore dans `services.py` : `_v_txt` part en QJR74, `gamme_nom` en QJR76 —
-# chaque import suivra SON module, jamais la façade.
-from apps.ventes.services import (  # noqa: E402,F401
-    _v_txt,
-    gamme_nom,
-)
+from apps.ventes.domain.composition import _v_txt  # noqa: E402,F401
+# Encore dans `services.py` : `gamme_nom` part en QJR76 — cet import suivra
+# alors SON module, jamais la façade.
+from apps.ventes.services import gamme_nom  # noqa: E402,F401

@@ -437,9 +437,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _is_panel,
     _parse_watt,
 )
-# Encore dans `services.py` : les trois tags de variante partent en QJR74
-# vers `domain/composition.py` — cet import suivra alors SON module.
-from apps.ventes.services import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402,F401
     VARIANTE_AVEC,
     VARIANTE_COMMUNE,
     VARIANTE_SANS,
