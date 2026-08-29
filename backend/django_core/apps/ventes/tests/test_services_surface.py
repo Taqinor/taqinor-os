@@ -208,6 +208,9 @@ SURFACE_PUBLIQUE = (
     "rafraichir_etude_horaire",
     "rafraichir_etude_horaire_devis",
     "rafraichir_etudes_du_devis",
+    # QJR64 — le scénario et l'option recommandée passent par le REGISTRE de
+    # surcharges : une déclaration humaine survit à tout recalcul aval.
+    "recommended_option_effective",
     "record_payment_from_link",
     "refresh_marge_snapshot",
     "regler_envoi_gamme",
@@ -220,6 +223,7 @@ SURFACE_PUBLIQUE = (
     "resume_devis_depuis_bordereau",
     "resynchroniser_devis_pour_produit",
     "save_devis_as_preset",
+    "scenario_effectif",
     "send_devis_followup_nudges",
     "share_link_for_bcf",
     "sync_devis_from_layout",

@@ -3868,6 +3868,58 @@ def _resynchroniser_instance_appelante(devis, verrou):
     devis._prefetched_objects_cache = {}
 
 
+def scenario_effectif(devis, auto):
+    """QJR64 — LE SCÉNARIO QUI FAIT FOI : le registre d'abord, la dérivation
+    moteur seulement en son ABSENCE.
+
+    CE QUI ÉTAIT FAUX. ``etude_params['scenario']`` était protégé par un CAS
+    PARTICULIER CODÉ EN DUR dans la fusion ``etude_extra`` de
+    ``build_devis_auto``, et RE-DÉRIVÉ sans condition par la resynchro : selon
+    le chemin emprunté, un « Les deux (Sans + Avec) » déclaré par un humain
+    pouvait redevenir « Avec batterie » sans que personne ne l'ait demandé —
+    et le PDF cessait alors de rendre la comparaison.
+
+    LA RÈGLE (décision fondateur D12) : ``scenario`` est un chemin du REGISTRE
+    de surcharges. Un scénario DÉCLARÉ survit à TOUT recalcul aval ; la
+    dérivation moteur ne s'applique qu'en son absence. Un changement de marché
+    PROPOSE (il pose un override, ou n'en pose pas), il n'écrase plus.
+
+    Une valeur surchargée qui n'est pas un scénario connu est IGNORÉE (on
+    retombe sur ``auto``) : une surcharge illisible ne doit pas rendre un
+    document muet.
+    """
+    from apps.ventes.domain.overrides import effectif
+
+    connus = (SCENARIO_SANS_BATTERIE, SCENARIO_AVEC_BATTERIE,
+              SCENARIO_LES_DEUX)
+    try:
+        valeur, source = effectif(devis, 'scenario', auto)
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        return auto
+    if source == 'auto' or valeur not in connus:
+        return auto
+    return valeur
+
+
+def recommended_option_effective(devis, auto):
+    """QJR64 — jumelle de :func:`scenario_effectif` pour l'option MISE EN AVANT.
+
+    ``recommended_option`` désigne laquelle des deux options le document
+    recommande. Même règle : la déclaration du vendeur (registre) prime, la
+    dérivation moteur ne joue qu'à défaut. Une valeur inconnue est ignorée.
+    """
+    from apps.ventes.domain.overrides import effectif
+
+    connus = (SCENARIO_SANS_BATTERIE, SCENARIO_AVEC_BATTERIE)
+    try:
+        valeur, source = effectif(devis, 'recommended_option', auto)
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        return auto
+    if source == 'auto' or valeur not in connus:
+        return auto
+    return valeur
+
+
 def puissance_kwc_du_devis(devis):
     """QJR63 — LE kWc D'UN DEVIS. Une règle, un propriétaire, deux sources.
 
@@ -4704,10 +4756,17 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
             devis_deux_options and lignes_reseau and lignes_hybride
             and a_batterie)
         if deux_options_servies:
-            etude['scenario'] = SCENARIO_LES_DEUX
+            _scenario_auto = SCENARIO_LES_DEUX
         else:
-            etude['scenario'] = _scenario_stocke(
+            _scenario_auto = _scenario_stocke(
                 a_batterie and bool(lignes_hybride))
+        # QJR64 / décision fondateur D12 — UN SCÉNARIO DÉCLARÉ SURVIT À TOUT
+        # RECALCUL. Ce site RE-DÉRIVAIT le scénario sans condition : un
+        # « Les deux (Sans + Avec) » posé par un humain pouvait redevenir
+        # « Avec batterie » à la première resynchro, et le PDF cessait de
+        # rendre la comparaison. La dérivation ci-dessus reste le défaut ; elle
+        # ne s'applique plus qu'en l'ABSENCE de surcharge au registre.
+        etude['scenario'] = scenario_effectif(verrou, _scenario_auto)
 
         # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
         # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une
@@ -6024,18 +6083,22 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
 
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
     # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
-    # l'étude déjà écrite par la construction. Elles ne peuvent pas écraser le
-    # `scenario`, arrêté plus haut : c'est lui qui pilote le rendu du PDF.
+    # l'étude déjà écrite par la construction.
     if isinstance(etude_extra, dict) and etude_extra:
-        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans
-        # ``domain.etude_schema``. Le ``scenario`` déjà arrêté plus haut n'est
-        # pas renvoyé à l'écrivain, donc l'appelant ne peut pas l'écraser —
-        # c'est lui qui pilote le rendu du PDF (QJR64 le fera passer par le
-        # registre de surcharges, où le cas particulier disparaîtra).
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
+        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
+        # particulier codé en dur. Le scénario qui fait foi est
+        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
+        # construction vient d'arrêter) : un corps de requête ne peut plus
+        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
         from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
-        _scenario_arrete = (devis.etude_params or {}).get('scenario')
+        _scenario_arrete = scenario_effectif(
+            devis, (devis.etude_params or {}).get('scenario'))
         _extra = {cle: valeur for cle, valeur in etude_extra.items()
                   if not (_scenario_arrete and cle == 'scenario')}
+        if _scenario_arrete and _scenario_arrete != (
+                devis.etude_params or {}).get('scenario'):
+            _extra['scenario'] = _scenario_arrete
         if _extra:
             try:
                 ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)

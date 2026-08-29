@@ -1146,6 +1146,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (« Sans batterie — 26 186 MAD » à l'écran contre « Avec batterie —
     # 60 186 MAD » au PDF, pour un seul et même devis).
     _stored_choice = (devis.etude_params or {}).get('scenario')
+    # QJR64 / décision fondateur D12 — LE REGISTRE DE SURCHARGES PASSE DEVANT.
+    # ``scenario`` y est un chemin : une déclaration humaine survit à tout
+    # recalcul aval, y compris à celui qui a écrit ``etude_params`` en dernier.
+    # Aucun override posé ⇒ la valeur stockée, byte-identique à avant.
+    try:
+        from apps.ventes.domain.overrides import effectif as _effectif
+        _impose, _source_scenario = _effectif(devis, 'scenario',
+                                              _stored_choice)
+        if _source_scenario != 'auto' and _impose:
+            _stored_choice = _impose
+    except Exception:  # noqa: BLE001 — un registre illisible ne casse jamais
+        # un PDF : on garde la valeur stockée.
+        pass
     _valid_choices = {
         'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
     alternative_declaree = _stored_choice in _valid_choices
@@ -1236,7 +1249,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         else:
             scenario = 'Sans batterie'
         # Option recommandée stockée si valide, sinon dérivée du scénario.
+        # QJR64 — même règle que le scénario : le REGISTRE passe devant.
         _stored_reco = (devis.etude_params or {}).get('recommended_option')
+        try:
+            from apps.ventes.domain.overrides import effectif as _effectif
+            _reco_imposee, _source_reco = _effectif(
+                devis, 'recommended_option', _stored_reco)
+            if _source_reco != 'auto' and _reco_imposee:
+                _stored_reco = _reco_imposee
+        except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+            pass
         if _stored_reco in ('Sans batterie', 'Avec batterie'):
             recommended = _stored_reco
         elif scenario == 'Sans batterie':
