@@ -7522,47 +7522,26 @@ def log_supplier_email(
     return ok, log
 
 
-def refresh_etude_consistency(devis):
-    """QX24 — garde ``etude_params`` cohérent quand les lignes/remise changent.
-
-    Problème : ``production_annuelle``/``economies_annuelles`` sont figés à la
-    création tandis que le TOTAL du devis flotte avec les éditions de lignes/la
-    remise globale — le payback (= total ÷ économies) devient alors incohérent.
-
-    Correctif (option b) : on RECALCULE et REPERSISTE le payback dérivé à
-    partir du TTC canonique COURANT (chaîne QX1) et des économies annuelles
-    stockées, à chaque changement de ligne/remise. On garde tel quel toute
-    valeur explicitement saisie par le vendeur (préfixe ``*_override`` ou clé
-    ``etude_overrides``), qui reste autoritative.
-
-    Best-effort : jamais d'exception remontée. No-op si aucune économie connue
-    (rien à dériver) — comportement historique inchangé pour ces devis.
-    """
-    from decimal import Decimal
-    try:
-        params = dict(devis.etude_params or {})
-        eco = params.get('economies_annuelles')
-        if not eco:
-            return
-        eco = Decimal(str(eco))
-        if eco <= 0:
-            return
-        # Le vendeur a figé un payback à la main → on ne l'écrase jamais.
-        overrides = set(params.get('etude_overrides') or [])
-        if 'payback_annees' in overrides or 'payback_override' in params:
-            return
-        from apps.ventes.utils.options import option_totaux
-        ttc = Decimal(str(option_totaux(devis)['ttc']))
-        if ttc <= 0:
-            return
-        payback = (ttc / eco).quantize(Decimal('0.1'))
-        if params.get('payback_annees') != float(payback):
-            params['payback_annees'] = float(payback)
-            devis.etude_params = params
-            devis.save(update_fields=['etude_params'])
-    except Exception as exc:  # noqa: BLE001 — jamais bloquant
-        logger.warning('QX24: refresh étude échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+# ════════════════════════════════════════════════════════════════════════════
+# QJR48 (29/08/2026) — ``refresh_etude_consistency`` A ÉTÉ SUPPRIMÉE
+# ════════════════════════════════════════════════════════════════════════════
+# Elle écrivait ``etude_params['payback_annees']`` (TTC canonique ÷ économies
+# annuelles stockées) à CHAQUE sauvegarde et à CHAQUE suppression de
+# ``LigneDevis``, plus à chaque changement de remise globale — soit un
+# ``Devis.save()`` par ligne PLUS une recomputation complète d'``option_totaux``.
+#
+# CETTE CLÉ N'AVAIT AUCUN LECTEUR. Le balayage du dépôt (joint au commit, et
+# rejoué par ``tests/test_qjr_coherence_etude.py`` pour qu'il ne puisse pas
+# repartir en silence) ne trouve ``payback_annees`` QUE dans des blocs qui
+# portent leur PROPRE payback et le calculent eux-mêmes : les cartes
+# ``offres_tailles``, les paliers de ``dimensionnement``, les comparateurs
+# ``compta``/``parametres``. Le PDF et la page publique lisent, eux, la clé
+# ``payback`` (industriel/commercial), recalculée par ``quote_engine/builder``
+# — jamais ``payback_annees``.
+#
+# Les deux récepteurs QX24 (``apps/ventes/receivers.py``) ont été retirés dans
+# le même commit : aucun chemin ne subsiste. Aucun chiffre rendu au client ne
+# change.
 
 
 def compute_marge_snapshot(devis):

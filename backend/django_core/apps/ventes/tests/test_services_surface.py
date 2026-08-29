@@ -204,7 +204,6 @@ SURFACE_PUBLIQUE = (
     "rafraichir_etude_horaire_devis",
     "rafraichir_etudes_du_devis",
     "record_payment_from_link",
-    "refresh_etude_consistency",
     "refresh_marge_snapshot",
     "regler_envoi_gamme",
     "rejeter_paiement",
