@@ -131,8 +131,22 @@ class InstanceAppelanteRecaleeTests(_FraicheurBase):
 
     def test_une_resynchro_sans_changement_ne_casse_rien(self):
         """Non-régression : renvoyer le MÊME layout ne fait aucune écriture et
-        l'instance de l'appelant reste utilisable."""
+        l'instance de l'appelant reste utilisable.
+
+        NOTE fixture — ``build_devis_from_layout`` ne pose PAS ``layout_hash``
+        à la création (vérifié : seul ``sync_devis_from_layout`` l'écrit, à
+        services.py ~4564) : le court-circuit « même empreinte » ne peut donc
+        jouer qu'à partir de la DEUXIÈME resynchro. On établit l'empreinte par
+        une première resynchro, puis on prouve le court-circuit sur la seconde.
+        """
         devis = self._devis_neuf(9)
+        premiere = services.sync_devis_from_layout(
+            self._comme_le_viewset(devis), layout_plat(9), user=self.user)
+        self.assertFalse(
+            premiere['inchange'],
+            'prémisse : la création ne stocke pas layout_hash, la première '
+            'resynchro doit donc écrire (et poser l\'empreinte)')
+
         prefetche = self._comme_le_viewset(devis)
         resultat = services.sync_devis_from_layout(
             prefetche, layout_plat(9), user=self.user)

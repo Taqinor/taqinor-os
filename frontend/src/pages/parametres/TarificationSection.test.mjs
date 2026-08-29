@@ -20,7 +20,8 @@ test('DEFAULT_TIERS porte les six valeurs 2026 (TVA 20 %, ancre fondateur > 500 
   assert.match(SRC, /prix_kwh_ttc: '1\.187388'/)
   // DÉCISION FONDATEUR D5 (29/08/2026) — tranche 311-510 PROUVÉE par la facture
   // SRM du 08/05/2026 : 1,15142 HT × 1,20 = 1,381704 (et non l'extrapolation
-  // « HT constant » qui donnait 1,405116). Miroir de DEFAULT_RESIDENTIAL_TIERS.
+  // « HT constant » qui donnait 1,405116). La grille backend
+  // DEFAULT_RESIDENTIAL_TIERS (models_tariff.py) porte la même correction (QJR26/D5).
   assert.match(SRC, /prix_kwh_ttc: '1\.381704'/)
   // Ancre fondateur (19/08/2026, facture réelle) : tranche > 500 kWh.
   assert.match(SRC, /prix_kwh_ttc: '1\.622856'/)
