@@ -27,6 +27,11 @@ User = get_user_model()
 #: sa regle en clair, exactement comme ``regle_onduleur_min`` /
 #: ``regle_stockage`` rendaient deja les leurs. Aucune cle n'a disparu : le
 #: contrat que le moteur PDF et le payload public consomment est intact.
+#:
+#: QJR43 (29/08/2026) ajoute UNE clé, ``_empreinte`` : l'estampille des
+#: entrées qui décide désormais si le bloc est périmé. Additive — aucun
+#: consommateur (PDF, payload public, profils comparatifs) n'itère les clés,
+#: tous lisent des clés NOMMÉES.
 DIM_TOP_LEVEL_KEYS = {
     'critere', 'criteres_disponibles', 'regle_onduleur_min',
     'max_paliers_stockage', 'regle_stockage', 'tableau', 'recommandation',
@@ -34,6 +39,7 @@ DIM_TOP_LEVEL_KEYS = {
     'meilleure_falaise',
     'horizon_marginal_pv_annees', 'horizon_marginal_batterie_annees',
     'regle_optimum',
+    '_empreinte',
 }
 
 
@@ -124,13 +130,6 @@ class BlocPersisteTests(_DimensionnementBase):
         self.assertEqual(
             devis.etude_params.get('dimensionnement'), resultat)
 
-    def test_sans_force_un_bloc_deja_pose_n_est_pas_recalcule(self):
-        devis = self._devis('t5-cache')
-        devis.etude_params = {'dimensionnement': {'sentinelle': True}}
-        devis.save(update_fields=['etude_params'])
-        resultat = rafraichir_dimensionnement_devis(devis, force=False)
-        self.assertEqual(resultat, {'sentinelle': True})
-
     def test_avec_force_un_bloc_deja_pose_est_recalcule(self):
         devis = self._devis('t5-force')
         devis.etude_params = {'dimensionnement': {'sentinelle': True}}
@@ -146,3 +145,77 @@ class BlocPersisteTests(_DimensionnementBase):
                             facture_hiver=None)
         # facture_hiver=None ⇒ profil_depuis_factures ne renvoie rien.
         self.assertIsNone(rafraichir_dimensionnement_devis(devis))
+
+
+class EmpreinteEntreesTests(_DimensionnementBase):
+    """QJR43 — le bloc est périmé par une ENTRÉE qui bouge, plus par rien.
+
+    Avant, le test de fraîcheur était ``'dimensionnement' in etude_params`` :
+    corriger la facture d'hiver du lead ne périmait RIEN et le commercial
+    continuait de lire le tableau de la toute première lecture.
+    """
+
+    def _compteur_moteur(self):
+        """Compte les appels RÉELS à ``recommander_taille`` (le balayage)."""
+        from unittest import mock
+        from apps.ventes import dimensionnement as module_dim
+        vrai = module_dim.recommander_taille
+        appels = []
+
+        def espion(*args, **kwargs):
+            appels.append(1)
+            return vrai(*args, **kwargs)
+
+        return mock.patch.object(module_dim, 'recommander_taille', espion), appels
+
+    def test_facture_dhiver_modifiee_le_tableau_se_recalcule(self):
+        """ROUGE avant QJR43 : la clé présente suffisait à servir l'ancien."""
+        devis = self._devis('t5-empr-facture')
+        premier = rafraichir_dimensionnement_devis(devis)
+        self.assertIsNotNone(premier)
+        empreinte_1 = premier['_empreinte']
+
+        devis.lead.facture_hiver = 3200
+        devis.lead.save(update_fields=['facture_hiver'])
+        devis.refresh_from_db()
+
+        second = rafraichir_dimensionnement_devis(devis)
+        self.assertIsNotNone(second)
+        self.assertNotEqual(second['_empreinte'], empreinte_1)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['dimensionnement']['_empreinte'],
+                         second['_empreinte'])
+
+    def test_rien_n_a_bouge_aucun_balayage(self):
+        devis = self._devis('t5-empr-stable')
+        premier = rafraichir_dimensionnement_devis(devis)
+        self.assertIsNotNone(premier)
+        devis.refresh_from_db()
+
+        patch, appels = self._compteur_moteur()
+        with patch:
+            second = rafraichir_dimensionnement_devis(devis)
+        self.assertEqual(appels, [],
+                         'aucune entrée n\'a bougé : le balayage ne doit pas '
+                         'être rejoué')
+        self.assertEqual(second['_empreinte'], premier['_empreinte'])
+
+    def test_un_bloc_sans_empreinte_est_perime(self):
+        """Rétro-compat : tout devis antérieur à QJR43 se recalcule UNE fois."""
+        devis = self._devis('t5-empr-legacy')
+        devis.etude_params = {'dimensionnement': {'sentinelle': True}}
+        devis.save(update_fields=['etude_params'])
+
+        resultat = rafraichir_dimensionnement_devis(devis, force=False)
+        self.assertNotEqual(resultat, {'sentinelle': True})
+        self.assertEqual(set(resultat), DIM_TOP_LEVEL_KEYS)
+
+    def test_force_recalcule_meme_avec_une_empreinte_concordante(self):
+        devis = self._devis('t5-empr-force')
+        rafraichir_dimensionnement_devis(devis)
+        devis.refresh_from_db()
+
+        patch, appels = self._compteur_moteur()
+        with patch:
+            rafraichir_dimensionnement_devis(devis, force=True)
+        self.assertEqual(len(appels), 1)

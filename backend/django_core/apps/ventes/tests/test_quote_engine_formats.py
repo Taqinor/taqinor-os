@@ -1039,8 +1039,17 @@ class TestPdfFormats(TestCase):
         self.assertEqual(dt['nb_options'], 2)
         self.assertEqual(dt['total'], full['totaux_avec']['ttc'])
         self.assertEqual(dt['total'], one['totaux_all']['ttc'])
-        # le total de liste n'est JAMAIS la somme mensongère des deux options
-        self.assertLess(dt['total'], float(devis.total_ttc))
+        # Le total de liste n'est JAMAIS la somme mensongère des deux options.
+        # QJR51 / décision fondateur D2 (29/08/2026) — PRÉMISSE RENVERSÉE, et
+        # l'assertion se DURCIT. C'était un ``assertLess`` : ``Devis.total_ttc``
+        # valait alors cette somme mensongère, donc strictement supérieure.
+        # Depuis QJR51 la propriété lit ``Vue.NET`` et rend l'option EFFECTIVE
+        # (D9 → AVEC) : le modèle dit désormais EXACTEMENT ce que dit le
+        # document. Dérivation (option AVEC, remise 5 %) : 14×1 272,73 +
+        # 23 333,33 + 25 000 + 4 000 = 70 151,55 HT ; −5 % → 66 643,97 net ;
+        # TVA 10 % sur les panneaux (1 692,73) + 20 % sur le reste (9 943,33)
+        # = 11 636,06 ; TTC = **78 280,03** des deux côtés.
+        self.assertEqual(dt['total'], float(devis.total_ttc))
 
         # une page : OPTION AVEC SEULE — un une-page avec deux onduleurs DOIT
         # échouer ce test (règle de sécurité demandée)
@@ -1253,7 +1262,17 @@ class TestPdfFormats(TestCase):
         # partout (les pages diffèrent seulement par le type d'espace fine)
         import re
         html, doc = self._render()
-        digits = str(data['totaux_sans']['ttc'])
+        # QJR53/D2 (29/08/2026) — LA DONNÉE EST AU CENTIME, L'EN-TÊTE IMPRIMÉE
+        # RESTE AU DIRHAM. ``totaux_sans['ttc']`` était un ENTIER (l'ancien
+        # ``round(ttc_exact)`` du builder) et ``str()`` en donnait directement
+        # les chiffres à grouper ; c'est désormais un float au centime, dont
+        # ``str()`` porte un point décimal — le motif groupait alors « .03 »
+        # comme un paquet de milliers et ne trouvait plus RIEN (0 occurrence).
+        # Ce test lit le RENDU : il doit donc partir de la valeur telle que le
+        # formateur l'imprime — ``generate_devis_premium.fmt`` fait
+        # ``int(round(float(v)))`` puis groupe par milliers. On reprend son
+        # expression à l'identique, ce qui garantit l'accord.
+        digits = str(int(round(data['totaux_sans']['ttc'])))
         pattern = r'[\s   ]?'.join(
             [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
              for i in range((len(digits) + 2) // 3 - 1, -1, -1)])
@@ -1409,3 +1428,145 @@ class TestQjr32DispatchModeNormalise(TestCase):
         finally:
             G._render_pdf_weasyprint = orig
         self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)
+
+
+class TestQjr53TotauxAuCentime(TestCase):
+    """QJR53 — ``builder._canonical_totaux`` a DISPARU au profit du noyau.
+
+    CE QUI ÉTAIT FAUX : le moteur portait une SECONDE implémentation en float
+    de la chaîne canonique, qui arrondissait le TTC au DIRHAM ENTIER alors que
+    toutes les autres lignes du même bloc de totaux — et toutes les factures
+    aval — sont au CENTIME. Le devis du client ne s'additionnait pas, et ses
+    trois factures de tranche ne sommaient pas au total imprimé.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, reference, remise='0'):
+        # Des prix qui NE tombent PAS sur un dirham rond : c'est là que
+        # l'arrondi au dirham se voyait.
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '13', '1166.67'),
+            ('Onduleur hybride Deye 8kW', '1', '14333.33'),
+            ('Structures acier', '13', '416.67'),
+        ], remise_globale=remise, reference=reference)
+
+    def test_le_ttc_imprime_est_au_centime(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-CENT', remise='7')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        for cle in ('totaux_sans', 'totaux_avec', 'totaux_all'):
+            with self.subTest(cle=cle):
+                totaux = data[cle]
+                self.assertAlmostEqual(
+                    totaux['ttc'],
+                    round(totaux['ht_net'] + totaux['tva'], 2), places=2)
+                # Plus jamais un TTC arrondi au dirham à côté d'un HT au
+                # centime : les deux clés portent la MÊME valeur exacte.
+                self.assertEqual(totaux['ttc'], totaux['ttc_exact'])
+
+    def test_le_bloc_de_totaux_s_additionne_pour_le_client(self):
+        """« HT net + TVA = TTC », vérifiable à la calculette sur le document."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-SOMME', remise='12.5')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertAlmostEqual(totaux['ht_net'],
+                               round(totaux['ht_brut'] - totaux['remise'], 2),
+                               places=2)
+        self.assertAlmostEqual(
+            totaux['tva'],
+            round(sum(b['montant'] for b in totaux['tva_par_taux']), 2),
+            places=2)
+        self.assertAlmostEqual(totaux['ttc'],
+                               round(totaux['ht_net'] + totaux['tva'], 2),
+                               places=2)
+
+    def test_la_somme_des_tranches_egale_le_total_imprime(self):
+        """L'échéancier est bâti sur la MÊME chaîne canonique : ses tranches
+        somment désormais au total imprimé, au centime."""
+        from decimal import Decimal as D
+
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.utils.options import option_totaux
+
+        devis = self._devis('DEV-QJR53-TRANCHE', remise='7')
+        devis.echeancier = [{'label': 'Acompte', 'pct_or_montant': 40},
+                            {'label': 'Livraison', 'pct_or_montant': 40},
+                            {'label': 'Solde', 'pct_or_montant': 20}]
+        devis.save(update_fields=['echeancier'])
+
+        total = D(str(option_totaux(devis)['ttc']))
+        tranches = [(total * D(str(e['pct_or_montant'])) / D('100')).quantize(
+            D('0.01')) for e in devis.echeancier]
+        # Le résidu de centime part sur la dernière tranche, comme partout.
+        tranches[-1] += total - sum(tranches)
+        self.assertEqual(sum(tranches), total)
+
+        imprime = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertAlmostEqual(float(total), imprime['ttc'], places=2)
+
+    def test_le_prix_barre_reste_arrondi_au_dirham(self):
+        """``ttc_avant`` n'est PAS un étage de la chaîne : c'est le prix BARRÉ,
+        un artefact d'affichage — il reste au dirham, comme le formateur."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-BARRE', remise='10')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertEqual(totaux['ttc_avant'], round(totaux['ttc_avant']))
+        self.assertGreater(totaux['ttc_avant'], totaux['ttc'])
+
+    def test_la_forme_des_paniers_tva_ne_bouge_pas(self):
+        """Les renderers et le bloc multi-villa lisent ``{taux, montant,
+        ht_net}`` et testent ``isinstance(..., (int, float))`` : un Decimal y
+        désactiverait silencieusement la mise à l'échelle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+        ], remise_globale='8', reference='DEV-QJR53-FORME')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        for cle in ('ht_brut', 'remise', 'ht_net', 'tva', 'ttc', 'ttc_exact',
+                    'ttc_avant'):
+            with self.subTest(cle=cle):
+                self.assertIsInstance(totaux[cle], (int, float))
+                self.assertNotIsInstance(totaux[cle], bool)
+        for panier in totaux['tva_par_taux']:
+            self.assertEqual(set(panier), {'taux', 'montant', 'ht_net'})
+            for valeur in panier.values():
+                self.assertIsInstance(valeur, float)
+
+    def _pages(self, devis, mode):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(devis, {'pdf_mode': mode})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr53_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return len(HTML(string=cap['html']).render().pages)
+
+    @tag('pdf')
+    def test_le_compte_de_pages_ne_bouge_pas(self):
+        """RÈGLE #4 — le rendu est en DEUX passes élastiques (mesure de mou
+        PyMuPDF puis re-rendu) : un chiffre plus large peut déplacer un saut de
+        page. Le passage au centime est donc éprouvé LÀ où il change quelque
+        chose : un devis REMISÉ (dont le TTC tombe entre deux dirhams) doit
+        occuper exactement le même nombre de pages qu'un devis sans remise, et
+        le une-page ne déborde jamais."""
+        sans_remise = self._devis('DEV-QJR53-P0', remise='0')
+        remise = self._devis('DEV-QJR53-P7', remise='7')
+        self.assertEqual(self._pages(remise, 'onepage'), 1)
+        self.assertEqual(self._pages(sans_remise, 'onepage'), 1)
+        self.assertEqual(self._pages(remise, 'full'),
+                         self._pages(sans_remise, 'full'))

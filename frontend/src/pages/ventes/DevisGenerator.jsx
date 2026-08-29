@@ -66,7 +66,12 @@ import {
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
-  kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
+  // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
+  // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
+  // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
+  // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
+  // sur ce chemin d'enregistrement.
+  kwhFromBill, multiPropertyPreviewTTC,
   productibleForCity,
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen,
@@ -1744,6 +1749,17 @@ export default function DevisGenerator({
           // pas encore accepté par TOUS les backends — `?? ''` en repli,
           // comportement historique inchangé tant qu'il est absent).
           variante: l.variante ?? '',
+          // QJR65 / décision fondateur D12 — LE PRIX TAPÉ À LA MAIN SURVIT À
+          // `?edit=`. Ce mappeur ne rendait PAS `prixManuel` : le drapeau
+          // revenait `undefined → false`, et l'effet listes-de-prix
+          // ([clientId, lines.length]) relançait `refreshTarif` sur CHAQUE
+          // ligne au montage — le tarif catalogue écrasait en silence le prix
+          // négocié que le vendeur avait tapé ET enregistré. `prix_manuel` est
+          // servi par la ligne (QJR59, `LigneDevisSerializer` `__all__`) ; la
+          // garde vit, elle, dans `refreshTarif` (`!l.prixManuel`). Champ
+          // absent d'un backend plus ancien ⇒ `false`, comportement historique
+          // strictement inchangé.
+          prixManuel: !!l.prix_manuel,
         }))
       setLines(withKeys(rows))
       linesInitialized.current = true
@@ -1778,6 +1794,16 @@ export default function DevisGenerator({
       if (['Auto', 'Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
         .includes(e.recommended_choice)) {
         setRecommendedChoice(e.recommended_choice)
+      }
+      // QJ31 / QJR66 — round-trip du ×N villas identiques. Le mode multi-villa
+      // ne se restaurait QUE depuis le brouillon local (localStorage) : rouvrir
+      // un devis ×4 par `?edit=` le ramenait à 1 à l'écran. Devenu bloquant
+      // depuis que l'écran est l'écrivain de la clé (il aurait alors envoyé
+      // `null` et DÉTRUIT le ×4 en base au premier enregistrement).
+      const nProprietes = parseInt(e.nombre_proprietes, 10)
+      if (Number.isFinite(nProprietes) && nProprietes > 1) {
+        setMultiMode('multiplier')
+        setNombreProprietes(String(nProprietes))
       }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
@@ -1830,6 +1856,20 @@ export default function DevisGenerator({
       if (e.hmt_static != null && e.hmt_static !== '') setFarmHmtStatic(String(e.hmt_static))
       if (e.hmt_drawdown != null && e.hmt_drawdown !== '') setFarmHmtDrawdown(String(e.hmt_drawdown))
       if (e.profondeur_m != null && e.profondeur_m !== '') setPompeProfondeur(String(e.profondeur_m))
+      // QJR66 — les trois dernières entrées pompage du formulaire. Elles
+      // partaient déjà dans `etude_params` (`buildEtudePompage`) mais n'étaient
+      // JAMAIS relues : rouvrir un brouillon agricole reposait les défauts
+      // (immergée / triphasé / 20 m) par-dessus le choix du vendeur, et
+      // l'enregistrement suivant les figeait. `alim` porte en plus le
+      // drapeau « touché » : une valeur restaurée est un choix humain, pas un
+      // défaut, et la déduction depuis le raccordement du lead ne doit plus
+      // l'écraser.
+      if (e.type_pompe) setPompeType(String(e.type_pompe))
+      if (e.alim) {
+        pompeAlimTouched.current = true
+        setPompeAlim(String(e.alim))
+      }
+      if (e.distance_m != null && e.distance_m !== '') setPompeDistance(String(e.distance_m))
     }).catch(() => {
       setErrors(prev => ({
         ...prev,
@@ -2806,104 +2846,246 @@ export default function DevisGenerator({
     return Object.keys(e).length === 0
   }
 
+  // QJR66 (audit L3 du 29/08/2026) — LA SOUS-CLÉ D'ÉTUDE DU MARCHÉ COURANT,
+  // et RIEN D'AUTRE.
+  //
+  // CE QUI SE PASSAIT. `persisterDevis` reconstruisait `etude_params` DE ZÉRO
+  // et le posait en bloc dans le corps du devis : toute clé que l'écran ne
+  // recompose pas lui-même — `factures_mensuelles_reelles`, `gamme`, et les
+  // quatre blocs écrits par les rafraîchisseurs serveur (`etude_horaire`,
+  // `dimensionnement`, `profils_comparatifs`, `simulation`) — DISPARAISSAIT à
+  // la sauvegarde suivante du vendeur.
+  //
+  // CE QUI SE PASSE MAINTENANT. Le corps du devis ne porte plus d'étude du
+  // tout ; l'écran écrit UNIQUEMENT la sous-clé de SON marché, par l'endpoint
+  // de FUSION `PATCH /ventes/devis/<id>/etude-params/` (QJR62) — seules les
+  // clés envoyées bougent, les autres restent intouchées bit à bit.
+  //   • TOUS LES MARCHÉS — les ENTRÉES RÉELLES tapées par le vendeur sur CET
+  //     écran, et elles seules : les 12 factures du client, la consommation
+  //     annuelle et le distributeur (voir `entreesReellesEcran` ci-dessous).
+  //     ARBITRAGE ORCHESTRATEUR (QJR66, 29/08/2026) : « zéro perte ». Une
+  //     première version de cette tâche n'écrivait RIEN en résidentiel, ce qui
+  //     re-rouvrait le trou N1 — un devis créé À LA MAIN (hors devis auto d'un
+  //     lead) n'avait plus AUCUN moyen d'alimenter
+  //     `factures_mensuelles_reelles`, la donnée la plus précieuse du dossier,
+  //     et le moteur PDF retombait sur une facture « avant » reconstruite
+  //     depuis l'économie SUPPOSÉE (proxy circulaire). Ces trois clés sont des
+  //     ENTRÉES déclarées `ECRAN` dans le schéma : c'est leur chemin.
+  //     Le RESTE des entrées résidentielles (scénario, option recommandée)
+  //     passe, lui, par le REGISTRE DE SURCHARGES D12 — pas par ici.
+  //   • industriel / commercial — les cinq dérivées de leur étude
+  //     d'autoconsommation (+ la catégorie commerciale, qui EST l'entrée de
+  //     cette étude : elle choisit l'archétype de part diurne).
+  //   • agricole — le bloc pompage (pompe, HMT, débit à la HMT, m³/jour,
+  //     champ kWc, méthode d'irrigation).
+  //   • résidentiel — RIEN DE PLUS que les entrées réelles ci-dessus : le
+  //     serveur est propriétaire de son étude (dimensionnement, bloc horaire,
+  //     profils, calepinage).
+  // Le schéma serveur (`apps/ventes/domain/etude_schema.py`) est la SEULE
+  // porte : une clé hors schéma ou une clé DÉRIVÉE dont l'écran n'est pas
+  // propriétaire (`puissance_kwc`, `production_annuelle`,
+  // `economies_annuelles`, `etude_horaire`…) est refusée en 400 français.
+  // C'est voulu : ces chiffres-là appartiennent à l'étape qui les CALCULE.
+  //
+  // `null` RETIRE la clé (règle Z2) : une étude qui n'est plus calculable est
+  // retirée, jamais laissée périmée — on envoie donc le bloc du marché même
+  // quand l'étude est indisponible, pour effacer un chiffre devenu faux.
+  //
+  // LES ENTRÉES RÉELLES DE L'ÉCRAN — tous marchés (arbitrage « zéro perte »).
+  // Reprend MOT POUR MOT les deux règles d'avant, sans en inventer une
+  // troisième : le seed N1 (`facturesSaisies` — jamais les valeurs D'EXEMPLE
+  // de `DEFAULT_MONTHLY_BILLS`) et la règle QF4 de `buildEtudeParamsChoice`
+  // (une conso annuelle déjà connue ⇒ on n'envoie que le distributeur ; une
+  // facture réelle saisie ⇒ les deux ; sinon le distributeur seulement s'il
+  // n'est pas le défaut ONEE).
+  //
+  // AUCUNE CLÉ N'EST ENVOYÉE À `null` ICI : `null` SUPPRIME (règle Z2), et
+  // supprimer les factures semées par le devis auto parce que CE vendeur n'a
+  // rien retapé serait exactement la perte que cette tâche referme. Une clé
+  // que l'écran ne connaît pas est simplement ABSENTE du corps — la fusion la
+  // laisse alors intacte, bit à bit.
+  // QF7 / QJR66 — LES CHOIX DU COMMERCIAL, tous marchés. L'ancien
+  // `buildEtudeParamsChoice`, à la sémantique près : le scénario et l'option
+  // recommandée AFFICHÉS À L'ÉCRAN sont persistés pour TOUS les modes
+  // (résidentiel / industriel / commercial / agricole), pas seulement quand
+  // une étude existe.
+  //
+  // POURQUOI C'EST BLOQUANT. `etude_params['scenario']` est LU par
+  // `quote_engine/builder.py` (`_stored_choice`) et par `utils/options.py`
+  // pour décider quelles lignes composent l'option vendue. Absent, le moteur
+  // prend la branche « artefact » et TOTALISE TOUTES les lignes — les deux
+  // onduleurs ET la batterie d'un devis « Les deux » — pendant que le total
+  // d'affichage montre, lui, l'option choisie : DEUX chiffres contradictoires
+  // sous les yeux du client. Le retirer du corps du devis (QJR66) sans le
+  // remettre sur le canal de fusion ouvrait exactement ce trou.
+  //
+  // JAMAIS `null` : ces deux clés ne valent que quand l'écran les possède
+  // réellement — et il les possède toujours (un défaut de mode, ou le choix
+  // explicite du vendeur). Le câblage vers le REGISTRE D12 (`scenario`,
+  // `recommended_option` sont des chemins surchargeables) est un chantier M5 :
+  // en attendant, l'écran reste leur écrivain, par le canal validé.
+  //
+  // QJ31 (mode A) — ×N VILLAS IDENTIQUES. `selectors.py` multiplie le total du
+  // devis par `etude_params['nombre_proprietes']` (défaut 1) : sans écrivain,
+  // un devis ×4 rendait le total d'UNE villa. C'est le SEUL choix de ce bloc
+  // qui s'envoie à `null` — et c'est VOULU : le sélecteur multi-villa est
+  // toujours dans un état défini, donc « pas de ×N à l'écran » signifie
+  // vraiment « ce devis est mono-système », et `null` RETIRE la clé (règle Z2)
+  // au lieu de laisser traîner le ×4 d'hier. Contraste avec les factures
+  // réelles, où « rien de retapé » ne veut PAS dire « pas de factures » — d'où
+  // l'absence de clé là-bas. Le mappeur `?edit=` repose le mode depuis cette
+  // même clé (plus bas), sans quoi rouvrir un devis ×4 l'aurait remis à 1.
+  const choixEcran = () => {
+    const choix = {}
+    if (scenario) choix.scenario = scenario
+    if (recommended) choix.recommended_option = recommended
+    const n = multiMode === 'multiplier' ? parseInt(nombreProprietes, 10) : 1
+    choix.nombre_proprietes = (Number.isFinite(n) && n > 1) ? n : null
+    return choix
+  }
+
+  const entreesReellesEcran = (consoDejaConnue) => {
+    const entrees = {}
+    if (facturesSaisies) {
+      entrees.factures_mensuelles_reelles = monthly.map(v => parseFloat(v) || 0)
+    }
+    // Conso annuelle : la source la plus DIRECTE d'abord (l'étude du marché,
+    // qui descend de la saisie « consommation »), puis la facture réelle QF4,
+    // puis la dérivation depuis les 12 factures (kwhFromBill au barème réel du
+    // distributeur choisi — même patron que `autoQuote.js`, jamais un chiffre
+    // supposé).
+    let conso = consoDejaConnue ?? null
+    if (conso == null && consoAnnuelleReelle > 0) conso = consoAnnuelleReelle
+    if (conso == null && entrees.factures_mensuelles_reelles) {
+      const derivee = Math.round(entrees.factures_mensuelles_reelles.reduce(
+        (somme, bill) => somme + (kwhFromBill(bill, distributeur).kwhMensuel || 0), 0))
+      if (derivee > 0) conso = derivee
+    }
+    if (conso != null) {
+      entrees.conso_annuelle = conso
+      entrees.distributeur = distributeur
+    } else if (distributeur && distributeur !== 'onee') {
+      entrees.distributeur = distributeur
+    }
+    return entrees
+  }
+
+  // QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
+  // site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
+  // laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
+  // omet alors économies et payback plutôt que d'inventer un barème.
+  const repartitionMtSaisie = () => {
+    if (tensionRaccordement !== 'mt') return null
+    const parts = {}
+    for (const creneau of ['pointe', 'pleines', 'creuses']) {
+      const n = parseFloat(repartitionMt[creneau])
+      if (Number.isFinite(n)) parts[creneau] = n
+    }
+    return Object.keys(parts).length ? parts : null
+  }
+
+  const blocEtudeMarche = () => {
+    const nombre = (v) => {
+      const n = parseFloat(v)
+      return Number.isFinite(n) ? n : null
+    }
+    if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
+      const etude = (modeInstallation === 'industriel'
+        ? etudeIndustrielle : etudeCommerciale) || {}
+      const bloc = {
+        ...choixEcran(),
+        ...entreesReellesEcran(nombre(etude.conso_annuelle)),
+        taux_autoconso: nombre(etude.taux_autoconso),
+        taux_couverture: nombre(etude.taux_couverture),
+        payback: nombre(etude.payback),
+        injection_kwh_an: nombre(etude.injection_kwh_an),
+        injection_dh_an: nombre(etude.injection_dh_an),
+        // QXMT — raccordement du site + répartition horaire : le mappeur
+        // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
+        // devis MT rouvert repartait silencieusement au barème BT. On stocke
+        // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
+        // par l'étude : c'est la forme que le formulaire réinjecte.
+        tension_raccordement: tensionRaccordement || null,
+        repartition_mt: repartitionMtSaisie(),
+      }
+      if (modeInstallation === 'commercial') {
+        // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
+        // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
+        // IDENTIQUE à celle d'avant, jamais de `prix_achat`.
+        bloc.categorie_commerciale = categorieCommerciale || null
+        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
+          const brut = commercialAnswers[q.key]
+          if (brut === undefined || brut === '' || brut === null) continue
+          bloc[q.key] = q.type === 'number'
+            ? (parseFloat(brut) || 0)
+            : q.type === 'bool' ? !!brut : String(brut)
+        }
+      }
+      return bloc
+    }
+    if (modeInstallation === 'agricole') {
+      // MÊME dérivation que l'aperçu écran et que le devis auto
+      // (`buildEtudePompage`) : une seule formule, jamais deux chiffres qui
+      // pourraient diverger. Seules les clés du schéma en sortent, typées.
+      const p = pompageSel
+        ? buildEtudePompage(pompageSel, {
+            typePompe: pompeType, alim: pompeAlim,
+            hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+            profondeur: pompeProfondeur, distance: pompeDistance,
+          })
+        : {}
+      return {
+        ...choixEcran(),
+        ...entreesReellesEcran(null),
+        // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
+        pompe_cv: nombre(p.pompe_cv),
+        pompe_kw: nombre(p.pompe_kw),
+        debit_hmt_m3h: nombre(p.debit_hmt_m3h),
+        m3_jour: nombre(p.m3_jour),
+        champ_kwc: nombre(p.champ_kwc),
+        // ENTRÉES du vendeur, prises à l'ÉTAT de l'écran (pas au
+        // dimensionnement) : ce sont elles que le mappeur `?edit=` réinjecte
+        // dans le formulaire, et elles existent même quand aucune pompe à
+        // courbe ne peut être retenue.
+        hmt_m: nombre(pompeHmt),
+        debit_souhaite_m3h: nombre(pompeDebit),
+        heures_pompage: nombre(pompeHeures),
+        type_pompe: pompeType || null,
+        alim: pompeAlim || null,
+        profondeur_m: nombre(pompeProfondeur),
+        distance_m: nombre(pompeDistance),
+        // Exploitation guidée (toutes optionnelles, toutes relues par `?edit=`).
+        irrigation_method: farmIrrigation || null,
+        region: farmRegion || null,
+        crop: farmCrop || null,
+        surface_ha: nombre(farmSurfaceHa),
+        current_fuel: farmFuel || null,
+        fuel_spend_current: nombre(farmFuelSpendAnnual),
+        hmt_static: nombre(farmHmtStatic),
+        hmt_drawdown: nombre(farmHmtDrawdown),
+      }
+    }
+    // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
+    // CHOIX du vendeur ni des entrées réelles qu'il vient de taper (arbitrage
+    // « zéro perte »). Objet vide ⇒ aucun appel du tout (voir
+    // `persisterDevis`) ; en pratique `choixEcran()` porte toujours au moins
+    // le scénario, sans quoi le moteur PDF totaliserait les deux options.
+    const entrees = { ...choixEcran(), ...entreesReellesEcran(null) }
+    return Object.keys(entrees).length ? entrees : null
+  }
+
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
-  // comportement) : construit etudeParams/payload/lignes, écrit le devis
-  // (édition atomique ou création atomique), et RENVOIE {devisId, devisCree}
-  // en cas de succès — null sinon (le message HUMAIN est déjà posé dans
-  // `errors.submit`). PV23bis (fondateur 20/08) — `ouvrirConception3D`
-  // ci-dessous réutilise EXACTEMENT ce même chemin d'écriture pour le bouton
-  // « Concevoir en 3D » : un seul endroit qui sait enregistrer un devis,
-  // jamais une seconde logique dupliquée.
+  // comportement) : construit le payload + les lignes, écrit le devis (édition
+  // atomique ou création atomique), attache l'étude du marché par l'endpoint de
+  // fusion (QJR66 ci-dessus), et RENVOIE {devisId, devisCree} en cas de succès
+  // — null sinon (le message HUMAIN est déjà posé dans `errors.submit`).
+  // PV23bis (fondateur 20/08) — `ouvrirConception3D` ci-dessous réutilise
+  // EXACTEMENT ce même chemin d'écriture pour le bouton « Concevoir en 3D » :
+  // un seul endroit qui sait enregistrer un devis, jamais une seconde logique
+  // dupliquée.
   const persisterDevis = async () => {
     setSaving(true)
     try {
-      // Paramètres d'étude stockés avec le devis (alimentent la page Étude
-      // du PDF et le bloc résumé pompage)
-      let etudeParams = null
-      if (modeInstallation === 'industriel' && etudeIndustrielle) {
-        etudeParams = etudeIndustrielle
-      } else if (modeInstallation === 'commercial') {
-        // QX44 — étude commerciale (si conso saisie) + catégorie + réponses par
-        // catégorie (clés snake_case, coercition de type ; jamais de prix_achat).
-        const answers = {}
-        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
-          const raw = commercialAnswers[q.key]
-          if (raw === undefined || raw === '' || raw === null) continue
-          answers[q.key] = q.type === 'number'
-            ? (parseFloat(raw) || 0)
-            : q.type === 'bool' ? !!raw : String(raw)
-        }
-        etudeParams = {
-          ...(etudeCommerciale || {}),
-          categorie_commerciale: categorieCommerciale,
-          ...answers,
-        }
-      } else if (modeInstallation === 'agricole' && pompageSel) {
-        etudeParams = buildEtudePompage(pompageSel, {
-          typePompe: pompeType, alim: pompeAlim,
-          hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-          profondeur: pompeProfondeur, distance: pompeDistance,
-        })
-        // Données d'exploitation guidées (clés exactes lues par le backend pour
-        // redimensionner/chiffrer le PDF). Optionnelles : numériques null si vides.
-        etudeParams = {
-          ...etudeParams,
-          region: farmRegion,
-          crop: farmCrop,
-          surface_ha: parseFloat(farmSurfaceHa) || null,
-          irrigation_method: farmIrrigation,
-          current_fuel: farmFuel,
-          fuel_spend_current: farmFuelSpendAnnual !== '' ? farmFuelSpendAnnual : null,
-          hmt_static: parseFloat(farmHmtStatic) || null,
-          hmt_drawdown: parseFloat(farmHmtDrawdown) || null,
-        }
-      }
-      // N1 — sème les 12 factures RÉELLES du client (etude_params.
-      // factures_mensuelles_reelles) depuis la saisie hiver/été OU le détail
-      // mensuel de CE devis, quand elle a RÉELLEMENT été faite
-      // (facturesSaisies — jamais les valeurs D'EXEMPLE de
-      // DEFAULT_MONTHLY_BILLS). Un devis créé à la main (sans passer par le
-      // devis auto d'un lead) n'avait AUCUN moyen d'alimenter ce champ : sans
-      // lui, le moteur PDF ne peut plus reconstruire la facture « avant »
-      // (page 1 économies). Même patron que le devis auto (autoQuote.js,
-      // bloc PACT10/QF-REAL) : kwhFromBill au barème réel du distributeur
-      // choisi, jamais un chiffre supposé. Rien saisi → aucun changement de
-      // payload (etudeParams reste exactement ce qu'il était).
-      if (facturesSaisies) {
-        const facturesReelles = monthly.map(v => parseFloat(v) || 0)
-        etudeParams = {
-          ...(etudeParams || {}),
-          factures_mensuelles_reelles: facturesReelles,
-        }
-        // conso_annuelle dérivée UNIQUEMENT si aucune source plus directe ne
-        // l'a déjà posée (« Facture réelle du client » QF4/QF5 ci-dessous via
-        // buildEtudeParamsChoice, ou l'étude industrielle/agricole
-        // ci-dessus) — buildEtudeParamsChoice garde alors ce chiffre intact.
-        if (etudeParams.conso_annuelle == null) {
-          const consoDeriveeFactures = Math.round(facturesReelles.reduce(
-            (somme, bill) => somme + (kwhFromBill(bill, distributeur).kwhMensuel || 0), 0))
-          if (consoDeriveeFactures > 0) etudeParams.conso_annuelle = consoDeriveeFactures
-        }
-      }
-      // QF7 — persiste le scénario + l'option recommandée affichés à l'écran
-      // pour TOUS les modes (résidentiel/industriel/agricole), pas seulement
-      // quand une étude existe déjà : sans cette garantie un devis industriel
-      // sans étude dégénérée (kwp=0, ex. lignes ajoutées à la main) perdait
-      // silencieusement le choix sans/avec fait à l'écran. Le PDF (QF6) doit
-      // pouvoir mettre en avant EXACTEMENT la même option (« Auto » résolu →
-      // l'option du scénario) quel que soit le mode. QF4 — le distributeur +
-      // la consommation annuelle RÉELLE (facture/kWh du client) sont fusionnés
-      // dans le même appel (jamais deux logiques de fusion divergentes).
-      etudeParams = buildEtudeParamsChoice(etudeParams, {
-        scenario, recommendedChoice, recommendedOption: recommended,
-        distributeur, consoAnnuelleReelle,
-      })
-      // QJ31 (mode A) — ×N villas identiques : multiplicateur stocké dans
-      // etude_params (lu par le backend QJ29). N=1/absent = mono-système.
-      if (multiMode === 'multiplier') {
-        const n = parseInt(nombreProprietes, 10)
-        if (Number.isFinite(n) && n > 1) etudeParams = { ...etudeParams, nombre_proprietes: n }
-      }
       const payload = {
         statut: 'brouillon',
         date_validite: dateValidite || null,
@@ -2911,7 +3093,6 @@ export default function DevisGenerator({
         remise_globale: discountPct || '0',
         note: note || null,
         mode_installation: modeInstallation,
-        etude_params: etudeParams,
         prix_cible_kwc: prixCible !== '' ? prixCible : null,
       }
       // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
@@ -2951,6 +3132,13 @@ export default function DevisGenerator({
           // divergent. Envoyée systématiquement (le champ absent d'un ancien
           // backend est simplement ignoré par le serializer — jamais bloquant).
           variante: l.variante || '',
+          // QJR65 / décision fondateur D12 — le PRIX est une entrée commerciale
+          // PERSISTANTE : le marqueur part avec la ligne (`prix_manuel`, accepté
+          // par `_replace_lines_atomic`, QJR59/QJR60) pour que la réouverture en
+          // `?edit=` le repose et qu'aucun rafraîchissement tarifaire ne
+          // réécrive le prix négocié. Sans lui, le marqueur serait remis à
+          // `False` à CHAQUE enregistrement — le trou que D12 referme.
+          prix_manuel: !!l.prixManuel,
         }
       })
 
@@ -2975,6 +3163,25 @@ export default function DevisGenerator({
         })
         devisId = data.id
         devisCree = data
+      }
+
+      // QJR66 — l'étude du marché courant part par l'endpoint de FUSION, APRÈS
+      // les lignes : le serveur vient d'y recalculer ses propres blocs
+      // (`rafraichir_etudes_du_devis`), et cette fusion ne touche QUE les clés
+      // qu'elle envoie. Résidentiel ⇒ aucun appel.
+      const etudeMarche = blocEtudeMarche()
+      if (etudeMarche) {
+        try {
+          await ventesApi.patchEtudeParams(devisId, etudeMarche)
+        } catch (errEtude) {
+          // Le devis EST enregistré : une étude refusée ne doit jamais faire
+          // croire à un échec d'enregistrement (ni pousser à un second POST
+          // qui créerait un doublon). On le DIT, en français, et on continue.
+          const detail = errEtude?.response?.data?.detail
+          toast.error(typeof detail === 'string'
+            ? `Devis enregistré, étude non attachée : ${detail}`
+            : "Devis enregistré, mais l'étude n'a pas pu être attachée.")
+        }
       }
 
       return { devisId, devisCree }

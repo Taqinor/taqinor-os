@@ -121,9 +121,9 @@ class _ProformaBase(TestCase):
 
 class ArgentCanoniqueTests(_ProformaBase):
     def test_le_total_est_celui_de_la_chaine_canonique_pas_la_somme_des_deux(self):
-        """LE défaut monétaire : ``Devis.total_ttc`` somme les deux options ET
-        ignore la remise globale. Le pro-forma imprime désormais le total de
-        l'option AVEC (règle canonique du builder), remise comprise."""
+        """LE défaut monétaire : le pro-forma imprimait la somme des DEUX
+        paniers, remise ignorée. Il imprime désormais le total de l'option
+        AVEC (règle canonique du builder), remise comprise."""
         attendu = option_totaux(self.devis, AVEC_BATTERIE)
         # Dérivation : (10 000 + 7 000 + 12 000 + 1 000) = 30 000 HT brut,
         # −10 % = 27 000 HT net, TVA 20 % = 5 400, TTC = 32 400.
@@ -136,8 +136,18 @@ class ArgentCanoniqueTests(_ProformaBase):
         self.assertIn('32400.00 MAD', html)
         self.assertIn('27000.00 MAD', html)
         self.assertIn('30000.00 MAD', html)
-        # Le montant mensonger (somme des deux paniers, sans remise) a disparu.
-        self.assertEqual(self.devis.total_ttc, Decimal('51600.00'))
+
+        # ── PRÉMISSE RECALÉE — QJR51 / décision fondateur D2 (29/08/2026) ────
+        # Ce test épinglait ``Devis.total_ttc == 51600.00``, c'est-à-dire LE
+        # DÉFAUT D'AVANT : la somme des deux paniers, remise ignorée —
+        # (13 000 « sans » + 29 000 « avec » + 1 000 commune) = 43 000 HT brut,
+        # × 1,20 = 51 600 TTC. QJR51 a basculé ``Devis.total_*`` de Vue.BRUT à
+        # Vue.NET : la propriété honore ``remise_globale`` et ne retient que
+        # l'option EFFECTIVE (D9) — elle VAUT donc désormais la chaîne
+        # canonique, 32 400. Le montant mensonger n'existe plus nulle part :
+        # ni dans la propriété, ni dans le document.
+        self.assertEqual(self.devis.total_ttc, attendu['ttc'])
+        self.assertEqual(self.devis.total_ttc, Decimal('32400.00'))
         self.assertNotIn('51600.00 MAD', html)
 
     def test_la_remise_globale_est_visible_ligne_a_ligne(self):

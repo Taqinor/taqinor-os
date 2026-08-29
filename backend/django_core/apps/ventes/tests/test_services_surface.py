@@ -195,16 +195,23 @@ SURFACE_PUBLIQUE = (
     "plafond_physique_du_contour",
     "planifier_devis_automatique_pour_lead",
     "planifier_resynchronisation_produit",
+    # QJR63 — l'UNIQUE propriétaire du kWc d'un devis : son écriture
+    # (``poser_puissance_kwc``, un cache estampillé) et sa lecture
+    # (``puissance_kwc_du_devis``, registre sinon dérivation PVUNI, plus bas).
+    "poser_puissance_kwc",
     "prix_applicable",
     "prix_forfait_ht",
     "profil_reel_existe",
+    "puissance_kwc_du_devis",
     "qr_svg_for_facture_pdf",
     "rafraichir_dimensionnement_devis",
     "rafraichir_etude_horaire",
     "rafraichir_etude_horaire_devis",
     "rafraichir_etudes_du_devis",
+    # QJR64 — le scénario et l'option recommandée passent par le REGISTRE de
+    # surcharges : une déclaration humaine survit à tout recalcul aval.
+    "recommended_option_effective",
     "record_payment_from_link",
-    "refresh_etude_consistency",
     "refresh_marge_snapshot",
     "regler_envoi_gamme",
     "rejeter_paiement",
@@ -216,6 +223,7 @@ SURFACE_PUBLIQUE = (
     "resume_devis_depuis_bordereau",
     "resynchroniser_devis_pour_produit",
     "save_devis_as_preset",
+    "scenario_effectif",
     "send_devis_followup_nudges",
     "share_link_for_bcf",
     "sync_devis_from_layout",
@@ -237,6 +245,11 @@ PRIVES_IMPORTES_AILLEURS = {
     "_advance_lead_on_expiry": ("apps/ventes/tests/test_qj5_expiry_funnel.py",),
     "_azimut_boussole_vers_aspect": ("apps/ventes/tasks.py",),
     "_batterie_compatible": ("apps/ventes/compatibilites.py",),
+    # QJR44 — le prédicat de fraîcheur du bloc horaire est exercé
+    # directement par son test (tolérance moteur + estampille des entrées).
+    "_bloc_horaire_deja_a_jour": (
+        "apps/ventes/tests/test_qjr_empreintes_etudes.py",
+    ),
     "_boq_apparier": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
     "_boq_famille": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
     "_build_acceptance_wa_url": ("apps/crm/tests_qj2_seller_notifications.py",),
@@ -245,7 +258,12 @@ PRIVES_IMPORTES_AILLEURS = {
     "_classe_ligne": ("apps/ventes/management/commands/reparer_devis_deux_options.py",),
     "_ecart_dans_la_tolerance": ("apps/ventes/tests/test_calepinage_bascule.py",),
     "_esign_otp_enabled": ("apps/ventes/tests/test_qj11_otp.py",),
-    "_est_au_prix_catalogue": ("apps/ventes/offres_tailles.py",),
+    "_est_au_prix_catalogue": (
+        "apps/ventes/offres_tailles.py",
+        # QJR59 — le repli RESTE pour les lignes antérieures aux marqueurs
+        # ``prix_manuel``/``quantite_manuelle`` : son test l'exerce directement.
+        "apps/ventes/tests/test_qjr_ligne_manuelle.py",
+    ),
     "_est_triphase": (
         "apps/ventes/compatibilites.py",
         "apps/ventes/dimensionnement.py",

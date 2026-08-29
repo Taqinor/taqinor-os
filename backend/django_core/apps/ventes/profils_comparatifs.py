@@ -209,12 +209,18 @@ def _dimensionnement_variante(devis, occupation):
     if not conso:
         return None
     localisation = site_location_for_devis(devis) or {}
+    # QJR46 — le barème de la SOCIÉTÉ, la MÊME lecture que le moteur de devis :
+    # une variante d'occupation ne peut pas valoriser le kWh autrement que le
+    # tableau qu'elle sert à comparer.
+    from apps.ventes.etude_horaire import _reglages_tarifaires
+    tranches, charges_fixes = _reglages_tarifaires(company)
     return recommander_taille(
         company=company, conso_kwh_mensuelles=conso,
         ville=localisation.get('site_ville'),
         lat=localisation.get('gps_lat'), lon=localisation.get('gps_lng'),
         occupation=occupation, equipements=equipements_du_devis(devis),
-        source_conso=source_conso)
+        source_conso=source_conso,
+        tranches=tranches, charges_fixes_mad=charges_fixes)
 
 
 def calculer_profils_comparatifs(devis):
@@ -302,6 +308,34 @@ def _calculer_profils_comparatifs(devis):
     }
 
 
+def _empreinte_profils(devis):
+    """QJR44 — l'estampille de CE bloc : les entrées du moteur PLUS la
+    composition dont il dépend.
+
+    Les deux variantes non déclarées sont calculées par
+    ``etude_horaire_pour_devis`` + ``recommander_taille`` à partir (a) du
+    profil du client — factures, localisation, occupation, équipements, donc
+    exactement :func:`~apps.ventes.domain.entrees.empreinte_entrees` — et (b)
+    de la composition VENDUE (kWc lu sur les lignes, capacité batterie des
+    lignes). Les deux entrent dans l'estampille ; rien d'autre.
+
+    ``None`` = non dérivable (devis non résidentiel, sans société, sans profil
+    exploitable, sans panneau lisible) : aucun bloc ne peut alors être déclaré
+    frais.
+    """
+    from apps.ventes.domain.entrees import empreinte_entrees_du_devis
+    from apps.ventes.etude_horaire import capacite_batterie_du_devis
+
+    base = empreinte_entrees_du_devis(devis)
+    if not base:
+        return None
+    kwc = _kwc_du_devis(devis)
+    if not kwc:
+        return None
+    batterie = _num(capacite_batterie_du_devis(devis), 0.0) or 0.0
+    return '%s|%s|%s' % (base, round(float(kwc), 3), round(batterie, 3))
+
+
 def rafraichir_profils_comparatifs_devis(devis, *, force=False):
     """Pose ``etude_params['profils_comparatifs']`` — best-effort, jamais
     bloquant, n'écrit QUE ``etude_params`` (règle #4 : ni statut, ni lignes,
@@ -309,20 +343,39 @@ def rafraichir_profils_comparatifs_devis(devis, *, force=False):
 
     Un bloc devenu incalculable est RETIRÉ plutôt que laissé périmé (règle Z2,
     même politique que ``rafraichir_etude_horaire``).
+
+    QJR44 — LE CALCUL LUI-MÊME EST DÉSORMAIS COURT-CIRCUITÉ. Jusqu'ici,
+    ``calculer_profils_comparatifs`` tournait TOUJOURS — deux balayages de
+    dimensionnement complets et deux études horaires — et ``force`` ne
+    sautait que l'ÉCRITURE : le calcul le plus lourd du devis était donc
+    payé, en synchrone dans le handler HTTP, à CHAQUE ajout, modification ou
+    suppression de ligne. L'estampille :func:`_empreinte_profils` est
+    comparée AVANT le calcul : entrées et composition inchangées ⇒ le bloc
+    rangé est rendu tel quel, zéro balayage. Un bloc sans estampille
+    (antérieur à QJR44) est PÉRIMÉ — un recalcul, une fois.
     """
+    from apps.ventes.domain.etude_schema import MOTEUR_PROFILS, ecrire
     try:
-        bloc = calculer_profils_comparatifs(devis)
+        empreinte = _empreinte_profils(devis)
         etude = dict(getattr(devis, 'etude_params', None) or {})
+        rangee = etude.get('profils_comparatifs')
+        if (not force and empreinte
+                and isinstance(rangee, dict)
+                and rangee.get('_empreinte') == empreinte):
+            return rangee
+
+        bloc = calculer_profils_comparatifs(devis)
         if bloc is None:
             if 'profils_comparatifs' not in etude:
                 return None
-            etude.pop('profils_comparatifs', None)
         else:
-            if not force and etude.get('profils_comparatifs') == bloc:
+            bloc = dict(bloc)
+            bloc['_empreinte'] = empreinte
+            if not force and rangee == bloc:
                 return bloc
-            etude['profils_comparatifs'] = bloc
-        devis.etude_params = etude
-        devis.save(update_fields=['etude_params'])
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion et le retrait d'une clé posée à
+        # ``None`` (règle Z2) vivent dans ``domain.etude_schema``, plus ici.
+        ecrire(devis, proprietaire=MOTEUR_PROFILS, profils_comparatifs=bloc)
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
         logger.warning('profils_comparatifs non rafraîchis sur %s',

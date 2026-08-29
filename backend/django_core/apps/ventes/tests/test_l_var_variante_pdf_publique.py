@@ -429,3 +429,102 @@ class TestSignatureNeRetrecitPasLeTelechargement(_Base):
         self.devis.refresh_from_db()
         self.assertEqual((self.devis.statut, self.devis.option_acceptee),
                          avant)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QJR64 — le SCÉNARIO est un chemin du REGISTRE : il survit à TOUT recalcul
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestQjr64ScenarioSurvitAuxRecalculs(_Base):
+    """Décision fondateur D12 — un scénario DÉCLARÉ par un humain survit à tout
+    recalcul aval ; la dérivation moteur ne joue qu'en son ABSENCE.
+
+    Avant, ``etude_params['scenario']`` était protégé par un cas particulier
+    CODÉ EN DUR dans la fusion ``etude_extra`` de ``build_devis_auto`` et
+    RE-DÉRIVÉ sans condition par la resynchro : selon le chemin, un
+    « Les deux (Sans + Avec) » redevenait « Avec batterie » et le PDF cessait de
+    rendre la comparaison.
+    """
+
+    def _declarer(self, valeur):
+        from apps.ventes.domain.overrides import ecrire_colonne, poser
+        ecrire_colonne(self.devis, poser(self.devis, 'scenario', valeur))
+        self.devis.refresh_from_db()
+
+    def test_le_registre_passe_devant_la_valeur_stockee(self):
+        from apps.ventes.services import scenario_effectif
+
+        self._declarer(SCENARIO_LES_DEUX)
+        self.assertEqual(
+            scenario_effectif(self.devis, 'Avec batterie'),
+            SCENARIO_LES_DEUX)
+
+    def test_sans_surcharge_la_derivation_moteur_gagne(self):
+        from apps.ventes.services import scenario_effectif
+
+        self.assertEqual(
+            scenario_effectif(self.devis, 'Avec batterie'), 'Avec batterie')
+
+    def test_une_surcharge_illisible_est_ignoree(self):
+        from apps.ventes.services import scenario_effectif
+
+        self._declarer('Scénario inventé')
+        self.assertEqual(
+            scenario_effectif(self.devis, 'Avec batterie'), 'Avec batterie')
+
+    def test_le_scenario_declare_survit_a_une_resynchro(self):
+        """Le cas nommé : la resynchro RE-DÉRIVAIT le scénario sans condition."""
+        from apps.ventes.services import sync_devis_from_layout
+
+        self._declarer(SCENARIO_LES_DEUX)
+        # Un scénario stocké MONO : sans le registre, la resynchro le
+        # re-dériverait et le PDF perdrait la comparaison.
+        #
+        # ── FIXTURE : le devis est remis en BROUILLON (29/08/2026) ──────────
+        # ``make_devis`` (test_l_niv_niveau) naît « Envoyé » — c'est ce qu'il
+        # faut aux tests L-VAR, qui portent sur la PAGE PUBLIQUE d'un devis
+        # déjà chez le client. Mais ``sync_devis_from_layout`` porte une garde
+        # de statut PRÉ-EXISTANTE et légitime (`services.py`) : un devis
+        # « Envoyé » refuse la resynchro, « le client a déjà cette version sous
+        # les yeux » — il faut passer par une révision. Le brouillon est le
+        # SEUL statut où une resynchro de calepinage est permise, et c'est bien
+        # là que vit le cas visé par QJR64 : le commercial retouche son
+        # calepinage avant envoi, et son scénario déclaré doit y survivre.
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'scenario': 'Avec batterie'},
+            statut=Devis.Statut.BROUILLON)
+        self.devis.refresh_from_db()
+
+        sync_devis_from_layout(
+            self.devis,
+            {'scenario': 'avec_batterie', 'panelWatt': 550,
+             'result': {'panels': 14, 'kwc': 7.7}},
+            self.user)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params['scenario'],
+                         SCENARIO_LES_DEUX)
+
+    def test_le_moteur_pdf_honore_le_registre(self):
+        self._declarer(SCENARIO_LES_DEUX)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'scenario': 'Avec batterie'})
+        self.devis.refresh_from_db()
+        data = build_quote_data(self.devis, clean_pdf_options({}))
+        self.assertEqual(data['nb_options'], 2)
+
+    def test_l_option_recommandee_suit_la_meme_regle(self):
+        from apps.ventes.domain.overrides import ecrire_colonne, poser
+        from apps.ventes.services import recommended_option_effective
+
+        self.assertEqual(
+            recommended_option_effective(self.devis, 'Avec batterie'),
+            'Avec batterie')
+        ecrire_colonne(self.devis,
+                       poser(self.devis, 'recommended_option',
+                             'Sans batterie'))
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            recommended_option_effective(self.devis, 'Avec batterie'),
+            'Sans batterie')
+        data = build_quote_data(self.devis, clean_pdf_options({}))
+        self.assertEqual(data['recommended'], 'Sans batterie')

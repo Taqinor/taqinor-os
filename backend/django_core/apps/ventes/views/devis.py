@@ -308,6 +308,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # d'action pour ne pas hériter du niveau de garde de l'écriture.
             'offres_tailles', 'offres_tailles_config',
             'offres_tailles_regenerer', 'offres_tailles_appliquer',
+            # QJR58 (décision fondateur D12, 29/08/2026) — le REGISTRE de
+            # surcharges du vendeur (GET/PATCH/DELETE). Même périmètre que le
+            # générateur (responsable + admin). PIÈGE VX199 : sans ce nom ICI,
+            # l'action tomberait sur le repli ``IsAdminRole`` et son
+            # ``permission_classes`` — qui déclare la MÊME classe — ne serait
+            # JAMAIS consulté.
+            'overrides',
+            # QJR62 — PATCH FUSIONNANT d'``etude_params`` (même périmètre que
+            # le générateur : responsable + admin). MÊME piège VX199.
+            'etude_params',
             # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
             # visites DISTINCTES par section de la proposition + alerte de
             # friction (relecture répétée d'une même section). Analytics
@@ -870,8 +880,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # TROISIÈME, incomplète, dans ``LigneDevisViewSet``) vit maintenant
         # dans ``services.rafraichir_etudes_du_devis``. Une étude ajoutée
         # demain part sur les trois chemins d'écriture, ou sur aucun.
+        # QJR47 — ``force=True`` RETIRÉ : il protégeait contre un cache posé
+        # sur la simple PRÉSENCE de la clé. Depuis QJR43/QJR44 c'est
+        # l'EMPREINTE des entrées (et, pour le bloc horaire, la composition)
+        # qui décide — un devis qui vient d'être créé n'a aucun bloc, donc les
+        # quatre études se calculent de toute façon.
         from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis, force=True)
+        rafraichir_etudes_du_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -917,16 +932,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # rafraîchissement, la composition qui vient d'être posée (panneaux,
         # onduleur, batterie) ne serait jamais celle que le bloc horaire décrit,
         # et le devis retomberait sur le modèle forfaitaire alors qu'un calcul
-        # heure par heure exact est possible. ``force`` : les lignes ET
-        # ``etude_params`` peuvent avoir changé dans le même enregistrement.
+        # heure par heure exact est possible.
         # HORS de la transaction ci-dessus, et best-effort : un devis
         # correctement remplacé ne doit jamais être annulé par une étude.
         # L-1V (24/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE (bloc horaire,
         # dimensionnement, profils comparatifs, conception électrique) : voir
         # ``services.rafraichir_etudes_du_devis``. La composition vient de
         # changer, les quatre études doivent décrire les lignes COURANTES.
+        # QJR47 — ``force=True`` RETIRÉ. Il couvrait le cas « les lignes ET
+        # ``etude_params`` ont changé dans le même enregistrement » : les DEUX
+        # entrent désormais dans l'empreinte (la composition pour le bloc
+        # horaire et les profils, le profil client pour l'empreinte des
+        # entrées), donc un vrai changement recalcule et un faux ne coûte plus
+        # trois balayages complets.
         from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis, force=True)
+        rafraichir_etudes_du_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -1019,7 +1039,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 quantite=qte, prix_unitaire=pu, remise=remise,
                 taux_tva=Decimal(str(taux)) if taux is not None else None,
                 optionnelle=bool(li.get('optionnelle', False)),
-                type_ligne='produit', ordre=ordre, variante=variante)
+                type_ligne='produit', ordre=ordre, variante=variante,
+                # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
+                # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
+                # l'écran, création comme édition) les remettrait à False à
+                # chaque enregistrement : le prix et la quantité tapés par le
+                # commercial redeviendraient réécrivables au premier
+                # rafraîchissement — exactement le trou que D12 referme.
+                # Absents (tous les appelants d'hier) ⇒ False, comportement
+                # historique strictement inchangé.
+                quantite_manuelle=bool(li.get('quantite_manuelle', False)),
+                prix_manuel=bool(li.get('prix_manuel', False)))
 
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
@@ -2544,6 +2574,171 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 ),
             }
         return {'offres_tailles': bloc, 'editable': True}
+
+    # ── QJR58 — LE REGISTRE DE SURCHARGES (décision fondateur D12) ───────────
+
+    @staticmethod
+    def _overrides_reponse(devis):
+        """La forme du contrat PACT10 ``contract_samples/devis_overrides.json``.
+
+        ``effectif`` est DÉRIVÉ À CHAQUE LECTURE, jamais stocké : la carte des
+        valeurs ``auto`` est celle que le moteur rendrait AUJOURD'HUI. QJR58 ne
+        branche AUCUNE dérivation (elles arrivent avec leurs propriétaires —
+        QJR63 pour le kWc, QJR64 pour le scénario) : la carte est donc vide, et
+        chaque chemin SURCHARGÉ apparaît quand même avec ``auto: null``. Rien
+        n'est inventé pour remplir le bloc.
+
+        ``lignes`` est une carte ``{id: {...}}`` — JAMAIS une liste indexée par
+        position (une ligne supprimée déplacerait la surcharge sur une autre).
+        Elle reste vide tant que ``LigneDevis.quantite_manuelle`` /
+        ``prix_manuel`` n'existent pas (QJR59).
+        """
+        from ..domain import overrides as registre_overrides
+
+        lignes = {}
+        for ligne in devis.lignes.all():
+            marques = {
+                champ: bool(getattr(ligne, champ))
+                for champ in ('quantite_manuelle', 'prix_manuel')
+                if hasattr(ligne, champ)
+            }
+            if any(marques.values()):
+                lignes[str(ligne.pk)] = marques
+        return {
+            'overrides': registre_overrides.registre_du_devis(devis),
+            'effectif': registre_overrides.vue_effective(devis, {}),
+            'lignes': lignes,
+        }
+
+    @action(detail=True, methods=['get', 'patch', 'delete'],
+            url_path='overrides',
+            permission_classes=[IsResponsableOrAdmin])
+    def overrides(self, request, pk=None):
+        """GET / PATCH / DELETE du REGISTRE de surcharges de CE devis.
+
+        * **GET** — le registre + le bloc ``effectif`` dérivé à la lecture.
+        * **PATCH** — FUSIONNE le sous-ensemble de chemins reçu : envoyer
+          ``{"taille.nb_panneaux": {"valeur": 14}}`` ne touche AUCUN autre
+          chemin déjà posé. Un champ DÉRIVÉ, un chemin hors liste blanche D12
+          ou une clé indexée par POSITION sont refusés en 400 avec un message
+          FR qui NOMME le chemin — jamais un silence.
+        * **DELETE ?chemin=<chemin>** — ``regenerer`` : SUPPRIME l'override de
+          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais par une
+          valeur calculée : reposer une valeur exige un nouveau PATCH explicite.
+
+        L'ÉCRITURE PASSE PAR UN ``UPDATE`` D'UNE SEULE COLONNE
+        (``domain.overrides.ecrire_colonne``) : ni ``updated_at`` ni le gel
+        ``prix_par_kwc`` ne bougent — les deux effets de bord de ``Devis.save``
+        sont faux pour une pose d'override. Aucune ligne, aucun total, aucun
+        statut n'est touché (règle #4).
+        """
+        from ..domain import overrides as registre_overrides
+        from ..serializers import OverridesSerializer
+
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(self._overrides_reponse(devis))
+
+        if request.method == 'DELETE':
+            chemin = request.query_params.get('chemin') or ''
+            if not chemin:
+                return Response(
+                    {'chemin': 'Paramètre requis : quel chemin régénérer ?'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if not registre_overrides.chemin_autorise(chemin):
+                return Response(
+                    {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
+                    status=status.HTTP_400_BAD_REQUEST)
+            registre_overrides.ecrire_colonne(
+                devis, registre_overrides.regenerer(devis, chemin))
+            return Response(self._overrides_reponse(devis))
+
+        serializer = OverridesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            registre = registre_overrides.fusionner(
+                devis, serializer.validated_data, utilisateur=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        registre_overrides.ecrire_colonne(devis, registre)
+        return Response(self._overrides_reponse(devis))
+
+    @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
+            permission_classes=[IsResponsableOrAdmin])
+    def etude_params(self, request, pk=None):
+        """QJR62 — GET / PATCH **FUSIONNANT** d'``etude_params``.
+
+        LE TROU QUE CECI FERME. L'écran sauvegardait le devis en RECONSTRUISANT
+        ``etude_params`` de zéro et en le PATCHant sur un sérialiseur
+        permissif : chaque clé qu'il ne reconstruit pas lui-même —
+        ``factures_mensuelles_reelles``, ``gamme``, et tout ce que les quatre
+        rafraîchisseurs du serveur avaient écrit — DISPARAISSAIT à la
+        sauvegarde suivante du vendeur.
+
+        Ici, seules les clés REÇUES bougent ; les autres restent intouchées,
+        bit à bit. Une clé inconnue du schéma ou d'un type impossible est
+        refusée en 400 avec un message FR, jamais ignorée en silence ; une clé
+        DÉRIVÉE dont l'écran n'est pas propriétaire (le bloc horaire, le
+        tableau de dimensionnement, les profils comparatifs, la simulation)
+        l'est aussi — c'est le moteur qui les calcule.
+
+        Une valeur ``null`` RETIRE la clé (règle Z2 : une étude qui n'est plus
+        calculable est retirée, jamais laissée périmée).
+
+        Ce correctif est SERVEUR et ne dépend d'aucun changement d'écran.
+        L'écriture est chirurgicale (``update_fields=['etude_params']``) :
+        aucune ligne, aucun total, aucun statut ne bouge (règle #4).
+
+        QJR66 / passe Fable pré-merge — LES ÉTUDES SUIVENT LEURS ENTRÉES.
+        Depuis que l'écran écrit par ICI (et non plus dans le corps atomique du
+        devis), ses factures réelles arrivent APRÈS le rafraîchissement des
+        quatre études déclenché par l'écriture des lignes : le PDF servait
+        alors des économies dérivées d'entrées PÉRIMÉES — une régression franche
+        par rapport au chemin d'hier. On relance donc les études quand, et
+        seulement quand, une clé qui NOURRIT le moteur vient de bouger. La
+        liste vit dans le SCHÉMA (``entrees_du_moteur``), pas ici. L'appel est
+        quasi gratuit quand rien n'a réellement changé : les empreintes
+        QJR43/QJR44 court-circuitent chaque étude dont les entrées sont
+        identiques — c'est exactement leur rôle.
+        """
+        from ..domain.etude_schema import ECRAN, ecrire, entrees_du_moteur
+
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response({'etude_params': devis.etude_params or {}})
+
+        corps = request.data
+        if not isinstance(corps, dict) or not corps:
+            return Response(
+                {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
+                           'est attendu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bloc = ecrire(devis, proprietaire=ECRAN, **corps)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except TypeError:
+            return Response(
+                {'detail': "Clé d'étude invalide : les noms de clés doivent "
+                           'être des identifiants simples.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if entrees_du_moteur(corps.keys()):
+            # Best-effort, comme sur les trois autres chemins d'écriture : une
+            # étude qui échoue ne doit JAMAIS annuler une entrée correctement
+            # enregistrée.
+            from ..services import rafraichir_etudes_du_devis
+            try:
+                rafraichir_etudes_du_devis(devis)
+            except Exception:  # noqa: BLE001
+                pass
+        # La réponse reste LE BLOC FUSIONNÉ — ce que l'appelant vient de poser,
+        # plus ce qui était déjà là. Délibéré : c'est le contrat de cet endpoint
+        # (`contract_samples`), et y injecter les blocs dérivés fraîchement
+        # recalculés en changerait la forme sans que personne les lise. Ils sont
+        # en base, à leur place, pour le moteur PDF.
+        return Response({'etude_params': bloc})
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])

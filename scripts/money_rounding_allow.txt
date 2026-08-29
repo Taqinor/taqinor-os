@@ -28,6 +28,16 @@
 # monetaire). Ils sont captures ADVISORY : les inscrire ne dit pas qu'ils sont
 # justes, cela dit qu'ils existaient avant la garde ; la chaine monetaire
 # canonique est le chantier M2 du groupe QJR.
+#
+# 29/08/2026 (QJR53) : QUATRE entrees de plus, RETIREES -- pas recalees. Elles
+# decrivaient `builder._canonical_totaux`, la SECONDE implementation en float
+# de la chaine canonique (HT brut / HT net / TVA / TTC exact), SUPPRIMEE au
+# profit du noyau `selectors._canonical_totaux` via `domain.argent`. Les sites
+# n'existent plus : preuve = `git show HEAD~1 -- .../builder.py`, et
+# `check_money_rounding` les signalait ORPHELINES avant ce nettoyage. Aucune
+# autre ligne n'a bouge (les cles sont des empreintes de CONTENU : les deux
+# `round()` restants de ce bloc -- le prix BARRE `ttc_avant` -- gardent la
+# meme expression, donc la meme cle).
 
 # --- backend/django_core/apps/ventes/services.py
 backend/django_core/apps/ventes/services.py::extract_roof_config::4ccf19c2f770 | round(total_surface, 2) -- une SURFACE de toiture en m2, pas un montant (le regex retient le mot 'total').
@@ -40,10 +50,6 @@ backend/django_core/apps/ventes/services.py::sync_devis_from_layout::9f86a510d34
 backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::56d1c0aaf98f | Arrondi d'AFFICHAGE du prix unitaire HT d'une ligne (moteur vendore, regle #4) ; le montant persiste passe par les modeles.
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::973e2966d082 | Chaine de totaux d'AFFICHAGE du moteur : HT brut = somme(quantite x PU HT).
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::5d2eb1883e2e | Chaine de totaux d'AFFICHAGE : HT net = HT brut - remise.
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::e562a3b78872 | Chaine de totaux d'AFFICHAGE : montant de TVA = somme des blocs par taux.
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._canonical_totaux::f24189160bd7 | Chaine de totaux d'AFFICHAGE : TTC exact = HT net + TVA.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::de15cf116981 | Ratio d'AFFICHAGE : prix au kWc (total de reference / puissance kWc).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.

@@ -1373,8 +1373,19 @@ body{{font-family:'DM Sans',sans-serif;font-size:9pt;color:{CG7};
 def page1():
     # Local formatters — use U+00A0 (NON-BREAKING SPACE) for reliable rendering in all fonts
     _s      = "\u00a0"
-    ts      = f"{int(TOTAL_SANS):,}".replace(",", _s) + "\u00a0MAD"
-    ta      = f"{int(TOTAL_AVEC):,}".replace(",", _s) + "\u00a0MAD"
+    # QJR53 (30/08/2026) \u2014 LE MEME ARRONDI QUE ``fmt``, SUR TOUTES LES PAGES.
+    # Ces deux cartes d'option de la page 1 TRONQUAIENT (``int(x)``) pendant
+    # que le bloc \u00ab Total TTC \u00bb de la page 2 ARRONDIT (``fmt`` fait
+    # ``int(round(x))``). Tant que le builder rendait un TTC deja arrondi au
+    # dirham, les deux expressions donnaient le meme entier et l'ecart etait
+    # invisible ; depuis que la donnee est au CENTIME, un total en ,5+ sort
+    # DIFFERENT d'une page a l'autre \u2014 51 232,80 s'imprimait \u00ab 51 232 \u00bb sur la
+    # carte et \u00ab 51 233 \u00bb dans le bloc de totaux, pour la MEME option, sur le
+    # document du client. Le format d'affichage reste le DIRHAM (convention
+    # maison de ``fmt``, et les tranches de paiement de ce document sont
+    # arrondies au millier) : seule la regle d'arrondi est alignee.
+    ts      = f"{int(round(TOTAL_SANS)):,}".replace(",", _s) + "\u00a0MAD"
+    ta      = f"{int(round(TOTAL_AVEC)):,}".replace(",", _s) + "\u00a0MAD"
     esa_mad = f"{int(ECO_S_ANN):,}".replace(",", _s) + "\u00a0MAD"
     eaa_mad = f"{int(ECO_A_ANN):,}".replace(",", _s) + "\u00a0MAD"
     pk      = f"{int(PROD_KWH):,}".replace(",", _s)
@@ -1451,8 +1462,11 @@ def page1():
              if _both and RECOMMENDED == 'Avec batterie' else '')
     # Price display — crossed-out original + discount badge + new price when discount active
     if DISCOUNT_PCT > 0:
-        _s_before = f"{int(TOTAL_SANS_BEFORE):,}".replace(",", _s) + "\u00a0MAD"
-        _a_before = f"{int(TOTAL_AVEC_BEFORE):,}".replace(",", _s) + "\u00a0MAD"
+        # QJR53 \u2014 meme alignement que ``ts``/``ta`` ci-dessus : le prix
+        # barre est le MEME montant, il ne peut pas suivre une autre regle
+        # d'arrondi que le total qu'il barre.
+        _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
+        _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'

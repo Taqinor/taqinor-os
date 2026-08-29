@@ -1755,7 +1755,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            batterie_puissance_charge_kw=None,
                            tranches=None, charges_fixes_mad=None,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
-                           source_conso=None, detail_conso=None):
+                           source_conso=None, detail_conso=None,
+                           jour_reference=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
 
     Paramètres
@@ -1811,7 +1812,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     jours_types, avertissements, sources = jours_types_annee(
         kwc=puissance, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
-        occupation=occupation, equipements=equipements)
+        occupation=occupation, equipements=equipements,
+        jour_reference=jour_reference)
     if jours_types is None:
         return None
     source_prod = sources.get('production')
@@ -2064,7 +2066,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              batterie_puissance_decharge_kw=None,
                              puissances_par_capacite=None,
                              tranches=None, charges_fixes_mad=None,
-                             tppan=True, millesime=bareme.MILLESIME_COURANT):
+                             tppan=True, millesime=bareme.MILLESIME_COURANT,
+                             jour_reference=None):
     """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
 
     UN SEUL parcours des douze jours types (:func:`jours_types_annee`) sert
@@ -2117,7 +2120,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
     jours_types, _avertissements, _sources = jours_types_annee(
         kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
-        occupation=occupation, equipements=equipements)
+        occupation=occupation, equipements=equipements,
+        jour_reference=jour_reference)
     if not jours_types or len(jours_types) != 12:
         return None
 
@@ -2633,7 +2637,8 @@ def _reglages_tarifaires(company):
 
 
 def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
-                             data=None, occupation=None):
+                             data=None, occupation=None,
+                             jour_reference=None):
     """Bloc ``etude_horaire`` d'un devis RÉSIDENTIEL, ou ``None``.
 
     Lit tout ce dont le moteur a besoin sur le devis et son lead — toujours par
@@ -2651,19 +2656,26 @@ def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
     résolu par ``occupation_du_devis``. Sans ce paramètre, comportement
     byte-identique à avant.
 
+    ``jour_reference`` — QJR45 (29/08/2026) : la DATE contre laquelle le moteur
+    calcule (fenêtre Ramadan). ``None`` ⇒ ``timezone.localdate()`` posé au fond
+    par :func:`jours_types_annee`, comportement d'avant. La frontière du
+    pipeline (``apps.ventes.domain.entrees``) la pose explicitement pour que la
+    date UTILISÉE soit tracée dans l'empreinte des entrées.
+
     Ne lève JAMAIS : un calcul d'étude n'empêche pas d'enregistrer un devis.
     """
     try:
         return _etude_horaire_pour_devis(
             devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
-            data=data or {}, occupation=occupation)
+            data=data or {}, occupation=occupation,
+            jour_reference=jour_reference)
     except Exception:  # noqa: BLE001 — l'étude ne casse jamais un devis
         logger.warning('etude_horaire indisponible', exc_info=True)
         return None
 
 
 def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
-                              occupation=None):
+                              occupation=None, jour_reference=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
 
@@ -2742,7 +2754,8 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         batterie_puissance_decharge_onduleur_kw=puissances['ond_decharge_kw'],
         batterie_puissance_charge_kw=puissances['charge_kw'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
-        source_conso=source_conso, detail_conso=detail_conso)
+        source_conso=source_conso, detail_conso=detail_conso,
+        jour_reference=jour_reference)
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
     return resultat

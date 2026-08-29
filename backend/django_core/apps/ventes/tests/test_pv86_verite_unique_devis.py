@@ -119,8 +119,24 @@ class _Base(TestCase):
     @staticmethod
     def ttc_du_devis(devis):
         """Total TTC canonique du devis, calculé de ses LIGNES (le modèle
-        exclut déjà les lignes optionnelles/sections — XSAL5/XSAL14)."""
-        return round(float(devis.total_ttc))
+        exclut déjà les lignes optionnelles/sections — XSAL5/XSAL14).
+
+        QJR53 / D2 (29/08/2026) — AU CENTIME, PLUS AU DIRHAM. Cette aide
+        rendait ``round(float(devis.total_ttc))``, c'est-à-dire l'ancien
+        arrondi au DIRHAM ENTIER que ``builder._canonical_totaux`` appliquait
+        (``ttc = round(ttc_exact)``) pendant que tout le reste du bloc de
+        totaux — et toutes les factures de tranche aval — était au centime :
+        le devis du client ne s'additionnait pas. QJR53 a remplacé cette
+        seconde arithmétique par la façade ``argent.totaux(Vue.AFFICHAGE)``,
+        au centime. L'aide suit la même vérité.
+
+        Dérivation sur l'ARTEFACT : 11 700 + 24 000 + 14×1 100 + 14 000 +
+        14×375 + 30×67 + 1 667 + 4 000 + 1 000 = 79 027 HT ; TVA 20 % =
+        15 805,40 ; TTC = **94 832,40**. L'ancienne aide rendait 94 832 — le
+        dirham. Les deux côtés (liste et document) citent désormais le MÊME
+        94 832,40, et aucune égalité n'est desserrée pour y arriver.
+        """
+        return float(devis.total_ttc)
 
 
 class TestArtefactDeuxOnduleurs(_Base):
@@ -179,15 +195,24 @@ class TestArtefactDeuxOnduleurs(_Base):
 
     def test_remise_globale_le_total_reste_celui_des_lignes(self):
         """Avec remise globale, la vérité reste la chaîne canonique appliquée à
-        TOUTES les lignes (``Devis.total_ttc`` n'intègre pas la remise
-        globale — c'est le seul écart légitime au total modèle)."""
+        TOUTES les lignes.
+
+        QJR51/QJR53 / D2 (29/08/2026) — ``Devis.total_ttc`` HONORE désormais
+        la remise globale (il lit ``Vue.NET``) : ce n'est plus « le seul écart
+        légitime au total modèle », c'est le MÊME nombre. Et il est au
+        CENTIME. Dérivation : 79 027 HT − 10 % = 71 124,30 ; TVA 20 % =
+        14 224,86 ; TTC = **85 349,16** (l'attente d'hier, ``round(...)``,
+        disait 85 349 — le dirham).
+        """
         devis = self.make_devis(ARTEFACT_LIGNES, remise='10')
         data = self.build(devis)
         ht = sum(float(li.quantite) * float(li.prix_unitaire)
                  for li in devis.lignes.all())
         self.assertEqual(data['nb_options'], 1)
-        self.assertEqual(data['display_total'], round(ht * 0.9 * 1.2))
+        self.assertEqual(data['display_total'], round(ht * 0.9 * 1.2, 2))
         self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
+        # Le modèle dit le même chiffre que le document, remise comprise.
+        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
 
 
 class TestAlternativeDeclaree(_Base):
@@ -201,19 +226,31 @@ class TestAlternativeDeclaree(_Base):
         self.assertEqual(data['nb_options'], 2)
         self.assertEqual(data['scenario'], 'Les deux (Sans + Avec)')
         # Chaque option vaut la somme de SES lignes (communes + siennes).
+        # QJR53/D2 — au CENTIME (``prix_unit_ttc`` l'est déjà : le builder pose
+        # ``round(pu_ttc, 2)``), plus au dirham. Dérivation « sans » :
+        # 41 027 HT × 1,20 = **49 232,40** (l'attente d'hier disait 49 232) ;
+        # « avec » : 67 327 HT × 1,20 = **80 792,40**.
         self.assertEqual(
             data['totaux_sans']['ttc'],
             round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['sans_items'])))
+                      for it in data['sans_items']), 2))
         self.assertEqual(
             data['totaux_avec']['ttc'],
             round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['avec_items'])))
+                      for it in data['avec_items']), 2))
         # Le total de liste = option AVEC batterie (LANE CHOIX-AVEC, fondateur
         # 25/08/2026 : « choisis l'option avec quand tu dois choisir »),
         # jamais la somme mensongère des deux.
         self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
-        self.assertLess(data['display_total'], self.ttc_du_devis(devis))
+        # QJR51 / décision fondateur D2 (29/08/2026) — PRÉMISSE RENVERSÉE.
+        # Cette ligne était ``assertLess`` : ``Devis.total_ttc`` valait alors la
+        # SOMME des deux paniers (un montant qui n'apparaît dans aucun document
+        # et que le client ne paiera jamais), donc strictement supérieure au
+        # total d'une option. Depuis QJR51 la propriété lit ``Vue.NET`` et rend
+        # l'option EFFECTIVE (D9 : l'acceptée, sinon celle du total affiché,
+        # c'est-à-dire AVEC). Modèle et document citent donc le MÊME 80 792,40 :
+        # l'assertion se DURCIT en égalité, elle ne se desserre pas.
+        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
         # Un document à deux options n'est pas un devis à assainir.
         self.assertNotIn('avertissements_internes', data)
 
@@ -350,3 +387,75 @@ class TestChargeUtilePublique(_Base):
         self.assertEqual(ot['display_total'], ot['avec_batterie']['ttc'])
         self.assertNotEqual(
             ot['sans_batterie']['ttc'], ot['avec_batterie']['ttc'])
+
+
+class TestQjr55PredicatUnique(_Base):
+    """QJR55 — UN SEUL prédicat « devis à deux options ».
+
+    ``has_two_options`` et ``deux_options_declarees`` répondaient à la MÊME
+    question avec des règles DIFFÉRENTES (le premier construisait tout le
+    document PDF pour lire son ``nb_options``), et lequel s'exécutait décidait
+    si la liste montrait le total d'UNE option ou la somme sans signification
+    des DEUX. Les quatre combinaisons DÉCLARÉ × SERVABLE doivent donner la
+    MÊME réponse par les deux noms.
+    """
+
+    #: (libellé, lignes, etude_params, attendu)
+    def _cas(self):
+        return (
+            ('déclaré + servable', ARTEFACT_LIGNES,
+             {'scenario': 'Les deux (Sans + Avec)'}, True),
+            ('déclaré, NON servable (aucune batterie)', RESEAU_LIGNES,
+             {'scenario': 'Les deux (Sans + Avec)'}, False),
+            ('NON déclaré mais servable (artefact du fondateur)',
+             ARTEFACT_LIGNES, None, False),
+            ('ni déclaré ni servable', RESEAU_LIGNES, None, False),
+        )
+
+    def test_les_deux_noms_repondent_la_meme_chose(self):
+        from apps.ventes.utils.options import (
+            deux_options_declarees, has_two_options,
+        )
+        for libelle, lignes, etude, attendu in self._cas():
+            with self.subTest(cas=libelle):
+                devis = self.make_devis(lignes, etude)
+                self.assertIs(deux_options_declarees(devis), attendu)
+                self.assertIs(has_two_options(devis), attendu)
+
+    def test_une_ligne_variantee_suffit_meme_sans_scenario(self):
+        """L-2OPT — la variante DÉCLARÉE sur les lignes est une preuve plus
+        forte que ``etude_params['scenario']`` : elle n'existe que parce que la
+        composition a distingué les deux options."""
+        from apps.ventes.utils.options import (
+            deux_options_declarees, has_two_options,
+        )
+        devis = self.make_devis(ARTEFACT_LIGNES, None)
+        ligne = devis.lignes.filter(designation__icontains='hybride').first()
+        ligne.variante = 'avec'
+        ligne.save(update_fields=['variante'])
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertTrue(deux_options_declarees(devis))
+        self.assertTrue(has_two_options(devis))
+
+    def test_le_predicat_ne_traverse_plus_le_moteur_pdf(self):
+        """Le coût : chaque lecture d'argent d'un devis passait par un rendu
+        complet de document."""
+        from unittest.mock import patch
+
+        from apps.ventes.utils.options import has_two_options
+
+        devis = self.make_devis(ARTEFACT_LIGNES,
+                                {'scenario': 'Les deux (Sans + Avec)'})
+        with patch('apps.ventes.quote_engine.builder.build_quote_data') as m:
+            self.assertTrue(has_two_options(devis))
+        m.assert_not_called()
+
+    def test_l_option_effective_suit_le_meme_verdict(self):
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, option_effective,
+        )
+        declare = self.make_devis(ARTEFACT_LIGNES,
+                                  {'scenario': 'Les deux (Sans + Avec)'})
+        self.assertEqual(option_effective(declare), AVEC_BATTERIE)
+        artefact = self.make_devis(ARTEFACT_LIGNES, None)
+        self.assertEqual(option_effective(artefact), '')

@@ -10,51 +10,13 @@ from django.dispatch import receiver
 from core.events import payment_captured, chantier_annule, effet_rejete
 
 
-# ── QX24 — cohérence de l'étude quand les lignes changent ────────────────────
-def _qx24_refresh_etude_on_ligne_change(sender, instance, **kwargs):
-    """QX24 — à chaque save/delete d'une ``LigneDevis``, recalcule le payback
-    dérivé de l'étude pour qu'il reste cohérent avec le total courant.
-
-    Best-effort ; ne bloque jamais une écriture de ligne. No-op si le devis lié
-    n'a pas d'économies stockées (rien à dériver)."""
-    # ``instance.devis`` LÈVE ``Devis.DoesNotExist`` (pas ``AttributeError``) quand
-    # le devis parent est déjà supprimé — cas d'une suppression EN CASCADE
-    # (post_delete de la ligne alors que le devis a été collecté d'abord, ex.
-    # reset_demo_company NTDMO6). ``getattr(..., None)`` n'attrape PAS
-    # ``DoesNotExist`` : on l'attrape explicitement pour rester best-effort.
-    from django.core.exceptions import ObjectDoesNotExist
-    try:
-        devis = instance.devis
-    except ObjectDoesNotExist:
-        return
-    if devis is None:
-        return
-    try:
-        from . import services as ventes_services
-        ventes_services.refresh_etude_consistency(devis)
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
-
-
-def _qx24_refresh_etude_on_devis_change(sender, instance, created, update_fields,
-                                        **kwargs):
-    """QX24 — recalcule le payback quand la REMISE GLOBALE d'un devis change.
-
-    Anti-récursion : ``refresh_etude_consistency`` sauvegarde le devis avec
-    ``update_fields=['etude_params']`` — on ignore donc tout save dont les
-    champs mis à jour ne contiennent PAS ``remise_globale`` (le save interne du
-    correctif n'y touche jamais), ce qui coupe la boucle."""
-    if created:
-        return
-    # Ne réagit qu'à un changement EXPLICITE de remise_globale (jamais au save
-    # interne du correctif qui n'écrit que etude_params → pas de récursion).
-    if update_fields is None or 'remise_globale' not in set(update_fields):
-        return
-    try:
-        from . import services as ventes_services
-        ventes_services.refresh_etude_consistency(instance)
-    except Exception:  # noqa: BLE001
-        pass
+# QJR48 (29/08/2026) — LES DEUX RÉCEPTEURS QX24 ONT ÉTÉ SUPPRIMÉS.
+# Ils appelaient ``services.refresh_etude_consistency`` à chaque save/delete de
+# ``LigneDevis`` et à chaque changement de remise globale, pour dériver
+# ``etude_params['payback_annees']`` — une clé QUE PERSONNE NE LIT (voir le
+# commentaire de suppression dans ``services.py`` et
+# ``tests/test_qjr_coherence_etude.py``). Le coût était un ``Devis.save()`` par
+# ligne PLUS une recomputation complète d'``option_totaux``, pour rien.
 
 
 def _ntcpq20_snapshot_configuration(sender, instance, **kwargs):
@@ -80,10 +42,13 @@ def _ntcpq20_snapshot_configuration(sender, instance, **kwargs):
 
 
 def _register_qx24_signals():
-    from .models import Devis, LigneDevis
-    post_save.connect(
-        _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
-        dispatch_uid='ventes_qx24_ligne_saved')
+    """Signaux ``LigneDevis`` de l'app ventes.
+
+    QJR48 — n'y subsiste que NTCPQ20 (historique fin de configuration) : les
+    deux branchements QX24 ont été retirés avec leurs récepteurs. Le nom est
+    conservé parce que ``VentesConfig.ready()`` l'appelle.
+    """
+    from .models import LigneDevis
     # NTCPQ20 — historique fin de configuration (devis brouillon seulement).
     post_save.connect(
         _ntcpq20_snapshot_configuration, sender=LigneDevis,
@@ -91,12 +56,6 @@ def _register_qx24_signals():
     post_delete.connect(
         _ntcpq20_snapshot_configuration, sender=LigneDevis,
         dispatch_uid='ventes_ntcpq20_ligne_deleted')
-    post_delete.connect(
-        _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
-        dispatch_uid='ventes_qx24_ligne_deleted')
-    post_save.connect(
-        _qx24_refresh_etude_on_devis_change, sender=Devis,
-        dispatch_uid='ventes_qx24_devis_saved')
 
 
 @receiver(chantier_annule, dispatch_uid="ventes_alert_on_chantier_annule")

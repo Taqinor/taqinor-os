@@ -60,6 +60,18 @@ const ventesApi = {
     api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
   updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
+  // QJR62/QJR66 — PATCH **FUSIONNANT** d'`etude_params` : seules les clés
+  // ENVOYÉES bougent, les autres restent intouchées bit à bit (une valeur
+  // `null` RETIRE la clé — règle Z2). C'est LE chemin d'écriture de l'étude
+  // depuis l'écran : le corps du devis reconstruisait le bloc entier et
+  // effaçait en silence tout ce que l'écran ne recompose pas lui-même
+  // (`factures_mensuelles_reelles`, `gamme`, et les quatre blocs des
+  // rafraîchisseurs serveur). Le schéma serveur
+  // (`apps/ventes/domain/etude_schema.py`) est la seule porte : une clé
+  // inconnue ou une clé DÉRIVÉE dont l'écran n'est pas propriétaire ressort en
+  // 400 français, jamais en silence.
+  patchEtudeParams: (id, cles) =>
+    api.patch(`/ventes/devis/${id}/etude-params/`, cles),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).

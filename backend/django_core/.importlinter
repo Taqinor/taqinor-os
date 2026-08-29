@@ -76,6 +76,21 @@ ignore_imports =
 # domaines »), appliquée d'une app à l'autre.
     apps.cpq.selectors -> apps.stock.selectors
     apps.cpq.selectors -> apps.ventes.selectors
+# QJR50 — `apps.ventes.models` lit désormais son argent par la FAÇADE
+# `apps.ventes.domain.argent` (import fonction-local dans les properties
+# `total_ht`/`total_tva`/`total_ttc`/`tva_par_taux`, exactement le patron déjà
+# toléré pour `apps.ventes.models -> apps.ventes.selectors` ci-dessus). La
+# façade ne fait que NOMMER les vues : son calcul reste celui de
+# `ventes.selectors` (noyau canonique + `tva_buckets`) et de
+# `ventes.utils.options` (filtre d'option) — la MÊME couche selector/utils qui
+# traverse légitimement les domaines. On élague donc les DEUX arêtes de cette
+# couche, JAMAIS l'arête d'entrée `ventes.models -> ventes.domain.argent` :
+# celle-ci reste visible, si bien qu'un import DIRECT
+# `apps.ventes.models -> apps.{crm,stock,sav,installations}.models` — ou une
+# façade qui se mettrait à importer un modèle d'un autre domaine — serait
+# toujours détecté. Même motif exact que les exceptions `cpq.selectors`.
+    apps.ventes.domain.argent -> apps.ventes.selectors
+    apps.ventes.domain.argent -> apps.ventes.utils.options
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
