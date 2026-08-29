@@ -573,6 +573,45 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         self.assertIsNone(self._creer(lead))
         self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
 
+    # ── F6 — UN REFUS SE VOIT SUR LE LEAD ──────────────────────────────────
+
+    def test_un_refus_du_moteur_laisse_une_note_qui_NOMME_le_motif(self):
+        """F6 (revue Fable, 29/08/2026) — le refus ne laissait qu'une ligne de
+        journal serveur : le lead arrivait NU, sans devis et sans un mot, là où
+        la veille les mêmes leads en recevaient un. Le silence se lit comme une
+        panne ; c'est une abstention, et elle a un motif nommable."""
+        lead = self._lead(facture_hiver=None, roof_outline=CONTOUR_LATLNG)
+        self.assertIsNone(self._creer(lead))
+        notes = [a.body for a in LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE)]
+        refus = [n for n in notes if 'NON créé' in n]
+        self.assertEqual(len(refus), 1, notes)
+        self.assertIn('s\'abstient', refus[0])
+        self.assertIn('rien n\'a été écrit', refus[0])
+
+    def test_un_REJEU_du_meme_refus_n_ajoute_PAS_une_seconde_note(self):
+        """Le refus RELÂCHE la marque de dédup (une donnée manquante
+        aujourd'hui ne ferme pas le lead pour toujours) : chaque re-livraison
+        du webhook rejoue donc le même refus. Une note par rejeu ensevelirait
+        l'historique du lead sous le même paragraphe."""
+        lead = self._lead(facture_hiver=None, roof_outline=CONTOUR_LATLNG)
+        self.assertIsNone(self._creer(lead))
+        self.assertIsNone(self._creer(lead))
+        self.assertIsNone(self._creer(lead))
+        refus = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__contains='NON créé')
+        self.assertEqual(refus.count(), 1)
+
+    def test_la_note_d_abstention_n_est_JAMAIS_bloquante(self):
+        """Un chemin d'observabilité n'a pas le droit de transformer une
+        abstention (cas normal) en erreur."""
+        lead = self._lead(facture_hiver=None, roof_outline=CONTOUR_LATLNG)
+        with patch('apps.crm.services.ajouter_note_lead_si_nouvelle',
+                   side_effect=RuntimeError('chatter indisponible')):
+            self.assertIsNone(self._creer(lead))
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 0)
+
     def test_sans_contour_un_devis_sans_calepinage(self):
         """Comportement d'aujourd'hui, préservé : le devis existe, sans zone."""
         lead = self._lead()

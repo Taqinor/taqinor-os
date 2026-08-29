@@ -1836,6 +1836,51 @@ class AppliquerAuDevisTests(_Base):
         self.assertTrue(ligne.designation.startswith('Panneau Canadien'))
         self.assertIn('recommande', ot.lire_config_stockee(devis))
 
+    # ── F5 — LE TOIT EST UNE BORNE, PAS UN DÉCOR ────────────────────────────
+
+    def test_au_dessus_de_la_CONTENANCE_du_toit_le_geste_est_REFUSE(self):
+        """F5 (revue Fable, 29/08/2026). Le sérialiseur ne bornait le compte
+        qu'entre 1 et 500 : rien n'empêchait d'appliquer 40 panneaux à un toit
+        dessiné pour 10. Le devis partait alors avec une taille que la toiture
+        ne porte pas, et la première resynchronisation 3D la ramenait au
+        plafond — le compte se mettait à osciller entre deux écrans."""
+        devis = self._prepare('app-toit', {'nb_panneaux': 40})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=10):
+                with self.assertRaises(ot.ApplicationImpossible) as capture:
+                    ot.appliquer_au_devis(devis, 'recommande')
+        self.assertIn('toit', capture.exception.detail)
+        self.assertIn('10 panneaux', capture.exception.detail)
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 14)
+        # Refus AVANT toute écriture : la configuration reste à appliquer.
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    def test_sous_la_contenance_le_geste_PASSE(self):
+        devis = self._prepare('app-toit-ok', {'nb_panneaux': 18})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=20):
+                ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 18)
+
+    def test_sans_toit_MESURABLE_aucun_refus(self):
+        """MÊME HONNÊTETÉ QUE LES CARTES : sans géométrie, il n'y a AUCUNE
+        borne connue — on ne refuse jamais au nom d'un toit qu'on n'a pas
+        mesuré."""
+        devis = self._prepare('app-toit-inconnu', {'nb_panneaux': 40})
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            with mock.patch(
+                    'apps.ventes.dimensionnement.contenance_toit_du_devis',
+                    return_value=None):
+                ot.appliquer_au_devis(devis, 'recommande')
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis), 40)
+
     def test_une_substitution_au_prix_CATALOGUE_passe(self):
         devis = self._devis('app-subst')
         Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
@@ -1853,6 +1898,167 @@ class AppliquerAuDevisTests(_Base):
         self.assertEqual(Decimal(ligne.prix_unitaire), Decimal('1000.00'))
         self.assertEqual(resume['substitutions'],
                          {'panneau': 'Panneau JA Solar 600W'})
+
+
+class AppliquerSurUnDevisLesDeuxTests(_Base):
+    """F1 (revue Fable, 29/08/2026) — « LES DEUX (Sans + Avec) » EST LE DÉFAUT.
+
+    Un devis U2 porte des lignes VARIANTÉES : deux champs de panneaux, deux
+    onduleurs, une batterie propre à l'option « avec ». Sur ce devis-là,
+    ``sync_devis_from_layout`` traite le compte comme un PLAFOND — c'est la
+    bonne règle pour un CALEPINAGE (le toit dit ce qui tient), et la MAUVAISE
+    pour un nombre TAPÉ par le vendeur. Trois conséquences, toutes vécues :
+
+    a. une AUGMENTATION était un NO-OP SILENCIEUX (« une option qui reste EN
+       DESSOUS n'est JAMAIS augmentée ») — configuration consommée, message de
+       succès, devis inchangé : le « les modifications ne changent rien au
+       devis » que ce chemin existe pour clore ;
+    b. une DIMINUTION rabotait les DEUX options, y compris celle que le
+       vendeur n'ajustait pas ;
+    c. une SUBSTITUTION ne touchait que ``cibles[0]`` — le client recevait
+       deux options équipées de PANNEAUX DIFFÉRENTS, sans que rien ne le dise.
+    """
+
+    def _devis_deux_options(self, slug):
+        """Un devis U2 RÉEL : chaque option a son champ et son onduleur."""
+        company = self._company(slug)
+        client_obj = Client.objects.get_or_create(
+            company=company, nom='Client %s' % slug, defaults={})[0]
+        lead = Lead.objects.create(
+            company=company, nom='Lead', prenom=slug,
+            telephone='+212600000000', ville='Casablanca',
+            facture_hiver=1800, ete_differente=False)
+        devis = Devis.objects.create(
+            company=company, reference='DEV-%s-01' % slug.upper(),
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        lignes = (
+            # (désignation, quantité, PU, variante)
+            ('Panneau Canadien Solar 710W', '14', '1166.67', 'sans'),
+            ('Panneau Canadien Solar 710W', '12', '1166.67', 'avec'),
+            ('Structure de fixation', '14', '400.00', 'sans'),
+            ('Structure de fixation', '12', '400.00', 'avec'),
+            ('Onduleur réseau Huawei 10kW Monophasé', '1', '15000.00',
+             'sans'),
+            ('Onduleur hybride Deye 10kW Monophasé', '1', '23333.33', 'avec'),
+            ('Batterie Dyness 5 kWh', '2', '12500.00', 'avec'),
+        )
+        for nom, qte, pu, variante in lignes:
+            produit = Produit.objects.get_or_create(
+                company=company, nom=nom,
+                defaults={'prix_vente': pu, 'quantite_stock': 50})[0]
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'), variante=variante)
+        return devis
+
+    def _contexte(self, devis):
+        return SimpleNamespace(panel_watt=710.0,
+                               entrees={'company': devis.company})
+
+    def _panneaux(self, devis, variante):
+        return int(devis.lignes.get(designation__startswith='Panneau',
+                                    variante=variante).quantite)
+
+    def _appliquer(self, devis, config):
+        ot.enregistrer_config(devis, 'recommande', config)
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            return ot.appliquer_au_devis(devis, 'recommande')
+
+    # ── (a) L'AUGMENTATION, qui ne faisait RIEN ─────────────────────────────
+
+    def test_une_AUGMENTATION_porte_les_DEUX_options_au_compte_tape(self):
+        devis = self._devis_deux_options('u2-hausse')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis, 'sans'), 20)
+        self.assertEqual(self._panneaux(devis, 'avec'), 20)
+
+    def test_les_structures_suivent_les_DEUX_options(self):
+        devis = self._devis_deux_options('u2-ferrure')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        for variante in ('sans', 'avec'):
+            ligne = devis.lignes.get(designation__startswith='Structure',
+                                     variante=variante)
+            self.assertEqual(int(ligne.quantite), 20, variante)
+
+    # ── (b) LA DIMINUTION ───────────────────────────────────────────────────
+
+    def test_une_DIMINUTION_porte_les_DEUX_options_au_compte_tape(self):
+        devis = self._devis_deux_options('u2-baisse')
+        self._appliquer(devis, {'nb_panneaux': 8})
+        devis.refresh_from_db()
+        self.assertEqual(self._panneaux(devis, 'sans'), 8)
+        self.assertEqual(self._panneaux(devis, 'avec'), 8)
+
+    def test_chaque_option_garde_SON_IDENTITE(self):
+        """Le compte change, pas la nature de l'offre : l'option « sans » reste
+        sur son onduleur réseau, l'option « avec » garde sa batterie."""
+        devis = self._devis_deux_options('u2-identite')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        devis.refresh_from_db()
+        designations = set(devis.lignes.values_list('designation', flat=True))
+        self.assertIn('Onduleur réseau Huawei 10kW Monophasé', designations)
+        self.assertIn('Onduleur hybride Deye 10kW Monophasé', designations)
+        self.assertTrue(devis.lignes.filter(
+            designation__startswith='Batterie', variante='avec').exists())
+
+    # ── (c) LA SUBSTITUTION ─────────────────────────────────────────────────
+
+    def test_une_SUBSTITUTION_atteint_les_DEUX_options(self):
+        devis = self._devis_deux_options('u2-subst')
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        resume = self._appliquer(devis, {
+            'nb_panneaux': 16, 'equipements': {'panneau': autre.pk}})
+        devis.refresh_from_db()
+        substituees = devis.lignes.filter(produit=autre)
+        self.assertEqual(
+            set(substituees.values_list('variante', flat=True)),
+            {'sans', 'avec'},
+            'une seule option substituée : le client recevrait deux offres '
+            'équipées de panneaux différents')
+        self.assertEqual(resume['substitutions'],
+                         {'panneau': 'Panneau JA Solar 600W'})
+
+    def test_une_ligne_NEGOCIEE_sur_UNE_option_refuse_TOUT(self):
+        """Tout ou rien : jamais une option substituée et l'autre refusée."""
+        devis = self._devis_deux_options('u2-nego')
+        ligne = devis.lignes.get(designation__startswith='Panneau',
+                                 variante='avec')
+        ligne.remise = Decimal('10')
+        ligne.save(update_fields=['remise'])
+        autre = Produit.objects.create(
+            company=devis.company, nom='Panneau JA Solar 600W',
+            prix_vente=Decimal('1000'), quantite_stock=10)
+        with self.assertRaises(ot.ApplicationImpossible) as capture:
+            self._appliquer(devis, {
+                'nb_panneaux': 20, 'equipements': {'panneau': autre.pk}})
+        self.assertIn('négoci', capture.exception.detail)
+        devis.refresh_from_db()
+        # NI la substitution NI le compte n'ont été écrits, des DEUX côtés.
+        self.assertFalse(devis.lignes.filter(produit=autre).exists())
+        self.assertEqual(self._panneaux(devis, 'sans'), 14)
+        self.assertEqual(self._panneaux(devis, 'avec'), 12)
+        self.assertIn('recommande', ot.lire_config_stockee(devis))
+
+    # ── LE CHATTER DIT LE VRAI old→new ──────────────────────────────────────
+
+    def test_le_chatter_journalise_le_VRAI_ancien_et_nouveau_compte(self):
+        from apps.ventes.models import DevisActivity
+        devis = self._devis_deux_options('u2-chatter')
+        self._appliquer(devis, {'nb_panneaux': 20})
+        activite = DevisActivity.objects.filter(
+            devis=devis, field='offres_tailles.recommande').first()
+        self.assertIsNotNone(activite)
+        # Le compte de l'option 1, jamais la somme des deux (un nombre qui ne
+        # décrit aucune installation).
+        self.assertEqual(activite.old_value, '14 panneaux')
+        self.assertIn('20 panneaux', activite.new_value)
 
 
 class ApiAppliquerTests(_Base):

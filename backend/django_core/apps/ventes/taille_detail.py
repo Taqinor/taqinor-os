@@ -67,6 +67,31 @@ def _empreinte_config(devis):
     return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
 
 
+def _empreinte_lien(link):
+    """Ce qui, sur CE LIEN, décide ce qu'il a le droit de servir.
+
+    LE TROU QUE CECI BOUCHE (revue Fable, 29/08/2026). La clé ne portait que
+    le ``pk`` du lien — or ``sections`` et ``niveau`` sont MUTABLES sur un lien
+    déjà émis (c'est tout leur intérêt : « révocable sans régénérer le jeton »).
+    Décocher « Taille Éco » sur un lien déjà consulté laissait donc le cache
+    servir ce détail-là pendant un quart d'heure encore : une révocation qui
+    ne révoque pas.
+
+    Le contenu des deux champs entre dans l'empreinte — pas un horodatage :
+    ``ShareLink`` n'a AUCUN champ de dernière modification (seulement
+    ``created_at``), et en inventer un demanderait une migration pour une
+    donnée que le contenu porte déjà. ``otp_lecture`` y entre aussi : il garde
+    la même porte que ``proposal_data``, et le cache ne doit pas survivre à
+    son activation.
+    """
+    graine = json.dumps(
+        {'sections': getattr(link, 'sections', None) or {},
+         'niveau': getattr(link, 'niveau', None),
+         'otp': bool(getattr(link, 'otp_lecture', False))},
+        sort_keys=True, default=str)
+    return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
+
+
 def cle_cache(link, cle, variante):
     """La clé de mémoïsation d'UN détail. Bornée au LIEN, jamais au devis seul.
 
@@ -74,9 +99,15 @@ def cle_cache(link, cle, variante):
     même devis peuvent servir des tailles différentes. Une clé au devis les
     aurait mélangés — un client verrait le détail d'une taille que son propre
     lien ne sert pas.
+
+    Le ``pk`` ne suffit PAS : ces deux champs se modifient SUR PLACE (voir
+    :func:`_empreinte_lien`). Leur contenu entre donc dans la clé, si bien
+    qu'une case décochée invalide d'elle-même — sans invalidation à écrire à
+    la main, donc sans le risque de l'oublier.
     """
-    return 'taille-detail:%s:%s:%s:%s' % (
+    return 'taille-detail:%s:%s:%s:%s:%s' % (
         getattr(link, 'pk', 'x'), cle, variante,
+        _empreinte_lien(link),
         _empreinte_config(getattr(link, 'devis', None)))
 
 

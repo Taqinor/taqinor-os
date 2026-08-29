@@ -1620,6 +1620,17 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
       de matériel re-tarife la ligne ; si celle-ci porte un prix ou une remise
       qui ne sont plus ceux du catalogue (``_est_au_prix_catalogue``), le geste
       est REFUSÉ en nommant la ligne, jamais appliqué par-dessus.
+    * **Le TOIT borne le compte** (F5). Au-dessus de ce que la toiture accepte
+      (``dimensionnement.contenance_toit_du_devis`` — la borne même dont les
+      trois cartes se servent), le geste est refusé en NOMMANT la contenance.
+      Aucune géométrie mesurable ⇒ aucune borne connue ⇒ aucun refus : on ne
+      refuse pas au nom d'un toit qu'on n'a pas mesuré.
+    * **Un devis « Les deux » reçoit la taille SUR SES DEUX OPTIONS** (F1).
+      Chacune garde son identité (son onduleur, sa batterie), mais panneaux,
+      structures et socles vont au compte demandé — à la HAUSSE comme à la
+      baisse (``sync_devis_from_layout(cible_exacte=True)`` : le compte tapé
+      n'est pas une contenance de toit, c'est le devis voulu), et une
+      substitution touche TOUTES les lignes du rôle, pas la première.
     * **Tout ou rien.** Le tout tient dans une transaction : un refus tardif
       (substitution en conflit) annule la resynchronisation déjà faite.
     * **La configuration est CONSOMMÉE.** Le devis EST désormais la vérité :
@@ -1662,6 +1673,28 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
             'profil de consommation réel et catalogue tarifé requis) : il ne '
             'peut donc pas en recevoir une.')
 
+    # ── F5 (revue Fable, 29/08/2026) — LE TOIT EST UNE BORNE, PAS UN DÉCOR ──
+    #
+    # Le sérialiseur ne bornait le compte qu'entre 1 et 500 : rien n'empêchait
+    # d'appliquer 40 panneaux à un devis dont le toit a été dessiné pour 10.
+    # Le devis partait alors chez le client avec une taille que sa propre
+    # toiture ne porte pas, et la première resynchronisation 3D la ramenait au
+    # plafond — le compte se mettait à osciller entre deux écrans.
+    #
+    # LA MÊME BORNE QUE LES CARTES, PAS UNE SECONDE : les trois tailles se
+    # dérivent déjà sous ``contenance_toit_du_devis`` (calepinage mesuré, à
+    # défaut le mur physique du tracé). Et LA MÊME HONNÊTETÉ : sans géométrie,
+    # cette fonction rend ``None`` et il n'y a AUCUNE borne connue — donc aucun
+    # refus. On ne refuse jamais au nom d'un toit qu'on n'a pas mesuré.
+    from apps.ventes.dimensionnement import contenance_toit_du_devis
+    contenance = contenance_toit_du_devis(devis)
+    if contenance and nb_panneaux > int(contenance):
+        raise ApplicationImpossible(
+            'Le toit dessiné sur ce devis n\'accepte que %s panneaux : '
+            'impossible d\'en appliquer %s. Agrandissez le tracé dans '
+            '« Concevoir la toiture (3D) », ou visez au plus %s panneaux.'
+            % (int(contenance), nb_panneaux, int(contenance)))
+
     panneaux_avant = _compter_panneaux_du_devis(devis)
     modules = int(_num(config.get('batterie_nb_modules'), 0))
     equipements = config.get('equipements') or {}
@@ -1671,7 +1704,15 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
             resultat = sync_devis_from_layout(
                 devis, _layout_de_la_taille(devis, contexte, nb_panneaux,
                                             modules, extract_roof_config),
-                user=utilisateur)
+                user=utilisateur,
+                # F1 — LE COMPTE TAPÉ DEVIENT LE DEVIS. Sur un devis
+                # « Les deux » (lignes variantées), le calepinage est
+                # normalement un PLAFOND : une option en dessous n'est jamais
+                # augmentée. Ici la cible ne décrit pas un toit mais la
+                # décision du vendeur — elle s'applique aux DEUX options, à la
+                # hausse comme à la baisse. La contenance réelle du toit, elle,
+                # a déjà refusé au-dessus.
+                cible_exacte=True)
         except SyncLayoutError as erreur:
             raise ApplicationImpossible(
                 erreur.detail,
@@ -1823,6 +1864,13 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
 
     Un rôle qu'aucune ligne du devis ne porte est IGNORÉ (rien à remplacer) —
     ajouter une ligne ici serait une composition, et ce chemin n'en fait pas.
+
+    TOUTES LES LIGNES DU RÔLE, PAS LA PREMIÈRE (F1, revue Fable, 29/08/2026).
+    Sur un devis « Les deux (Sans + Avec) », un même rôle porte DEUX lignes —
+    une par option. N'en substituer qu'une (``cibles[0]``) faisait vendre au
+    même client deux options équipées de PANNEAUX DIFFÉRENTS, sans que rien ne
+    le dise. Et le contrôle des lignes négociées passe AVANT la première
+    écriture : tout ou rien, jamais une option substituée et l'autre refusée.
     """
     from decimal import Decimal as _Decimal
 
@@ -1837,32 +1885,42 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
         return {}
 
     lignes = list(_lignes_produit_du_devis(devis))
-    appliquees = {}
+    a_ecrire = []
     for role, produit in produits.items():
         cibles = [ligne for ligne in lignes
                   if _role_de_la_ligne(
                       getattr(ligne, 'designation', '') or '') == role]
         if not cibles:
             continue
-        ligne = cibles[0]
-        if not _est_au_prix_catalogue(ligne):
-            raise ApplicationImpossible(
-                'La ligne « %s » porte un prix ou une remise négociés : le '
-                'remplacer par « %s » les effacerait. Remettez la ligne au '
-                'prix catalogue, ou faites la substitution à la main sur le '
-                'devis.' % (getattr(ligne, 'designation', '') or 'sans nom',
-                            getattr(produit, 'nom', '') or 'ce produit'))
-        ligne.produit = produit
-        ligne.designation = getattr(produit, 'nom', '') or ligne.designation
-        prix = getattr(produit, 'prix_vente', None)
-        if prix is not None:
-            ligne.prix_unitaire = _Decimal(str(prix))
-        tva = getattr(produit, 'tva', None)
-        if tva is not None:
-            ligne.taux_tva = _Decimal(str(tva))
-        ligne.save(update_fields=['produit', 'designation', 'prix_unitaire',
-                                  'taux_tva'])
-        appliquees[role] = ligne.designation
+        # TOUT LE CONTRÔLE D'ABORD — une seule ligne négociée refuse le geste
+        # ENTIER, avant qu'aucune n'ait bougé (la transaction englobante le
+        # garantirait aussi, mais un refus qui n'a rien commencé se relit).
+        for ligne in cibles:
+            if not _est_au_prix_catalogue(ligne):
+                raise ApplicationImpossible(
+                    'La ligne « %s » porte un prix ou une remise négociés : '
+                    'la remplacer par « %s » les effacerait. Remettez la ligne '
+                    'au prix catalogue, ou faites la substitution à la main '
+                    'sur le devis.'
+                    % (getattr(ligne, 'designation', '') or 'sans nom',
+                       getattr(produit, 'nom', '') or 'ce produit'))
+        a_ecrire.append((role, produit, cibles))
+
+    appliquees = {}
+    for role, produit, cibles in a_ecrire:
+        for ligne in cibles:
+            ligne.produit = produit
+            ligne.designation = (getattr(produit, 'nom', '')
+                                 or ligne.designation)
+            prix = getattr(produit, 'prix_vente', None)
+            if prix is not None:
+                ligne.prix_unitaire = _Decimal(str(prix))
+            tva = getattr(produit, 'tva', None)
+            if tva is not None:
+                ligne.taux_tva = _Decimal(str(tva))
+            ligne.save(update_fields=['produit', 'designation',
+                                      'prix_unitaire', 'taux_tva'])
+            appliquees[role] = ligne.designation
     return appliquees
 
 
