@@ -100,10 +100,57 @@ def parse_kw(text: str):
     return float(m.group(1).replace(",", ".")) if m else None
 
 
-# ── Classification ALIGNÉE sur quote_engine/builder.py (mots-clés identiques) ──
+# ═══════════════════════════════════════════════════════════════════════════
+# LA TABLE DE CLASSIFICATION PRODUIT DU BACKEND — IL N'Y EN A QU'UNE (QJR78)
+# ═══════════════════════════════════════════════════════════════════════════
+# Les commentaires de ce fichier ANNONÇAIENT depuis toujours une classification
+# « ALIGNÉE sur quote_engine/builder.py, mots-clés identiques ». Ce n'était plus
+# vrai : le 19/08/2026, un audit adversarial a ÉLARGI la détection panneau du
+# seul builder (module + qualifiant PV, marque + wattage, exclusions), et les
+# deux autres jeux — celui-ci et celui de l'ex-`services.py` (aujourd'hui
+# `domain/catalogue.py`) — sont restés à la version étroite « panneau /
+# panneaux ». Conséquence mesurable : un devis dont la ligne panneau s'appelle
+# « Module PV 550 W » était vu comme n'ayant AUCUN panneau à l'enregistrement,
+# alors que le PDF, lui, la comptait. C'est exactement le patron de l'incident
+# de PRODUCTION DEV-202608-0024, que les commentaires du code citent déjà.
+#
+# Depuis QJR78, ce module est la SEULE table backend : `domain/catalogue.py` et
+# `quote_engine/builder.py` importent ces fonctions au lieu d'en garder une
+# copie. Le jeu retenu est le PLUS LARGE (celui du builder) — le rétrécir
+# aurait fait régresser le PDF, qui classe correctement depuis le 19/08.
+#
+# La moitié ÉCRAN (`frontend/src/features/ventes/solar.js`) s'y branche par le
+# contrat QJR2 : c'est QJR92, pas cette tâche.
+
+#: Qualifiants qui font d'un « module » un module PHOTOVOLTAÏQUE. Sans eux,
+#: « module » seul désignerait aussi un module de batterie ou de coffret.
+_PANEL_MODULE_QUALIFIERS = ("pv", "photovolta", "solaire", "solar")
+
+#: Marques de panneaux. Elles ne suffisent JAMAIS seules — Canadian Solar,
+#: Huawei et consorts vendent aussi des onduleurs : il faut un wattage lisible
+#: à côté. On préfère l'omission au faux positif.
+_PANEL_BRANDS = (
+    "canadian solar", "canadien solar", "jinko", "longi", "trina",
+    "ja solar", "risen", "sunpower", "qcells", "q cells", "astronergy",
+    "znshine",
+)
+
+
 def is_panel(designation: str, produit_nom: str = "") -> bool:
     blob = f"{designation} {produit_nom}".lower()
-    return "panneau" in blob or "panneaux" in blob
+    if "panneau" in blob or "panneaux" in blob:
+        return True
+    # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
+    # un panneau, quelle que soit la marque écrite dessus.
+    if (is_inverter(blob) or is_battery(blob)
+            or is_smart_meter(blob) or is_wifi_dongle(blob)):
+        return False
+    if "module" in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS):
+        return True
+    # Marque de panneau ET puissance lisible : sans watt, une marque seule
+    # reste ambiguë — on préfère l'omission à un faux positif.
+    return bool(any(b in blob for b in _PANEL_BRANDS)
+                and _WATT_RE.search(blob))
 
 
 def is_battery(designation: str) -> bool:
@@ -123,6 +170,19 @@ def is_reseau_inverter(designation: str) -> bool:
 
 def is_any_inverter(designation: str) -> bool:
     return is_hybrid_inverter(designation) or is_reseau_inverter(designation)
+
+
+def is_inverter(designation: str) -> bool:
+    return "onduleur" in (designation or "").lower()
+
+
+def is_smart_meter(designation: str) -> bool:
+    return "smart meter" in (designation or "").lower()
+
+
+def is_wifi_dongle(designation: str) -> bool:
+    d = (designation or "").lower()
+    return "wifi" in d or "dongle" in d
 
 
 def _as_kw(value):

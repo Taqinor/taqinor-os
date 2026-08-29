@@ -31,6 +31,11 @@ import math
 import re
 import unicodedata
 
+# QJR78 — LA table de classification produit du backend (voir plus bas).
+# ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
+# modèle, ni I/O, et ne peut donc pas boucler.
+from apps.ventes import solar_design as _sd
+
 
 def marque_preferee(company, gamme_nom, role):
     """La marque préférée pour ce (société, gamme, rôle), ou ``None``.
@@ -157,20 +162,22 @@ def ordre_lignes_societe(company):
     return ordre if isinstance(ordre, list) and ordre else None
 
 
-# Q3 — composition keyword rules. Kept ALIGNED with
-# apps/ventes/quote_engine/builder.py (réseau/injection, hybride, batterie,
-# panneau) so the PDF option split reads the lines this service writes the same
-# way it reads hand-typed ones.
+# QJR78 — LA CLASSIFICATION PRODUIT VIENT DE ``solar_design``, ET DE LÀ SEULE.
+# Ce bloc annonçait « Kept ALIGNED with quote_engine/builder.py » ; il ne
+# l'était plus. Le 19/08/2026, la détection panneau a été élargie DANS LE
+# BUILDER seulement (module + qualifiant PV, marque + wattage, exclusions), et
+# cette copie-ci est restée à « panneau / panneaux ». Un devis dont la ligne
+# panneau s'appelle « Module PV 550 W » était donc rejeté à l'enregistrement
+# comme n'ayant aucun panneau, pendant que le PDF la comptait — le patron exact
+# de l'incident de PRODUCTION DEV-202608-0024 que ce fichier cite lui-même.
+#
+# Les alias gardent les noms locaux : aucun appelant de ce module ne change.
+# ``_WATT_RE`` reste défini ici (``_parse_watt`` s'en sert), avec la MÊME
+# expression que celle de ``solar_design``.
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 
-
-def _is_panel(name: str) -> bool:
-    n = (name or "").lower()
-    return "panneau" in n or "panneaux" in n
-
-
-def _is_battery(name: str) -> bool:
-    return "batterie" in (name or "").lower()
+_is_panel = _sd.is_panel
+_is_battery = _sd.is_battery
 
 
 # ── PVCBL — les CÂBLES suivent la taille du calepinage (F8, fondateur
@@ -452,15 +459,9 @@ def _filtrer_onduleurs_complets(candidats):
     return complets or candidats
 
 
-def _is_hybrid_inverter(name: str) -> bool:
-    n = (name or "").lower()
-    return "onduleur" in n and "hybride" in n
-
-
-def _is_reseau_inverter(name: str) -> bool:
-    n = (name or "").lower()
-    return "onduleur" in n and (
-        "réseau" in n or "reseau" in n or "injection" in n)
+# QJR78 — même table unique que ci-dessus (``solar_design``).
+_is_hybrid_inverter = _sd.is_hybrid_inverter
+_is_reseau_inverter = _sd.is_reseau_inverter
 
 
 def _has_price(produit) -> bool:
