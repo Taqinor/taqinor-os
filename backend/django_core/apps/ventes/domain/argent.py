@@ -88,13 +88,22 @@ def _lignes_du_devis(devis, lignes, *, avec_produit):
     passe et ne paie pas une seconde requête, exactement comme
     ``utils.options.option_totaux``.
 
-    ``avec_produit`` — ``select_related('produit')`` n'est demandé QUE par les
-    vues canoniques, dont le filtre d'option lit le NOM du produit lié
-    (``utils.options._blob``). :attr:`Vue.BRUT` s'en passe et lit
-    ``devis.lignes.all()`` mot pour mot comme ``Devis.total_ht`` : c'est ce qui
-    lui laisse RÉUTILISER un ``prefetch_related('lignes')` de la liste des
-    devis. Ajouter un ``select_related`` ici transformerait chaque total de la
-    liste en requête supplémentaire (N+1).
+    ``avec_produit`` — ``select_related('produit')`` n'est demandé QUE quand un
+    FILTRE D'OPTION va réellement s'appliquer, car lui seul lit le NOM du
+    produit lié (``utils.options._blob``). Sinon on lit ``devis.lignes.all()``
+    mot pour mot, la SEULE forme que le gestionnaire de relation sert depuis
+    ``_prefetched_objects_cache`` : c'est ce qui laisse RÉUTILISER le
+    ``prefetch_related('devis__lignes')`` de la liste des leads. Chaîner
+    ``select_related`` construit un nouveau queryset, ignore ce cache et
+    transforme chaque total de la liste en requête supplémentaire (N+1).
+
+    NPLUS1 (29/08/2026, QJR51) — c'était la MOITIÉ de la régression « 23 (5
+    leads) → 33 (10 leads) » : depuis que ``Devis.total_ttc`` lit :attr:`Vue.NET`
+    (décision D2), ce chemin passait par la branche ``select_related`` pour TOUS
+    les devis, y compris les mono-option qui n'ont AUCUN filtre à appliquer et
+    donc aucun besoin du produit. L'appelant décide maintenant sur pièce
+    (``totaux`` passe ``avec_produit=bool(option)``) : un devis à deux options
+    paie la même requête qu'hier, un devis mono-option n'en paie plus aucune.
     """
     if lignes is not None:
         return list(lignes)
@@ -214,5 +223,13 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     if not option:
         from apps.ventes.utils.options import option_effective
         option = option_effective(devis)
+    # NPLUS1 — le NOM du produit n'est lu (``utils.options._blob``) que si un
+    # filtre d'option s'applique, c'est-à-dire seulement quand ``option`` est
+    # non vide (cf. ``_totaux_canoniques`` juste au-dessus). Sans option
+    # effective — tout devis mono-option, l'écrasante majorité d'une liste —
+    # aucun ``select_related`` n'est justifié, et les lignes viennent alors du
+    # prefetch de l'appelant sans une seule requête.
     return _totaux_canoniques(
-        devis, _lignes_du_devis(devis, lignes, avec_produit=True), option)
+        devis,
+        _lignes_du_devis(devis, lignes, avec_produit=bool(option)),
+        option)
