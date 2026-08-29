@@ -507,6 +507,14 @@ export default function DevisGenerator({
   // chargement dédié pendant l'aller-retour réseau (le bouton porte
   // `loading={autoFillLoading}`).
   const [autoFillLoading, setAutoFillLoading] = useState(false)
+  // QJR36 — même patron que `sizingServeurMessage` : quand le dry-run serveur
+  // (`ventesApi.composerDevis`) échoue et que l'écran retombe sur
+  // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
+  // documente lui-même comme divergente du serveur (câbles, marques épinglées,
+  // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
+  // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
+  // Ne change PAS le comportement du repli, seulement le rend visible.
+  const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
   // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
   // best-effort : une société sans réglage ou un rôle non responsable/admin
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
@@ -2522,10 +2530,15 @@ export default function DevisGenerator({
           }
         }
         const { data } = await ventesApi.composerDevis(body)
+        setCompositionSourceLocale(null)
         appliquerCompositionServeur(data)
       } catch (err) {
         // REPLI — jamais un écran sans Auto-remplir pour une panne réseau.
         console.error('composerDevis (dry-run) indisponible, repli local :', err)
+        // QJR36 — la raison est posée dans l'état (comme `sizingServeurMessage`
+        // pour le refus serveur) ; le vendeur reçoit désormais la bannière
+        // visible ci-dessous au lieu d'un simple console.error silencieux.
+        setCompositionSourceLocale(err?.message || 'panne réseau/serveur')
         composeLocalement()
       } finally {
         setAutoFillLoading(false)
@@ -4132,6 +4145,18 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
+            {/* QJR36 — même patron que le refus serveur `sizingServeurMessage`
+                ci-dessus : le dry-run serveur a échoué et l'écran a composé
+                localement (composeLocalement) — comportement de repli
+                INCHANGÉ, seule sa visibilité change (avant : console.error
+                silencieux uniquement). */}
+            {compositionSourceLocale && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+                   data-testid="composition-source-locale">
+                Composition établie localement (serveur indisponible) — les
+                quantités peuvent différer du devis serveur.
+              </div>
+            )}
             {onduleursIncomplets.length > 0 && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                 <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
