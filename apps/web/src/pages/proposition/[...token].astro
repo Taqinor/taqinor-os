@@ -188,6 +188,9 @@ import {
 // (aucune correspondance certaine → aucun lien, jamais la fiche d'une autre marque).
 // L-ECO — lecture SEULE du bloc public `economies_periodes` (fichier dédié :
 // aucune arithmétique d'économie ne vit côté page).
+// OPTIONS CHARGEABLES (29/08/2026) — la longueur d'arc de l'anneau de
+// couverture, DÉFINIE UNE FOIS et partagée par ce rendu serveur et l'îlot.
+import { dasharrayDonut } from '../../lib/tailleDetail';
 import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -1111,8 +1114,12 @@ const showCouvertureDonut = installMode === 'residentiel' && !!couverture;
 // Géométrie de l'anneau : rayon 42 sur un viewBox 100×100 → circonférence 2πr.
 // C'est du DESSIN (longueur d'arc), pas un recalcul du pourcentage servi.
 const DONUT_R = 42;
-const donutCirc = 2 * Math.PI * DONUT_R;
-const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0;
+// OPTIONS CHARGEABLES (29/08/2026) — la longueur d'arc vit désormais dans
+// `lib/tailleDetail.ts`, UNE seule fois : le rendu serveur ci-dessous et la
+// mise à jour de l'anneau quand le client charge une autre taille appellent
+// la MÊME fonction. Une seconde expression dans l'îlot aurait été exactement
+// la divergence que cette page a déjà payée ailleurs.
+const donutDasharray = dasharrayDonut(couverture ? couverture.pct : null, DONUT_R);
 
 // ── L-PROP CJ2b-bis (lot 4, 24/08) — falaise tarifaire / régime batterie /
 // estimation de consommation, sous-ensemble PUBLIC servi par le backend
@@ -2133,6 +2140,96 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── RÉCAPITULATIF « RECOMMANDÉ » — MONO-OPTION (fondateur, 29/08/2026) ─
+           « when only ONE option is sent, the info-dense card must NOT
+           disappear — start the page with the Recommandé card as an opening
+           summary ».
+
+           LE PROBLÈME. Quand le vendeur n'envoie qu'UNE taille, le contrat
+           `offres_tailles` est ABSENT (le seuil « deux tailles minimum » : une
+           section « Explorer d'autres tailles » qui n'en montre qu'une
+           n'explore rien) — et avec lui disparaissait la carte la plus DENSE
+           de la page, celle qui dit tout d'un coup d'œil. Le client d'une
+           mono-option lisait donc une page MOINS informative que celui d'une
+           multi-option, alors qu'il reçoit exactement la même offre.
+
+           CE QUE CE BLOC EST, ET N'EST PAS. C'est un RÉSUMÉ D'OUVERTURE, pas
+           un sélecteur : aucune bascule, aucun `aria-current`, aucun CTA « je
+           choisis celle-ci », aucun `data-taille-*` (l'îlot des tailles ne le
+           voit pas et ne peut pas le piloter). La page entière EN DESSOUS est
+           son détail — c'est pour cela qu'il ouvre au lieu de conclure.
+
+           ZÉRO DÉRIVATION NOUVELLE (garde PRÉSERVATION). Chaque valeur est une
+           variable DÉJÀ calculée pour le héros et les chapitres de cette page
+           (`heroTtc`, `ecoHero`, `paybackHero`, `heroKwc`, `heroNbPanneaux`,
+           `prodKwh`, `couverture`, la banque du simulateur) : rien n'est
+           recalculé, donc rien ne peut diverger d'un chiffre affiché plus bas.
+           Chaque item est OMIS quand sa valeur n'est pas réelle — jamais un
+           zéro de remplissage. Tout absent ⇒ le bloc n'existe pas.
+
+           Il ne s'affiche QUE sans `offres_tailles` : dès qu'il y a deux
+           tailles, les cartes de la section suivante jouent ce rôle et deux
+           récapitulatifs concurrents seraient une redondance, pas une aide. -->
+      {ok && !tailles && (heroTtc !== null || ecoHero || paybackHero || heroKwc || prodKwh) && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" data-recap-mono>
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Votre installation, en un coup d'œil" data-en="Your system at a glance" data-ar="منشأتكم في لمحة">
+            Votre installation, en un coup d'œil</p>
+          <div class="cine-card cine-in mt-4 rounded-2xl p-6 shadow-premium sm:p-7"
+            style="border-color: rgb(232 181 74 / 0.35)">
+            <p class="text-sm text-lune-soft" data-i18n
+              data-fr="La configuration recommandée pour vous — tout le détail suit sur cette page."
+              data-en="The configuration we recommend for you — every detail follows on this page."
+              data-ar="التكوين الموصى به لكم — كل التفاصيل تتبع في هذه الصفحة.">
+              La configuration recommandée pour vous — tout le détail suit sur cette page.</p>
+            <dl class="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+              {heroTtc !== null ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</dt>
+                  <dd class="fig lum mt-1 text-2xl" dir="ltr">{formatMAD(heroTtc)}</dd>
+                </div>
+              ) : null}
+              {ecoHero ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</dt>
+                  <dd class="fig mt-1 text-2xl text-lune" dir="ltr">{formatMAD(ecoHero)}</dd>
+                </div>
+              ) : null}
+              {paybackHero ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</dt>
+                  <dd class="fig mt-1 text-2xl text-lune" dir="ltr">{paybackHero}</dd>
+                </div>
+              ) : null}
+              {heroKwc ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</dt>
+                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(heroKwc, 2)} kWc{heroNbPanneaux ? <span class="text-lune-faint"> · {formatNumber(heroNbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="ألواح">panneaux</span></span> : null}</dd>
+                </div>
+              ) : null}
+              {prodKwh ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</dt>
+                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(prodKwh)} kWh</dd>
+                </div>
+              ) : null}
+              {showCouvertureDonut && couverture ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Couverture" data-en="Coverage" data-ar="التغطية">Couverture</dt>
+                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatPercent(couverture.pct, 0)}</dd>
+                </div>
+              ) : null}
+              {showBatterySim && batterySimInitialN && batteryUnitCapacityLabel ? (
+                <div>
+                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Batterie" data-en="Battery" data-ar="بطارية">Batterie</dt>
+                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(batterySimInitialN)} × {batteryUnitCapacityLabel} kWh</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
+        </section>
+      )}
+
       <!-- ── TAILLES · « EXPLORER D'AUTRES TAILLES » (fondateur, 26/08/2026) ──
            APERÇU D'ABORD (fondateur, 26/08/2026) : cette section vient
            IMMÉDIATEMENT APRÈS LE HÉROS. Elle vivait auparavant après le
@@ -2168,6 +2265,7 @@ const signConfig = ok
           data-tailles
           data-taille-cle-defaut={tailleDefaut.cle}
           data-taille-variante-defaut={tailleVarianteDefaut}
+          data-tailles-token={token}
           data-track-section="tailles"
         >
           <p class="tech-label rule-brass text-brass-300" data-i18n
@@ -3498,31 +3596,58 @@ const signConfig = ok
                      temps. Clé additive ABSENTE ⇒ ce bloc entier ne rend RIEN
                      (jamais une carte vide, jamais un zéro). */}
               {ecoMensuelles && (
-                <div class="mt-6 border-t border-white/10 pt-5">
+                <div class="mt-6 border-t border-white/10 pt-5" data-detail-eco-bloc>
                   <p class="tech-label text-lune-faint" data-i18n
                     data-fr="Ce que ça vous fait économiser, mois par mois" data-en="What that saves you, month by month" data-ar="ما يوفّره ذلك عليكم، شهراً بشهر">
                     Ce que ça vous fait économiser, mois par mois</p>
+                  {/* OPTIONS CHARGEABLES (29/08/2026) — chaque cellule porte son
+                      index : quand le client charge une autre taille, l'îlot y
+                      pose les douze valeurs SERVIES pour CETTE taille
+                      (`economies_mensuelles.valeurs` du contrat
+                      `taille_detail.json`), formatées par le MÊME `formatMAD`
+                      qu'ici. La ligne « avec batterie » de chaque cellule est
+                      un chiffre d'une AUTRE variante : elle est MASQUÉE sur une
+                      taille chargée (dont le détail ne porte qu'UNE variante)
+                      plutôt que de rester sur les nombres du devis officiel. */}
                   <div class="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Économies mensuelles estimées">
                     {MONTHS_SHORT.fr.map((m, i) => (
                       <div class="rounded-lg bg-white/5 px-1.5 py-2 text-center">
                         <p class="text-[10px] uppercase tracking-wide text-lune-faint" data-i18n
                           data-fr={m} data-en={MONTHS_SHORT.en[i]} data-ar={MONTHS_SHORT.ar[i]}>{m}</p>
-                        <p class="fig mt-1 text-xs text-lune sm:text-sm" dir="ltr">{formatMAD(ecoMensuelles.sans[i])}</p>
+                        <p class="fig mt-1 text-xs text-lune sm:text-sm" dir="ltr" data-detail-eco-mois={i}>{formatMAD(ecoMensuelles.sans[i])}</p>
                         {ecoMensuelles.avec && (
-                          <p class="mt-0.5 text-[10px] font-semibold text-brass-300" dir="ltr">{formatMAD(ecoMensuelles.avec[i])}</p>
+                          <p class="mt-0.5 text-[10px] font-semibold text-brass-300" dir="ltr" data-detail-eco-mois-avec={i}>{formatMAD(ecoMensuelles.avec[i])}</p>
                         )}
                       </div>
                     ))}
                   </div>
                   <p class="mt-3 text-sm text-lune-soft">
                     <span data-i18n data-fr="Total annuel estimé :" data-en="Estimated annual total:" data-ar="المجموع السنوي المقدّر:">Total annuel estimé :</span>{' '}
-                    <span class="font-semibold text-lune" dir="ltr">{formatMAD(ecoMensuelles.totalSans)}</span>
+                    <span class="font-semibold text-lune" dir="ltr" data-detail-eco-total>{formatMAD(ecoMensuelles.totalSans)}</span>
                     {ecoMensuelles.totalAvec !== null && (
-                      <>
+                      <span data-detail-eco-total-avec-bloc>
                         {' '}<span data-i18n data-fr="· avec batterie :" data-en="· with a battery:" data-ar="· مع بطارية:">· avec batterie :</span>{' '}
                         <span class="font-semibold text-brass-300" dir="ltr">{formatMAD(ecoMensuelles.totalAvec)}</span>
-                      </>
+                      </span>
                     )}
+                  </p>
+                  {/* La BANQUE de la taille chargée. Vide et masquée au
+                      chargement (le devis officiel a déjà la sienne dans le
+                      simulateur juste au-dessus) : elle n'apparaît que sur une
+                      option Éco/Max chargée en variante « avec », et seulement
+                      avec les valeurs SERVIES pour elle. */}
+                  <p class="mt-2 text-xs text-lune-faint" data-detail-banque hidden></p>
+                  {/* Repli honnête : quand le détail d'une taille ne se charge
+                      pas, les chiffres ci-dessus sont MASQUÉS (ils décrivent le
+                      devis officiel, pas la carte choisie) et ce rappel discret
+                      propose de réessayer. Jamais un nombre réel attribué à la
+                      mauvaise offre pour « garder quelque chose à l'écran ». */}
+                  <p class="mt-2 text-xs text-lune-faint" data-detail-echec hidden>
+                    <span data-i18n data-fr="Détail de cette taille indisponible pour l'instant."
+                      data-en="Details for this size are unavailable right now."
+                      data-ar="تفاصيل هذا الحجم غير متوفرة حالياً.">Détail de cette taille indisponible pour l'instant.</span>{' '}
+                    <button type="button" class="underline underline-offset-2 hover:text-lune" data-detail-retry
+                      data-i18n data-fr="Réessayer" data-en="Retry" data-ar="إعادة المحاولة">Réessayer</button>
                   </p>
                   {ecoMensuelles.estimation && (
                     <p class="mt-1 text-xs text-lune-faint" data-i18n
@@ -4135,14 +4260,14 @@ const signConfig = ok
             data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</p>
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
-            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
+            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)" data-detail-cumul-card>
               <p class="tech-label text-lune-faint" data-i18n
                 data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
                 data-en={`Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
                 data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
-              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
+              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" data-detail-cumul-value>{formatMAD(headline.cumulative)}</p>
               <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
                    que le taux vienne du backend ou du repli local : les deux
                    partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
@@ -4208,26 +4333,30 @@ const signConfig = ok
                     pourcentage servi (longueur d'arc = circonférence × pct/100).
                     Le moteur borne déjà 1..100 : 100 % ne s'affiche que si le
                     backend dit production ≥ consommation. */}
-                {/* data-hero-couverture-card — LANE W (extension, revue Fable) :
-                    l'anneau `stroke-dasharray` est un ARC géométrique PRÉCALCULÉ
-                    au chargement (`donutDash`/`donutCirc`, une vraie
-                    circonférence × pourcentage) — le recalculer en JS pour
-                    suivre une autre carte serait EXACTEMENT le calcul côté
-                    client interdit. Plutôt qu'un anneau FIGÉ sous un nouveau
-                    pourcentage (un mensonge visuel), la carte ENTIÈRE est
-                    MASQUÉE hors de Recommandé + variante par défaut, et
-                    redémasquée au retour — jamais un readback, jamais un
-                    second calcul de géométrie. */}
+                {/* data-hero-couverture-card — LANE W puis OPTIONS CHARGEABLES
+                    (29/08/2026). LANE W masquait cette carte hors de
+                    « Recommandé » : l'arc était une géométrie calculée EN LIGNE
+                    ici, et la refaire dans l'îlot aurait été une SECONDE
+                    expression du même dessin. La règle n'a pas changé — c'est
+                    la duplication qui a disparu : la longueur d'arc vit
+                    maintenant dans `lib/tailleDetail.ts` (`dasharrayDonut`),
+                    appelée ICI au rendu serveur et par l'îlot quand le client
+                    charge une autre taille. UNE définition, deux lecteurs. Le
+                    POURCENTAGE, lui, n'est toujours calculé nulle part côté
+                    page : il est SERVI (`carte.couverture_pct` du contrat
+                    `taille_detail.json`), et la carte reste MASQUÉE quand la
+                    taille chargée ne le sert pas. */}
                 {showCouvertureDonut && couverture && (
                   <div class="flex items-center gap-4 sm:flex-col sm:gap-2" data-hero-couverture-card>
                     <svg viewBox="0 0 100 100" width="112" height="112" class="shrink-0" role="img"
                       aria-label={`Couverture solaire : ${formatNumber(couverture.pct, 0)} %`}>
                       <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-lune-faint)" stroke-opacity="0.22" stroke-width="10" />
                       <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-brass-400)" stroke-width="10"
-                        stroke-linecap="round" stroke-dasharray={`${donutDash.toFixed(2)} ${(donutCirc - donutDash).toFixed(2)}`}
-                        transform="rotate(-90 50 50)" />
+                        stroke-linecap="round" stroke-dasharray={donutDasharray}
+                        transform="rotate(-90 50 50)" data-detail-couverture-arc data-detail-donut-r={DONUT_R} />
                       <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
-                        font-size="24" font-weight="700" fill="var(--color-lune)" dir="ltr">{formatNumber(couverture.pct, 0)}%</text>
+                        font-size="24" font-weight="700" fill="var(--color-lune)" dir="ltr"
+                        data-detail-couverture-value>{formatNumber(couverture.pct, 0)}%</text>
                     </svg>
                     <div class="sm:text-center">
                       <p class="tech-label text-brass-300" data-i18n
@@ -4543,9 +4672,9 @@ const signConfig = ok
                  part ailleurs, et c’est la question que le client se pose juste
                  après avoir vu le cumul. */}
           {paybackHero ? (
-            <div class="cine-card mt-4 rounded-xl p-5">
+            <div class="cine-card mt-4 rounded-xl p-5" data-detail-payback-card>
               <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr">{paybackHero}</p>
+              <p class="fig fig-md mt-2 text-lune" dir="ltr" data-detail-payback-value>{paybackHero}</p>
               <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-en="then energy is free" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
             </div>
           ) : null}
@@ -7751,12 +7880,24 @@ const signConfig = ok
   // mensualité, aucun crédit) : son import client `installmentSplit` disparaît
   // avec lui. `formatMAD` reste importé ici — le curseur batterie le réutilise.
   // `formatNumber` sert au sélecteur de paliers batterie (P2-C, 25/08/2026).
+  // OPTIONS CHARGEABLES (29/08/2026) — `formatPercent`/`formatPayback` sont
+  // les MÊMES fonctions que celles du rendu serveur : un pourcentage ou un
+  // payback chargé pour une autre taille s'écrit exactement comme celui du
+  // devis officiel s'écrivait, jamais avec un second formatage maison.
   import {
     buildContactBody,
     formatMAD,
     formatNumber,
+    formatPayback,
+    formatPercent,
     type ContactChannel,
   } from '../../lib/proposition';
+  // OPTIONS CHARGEABLES — lecture du contrat `taille_detail.json` + longueur
+  // d'arc de l'anneau (la MÊME que le rendu serveur appelle plus haut).
+  import {
+    cleCacheDetail, dasharrayDonut, detailProxyUrl, estChargeable, tailleDetail,
+    type TailleDetail,
+  } from '../../lib/tailleDetail';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
@@ -8326,11 +8467,197 @@ const signConfig = ok
         texteDeLaCarteSelectionnee('[data-taille-eco-value]'),
       );
 
-      // L'anneau de couverture ne PEUT PAS suivre honnêtement (son arc est
-      // une géométrie précalculée, pas un texte à copier) : la carte entière
-      // est masquée hors de Recommandé plutôt que de montrer un anneau figé
-      // sous un nouveau pourcentage — jamais un second calcul de géométrie.
-      if (heroCouvertureCard) heroCouvertureCard.hidden = !surLeDefaut;
+      // L'anneau de couverture SUIT désormais la carte chargée (OPTIONS
+      // CHARGEABLES, 29/08/2026) : son pourcentage est SERVI et sa longueur
+      // d'arc vient de `dasharrayDonut`, la MÊME fonction que le rendu
+      // serveur. Il reste MASQUÉ tant qu'aucun détail n'a été chargé pour la
+      // carte sélectionnée — c'est `appliquerDetail` qui décide, jamais un
+      // anneau figé sous un nouveau pourcentage.
+      if (heroCouvertureCard && surLeDefaut) heroCouvertureCard.hidden = false;
+    }
+
+    // ── OPTIONS CHARGEABLES (ordre fondateur, 29/08/2026) ────────────────────
+    // « i want the 3 options to be LOADABLE ». Jusqu'ici, un clic de carte ne
+    // synchronisait que les chiffres de TÊTE ; les chapitres PROFONDS —
+    // économies mois par mois, couverture, banque, cumul 25 ans — continuaient
+    // d'afficher ceux du DEVIS OFFICIEL sous une carte qui n'est pas lui.
+    //
+    // TROIS RÈGLES, ET ELLES NE BOUGENT PAS.
+    //  1. AUCUN CALCUL. Les valeurs arrivent du contrat `taille_detail.json` et
+    //     ne sont que FORMATÉES, par les mêmes fonctions que le rendu serveur.
+    //     La seule arithmétique est la longueur d'arc de l'anneau, définie UNE
+    //     fois dans `lib/tailleDetail.ts` et partagée avec le SSR.
+    //  2. OMISSION PLUTÔT QUE MENSONGE. Un champ que la taille chargée ne sert
+    //     pas fait MASQUER son bloc — jamais un readback sur le chiffre du
+    //     devis officiel, qui serait un nombre réel attribué à la mauvaise
+    //     offre (la même discipline que `appliquerChampHero`).
+    //  3. RETOUR EXACT. « Recommandé » + variante par défaut RESTAURE les
+    //     textes ORIGINAUX mis en cache au chargement : la page après un
+    //     aller-retour est byte-identique à la page au chargement.
+    const jetonTailles = section.dataset.taillesToken ?? '';
+    const ecoMoisSans = Array.from(document.querySelectorAll<HTMLElement>('[data-detail-eco-mois]'));
+    const ecoMoisAvec = Array.from(document.querySelectorAll<HTMLElement>('[data-detail-eco-mois-avec]'));
+    const ecoTotal = document.querySelector<HTMLElement>('[data-detail-eco-total]');
+    const ecoTotalAvec = document.querySelector<HTMLElement>('[data-detail-eco-total-avec-bloc]');
+    const ecoBanque = document.querySelector<HTMLElement>('[data-detail-banque]');
+    const ecoEchec = document.querySelector<HTMLElement>('[data-detail-echec]');
+    const ecoBloc = document.querySelector<HTMLElement>('[data-detail-eco-bloc]');
+    const couvArc = document.querySelector<SVGElement>('[data-detail-couverture-arc]');
+    const couvValue = document.querySelector<HTMLElement>('[data-detail-couverture-value]');
+    const cumulCard = document.querySelector<HTMLElement>('[data-detail-cumul-card]');
+    const cumulValue = document.querySelector<HTMLElement>('[data-detail-cumul-value]');
+    const paybackCard = document.querySelector<HTMLElement>('[data-detail-payback-card]');
+    const paybackValue = document.querySelector<HTMLElement>('[data-detail-payback-value]');
+
+    const originaux = {
+      moisSans: ecoMoisSans.map((n) => n.textContent),
+      total: ecoTotal?.textContent ?? null,
+      couvArc: couvArc?.getAttribute('stroke-dasharray') ?? null,
+      couvValue: couvValue?.textContent ?? null,
+      cumul: cumulValue?.textContent ?? null,
+      payback: paybackValue?.textContent ?? null,
+    };
+
+    /** `null` mis en cache = échec DÉJÀ constaté : on ne martèle pas le réseau. */
+    const cacheDetail = new Map<string, TailleDetail | null>();
+
+    /**
+     * ÉTAT DE CHARGEMENT — ET IL MASQUE, IL NE GRISE PAS.
+     *
+     * Pendant l'appel, les chapitres profonds portent encore les nombres du
+     * DEVIS OFFICIEL. Les laisser lisibles (même atténués) sous une carte Éco
+     * ou Max, c'est afficher un chiffre réel attribué à la mauvaise offre —
+     * exactement ce que cette lane corrige. On les MASQUE donc le temps de la
+     * réponse, en annonçant l'attente aux lecteurs d'écran (`aria-busy`).
+     */
+    function marquerChargement(enCours: boolean): void {
+      for (const n of [ecoBloc, cumulCard, paybackCard]) {
+        if (!n) continue;
+        if (enCours) { n.setAttribute('aria-busy', 'true'); n.hidden = true; }
+        else n.removeAttribute('aria-busy');
+      }
+      if (enCours && heroCouvertureCard) heroCouvertureCard.hidden = true;
+    }
+
+    /** Remet la page EXACTEMENT dans l'état de son chargement. */
+    function restaurerDetail(): void {
+      ecoMoisSans.forEach((n, i) => { n.textContent = originaux.moisSans[i]; n.hidden = false; });
+      for (const n of ecoMoisAvec) n.hidden = false;
+      if (ecoTotal) { ecoTotal.textContent = originaux.total; ecoTotal.hidden = false; }
+      if (ecoTotalAvec) ecoTotalAvec.hidden = false;
+      for (const n of [ecoBloc, cumulCard, paybackCard]) n?.removeAttribute('aria-busy');
+      if (ecoBanque) { ecoBanque.hidden = true; ecoBanque.textContent = ''; }
+      if (ecoEchec) ecoEchec.hidden = true;
+      if (ecoBloc) ecoBloc.hidden = false;
+      if (couvArc && originaux.couvArc !== null) couvArc.setAttribute('stroke-dasharray', originaux.couvArc);
+      if (couvValue) couvValue.textContent = originaux.couvValue;
+      if (heroCouvertureCard) heroCouvertureCard.hidden = false;
+      if (cumulValue) cumulValue.textContent = originaux.cumul;
+      if (cumulCard) cumulCard.hidden = false;
+      if (paybackValue) paybackValue.textContent = originaux.payback;
+      if (paybackCard) paybackCard.hidden = false;
+    }
+
+    /** Pose le détail SERVI d'une taille — ou masque tout ce qu'il ne sert pas. */
+    function appliquerDetail(detail: TailleDetail | null): void {
+      const echec = detail === null;
+      if (ecoEchec) ecoEchec.hidden = !echec;
+
+      const mensuelles = detail?.economiesMensuelles ?? null;
+      if (mensuelles) {
+        ecoMoisSans.forEach((n, i) => {
+          n.textContent = formatMAD(mensuelles.valeurs[i]);
+          n.hidden = false;
+        });
+        if (ecoTotal) { ecoTotal.textContent = formatMAD(mensuelles.total); ecoTotal.hidden = false; }
+        if (ecoBloc) ecoBloc.hidden = false;
+      } else if (ecoBloc) {
+        // Pas de série pour cette taille ⇒ le bloc entier disparaît. Le laisser
+        // afficher les douze mois du devis officiel sous une autre carte
+        // serait un chiffre réel attribué à la mauvaise offre.
+        ecoBloc.hidden = !echec;
+        if (echec) ecoMoisSans.forEach((n) => { n.hidden = true; });
+        if (echec && ecoTotal) ecoTotal.hidden = true;
+      }
+      // La ligne « avec batterie » de chaque cellule et le total « avec » sont
+      // des chiffres d'une AUTRE variante : un détail n'en porte qu'une.
+      for (const n of ecoMoisAvec) n.hidden = true;
+      if (ecoTotalAvec) ecoTotalAvec.hidden = true;
+
+      const banque = detail?.carte?.batterie ?? null;
+      if (ecoBanque) {
+        const morceaux: string[] = [];
+        if (banque && banque.nbModules !== null && banque.moduleKwh !== null) {
+          morceaux.push(`${formatNumber(banque.nbModules)} × ${formatNumber(banque.moduleKwh, 1)} kWh`);
+        }
+        if (banque && banque.capaciteUtileKwh !== null) {
+          morceaux.push(`${formatNumber(banque.capaciteUtileKwh, 1)} kWh utiles`);
+        }
+        ecoBanque.textContent = morceaux.length ? `Batterie · ${morceaux.join(' · ')}` : '';
+        ecoBanque.hidden = morceaux.length === 0;
+      }
+
+      const pct = detail?.carte?.couverturePct ?? null;
+      if (heroCouvertureCard) heroCouvertureCard.hidden = pct === null;
+      if (pct !== null && couvArc && couvValue) {
+        const rayon = Number(couvArc.getAttribute('data-detail-donut-r'));
+        if (Number.isFinite(rayon) && rayon > 0) {
+          couvArc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));
+        }
+        couvValue.textContent = formatPercent(pct, 0);
+      }
+
+      const cumul = detail?.carte?.economiesCumulees25AnsMad ?? null;
+      if (cumulCard) cumulCard.hidden = cumul === null;
+      if (cumul !== null && cumulValue) cumulValue.textContent = formatMAD(cumul);
+
+      const payback = formatPayback(detail?.carte?.paybackAnnees ?? null);
+      if (paybackCard) paybackCard.hidden = payback === null;
+      if (payback !== null && paybackValue) paybackValue.textContent = payback;
+    }
+
+    async function chargerDetail(): Promise<void> {
+      const surLeDefaut = cle === cleDefaut && variante === varianteDefaut;
+      if (surLeDefaut || !estChargeable(cle) || !jetonTailles) {
+        // « Recommandé » (ou une carte sans chemin de chargement) : la page
+        // revient à SES originaux — jamais un aller-retour réseau pour le
+        // devis officiel, dont la page EST déjà le détail.
+        restaurerDetail();
+        return;
+      }
+      const clef = cleCacheDetail(cle, variante);
+      if (cacheDetail.has(clef)) {
+        appliquerDetail(cacheDetail.get(clef) ?? null);
+        return;
+      }
+      const demande = clef;
+      marquerChargement(true);
+      let detail: TailleDetail | null = null;
+      try {
+        const res = await fetch(detailProxyUrl(jetonTailles, cle, variante), {
+          headers: { accept: 'application/json' },
+        });
+        const corps = await res.json() as { ok?: boolean; detail?: unknown };
+        if (corps?.ok) detail = tailleDetail(corps.detail);
+      } catch {
+        detail = null;
+      }
+      cacheDetail.set(demande, detail);
+      marquerChargement(false);
+      // La sélection a pu changer PENDANT l'appel : on ne repeint que si la
+      // réponse est encore celle de la carte affichée (sinon deux réponses
+      // dans le désordre feraient clignoter deux tailles l'une sur l'autre).
+      if (cleCacheDetail(cle, variante) === demande) appliquerDetail(detail);
+    }
+
+    if (ecoEchec) {
+      const retry = ecoEchec.querySelector<HTMLButtonElement>('[data-detail-retry]');
+      retry?.addEventListener('click', () => {
+        // Un échec mis en cache est OUBLIÉ : c'est tout le sens d'un
+        // « Réessayer ». Les succès, eux, restent en cache.
+        cacheDetail.delete(cleCacheDetail(cle, variante));
+        void chargerDetail();
+      });
     }
 
     function appliquer(): void {
@@ -8362,6 +8689,8 @@ const signConfig = ok
         }
       }
       synchroniserDetailPage();
+      // OPTIONS CHARGEABLES — et les chapitres PROFONDS suivent la carte.
+      void chargerDetail();
     }
 
     for (const btn of switchBtns) {
