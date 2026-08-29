@@ -1617,6 +1617,112 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
     }
 
 
+# ── QJR14 (audit L3 du 29/08/2026) — un chiffre publié DÉCRIT CE DEVIS ───────
+# Le moteur de dimensionnement rend deux blocs qui décrivent une configuration
+# qu'il a TROUVÉE, pas celle que le devis VEND :
+#   · ``recommandation_avec`` — la batterie OPTIMALE ; son ``remplissage.moyen``
+#     alimente ``batterie_regime.remplissage_moyen_pct`` ;
+#   · ``meilleure_falaise`` — LA combinaison champ + stockage qui franchit la
+#     marche du barème ; son ``residuel_kwh_mois`` alimente
+#     ``tranche_tarifaire.residuel_kwh_mois``.
+# Les deux étaient publiés SANS AUCUNE GARDE : un devis qui vend une autre
+# capacité — ou aucune batterie du tout — recevait quand même le pourcentage de
+# remplissage et le résiduel d'une AUTRE installation. Règle fondateur « zéro
+# chiffre inventé » : on publie SEULEMENT quand le contexte identifiant du bloc
+# ÉGALE la configuration vendue ; sinon la clé est ABSENTE — jamais zéro,
+# jamais un repli. (Le PDF porte la même garde côté moteur, QJR13.)
+
+#: Tolérance de comparaison des capacités batterie, en kWh — LA MÊME que le
+#: marquage « retenu » des paliers (``dimensionnement.echelle_paliers_batterie``)
+#: pour que l'écran, le PDF et cette charge utile tranchent identiquement.
+_TOLERANCE_CAPACITE_KWH = 0.05
+
+
+def _capacite_batterie_vendue(devis):
+    """Capacité batterie (kWh) des LIGNES RÉELLES de ce devis, ou ``None``.
+
+    Source unique : ``dimensionnement.capacite_batterie_des_lignes`` — ce que
+    le client ACHÈTE, jamais l'optimum du moteur. ``None`` quand le devis ne
+    porte aucune ligne batterie. Ne lève jamais."""
+    try:
+        from .dimensionnement import capacite_batterie_des_lignes
+        return _nombre_publiable(capacite_batterie_des_lignes(devis))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning("Capacité batterie vendue illisible (devis %s)",
+                       getattr(devis, 'pk', None))
+        return None
+
+
+def _panneaux_vendus(devis):
+    """Nombre de panneaux LU sur les lignes de ce devis, ou ``None``.
+
+    MÊME lecture que le moteur de devis et que ``profils_comparatifs``
+    (``quote_engine.builder.panneaux_et_watt_lu`` sur les lignes produit non
+    optionnelles) — jamais une seconde dérivation. Ne lève jamais."""
+    try:
+        from .quote_engine.builder import panneaux_et_watt_lu
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, _watt = panneaux_et_watt_lu(lignes)
+        nb_panneaux = _nombre_publiable(nb_panneaux)
+        if nb_panneaux is None or nb_panneaux <= 0:
+            return None
+        return int(round(nb_panneaux))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning("Panneaux vendus illisibles (devis %s)",
+                       getattr(devis, 'pk', None))
+        return None
+
+
+def _meme_capacite_batterie(bloc, devis) -> bool:
+    """Le bloc moteur décrit-il la capacité batterie RÉELLEMENT vendue ?
+
+    ``False`` dès qu'un des deux côtés est illisible — en particulier quand le
+    devis ne vend AUCUNE batterie (``capacite_batterie_des_lignes`` rend alors
+    ``None``) : il n'y a rien à décrire, donc rien à publier."""
+    if not isinstance(bloc, dict):
+        return False
+    capacite_bloc = _nombre_publiable(bloc.get('batterie_kwh'))
+    capacite_vendue = _capacite_batterie_vendue(devis)
+    if capacite_bloc is None or capacite_vendue is None:
+        return False
+    return abs(capacite_bloc - capacite_vendue) < _TOLERANCE_CAPACITE_KWH
+
+
+def _remplissage_batterie_publiable(dimensionnement, devis) -> bool:
+    """``batterie_regime.remplissage_moyen_pct`` décrit-il CE devis ?
+
+    Il vient de ``recommandation_avec`` — la batterie que le moteur CONSEILLE.
+    Publiable seulement quand cette capacité est celle des lignes vendues."""
+    if not isinstance(dimensionnement, dict):
+        return False
+    return _meme_capacite_batterie(
+        dimensionnement.get('recommandation_avec'), devis)
+
+
+def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
+    """``tranche_tarifaire.residuel_kwh_mois`` décrit-il CE devis ?
+
+    Il vient de ``meilleure_falaise`` — une combinaison champ + stockage que le
+    balayage a seulement TROUVÉE. Publiable seulement quand SON contexte
+    identifiant (panneaux ET capacité batterie) égale la configuration vendue,
+    exactement la règle que le PDF applique (QJR13)."""
+    if not isinstance(dimensionnement, dict):
+        return False
+    bloc = dimensionnement.get('meilleure_falaise')
+    if not _meme_capacite_batterie(bloc, devis):
+        return False
+    panneaux_bloc = _nombre_publiable(bloc.get('panneaux'))
+    panneaux_vendus = _panneaux_vendus(devis)
+    if panneaux_bloc is None or panneaux_vendus is None:
+        return False
+    return int(round(panneaux_bloc)) == panneaux_vendus
+
+
 #: L-PCMP — la note de méthode des variantes d'occupation, par niveau. Les
 #: CHIFFRES sont EXACTEMENT les mêmes aux deux niveaux (règle fondateur : seul
 #: le texte de méthode se neutralise, jamais un nombre).
@@ -2805,9 +2911,24 @@ def proposal_data(request, token):
         _dimensionnement = _etude_params_devis.get('dimensionnement')
         _tranche = _tranche_tarifaire_publique(_dimensionnement)
         if _tranche is not None:
+            # QJR14 — le résiduel vient de ``meilleure_falaise`` : une
+            # combinaison seulement TROUVÉE par le balayage. Il ne franchit la
+            # frontière que s'il décrit la configuration VENDUE ; sinon la clé
+            # est retirée (absente), jamais mise à zéro.
+            if not _residuel_falaise_publiable(_dimensionnement, devis):
+                _tranche.pop('residuel_kwh_mois', None)
             payload['tranche_tarifaire'] = _tranche
         _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
         _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        if _regime is not None:
+            # QJR14 — même règle pour le taux de remplissage, tiré de la
+            # batterie OPTIMALE (``recommandation_avec``) et non de celle que
+            # ce devis vend. Le bloc entier disparaît s'il ne reste plus rien
+            # de vrai à montrer.
+            if not _remplissage_batterie_publiable(_dimensionnement, devis):
+                _regime.pop('remplissage_moyen_pct', None)
+            if not any(v is not None for v in _regime.values()):
+                _regime = None
         if _regime is not None:
             payload['batterie_regime'] = _regime
         # ORDRE FONDATEUR (24/08/2026, soir) — sélection de plusieurs packs de

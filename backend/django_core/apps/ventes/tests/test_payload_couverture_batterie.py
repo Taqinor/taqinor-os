@@ -700,3 +700,171 @@ class ServiPayloadTests(_PayloadBase):
         for cle in ('courbes_journalieres', 'dimensionnement_options',
                     'variantes_servables'):
             self.assertIn(cle, payload)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. QJR14 — un chiffre publié DÉCRIT CE DEVIS (audit L3 du 29/08/2026)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
+    """``batterie_regime.remplissage_moyen_pct`` et
+    ``tranche_tarifaire.residuel_kwh_mois`` étaient publiés SANS GARDE.
+
+    Le premier vient de ``recommandation_avec`` — la batterie que le moteur
+    CONSEILLE — et le second de ``meilleure_falaise`` — une combinaison champ +
+    stockage que le balayage a seulement TROUVÉE. Un devis qui vend une AUTRE
+    capacité, ou AUCUNE batterie, recevait quand même ces deux chiffres : ils
+    décrivaient une installation que le client n'achète pas.
+
+    Règle fondateur « zéro chiffre inventé » : publié seulement si le contexte
+    identifiant du bloc égale la configuration vendue (capacité batterie des
+    lignes pour le remplissage ; panneaux ET capacité pour le résiduel), sinon
+    la clé est **ABSENTE** — jamais zéro, jamais un repli.
+
+    Le devis de référence (``_PayloadBase.LIGNES``) vend 14 panneaux et
+    2 × « Batterie Dyness 5 kWh » ⇒ 10 kWh de capacité utile.
+    """
+
+    PANNEAUX_VENDUS = 14
+    CAPACITE_VENDUE = 10.0
+    REMPLISSAGE_MOYEN = 0.734          # ⇒ 73,4 %
+    RESIDUEL_KWH_MOIS = 412.3
+
+    FALAISE = {
+        'cible_kwh_mois': 500.0,
+        'tranche_actuelle': {'rang': 5, 'libelle': 'Tranche 5'},
+        'tranche_visee': {'rang': 4, 'libelle': 'Tranche 4'},
+    }
+
+    def _poser_dimensionnement(self, devis, *, reco_batterie_kwh,
+                               falaise_panneaux, falaise_batterie_kwh):
+        """Écrit un bloc ``dimensionnement`` DÉTERMINISTE sur le devis.
+
+        Même patron que ``test_t4_payload_public_helpers`` : ce sont les
+        entrées d'un cas de test, jamais un chiffre client. Le moteur réel
+        n'est pas lancé ici — c'est la GARDE de publication qu'on épingle, pas
+        le balayage."""
+        devis.refresh_from_db()
+        params = dict(devis.etude_params or {})
+        params['dimensionnement'] = {
+            'falaise': dict(self.FALAISE),
+            'meilleure_falaise': {
+                'panneaux': falaise_panneaux,
+                'kwc': 9.94,
+                'batterie_kwh': falaise_batterie_kwh,
+                'residuel_kwh_mois': self.RESIDUEL_KWH_MOIS,
+            },
+            'recommandation_avec': {
+                'batterie_kwh': reco_batterie_kwh,
+                'remplissage': {'moyen': self.REMPLISSAGE_MOYEN},
+            },
+        }
+        devis.etude_params = params
+        devis.save(update_fields=['etude_params'])
+        return devis
+
+    # ── CAS 1 — la recommandation DÉCRIT le devis : les deux chiffres partent ─
+    def test_capacite_egale_les_deux_chiffres_sont_publies(self):
+        devis = self._devis('qjr14-egal')
+        self._poser_dimensionnement(
+            devis, reco_batterie_kwh=self.CAPACITE_VENDUE,
+            falaise_panneaux=self.PANNEAUX_VENDUS,
+            falaise_batterie_kwh=self.CAPACITE_VENDUE)
+
+        payload = self._payload(devis)
+        self.assertEqual(payload['batterie_regime']['remplissage_moyen_pct'],
+                         73.4)
+        self.assertEqual(payload['tranche_tarifaire']['residuel_kwh_mois'],
+                         self.RESIDUEL_KWH_MOIS)
+
+    # ── CAS 2 — une AUTRE capacité : les deux clés disparaissent ─────────────
+    def test_capacite_differente_les_deux_cles_sont_absentes(self):
+        """Le moteur conseille 15 kWh, le devis en vend 10 : ni le taux de
+        remplissage ni le résiduel ne décrivent ce devis."""
+        devis = self._devis('qjr14-different')
+        self._poser_dimensionnement(
+            devis, reco_batterie_kwh=15.0,
+            falaise_panneaux=self.PANNEAUX_VENDUS,
+            falaise_batterie_kwh=15.0)
+
+        payload = self._payload(devis)
+        self.assertNotIn('remplissage_moyen_pct',
+                         payload.get('batterie_regime') or {})
+        tranche = payload['tranche_tarifaire']
+        self.assertNotIn('residuel_kwh_mois', tranche)
+        # …et JAMAIS remplacé par un zéro : le reste du pitch tient debout.
+        self.assertEqual(tranche['cible_kwh_mois'], 500.0)
+        self.assertEqual(tranche['tranche_visee']['libelle'], 'Tranche 4')
+
+    # ── CAS 3 — AUCUNE batterie vendue : les deux clés disparaissent ─────────
+    def test_devis_sans_batterie_les_deux_cles_sont_absentes(self):
+        """Il n'existait AUCUNE garde de présence de batterie : un devis sans
+        stockage publiait le remplissage d'une banque qu'il ne vend pas."""
+        devis = self._devis('qjr14-sansbat', avec_batterie=False,
+                            scenario=None)
+        self._poser_dimensionnement(
+            devis, reco_batterie_kwh=self.CAPACITE_VENDUE,
+            falaise_panneaux=self.PANNEAUX_VENDUS,
+            falaise_batterie_kwh=self.CAPACITE_VENDUE)
+
+        payload = self._payload(devis)
+        self.assertNotIn('remplissage_moyen_pct',
+                         payload.get('batterie_regime') or {})
+        self.assertNotIn('residuel_kwh_mois', payload['tranche_tarifaire'])
+
+    # ── Le résiduel a SA garde propre : panneaux ET capacité ────────────────
+    def test_falaise_sur_un_autre_champ_pv_perd_son_residuel(self):
+        """La capacité concorde mais la falaise a été trouvée sur 20 panneaux
+        (le devis en vend 14) : le résiduel décrit un autre champ, il part —
+        le remplissage, lui, reste légitime."""
+        devis = self._devis('qjr14-champ')
+        self._poser_dimensionnement(
+            devis, reco_batterie_kwh=self.CAPACITE_VENDUE,
+            falaise_panneaux=20,
+            falaise_batterie_kwh=self.CAPACITE_VENDUE)
+
+        payload = self._payload(devis)
+        self.assertEqual(payload['batterie_regime']['remplissage_moyen_pct'],
+                         73.4)
+        self.assertNotIn('residuel_kwh_mois', payload['tranche_tarifaire'])
+
+    def test_falaise_sur_une_autre_banque_perd_son_residuel(self):
+        devis = self._devis('qjr14-banque')
+        self._poser_dimensionnement(
+            devis, reco_batterie_kwh=self.CAPACITE_VENDUE,
+            falaise_panneaux=self.PANNEAUX_VENDUS,
+            falaise_batterie_kwh=20.0)
+
+        payload = self._payload(devis)
+        self.assertNotIn('residuel_kwh_mois', payload['tranche_tarifaire'])
+
+    # ── Les prédicats eux-mêmes ────────────────────────────────────────────
+    def test_les_predicats_lisent_la_configuration_reellement_vendue(self):
+        from apps.ventes.public_views import (
+            _capacite_batterie_vendue,
+            _panneaux_vendus,
+            _remplissage_batterie_publiable,
+            _residuel_falaise_publiable,
+        )
+        devis = self._devis('qjr14-predicats')
+        self.assertAlmostEqual(_capacite_batterie_vendue(devis),
+                               self.CAPACITE_VENDUE, places=2)
+        self.assertEqual(_panneaux_vendus(devis), self.PANNEAUX_VENDUS)
+
+        # Un dimensionnement absent / malformé ne publie rien et ne lève pas.
+        for dim in (None, {}, 'oops', {'recommandation_avec': None},
+                    {'meilleure_falaise': 'oops'}):
+            with self.subTest(dim=dim):
+                self.assertFalse(_remplissage_batterie_publiable(dim, devis))
+                self.assertFalse(_residuel_falaise_publiable(dim, devis))
+
+    def test_ecart_de_capacite_sous_la_tolerance_reste_publiable(self):
+        """MÊME tolérance que le marquage « retenu » des paliers (0,05 kWh) :
+        un arrondi amont ne doit pas faire disparaître un chiffre juste."""
+        from apps.ventes.public_views import _remplissage_batterie_publiable
+        devis = self._devis('qjr14-tolerance')
+        dim = {'recommandation_avec': {'batterie_kwh': 10.02,
+                                       'remplissage': {'moyen': 0.5}}}
+        self.assertTrue(_remplissage_batterie_publiable(dim, devis))
+        dim['recommandation_avec']['batterie_kwh'] = 10.5
+        self.assertFalse(_remplissage_batterie_publiable(dim, devis))
