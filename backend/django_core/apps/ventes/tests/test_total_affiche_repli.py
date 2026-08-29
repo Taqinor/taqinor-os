@@ -43,14 +43,40 @@ class TotalAfficheRepliTests(TestCase):
             remise_globale='5', reference=reference,
             etude_params=DEUX_OPTIONS)
 
+    def _somme_des_deux_options(self, devis):
+        """LA SOMME MENSONGÈRE — le nombre qui n'existe dans AUCUN document.
+
+        C'est la référence que ces épingles opposent au total affiché, et elle
+        est redérivée ICI, explicitement, depuis la chaîne canonique.
+
+        POURQUOI PLUS ``devis.total_ttc`` (QJR51 / décision fondateur D2,
+        29/08/2026) : ce champ portait le total BRUT de TOUTES les lignes —
+        les DEUX onduleurs et la batterie dans un seul nombre, strictement
+        au-dessus du total d'une option, ce qui en faisait une référence
+        valable même si ce n'était pas littéralement la somme des paniers
+        (102 400,04 contre 120 460,08 sur ce devis : les lignes communes n'y
+        étaient comptées qu'une fois). Depuis D2 il rend le total NET de
+        l'option EFFECTIVE, c'est-à-dire la valeur même que ces tests
+        vérifient : la comparaison devenait « x < x » et l'épingle tombait
+        (« 78280.03 not less than 78280.03 »). La PROPRIÉTÉ gardée est
+        inchangée et l'assertion n'est pas desserrée — sa référence redevient
+        simplement ce que le nom du test dit depuis toujours, et elle est
+        PLUS haute qu'avant, jamais plus basse.
+        """
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, SANS_BATTERIE, option_totaux,
+        )
+        return float(option_totaux(devis, option=SANS_BATTERIE)['ttc']
+                     + option_totaux(devis, option=AVEC_BATTERIE)['ttc'])
+
     def test_moteur_en_echec_jamais_la_somme_des_deux_options(self):
         from apps.ventes.quote_engine.builder import display_totals
         devis = self._devis_deux_options()
         with patch(_MOTEUR, side_effect=RuntimeError('moteur cassé')):
             dt = display_totals(devis)
         self.assertEqual(dt['nb_options'], 2)
-        # Jamais la somme mensongère : l'incident affichait total_ttc.
-        self.assertLess(dt['total'], float(devis.total_ttc))
+        # Jamais la somme mensongère : l'incident l'affichait (77 584 MAD).
+        self.assertLess(dt['total'], self._somme_des_deux_options(devis))
         comparaison = dt['comparaison_repli']
         # F1 (26/08/2026) — le repli sert la MÊME option que la chaîne
         # canonique : depuis LANE CHOIX-AVEC (25/08), ``display_total`` d'un
@@ -116,7 +142,7 @@ class TotalAfficheRepliTests(TestCase):
             nb_options = ser.get_nb_options(devis)
             comparaison = ser.get_comparaison_options(devis)
         self.assertEqual(nb_options, 2)
-        self.assertLess(total_affiche, float(devis.total_ttc))
+        self.assertLess(total_affiche, self._somme_des_deux_options(devis))
         self.assertEqual(comparaison['nb_options'], 2)
         self.assertEqual(comparaison['avec']['ttc'], total_affiche)
         self.assertLess(comparaison['sans']['ttc'], comparaison['avec']['ttc'])
