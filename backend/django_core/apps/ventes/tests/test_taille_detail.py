@@ -330,6 +330,15 @@ class _Base(TestCase):
 class EndpointTests(_Base):
     """La porte publique : ce qui passe, ce qui ne passe pas, et comment."""
 
+    def setUp(self):
+        # DÉTERMINISME. Le cache local vit dans le PROCESSUS, pas dans la
+        # transaction : il survit au rollback de chaque test, et les
+        # identifiants de lien, eux, se réutilisent. Sans ce vidage, un détail
+        # mis en cache par un test pourrait répondre à un autre.
+        from django.core.cache import cache
+        cache.clear()
+        super().setUp()
+
     def _avec_moteur(self, bloc=BLOC):
         from apps.ventes import offres_tailles as ot
         return (mock.patch.object(ot, 'deriver', return_value=bloc),
