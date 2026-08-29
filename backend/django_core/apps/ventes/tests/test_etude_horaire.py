@@ -26,6 +26,7 @@ Run :
         -Modules "apps.ventes.tests.test_etude_horaire"
 """
 import re
+from datetime import date
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -1721,3 +1722,76 @@ class JoursTypesPublicsTests(SimpleTestCase):
     def test_sans_consommation_renvoie_none(self):
         self.assertIsNone(EH.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=[], ville=self.VILLE))
+
+
+class JourReferenceExpliciteTests(SimpleTestCase):
+    """QJR45 — ``jour_reference`` est un PARAMÈTRE du moteur, plus l'horloge.
+
+    La fenêtre Ramadan dépend de la date : sans paramètre, le MÊME devis rendait
+    des économies différentes selon le moment du recalcul, et rien ne disait
+    quelle date avait servi. Ces tests tiennent les trois promesses : la date
+    change le résultat, elle change l'empreinte des entrées, et passer
+    « aujourd'hui » ne change RIEN par rapport à l'ancien comportement.
+    """
+
+    VILLE = 'Casablanca'
+    CONSO = [420.0] * 12
+    #: Deux dates dont les Ramadans tombent sur des MOIS différents (table
+    #: ``ramadan.RAMADAN_PLAGES`` : 2027 = 8 fév → 8 mars, 2028 = 28 jan →
+    #: 25 fév). Aucune n'est inventée : elles sont lues sur la table.
+    JOUR_A = date(2027, 1, 5)
+    JOUR_B = date(2028, 1, 5)
+
+    def _etude(self, jour_reference):
+        return EH.calculer_etude_horaire(
+            kwc=5.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE,
+            jour_reference=jour_reference)
+
+    def test_deux_jours_de_reference_donnent_deux_resultats(self):
+        a = self._etude(self.JOUR_A)
+        b = self._etude(self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        mois_a = {m['mois']: m['economie_sans_mad'] for m in a['mois']}
+        mois_b = {m['mois']: m['economie_sans_mad'] for m in b['mois']}
+        self.assertNotEqual(mois_a, mois_b)
+
+    def test_deux_jours_de_reference_donnent_deux_empreintes(self):
+        from apps.ventes.domain.entrees import (
+            EntreesMoteur, empreinte_entrees)
+        base = dict(conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
+                    occupation=CJ.OCCUPATION_PRESENCE)
+        a = empreinte_entrees(EntreesMoteur(jour_reference=self.JOUR_A,
+                                            **base))
+        b = empreinte_entrees(EntreesMoteur(jour_reference=self.JOUR_B,
+                                            **base))
+        self.assertNotEqual(a, b)
+        self.assertEqual(
+            a, empreinte_entrees(EntreesMoteur(jour_reference=self.JOUR_A,
+                                               **base)))
+
+    def test_passer_aujourd_hui_ne_change_rien(self):
+        """Golden : le défaut historique (``timezone.localdate()`` posé au fond
+        de ``jours_types_annee``) et la date passée explicitement donnent le
+        MÊME bloc, au centime."""
+        from django.utils import timezone
+
+        implicite = self._etude(None)
+        explicite = self._etude(timezone.localdate())
+        self.assertEqual(implicite, explicite)
+
+    def test_le_balayage_du_stockage_lit_la_meme_date(self):
+        """Le mini-balayage DIM2 et l'étude doivent voir le MÊME Ramadan :
+        deux dates dans un même tableau compareraient deux clients."""
+        a = EH.balayer_stockage_horaire(
+            kwc=5.0, conso_kwh_mensuelles=self.CONSO, capacites_kwh=[5.0],
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
+            jour_reference=self.JOUR_A)
+        b = EH.balayer_stockage_horaire(
+            kwc=5.0, conso_kwh_mensuelles=self.CONSO, capacites_kwh=[5.0],
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
+            jour_reference=self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual(a['paliers'], b['paliers'])

@@ -194,11 +194,12 @@ class ReExportServicesTests(_EntreesBase):
             entrees_dimensionnement_du_devis(devis, contexte=False),
             entrees_depuis_devis(devis, contexte=False))
 
-    def test_les_champs_tarifaires_et_le_jour_sont_declares_mais_vides(self):
-        """QJR45 / QJR46 les brancheront : ici ils EXISTENT et valent None,
-        pour que la forme ne change plus au milieu de la vague."""
+    def test_les_champs_tarifaires_sont_declares_mais_vides(self):
+        """QJR46 les branchera : ici ils EXISTENT et valent None, pour que la
+        forme ne change plus au milieu de la vague. ``jour_reference``, lui,
+        est POSÉ dès QJR45 (frontière du pipeline = aujourd'hui)."""
         _company, _lead, devis = self._lead_et_devis('qjr42-tarif')
         entrees = entrees_depuis_devis(devis)
         self.assertIsNone(entrees.tranches)
         self.assertIsNone(entrees.charges_fixes_mad)
-        self.assertIsNone(entrees.jour_reference)
+        self.assertIsNotNone(entrees.jour_reference)

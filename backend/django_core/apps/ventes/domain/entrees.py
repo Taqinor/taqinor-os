@@ -55,10 +55,11 @@ class EntreesMoteur:
     ``lat``, ``lon``, ``occupation``, ``equipements``, ``tranches``,
     ``charges_fixes_mad``, ``jour_reference``.
 
-    ``tranches`` / ``charges_fixes_mad`` (l'IDENTITÉ TARIFAIRE) et
-    ``jour_reference`` sont déclarés ici mais restent à ``None`` tant que
-    QJR45 / QJR46 ne les ont pas branchés : les créer maintenant évite que le
-    dataclass ne change de forme au milieu de la vague.
+    ``tranches`` / ``charges_fixes_mad`` (l'IDENTITÉ TARIFAIRE) sont déclarés
+    ici mais restent à ``None`` tant que QJR46 ne les a pas branchés : les
+    créer d'avance évite que le dataclass ne change de forme au milieu de la
+    vague. ``jour_reference`` est posé par QJR45 (voir
+    :func:`jour_reference_par_defaut`).
 
     DEUX CHAMPS DE CONTEXTE, non canoniques : ``mode`` (le
     ``mode_installation`` déjà vérifié par l'adaptateur) et ``etude_params``
@@ -100,7 +101,21 @@ class EntreesMoteur:
         return getattr(self, cle, defaut)
 
 
-def entrees_depuis_devis(devis, *, contexte=True):
+def jour_reference_par_defaut():
+    """QJR45 — LA FRONTIÈRE DU PIPELINE : « aujourd'hui », lu UNE seule fois.
+
+    La sortie du moteur dépend de la date (fenêtre Ramadan de
+    ``apps.ventes.ramadan``) : sans paramètre, le même devis rendait des
+    économies différentes selon le MOMENT du recalcul, et rien ne disait quelle
+    date avait servi. La date est donc résolue ICI, à l'entrée du pipeline, et
+    voyage ensuite dans :class:`EntreesMoteur` — jusqu'au moteur (qui calcule
+    contre elle) ET jusqu'à l'empreinte (qui la trace).
+    """
+    from django.utils import timezone
+    return timezone.localdate()
+
+
+def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     """P2-A (25/08/2026), déplacé ici par QJR42 — LES ENTRÉES du moteur calibré
     pour CE devis, lues UNE SEULE FOIS et par UNE SEULE fonction.
 
@@ -129,6 +144,11 @@ def entrees_depuis_devis(devis, *, contexte=True):
     requête de plus qu'avant. **CE PARAMÈTRE RESTE** : le supprimer ferait
     payer deux requêtes de plus à chaque sauvegarde de ligne.
 
+    ``jour_reference`` — QJR45 : la date contre laquelle le moteur calcule
+    (fenêtre Ramadan). ``None`` ⇒ :func:`jour_reference_par_defaut`
+    (aujourd'hui), lu ICI et une seule fois. C'est le chemin surchargeable
+    ``etude.jour_reference`` du registre D12.
+
     Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
     ligne, ni total (règle #4).
     """
@@ -138,6 +158,7 @@ def entrees_depuis_devis(devis, *, contexte=True):
     company = getattr(devis, 'company', None)
     if company is None:
         return None
+    jour = jour_reference or jour_reference_par_defaut()
 
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
     from apps.ventes.courbes_journalieres import (
@@ -156,7 +177,8 @@ def entrees_depuis_devis(devis, *, contexte=True):
     if not conso or not contexte:
         return EntreesMoteur(
             company=company, mode=mode, etude_params=etude_params,
-            conso_kwh_mensuelles=conso, source_conso=source_conso)
+            conso_kwh_mensuelles=conso, source_conso=source_conso,
+            jour_reference=jour)
 
     localisation = site_location_for_devis(devis) or {}
     # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
@@ -173,10 +195,11 @@ def entrees_depuis_devis(devis, *, contexte=True):
         lat=localisation.get('gps_lat'),
         lon=localisation.get('gps_lng'),
         occupation=occupation,
-        equipements=equipements_du_devis(devis))
+        equipements=equipements_du_devis(devis),
+        jour_reference=jour)
 
 
-def entrees_depuis_lead(lead, company, *, contexte=True):
+def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
     """QJR42 — LES MÊMES entrées, lues sur un LEAD (le chemin auto-devis /
     tunnel, où aucun devis n'existe encore).
 
@@ -196,10 +219,14 @@ def entrees_depuis_lead(lead, company, *, contexte=True):
     l'appelant refuse alors le devis en NOMMANT la donnée manquante, jamais un
     repli forfaitaire (règle fondateur « zéro chiffre inventé »).
 
+    ``jour_reference`` — QJR45 : même sens et même défaut que sur
+    :func:`entrees_depuis_devis` (aujourd'hui, lu une seule fois ici).
+
     Fonction de LECTURE PURE : elle n'écrit rien (règle #4).
     """
     if lead is None or company is None:
         return None
+    jour = jour_reference or jour_reference_par_defaut()
 
     from apps.crm.selectors import equipements_pour_lead
     from apps.ventes.courbes_journalieres import (
@@ -214,12 +241,14 @@ def entrees_depuis_lead(lead, company, *, contexte=True):
     if not conso or not contexte:
         return EntreesMoteur(
             company=company, mode='residentiel', etude_params={},
-            conso_kwh_mensuelles=conso, source_conso=source_conso)
+            conso_kwh_mensuelles=conso, source_conso=source_conso,
+            jour_reference=jour)
 
     occupation, _source_occ = occupation_du_lead(lead)
     return EntreesMoteur(
         company=company, mode='residentiel', etude_params={},
         conso_kwh_mensuelles=conso, source_conso=source_conso,
+        jour_reference=jour,
         ville=getattr(lead, 'ville', None),
         lat=getattr(lead, 'gps_lat', None),
         lon=getattr(lead, 'gps_lng', None),

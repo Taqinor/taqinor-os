@@ -5042,7 +5042,8 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             company=entrees.company, conso_kwh_mensuelles=conso,
             ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
             occupation=entrees.occupation, equipements=entrees.equipements,
-            phase=phase, source_conso=entrees.source_conso)
+            phase=phase, source_conso=entrees.source_conso,
+            jour_reference=entrees.jour_reference)
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le
@@ -5112,12 +5113,19 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
     des entrées du moteur). La SORTIE du moteur
     (``etude_horaire_pour_devis``) reste byte-identique : l'estampille est
     posée ici, sur la copie persistée, jamais dans le moteur.
+
+    QJR45 — les entrées sont lues UNE fois : le ``jour_reference`` qui part au
+    moteur est EXACTEMENT celui que l'empreinte trace (une seconde lecture
+    d'horloge pourrait tomber le lendemain et estampiller une date qui n'a pas
+    servi).
     """
-    from apps.ventes.domain.entrees import empreinte_entrees_du_devis
+    from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
     from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
+        entrees = entrees_depuis_devis(devis)
         bloc = etude_horaire_pour_devis(
-            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile)
+            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
+            jour_reference=(entrees.jour_reference if entrees else None))
         etude = dict(getattr(devis, 'etude_params', None) or {})
         if bloc is None:
             if 'etude_horaire' not in etude:
@@ -5125,7 +5133,10 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
             etude.pop('etude_horaire', None)
         else:
             bloc = dict(bloc)
-            bloc['_empreinte_entrees'] = empreinte_entrees_du_devis(devis)
+            bloc['_empreinte_entrees'] = (
+                empreinte_entrees(entrees)
+                if entrees is not None and entrees.conso_kwh_mensuelles
+                else None)
             etude['etude_horaire'] = bloc
         devis.etude_params = etude
         devis.save(update_fields=['etude_params'])
@@ -5355,7 +5366,8 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
             occupation=entrees['occupation'],
             equipements=entrees['equipements'],
-            source_conso=entrees['source_conso'])
+            source_conso=entrees['source_conso'],
+            jour_reference=entrees['jour_reference'])
         resultat['_empreinte'] = empreinte
 
         etude = dict(etude_params)

@@ -593,7 +593,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
                     structure_type='acier', min_panneaux=None,
                     max_panneaux=None, tranches=None,
                     charges_fixes_mad=None, source_conso=None,
-                    cible_falaise_kwh_mois=None):
+                    cible_falaise_kwh_mois=None, jour_reference=None):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     Pour chaque taille (granularité = UN panneau du catalogue) :
@@ -673,6 +673,11 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         'lat': lat, 'lon': lon, 'occupation': occupation,
         'equipements': equipements, 'tranches': tranches,
         'charges_fixes_mad': charges_fixes_mad,
+        # QJR45 — LA DATE EST UNE ENTRÉE, PAS L'HORLOGE. Le même jour de
+        # référence sert l'étude SANS batterie et le mini-balayage du
+        # stockage : deux dates différentes dans un même tableau feraient
+        # comparer deux Ramadans.
+        'jour_reference': jour_reference,
     }
 
     def _composer(panneaux, kwc, avec_batterie, cible_kwh, journal):
@@ -2283,6 +2288,10 @@ def _echelle_paliers_batterie(devis):
         'lat': entrees['lat'], 'lon': entrees['lon'],
         'occupation': entrees['occupation'],
         'equipements': entrees['equipements'],
+        # QJR45 — MÊME jour de référence que le tableau rangé sur le devis
+        # (il vient du MÊME ``EntreesMoteur``) : l'échelle ne peut pas
+        # désigner un palier « retenu » calculé sur un autre Ramadan.
+        'jour_reference': entrees['jour_reference'],
     }
 
     sondes = {}
