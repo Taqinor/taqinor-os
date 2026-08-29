@@ -47,6 +47,14 @@ from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+# QJR73 — L'ÉCRIVAIN UNIQUE DES LIGNES N'EST PLUS UNE MÉTHODE DE CE VIEWSET.
+# `_replace_lines_atomic` vivait ici, donc hors d'atteinte de tout autre
+# appelant, alors que les tests le décrivent comme « le SEUL chemin d'écriture »
+# des lignes. Son corps est parti TEL QUEL dans `domain/lignes.remplacer_lignes`
+# (dédenté, `self` retiré, pas une ligne de logique touchée) ; les deux appels
+# de ce fichier sont les MÊMES appels, aux mêmes endroits, sous les mêmes
+# `transaction.atomic()` — les réponses des endpoints sont inchangées à l'octet.
+from ..domain.lignes import remplacer_lignes  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -850,7 +858,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     devis = serializer.save(
                         reference=ref, client=client,
                         created_by=request.user, company=company)
-                    self._replace_lines_atomic(devis, lignes_in, company)
+                    remplacer_lignes(devis, lignes_in, company)
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError:
@@ -922,7 +930,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
-                self._replace_lines_atomic(devis, lignes_in, devis.company)
+                remplacer_lignes(devis, lignes_in, devis.company)
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -949,107 +957,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         rafraichir_etudes_du_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
-
-    def _replace_lines_atomic(self, devis, lignes_in, company):
-        """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
-        transaction par l'appelant). Produits bornés à la société de
-        l'utilisateur OU au catalogue global (PV15, même portée que
-        ``services._pick_product``) ; jamais de ``prix_achat`` accepté du corps.
-
-        XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
-        XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
-        une ligne section/note ne porte NI produit NI prix (jamais comptée dans
-        les totaux). ``ordre`` par défaut = position dans la liste envoyée.
-
-        L-2OPT — ``variante`` ('' commune | 'sans' | 'avec') est persistée.
-        SANS ELLE, LA FONCTIONNALITÉ « DEUX OPTIMISEURS » NE SURVIVAIT PAS À
-        L'ENREGISTREMENT : le générateur fusionne bien les deux kits
-        (``fusionnerVariantes``, solar.js) et envoie le tag sur chaque ligne,
-        mais CE chemin — le SEUL chemin d'écriture de l'écran, pour la création
-        (``atomic``) comme pour l'édition (``replace-lines``) — recréait chaque
-        ligne sans le kwarg, donc au défaut ``''``. Toutes les lignes
-        redevenaient « communes » : plus de badge d'option à l'écran, et tout
-        l'aval (``devis_variante`` dans ``services``, le comparatif du PDF, les
-        cartes par option de la page publique) lisait un devis mono-option.
-        Valeur inconnue ⇒ ``''`` (la ligne reste commune) : jamais une erreur
-        d'enregistrement pour un tag mal formé."""
-        from decimal import Decimal, InvalidOperation
-        from django.db.models import Q
-        from ..models import LigneDevis
-        from apps.stock.models import Produit
-        _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
-        _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
-        devis.lignes.all().delete()
-        for idx, li in enumerate(lignes_in):
-            if not isinstance(li, dict):
-                continue
-            type_ligne = str(li.get('type_ligne') or 'produit')
-            if type_ligne not in _VALID_TYPES:
-                type_ligne = 'produit'
-            try:
-                ordre = int(li.get('ordre', idx))
-            except (TypeError, ValueError):
-                ordre = idx
-            # XSAL14 — ligne de SECTION/NOTE : intertitre/texte sans prix.
-            if type_ligne in ('section', 'note'):
-                designation = (li.get('designation') or '').strip()
-                if not designation:
-                    raise ValueError(
-                        'Une ligne de section/note doit porter un intitulé.')
-                LigneDevis.objects.create(
-                    devis=devis, produit=None,
-                    designation=designation[:255],
-                    quantite=None, prix_unitaire=None, remise=Decimal('0'),
-                    taux_tva=None, type_ligne=type_ligne, ordre=ordre)
-                continue
-            # Ligne PRODUIT (chemin historique + XSAL5 optionnelle + ordre).
-            try:
-                produit_id = int(li.get('produit'))
-            except (TypeError, ValueError):
-                raise ValueError('Ligne sans produit valide.')
-            # PV15 — le catalogue GLOBAL (``company IS NULL``) est quotable :
-            # c'est exactement la portée que ``services._pick_product`` retient
-            # pour composer un devis. Le filtre société-stricte d'origine
-            # REFUSAIT ici des produits que l'auto-composition venait de poser
-            # sur le même devis (« Produit N inconnu » sur un simple
-            # ré-enregistrement). La portée reste bornée : société de
-            # l'utilisateur OU catalogue global — jamais celui d'un autre
-            # tenant.
-            produit = Produit.objects.filter(
-                Q(company=company) | Q(company__isnull=True),
-                id=produit_id).first()
-            if produit is None:
-                raise ValueError(f'Produit {produit_id} inconnu.')
-            try:
-                qte = Decimal(str(li.get('quantite', 1)))
-                pu = Decimal(str(li.get('prix_unitaire', produit.prix_vente)))
-                remise = Decimal(str(li.get('remise', 0)))
-            except (InvalidOperation, TypeError, ValueError):
-                raise ValueError('Quantité/prix/remise invalide.')
-            taux = li.get('taux_tva')
-            # L-2OPT — tag d'option porté par la ligne. Absent (tous les
-            # appelants d'hier) ou inconnu ⇒ '' : ligne commune, comportement
-            # historique strictement inchangé.
-            variante = str(li.get('variante') or '')
-            if variante not in _VALID_VARIANTES:
-                variante = ''
-            LigneDevis.objects.create(
-                devis=devis, produit=produit,
-                designation=(li.get('designation') or produit.nom)[:255],
-                quantite=qte, prix_unitaire=pu, remise=remise,
-                taux_tva=Decimal(str(taux)) if taux is not None else None,
-                optionnelle=bool(li.get('optionnelle', False)),
-                type_ligne='produit', ordre=ordre, variante=variante,
-                # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
-                # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
-                # l'écran, création comme édition) les remettrait à False à
-                # chaque enregistrement : le prix et la quantité tapés par le
-                # commercial redeviendraient réécrivables au premier
-                # rafraîchissement — exactement le trou que D12 referme.
-                # Absents (tous les appelants d'hier) ⇒ False, comportement
-                # historique strictement inchangé.
-                quantite_manuelle=bool(li.get('quantite_manuelle', False)),
-                prix_manuel=bool(li.get('prix_manuel', False)))
 
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
