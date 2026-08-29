@@ -2894,6 +2894,33 @@ export default function DevisGenerator({
   // rien retapé serait exactement la perte que cette tâche referme. Une clé
   // que l'écran ne connaît pas est simplement ABSENTE du corps — la fusion la
   // laisse alors intacte, bit à bit.
+  // QF7 / QJR66 — LES CHOIX DU COMMERCIAL, tous marchés. Repris de l'ancien
+  // `buildEtudeParamsChoice`, à la sémantique près : le scénario et l'option
+  // recommandée AFFICHÉS À L'ÉCRAN sont persistés pour TOUS les modes
+  // (résidentiel / industriel / commercial / agricole), pas seulement quand
+  // une étude existe.
+  //
+  // POURQUOI C'EST BLOQUANT. `etude_params['scenario']` est LU par
+  // `quote_engine/builder.py` (`_stored_choice`) et par `utils/options.py`
+  // pour décider quelles lignes composent l'option vendue. Absent, le moteur
+  // prend la branche « artefact » et TOTALISE TOUTES les lignes — les deux
+  // onduleurs ET la batterie d'un devis « Les deux » — pendant que le total
+  // d'affichage montre, lui, l'option choisie : DEUX chiffres contradictoires
+  // sous les yeux du client. Le retirer du corps du devis (QJR66) sans le
+  // remettre sur le canal de fusion ouvrait exactement ce trou.
+  //
+  // JAMAIS `null` : ces deux clés ne valent que quand l'écran les possède
+  // réellement — et il les possède toujours (un défaut de mode, ou le choix
+  // explicite du vendeur). Le câblage vers le REGISTRE D12 (`scenario`,
+  // `recommended_option` sont des chemins surchargeables) est un chantier M5 :
+  // en attendant, l'écran reste leur écrivain, par le canal validé.
+  const choixEcran = () => {
+    const choix = {}
+    if (scenario) choix.scenario = scenario
+    if (recommended) choix.recommended_option = recommended
+    return choix
+  }
+
   const entreesReellesEcran = (consoDejaConnue) => {
     const entrees = {}
     if (facturesSaisies) {
@@ -2943,6 +2970,7 @@ export default function DevisGenerator({
       const etude = (modeInstallation === 'industriel'
         ? etudeIndustrielle : etudeCommerciale) || {}
       const bloc = {
+        ...choixEcran(),
         ...entreesReellesEcran(nombre(etude.conso_annuelle)),
         taux_autoconso: nombre(etude.taux_autoconso),
         taux_couverture: nombre(etude.taux_couverture),
@@ -2984,6 +3012,7 @@ export default function DevisGenerator({
           })
         : {}
       return {
+        ...choixEcran(),
         ...entreesReellesEcran(null),
         // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
         pompe_cv: nombre(p.pompe_cv),
@@ -3014,9 +3043,11 @@ export default function DevisGenerator({
       }
     }
     // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
-    // entrées réelles que le vendeur vient de taper (arbitrage « zéro perte »).
-    // Rien de tapé ⇒ objet vide ⇒ aucun appel du tout (voir `persisterDevis`).
-    const entrees = entreesReellesEcran(null)
+    // CHOIX du vendeur ni des entrées réelles qu'il vient de taper (arbitrage
+    // « zéro perte »). Objet vide ⇒ aucun appel du tout (voir
+    // `persisterDevis`) ; en pratique `choixEcran()` porte toujours au moins
+    // le scénario, sans quoi le moteur PDF totaliserait les deux options.
+    const entrees = { ...choixEcran(), ...entreesReellesEcran(null) }
     return Object.keys(entrees).length ? entrees : null
   }
 
