@@ -1628,12 +1628,13 @@ def recommander_taille(*, company, conso_kwh_mensuelles, tranches,
 # ``apps/ventes/domain/dimensionnement_devis.py``. Ce fichier-ci ne garde que
 # le BALAYAGE PUR : des nombres, aucune base de données.
 #
-# CES RÉ-EXPORTS SONT UN CONTRAT, PAS UNE COMMODITÉ. Une dizaine de modules
-# (``offres_tailles``, ``public_views``, ``etude_horaire``, les suites de
-# tests) importent ces noms — dont des PRIVÉS (``_lire_composition``,
-# ``_compter_modules_batterie``, ``_lignes_produit_du_devis``) — depuis
-# ``apps.ventes.dimensionnement``. flake8 ne signale JAMAIS la disparition
-# d'un nom importé par un AUTRE module : c'est le pin de surface
+# CES RÉ-EXPORTS SONT UN CONTRAT, PAS UNE COMMODITÉ. Balayage AST de tout
+# ``backend/django_core`` : HUIT fichiers importent ces noms depuis
+# ``apps.ventes.dimensionnement`` — deux modules de production
+# (``offres_tailles``, ``public_views``) et six suites de tests — dont les
+# PRIVÉS ``_compter_modules_batterie`` et ``_lignes_produit_du_devis``.
+# flake8 ne signale JAMAIS la disparition d'un nom importé par un AUTRE
+# module : c'est le pin de surface
 # ``apps/ventes/tests/test_qjr_dimensionnement_surface.py`` qui la voit.
 #
 # EN BAS À DESSEIN : les deux moitiés se citent, et cette position (après

@@ -312,8 +312,8 @@ class SurfaceDimensionnementTests(SimpleTestCase):
             oublies, [],
             "apps/ventes/dimensionnement.py ne ré-exporte plus : %s. Ces noms "
             "sont importés depuis apps.ventes.dimensionnement par "
-            "offres_tailles, public_views, etude_horaire et plusieurs suites "
-            "de tests — flake8 ne dirait RIEN. Rétablir le ré-export."
+            "offres_tailles, public_views et six suites de tests — flake8 ne "
+            "dirait RIEN. Rétablir le ré-export."
             % ", ".join(oublies))
 
     def test_le_bloc_de_reexports_ne_laisse_rien_derriere(self):
