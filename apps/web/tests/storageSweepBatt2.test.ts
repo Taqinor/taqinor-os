@@ -117,12 +117,19 @@ describe('[...token].astro — le plafond du curseur batterie suit le balayage R
     // est servi, il l'emporte SEUL — le MAX avec les plafonds historiques
     // ouvrait des crans sans données servies, silencieusement approchés.
     // Clé non servie ⇒ repli inchangé sur le mini-balayage/historique.
+    //
+    // WJ128 (finding 3, 29/08) — cette même priorité vit désormais dans
+    // `resolveBatterySimMaxUnits` (lib/batterySim.ts, testée en isolation dans
+    // batterySimWJ120.test.ts : couverture d'abord, sinon max(offeredUnits,
+    // storageRealMax || 3)) — extraite pour corriger un plafond fixe (3) qui
+    // empêchait une offre > 3 unités d'atteindre son propre prix réel. Cette
+    // pince ne vérifie plus l'expression inline mais le CÂBLAGE : la page
+    // délègue au lieu de réimplémenter l'arithmétique.
     expect(CODE).toContain(
       'const storageRealMax = Math.max(storageSweep?.refuse?.nbPacks ?? 0, storageMaxRetenu ?? 0);',
     );
-    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = batteryCoverage');
-    expect(CODE).toContain('? batteryCoverage.nbPacksMax');
-    expect(CODE).toContain(': Math.max(offeredUnits, storageRealMax || 3);');
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = resolveBatterySimMaxUnits(');
+    expect(CODE).toContain('offeredUnits, storageRealMax, batteryCoverage?.nbPacksMax ?? null');
   });
 
   it('la config client relit les paliers réels (prix TTC) et le premier refusé (jamais un nouveau calcul)', () => {
