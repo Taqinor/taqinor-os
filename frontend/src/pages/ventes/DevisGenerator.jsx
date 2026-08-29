@@ -1022,6 +1022,19 @@ export default function DevisGenerator({
     const reco = etudeHoraireDonnees?.dimensionnement?.recommandation
     if (Number(reco?.panneaux) > 0) {
       attenteSizingServeur.current = false
+      // setState SYNCHRONE dans l'effet, idiome MAISON (ProductTour.jsx,
+      // Avatar.jsx, FollowToggle.jsx…) : la valeur arrive d'un aller-retour
+      // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer
+      // encore d'une microtâche n'ajouterait qu'un tour de boucle entre la
+      // réponse et l'affichage — sans rien changer au rendu, mais en rendant
+      // les tests dépendants d'un `await` de plus (échecs mouvants constatés
+      // sur ProductTour.test.jsx). Aucune de ces valeurs n'est relue dans le
+      // MÊME rendu : elles ne font que reporter la réponse serveur dans les
+      // champs du formulaire.
+      // La règle ne signale que le PREMIER setState du corps : une seule
+      // dérogation la couvre, et en poser une par ligne ferait échouer
+      // `reportUnusedDisableDirectives` (avertissements « directive inutile »).
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reporte la recommandation SERVEUR (déjà asynchrone) dans les champs, jamais relue dans le même rendu
       setSizingServeurMessage(null)
       setNbPanneaux(String(reco.panneaux))
       if (reco.panel_watt) setPanelW(String(reco.panel_watt))
@@ -1347,8 +1360,13 @@ export default function DevisGenerator({
     if (nbPanneauxTouched.current) return kwp
     const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
     if (Number(backendAvec?.kwc) > 0) return Number(backendAvec.kwc)
-    const sizing = computeAutoSizing(fHiver, fEte)
-    if (sizing?.avec?.kwcOptimal > 0) return sizing.avec.kwcOptimal
+    // U3-MOTEUR (fondateur 29/08/2026) — le repli local (balayage par paliers
+    // `computeAutoSizing`, objectif avecBatterie) est RETIRÉ : ce kWc part au
+    // serveur en `body.kwc` pour composer la seconde option, c'est donc un
+    // DIMENSIONNEMENT, et le seul dimensionneur est désormais le moteur
+    // horaire. Tant qu'il n'a pas chiffré de `recommandation_avec`, l'option
+    // AVEC se compose à la taille SANS (`kwp`) — aucune divergence fabriquée
+    // par une seconde méthode de calcul (règle chiffres-vérifiés).
     return kwp
   }
 
@@ -1430,13 +1448,14 @@ export default function DevisGenerator({
     // comme le devis auto (autoQuote.js, QX19). Posé APRÈS `onModeChange`
     // ci-dessus, qui repose justement ce défaut. JAMAIS en pompage : un devis
     // agricole ne porte ni batterie ni onduleur, quoi qu'ait coché le lead.
-    // L-2OPT — scénario RÉELLEMENT visé après cette ligne (setScenario est
-    // asynchrone) : sert au choix sans/avec de computeAutoSizing ci-dessous,
-    // même patron que `modeCible` juste au-dessus.
-    let scenarioCible = scenario
+    // L-2OPT — le scénario réellement visé servait au choix sans/avec du
+    // balayage local `computeAutoSizing` ci-dessous ; U3-MOTEUR l'a retiré du
+    // chemin résidentiel (le moteur serveur dimensionne), et les autres
+    // marchés ne vendent jamais l'option batterie. Il n'y a donc plus rien à
+    // en dériver ici : on se contente de poser le scénario du lead.
     if (!scenarioTouched.current && modeCible !== 'agricole') {
       const scenarioLead = BATTERIE_LEAD_VERS_SCENARIO[String(lead.batterie_souhaitee ?? '')]
-      if (scenarioLead) { setScenario(scenarioLead); scenarioCible = scenarioLead }
+      if (scenarioLead) setScenario(scenarioLead)
     }
     // Structure préférée du lead (acier/aluminium) si non touchée par l'utilisateur.
     if (!structureTouched.current
@@ -1483,17 +1502,28 @@ export default function DevisGenerator({
       // le plus court ; sous ce seuil, attend le moteur horaire SERVEUR
       // (U3-900 — plus de repli `estimerPanneaux`, voir attenteSizingServeur).
       if (fromTaille <= 0) {
-        const sizing = computeAutoSizing(hiver, ete)
-        if (sizing) {
-          // L-2OPT — un scénario mono « Avec batterie » compose l'optimum
-          // AVEC seul (payback minimal AVEC batterie), pas l'optimum SANS.
-          const retenu = (modeCible === 'residentiel' && scenarioCible === SCENARIO_AVEC)
-            ? sizing.avec : sizing
-          setNbPanneaux(String(retenu.nbPanneaux))
-          setSizingInfo(retenu)
-        } else {
+        if (modeCible === 'residentiel') {
+          // U3-MOTEUR — voir la note de `computeAutoSizing` : en résidentiel
+          // le dimensionnement vient du MOTEUR HORAIRE serveur, quelle que
+          // soit la facture. On ne préremplit donc RIEN ici (ni panneaux, ni
+          // `sizingInfo`) : l'effet `attenteSizingServeur` applique la
+          // recommandation dès que le dry-run répond, ou affiche son refus
+          // FRANÇAIS nommé.
           setSizingInfo(null)
           attenteSizingServeur.current = true
+        } else {
+          // Industriel/commercial : aucun moteur serveur pour eux — le
+          // balayage local par paliers reste leur seule source de taille.
+          // L-2OPT — l'optimum « avec batterie » ne concernait que le
+          // résidentiel (`composeLocalement` force ces quantités à 0 ailleurs) :
+          // ces marchés lisent l'optimum SANS, comme avant.
+          const sizing = computeAutoSizing(hiver, ete)
+          if (sizing) {
+            setNbPanneaux(String(sizing.nbPanneaux))
+            setSizingInfo(sizing)
+          } else {
+            setSizingInfo(null)
+          }
         }
       }
       setMonthly(estimerMois(hiver, ete))
@@ -1531,17 +1561,19 @@ export default function DevisGenerator({
       // (voir computeAutoSizing) ; sous le seuil, attend le moteur horaire
       // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
       if (!nbPanneauxTouched.current) {
-        const sizing = computeAutoSizing(hiver, ete)
-        if (sizing) {
-          // L-2OPT — même choix sans/avec qu'applyLead (le mode a déjà pu
-          // être posé par onModeChange juste au-dessus).
-          const retenu = (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC)
-            ? sizing.avec : sizing
-          setNbPanneaux(String(retenu.nbPanneaux))
-          setSizingInfo(retenu)
-        } else {
+        if (modeInstallation === 'residentiel') {
+          // U3-MOTEUR — même règle qu'applyLead : le résidentiel ne se
+          // dimensionne plus ici, il attend le moteur horaire serveur.
           setSizingInfo(null)
           attenteSizingServeur.current = true
+        } else {
+          const sizing = computeAutoSizing(hiver, ete)
+          if (sizing) {
+            setNbPanneaux(String(sizing.nbPanneaux))
+            setSizingInfo(sizing)
+          } else {
+            setSizingInfo(null)
+          }
         }
       }
       setMonthly(estimerMois(hiver, ete))
@@ -1830,20 +1862,21 @@ export default function DevisGenerator({
     // EXPLICITE (« Auto-remplir », ou en retouchant nbPanneaux/kwcCible
     // eux-mêmes). Les factures (monthly), elles, restent toujours à jour.
     if (!nbPanneauxTouched.current) {
-      const sizing = computeAutoSizing(hiver, ete)
-      if (sizing) {
-        // L-2OPT — un scénario mono « Avec batterie » compose l'optimum
-        // AVEC seul (même choix qu'applyLead/applySiteProfile ci-dessus).
-        if (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC) {
-          setNbPanneaux(String(sizing.avec.nbPanneaux))
-          setSizingInfo(sizing.avec)
-        } else {
-          setNbPanneaux(String(sizing.nbPanneaux))
-          setSizingInfo(sizing)
-        }
-      } else {
+      if (modeInstallation === 'residentiel') {
+        // U3-MOTEUR — même règle qu'applyLead/applySiteProfile : chaque frappe
+        // sur la facture relance le dry-run serveur (le corps d'aperçu porte
+        // `fHiver`/`fEte`), et c'est SA recommandation qui remplit le nombre de
+        // panneaux. Plus aucun palier chiffré à l'écran ne s'y substitue.
         setSizingInfo(null)
         attenteSizingServeur.current = true
+      } else {
+        const sizing = computeAutoSizing(hiver, ete)
+        if (sizing) {
+          setNbPanneaux(String(sizing.nbPanneaux))
+          setSizingInfo(sizing)
+        } else {
+          setSizingInfo(null)
+        }
       }
     }
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
@@ -2534,14 +2567,49 @@ export default function DevisGenerator({
   // qui venait d'être composé (violation de la règle chiffres-vérifiés).
   const recalcDimPriorTouched = useRef(false)
   const recalculerDimensionnement = () => {
-    const sizing = computeAutoSizing(fHiver, fEte)
-    if (!sizing) {
-      setErrors(e => ({
-        ...e,
-        recalcDim: 'Renseignez une facture hiver exploitable (au moins '
-          + '~900 MAD/mois) pour recalculer le dimensionnement.',
-      }))
-      return
+    // U3-MOTEUR (fondateur 29/08/2026) — en RÉSIDENTIEL, ce bouton relit la
+    // recommandation du MOTEUR HORAIRE serveur (déjà interrogée par le dry-run
+    // d'aperçu — aucun appel réseau supplémentaire), jamais un palier chiffré
+    // à l'écran : c'était le dernier endroit où un nombre de panneaux
+    // auto-calculé localement pouvait encore écraser celui du moteur.
+    // `sizingInfo` reste NUL sur ce chemin : son encart parle de « palier
+    // retenu / besoin lu sur la facture », deux notions du balayage local qui
+    // ne décrivent pas ce que le moteur a fait (règle chiffres-vérifiés).
+    let retenu = null
+    if (modeInstallation === 'residentiel') {
+      const dim = etudeHoraireDonnees?.dimensionnement
+      const source = (scenario === SCENARIO_AVEC
+        && Number(dim?.recommandation_avec?.panneaux) > 0)
+        ? dim.recommandation_avec : dim?.recommandation
+      if (!(Number(source?.panneaux) > 0)) {
+        setErrors(e => ({
+          ...e,
+          // Message FRANÇAIS du serveur quand il en a un (il nomme la donnée
+          // manquante), sinon la cause générique — jamais un chiffre supposé.
+          recalcDim: dim?.motivation
+            || etudeHoraireDonnees?.avertissements?.[0]
+            || (etudeHoraireChargement
+              ? 'Dimensionnement en cours de calcul — réessayez dans un instant.'
+              : "Le moteur n'a pas pu chiffrer de recommandation : complétez la "
+                + 'facture, la ville et le raccordement du client, puis réessayez.'),
+        }))
+        return
+      }
+      retenu = {
+        nbPanneaux: Number(source.panneaux),
+        kwcOptimal: source.kwc != null ? Number(source.kwc) : null,
+      }
+    } else {
+      const sizing = computeAutoSizing(fHiver, fEte)
+      if (!sizing) {
+        setErrors(e => ({
+          ...e,
+          recalcDim: 'Renseignez une facture hiver exploitable (au moins '
+            + '~900 MAD/mois) pour recalculer le dimensionnement.',
+        }))
+        return
+      }
+      retenu = sizing
     }
     setErrors(e => ({ ...e, recalcDim: null }))
     // Déverrouille temporairement le garde-fou « touché » : sinon
@@ -2551,9 +2619,7 @@ export default function DevisGenerator({
     // l'état d'AVANT ce clic (capturé ici), jamais à `true` en dur.
     recalcDimPriorTouched.current = nbPanneauxTouched.current
     nbPanneauxTouched.current = false
-    const retenu = (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC)
-      ? sizing.avec : sizing
-    setSizingInfo(retenu)
+    setSizingInfo(modeInstallation === 'residentiel' ? null : retenu)
     setKwcCible(retenu.kwcOptimal != null ? String(retenu.kwcOptimal) : '')
     setNbPanneaux(String(retenu.nbPanneaux))
     // Compteur (jamais `nbPanneaux`/`panelW` eux-mêmes) : un recalcul qui
