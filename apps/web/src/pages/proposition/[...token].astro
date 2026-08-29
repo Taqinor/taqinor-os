@@ -8508,6 +8508,14 @@ const signConfig = ok
     const cumulValue = document.querySelector<HTMLElement>('[data-detail-cumul-value]');
     const paybackCard = document.querySelector<HTMLElement>('[data-detail-payback-card]');
     const paybackValue = document.querySelector<HTMLElement>('[data-detail-payback-value]');
+    // F2 (revue Fable 29/08/2026) — LE TABLEAU ANNÉE PAR ANNÉE SUIT LA CARTE.
+    // Il était rendu au SSR depuis `quote.cashflow_sans/avec` (le DEVIS
+    // OFFICIEL) et l'îlot ne le touchait pas : on cliquait « Éco », le grand
+    // chiffre du cumul changeait, et les 25 lignes en dessous continuaient
+    // d'afficher la série du Recommandé. Des chiffres RÉELS attribués à la
+    // mauvaise offre — exactement ce que cette section corrige ailleurs.
+    const cumulAnnuelBloc = document.querySelector<HTMLElement>('[data-cumul-annuel]');
+    const cumulAnnuelCorps = cumulAnnuelBloc?.querySelector<HTMLElement>('tbody') ?? null;
 
     const originaux = {
       moisSans: ecoMoisSans.map((n) => n.textContent),
@@ -8516,7 +8524,40 @@ const signConfig = ok
       couvValue: couvValue?.textContent ?? null,
       cumul: cumulValue?.textContent ?? null,
       payback: paybackValue?.textContent ?? null,
+      // Les lignes du devis officiel, telles que le serveur les a rendues :
+      // le retour sur « Recommandé » les remet à l'identique (aucun re-rendu).
+      cumulAnnuel: cumulAnnuelCorps?.innerHTML ?? null,
     };
+
+    /**
+     * Réécrit le tableau année par année depuis la série SERVIE
+     * (`detail.cashflow.cumulative`, contrat `taille_detail.json`). AUCUN
+     * calcul : on numérote les années comme le SSR (`i + 1`, même convention
+     * que `cumulAnnuelServi`) et on formate avec le MÊME `formatMAD` partagé.
+     * Série absente ⇒ le bloc entier disparaît, jamais la série d'une autre
+     * offre laissée en place.
+     */
+    function peindreCumulAnnuel(serieCumul: number[] | null): void {
+      if (!cumulAnnuelBloc || !cumulAnnuelCorps) return;
+      if (!serieCumul || serieCumul.length === 0) { cumulAnnuelBloc.hidden = true; return; }
+      const frag = document.createDocumentFragment();
+      serieCumul.forEach((cumulAnnee, i) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t border-white/10';
+        const tdAnnee = document.createElement('td');
+        tdAnnee.className = 'py-1.5 text-lune-soft';
+        tdAnnee.setAttribute('dir', 'ltr');
+        tdAnnee.textContent = String(i + 1);
+        const tdVal = document.createElement('td');
+        tdVal.className = `py-1.5 text-end fig ${cumulAnnee >= 0 ? 'text-brass-300' : 'text-lune-faint'}`;
+        tdVal.setAttribute('dir', 'ltr');
+        tdVal.textContent = formatMAD(cumulAnnee);
+        tr.append(tdAnnee, tdVal);
+        frag.append(tr);
+      });
+      cumulAnnuelCorps.replaceChildren(frag);
+      cumulAnnuelBloc.hidden = false;
+    }
 
     /** `null` mis en cache = échec DÉJÀ constaté : on ne martèle pas le réseau. */
     const cacheDetail = new Map<string, TailleDetail | null>();
@@ -8531,7 +8572,7 @@ const signConfig = ok
      * réponse, en annonçant l'attente aux lecteurs d'écran (`aria-busy`).
      */
     function marquerChargement(enCours: boolean): void {
-      for (const n of [ecoBloc, cumulCard, paybackCard]) {
+      for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) {
         if (!n) continue;
         if (enCours) { n.setAttribute('aria-busy', 'true'); n.hidden = true; }
         else n.removeAttribute('aria-busy');
@@ -8545,7 +8586,7 @@ const signConfig = ok
       for (const n of ecoMoisAvec) n.hidden = false;
       if (ecoTotal) { ecoTotal.textContent = originaux.total; ecoTotal.hidden = false; }
       if (ecoTotalAvec) ecoTotalAvec.hidden = false;
-      for (const n of [ecoBloc, cumulCard, paybackCard]) n?.removeAttribute('aria-busy');
+      for (const n of [ecoBloc, cumulCard, paybackCard, cumulAnnuelBloc]) n?.removeAttribute('aria-busy');
       if (ecoBanque) { ecoBanque.hidden = true; ecoBanque.textContent = ''; }
       if (ecoEchec) ecoEchec.hidden = true;
       if (ecoBloc) ecoBloc.hidden = false;
@@ -8556,6 +8597,12 @@ const signConfig = ok
       if (cumulCard) cumulCard.hidden = false;
       if (paybackValue) paybackValue.textContent = originaux.payback;
       if (paybackCard) paybackCard.hidden = false;
+      // F2 — restauration EXACTE du tableau année par année : on remet le HTML
+      // rendu par le serveur, jamais une série reconstruite à la main.
+      if (cumulAnnuelCorps && originaux.cumulAnnuel !== null) {
+        cumulAnnuelCorps.innerHTML = originaux.cumulAnnuel;
+      }
+      if (cumulAnnuelBloc) cumulAnnuelBloc.hidden = false;
     }
 
     /** Pose le détail SERVI d'une taille — ou masque tout ce qu'il ne sert pas. */
@@ -8614,6 +8661,12 @@ const signConfig = ok
       const payback = formatPayback(detail?.carte?.paybackAnnees ?? null);
       if (paybackCard) paybackCard.hidden = payback === null;
       if (payback !== null && paybackValue) paybackValue.textContent = payback;
+
+      // F2 — le tableau année par année suit la carte : il est REPEINT depuis
+      // la série servie de CETTE taille, ou masqué si le serveur n'en sert
+      // pas (`lireCashflow` omet un cashflow vide ou troué — jamais un
+      // remplissage). Même discipline que les autres chapitres profonds.
+      peindreCumulAnnuel(detail?.cashflow?.cumulative ?? null);
     }
 
     async function chargerDetail(): Promise<void> {
