@@ -199,12 +199,35 @@ test('BLOQUANT FABLE — `scenario` et `recommended_option` ONT un écrivain, po
     .filter(l => !/^\s*\/\//.test(l)).join('\n')
   assert.equal((codeMarche.match(/choixEcran\(\)/g) || []).length, 3,
     'les quatre marchés doivent tous porter le choix de l\'écran')
-  // JAMAIS `null` : une clé n'est posée que si l'écran la possède.
+  // JAMAIS `null` pour CES DEUX clés : elles ne sont posées que si l'écran les
+  // possède (les envoyer à null les SUPPRIMERAIT et rouvrirait le bug).
+  // `nombre_proprietes` est la seule exception assumée du bloc — son propre
+  // test, plus bas, explique pourquoi.
   const bloc = DG.slice(DG.indexOf('const choixEcran = () => {'),
                         DG.indexOf('const entreesReellesEcran ='))
-  assert.ok(!/choix\.\w+ = null/.test(bloc),
+  assert.ok(!/choix\.(scenario|recommended_option) = null/.test(bloc),
     'un choix envoyé à null SUPPRIMERAIT la clé côté serveur')
   assert.match(bloc, /if \(scenario\) choix\.scenario = scenario/)
+  assert.match(bloc, /if \(recommended\) choix\.recommended_option = recommended/)
+})
+
+test('BLOQUANT FABLE — `nombre_proprietes` (×N villas) est écrit, RETIRÉ à N=1, et relu par `?edit=`', () => {
+  // `selectors.py` multiplie le total par cette clé (défaut 1) : sans
+  // écrivain, un devis ×4 rendait le total d'UNE villa.
+  assert.ok(CHOIX_ECRITS.has('nombre_proprietes'), 'clé plus écrite')
+  assert.ok(CLES_SCHEMA.has('nombre_proprietes'), 'clé absente du schéma')
+  const bloc = DG.slice(DG.indexOf('const choixEcran = () => {'),
+                        DG.indexOf('const entreesReellesEcran ='))
+  // Écrite avec sa valeur en mode ×N, RETIRÉE (null → règle Z2) sinon : le ×4
+  // d'hier ne doit pas survivre à un retour en mono-système.
+  assert.match(bloc, /multiMode === 'multiplier' \? parseInt\(nombreProprietes, 10\) : 1/)
+  assert.match(bloc,
+    /choix\.nombre_proprietes = \(Number\.isFinite\(n\) && n > 1\) \? n : null/)
+  // Et le mappeur la relit — sans quoi rouvrir un devis ×4 enverrait `null`
+  // au premier enregistrement et DÉTRUIRAIT le ×N en base.
+  assert.ok(CLES_RELUES.has('nombre_proprietes'),
+    'le mappeur `?edit=` ne relit pas nombre_proprietes')
+  assert.match(blocMappeur(), /setMultiMode\('multiplier'\)/)
 })
 
 test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entrées réelles', () => {

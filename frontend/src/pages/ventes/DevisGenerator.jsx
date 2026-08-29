@@ -1795,6 +1795,16 @@ export default function DevisGenerator({
         .includes(e.recommended_choice)) {
         setRecommendedChoice(e.recommended_choice)
       }
+      // QJ31 / QJR66 — round-trip du ×N villas identiques. Le mode multi-villa
+      // ne se restaurait QUE depuis le brouillon local (localStorage) : rouvrir
+      // un devis ×4 par `?edit=` le ramenait à 1 à l'écran. Devenu bloquant
+      // depuis que l'écran est l'écrivain de la clé (il aurait alors envoyé
+      // `null` et DÉTRUIT le ×4 en base au premier enregistrement).
+      const nProprietes = parseInt(e.nombre_proprietes, 10)
+      if (Number.isFinite(nProprietes) && nProprietes > 1) {
+        setMultiMode('multiplier')
+        setNombreProprietes(String(nProprietes))
+      }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
       // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
@@ -2914,10 +2924,23 @@ export default function DevisGenerator({
   // explicite du vendeur). Le câblage vers le REGISTRE D12 (`scenario`,
   // `recommended_option` sont des chemins surchargeables) est un chantier M5 :
   // en attendant, l'écran reste leur écrivain, par le canal validé.
+  //
+  // QJ31 (mode A) — ×N VILLAS IDENTIQUES. `selectors.py` multiplie le total du
+  // devis par `etude_params['nombre_proprietes']` (défaut 1) : sans écrivain,
+  // un devis ×4 rendait le total d'UNE villa. C'est le SEUL choix de ce bloc
+  // qui s'envoie à `null` — et c'est VOULU : le sélecteur multi-villa est
+  // toujours dans un état défini, donc « pas de ×N à l'écran » signifie
+  // vraiment « ce devis est mono-système », et `null` RETIRE la clé (règle Z2)
+  // au lieu de laisser traîner le ×4 d'hier. Contraste avec les factures
+  // réelles, où « rien de retapé » ne veut PAS dire « pas de factures » — d'où
+  // l'absence de clé là-bas. Le mappeur `?edit=` repose le mode depuis cette
+  // même clé (plus bas), sans quoi rouvrir un devis ×4 l'aurait remis à 1.
   const choixEcran = () => {
     const choix = {}
     if (scenario) choix.scenario = scenario
     if (recommended) choix.recommended_option = recommended
+    const n = multiMode === 'multiplier' ? parseInt(nombreProprietes, 10) : 1
+    choix.nombre_proprietes = (Number.isFinite(n) && n > 1) ? n : null
     return choix
   }
 
