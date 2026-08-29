@@ -1179,6 +1179,232 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </div>
           </fieldset>
 
+          <!-- L-WEBT — « Affinez votre profil de consommation » : FACULTATIF et
+               REPLIABLE (<details> fermé par défaut) — un visiteur qui saute
+               cette section ne voit pas le tunnel s'allonger.
+
+               QJW5 (web-tunnel-1) — ce bloc entier MANQUAIT à la page arabe.
+               Les neuf réponses L-WEBT et les quatre détails kW/créneau
+               n'étaient pas dégradés pour un visiteur arabophone : ils
+               n'étaient JAMAIS POSÉS, alors que la page FR les pose depuis le
+               24/08/2026. Porté ici tel quel (mêmes ids, même structure, mêmes
+               défauts), avec la double-couche data-fr/data-ar de cette page
+               (bascule de langue en direct) — le registre de champs partagé lit
+               ainsi le même DOM dans les trois locales.
+
+               Les trois silhouettes viennent VERBATIM du serveur
+               (backend/django_core/apps/ventes/courbes_journalieres.py
+               SILHOUETTES_OCCUPATION, recopiées dans lib/dayProfiles.ts
+               OCCUPANCY_SHAPES — CJ2a) : aucun poids n'est inventé ici, ce
+               composant ne fait QUE du rendu. Chaque équipement coché révèle un
+               détail kW/créneau ENCORE PLUS facultatif — jamais requis, jamais
+               pré-rempli. -->
+          <details class="mt-1 cine-card border border-white/10 text-white">
+            <summary class="cursor-pointer select-none p-3 text-sm font-semibold" data-i18n
+              data-fr="Affiner mon profil de consommation (facultatif)"
+              data-ar="تحسين نمط استهلاكي (اختياري)">
+              Affiner mon profil de consommation (facultatif)
+            </summary>
+            <div class="flex flex-col gap-4 border-t border-white/10 p-3">
+              <fieldset>
+                <legend class="text-sm text-lune-soft" data-i18n
+                  data-fr="Passez-vous la journée à la maison ?"
+                  data-ar="هل تقضون النهار في المنزل؟">
+                  Passez-vous la journée à la maison&nbsp;?
+                </legend>
+                <div class="mt-2 border border-white/10 bg-white/5 p-2">
+                  <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
+                    preserveAspectRatio="none" role="img"
+                    aria-label="أوزان الشكل الساعية للأنماط الثلاثة للشغل"></svg>
+                  <p class="mt-1 text-[11px] text-lune-faint" data-i18n
+                    data-fr="Axe vertical : poids de forme (sans unité)"
+                    data-ar="المحور العمودي: وزن الشكل (بدون وحدة)">
+                    Axe vertical&nbsp;: poids de forme (sans unité)
+                  </p>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
+                    <span data-i18n data-fr="Présent" data-ar="حاضر">Présent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
+                    <span data-i18n data-fr="Absent" data-ar="غائب">Absent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
+                    <span data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                </div>
+                <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
+              </fieldset>
+
+              <fieldset class="flex flex-col gap-3">
+                <legend class="text-sm text-lune-soft" data-i18n
+                  data-fr="Équipements (facultatif — affine votre étude)"
+                  data-ar="التجهيزات (اختياري)">
+                  Équipements (facultatif — affine votre étude)
+                </legend>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
+                  </label>
+                  <!-- L-WEBT2 — détail kW/créneau ENCORE PLUS facultatif : la
+                       couche chauffe-eau du moteur n'existe que si les DEUX
+                       sont renseignés (apps/ventes/courbes_journalieres.py) ;
+                       une seule moitié saisie ne produit rien, jamais une
+                       erreur. -->
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chauffe-eau (kW, facultatif)"
+                      data-ar="قدرة سخان الماء (كيلوواط، اختياري)">
+                      Puissance du chauffe-eau (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="2.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Il chauffe surtout quand ? (facultatif)"
+                      data-ar="متى يسخّن أكثر؟ (اختياري)">
+                      Il chauffe surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-chauffe-eau-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">صباحاً</option>
+                      <option value="soir">مساءً</option>
+                      <option value="nuit">ليلاً</option>
+                      <option value="journee">طوال النهار</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-ve" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Véhicule électrique (actuel ou prévu)" data-ar="سيارة كهربائية (حالية أو مستقبلية)">Véhicule électrique (actuel ou prévu)</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Km parcourus par semaine avec ce véhicule"
+                      data-ar="عدد الكيلومترات المقطوعة أسبوعياً بهذه السيارة">
+                      Km parcourus par semaine avec ce véhicule
+                    </label>
+                    <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — précision facultative : chargeur réel +
+                         créneau réel, quand connus, resserrent la fenêtre de
+                         recharge servie (sinon la fenêtre 21h-6h par défaut). -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chargeur (kW, facultatif)"
+                      data-ar="قدرة الشاحن (كيلوواط، اختياري)">
+                      Puissance du chargeur (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="7.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Vous rechargez surtout quand ? (facultatif)"
+                      data-ar="متى تشحنون أكثر؟ (اختياري)">
+                      Vous rechargez surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-ve-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="nuit">ليلاً</option>
+                      <option value="jour">نهاراً</option>
+                      <option value="soir">مساءً</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-clim" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Climatisation" data-ar="تكييف الهواء">Climatisation</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Nombre de pièces/unités climatisées"
+                      data-ar="عدد الغرف/الوحدات المكيّفة">
+                      Nombre de pièces/unités climatisées
+                    </label>
+                    <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — puissance réelle (facultative) : remplace
+                         l'estimation par nombre de pièces si connue. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance totale réelle (kW, facultatif)"
+                      data-ar="القدرة الإجمالية الفعلية (كيلوواط، اختياري)">
+                      Puissance totale réelle (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-clim-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="2.8"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Elle tourne surtout quand ? (facultatif)"
+                      data-ar="متى تعمل أكثر؟ (اختياري)">
+                      Elle tourne surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-clim-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">صباحاً</option>
+                      <option value="apres_midi">بعد الظهر</option>
+                      <option value="soir">مساءً</option>
+                      <option value="journee">طوال النهار</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-piscine" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Piscine" data-ar="مسبح">Piscine</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance de la pompe de filtration (kW)"
+                      data-ar="قدرة مضخة الترشيح (كيلوواط)">
+                      Puissance de la pompe de filtration (kW)
+                    </label>
+                    <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — durée/créneau réels (facultatifs) : la durée
+                         remplace le défaut 8h, le créneau déplace le départ
+                         (10h par défaut) — indépendants, se composent librement. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Heures de filtration par jour (facultatif)"
+                      data-ar="ساعات الترشيح يومياً (اختياري)">
+                      Heures de filtration par jour (facultatif)
+                    </label>
+                    <input id="mt-equip-piscine-heures" type="number" min="0" max="24" step="any" inputmode="decimal"
+                      placeholder="6"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Elle tourne surtout quand ? (facultatif)"
+                      data-ar="متى تعمل أكثر؟ (اختياري)">
+                      Elle tourne surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-piscine-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">صباحاً</option>
+                      <option value="apres_midi">بعد الظهر</option>
+                      <option value="soir">مساءً</option>
+                      <option value="journee">طوال النهار</option>
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+          </details>
+
           <label class="flex items-start gap-3 text-sm text-lune-soft">
             <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
               aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
@@ -1778,7 +2004,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { billRangeFromExact, billRangeLabel, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  // QJW5 — LE seul constructeur de corps du tunnel, partagé par les trois
+  // locales (`src/lib/tunnel/`). Cette page n'a plus de `buildBody()` à elle :
+  // elle LIT son DOM dans un état simple et le donne à `construireCorps`, qui
+  // applique le registre de champs et appelle `validateLead` lui-même.
+  import { construireCorps } from '../../../lib/tunnel/corps';
+  import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
+  import { ERREURS } from '../../../lib/tunnel/i18n';
+  // LANE T-WEB — empreinte d'appareil anonyme (voir lib/visite.ts) : échoée
+  // telle quelle sur le lead pour corréler avec les visites de balise. QJW5 —
+  // elle manquait entièrement à cette page (web-tunnel-1) : le signal
+  // anti-fraude n'était jamais collecté chez un visiteur arabophone.
+  import { appareilId } from '../../../lib/visite';
+  // L-WEBT — silhouettes d'occupation SERVEUR (CJ2a) : lib/dayProfiles.ts
+  // recopie VERBATIM backend/django_core/apps/ventes/courbes_journalieres.py
+  // SILHOUETTES_OCCUPATION (test croisé backend↔TS). Aucun poids inventé ici.
+  import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
   // QX/Lane C — TYPE seul (effacé au build : Three.js/viewerOnly ne rejoint jamais le bundle initial).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
   // WJ72 — UN SEUL style de nombre kWc, partagé avec la proposition.
@@ -1999,10 +2241,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // QX — sous-panneau AGRICOLE (étape 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
+    // L-WEBT — équipements (facultatifs, section repliable « Affiner mon
+    // profil de consommation »).
+    'mt-equip-ve-km', 'mt-equip-clim-pieces', 'mt-equip-piscine-kw',
+    // L-WEBT2 (24/08/2026) — détails kW/créneau encore plus facultatifs.
+    'mt-equip-chauffe-eau-kw', 'mt-equip-chauffe-eau-creneau',
+    'mt-equip-ve-kw', 'mt-equip-ve-creneau',
+    'mt-equip-clim-kw', 'mt-equip-clim-creneau',
+    'mt-equip-piscine-heures', 'mt-equip-piscine-creneau',
   ];
   // 'mt-ete-differente', 'mt-battery-interest' et 'mt-weekend' retirés du tunnel
   // (coupe fondateur 18/08) — le commercial les complète dans l'ERP.
-  const PERSISTED_CHECK_FIELDS = ['mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent'];
+  const PERSISTED_CHECK_FIELDS = [
+    'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent',
+    // L-WEBT — équipements (facultatifs).
+    'mt-equip-chauffe-eau', 'mt-equip-ve', 'mt-equip-clim', 'mt-equip-piscine',
+  ];
   let restoring = false;
   function saveWizardState() {
     if (restoring) return;
@@ -2020,7 +2274,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
+        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
         capturePin, captureOutline,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2218,6 +2472,120 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
   wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK1/3 — « Passez-vous la journée à la maison ? » : trois
+  // silhouettes 24 h superposées (couleurs VALIDÉES fondateur, reproduites à
+  // l'identique) — présent bleu plein #2a78d6 (remplissage 10 %), absent
+  // orange pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
+  // Les 24 poids par silhouette sont ceux du SERVEUR (import ci-dessus) —
+  // ce bloc ne fait QUE tracer, il n'invente aucun chiffre.
+  //
+  // QJW5 — porté depuis la page FR, où il tourne depuis le 24/08/2026.
+  // ════════════════════════════════════════════════════════════════════════
+  const OCC_COLORS: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
+    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
+    absence_jour: { stroke: '#eb6834', dash: '6,3' },
+    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
+  };
+  // Lead.occupation_jour (backend crm.Lead, apps/crm/models.py) n'utilise PAS
+  // le même vocabulaire que les identifiants d'affichage OCCUPANCY_IDS —
+  // cette table est la SEULE traduction entre les deux.
+  const OCC_TO_LEAD_FIELD: Record<OccupancyId, 'present' | 'absent' | 'partiel'> = {
+    presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
+  };
+
+  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
+    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
+    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const line = `M${pts.join(' L')}`;
+    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area };
+  }
+
+  function renderOccupancyChart() {
+    const svg = $('mt-occ-chart');
+    if (!svg) return;
+    const W = 320;
+    const H = 140;
+    const PAD = 8;
+    let markup = '';
+    for (const id of OCCUPANCY_IDS) {
+      const shape = OCCUPANCY_SHAPES[id];
+      const { line, area } = occShapePaths(shape, W, H, PAD);
+      const c = OCC_COLORS[id];
+      if (c.fill) markup += `<path d="${area}" fill="${c.fill}" stroke="none"></path>`;
+      markup += `<path data-occ-line="${id}" d="${line}" fill="none" stroke="${c.stroke}" stroke-width="2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}></path>`;
+    }
+    svg.innerHTML = markup;
+  }
+  renderOccupancyChart();
+
+  let occupationJour = savedWizard?.sel?.occupationJour || '';
+  function syncOccupancySelection() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      const on = !!field && occupationJour === field;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('border-brass-400', on);
+      btn.classList.toggle('border-white/15', !on);
+      const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
+      if (badge) badge.hidden = !on;
+    });
+    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
+      const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
+      const on = !occupationJour || OCC_TO_LEAD_FIELD[id] === occupationJour;
+      p.style.opacity = on ? '1' : '0.25';
+      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === occupationJour ? '3' : '2');
+    });
+    const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
+    if (hidden) hidden.value = occupationJour;
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      if (!field) return;
+      occupationJour = occupationJour === field ? '' : field;
+      syncOccupancySelection();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncOccupancySelection();
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK3 — équipements (facultatifs, jamais bloquants) : la case
+  // révèle son détail SEULEMENT si coché (case décochée = question jamais
+  // posée, jamais un « Non » fabriqué — le registre partagé
+  // `src/lib/tunnel/champs.ts` omet la clé entière tant que la case n'est pas
+  // cochée).
+  // ════════════════════════════════════════════════════════════════════════
+  const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
+    { checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' },
+    { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
+    { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
+    { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
+  ];
+  // Ré-appelée après la réhydratation WJ61 (plus bas) : affecter `.checked`
+  // par script ne déclenche pas `change`, donc un détail restauré coché
+  // resterait masqué sans ce second passage.
+  function syncEquipDetails() {
+    for (const { checkId, detailId } of EQUIP_TOGGLES) {
+      const chk = $(checkId) as HTMLInputElement | null;
+      const detail = detailId ? $(detailId) : null;
+      const wrap = detail?.closest<HTMLElement>('[data-equip-detail]') || null;
+      if (wrap) wrap.hidden = !chk?.checked;
+    }
+  }
+  for (const { checkId } of EQUIP_TOGGLES) {
+    const chk = $(checkId) as HTMLInputElement | null;
+    chk?.addEventListener('change', () => { syncEquipDetails(); markDataEntered(); saveWizardState(); });
+  }
+  syncEquipDetails();
 
   // « Charges futures envisagées » (.mt-future-load) et « Photo du compteur ou
   // de la facture » (mt-meter-photo) sont retirées du tunnel (coupe fondateur
@@ -2420,6 +2788,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     }
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
     syncCallbackSla();
+    // L-WEBT — même raison : un détail équipement restauré coché reste masqué
+    // sans ce second passage (`.checked` affecté par script ne déclenche pas
+    // `change`).
+    syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     syncCityRequirement();
@@ -3615,34 +3987,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return true;
   }
 
-  // ——— QX : billRange PROFESSIONNEL dérivé de la conso saisie. ———
-  function resolveProBillRange(): string {
-    const v = num(proBillId());
-    if (v == null || v <= 0) return '';
-    let mad: number | null = null;
-    if (proBillUnit() === 'mad') mad = v;
-    else if (lastProTarifMadKwh != null && lastProTarifMadKwh > 0) mad = v * lastProTarifMadKwh;
-    if (mad == null || !(mad > 0)) return '';
-    const rid = billRangeFromExact(mad);
-    if (rid) return rid;
-    return mad > 10_000 ? 'gt10000' : '';
-  }
-  // ——— QX : roofType DÉRIVÉ pour TOUS les profils — validateLead (lib/lead.ts)
-  // l'exige pour toute soumission mon-toit, mais plus AUCUN écran ne pose la
-  // question depuis la coupe fondateur du 18/08 (les cartes « type de toit » du
-  // sous-panneau résidentiel ont disparu). On dérive donc de vraies réponses
-  // quand il y en a — bac acier → hangar, toiture-terrasse → toit plat — et on
-  // retombe sinon sur 'autre', le bucket HONNÊTE : jamais une toiture précise
-  // inventée pour un visiteur qu'on n'a pas interrogé. Le commercial qualifie
-  // le vrai type de toiture dans l'ERP / à la visite technique. ———
-  function resolveRoofType(): string {
-    if (isProMode(mode)) {
-      if (surfaceType === 'bac_acier') return 'hangar';
-      if (surfaceType === 'terrasse') return 'toit_plat';
-      return 'autre';
-    }
-    return 'autre';
-  }
+  // QJW5 — `resolveProBillRange()` (tranche C&I dérivée de la conso saisie) et
+  // `resolveRoofType()` (type de toit dérivé, jamais demandé depuis la coupe
+  // fondateur du 18/08) ont quitté cette page : ce sont des DÉRIVATIONS DE
+  // PAYLOAD, elles vivent donc avec le reste du corps dans le registre partagé
+  // (`src/lib/tunnel/champs.ts` — `trancheFactureProfessionnelle` et le
+  // descripteur `typeToiture`). Recopiées dans trois pages, elles pouvaient
+  // diverger ; il n'en existe plus qu'un exemplaire.
   // ——— WJ52 : référence client courte, générée UNE FOIS côté navigateur ———
   let clientRef = '';
   function getOrCreateClientRef(): string {
@@ -3669,167 +4020,127 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // désormais dans l'ERP. COMMERCIAL_QUESTION_WEBHOOK_KEY reste dans
   // lib/commercialCategories (le backend s'en sert toujours) — le tunnel ne
   // produit simplement plus ces clés.
-  /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
-  function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
-      ? 'phone_ok'
-      : 'whatsapp_only';
-    const whatsappOptIn = contactPreference === 'whatsapp_only';
-    const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
-    const body: Record<string, unknown> = {
-      fullName: val('mt-name'),
-      phone: val('mt-phone'),
-      city: adresse,
-      // QX — billRange TOUJOURS cohérent avec ce qui a piloté l'estimation
-      // affichée : résidentiel = le <select> (auto-dérivé du montant exact,
-      // syncBillRangeFromExact) ; C&I (industriel/commercial) = dérivé de la conso saisie ;
-      // agricole = plus requis (lib/lead.ts, mode 'agricole').
-      billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
-      // QX — dérivé des vraies réponses pour pro/agricole (cartes toit =
-      // sous-panneau résidentiel uniquement) ; cf. resolveRoofType.
-      roofType: resolveRoofType(),
-      consent,
-      whatsappOptIn,
-      contactPreference,
-      email: val('mt-email') || undefined,
-      factureHiver: num('mt-facture-hiver'),
-      // `factureEte`/`eteDifferente` et `raccordement` (mono/triphasé) retirés
-      // du tunnel (coupe fondateur 18/08) — le commercial les complète dans
-      // l'ERP ; les clés sont simplement ABSENTES du corps, lib/lead.ts les
-      // accepte toujours d'autres sources.
-      adresse,
-      // WJ30 — le type de projet et la langue active partent aussi au webhook.
+  /**
+   * QJW5 — L'ADAPTATEUR DOM → ÉTAT. C'est tout ce que cette page fait encore du
+   * corps de lead : lire SES propres champs dans un objet simple. Le corps
+   * lui-même — quelles clés partent, sous quel nom, à quelle condition — et son
+   * pré-contrôle vivent désormais dans `src/lib/tunnel/`, partagés VERBATIM
+   * avec les versions française et anglaise. Le corps de cette page ignorait
+   * tout le bloc L-WEBT et `appareilId` sans que rien ne le signale : c'est
+   * exactement ce que la mise en commun rend impossible.
+   *
+   * On lit TOUT, sans condition. Les gates (case cochée, unité choisie, profil
+   * actif) sont dans le registre : une valeur lue ici n'est pas une valeur
+   * émise.
+   */
+  function lireEtatTunnel(): EtatTunnel {
+    const coche = (id: string) => ($(id) as HTMLInputElement | null)?.checked === true;
+    return {
+      ...etatVide(),
+      nomComplet: val('mt-name'),
+      telephone: val('mt-phone'),
+      email: val('mt-email'),
+      ville: val('mt-city'),
+      adresseCarte: addressEl?.value ?? '',
+      adresseSecours: fallbackAddrEl?.value ?? '',
+      consentement: coche('mt-consent'),
+      // WJ51 — préférence de contact EXPLICITE : le registre en dérive
+      // `whatsappOptIn` (compat CRM/webhook) ET `contactPreference` (canal).
+      appelAutorise: coche('mt-contact-phone'),
+      // WJ30 — le type de projet et la langue AFFICHÉE partent au webhook
+      // (cette page bascule عربي/FR en direct).
       mode,
-      langue_preferee: currentLang,
-      // `ombrage` RETIRÉ du tunnel (ordre fondateur 21/08) : la clé est
-      // désormais ABSENTE du corps — jamais une chaîne vide. Le contrat webhook
-      // est INCHANGÉ (lib/lead.ts la valide toujours comme facultative et
-      // l'accepte d'autres sources : c'est le commercial qui la renseigne dans
-      // l'ERP après la visite technique). Rien ne change non plus sur le fil :
-      // l'ancienne expression de cette clé produisait déjà `undefined` pour un
-      // visiteur sans réponse, et JSON.stringify omet les `undefined`.
-      // (L'expression elle-même est épinglée ABSENTE de ce fichier par
-      // tests/wj112RefineEstimate.test.ts, qui lit la source BRUTE — ne pas la
-      // réécrire ici, même en commentaire.)
-      // Retirés du tunnel (coupe fondateur 18/08) — le commercial les complète
-      // dans l'ERP, leurs clés sont simplement ABSENTES du corps (lib/lead.ts
-      // les accepte toujours d'autres sources, contrat webhook intact) :
-      // `distributeur`, `billKwh`, `roofAgeYears`, `futureLoads`,
-      // `batteryInterest`, `occupantType`, `projectTiming`, `hasMeterPhoto` —
-      // et `financingIntent`, retirée avant elles pour la même raison.
+      languePreferee: currentLang,
+      factureHiverMad: num('mt-facture-hiver'),
+      trancheFacture: val('mt-bill'),
+      // WJ122 — la conso C&I vient du panneau ACTIF (commercial : mt-cc-bill).
+      // Le tarif MAD/kWh du moteur accompagne la valeur : sans lui, le registre
+      // refuse de convertir une saisie en kWh plutôt que d'inventer un montant.
+      factureProValeur: num(proBillId()),
+      factureProUnite: proBillUnit(),
+      tarifProMadKwh: lastProTarifMadKwh,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant.
+      raisonSociale: val('mt-raison-sociale'),
+      tension,
+      activite: activity,
+      categorieCommerciale: commercialCategory,
+      // WJ123 — mode INDUSTRIEL : les équipes plafonnent honnêtement
+      // l'autoconsommation dans estimatePro.
+      equipes,
+      typeSurface: surfaceType,
+      surfaceM2: num('mt-surface-m2'),
+      // QX — sous-panneau AGRICOLE (pompage). Le curseur `mt-heures-pompage`
+      // part avec value="7" AVANT toute interaction : c'est le registre qui le
+      // gate sur le mode agricole, jamais cette lecture.
+      sourceEau: waterSource,
+      uniteEau: waterUnit,
+      profondeurM: num('mt-profondeur'),
+      hmtM: num('mt-hmt'),
+      besoinEau: num('mt-water-need'),
+      heuresPompage: num('mt-heures-pompage'),
+      culture: val('mt-culture'),
+      regionAgricole,
+      surfaceHa: num('mt-surface-ha'),
+      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
+      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
+      depenseCarburantMad: num('mt-fuel-spend'),
+      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
+      creneauVisitePartie: visitWindowPart,
+      creneauVisiteSemaine: visitWindowWeek,
+      // L-WEBT — « Affiner mon profil de consommation » (facultatif, repliable).
+      // Chaque détail kW/créneau est lu SANS condition ici ; c'est le registre
+      // qui le gate sur sa case parente, pour les trois locales à la fois.
+      occupationJour,
+      equipChauffeEau: coche('mt-equip-chauffe-eau'),
+      equipChauffeEauKw: num('mt-equip-chauffe-eau-kw'),
+      equipChauffeEauCreneau: val('mt-equip-chauffe-eau-creneau'),
+      equipVoitureElectrique: coche('mt-equip-ve'),
+      equipVeKmSemaine: num('mt-equip-ve-km'),
+      equipVeChargeurKw: num('mt-equip-ve-kw'),
+      equipVeCreneau: val('mt-equip-ve-creneau'),
+      equipClim: coche('mt-equip-clim'),
+      equipClimPieces: num('mt-equip-clim-pieces'),
+      equipClimKw: num('mt-equip-clim-kw'),
+      equipClimCreneau: val('mt-equip-clim-creneau'),
+      equipPiscine: coche('mt-equip-piscine'),
+      equipPiscinePompeKw: num('mt-equip-piscine-kw'),
+      equipPiscineHeuresJour: num('mt-equip-piscine-heures'),
+      equipPiscineCreneau: val('mt-equip-piscine-creneau'),
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
       // Jetons de DÉDOUBLONNAGE (CRM + Meta CAPI) : générés au premier
       // affichage, stables pour toute la session de saisie, donc un renvoi
       // (échec réseau, double-clic, retour arrière puis re-soumission) porte le
-      // MÊME couple. lib/lead.ts les validait déjà — mais le tunnel ne les
-      // envoyait jamais : côté CAPI, `fireCapi` retombait sur un id dérivé de
-      // l'horodatage, qui DIFFÈRE à chaque renvoi et ne déduplique donc rien.
+      // MÊME couple.
       idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
       eventId: getOrCreateDedupTokens().eventId,
-      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
-      visitWindowPart: visitWindowPart || undefined,
-      visitWindowWeek: visitWindowWeek || undefined,
-      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant. Les
-      // champs restent envoyés même si le mode a changé depuis (validateLead
-      // les accepte indépendamment du mode — un visiteur qui bascule
-      // résidentiel→professionnel→résidentiel ne perd rien de saisi).
-      raisonSociale: val('mt-raison-sociale') || undefined,
-      // `facilityType` (type de site) et `siteCount` (nombre de sites) retirés
-      // du tunnel (coupe fondateur 18/08) : ni l'un ni l'autre n'entrait dans
-      // estimatePro — le commercial les complète dans l'ERP.
-      // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) est
-      // volontairement DISTINCT du select résidentiel `raccordement`
-      // (monophasé/triphasé) — jamais les deux sens dans un même champ. Les
-      // champs à DÉFAUT visible (tension/activité) ne partent que si un profil
-      // C&I (industriel/commercial) est actif — jamais une donnée fabriquée pour un autre profil.
-      tensionRaccordement: isProMode(mode) ? tension : undefined,
-      // `puissanceKva` et `hasGenerator` (+ groupe kVA / diesel plus bas)
-      // retirés du tunnel (coupe fondateur 18/08) : estimatePro ne les lit pas.
-      activityProfile: isProMode(mode) ? activity : undefined,
-      surfaceType: surfaceType || undefined,
-      surfaceM2: num('mt-surface-m2') ?? undefined,
-      // WJ122 — la conso C&I vient du panneau actif (commercial : mt-cc-bill).
-      proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
-      proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
-      // WJ122 — mode COMMERCIAL : catégorie + réponses spécifiques (liste blanche
-      // webhook QX51 ; hôtel ≠ bureau à facture égale via le day-share archétype).
-      categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
-      // WJ123 — mode INDUSTRIEL v2 : les ÉQUIPES restent (elles plafonnent
-      // honnêtement l'autoconsommation dans estimatePro) ; `weekend`,
-      // `cosPhiConnu`, `groupeKva` et `dieselDhMois` sont retirés du tunnel
-      // (coupe fondateur 18/08) — aucun n'entrait dans le calcul.
-      //
-      // PLUS DE GATE SUR LE MODE COURANT. Ces champs ne partaient que si le
-      // profil actif AU MOMENT DE L'ENVOI correspondait : un visiteur qui
-      // décrivait son site industriel puis rebasculait sur « commercial » (ou
-      // revenait à l'étape 1 pour vérifier) voyait ses réponses silencieusement
-      // effacées du payload — alors qu'il les avait bien données. Règle unique
-      // désormais, la même que `raisonSociale` ci-dessus : TOUTE VALEUR SAISIE
-      // NON VIDE PART. Un champ de saisie jamais rempli reste `undefined`, et
-      // validateLead borne/écarte chaque clé séparément, indépendamment du
-      // mode. UNE SEULE EXCEPTION, gardée gatée plus bas : `heuresPompage` est
-      // un <input type="range" value="7">, sa `.value` vaut « 7 » AVANT toute
-      // saisie — la dégater fabriquerait une réponse que personne n'a donnée.
-      equipes: equipes || undefined,
-      // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
-      // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
-      // ombrière/terrain sont décrits par leurs booléens, jamais une fausse toiture.
-      // Le gate sur le TYPE DE SURFACE reste (c'est de la sémantique, pas du
-      // mode) ; seul le gate sur le mode courant disparaît.
-      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: surfaceType === 'ombriere' ? true : undefined,
-      terrain: surfaceType === 'terrain' ? true : undefined,
-      // QX — sous-panneau AGRICOLE (pompage).
-      waterSource: waterSource || undefined,
-      profondeurM: num('mt-profondeur') ?? undefined,
-      hmtM: num('mt-hmt') ?? undefined,
-      debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
-      besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      // SEUL champ qui GARDE son gate de mode, et c'est un choix : les autres
-      // sont des saisies vides par défaut, celui-ci est un curseur qui part
-      // avec value="7" (#mt-heures-pompage). Sans le gate, un lead résidentiel
-      // ou industriel transporterait « 7 h/j » que personne n'a saisi, et le
-      // CRM l'afficherait comme une réponse du visiteur sur une villa.
-      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
-      // `irrigation` retirée du tunnel (coupe fondateur 18/08) — le moteur eau
-      // retombe sur son efficience par défaut ; le commercial la complète dans l'ERP.
-      culture: val('mt-culture') || undefined,
-      // WJ124 — région agronomique (8 zones FAO). Elle pilote le moteur eau
-      // DE CE TUNNEL (`lib/agronomy.ts`, l'aperçu d'estimation en direct) —
-      // PAS la page proposition, qui ne la lit nulle part (vérifié). Elle
-      // voyage au webhook par compatibilité ascendante : `lib/lead.ts` la
-      // valide et la transporte, mais `crm/webhooks.py
-      // _extract_web_questionnaire` ne la PERSISTE pas encore (cf. la note de
-      // revue dans `lib/lead.ts`).
-      regionAgricole: regionAgricole || undefined,
-      surfaceHa: num('mt-surface-ha') ?? undefined,
-      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
-      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
-      fuelSpendMad: num('mt-fuel-spend') ?? undefined,
+      // LANE T-WEB — empreinte d'appareil anonyme, additive et jamais
+      // bloquante : '' (stockage indisponible) devient une clé ABSENTE.
+      appareilId: appareilId(),
       // QX — EXACTEMENT les chiffres affichés dans le document d'estimation
       // (le conseiller CRM voit ce que le client a vu — jamais plus).
-      estimateShown: estimateShown ?? undefined,
+      estimationAffichee: estimateShown,
+      // WJ116 — fbclid/UTM (parrainage inclus) repris de sessionStorage.
+      tracking: readTrackingParams(),
+      // WJ4 — repère et contour FACULTATIFS : on ne BLOQUE jamais sans eux.
+      repereToit: capturePin,
+      contourToit: captureOutline,
       // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
-      website_url: val('mt-hp'),
+      honeypot: val('mt-hp'),
     };
-    Object.assign(body, readTrackingParams());
-    if (capturePin) {
-      body.roofPoint = capturePin;
-      body.gpsLat = capturePin.lat;
-      body.gpsLng = capturePin.lng;
-    }
-    if (captureOutline.length >= 3) body.roofOutline = captureOutline;
-    const v = validateLead(body);
-    const errors: Record<string, string> = v.ok ? {} : { ...v.errors };
-    // WJ65 — au moins UNE lettre (\p{L} couvre latin ET arabe) avant l'envoi.
-    if (!errors.fullName && !/\p{L}/u.test(val('mt-name'))) {
-      errors.fullName = currentLang === 'ar' ? 'الاسم الكامل مطلوب' : 'Nom complet requis';
-    }
-    return { body, errors };
+  }
+
+  /**
+   * Le corps du lead + les erreurs client. Il n'y a plus de `buildBody()` ici —
+   * ni fonction, ni enveloppe : la page appelle directement le module partagé,
+   * qui applique le registre puis le `validateLead` de lib/lead.ts. Les
+   * messages passent par la table de la langue AFFICHÉE au moment de l'envoi
+   * (cette page bascule عربي/FR en direct), pas par celle de son URL.
+   */
+  function corpsDuLead(): { body: Record<string, unknown>; errors: Record<string, string> } {
+    return construireCorps(lireEtatTunnel(), { messages: ERREURS[currentLang] });
   }
 
   function showInlineErrors(errors: Record<string, string>) {
@@ -3934,7 +4245,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
-    const { body, errors } = buildBody();
+    const { body, errors } = corpsDuLead();
     if (Object.keys(errors).length > 0) {
       showInlineErrors(errors);
       if (errEl) {
