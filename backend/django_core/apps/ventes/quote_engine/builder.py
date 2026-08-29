@@ -1662,6 +1662,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # principal, qui décrit la branche mise en avant par le document.
     # Options égales — tout l'existant — ⇒ AUCUN second appel, byte-identique.
     prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
+    # QJR28 — modèle d'économies RÉELLEMENT employé par chaque colonne, quand
+    # les deux options sont chiffrées séparément. None ⇒ une seule dérivation,
+    # donc un seul modèle : celui du document (cas de tous les devis non
+    # divergents, rendu byte-identique).
+    _modeles_par_option = None
     if panneaux_divergents:
         def _roi_pour(kwc):
             # Jamais deux fois le même calcul : la branche déjà chiffrée par
@@ -1682,6 +1687,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi[_cle] = _roi_a[_cle]
         prod_kwh_sans = _roi_s["prod_kwh"]
         prod_kwh_avec = _roi_a["prod_kwh"]
+        # ── QJR28 — DEUX COLONNES, DEUX MOTEURS : LE DOCUMENT LE DIT ────────
+        # Le bloc d'étude horaire porte LA puissance pour laquelle il a été
+        # calculé, et ``pricing`` le refuse (garde de fraîcheur) dès que
+        # l'option rejouée ne fait plus cette puissance. Sur un devis à
+        # champs PV divergents, la colonne qui ne correspond pas au bloc
+        # retombait donc EN SILENCE sur le forfait « estimation » pendant que
+        # le document continuait de déclarer ``savings_model='horaire'`` et
+        # ``savings_estimated=False`` pour tout le tableau. On enregistre ici
+        # le modèle EFFECTIF de chaque colonne : plus aucun modèle n'est
+        # déclaré au nom d'une autre colonne.
+        _modeles_par_option = {
+            "sans": (_roi_s.get("savings_model", "estimation"),
+                     bool(_roi_s.get("savings_estimated"))),
+            "avec": (_roi_a.get("savings_model", "estimation"),
+                     bool(_roi_a.get("savings_estimated"))),
+        }
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         # Une production SAISIE par un humain est UN chiffre, pas deux : elle
@@ -1749,6 +1770,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     savings_model = roi.get("savings_model", "estimation")
     if etude.get("production_annuelle") and etude.get("economies_annuelles"):
         savings_model = "etude"
+    # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
+    # impose UN chiffre aux deux options : les deux colonnes sont alors
+    # 'etude'. Sinon, chaque colonne déclare le modèle qui l'a réellement
+    # chiffrée (identique au modèle du document tant que rien ne diverge).
+    _sm_defaut = (savings_model, bool(roi.get("savings_estimated")))
+    if savings_model == "etude" or not _modeles_par_option:
+        savings_model_sans = savings_model_avec = _sm_defaut[0]
+        savings_estimated_sans = savings_estimated_avec = _sm_defaut[1]
+    else:
+        savings_model_sans, savings_estimated_sans = _modeles_par_option["sans"]
+        savings_model_avec, savings_estimated_avec = _modeles_par_option["avec"]
     if savings_model == "factures":
         # Persistance dans les paramètres d'étude RENDUS : la page étude et la
         # proposition web reprennent exactement les mêmes chiffres (une seule
@@ -2507,6 +2539,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
         # Les factures sont None hors modèle 'factures' — jamais inventées.
         "savings_model": savings_model,
+        # QJR28 — le modèle EFFECTIF de chaque colonne du comparatif. Sur un
+        # devis à champs PV divergents portant une étude horaire, la colonne
+        # qui ne correspond pas au bloc retombe sur le forfait : le document
+        # ne peut plus déclarer un modèle unique pour les deux. Devis non
+        # divergent ⇒ les trois clés portent la même valeur.
+        "savings_model_sans": savings_model_sans,
+        "savings_model_avec": savings_model_avec,
+        "savings_estimated_sans": savings_estimated_sans,
+        "savings_estimated_avec": savings_estimated_avec,
         "facture_sans_solaire": (
             roi.get("facture_sans") if savings_model == "factures" else None),
         "facture_avec_solaire_s": (

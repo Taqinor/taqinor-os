@@ -355,6 +355,62 @@ class TestDeuxOptimiseursEconomiesParOption(_DevisVariantesMixin, TestCase):
         self.assertEqual(self.temoin['prod_kwh_sans'], self.temoin['prod_kwh'])
 
 
+class TestQjr28ModeleDeclareParColonne(_DevisVariantesMixin, TestCase):
+    """QJR28 — DEUX COLONNES, DEUX MOTEURS : LE DOCUMENT LE DIT.
+
+    Le bloc d'étude horaire porte LA puissance pour laquelle il a été calculé
+    et ``pricing`` le refuse (garde de fraîcheur) dès qu'une option ne fait
+    plus cette puissance. Sur un devis divergent, la colonne « Sans batterie »
+    retombait donc EN SILENCE sur le forfait « estimation » pendant que le
+    document continuait de déclarer ``savings_model='horaire'`` et
+    ``savings_estimated=False`` pour tout le tableau.
+    """
+
+    #: le bloc horaire décrit l'option AVEC : 26 × 710 W = 18,46 kWc.
+    KWC_AVEC = 18.46
+    #: la colonne SANS fait 22 × 710 W = 15,62 kWc — hors tolérance (2 %).
+
+    def test_le_modele_declare_est_celui_employe_par_chaque_colonne(self):
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        data = self._build(self._devis(
+            self.DIVERGENT, 'DEV-QJR28-DIV',
+            self._etude_params(etude_horaire=bloc_horaire(self.KWC_AVEC))))
+        # TÉMOIN mécanique : le MÊME champ PV « sans » (22 panneaux), sans
+        # aucun bloc horaire — donc chiffré par le moteur de repli.
+        temoin = self._build(self._devis_egal_22('DEV-QJR28-T'))
+
+        self.assertTrue(data['panneaux_divergents'])
+        # l'option AVEC est celle que le bloc décrit : modèle horaire, déclaré
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertEqual(data['savings_estimated_avec'],
+                         data['savings_estimated'])
+        # la colonne SANS a bien été chiffrée par l'AUTRE moteur — preuve
+        # mécanique : ses économies sont, au dirham près, celles du témoin.
+        self.assertEqual(data['eco_s_ann'], temoin['eco_s_ann'])
+        self.assertNotEqual(data['savings_model_sans'], 'horaire')
+        self.assertEqual(data['savings_model_sans'], temoin['savings_model'])
+        self.assertEqual(data['savings_estimated_sans'],
+                         temoin['savings_estimated'])
+
+    def test_un_devis_non_divergent_declare_un_seul_modele(self):
+        """Tout l'existant : une seule dérivation ⇒ les trois clés portent la
+        même valeur (aucune colonne chiffrée par un autre moteur)."""
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        # LEGACY = 14 × 710 W = 9,94 kWc, la puissance du bloc.
+        data = self._build(self._devis(
+            self.LEGACY, 'DEV-QJR28-LEG',
+            self._etude_params(etude_horaire=bloc_horaire(9.94))))
+        self.assertFalse(data['panneaux_divergents'])
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertEqual(data['savings_model_sans'], 'horaire')
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertEqual(data['savings_estimated_sans'],
+                         data['savings_estimated'])
+        self.assertEqual(data['savings_estimated_avec'],
+                         data['savings_estimated'])
+
+
 @tag('pdf')  # rendu page 2 via WeasyPrint — lourd → palier release-verify
 class TestDeuxOptimiseursPage2(_DevisVariantesMixin, TestCase):
     """Page 2 du document résidentiel : deltas, bandeau, tableau comparatif."""
