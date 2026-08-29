@@ -408,30 +408,48 @@ class Devis(models.Model):
         self.prix_par_kwc = prix
 
     def _totaux_argent(self):
-        """QJR50 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE, PLUS PAR ICI.
+        """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.
 
         ``apps.ventes.domain.argent`` NOMME les vues monétaires (BRUT / NET /
-        PAR_OPTION / AFFICHAGE) ; ces propriétés lisent :attr:`Vue.BRUT`, qui
-        REPRODUIT à l'octet le calcul historique — somme des lignes comptées,
-        remise de LIGNE honorée, ``remise_globale`` IGNORÉE, TVA par
-        ``selectors.tva_buckets`` (formule d'origine sans arrondi en mono-taux).
-        **Aucun chiffre ne change dans cette tâche** : elle existe pour que la
-        bascule QJR51 (BRUT → NET, décision fondateur D2) soit un changement
-        d'UN mot, au même endroit, au lieu d'une réécriture.
+        PAR_OPTION / AFFICHAGE). QJR50 a branché ces propriétés sur
+        :attr:`Vue.BRUT` (le calcul d'hier, à l'octet) pour que la bascule ne
+        soit qu'un changement d'UN mot ; **QJR51 est ce mot**.
 
-        L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` juste avant
-        lui : il s'exécute à l'appel, jamais au chargement du module, donc il ne
-        peut pas réintroduire le cycle modèle→modèle que le contrat
-        import-linter interdit.
+        DÉCISION FONDATEUR D2 (29/08/2026) — ``Devis.total_*`` LISENT LA VUE
+        NET. Deux conséquences, toutes deux ASSUMÉES :
+
+        1. ``remise_globale`` est HONORÉE. Le devis et la facture qu'il
+           engendre cessent de se contredire (la facture passe déjà par la
+           chaîne canonique, remise comprise).
+        2. Un devis à DEUX options ne rend plus la SOMME des deux paniers —
+           un montant qui n'apparaît dans AUCUN document et que le client ne
+           paiera jamais — mais le total de l'option EFFECTIVE (décision D9 :
+           l'option acceptée, sinon celle du total affiché).
+
+        CE QUI BAISSE, ET C'ÉTAIT FAUX : le reporting, le Kanban et le CA d'un
+        devis remisé ou à deux options. Le Kanban, qui affiche ``total_ttc``,
+        cesse par là même de montrer un prix différent de la liste (qui lit
+        déjà ``total_affiche``, la même chaîne canonique).
+
+        COÛT, DIT HONNÊTEMENT : la vue NET résout l'option effective, donc
+        consulte ``utils.options.has_two_options``, qui traverse le moteur PDF
+        quand aucune ligne ne porte de variante. QJR55 ramène ce prédicat au
+        prédicat LÉGER unique et supprime cet appel.
+
+        L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` avant lui :
+        il s'exécute à l'appel, jamais au chargement du module, donc il ne peut
+        pas réintroduire le cycle modèle→modèle que le contrat import-linter
+        interdit.
         """
         from .domain.argent import Vue, totaux
-        return totaux(self, vue=Vue.BRUT)
+        return totaux(self, vue=Vue.NET)
 
     @property
     def total_ht(self):
         # XSAL5/XSAL14 — les lignes optionnelles non activées et les lignes de
         # section/note (sans prix) sont exclues du total (``compte_dans_totaux``).
-        return self._totaux_argent().ht_brut
+        # QJR51/D2 — HT **NET** : remise globale honorée, option effective.
+        return self._totaux_argent().ht_net
 
     @property
     def total_tva(self):

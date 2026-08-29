@@ -246,13 +246,14 @@ class DelegationDesProprietesTests(_ArgentBase):
             with self.subTest(taux=panier['taux']):
                 self.assertEqual(set(panier), {'taux', 'base_ht', 'montant'})
 
-    def test_les_proprietes_lisent_bien_la_vue_brut(self):
+    def test_les_proprietes_lisent_la_vue_net(self):
+        """QJR51/D2 — la bascule est ici, et nulle part ailleurs."""
         devis = self._devis('qjr50-brut', remise=Decimal('15'))
         self._ligne(devis, 'Panneau 550 W', 11, 1166.67)
         self._ligne(devis, 'Pose', 1, 7000, taux_tva=Decimal('10'))
         devis = Devis.objects.get(pk=devis.pk)
-        vue = totaux(devis, vue=Vue.BRUT)
-        self.assertEqual(devis.total_ht, vue.ht_brut)
+        vue = totaux(devis, vue=Vue.NET)
+        self.assertEqual(devis.total_ht, vue.ht_net)
         self.assertEqual(devis.total_tva, vue.tva)
         self.assertEqual(devis.total_ttc, vue.ttc)
 
@@ -268,10 +269,114 @@ class DelegationDesProprietesTests(_ArgentBase):
         self.assertEqual(devis.total_ttc, devis.total_tva)
 
     def test_la_vue_brut_reutilise_un_prefetch(self):
-        """NPLUS1 — la liste des devis préfetche ``lignes`` ; la façade ne doit
-        pas repartir en base (un ``select_related`` ici ferait un N+1)."""
+        """NPLUS1 — la vue BRUT lit ``lignes.all()`` sans ``select_related``,
+        donc RÉUTILISE le ``prefetch_related('lignes')`` de la liste des
+        devis. Épinglé ici parce qu'un ``select_related`` y ferait un N+1."""
         devis = self._devis('qjr50-prefetch')
         self._ligne(devis, 'Panneau 550 W', 10, 1000)
         prefetche = Devis.objects.prefetch_related('lignes').get(pk=devis.pk)
         with self.assertNumQueries(0):
-            self.assertEqual(prefetche.total_ttc, Decimal('12000'))
+            self.assertEqual(totaux(prefetche, vue=Vue.BRUT).ttc,
+                             Decimal('12000'))
+
+
+class BasculeNetTests(_ArgentBase):
+    """QJR51 / décision fondateur D2 — ``Devis.total_*`` passent au NET.
+
+    Changement de comportement ASSUMÉ : le reporting, le Kanban et le CA d'un
+    devis remisé BAISSENT (ils étaient faux). Ce qui est tenu ici :
+    le devis et la facture qu'il engendre cessent de se contredire, un devis à
+    deux options ne rend plus la somme des deux, et un devis SANS remise ni
+    seconde option ne bouge PAS d'un centime.
+    """
+
+    def test_un_devis_sans_remise_ni_option_ne_bouge_pas(self):
+        devis = self._devis('qjr51-neutre')
+        self._ligne(devis, 'Panneau 550 W', 10, 1200)
+        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000)
+        devis = Devis.objects.get(pk=devis.pk)
+        brut = totaux(devis, vue=Vue.BRUT)
+        self.assertEqual(devis.total_ttc, brut.ttc)
+        self.assertEqual(devis.total_ht, brut.ht_brut)
+
+    def test_la_tva_est_desormais_reconciliee_au_centime(self):
+        """LE SEUL écart d'un devis SANS remise ni seconde option : la chaîne
+        canonique RÉCONCILIE la TVA au centime (c'est ce que la FACTURE fait
+        déjà), là où ``tva_buckets`` laissait passer des millièmes en
+        mono-taux. Le devis et sa facture s'accordent donc au centime — c'est
+        exactement l'objet de D2, et l'API rendait déjà 2 décimales."""
+        devis = self._devis('qjr51-centime')
+        self._ligne(devis, 'Panneau 550 W', 9, 1166.67)
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(devis.total_tva, Decimal('2100.01'))
+        self.assertEqual(devis.total_tva, option_totaux(devis)['tva'])
+        self.assertEqual(devis.total_tva.as_tuple().exponent, -2)
+
+    def test_un_devis_remise_honore_sa_remise_globale(self):
+        devis = self._devis('qjr51-remise', remise=Decimal('10'))
+        self._ligne(devis, 'Panneau 550 W', 10, 1000)
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(devis.total_ht, Decimal('9000.00'))
+        self.assertEqual(devis.total_ttc, Decimal('10800.00'))
+        # Et il BAISSE par rapport au brut d'hier — c'est le changement assumé.
+        self.assertLess(devis.total_ttc, totaux(devis, vue=Vue.BRUT).ttc)
+
+    def test_le_total_du_devis_egale_la_chaine_de_ses_factures(self):
+        """``option_totaux`` est ce que l'échéancier / la facture consomment :
+        le devis et sa facture cessent de se contredire."""
+        devis = self._devis('qjr51-facture', remise=Decimal('12.5'))
+        self._ligne(devis, 'Panneau 550 W', 14, 1166.67)
+        self._ligne(devis, 'Pose', 1, 9000, taux_tva=Decimal('10'))
+        devis = Devis.objects.get(pk=devis.pk)
+        attendu = option_totaux(devis)
+        self.assertEqual(devis.total_ht, attendu['ht'])
+        self.assertEqual(devis.total_tva, attendu['tva'])
+        self.assertEqual(devis.total_ttc, attendu['ttc'])
+
+    def test_un_devis_a_deux_options_ne_somme_plus_les_deux(self):
+        devis = self._devis('qjr51-deux')
+        self._ligne(devis, 'Panneau 550 W', 12, 1200, variante='sans')
+        self._ligne(devis, 'Onduleur réseau 5 kW', 1, 9000, variante='sans')
+        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
+        self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
+        devis = Devis.objects.get(pk=devis.pk)
+        somme_des_deux = totaux(devis, vue=Vue.BRUT).ttc
+        self.assertLess(devis.total_ttc, somme_des_deux)
+        self.assertEqual(devis.total_ttc,
+                         totaux(devis, vue=Vue.PAR_OPTION,
+                                option=AVEC_BATTERIE).ttc)
+
+    def test_apres_acceptation_le_total_suit_l_option_acceptee(self):
+        devis = self._devis('qjr51-acceptee')
+        self._ligne(devis, 'Panneau 550 W', 12, 1200, variante='sans')
+        self._ligne(devis, 'Onduleur réseau 5 kW', 1, 9000, variante='sans')
+        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
+        self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
+        Devis.objects.filter(pk=devis.pk).update(option_acceptee=SANS_BATTERIE)
+        devis = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(devis.total_ttc,
+                         totaux(devis, vue=Vue.PAR_OPTION,
+                                option=SANS_BATTERIE).ttc)
+
+    def test_le_taux_de_remise_cpq_n_applique_plus_deux_fois_la_remise(self):
+        """QJR51 — retrait d'une COMPENSATION : ``cpq.taux_remise_global``
+        ré-appliquait ``remise_globale`` parce que ``total_ht`` l'ignorait."""
+        from apps.cpq.services import taux_remise_global
+
+        devis = self._devis('qjr51-cpq', remise=Decimal('10'))
+        self._ligne(devis, 'Panneau 550 W', 10, 1000)
+        devis = Devis.objects.get(pk=devis.pk)
+        # brut = 10 000 (aucune remise de ligne), net = 9 000 → 10 %, pas 19 %.
+        self.assertEqual(taux_remise_global(devis), Decimal('10.00'))
+
+    def test_le_taux_de_remise_cpq_compare_la_meme_option(self):
+        devis = self._devis('qjr51-cpq2')
+        self._ligne(devis, 'Panneau 550 W', 12, 1200, variante='sans')
+        self._ligne(devis, 'Onduleur réseau 5 kW', 1, 9000, variante='sans')
+        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
+        self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
+        devis = Devis.objects.get(pk=devis.pk)
+        from apps.cpq.services import taux_remise_global
+        # Aucune remise nulle part : le taux DOIT être 0, jamais l'écart entre
+        # la somme des deux options et une seule.
+        self.assertEqual(taux_remise_global(devis), Decimal('0.00'))
