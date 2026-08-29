@@ -80,6 +80,19 @@ class RbacMatrixTests(TestCase):
                 rbac_matrix.ALLOW, verdicts,
                 f"L'entrée {entry.label} n'a aucun rôle en ALLOW.")
 
+    def _body_unique(self, entry, role_name):
+        """Le corps déclaré dans la matrice est rejoué pour CHAQUE rôle : une
+        entrée POST en ALLOW pour plusieurs rôles crée donc plusieurs fois le
+        même objet. Depuis `stock.0135` (unicité conditionnelle du nom d'un
+        produit ACTIF SANS SKU), le second passage butait sur la contrainte —
+        et un rôle réellement autorisé n'était plus testé sur sa création.
+        On désambiguïse le NOM par tentative : la matrice reste déclarative,
+        le verdict testé reste bien une VRAIE création."""
+        body = dict(entry.body or {})
+        if "nom" in body:
+            body["nom"] = f"{body['nom']} — {entry.label} — {role_name}"
+        return body
+
     def test_matrix_verdicts_hold_live(self):
         """Chaque (entrée × rôle) renvoie le code attendu par la matrice."""
         for entry in rbac_matrix.MATRIX:
@@ -89,7 +102,9 @@ class RbacMatrixTests(TestCase):
                 if entry.method == "GET":
                     resp = api.get(entry.path)
                 elif entry.method == "POST":
-                    resp = api.post(entry.path, entry.body or {}, format="json")
+                    resp = api.post(
+                        entry.path, self._body_unique(entry, role_name),
+                        format="json")
                 else:  # pragma: no cover - seul GET/POST dans la matrice
                     self.fail(f"Méthode non gérée : {entry.method}")
 

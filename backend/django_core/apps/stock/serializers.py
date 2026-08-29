@@ -1,3 +1,4 @@
+from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 from .models import (
@@ -273,7 +274,68 @@ class ProduitSerializer(serializers.ModelSerializer):
                     'Ce code-barres est déjà utilisé par un autre produit.')
         return value
 
+    # ── Unicité conditionnelle du NOM (contrainte `stock.0135`) ──────────────
+    # La contrainte DB `stock_produit_company_nom_sans_sku_uniq` n'interdit le
+    # doublon de nom que pour les produits ACTIFS et SANS SKU : sans validation
+    # côté sérialiseur, un simple POST de doublon remontait en 500
+    # (IntegrityError non attrapée) au lieu d'un 400 lisible. Le message est
+    # posé sur le champ `nom`, comme `validate_code_barres` le fait sur le sien.
+    MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
+
+    def _valeur_effective(self, attrs, champ, defaut=None):
+        """La valeur qu'aura le produit APRÈS écriture (création ou PATCH)."""
+        if champ in attrs:
+            return attrs[champ]
+        if self.instance is not None:
+            return getattr(self.instance, champ, defaut)
+        return defaut
+
+    def _valider_nom_sans_sku(self, attrs):
+        nom = self._valeur_effective(attrs, 'nom')
+        sku = (self._valeur_effective(attrs, 'sku') or '').strip()
+        archive = bool(self._valeur_effective(attrs, 'is_archived', False))
+        # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
+        # est LÉGITIME (jumeaux SKUés du catalogue, fiche archivée homonyme).
+        if not nom or sku or archive:
+            return
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            company = getattr(self.instance, 'company', None)
+        if company is None:
+            return
+        qs = Produit.objects.filter(
+            company=company, nom=nom, is_archived=False,
+        ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError({'nom': self.MSG_NOM_DOUBLON})
+
+    def _ecrire(self, ecriture):
+        """Filet de course : entre la validation ci-dessus et l'INSERT, une
+        requête concurrente peut avoir pris le nom. On rend alors le MÊME 400
+        que la validation plutôt qu'un 500. Toute autre IntegrityError remonte
+        telle quelle — jamais avalée en silence."""
+        try:
+            with transaction.atomic():
+                return ecriture()
+        except IntegrityError as exc:
+            if 'stock_produit_company_nom_sans_sku_uniq' in str(exc):
+                raise serializers.ValidationError(
+                    {'nom': self.MSG_NOM_DOUBLON})
+            raise
+
+    def create(self, validated_data):
+        return self._ecrire(lambda: super(
+            ProduitSerializer, self).create(validated_data))
+
+    def update(self, instance, validated_data):
+        return self._ecrire(lambda: super(
+            ProduitSerializer, self).update(instance, validated_data))
+
     def validate(self, attrs):
+        self._valider_nom_sans_sku(attrs)
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
         # Lead. À la création on valide toujours (champs obligatoires) ; en
