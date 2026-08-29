@@ -5025,38 +5025,24 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     « the 900dh path must no longer decide ANY devis »). Ne lève jamais.
     """
     try:
-        from apps.crm.selectors import equipements_pour_lead
-        from apps.ventes.courbes_journalieres import (
-            composer_equipements, occupation_du_lead,
-        )
         from apps.ventes.dimensionnement import recommander_taille
-        from apps.ventes.etude_horaire import profil_depuis_factures
+        from apps.ventes.domain.entrees import entrees_depuis_lead
 
-        conso, source, _detail = profil_depuis_factures(
-            facture_hiver_mad=getattr(lead, 'facture_hiver', None),
-            facture_ete_mad=getattr(lead, 'facture_ete', None),
-            ete_differente=getattr(lead, 'ete_differente', False))
+        # QJR42 — LECTURE UNIQUE de la fiche : le MÊME adaptateur que le chemin
+        # devis (``EntreesMoteur``), donc la même facture, la même
+        # localisation, la même occupation (QJR10 / D4 — défaut PRÉSENCE) et
+        # les 15 champs d'équipement du sélecteur CRM (QJR9). Il n'y a plus de
+        # seconde traduction lead → entrées dans ce module.
+        entrees = entrees_depuis_lead(lead, company)
+        conso = entrees.conso_kwh_mensuelles if entrees else None
         if not conso:
             return 0, None, MOTIF_FACTURE_ABSENTE, None
 
-        # QJR10 / D4 — MÊME lecteur d'occupation que l'aperçu écran, et MÊME
-        # défaut : sans réponse du client on retient le défaut fondateur
-        # PRÉSENCE, jamais la silhouette de repli PARTIELLE (les deux chemins
-        # dimensionnaient sinon le même lead sur deux journées différentes).
-        occupation, _source_occupation = occupation_du_lead(lead)
-        # QJR9 — la MÊME lecture d'équipements que l'aperçu écran : les 15
-        # champs du sélecteur CRM, jamais une recomposition locale à 6 clés
-        # (les grandeurs L-BACK/L-BACK2 n'atteignaient sinon jamais le moteur
-        # sur le chemin auto-devis/tunnel).
-        equipements = composer_equipements(equipements_pour_lead(lead))
-
         resultat = recommander_taille(
-            company=company, conso_kwh_mensuelles=conso,
-            ville=getattr(lead, 'ville', None),
-            lat=getattr(lead, 'gps_lat', None),
-            lon=getattr(lead, 'gps_lng', None),
-            occupation=occupation, equipements=equipements, phase=phase,
-            source_conso=source)
+            company=entrees.company, conso_kwh_mensuelles=conso,
+            ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
+            occupation=entrees.occupation, equipements=entrees.equipements,
+            phase=phase, source_conso=entrees.source_conso)
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le
@@ -5067,9 +5053,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             # second dimensionnement — pour nommer la bonne.
             from apps.parametres.pvgis_profils import productible_mensuel
             situe = productible_mensuel(
-                ville=getattr(lead, 'ville', None),
-                lat=getattr(lead, 'gps_lat', None),
-                lon=getattr(lead, 'gps_lng', None))
+                ville=entrees.ville, lat=entrees.lat, lon=entrees.lon)
             return (0, None,
                     MOTIF_CATALOGUE if situe else MOTIF_LOCALISATION, None)
         return (int(recommandation['panneaux']),
@@ -5264,85 +5248,21 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
 
 
 def entrees_dimensionnement_du_devis(devis, *, contexte=True):
-    """P2-A (25/08/2026) — LES ENTRÉES du moteur calibré pour CE devis, lues UNE
-    SEULE FOIS et par UNE SEULE fonction.
+    """RÉ-EXPORT (QJR42) de ``apps.ventes.domain.entrees.entrees_depuis_devis``.
 
-    RAISON D'ÊTRE : deux lectures ⇒ deux dimensionnements. Le tableau rangé par
-    :func:`rafraichir_dimensionnement_devis` et l'échelle de paliers batterie
-    (``dimensionnement.echelle_paliers_batterie``) doivent partir des MÊMES
-    factures, de la MÊME localisation, de la MÊME occupation et des MÊMES
-    équipements — sinon l'écran montrerait une échelle qui ne se raccorde pas au
-    palier « retenu » qu'il désigne. Cette fonction est cette lecture unique.
+    Le corps a été DÉPLACÉ TEL QUEL dans ``domain/entrees.py``, où il partage
+    désormais sa forme (:class:`~apps.ventes.domain.entrees.EntreesMoteur`)
+    avec l'adaptateur LEAD du chemin auto-devis / tunnel. Ce nom reste ici
+    parce que trois modules l'importent depuis ``services``
+    (``dimensionnement``, ``offres_tailles``, et ce module) — le pin
+    ``tests/test_services_surface.py`` le vérifie.
 
-    Renvoie ``None`` quand le devis n'est pas dimensionnable DU TOUT (mode non
-    résidentiel, ou aucune société), sinon un dict dont
-    ``conso_kwh_mensuelles`` peut valoir ``None`` — c'est-à-dire « société et
-    mode d'accord, mais aucun profil de consommation exploitable » : l'appelant
-    distingue ainsi les deux situations, qui n'appellent pas la même réaction
-    (l'une ne calcule rien, l'autre RETIRE une clé devenue périmée).
-
-    L'ORDRE DES LECTURES EST DÉLIBÉRÉ : la localisation, l'occupation et les
-    équipements ne sont lus qu'APRÈS que la consommation s'est avérée
-    exploitable — c'est une requête de moins sur le chemin qui ne calculera
-    rien de toute façon. ``contexte=False`` les saute complètement (ils restent
-    à ``None``) : c'est ce que veut un appelant qui n'a besoin que de la GARDE
-    (mode, société, profil exploitable) avant de décider s'il recalcule —
-    typiquement ``rafraichir_dimensionnement_devis`` sur son chemin de cache,
-    appelé à chaque enregistrement de ligne et qui ne doit y payer AUCUNE
-    requête de plus qu'avant.
-
-    Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
-    ligne, ni total (règle #4).
+    ``contexte=False`` est CONSERVÉ : il saute les lectures de localisation /
+    occupation / équipements pour l'appelant qui n'a besoin que de la GARDE
+    (voir la docstring de l'original).
     """
-    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-    if mode != 'residentiel':
-        return None
-    company = getattr(devis, 'company', None)
-    if company is None:
-        return None
-
-    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
-    from apps.ventes.courbes_journalieres import (
-        equipements_du_devis, occupation_du_devis)
-    from apps.ventes.etude_horaire import profil_depuis_factures
-
-    bills = lead_bills_for_devis(devis) or {}
-    etude_params = getattr(devis, 'etude_params', None) or {}
-    conso, source_conso, _detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
-
-    entrees = {
-        'company': company,
-        'mode': mode,
-        'etude_params': etude_params,
-        'conso_kwh_mensuelles': conso,
-        'source_conso': source_conso,
-        'ville': None, 'lat': None, 'lon': None,
-        'occupation': None, 'equipements': None,
-    }
-    if not conso or not contexte:
-        return entrees
-
-    localisation = site_location_for_devis(devis) or {}
-    # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
-    # ``mode_installation`` explicite, ``_occupation`` retombe sur le défaut
-    # NON résidentiel — on lui donne donc le mode du devis (déjà vérifié
-    # 'residentiel' ci-dessus) pour que le défaut fondateur résidentiel
-    # s'applique.
-    occupation, _source_occ = occupation_du_devis(
-        devis, {'mode_installation': mode})
-    entrees.update({
-        'ville': localisation.get('site_ville'),
-        'lat': localisation.get('gps_lat'),
-        'lon': localisation.get('gps_lng'),
-        'occupation': occupation,
-        'equipements': equipements_du_devis(devis),
-    })
-    return entrees
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+    return entrees_depuis_devis(devis, contexte=contexte)
 
 
 def rafraichir_dimensionnement_devis(devis, *, force=False):

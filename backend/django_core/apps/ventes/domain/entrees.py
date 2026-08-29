@@ -1,0 +1,213 @@
+"""QJR42 — LES ENTRÉES DU MOTEUR : un dataclass, deux adaptateurs.
+
+CE QUE CE MODULE FERME. Le même client était lu de DEUX façons selon le chemin
+emprunté : ``services.entrees_dimensionnement_du_devis`` pour un devis déjà
+créé, et le corps de ``services._panneaux_dimensionnement_horaire`` pour le
+devis automatique / tunnel (qui part d'un LEAD, avant qu'un devis n'existe).
+Deux lectures ⇒ deux dimensionnements possibles pour la même fiche. Ici les
+deux chemins rendent la MÊME forme — :class:`EntreesMoteur` — construite par
+deux adaptateurs qui sont les SEULS endroits où une fiche (lead ou devis) est
+traduite en entrées du moteur.
+
+CE MODULE NE CALCULE RIEN ET N'ÉCRIT RIEN. Il LIT une fiche et rend ses
+entrées ; le dimensionnement lui-même reste dans ``apps.ventes.dimensionnement``
+(règle #4 : aucun statut, aucune ligne, aucun total n'est touché ici).
+
+POURQUOI UNE FORME « LISIBLE COMME UN DICT ». ``entrees_depuis_devis`` est le
+déplacement TEL QUEL de ``services.entrees_dimensionnement_du_devis``, dont les
+appelants existants (``dimensionnement._echelle_paliers_batterie``,
+``offres_tailles._contexte``, ``services.rafraichir_dimensionnement_devis``)
+lisent le résultat par indice (``entrees['ville']``, ``entrees.get(...)``).
+:class:`EntreesMoteur` offre donc un accès mapping en LECTURE SEULE : le
+déplacement ne change alors AUCUN appelant, ce qui est exactement ce qu'exige
+la règle « une tâche déplace OU corrige, jamais les deux ».
+"""
+from dataclasses import dataclass, fields as _champs_dataclass
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EntreesMoteur:
+    """Les entrées du moteur calibré pour UNE fiche (un lead ou un devis).
+
+    GELÉ (``frozen=True``) : une entrée lue ne se réécrit pas en route — c'est
+    ce qui rend l'empreinte de QJR43 fiable (une valeur qui bouge après coup
+    invaliderait silencieusement la clé de cache).
+
+    LES CHAMPS CANONIQUES (ceux que le moteur consomme) :
+    ``company``, ``conso_kwh_mensuelles``, ``source_conso``, ``ville``,
+    ``lat``, ``lon``, ``occupation``, ``equipements``, ``tranches``,
+    ``charges_fixes_mad``, ``jour_reference``.
+
+    ``tranches`` / ``charges_fixes_mad`` (l'IDENTITÉ TARIFAIRE) et
+    ``jour_reference`` sont déclarés ici mais restent à ``None`` tant que
+    QJR45 / QJR46 ne les ont pas branchés : les créer maintenant évite que le
+    dataclass ne change de forme au milieu de la vague.
+
+    DEUX CHAMPS DE CONTEXTE, non canoniques : ``mode`` (le
+    ``mode_installation`` déjà vérifié par l'adaptateur) et ``etude_params``
+    (le JSON du devis). Ils existent parce que les appelants du chemin DEVIS
+    les lisaient déjà sur le dict rendu par
+    ``services.entrees_dimensionnement_du_devis`` ; ils n'entrent PAS dans
+    l'empreinte des entrées.
+    """
+
+    company: object = None
+    mode: str = ''
+    etude_params: dict = None
+    conso_kwh_mensuelles: object = None
+    source_conso: object = None
+    ville: object = None
+    lat: object = None
+    lon: object = None
+    occupation: object = None
+    equipements: object = None
+    tranches: object = None
+    charges_fixes_mad: object = None
+    jour_reference: object = None
+
+    # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
+
+    def keys(self):
+        return tuple(champ.name for champ in _champs_dataclass(self))
+
+    def __getitem__(self, cle):
+        try:
+            return getattr(self, cle)
+        except AttributeError:
+            raise KeyError(cle) from None
+
+    def __contains__(self, cle):
+        return cle in self.keys()
+
+    def get(self, cle, defaut=None):
+        return getattr(self, cle, defaut)
+
+
+def entrees_depuis_devis(devis, *, contexte=True):
+    """P2-A (25/08/2026), déplacé ici par QJR42 — LES ENTRÉES du moteur calibré
+    pour CE devis, lues UNE SEULE FOIS et par UNE SEULE fonction.
+
+    RAISON D'ÊTRE : deux lectures ⇒ deux dimensionnements. Le tableau rangé par
+    ``services.rafraichir_dimensionnement_devis`` et l'échelle de paliers
+    batterie (``dimensionnement.echelle_paliers_batterie``) doivent partir des
+    MÊMES factures, de la MÊME localisation, de la MÊME occupation et des MÊMES
+    équipements — sinon l'écran montrerait une échelle qui ne se raccorde pas au
+    palier « retenu » qu'il désigne. Cette fonction est cette lecture unique.
+
+    Renvoie ``None`` quand le devis n'est pas dimensionnable DU TOUT (mode non
+    résidentiel, ou aucune société), sinon un :class:`EntreesMoteur` dont
+    ``conso_kwh_mensuelles`` peut valoir ``None`` — c'est-à-dire « société et
+    mode d'accord, mais aucun profil de consommation exploitable » : l'appelant
+    distingue ainsi les deux situations, qui n'appellent pas la même réaction
+    (l'une ne calcule rien, l'autre RETIRE une clé devenue périmée).
+
+    L'ORDRE DES LECTURES EST DÉLIBÉRÉ : la localisation, l'occupation et les
+    équipements ne sont lus qu'APRÈS que la consommation s'est avérée
+    exploitable — c'est une requête de moins sur le chemin qui ne calculera
+    rien de toute façon. ``contexte=False`` les saute complètement (ils restent
+    à ``None``) : c'est ce que veut un appelant qui n'a besoin que de la GARDE
+    (mode, société, profil exploitable) avant de décider s'il recalcule —
+    typiquement ``rafraichir_dimensionnement_devis`` sur son chemin de cache,
+    appelé à chaque enregistrement de ligne et qui ne doit y payer AUCUNE
+    requête de plus qu'avant. **CE PARAMÈTRE RESTE** : le supprimer ferait
+    payer deux requêtes de plus à chaque sauvegarde de ligne.
+
+    Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
+    ligne, ni total (règle #4).
+    """
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if mode != 'residentiel':
+        return None
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return None
+
+    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+    from apps.ventes.courbes_journalieres import (
+        equipements_du_devis, occupation_du_devis)
+    from apps.ventes.etude_horaire import profil_depuis_factures
+
+    bills = lead_bills_for_devis(devis) or {}
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    conso, source_conso, _detail = profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+
+    if not conso or not contexte:
+        return EntreesMoteur(
+            company=company, mode=mode, etude_params=etude_params,
+            conso_kwh_mensuelles=conso, source_conso=source_conso)
+
+    localisation = site_location_for_devis(devis) or {}
+    # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
+    # ``mode_installation`` explicite, ``_occupation`` retombe sur le défaut
+    # NON résidentiel — on lui donne donc le mode du devis (déjà vérifié
+    # 'residentiel' ci-dessus) pour que le défaut fondateur résidentiel
+    # s'applique.
+    occupation, _source_occ = occupation_du_devis(
+        devis, {'mode_installation': mode})
+    return EntreesMoteur(
+        company=company, mode=mode, etude_params=etude_params,
+        conso_kwh_mensuelles=conso, source_conso=source_conso,
+        ville=localisation.get('site_ville'),
+        lat=localisation.get('gps_lat'),
+        lon=localisation.get('gps_lng'),
+        occupation=occupation,
+        equipements=equipements_du_devis(devis))
+
+
+def entrees_depuis_lead(lead, company, *, contexte=True):
+    """QJR42 — LES MÊMES entrées, lues sur un LEAD (le chemin auto-devis /
+    tunnel, où aucun devis n'existe encore).
+
+    C'est la traduction du corps de ``services._panneaux_dimensionnement_horaire``
+    en une lecture NOMMÉE et partagée : la facture d'hiver (et la facture d'été
+    quand ``ete_differente``), la localisation de la fiche, l'occupation lue par
+    ``courbes_journalieres.occupation_du_lead`` (QJR10 / décision fondateur D4 :
+    défaut PRÉSENCE, jamais la silhouette de repli PARTIELLE) et les QUINZE
+    champs d'équipement de ``crm.selectors.equipements_pour_lead`` (QJR9).
+
+    Rend la MÊME forme que :func:`entrees_depuis_devis`, clé pour clé :
+    ``etude_params`` vaut ``{}`` (un lead n'en porte pas) et ``mode`` vaut
+    ``'residentiel'`` — c'est le SEUL marché que ce chemin dimensionne.
+
+    ``None`` quand la fiche n'est pas dimensionnable du tout (aucune société).
+    ``conso_kwh_mensuelles`` à ``None`` quand aucune facture n'est exploitable :
+    l'appelant refuse alors le devis en NOMMANT la donnée manquante, jamais un
+    repli forfaitaire (règle fondateur « zéro chiffre inventé »).
+
+    Fonction de LECTURE PURE : elle n'écrit rien (règle #4).
+    """
+    if lead is None or company is None:
+        return None
+
+    from apps.crm.selectors import equipements_pour_lead
+    from apps.ventes.courbes_journalieres import (
+        composer_equipements, occupation_du_lead)
+    from apps.ventes.etude_horaire import profil_depuis_factures
+
+    conso, source_conso, _detail = profil_depuis_factures(
+        facture_hiver_mad=getattr(lead, 'facture_hiver', None),
+        facture_ete_mad=getattr(lead, 'facture_ete', None),
+        ete_differente=getattr(lead, 'ete_differente', False))
+
+    if not conso or not contexte:
+        return EntreesMoteur(
+            company=company, mode='residentiel', etude_params={},
+            conso_kwh_mensuelles=conso, source_conso=source_conso)
+
+    occupation, _source_occ = occupation_du_lead(lead)
+    return EntreesMoteur(
+        company=company, mode='residentiel', etude_params={},
+        conso_kwh_mensuelles=conso, source_conso=source_conso,
+        ville=getattr(lead, 'ville', None),
+        lat=getattr(lead, 'gps_lat', None),
+        lon=getattr(lead, 'gps_lng', None),
+        occupation=occupation,
+        equipements=composer_equipements(equipements_pour_lead(lead)))
