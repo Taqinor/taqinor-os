@@ -785,7 +785,9 @@ def _fr_mad(v) -> str:
 
 
 def cashflow_assumptions(inverter_replace_cost=None,
-                         stockage: bool = False) -> dict:
+                         stockage: bool = False,
+                         battery_roundtrip=None,
+                         battery_roundtrip_source=None) -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
     publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
@@ -808,11 +810,29 @@ def cashflow_assumptions(inverter_replace_cost=None,
         "projection à tarif constant, toute hausse réelle améliore votre "
         "résultat.",
     ]
+    # QJR137 (audit QJR79) — LE RENDEMENT DIT D'OÙ IL VIENT. Il était rendu au
+    # client comme s'il décrivait la batterie vendue, alors qu'aucun champ de
+    # fiche ne pouvait le porter : 0,90 était un forfait de code. Depuis
+    # ``FicheTechnique.bat_rendement_ar_pct``, il peut être PUBLIÉ — et quand
+    # il ne l'est pas, la note le dit, exactement comme la provision onduleur
+    # dit son absence deux notes plus bas.
+    _rt = _fraction_valide(battery_roundtrip)
+    _rt_publie = _rt is not None
+    if not _rt_publie:
+        _rt = BATTERY_ROUNDTRIP
     if stockage:
-        notes.append(
-            f"Stockage : rendement aller-retour batterie "
-            f"{round(BATTERY_ROUNDTRIP * 100)} % appliqué aux kWh qui "
-            "transitent par la batterie.")
+        if _rt_publie:
+            notes.append(
+                f"Stockage : rendement aller-retour batterie "
+                f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
+                "batterie (valeur publiée sur la fiche technique du produit "
+                "chiffré).")
+        else:
+            notes.append(
+                f"Stockage : rendement aller-retour batterie "
+                f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
+                "batterie — hypothèse de référence, le constructeur de ce "
+                "produit ne publie pas cette valeur dans notre fiche.")
     # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
     # sans ligne onduleur identifiable, la projection le dit au lieu de
     # provisionner un pourcentage inventé.
@@ -837,8 +857,15 @@ def cashflow_assumptions(inverter_replace_cost=None,
         "years": CASHFLOW_YEARS,
         "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
         "escalation_pct": round(TARIFF_ESCALATION * 100, 1),
-        "battery_roundtrip_pct": round(BATTERY_ROUNDTRIP * 100),
+        "battery_roundtrip_pct": round(_rt * 100),
         "battery_roundtrip_applique": bool(stockage),
+        # QJR137 — la PROVENANCE du rendement appliqué : la fiche du produit
+        # chiffré, ou l'hypothèse de référence. Un lecteur du bloc ne peut plus
+        # confondre les deux.
+        "battery_roundtrip_source": (
+            battery_roundtrip_source if _rt_publie
+            else 'hypothese:pricing.BATTERY_ROUNDTRIP'),
+        "battery_roundtrip_publie": _rt_publie,
         "inverter_replace_year": INVERTER_REPLACE_YEAR,
         # Montant RÉEL provisionné (MAD TTC) ou None — lu par la légende de la
         # courbe 25 ans, qui affiche le chiffre plutôt qu'un pourcentage.
@@ -854,6 +881,20 @@ def cashflow_assumptions(inverter_replace_cost=None,
 #: rafraîchie, ses économies ne décrivent plus CE devis. 2 % absorbe les
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille.
 _HORAIRE_TOLERANCE_KWC = 0.02
+
+
+def _fraction_valide(valeur):
+    """QJR137 — une fraction ∈ ]0, 1], sinon ``None`` (jamais un 0 fabriqué).
+
+    Un rendement illisible, nul ou > 1 n'est pas un rendement : le renvoyer à
+    ``None`` fait retomber l'appelant sur l'hypothèse de référence DÉCLARÉE,
+    au lieu d'annuler en silence tout ce que la batterie restitue.
+    """
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return v if 0 < v <= 1 else None
 
 
 def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
@@ -952,6 +993,13 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
         # document sache si la VARIATION mensuelle est mesurée ou répétée.
         "factures_avant_monthly": factures_avant,
         "source_consommation": (bloc.get("source_consommation") or None),
+        # QJR137 — le rendement aller-retour RÉELLEMENT appliqué par le moteur
+        # horaire, quand il est PROUVÉ (publié sur la fiche des batteries de ce
+        # devis). Absent du bloc ⇒ le moteur a appliqué l'hypothèse de
+        # référence, et les hypothèses affichées le disent.
+        "battery_roundtrip": _fraction_valide(bloc.get("rendement_batterie")),
+        "battery_roundtrip_source": (
+            bloc.get("rendement_batterie_source") or None),
     }
 
 
@@ -1189,9 +1237,15 @@ def calculate_savings_roi(
     cf_s = compute_cashflow_payback(
         total_sans, economie_opt1,
         inverter_replace_cost=inverter_cost_sans)
+    # QJR137 — le rendement aller-retour du cashflow est celui que le moteur
+    # horaire a RÉELLEMENT appliqué quand il est prouvé (fiche du produit
+    # chiffré) ; sinon l'hypothèse de référence, dite dans les hypothèses.
+    _rt_prouve = (_h or {}).get("battery_roundtrip")
+    _rt_source = (_h or {}).get("battery_roundtrip_source")
     cf_a = compute_cashflow_payback(
         total_avec, economie_opt2, battery=_stockage,
         battery_share=_batt_part,
+        battery_roundtrip=(_rt_prouve if _rt_prouve else BATTERY_ROUNDTRIP),
         inverter_replace_cost=inverter_cost_avec)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
@@ -1262,5 +1316,7 @@ def calculate_savings_roi(
         "cashflow_assumptions": cashflow_assumptions(
             inverter_replace_cost=(inverter_cost_avec if _stockage
                                    else inverter_cost_sans),
-            stockage=_stockage),
+            stockage=_stockage,
+            battery_roundtrip=_rt_prouve,
+            battery_roundtrip_source=_rt_source),
     }

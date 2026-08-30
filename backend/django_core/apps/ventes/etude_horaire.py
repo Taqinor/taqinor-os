@@ -1772,6 +1772,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            batterie_puissance_decharge_kw=None,
                            batterie_puissance_decharge_onduleur_kw=None,
                            batterie_puissance_charge_kw=None,
+                           batterie_rendement=None,
+                           batterie_rendement_source=None,
                            tranches=None, charges_fixes_mad=None,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None,
@@ -1810,6 +1812,16 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         remplissage, à l'heure comme à cinq minutes (« un surplus de 8 kW ne
         charge pas plus vite que le port ne l'admet »). Elle ne borne JAMAIS
         la décharge : s'en servir ainsi serait une équivalence inventée.
+    batterie_rendement : QJR137 — rendement aller-retour (fraction ∈ ]0, 1])
+        LU sur la fiche des batteries de ce devis
+        (``rendement_batterie_des_lignes``). ``None`` / hors bornes ⇒
+        hypothèse de référence ``pricing.BATTERY_ROUNDTRIP`` (0,90). C'est le
+        nombre qui borne ``restitue_kwh``, donc l'économie « avec batterie »
+        montrée au client : il ne peut plus venir d'un forfait muet.
+    batterie_rendement_source : d'où vient la valeur ci-dessus. Sortie dans le
+        bloc (``rendement_batterie_source``) UNIQUEMENT quand elle est prouvée
+        — sur le repli, l'hypothèse est dite là où elle l'était déjà, dans
+        ``pricing.cashflow_assumptions``, et la forme du bloc ne bouge pas.
     tranches / charges_fixes_mad / tppan / millesime : passés tels quels au
         barème. ``charges_fixes_mad`` remplace en bloc les deux lignes fixes
         (location du compteur + entretien du branchement) quand la société a
@@ -1844,6 +1856,18 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     decharge_ond_kw = _num(batterie_puissance_decharge_onduleur_kw)
     charge_kw = _num(batterie_puissance_charge_kw)
 
+    # QJR137 — LE RENDEMENT ALLER-RETOUR VIENT DE LA FICHE QUAND ELLE LE
+    # PUBLIE. Sans valeur prouvée, on applique l'hypothèse de référence
+    # ``pricing.BATTERY_ROUNDTRIP`` et on la DÉCLARE (``rendement_source``
+    # voyage jusqu'aux hypothèses affichées) — jamais un forfait muet sur un
+    # nombre qui borne l'économie « avec batterie » montrée au client.
+    rendement = _num(batterie_rendement)
+    if not 0 < rendement <= 1:
+        rendement = BATTERY_ROUNDTRIP
+        rendement_source = RENDEMENT_SOURCE_HYPOTHESE
+    else:
+        rendement_source = batterie_rendement_source or RENDEMENT_SOURCE_FICHE
+
     mois_sortie = []
     saisons_cumul = {saison: _bloc_vide() for saison in SAISONS}
     annuel_cumul = _bloc_vide()
@@ -1872,7 +1896,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
 
         # ── Variante batterie : le surplus du jour sert le déficit du soir ──
         batterie_horaire = simuler_batterie_jour(
-            conso_24h, prod_24h, capacite,
+            conso_24h, prod_24h, capacite, rendement=rendement,
             puissance_charge_kw=charge_kw or None)
         auto_avec_horaire = min(
             auto_jour_horaire + batterie_horaire['restitue_kwh'],
@@ -1887,7 +1911,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                 pas_fins, capacite,
                 puissance_decharge_kw=decharge_kw or None,
                 puissance_decharge_onduleur_kw=decharge_ond_kw or None,
-                puissance_charge_kw=charge_kw or None)
+                puissance_charge_kw=charge_kw or None,
+                rendement=rendement)
         else:
             auto_jour_sans = auto_jour_horaire
             batterie = batterie_horaire
@@ -2003,6 +2028,19 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         'annuel': _finaliser(annuel_cumul),
         'avertissements': avertissements,
     }
+
+    # ── QJR137 : le rendement aller-retour PROUVÉ, et seulement s'il l'est ──
+    # MÊME DISCIPLINE QUE L-GLITCH ci-dessous : aucune fiche batterie ne
+    # publiant son rendement, la sortie ne gagne PAS une clé — tout le parc de
+    # devis déjà calculé garde sa forme à l'octet (contrat
+    # ``CLES_RACINE_HISTORIQUES``), et l'hypothèse de référence 0,90 est dite
+    # là où elle l'était déjà : dans ``pricing.cashflow_assumptions``. Quand une
+    # fiche la publie, en revanche, la valeur RÉELLEMENT appliquée et sa
+    # provenance voyagent — le nombre qui borne l'économie « avec batterie » ne
+    # peut pas être meilleur que le forfait sans que le document le dise.
+    if rendement_source != RENDEMENT_SOURCE_HYPOTHESE:
+        resultat['rendement_batterie'] = round(rendement, 4)
+        resultat['rendement_batterie_source'] = rendement_source
 
     # ── L-GLITCH : des champs ADDITIFS, et SEULEMENT quand ils ont un sens ──
     # AUCUN équipement concentrable déclaré ⇒ pas une seule clé de plus, pas un
@@ -2601,6 +2639,77 @@ def _source_borne(packs, port, source_packs, source_port):
     return source_packs if packs else source_port
 
 
+#: QJR137 — étiquette de source quand AUCUNE fiche batterie ne publie son
+#: rendement aller-retour : le moteur applique l'hypothèse de référence
+#: ``pricing.BATTERY_ROUNDTRIP`` et le DIT (chaîne lue par les hypothèses
+#: affichées, jamais un silence).
+RENDEMENT_SOURCE_HYPOTHESE = 'hypothese:pricing.BATTERY_ROUNDTRIP'
+RENDEMENT_SOURCE_FICHE = 'fiche:bat_rendement_ar_pct'
+
+
+def rendement_batterie_des_lignes(lignes, roles=None):
+    """QJR137 — le rendement aller-retour PUBLIÉ des batteries d'une composition.
+
+    La CAPACITÉ d'une banque est lue sur les fiches depuis PV5 ; le RENDEMENT
+    ALLER-RETOUR, lui, restait un forfait de code (0,90) qu'aucun champ ne
+    pouvait porter — alors qu'il borne ``restitue_kwh``, donc l'économie « avec
+    batterie » montrée au client. ``bat_rendement_ar_pct`` (QJR137) le porte
+    désormais ; cette fonction le lit par le sélecteur de ``stock`` (jamais
+    ``stock.models``), comme les puissances juste au-dessus.
+
+    RÈGLE DE COMBINAISON — PROUVÉE OU RIEN. Un rendement ne s'invente ni ne se
+    moyenne : deux packs de rendements différents forment une banque dont le
+    rendement réel dépend de la répartition des flux, que rien ne publie. On
+    retient donc le MINIMUM des valeurs publiées (borne conservatrice, du même
+    esprit que le ``min()`` des deux goulots de puissance), et il faut que
+    TOUTES les lignes batterie en publient une : une seule fiche muette rend le
+    rendement de la banque non prouvé, donc ``None``.
+
+    Renvoie ``{rendement, source}`` — ``rendement`` valant ``None`` quand rien
+    n'est prouvé, et ``source`` disant alors que l'hypothèse de référence
+    s'applique. Ne lève jamais.
+    """
+    resultat = {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+    try:
+        from apps.ventes.services import classer_produit
+        roles = list(roles or ())
+        publies = []
+        lignes_batterie = 0
+        for index, ligne in enumerate(lignes or ()):
+            if index < len(roles):
+                role = roles[index]
+            else:
+                role = classer_produit(getattr(ligne, 'designation', '') or '')
+            if role != 'batterie':
+                continue
+            quantite = float(getattr(ligne, 'quantite', 0) or 0)
+            if quantite <= 0:
+                continue
+            lignes_batterie += 1
+            produit = getattr(ligne, 'produit', None)
+            if produit is None:
+                continue
+            pct = _puissance_fiche(produit, 'rendement_ar_pct')
+            if pct and 0 < pct <= 100:
+                publies.append(pct / 100.0)
+        if lignes_batterie and len(publies) == lignes_batterie:
+            resultat['rendement'] = min(publies)
+            resultat['source'] = RENDEMENT_SOURCE_FICHE
+    except Exception:  # noqa: BLE001 — fiche illisible ⇒ hypothèse déclarée
+        logger.warning('rendement batterie illisible', exc_info=True)
+        return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+    return resultat
+
+
+def rendement_batterie_du_devis(devis):
+    """:func:`rendement_batterie_des_lignes` sur les lignes d'un devis."""
+    try:
+        return rendement_batterie_des_lignes(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ hypothèse déclarée
+        logger.warning('lignes du devis illisibles', exc_info=True)
+        return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+
+
 def puissance_batterie_du_devis(devis):
     """:func:`puissances_batterie_des_lignes` sur les lignes d'un devis."""
     try:
@@ -2764,6 +2873,13 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # l'autre.
     puissances = puissance_batterie_du_devis(devis)
 
+    # QJR137 — le RENDEMENT ALLER-RETOUR des batteries de ce devis, lu sur
+    # leurs fiches quand elles le publient. Aucune fiche muette n'est comblée :
+    # sans valeur prouvée, le moteur applique l'hypothèse de référence et la
+    # DÉCLARE (``rendement_batterie_source``), au lieu de faire passer un
+    # forfait pour une caractéristique du produit vendu.
+    rendement_bat = rendement_batterie_du_devis(devis)
+
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,
         ville=ville, lat=lat, lon=lon,
@@ -2772,6 +2888,8 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         batterie_puissance_decharge_kw=puissances['packs_decharge_kw'],
         batterie_puissance_decharge_onduleur_kw=puissances['ond_decharge_kw'],
         batterie_puissance_charge_kw=puissances['charge_kw'],
+        batterie_rendement=rendement_bat['rendement'],
+        batterie_rendement_source=rendement_bat['source'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
         source_conso=source_conso, detail_conso=detail_conso,
         jour_reference=jour_reference)
