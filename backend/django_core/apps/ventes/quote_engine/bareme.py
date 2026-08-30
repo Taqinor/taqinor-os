@@ -275,6 +275,9 @@ TPPAN_PLAFOND_MAD_MOIS = 100.0
 #: Une seule facture de petit consommateur (< 200 kWh/mois) trancherait pour
 #: de bon — à demander. En attendant, la réserve VOYAGE avec le chiffre
 #: (:data:`TPPAN_SOURCE`, propagé jusqu'au bloc de consommation estimée).
+#: DÉCISION FONDATEUR 30/08/2026 (menu de décisions, Q3) : GARDER 50 —
+#: confirmé tel quel, jusqu'au jour où une vraie facture < 200 kWh/mois
+#: tranche définitivement. La question est CLOSE ; ne pas la re-poser.
 TPPAN_EXONERATION_KWH_MOIS = 50.0
 
 TPPAN_SOURCE = (
