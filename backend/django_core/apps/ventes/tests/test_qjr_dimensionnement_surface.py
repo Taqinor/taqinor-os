@@ -10,7 +10,9 @@ module —, d'où ce pin, jumeau de ``test_services_surface`` (QJR5).
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 38 noms PUBLICS que le module offre : ceux qu'il
+* ``SURFACE_PUBLIQUE`` — les 49 noms PUBLICS que le module offre (38 avant
+  QJR104, + les 11 du type ``Optimum`` et de sa règle de publication) : ceux
+  qu'il
   DÉFINIT (le balayage pur) ET ceux qu'il RÉ-EXPORTE depuis
   ``domain/dimensionnement_devis.py``. La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
@@ -65,6 +67,22 @@ MODULE_DEVIS = "apps.ventes.domain.dimensionnement_devis"
 # exactement ce que calcule ``_surface_niveau_module`` plus bas, filtré sur les
 # noms sans préfixe ``_``.
 SURFACE_PUBLIQUE = (
+    # QJR104 — le TYPE d'optimum et sa règle de publication (11 noms). Ils
+    # sont ICI parce que c'est ici que les optima sont PRODUITS ; les
+    # consommateurs (charge utile publique QJR14, moteur PDF QJR13) ne font
+    # plus que les lire.
+    "ConfigInstallation",
+    "Optimum",
+    "TOLERANCE_CAPACITE_KWH",
+    "config_du_bloc",
+    "config_vendue_du_devis",
+    "decrit",
+    "decrit_la_capacite",
+    "optima_publiables",
+    "optimum_de_ligne",
+    "optimum_du_bloc",
+    "publier_si_decrit",
+    # ── la surface d'avant QJR104 ───────────────────────────────────────────
     "CRITERES",
     "CRITERE_DEFAUT",
     "EGALITE_PAYBACK_ANNEES",
