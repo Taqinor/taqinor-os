@@ -129,7 +129,11 @@ import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 // écran signait était le balayage local du dimensionnement affiché, devenu
 // injoignable (la puce « estimation d'exemple » des cartes ROI, elle, passe
 // par `CarteMetrique`, qui possède le déballeur).
-import { moteur, absent, estFait } from '../../features/ventes/quote/valeur'
+// QJR108 — l'écran ne SIGNE plus aucune valeur lui-même : les trois
+// helpers (`moteur`/`absent`/`estFait`) n'étaient utilisés que par
+// `paireDimensionnement`, qui vit désormais dans son propre module pur.
+import { deuxValeursDim as selecteurDeuxValeursDim }
+  from '../../features/ventes/quote/paireDimensionnement'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -196,35 +200,12 @@ const messageValeursLeadModifiees = (champs) => {
   return `Valeurs du lead modifiées depuis la reprise dans ce devis : ${noms.join(', ')}.`
 }
 
-const RIEN_A_CHIFFRER = 'aucun dimensionnement chiffré pour cette branche'
-
-/** Recommandation du MOTEUR horaire serveur — publiable telle quelle. */
-const valeurMoteurDim = (srv) => (Number(srv?.panneaux) > 0
-  ? moteur({ nbPanneaux: srv.panneaux, kwc: srv.kwc })
-  : absent(RIEN_A_CHIFFRER))
-
-/**
- * QJR99 — remplace la CHAÎNE DE TERNAIRES `deuxValeursDim`. Chaque branche
- * devient une VALEUR SIGNÉE (QJR86) : `moteur` = moteur horaire serveur,
- * `absent(motif)` = rien de calculable — jamais un chiffre inventé.
- *
- * QJR102 — la branche `apercu` (balayage local `sizingInfo`) EST SUPPRIMÉE :
- * elle était injoignable (voir `deuxValeursDim`). Il ne reste donc QU'UNE
- * source possible, et la règle F3 (« jamais une paire mixte ») devient une
- * propriété du type au lieu d'une comparaison à faire : deux valeurs `moteur`
- * ou rien. Rend la même forme qu'avant (`{ sans, avec }`, chacun
- * `{nbPanneaux, kwc}` ou `null`) : le JSX est inchangé.
- */
-const paireDimensionnement = (srvSans, srvAvec) => {
-  const mSans = valeurMoteurDim(srvSans)
-  const mAvec = valeurMoteurDim(srvAvec)
-  if (estFait(mSans) && estFait(mAvec)) return { sans: mSans.valeur, avec: mAvec.valeur }
-  // Une seule branche chiffrée : elle sort SEULE — « sans » avant « avec »,
-  // comme la cascade historique.
-  if (estFait(mSans)) return { sans: mSans.valeur, avec: null }
-  if (estFait(mAvec)) return { sans: null, avec: mAvec.valeur }
-  return { sans: null, avec: null }
-}
+// QJR108 — `RIEN_A_CHIFFRER` / `valeurMoteurDim` / `paireDimensionnement`
+// vivaient ICI, non exportés (ce fichier n'exporte que des composants —
+// react-refresh), donc vérifiables SEULEMENT par expression régulière sur le
+// source. Ils vivent désormais dans le module PUR
+// `features/ventes/quote/paireDimensionnement.js`, où ils sont testés par
+// EXÉCUTION. Déplacement seul : pas une ligne de logique n'a changé.
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -1479,11 +1460,11 @@ export default function DevisGenerator({
   // serveur jusque dans la branche « paire locale »). Le dimensionnement
   // affiché ici ne peut donc plus venir que du MOTEUR — une seule source, un
   // écart toujours comparable.
-  const deuxValeursDim = (() => {
-    if (modeInstallation !== 'residentiel') return { sans: null, avec: null }
-    const dim = etudeHoraireDonnees?.dimensionnement
-    return paireDimensionnement(dim?.recommandation, dim?.recommandation_avec)
-  })()
+  // QJR108 — le sélecteur ENTIER (garde de marché comprise) vit dans le module
+  // pur `features/ventes/quote/paireDimensionnement.js` : il est désormais
+  // exécuté par les tests, plus seulement décrit par une regex.
+  const deuxValeursDim = selecteurDeuxValeursDim(
+    modeInstallation, etudeHoraireDonnees)
 
   const applyLead = (id) => {
     setLeadId(id)
