@@ -944,13 +944,58 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
+        #
+        # ── QJR133 / ES2 (audit du 30/08/2026) — ON NE DEVINE PLUS L'OPTION ──
+        #
+        # CE QUI ÉTAIT FAUX. ``build_quote_data`` était le SEUL détecteur
+        # consulté, et son ``except Exception: nb_options, scenario = 1, ''``
+        # faisait disparaître le garde-fou « deux options → choix explicite »
+        # PUIS retombait sur un repli FIXE (« sans_batterie »). Or l'option
+        # acceptée est AUTORITATIVE en aval (``utils/echeancier`` : « on facture
+        # UNIQUEMENT les lignes de l'option retenue ») : le client se retrouvait
+        # engagé, facturé et approvisionné sur un périmètre qu'il n'avait pas
+        # choisi, sans qu'aucune erreur ne soit levée. Chemin d'atteinte : un
+        # POST public sur ``/proposal/<token>/accept`` sans champ ``option``.
+        #
+        # LA RÈGLE. Quand la détection est INDISPONIBLE et que l'appelant n'a
+        # pas dit l'option, on REFUSE (``AcceptError`` → 400) au lieu d'en
+        # figer une. Le prédicat LÉGER ``deux_options_declarees`` (QJR55 : LE
+        # prédicat du dépôt, deux requêtes, AUCUN rendu de document) sert alors
+        # à formuler le bon refus — « précisez l'option » quand il voit deux
+        # options, sinon « le document n'a pas pu être construit ».
+        #
+        # LE MOTEUR RESTE LE DÉTECTEUR QUAND IL RÉPOND, délibérément : c'est
+        # lui qui a produit le document que le CLIENT a sous les yeux. Faire
+        # trancher le prédicat léger PAR-DESSUS un moteur qui a répondu
+        # « une option » exigerait un choix que l'écran client n'offre pas.
+        #
+        # Un appelant qui a DÉJÀ passé ``option`` n'est jamais bloqué : il n'y
+        # a plus rien à deviner.
+        detection_sure = True
         try:
             from apps.ventes.quote_engine.builder import build_quote_data
             qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
             nb_options = qd.get('nb_options', 1)
             scenario = qd.get('scenario', '')
         except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+            logger.exception(
+                'QJR133 : détection des options indisponible sur le devis %s '
+                "— l'acceptation sans option explicite est refusée.",
+                getattr(devis, 'reference', '?'))
+            detection_sure = False
             nb_options, scenario = 1, ''
+        if not detection_sure and not option:
+            from apps.ventes.utils.options import deux_options_declarees
+            if deux_options_declarees(devis):
+                raise AcceptError(
+                    'Ce devis comporte deux options — précisez celle choisie '
+                    'par le client (« sans_batterie » ou « avec_batterie »).')
+            raise AcceptError(
+                "Le récapitulatif de ce devis n'a pas pu être construit : "
+                "l'option retenue ne peut donc pas être déterminée. "
+                "L'acceptation est refusée plutôt que d'engager le client sur "
+                "un périmètre qu'il n'a pas choisi. Réessayez, ou précisez "
+                'l\'option (« sans_batterie » ou « avec_batterie »).')
         if nb_options == 2 and not option:
             raise AcceptError(
                 'Ce devis comporte deux options — précisez celle choisie par '
