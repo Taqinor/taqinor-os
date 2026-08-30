@@ -29,6 +29,11 @@ import logging
 
 from django.db import transaction
 
+# Alias module-local : les tests sans base (test_qjr_pipeline_appliquer)
+# remplacent ``pipeline._atomic`` par un enregistreur no-op sans toucher au
+# module ``django.db.transaction`` partagé.
+_atomic = transaction.atomic
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -759,7 +764,7 @@ def appliquer(devis, intention):
     # panne en pleine écriture annulait TOUT (aucun brouillon fantôme, aucune
     # référence brûlée). Création + étapes 5-6 restent donc UN bloc atomique ;
     # les études (étape 7) restent DEHORS, comme sur tous les chemins.
-    with transaction.atomic():
+    with _atomic():
         verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
             intention)
 

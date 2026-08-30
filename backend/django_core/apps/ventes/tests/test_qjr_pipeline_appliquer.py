@@ -85,11 +85,30 @@ class _Etapes:
         pipeline.finaliser = _note('finaliser')
         pipeline._verrouiller = _note('_verrouiller', self.verrou)
         pipeline._creer_brouillon = _note('_creer_brouillon', self.verrou)
+
+        # Passe Fable M5a (30/08/2026) — le mode ``composer`` enveloppe
+        # création + étapes 5-6 dans ``transaction.atomic()`` (frontière de
+        # l'ancien chemin 3D, préservée). Ces tests restent SANS base : on
+        # remplace l'atomic par un enregistreur no-op, et les journaux
+        # attendus prouvent que verrou/écritures tombent DEDANS.
+        journal = self.journal
+
+        class _AtomicEspion:
+            def __enter__(self_a):
+                journal.append('_atomic')
+                return self_a
+
+            def __exit__(self_a, *exc_a):
+                return False
+
+        self._ancien_atomic = pipeline._atomic
+        pipeline._atomic = lambda *a, **k: _AtomicEspion()
         return self
 
     def __exit__(self, *exc):
         for nom, valeur in self._anciens.items():
             setattr(pipeline, nom, valeur)
+        pipeline._atomic = self._ancien_atomic
         return False
 
 
@@ -110,11 +129,13 @@ class LOrdreDesHuitEtapes(SimpleTestCase):
             resultat = pipeline.appliquer(_FauxDevis(), _intention())
 
         # Le verrou se prend entre `verifier` et `ecrire_lignes` : refuser
-        # AVANT d'écrire, verrouiller AVANT la première écriture.
+        # AVANT d'écrire, verrouiller AVANT la première écriture. Et depuis la
+        # passe Fable M5a, création + écritures (étapes 5-6) tombent DANS le
+        # bloc atomique — la frontière de l'ancien chemin 3D, préservée.
         self.assertEqual(
             journal,
             ['resoudre_entrees', 'decider_taille', 'composer', 'verifier',
-             '_verrouiller', 'ecrire_lignes', 'ecrire_etude_params',
+             '_atomic', '_verrouiller', 'ecrire_lignes', 'ecrire_etude_params',
              'rafraichir_etudes', 'finaliser'])
         # Le journal RENDU ne liste que les huit étapes déclarées.
         self.assertEqual(resultat['etapes'], list(pipeline.ETAPES))
