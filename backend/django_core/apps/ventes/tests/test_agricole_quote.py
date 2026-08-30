@@ -98,12 +98,11 @@ class TestAgricoleEconomics(SimpleTestCase):
         eco = economics.compute(data)
         self.assertEqual(eco["current_fuel"], "diesel")
         self.assertEqual(eco["annual_saving"], eco["fuel_costs"]["diesel"])
-        # QJR151(b) — sans dépense carburant saisie, la consommation actuelle
-        # est INCONNUE : plus de quantité de carburant évitée (elle était
-        # modélisée sur le CV de la pompe solaire NEUVE).
-        self.assertEqual(eco["fuel_qty_label"], "")
-        data["etude"]["fuel_spend_current"] = 54000
-        self.assertIn("gasoil", economics.compute(data)["fuel_qty_label"])
+        # QJR151(b) — la quantité évitée est dérivée de la facture actuelle
+        # (ici modélisée sur le volume d'eau réel), plus du CV de la pompe neuve.
+        self.assertIn("gasoil", eco["fuel_qty_label"])
+        litres = round(eco["annual_fuel_now"] / 13.5)
+        self.assertIn(f"{litres:,}".replace(",", " "), eco["fuel_qty_label"])
 
     def test_curveless_pump_invents_nothing(self):
         data = sample_data.build("agrumes")
@@ -120,6 +119,24 @@ class TestAgricoleEconomics(SimpleTestCase):
         self.assertIsNotNone(eco["besoin_m3j"])
         self.assertGreater(eco["besoin_m3j"], 0)
         self.assertGreaterEqual(self.data["etude"]["m3_jour"], eco["besoin_m3j"])
+
+    # ── QJR152(a) — un seul moteur agronomique ───────────────────────────────
+    def test_besoin_de_pointe_est_le_max_de_la_serie_mensuelle(self):
+        """Le nombre imprimé en page 2 EST la plus haute barre de son graphe."""
+        from apps.ventes.quote_engine.agricole import agronomy
+        for key in sample_data.keys():
+            data = renderer._augment(sample_data.build(key))
+            mensuel = data["monthly_need_m3day"]
+            self.assertTrue(mensuel, key)
+            self.assertEqual(data["besoin_m3j"], round(max(mensuel)), key)
+        self.assertFalse(hasattr(agronomy, "water_demand_from_farm"))
+        self.assertFalse(hasattr(agronomy, "KC_MID"))
+        self.assertFalse(hasattr(agronomy, "ET0_PEAK_MM_J"))
+
+    def test_besoin_explicite_du_client_reste_prioritaire(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["besoin_m3j"] = 64
+        self.assertEqual(economics.compute(data)["besoin_m3j"], 64)
 
     def test_no_farm_data_means_no_invented_need(self):
         data = sample_data.build("agrumes")
@@ -184,26 +201,43 @@ class TestAgricoleEconomics(SimpleTestCase):
         self.assertEqual(eco["peak_to_avg"], 0.62)
 
     def test_impact_environnemental_exige_la_consommation_actuelle(self):
-        """Les bonbonnes/CO₂ évités viennent de la dépense RÉELLE du client, pas
-        du CV de la pompe solaire NEUVE (qui n'a jamais brûlé un litre)."""
+        """Les bonbonnes/CO₂ évités viennent de la consommation ACTUELLE du
+        client (dépense saisie, sinon coût modélisé sur son volume d'eau réel),
+        jamais du CV de la pompe solaire NEUVE."""
         data = sample_data.build("agrumes")
-        eco = economics.compute(data)             # aucune dépense saisie
-        self.assertEqual(eco["co2_t"], 0)
-        self.assertEqual(eco["fuel_qty_label"], "")
         data["etude"]["fuel_spend_current"] = 40000
-        eco2 = economics.compute(data)
-        self.assertGreater(eco2["co2_t"], 0)
-        self.assertIn("bonbonnes", eco2["fuel_qty_label"])
+        eco = economics.compute(data)
         # 40 000 MAD / 50 MAD la bonbonne = 800 bonbonnes — une DÉRIVATION de la
         # dépense saisie, jamais un modèle sur le CV de la pompe neuve.
-        self.assertIn("800", eco2["fuel_qty_label"])
+        self.assertIn("800 bonbonnes", eco["fuel_qty_label"])
+        self.assertGreater(eco["co2_t"], 0)
+
+    def test_impact_omis_sans_aucune_donnee_de_consommation(self):
+        """Pompe sans courbe (aucun m³/jour) et aucune dépense saisie : le
+        bandeau publiait quand même un décompte de bonbonnes."""
+        data = sample_data.build("agrumes")
+        data["etude"]["m3_jour"] = None
+        eco = economics.compute(data)
+        self.assertFalse(eco["has_water"])
+        self.assertEqual(eco["annual_fuel_now"], 0)
+        self.assertEqual(eco["co2_t"], 0)
+        self.assertEqual(eco["fuel_qty_label"], "")
+
+    def test_impact_omis_sans_energie_actuelle(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["current_fuel"] = "none"
+        eco = economics.compute(data)
+        self.assertEqual(eco["co2_t"], 0)
+        self.assertEqual(eco["fuel_qty_label"], "")
 
     def test_impact_ne_depend_plus_du_cv_de_la_pompe_neuve(self):
         data = sample_data.build("agrumes")
-        data["etude"]["fuel_spend_current"] = 40000
-        base = economics.compute(data)["co2_t"]
+        base = economics.compute(data)
+        self.assertGreater(base["co2_t"], 0)
         data["etude"]["pompe_cv"] = "15"          # pompe deux fois plus grosse
-        self.assertEqual(economics.compute(data)["co2_t"], base)
+        self.assertEqual(economics.compute(data)["co2_t"], base["co2_t"])
+        self.assertEqual(economics.compute(data)["fuel_qty_label"],
+                         base["fuel_qty_label"])
 
     def test_hectares_seulement_si_surface_renseignee(self):
         data = sample_data.build("agrumes")
@@ -265,6 +299,33 @@ class TestAgricoleRender(SimpleTestCase):
     def test_reassurance_water_all_year(self):
         self.assertIn("toute l", self._html())            # "De l'eau toute l'année"
 
+    # ── QJR152(b) — la promesse de suffisance n'est servie que si elle est vraie
+    def test_page2_ne_publie_quun_seul_besoin_de_pointe(self):
+        """Le nombre du texte et la plus haute barre du graphe concordent."""
+        for key in sample_data.keys():
+            data = renderer._augment(sample_data.build(key))
+            html = render.build_html(data)
+            besoin = data["besoin_m3j"]
+            self.assertIn(f"{besoin} m³/jour", html, key)
+            self.assertEqual(besoin, round(max(data["monthly_need_m3day"])), key)
+
+    def test_encadre_de_suffisance_seulement_si_le_besoin_est_couvert(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["surface_ha"] = 6.0     # besoin de pointe > eau livrée
+        html = render.build_html(renderer._augment(data))
+        self.assertNotIn("sans manquer", html)
+        self.assertNotIn("plus d'eau qu'il n'en faut", html)
+        self.assertIn("Couverture partielle", html)
+
+    def test_aucune_promesse_de_suffisance_sans_comparaison_calculable(self):
+        data = sample_data.build("agrumes")
+        data["etude"].pop("surface_ha", None)
+        data["etude"].pop("crop", None)
+        html = render.build_html(renderer._augment(data))
+        self.assertNotIn("sans manquer", html)
+        self.assertNotIn("Couverture partielle", html)
+        self.assertIn("mois le plus exigeant", html)
+
     def test_abh_authorisation_guardrail_present(self):
         self.assertIn("ABH", self._html())
 
@@ -291,7 +352,10 @@ class TestAgricoleRender(SimpleTestCase):
         self.assertIn("62 %", html)
 
     def test_bandeau_environnemental_omis_sans_consommation_actuelle(self):
-        self.assertNotIn("évitées/an", self._html())
+        """Pompe sans courbe : aucun m³/jour, aucune dépense — aucun décompte."""
+        data = sample_data.build("agrumes")
+        data["etude"]["m3_jour"] = None
+        self.assertNotIn("évitées/an", render.build_html(renderer._augment(data)))
 
     def test_bandeau_environnemental_publie_avec_la_depense_reelle(self):
         data = sample_data.build("agrumes")

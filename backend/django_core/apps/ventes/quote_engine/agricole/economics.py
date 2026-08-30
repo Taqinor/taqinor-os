@@ -188,28 +188,30 @@ def compute(data: dict, company_id=None) -> dict:
     # ``constants.FDA_QUALITATIVE_NOTE`` for the qualitative wording.
     fda_pct = _num(cfg["fda_subsidy_pct"], 30)
 
-    # QJR151(b) — CARBURANT ÉVITÉ ET CO₂ : dérivés de la DÉPENSE CARBURANT
-    # ACTUELLE RÉELLE du client (``fuel_spend_current``, MAD/an), plus jamais
-    # modélisés sur ``pump_cv`` — le CV de la pompe SOLAIRE NEUVE, qui n'a
-    # jamais brûlé un litre — via un ``BUTANE_KG_PER_H_PER_CV`` « à confirmer ».
-    # Sans dépense saisie, la consommation actuelle est INCONNUE : le bandeau
-    # environnemental n'est pas publié (co2_t = 0 ⇒ ``_env_block`` s'omet),
-    # plutôt qu'un décompte de bonbonnes inventé — y compris sur un devis où le
-    # moteur refuse déjà de calculer le moindre m³.
+    # QJR151(b) — CARBURANT ÉVITÉ ET CO₂ : dérivés de la CONSOMMATION ACTUELLE
+    # du client — ``annual_fuel_now``, c'est-à-dire sa dépense carburant SAISIE
+    # quand elle existe, sinon le coût modélisé sur son volume d'eau RÉEL — et
+    # plus jamais modélisés sur ``pump_cv``, le CV de la pompe SOLAIRE NEUVE qui
+    # n'a jamais brûlé un litre (via un ``BUTANE_KG_PER_H_PER_CV`` « à
+    # confirmer »). Deux conséquences voulues : le bandeau s'omet quand la
+    # consommation actuelle est INCONNUE (ni m³/jour, ni dépense saisie — il
+    # s'affichait jusqu'ici sur un devis où le moteur refuse de calculer le
+    # moindre m³) et il s'omet sur « aucune énergie actuelle » ; et la quantité
+    # publiée repose sur la MÊME base que l'économie annoncée juste à côté.
     co2_kg = 0.0
     fuel_qty_label = ""
-    if fuel_spend > 0 and not aucun_carburant:
+    if annual_fuel_now > 0:
         if current_fuel == "diesel":
             _prix_l = _num(cfg["diesel_mad_per_l"])
             if _prix_l > 0:
-                litres = fuel_spend / _prix_l
+                litres = annual_fuel_now / _prix_l
                 co2_kg = litres * _num(cfg["diesel_kg_co2_per_l"])
                 fuel_qty_label = (f"{round(litres):,}".replace(",", " ")
                                   + " L de gasoil")
         else:
             _prix_bonbonne = _num(cfg["butane_12kg_subventionne"])
             if _prix_bonbonne > 0:
-                bottles = fuel_spend / _prix_bonbonne
+                bottles = annual_fuel_now / _prix_bonbonne
                 co2_kg = (bottles * 12.0) * _num(cfg["butane_kg_co2_per_kg"])
                 fuel_qty_label = (f"{round(bottles):,}".replace(",", " ")
                                   + " bonbonnes de butane")
