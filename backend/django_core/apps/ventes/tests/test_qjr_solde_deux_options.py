@@ -180,6 +180,74 @@ class SoldeApresAcceptation(_Base):
         self.assertEqual(next_tranche(devis)['ttc'], Decimal('20664.00'))
 
 
+class InvariantTroisChiffresHuawei(_Base):
+    """QJR201 — L'INVARIANT ÉTENDU : sur un devis Huawei à DEUX options,
+
+        total imprimé == somme des tranches == ``total_affiche``
+
+    Avant QJR200, la chaîne monnaie additionnait le Smart Meter et la clé Wi-Fi
+    que le PDF retire de l'option hybride Deye : les trois chiffres divergeaient
+    de 3 000 TTC. C'est le devis résidentiel le plus COURANT — une option réseau
+    Huawei, une option hybride Deye — pas une anomalie.
+    """
+
+    def _devis_huawei_deye(self):
+        self.compteur += 1
+        prefixe = f'Q24H{self.compteur:02d}'
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{prefixe}',
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'),
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        self._lignes(devis, [
+            ('Onduleur réseau Huawei 10kW', '1', '11700'),
+            ('Onduleur hybride Deye 10kW', '1', '24000'),
+            ('Smart Meter', '1', '1500'),
+            ('Wifi Dongle', '1', '1000'),
+            ('Panneau mono 550W', '14', '1100'),
+            ('Batterie 5 kWh', '1', '14000'),
+            ('Installation', '1', '4000'),
+        ], prefixe)
+        return devis
+
+    def _total_imprime(self, devis):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        return Decimal(str(build_quote_data(devis)['total_avec']))
+
+    def test_total_imprime_egale_total_affiche(self):
+        devis = self._devis_huawei_deye()
+        affiche = display_totals(devis)
+        self.assertEqual(affiche['nb_options'], 2)
+        self.assertLessEqual(
+            abs(Decimal(str(affiche['total'])) - self._total_imprime(devis)),
+            Decimal('1'))
+
+    def test_somme_des_tranches_egale_le_total_imprime(self):
+        """Les trois tranches par défaut (30/60/10) somment au total imprimé."""
+        devis = self._devis_huawei_deye()
+        imprime = self._total_imprime(devis)
+        total_noyau = Decimal(str(option_totaux(devis, AVEC_BATTERIE)['ttc']))
+        self.assertLessEqual(abs(total_noyau - imprime), Decimal('1'))
+        # Σ des tranches = 100 % du total du noyau, par construction du solde.
+        tranche = next_tranche(devis)
+        self.assertEqual(tranche['ttc'],
+                         (total_noyau * Decimal('0.30')).quantize(
+                             Decimal('0.01')))
+
+    def test_accessoires_absents_du_panier_avec(self):
+        """La cause, nommée : l'option Deye ne facture pas les accessoires
+        Huawei que son document n'imprime pas."""
+        devis = self._devis_huawei_deye()
+        designations = {li.designation for li in option_lines(devis)}
+        self.assertNotIn('Smart Meter', designations)
+        self.assertNotIn('Wifi Dongle', designations)
+        # L'option réseau Huawei, elle, les garde : ils sont à elle.
+        sans = {li.designation
+                for li in option_lines(devis, SANS_BATTERIE)}
+        self.assertIn('Smart Meter', sans)
+        self.assertIn('Wifi Dongle', sans)
+
+
 class DevisSansAlternativeInchange(_Base):
     """Non-régression : un devis à option unique ne change pas d'un centime."""
 
