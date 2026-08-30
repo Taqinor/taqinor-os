@@ -124,8 +124,10 @@ def warehouse_key(context, filename) -> str:
     company = ctx.get('company_id') or 'sys'
     dataset = ctx.get('dataset') or 'extrait'
     date = ctx.get('date') or timezone.now().date().isoformat()
-    ext = (filename or '').rsplit('.', 1)
-    suffix = ext[1] if len(ext) == 2 else 'csv'
+    suffix = ctx.get('suffixe')
+    if not suffix:
+        ext = (filename or '').rsplit('.', 1)
+        suffix = ext[1] if len(ext) == 2 else 'csv'
     safe_ds = ''.join(c for c in str(dataset)
                       if c.isalnum() or c in ('-', '_')) or 'extrait'
     return f'{company}/{safe_ds}/{date}.{suffix}'
@@ -372,6 +374,96 @@ def prochain_curseur(export, rows):
     return _valeur_curseur(valeur) if valeur is not None else None
 
 
+# ---------------------------------------------------------------------------
+# NTDATA31 — manifeste d'entrepôt (schéma exporté, découvrable par un BI tiers).
+
+MANIFEST_SUFFIXE = 'manifest.json'
+
+# Vocabulaire de types VENDOR-NEUTRE (un Looker/Metabase branché sur l'entrepôt
+# doit pouvoir lire le schéma sans rien connaître de Django).
+TYPE_ENTIER = 'entier'
+TYPE_NOMBRE = 'nombre'
+TYPE_BOOLEEN = 'booleen'
+TYPE_DATE = 'date'
+TYPE_HORODATAGE = 'horodatage'
+TYPE_TEXTE = 'texte'
+TYPE_INCONNU = 'inconnu'
+
+
+def _type_valeur(valeur) -> str:
+    """Type vendor-neutre d'une valeur de cellule."""
+    import datetime
+    import decimal
+
+    if isinstance(valeur, bool):
+        return TYPE_BOOLEEN
+    if isinstance(valeur, int):
+        return TYPE_ENTIER
+    if isinstance(valeur, (float, decimal.Decimal)):
+        return TYPE_NOMBRE
+    if isinstance(valeur, datetime.datetime):
+        return TYPE_HORODATAGE
+    if isinstance(valeur, datetime.date):
+        return TYPE_DATE
+    if isinstance(valeur, str):
+        return TYPE_TEXTE
+    return TYPE_INCONNU
+
+
+def colonnes_manifeste(rows):
+    """Colonnes + types déduits des lignes extraites (ordre de projection).
+
+    Le type d'une colonne est celui de sa PREMIÈRE valeur non vide ; une colonne
+    entièrement vide reste ``inconnu`` plutôt que d'être devinée.
+    """
+    colonnes = []
+    if not rows:
+        return colonnes
+    for nom in rows[0].keys():
+        type_col = TYPE_INCONNU
+        for row in rows:
+            valeur = row.get(nom)
+            if valeur is not None:
+                type_col = _type_valeur(valeur)
+                break
+        colonnes.append({'nom': nom, 'type': type_col})
+    return colonnes
+
+
+def construire_manifeste(export, rows, filename, context=None):
+    """Manifeste JSON-able de l'extrait (NTDATA31).
+
+    Contient de quoi qu'un outil BI externe DÉCOUVRE le schéma sans deviner :
+    dataset, fichier, colonnes + types, nombre de lignes, curseur
+    high-watermark (NTDATA30) et version de la couche sémantique.
+
+    ``version_metriques`` reste ``None`` tant que la couche sémantique
+    (``MetricDefinitionVersion``, NTDATA9) n'est pas livrée : on publie la clé
+    — pour que le format du manifeste soit stable dès maintenant — sans jamais
+    inventer un numéro de version qui n'existe pas.
+    """
+    ctx = dict(context or {})
+    return {
+        'dataset': export.dataset,
+        'titre': export.titre,
+        'fichier': filename,
+        'format': export.format,
+        'mode': getattr(export, 'mode', MODE_COMPLET),
+        'genere_le': ctx.get('date') or timezone.now().date().isoformat(),
+        'nb_lignes': len(rows or []),
+        'colonnes': colonnes_manifeste(rows),
+        'champ_curseur': getattr(export, 'champ_curseur', '') or None,
+        'curseur': getattr(export, 'dernier_curseur', '') or None,
+        'version_metriques': None,
+    }
+
+
+def _manifeste_bytes(manifeste) -> bytes:
+    import json
+    return json.dumps(manifeste, ensure_ascii=False,
+                      default=str).encode('utf-8')
+
+
 def rendre_extrait(export):
     """Rend le contenu de l'extrait depuis le dataset du ``ScheduledExport``.
 
@@ -467,6 +559,7 @@ def executer(export, now=None):
         export.dernier_statut = 'erreur'
         export.dernier_detail = {
             'detail': f'Destination inconnue : {export.destination!r}'}
+        res = {}
     else:
         res = dest.deliver(filename, data, content_type, context=context)
         export.dernier_statut = (
@@ -486,5 +579,25 @@ def executer(export, now=None):
             export.dernier_curseur = curseur[:64]
             champs.append('dernier_curseur')
             export.dernier_detail['curseur'] = export.dernier_curseur
+
+    # NTDATA31 — manifeste de schéma, TOUJOURS calculé (il est consultable sur
+    # l'extrait même quand la destination est en no-op) et déposé À CÔTÉ du
+    # fichier quand la livraison a réussi.
+    manifeste = construire_manifeste(export, rows, filename, context)
+    export.dernier_detail['manifest'] = manifeste
+    if dest is not None and res.get('ok'):
+        ctx_manifest = dict(context)
+        ctx_manifest['suffixe'] = MANIFEST_SUFFIXE
+        try:
+            mres = dest.deliver(f'{filename}.{MANIFEST_SUFFIXE}',
+                                _manifeste_bytes(manifeste),
+                                'application/json', context=ctx_manifest)
+        except Exception:  # noqa: BLE001 — le manifeste ne casse jamais l'export
+            logger.warning('manifeste d\'entrepôt : dépôt en échec (extrait %s)',
+                           getattr(export, 'pk', None), exc_info=True)
+        else:
+            if mres.get('key'):
+                export.dernier_detail['manifest_key'] = mres['key']
+
     export.save(update_fields=champs)
     return export
