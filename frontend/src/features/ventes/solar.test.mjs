@@ -1041,6 +1041,65 @@ test('auto-fill courbe complet : pompe OSP + VEICHI assorti + afficheur, sans on
   assert.ok(!names.some(n => /batterie/i.test(n)))
 })
 
+// ── QJR131 — `_hasPrix` couvre AUSSI panneaux/structures/socles/câble/
+// installation/transport (avant : réservé pompe/variateur/afficheur) : un
+// candidat sans prix n'est plus jamais chiffré, repli sur un placeholder
+// (aucun `produit`, jamais un article gratuit à id réel) ─────────────────────
+const POMPAGE_ARGS = {
+  cv: '5.5', alim: 'tri', typePompe: 'immergee', distance: '35', structureType: 'acier',
+}
+const zeroed = (produits, matches) => produits.map(p =>
+  matches.some(m => p.nom.includes(m)) ? { ...p, prix_vente: '0.00' } : p)
+
+test('QJR131 : Panneaux sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Panneau'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Panneaux')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Structures sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Structures'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Structures')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Socles sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Socles'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Socles')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Câble sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Câble'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS)
+    .find(r => r.designation === 'Câble solaire (m)')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Installation sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Installation'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Installation')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Transport sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Transport'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Transport')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
 // ══ Réforme TVA 2024–2026 : 10 % panneaux PV, 20 % le reste ═════════════════
 import { ttcFromHt as _ttc, htFromTtc as _htf, tauxTvaOf } from './solar.js'
 

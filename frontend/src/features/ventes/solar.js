@@ -2762,16 +2762,23 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
     if (!byType[t]) byType[t] = []
     byType[t].push(p)
   }
+  // QJR131 — `_hasPrix` couvre désormais AUSSI panneaux/structures/socles/
+  // câble/installation/transport (avant : réservé pompe/variateur/afficheur).
+  // Un candidat sans prix n'est plus jamais choisi — repli sur un
+  // `placeholder()` (aucun `produit`, jamais enregistré) plutôt qu'une ligne
+  // avec un VRAI id produit et `prix_unit_ttc: 0` (article gratuit).
   const panels = (byType.panneau ?? [])
     .map(p => ({ p, w: parseWatt(p.nom) }))
-    .filter(x => x.w === 710)
-  const panel = panels[0]?.p ?? (byType.panneau ?? [])[0] ?? null
+    .filter(x => x.w === 710 && _hasPrix(x.p))
+  const panel = panels[0]?.p
+    ?? (byType.panneau ?? []).find(_hasPrix)
+    ?? null
 
-  const structures = byType.structure ?? []
+  const structures = (byType.structure ?? []).filter(_hasPrix)
   const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
   const struct = structures.find(p => _norm(p.nom).includes(wanted)) ?? structures[0] ?? null
 
-  const cable = produits.find(p => _isCableMetre(_norm(p.nom))) ?? null
+  const cable = produits.find(p => _isCableMetre(_norm(p.nom)) && _hasPrix(p)) ?? null
   const distM = parseFloat(distance) || 0
 
   const line = (p, designation, quantite) => ({
@@ -2805,10 +2812,38 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
     line(panel, 'Panneaux', dims.nbPanneaux),
     line(struct, 'Structures', dims.nbPanneaux),
   )
-  if ((byType.socle ?? []).length) rows.push(line(byType.socle[0], 'Socles', dims.nbPanneaux * 2))
-  if (cable && distM > 0) rows.push(line(cable, 'Câble solaire (m)', distM))
-  if ((byType.installation ?? []).length) rows.push(line(byType.installation[0], 'Installation', 1))
-  if ((byType.transport ?? []).length) rows.push(line(byType.transport[0], 'Transport', 1))
+  // QJR131 — un rôle présent au catalogue mais SANS aucun candidat pricé
+  // retombe sur `placeholder()` (jamais la ligne réelle du premier candidat,
+  // pricé ou non, comme avant ce correctif).
+  const socles = byType.socle ?? []
+  if (socles.length) {
+    const socle = socles.find(_hasPrix) ?? null
+    rows.push(socle
+      ? line(socle, 'Socles', dims.nbPanneaux * 2)
+      : placeholder('Socles', dims.nbPanneaux * 2))
+  }
+  if (distM > 0) {
+    const cableCands = produits.filter(p => _isCableMetre(_norm(p.nom)))
+    if (cableCands.length) {
+      rows.push(cable
+        ? line(cable, 'Câble solaire (m)', distM)
+        : placeholder('Câble solaire (m)', distM))
+    }
+  }
+  const installations = byType.installation ?? []
+  if (installations.length) {
+    const installation = installations.find(_hasPrix) ?? null
+    rows.push(installation
+      ? line(installation, 'Installation', 1)
+      : placeholder('Installation', 1))
+  }
+  const transports = byType.transport ?? []
+  if (transports.length) {
+    const transport = transports.find(_hasPrix) ?? null
+    rows.push(transport
+      ? line(transport, 'Transport', 1)
+      : placeholder('Transport', 1))
+  }
   return rows
 }
 
