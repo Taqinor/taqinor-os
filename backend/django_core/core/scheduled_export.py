@@ -11,25 +11,33 @@ Conception
 ----------
 
 * ``ExportDestinationProvider`` (base) : interface ``deliver(filename, data,
-  content_type)`` + ``is_configured()``. Non configuré → no-op propre (aucun
-  transfert réseau).
+  content_type, context=None)`` + ``is_configured()``. Non configuré → no-op
+  propre (aucun transfert réseau).
 * ``SftpDestination`` / ``S3Destination`` : enregistrés sous ``« sftp »`` /
   ``« s3 »``. Tant qu'aucun credential n'est branché, ``is_configured()`` est
   faux et aucun transfert n'a lieu.
+* ``MinioWarehouseDestination`` (NTDATA27) : enregistrée sous ``« minio »``,
+  elle vise le MinIO DÉJÀ provisionné par le compose du repo — l'entrepôt
+  analytique fonctionne donc SANS aucun credential externe, sous la clé
+  ``<bucket warehouse>/<company>/<dataset>/<date>.<ext>``.
 * ``rendre_extrait(export)`` matérialise le contenu (CSV ou parquet best-effort)
   depuis le dataset du ``ScheduledExport``. ``executer(export, now=None)``
   rend l'extrait puis le livre à la destination configurée (no-op si non
   configurée) et met à jour ``derniere_execution_le`` / ``dernier_statut``.
 
-⚠ AUTH : la livraison réelle exige des credentials SFTP/S3 provisionnés par le
-fondateur (variables d'environnement via ``secret_ref`` de
-``IntegrationConfig``). Sans elles, le module reste en no-op.
+⚠ AUTH : la livraison réelle vers SFTP/S3/Snowflake exige des credentials
+provisionnés par le fondateur (variables d'environnement via ``secret_ref`` de
+``IntegrationConfig``). Sans elles, ces destinations restent en no-op. Seule la
+destination ``minio`` fonctionne sans credential externe (infra interne).
 """
 from __future__ import annotations
 
 import csv
 import io
+import logging
+import os
 
+from django.conf import settings
 from django.utils import timezone
 
 from .integrations import (
@@ -38,19 +46,39 @@ from .integrations import (
     register_provider,
 )
 
+logger = logging.getLogger(__name__)
+
 # Type d'intégration des destinations d'extrait (registre d'intégrations).
 TYPE_EXPORT_DEST = 'export_destination'
 
 FORMAT_CSV = 'csv'
 FORMAT_PARQUET = 'parquet'
 
+# NTDATA27 — bucket de l'entrepôt analytique interne (MinIO du compose). Lu de
+# l'environnement pour ne pas toucher un fichier de settings partagé ; un
+# déploiement peut le surcharger via ``MINIO_BUCKET_WAREHOUSE``.
+WAREHOUSE_BUCKET_DEFAULT = 'warehouse'
+
+
+def warehouse_bucket() -> str:
+    """Nom du bucket d'entrepôt analytique (MinIO interne)."""
+    return (getattr(settings, 'MINIO_BUCKET_WAREHOUSE', '')
+            or os.environ.get('MINIO_BUCKET_WAREHOUSE', '')
+            or WAREHOUSE_BUCKET_DEFAULT)
+
 
 class ExportDestinationProvider(BaseProvider):
-    """Base d'un connecteur de destination d'extrait (fondation)."""
+    """Base d'un connecteur de destination d'extrait (fondation).
+
+    ``context`` (optionnel) porte les métadonnées de l'extrait — ``company_id``,
+    ``dataset``, ``date`` — pour les destinations qui organisent leur
+    arborescence (entrepôt). Une destination qui n'en a pas besoin l'ignore.
+    """
 
     integration_type = TYPE_EXPORT_DEST
 
-    def deliver(self, filename, data, content_type) -> dict:  # pragma: no cover
+    def deliver(self, filename, data, content_type,
+                context=None) -> dict:  # pragma: no cover
         raise NotImplementedError
 
 
@@ -65,7 +93,7 @@ class _RemoteDestination(ExportDestinationProvider):
     def is_configured(self) -> bool:
         return bool(self.config.get('endpoint')) and bool(self.secret)
 
-    def deliver(self, filename, data, content_type) -> dict:
+    def deliver(self, filename, data, content_type, context=None) -> dict:
         if not self.is_configured():
             return {'ok': False,
                     'detail': f'Destination {self.code} non configurée.'}
@@ -84,6 +112,84 @@ class SftpDestination(_RemoteDestination):
 class S3Destination(_RemoteDestination):
     code = 's3'
     label = 'Bucket S3'
+
+
+def warehouse_key(context, filename) -> str:
+    """Clé objet d'entrepôt : ``<company>/<dataset>/<date>.<ext>`` (NTDATA27).
+
+    ``context`` = ``{'company_id', 'dataset', 'date'}``. Tolérant : une
+    métadonnée absente est remplacée par un segment neutre, jamais d'exception.
+    """
+    ctx = dict(context or {})
+    company = ctx.get('company_id') or 'sys'
+    dataset = ctx.get('dataset') or 'extrait'
+    date = ctx.get('date') or timezone.now().date().isoformat()
+    ext = (filename or '').rsplit('.', 1)
+    suffix = ext[1] if len(ext) == 2 else 'csv'
+    safe_ds = ''.join(c for c in str(dataset)
+                      if c.isalnum() or c in ('-', '_')) or 'extrait'
+    return f'{company}/{safe_ds}/{date}.{suffix}'
+
+
+def _minio_client():
+    """Client boto3/S3 vers le MinIO interne (même patron que ``core.pdf`` —
+    recopié pour que ``core`` reste dépendance-libre des apps domaine)."""
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url='http://' + settings.MINIO_ENDPOINT,
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY,
+        region_name='us-east-1',
+    )
+
+
+@register_provider
+class MinioWarehouseDestination(ExportDestinationProvider):
+    """NTDATA27 — entrepôt analytique sur le MinIO DÉJÀ provisionné.
+
+    Aucun credential EXTERNE : le compose du repo fournit déjà MinIO, donc
+    l'entrepôt fonctionne d'emblée. Les objets sont déposés sous
+    ``<bucket warehouse>/<company>/<dataset>/<date>.<ext>`` (parquet
+    best-effort, CSV sinon — cf. ``rendre_extrait``).
+
+    ``is_configured()`` est vrai dès qu'un endpoint MinIO est déclaré ET que
+    boto3 est importable ; sinon no-op propre (jamais d'exception).
+    """
+
+    code = 'minio'
+    label = 'Entrepôt MinIO (interne)'
+
+    def is_configured(self) -> bool:
+        if not getattr(settings, 'MINIO_ENDPOINT', ''):
+            return False
+        try:  # pragma: no cover - boto3 est présent en prod comme en CI
+            import boto3  # noqa: F401
+        except Exception:
+            return False
+        return True
+
+    def deliver(self, filename, data, content_type, context=None) -> dict:
+        if not self.is_configured():
+            return {'ok': False,
+                    'detail': 'Entrepôt MinIO non configuré (endpoint absent).'}
+        bucket = warehouse_bucket()
+        key = warehouse_key(context, filename)
+        try:
+            client = _minio_client()
+            try:
+                client.head_bucket(Bucket=bucket)
+            except Exception:
+                client.create_bucket(Bucket=bucket)
+            client.put_object(Bucket=bucket, Key=key, Body=data or b'',
+                              ContentType=content_type or 'text/csv')
+        except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée
+            logger.warning('entrepôt MinIO : dépôt %s/%s en échec', bucket, key,
+                           exc_info=True)
+            return {'ok': False, 'statut': 'erreur',
+                    'detail': f'Dépôt entrepôt en échec : {exc}'}
+        return {'ok': True, 'bytes': len(data or b''), 'key': key,
+                'bucket': bucket, 'detail': f'déposé dans {bucket}/{key}'}
 
 
 def rendre_extrait(export):
@@ -161,16 +267,24 @@ def executer(export, now=None):
     """
     now = now or timezone.now()
     filename, data, content_type = rendre_extrait(export)
+    context = {
+        'company_id': getattr(export, 'company_id', None),
+        'dataset': export.dataset,
+        'date': now.date().isoformat(),
+    }
     dest = _destination_for(export)
     if dest is None:
         export.dernier_statut = 'erreur'
         export.dernier_detail = {
             'detail': f'Destination inconnue : {export.destination!r}'}
     else:
-        res = dest.deliver(filename, data, content_type)
-        export.dernier_statut = 'ok' if res.get('ok') else 'non_configure'
+        res = dest.deliver(filename, data, content_type, context=context)
+        export.dernier_statut = (
+            res.get('statut') or ('ok' if res.get('ok') else 'non_configure'))
         export.dernier_detail = {'detail': res.get('detail', ''),
                                  'filename': filename}
+        if res.get('key'):
+            export.dernier_detail['key'] = res['key']
     export.derniere_execution_le = now
     export.save(update_fields=['dernier_statut', 'dernier_detail',
                                'derniere_execution_le', 'updated_at'])

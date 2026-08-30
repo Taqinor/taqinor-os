@@ -1049,7 +1049,12 @@ class ScheduledExport(TimestampedModel):
 
     DEST_SFTP = 'sftp'
     DEST_S3 = 's3'
+    # NTDATA27 — entrepôt analytique interne : MinIO est DÉJÀ provisionné par
+    # le compose du repo, donc cette destination fonctionne sans aucun
+    # credential externe (c'est le défaut d'un nouvel extrait).
+    DEST_MINIO = 'minio'
     DEST_CHOICES = [
+        (DEST_MINIO, 'Entrepôt MinIO (interne)'),
         (DEST_SFTP, 'SFTP'),
         (DEST_S3, 'Bucket S3'),
     ]
@@ -1068,7 +1073,7 @@ class ScheduledExport(TimestampedModel):
     format = models.CharField(
         'Format', max_length=10, choices=FORMAT_CHOICES, default=FORMAT_CSV)
     destination = models.CharField(
-        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_SFTP)
+        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_MINIO)
     cron = models.CharField(
         'Planification (cron)', max_length=120, blank=True, default='',
         help_text='Expression cron interprétée par Celery Beat (hors core).')
