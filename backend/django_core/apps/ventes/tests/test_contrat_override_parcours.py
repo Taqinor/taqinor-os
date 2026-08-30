@@ -560,6 +560,97 @@ class RetourALAutomatiqueTests(_ParcoursBase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# (2 bis) QJR216 — le bloc ``effectif`` porte la VRAIE carte des valeurs AUTO,
+#         et le DELETE rend la valeur du moteur
+# ═══════════════════════════════════════════════════════════════════════════
+
+class BlocEffectifPorteLesAutosTests(_ParcoursBase):
+    """TEST ROUGE D'ABORD (QJR216).
+
+    Avant le correctif, ``views/devis._overrides_reponse`` construisait
+    ``vue_effective(devis, {})`` — une carte ``autos`` VIDE en dur — donc
+    **toute** réponse annonçait ``auto: null`` ; et après un
+    ``DELETE ?chemin=``, le chemin régénéré DISPARAISSAIT de la réponse au lieu
+    d'y revenir avec la valeur du moteur.
+
+    La fixture porte 14 panneaux de 710 W : le moteur a donc une valeur
+    parfaitement lisible pour ``taille.nb_panneaux`` (14), ``taille.panel_watt``
+    (710) et ``taille.kwc`` (9,94).
+    """
+
+    #: Les valeurs que le lecteur unique des lignes (PVUNI) tire de la fixture.
+    AUTOS_ATTENDUS = {
+        'taille.nb_panneaux': 14,
+        'taille.panel_watt': 710,
+        'taille.kwc': 9.94,
+        'mode_installation': 'residentiel',
+    }
+
+    def _bloc(self, reponse, chemin):
+        self.assertIn(chemin, reponse.data['effectif'],
+                      f'« {chemin} » absent du bloc effectif : {reponse.data}')
+        return reponse.data['effectif'][chemin]
+
+    def test_get_porte_la_valeur_moteur_de_chaque_chemin_derivable(self):
+        parcours = Parcours(self)
+        reponse = self.api.get(parcours.url)
+        self.assertEqual(reponse.status_code, 200)
+        for chemin, attendu in self.AUTOS_ATTENDUS.items():
+            with self.subTest(chemin=chemin):
+                bloc = self._bloc(reponse, chemin)
+                self.assertEqual(bloc['auto'], attendu)
+                self.assertIsNone(bloc['manuel'])
+                self.assertEqual(bloc['source'], 'auto')
+                self.assertEqual(bloc['effectif'], attendu)
+
+    def test_une_surcharge_montre_les_deux_valeurs_cote_a_cote(self):
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 18)
+        bloc = self._bloc(self.api.get(parcours.url), 'taille.nb_panneaux')
+        self.assertEqual(bloc['auto'], 14)     # ce que le moteur calcule
+        self.assertEqual(bloc['manuel'], 18)   # ce que le vendeur a déclaré
+        self.assertEqual(bloc['effectif'], 18)
+        self.assertEqual(bloc['source'], 'manuel')
+
+    def test_delete_rend_exactement_la_valeur_moteur(self):
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 18)
+        reponse = self.regenerer(parcours, 'taille.nb_panneaux')
+        bloc = self._bloc(reponse, 'taille.nb_panneaux')
+        self.assertEqual(bloc['auto'], 14)
+        self.assertIsNone(bloc['manuel'])
+        self.assertEqual(bloc['effectif'], 14)
+        self.assertEqual(bloc['source'], 'auto')
+        self.assertNotIn('taille.nb_panneaux', reponse.data['overrides'])
+
+    def test_delete_dun_chemin_sans_derivation_le_rend_quand_meme(self):
+        """Un chemin que le moteur ne sait pas dériver revient avec
+        ``auto: null`` — une omission HONNÊTE, jamais une disparition."""
+        parcours = Parcours(self)
+        self.poser(parcours, 'tarif.distributeur', 'ONEE')
+        reponse = self.regenerer(parcours, 'tarif.distributeur')
+        bloc = self._bloc(reponse, 'tarif.distributeur')
+        self.assertIsNone(bloc['auto'])
+        self.assertIsNone(bloc['manuel'])
+        self.assertEqual(bloc['source'], 'auto')
+
+    def test_la_carte_auto_ignore_le_registre(self):
+        """``auto`` est la valeur AUTOMATIQUE : une surcharge posée ne doit pas
+        la déplacer, sinon ``auto`` et ``manuel`` diraient la même chose."""
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.kwc', 25)
+        autos = overrides.autos_du_devis(parcours.recharger())
+        self.assertEqual(autos['taille.kwc'], 9.94)
+
+    def test_un_devis_sans_panneau_lisible_nomet_rien_dinvente(self):
+        parcours = Parcours(self)
+        parcours.devis.lignes.filter(designation__startswith='Panneau').delete()
+        autos = overrides.autos_du_devis(parcours.recharger())
+        self.assertNotIn('taille.nb_panneaux', autos)
+        self.assertNotIn('taille.kwc', autos)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (3) Le PATCH devis ne peut PAS vider le registre
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -302,6 +302,69 @@ def vue_effective(devis, autos):
     return bloc
 
 
+#: QJR216 — LES CHEMINS DONT LE MOTEUR SAIT DÉRIVER UNE VALEUR, et EUX SEULS.
+#: Chaque entrée est documentée par sa dérivation dans :func:`autos_du_devis`.
+#: Les autres chemins de la liste blanche D12 (profil, tarif, structure…)
+#: n'ont AUCUN dérivateur serveur à ce jour : ils sont OMIS de la carte plutôt
+#: que remplis d'un zéro ou d'un défaut — règle Z2, « mieux vaut taire ».
+CHEMINS_AVEC_AUTO = (
+    'taille.nb_panneaux',
+    'taille.panel_watt',
+    'taille.kwc',
+    'mode_installation',
+)
+
+
+def autos_du_devis(devis):
+    """QJR216 — LA CARTE ``{chemin: valeur AUTO}`` QUE LE MOTEUR REND AUJOURD'HUI.
+
+    CE QUI ÉTAIT FAUX. ``views/devis._overrides_reponse`` construisait toujours
+    ``vue_effective(devis, {})`` — une carte ``autos`` VIDE — donc **toute**
+    réponse de l'endpoint annonçait ``auto: null``, y compris sur les chemins
+    dont le moteur a une valeur parfaitement lisible. Le bloc ``effectif``
+    promettait « valeur posée vs valeur moteur, côte à côte » et n'a jamais
+    porté la seconde.
+
+    LA DÉRIVATION EST CELLE DU MOTEUR, PAS UNE SECONDE. Le nombre de panneaux
+    et le wattage viennent de ``quote_engine.builder.panneaux_et_watt_lu`` — LE
+    lecteur unique des lignes (PVUNI, celui qu'utilise déjà
+    ``scenario.puissance_kwc_du_devis``) — et le kWc en est le produit, comme
+    dans sa branche AUTO. Aucun repli catalogue, aucun wattage supposé : un
+    devis dont les lignes ne portent pas de panneau lisible n'a simplement pas
+    ces clés.
+
+    LECTURE PURE, ET JAMAIS LE REGISTRE. Ce sont les valeurs AUTOMATIQUES :
+    elles ignorent délibérément les surcharges posées, sinon ``auto`` et
+    ``manuel`` diraient la même chose et le vendeur ne verrait plus l'écart.
+
+    Ne lève JAMAIS : un devis illisible rend une carte partielle (ou vide), et
+    le bloc ``effectif`` retombe alors sur ``auto: null`` — l'état d'avant.
+    """
+    autos = {}
+    nb, watt = 0, None
+    try:
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)]
+        nb, watt = panneaux_et_watt_lu(lignes)
+    except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien
+        nb, watt = 0, None
+    if nb:
+        autos['taille.nb_panneaux'] = nb
+    if watt:
+        autos['taille.panel_watt'] = watt
+    if nb and watt:
+        autos['taille.kwc'] = round(nb * watt / 1000, 2)
+    mode = getattr(devis, 'mode_installation', None)
+    if mode:
+        autos['mode_installation'] = mode
+    return autos
+
+
 def poser(devis, chemin, valeur, *, utilisateur=None,
           origine=ORIGINE_MANUEL, horodatage=None):
     """Le registre RÉSULTANT après la pose d'UN chemin — les autres INTOUCHÉS.
@@ -345,6 +408,13 @@ def regenerer(devis, chemin):
     reposer une valeur exige un NOUVEAU PATCH explicite du vendeur.
 
     Supprimer un chemin non posé est un NO-OP (idempotent), jamais une erreur.
+
+    QJR216 — « SUPPRIMER » N'EST PAS « FAIRE DISPARAÎTRE DE LA RÉPONSE ».
+    Le registre perd bien le chemin (c'est tout l'objet de cette fonction),
+    mais l'endpoint doit RENDRE le chemin régénéré avec la valeur que le moteur
+    calcule — sinon « retour à l'automatique » se solde par un trou dans la
+    réponse au lieu de la valeur promise. C'est la vue (``vue_effective``)
+    qui le porte, alimentée par :func:`autos_du_devis`.
     """
     registre = _registre(devis)
     registre.pop(chemin, None)

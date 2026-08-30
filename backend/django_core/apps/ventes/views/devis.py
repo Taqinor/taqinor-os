@@ -2573,20 +2573,28 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     # ── QJR58 — LE REGISTRE DE SURCHARGES (décision fondateur D12) ───────────
 
     @staticmethod
-    def _overrides_reponse(devis):
+    def _overrides_reponse(devis, chemins_regeneres=()):
         """La forme du contrat PACT10 ``contract_samples/devis_overrides.json``.
 
         ``effectif`` est DÉRIVÉ À CHAQUE LECTURE, jamais stocké : la carte des
-        valeurs ``auto`` est celle que le moteur rendrait AUJOURD'HUI. QJR58 ne
-        branche AUCUNE dérivation (elles arrivent avec leurs propriétaires —
-        QJR63 pour le kWc, QJR64 pour le scénario) : la carte est donc vide, et
-        chaque chemin SURCHARGÉ apparaît quand même avec ``auto: null``. Rien
-        n'est inventé pour remplir le bloc.
+        valeurs ``auto`` est celle que le moteur rend AUJOURD'HUI.
+
+        QJR216 — LA CARTE ``autos`` EST ENFIN ALIMENTÉE. Elle valait ``{}`` en
+        dur depuis QJR58, si bien que **toute** réponse annonçait ``auto:
+        null``, y compris sur les chemins dont le moteur a une valeur lisible :
+        le bloc promettait « valeur posée vs valeur moteur, côte à côte » et ne
+        portait que la première. Elle vient désormais de
+        ``domain.overrides.autos_du_devis`` — les chemins que le moteur ne sait
+        pas dériver restent OMIS, jamais remplis d'un défaut (règle Z2).
+
+        ``chemins_regeneres`` — les chemins qui viennent de repasser en
+        automatique (DELETE). Ils sont FORCÉS dans la carte pour que la réponse
+        les porte avec leur valeur moteur : sortis du registre, ils
+        disparaissaient purement et simplement de la réponse, alors que
+        l'endpoint promet « retour à l'automatique ».
 
         ``lignes`` est une carte ``{id: {...}}`` — JAMAIS une liste indexée par
         position (une ligne supprimée déplacerait la surcharge sur une autre).
-        Elle reste vide tant que ``LigneDevis.quantite_manuelle`` /
-        ``prix_manuel`` n'existent pas (QJR59).
         """
         from ..domain import overrides as registre_overrides
 
@@ -2599,9 +2607,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             }
             if any(marques.values()):
                 lignes[str(ligne.pk)] = marques
+        autos = registre_overrides.autos_du_devis(devis)
+        for chemin in chemins_regeneres:
+            autos.setdefault(chemin, None)
         return {
             'overrides': registre_overrides.registre_du_devis(devis),
-            'effectif': registre_overrides.vue_effective(devis, {}),
+            'effectif': registre_overrides.vue_effective(devis, autos),
             'lignes': lignes,
         }
 
@@ -2618,8 +2629,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
           ou une clé indexée par POSITION sont refusés en 400 avec un message
           FR qui NOMME le chemin — jamais un silence.
         * **DELETE ?chemin=<chemin>** — ``regenerer`` : SUPPRIME l'override de
-          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais par une
-          valeur calculée : reposer une valeur exige un nouveau PATCH explicite.
+          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais dans le
+          REGISTRE par une valeur calculée : reposer une valeur exige un
+          nouveau PATCH explicite. QJR216 — la RÉPONSE, elle, porte le chemin
+          régénéré avec la valeur que le moteur calcule : sans quoi « retour à
+          l'automatique » rendait un trou au lieu de la valeur promise.
 
         L'ÉCRITURE PASSE PAR UN ``UPDATE`` D'UNE SEULE COLONNE
         (``domain.overrides.ecrire_colonne``) : ni ``updated_at`` ni le gel
@@ -2646,7 +2660,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     status=status.HTTP_400_BAD_REQUEST)
             registre_overrides.ecrire_colonne(
                 devis, registre_overrides.regenerer(devis, chemin))
-            return Response(self._overrides_reponse(devis))
+            # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
+            # valeur du moteur (avant, il en disparaissait : « retour à
+            # l'automatique » se soldait par un trou).
+            return Response(
+                self._overrides_reponse(devis, chemins_regeneres=(chemin,)))
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
