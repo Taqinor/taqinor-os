@@ -133,6 +133,7 @@ class LaValeurDeConversionNEstJamaisDevinee(_BaseCapi):
     slug = 'qjr136-valeur'
 
     def test_la_valeur_envoyee_est_le_ttc_NET_canonique(self):
+        from apps.ventes.domain.argent import Vue, totaux
         from apps.ventes.utils.options import option_totaux
 
         with _CapiEnvoye() as capi:
@@ -140,10 +141,25 @@ class LaValeurDeConversionNEstJamaisDevinee(_BaseCapi):
         attendu = float(option_totaux(self.devis)['ttc'])
         self.assertAlmostEqual(
             capi.evenement['custom_data']['value'], attendu, places=2)
-        # Le TÉMOIN : le TTC BRUT du modèle (remise globale JAMAIS déduite)
-        # est un AUTRE nombre — c'est lui que l'ancien repli envoyait.
-        self.assertNotAlmostEqual(
-            float(self.devis.total_ttc), attendu, places=2)
+        # Le TÉMOIN : le TTC **BRUT** — remise globale JAMAIS déduite — est un
+        # AUTRE nombre, et c'est lui que l'ancien repli envoyait.
+        #
+        # Il se NOMME désormais ``argent.Vue.BRUT`` et non plus
+        # ``Devis.total_ttc`` : QJR51 / décision fondateur D2 a rebranché
+        # ``Devis.total_*`` sur la vue **NET** (cf. ``models.Devis
+        # ._totaux_argent``), donc ``devis.total_ttc`` EST maintenant, au bit,
+        # la chaîne canonique que ce test compare — un témoin qui ne peut plus
+        # que coïncider, quelle que soit la fixture. La vue BRUT, elle, reste
+        # « le comportement d'hier de ``Devis.total_*``, au bit »
+        # (``domain/argent._brut``).
+        #
+        # Dérivation sur CETTE fixture (1 ligne 10 × 1 000, TVA 20 %,
+        # ``remise_globale`` = 10 %) :
+        #   · BRUT : HT 10 000 + TVA 2 000            = 12 000,00
+        #   · NET  : HT 10 000 − 1 000 = 9 000, TVA 1 800 = 10 800,00
+        # Les deux chaînes DIVERGENT donc bien de la remise et de sa TVA.
+        brut = float(totaux(self.devis, vue=Vue.BRUT).ttc)
+        self.assertNotAlmostEqual(brut, attendu, places=2)
 
     def test_rien_n_est_envoye_quand_la_chaine_canonique_echoue(self):
         with patch('apps.ventes.utils.options.option_totaux',
