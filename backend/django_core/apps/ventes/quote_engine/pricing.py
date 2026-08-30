@@ -433,8 +433,29 @@ def _kwh_from_bill_bisect(bill: float, tranches: list) -> float:
     return (lo + hi) / 2
 
 
-def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
+def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
+                  facture_totale=False, charges_fixes_mad=None,
+                  millesime=None) -> dict:
     """QF1 — Inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
+
+    QJR157 (audit QJR79) — ``facture_totale`` : QUELLE facture le client a-t-il
+    saisie ? Ce module inverse une facture d'ÉNERGIE SEULE ; l'écran, lui,
+    demande « Votre facture d'électricité mensuelle (MAD) », c'est-à-dire le
+    TOTAL — redevance de compteur et TPPAN comprises. Inverser un total avec le
+    modèle énergie-seule SURESTIME la consommation : sur la facture SRM de
+    référence de ce dépôt, 429 kWh/mois au lieu de 359, soit +19 %.
+
+    ``facture_totale=True`` route l'inversion sur
+    ``bareme.kwh_depuis_facture_mad``, qui retranche d'abord les lignes fixes
+    et résout la TPPAN par dichotomie sur la facture COMPLÈTE — c'est l'inverse
+    exact de ce que le client lit sur son papier.
+
+    ``facture_totale=False`` (DÉFAUT) conserve l'inversion énergie-seule À
+    L'OCTET : elle est l'inverse épinglé de ``_monthly_bill_from_kwh`` (garde
+    d'aller-retour) et le MIROIR déclaré de ``billToAnnualKwh``
+    (``apps/web/src/lib/estimatorBrainV2.ts``) — basculer ce défaut
+    unilatéralement désynchroniserait les deux côtés sans que rien ne le voie.
+    Les appelants qui reçoivent un TOTAL doivent passer ``facture_totale=True``.
 
     · Table PROGRESSIVE : parcourt les tranches en accumulant leur coût jusqu'à
       retrouver la facture, puis interpole linéairement DANS la tranche atteinte
@@ -474,6 +495,24 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
         return {"kwh_mensuel": round(bill / _FALLBACK_KWH_PRICE, 1),
                 "approximatif": True, "estimation": True,
                 "label": ESTIMATION_LABEL}
+
+    if facture_totale:
+        # QJR157 — inversion d'une facture COMPLÈTE : lignes fixes retranchées
+        # d'abord, TPPAN résolue avec le kWh cherché (point fixe absorbé par la
+        # dichotomie de ``bareme``).
+        from . import bareme as _bareme
+        sortie = _bareme.kwh_depuis_facture_mad(
+            bill, millesime=(millesime if millesime is not None
+                             else _bareme.MILLESIME_COURANT),
+            tranches=table, charges_fixes_mad=charges_fixes_mad)
+        kwh_total = sortie['kwh_mensuel']
+        if kwh_total is None:
+            # Hors plage inversable (QJR142) : on ne fabrique pas un chiffre.
+            return {"kwh_mensuel": 0.0, "approximatif": approx,
+                    "estimation": True, "label": ESTIMATION_LABEL}
+        return {"kwh_mensuel": round(kwh_total, 1), "approximatif": approx,
+                "estimation": False,
+                "label": "approximatif" if approx else ""}
 
     if _selective_rule(table) is not None:
         return {"kwh_mensuel": round(_kwh_from_bill_bisect(bill, table), 1),
@@ -624,12 +663,56 @@ def _avg_kwh_price_from_tranches(
     return prix, False
 
 
+def _parts_mensuelles(repartition):
+    """QJR157 — 12 parts mensuelles normalisées (somme = 1), ou ``None``.
+
+    Accepte indifféremment 12 PARTS (somme ≈ 1) ou 12 kWh : on normalise dans
+    les deux cas, la grandeur qui compte étant la FORME de l'année. Toute autre
+    longueur, valeur illisible ou somme nulle ⇒ ``None`` : l'appelant retombe
+    alors sur le mois moyen et le DIT (jamais une répartition inventée).
+    """
+    if not repartition:
+        return None
+    try:
+        valeurs = [max(0.0, float(v)) for v in repartition]
+    except (TypeError, ValueError):
+        return None
+    if len(valeurs) != 12:
+        return None
+    total = sum(valeurs)
+    if total <= 0:
+        return None
+    return [v / total for v in valeurs]
+
+
+#: QJR157 — note de méthode quand la répartition mensuelle du client est
+#: inconnue. Sur un barème SÉLECTIF, la facture d'un mois moyen n'est pas la
+#: moyenne des douze : le dire est la seule façon honnête de publier ce chiffre.
+NOTE_MOIS_MOYEN = (
+    "Répartition mensuelle inconnue : la facture annuelle est celle d'un MOIS "
+    "MOYEN multiplié par douze. Sur un barème à marches, un mois chargé et un "
+    "mois creux ne se compensent pas — transmettez vos douze factures et nous "
+    "tarifons chaque mois."
+)
+
+#: QJR157 — note de méthode quand les douze mois sont réellement tarifés.
+NOTE_DOUZE_MOIS = (
+    "Facture annuelle tarifée MOIS PAR MOIS sur la répartition réelle de votre "
+    "consommation, chaque mois à sa propre tranche."
+)
+
+
 def two_bills_savings(
     production_kwh,
     conso_annuelle_kwh,
     autoconso_ratio,
     utility=None,
     tranches_override=None,
+    *,
+    repartition_mensuelle=None,
+    charges_fixes_mad=None,
+    millesime=None,
+    jours_par_mois=None,
 ) -> dict | None:
     """QF2 — Modèle « deux factures » (économies RÉELLES, au barème).
 
@@ -647,6 +730,33 @@ def two_bills_savings(
     Self-consumption-first (loi 82-21) : seuls les kWh autoconsommés réduisent
     la facture — le surplus injecté ne vaut rien (tarif ANRE BT non publié).
 
+    QJR157 (audit QJR79) — LA FACTURE PUBLIÉE COMPTE CE QUE LE CLIENT PAIE
+    VRAIMENT. Deux corrections d'un même modèle :
+
+    * ``facture_sans`` ne modélisait que l'ÉNERGIE — ni redevance de compteur
+      ni TPPAN — alors que sur le chemin ``savings_model='horaire'`` la MÊME
+      vignette est servie par ``bareme`` charges comprises : le même client
+      voyait deux factures actuelles différentes selon qu'un bloc horaire
+      existe ou non. Les deux factures passent désormais par
+      ``bareme.facture_mad`` (les lignes fixes s'annulent dans l'économie, la
+      TPPAN suit le kWh et ne s'annule donc pas — c'est justement le point).
+    * la docstring promettait « on ne divise JAMAIS l'année avant de tarifer »
+      et le code faisait exactement cela. Avec ``repartition_mensuelle``, les
+      DOUZE mois sont tarifés chacun à sa tranche ; sans elle, le mois moyen
+      reste le repli mais la sortie porte :data:`NOTE_MOIS_MOYEN`.
+
+    Paramètres QJR157 (tous facultatifs, tous à comportement d'avant par
+    défaut sauf le passage par ``bareme``) :
+
+    repartition_mensuelle : 12 parts (somme ≈ 1) OU 12 kWh — seule la FORME
+        compte, on normalise. Absente/illisible ⇒ mois moyen + note.
+    charges_fixes_mad : réglage société des lignes fixes (``None`` ⇒ les
+        montants SOURCÉS des factures du fondateur, comme ``bareme``).
+    millesime : millésime du barème (``None`` ⇒ ``bareme.MILLESIME_COURANT``).
+    jours_par_mois : 12 durées réelles, pour proratiser les bornes TPPAN
+        exactement comme le moteur horaire (``None`` ⇒ le mois de référence de
+        30 jours du barème, pour les douze).
+
     Retourne ``None`` quand il manque une VRAIE donnée (pas de table tarifaire,
     pas de consommation, pas de production) : l'appelant dégrade alors vers
     l'ancienne estimation, étiquetée comme telle. Fonction pure.
@@ -657,7 +767,10 @@ def two_bills_savings(
         economie       int  — facture_sans − facture_avec (≥ 0).
         autoconso_kwh  int  — kWh autoconsommés retenus (plafonnés à la conso).
         approximatif   bool — Q7 : toujours False (plus de table estimée).
+        note_methode   str  — QJR157 : mois par mois, ou mois moyen ASSUMÉ.
     """
+    from . import bareme as _bareme
+
     table, approx = _resolve_tranches(utility, tranches_override)
     if table is None:
         return None
@@ -670,10 +783,35 @@ def two_bills_savings(
     if conso <= 0 or prod <= 0 or ratio <= 0:
         return None
 
-    facture_sans = round(_monthly_bill_from_kwh(conso / 12, table) * 12)
+    parts = _parts_mensuelles(repartition_mensuelle)
+    mill = millesime if millesime is not None else _bareme.MILLESIME_COURANT
+    jours = [_bareme.TPPAN_JOURS_REFERENCE] * 12
+    if jours_par_mois:
+        try:
+            reels = [float(j) for j in jours_par_mois]
+        except (TypeError, ValueError):
+            reels = []
+        if len(reels) == 12 and all(j > 0 for j in reels):
+            jours = reels
+
+    def _facture_annuelle(conso_an):
+        """Facture annuelle TTC, lignes fixes et TPPAN comprises."""
+        if parts is None:
+            detail = _bareme.facture_mad(
+                conso_an / 12.0, jours=jours[0], millesime=mill,
+                tranches=table, charges_fixes_mad=charges_fixes_mad)
+            return detail['total_mad'] * 12.0
+        return sum(
+            _bareme.facture_mad(
+                conso_an * part, jours=jours[index], millesime=mill,
+                tranches=table, charges_fixes_mad=charges_fixes_mad,
+            )['total_mad']
+            for index, part in enumerate(parts))
+
+    facture_sans = round(_facture_annuelle(conso))
     autoconso_kwh = min(prod * ratio, conso)
     residuel = max(0.0, conso - autoconso_kwh)
-    facture_avec = round(_monthly_bill_from_kwh(residuel / 12, table) * 12)
+    facture_avec = round(_facture_annuelle(residuel))
     # Économie dérivée des factures ARRONDIES : la chaîne affichée
     # facture_sans − facture_avec = économie est exacte au dirham.
     return {
@@ -682,6 +820,7 @@ def two_bills_savings(
         "economie": max(0, facture_sans - facture_avec),
         "autoconso_kwh": round(autoconso_kwh),
         "approximatif": approx,
+        "note_methode": NOTE_DOUZE_MOIS if parts else NOTE_MOIS_MOYEN,
     }
 
 
@@ -1177,6 +1316,7 @@ def calculate_savings_roi(
     savings_model = "estimation"
     facture_sans = facture_avec_s = facture_avec_a = None
     factures_approximatif = False
+    factures_note_methode = None
     if not (tarif_kwh_override is not None and tarif_kwh_override > 0):
         _tb_s = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_sans_eff,
@@ -1192,6 +1332,10 @@ def calculate_savings_roi(
             facture_avec_s = _tb_s["facture_avec"]
             facture_avec_a = _tb_a["facture_avec"]
             factures_approximatif = _tb_s["approximatif"]
+            # QJR157 — la note de méthode voyage avec les factures : sans
+            # répartition mensuelle du client, l'année est celle d'un MOIS
+            # MOYEN × 12, et le document doit pouvoir le dire.
+            factures_note_methode = _tb_s["note_methode"]
 
     # ── CJ2a (ORDRE FONDATEUR) — LE MODÈLE HORAIRE PREND LA MAIN ────────────
     # « the total saving should be function of [saisons] and not just assuming
@@ -1336,6 +1480,10 @@ def calculate_savings_roi(
         "facture_avec_s":   facture_avec_s,
         "facture_avec_a":   facture_avec_a,
         "factures_approximatif": factures_approximatif,
+        # QJR157 — comment l'année a été tarifée (mois par mois, ou mois moyen
+        # ASSUMÉ). ``None`` hors modèle « factures » : le document garde alors
+        # exactement son comportement d'avant.
+        "factures_note_methode": factures_note_methode,
         # QK4 — productible réellement utilisé (kWh/kWc/an), pour transparence.
         "productible":      prod_factor,
         # QX39 — cashflow 25 ans honnête (dégradation/escalade/batterie/onduleur)

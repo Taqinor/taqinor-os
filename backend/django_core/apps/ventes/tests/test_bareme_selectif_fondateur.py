@@ -187,15 +187,50 @@ class TestScenarioFondateur(SimpleTestCase):
     def test_deux_factures_annuelles_meme_chaine(self):
         # 8 400 kWh/an (= 700/mois), production 8 400 kWh/an autoconsommée à
         # 60 % → 5 040 kWh effacés, résiduel 3 360 kWh/an = 280 kWh/mois.
-        #   facture sans : 1 135,9992 × 12 = 13 631,9904 → 13 632
-        #   facture avec :   332,46864 × 12 =  3 989,62368 →  3 990
-        #   économie      : 13 632 − 3 990 = 9 642 MAD/an
+        #
+        # RECALÉ PAR QJR157 (30/08/2026) — LA FACTURE PUBLIÉE COMPTE CE QUE LE
+        # CLIENT PAIE. Ce verrou tenait la facture ÉNERGIE SEULE (13 632 /
+        # 3 990) alors que le chemin horaire servait déjà, pour le MÊME client,
+        # la facture COMPLÈTE : redevance de compteur et TPPAN comprises. Les
+        # deux modèles publiaient donc deux factures actuelles différentes.
+        # ``two_bills_savings`` passe désormais par ``bareme``. Dérivation à la
+        # main, poste par poste (millésime 2026) :
+        #   700 kWh : énergie 1 135,9992 + fixes 39,936 (18,28 × 1,20 +
+        #             15,00 × 1,20) + TPPAN 100,00 (10 + 15 + 500 × 0,20 = 125,
+        #             PLAFONNÉE à 100) = 1 275,9352 → × 12 = 15 311,2224
+        #             → 15 311
+        #   280 kWh : énergie   332,46864 + fixes 39,936 + TPPAN 41,00
+        #             (10 + 15 + 80 × 0,20) = 413,40464 → × 12 = 4 960,856
+        #             → 4 961
+        #   économie : 15 311 − 4 961 = 10 350 MAD/an — plus que les 9 642
+        #             d'avant, et c'est JUSTE : les lignes fixes s'annulent
+        #             (39,936 des deux côtés) mais la TPPAN SUIT le kWh
+        #             (100 → 41), donc elle fait partie de l'économie réelle.
+        # La chaîne ÉNERGIE reste épinglée telle quelle par
+        # ``test_economie_mensuelle_au_barème`` juste au-dessus.
         out = two_bills_savings(8400, 8400, 0.60, utility="onee")
-        self.assertEqual(out["facture_sans"], 13632)
-        self.assertEqual(out["facture_avec"], 3990)
-        self.assertEqual(out["economie"], 9642)
+        self.assertEqual(out["facture_sans"], 15311)
+        self.assertEqual(out["facture_avec"], 4961)
+        self.assertEqual(out["economie"], 10350)
         self.assertEqual(out["autoconso_kwh"], 5040)
         self.assertFalse(out["approximatif"])
+
+    def test_les_deux_factures_se_derivent_poste_par_poste(self):
+        """QJR157 — chaque composante du verrou ci-dessus, isolément."""
+        from apps.ventes.quote_engine import bareme as B
+        avant = B.facture_mad(700)
+        apres = B.facture_mad(280)
+        self.assertAlmostEqual(avant["energie_mad"], 1135.9992, places=9)
+        self.assertAlmostEqual(apres["energie_mad"], 332.46864, places=9)
+        # Les lignes fixes sont IDENTIQUES des deux côtés : elles s'annulent.
+        self.assertEqual(avant["location_entretien_mad"],
+                         apres["location_entretien_mad"])
+        # La TPPAN, elle, suit le kWh — c'est pourquoi elle ne s'annule pas.
+        self.assertAlmostEqual(avant["tppan_mad"], 100.0, places=6)
+        self.assertAlmostEqual(apres["tppan_mad"], 41.0, places=6)
+        out = two_bills_savings(8400, 8400, 0.60, utility="onee")
+        self.assertEqual(out["facture_sans"], round(avant["total_mad"] * 12))
+        self.assertEqual(out["facture_avec"], round(apres["total_mad"] * 12))
 
     def test_le_residuel_sous_311_retombe_encore_plus_bas(self):
         # Borne basse du site (autoconsommation 75 % réellement synchrone) :
