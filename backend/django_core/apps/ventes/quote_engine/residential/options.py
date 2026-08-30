@@ -568,7 +568,21 @@ def build_pages(ctx) -> list:
                              f'{fmt(_ta["ttc"])} MAD'))
         _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
         if not masquer_eco and _eco_s and _eco_a:
-            cmp_rows.append(("Économies estimées / an",
+            # QJR210 — CE TABLEAU N'EXISTE QUE SUR UN DEVIS DIVERGENT, celui-là
+            # même dont les deux colonnes peuvent être chiffrées par deux
+            # moteurs différents (QJR28) : « Économies estimées » y déclarait un
+            # modèle unique pour les deux. Le libellé lit désormais le modèle
+            # EFFECTIF de chaque colonne — mot commun quand les deux coïncident
+            # (tout l'existant : « estimées »), mot OMIS quand elles divergent
+            # ou quand une clé manque. Jamais un modèle déclaré au nom de
+            # l'autre colonne.
+            _m_s = d.get("savings_model_sans")
+            _m_a = d.get("savings_model_avec")
+            if _m_s and _m_a and _m_s == _m_a:
+                _mot = " calculées" if _m_s == "horaire" else " estimées"
+            else:
+                _mot = ""
+            cmp_rows.append((f"Économies{_mot} / an",
                              f'{fmt(_eco_s)} MAD', f'{fmt(_eco_a)} MAD'))
         if not masquer_eco and roi_s and roi_a:
             cmp_rows.append(("Retour sur investissement",

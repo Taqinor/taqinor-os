@@ -572,7 +572,7 @@ def build(ctx):
     eco_a_ann = d.get("eco_a_ann")
 
     def _opt_card(kicker, name, price, pkwc, roi_v, bull, eco=None,
-                  reco=False, full=False):
+                  reco=False, full=False, opt=None):
         cls = "c1-opt" + (" c1-reco" if reco else "") + (" c1-opt-full" if full else "")
         pill = ('<span class="c1-reco-pill">Recommandé</span>' if reco else "")
         # Z2 — économie annuelle et payback descendent du MÊME calcul que la
@@ -581,10 +581,23 @@ def build(ctx):
         # …et le MOT suit le modèle, comme le KPI plus bas : « calculée »
         # quand le moteur horaire a réellement calculé (savings_model
         # 'horaire'), « estimée » sinon — même règle, une seule vérité.
-        eco_mot = ("calculée" if d.get("savings_model") == "horaire"
-                   else "estimée")
+        #
+        # QJR210 (contre-visite du 30/08/2026) — LE MOT SUIT LE MODÈLE DE
+        # *CETTE* OPTION, pas celui du document. Sur un devis à champs PV
+        # divergents portant une étude horaire, ``pricing`` refuse le bloc
+        # pour l'option qui ne fait plus la puissance décrite : cette colonne
+        # est chiffrée par le moteur de repli pendant que le document déclare
+        # encore 'horaire'. Le builder enregistre depuis QJR28 le modèle
+        # EFFECTIF de chaque colonne (``savings_model_sans`` /
+        # ``savings_model_avec``) — personne ne les lisait, et les deux cartes
+        # portaient donc le même mot. Clé absente (dict d'appelant antérieur à
+        # QJR28) ⇒ l'étiquette est OMISE : jamais un modèle deviné.
+        _modele_opt = d.get(f"savings_model_{opt}") if opt else None
+        eco_mot = ("" if not _modele_opt
+                   else " calculée" if _modele_opt == "horaire"
+                   else " estimée")
         eco_html = (
-            f'<div class="c1-opt-eco">Économie {eco_mot} ≈ <b>{fmt(eco)} '
+            f'<div class="c1-opt-eco">Économie{eco_mot} ≈ <b>{fmt(eco)} '
             'MAD/an</b></div>' if (eco and not masquer_eco) else "")
         roi_html = (
             f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
@@ -602,23 +615,26 @@ def build(ctx):
             f'<div class="c1-note">Détail &amp; équipement en page 2</div>'
             f'</div>')
 
+    # QJR210 — chaque carte NOMME son option (``opt``) : c'est par elle que le
+    # mot « estimée / calculée » va chercher le modèle de SA colonne.
     if deux_options:
         opts_html = (
             _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
-                      roi_s, sans_bullets, eco=eco_s_ann)
+                      roi_s, sans_bullets, eco=eco_s_ann, opt="sans")
             + _opt_card("Option 2", "Avec batterie", total_avec, pkwc_avec,
-                        roi_a, avec_bullets, eco=eco_a_ann, reco=True))
+                        roi_a, avec_bullets, eco=eco_a_ann, reco=True,
+                        opt="avec"))
     elif avec_ok:
         # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
         # fabriquée (dépourvue d'onduleur).
         opts_html = _opt_card("Votre installation", "Avec batterie", total_avec,
                               pkwc_avec, roi_a, avec_bullets, eco=eco_a_ann,
-                              full=True)
+                              full=True, opt="avec")
     else:
         # Option unique SANS batterie (réseau seul) : une carte pleine largeur.
         opts_html = _opt_card("Votre installation", "Sans batterie", total_sans,
                               pkwc_sans, roi_s, sans_bullets, eco=eco_s_ann,
-                              full=True)
+                              full=True, opt="sans")
 
     # GAMMES (fondateur 2026-08-18) — les mentions rédigées de garantie de
     # PERFORMANCE lisent la MÊME source que la bande de la page 3
