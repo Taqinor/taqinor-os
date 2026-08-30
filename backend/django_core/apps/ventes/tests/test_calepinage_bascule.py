@@ -485,7 +485,12 @@ class LeContratDeClassificationEstIntact(SimpleTestCase):
         "export const isBattery = (d) => _norm(d).includes('batterie')",
         "export const isHybridInverter = (d) => _norm(d).includes('onduleur')"
         " && _norm(d).includes('hybride')",
-        "export const isPanel = (d) => _norm(d).includes('panneau')",
+        # QJR92 (30/08/2026, contrat classification_lignes.json) — isPanel a
+        # été ÉLARGI pour égaler builder._is_panel (« module » + qualificatif,
+        # marque + watt) : c'était la divergence vérifiée que le contrat QJR2
+        # ordonnait de fermer. Le gel porte la nouvelle signature et son cœur.
+        "export const isPanel = (d, produitNom = '') => {",
+        "if (blob.includes('panneau')) return true",
         "return n.includes('onduleur') && (n.includes('reseau')"
         " || n.includes('injection'))",
     )

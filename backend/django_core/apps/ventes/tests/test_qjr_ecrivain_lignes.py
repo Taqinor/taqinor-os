@@ -150,6 +150,7 @@ class _BaseSites(TestCase):
 
     def setUp(self):
         from authentication.models import Company
+        from apps.crm.models import Client
         from apps.ventes.models import Devis
 
         self.company, _ = Company.objects.get_or_create(
@@ -161,8 +162,14 @@ class _BaseSites(TestCase):
             company=self.company, nom='Panneau Jinko 550W',
             sku='QJR84-PAN-%s' % self.company.pk, prix_vente=Decimal('1100'),
             prix_achat=Decimal('1'), quantite_stock=500)
+        # Devis.client est NOT NULL en base (NotNullViolation au 1er run CI).
+        self.client_crm, _ = Client.objects.get_or_create(
+            company=self.company, email='qjr84-%s@example.com' % self.slug,
+            defaults={'nom': 'QJR84', 'prenom': self.slug,
+                      'telephone': '+212600000084'})
         self.devis = Devis.objects.create(
-            company=self.company, reference='DEV-QJR84-1',
+            company=self.company, client=self.client_crm,
+            reference='DEV-QJR84-1',
             statut=Devis.Statut.BROUILLON, created_by=self.user)
         # Une ligne qui porte TOUT ce qu'un site pouvait perdre en route.
         self.ligne = creer_ligne(
