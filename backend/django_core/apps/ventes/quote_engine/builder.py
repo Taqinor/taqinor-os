@@ -1822,8 +1822,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
             etude["payback"] = roi["roi_s"]
-        if (puissance_kwc or 0) > 0:
-            etude["prix_kwc"] = round(_ref_total / puissance_kwc)
+        # ── QJR160 — LE PRIX PAR KWC DÉCRIT UNE OFFRE, PAS UN MÉLANGE ───────
+        # ``_ref_total`` est le TTC de l'option 1 (« sans » quand elle est
+        # servable) tandis que ``puissance_kwc`` a été recalé sur le kWc de
+        # l'option 2 dès que les champs PV divergent (repli documenté
+        # ``panneaux_divergents``, plus haut) : le quotient ne décrivait alors
+        # AUCUNE des deux offres. On apparie donc le total et le kWc de la
+        # MÊME branche. Et sur un document qui chiffre DEUX options de tailles
+        # différentes, aucun prix au kWc unique n'a de sens : la carte est
+        # OMISE plutôt que de faire choisir au client entre deux vérités.
+        _kwc_ref = (puissance_kwc_sans if sans_ok else puissance_kwc_avec)
+        if not _kwc_ref or _kwc_ref <= 0:
+            _kwc_ref = puissance_kwc
+        if deux_options and panneaux_divergents:
+            etude.pop("prix_kwc", None)
+        elif (_kwc_ref or 0) > 0:
+            etude["prix_kwc"] = round(_ref_total / _kwc_ref)
 
     # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
     #
