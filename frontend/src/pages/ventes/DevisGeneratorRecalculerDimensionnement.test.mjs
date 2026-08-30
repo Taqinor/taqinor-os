@@ -83,16 +83,20 @@ test('ROOT CAUSE 1 — le chargement d\'édition (?edit=ID) ne repose JAMAIS fHi
   assert.doesNotMatch(bloc, /setFHiver\(/, 'régression : fHiver est désormais reposée en édition — ce test/le correctif doivent être revus')
   assert.doesNotMatch(bloc, /setFEte\(/, 'régression : fEte est désormais reposée en édition — ce test/le correctif doivent être revus')
   // Le nombre de panneaux, lui, EST posé (depuis le comptage des lignes) —
-  // c'est ce compte qui reste figé sans le bouton de recalcul.
-  assert.match(bloc, /if \(panneaux > 0\) setNbPanneaux\(String\(panneaux\)\)/)
+  // c'est ce compte qui reste figé sans le bouton de recalcul. QJR99 — il est
+  // posé par la transition `REOUVERTURE`, qui pose le compte SANS marquer le
+  // champ « touché » (`poserPanneaux`, cf. sizingReducer.test.mjs).
+  assert.match(bloc, /dispatchSizing\(\{\s*\n\s*type: 'REOUVERTURE',\s*\n\s*devis: \{[\s\S]{0,200}panneaux,/)
   // Revue adversariale 26/08 (corrige la cause #2 initiale, qui affirmait le
-  // contraire) — CE MÊME chargement ne touche JAMAIS nbPanneauxTouched.current
-  // non plus : le garde-fou reste à sa valeur useRef(false) par défaut, donc
-  // OUVERT, juste après un chargement d'édition — la staleness ne vient pas
-  // d'un garde-fou fermé par l'édition, mais de fHiver/fEte vides (ci-dessus)
-  // + handleAutoFill qui ne redérive jamais depuis la facture (ROOT CAUSE 2).
-  assert.doesNotMatch(bloc, /nbPanneauxTouched\.current = true/,
-    'régression : un chargement d\'édition ne doit toujours PAS fermer nbPanneauxTouched — sinon ce commentaire redevient faux')
+  // contraire) — CE MÊME chargement ne ferme JAMAIS le garde-fou
+  // « nbPanneaux touché » : il reste OUVERT juste après un chargement
+  // d'édition — la staleness ne vient pas d'un garde-fou fermé par l'édition,
+  // mais de fHiver/fEte vides (ci-dessus) + handleAutoFill qui ne redérive
+  // jamais depuis la facture (ROOT CAUSE 2).
+  assert.doesNotMatch(bloc, /champ: 'nbPanneaux'/,
+    'régression : un chargement d\'édition ne doit toujours PAS fermer le drapeau « nbPanneaux touché »')
+  assert.doesNotMatch(bloc, /champ: 'kwcCible'/,
+    'régression : un chargement d\'édition ne doit pas non plus passer par la frappe kWc (qui ferme le même drapeau)')
 })
 
 test('ROOT CAUSE 2 — la branche RÉSIDENTIELLE de handleAutoFill() ne redérive JAMAIS nbPanneaux depuis la facture : elle lit `kwp` (nbPanneaux COURANT), jamais computeAutoSizing', () => {
@@ -105,15 +109,15 @@ test('ROOT CAUSE 2 — la branche RÉSIDENTIELLE de handleAutoFill() ne redériv
   const residentielIdx = bloc.indexOf("if (modeInstallation === 'residentiel') {")
   assert.ok(residentielIdx > -1)
   const residentielBloc = bloc.slice(residentielIdx)
-  assert.doesNotMatch(residentielBloc, /setNbPanneaux/,
+  assert.doesNotMatch(residentielBloc, /'nbPanneaux'|'REOUVERTURE'/,
     'la branche résidentielle ne pose jamais nbPanneaux — recomposer avec le compte courant est le comportement historique, inchangé')
 })
 
-test('ROOT CAUSE 3 — syncBillEstimator() ne recompose JAMAIS les lignes (setLines/handleAutoFill absents), garde nbPanneauxTouched déjà en place (fermeture générale, pas spécifique à l\'édition)', () => {
+test('ROOT CAUSE 3 — syncBillEstimator() ne recompose JAMAIS les lignes (setLines/handleAutoFill absents), garde « nbPanneaux touché » déjà en place (fermeture générale, pas spécifique à l\'édition)', () => {
   const bloc = corpsDe('const syncBillEstimator = (hiverVal, eteVal) => {', 'syncBillEstimator')
   assert.doesNotMatch(bloc, /setLines\(/)
   assert.doesNotMatch(bloc, /handleAutoFill/)
-  assert.match(bloc, /if \(!nbPanneauxTouched\.current\) \{/)
+  assert.match(bloc, /if \(!sizing\.touche\.nbPanneaux\) \{/)
 })
 
 // ── Le correctif : bouton + fonction ──
@@ -127,23 +131,28 @@ test('recalculerDimensionnement() : sans facture hiver exploitable, pose une err
   assert.match(guardBody, /return/)
 })
 
-test('F1 (BLOQUANT, revue adversariale) — recalculerDimensionnement() CAPTURE nbPanneauxTouched AVANT de le déverrouiller (jamais un `true` figé au reverrouillage)', () => {
+// QJR99 — F1 exigeait de CAPTURER le garde-fou avant de le déverrouiller, puis
+// de le restaurer dans un effet : trois instructions, donc une FENÊTRE. La
+// transition `RECALCUL_DEMANDE` fait les trois EN UNE FOIS (invariant 3 du
+// reducer, testé dans sizingReducer.test.mjs : le drapeau réel est INCHANGÉ, et
+// seul `toucheNbPanneauxPourComposition` le voit ouvert, sur cette unique
+// transition). L'épingle vérifie donc que l'écran n'a plus AUCUNE manœuvre de
+// verrouillage à lui — c'est plus fort que l'ancienne, pas plus faible.
+test('F1 (BLOQUANT, revue adversariale) — recalculerDimensionnement() ne manipule PLUS le garde-fou à la main : une seule transition le rouvre et le restaure', () => {
   const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
   assert.match(bloc, /const sizing = computeAutoSizing\(fHiver, fEte\)/)
-  const captureIdx = bloc.indexOf('recalcDimPriorTouched.current = nbPanneauxTouched.current')
-  assert.ok(captureIdx > -1,
-    'la valeur AVANT le clic doit être capturée — sinon le reverrouillage ne peut pas la restaurer (régression F1 : un `true` figé verrouille le garde-fou en PERMANENCE dès le premier clic, même en création où il partait FAUX)')
-  const unlockIdx = bloc.indexOf('nbPanneauxTouched.current = false', captureIdx)
-  assert.ok(unlockIdx > -1, 'le garde-fou doit être déverrouillé APRÈS la capture — sinon on capture déjà `false` et la capture est un no-op')
-  assert.ok(captureIdx < unlockIdx, 'la capture doit précéder le déverrouillage (sinon on capture la valeur déjà déverrouillée)')
-  const setNbIdx = bloc.indexOf('setNbPanneaux(String(retenu.nbPanneaux))')
-  assert.ok(setNbIdx > -1)
-  assert.ok(unlockIdx < setNbIdx, 'le déverrouillage doit précéder la pose du nombre de panneaux')
-  // U3-MOTEUR — en résidentiel `sizingInfo` reste NUL (son encart décrit le
-  // balayage local : « palier retenu / besoin lu sur la facture », deux
-  // notions qui ne décrivent pas ce que le moteur a fait).
-  assert.match(bloc, /setSizingInfo\(modeInstallation === 'residentiel' \? null : retenu\)/)
-  assert.match(bloc, /setKwcCible\(retenu\.kwcOptimal/)
+  // Aucune écriture manuelle du drapeau, dans aucun sens : ni capture, ni
+  // déverrouillage, ni restauration — c'est ce qui supprime la fenêtre de course.
+  assert.doesNotMatch(bloc, /touche\.nbPanneaux\s*=/,
+    'plus aucune écriture manuelle du garde-fou : `RECALCUL_DEMANDE` le rouvre et le restaure dans la MÊME transition (régression F1 si elle revient)')
+  assert.doesNotMatch(bloc, /PriorTouched/,
+    'la capture/restauration manuelle (et sa fenêtre) doit avoir disparu')
+  // La taille retenue part par la transition, avec sa cible kWc. U3-MOTEUR —
+  // en résidentiel `sizingInfo` reste NUL (le reducer le décide : son encart
+  // décrit le balayage local, « palier retenu / besoin lu sur la facture »,
+  // deux notions qui ne décrivent pas ce que le moteur a fait).
+  assert.match(bloc, /dispatchSizing\(\{ type: 'RECALCUL_DEMANDE', retenu \}\)/)
+  assert.match(bloc, /kwcOptimal: source\.kwc != null \? Number\(source\.kwc\) : null/)
 })
 
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
@@ -176,34 +185,32 @@ test("U3-MOTEUR — recalculerDimensionnement() : en résidentiel la taille vien
 
 test('recalculerDimensionnement() : déclenche la recomposition via un COMPTEUR dédié (jamais un effet calé sur nbPanneaux qui pourrait ne pas se redéclencher à compte inchangé)', () => {
   const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
-  assert.match(bloc, /recalcDimPending\.current = true/)
-  assert.match(bloc, /setRecalcDimTick\(t => t \+ 1\)/)
+  // QJR99 — le compteur est `compositionSeq`, incrémenté PAR la transition
+  // (`RECALCUL_DEMANDE`), donc impossible à oublier côté écran ; l'effet de
+  // composition est calé dessus (`recalcDimTick`), jamais sur `nbPanneaux`.
+  assert.match(bloc, /dispatchSizing\(\{ type: 'RECALCUL_DEMANDE', retenu \}\)/)
+  assert.match(DG, /compositionSeq: recalcDimTick,/)
+  assert.match(DG, /\}, \[recalcDimTick\]\)/)
 })
 
-test('F1+F2 (revue adversariale) — l\'effet du recalcul reverrouille à recalcDimPriorTouched.current (jamais `true` figé), SYNCHRONE (jamais dans un .finally() après l\'aller-retour réseau)', () => {
-  const idx = DG.indexOf('if (!recalcDimPending.current) return')
-  assert.ok(idx > -1, 'effet du recalcul introuvable')
+test('F2 (revue adversariale) — l\'effet de composition appelle handleAutoFill de façon SYNCHRONE (jamais un await/.finally qui rouvrirait la fenêtre sur tout l\'aller-retour réseau)', () => {
+  const idx = DG.indexOf('    if (!recalcDimTick) return')
+  assert.ok(idx > -1, 'effet de composition introuvable')
   const depsIdx = DG.indexOf('}, [recalcDimTick])', idx)
   assert.ok(depsIdx > -1)
   const bloc = DG.slice(idx, depsIdx)
-  assert.match(bloc, /recalcDimPending\.current = false/)
-  // F2 — appel SYNCHRONE de handleAutoFill (résultat capturé, jamais attendu
-  // avant de reverrouiller) : une fonction async exécute tout son préfixe
-  // synchrone (jusqu'à son premier `await`) avant de rendre la main — donc
-  // `resolveKwcAvec()` (lu par handleAutoFill AVANT son `await
-  // ventesApi.composerDevis`) a déjà lu le ref au moment où la ligne suivante
-  // s'exécute. Reverrouiller ICI ferme la fenêtre de course AVANT que la
-  // moindre frappe utilisateur n'ait la chance de s'y engouffrer.
-  const pendingIdx = bloc.indexOf('const pending = handleAutoFill()')
-  assert.ok(pendingIdx > -1,
-    'handleAutoFill() doit être appelé de façon SYNCHRONE (résultat nommé, pas attendu) — un `await handleAutoFill()` ou un `.finally()` rouvrirait la fenêtre sur tout le round-trip réseau (régression F2)')
-  const relockIdx = bloc.indexOf('nbPanneauxTouched.current = recalcDimPriorTouched.current')
-  assert.ok(relockIdx > -1,
-    'le reverrouillage doit restaurer recalcDimPriorTouched.current — un `nbPanneauxTouched.current = true` figé ici est exactement la régression F1')
-  assert.ok(pendingIdx < relockIdx, 'le reverrouillage doit suivre IMMÉDIATEMENT l\'appel (jamais après un .finally()/.then() qui attendrait la réponse réseau)')
-  // Aucun `.finally(` n'entoure le reverrouillage (l'ancienne régression F1/F2).
-  assert.doesNotMatch(bloc, /\.finally\(\(\) => \{\s*nbPanneauxTouched\.current/,
-    'reverrouiller dans un .finally() rouvre la fenêtre sur tout l\'aller-retour réseau (régression F2) — voir le correctif ci-dessus')
+  // F2 — une fonction async exécute tout son préfixe synchrone (jusqu'à son
+  // premier `await`) avant de rendre la main : `resolveKwcAvec()` (lu par
+  // handleAutoFill AVANT son `await ventesApi.composerDevis`) voit donc la
+  // fenêtre `recalcul` ouverte par la transition, et RIEN d'autre ne peut
+  // s'intercaler — le reducer la referme à l'action suivante.
+  assert.match(bloc, /Promise\.resolve\(handleAutoFill\(\)\)\.catch\(\(\) => \{\}\)/,
+    'handleAutoFill() doit être appelé de façon SYNCHRONE (promesse capturée, jamais attendue) — un `await handleAutoFill()` rouvrirait la fenêtre sur tout le round-trip réseau (régression F2)')
+  assert.doesNotMatch(bloc, /await /,
+    'aucun await dans cet effet : il bornerait la fenêtre au round-trip réseau (régression F2)')
+  // Plus AUCUNE manœuvre de verrouillage manuelle dans l'effet (régression F1).
+  assert.doesNotMatch(bloc, /touche\.nbPanneaux\s*=|PriorTouched/,
+    'le reverrouillage manuel doit avoir disparu : il vit dans la transition `RECALCUL_DEMANDE`')
 })
 
 // ── Le bouton (JSX) ──
@@ -229,60 +236,64 @@ test('deuxValeursDim : résidentiel UNIQUEMENT — agricole (pompage) et industr
 
 test('deuxValeursDim : jamais un chiffre inventé — computeAutoSizing n\'est jamais appelé pendant le rendu (react-hooks/refs), tout vient de sizingInfo (état) ou du serveur', () => {
   const bloc = corpsDe('const deuxValeursDim = (() => {', 'deuxValeursDim')
-  assert.match(bloc, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation\b/)
-  assert.match(bloc, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation_avec/)
+  assert.match(bloc, /const dim = etudeHoraireDonnees\?\.dimensionnement/)
+  assert.match(bloc, /dim\?\.recommandation, dim\?\.recommandation_avec/)
   // Jamais un appel à computeAutoSizing ICI : il lirait sizingCacheRef.current
   // PENDANT le rendu (deuxValeursDim est une const calculée en ligne dans le
   // corps du composant, pas dans un effet/gestionnaire) — interdit par la
   // règle ESLint react-hooks/refs, vérifiée en CI (backend-lint côté frontend).
   assert.doesNotMatch(bloc, /computeAutoSizing/)
-  assert.match(bloc, /const localSans = \(scenario === SCENARIO_AVEC\) \? null : sizingInfo/)
-  assert.match(bloc, /const localAvec = \(scenario === SCENARIO_AVEC\) \? sizingInfo : sizingInfo\?\.avec/)
+  // QJR102 — et plus AUCUN repli local non plus : `sizingInfo` vaut TOUJOURS
+  // `null` en résidentiel depuis U3-MOTEUR, donc la branche d'aperçu était
+  // injoignable ET masquait la paire mixte que F3 interdit.
+  assert.doesNotMatch(bloc, /sizingInfo/,
+    "le dimensionnement affiché ne peut plus venir que du moteur serveur")
 })
 
-test('F3 (revue adversariale) — deuxValeursDim n\'affiche la PAIRE que si sans/avec partagent la MÊME source (serveur+serveur ou local+local), jamais un mélange', () => {
-  const bloc = corpsDe('const deuxValeursDim = (() => {', 'deuxValeursDim')
-  assert.match(bloc, /const srvSansOk = Number\(srvSans\?\.panneaux\) > 0/)
-  assert.match(bloc, /const srvAvecOk = Number\(srvAvec\?\.panneaux\) > 0/)
-  assert.match(bloc, /const localSansOk = localSans\?\.nbPanneaux > 0/)
-  assert.match(bloc, /const localAvecOk = localAvec\?\.nbPanneaux > 0/)
-  // La PAIRE ne sort que d'un bloc qui exige les DEUX cases de la MÊME source.
-  assert.match(bloc, /if \(srvSansOk && srvAvecOk\) return \{ sans: asSans\(\), avec: asAvec\(\) \}/)
-  assert.match(bloc, /if \(localSansOk && localAvecOk\) return \{ sans: asSans\(\), avec: asAvec\(\) \}/)
+// QJR99 — la chaîne de ternaires est remplacée par `paireDimensionnement`, qui
+// SIGNE chaque branche (QJR86) au lieu de la deviner.
+// QJR102 — et la branche `apercu` (balayage LOCAL) est SUPPRIMÉE, parce qu'elle
+// était structurellement injoignable : `deuxValeursDim` rend `{null, null}`
+// hors résidentiel, et EN résidentiel `sizingInfo` vaut toujours `null` depuis
+// U3-MOTEUR. Il ne reste donc QU'UNE source possible — le moteur — ce qui rend
+// la règle F3 (« jamais une paire mixte ») VRAIE PAR CONSTRUCTION au lieu
+// d'être une comparaison à faire. La preuve par les données ci-dessous suit ce
+// changement : elle vérifie désormais qu'aucune combinaison ne peut produire
+// une valeur non-moteur.
+test('F3 (revue adversariale) + QJR102 — deuxValeursDim ne peut plus produire QU\'UNE source (moteur) : la paire mixte est impossible par construction', () => {
+  const idx = DG.indexOf('const paireDimensionnement = (srvSans, srvAvec) => {')
+  assert.ok(idx > -1, 'paireDimensionnement introuvable')
+  const bloc = DG.slice(idx, idx + 900)
+  // Chaque branche est SIGNÉE de sa source — jamais un nombre nu.
+  assert.match(bloc, /const mSans = valeurMoteurDim\(srvSans\)/)
+  assert.match(bloc, /const mAvec = valeurMoteurDim\(srvAvec\)/)
+  // Plus AUCUNE branche d'aperçu : ni la fonction, ni ses variables.
+  assert.doesNotMatch(bloc, /valeurApercuDim|localSans|localAvec/,
+    'la branche locale doit avoir disparu (QJR102)')
+  assert.doesNotMatch(DG, /const valeurApercuDim =/,
+    "l'aide de signature d'aperçu n'a plus d'appelant : elle doit être supprimée")
+  // La PAIRE exige les DEUX cases ; sinon UNE seule valeur, jamais un mélange.
+  assert.match(bloc, /if \(estFait\(mSans\) && estFait\(mAvec\)\) return \{ sans: mSans\.valeur, avec: mAvec\.valeur \}/)
+  assert.match(bloc, /if \(estFait\(mSans\)\) return \{ sans: mSans\.valeur, avec: null \}/)
+  assert.match(bloc, /if \(estFait\(mAvec\)\) return \{ sans: null, avec: mAvec\.valeur \}/)
+  assert.match(bloc, /return \{ sans: null, avec: null \}/)
+
   // Reproduit la logique EXACTE avec de vraies données pour prouver le
-  // comportement (pas seulement sa présence textuelle) : une PAIRE cohérente
-  // (même source pour les deux branches) prime toujours sur un repli
-  // partiel — un repli « serveur sans + local avec » (le mélange que F3
-  // interdit) ne doit JAMAIS sortir de cette fonction, quelle que soit la
-  // combinaison de disponibilités.
-  function dedup(srvSansOk, srvAvecOk, localSansOk, localAvecOk) {
+  // comportement (pas seulement sa présence textuelle) : aucune combinaison
+  // ne doit produire une valeur qui ne vienne pas du moteur, et « sans »
+  // reste la première branche testée.
+  function dedup(srvSansOk, srvAvecOk) {
     if (srvSansOk && srvAvecOk) return 'PAIRE_SERVEUR'
-    if (localSansOk && localAvecOk) return 'PAIRE_LOCAL'
     if (srvSansOk) return 'SANS_SEUL_SERVEUR'
-    if (localSansOk) return 'SANS_SEUL_LOCAL'
     if (srvAvecOk) return 'AVEC_SEUL_SERVEUR'
-    if (localAvecOk) return 'AVEC_SEUL_LOCAL'
     return 'RIEN'
   }
-  // Local a les DEUX branches prêtes → une paire COHÉRENTE (delta comparable,
-  // même méthode des deux côtés) prime sur un repli partiel serveur-seul,
-  // même si le serveur a AUSSI répondu pour une des deux branches : mélanger
-  // « sans » serveur avec « avec » local romprait la comparabilité (F3) — la
-  // paire locale cohérente est strictement meilleure qu'un repli à une seule
-  // valeur ici.
-  assert.equal(dedup(true, false, true, true), 'PAIRE_LOCAL',
-    'local dispo des deux côtés : une paire cohérente prime sur un repli sans-seul-serveur')
-  // Ni pair serveur ni pair local possible (sans=local seul dispo, avec=serveur
-  // seul dispo) : JAMAIS le mélange local-sans/serveur-avec — repli sur UNE
-  // seule valeur (sans, la première testée dans la cascade).
-  assert.equal(dedup(false, true, true, false), 'SANS_SEUL_LOCAL',
-    'aucune paire de même source possible : une seule valeur, jamais le mélange serveur-avec/local-sans')
-  // Preuve directe du bug rapporté : sans serveur dispo, avec NI serveur NI
-  // local dispo → jamais de valeur avec fabriquée, sans seul s'affiche.
-  assert.equal(dedup(true, false, false, false), 'SANS_SEUL_SERVEUR')
-  assert.equal(dedup(true, true, false, false), 'PAIRE_SERVEUR')
-  assert.equal(dedup(false, false, true, true), 'PAIRE_LOCAL')
-  assert.equal(dedup(false, false, false, false), 'RIEN')
+  assert.equal(dedup(true, true), 'PAIRE_SERVEUR')
+  // Le serveur n'a chiffré QUE le sans : jamais de valeur « avec » fabriquée
+  // pour compléter la paire (c'était le bug rapporté).
+  assert.equal(dedup(true, false), 'SANS_SEUL_SERVEUR')
+  assert.equal(dedup(false, true), 'AVEC_SEUL_SERVEUR')
+  assert.equal(dedup(false, false), 'RIEN')
 })
 
 test('affichage : le bloc « Recommandé sans/avec batterie » est résidentiel-only, respecte showSans/showAvec, ET son garde extérieur reflète EXACTEMENT ce qui va rendre (F4 — jamais un wrapper vide)', () => {

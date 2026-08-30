@@ -53,8 +53,14 @@ test('DevisGenerator : construit le corps de requête (résidentiel uniquement) 
   const bloc = DG.slice(idx, idx + 900)
   assert.match(bloc, /modeInstallation === 'residentiel'/)
   assert.match(bloc, /construireCorpsPreview\(\{/)
-  const hookIdx = DG.indexOf('= useEtudeHorairePreview(etudeHoraireCorps)')
-  assert.ok(hookIdx > idx, 'useEtudeHorairePreview(etudeHoraireCorps) introuvable après la construction du corps')
+  // QJR99 — l'écran passe désormais par `useSizingMoteur`, qui ENROBE
+  // `useEtudeHorairePreview` (aucun appel réseau supplémentaire) et rend en
+  // plus la décision de dimensionnement, garde de péremption comprise.
+  const hookIdx = DG.indexOf('} = useSizingMoteur(etudeHoraireCorps, {')
+  assert.ok(hookIdx > idx, 'useSizingMoteur(etudeHoraireCorps) introuvable après la construction du corps')
+  const hookBloc = DG.slice(hookIdx, hookIdx + 260)
+  assert.match(hookBloc, /attente: sizing\.attenteMoteur/)
+  assert.match(hookBloc, /toucheNbPanneaux: toucheNbPanneauxPourComposition\(sizing\)/)
 })
 
 test('DevisGenerator : le serveur GAGNE sur le miroir local `roi` dès qu\'il a répondu (etude.annuel non nul)', () => {
@@ -139,7 +145,7 @@ test('L-2OPT : le miroir local `roiAvec` est calculé au kWc AVEC, null quand ri
 // et l'ascension finissait toujours au plafond du balayage (mesuré : besoin
 // 100 kWc → 100 kWc retenus, 522 341 MAD).
 
-test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation réelle + le distributeur', () => {
+test('FINDING 25/08 : le dimensionnement passe la consommation réelle + le distributeur', () => {
   const idx = DG.indexOf('const computeAutoSizing = useCallback(')
   assert.ok(idx > -1, 'computeAutoSizing introuvable')
   const bloc = DG.slice(idx, DG.indexOf('sizingCacheRef.current = { key, result }', idx))
@@ -147,10 +153,12 @@ test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation
   // jamais un chiffre posé.
   assert.match(bloc, /consoAnnuelleDepuisFactures\(factures, distributeurBalayage\)/)
   assert.match(bloc, /Number\(consoAnnuelleReelle\) > 0/)
-  // Les DEUX optimiseurs (sans ET avec batterie) la reçoivent.
+  // QJR102 — il ne reste qu'UN balayage (le second, résidentiel-only, a été
+  // supprimé : injoignable depuis U3-MOTEUR). Il reçoit toujours la conso
+  // réelle et le distributeur — c'est CE contrat-là que le finding protège.
   const appels = bloc.match(/consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage/g) || []
-  assert.equal(appels.length, 2,
-    'les deux appels optimalKwcByPayback (sans + avec batterie) doivent recevoir la conso réelle')
+  assert.equal(appels.length, 1,
+    "l'appel optimalKwcByPayback doit recevoir la conso réelle et le distributeur")
   // Le distributeur pilote le barème : il entre dans la clé de cache, sinon
   // le balayage resservirait un résultat calculé sur un autre barème.
   assert.match(bloc, /distributeurBalayage, consoAnnuelleReelle \?\? ''\]\.join\('\|'\)/)
@@ -182,16 +190,23 @@ test('DevisGenerator : chaque ligne du tableau porte un bouton « Appliquer cett
 })
 
 test('DevisGenerator : « Appliquer cette taille » pose nbPanneaux\\/panelW puis relance handleAutoFill (jamais une seconde règle de composition)', () => {
+  // QJR99 — la pose de `nbPanneaux`/`panelW`/`kwcCible` et l'armement de la
+  // recomposition sont UNE transition (`TAILLE_APPLIQUEE`, testée dans
+  // sizingReducer.test.mjs : elle pose les trois champs ET incrémente
+  // `compositionSeq`). Le déclenchement, lui, reste ici et reste `handleAutoFill`.
   const idx = DG.indexOf('const appliquerTailleDimensionnement = (ligne) => {')
   assert.ok(idx > -1, 'appliquerTailleDimensionnement introuvable')
-  const bloc = DG.slice(idx, idx + 900)
-  assert.match(bloc, /setNbPanneaux\(String\(ligne\.panneaux\)\)/)
-  assert.match(bloc, /if \(ligne\.panel_watt\) setPanelW\(String\(ligne\.panel_watt\)\)/)
-  assert.match(bloc, /appliquerTaillePending\.current = true/)
-  // Le déclenchement effectif de la composition passe par handleAutoFill,
-  // JAMAIS une réimplémentation d'autoFillLines ici.
-  assert.match(bloc, /handleAutoFill\(\)/)
+  const bloc = DG.slice(idx, idx + 300)
+  assert.match(bloc, /if \(!ligne \|\| !\(ligne\.panneaux > 0\)\) return/)
+  assert.match(bloc, /dispatchSizing\(\{ type: 'TAILLE_APPLIQUEE', ligne \}\)/)
   assert.doesNotMatch(bloc, /autoFillLines\(/)
+  // L'UNIQUE effet de composition (armé par `compositionSeq`) relance
+  // handleAutoFill — JAMAIS une réimplémentation d'autoFillLines.
+  const effetIdx = DG.indexOf('    if (!recalcDimTick) return')
+  assert.ok(effetIdx > -1, "l'effet de composition (compositionSeq) est introuvable")
+  const effet = DG.slice(effetIdx, effetIdx + 300)
+  assert.match(effet, /handleAutoFill\(\)/)
+  assert.doesNotMatch(effet, /autoFillLines\(/)
 })
 
 test('DevisGenerator : le détail saisonnier (production × consommation par saison) est rendu', () => {

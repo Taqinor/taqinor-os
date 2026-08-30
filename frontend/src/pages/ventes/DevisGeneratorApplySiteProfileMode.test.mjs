@@ -25,32 +25,43 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 
-test('QJR38 — applySiteProfile calcule modeCible localement (mode fraîchement résolu, jamais modeInstallation après onModeChange)', () => {
+// QJR99 — la BASCULE a déplacé les écritures gardées d'`applySiteProfile` dans
+// la transition `PROFIL_SITE_APPLIQUE` du reducer (le garde-fou `touche.mode`
+// et le choix résidentiel-attend-le-moteur y vivent, testés dans
+// sizingReducer.test.mjs). Ce qui reste ICI — et que ce fichier garde — est le
+// point EXACT du bug QJR38 : la résolution LOCALE du mode visé, qui décide du
+// dimensionneur (balayage local ou moteur serveur) et du type d'installation.
+// Les épingles suivent donc le code là où il vit ; aucune n'est relâchée.
+test('QJR38 — applySiteProfile calcule modeCible localement (mode fraîchement résolu, jamais modeInstallation du rendu précédent)', () => {
   const idx = DG.indexOf('const applySiteProfile = (p) => {')
   assert.ok(idx > -1, 'applySiteProfile introuvable')
-  const bloc = DG.slice(idx, idx + 1100)
-  // onModeChange n'est appelé QUE si le mode calculé depuis le profil existe.
+  const bloc = DG.slice(idx, idx + 1400)
+  // Le mode du profil n'est retenu QUE si le vendeur n'a pas déjà choisi le
+  // sien (`touche.mode`, ex-`modeTouched`).
   assert.match(bloc,
-    /const modeLead = !modeTouched\.current\s*\n\s*&& p\.type_installation && LEAD_TYPE_TO_MODE\[p\.type_installation\]\s*\n\s*\? LEAD_TYPE_TO_MODE\[p\.type_installation\] : null/)
-  assert.match(bloc, /if \(modeLead\) onModeChange\(modeLead\)/)
-  // Le mode RÉELLEMENT visé est calculé APRÈS l'appel onModeChange, en
-  // variable locale — jamais relu depuis modeInstallation seul.
+    /const modeLead = !sizing\.touche\.mode\s*\n\s*&& p\.type_installation && LEAD_TYPE_TO_MODE\[p\.type_installation\]\s*\n\s*\? LEAD_TYPE_TO_MODE\[p\.type_installation\] : null/)
+  // Le mode RÉELLEMENT visé est calculé en variable locale — jamais relu
+  // depuis modeInstallation seul.
   assert.match(bloc, /const modeCible = modeLead \|\| modeInstallation/)
 })
 
-test('QJR38 — la branche attenteSizingServeur d\'applySiteProfile branche sur modeCible, plus jamais sur modeInstallation directement', () => {
+test('QJR38 — la résolution du dimensionneur d\'applySiteProfile branche sur modeCible, plus jamais sur modeInstallation directement', () => {
   const idx = DG.indexOf('const applySiteProfile = (p) => {')
   assert.ok(idx > -1)
   const endIdx = DG.indexOf('const applyClient = (v) => {')
   assert.ok(endIdx > idx, 'fin de applySiteProfile introuvable (avant applyClient)')
   const bloc = DG.slice(idx, endIdx)
+  // Le balayage LOCAL n'est résolu que pour un marché NON résidentiel — le
+  // résidentiel attend le moteur horaire serveur (transition du reducer).
   assert.match(bloc,
-    /if \(modeCible === 'residentiel'\) \{\s*\n(?:[^\n]*\n){0,4}?\s*setSizingInfo\(null\)\s*\n\s*attenteSizingServeur\.current = true\s*\n\s*\} else \{/,
-    'la branche résidentiel/attente-serveur doit brancher sur modeCible')
-  // Plus aucune lecture nue de `modeInstallation === \'residentiel\'` dans TOUT
+    /const sizingLocal = \(hiver > 0 && !sizing\.touche\.nbPanneaux && modeCible !== 'residentiel'\)\s*\n\s*\? computeAutoSizing\(hiver, ete\) : null/,
+    'le choix du dimensionneur doit brancher sur modeCible')
+  assert.match(bloc, /dispatchSizing\(\{ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal \}\)/,
+    'le pré-remplissage doit passer par la transition unique du reducer')
+  // Plus aucune lecture nue de `modeInstallation === 'residentiel'` dans TOUT
   // le corps de la fonction (l'ancien bug) — la seule comparaison au mode
   // porte sur modeCible.
-  assert.doesNotMatch(bloc, /if \(modeInstallation === 'residentiel'\)/,
+  assert.doesNotMatch(bloc, /modeInstallation === 'residentiel'/,
     'applySiteProfile ne doit plus jamais comparer modeInstallation directement')
 })
 
@@ -59,8 +70,12 @@ test('QJR38 — le patron reproduit exactement celui, déjà correct, d\'applyLe
   // régressait, ce qui prouve que les deux fonctions restent alignées.
   const idxLead = DG.indexOf('const applyLead = (id) => {')
   assert.ok(idxLead > -1)
-  const blocLead = DG.slice(idxLead, idxLead + 900)
+  // Fenêtre élargie (1800→3000) : QJR99 a ajouté le commentaire de bascule en
+  // tête de fonction ; le contenu vérifié, lui, est inchangé.
+  const blocLead = DG.slice(idxLead, idxLead + 3000)
   assert.match(blocLead, /const modeCible = modeLead \|\| modeInstallation/)
+  assert.match(blocLead, /modeCible !== 'residentiel'/,
+    'applyLead doit lui aussi choisir son dimensionneur sur modeCible')
 })
 
 test('QJR38 — rejoué : un profil industriel/commercial résout modeCible sur ce mode, jamais résidentiel, quand le vendeur n\'a pas déjà choisi de mode', () => {

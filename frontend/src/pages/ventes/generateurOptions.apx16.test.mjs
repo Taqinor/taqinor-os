@@ -9,7 +9,7 @@
 // Les gardes du générateur (`noValidate`, `step="any"`) restent intactes.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -60,4 +60,26 @@ test('plus aucune couleur codée en dur dans le panneau de modèles', () => {
 test('les gardes de saisie du générateur sont intactes (jamais de valeur rejetée)', () => {
   assert.match(gen, /<form id="gen-form"[\s\S]{0,200}?noValidate/)
   assert.doesNotMatch(gen, /step="0\.\d+"/)
+  // QJR100 — la règle fondateur « aucun snap » suit les champs LÀ OÙ ILS
+  // VIVENT : la garde balaie désormais TOUT `pages/ventes/generator/`, sinon
+  // extraire un champ suffirait à le soustraire au contrôle. Elle ne se
+  // contente pas d'un fichier nommé : elle lit le répertoire entier.
+  const dir = path.join(__dirname, 'generator')
+  const fichiers = readdirSync(dir).filter(f => f.endsWith('.jsx'))
+  assert.ok(fichiers.length >= 3, 'les morceaux extraits du générateur sont introuvables')
+  for (const f of fichiers) {
+    const src = readFileSync(path.join(dir, f), 'utf8')
+    assert.doesNotMatch(src, /step="0\.\d+"/, `${f} : un champ « snappe » désormais`)
+    // Chaque `type="number"` déplacé garde `step="any"` (aucun champ nu). La
+    // borne d'élément est `/>` : elle ne peut pas être confondue avec la
+    // flèche `=>` d'un gestionnaire.
+    let i = src.indexOf('type="number"')
+    while (i > -1) {
+      const fin = src.indexOf('/>', i)
+      assert.ok(fin > i, `${f} : élément number non fermé`)
+      assert.match(src.slice(i, fin), /step="any"/,
+        `${f} : un input number sans step="any" (le champ « snapperait »)`)
+      i = src.indexOf('type="number"', fin)
+    }
+  }
 })

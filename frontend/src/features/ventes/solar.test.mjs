@@ -201,11 +201,15 @@ test('garde-fou : choisir un lead ne réinitialise JAMAIS le mode choisi', () =>
     'utf-8',
   )
   // Le pré-réglage du mode depuis le lead doit être conditionné au fait que
-  // l'utilisateur n'a PAS déjà touché le mode (modeTouched).
-  assert.ok(/!modeTouched\.current[\s\S]{0,120}LEAD_TYPE_TO_MODE/.test(jsx),
-    'applyLead doit vérifier modeTouched avant de changer le mode')
-  assert.ok(jsx.includes('modeTouched.current = true'),
+  // l'utilisateur n'a PAS déjà touché le mode. QJR99 — le drapeau est passé du
+  // ref `modeTouched` à l'ÉTAT `sizing.touche.mode` (reducer QJR87) : même
+  // garde-fou, même force d'assertion, à son nouvel emplacement.
+  assert.ok(/!sizing\.touche\.mode[\s\S]{0,120}LEAD_TYPE_TO_MODE/.test(jsx),
+    'applyLead doit vérifier touche.mode avant de changer le mode')
+  assert.ok(jsx.includes('const marquerMarcheTouche = () =>'),
     'le sélecteur de mode doit marquer le choix utilisateur')
+  assert.ok(/onChange=\{\(v\) => \{ marquerMarcheTouche\(\); onModeChangeUi\(v\) \}\}/.test(jsx),
+    'le sélecteur de marché doit poser le drapeau AVANT la confirmation')
   // Et l'échec de création ne montre jamais de JSON brut
   assert.ok(!jsx.includes('JSON.stringify(err)'),
     'plus de JSON brut affiché à l\'utilisateur en cas d\'échec')
