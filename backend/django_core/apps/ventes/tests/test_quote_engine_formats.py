@@ -501,7 +501,13 @@ class TestPdfFormats(TestCase):
         return G.page_annexe_technique()
 
     # ── PV77 — étude bancable sur la page Étude (additif, sans page en plus) ──
-    _SIMULATION = {
+    # QJR159 (b) — CETTE FIXTURE EST ALIGNÉE SUR LE DEVIS. Le bloc bancable
+    # n'est publié que s'il DÉCRIT le champ PV vendu (somme des kWc de ses
+    # zones == puissance crête du document, à la tolérance d'arrondi). La
+    # forme brute ci-dessous portait 42,3 kWc sur un devis de 14 panneaux :
+    # elle prouvait donc le rendu d'un cas que la garde refuse désormais.
+    # ``_simulation()`` recopie la puissance RÉELLE lue du builder.
+    _SIMULATION_BRUTE = {
         'version': 1,
         'computed_at': '2026-08-14T10:00:00Z',
         'source': 'pvgis',
@@ -541,6 +547,24 @@ class TestPdfFormats(TestCase):
         'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
         'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
     }
+
+    def _simulation(self):
+        """QJR159 (b) — la simulation de test décrit LE champ PV de ce devis.
+
+        La puissance est LUE du builder (jamais recopiée à la main) : la
+        fixture suit donc automatiquement toute évolution des lignes de test,
+        et la garde ``_bankable_decrit_ce_champ`` est éprouvée sur son cas
+        NOMINAL (concordance) ici, et sur son cas de refus par le test QJR159
+        dédié.
+        """
+        if getattr(self, '_simulation_cache', None) is None:
+            from apps.ventes.quote_engine.builder import build_quote_data
+            base = type(self)._SIMULATION_BRUTE
+            kwc = float(build_quote_data(self.devis).get('puissance_kwc') or 0)
+            self.assertGreater(kwc, 0, 'fixture sans puissance lisible')
+            self._simulation_cache = {
+                **base, 'zones': [dict(base['zones'][0], kwc=kwc)]}
+        return self._simulation_cache
 
     def _devis_avec_etude(self, simulation=None):
         self.devis.mode_installation = 'industriel'
@@ -583,15 +607,15 @@ class TestPdfFormats(TestCase):
 
         self._devis_avec_etude()
         sans = build_quote_data(self.devis, {'include_etude': True})
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         avec = build_quote_data(self.devis, {'include_etude': True})
 
         self.assertEqual(set(avec) - set(sans), set())
         etude_avec = dict(avec['etude'])
-        self.assertEqual(etude_avec.pop('bankable'), self._SIMULATION)
+        self.assertEqual(etude_avec.pop('bankable'), self._simulation())
         # ``simulation`` est la clé BRUTE déjà portée par etude_params : elle
         # reste telle quelle, le bloc bancable s'AJOUTE à côté sans la toucher.
-        self.assertEqual(etude_avec.pop('simulation'), self._SIMULATION)
+        self.assertEqual(etude_avec.pop('simulation'), self._simulation())
         self.assertEqual(etude_avec, sans['etude'])
         # Le reste du dict (totaux, ROI, options…) est identique clé par clé.
         for clef in set(sans) - {'etude'}:
@@ -601,7 +625,7 @@ class TestPdfFormats(TestCase):
         """Le rendu ne peut jamais muter l'étude STOCKÉE sur le devis."""
         from apps.ventes.quote_engine.builder import build_quote_data
 
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         data = build_quote_data(self.devis, {'include_etude': True})
         data['etude']['bankable']['pr']['p50_kwh'] = 1
         # En mémoire (une copie de surface aurait partagé le sous-dict 'pr')…
@@ -613,7 +637,7 @@ class TestPdfFormats(TestCase):
             self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
 
     def test_pv77_la_page_etude_montre_p50_p90_et_la_cascade(self):
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         html, doc = self._render({'include_etude': True})
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('Étude bancable', html)
@@ -631,7 +655,7 @@ class TestPdfFormats(TestCase):
         """Le bloc vit DANS la page Étude : 4 pages avec, 4 pages sans."""
         self._devis_avec_etude()
         _, sans = self._render({'include_etude': True})
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         html, avec = self._render({'include_etude': True})
         self.assertEqual(len(sans.pages), len(avec.pages))
         self.assertEqual(len(avec.pages), 4)
@@ -654,7 +678,16 @@ class TestPdfFormats(TestCase):
         """Règle #4 — que des grandeurs énergétiques : ni VAN, ni TRI, ni prix."""
         from apps.ventes.quote_engine import generate_devis_premium as G
 
-        bloc = G._bankable_block_html(self._SIMULATION)
+        # QJR159 (b) — le bloc n'est rendu que s'il DÉCRIT le champ PV du
+        # document : on pose la puissance globale du moteur sur celle de la
+        # simulation (aucun rendu complet n'est nécessaire pour cette garde).
+        sim = self._simulation()
+        _kwc, _inc = G.KWC, G.PUISSANCE_INCONNUE
+        G.KWC, G.PUISSANCE_INCONNUE = sim['zones'][0]['kwc'], False
+        try:
+            bloc = G._bankable_block_html(sim)
+        finally:
+            G.KWC, G.PUISSANCE_INCONNUE = _kwc, _inc
         self.assertTrue(bloc)
         for interdit in ('MAD', 'VAN', 'TRI', 'npv', 'irr', '412', '33 800',
                          'prix_achat', 'marge'):

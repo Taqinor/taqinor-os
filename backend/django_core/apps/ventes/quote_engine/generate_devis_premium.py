@@ -2522,6 +2522,46 @@ def _bankable_pct(valeur):
         return ""
 
 
+#: QJR159 (b) — écart RELATIF toléré entre la puissance simulée et la puissance
+#: VENDUE. Même esprit que ``pricing._HORAIRE_TOLERANCE_KWC`` : 2 % absorbe les
+#: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
+#: panneau de plus pèse déjà bien davantage).
+TOLERANCE_KWC_SIMULATION = 0.02
+
+
+def _bankable_decrit_ce_champ(bank):
+    """QJR159 (b) — la simulation décrit-elle le champ PV RÉELLEMENT vendu ?
+
+    La preuve est la seule dont on dispose sans recalculer quoi que ce soit :
+    la somme des ``kwc`` des zones simulées doit égaler la puissance crête du
+    document. Tout ce qui n'est pas prouvé — puissance du devis inconnue,
+    zones absentes ou illisibles — rend ``False`` et le bloc est OMIS (jamais
+    un productible de repli).
+    """
+    if not isinstance(bank, dict):
+        return False
+    try:
+        kwc_devis = float(KWC or 0)
+    except (TypeError, ValueError):
+        return False
+    if kwc_devis <= 0 or PUISSANCE_INCONNUE:
+        return False
+    zones = bank.get("zones")
+    if not isinstance(zones, (list, tuple)) or not zones:
+        return False
+    total = 0.0
+    for zone in zones:
+        if not isinstance(zone, dict):
+            return False
+        try:
+            total += float(zone.get("kwc"))
+        except (TypeError, ValueError):
+            return False
+    if total <= 0:
+        return False
+    return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
+
+
 def _bankable_block_html(bank):
     """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
 
@@ -2532,8 +2572,19 @@ def _bankable_block_html(bank):
     figure (r\u00e8gle #4) \u2014 uniquement des grandeurs \u00e9nerg\u00e9tiques.
 
     Absent/illisible \u2192 '' : la page \u00c9tude reste EXACTEMENT celle d'aujourd'hui.
+
+    QJR159 (b) \u2014 CE BLOC PROUVE QU'IL D\u00c9CRIT LE CHAMP PV VENDU. Il \u00e9tait publi\u00e9
+    sans le moindre lien avec la composition : il n'acc\u00e9dait ni \u00e0 ``KWC`` ni \u00e0
+    ``NB_PAN``, le builder recopie ``etude_params['simulation']`` SANS
+    condition, et cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies \u2014 un
+    devis redimensionn\u00e9 APR\u00c8S l'\u00e9tude imprimait donc le productible d'un AUTRE
+    champ PV juste \u00e0 c\u00f4t\u00e9 de sa vraie \u00ab Puissance cr\u00eate \u00bb. La somme des kWc des
+    zones simul\u00e9es doit d\u00e9sormais \u00e9galer ``KWC`` (\u00e0 la tol\u00e9rance d'arrondi),
+    sinon le bloc est OMIS.
     """
     if not isinstance(bank, dict) or not bank:
+        return ""
+    if not _bankable_decrit_ce_champ(bank):
         return ""
     pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
 
@@ -2617,6 +2668,28 @@ def _capacite_batterie_vendue():
 #: nombre que ``apps.ventes.dimensionnement.TOLERANCE_CAPACITE_KWH`` : un
 #: arrondi d'affichage n'est pas un écart de palier.
 TOLERANCE_CAPACITE_KWH = 0.05
+
+
+def _branche_nommee():
+    """QJR159 (c) — suffixe qui NOMME la branche décrite, ou ''.
+
+    ``_capacite_batterie_vendue`` suit ``ONEPAGE_BRANCHE``, que le builder fixe
+    à ``'avec'`` pour TOUT devis à deux options — y compris en
+    ``pdf_mode='full'``. La garde QJR13 prouve donc l'appartenance à l'option
+    AVEC sans jamais l'ÉCRIRE : sur un 3-pages qui présente les deux options,
+    le client qui choisit « sans batterie » lisait un résiduel qui n'est pas le
+    sien. On le dit dans le libellé.
+    """
+    if SCENARIO != "Les deux (Sans + Avec)":
+        return ""
+    if _capacite_batterie_vendue() <= 0:
+        return ""
+    return " &#8212; option avec batterie"
+
+
+def _branche_phrase():
+    """QJR159 (c) — la MÊME précision, en incise dans une phrase."""
+    return (" (option avec batterie)" if _branche_nommee() else "")
 
 
 def _config_identifiante(panneaux, batterie_kwh):
@@ -2760,7 +2833,17 @@ def _part_glitch_pct():
     le moteur — jamais un chiffre inventé : la part de l'énergie perdue en
     pointe (``part_glitch_sans_kwh``) que la batterie rattrape
     (``part_glitch_batterie_kwh``).
+
+    QJR159 (a) — GARDE DE CONFIGURATION. Cette carte annonce le bénéfice d'un
+    STOCKAGE : elle ne testait que ``_sans > 0``, ni ``BATTERIE_KWH_TOTAL``, ni
+    ``_capacite_batterie_vendue()``, ni ``ONEPAGE_BRANCHE``. Sur un devis
+    résidentiel SANS stockage mais avec un équipement à impulsions (piscine,
+    clim), elle sortait « 0 % » et vendait le bénéfice d'un composant ABSENT du
+    devis. La fonction jumelle existe précisément pour ce contrôle : on
+    l'appelle.
     """
+    if _capacite_batterie_vendue() <= 0:
+        return None
     annuel = (ETUDE.get("etude_horaire") or {}).get("annuel")
     if not isinstance(annuel, dict):
         return None
@@ -2827,13 +2910,17 @@ def page_etude():
     # existants ne change de rendu).
     _falaise_ctx = _falaise_context()
     _glitch_pct = _part_glitch_pct()
+    # QJR159 (c) — la BRANCHE décrite est NOMMÉE : ces chiffres appartiennent à
+    # l'option AVEC batterie sur un document qui présente les deux.
+    _branche = _branche_nommee()
     falaise_cards = ""
     falaise_sentence = ""
     if _falaise_ctx or _glitch_pct is not None:
         _fcells = []
         if _falaise_ctx and _falaise_ctx.get("residuel_kwh_mois") is not None:
             _txt = f"{fnum(_falaise_ctx['residuel_kwh_mois'])} kWh/mois"
-            _fcells.append(card("Résiduel sous la marche", _txt, accent=True))
+            _fcells.append(card(f"Résiduel sous la marche{_branche}", _txt,
+                                accent=True))
         if _falaise_ctx and _falaise_ctx.get("tranche_actuelle"):
             _fcells.append(
                 card("Tranche actuelle", _esc(_falaise_ctx["tranche_actuelle"])))
@@ -2845,10 +2932,11 @@ def page_etude():
             _rpct = _falaise_ctx["remplissage_pct"]
             _rval = ("La batterie se remplit chaque jour" if _rpct >= 100
                       else f"{_rpct} %")
-            _fcells.append(card("Remplissage batterie (moyen)", _rval))
+            _fcells.append(
+                card(f"Remplissage batterie (moyen){_branche}", _rval))
         if _glitch_pct is not None:
             _fcells.append(card(
-                "Part des pointes rattrapée par la batterie",
+                f"Part des pointes rattrapée par la batterie{_branche}",
                 f"{_glitch_pct} %"))
         if _fcells:
             falaise_cards = (
@@ -2862,7 +2950,8 @@ def page_etude():
             falaise_sentence = (
                 f'<div style="margin-top:8px;font-size:7pt;color:{CG4};">'
                 f'Aujourd&rsquo;hui, votre facture se calcule sur la tranche '
-                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement '
+                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement'
+                f'{_branche_phrase()} '
                 f'fait atterrir votre consommation résiduelle à '
                 f'{fnum(_falaise_ctx["residuel_kwh_mois"])} kWh/mois{_sous}.'
                 f'</div>')
