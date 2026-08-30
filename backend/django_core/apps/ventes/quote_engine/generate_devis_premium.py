@@ -9,7 +9,7 @@ Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
-import base64, html, io, json, re, subprocess, sys, tempfile, threading
+import base64, html, io, re, subprocess, sys, tempfile, threading
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -930,8 +930,30 @@ def fnum(v):
         return str(v)
 
 def kwc_fr(v):
-    """Format kWc value with French decimal comma: 10,65"""
-    return f"{v:.2f}".replace(".", ",")
+    """QJR145 (a) — puissance à la française : 10,65 (jamais « 10.65 »).
+
+    Le formateur existait depuis l'origine SANS aucun site d'appel : les cinq
+    impressions de puissance du document sortaient le point décimal anglais.
+    Les décimales inutiles sont retirées (« 10 kWc », pas « 10,00 kWc »).
+    """
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return (f"{f:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
+
+
+def _kwc_mention(prefixe="&#160;", suffixe="&#160;kWc"):
+    """QJR145 (a) — « 10,65 kWc » prêt à imprimer, ou RIEN.
+
+    La case de confirmation de commande n'avait pas la garde
+    ``PUISSANCE_INCONNUE`` que ``page1`` et ``build_html`` appliquent déjà :
+    elle imprimait « Système photovoltaïque 0.0 kWc » sur un devis dont la
+    puissance n'a aucun ancrage réel.
+    """
+    if PUISSANCE_INCONNUE or not KWC:
+        return ""
+    return f"{prefixe}{kwc_fr(KWC)}{suffixe}"
 
 def b64(src):
     if isinstance(src, (str, Path)):
@@ -1078,44 +1100,11 @@ def footer_p3(extra_style=""):
             f'</div>'
             f'</div>')
 
-# ── Data loading ─────────────────────────────────────────────────────────────
-def load_equip(devis_id):
-    """Load Option 1 equipment from devis_history.json."""
-    f = BASE_DIR / "devis_history.json"
-    if not f.exists(): return [], []
-    try:
-        with open(f, "r", encoding="utf-8") as fh: h = json.load(fh)
-        e = h.get(str(devis_id), {})
-        sys.path.insert(0, str(BASE_DIR))
-        import pandas as pd
-        from utils import sanitize_df
-        def parse(recs):
-            if not recs: return []
-            df = pd.DataFrame(recs)
-            try: df = sanitize_df(df)
-            except Exception: pass
-            cols = df.columns.tolist()
-            def col(hints):
-                for h in hints:
-                    for c in cols:
-                        if h in c.lower(): return c
-                return None
-            dc = col(["d\u00e9signation","designation","signation","design"])
-            qc = col(["quantit\u00e9","quantit","qty","qt\u00e9"])
-            pc = col(["unit. ttc","unit.ttc","unit ttc","prix unit","unit_ttc","prix_unit"])
-            mc = col(["marque"])
-            out = []
-            for _, r in df.iterrows():
-                qty = float(r[qc]) if qc else 0
-                if qty <= 0: continue
-                out.append({"designation": str(r[dc]).strip() if dc else "",
-                             "marque":     str(r[mc]).strip() if mc else "",
-                             "quantite":   qty,
-                             "prix_unit_ttc": float(r[pc]) if pc else 0})
-            return out
-        return parse(e.get("df_sans", [])), parse(e.get("df_avec", []))
-    except Exception:
-        return [], []
+# ── Data loading ──────────────────────────────────────────────────────────────────────────
+# QJR145 (e) — ``load_equip`` SUPPRIMÉ : code mort (zéro site d'appel dans
+# tout le dépôt) qui lisait un ``devis_history.json`` d'archive via pandas et
+# fabriquait des lignes à ``prix_unit_ttc = 0`` quand la colonne de prix
+# manquait. Les données du document viennent du builder, et de lui seul.
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 def _style_ax(fig, ax):
@@ -1394,9 +1383,20 @@ def _garanties_du_devis():
     famille dont aucune ligne ne porte de garantie saisie est ABSENTE de la
     liste : les badges de la page signature affichaient « 10 / 12 / 30 ANS »
     en dur, quels que soient les produits réellement vendus.
+
+    QJR145 (d) — sur un document « Les deux (Sans + Avec) », les garanties
+    partaient de ``SANS_ITEMS`` seul : la BATTERIE, qui n'existe que dans
+    ``AVEC_ITEMS``, n'obtenait JAMAIS son badge alors que le document la vend.
+    Les deux paniers sont donc unis avant d'extraire les familles — c'est déjà
+    ce que fait ``residential.theme._composition_rows`` pour la même raison.
     """
-    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
-    rows = list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+    if SCENARIO == 'Avec batterie':
+        rows = list(AVEC_ITEMS or [])
+    elif SCENARIO == 'Sans batterie':
+        rows = list(SANS_ITEMS or [])
+    else:
+        rows = list(SANS_ITEMS or []) + list(AVEC_ITEMS or [])
+    rows = rows or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
 
     def _premier(pred, champ):
         for it in rows:
@@ -1742,12 +1742,14 @@ def page1():
         # rendue. Devis non divergent ⇒ HTML byte-identique.
         # La carte ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
         # du nombre (19 → 14 pt), et la ligne de légende reste sur UNE ligne.
-        _kpi_kwc = f'{KWC}&nbsp;kWc'
+        # QJR145 (a) — virgule française (le formateur ``kwc_fr`` existait sans
+        # aucun site d'appel : le document sortait « 10.65 kWc »).
+        _kpi_kwc = f'{kwc_fr(KWC)}&nbsp;kWc'
         _kpi_kwc_pt = '19pt'
         if (PANNEAUX_DIVERGENTS and _both and KWC_SANS > 0 and KWC_AVEC > 0
                 and NB_PAN_SANS > 0 and NB_PAN_AVEC > 0):
-            _kpi_kwc = (f'{KWC_SANS:g}&#160;&#183;&#160;{KWC_AVEC:g}'
-                        '&nbsp;kWc').replace(".", ",")
+            _kpi_kwc = (f'{kwc_fr(KWC_SANS)}&#160;&#183;&#160;'
+                        f'{kwc_fr(KWC_AVEC)}&nbsp;kWc')
             _kpi_kwc_pt = '14pt'
             _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
                          f'(sans &#183; avec)')
@@ -2232,7 +2234,7 @@ def page3():
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
-        f'Syst&#232;me photovolta&#239;que {KWC}&#160;kWc &#8212; '
+        f'Syst&#232;me photovolta&#239;que{_kwc_mention()} &#8212; '
         f'{"Sans batterie" if SCENARIO == "Sans batterie" else "Avec batterie"}</div>'
         f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
         f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
@@ -2264,15 +2266,21 @@ def page3():
         _acompte = max(0, min(_acompte, int(_pay_total) - _solde))
         _materiel = int(_pay_total - _acompte - _solde)
 
+        # QJR145 (c) — LES TROIS POURCENTAGES SOMMENT À 100. Arrondis
+        # indépendamment, ils affichaient 99 % ou 101 % et contredisaient la
+        # puce CGV juste au-dessus. Le reliquat va à la tranche « Matériel »,
+        # exactement comme le MONTANT (``_materiel`` est déjà le reste).
         _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
-        _pct_m = round(_materiel / _pay_total * 100) if _pay_total else 0
         _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
+        _pct_m = (100 - _pct_a - _pct_s) if _pay_total else 0
 
         def _pay_box(pct, montant, label):
+            # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
+            # imprimaient « 16 000 MAD MAD » (atteignable via ?devis_final).
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)} MAD</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)}</div>'
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2786,7 +2794,7 @@ def page_etude():
     # (jamais d'\u00ab Autoconsommation 100 % \u00bb fabriqu\u00e9e).
     has_conso = e.get("conso_annuelle") not in (None, "", 0)
     cards1 = (
-        card("Puissance cr\u00eate", f"{KWC}\u00a0kWc", accent=True)
+        card("Puissance cr\u00eate", f"{kwc_fr(KWC)}\u00a0kWc", accent=True)
         + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh")
         + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
         + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
@@ -3203,10 +3211,10 @@ def page_onepage(items):
                 (f"Eau / jour (sur {_fdec(_hrs)} h de pompage)",
                  f"&#8776; {fnum(_m3j)} m&#179;"))
         if KWC > 0:
-            _sum_cells.append(("Champ PV", f"{KWC} kWc"))
+            _sum_cells.append(("Champ PV", f"{kwc_fr(KWC)} kWc"))
     elif KWC > 0:
         _sum_cells = [
-            ("Puissance cr&#234;te", f"{KWC} kWc"),
+            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc"),
             ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an"),
         ]
         # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :

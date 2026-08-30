@@ -18,7 +18,7 @@ Run:
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
@@ -1579,3 +1579,116 @@ class TestQjr53TotauxAuCentime(TestCase):
         self.assertEqual(self._pages(sans_remise, 'onepage'), 1)
         self.assertEqual(self._pages(remise, 'full'),
                          self._pages(sans_remise, 'full'))
+
+
+# ── QJR145 — lot de finition des PDF premium et industriel ───────────────────
+class QJR145FinitionsTests(SimpleTestCase):
+    """Sept constats vérifiés, sans conséquence monétaire, un seul commit.
+
+    (a) ``kwc_fr`` n'avait AUCUN site d'appel : les cinq impressions de
+        puissance sortaient le point décimal anglais, et la case de
+        confirmation de commande n'avait pas la garde ``PUISSANCE_INCONNUE``
+        (« Système photovoltaïque 0.0 kWc ») ;
+    (b) ``{fmt(montant)} MAD`` alors que ``fmt`` suffixe déjà « MAD » →
+        « 16 000 MAD MAD » sur les trois cases de paiement ;
+    (c) les trois pourcentages de l'échéancier, arrondis indépendamment,
+        sommaient à 99 ou 101 % ;
+    (d) sur « Les deux (Sans + Avec) », les garanties partaient de
+        ``SANS_ITEMS`` seul : jamais de badge « Batterie » ;
+    (e) ``load_equip`` — code mort qui fabriquait des lignes à prix 0 ;
+    (f) ``theme._esc`` n'échappait pas les guillemets (``alt="{brand}"``) ;
+    (g) ``com_prod`` / ``ind_prix_kwc`` — calculés, lus par aucun gabarit.
+    """
+
+    def _data(self, **surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        d = dict(G.QUOTE_INPUT)
+        d.update(G.calculate_quote(G.QUOTE_INPUT))
+        d['pdf_mode'] = 'full'
+        for it in d['sans_items'] + d['avec_items']:
+            des = it['designation']
+            if 'Panneaux' in des:
+                it['garantie_mois'] = 144
+                it['garantie_production_mois'] = 360
+            elif 'Onduleur' in des or 'Batterie' in des:
+                it['garantie_mois'] = 120
+        d.update(surcharges)
+        return d
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        return G.render_html_for(self._data(**surcharges))
+
+    # (a) ------------------------------------------------------------------
+    def test_a_la_puissance_s_imprime_a_la_francaise(self):
+        html = self._html()
+        self.assertIn('10,65&nbsp;kWc', html)
+        self.assertNotIn('10.65', html)
+
+    def test_a_kwc_fr_supprime_les_decimales_inutiles(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertEqual(G.kwc_fr(10.65), '10,65')
+        self.assertEqual(G.kwc_fr(10), '10')
+        self.assertEqual(G.kwc_fr(10.5), '10,5')
+        self.assertEqual(G.kwc_fr('x'), 'x')
+
+    def test_a_la_confirmation_de_commande_omet_une_puissance_inconnue(self):
+        html = self._html(scenario='Sans batterie', devis_final=True,
+                          puissance_inconnue=True)
+        self.assertIn('Syst&#232;me photovolta&#239;que &#8212;', html)
+        self.assertNotIn('0.0&#160;kWc', html)
+        self.assertNotIn('0&#160;kWc', html)
+
+    # (b) et (c) -----------------------------------------------------------
+    def test_b_le_suffixe_mad_n_est_pas_double(self):
+        html = self._html(scenario='Sans batterie', devis_final=True)
+        self.assertNotIn('MAD MAD', html)
+        self.assertNotIn('MAD&#160;MAD', html)
+
+    def test_c_les_trois_pourcentages_somment_a_cent(self):
+        import re as _re
+        html = self._html(scenario='Sans batterie', devis_final=True)
+        pcts = [int(p) for p in
+                _re.findall(r'line-height:1\.0;">(\d+)%</div>', html)]
+        self.assertEqual(len(pcts), 3, pcts)
+        self.assertEqual(sum(pcts), 100, pcts)
+
+    # (d) ------------------------------------------------------------------
+    def test_d_le_badge_batterie_apparait_sur_un_document_a_deux_options(self):
+        import re as _re
+        html = self._html()
+        badges = _re.findall(r'margin-top:2px;">([^<]+)</div>', html)
+        self.assertIn('Batterie', badges)
+        self.assertIn('Onduleur', badges)
+
+    def test_d_un_document_sans_batterie_n_invente_pas_le_badge(self):
+        import re as _re
+        html = self._html(scenario='Sans batterie')
+        badges = _re.findall(r'margin-top:2px;">([^<]+)</div>', html)
+        self.assertNotIn('Batterie', badges)
+
+    # (e) ------------------------------------------------------------------
+    def test_e_load_equip_a_disparu(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertFalse(hasattr(G, 'load_equip'))
+
+    # (f) ------------------------------------------------------------------
+    def test_f_esc_echappe_les_guillemets(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme._esc('Soleil "Atlas" SARL'),
+                         'Soleil &quot;Atlas&quot; SARL')
+        self.assertEqual(theme._esc('A & B <x>'), 'A &amp; B &lt;x&gt;')
+        self.assertEqual(theme._esc(None), '')
+
+    def test_f_un_nom_sans_guillemet_est_rendu_a_l_identique(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme._esc('Taqinor SARL'), 'Taqinor SARL')
+
+    # (g) ------------------------------------------------------------------
+    def test_g_les_cles_mortes_ont_disparu(self):
+        from apps.ventes.quote_engine.commercial import (
+            renderer as c_renderer, sample_data as c_sample)
+        from apps.ventes.quote_engine.industriel import (
+            renderer as i_renderer, sample_data as i_sample)
+        self.assertNotIn('com_prod', c_renderer._augment(c_sample.build()))
+        self.assertNotIn('ind_prix_kwc', i_renderer._augment(i_sample.build()))

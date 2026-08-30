@@ -114,7 +114,8 @@ def _augment(data: dict) -> dict:
     # « pas de payback » quand l'économie est nulle : la reprendre imprimait
     # « Payback ≈ 0,0 ans » sur la page même qui annonce « Point mort > 15 ans ».
     d["ind_payback"] = pb if pb else None
-    d["ind_prix_kwc"] = _num(etude.get("prix_kwc"))
+    # QJR145 (g) — ``ind_prix_kwc`` SUPPRIMÉ : calculé et lu par aucun gabarit
+    # industriel (le prix au kWc vit sur la page étude du moteur premium).
 
     # ── QJR120 — LE CASHFLOW DE LA PAGE 2 EST LE CASHFLOW CANONIQUE ─────────
     # ``finance.py`` projetait « t × économie − investissement », une droite
