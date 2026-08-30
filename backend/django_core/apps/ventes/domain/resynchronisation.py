@@ -923,12 +923,19 @@ def reconcilier(devis, intention):
         # autres refus de resynchro : l'écran l'affiche déjà (réponse
         # ``sync-layout``), donc le désaccord « ligne verrouillée à N /
         # taille.nb_panneaux = M » cesse d'être silencieux.
+        # QJR225 — LE REPLI SUR LE kWc DU CALEPINAGE A ÉTÉ RETIRÉ. Ce site
+        # écrivait encore ``etude['puissance_kwc'] = kwc`` (le kWc du LAYOUT)
+        # quand le propriétaire ne savait pas répondre : deux contradictions à
+        # la fois — la règle « écrivain unique » de QJR63
+        # (``domain.scenario.poser_puissance_kwc``, seul écrivain déclaré) et
+        # la préférence Z2 de ce module lui-même (OMETTRE une valeur inconnue
+        # plutôt que la fabriquer). Le calepinage modélise à watt constant :
+        # ce n'est pas le panneau vendu. Sans kWc lisible, la clé est
+        # ABSENTE — jamais un nombre de repli.
         _kwc_proprietaire = puissance_kwc_du_devis(
             verrou, avertissements=avertissements)
         if _kwc_proprietaire:
             etude['puissance_kwc'] = _kwc_proprietaire
-        elif kwc:
-            etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
