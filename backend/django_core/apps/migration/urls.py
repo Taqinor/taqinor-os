@@ -4,8 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AnnuairePartenairesCertifiesView, DeploiementPartenaireViewSet,
-    LotMigrationViewSet, PlaybookInstanceViewSet, ProjetMigrationViewSet,
-    ScoreCertificationView)
+    LotMigrationViewSet, ParcoursCertificationPartenaireViewSet,
+    PlaybookInstanceViewSet, ProjetMigrationViewSet, ScoreCertificationView)
 
 router = DefaultRouter()
 router.register(
@@ -19,6 +19,10 @@ router.register(
 router.register(
     r'deploiements-partenaire', DeploiementPartenaireViewSet,
     basename='migration-deploiement-partenaire')
+router.register(
+    r'parcours-certification-partenaire',
+    ParcoursCertificationPartenaireViewSet,
+    basename='migration-parcours-certification-partenaire')
 
 urlpatterns = [
     # NTMIG27 — score PROPOSÉ de certification d'un partenaire (lecture seule ;

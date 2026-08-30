@@ -20,6 +20,7 @@ from .models import (
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
+    KbParcours,
     KbParcoursArticle,
     KbParcoursAssignation,
     KbRechercheVide,
@@ -533,6 +534,20 @@ def retrieve_chunks(user, query, *, limit=5):
 
 
 # ── XKB22 — Parcours de lecture d'intégration ───────────────────────────────
+
+def parcours_par_id(parcours_id, company):
+    """NTMIG31 — parcours ACTIF d'une société par id, ou ``None``.
+
+    Point d'entrée LECTURE pour ``apps.migration`` (parcours de certification
+    partenaire) : scopé société (jamais un parcours d'un autre tenant), jamais
+    un import de ``apps.kb.models`` depuis là-bas.
+    """
+    if not parcours_id or company is None:
+        return None
+    return (KbParcours.objects
+            .filter(pk=parcours_id, company=company, actif=True)
+            .first())
+
 
 def articles_ordonnes_parcours(parcours):
     """XKB22 — Articles ORDONNÉS d'un parcours (QuerySet, scopé société)."""

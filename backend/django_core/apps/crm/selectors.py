@@ -2652,6 +2652,18 @@ def partenaires_certifies_qs(company, *, niveau_min=None, specialite=None,
     return qs.order_by('-rang_niveau', 'nom')
 
 
+def specialites_partenaire_cles():
+    """NTMIG31 — clés du référentiel FERMÉ des spécialités partenaire.
+
+    Simple accès en lecture à la liste de clés déclarée par le modèle
+    (``Partenaire.SPECIALITES_CLES``) — jamais un import de
+    ``apps.crm.models`` depuis une autre app pour cette seule constante.
+    """
+    from .models import Partenaire
+
+    return Partenaire.SPECIALITES_CLES
+
+
 def certifications_expirantes(company, within_days=60):
     """NTMIG30 — partenaires dont la couche certification EXPIRE bientôt.
 
