@@ -15,6 +15,26 @@
 // (panelW=710, dayUsagePct résidentiel), pour prouver que le résultat
 // respecte la règle des paliers — sans dupliquer la formule elle-même
 // (elle vit uniquement dans solar.js, testée par solar.dimensionnement.test.mjs).
+//
+// QJR109 — VÉRIFICATION FAITE, PRÉMISSE INFIRMÉE. La tâche demandait de
+// « retirer le préambule readFileSync : ces tests testent DÉJÀ des modules
+// purs, il suffit de les importer et de les appeler ». C'est vrai de la
+// MAJORITÉ de ce fichier — qui importe et appelle déjà `solar.js` — mais FAUX
+// des deux dernières épingles, et le fait a été mesuré, pas supposé :
+//
+//     node -e "import('./src/features/ventes/autoQuote.js')"
+//     → Cannot find module …/features/ventes/store/ventesSlice
+//
+// `autoQuote.js` n'est PAS chargeable sous `node --test` (imports sans
+// extension résolus par Vite, puis `import.meta.env` via le client axios).
+// Les deux épingles qui LISENT son source — « la garde lève AVANT createDevis »
+// (sinon un devis vide est persisté) et « le message est CELUI du bandeau de
+// DevisGenerator » (verrou de dérive inter-fichiers) — n'ont donc aucune autre
+// expression possible aujourd'hui. Les retirer ne les convertirait pas : cela
+// SUPPRIMERAIT deux gardes. Elles restent, et sont nommées ici pour que la
+// prochaine passe ne les prenne pas pour un oubli. Leur vraie conversion
+// suppose d'extraire la garde de `createAutoQuote` dans un module pur — un
+// chantier à part, pas une conversion de test.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

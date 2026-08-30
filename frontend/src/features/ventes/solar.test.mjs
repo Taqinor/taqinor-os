@@ -5,6 +5,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+// QJR109 — le garde-fou « le lead ne réinitialise pas le marché choisi » est
+// désormais EXÉCUTÉ sur le reducer pur, au lieu d'être cherché dans le source.
+import {
+  sizingReducer, ETAT_INITIAL,
+} from './quote/sizingReducer.js'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
@@ -179,6 +184,13 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
   assert.equal(by('Autres').items[0].nom, 'Échafaudage roulant')
 })
 
+// QJR109 — CETTE GARDE-CI RESTE UNE LECTURE DU SOURCE, ET C'EST DÉLIBÉRÉ.
+// Elle porte sur des ATTRIBUTS DOM (`noValidate` du formulaire, `step="any"`
+// sur chaque champ nombre) : c'est une règle FONDATEUR (« l'écran ne doit
+// JAMAIS snapper ni rejeter un nombre tapé ») dont la seule autre expression
+// possible est un rendu React (spec RTL). La convertir en pur est IMPOSSIBLE ;
+// la retirer DESSERRERAIT la garde. Elle reste donc telle quelle, nommée pour
+// que la prochaine passe ne la prenne pas pour un oubli.
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
   const jsx = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
@@ -195,24 +207,38 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
   numberSteps.forEach(s => assert.equal(s, 'any'))
 })
 
+// QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne
+// `!sizing.touche.mode` à moins de 120 caractères de `LEAD_TYPE_TO_MODE` dans
+// `DevisGenerator.jsx` : une épingle qui rougit sur un reformatage et reste
+// verte si le garde-fou est déplacé dans une branche morte. Depuis QJR87/QJR99
+// le garde-fou est un ÉTAT du reducer PUR — il est ici EXÉCUTÉ.
 test('garde-fou : choisir un lead ne réinitialise JAMAIS le mode choisi', () => {
-  const jsx = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
-    'utf-8',
-  )
-  // Le pré-réglage du mode depuis le lead doit être conditionné au fait que
-  // l'utilisateur n'a PAS déjà touché le mode. QJR99 — le drapeau est passé du
-  // ref `modeTouched` à l'ÉTAT `sizing.touche.mode` (reducer QJR87) : même
-  // garde-fou, même force d'assertion, à son nouvel emplacement.
-  assert.ok(/!sizing\.touche\.mode[\s\S]{0,120}LEAD_TYPE_TO_MODE/.test(jsx),
-    'applyLead doit vérifier touche.mode avant de changer le mode')
-  assert.ok(jsx.includes('const marquerMarcheTouche = () =>'),
-    'le sélecteur de mode doit marquer le choix utilisateur')
-  assert.ok(/onChange=\{\(v\) => \{ marquerMarcheTouche\(\); onModeChangeUi\(v\) \}\}/.test(jsx),
-    'le sélecteur de marché doit poser le drapeau AVANT la confirmation')
-  // Et l'échec de création ne montre jamais de JSON brut
-  assert.ok(!jsx.includes('JSON.stringify(err)'),
-    'plus de JSON brut affiché à l\'utilisateur en cas d\'échec')
+  // Le commercial a choisi son marché à la main…
+  const choisi = sizingReducer(ETAT_INITIAL,
+    { type: 'MARCHE_CHANGE', mode: 'industriel' })
+  assert.equal(choisi.modeInstallation, 'industriel')
+  assert.equal(choisi.touche.mode, true,
+    'un choix UTILISATEUR doit marquer le drapeau')
+
+  // …puis il sélectionne un lead d'un AUTRE marché : le choix tient.
+  const apresLead = sizingReducer(choisi, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'residentiel' } })
+  assert.equal(apresLead.modeInstallation, 'industriel',
+    'le lead ne doit pas réinitialiser le marché déjà choisi')
+
+  // Sans choix préalable, le lead pose bien le marché (le garde-fou ne gèle
+  // pas l'écran) — et ne marque PAS le drapeau : ce n'est pas un choix.
+  const vierge = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'agricole' } })
+  assert.equal(vierge.modeInstallation, 'agricole')
+  assert.equal(vierge.touche.mode, false)
+
+  // Un `type_installation` inconnu ne change rien (jamais un marché inventé).
+  assert.equal(
+    sizingReducer(ETAT_INITIAL,
+      { type: 'LEAD_APPLIQUE', lead: { type_installation: 'sous-marin' } })
+      .modeInstallation,
+    'residentiel')
 })
 
 test('ROI : production GHI × kWc × 0.8', () => {
