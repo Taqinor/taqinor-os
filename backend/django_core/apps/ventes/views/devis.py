@@ -2009,7 +2009,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # tokenisée Q7), préservant 1:1 la chaîne bon-commande/facture (règle #4).
         option = (request.data.get('option') or '').strip()
         try:
-            accept_devis(
+            # QJR135 / ES4 — ON SÉRIALISE L'INSTANCE QUE LE SERVICE A ÉCRITE.
+            # ``accept_devis`` REBIND son nom local sur la relecture VERROUILLÉE
+            # (``select_for_update().get(...)``) : l'objet de l'appelant reste
+            # celui d'AVANT, donc ``statut`` y valait encore « envoyé »,
+            # ``option_acceptee`` '' et ``accepte_par_nom`` '' juste après une
+            # acceptation réussie. On reprend donc sa VALEUR DE RETOUR — jamais
+            # un second ``refresh_from_db`` qui redemanderait ce que le service
+            # a déjà en main.
+            devis = accept_devis(
                 devis=devis, user=request.user, nom=nom,
                 date_acceptation=date_acc, option=option,
                 idempotent_reaccept=False)

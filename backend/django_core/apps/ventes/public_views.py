@@ -3791,7 +3791,18 @@ def proposal_accept(request, token):
             {'detail': otp_err},
             status=status.HTTP_400_BAD_REQUEST))
     try:
-        accept_devis(
+        # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
+        #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture
+        #    VERROUILLÉE ; l'objet de CETTE fonction restait celui d'AVANT.
+        #    La réponse sérialisait donc une instance périmée :
+        #    ``option_acceptee`` y valait '', donc ``option_effective``
+        #    retombait sur AVEC_BATTERIE (``utils/options``) et un client qui
+        #    venait de signer « sans batterie » voyait l'acompte de l'option
+        #    AVEC — plus élevé — pendant que l'email, qui reçoit l'instance
+        #    FRAÎCHE, annonçait le bon montant. ``statut`` renvoyé valait
+        #    « envoye » et ``accepte_par_nom`` '' juste après une signature
+        #    réussie. On reprend donc la VALEUR DE RETOUR du service.
+        devis = accept_devis(
             devis=devis, user=None, nom=nom, option=option,
             ip=_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
