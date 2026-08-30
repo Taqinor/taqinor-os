@@ -43,6 +43,14 @@ LECTEURS_LEGITIMES = {
     'apps/ventes/offres_tailles.py',
     # Les paliers/combinaisons du balayage portent LEUR payback.
     'apps/ventes/dimensionnement.py',
+    # QJR77 (30/08/2026) — MÊME payback de palier, NOUVEAU fichier. La
+    # scission de `dimensionnement.py` a emporté la couche liée au devis,
+    # dont `_echelle_paliers_batterie`, qui pose sa PROPRE clé
+    # `payback_annees` (`prix_ttc / economies_annuelles`) dans le dict d'un
+    # palier. Ce n'est toujours PAS une lecture d'``etude_params`` : le
+    # déplacement n'a rien ajouté, il a changé le chemin d'un producteur
+    # déjà déclaré ici. L'invariant de QJR48 est intact.
+    'apps/ventes/domain/dimensionnement_devis.py',
     # Projection publique des PALIERS batterie (jamais d'``etude_params``).
     'apps/ventes/public_views.py',
     # Comparateurs de financement — un tout autre domaine.
