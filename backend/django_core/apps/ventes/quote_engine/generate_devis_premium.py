@@ -2562,6 +2562,63 @@ def _bankable_decrit_ce_champ(bank):
     return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
 
 
+#: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
+#: \u00ab Production annuelle \u00bb imprim\u00e9e sur la M\u00caME page. C'est EXACTEMENT la
+#: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
+#: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
+#: l'entier de la carte, jamais les ~10 % que produisait le double derate.
+TOLERANCE_PRODUCTION_PAGE = 0.01
+
+
+def _bankable_concorde_avec_la_page(bank):
+    """QJR115 \u2014 la P50 bancable dit-elle la M\u00caME production que la carte ?
+
+    La page \u00c9tude imprime deux fois la production annuelle de la M\u00caME
+    installation : la carte \u00ab Production annuelle \u00bb (``ETUDE
+    ['production_annuelle']``, figure canonique du document \u2014 \u00e9tude saisie ou
+    calepinage recal\u00e9) et, juste en dessous, \u00ab Production P50 (m\u00e9diane) \u00bb du
+    bloc bancable (``etude_params['simulation']``, jou\u00e9 par ``apps.ventes.
+    etude``). QJR114 a fait converger les deux CHA\u00ceNES de calcul (plus de
+    double derate : la P50 vaut d\u00e9sormais ``productible \u00d7 PRODUCTION_DERATE``,
+    la formule m\u00eame de ``pricing``) \u2014 mais rien n'oblige les deux SOURCES \u00e0
+    d\u00e9crire le m\u00eame devis : le builder recopie ``simulation`` sans condition et
+    cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies, donc une \u00e9tude jou\u00e9e
+    avant un redimensionnement (ou une production saisie \u00e0 la main) remet deux
+    nombres contradictoires c\u00f4te \u00e0 c\u00f4te sur la feuille.
+
+    On ne r\u00e9concilie rien ici \u2014 le moteur de rendu ne calcule aucune
+    production : on PROUVE l'\u00e9galit\u00e9, et \u00e0 d\u00e9faut de preuve le bloc est OMIS
+    (r\u00e8gle fondateur : omettre plut\u00f4t que publier deux v\u00e9rit\u00e9s).
+
+    Rend ``True`` quand il n'y a rien \u00e0 contredire : page sans carte
+    \u00ab Production annuelle \u00bb, ou bloc bancable sans P50 (il ne publie alors que
+    la P90 \u2014 une autre grandeur, explicitement nomm\u00e9e \u2014 le ratio de performance
+    et la cascade). Rend ``False`` d\u00e8s qu'un des deux nombres est illisible :
+    l'\u00e9galit\u00e9 n'est pas prouv\u00e9e.
+    """
+    # ``ETUDE`` n'est écrite que par ``apply_quote_data`` : avant toute
+    # ingestion le nom n'existe PAS dans le module (les tests unitaires du
+    # bloc l'appellent dans cet état). Sans étude ingérée il n'y a pas de carte
+    # « Production annuelle », donc rien à contredire.
+    etude_page = globals().get("ETUDE")
+    prod_page = (etude_page.get("production_annuelle")
+                 if isinstance(etude_page, dict) else None)
+    if prod_page in (None, ""):
+        return True
+    pr = bank.get("pr") if isinstance(bank, dict) else None
+    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
+    if p50 in (None, ""):
+        return True
+    try:
+        prod_page = float(prod_page)
+        p50 = float(p50)
+    except (TypeError, ValueError):
+        return False
+    if prod_page <= 0:
+        return False
+    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+
+
 def _bankable_block_html(bank):
     """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
 
@@ -2581,10 +2638,18 @@ def _bankable_block_html(bank):
     champ PV juste \u00e0 c\u00f4t\u00e9 de sa vraie \u00ab Puissance cr\u00eate \u00bb. La somme des kWc des
     zones simul\u00e9es doit d\u00e9sormais \u00e9galer ``KWC`` (\u00e0 la tol\u00e9rance d'arrondi),
     sinon le bloc est OMIS.
+
+    QJR115 \u2014 ET IL DIT LA M\u00caME PRODUCTION QUE LA CARTE JUSTE AU-DESSUS. D\u00e9crire
+    le bon champ PV ne suffit pas : la page publie d\u00e9j\u00e0 \u00ab Production annuelle \u00bb
+    depuis une AUTRE source. Le bloc n'est servi que si sa P50 co\u00efncide avec
+    elle (``_bankable_concorde_avec_la_page``) \u2014 sinon la feuille porterait
+    deux productions contradictoires pour une seule installation.
     """
     if not isinstance(bank, dict) or not bank:
         return ""
     if not _bankable_decrit_ce_champ(bank):
+        return ""
+    if not _bankable_concorde_avec_la_page(bank):
         return ""
     pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
 
