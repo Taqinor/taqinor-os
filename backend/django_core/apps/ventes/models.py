@@ -1921,6 +1921,52 @@ class DevisSignature(models.Model):
     #: La version dont sont scellées les NOUVELLES signatures.
     CONTENT_HASH_VERSION = CONTENT_HASH_V2
 
+    @staticmethod
+    def _norme_decimale(valeur):
+        """Le texte CANONIQUE d'un montant du payload — INDÉPENDANT DE LA VOIE
+        DE LECTURE.
+
+        LE DÉFAUT QUE CECI CORRIGE (constat du 30/08/2026). Le payload
+        interpolait les montants tels quels (``f"tva={devis.taux_tva}"``), donc
+        il rendait le *repr Python* de la valeur portée par l'instance — et ce
+        repr DIFFÈRE selon d'où vient l'instance :
+
+          · instance FRAÎCHE (``Devis.objects.create(taux_tva=Decimal('20'))``,
+            la voie de la POSE) → ``tva=20``, et ``remise=0`` car le défaut du
+            champ est l'*entier* ``0`` ;
+          · instance RELUE de la base (``signature.devis``, la voie de la
+            VÉRIFICATION) → ``tva=20.00|remise=0.00``, la colonne étant un
+            ``numeric(5,2)``.
+
+        Deux chaînes différentes ⇒ deux SHA-256 différents : le sceau ne
+        pouvait PAS se reproduire, et ``verifier_contenu`` rendait ``False``
+        pour un contenu pourtant strictement inchangé. Le sceau existait depuis
+        QJ10, mais personne ne le relisait : la lacune n'est apparue qu'en lui
+        donnant un vérificateur.
+
+        POURQUOI CE CHOIX PRÉSERVE LES SIGNATURES DÉJÀ POSÉES. La forme
+        canonique retenue est celle de la BASE (quantifiée aux 2 décimales de
+        la colonne), et non celle de l'instance fraîche. Or toute empreinte
+        jamais PERSISTÉE l'a été à partir de valeurs de cette forme-là (le
+        chemin d'acceptation lit le devis d'un queryset ; un devis créé par
+        sérialiseur DRF porte déjà des décimaux quantifiés). Quantifier est
+        donc un NO-OP sur ces valeurs : les empreintes v1 en base se
+        reproduisent à l'octet. Seule change la forme fraîche — celle qui, par
+        construction, ne pouvait jamais se re-vérifier.
+
+        ``None`` reste ``None`` (colonnes nullables : ``quantite``,
+        ``prix_unitaire``, ``taux_tva`` de ligne) — une valeur absente est déjà
+        stable des deux côtés, et la rendre autrement casserait un v1 existant.
+        """
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        if valeur is None:
+            return 'None'
+        try:
+            return str(Decimal(str(valeur)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, TypeError, ValueError):
+            return str(valeur)
+
     @classmethod
     def _lignes_pour_empreinte(cls, devis, lignes=None):
         """Les lignes du devis, normalisées et TRIÉES PAR ``id``.
@@ -1949,24 +1995,30 @@ class DevisSignature(models.Model):
         if client is not None:
             client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
         lignes = cls._lignes_pour_empreinte(devis, lignes)
+        # Tous les montants passent par ``_norme_decimale`` : le payload doit
+        # être le MÊME que le devis vienne d'être créé en mémoire ou d'être
+        # relu de la base, sans quoi le sceau ne se reproduit jamais.
+        nb = cls._norme_decimale
         if version >= cls.CONTENT_HASH_V2:
             lignes_str = '|'.join(
-                f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}"
-                f":{lg['remise']}:{lg['taux_tva']}"
+                f"{lg['designation']}:{nb(lg['quantite'])}"
+                f":{nb(lg['prix_unitaire'])}"
+                f":{nb(lg['remise'])}:{nb(lg['taux_tva'])}"
                 f":{int(bool(lg['optionnelle']))}"
                 for lg in lignes
             )
         else:
             lignes_str = '|'.join(
-                f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
+                f"{lg['designation']}:{nb(lg['quantite'])}"
+                f":{nb(lg['prix_unitaire'])}:{nb(lg['remise'])}"
                 for lg in lignes
             )
         payload = (
             f"ref={devis.reference}|"
             f"client={client_str}|"
             f"created={devis.date_creation}|"
-            f"tva={devis.taux_tva}|"
-            f"remise={devis.remise_globale}|"
+            f"tva={nb(devis.taux_tva)}|"
+            f"remise={nb(devis.remise_globale)}|"
             f"lignes={lignes_str}"
         )
         if version >= cls.CONTENT_HASH_V2:
