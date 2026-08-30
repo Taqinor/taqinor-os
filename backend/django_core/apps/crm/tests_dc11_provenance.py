@@ -115,8 +115,22 @@ class LeCheminVivantDeLaProvenance(TestCase):
         self.devis.refresh_from_db()
         stamp = self.devis.etude_params['provenance']
         self.assertEqual(stamp['source_lead_id'], self.lead.pk)
-        self.assertEqual(stamp['valeurs']['facture_hiver'], '1200.00')
         self.assertIn('captured_at', stamp)
+        # LA FORME EST str, LA VÉRIFICATION EST PAR VALEUR — et c'est le
+        # contrat du sélecteur, pas une commodité de test. `crm.selectors.
+        # _lead_provenance_valeurs` rend `str(v)` pour un Decimal (JSON-safe) :
+        # la CHAÎNE obtenue dépend donc de l'exposant du Decimal qu'il a sous la
+        # main, pas du champ. Un lead ENCORE EN MÉMOIRE porte le `Decimal
+        # ('1200')` qu'on lui a passé → « 1200 » ; le MÊME lead relu de la base
+        # porte `Decimal('1200.00')` (decimal_places appliqués) → « 1200.00 ».
+        # Les deux sont la même somme. C'est précisément pourquoi
+        # `lead_values_changed_since` compare par valeur (son `_norm`) et non
+        # par texte — sans quoi chaque champ décimal INCHANGÉ lèverait une
+        # fausse alerte. On assertit donc ici la MÊME chose que lui : le type
+        # (JSON-safe) et la VALEUR.
+        facture = stamp['valeurs']['facture_hiver']
+        self.assertIsInstance(facture, str)
+        self.assertEqual(Decimal(facture), self.lead.facture_hiver)
 
     def test_le_lead_de_l_intention_prime_sur_celui_du_devis(self):
         """À la CRÉATION le devis n'est pas encore rattaché : c'est
@@ -172,7 +186,12 @@ class LeCheminVivantDeLaProvenance(TestCase):
             pipeline.estampiller_provenance(self.devis, self._intention()))
         self.devis.refresh_from_db()
         stamp = self.devis.etude_params['provenance']
-        self.assertEqual(stamp['valeurs']['facture_hiver'], '1200.00')
+        # Comparaison PAR VALEUR (voir la note de forme dans
+        # `test_le_pipeline_estampille_un_devis_a_lead`) : l'estampille doit
+        # porter la facture d'AVANT — 1200, jamais les 1500 qui viennent
+        # d'être enregistrés sur le lead.
+        self.assertEqual(Decimal(stamp['valeurs']['facture_hiver']),
+                         Decimal('1200'))
         self.assertIn(
             'facture_hiver',
             selectors.lead_values_changed_since(stamp, company=self.company))
