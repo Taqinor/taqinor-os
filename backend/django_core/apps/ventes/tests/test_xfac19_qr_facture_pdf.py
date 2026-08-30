@@ -5,6 +5,16 @@ Une facture avec un lien de paiement actif rend un QR scannable vers la page
 de paiement ; sans lien, le QR pointe vers le document public ; le PDF sans
 aucun lien reste identique à aujourd'hui (ajout silencieux).
 
+QJR69 — CIBLE DE PATCH SUIVIE, PAS UN CHANGEMENT DE COMPORTEMENT. Le corps de
+``qr_svg_for_facture_pdf`` a été déplacé tel quel de ``apps/ventes/services.py``
+vers ``apps/ventes/domain/encaissements.py``. Il résout donc ``qr_svg_for`` dans
+les globales de SON module : ``mock.patch`` doit viser
+``apps.ventes.domain.encaissements.qr_svg_for``, plus ``…services.qr_svg_for``
+(un patch sur un espace de noms n'affecte que les lectures qui passent par lui).
+Le patch de ``apps.ventes.services.qr_svg_for_facture_pdf`` plus bas, lui, reste
+valide : son appelant (``ventes/utils/pdf.py``) importe le nom depuis la façade
+``services`` AU MOMENT DE L'APPEL, donc il voit la doublure.
+
 Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_xfac19_qr_facture_pdf -v 2
@@ -84,7 +94,7 @@ class XFAC19QrServiceTests(TestCase):
         from apps.ventes.services import create_payment_link, \
             qr_svg_for_facture_pdf
         link = create_payment_link(facture=self.facture)
-        with patch('apps.ventes.services.qr_svg_for') as mock_qr:
+        with patch('apps.ventes.domain.encaissements.qr_svg_for') as mock_qr:
             mock_qr.return_value = '<svg>fake</svg>'
             qr_svg_for_facture_pdf(self.facture)
             called_url = mock_qr.call_args[0][0]
@@ -93,7 +103,7 @@ class XFAC19QrServiceTests(TestCase):
 
     def test_no_payment_link_uses_document_share_url(self):
         from apps.ventes.services import qr_svg_for_facture_pdf
-        with patch('apps.ventes.services.qr_svg_for') as mock_qr:
+        with patch('apps.ventes.domain.encaissements.qr_svg_for') as mock_qr:
             mock_qr.return_value = '<svg>fake</svg>'
             qr_svg_for_facture_pdf(self.facture)
             called_url = mock_qr.call_args[0][0]
@@ -108,7 +118,7 @@ class XFAC19QrServiceTests(TestCase):
         link = create_payment_link(facture=self.facture)
         PaymentLink.objects.filter(pk=link.pk).update(
             expires_at=timezone.now() - timedelta(days=1))
-        with patch('apps.ventes.services.qr_svg_for') as mock_qr:
+        with patch('apps.ventes.domain.encaissements.qr_svg_for') as mock_qr:
             mock_qr.return_value = '<svg>fake</svg>'
             qr_svg_for_facture_pdf(self.facture)
             called_url = mock_qr.call_args[0][0]

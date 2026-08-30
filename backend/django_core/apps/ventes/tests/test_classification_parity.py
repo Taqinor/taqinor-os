@@ -22,8 +22,27 @@ _REPO_ROOT = os.path.abspath(
 SOLAR_JS = os.path.join(
     _REPO_ROOT, 'frontend', 'src', 'features', 'ventes', 'solar.js')
 # Miroir backend de l'auto-remplissage écran (mêmes mots-clés, deux langages).
-SERVICES_PY = os.path.join(
-    os.path.dirname(__file__), '..', 'services.py')
+# QJR71/QJR74 — ON SCANNE LE DOMAINE, PLUS UN FICHIER. La garde visait
+# `services.py` ; la vague M3 y a vidé tout corps métier (c'est désormais une
+# pure façade de ré-exports) et le vivier batterie vit dans
+# `domain/composition.py`. Un chemin épinglé rend ce genre de garde VERTE ET
+# VIDE au premier déplacement : on lit donc toute la surface de production de
+# `apps/ventes`, et la tolérance peut déménager sans que la garde mente.
+BACKEND_VENTES = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
+def _source_production_ventes():
+    """Le texte de tous les modules de production d'``apps/ventes``."""
+    morceaux = []
+    for racine, dossiers, fichiers in os.walk(BACKEND_VENTES):
+        dossiers[:] = [d for d in dossiers
+                       if d not in ('tests', 'migrations', '__pycache__')]
+        for nom in fichiers:
+            if not nom.endswith('.py') or nom.startswith('test'):
+                continue
+            with open(os.path.join(racine, nom), encoding='utf-8') as fh:
+                morceaux.append(fh.read())
+    return '\n'.join(morceaux).lower()
 
 
 class TestClassificationParity(SimpleTestCase):
@@ -170,15 +189,17 @@ class TestToleranceOrthographeDyness(SimpleTestCase):
             self.assertEqual(theme.fiche_slug(nom), 'batterie-dyness', nom)
 
     def test_le_vivier_dauto_remplissage_tolere_les_deux(self):
-        # services.py choisit les modules 5/10 kWh de la marque parmi toutes les
-        # batteries du catalogue ; une base pas encore migrée ne doit pas faire
-        # retomber ce vivier sur TOUTES les batteries (gel, lithium générique…).
-        with open(SERVICES_PY, encoding='utf-8') as fh:
-            src = fh.read().lower()
+        # La composition choisit les modules 5/10 kWh de la marque parmi toutes
+        # les batteries du catalogue ; une base pas encore migrée ne doit pas
+        # faire retomber ce vivier sur TOUTES les batteries (gel, lithium
+        # générique…). Le vivier vit dans `domain/composition.py` depuis QJR74 —
+        # d'où le balayage de toute la surface de production plutôt qu'un
+        # fichier nommé.
+        src = _source_production_ventes()
         for graphie in ("'dyness'", "'deyness'"):
             self.assertIn(
                 graphie, src,
-                f"services.py a perdu la graphie {graphie} — une désignation "
+                f"apps/ventes a perdu la graphie {graphie} — une désignation "
                 "historique cesserait d'alimenter le vivier batterie.")
 
     def test_solar_js_tolere_les_deux(self):
@@ -189,4 +210,4 @@ class TestToleranceOrthographeDyness(SimpleTestCase):
             self.assertIn(
                 graphie, src,
                 f"solar.js a perdu la graphie {graphie} — il doit rester "
-                "aligné avec apps/ventes/services.py.")
+                "aligné avec le vivier backend d'apps/ventes.")

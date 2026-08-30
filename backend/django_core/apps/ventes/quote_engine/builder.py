@@ -21,6 +21,10 @@ from pathlib import Path
 # L-NIV — LA règle d'agrégation « kit » du niveau standard, partagée avec la
 # charge utile JSON publique et le comparatif de gammes (une seule vérité).
 from apps.ventes.utils.anticopie import agreger_lignes_kit
+# QJR78 — LA table de classification produit du backend (une seule, cf. plus
+# bas). ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
+# modèle, ni I/O, et ne peut donc pas boucler.
+from apps.ventes import solar_design as _sd
 
 logger = logging.getLogger(__name__)
 
@@ -251,8 +255,14 @@ def _normalize_site_host(site: str) -> str:
     return s.strip().rstrip("/")
 
 
-def _is_battery(designation: str) -> bool:
-    return "batterie" in (designation or "").lower()
+# QJR78 — LA CLASSIFICATION PRODUIT N'A PLUS QU'UNE TABLE BACKEND. Elle vit
+# dans ``apps/ventes/solar_design.py`` ; ce module l'IMPORTE au lieu d'en garder
+# une copie. C'est la copie qui avait divergé : le 19/08/2026 la détection
+# panneau a été élargie ICI seulement, laissant `solar_design` et l'ex-
+# `services.py` à la version étroite — un « Module PV 550 W » était panneau pour
+# le PDF et pas pour l'écran. Les alias ci-dessous gardent les noms locaux, donc
+# aucun appelant de ce fichier ne change.
+_is_battery = _sd.is_battery
 
 
 # Capacité batterie lisible sur une désignation (« Batterie 5 kWh », « 10kwh »).
@@ -339,14 +349,8 @@ class _LigneArgentPdf:
         self.taux_tva_effectif = _D(str(row.get("taux_tva", taux_defaut)))
 
 
-def _is_hybrid_inverter(designation: str) -> bool:
-    d = (designation or "").lower()
-    return "onduleur" in d and "hybride" in d
-
-
-def _is_reseau_inverter(designation: str) -> bool:
-    d = (designation or "").lower()
-    return "onduleur" in d and ("réseau" in d or "reseau" in d or "injection" in d)
+_is_hybrid_inverter = _sd.is_hybrid_inverter
+_is_reseau_inverter = _sd.is_reseau_inverter
 
 
 # ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
@@ -356,42 +360,17 @@ def _is_reseau_inverter(designation: str) -> bool:
 # fabriquait un kWc depuis le prix. Élargir la détection, c'est supprimer la
 # cause la plus fréquente de cette invention. Les marques ne suffisent JAMAIS
 # seules — Canadian Solar, Huawei et consorts vendent aussi des onduleurs.
-_PANEL_MODULE_QUALIFIERS = ("pv", "photovolta", "solaire", "solar")
-_PANEL_BRANDS = (
-    "canadian solar", "canadien solar", "jinko", "longi", "trina",
-    "ja solar", "risen", "sunpower", "qcells", "q cells", "astronergy",
-    "znshine",
-)
-
-
-def _is_panel(designation: str, produit_nom: str = "") -> bool:
-    blob = f"{designation} {produit_nom}".lower()
-    if "panneau" in blob or "panneaux" in blob:
-        return True
-    # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
-    # un panneau, quelle que soit la marque écrite dessus.
-    if (_is_inverter(blob) or _is_battery(blob)
-            or _is_smart_meter(blob) or _is_wifi_dongle(blob)):
-        return False
-    if "module" in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS):
-        return True
-    # Marque de panneau ET puissance lisible : sans watt, une marque seule
-    # reste ambiguë — on préfère l'omission à un faux positif.
-    return bool(any(b in blob for b in _PANEL_BRANDS)
-                and _WATT_RE.search(blob))
-
-
-def _is_inverter(designation: str) -> bool:
-    return "onduleur" in (designation or "").lower()
-
-
-def _is_smart_meter(designation: str) -> bool:
-    return "smart meter" in (designation or "").lower()
-
-
-def _is_wifi_dongle(designation: str) -> bool:
-    d = (designation or "").lower()
-    return "wifi" in d or "dongle" in d
+#
+# QJR78 — CE JEU DE MOTS-CLÉS EST DÉSORMAIS CELUI DE ``solar_design`` : il y a
+# été DÉPLACÉ tel quel (mêmes qualifiants, mêmes marques, mêmes exclusions,
+# même ordre), et les trois lecteurs backend l'importent de là. Le PDF ne perd
+# donc rien de l'élargissement du 19/08 ; l'écran, lui, le gagne.
+_PANEL_MODULE_QUALIFIERS = _sd._PANEL_MODULE_QUALIFIERS
+_PANEL_BRANDS = _sd._PANEL_BRANDS
+_is_panel = _sd.is_panel
+_is_inverter = _sd.is_inverter
+_is_smart_meter = _sd.is_smart_meter
+_is_wifi_dongle = _sd.is_wifi_dongle
 
 
 def _quote_is_huawei(items) -> bool:

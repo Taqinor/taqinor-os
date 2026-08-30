@@ -42,6 +42,17 @@ from django.test import SimpleTestCase, TestCase
 from apps.crm.models import Client, Lead
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import dimensionnement, services
+# QJR76 — `build_devis_auto` vit dans `domain/creation` et y LIT
+# `_panneaux_dimensionnement_horaire` (importé au niveau module depuis
+# `domain/taille`). Un `patch` ne double que l'espace de noms qu'il vise :
+# la doublure du moteur se pose donc sur le LECTEUR, pas sur la façade.
+from apps.ventes.domain import creation as domain_creation
+# QJR77 — même règle pour le moteur de paliers : `echelle_paliers_batterie`
+# et le mur physique vivent dans `domain/dimensionnement_devis` et s'y
+# appellent entre eux. `apps.ventes.dimensionnement` ne fait que les
+# ré-exporter par un import de niveau module — un cliché, qu'un patch ne
+# traverse pas.
+from apps.ventes.domain import dimensionnement_devis
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, option_lines,
@@ -280,7 +291,7 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
     def _auto(self, *, scenario, optimum_avec, email):
         # Depuis le 29/08/2026, ``profil_reel_existe`` ne garde plus l'entrée du
         # moteur (tout dimensionnement y passe) : seul le moteur est simulé.
-        with patch.object(services, '_panneaux_dimensionnement_horaire',
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
                           return_value=(8, 550, 'moteur_horaire',
                                         optimum_avec)):
             return services.build_devis_auto(
@@ -349,7 +360,7 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
         """
         lead = self._lead(email='pompage@example.com',
                           type_installation='agricole')
-        with patch.object(services, '_panneaux_dimensionnement_horaire',
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
                           return_value=(8, 550, 'moteur_horaire',
                                         self.OPTIMUM_AVEC)):
             with self.assertRaises(services.AutoDevisError):
@@ -1276,8 +1287,8 @@ class LEchelleDePaliersBatterie(_Base):
 
         # LE COMPTE DÉCLARÉ SEUL NE BORNE PLUS RIEN (28/08/2026) : sans mesure
         # ni mur physique, ce devis se comporte comme un devis SANS layout.
-        with patch('apps.ventes.dimensionnement.plafond_physique_du_devis',
-                   return_value=None):
+        with patch.object(dimensionnement_devis, 'plafond_physique_du_devis',
+                          return_value=None):
             declare = dimensionnement.echelle_paliers_batterie(avec_toit)
         self.assertEqual(
             [p['nb_panneaux'] for p in declare],
@@ -1386,8 +1397,9 @@ class LEchelleDePaliersBatterie(_Base):
         # garde de régime ci-dessous garde exactement son pouvoir d'alerte.
         with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
                    return_value=None), \
-                patch('apps.ventes.dimensionnement.plafond_physique_du_devis',
-                      return_value=dessines):
+                patch.object(dimensionnement_devis,
+                             'plafond_physique_du_devis',
+                             return_value=dessines):
             echelle_dessin = dimensionnement.echelle_paliers_batterie(devis)
 
         # Les deux échelles doivent EXISTER : une liste vide ferait lever les
@@ -1519,7 +1531,7 @@ class LEchelleDePaliersBatterie(_Base):
     def test_le_moteur_en_panne_rend_une_liste_vide_sans_lever(self):
         """Un aperçu ne casse jamais un écran (et n'écrit rien)."""
         devis = self._devis_residentiel(email='panne-ech@example.com')
-        with patch('apps.ventes.dimensionnement._echelle_paliers_batterie',
-                   side_effect=RuntimeError('moteur en panne')):
+        with patch.object(dimensionnement_devis, '_echelle_paliers_batterie',
+                          side_effect=RuntimeError('moteur en panne')):
             self.assertEqual(
                 dimensionnement.echelle_paliers_batterie(devis), [])

@@ -27,11 +27,26 @@
 backend/django_core/apps/ventes/offres_tailles.py::_porter_modules_batterie::ligne::dominante.quantite | Existant 29/08/2026 : porte le nombre de modules batterie sur la plus grosse ligne batterie du devis. Migrera vers domain/lignes.py (QJR59 pose quantite_manuelle).
 backend/django_core/apps/ventes/offres_tailles.py::_substituer_sur_le_devis::ligne::ligne.prix_unitaire | Existant 29/08/2026 : substitution de produit (gamme) -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
 
-# --- backend/django_core/apps/ventes/services.py
-backend/django_core/apps/ventes/services.py::build_devis_from_layout::etude_params::scenario#1 | Existant 29/08/2026 : le generateur PERSISTE le scenario a la creation (libelle LES DEUX). Chemin du registre ecrit hors registre -- cible de la bascule QJR58.
-backend/django_core/apps/ventes/services.py::build_devis_from_layout::etude_params::scenario#2 | Existant 29/08/2026 : meme fonction, branche mono-option (`_scenario_stocke`). Meme cible de bascule que #1.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
-backend/django_core/apps/ventes/services.py::sync_devis_from_layout._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
-backend/django_core/apps/ventes/services.py::resynchroniser_devis_pour_produit::ligne::ligne.prix_unitaire | Existant 29/08/2026 : le prix ne suit le catalogue que si la ligne etait AU PRIX CATALOGUE sans remise (un prix negocie reste intouchable). Migrera vers domain/lignes.py.
+# --- apps/ventes/domain/ (ex-services.py)
+#
+# 29/08/2026 (QJR76) : ces SEPT cles ont ete RE-CLEES, pas re-capturees. La
+# vague M3 a vide `services.py`, devenu une pure facade : `build_devis_from_layout`
+# est parti dans `domain/creation.py`, `sync_devis_from_layout` dans
+# `domain/resynchronisation.py`, `resynchroniser_devis_pour_produit` dans
+# `domain/catalogue_events.py`. Aucun corps n'a change : le qualname et la cible
+# de chaque cle sont RIGOUREUSEMENT identiques a l'avant, seul le segment
+# <chemin> bouge -- c'est la preuve, dans la cle elle-meme, qu'aucune ecriture
+# n'a ete ajoutee ni deplacee hors de sa fonction.
+#
+# `sync_devis_from_layout` N'A PAS ETE POSEE DANS `domain/lignes.py`, contrairement
+# a ce qu'annoncaient les raisons ci-dessous : `lignes.py` est un module SANCTIONNE,
+# donc EXEMPTE de ce scan. L'y poser aujourd'hui aurait fait DISPARAITRE quatre
+# sites de la garde sans qu'aucun n'ait ete converti au registre. Cette convergence
+# est une BASCULE (QJR84), pas un deplacement.
+backend/django_core/apps/ventes/domain/creation.py::build_devis_from_layout::etude_params::scenario#1 | Existant 29/08/2026 : le generateur PERSISTE le scenario a la creation (libelle LES DEUX). Chemin du registre ecrit hors registre -- cible de la bascule QJR58.
+backend/django_core/apps/ventes/domain/creation.py::build_devis_from_layout::etude_params::scenario#2 | Existant 29/08/2026 : meme fonction, branche mono-option (`_scenario_stocke`). Meme cible de bascule que #1.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/catalogue_events.py::resynchroniser_devis_pour_produit::ligne::ligne.prix_unitaire | Existant 29/08/2026 : le prix ne suit le catalogue que si la ligne etait AU PRIX CATALOGUE sans remise (un prix negocie reste intouchable). Migrera vers domain/lignes.py.

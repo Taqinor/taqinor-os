@@ -300,7 +300,7 @@ class TestQJ22SellerNotificationStillFires(TestCase):
 
     @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
-    @patch('apps.ventes.services._notify_seller_accepted')
+    @patch('apps.ventes.domain.cycle_vie._notify_seller_accepted')
     def test_seller_notified_after_qj22(self, mock_notify, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-H01')
         devis.created_by = self.seller
