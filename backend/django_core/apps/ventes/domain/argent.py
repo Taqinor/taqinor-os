@@ -157,7 +157,15 @@ def _totaux_brut(devis, lignes):
 
 def _totaux_canoniques(devis, lignes, option):
     """La chaîne CANONIQUE — celle d'``utils.options.option_totaux``, au
-    centime, avec la remise globale et le filtre d'option."""
+    centime, avec la remise globale et le filtre d'option.
+
+    QJR200 — LE FILTRE D'OPTION PORTE AUSSI LA RÈGLE QF9 (accessoires Huawei
+    orphelins retirés du panier dont l'onduleur n'est pas Huawei) : elle est
+    déclarée UNE SEULE FOIS, dans ``utils.options.retirer_accessoires_huawei``,
+    et appliquée par ``filter_lines_for_option`` ci-dessous. Le noyau n'en
+    porte donc aucune copie — c'est ce qui garantit que le total imprimé et le
+    total du noyau décrivent le même panier.
+    """
     from apps.ventes.selectors import _canonical_totaux
     from apps.ventes.utils.options import (
         filter_lines_for_option, has_two_options,

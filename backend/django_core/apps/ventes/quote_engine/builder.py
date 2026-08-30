@@ -386,30 +386,26 @@ _is_smart_meter = _sd.is_smart_meter
 _is_wifi_dongle = _sd.is_wifi_dongle
 
 
-def _quote_is_huawei(items) -> bool:
-    """QF9 — True quand l'onduleur du devis est Huawei.
+# QJR200 — ``_quote_is_huawei`` A ÉTÉ SUPPRIMÉ D'ICI. La règle QF9 (« un panier
+# dont l'onduleur n'est pas Huawei perd son Smart Meter et sa clé Wi-Fi ») vit
+# désormais UNE SEULE FOIS, dans le noyau monnaie
+# (``apps.ventes.utils.options.retirer_accessoires_huawei``), pour que le total
+# imprimé et le total du noyau décrivent le MÊME panier. Le moteur ne fournit
+# plus que ses lecteurs de champs (ses items sont des dicts) — voir
+# ``_drop_huawei_accessories`` plus bas.
 
-    Smart Meter + Clé Wifi (dongle) sont des accessoires Huawei propres à
-    l'onduleur Huawei : ils ne doivent JAMAIS figurer sur un devis dont
-    l'onduleur est d'une autre marque (ex. Deye). On lit la marque de l'onduleur
-    (réseau ou hybride) via sa désignation, sa marque et le nom du produit lié.
-    Sans onduleur identifiable → False (on n'affiche pas ces accessoires par
-    défaut). Comportement conservateur : le moindre onduleur non-Huawei suffit à
-    retirer les accessoires du document.
-    """
-    inverters = [it for it in items if _is_inverter(it.get("designation", ""))]
-    if not inverters:
-        return False
-    huawei_seen = False
-    for it in inverters:
-        blob = (f"{it.get('designation', '')} {it.get('marque', '')} "
-                f"{it.get('_produit_nom', '')}").lower()
-        if "huawei" in blob:
-            huawei_seen = True
-        else:
-            # Un onduleur non-Huawei dans le devis → pas d'accessoires Huawei.
-            return False
-    return huawei_seen
+
+def _item_classement(it) -> str:
+    """Texte de CLASSEMENT d'un item pour la règle QF9 — la désignation seule,
+    exactement ce que lisait ``_quote_is_huawei`` avant QJR200."""
+    return it.get("designation", "")
+
+
+def _item_marque(it) -> str:
+    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié —
+    les trois champs lus avant QJR200, mot pour mot."""
+    return (f"{it.get('designation', '')} {it.get('marque', '')} "
+            f"{it.get('_produit_nom', '')}")
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -994,13 +990,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # évalue Huawei PAR option (l'onduleur réseau de « sans » peut être Huawei
     # alors que l'onduleur hybride de « avec » est Deye) et on retire les lignes
     # Smart Meter / Wifi de l'option non-Huawei.
+    # QJR200 — LA RÈGLE VIENT DU NOYAU, elle n'est plus recopiée ici : le moteur
+    # ne fournit que les lecteurs de champs de ses items (dicts). Import
+    # fonction-local — ``utils.options`` importe ce module à son sommet.
     def _drop_huawei_accessories(paires):
-        rows = [it for _, it in paires]
-        if _quote_is_huawei(rows):
-            return paires
-        return [(li, it) for li, it in paires
-                if not _is_smart_meter(it.get("designation", ""))
-                and not _is_wifi_dongle(it.get("designation", ""))]
+        from apps.ventes.utils.options import retirer_accessoires_huawei
+        return retirer_accessoires_huawei(
+            paires,
+            classement=lambda p: _item_classement(p[1]),
+            marque=lambda p: _item_marque(p[1]))
 
     _sans_paires = _drop_huawei_accessories(_sans_paires)
     _avec_paires = _drop_huawei_accessories(_avec_paires)
@@ -1027,11 +1025,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                          f"{it.get('_produit_nom', '')}").lower()
             for it in inverters)
 
+    # QJR200 — « est un accessoire Huawei » est le prédicat du noyau (une seule
+    # définition) ; la RÈGLE de la liste libre, elle, reste celle de QJR124
+    # ci-dessus (``any`` et non ``all``) et n'est pas touchée.
+    from apps.ventes.utils.options import (
+        est_accessoire_huawei as _est_accessoire_huawei,
+    )
     _items_libres = list(items)
     if _aucun_onduleur_huawei(items):
         _items_libres = [it for it in items
-                         if not _is_smart_meter(it.get("designation", ""))
-                         and not _is_wifi_dongle(it.get("designation", ""))]
+                         if not _est_accessoire_huawei(_item_classement(it))]
     sans_items = [it for _, it in _sans_paires]
     avec_items = [it for _, it in _avec_paires]
     # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
