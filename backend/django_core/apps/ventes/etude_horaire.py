@@ -88,6 +88,7 @@ from apps.ventes.courbes_journalieres import (
     equipements_du_devis,
     forme_consommation_detaillee,
     occupation_du_devis,
+    renormalisation_redistribution,
 )
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
@@ -1113,13 +1114,26 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     L-BACK n'a pas de restriction saisonnière) — mais ce n'est PAS ce que la
     forme 24 h place. :func:`courbes_journalieres.forme_consommation_detaillee`
     pose les bosses PUIS RENORMALISE la journée au niveau facture : la couche
-    y pèse ``brute × facteur`` avec ``facteur = conso ÷ (conso + brutes)``.
-    Publier la brute faisait dépasser ``totale_mensuelle`` au-dessus de la
-    consommation réelle du client dès que les équipements déclarés pesaient
-    lourd — l'écrêtage ``max(0, …)`` de la base masquait le dépassement au
-    lieu de l'empêcher, en contradiction avec la garantie ci-dessus. Le MÊME
-    facteur est donc appliqué ici, et l'écrêtage devenu inatteignable est
-    remplacé par un avertissement NOMMÉ (journalisé).
+    y pèse ``brute × facteur``. Publier la brute faisait dépasser
+    ``totale_mensuelle`` au-dessus de la consommation réelle du client dès que
+    les équipements déclarés pesaient lourd — l'écrêtage ``max(0, …)`` de la
+    base masquait le dépassement au lieu de l'empêcher, en contradiction avec
+    la garantie ci-dessus. Le MÊME facteur est donc appliqué ici, et l'écrêtage
+    devenu inatteignable est remplacé par un avertissement NOMMÉ (journalisé).
+
+    QJR207 (31/08/2026) — « LE MÊME FACTEUR » EST DÉSORMAIS LE MÊME CODE.
+    QJR16 en avait posé une SECONDE écriture, ``conso ÷ (conso + brutes)``, qui
+    oubliait ce que le composeur fait d'abord : retirer l'énergie du véhicule
+    électrique du niveau (``base = conso − VE``) puisqu'elle est rajoutée APRÈS
+    la renormalisation, sans être rediluée. Dès qu'une couche VE coexistait
+    avec une couche de redistribution, les deux facteurs divergeaient et le kWh
+    par couche publié au client dépassait celui réellement placé dans la
+    journée (mesuré : +19,17 kWh en juillet sur 600 kWh/mois + clim 1,4 kW + VE
+    4 kWh/jour). La copie est supprimée :
+    :func:`courbes_journalieres.renormalisation_redistribution` est l'unique
+    définition, importée ici. Le contrat de sortie est INCHANGÉ (le total reste
+    la facture + la seule charge VE) — seule la frontière entre ``base`` et
+    ``ajouts`` bouge, vers ce que le moteur place vraiment.
 
     Ne lève jamais.
     """
@@ -1155,15 +1169,29 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 continue
             brutes[cle] = kw * len(heures) * jours
 
-        # LE FACTEUR — identique à celui du composeur de forme, à l'échelle du
-        # mois : ``conso_jour ÷ (conso_jour + bosses_jour)`` multiplié en haut
-        # et en bas par le nombre de jours donne exactement l'expression
-        # ci-dessous. Sans bosse (ou sans consommation), il vaut 1,0 et le
-        # calcul retrouve son chemin d'avant, à l'octet.
+        # QJR207 — LA CHARGE VE DU MOIS, LUE AVANT LE FACTEUR. Le composeur de
+        # forme retire cette énergie du niveau AVANT de renormaliser (elle est
+        # rajoutée telle quelle en passe 2, jamais rediluée) : la publication
+        # doit donc la retirer aussi, sinon elle annonce par couche plus de kWh
+        # que le moteur n'en place. Même porte que la passe 2 ci-dessous, d'où
+        # la valeur réutilisée plus bas — jamais une seconde dérivation.
+        ve_mois = 0.0
+        ve = couches.get('ve')
+        if ve and ve.get('mode') == 'addition':
+            ve_kwh_jour = _num(ve.get('kwh_jour'))
+            ve_saisons = ve.get('saisons')
+            if ve_kwh_jour > 0 and (not ve_saisons or saison in ve_saisons):
+                ve_mois = ve_kwh_jour * jours
+
+        # LE FACTEUR — celui du composeur de forme, IMPORTÉ et non recopié
+        # (``courbes_journalieres.renormalisation_redistribution``), lu à
+        # l'échelle du mois : le rapport est invariant d'échelle, donc les
+        # énergies mensuelles y donnent le facteur de la journée. Sans bosse
+        # (ou sans base), il vaut 1,0 et le calcul retrouve son chemin d'avant,
+        # à l'octet.
         brute_totale = sum(brutes.values())
-        facteur = 1.0
-        if brute_totale > 0 and conso_mois > 0:
-            facteur = conso_mois / (conso_mois + brute_totale)
+        _base_mois, facteur = renormalisation_redistribution(
+            conso_mois, ve_mois, brute_totale)
 
         for cle, brute in brutes.items():
             kwh_mois = round(brute * facteur, 2)
@@ -1172,10 +1200,11 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
             base[index] -= kwh_mois
 
         if base[index] < 0:
-            # INATTEIGNABLE par construction (la renormalisation garantit
-            # ``Σ ajouts ≤ conso``) : si cette ligne parle un jour, c'est que
-            # le composeur de forme et cette décomposition ont divergé — on le
-            # DIT au lieu de l'écrêter en silence.
+            # HORS DÉGÉNÉRESCENCE, inatteignable : la renormalisation garantit
+            # ``Σ ajouts ≤ base ≤ conso``. Le seul cas restant est celui où la
+            # charge VE déclarée dépasse à elle seule la facture — le composeur
+            # de forme sort alors lui aussi de la facture (base nulle, bosses
+            # non renormalisées). On le DIT au lieu de l'écrêter en silence.
             logger.warning(
                 'estimation_conso_mensuelle: base négative après '
                 'renormalisation (mois %d, conso %.2f kWh, ajouts %.2f kWh) — '
@@ -1183,13 +1212,9 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 numero, conso_mois, conso_mois - base[index])
             base[index] = 0.0
 
-        ve = couches.get('ve')
-        if ve and ve.get('mode') == 'addition':
-            kwh_jour = _num(ve.get('kwh_jour'))
-            saisons = ve.get('saisons')
-            if kwh_jour > 0 and (not saisons or saison in saisons):
-                ajouts.setdefault('ve', [0.0] * 12)
-                ajouts['ve'][index] = round(kwh_jour * jours, 2)
+        if ve_mois > 0:
+            ajouts.setdefault('ve', [0.0] * 12)
+            ajouts['ve'][index] = round(ve_mois, 2)
 
     if not ajouts:
         return None

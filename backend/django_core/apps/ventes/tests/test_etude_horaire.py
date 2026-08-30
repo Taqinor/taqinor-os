@@ -1586,6 +1586,11 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
     lourds, ``totale_mensuelle`` dépassait donc sa consommation réelle — ce que
     la docstring de la fonction garantit impossible — et l'écrêtage
     ``max(0, …)`` de la base masquait le dépassement au lieu de l'empêcher.
+
+    QJR207 — cette expression du facteur ne vaut que SANS véhicule électrique
+    (le cas des fixtures ci-dessous, inchangées) : le composeur retire d'abord
+    la charge VE du niveau. Le cas VE + redistribution est épinglé par
+    ``EstimationConsoFacteurCompositeurTests``.
     """
 
     #: Consommation MODESTE face à des équipements lourds : c'est exactement le
@@ -1680,6 +1685,96 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
                 self.assertLessEqual(bloc['totale_mensuelle'][index],
                                      valeur + 0.02,
                                      'conso %s, mois %d' % (valeur, index + 1))
+
+
+class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
+    """QJR207 (31/08/2026) — LE FACTEUR DU COMPOSITEUR, PAS UN JUMEAU.
+
+    QJR16 avait aligné la publication sur la renormalisation du composeur, mais
+    avec une SECONDE écriture du facteur : ``conso ÷ (conso + brutes)``. Le
+    composeur, lui, retire D'ABORD l'énergie du véhicule électrique du niveau
+    (``base = conso − VE`` — la seule couche d'ADDITION, ajoutée APRÈS la
+    renormalisation et jamais rediluée) puis renormalise sur ``base``. Dès
+    qu'une couche VE coexiste avec une couche de redistribution, les deux
+    expressions divergent et le kWh par couche PUBLIÉ au client dépasse celui
+    que le moteur PLACE dans la journée.
+
+    Mesuré sur le profil ci-dessous AVANT le correctif (sonde hors DB) :
+    juillet 219,93 kWh publiés pour 200,76 kWh réellement placés (+19,17),
+    655,24 contre 599,17 sur l'année (+56,07) — des kWh montrés au client que
+    la courbe ne contient pas.
+    """
+
+    #: 600 kWh/mois (≈ 19,4 kWh/jour) : un foyer qui déclare une clim ET une
+    #: recharge de véhicule électrique — le cas exact où les deux facteurs
+    #: divergent.
+    CONSO = [600.0] * 12
+
+    CLIM = {'clim': {'kw': 1.4, 'heures': list(range(13, 21)),
+                     'saisons': ['ete'], 'mode': 'redistribution'}}
+    VE = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23, 0, 1, 2],
+                 'saisons': None, 'mode': 'addition'}}
+
+    def _equipements(self, avec_ve=True):
+        equip = dict(self.CLIM)
+        if avec_ve:
+            equip.update(self.VE)
+        return equip
+
+    def _place_par_le_composeur(self, equip, index, cle='clim'):
+        """L'énergie mensuelle que ``forme_consommation_detaillee`` place
+        RÉELLEMENT dans la couche ``cle`` — la seule référence qui compte."""
+        jours = EH.JOURS_PAR_MOIS[index]
+        saison = EH.saison_du_mois(index + 1)
+        _forme, couches = CJ.forme_consommation_detaillee(
+            self.CONSO[index] / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
+            equipements=equip)
+        return sum(couches.get(cle, {}).get('heures_kwh') or [0.0]) * jours
+
+    def test_avec_ve_l_ajout_publie_egale_ce_que_le_composeur_place(self):
+        """ROUGE avant QJR207 : la somme publiée dépassait l'énergie placée."""
+        equip = self._equipements()
+        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        self.assertIsNotNone(bloc)
+        publie_total = place_total = 0.0
+        for index in range(12):
+            place = self._place_par_le_composeur(equip, index)
+            publie = bloc['ajouts']['clim'][index]
+            publie_total += publie
+            place_total += place
+            self.assertAlmostEqual(
+                publie, place, delta=0.05,
+                msg='mois %d : %.2f kWh publiés pour %.2f kWh placés'
+                    % (index + 1, publie, place))
+        self.assertAlmostEqual(publie_total, place_total, delta=0.05)
+
+    def test_sans_ve_le_calcul_reste_celui_d_avant(self):
+        """Non-régression : sans couche d'addition, ``base == conso`` et le
+        facteur ne bouge pas d'un centième."""
+        equip = self._equipements(avec_ve=False)
+        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        for index in range(12):
+            self.assertAlmostEqual(
+                bloc['ajouts']['clim'][index],
+                self._place_par_le_composeur(equip, index),
+                delta=0.05, msg='mois %d' % (index + 1))
+
+    def test_le_contrat_public_du_total_est_preserve(self):
+        """``totale_mensuelle`` reste la facture + la SEULE charge VE : le
+        correctif déplace la frontière base/couche, jamais le total."""
+        bloc = EH.estimation_conso_mensuelle(self.CONSO, self._equipements())
+        for index, conso in enumerate(self.CONSO):
+            self.assertAlmostEqual(
+                bloc['totale_mensuelle'][index],
+                conso + bloc['ajouts']['ve'][index],
+                delta=0.02, msg='mois %d' % (index + 1))
+            self.assertGreaterEqual(bloc['base_mensuelle'][index], 0.0)
+
+    def test_le_facteur_n_a_qu_une_seule_definition(self):
+        """La publication IMPORTE le facteur du composeur — elle n'en tient
+        pas une copie (c'est la copie qui avait divergé)."""
+        self.assertIs(EH.renormalisation_redistribution,
+                      CJ.renormalisation_redistribution)
 
 
 class JoursTypesPublicsTests(SimpleTestCase):
