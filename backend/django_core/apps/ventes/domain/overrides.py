@@ -198,6 +198,15 @@ def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
     n'y en a pas). ``avertissements``, quand une liste est fournie, reçoit le
     message — même convention que ``resynchronisation._avertir_verrouillee``.
 
+    QJR217 (31/08/2026) — CETTE RÈGLE A ENFIN UN APPELANT DE PRODUCTION.
+    Elle était écrite, testée dans les deux sens, et JAMAIS appelée hors des
+    tests : l'avertissement promis n'atteignait aucun vendeur. Elle est
+    désormais appliquée par ``domain.scenario.puissance_kwc_du_devis`` (le
+    lecteur du kWc du devis, là où le niveau LIGNE et le niveau DEVIS se
+    rencontrent), et son avertissement remonte par la liste
+    ``avertissements`` de ``domain.resynchronisation.reconcilier`` jusqu'à la
+    réponse ``sync-layout`` que l'écran affiche déjà.
+
     LECTURE PURE : rien n'est écrit, ni sur le devis, ni sur la ligne.
     """
     nb_devis_brut, source_devis = effectif(devis, 'taille.nb_panneaux', None)

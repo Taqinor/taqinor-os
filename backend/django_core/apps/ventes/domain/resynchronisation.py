@@ -888,7 +888,12 @@ def reconcilier(devis, intention):
         # NON VENDUE, que ``Devis.save`` figeait ensuite dans ``prix_par_kwc``.
         # Les lignes sont déjà resynchronisées à ce point : le propriétaire lit
         # donc l'état RÉEL (registre de surcharges, sinon dérivation PVUNI).
-        _kwc_proprietaire = puissance_kwc_du_devis(verrou)
+        # QJR217 — l'AVERTISSEMENT R4-A remonte par la même liste que tous les
+        # autres refus de resynchro : l'écran l'affiche déjà (réponse
+        # ``sync-layout``), donc le désaccord « ligne verrouillée à N /
+        # taille.nb_panneaux = M » cesse d'être silencieux.
+        _kwc_proprietaire = puissance_kwc_du_devis(
+            verrou, avertissements=avertissements)
         if _kwc_proprietaire:
             etude['puissance_kwc'] = _kwc_proprietaire
         elif kwc:

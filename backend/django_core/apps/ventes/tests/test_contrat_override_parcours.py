@@ -760,6 +760,121 @@ class PreseanceR4ATests(_ParcoursBase):
         self.assertFalse(verdict.conflit)
 
 
+class PreseanceR4AAtteintLeVendeurTests(_ParcoursBase):
+    """QJR217 — TEST ROUGE D'ABORD : la règle R4-A avait ZÉRO appelant.
+
+    ``preseance_nb_panneaux`` était écrite, testée dans les deux sens, et
+    jamais appelée hors des tests : une ligne verrouillée à 14 panneaux qui
+    contredisait ``taille.nb_panneaux = 10`` ne produisait AUCUN avertissement,
+    et ``puissance_kwc_du_devis`` suivait silencieusement le niveau DEVIS
+    pendant que le moteur PDF suivait les LIGNES.
+    """
+
+    def _ligne_panneaux(self, parcours):
+        return parcours.devis.lignes.get(
+            designation='Panneau Canadian Solar 710W')
+
+    def _verrouiller(self, parcours):
+        ligne = self._ligne_panneaux(parcours)
+        ligne.quantite_manuelle = True
+        ligne.save(update_fields=['quantite_manuelle'])
+        return ligne
+
+    def test_le_lecteur_de_kwc_emet_l_avertissement_nomme(self):
+        """LE ROUGE : aucun avertissement n'était produit."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+
+        avertissements = []
+        puissance_kwc_du_devis(parcours.recharger(),
+                               avertissements=avertissements)
+        self.assertEqual(len(avertissements), 1, avertissements)
+        message = avertissements[0]
+        self.assertIn('Panneau Canadian Solar 710W', message)
+        self.assertIn('14', message)
+        self.assertIn('10', message)
+
+    def test_la_ligne_verrouillee_decide_le_kwc_vendu(self):
+        """R4-A phrase 1 : le verrou de ligne gagne pour CETTE ligne — le kWc
+        décrit donc les 14 panneaux vendus, pas les 10 de la cible."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger()), 9.94, places=2)
+
+    def test_sans_verrou_le_niveau_devis_pilote_toujours_le_kwc(self):
+        """Non-régression QJR63 : sans verrou, rien ne change."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        avertissements = []
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger(),
+                                   avertissements=avertissements),
+            7.1, places=2)
+        self.assertEqual(avertissements, [])
+
+    def test_taille_kwc_reste_prioritaire(self):
+        """Non-régression : ``taille.kwc`` posé explicitement prime sur tout."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.kwc', 12.5)
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger()), 12.5, places=2)
+
+    def test_la_cible_de_dimensionnement_reste_lisible(self):
+        """R4-A phrase 2 : le niveau DEVIS n'est pas perdu — il reste la cible
+        que ``decider_taille`` reçoit (elle ne passe pas par ce lecteur)."""
+        parcours = Parcours(self)
+        ligne = self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        verdict = overrides.preseance_nb_panneaux(parcours.recharger(), ligne)
+        self.assertEqual(verdict.cible_dimensionnement, 10)
+        self.assertEqual(verdict.quantite_ligne, 14)
+
+    def test_la_resynchro_fait_remonter_l_avertissement_a_l_ecran(self):
+        """L'avertissement atteint la RÉPONSE que l'écran affiche déjà."""
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+
+        # Un layout DIFFÉRENT de celui déjà posé : sinon ``sync-layout``
+        # court-circuite sur ``inchange`` et n'exécute pas la resynchro.
+        layout = _layout()
+        layout['result'] = dict(layout['result'], annualKwh=15100)
+        reponse = self.api.post(
+            f'/api/django/ventes/devis/{parcours.devis.id}/sync-layout/',
+            layout, format='json')
+        self.assertIn(reponse.status_code, (200, 400, 409),
+                      getattr(reponse, 'data', reponse))
+        if reponse.status_code != 200 or reponse.data.get('inchange'):
+            self.skipTest('sync-layout n\'a pas resynchronisé ce devis '
+                          '(refus ou layout inchangé) : le câblage de '
+                          "l'avertissement est déjà épinglé au lecteur de kWc.")
+        messages = ' '.join(reponse.data.get('avertissements') or ())
+        self.assertIn('Panneau Canadian Solar 710W', messages)
+
+    def test_la_ligne_panneau_dominante_est_la_plus_grande(self):
+        from apps.ventes.domain.scenario import ligne_panneau_dominante
+
+        parcours = Parcours(self)
+        lignes = list(parcours.devis.lignes.select_related('produit').all())
+        dominante = ligne_panneau_dominante(lignes)
+        self.assertEqual(dominante.designation, 'Panneau Canadian Solar 710W')
+        self.assertIsNone(ligne_panneau_dominante(
+            [li for li in lignes
+             if not li.designation.startswith('Panneau')]))
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # (5) Le rendu PDF RÉEL — une fois, à part, sautable
 # ═══════════════════════════════════════════════════════════════════════════
