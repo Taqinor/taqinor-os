@@ -400,6 +400,136 @@ class LeGesteEstUnMODEDuPipeline(_BaseResync):
         self.assertEqual(resultat['resynchro']['panneaux'], 16)
 
 
+class QJR98LaLigneCommuneNeRetrecitPlusLesDeuxOptions(_BaseResync):
+    """QJR98 (M5, bascule 5/5b) — ROUGE avant, VERT après. Elle CHANGE le résultat.
+
+    LE DÉFAUT. Dans la boucle de plafond de variante, le vivier de lignes
+    rognables était ``propres or vue`` : quand l'option traitée n'a AUCUNE ligne
+    de panneaux qui lui soit PROPRE, la boucle retombait sur ``vue``, qui
+    contient les lignes COMMUNES (``variante=''``). Or une ligne commune sert
+    LES DEUX options : la bouger les bouge toutes les deux — l'issue exacte que
+    le commentaire deux lignes plus haut dit d'éviter (« toucher la ligne
+    commune rétrécirait AUSSI l'autre option »).
+
+    LA FIXTURE, ET POURQUOI ELLE EST CELLE-LÀ. Le chemin apply-taille
+    (``exact=True``, un compte TAPÉ par le vendeur) rend le défaut visible sur
+    un NOMBRE, pas seulement sur un mécanisme :
+
+        · ligne COMMUNE (``variante=''``)      : 10 panneaux ;
+        · ligne PROPRE à l'option « avec »     :  4 panneaux, quantité
+          VERROUILLÉE par le vendeur (QJR60 / D12) ;
+        · option « sans » = commune            = 10 ;
+        · option « avec » = commune + propre   = 14 ;
+        · compte TAPÉ                          = 14.
+
+    L'option « avec » est DÉJÀ exactement au compte demandé : elle n'a rien à
+    faire dans ce geste.
+
+    AVANT (rouge). La passe « sans » ne trouve aucune ligne propre, retombe sur
+    la COMMUNE et la porte de 10 à 14 — ce qui pousse l'option « avec » à 18.
+    La passe « avec » essaie alors de compenser sur sa ligne propre… qui est
+    verrouillée : elle ne peut pas. L'option « avec » finit à 18, soit
+    QUATRE PANNEAUX de plus que ce que le vendeur a tapé, et le devis accuse la
+    ligne verrouillée d'un écart qu'elle n'a pas créé.
+
+    APRÈS (vert). Une ligne COMMUNE n'est mobilisable que si l'AUTRE option a
+    besoin EXACTEMENT du même écart — c'est la seule condition sous laquelle la
+    bouger sert les deux sans en léser aucune. Sinon l'écart est NOMMÉ et RIEN
+    n'est écrit, exactement comme pour une quantité verrouillée. L'option
+    « avec » ressort donc STRICTEMENT INCHANGÉE.
+    """
+
+    CIBLE_TAPEE = 14
+
+    def _devis_commune_plus_propre(self):
+        devis = self._devis(etude={'scenario': SCENARIO_LES_DEUX})
+        self.commune = self._ligne(devis, PANNEAU, 10, variante='', ordre=1)
+        self.propre_avec = self._ligne(devis, PANNEAU, 4, variante='avec',
+                                       ordre=2)
+        # QJR60 / D12 — la quantité de l'option « avec » est TAPÉE : la
+        # resynchro n'a pas le droit de la réécrire. C'est ce qui empêche la
+        # seconde passe de masquer le défaut en compensant.
+        self.propre_avec.quantite_manuelle = True
+        self.propre_avec.save(update_fields=['quantite_manuelle'])
+        self._ligne(devis, RESEAU, 1, ordre=3)
+        self._ligne(devis, HYBRIDE, 1, ordre=4)
+        self._ligne(devis, BATTERIE, 1, ordre=5)
+        return devis
+
+    def _appliquer_la_cible_tapee(self, devis):
+        return sync_devis_from_layout(
+            devis, layout(panels=self.CIBLE_TAPEE, kwc=7.7,
+                          scenario='avec_batterie'),
+            user=self.user, cible_exacte=True)
+
+    def test_l_option_non_concernee_est_strictement_inchangee(self):
+        """LE test ROUGE avant / VERT après. Avant : 18 (10 + 4 + 4 de
+        débordement). Après : 14, la valeur qu'elle avait en entrant."""
+        devis = self._devis_commune_plus_propre()
+        self._appliquer_la_cible_tapee(devis)
+
+        self.commune.refresh_from_db()
+        self.propre_avec.refresh_from_db()
+        option_avec = int(self.commune.quantite) + int(
+            self.propre_avec.quantite)
+        self.assertEqual(option_avec, 14)
+
+    def test_la_ligne_commune_n_est_pas_touchee(self):
+        devis = self._devis_commune_plus_propre()
+        self._appliquer_la_cible_tapee(devis)
+
+        self.commune.refresh_from_db()
+        self.assertEqual(int(self.commune.quantite), 10)
+
+    def test_la_ligne_verrouillee_du_vendeur_est_intacte(self):
+        devis = self._devis_commune_plus_propre()
+        self._appliquer_la_cible_tapee(devis)
+
+        self.propre_avec.refresh_from_db()
+        self.assertEqual(int(self.propre_avec.quantite), 4)
+
+    def test_l_ecart_non_applique_est_NOMME_au_lieu_d_etre_ecrit(self):
+        """Rien n'est écrit EN SILENCE : le vendeur apprend l'écart, l'option
+        concernée et le geste à faire — même discipline que la garde de
+        quantité verrouillée."""
+        devis = self._devis_commune_plus_propre()
+        resultat = self._appliquer_la_cible_tapee(devis)
+
+        message = ' '.join(resultat['avertissements'])
+        self.assertIn('sans', message)
+        self.assertIn('commune', message.lower())
+        self.assertEqual(resultat['panneaux'], 10)
+
+    def test_une_ligne_commune_reste_mobilisable_quand_elle_sert_LES_DEUX(self):
+        """LE TÉMOIN NÉGATIF — la correction ne bloque pas le cas légitime.
+
+        Quand les DEUX options ont EXACTEMENT le même écart à combler, la ligne
+        commune les sert à l'identique : la bouger ne lèse personne, elle reste
+        donc mobilisable et le plafond s'applique comme avant. C'est la seule
+        condition, et c'est ce qui distingue cette correction d'un refus
+        généralisé — qui, lui, aurait laissé une option au-dessus de ce que le
+        toit peut physiquement porter.
+
+        DÉRIVATION. Ligne commune 18 ; ligne propre « avec » à ZÉRO panneau
+        (l'état que la garde « jamais sous zéro » de cette même boucle produit).
+        Le devis est donc varianté, mais les deux options valent 18 : le plafond
+        de 14 leur retire à toutes deux 4 panneaux, portés par la commune.
+        """
+        devis = self._devis(etude={'scenario': SCENARIO_LES_DEUX})
+        commune = self._ligne(devis, PANNEAU, 18, variante='', ordre=1)
+        self._ligne(devis, PANNEAU, 0, variante='avec', ordre=2)
+        self._ligne(devis, RESEAU, 1, ordre=3)
+        self._ligne(devis, HYBRIDE, 1, ordre=4)
+        self._ligne(devis, BATTERIE, 1, ordre=5)
+
+        sync_devis_from_layout(
+            devis, layout(panels=14, kwc=7.7, scenario='avec_batterie'),
+            user=self.user)
+
+        commune.refresh_from_db()
+        self.assertEqual(int(commune.quantite), 14)
+
+
 class LaDerivationAntiMensongeEstUNIQUE(_BaseResync):
     """QJR97 — la garde anti-mensonge du scénario n'est plus écrite DEUX fois.
 

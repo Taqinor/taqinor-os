@@ -198,7 +198,12 @@ def reconcilier(devis, intention):
       dominante) ; une option qui reste EN DESSOUS n'est JAMAIS augmentée —
       l'optimum économique a le droit de choisir moins que le toit, et une
       resynchro n'a pas à lui vendre des panneaux qu'il a refusés ;
-    * les structures et les socles suivent le compte DE LEUR VARIANTE.
+    * les structures et les socles suivent le compte DE LEUR VARIANTE ;
+    * QJR98 — une option SANS ligne de panneaux propre ne se corrige PAS sur
+      une ligne COMMUNE : la commune sert les deux options, la bouger les
+      bouge toutes les deux. Elle n'est mobilisable que si l'AUTRE option a
+      besoin EXACTEMENT du même écart (le cas du plafond de toit, où les deux
+      débordent du même toit) ; sinon l'écart est NOMMÉ et rien n'est écrit.
 
     Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
     historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
@@ -425,14 +430,47 @@ def reconcilier(devis, intention):
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
                 # tient peut-être sur le toit.
                 propres = [li for li in vue if _var(li) == variante]
+                # ── QJR98 — ET LE REPLI SUR LA COMMUNE EST CONDITIONNÉ ───────
+                # Le vivier était ``propres or vue`` : sans ligne propre, la
+                # boucle retombait sur ``vue``, qui contient les lignes
+                # COMMUNES — et une commune sert LES DEUX options, donc la
+                # bouger les bouge toutes les deux. C'est très exactement
+                # l'issue que le commentaire ci-dessus dit d'éviter, et sur le
+                # chemin apply-taille (``cible_exacte``) elle emportait une
+                # option DÉJÀ au compte tapé quatre panneaux au-dessus.
+                #
+                # Une commune n'est donc mobilisable que si l'AUTRE option a
+                # besoin EXACTEMENT du même écart : là, la bouger les sert à
+                # l'identique et ne lèse personne (c'est le cas du plafond de
+                # toit, où les deux options débordent du même toit). Sinon
+                # l'écart est NOMMÉ et RIEN n'est écrit — même discipline que
+                # pour une quantité verrouillée : on ne corrige pas une option
+                # en cassant l'autre.
+                vivier = propres
+                if not vivier:
+                    autre = (VARIANTE_AVEC if variante == VARIANTE_SANS
+                             else VARIANTE_SANS)
+                    if _total_de(autre) == total_vue:
+                        vivier = vue
+                    else:
+                        avertissements.append(
+                            'L\'option « %s » n\'a aucune ligne de panneaux '
+                            'qui lui soit propre : l\'écart de %d panneau(x) '
+                            'n\'a pas été appliqué, car il aurait fallu rogner '
+                            'une ligne COMMUNE aux deux options — et l\'autre '
+                            'option, elle, n\'a pas le même écart. Ajoutez une '
+                            'ligne de panneaux propre à cette option, ou '
+                            'corrigez les quantités à la main.'
+                            % (variante, abs(total_vue - cible_panneaux)))
+                        continue
                 # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
                 # réécrite : elle sort du vivier, et si tout le vivier est
                 # verrouillé l'écart est NOMMÉ au lieu d'être appliqué.
-                libres = [li for li in (propres or vue)
+                libres = [li for li in vivier
                           if not _quantite_verrouillee(li)]
                 if not libres:
                     _avertir_verrouillee(
-                        avertissements, (propres or vue),
+                        avertissements, vivier,
                         "l'écart de %d panneau(x) de l'option « %s »"
                         % (abs(total_vue - cible_panneaux), variante))
                     continue
