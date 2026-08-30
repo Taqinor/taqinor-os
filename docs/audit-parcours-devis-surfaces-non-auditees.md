@@ -631,3 +631,120 @@ production : ajouter à QJR45 les trois appelants à couvrir — `etude_horaire.
 - **Surfaces volontairement hors périmètre** : le moteur électrique (`electrical_service.py`,
   source de l'annexe technique), `builder.py` et `residential/` (déjà audités), et
   `agricole/trust.py` au-delà de ce qu'il fallait pour établir qu'il est mort.
+
+---
+
+# Résidu assumé — le coût du balayage par appel (QJR112, tranché le 30/08/2026)
+
+**LA DÉCISION, D'ABORD.** Option (a) : le coût est **documenté comme résidu assumé**, avec les
+chiffres ci-dessous, et il est **gardé par un test** (`apps/ventes/tests/test_qjr_cout_balayage.py`)
+qui les recalcule à chaque exécution de la CI. **Aucun élagage n'a été posé** — le raisonnement est
+au bas de cette section, et il tient en une phrase : le seul élagage sûr est *déjà là*, et le rendre
+plus agressif changerait la taille recommandée, c'est-à-dire le devis.
+
+## Ce que coûte UN balayage
+
+L'empreinte (QJR43/QJR44/QJR47) supprime les balayages **inutiles** ; elle ne rend pas le balayage
+**nécessaire** moins cher. Ce qu'il coûte, quand il a bien lieu :
+
+* il est **SYNCHRONE dans le handler HTTP** — `dimensionnement.recommander_taille` est appelé dans
+  la requête, pas dans une tâche ;
+* **par taille candidate** : une composition catalogue SANS batterie, puis jusqu'à
+  `MAX_PALIERS_STOCKAGE` compositions AVEC batterie (une par palier de l'échelle) ;
+* **par taille candidate**, un seul parcours des **douze jours types** sert TOUTES les capacités —
+  c'est écrit et voulu (`etude_horaire.balayer_stockage_horaire` : « UN SEUL parcours des douze
+  jours types sert TOUTES les capacités »). **La formulation « 12 jours × 17 capacités par taille »
+  du constat d'origine surestimait donc le coût d'un facteur 17** : la vérification faite ici la
+  corrige.
+
+## Le nombre de tailles candidates — MESURÉ, pas supposé
+
+`bornes_candidates` est une fonction PURE : son résultat se calcule sans base de données. Mesuré
+pour des profils résidentiels marocains réels (productible 1 650 kWh/kWc, panneau 550 W) :
+
+| Profil | Tailles balayées | Plafond si la chasse à la falaise s'étend |
+|---|---|---|
+| petit (≈ 700 DH/mois, 4 800 kWh/an) | 7 | 12 |
+| médian (≈ 1 200 DH/mois, 9 600 kWh/an) | 12 | 22 |
+| gros (≈ 2 500 DH/mois, 19 000 kWh/an) | 22 | 42 |
+| saisie à un zéro de trop (96 000 kWh/an) | 107 | plafonné à 120 |
+
+**Un balayage résidentiel typique explore donc 7 à 22 tailles, pas 120.** Le pire cas absolu
+(`MAX_PANNEAUX_BALAYAGE`) n'est pas une charge normale : c'est le garde-fou contre une facture
+saisie avec un zéro de trop.
+
+### Point ouvert trouvé en mesurant — le garde-fou ne couvre PAS la borne de parité
+
+`MAX_PANNEAUX_BALAYAGE` est décrit dans son propre commentaire comme le garde-fou contre « une
+facture saisie avec un zéro de trop ». **Mesuré : il ne s'applique qu'à l'EXTENSION « chasse à la
+falaise »** (`plafond_extension`), pas à la borne de parité rendue par le chemin par défaut de
+`bornes_candidates` (`return 1, borne_parite`, sans plafond). Conséquences mesurées, mêmes
+paramètres que le tableau ci-dessus :
+
+| Consommation annuelle saisie | Tailles balayées | Sous le plafond de 120 ? |
+|---|---|---|
+| 96 000 kWh | 107 | oui — de justesse, et par hasard |
+| 200 000 kWh | 222 | **non** |
+| 960 000 kWh | 1 059 | **non** |
+
+Le seuil exact est ≈ **108 000 kWh/an** (`119 × 907,5`). Un zéro de trop sur une facture MÉDIANE
+(9 600 → 96 000) reste donc sous le plafond, mais un zéro de trop sur une GROSSE facture le
+dépasse largement — et le balayage part alors sur des centaines de tailles, synchrones dans la
+requête, exactement ce que le commentaire dit vouloir empêcher.
+
+**Ce n'est PAS corrigé ici, délibérément.** Appliquer le plafond à la borne de parité CHANGE le
+comportement du dimensionneur sur les gros dossiers (industriels, multi-villa) : c'est une décision
+de moteur, pas un nettoyage de coût, et elle sort du périmètre déclaré de QJR112 (`docs/` +
+`tests/`). Le constat est écrit ici pour qu'il soit tranché, pas oublié.
+
+## Le résidu, chiffré
+
+Pour le profil MÉDIAN : `12 tailles × (1 + 16) = 204` compositions catalogue au plus, et
+`12 tailles × 12 jours types = 144` journées simulées, **synchrones dans la requête**.
+Pour le pire cas de garde-fou : `120 × 17 = 2 040` compositions et `120 × 12 = 1 440` journées.
+
+**CE QUI N'A PAS ÉTÉ MESURÉ, ET POURQUOI.** Aucune **durée en secondes** n'est donnée ici : la
+mesurer demande une base de données (le catalogue est lu en base) dont cette lane ne disposait pas,
+et un chiffre de wall-clock inventé serait exactement ce que la règle fondateur interdit. Ce qui est
+mesuré est le **VOLUME D'APPELS**, qui lui se dérive sans base — et c'est lui qui pilote la durée.
+Pour obtenir la seconde moitié : instrumenter `composition_residentielle` et `jours_types_annee` sur
+un devis réel et chronométrer `POST /ventes/etude-horaire/preview/` avec `dimensionner: true`.
+
+## Pourquoi AUCUN élagage n'est posé (option (b) écartée, avec sa raison)
+
+Trois élagages existent DÉJÀ, et ce sont les seuls qui soient sûrs :
+
+1. `bornes_candidates` borne le balayage à la **parité production/consommation** (+1) — c'est lui
+   qui fait tomber 120 à 7-22 ;
+2. l'extension « chasse à la falaise » ne dépasse jamais `FACTEUR_MAX_FALAISE` × la parité, et
+   s'arrête au premier des quatre motifs vérifiables (cible atteinte, résiduel qui ne diminue plus,
+   projection hors budget, garde-fou) ;
+3. le balayage du stockage **mémoïse** les tailles déjà évaluées (`evaluer`), donc les sondes de
+   `bornes_candidates` ne sont pas repayées par le tableau final.
+
+Tout élagage SUPPLÉMENTAIRE — sauter une taille sur deux, plafonner les paliers plus bas, arrêter
+plus tôt — **change la taille recommandée**, donc le devis, donc le prix montré au client. Ce n'est
+plus une optimisation : c'est une modification du moteur de dimensionnement, qui appartient au
+fondateur et non à une tâche de nettoyage. Le passage en tâche ASYNCHRONE, lui, est possible mais
+il déplace le problème : l'écran générateur affiche ce résultat immédiatement après la saisie, et
+l'asynchrone y imposerait un état d'attente et un chemin de reprise — une fonctionnalité, pas un
+résidu à absorber.
+
+**Ce qui rouvrirait le sujet** : si une des constantes ci-dessous augmente, ou si le parcours des
+douze jours types cesse d'être partagé entre les capacités. Le test le dit alors, et pointe cette
+section.
+
+<!-- QJR112-CHIFFRES — bloc LU par apps/ventes/tests/test_qjr_cout_balayage.py.
+     Ces valeurs et le code ne peuvent pas diverger : le test échoue si l'une bouge
+     sans que cette note bouge avec elle. Ne pas reformater ce bloc.
+MAX_PANNEAUX_BALAYAGE=120
+MAX_PALIERS_STOCKAGE=16
+FACTEUR_MAX_FALAISE=2.0
+JOURS_TYPES=12
+TAILLES_PETIT=7
+TAILLES_MEDIAN=12
+TAILLES_GROS=22
+TAILLES_ZERO_DE_TROP=107
+TAILLES_200000=222
+-->
+
