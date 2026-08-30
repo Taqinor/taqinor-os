@@ -63,6 +63,17 @@ vi.mock('../../api/recordsApi', () => ({
   },
 }))
 
+// NTMIG25 — le panneau playbook (onglet conditionnel) appelle migrationApi ;
+// mocké ici pour que le montage de l'onglet ne tape jamais le réseau réel.
+vi.mock('../../api/migrationApi', () => ({
+  default: {
+    listPlaybookInstances: vi.fn().mockResolvedValue({ data: [] }),
+    instancierPlaybook: vi.fn(),
+    cocherEtapePlaybook: vi.fn(),
+    terminerPlaybookInstance: vi.fn(),
+  },
+}))
+
 import kbApi from '../../api/kbApi'
 import ArticleDetail from './ArticleDetail'
 
@@ -244,6 +255,22 @@ describe('ArticleDetail — emoji + couverture (ZGED10)', () => {
       'src', '/api/django/kb/articles/1/couverture-image/')
     await user.click(screen.getByRole('button', { name: /^Retirer$/i }))
     await waitFor(() => expect(kbApi.removeCouverture).toHaveBeenCalledWith(1))
+  })
+})
+
+describe('ArticleDetail — playbook interactif (NTMIG25)', () => {
+  it("affiche l'onglet Playbook pour un article de type playbook", async () => {
+    mockLoads({ type_article: 'playbook', phases: [] })
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(screen.getByRole('tab', { name: /^Playbook$/i })).toBeTruthy()
+  })
+
+  it("n'affiche pas l'onglet Playbook pour un article ordinaire", async () => {
+    mockLoads()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(screen.queryByRole('tab', { name: /^Playbook$/i })).toBeNull()
   })
 })
 
