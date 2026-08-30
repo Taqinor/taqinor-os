@@ -1567,6 +1567,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         created = []
         from decimal import Decimal, ROUND_HALF_UP
+        # QJR202 — CE CHEMIN DE COPIE PASSE PAR LE MÊME FILTRE QUE LES TROIS
+        # AUTRES. Il recopiait ``etude_params`` VERBATIM sur des devis dont il
+        # venait de multiplier les quantités par 0,8 / 1,2 : la copie publiait
+        # donc la production, les économies et l'étude horaire d'une AUTRE
+        # taille d'installation, jusque dans le PDF client (classe CS4-CS6,
+        # fermée par QJR117 sur les trois chemins du domaine — celui-ci était
+        # resté dehors).
+        from ..domain.etudes import etude_params_pour_copie
+        from ..services import rafraichir_etudes_du_devis
 
         for scale in scales:
             variant_note = _label_for(scale)
@@ -1581,7 +1590,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     remise_globale=source.remise_globale,
                     note=(f'[Variante {_note}] ' + (source.note or '')).strip(),
                     mode_installation=source.mode_installation,
-                    etude_params=source.etude_params,
+                    etude_params=etude_params_pour_copie(source.etude_params),
                     prix_cible_kwc=source.prix_cible_kwc,
                     created_by=request.user,
                     # Groupe : version_parent = racine, version incrémentée,
@@ -1622,6 +1631,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     optionnelle=ligne.optionnelle,
                     prix_manuel=ligne.prix_manuel,
                 )
+            # QJR202 — RAFRAÎCHISSEMENT FORCÉ, comme les trois chemins du
+            # domaine (``creation.py:223``, ``cycle_vie.py:1763``,
+            # ``gammes.py:209``) : les clés dérivées viennent d'être purgées,
+            # l'étude est recalculée pour la taille RÉELLE de la copie. Sans
+            # cet appel, la copie repartirait simplement SANS étude.
+            rafraichir_etudes_du_devis(nd, force=True)
             created.append(nd)
 
         return Response(

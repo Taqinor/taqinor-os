@@ -440,6 +440,12 @@ def etude_params_pour_copie(etude_params):
     Rend TOUJOURS un dict NEUF : ``etude_params=devis.etude_params`` partageait
     la même référence entre source et copie, et une mutation de l'un fuyait sur
     l'autre (le dépôt nomme ce piège dans ``dupliquer_variante``).
+
+    QJR202 (31/08/2026) — QUATRE APPELANTS, PLUS TROIS. Le chemin de copie au
+    niveau vue ``/variante`` (``views/devis.dupliquer_variante``) recopiait
+    encore ``etude_params`` verbatim sur des devis dont il venait de multiplier
+    les quantités : il passe désormais ici, suivi d'un
+    :func:`rafraichir_etudes_du_devis` forcé, comme les trois autres.
     """
     bloc = {cle: valeur for cle, valeur in dict(etude_params or {}).items()
             if cle not in CLES_NON_COPIEES}
