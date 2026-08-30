@@ -321,13 +321,27 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 
 def page_footer(data: dict) -> str:
     """Footer band. `{page}` is substituted per page by the render harness;
-    the total page count comes from `data['pages_total']`."""
-    site = data.get("site_url", "taqinor.ma")
+    the total page count comes from `data['pages_total']`.
+
+    QJR155 (d) — L'IDENTITÉ EST CELLE DE LA SOCIÉTÉ, PAS UN LITTÉRAL.
+    Ce pied imprimait « TAQINOR · contact@taqinor.com · +212 6 61 85 04 10 »
+    quelle que soit la ``Company`` — une fuite multi-tenant sur le SEUL paquet
+    qui ne lisait pas ``data['entreprise']`` (industriel, commercial et
+    résidentiel passent tous par ``residential.theme.company_identity``, la
+    source unique SCA27/DC1). On l'utilise ici aussi. Les REPLIS de cette
+    fonction sont mot pour mot les littéraux d'avant : une société sans profil
+    (et Taqinor) sort donc un pied byte-identique — le conflit ``.com``/``.ma``
+    reste entier et n'est pas tranché ici (le repli garde le ``.com``
+    historique ; une société qui renseigne son email l'emporte).
+    """
+    from ..residential.theme import company_identity
+    ident = company_identity(data)
+    site = ident.get("site") or data.get("site_url", "taqinor.ma")
     total = data.get("pages_total", 5)
     ref = data.get("ref", "")
     return f"""
 <div class="foot">
-  <div><b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10</div>
+  <div><b>{ident['brand']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
   <div>Page {{page}} / {total} &nbsp;·&nbsp; Réf. {ref} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """

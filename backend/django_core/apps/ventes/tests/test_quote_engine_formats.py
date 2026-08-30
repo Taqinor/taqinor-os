@@ -507,13 +507,21 @@ class TestPdfFormats(TestCase):
     # forme brute ci-dessous portait 42,3 kWc sur un devis de 14 panneaux :
     # elle prouvait donc le rendu d'un cas que la garde refuse désormais.
     # ``_simulation()`` recopie la puissance RÉELLE lue du builder.
+    # QJR115 — ET SUR LA PRODUCTION DU DOCUMENT. La même page imprime déjà
+    # « Production annuelle » (``_ETUDE_INDUSTRIELLE``, 12 486 kWh) : une P50 de
+    # 71 800 kWh à neuf lignes de là, c'est DEUX productions pour une seule
+    # installation — le bloc est désormais OMIS dans ce cas (règle fondateur).
+    # La fixture décrit donc un document COHÉRENT : P50 = la production de la
+    # carte, P90/P75 dérivées à la même variabilité (0,06) qu'auparavant
+    # (12 486 × 0,918 ≈ 11 460 ; × 0,959 ≈ 11 970) et
+    # ``base_production_kwh`` = P50 ÷ 0,9302 (le derate canonique QJR114).
     _SIMULATION_BRUTE = {
         'version': 1,
         'computed_at': '2026-08-14T10:00:00Z',
         'source': 'pvgis',
         'zones': [{'label': 'Pan Sud', 'lat': 33.57, 'lon': -7.59,
                    'tilt': 30, 'azimuth': 0, 'kwc': 42.3,
-                   'base_production_kwh': 71800,
+                   'base_production_kwh': 13423,
                    'shading_annual_loss_pct': 4.2}],
         'pr': {
             'performance_ratio': 0.812, 'total_loss_pct': 18.8,
@@ -521,7 +529,7 @@ class TestPdfFormats(TestCase):
                                'shading': 4.2, 'wiring': 2.0,
                                'inverter': 2.5, 'mismatch': 2.0,
                                'availability': 1.0},
-            'p50_kwh': 71800, 'p90_kwh': 58300, 'p75_kwh': 66400,
+            'p50_kwh': 12486, 'p90_kwh': 11460, 'p75_kwh': 11970,
             'annual_variability': 0.06, 'specific_yield_kwh_kwc': 1697,
         },
         'self_consumption': {'hours': 8760, 'self_consumption_rate': 0.41,
@@ -724,23 +732,32 @@ class TestPdfFormats(TestCase):
         self._devis_avec_etude(self._simulation())
         data = build_quote_data(self.devis, {'include_etude': True})
         data['etude']['bankable']['pr']['p50_kwh'] = 1
+        attendu = self._simulation()['pr']['p50_kwh']
         # En mémoire (une copie de surface aurait partagé le sous-dict 'pr')…
         self.assertEqual(
-            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], attendu)
         # … et en base.
         self.devis.refresh_from_db()
         self.assertEqual(
-            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], attendu)
 
     def test_pv77_la_page_etude_montre_p50_p90_et_la_cascade(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
         self._devis_avec_etude(self._simulation())
         html, doc = self._render({'include_etude': True})
+        pr = self._simulation()['pr']
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('Étude bancable', html)
         self.assertIn('Production P50', html)
         self.assertIn('P90', html)
-        self.assertIn('71 800', html)      # P50 formaté à la française
-        self.assertIn('58 300', html)      # P90
+        # Formatés à la française, et LUS de la fixture : QJR115 — la P50
+        # imprimée est CELLE de la carte « Production annuelle » de la même
+        # page, sans quoi le bloc serait omis (deux vérités interdites).
+        self.assertIn(G.fnum(pr['p50_kwh']), html)
+        self.assertIn(G.fnum(pr['p90_kwh']), html)
+        self.assertEqual(pr['p50_kwh'],
+                         self._ETUDE_INDUSTRIELLE['production_annuelle'])
         self.assertIn('Cascade de pertes', html)
         for libelle in ('Température', 'Salissures', 'Ombrage', 'Câblage',
                         'Onduleur', 'Disponibilité'):
@@ -777,13 +794,19 @@ class TestPdfFormats(TestCase):
         # QJR159 (b) — le bloc n'est rendu que s'il DÉCRIT le champ PV du
         # document : on pose la puissance globale du moteur sur celle de la
         # simulation (aucun rendu complet n'est nécessaire pour cette garde).
+        # QJR115 — et il ne l'est que s'il dit la MÊME production que la carte
+        # de la page : on pose donc AUSSI l'étude du document (sans quoi cette
+        # assertion dépendrait de l'état laissé par un test précédent).
         sim = self._simulation()
         _kwc, _inc = G.KWC, G.PUISSANCE_INCONNUE
+        _etude = getattr(G, 'ETUDE', None)
         G.KWC, G.PUISSANCE_INCONNUE = sim['zones'][0]['kwc'], False
+        G.ETUDE = dict(self._ETUDE_INDUSTRIELLE)
         try:
             bloc = G._bankable_block_html(sim)
         finally:
             G.KWC, G.PUISSANCE_INCONNUE = _kwc, _inc
+            G.ETUDE = _etude
         self.assertTrue(bloc)
         for interdit in ('MAD', 'VAN', 'TRI', 'npv', 'irr', '412', '33 800',
                          'prix_achat', 'marge'):

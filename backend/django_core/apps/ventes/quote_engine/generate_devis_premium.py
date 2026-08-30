@@ -1291,10 +1291,25 @@ def _fmt2_mad(v):
 
 
 def _item_pu_ht(it):
-    """Per-line HT unit price (stored, or derived from the TTC)."""
+    """Per-line HT unit price (stored, or derived from the TTC).
+
+    QJR146 (e) — LE TAUX DE DÉRIVATION EST CELUI DE LA LIGNE. Le repli
+    divisait par le taux GLOBAL du devis (``TVA_PCT``) alors que la MÊME ligne
+    imprime son PROPRE taux dans la colonne d'à côté (``it['taux_tva']``,
+    réforme des taux par ligne) : sur un devis mixte 20 %/10 %, le P.U. HT
+    d'une ligne à 10 % sortait 8,3 % trop bas, sous un « 10% » affiché. Le
+    taux global reste le repli quand la ligne n'en porte pas.
+    """
     pu_ht = it.get("prix_unit_ht")
     if pu_ht is None:
-        pu_ht = it["prix_unit_ttc"] / (1 + TVA_PCT / 100)
+        taux = it.get("taux_tva")
+        if taux in (None, ""):
+            taux = TVA_PCT
+        try:
+            taux = float(taux)
+        except (TypeError, ValueError):
+            taux = float(TVA_PCT)
+        pu_ht = it["prix_unit_ttc"] / (1 + taux / 100)
     return float(pu_ht)
 
 
@@ -1501,9 +1516,15 @@ def equip_rows(items, totaux, hi_bat=False):
         bg = f"background:{CAL};" if is_bat else (f"background:{CG1};" if i % 2 == 1 else "")
         qty_s = int(qty) if qty == int(qty) else qty
         desc_html = _desc_lines_html(it, max_lines=2, font_pt=5)
+        # QJR146 (e) \u2014 LE TIRET NE MASQUE QUE L'ABSENCE DE PRIX, jamais un
+        # prix N\u00c9GATIF. ``pu_ht > 0`` renvoyait \u00ab \u2014 \u00bb sur une ligne \u00e0 montant
+        # n\u00e9gatif (une reprise, un geste commercial pass\u00e9 en ligne) alors que
+        # ce montant P\u00c8SE dans le sous-total imprim\u00e9 juste dessous : le client
+        # ne pouvait pas rapprocher les lignes du total. Seul un prix NUL
+        # continue de s'afficher en tiret.
         dash = "\u2014"
-        pu_ht_s = _fmt2(pu_ht) if pu_ht > 0 else dash
-        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht > 0 else dash
+        pu_ht_s = _fmt2(pu_ht) if pu_ht else dash
+        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht else dash
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
@@ -2317,7 +2338,14 @@ def page3():
             # RIB bar
             f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
             f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
-            f'{ENT_RIB_LINE.format(cg7=CG7)}</div>'
+            # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
+            # ``ENT_RIB_LINE`` est RECONSTRUITE à l'ingestion avec la raison
+            # sociale, la banque et le RIB du tenant (échappés HTML, ce qui ne
+            # touche PAS les accolades) : une raison sociale portant « { » ou
+            # « } » faisait lever ``.format()`` (KeyError/ValueError) ICI, hors
+            # de tout try — le PDF entier échouait sur un caractère du nom de
+            # la société. ``str.replace`` ne lit aucun champ de format.
+            f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
             f'</div>'
             f'</div>'
         )
@@ -2562,6 +2590,63 @@ def _bankable_decrit_ce_champ(bank):
     return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
 
 
+#: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
+#: \u00ab Production annuelle \u00bb imprim\u00e9e sur la M\u00caME page. C'est EXACTEMENT la
+#: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
+#: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
+#: l'entier de la carte, jamais les ~10 % que produisait le double derate.
+TOLERANCE_PRODUCTION_PAGE = 0.01
+
+
+def _bankable_concorde_avec_la_page(bank):
+    """QJR115 \u2014 la P50 bancable dit-elle la M\u00caME production que la carte ?
+
+    La page \u00c9tude imprime deux fois la production annuelle de la M\u00caME
+    installation : la carte \u00ab Production annuelle \u00bb (``ETUDE
+    ['production_annuelle']``, figure canonique du document \u2014 \u00e9tude saisie ou
+    calepinage recal\u00e9) et, juste en dessous, \u00ab Production P50 (m\u00e9diane) \u00bb du
+    bloc bancable (``etude_params['simulation']``, jou\u00e9 par ``apps.ventes.
+    etude``). QJR114 a fait converger les deux CHA\u00ceNES de calcul (plus de
+    double derate : la P50 vaut d\u00e9sormais ``productible \u00d7 PRODUCTION_DERATE``,
+    la formule m\u00eame de ``pricing``) \u2014 mais rien n'oblige les deux SOURCES \u00e0
+    d\u00e9crire le m\u00eame devis : le builder recopie ``simulation`` sans condition et
+    cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies, donc une \u00e9tude jou\u00e9e
+    avant un redimensionnement (ou une production saisie \u00e0 la main) remet deux
+    nombres contradictoires c\u00f4te \u00e0 c\u00f4te sur la feuille.
+
+    On ne r\u00e9concilie rien ici \u2014 le moteur de rendu ne calcule aucune
+    production : on PROUVE l'\u00e9galit\u00e9, et \u00e0 d\u00e9faut de preuve le bloc est OMIS
+    (r\u00e8gle fondateur : omettre plut\u00f4t que publier deux v\u00e9rit\u00e9s).
+
+    Rend ``True`` quand il n'y a rien \u00e0 contredire : page sans carte
+    \u00ab Production annuelle \u00bb, ou bloc bancable sans P50 (il ne publie alors que
+    la P90 \u2014 une autre grandeur, explicitement nomm\u00e9e \u2014 le ratio de performance
+    et la cascade). Rend ``False`` d\u00e8s qu'un des deux nombres est illisible :
+    l'\u00e9galit\u00e9 n'est pas prouv\u00e9e.
+    """
+    # ``ETUDE`` n'est écrite que par ``apply_quote_data`` : avant toute
+    # ingestion le nom n'existe PAS dans le module (les tests unitaires du
+    # bloc l'appellent dans cet état). Sans étude ingérée il n'y a pas de carte
+    # « Production annuelle », donc rien à contredire.
+    etude_page = globals().get("ETUDE")
+    prod_page = (etude_page.get("production_annuelle")
+                 if isinstance(etude_page, dict) else None)
+    if prod_page in (None, ""):
+        return True
+    pr = bank.get("pr") if isinstance(bank, dict) else None
+    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
+    if p50 in (None, ""):
+        return True
+    try:
+        prod_page = float(prod_page)
+        p50 = float(p50)
+    except (TypeError, ValueError):
+        return False
+    if prod_page <= 0:
+        return False
+    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+
+
 def _bankable_block_html(bank):
     """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
 
@@ -2581,10 +2666,18 @@ def _bankable_block_html(bank):
     champ PV juste \u00e0 c\u00f4t\u00e9 de sa vraie \u00ab Puissance cr\u00eate \u00bb. La somme des kWc des
     zones simul\u00e9es doit d\u00e9sormais \u00e9galer ``KWC`` (\u00e0 la tol\u00e9rance d'arrondi),
     sinon le bloc est OMIS.
+
+    QJR115 \u2014 ET IL DIT LA M\u00caME PRODUCTION QUE LA CARTE JUSTE AU-DESSUS. D\u00e9crire
+    le bon champ PV ne suffit pas : la page publie d\u00e9j\u00e0 \u00ab Production annuelle \u00bb
+    depuis une AUTRE source. Le bloc n'est servi que si sa P50 co\u00efncide avec
+    elle (``_bankable_concorde_avec_la_page``) \u2014 sinon la feuille porterait
+    deux productions contradictoires pour une seule installation.
     """
     if not isinstance(bank, dict) or not bank:
         return ""
     if not _bankable_decrit_ce_champ(bank):
+        return ""
+    if not _bankable_concorde_avec_la_page(bank):
         return ""
     pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
 
@@ -3925,6 +4018,32 @@ def apply_quote_data(data: dict) -> None:
     TOTAUX_SANS = _totaux_canoniques("totaux_sans")
     TOTAUX_AVEC = _totaux_canoniques("totaux_avec")
     TOTAUX_ALL = data.get("totaux_all") or None
+
+    # ── QJR146 (e) — UN SEUL TOTAL PAR OPTION, ET IL EST PROUVÉ ──────────────
+    # ``total_sans``/``total_avec`` (scalaires TTC des vignettes d'option) et
+    # ``totaux_sans``/``totaux_avec`` (la chaîne canonique Sous-total → TVA →
+    # Total TTC du tableau) étaient ingérés depuis QUATRE clés INDÉPENDANTES,
+    # sans le moindre invariant : une charge utile où elles divergent imprimait
+    # deux totaux différents pour la MÊME option, sur deux pages du même
+    # document. Le builder les DÉRIVE l'une de l'autre
+    # (``total_sans = totaux_sans['ttc']``) — on exige donc ici qu'elles
+    # coïncident, et on LÈVE plutôt que de choisir en silence (même doctrine
+    # que ``_totaux_canoniques`` ci-dessus, QJR162).
+    for _cle_scalaire, _valeur, _totaux in (
+            ("total_sans", TOTAL_SANS, TOTAUX_SANS),
+            ("total_avec", TOTAL_AVEC, TOTAUX_AVEC)):
+        try:
+            _ttc = float(_totaux.get("ttc"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "generate_devis_premium: totaux canoniques sans TTC lisible "
+                "(%s) — le moteur ne choisit pas entre deux totaux."
+                % _cle_scalaire)
+        if abs(_ttc - float(_valeur)) > 0.01:
+            raise ValueError(
+                "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
+                "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
+                "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
     PAY_A = int(_terms.get("acompte", 30))
     PAY_M = int(_terms.get("materiel", 60))
@@ -4010,7 +4129,11 @@ def apply_quote_data(data: dict) -> None:
                 DOC_TEXTS[k] = v
     # N26 — métadonnées d'acceptation (posées côté serveur). Le tampon n'apparaît
     # que si les DEUX sont présents ; sinon byte-identique au devis d'aujourd'hui.
-    ACCEPTE_PAR_NOM = (data.get("accepte_par_nom") or "")
+    # QJR154 — ERR37 échappait le nom et l'adresse du client mais PAS celui-ci,
+    # qui est pourtant le seul texte du document écrit par une personne NON
+    # AUTHENTIFIÉE (le « nom » posté sur le portail public, repris par
+    # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
+    ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues

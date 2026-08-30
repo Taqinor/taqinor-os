@@ -339,16 +339,27 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
     custom_paras = _custom_message_paras(message, resume)
     body_paras = custom_paras if custom_paras else tone["paras"]
     paras = "".join(f"<p>{escape(p)}</p>" for p in body_paras)
-    jr = resume.get("jours_retard") or 0
-    retard_txt = f"{jr} jour(s)" if jr else "échéance dépassée"
+    # QJR146 (d) — ON N'AFFIRME PAS UN RETARD QU'ON NE SAIT PAS CHIFFRER.
+    # ``jours_retard`` à 0 ou ``None`` produisait la ligne « Retard : échéance
+    # dépassée » — c'est-à-dire l'affirmation d'un dépassement sur une facture
+    # qui échoit AUJOURD'HUI (0 jour) ou dont le retard n'est pas calculable.
+    # Un nombre de jours strictement positif s'imprime ; sinon la ligne est
+    # OMISE (règle d'omission du dépôt), et la lettre garde son ton.
+    try:
+        jr = int(resume.get("jours_retard") or 0)
+    except (TypeError, ValueError):
+        jr = 0
+    retard_row = (
+        f'<div class="row"><span>Retard</span>'
+        f'<span class="v">{escape(f"{jr} jour(s)")}</span></div>'
+    ) if jr > 0 else ""
     callout = (
         f'<div class="callout">'
         f'<div class="row"><span>Facture</span>'
         f'<span class="v">{escape(str(resume["reference"]))}</span></div>'
         f'<div class="row"><span>Date d\'échéance</span>'
         f'<span class="v">{escape(resume["date_echeance"] or "—")}</span></div>'
-        f'<div class="row"><span>Retard</span>'
-        f'<span class="v">{escape(retard_txt)}</span></div>'
+        f'{retard_row}'
         f'<div class="row due"><span>Montant restant dû</span>'
         f'<span class="v">{escape(fmt(resume["montant_du"]))}</span></div>'
         f'</div>'

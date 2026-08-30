@@ -32,10 +32,25 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     invest = d.get("_invest_ttc") or 0
-    pt = d.get("payment_terms") or {"acompte": 50, "materiel": 40, "solde": 10}
-    a_pct = int(pt.get("acompte", 50))
-    m_pct = int(pt.get("materiel", 40))
-    s_pct = int(pt.get("solde", 10))
+    # ── QJR146 (f) — AUCUN BARÈME DE PAIEMENT RECONSTRUIT ICI ───────────────
+    # Le repli ``{"acompte": 50, "materiel": 40, "solde": 10}`` refabriquait
+    # localement un échéancier dont la source canonique est le RÉGLAGE SOCIÉTÉ
+    # (``utils/company_settings.payment_terms_for``, servi par le builder dans
+    # ``payment_terms``) : une société ayant réglé un autre découpage voyait
+    # cette page en annoncer un autre au client, avec des MONTANTS calculés
+    # dessus. Sans barème servi, le bloc des tranches est OMIS — on n'imprime
+    # pas des conditions de paiement que personne n'a décidées.
+    pt = d.get("payment_terms") or {}
+    _pcts = {}
+    for _cle in ("acompte", "materiel", "solde"):
+        try:
+            _pcts[_cle] = int(pt[_cle])
+        except (KeyError, TypeError, ValueError):
+            _pcts = {}
+            break
+    a_pct = _pcts.get("acompte")
+    m_pct = _pcts.get("materiel")
+    s_pct = _pcts.get("solde")
 
     def tranche(label, pct, sub):
         montant = round(invest * pct / 100)
@@ -51,7 +66,12 @@ def build(ctx):
         + tranche("Matériel", m_pct, "à la livraison des équipements sur site")
         + '<td class="i3-tgap"></td>'
         + tranche("Solde", s_pct, "à la mise en service & réception")
-    )
+    ) if _pcts else ""
+    # QJR146 (f) — le titre suit le bloc : pas de section « Tranches de
+    # paiement phasées » vide au-dessus d'un trou.
+    tranches_html = (
+        '<div class="i3-sec">Tranches de paiement phasées</div>'
+        f'<div class="i3-trrow">{tranches}</div>') if tranches else ""
 
     # QJR118 — les DURÉES de garantie se dérivent de la composition réelle du
     # devis (source unique ``residential.theme.warranties_for``), exactement
@@ -86,7 +106,11 @@ def build(ctx):
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
-        sign_client = f'<div class="i3-sign-name">{theme._esc(accepte_nom)}</div><div class="i3-sign-date">Le {date_accept}</div>'
+        # QJR154 — UNE SEULE VÉRITÉ : ``builder.echapper_textes_client`` échappe
+        # désormais ``accepte_par_nom`` (le seul texte du document écrit par une
+        # personne NON authentifiée) pour les quatre renderers « maison ».
+        # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
+        sign_client = f'<div class="i3-sign-name">{accepte_nom}</div><div class="i3-sign-date">Le {date_accept}</div>'
     else:
         sign_client = '<div class="i3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
 
@@ -144,8 +168,7 @@ def build(ctx):
     html = f"""{css}
 <div class="i3-root">
   <div class="i3-kicker">Déploiement &amp; conditions</div>
-  <div class="i3-sec">Tranches de paiement phasées</div>
-  <div class="i3-trrow">{tranches}</div>
+  {tranches_html}
 
   <div class="i3-h2">Conformité &amp; valeur pour l'entreprise</div>
   <div class="i3-two">

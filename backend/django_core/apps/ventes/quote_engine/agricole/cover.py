@@ -9,6 +9,13 @@ single tidy 3-across stat strip replaces the old stacked pile of cards. Energy
 """
 from __future__ import annotations
 
+#: QJR155 (h) — CAPACITÉ du camion-citerne de référence (m³) servant à rendre
+#: le volume d'eau tangible. Elle était un « /15.0 » nu dans le calcul, jamais
+#: énoncée au client : le chiffre « ≈ N camions-citernes » n'était donc pas
+#: vérifiable. Elle est nommée ici et IMPRIMÉE dans le libellé, exactement
+#: comme les 20 L du bidon voisin.
+CITERNE_M3 = 15
+
 
 def _yrs(v):
     try:
@@ -68,7 +75,11 @@ def build(ctx) -> str:
     tang_items = []
     if has_water and m3j:
         bidons = round(float(m3j) * 50)                    # 1 m³ = 50 bidons 20 L
-        citernes = round(float(m3j) / 15.0)                # camion-citerne ≈ 15 m³
+        # QJR155 (h) — la capacité du camion est ÉNONCÉE au client (elle l'est
+        # dans le libellé plus bas), comme l'est déjà celle du bidon (20 L) :
+        # « ≈ 7 camions-citernes » sans dire sur quelle contenance il est
+        # compté n'est pas un chiffre vérifiable.
+        citernes = round(float(m3j) / CITERNE_M3)
         jerry = (f'<svg viewBox="0 0 24 24" fill="none"><path d="M8 7h6l2 2v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" '
                  f'stroke="{water}" stroke-width="1.6"/><path d="M10 7V5h3v2" stroke="{water}" stroke-width="1.6"/>'
                  f'<path d="M9 11h4" stroke="{water}" stroke-width="1.4"/></svg>')
@@ -81,7 +92,9 @@ def build(ctx) -> str:
                  f'stroke="{green}" stroke-width="1.5" stroke-linejoin="round"/></svg>')
         tang_items.append((jerry, f'≈ {fmt(bidons)}', 'bidons de 20 L par jour'))
         if citernes >= 1:
-            tang_items.append((truck, f'≈ {fmt(citernes)}', 'camions-citernes par jour'))
+            tang_items.append((truck, f'≈ {fmt(citernes)}',
+                               f'camions-citernes de {fmt(CITERNE_M3)} m³ '
+                               f'par jour'))
         if hectares:
             tang_items.append((field, f'≈ {fmt_dec(hectares)} ha', 'de cultures irriguées'))
     # Full-width strip below the heroes (boxed cells) — room to breathe so the

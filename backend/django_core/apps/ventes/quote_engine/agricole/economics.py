@@ -251,11 +251,10 @@ def compute(data: dict, company_id=None) -> dict:
             "solaire": solaire, "butane_today": butane_today,
             "butane_future": butane_future, "diesel": diesel,
         },
-        "cost_per_m3": {
-            "solaire": _num(rates.get("solaire")),
-            "butane": _num(rates.get("butane")),
-            "diesel": _num(rates.get("diesel")),
-        },
+        # QJR155 (a) — la clé ``cost_per_m3`` a disparu de la SORTIE : son seul
+        # lecteur était le graphe ``charts.cost_per_m3``, qu'aucune page ne
+        # rendait. Les TARIFS (``cfg['cost_per_m3']``, réglables par société)
+        # restent la source des coûts butane/diesel calculés ci-dessus.
         "current_fuel": current_fuel,
         "annual_fuel_now": annual_fuel_now,
         "annual_saving": annual_saving,

@@ -1691,6 +1691,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
+        # sur le productible de repli SANS que rien, nulle part, n'indique que
+        # le repère de la société n'avait pas pu être lu : une production
+        # publiée 25 % trop basse (« ≈ N kWh par kWc et par an ») était
+        # indistinguable d'un calcul normal. Le PDF ne casse toujours pas.
+        logger.warning(
+            "barème société illisible (devis %s) — repli productible",
+            getattr(devis, "reference", None), exc_info=True)
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
@@ -1704,6 +1712,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _productible = productible_for_city(
             _client_city, override=_co_productible)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
+        # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
+        # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
+        # cette ligne dit qu'on y est arrivé par une erreur.
+        logger.warning(
+            "productible par ville illisible (devis %s, ville %r) — repli",
+            getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
@@ -3048,8 +3063,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
 _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 #: Scalaires client rendus tels quels par les gabarits.
+#: QJR154 — ``accepte_par_nom`` en fait partie : il est écrit par
+#: ``services.accept_devis`` depuis le ``nom`` posté sur le PORTAIL PUBLIC,
+#: donc par une personne NON AUTHENTIFIÉE, et trois renderers l'injectent dans
+#: leur HTML (``agricole/economics_page``, ``industriel/trust``,
+#: ``commercial/trust``) — ``theme.titlecase_name`` n'échappe rien.
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
-                        "client_city", "client_phone", "client_ice")
+                        "client_city", "client_phone", "client_ice",
+                        "accepte_par_nom")
 
 
 def echapper_textes_client(data: dict) -> dict:
@@ -3072,6 +3093,22 @@ def echapper_textes_client(data: dict) -> dict:
 
     ``html.escape`` ne touche que ``&<>"'`` : un texte normal est rendu au bit
     près, et les mots-clés de classification (panneau, batterie…) sont intacts.
+
+    ── QJR154 — LE SOUS-DICTIONNAIRE ``etude`` EST COUVERT ─────────────────
+    ``data['etude']`` est ``dict(devis.etude_params or {})`` : un ``JSONField``
+    LIBRE, accepté du corps de requête. La liste blanche l'ignorait, et deux
+    paquets impriment ses textes bruts — ``agricole/study.py`` (``crop``,
+    ``region``, ``pompe_nom``, ``irrigation_method``) et
+    ``commercial/categories.py`` (``four``). Seuls les scalaires de type
+    ``str`` sont échappés, à plat : un nombre resterait un nombre (les gardes
+    numériques du document le comparent), et les sous-blocs (``toiture``,
+    ``etude_horaire``, ``bankable``, séries mensuelles) ne sont pas du texte
+    rendu tel quel.
+
+    LE SCHÉMA AGRICOLE A UNE SEULE VÉRITÉ : ``agricole/schematic.py``
+    s'échappait lui-même. Il ne le fait PLUS (il consomme les textes déjà
+    échappés ici) — sans quoi un simple « & » dans une culture sortait
+    « &amp;amp; » sur le PDF.
     """
     def _e(v):
         return html.escape(str(v)) if v is not None else v
@@ -3080,6 +3117,12 @@ def echapper_textes_client(data: dict) -> dict:
     for _cle in _CHAMPS_TEXTE_CLIENT:
         if sortie.get(_cle) is not None:
             sortie[_cle] = _e(sortie[_cle])
+    _etude = sortie.get("etude")
+    if isinstance(_etude, dict):
+        sortie["etude"] = {
+            cle: (_e(val) if isinstance(val, str) else val)
+            for cle, val in _etude.items()
+        }
     for _cle in ("sans_items", "avec_items", "all_items", "options_proposees"):
         _rows = sortie.get(_cle)
         if isinstance(_rows, list):

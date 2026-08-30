@@ -179,6 +179,26 @@ def dupliquer_devis(devis, *, user):
             prix_cible_kwc=devis.prix_cible_kwc,
             devise=devis.devise,
             taux_change=devis.taux_change,
+            # ── QJR146 (a) — LES CONDITIONS DE PAIEMENT SUIVENT LA COPIE ────
+            # Un duplicata est une copie EXACTE : sans ces champs, un devis
+            # portant un échéancier NÉGOCIÉ repartait sur l'échéancier par
+            # DÉFAUT de la société (``utils/echeancier.tranches_normalisees``
+            # retombe sur ``payment_terms_for`` dès que ``echeancier`` est
+            # vide) — et c'est cette première tranche que l'email de
+            # confirmation annonce au client comme acompte. ``renouveler_devis``
+            # copiait déjà ``echeancier`` et ``entite`` : la preuve que c'était
+            # un oubli, pas une décision.
+            # Les deux JSONField sont COPIÉS, jamais partagés par référence
+            # (le piège que QJR117 a fermé pour ``etude_params``).
+            echeancier=(list(devis.echeancier)
+                        if isinstance(devis.echeancier, list)
+                        else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
+            acompte_montant=devis.acompte_montant,
+            entite=devis.entite,
+            custom_data=(dict(devis.custom_data)
+                         if isinstance(devis.custom_data, dict)
+                         else devis.custom_data),
             created_by=user,
             # Duplicata indépendant : jamais de groupe de version (à la
             # différence de dupliquer-variante, QJ15).
