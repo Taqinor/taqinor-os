@@ -243,6 +243,16 @@ def email_saved_reports():
             # mensuel) par-dessus la sélection grossière par cadence.
             if not _rapport_est_du(report, now):
                 continue
+            # NTDATA39 — canal WhatsApp : un LIEN tokenisé, jamais la pièce
+            # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.
+            if getattr(report, 'canal', 'email') == 'whatsapp':
+                from .diffusion_views import diffuser_whatsapp
+                envoyes, _detail = diffuser_whatsapp(report)
+                if envoyes:
+                    report.last_sent_at = now
+                    report.save(update_fields=['last_sent_at'])
+                    sent += 1
+                continue
             if not report.recipient_list():
                 continue
             content, title = render_report_xlsx(report)

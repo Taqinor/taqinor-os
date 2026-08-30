@@ -15,6 +15,7 @@ from .calendar import (
     calendar_events, calendar_reschedule, calendar_ics,
     calendar_ics_subscription,
 )
+from .diffusion_views import rapport_partage_public
 from .geo import geo_points
 from .balance_export import balance_agee_export
 from .saved_reports_api import SavedReportViewSet
@@ -63,6 +64,11 @@ urlpatterns = [
     path('calendar.ics', calendar_ics, name='reporting-calendar-ics'),
     path('calendar/subscription/', calendar_ics_subscription,
          name='reporting-calendar-ics-subscription'),
+    # NTDATA39 — rendu PUBLIC d'un rapport résolu depuis le SEUL jeton signé
+    # (lien diffusé par WhatsApp ; expirant, débit limité, jamais de session).
+    # headless: telechargement .xlsx ouvert depuis un message WhatsApp
+    path('rapports-partages/<str:token>/', rapport_partage_public,
+         name='reporting-rapport-partage-public'),
     path('geo/', geo_points, name='reporting-geo'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
     path('pipeline/velocity/', funnel_velocity, name='reporting-funnel-velocity'),  # FG29

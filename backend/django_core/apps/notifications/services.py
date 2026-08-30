@@ -744,6 +744,22 @@ def render_whatsapp_template(template, *, prenom='', ville=''):
         '{prenom}', prenom or '').replace('{ville}', ville or '')
 
 
+def whatsapp_bsp_actif():
+    """NTDATA39 — vrai UNIQUEMENT si le canal WhatsApp BSP est réellement ARMÉ.
+
+    Point d'entrée de service pour les autres apps (elles n'importent jamais
+    ``notifications.whatsapp_bsp`` directement) : sans
+    ``WHATSAPP_BSP_ENABLED=1`` + les trois credentials Meta, le provider retenu
+    est ``ManualWaMeProvider`` (lien wa.me, AUCUN appel réseau) et cette
+    fonction renvoie ``False`` — un appelant gated doit alors rester en no-op
+    au lieu de croire qu'il a envoyé quelque chose. Ne lève jamais."""
+    from .whatsapp_bsp import BspProvider, get_whatsapp_provider
+    try:
+        return isinstance(get_whatsapp_provider(), BspProvider)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
 def send_whatsapp_campaign_message(company, *, recipient, body, campagne_id=None,
                                    template=None):
     """XMKT10 — envoie (ou prépare) UN message WhatsApp de campagne et le

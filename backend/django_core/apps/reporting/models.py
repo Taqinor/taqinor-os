@@ -59,9 +59,25 @@ class SavedReport(models.Model):
         'Jour du mois', default=1,
         validators=[MinValueValidator(1), MaxValueValidator(28)],
         help_text='Jour d\'envoi de la cadence mensuelle (1-28).')
+    # NTDATA39 — canal de diffusion. `email` = comportement historique (pièce
+    # jointe .xlsx). `whatsapp` envoie un LIEN tokenisé (jamais la pièce
+    # jointe) et reste un NO-OP total tant que le canal BSP n'est pas armé.
+    CANAL_EMAIL = 'email'
+    CANAL_WHATSAPP = 'whatsapp'
+    CANAL_CHOICES = [
+        (CANAL_EMAIL, 'Email'),
+        (CANAL_WHATSAPP, 'WhatsApp'),
+    ]
+    canal = models.CharField(
+        'Canal', max_length=10, choices=CANAL_CHOICES, default=CANAL_EMAIL)
     # Destinataires : une ou plusieurs adresses (séparées par virgule/point-virgule
     # ou retour à la ligne). Vide → aucun envoi (NO-OP).
     recipients = models.TextField(blank=True, default='')
+    # Numéros WhatsApp du canal `whatsapp` (même séparateurs que `recipients`).
+    # Séparés des emails : un numéro n'est pas une adresse, les mélanger dans
+    # un seul champ enverrait n'importe quoi à n'importe qui.
+    destinataires_whatsapp = models.TextField(
+        'Numéros WhatsApp', blank=True, default='')
     # Dernier envoi réussi (anti-doublon léger / traçabilité). NULL = jamais.
     last_sent_at = models.DateTimeField(null=True, blank=True)
     # FG91 — épingle le rapport comme carte sur le tableau de bord. ADDITIF,
@@ -81,15 +97,22 @@ class SavedReport(models.Model):
     def __str__(self):
         return f'{self.name} ({self.get_target_kind_display()})'
 
+    @staticmethod
+    def _split_destinataires(raw):
+        parts = []
+        for chunk in (raw or '').replace(';', ',').replace('\n', ',').split(','):
+            valeur = chunk.strip()
+            if valeur:
+                parts.append(valeur)
+        return parts
+
     def recipient_list(self):
         """Adresses email destinataires, nettoyées. Liste vide si aucune."""
-        raw = self.recipients or ''
-        parts = []
-        for chunk in raw.replace(';', ',').replace('\n', ',').split(','):
-            addr = chunk.strip()
-            if addr:
-                parts.append(addr)
-        return parts
+        return self._split_destinataires(self.recipients)
+
+    def whatsapp_list(self):
+        """NTDATA39 — numéros WhatsApp destinataires. Liste vide si aucun."""
+        return self._split_destinataires(self.destinataires_whatsapp)
 
 
 # ── FG96 — Config tableau de bord par utilisateur / palier de rôle ───────────

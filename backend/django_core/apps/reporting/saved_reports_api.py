@@ -25,7 +25,7 @@ class SavedReportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'definition', 'target_kind', 'target_kind_label',
             'schedule', 'schedule_label', 'heure_envoi', 'jour_du_mois',
-            'recipients', 'pinned',
+            'canal', 'recipients', 'destinataires_whatsapp', 'pinned',
             'last_sent_at', 'created_at', 'updated_at',
         ]
         read_only_fields = [
