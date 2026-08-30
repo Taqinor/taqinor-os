@@ -388,10 +388,19 @@ ETAPES = ('resoudre_entrees', 'decider_taille', 'composer', 'verifier',
 # étude qui avale une erreur de base à l'intérieur d'une transaction la rendrait
 # inutilisable pour tout ce qui suit. Les deux modes gardent donc chacun leur
 # côté de la frontière, exactement là où l'ancien corps les tenait.
+#
+# * ``reconcilier`` — QJR97 : le devis EXISTE, il est VIVANT, et on l'aligne
+#   sur une nouvelle cible sans jamais le recomposer. C'est le geste de la
+#   resynchronisation 3D et du chemin apply-taille : il porte des quantités,
+#   permute un onduleur, complète un kit manquant — et laisse INTACTS les prix
+#   négociés, les remises, les sections, les notes et l'ordre d'affichage. Une
+#   recomposition les perdrait tous ; c'est pourquoi ce mode n'appelle NI
+#   ``composer`` NI l'écrivain de lignes, et n'exécute QUE son étape.
 MODE_COMPOSER = 'composer'
 MODE_ECRIRE = 'ecrire'
 MODE_RAFRAICHIR = 'rafraichir'
-MODES = (MODE_COMPOSER, MODE_ECRIRE, MODE_RAFRAICHIR)
+MODE_RECONCILIER = 'reconcilier'
+MODES = (MODE_COMPOSER, MODE_ECRIRE, MODE_RAFRAICHIR, MODE_RECONCILIER)
 
 #: Les étapes de CHAQUE mode, dans l'ordre. Le journal rendu par ``appliquer``
 #: est exactement cette liste — c'est ce qu'une bascule compare.
@@ -399,6 +408,7 @@ ETAPES_PAR_MODE = {
     MODE_COMPOSER: ETAPES,
     MODE_ECRIRE: ('ecrire_lignes',),
     MODE_RAFRAICHIR: ('rafraichir_etudes',),
+    MODE_RECONCILIER: ('reconcilier',),
 }
 
 
@@ -593,16 +603,18 @@ def ecrire_etude_params(devis, intention, composition):
     (``poser_puissance_kwc``, QJR63) : il est posé à l'étape 8, sur les lignes
     RÉELLEMENT écrites.
     """
-    a_batterie = any(_is_battery(s.designation) for s in (composition or ()))
-    a_hybride = any(_is_hybrid_inverter(s.designation)
-                    for s in (composition or ()))
-    a_reseau = any(_is_reseau_inverter(s.designation)
-                   for s in (composition or ()))
-    if (_scenario_de(intention) == COMPOSITION_LES_DEUX
-            and a_reseau and a_hybride and a_batterie):
-        scenario = SCENARIO_LES_DEUX
-    else:
-        scenario = _scenario_stocke(a_batterie and a_hybride)
+    # QJR97 — LA GARDE ANTI-MENSONGE EST ÉCRITE UNE FOIS, dans
+    # ``domain/scenario``. Ce site et la resynchronisation la portaient tous
+    # deux EN ENTIER, sous deux formulations : les deux appellent désormais la
+    # MÊME fonction, sur les mêmes trois faits.
+    scenario = scenario_servable(
+        _scenario_de(intention) == COMPOSITION_LES_DEUX,
+        a_reseau=any(_is_reseau_inverter(s.designation)
+                     for s in (composition or ())),
+        a_hybride=any(_is_hybrid_inverter(s.designation)
+                      for s in (composition or ())),
+        a_batterie=any(_is_battery(s.designation)
+                       for s in (composition or ())))
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}
@@ -808,11 +820,25 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
 
     journal = []
     avertissements = []
+    resynchro = None
     if mode == MODE_ECRIRE:
         ecrire_lignes(devis, intention.composition,
                       company=intention.company,
                       avertissements=avertissements)
         journal.append('ecrire_lignes')
+    elif mode == MODE_RECONCILIER:
+        # QJR97 — L'ÉTAPE VIT DANS ``domain/resynchronisation``, comme
+        # ``composer`` vit dans ``domain/composition`` et l'écrivain de lignes
+        # dans ``domain/lignes`` : ``appliquer`` ORDONNE, elle n'a jamais de
+        # règle propre. L'import est FONCTION-LOCAL et c'est délibéré :
+        # ``resynchronisation`` importe ce module (son adaptateur appelle
+        # ``appliquer``), et un import de haut de fichier des deux côtés ferait
+        # lire un module à moitié construit.
+        from apps.ventes.domain.resynchronisation import reconcilier
+
+        resynchro = reconcilier(devis, intention)
+        avertissements.extend(resynchro.get('avertissements') or ())
+        journal.append('reconcilier')
     else:  # MODE_RAFRAICHIR
         rafraichir_etudes(devis, force=intention.force_etudes)
         journal.append('rafraichir_etudes')
@@ -824,6 +850,10 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
         'cible': None,
         'composition': intention.composition,
         'avertissements': avertissements,
+        # QJR97 — le compte rendu de l'étape ``reconcilier`` (forme GELÉE :
+        # ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
+        # lignes_ajoutees, avertissements}``), ``None`` pour les autres modes.
+        'resynchro': resynchro,
     }
 
 
@@ -864,6 +894,8 @@ from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_LES_DEUX,
     _scenario_stocke,
     poser_puissance_kwc,
+    scenario_servable,
+    sert_les_deux,
 )
 from apps.ventes.domain.taille import (  # noqa: E402,F401
     _AUTO_PANEL_WATT,
@@ -883,6 +915,7 @@ __all__ = [
     'MODE_COMPOSER',
     'MODE_ECRIRE',
     'MODE_RAFRAICHIR',
+    'MODE_RECONCILIER',
     'ORIGINES',
     'ORIGINE_AUTO',
     'ORIGINE_CALEPINAGE',
