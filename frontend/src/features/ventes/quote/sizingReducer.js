@@ -178,7 +178,7 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         }
         case 'panelW':
           // Pas de drapeau propre (comme aujourd'hui) : la puissance panneau
-          // suit la frappe et la cible se réaligne sur le compte courant.
+          // suit la frappe et la cible se recale sur le compte courant.
           return {
             ...base, panelW: valeur,
             kwcCible: kwcDepuisPanneaux(base.nbPanneaux, valeur) || base.kwcCible,
