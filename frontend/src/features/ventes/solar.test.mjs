@@ -1233,17 +1233,25 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
   assert.equal(r.estimation, true)
 })
 
+// QJR168 — les factures ci-dessous portent le barème COMPLET (énergie + les
+// deux lignes fixes + TPPAN), jumeau de bareme.facture_mad : 39,936 MAD TTC de
+// location/entretien par mois (479,23/an) et une TPPAN empilée 0,10/0,15/0,20,
+// bornes 100/200 kWh, plafonnée à 100 MAD/mois, nulle sous 50 kWh/mois.
 test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.60, sans batterie)', () => {
   // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
   //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,622856 = 973,7136
-  //                                            MAD/mois × 12 = 11 684,5632 → 11 685
+  //                                            MAD/mois × 12 = 11 684,5632
+  //     TPPAN  10 + 15 + 400 × 0,20 = 105 → PLAFOND 100 MAD/mois × 12 = 1 200
+  //     fixes  479,23 → facture 11 684,5632 + 479,232 + 1 200 = 13 363,80 → 13 364
   //   autoconsommé 6 000 × 0,60 = 3 600 kWh (≤ conso) → résiduel 3 600 kWh/an
   //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,187388 =
-  //                                            356,2164 × 12 = 4 274,5968 → 4 275
-  //   économie 11 685 − 4 275 = 7 410 MAD/an
+  //                                            356,2164 × 12 = 4 274,5968
+  //     TPPAN  10 + 15 + 100 × 0,20 = 45 MAD/mois × 12 = 540
+  //     fixes  479,23 → facture 4 274,5968 + 479,232 + 540 = 5 293,83 → 5 294
+  //   économie 13 364 − 5 294 = 8 070 MAD/an
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11685, factureAvec: 4275, economie: 7410, autoconsoKwh: 3600,
+    factureSans: 13364, factureAvec: 5294, economie: 8070, autoconsoKwh: 3600,
   })
 })
 
@@ -1251,13 +1259,16 @@ test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, av
   // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
   //   autoconsommé 6 000 × 0,85 = 5 100 kWh → résiduel 2 100 kWh/an
   //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,091388 =
-  //                                            190,9929 × 12 = 2 291,9148 → 2 292
-  //   économie 11 685 − 2 292 = 9 393 MAD/an
+  //                                            190,9929 × 12 = 2 291,9148
+  //     TPPAN  10 + 75 × 0,15 = 21,25 MAD/mois × 12 = 255
+  //     fixes  479,23 → facture 2 291,9148 + 479,232 + 255 = 3 026,15 → 3 026
+  //   économie 13 364 − 3 026 = 10 338 MAD/an
   // En redescendant sous 510 PUIS sous 310, le client ne fait pas qu'effacer
-  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388).
+  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388), et sa
+  // TPPAN dégringole avec lui (les lignes fixes, elles, s'annulent).
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11685, factureAvec: 2292, economie: 9393, autoconsoKwh: 5100,
+    factureSans: 13364, factureAvec: 3026, economie: 10338, autoconsoKwh: 5100,
   })
 })
 

@@ -907,10 +907,99 @@ export function consoAnnuelleDepuisFactures(factures, utility) {
   return total > 0 ? Math.round(total) : 0
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// QJR168 — LE BARÈME COMPLET : UNE FACTURE N'EST PAS QUE DE L'ÉNERGIE
+// ════════════════════════════════════════════════════════════════════════════
+// Jumeau JS de apps/ventes/quote_engine/bareme.py, le module étalonné sur TROIS
+// FACTURES RÉELLES du fondateur (SRM Casablanca-Settat, BT domestique) et qui
+// reproduit la facture du 08/05/2026 à 0,01 MAD près. Le serveur tarife les
+// deux factures du modèle « deux factures » par `bareme.facture_mad` depuis
+// QJR157 ; l'écran, lui, était resté sur l'énergie seule — le même client
+// lisait donc deux « factures actuelles » différentes selon qu'il regardait
+// l'écran (24 343 MAD/an) ou le PDF (26 022 MAD/an). QJR168 referme l'écart en
+// portant ici le MÊME modèle, pas en ajustant un chiffre.
+//
+// CHAQUE NOMBRE VIENT DE bareme.py — aucun n'est estimé :
+//   · location du compteur     18,28 MAD HT/mois (montant identique sur les
+//     trois factures) ; entretien du branchement 15,00 MAD HT/mois (idem) ;
+//     TVA 20 % sur les deux en 2026 → 39,936 MAD TTC/mois, soit 479,23 MAD/an ;
+//   · TPPAN (art. 16 du dahir n° 1-96-77, BO 4391 bis) : empilement PROGRESSIF
+//     0,10 / 0,15 / 0,20, bornes 100 et 200 kWh proratisées aux jours de la
+//     période, plafond 100 MAD/mois, exonération ≤ 50 kWh/mois. Le barème 1996
+//     produit directement un montant TTC — prouvé par la facture du 08/05/2026
+//     (100 × 0,10 + 100 × 0,15 + 159 × 0,20 = 56,80, la ligne exacte).
+// MILLÉSIME : 2026, celui d'ONEE_TRANCHES. Le serveur en gère plusieurs (2025
+// avait trois taux de TVA différents sur une même facture) ; l'écran ne tarife
+// que la grille qu'il affiche.
+//
+// CE QUI S'ANNULE, CE QUI NE S'ANNULE PAS : les deux lignes fixes sont dues
+// avec ou sans solaire — elles disparaissent donc de l'ÉCONOMIE (le client
+// garde son abonnement ; les lui compter serait un mensonge) mais elles pèsent
+// sur les deux FACTURES affichées. La TPPAN, elle, suit le kWh : elle baisse
+// avec la consommation et fait partie de l'économie réelle.
+const CHARGE_LOCATION_COMPTEUR_HT = 18.28
+const CHARGE_ENTRETIEN_BRANCHEMENT_HT = 15.00
+const TVA_LIGNES_FIXES = 0.20            // millésime 2026 (location ET entretien)
+const TPPAN_TRANCHES = [[100, 0.10], [200, 0.15], [null, 0.20]]
+const TPPAN_JOURS_REFERENCE = 30
+const TPPAN_PLAFOND_MAD_MOIS = 100
+const TPPAN_EXONERATION_KWH_MOIS = 50
+
+// Total TTC des DEUX lignes fixes d'un mois : 18,28 × 1,20 + 15,00 × 1,20
+// = 39,936 MAD. (bareme.charges_fixes_ttc, millésime 2026.)
+export function chargesFixesTtc() {
+  return CHARGE_LOCATION_COMPTEUR_HT * (1 + TVA_LIGNES_FIXES)
+    + CHARGE_ENTRETIEN_BRANCHEMENT_HT * (1 + TVA_LIGNES_FIXES)
+}
+
+// TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
+// Jumeau de bareme.tppan_mad : empilement progressif sur la TOTALITÉ de la
+// consommation, bornes proratisées, plafonné. Monotone non décroissante.
+export function tppanMad(kwhMensuel, jours = TPPAN_JOURS_REFERENCE) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  if (kwh <= 0 || kwh <= TPPAN_EXONERATION_KWH_MOIS) return 0
+  let ratio = (parseFloat(jours) || TPPAN_JOURS_REFERENCE) / TPPAN_JOURS_REFERENCE
+  if (!(ratio > 0)) ratio = 1
+  let total = 0
+  let restant = kwh
+  let borneBasse = 0
+  for (const [plafond, prix] of TPPAN_TRANCHES) {
+    if (plafond == null) { total += restant * prix; break }
+    const borneHaute = plafond * ratio
+    const tranche = Math.min(restant, Math.max(0, borneHaute - borneBasse))
+    total += tranche * prix
+    restant -= tranche
+    borneBasse = borneHaute
+    if (restant <= 0) break
+  }
+  return Math.min(total, TPPAN_PLAFOND_MAD_MOIS)
+}
+
+// kWh/mois → facture mensuelle TTC DÉTAILLÉE (MAD), composante par composante,
+// dans l'ordre de la vraie facture. Jumeau de bareme.facture_mad. Une
+// consommation nulle ne doit RIEN en énergie ni en TPPAN, mais les lignes
+// fixes restent dues : c'est la réalité d'un abonnement.
+export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  const energie = kwh > 0 ? monthlyBillFromKwh(kwh, tranches) : 0
+  const fixes = chargesFixesTtc()
+  const taxe = tppanMad(kwh, jours)
+  return {
+    energieMad: energie,
+    locationEntretienMad: fixes,
+    tppanMad: taxe,
+    totalMad: energie + fixes + taxe,
+  }
+}
+
 // QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
-// valorisée par tranche (self-consumption-first, loi 82-21). Miroir
+// valorisée par tranche (self-consumption-first, loi 82-21). Jumeau de
 // two_bills_savings. Retourne null quand une vraie donnée manque (l'appelant
 // dégrade alors vers l'estimation, jamais un chiffre inventé).
+// QJR168 — les deux factures passent par `factureMad` (lignes fixes + TPPAN),
+// comme le serveur depuis QJR157 : le mois reste l'unité de tarification (le
+// seuil des marches est MENSUEL), on ne divise jamais l'année après avoir
+// tarifé. Mois MOYEN, comme le repli serveur sans répartition mensuelle.
 export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
   const { table } = resolveTranches(utility, tranchesOverride)
   if (!table) return null
@@ -918,10 +1007,11 @@ export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio,
   const prod = parseFloat(productionKwh) || 0
   const ratio = parseFloat(autoconsoRatio) || 0
   if (conso <= 0 || prod <= 0 || ratio <= 0) return null
-  const factureSans = Math.round(monthlyBillFromKwh(conso / 12, table) * 12)
+  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table).totalMad * 12
+  const factureSans = Math.round(factureAnnuelle(conso))
   const autoconsoKwh = Math.min(prod * ratio, conso)
   const residuel = Math.max(0, conso - autoconsoKwh)
-  const factureAvec = Math.round(monthlyBillFromKwh(residuel / 12, table) * 12)
+  const factureAvec = Math.round(factureAnnuelle(residuel))
   return {
     factureSans, factureAvec,
     economie: Math.max(0, factureSans - factureAvec),

@@ -65,34 +65,54 @@ test('capacité inconnue : repli documenté sur l\'ancien forfait 85 %', () => {
 // > 510 = 1,622856) — le jumeau Python (test_battery_autoconso.py,
 // test_miroir_js_meme_fixture_memes_chiffres) attend EXACTEMENT les mêmes.
 //
+// COMPOSANTE ÉNERGIE (le barème par tranche, seul) :
 //  facture sans solaire  : 15 000/12 = 1 250 kWh/mois → > 510
-//      1 250 × 1,622856 = 2 028,57 MAD/mois × 12 = 24 342,84 → 24 343 MAD/an
+//      1 250 × 1,622856 = 2 028,57 MAD/mois × 12 = 24 342,84 MAD/an
 //  option SANS (60 %)    : autoconsommé 9 214,8 → résiduel 5 785,2
 //      → 482,1 kWh/mois → bande 311-510 : 482,1 × 1,381704 = 666,1194984
-//      × 12 = 7 993,43 → 7 993
-//      ⇒ économie 24 343 − 7 993 = 16 350 MAD/an
+//      × 12 = 7 993,43
 //  option AVEC (83,8 %)  : autoconsommé 12 864,8 → résiduel 2 135,2
 //      → 177,9333 kWh/mois → bande 151-210 : 177,9333 × 1,091388 = 194,19430
-//      × 12 = 2 330,33 → 2 330
-//      ⇒ économie 24 343 − 2 330 = 22 013 MAD/an
+//      × 12 = 2 330,33
 //  (la batterie fait franchir DEUX marches vers le bas : 1,381704 → 1,091388
 //   sur la totalité du résiduel — c'est là que le modèle sélectif change tout.)
 //
 // RECALAGE QJR26 / DÉCISION FONDATEUR D5 (29/08/2026) : le tarif T5 est passé
 // de l'extrapolation « HT constant » à la valeur PROUVÉE par la facture SRM du
 // 08/05/2026 (1,15142 HT × 1,20 = 1,381704). SEULE l'option SANS traverse T5 —
-// sa facture passe de 8 129 à 7 993 et son économie de 16 214 à 16 350. L'option
-// AVEC retombe en 151-210, hors T5 : ses 2 330 / 22 013 sont RECALCULÉS et
-// confirmés INCHANGÉS, pas supposés tels.
+// sa composante énergie passe de 8 129 à 7 993. L'option AVEC retombe en
+// 151-210, hors T5 : ses 2 330 sont RECALCULÉS, pas supposés inchangés.
+//
+// ── RECALAGE QJR168 (30/08/2026) — LA FACTURE COMPLÈTE, PAS L'ÉNERGIE SEULE ──
+// `twoBillsSavings` tarife désormais par le barème complet (`factureMad`),
+// jumeau de bareme.py : les DEUX lignes fixes (location du compteur 18,28 HT +
+// entretien du branchement 15,00 HT, TVA 20 % → 39,936 MAD/mois = 479,23/an)
+// et la TPPAN (0,10/0,15/0,20 empilés, bornes 100/200 kWh, plafond 100 MAD/mois,
+// exonération ≤ 50 kWh/mois). Le serveur le faisait depuis QJR157 ; l'écran
+// affichait donc 1 679 MAD/an de moins que le PDF sur la facture actuelle.
+// Dérivation composante par composante (mois moyen de 30 jours) :
+//   TPPAN 1 250 kWh/mois : 100×0,10 + 100×0,15 + 1 050×0,20 = 235 → PLAFOND
+//       100 MAD/mois × 12 = 1 200,00
+//   TPPAN   482,1 kWh/mois : 10 + 15 + 282,1×0,20 = 81,42 × 12 =   977,04
+//   TPPAN   177,93 kWh/mois : 10 + 77,9333×0,15  = 21,69 × 12 =   260,28
+//   facture sans solaire  24 342,84 + 479,23 + 1 200,00 = 26 022,07 → 26 022
+//   résiduel option SANS   7 993,43 + 479,23 +   977,04 =  9 449,71 →  9 450
+//       ⇒ économie 26 022 −  9 450 = 16 572 MAD/an
+//   résiduel option AVEC   2 330,33 + 479,23 +   260,28 =  3 069,84 →  3 070
+//       ⇒ économie 26 022 −  3 070 = 22 952 MAD/an
+// Les 479,23 MAD/an de lignes fixes s'ANNULENT dans l'économie (dues des deux
+// côtés) ; la TPPAN suit le kWh et ne s'annule donc pas — d'où les +222
+// (16 350 → 16 572) et +939 (22 013 → 22 952). Le jumeau Python
+// (test_battery_autoconso.py) attend EXACTEMENT ces six nombres.
 test('MIROIR Python — mêmes entrées, mêmes factures et mêmes économies', () => {
   const sans = twoBillsSavings(PROD, CONSO, AUTOCONSO_SANS, 'onee')
   const avec = twoBillsSavings(PROD, CONSO, autoconsoAvecRatio(PROD, BATTERY), 'onee')
-  assert.equal(sans.factureSans, 24343)
-  assert.equal(sans.factureAvec, 7993)
-  assert.equal(sans.economie, 16350)
+  assert.equal(sans.factureSans, 26022)
+  assert.equal(sans.factureAvec, 9450)
+  assert.equal(sans.economie, 16572)
   assert.equal(avec.autoconsoKwh, 12865)
-  assert.equal(avec.factureAvec, 2330)
-  assert.equal(avec.economie, 22013)
+  assert.equal(avec.factureAvec, 3070)
+  assert.equal(avec.economie, 22952)
   // La batterie ajoute une économie RÉELLE, jamais négative.
   assert.equal(avec.economie > sans.economie, true)
 })
@@ -113,8 +133,10 @@ test('computeROI (modèle « deux factures ») : taux avec batterie dérivé, pa
   // le PDF : à l'écran comme sur le document, 0,60 + 3 650/15 358.
   assert.equal(Math.abs(roi.autoconso_avec - 0.8376611538) < 1e-9, true)
   assert.equal(roi.autoconso_avec, autoconsoAvecRatio(PROD, BATTERY))
-  assert.equal(roi.eco_annuelle_sans, 16350)
-  assert.equal(roi.eco_annuelle_avec, 22013)
+  // QJR168 — barème complet (lignes fixes + TPPAN) : mêmes deux nombres que
+  // test_miroir_js_bout_en_bout_meme_production_memes_economies côté Python.
+  assert.equal(roi.eco_annuelle_sans, 16572)
+  assert.equal(roi.eco_annuelle_avec, 22952)
   assert.notEqual(roi.autoconso_avec, AUTOCONSO_AVEC)
 })
 
