@@ -610,21 +610,51 @@ DATE_ACCEPTATION = ""
 SAVINGS_METHOD = None
 
 
+def _sans_economies_publiees():
+    """QJR123 — LE document publie-t-il des économies ?
+
+    UNE seule définition, celle que ``build_html`` applique déjà aux deux
+    graphes (``_sans_economies``) et ``page1`` aux pastilles ROI : dossier
+    raccordé en MOYENNE TENSION (chiffres au barème BASSE tension, donc pas
+    les siens) ou puissance sans ancrage réel. Tout bloc qui PORTE un chiffre
+    d'économies — méthode, hypothèses — lit cette fonction.
+    """
+    return bool(MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
+
+
 def _savings_method_html():
     """QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
     chiffré compact). Rendu UNIQUEMENT quand data["savings_method"] est fourni.
     Aucune donnée fabriquée : le texte vient du builder (une seule source)."""
+    # QJR123 — MÊME GARDE QUE LES GRAPHES ET LES PASTILLES ROI. Ce bloc n'avait
+    # aucun garde : sur un dossier MOYENNE TENSION, les pages 1 et 2 omettent
+    # scrupuleusement les économies (les chiffres sont au barème BASSE tension)
+    # et la page 3 imprimait juste après « COMMENT NOUS CALCULONS VOS
+    # ÉCONOMIES » avec ce même tarif BT. Idem quand la puissance n'a aucun
+    # ancrage réel : la méthode décrit alors des économies non publiées.
+    if _sans_economies_publiees():
+        return ""
     sm = SAVINGS_METHOD
     if not isinstance(sm, dict) or not sm.get("ligne_methode"):
         return ""
     methode = _esc(sm.get("ligne_methode", ""))
     exemple = sm.get("exemple")
-    approx = " (approximatif)" if sm.get("approximatif") else ""
+    # QJR123 — la mention d'estimation s'affiche INDÉPENDAMMENT de l'exemple :
+    # le modèle « estimation » du builder pose ``approximatif=True`` mais
+    # ``exemple=None``, donc la mention n'apparaissait JAMAIS sur les devis
+    # qu'elle devait précisément qualifier.
+    approx = (" (approximatif)"
+              if (sm.get("approximatif") or SAVINGS_ESTIMATED) else "")
     ex_html = ""
     if exemple:
         ex_html = (
             f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
             f'{_esc(exemple)}{approx}</div>')
+    elif approx:
+        ex_html = (
+            f'<div style="margin-top:4px;font-size:7.5pt;color:{CG4};'
+            f'font-style:italic;">Économies estimées{approx} — '
+            f'à confirmer sur vos factures.</div>')
     return (
         f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
         f'border:1px solid {CG2};border-left:4px solid {CA};margin-bottom:5px;">'
@@ -645,6 +675,11 @@ def _hypotheses_html():
     économies (tarif, source barème, autoconsommation-first loi 82-21, base de
     production). Rendu UNIQUEMENT quand data["hypotheses"] est fourni. Le texte
     vient du builder (une seule source) ; aucun chiffre inventé ici."""
+    # QJR123 — même garde que le bloc « méthode » ci-dessus : ces hypothèses
+    # portent le tarif MAD/kWh et la production par kWc qui SERVENT les
+    # économies. Économies non publiées ⇒ hypothèses non publiées.
+    if _sans_economies_publiees():
+        return ""
     h = HYPOTHESES
     if not isinstance(h, dict):
         return ""
@@ -2893,7 +2928,9 @@ def build_html():
     # 25 ans » les traçait quand même. Idem quand la puissance n'a aucun
     # ancrage réel (M2) : sans kWc, le gain cumulé vaut zéro — on n'imprime pas
     # une courbe plate à zéro, on n'imprime rien.
-    _sans_economies = MASQUER_ECONOMIES or PUISSANCE_INCONNUE
+    # QJR123 — UNE seule définition, partagée avec les blocs « méthode » et
+    # « hypothèses » de la page 3 (qui n'en avaient aucune).
+    _sans_economies = _sans_economies_publiees()
     img_roi = "" if _sans_economies else make_chart_roi()
     img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
