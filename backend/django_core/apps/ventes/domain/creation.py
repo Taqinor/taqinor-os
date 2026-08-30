@@ -98,7 +98,7 @@ def dupliquer_devis(devis, *, user):
     lui-même, donc un brouillon frais n'en hérite jamais.
 
     Les lignes sont clonées à l'identique (mêmes quantités/prix/sections)."""
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
     company = devis.company
@@ -129,12 +129,20 @@ def dupliquer_devis(devis, *, user):
     copie = holder['obj']
 
     for ligne in devis.lignes.all():
-        LigneDevis.objects.create(
-            devis=copie, produit=ligne.produit, designation=ligne.designation,
+        creer_ligne(
+            copie, produit=ligne.produit, designation=ligne.designation,
             quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
             remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
             taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
             groupe_label=ligne.groupe_label,
+            # QJR84 — « les lignes sont clonées à l'identique » (docstring) :
+            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
+            # marqueurs de saisie manuelle (D12) sont de l'identique. Sans eux,
+            # la copie perdait son découpage en options et rouvrait à la
+            # réécriture les prix et quantités tapés par le commercial.
+            variante=ligne.variante, optionnelle=ligne.optionnelle,
+            quantite_manuelle=ligne.quantite_manuelle,
+            prix_manuel=ligne.prix_manuel,
         )
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference, getattr(company, 'id', '?'))
@@ -144,8 +152,18 @@ def dupliquer_devis(devis, *, user):
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
-                            dimensionnement_avec=None):
+                            dimensionnement_avec=None,
+                            mppt_paires=1, structure_type='acier'):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
+
+    ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
+    composition que cette fonction n'acceptait pas et ne transmettait donc
+    jamais, pendant que le dry-run qui l'approuve
+    (``composer_devis_residentiel``) les transmettait : l'aperçu et le devis
+    pouvaient diverger sur les mètres de câble DC et sur le matériau de
+    structure. Les défauts sont ceux de ``composition_residentielle``
+    (1 paire, acier), donc un appelant qui ne les renseigne pas compose
+    EXACTEMENT ce que ce dépôt composait déjà.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
     OPTIONS (« sans batterie » ET « avec batterie » dans un seul devis, cf.
@@ -198,7 +216,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
     """
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
     from apps.ventes.utils.references import create_with_reference
 
     if client is None:
@@ -270,49 +288,37 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # strictement inchangé. Fournir une liste que personne ne lit reviendrait
     # à ÉTEINDRE ce log.
     _avertissements = [] if journal is not None else None
-    _commun_composition = dict(
+    # ── QJR80 — L'ÉTAPE `composer` DU PIPELINE, LA MÊME QUE L'APERÇU ────────
+    # Le jeu de paramètres n'est plus construit ici : il est NOMMÉ une fois,
+    # dans ``domain/pipeline.IntentionComposition``, et le dry-run
+    # (``composer_devis_residentiel``) remplit le MÊME. ``mppt_paires`` et
+    # ``structure_type`` cessent donc de tomber en route entre l'aperçu que le
+    # vendeur approuve et le devis réellement créé.
+    #
+    # L-2OPT — la fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux »
+    # ET quand l'appelant a réellement une recommandation « avec » à opposer ;
+    # ``composer`` porte cet arbitrage (et le filtre ``isinstance`` qui allait
+    # avec), à l'identique.
+    line_specs = composer(IntentionComposition(
+        company=company,
+        kwc=kwc_composition,
+        nb_panneaux=nb_panneaux,
         panel_watt=watt,
+        # Le scénario du layout, dit dans le SEUL vocabulaire du pipeline.
+        # ``deux_options`` l'emporte : c'est déjà ce que faisait la
+        # composition, où ``avec_batterie`` n'a aucun effet dès que la forme
+        # est à deux options.
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        structure_type=structure_type,
         taux_tva=taux_tva,
-        # U3 — les règles de gamme vivent CÔTÉ SERVEUR : marques épinglées
-        # (PVMRQ) et ordre par défaut (PVORD) sont lus ici et donnés à la
-        # fonction pure, plus jamais recalculés par l'écran.
-        marques=carte_marques_composition(company),
-        ordre_lignes=ordre_lignes_societe(company),
-        avertissements=_avertissements,
+        mppt_paires=mppt_paires,
         # PVCOMPAT — le raccordement du client, quand l'appelant le connaît.
         phase=phase,
-    )
-    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ───────────
-    # La fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux » ET quand
-    # l'appelant a réellement une recommandation « avec » à opposer. Sinon
-    # (défaut, calepinage 3D, devis mono-option) c'est le chemin d'hier, mot
-    # pour mot.
-    _avec = dimensionnement_avec if isinstance(
-        dimensionnement_avec, dict) else None
-    if deux_options and _avec:
-        line_specs = composition_deux_optimiseurs(
-            catalogue_de_la_societe(company),
-            kwc_sans=kwc_composition,
-            nb_panneaux_sans=nb_panneaux,
-            kwc_avec=_avec.get('kwc'),
-            nb_panneaux_avec=_avec.get('nb_panneaux'),
-            batterie_cible_kwh=_avec.get('batterie_kwh'),
-            **_commun_composition)
-    else:
-        line_specs = composition_residentielle(
-            catalogue_de_la_societe(company),
-            kwc=kwc_composition,
-            nb_panneaux=nb_panneaux,
-            avec_batterie=wants_battery,
-            deux_options=deux_options,
-            # L-2OPT — devis MONO « avec batterie » : le champ PV vient déjà de
-            # l'optimum AVEC (l'appelant l'a mis dans le layout) ; la CAPACITÉ
-            # retenue par ce même optimum se transmet ici. Absente ⇒ la règle
-            # historique kWc/5 décide seule, à l'octet près.
-            batterie_cible_kwh=(
-                _avec.get('batterie_kwh')
-                if (wants_battery and not deux_options and _avec) else None),
-            **_commun_composition)
+        dimensionnement_avec=dimensionnement_avec,
+        avertissements=_avertissements,
+    ))
     if journal is not None:
         journal['marques_manquantes'] = list(
             getattr(line_specs, 'marques_manquantes', ()) or ())
@@ -376,8 +382,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # l'écran s'était donnée, et sans elle l'ordre par défaut de la société
         # ne survivrait pas à la première renumérotation.
         for index, spec in enumerate(line_specs):
-            LigneDevis.objects.create(
-                devis=devis,
+            creer_ligne(
+                devis,
                 produit=spec.produit,
                 designation=spec.designation,
                 quantite=Decimal(str(spec.quantite)),
@@ -460,44 +466,42 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     avec_batterie = demande == 'avec'
     deux_options = demande not in ('avec', 'sans')
 
-    avertissements = []
-    _avec = dimensionnement_avec if isinstance(
-        dimensionnement_avec, dict) else None
-    _commun = dict(
+    # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
+    # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
+    # phrases françaises que le calepinage 3D oppose, sinon le commercial
+    # découvre le trou de catalogue à la génération du PDF. Ici c'est un
+    # AVERTISSEMENT et non un refus — le dry-run n'écrit rien, et le commercial
+    # reste libre de composer à la main ce que le catalogue ne sert pas.
+    avertissements = list(verifier(IntentionComposition(
+        company=company, nb_panneaux=nb_force, kwc=kwp,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
+        gamme_nom_devis=gamme_nom_devis)) or ())
+    # ── QJR80 — LA MÊME ÉTAPE `composer` QUE LA CRÉATION ────────────────────
+    # « Miroir EXACT de ``build_devis_from_layout`` » n'est plus une intention
+    # écrite en commentaire : les deux chemins remplissent LE MÊME
+    # ``IntentionComposition`` et appellent LA MÊME fonction. Un paramètre ne
+    # peut plus être transmis d'un côté et oublié de l'autre.
+    lignes = composer(IntentionComposition(
+        company=company,
+        kwc=kwp,
+        nb_panneaux=nb_force,
         panel_watt=watt,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
         structure_type=structure_type,
         taux_tva=taux_tva,
-        avertissements=avertissements,
-        marques=carte_marques_composition(company, gamme_nom_devis),
-        ordre_lignes=ordre_lignes_societe(company),
         mppt_paires=mppt_paires,
         # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement
         # que la construction, sinon l'aperçu montrerait un onduleur que le
         # devis ne composerait pas.
         phase=phase,
-    )
-    if deux_options and _avec:
-        lignes = composition_deux_optimiseurs(
-            catalogue_de_la_societe(company),
-            kwc_sans=kwp,
-            nb_panneaux_sans=nb_force,
-            kwc_avec=_avec.get('kwc'),
-            nb_panneaux_avec=_avec.get('nb_panneaux'),
-            batterie_cible_kwh=_avec.get('batterie_kwh'),
-            **_commun)
-    else:
-        lignes = composition_residentielle(
-            catalogue_de_la_societe(company),
-            kwc=kwp,
-            nb_panneaux=nb_force,
-            avec_batterie=avec_batterie,
-            deux_options=deux_options,
-            # L-2OPT — miroir EXACT de ``build_devis_from_layout`` : un devis
-            # mono « avec » retient la capacité du même optimum.
-            batterie_cible_kwh=(
-                _avec.get('batterie_kwh')
-                if (avec_batterie and _avec) else None),
-            **_commun)
+        gamme_nom_devis=gamme_nom_devis,
+        dimensionnement_avec=dimensionnement_avec,
+        avertissements=avertissements,
+    ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
@@ -778,6 +782,25 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # devis ne parleraient pas du même onduleur.
     from apps.ventes.compatibilites import normaliser_phase
     phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
+
+    # ── QJR82 — L'ÉTAPE `verifier`, LA MÊME QUE LE CHEMIN 3D ────────────────
+    # La pré-vérification n'était câblée que sur le calepinage 3D : le devis
+    # AUTOMATIQUE et le TUNNEL créaient des devis sans elle, et découvraient à
+    # la génération du PDF qu'une moitié de la composition n'existait pas au
+    # catalogue. C'est la MÊME étape et les MÊMES phrases françaises : un lead
+    # refusé et un devis refusé le sont désormais pour la même raison, dite de
+    # la même façon (c'est aussi ce que la note d'abstention du tunnel recopie,
+    # cf. ``corps_note_refus_auto_devis``).
+    #
+    # ELLE EST PRONONCÉE AVANT TOUTE ÉCRITURE : refuser vaut mieux que créer
+    # puis effacer — un devis effacé rendrait sa référence au compteur.
+    refus_composition = verifier(IntentionComposition(
+        company=company, nb_panneaux=panneaux, kwc=kwc,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS))))
+    if refus_composition:
+        raise AutoDevisError(refus_composition[0], field='composition')
 
     apercu = composer_devis_residentiel(
         company=company, nb_panneaux=panneaux,
@@ -1222,7 +1245,6 @@ def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list
 
     RULE #4: this service only builds lines — it never changes Devis.statut.
     """
-    from apps.ventes.models import LigneDevis
     from apps.stock.models import Produit
 
     if preset.company_id != devis.company_id:
@@ -1253,8 +1275,8 @@ def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list
             continue
 
         taux_snap = snap.get('taux_tva')
-        ligne = LigneDevis.objects.create(
-            devis=devis,
+        ligne = creer_ligne(
+            devis,
             produit=produit,
             designation=snap['designation'],
             quantite=Decimal(str(snap['quantite'])),
@@ -1298,7 +1320,7 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     Renvoie le ``Devis`` créé (brouillon, sans lien lead — un ticket SAV n'a
     pas de lead d'origine).
     """
-    from ..models import Devis, LigneDevis
+    from ..models import Devis
     from ..utils.references import create_with_reference
     from apps.crm.models import Client
 
@@ -1316,8 +1338,8 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
         produit_id = ligne.get('produit_id')
         if not produit_id:
             continue
-        LigneDevis.objects.create(
-            devis=devis,
+        creer_ligne(
+            devis,
             produit_id=produit_id,
             designation=ligne.get('designation') or '',
             quantite=Decimal(str(ligne.get('quantite') or 1)),
@@ -1412,6 +1434,7 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
 from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _panneau_pour_calepinage,
     arbitrer_compte_calepinage,
@@ -1419,6 +1442,14 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     extract_roof_config,
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
+)
+from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
+    IntentionComposition,
+    composer,
+    verifier,
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_AVEC_BATTERIE,

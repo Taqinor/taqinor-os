@@ -54,7 +54,7 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 # (dédenté, `self` retiré, pas une ligne de logique touchée) ; les deux appels
 # de ce fichier sont les MÊMES appels, aux mêmes endroits, sous les mêmes
 # `transaction.atomic()` — les réponses des endpoints sont inchangées à l'octet.
-from ..domain.lignes import remplacer_lignes  # noqa: F401
+from ..domain.lignes import creer_ligne, remplacer_lignes  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -1571,14 +1571,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 raw_qty = ligne.quantite * Decimal(str(scale))
                 qty = raw_qty.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 qty = max(qty, Decimal('0.01'))
-                LigneDevis.objects.create(
-                    devis=nd,
+                creer_ligne(
+                    nd,
                     produit=ligne.produit,
                     designation=ligne.designation,
                     quantite=qty,
                     prix_unitaire=ligne.prix_unitaire,
                     remise=ligne.remise,
                     taux_tva=ligne.taux_tva,
+                    # QJR84 — une variante de TAILLE recopie le devis en
+                    # changeant SES QUANTITÉS, rien d'autre : l'ordre, l'option
+                    # servie, le groupe multi-villa et le caractère facultatif
+                    # se recopient donc tels quels (le prix aussi, il est déjà
+                    # recopié ci-dessus). ``quantite_manuelle`` NE se recopie
+                    # PAS : la quantité vient d'être mise à l'échelle, elle
+                    # n'est plus celle que le commercial avait tapée.
+                    type_ligne=ligne.type_ligne, ordre=ligne.ordre,
+                    variante=ligne.variante,
+                    groupe_index=ligne.groupe_index,
+                    groupe_label=ligne.groupe_label,
+                    optionnelle=ligne.optionnelle,
+                    prix_manuel=ligne.prix_manuel,
                 )
             created.append(nd)
 
@@ -1771,10 +1784,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         create_numbered(Devis, company, 'devis', _save)
         nd = new_devis['obj']
         for ligne in old.lignes.all():
-            LigneDevis.objects.create(
-                devis=nd, produit=ligne.produit, designation=ligne.designation,
+            creer_ligne(
+                nd, produit=ligne.produit, designation=ligne.designation,
                 quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-                remise=ligne.remise, taux_tva=ligne.taux_tva)
+                remise=ligne.remise, taux_tva=ligne.taux_tva,
+                # QJR84 — une RÉVISION repart du devis tel qu'il est : type de
+                # ligne, ordre, option servie, groupe multi-villa, caractère
+                # facultatif et marqueurs de saisie manuelle (D12) compris.
+                # Sans eux la révision perdait son découpage en options et son
+                # ordre d'affichage, et rouvrait à la réécriture les prix et
+                # quantités tapés par le commercial.
+                type_ligne=ligne.type_ligne, ordre=ligne.ordre,
+                variante=ligne.variante, groupe_index=ligne.groupe_index,
+                groupe_label=ligne.groupe_label,
+                optionnelle=ligne.optionnelle,
+                quantite_manuelle=ligne.quantite_manuelle,
+                prix_manuel=ligne.prix_manuel)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])

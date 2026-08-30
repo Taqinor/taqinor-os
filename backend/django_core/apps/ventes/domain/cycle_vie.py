@@ -1278,7 +1278,7 @@ def renouveler_devis(devis, *, user=None):
     Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
     Renvoie le nouveau devis."""
     from rest_framework.exceptions import ValidationError
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.utils.company_settings import create_numbered
 
@@ -1311,7 +1311,11 @@ def renouveler_devis(devis, *, user=None):
 
     for ligne in devis.lignes.all().select_related('produit'):
         prix = ligne.prix_unitaire
-        if ligne.produit_id is not None:
+        # QJR84 / D12 — un prix TAPÉ par le commercial n'est pas re-tarifé,
+        # même par un renouvellement : c'est un prix NÉGOCIÉ, pas une valeur
+        # de catalogue périmée. Sans cette garde, le marqueur ``prix_manuel``
+        # recopié plus bas protégerait une valeur qui vient d'être réécrite.
+        if ligne.produit_id is not None and not ligne.prix_manuel:
             try:
                 prix = prix_applicable(
                     produit=ligne.produit, client=devis.client,
@@ -1320,13 +1324,20 @@ def renouveler_devis(devis, *, user=None):
                 logger.exception(
                     'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
                 prix = ligne.prix_unitaire
-        LigneDevis.objects.create(
-            devis=nouveau, produit=ligne.produit,
+        creer_ligne(
+            nouveau, produit=ligne.produit,
             designation=ligne.designation, quantite=ligne.quantite,
             prix_unitaire=prix, remise=ligne.remise,
             taux_tva=ligne.taux_tva, type_ligne=ligne.type_ligne,
             ordre=ligne.ordre, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle)
+            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle,
+            # QJR84 — le renouvellement RECOPIE le devis : les marqueurs de
+            # saisie manuelle (D12) et l'option servie (L-2OPT) font partie de
+            # ce qui est recopié, sinon le nouveau devis rouvre à la
+            # réécriture des prix négociés et perd son découpage en options.
+            variante=ligne.variante,
+            quantite_manuelle=ligne.quantite_manuelle,
+            prix_manuel=ligne.prix_manuel)
 
     activity.log_devis_note(
         nouveau, user,
@@ -1452,4 +1463,6 @@ def verifier_devis_envoyable(devis):
 # lire un module à moitié construit. Chacun vise le module qui PORTE le corps —
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
 from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+# QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
 from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401

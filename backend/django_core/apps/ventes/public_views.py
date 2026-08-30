@@ -4171,7 +4171,8 @@ def ecatalogue_demander_devis(request, token):
         transcript_text=transcript,
     )
 
-    from .models import Devis, LigneDevis
+    from .models import Devis
+    from .domain.lignes import creer_ligne
     from apps.crm.services import resolve_client_for_lead
     from .utils.company_settings import create_numbered
     client = resolve_client_for_lead(lead)
@@ -4181,12 +4182,16 @@ def ecatalogue_demander_devis(request, token):
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON,
         )
-        for c in clean_lignes:
+        for ordre, c in enumerate(clean_lignes):
             produit = c['produit']
-            LigneDevis.objects.create(
-                devis=devis, produit=produit, designation=produit.nom,
+            creer_ligne(
+                devis, produit=produit, designation=produit.nom,
                 quantite=c['quantite'], prix_unitaire=produit.prix_vente,
                 taux_tva=getattr(produit, 'tva', None),
+                # QJR84 — l'ordre VOULU est posé explicitement plutôt que
+                # laissé au tri de repli sur ``id`` (même garantie que les
+                # autres chemins de création, PVORD).
+                ordre=ordre,
             )
         return devis
 
