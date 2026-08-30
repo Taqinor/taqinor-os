@@ -182,7 +182,12 @@ class MinioWarehouseDestination(ExportDestinationProvider):
             try:
                 client.head_bucket(Bucket=bucket)
             except Exception:
-                client.create_bucket(Bucket=bucket)
+                try:
+                    client.create_bucket(Bucket=bucket)
+                except Exception:
+                    # Course entre deux workers : le bucket peut avoir été créé
+                    # entre-temps — le dépôt ci-dessous tranchera.
+                    pass
             client.put_object(Bucket=bucket, Key=key, Body=data or b'',
                               ContentType=content_type or 'text/csv')
         except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée
