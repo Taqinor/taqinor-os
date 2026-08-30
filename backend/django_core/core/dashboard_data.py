@@ -44,6 +44,7 @@ enregistre son dataset : ``core`` ne connaît donc aucune route en dur.
 """
 from __future__ import annotations
 
+from . import bi_cache
 from . import data_explorer
 
 # Clé de filtre global réservée à une PÉRIODE (bornes debut/fin) — toutes les
@@ -131,14 +132,24 @@ def executer_dashboard(dashboard, company, user, globaux=None):
             entree['erreur'] = 'Widget sans dataset.'
             resultats.append(entree)
             continue
+        spec = spec_filtree(widget, effectifs)
+        # NTDATA36 — pré-agrégation OPT-IN : un widget déclaré lourd sert
+        # depuis le cache (TTL) ; les autres restent frais à chaque appel.
+        ttl = bi_cache.ttl_du_widget(widget)
         try:
-            rows = data_explorer.run_query(
-                dataset, company, user, spec_filtree(widget, effectifs))
+            if ttl:
+                rows, statut = bi_cache.run_query_cache(
+                    dataset, company, user, spec, ttl=ttl)
+            else:
+                rows, statut = data_explorer.run_query(
+                    dataset, company, user, spec), ''
         except (data_explorer.DatasetInconnu,
                 data_explorer.ChampNonAutorise, FormulaError) as exc:
             entree['erreur'] = str(exc)
         else:
             entree['rows'] = rows
+            if statut:
+                entree['cache'] = statut
         resultats.append(entree)
     return {'filtres_globaux': effectifs, 'widgets': resultats}
 
