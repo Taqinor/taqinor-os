@@ -25,6 +25,11 @@ is the TTC tariff).
 """
 from __future__ import annotations
 
+# QJR158 (d) — le repli de productible du dépôt vit DANS ``productible`` (module
+# pur, sans aucun import : aucun cycle possible). ``pricing`` en portait un
+# second, plus bas de 25 %.
+from .productible import DEFAULT_PRODUCTIBLE as _PRODUCTIBLE_DEFAUT_CANONIQUE
+
 # ── Utility tranche tables ─────────────────────────────────────────────────────
 # Tarifs TTC (MAD/kWh, TVA incluse) au 2026 — grille NATIONALE vérifiée (Q7).
 # Source: barèmes ONEE/distributeurs publiés (résidentiel BT, compteur monophasé).
@@ -291,11 +296,20 @@ PRODUCTION_DERATE = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
 # présenté comme une ESTIMATION approximative, jamais comme un chiffre précis.
 _FALLBACK_KWH_PRICE = 1.20   # MAD/kWh — tranche milieu ONEE (à confirmer)
 
-# Productible annuel de repli (kWh/kWc/an) — GHI moyen Maroc. Défaut historique
-# 1240 CONSERVÉ pour byte-identité ; le builder peut le surcharger avec
+# Productible annuel de repli (kWh/kWc/an) — le builder peut le surcharger avec
 # CompanyProfile.productible_kwh_kwc (DC2), auquel cas la production annuelle et
 # le ROI suivent le repère de la société.
-_DEFAULT_PRODUCTIBLE = 1240
+#
+# QJR158 (d) — UN SEUL REPLI DE PRODUCTIBLE DANS LE DÉPÔT. Ce module gardait
+# 1240 « pour byte-identité » alors que le repli canonique est
+# ``productible.DEFAULT_PRODUCTIBLE`` (1651, Casablanca) — celui que le builder,
+# l'écran et le web servent. Écart : production nette 1 153 kWh/kWc au lieu de
+# 1 536, soit −25 % sur « Production estimée ≈ N kWh par kWc et par an », sans
+# le moindre drapeau. Le chemin n'est atteint que quand ``productible`` arrive
+# vide, c'est-à-dire quand les DEUX ``except`` du builder ont avalé une erreur
+# (ils PARLENT désormais) : la seule sortie honnête est alors le même repli que
+# partout ailleurs, jamais un second chiffre plus bas.
+_DEFAULT_PRODUCTIBLE = _PRODUCTIBLE_DEFAUT_CANONIQUE
 
 # Label affiché quand on dégrade en estimation (pas de données tarifaires)
 ESTIMATION_LABEL = "estimation"
@@ -405,7 +419,14 @@ def _monthly_bill_from_kwh(kwh_mensuel: float, tranches: list) -> float:
     return max(k * rate, _progressive_bill(seuil, prog))
 
 
-def _kwh_from_bill_bisect(bill: float, tranches: list) -> float:
+#: QJR158 (e) — borne HAUTE de la dichotomie (kWh/mois). Elle existait déjà
+#: comme garde-fou de boucle (``hi < 1e6``) ; elle devient une borne DÉCLARÉE :
+#: au-delà, la facture saisie ne décrit pas un client raccordé sur ce barème
+#: résidentiel et le module ne rend plus de nombre.
+_BISSECTION_KWH_MAX = 1e6
+
+
+def _kwh_from_bill_bisect(bill: float, tranches: list) -> float | None:
     """Inverse NUMÉRIQUE de ``_monthly_bill_from_kwh`` pour une table
     SÉLECTIVE — miroir EXACT de ``billToAnnualKwh``
     (apps/web/src/lib/estimatorBrainV2.ts), au facteur 12 près (ici mensuel).
@@ -419,11 +440,23 @@ def _kwh_from_bill_bisect(bill: float, tranches: list) -> float:
     pas produire, et on choisit le côté PRUDENT (moins de kWh ⇒ système plus
     petit, économies plus petites — jamais l'inverse). Le miroir JS applique
     exactement la même règle.
+
+    QJR158 (e) — HORS PLAGE ⇒ ``None``, JAMAIS LA BORNE. La recherche de borne
+    haute s'arrêtait sur ``hi < 1e6`` : une facture qu'aucune consommation
+    ≤ 1e6 kWh/mois ne produit faisait converger la dichotomie vers ce plafond,
+    et ``kwh_from_bill`` publiait « ≈ 1 024 000 kWh/mois » avec
+    ``estimation: False`` — un chiffre de garde-fou de boucle présenté comme un
+    résultat exact. On rend désormais ``None`` : l'appelant étiquette
+    « estimation », exactement comme le fait déjà la branche ``facture_totale``
+    hors plage (QJR142).
     """
     lo = 0.0
     hi = 1000.0
-    while _monthly_bill_from_kwh(hi, tranches) < bill and hi < 1e6:
+    while (_monthly_bill_from_kwh(hi, tranches) < bill
+           and hi < _BISSECTION_KWH_MAX):
         hi *= 2
+    if _monthly_bill_from_kwh(hi, tranches) < bill:
+        return None
     for _ in range(60):
         mid = (lo + hi) / 2
         if _monthly_bill_from_kwh(mid, tranches) < bill:
@@ -469,13 +502,19 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
 
     Returns dict:
         kwh_mensuel   float — consommation mensuelle estimée (kWh).
-        approximatif  bool  — Q7 : TOUJOURS False. Il n'existe plus de table
-                              estimée — les trois distributeurs lisent la
-                              grille nationale. Conservé pour ne casser aucun
-                              appelant.
-        estimation    bool  — True quand AUCUNE table n'est disponible ou que la
-                              facture est vide : le chiffre est une estimation
-                              (prix plat de repli), jamais présenté comme précis.
+        approximatif  bool  — Q7 : plus aucune TABLE n'est estimée (les trois
+                              distributeurs lisent la grille nationale), donc
+                              False sur tout chemin qui a une table.
+                              QJR158 (e) — le docstring affirmait « TOUJOURS
+                              False » alors que la branche de repli SANS table
+                              (``table is None``) renvoie True depuis Q7 :
+                              c'est le seul cas, et il coïncide avec
+                              ``estimation``.
+        estimation    bool  — True quand AUCUNE table n'est disponible, que la
+                              facture est vide, ou qu'elle est HORS PLAGE
+                              inversable (QJR158 (e)) : le chiffre est alors
+                              une estimation — ou 0 — jamais présenté comme
+                              précis.
         label         str   — ESTIMATION_LABEL quand ``estimation`` est True,
                               '' sinon (Q7 : plus aucune table estimée à
                               étiqueter « approximatif »).
@@ -515,7 +554,13 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
                 "label": "approximatif" if approx else ""}
 
     if _selective_rule(table) is not None:
-        return {"kwh_mensuel": round(_kwh_from_bill_bisect(bill, table), 1),
+        _kwh = _kwh_from_bill_bisect(bill, table)
+        if _kwh is None:
+            # QJR158 (e) — facture hors plage inversable : même sortie que la
+            # branche ``facture_totale`` (QJR142), jamais la borne de boucle.
+            return {"kwh_mensuel": 0.0, "approximatif": approx,
+                    "estimation": True, "label": ESTIMATION_LABEL}
+        return {"kwh_mensuel": round(_kwh, 1),
                 "approximatif": approx, "estimation": False,
                 "label": "approximatif" if approx else ""}
 
@@ -548,7 +593,10 @@ def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> d
     Returns dict:
         bill_mensuel  float — facture mensuelle TTC (MAD).
         bill_annuel   float — facture annuelle TTC (MAD) = mensuelle × 12.
-        approximatif  bool  — Q7 : toujours False (plus de table estimée).
+        approximatif  bool  — QJR158 (e) : False sur tout chemin qui a une
+                              table (plus aucune table estimée depuis Q7) ;
+                              True sur le seul repli SANS table, où il
+                              coïncide avec ``estimation``.
         estimation    bool  — True quand aucune table n'est disponible (repli
                               plat) ou consommation vide : chiffre étiqueté
                               « estimation », jamais présenté comme précis.
@@ -955,7 +1003,12 @@ def _fr_mad(v) -> str:
 def cashflow_assumptions(inverter_replace_cost=None,
                          stockage: bool = False,
                          battery_roundtrip=None,
-                         battery_roundtrip_source=None) -> dict:
+                         battery_roundtrip_source=None,
+                         *,
+                         years: int = CASHFLOW_YEARS,
+                         degradation: float = PANEL_DEGRADATION,
+                         escalation: float = TARIFF_ESCALATION,
+                         inverter_replace_year=INVERTER_REPLACE_YEAR) -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
     publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
@@ -963,20 +1016,49 @@ def cashflow_assumptions(inverter_replace_cost=None,
     QRES1 — chaque idée tient en UNE note (la loi 82-21 et le plafond
     d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
     avec les garanties produit) et les pourcentages s'écrivent à la française
-    (« 0,5 %/an », jamais « 0.5 »)."""
+    (« 0,5 %/an », jamais « 0.5 »).
+
+    QJR158 (c) — CE BLOC DÉCRIT LE CALCUL RÉELLEMENT FAIT. Il publiait les
+    CONSTANTES du module (``CASHFLOW_YEARS``, ``PANEL_DEGRADATION``,
+    ``TARIFF_ESCALATION``, ``INVERTER_REPLACE_YEAR``) alors que
+    ``compute_cashflow_payback`` accepte chacune en ARGUMENT : un appelant qui
+    projetait sur 15 ans ou avec une escalade non nulle voyait le document
+    annoncer 25 ans à tarif constant. Les quatre valeurs se passent désormais,
+    et ``calculate_savings_roi`` les définit UNE fois pour le calcul ET pour ce
+    bloc. Les défauts reproduisent exactement l'ancien comportement.
+
+    QJR158 (b) — ET IL DIT CE QU'IL NE MODÉLISE PAS. Le cashflow ne retranche
+    aucun coût d'exploitation, et ne provisionne ni dégradation ni remplacement
+    de BATTERIE — alors que l'onduleur, lui, est provisionné et que le
+    rendement aller-retour de la batterie EST modélisé. Aucun de ces deux
+    montants n'existe dans le dépôt (les inventer serait un chiffre fabriqué,
+    règle fondateur) : ils sont donc ÉNONCÉS, dans les notes qui portent déjà
+    l'idée voisine — jamais une puce de plus, la page 3 est à hauteur fixe.
+    """
     # ── M9 (audit du 19/08/2026) — LES DEUX HYPOTHÈSES CACHÉES SONT DITES ────
     # Le rendement aller-retour batterie (90 %) et la provision de remplacement
     # onduleur à l'année 12 changent le résultat affiché ; elles étaient
     # appliquées en silence. Elles s'écrivent désormais dans le bloc
     # « Nos hypothèses », comme la dégradation panneau.
+    # QJR158 (c) — les pourcentages ÉNONCÉS sont ceux qui ont servi (arguments),
+    # plus les constantes du module. QJR158 (b) — la seconde note dit aussi les
+    # coûts d'exploitation NON déduits : le cashflow ne retranche ni nettoyage,
+    # ni maintenance, ni assurance, et aucun de ces montants n'existe dans le
+    # dépôt (on l'écrit plutôt que d'en inventer un).
+    _tarif_txt = (
+        "aucune hausse du tarif électrique supposée — projection à tarif "
+        "constant, toute hausse réelle améliore votre résultat"
+        if not escalation else
+        f"hausse du tarif électrique supposée "
+        f"{_fr_pct(round(float(escalation) * 100, 2))} %/an")
     notes = [
         "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
         "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
         "intégré).",
-        f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
-        "%/an intégrée ; aucune hausse du tarif électrique supposée — "
-        "projection à tarif constant, toute hausse réelle améliore votre "
-        "résultat.",
+        f"Dégradation panneau "
+        f"{_fr_pct(round(float(degradation) * 100, 2))} "
+        f"%/an intégrée ; {_tarif_txt} ; coûts d'exploitation (nettoyage, "
+        "maintenance, assurance) non déduits de ce résultat.",
     ]
     # QJR137 (audit QJR79) — LE RENDEMENT DIT D'OÙ IL VIENT. Il était rendu au
     # client comme s'il décrivait la batterie vendue, alors qu'aucun champ de
@@ -988,19 +1070,27 @@ def cashflow_assumptions(inverter_replace_cost=None,
     _rt_publie = _rt is not None
     if not _rt_publie:
         _rt = BATTERY_ROUNDTRIP
+    # QJR158 (b) — la même note porte l'omission SYMÉTRIQUE : le modèle applique
+    # la perte aller-retour de la batterie, mais ne provisionne ni sa perte de
+    # capacité ni son remplacement sur l'horizon — alors que l'onduleur, lui,
+    # est provisionné. L'asymétrie flattait l'option la plus chère
+    # (``net_gain_avec`` / ``roi_a``) sans que rien ne le dise.
+    _batt_omis = (f" Aucune perte de capacité ni remplacement de la batterie "
+                  f"n'est provisionné sur les {int(years)} ans.")
     if stockage:
         if _rt_publie:
             notes.append(
                 f"Stockage : rendement aller-retour batterie "
                 f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
                 "batterie (valeur publiée sur la fiche technique du produit "
-                "chiffré).")
+                "chiffré)." + _batt_omis)
         else:
             notes.append(
                 f"Stockage : rendement aller-retour batterie "
                 f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
                 "batterie — hypothèse de référence, le constructeur de ce "
-                "produit ne publie pas cette valeur dans notre fiche.")
+                "produit ne publie pas cette valeur dans notre fiche."
+                + _batt_omis)
     # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
     # sans ligne onduleur identifiable, la projection le dit au lieu de
     # provisionner un pourcentage inventé.
@@ -1014,7 +1104,7 @@ def cashflow_assumptions(inverter_replace_cost=None,
         # l'onduleur de ce devis. La raison ET le vrai chiffre voyagent ensemble.
         notes.append(
             f"Provision de remplacement de l'onduleur en année "
-            f"{INVERTER_REPLACE_YEAR} : {_fr_mad(inverter_replace_cost)} MAD "
+            f"{inverter_replace_year} : {_fr_mad(inverter_replace_cost)} MAD "
             "(le prix de l'onduleur de ce devis) — c'est le palier visible sur "
             "la courbe de rentabilité.")
     else:
@@ -1022,9 +1112,10 @@ def cashflow_assumptions(inverter_replace_cost=None,
             "Projection établie hors provision de remplacement onduleur "
             "(aucun onduleur chiffré sur ce devis).")
     return {
-        "years": CASHFLOW_YEARS,
-        "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
-        "escalation_pct": round(TARIFF_ESCALATION * 100, 1),
+        # QJR158 (c) — les valeurs RÉELLEMENT employées par le calcul.
+        "years": years,
+        "degradation_pct": round(float(degradation) * 100, 2),
+        "escalation_pct": round(float(escalation) * 100, 1),
         "battery_roundtrip_pct": round(_rt * 100),
         "battery_roundtrip_applique": bool(stockage),
         # QJR137 — la PROVENANCE du rendement appliqué : la fiche du produit
@@ -1034,7 +1125,7 @@ def cashflow_assumptions(inverter_replace_cost=None,
             battery_roundtrip_source if _rt_publie
             else 'hypothese:pricing.BATTERY_ROUNDTRIP'),
         "battery_roundtrip_publie": _rt_publie,
-        "inverter_replace_year": INVERTER_REPLACE_YEAR,
+        "inverter_replace_year": inverter_replace_year,
         # Montant RÉEL provisionné (MAD TTC) ou None — lu par la légende de la
         # courbe 25 ans, qui affiche le chiffre plutôt qu'un pourcentage.
         "inverter_replace_cost": (round(float(inverter_replace_cost))
@@ -1097,6 +1188,16 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
         return None
     if prod <= 0 or conso <= 0:
         return None
+    # QJR158 (a) — LES ÉCONOMIES SONT LA RAISON D'ÊTRE DU BLOC. La garde
+    # ci-dessus ne couvrait que la production et la consommation : un bloc
+    # horaire mutilé (économies absentes, nulles ou négatives) passait donc, et
+    # ``calculate_savings_roi`` posait ``savings_model='horaire'``,
+    # ``savings_estimated=False`` et ``economie_opt1/2 = 0`` — le document
+    # annonçait « la méthode la plus fine de ce document » (builder) AVEC une
+    # économie nulle, au lieu de retomber sur le modèle « factures » qui, lui,
+    # aurait chiffré. Un bloc qui ne sait pas dire l'économie n'est pas un bloc.
+    if eco_sans <= 0 or eco_avec <= 0:
+        return None
     if len(mois) != 12:
         return None
 
@@ -1104,7 +1205,17 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     # Si le devis ne fait plus cette puissance, ses chiffres décrivent une
     # AUTRE installation — on préfère le repli honnête à un chiffre précis et
     # faux (c'est la même logique que la règle Z2, appliquée à la fraîcheur).
-    if puissance_kwc:
+    #
+    # QJR158 (a) — ELLE S'APPLIQUE AUSSI QUAND LA PUISSANCE EST INCONNUE. Le
+    # ``if puissance_kwc:`` sautait TOUTE la vérification dès que l'appelant
+    # passait 0 ou ``None`` : un bloc calculé pour une autre installation
+    # entrait alors sans le moindre contrôle. Une puissance de devis absente
+    # n'autorise pas à faire confiance — elle empêche de vérifier, donc le
+    # bloc est refusé (même doctrine que ``_bankable_decrit_ce_champ``).
+    # ``None`` = l'appelant ne DEMANDE pas la vérification (lecture de forme
+    # pure, valeur par défaut du paramètre) ; 0 = il la demande sur une
+    # puissance inconnue, et c'est précisément le cas qui doit refuser.
+    if puissance_kwc is not None:
         try:
             kwc_bloc = float(bloc.get("kwc") or 0)
             kwc_devis = float(puissance_kwc)
@@ -1413,9 +1524,20 @@ def calculate_savings_roi(
     # pourcentage du total ; aucune ligne onduleur ⇒ aucune provision.
     _stockage = (bool(battery_kwh and battery_kwh > 0)
                  if stockage_present is None else bool(stockage_present))
+    # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
+    # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
+    # PUBLIÉ plus bas. Tant qu'elles étaient recopiées des constantes du module
+    # de chaque côté, rien n'empêchait le document d'annoncer une projection
+    # que le moteur n'avait pas faite.
+    _cf_params = {
+        "years": CASHFLOW_YEARS,
+        "degradation": PANEL_DEGRADATION,
+        "escalation": TARIFF_ESCALATION,
+        "inverter_replace_year": INVERTER_REPLACE_YEAR,
+    }
     cf_s = compute_cashflow_payback(
         total_sans, economie_opt1,
-        inverter_replace_cost=inverter_cost_sans)
+        inverter_replace_cost=inverter_cost_sans, **_cf_params)
     # QJR137 — le rendement aller-retour du cashflow est celui que le moteur
     # horaire a RÉELLEMENT appliqué quand il est prouvé (fiche du produit
     # chiffré) ; sinon l'hypothèse de référence, dite dans les hypothèses.
@@ -1425,7 +1547,7 @@ def calculate_savings_roi(
         total_avec, economie_opt2, battery=_stockage,
         battery_share=_batt_part,
         battery_roundtrip=(_rt_prouve if _rt_prouve else BATTERY_ROUNDTRIP),
-        inverter_replace_cost=inverter_cost_avec)
+        inverter_replace_cost=inverter_cost_avec, **_cf_params)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 
@@ -1501,5 +1623,7 @@ def calculate_savings_roi(
                                    else inverter_cost_sans),
             stockage=_stockage,
             battery_roundtrip=_rt_prouve,
-            battery_roundtrip_source=_rt_source),
+            battery_roundtrip_source=_rt_source,
+            # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
+            **_cf_params),
     }

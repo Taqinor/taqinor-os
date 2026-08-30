@@ -30,10 +30,12 @@ KWH_PRICE = 1.75   # MAD/kWh FIXE (utilisé en interne — ne pas afficher dans 
 # CANONIQUE est CompanyProfile.productible_kwh_kwc (défaut 1600), consommé par le
 # moteur de devis via parametres.selectors.tariff_for (DC2/DC5). Cette constante
 # porte ce MÊME défaut (1600) pour rester alignée avec le profil société. À ne
-# pas confondre avec le repli PLAT de pricing._DEFAULT_PRODUCTIBLE (1240 ≈
-# sum(GHI)×EFFICIENCY), utilisé UNIQUEMENT quand aucune donnée société n'est
-# disponible ; dès qu'un devis porte une société, c'est le 1600 (ou la valeur
-# éditée) du profil qui prime.
+# pas confondre avec le repli de pricing._DEFAULT_PRODUCTIBLE, utilisé
+# UNIQUEMENT quand aucune donnée société n'est disponible ; dès qu'un devis
+# porte une société, c'est le 1600 (ou la valeur éditée) du profil qui prime.
+# QJR158 (d) — ce repli valait 1240 (≈ sum(GHI)×EFFICIENCY), soit 25 % sous le
+# repli canonique du dépôt ; il vaut désormais productible.DEFAULT_PRODUCTIBLE
+# (1651, Casablanca) : un seul repli, plus deux.
 PRODUCTIBLE_DEFAUT = 1600
 
 # ---------- CONSTANTES IMPACT ENVIRONNEMENTAL (résidentiel) ----------

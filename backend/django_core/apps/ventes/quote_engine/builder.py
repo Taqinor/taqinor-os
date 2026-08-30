@@ -1691,6 +1691,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
+        # sur le productible de repli SANS que rien, nulle part, n'indique que
+        # le repère de la société n'avait pas pu être lu : une production
+        # publiée 25 % trop basse (« ≈ N kWh par kWc et par an ») était
+        # indistinguable d'un calcul normal. Le PDF ne casse toujours pas.
+        logger.warning(
+            "barème société illisible (devis %s) — repli productible",
+            getattr(devis, "reference", None), exc_info=True)
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
@@ -1704,6 +1712,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _productible = productible_for_city(
             _client_city, override=_co_productible)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
+        # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
+        # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
+        # cette ligne dit qu'on y est arrivé par une erreur.
+        logger.warning(
+            "productible par ville illisible (devis %s, ville %r) — repli",
+            getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(

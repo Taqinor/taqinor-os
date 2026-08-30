@@ -1131,7 +1131,9 @@ class TestSavingsMath(TestCase):
             autoconso_sans=0.60,
             autoconso_avec=0.85,
         )
-        prod = roi["prod_kwh"]   # 5 kWc × 1240 × 0,86 (QRES54, pertes 14 %)
+        # 5 kWc × productible de repli × PRODUCTION_DERATE (QRES54 ; QJR158 (d)
+        # — ce repli est celui du dépôt, plus un second chiffre local).
+        prod = roi["prod_kwh"]
         # Option 1 savings = production × autoconso_sans × tarif
         self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 1.75))
         # Option 2 savings = production × autoconso_avec × tarif

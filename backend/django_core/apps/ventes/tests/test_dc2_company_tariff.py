@@ -38,12 +38,18 @@ class TestDC2CompanyTariff(TestCase):
         return p
 
     def test_pricing_productible_param_changes_production(self):
+        from apps.ventes.quote_engine import pricing
         from apps.ventes.quote_engine.pricing import (
             calculate_savings_roi, PRODUCTION_DERATE)
+        from apps.ventes.quote_engine.productible import DEFAULT_PRODUCTIBLE
         base = calculate_savings_roi(10.0, 100000, 120000)
-        # QRES54 — 1240 par défaut × pertes système 14 % (production NETTE)
+        # QRES54 — productible de repli × pertes système (production NETTE).
+        # QJR158 (d) — ce repli est LU (plus recopié) : il vaut désormais le
+        # repli canonique du dépôt, pas un second chiffre 25 % plus bas.
+        self.assertEqual(pricing._DEFAULT_PRODUCTIBLE, DEFAULT_PRODUCTIBLE)
         self.assertEqual(base['prod_kwh'],
-                         round(10.0 * 1240 * PRODUCTION_DERATE))
+                         round(10.0 * pricing._DEFAULT_PRODUCTIBLE
+                               * PRODUCTION_DERATE))
         # productible surchargé → production différente
         custom = calculate_savings_roi(10.0, 100000, 120000, productible=1600)
         self.assertEqual(custom['prod_kwh'],
