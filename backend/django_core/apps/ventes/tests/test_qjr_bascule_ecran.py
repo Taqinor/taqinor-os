@@ -435,3 +435,106 @@ class GoldenDevisRemise(_BaseEcran):
         }, format='json')
         self.assertEqual(reponse.status_code, 409)
         self.assertEqual(devis.lignes.get().designation, 'Ancienne ligne')
+
+
+class BasculePerformUpdate(_BaseEcran):
+    """QJR94 (M5, bascule 2/5) — un PATCH rafraîchit LES QUATRE études.
+
+    LE TROU QUE CECI BOUCHE, et pourquoi il coûte cher. ``perform_update``
+    n'appelait que DEUX des quatre rafraîchisseurs (le bloc horaire et le
+    tableau de dimensionnement). Les deux autres — les profils comparatifs et
+    la CONCEPTION ÉLECTRIQUE — se périmaient donc à chaque PATCH touchant
+    ``etude_params``. La conception électrique est la seule des quatre à
+    n'être jamais recalculée à la lecture : elle PERSISTE ce qu'on lui a
+    écrit. Le client voyait donc, sur sa page proposition, un schéma unifilaire
+    décrivant une composition que le devis ne vend plus.
+
+    CHANGEMENT DE COMPORTEMENT ASSUMÉ (R4-C.5), et c'en est bien un : deux
+    études de plus tournent après chaque PATCH. ``force=True``, lui, est
+    CONSERVÉ — la raison qui l'imposait aux deux premières (un PATCH change des
+    grandeurs qu'aucune lecture de lignes ne voit) vaut à l'identique pour les
+    deux autres.
+
+    POURQUOI UN TEST À ESPIONS ET NON UN TEST DE CONTENU. Ce qui a changé est
+    QUELLES études repartent, pas ce qu'elles calculent — et chacune des quatre
+    a déjà ses propres tests de contenu. Épingler ici les quatre APPELS (et leur
+    ``force``) dit exactement ce que la bascule a changé, sans dépendre d'une
+    fixture résidentielle complète dont la moindre dérive rendrait ce test
+    illisible pour la mauvaise raison.
+    """
+
+    def _espionner_les_quatre(self):
+        """Remplace les quatre rafraîchisseurs par des espions ; rend leur
+        journal ``[(nom, force), …]`` dans l'ordre d'appel."""
+        from apps.ventes import electrical_service, profils_comparatifs
+        from apps.ventes.domain import etudes
+
+        journal = []
+        cibles = [
+            (etudes, 'rafraichir_etude_horaire_devis'),
+            (etudes, 'rafraichir_dimensionnement_devis'),
+            (profils_comparatifs, 'rafraichir_profils_comparatifs_devis'),
+            (electrical_service, 'rafraichir_conception_electrique_devis'),
+        ]
+        anciens = [(mod, nom, getattr(mod, nom)) for mod, nom in cibles]
+
+        def _restaurer():
+            for mod, nom, valeur in anciens:
+                setattr(mod, nom, valeur)
+
+        def _espion(nom):
+            def _appel(devis, force=False, **_):
+                journal.append((nom, force))
+                return None
+            return _appel
+
+        for mod, nom in cibles:
+            setattr(mod, nom, _espion(nom))
+        self.addCleanup(_restaurer)
+        return journal
+
+    def test_un_patch_rafraichit_les_quatre_etudes(self):
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MOIS}-QJR9402',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.user)
+        journal = self._espionner_les_quatre()
+
+        reponse = self.api.patch(
+            '/api/django/ventes/devis/%s/' % devis.id,
+            {'etude_params': {'scenario': 'Avec batterie'}}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+
+        # LES QUATRE, dans l'ordre de ``rafraichir_etudes_du_devis`` (L-1V) :
+        # le dimensionnement après le bloc horaire, les profils après le
+        # dimensionnement (ils réutilisent le tableau qui vient d'être
+        # calculé), la conception électrique en dernier.
+        self.assertEqual(
+            [nom for nom, _ in journal],
+            ['rafraichir_etude_horaire_devis',
+             'rafraichir_dimensionnement_devis',
+             'rafraichir_profils_comparatifs_devis',
+             'rafraichir_conception_electrique_devis'])
+        # ``force=True`` conservé pour les trois qui l'acceptent ; la conception
+        # électrique n'a pas de ``force`` (idempotente par empreinte) et reçoit
+        # donc le défaut.
+        self.assertEqual(
+            dict(journal[:3]),
+            {'rafraichir_etude_horaire_devis': True,
+             'rafraichir_dimensionnement_devis': True,
+             'rafraichir_profils_comparatifs_devis': True})
+
+    def test_un_devis_fige_ne_declenche_aucune_etude(self):
+        """YDOCF2 — la garde du devis figé vit AVANT le pipeline et n'a pas
+        bougé : un PATCH refusé ne doit rien rafraîchir du tout."""
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MOIS}-QJR9403',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), created_by=self.user)
+        journal = self._espionner_les_quatre()
+
+        reponse = self.api.patch(
+            '/api/django/ventes/devis/%s/' % devis.id,
+            {'note': 'interdit'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(journal, [])

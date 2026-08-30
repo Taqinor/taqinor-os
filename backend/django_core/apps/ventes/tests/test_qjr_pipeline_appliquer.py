@@ -318,8 +318,8 @@ class LIntentionDevisEstGelee(SimpleTestCase):
 #: aujourd'hui.
 CHEMINS_BASCULES = {
     # QJR93 — l'écran : ``atomic`` (écrire + rafraîchir) et ``replace-lines``
-    # (écrire + rafraîchir).
-    'views/devis.py': 4,
+    # (écrire + rafraîchir). QJR94 — ``perform_update`` (rafraîchir).
+    'views/devis.py': 5,
 }
 
 

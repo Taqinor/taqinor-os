@@ -2900,11 +2900,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # ou le profil dans ``etude_params`` — grandeurs invisibles depuis les
         # lignes, donc le court-circuit « composition inchangée » ne s'applique
         # pas ici.
-        from ..services import (
-            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
-        rafraichir_etude_horaire_devis(serializer.instance, force=True)
-        # T5 — même raison ci-dessus, pour le tableau de dimensionnement.
-        rafraichir_dimensionnement_devis(serializer.instance, force=True)
+        #
+        # QJR94 (M5, bascule 2/5) — LES QUATRE ÉTUDES, PLUS DEUX.
+        # Ce chemin n'appelait QUE deux des quatre rafraîchisseurs (le bloc
+        # horaire et le dimensionnement), ce qui DÉFAISAIT la façade « les
+        # quatre études en un seul geste » (L-1V) que les trois autres chemins
+        # d'écriture respectent : après tout PATCH touchant ``etude_params``,
+        # les PROFILS COMPARATIFS et la CONCEPTION ÉLECTRIQUE restaient ceux
+        # d'avant. La conception électrique, seule des quatre à n'être jamais
+        # recalculée à la lecture, PERSISTAIT alors un schéma unifilaire
+        # décrivant une composition que le devis ne vend plus — et c'est ce
+        # schéma-là que le client voit sur sa page proposition.
+        # CHANGEMENT DE COMPORTEMENT ASSUMÉ (R4-C.5), porté au DONE LOG.
+        # ``force=True`` est CONSERVÉ, et vaut désormais pour les quatre : la
+        # raison qui l'imposait aux deux premiers (un PATCH change des
+        # grandeurs qu'aucune lecture de lignes ne voit) vaut à l'identique
+        # pour les deux autres.
+        appliquer(serializer.instance, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+            company=company, force_etudes=True))
 
     @action(
         detail=True,
