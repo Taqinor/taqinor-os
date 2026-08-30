@@ -1246,6 +1246,20 @@ jobs:
         run: python scripts/check_api_shapes.py
       - name: Test the API-shapes checker itself
         run: python -m unittest scripts.tests.test_check_api_shapes -v
+      # PARITÉ TUNNEL <-> WEBHOOK CRM (QJR230). La correspondance « site ->
+      # CRM » a deux moitiés qui ne partagent aucun fichier : le registre
+      # `apps/web/src/lib/tunnel/champs.ts` (69 clés) décide des noms émis, et
+      # `apps/crm/webhooks.py::_map_payload_to_fields` les lit en 350 lignes
+      # écrites à la main. Une clé pouvait survivre à toute la chaîne web et se
+      # perdre SANS TRACE à l'arrivée, sans qu'aucun test rougisse. La garde
+      # compare le contrat committé (apps/crm/contract_samples/
+      # tunnel_webhook_keys.json, QJR229) à la lecture AST du webhook, et
+      # nomme en français la clé non traitée. Stdlib pure, sans base ni node
+      # — donc ICI, dans le seul job non gaté, comme les autres check_*.py.
+      - name: Check parité tunnel <-> webhook CRM (aucune clé perdue à l'arrivée)
+        run: python scripts/check_lead_webhook_parite.py
+      - name: Test the lead-webhook parity checker itself (QJR230)
+        run: python -m unittest scripts.tests.test_check_lead_webhook_parite -v
       # PACT7 — pour que le schéma OpenAPI PUISSE un jour jouer ce rôle, il
       # faut d'abord qu'il cesse de se taire et de mentir : `response=dict`
       # documente « type: object » SANS AUCUNE PROPRIÉTÉ (c'était la
