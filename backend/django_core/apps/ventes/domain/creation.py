@@ -309,44 +309,37 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         from apps.crm.services import resolve_client_for_lead
         client = resolve_client_for_lead(lead)
 
-    result = dict((layout or {}).get('result') or {})
-    nb_panneaux = int(result.get('panels') or 0)
-    kwc = float(result.get('kwc') or 0)
-    # QJR95 — ``annualKwh`` / ``savings`` ne sont plus relus ICI : la
-    # production et les économies que le calepinage porte sont écrites par
-    # l'étape 6 (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME
-    # bloc ``result`` du layout transmis. Les relire des deux côtés, c'était
-    # deux lecteurs pour une donnée.
-
-    # FG248 — pont 3D toiture → ERP : extrait la config toiture (surface/pans/
-    # orientation/inclinaison/kWc) du builder 3D. Quand le bloc ``result`` ne
-    # porte pas le nombre de panneaux / la puissance, on retombe sur la somme des
-    # pans (cohérence kWc/panneaux écran ↔ pont 3D). Layout sans géométrie →
-    # dict vide → comportement historique strictement inchangé.
-    toiture = extract_roof_config(layout)
-    if toiture:
-        if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
-            nb_panneaux = int(toiture['nb_panneaux'])
-        if not kwc and toiture.get('kwc'):
-            kwc = float(toiture['kwc'])
+    # ── QJR165 — LE LECTEUR UNIQUE DU LAYOUT ───────────────────────────────
+    # Ce chemin lisait le layout INLINE (compte, kWc, wattage, batterie)
+    # pendant que la resynchronisation le lisait par ``geometrie.lire_layout``.
+    # Les deux chaînes de repli avaient réellement divergé — ``result.count``
+    # accepté d'un seul côté, le forfait 550 W posé d'un seul côté, le wattage
+    # normalisé d'un seul côté, le scénario « les deux » compris d'un seul
+    # côté : le même toit pouvait ressortir avec deux comptes ou deux wattages
+    # selon le bouton. La lecture inline est SUPPRIMÉE ; la chaîne tranchée
+    # vit dans ``lire_layout``, et ``toiture`` (FG248, le pont 3D → ERP) en
+    # revient avec le reste au lieu d'être re-extraite ici.
+    #
+    # QJR95 — ``annualKwh`` / ``savings`` ne sont pas relus ICI : la production
+    # et les économies que le calepinage porte sont écrites par l'étape 6
+    # (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME bloc
+    # ``result`` du layout transmis. Les relire des deux côtés, c'était deux
+    # lecteurs pour une donnée.
+    lecture = lire_layout(layout)
+    toiture = lecture.toiture
 
     # AOF164 / PVG2 — la bascule A/B du moteur de calepinage, écrite une seule
     # fois pour les deux chemins de création (cf. ``_arbitrage_du_calepinage``).
     nb_panneaux, kwc = _arbitrage_du_calepinage(
-        layout, nb_panneaux, kwc, company=company)
-
-    # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
-    watt = layout.get('panelWatt') or layout.get('watt')
-    if not watt and nb_panneaux and kwc:
-        watt = int(round(kwc * 1000 / nb_panneaux / 10) * 10)
-    if not watt and kwc:
-        watt = 550
-
-    # Scenario: 'avec_batterie' / 'hybride' → hybrid inverter + battery;
-    # anything else → réseau (grid-tie). Default réseau (residential injection).
-    scenario = (layout.get('scenario') or '').lower()
-    wants_battery = ('batterie' in scenario or 'hybride' in scenario
-                     or bool(layout.get('battery')))
+        layout, lecture.compte, lecture.kwc, company=company)
+    if (nb_panneaux, kwc) != (lecture.compte, lecture.kwc):
+        # Le couple ARBITRÉ devient la base de lecture : le wattage se déduit
+        # du compte RETENU, jamais de celui que l'arbitrage vient d'écarter.
+        # Drapeau moteur baissé (le défaut) ⇒ l'arbitrage est l'identité et
+        # cette relecture n'a pas lieu.
+        lecture = lire_layout(layout, toiture=toiture,
+                              compte=nb_panneaux, kwc=kwc)
+    watt = lecture.watt
 
     # PVKIT — le KIT COMPLET du simulateur (structures, socles, accessoires,
     # tableau de protection, installation, transport…), plus le squelette
@@ -380,9 +373,15 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             kwc=kwc_composition,
             source='calepinage',
             dimensionnement_avec=dimensionnement_avec),
-        scenario=(COMPOSITION_LES_DEUX if deux_options
-                  else (COMPOSITION_AVEC if wants_battery
-                        else COMPOSITION_SANS)),
+        # QJR165 — le scénario vient du MÊME lecteur que la pré-vérification
+        # qui précède cette création (``validate_composition_for_layout`` lit
+        # déjà ``scenario_du_layout``). Le couple ``batterie``/``hybride`` +
+        # la clé ``battery`` est lu à l'identique ; c'est le libellé
+        # « les deux » que la lecture inline ne savait pas comprendre — elle
+        # composait alors une option SANS un devis que le pré-vol venait de
+        # vérifier sur DEUX. ``deux_options`` reste souverain quand
+        # l'appelant le demande explicitement.
+        scenario=(COMPOSITION_LES_DEUX if deux_options else lecture.scenario),
         layout=stored_layout,
         etude_initiale=etude_initiale or None,
         taux_tva=taux_tva,
@@ -1511,6 +1510,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     arbitrer_compte_calepinage,
     contour_client_lnglat,
     extract_roof_config,
+    lire_layout,
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )

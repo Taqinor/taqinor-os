@@ -23,6 +23,7 @@ précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
 import logging
+from collections import namedtuple
 
 logger = logging.getLogger("apps.ventes.services")
 
@@ -243,6 +244,98 @@ def scenario_du_layout(layout):
     return COMPOSITION_SANS
 
 
+#: QJR165 — CE QU'UN LAYOUT DIT, RENDU EN UN SEUL OBJET.
+#:
+#: DEUX WATTAGES, ET LA NUANCE EST LOAD-BEARING :
+#:
+#: * ``watt`` est le wattage à COMPOSER. Il n'est JAMAIS ``None`` : à défaut de
+#:   tout, c'est le forfait ``CIBLE_WATT_DEFAUT``, et la composition applique
+#:   de toute façon ce même forfait en aval (``composition_residentielle`` :
+#:   ``float(panel_watt or 0) or 550.0``) ;
+#: * ``watt_declare`` est le wattage que le layout DÉCLARE, ou qu'il laisse
+#:   DÉDUIRE de son kWc — et il vaut ``None`` quand il n'y a rien à déduire.
+#:   La sélection catalogue a besoin de cette nuance : « aucun wattage cible »
+#:   (aucune préférence, tout panneau tarifé convient) n'est PAS « 550 W »
+#:   (préférer le 550). Confondre les deux, c'est épingler un panneau que
+#:   personne n'a demandé.
+#:
+#: ``toiture`` est rendue avec le reste pour qu'un appelant qui en a besoin
+#: (``_calepinage_range``, le journal) ne rejoue pas ``extract_roof_config``.
+LectureLayout = namedtuple(
+    'LectureLayout', 'compte watt watt_declare kwc scenario toiture')
+
+
+def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
+    """QJR165 — L'UNIQUE lecture d'un layout 3D : compte, watt, kWc, scénario.
+
+    POURQUOI CETTE FONCTION EXISTE. Ce dépôt lisait le MÊME blob de deux
+    façons : la resynchronisation par ``_cible_panneaux_du_layout`` /
+    ``_watt_du_layout``, la création 3D par une lecture INLINE recopiée dans
+    ``build_devis_from_layout``. Les deux chaînes de repli avaient divergé pour
+    de bon — ``result.count`` accepté d'un seul côté, le forfait 550 W posé
+    d'un seul côté, le wattage normalisé d'un seul côté, le scénario
+    « les deux » compris d'un seul côté — si bien que le même toit pouvait
+    ressortir avec deux comptes ou deux wattages selon le bouton par lequel le
+    devis passait. Les quatre divergences ont été mesurées puis tranchées
+    (QJR165) ; la chaîne tranchée est écrite ICI, et nulle part ailleurs.
+
+    LA RÈGLE QUI GOUVERNE CHAQUE REPLI : **on n'invente jamais un compte**. Un
+    nombre n'est retenu que s'il est PRÉSENT dans le blob (``result.panels``,
+    ``result.count``) ou MESURÉ sur sa géométrie (la somme des pans, cf.
+    ``extract_roof_config``). Rien ne comble un compte manquant : un layout
+    muet rend 0, et l'étape de vérification refuse — jamais un compte forfait.
+
+    ``toiture`` — la géométrie déjà extraite, quand l'appelant l'a. ``None``
+    (le défaut) la calcule.
+
+    ``compte`` / ``kwc`` — non ``None``, ils REMPLACENT ce que le layout
+    annonce, et le wattage se déduit alors de ce couple-là. C'est ce dont le
+    chemin de création a besoin après l'arbitrage AOF164 : le compte RETENU par
+    le moteur devient la base de lecture, exactement comme avant.
+    """
+    layout = layout if isinstance(layout, dict) else {}
+    if toiture is None:
+        toiture = extract_roof_config(layout) or {}
+    result = dict(layout.get('result') or {})
+
+    if compte is None:
+        compte = int(result.get('panels') or result.get('count') or 0)
+        if compte <= 0 and toiture.get('nb_panneaux'):
+            compte = int(toiture['nb_panneaux'])
+    else:
+        compte = int(compte or 0)
+
+    if kwc is None:
+        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+    else:
+        kwc = float(kwc or 0.0)
+
+    # Le wattage ANNONCÉ d'abord (``panelWatt``, son alias historique
+    # ``watt``), normalisé en entier — un blob peut porter « 545.6 » ou
+    # « "550" », et le laisser filer tel quel jusqu'à ``float(panel_watt)``
+    # faisait dépendre le panneau composé du TYPE JSON reçu (une chaîne
+    # illisible y levait même une exception). Illisible ⇒ on l'ignore et on
+    # déduit, exactement comme si le champ était absent.
+    watt_declare = None
+    annonce = layout.get('panelWatt') or layout.get('watt')
+    if annonce:
+        try:
+            watt_declare = int(round(float(annonce)))
+        except (TypeError, ValueError):
+            watt_declare = None
+    if watt_declare is None and kwc and compte:
+        watt_declare = int(round(kwc * 1000 / compte / 10) * 10)
+
+    return LectureLayout(
+        compte=compte,
+        watt=watt_declare if watt_declare is not None else CIBLE_WATT_DEFAUT,
+        watt_declare=watt_declare,
+        kwc=kwc,
+        scenario=scenario_du_layout(layout),
+        toiture=toiture,
+    )
+
+
 def validate_composition_for_layout(layout, company):
     """QJ17 — pre-flight composition check before building a devis.
 
@@ -272,11 +365,11 @@ def validate_composition_for_layout(layout, company):
     if not isinstance(layout, dict):
         return ['Layout invalide — impossible de valider la composition.']
 
-    result = dict((layout.get('result') or {}))
-    nb_panneaux = int(result.get('panels') or 0)
-    toiture = extract_roof_config(layout)
-    if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
-        nb_panneaux = int(toiture['nb_panneaux'])
+    # QJR165 — LE LECTEUR UNIQUE. Ce pré-vol comptait les panneaux avec sa
+    # propre chaîne de repli ; il compte désormais avec CELLE de la création
+    # qu'il précède — sans quoi il pouvait refuser (« aucun panneau ») un
+    # layout que la création aurait accepté, ou l'inverse.
+    lecture = lire_layout(layout)
 
     # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme connue :
     # ``marque_preferee`` retombe explicitement sur le slot Essentielle.
@@ -286,8 +379,8 @@ def validate_composition_for_layout(layout, company):
     # antérieure du tracé. C'est le comportement d'hier, mot pour mot.
     return verifier(IntentionComposition(
         company=company,
-        nb_panneaux=nb_panneaux,
-        scenario=scenario_du_layout(layout),
+        nb_panneaux=lecture.compte,
+        scenario=lecture.scenario,
     ))
 
 
@@ -448,14 +541,11 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
     """
     produit = _produit_panneau_du_devis(devis)
     if produit is None and company is not None:
-        layout = layout or {}
-        watt = layout.get('panelWatt') or layout.get('watt')
-        if not watt:
-            result = dict(layout.get('result') or {})
-            panneaux = int(result.get('panels') or 0)
-            kwc = float(result.get('kwc') or 0.0)
-            if panneaux and kwc:
-                watt = int(round(kwc * 1000 / panneaux / 10) * 10)
+        # QJR165 — LE LECTEUR UNIQUE, et sa forme ``watt_declare`` : ici
+        # « aucun wattage déductible » doit rester ``None`` (aucune préférence
+        # de wattage, tout panneau tarifé convient) et surtout PAS le forfait
+        # 550 W, qui épinglerait un panneau que personne n'a demandé.
+        watt = lire_layout(layout).watt_declare
         try:
             # PVMRQ — le devis (s'il en existe déjà un) donne sa gamme réelle ;
             # sans lui, ``marque_preferee`` retombe sur le slot Essentielle.
@@ -590,27 +680,25 @@ def arbitrer_compte_calepinage(layout, compte_historique, *, company=None,
 
 
 def _cible_panneaux_du_layout(layout, toiture):
-    """Nombre de panneaux VOULU par un layout (même lecture que la création)."""
-    result = dict((layout or {}).get('result') or {})
-    cible = int(result.get('panels') or result.get('count') or 0)
-    if cible <= 0 and toiture.get('nb_panneaux'):
-        cible = int(toiture['nb_panneaux'])
-    return cible
+    """Nombre de panneaux VOULU par un layout (même lecture que la création).
+
+    QJR165 — ACCÈS au lecteur unique ; il n'y a PLUS de seconde chaîne de
+    repli ici. La promesse « même lecture que la création » de cette docstring
+    était fausse depuis QJR97 : elle redevient vraie. Nom et signature
+    CONSERVÉS —
+    ``resynchronisation`` et ``dimensionnement.plafond_toit_du_devis`` les
+    importent tels quels.
+    """
+    return lire_layout(layout, toiture=toiture).compte
 
 
 def _watt_du_layout(layout, toiture, cible_panneaux):
-    """Wattage unitaire annoncé par le layout, ou déduit de son kWc."""
-    watt = (layout or {}).get('panelWatt') or (layout or {}).get('watt')
-    if watt:
-        try:
-            return int(round(float(watt)))
-        except (TypeError, ValueError):
-            pass
-    result = dict((layout or {}).get('result') or {})
-    kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
-    if kwc and cible_panneaux:
-        return int(round(kwc * 1000 / cible_panneaux / 10) * 10)
-    return CIBLE_WATT_DEFAUT
+    """Wattage unitaire annoncé par le layout, ou déduit de son kWc.
+
+    QJR165 — ACCÈS au lecteur unique (cf. ``lire_layout``). ``cible_panneaux``
+    reste le compte SUR LEQUEL déduire : l'appelant a déjà arrêté le sien.
+    """
+    return lire_layout(layout, toiture=toiture, compte=cible_panneaux).watt
 
 
 # ════════════════════════════════════════════════════════════════════════════
