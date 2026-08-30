@@ -118,6 +118,29 @@ def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
         % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
 
 
+def _ordre_suivant(devis):
+    """PVORD / QJR226 — le prochain ``ordre`` LIBRE du devis (``max + 1``).
+
+    LE DÉFAUT QUE CECI FERME. Les lignes PANNEAU et BATTERIE créées par la
+    resynchro l'étaient SANS ``ordre`` : elles prenaient donc le défaut modèle
+    ``0`` et, sous ``ordering = ['ordre', 'id']``, passaient DEVANT toute ligne
+    d'ordre ≥ 1 — typiquement en tête d'un devis écrit à l'écran, dont les
+    lignes sont numérotées 1..n. C'est le mode de défaillance PVORD que la
+    justification de l'écrivain unique nomme explicitement. Les créateurs
+    onduleur et kit calculaient déjà ``max(ordre) + 1`` : la règle est ici,
+    UNE fois, et les quatre l'appellent.
+
+    Passe par ``aggregate`` — donc par la BASE — plutôt que par
+    ``devis.lignes.all()`` : un appelant qui a préchargé la relation
+    (``prefetch_related``) verrait un cache PÉRIMÉ dès la première création, et
+    deux lignes créées d'affilée se retrouveraient au MÊME ordre.
+    """
+    from django.db.models import Max
+
+    valeur = devis.lignes.aggregate(_max=Max('ordre'))['_max']
+    return int(valeur or 0) + 1
+
+
 #: QJR219 / décision fondateur D12 — LE REFUS, NOMMÉ, DE PERMUTER UN ONDULEUR
 #: DONT LE PRIX A ÉTÉ TAPÉ PAR LE VENDEUR.
 #:
@@ -412,7 +435,10 @@ def reconcilier(devis, intention):
                     verrou, produit=panneau, designation=panneau.nom,
                     quantite=Decimal(str(cible_panneaux)),
                     prix_unitaire=Decimal(panneau.prix_vente),
-                    remise=Decimal('0'))
+                    # QJR226 — la ligne SUIT l'existant (PVORD) : sans
+                    # ``ordre``, le défaut modèle 0 la faisait passer devant
+                    # toutes les lignes du devis.
+                    remise=Decimal('0'), ordre=_ordre_suivant(verrou))
                 lignes_modifiees += 1
                 # La ligne créée est COMMUNE (``variante=''`` par défaut) :
                 # elle sert donc les deux vues à l'identique.
@@ -723,7 +749,9 @@ def reconcilier(devis, intention):
                     verrou, produit=batterie, designation=batterie.nom,
                     quantite=Decimal('1'),
                     prix_unitaire=Decimal(batterie.prix_vente),
-                    remise=Decimal('0'))
+                    # QJR226 — même correction que la ligne panneau : la
+                    # batterie créée par la resynchro SUIT l'existant.
+                    remise=Decimal('0'), ordre=_ordre_suivant(verrou))
                 lignes_modifiees += 1
                 a_batterie = True
         elif not veut_batterie and a_batterie and not devis_deux_options:
@@ -829,13 +857,13 @@ def reconcilier(devis, intention):
             if produit is None:
                 avertissements.append(motif_absence)
                 return None
-            ordre_max = max([int(li.ordre or 0)
-                             for li in verrou.lignes.all()] or [0])
+            # QJR226 — le calcul de l'ordre vit dans ``_ordre_suivant`` (une
+            # seule définition, partagée avec les créateurs panneau/batterie).
             return creer_ligne(
                 verrou, produit=produit, designation=produit.nom,
                 quantite=Decimal('1'),
                 prix_unitaire=Decimal(produit.prix_vente),
-                remise=Decimal('0'), ordre=ordre_max + 1)
+                remise=Decimal('0'), ordre=_ordre_suivant(verrou))
 
         if devis_deux_options:
             # Les deux familles sont légitimes : on COMPLÈTE ce qui manque, on
