@@ -199,12 +199,21 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
         return None, {}
 
     exemple = next(iter(cache.values()))
-    return kwh, {
+    detail = {
         'methode': 'inversion_bareme_tranches',
         'charges_fixes_mad': round(exemple['location_entretien_mad'], 2),
         'charges_fixes_source': exemple['charges_fixes_source'],
         'millesime': millesime,
     }
+    # QJR141 — LA RÉSERVE VOYAGE AVEC LE CHIFFRE. Le seuil d'exonération TPPAN
+    # n'est pas départagé par les factures disponibles : ``tppan_source`` dit
+    # laquelle des deux lectures a servi et pourquoi. ``bareme`` le rendait,
+    # l'inversion le jetait — la seule chaîne portant cette réserve n'atteignait
+    # ni écran ni PDF. Clé ADDITIVE et seulement quand la TPPAN s'applique :
+    # sans TPPAN, la chaîne est vide et le bloc garde sa forme d'avant.
+    if exemple.get('tppan_source'):
+        detail['tppan_source'] = exemple['tppan_source']
+    return kwh, detail
 
 
 # ════════════════════════════════════════════════════════════════════════════

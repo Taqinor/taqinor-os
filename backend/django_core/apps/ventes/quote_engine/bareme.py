@@ -248,22 +248,44 @@ TPPAN_PLAFOND_MAD_MOIS = 100.0
 
 #: Seuil d'exonération (kWh/mois). DEUX sources officielles se contredisent :
 #: le texte de 1996 dit ≤ 50 kWh, la page actuelle de Lydec dit ≤ 200 kWh
-#: (relèvement rapporté « depuis 2012 », texte modificatif non localisé). Les
-#: trois factures du fondateur sont TOUTES au-dessus de 200 kWh : elles ne
-#: départagent pas. On retient Lydec (source de régie la plus récente) en
-#: PARAMÈTRE, jamais en dur.
+#: (relèvement rapporté « depuis 2012 », texte modificatif JAMAIS localisé).
+#: Les trois factures du fondateur sont TOUTES au-dessus de 200 kWh : elles ne
+#: départagent pas. Le seuil reste un PARAMÈTRE, jamais un chiffre en dur.
 #:
-#: RÉSERVE HONNÊTE : à 200 kWh ce seuil crée une marche de 35 MAD (0 juste en
-#: dessous, 35 juste au-dessus), ce qui est inhabituel pour une taxe ; le seuil
-#: de 1996 (50 kWh) en produirait une bien plus douce. Une seule facture de
-#: petit consommateur (< 200 kWh/mois) trancherait — à demander.
-TPPAN_EXONERATION_KWH_MOIS = 200.0
+#: QJR141 (audit QJR79, 30/08/2026) — 200 → 50, LE SEUIL PROUVÉ ET PRUDENT.
+#: Le choix n'était pas neutre : il est ASYMÉTRIQUE. La facture AVANT solaire
+#: est presque toujours > 200 kWh (le seuil n'y change rien), tandis que la
+#: facture APRÈS solaire retombe souvent ENTRE 50 et 200 — exactement la plage
+#: où le seuil décide. Retenir 200 mettait donc la TPPAN à zéro sur la seule
+#: facture des deux où elle pesait, et GONFLAIT l'économie vendue (ordre de
+#: grandeur dérivé à la main : +199 à +298 MAD/an). Trois raisons de trancher
+#: à 50 :
+#:   1. C'est le seuil du TEXTE LÉGAL (art. 16, dahir 1-96-77) — le MÊME texte
+#:      dont ce module tire déjà les tranches et le plafond, et dont le calcul
+#:      est vérifié AU CENTIME sur la facture SRM du 08/05/2026. Le relèvement
+#:      à 200 n'est rapporté que par une page de régie dont le texte
+#:      modificatif n'a jamais pu être produit : il n'est pas PROUVÉ.
+#:   2. À 200 kWh, ce seuil crée une marche de 25,00 MAD (0 juste en dessous,
+#:      100 × 0,10 + 100 × 0,15 juste au-dessus) — invraisemblable pour une taxe
+#:      conçue en tranches progressives. À 50 kWh la marche vaut 5,00 MAD
+#:      (50 × 0,10), cohérente avec la première tranche. (L'ancienne note de ce
+#:      bloc écrivait « 35 MAD » : le chiffre ne se dérivait pas de
+#:      :data:`TPPAN_TRANCHES` — il est recalculé ici, et épinglé par un test.)
+#:   3. Entre deux lectures non départagées, la maison retient TOUJOURS celle
+#:      qui MINORE l'économie annoncée, jamais celle qui la majore.
+#: Une seule facture de petit consommateur (< 200 kWh/mois) trancherait pour
+#: de bon — à demander. En attendant, la réserve VOYAGE avec le chiffre
+#: (:data:`TPPAN_SOURCE`, propagé jusqu'au bloc de consommation estimée).
+TPPAN_EXONERATION_KWH_MOIS = 50.0
 
 TPPAN_SOURCE = (
     'art. 16 dahir 1-96-77 (BO 4391 bis, relayé HACA) ; barème progressif, '
     'bornes proratisées aux jours et montant TTC VÉRIFIÉS sur la facture SRM '
     'du 08/05/2026 (56,80 MAD à 359 kWh sur 30 jours) ; seuil d\'exonération '
-    '(200 kWh, source Lydec) non départagé par les factures disponibles'
+    'retenu à 50 kWh/mois (celui du texte de 1996) — une page de régie annonce '
+    '200 kWh sans texte modificatif localisable, et aucune facture disponible '
+    'ne départage : on retient la lecture prouvée, qui est aussi celle qui '
+    'MINORE l\'économie annoncée'
 )
 
 
@@ -422,9 +444,14 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
     Même règle que ``pricing._kwh_from_bill_bisect`` et que son miroir JS.
 
     Retourne ``{kwh_mensuel, energie_mad, location_entretien_mad, tppan_mad,
-    charges_fixes_source}``. ``total_mad`` ≤ 0 ⇒ 0 kWh (jamais un chiffre
-    fabriqué). Un montant qui ne couvre même pas les charges fixes rend 0 kWh :
-    aucune consommation ne peut produire une facture aussi basse.
+    charges_fixes_source, tppan_source}``. ``total_mad`` ≤ 0 ⇒ 0 kWh (jamais un
+    chiffre fabriqué). Un montant qui ne couvre même pas les charges fixes rend
+    0 kWh : aucune consommation ne peut produire une facture aussi basse.
+
+    QJR141 — ``tppan_source`` est RENDU ici. Il l'était par :func:`facture_mad`
+    et cette fonction le JETAIT, alors que c'est la seule chaîne qui porte la
+    réserve sur le seuil d'exonération (deux sources officielles, une seule
+    prouvée) : l'honnêteté du chiffre n'atteignait ni écran ni PDF.
     """
     montant = _num(total_mad)
 
@@ -441,6 +468,7 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
             'location_entretien_mad': detail['location_entretien_mad'],
             'tppan_mad': detail['tppan_mad'],
             'charges_fixes_source': detail['charges_fixes_source'],
+            'tppan_source': detail['tppan_source'],
         }
 
     if montant <= 0:
