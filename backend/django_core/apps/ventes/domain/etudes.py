@@ -352,6 +352,77 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
     }
 
 
+# ── QJR117 — UNE COPIE DE DEVIS NE SERT PAS LES CHIFFRES DU SOURCE ──────────
+#
+# Constats CS4 / CS5 / CS6 (audit du 30/08/2026), vérifiés en code : les trois
+# chemins de copie recopiaient ``etude_params`` TEL QUEL et n'appelaient AUCUN
+# des quatre rafraîchisseurs.
+#
+#   · CS4 — ``dupliquer_devis`` ne copie PAS ``roof_layout``, donc le recalage
+#     par layout (``quote_engine/builder``, ``_recalage = puissance_kwc /
+#     _kwc_layout``) ne s'exécute pas sur la copie : le moteur prenait
+#     ``production_annuelle``/``economies_annuelles`` VERBATIM et écrasait le
+#     ROI qu'il venait de calculer sur les lignes réelles de la copie.
+#   · CS5 — la gamme sœur recevait le bloc chiffré du FRÈRE alors que sa
+#     docstring annonce « chaque gamme a sa composition et ses prix PROPRES ».
+#   · CS6 — le renouvellement RE-TARIFE les lignes au catalogue courant et
+#     gardait un payback calculé sur les ANCIENS prix.
+#
+# Et rien ne rattrapait : l'édition de ligne appelle ``rafraichir_etudes_du_
+# devis`` SANS ``force``, or le dimensionnement se court-circuite sur empreinte
+# concordante.
+#
+# CE QUI EST PURGÉ, ET CE QUI NE L'EST PAS. On retire les six clés DÉRIVÉES qui
+# mêlent la PRODUCTION ou l'ARGENT à une composition qui peut diverger — celles
+# que la copie ne peut pas garantir. On garde toute la CONFIGURATION (ce que le
+# commercial a saisi : factures réelles, toiture, scénario, gamme, entrées
+# agricoles / industrielles), qu'aucun serveur ne saurait reconstruire.
+#
+# Les autres clés DÉRIVÉES du schéma restent délibérément :
+#   · ``puissance_kwc`` décrit la composition, qui est clonée à l'identique ;
+#   · les dérivées POMPAGE (``debit_hmt_m3h``, ``m3_jour``, ``champ_kwc``) et
+#     les taux industriels (``taux_autoconso``, ``taux_couverture``,
+#     ``injection_*``) décrivent le SITE du client et n'ont AUCUN rafraîchisseur
+#     serveur : les purger supprimerait l'étude sans la remplacer. Seule celle
+#     qui dépend du PRIX — ``payback`` — part avec les cinq autres, parce que
+#     c'est précisément le prix que le renouvellement change.
+#
+# Aucune de ces six clés absentes ne fabrique un chiffre en aval : le moteur
+# recalcule depuis les lignes (``calculate_savings_roi``) ou OMET la carte
+# (``_card_if``, ``ind_masquer_economies``). C'est la règle « zéro chiffre
+# inventé » appliquée à la copie : mieux vaut recalculer, ou taire.
+
+#: QJR117 — les clés DÉRIVÉES qu'une COPIE de devis ne reprend jamais.
+#: Chacune est déclarée ``DERIVEE`` dans ``domain/etude_schema.SCHEMA`` (un
+#: test le vérifie : une clé renommée au schéma ne peut plus être purgée « à
+#: côté » en silence).
+CLES_DERIVEES_NON_COPIEES = (
+    'production_annuelle',
+    'economies_annuelles',
+    'payback',
+    'etude_horaire',
+    'dimensionnement',
+    'profils_comparatifs',
+)
+
+
+def etude_params_pour_copie(etude_params):
+    """QJR117 — le bloc d'étude qu'une COPIE de devis reçoit.
+
+    La CONFIGURATION du source, jamais ses chiffres dérivés
+    (:data:`CLES_DERIVEES_NON_COPIEES`). Rend ``None`` quand il ne reste rien —
+    ``Devis.etude_params`` est ``null=True`` et une clé absente vaut « pas
+    calculable » (règle Z2), donc un devis sans étude reste sans étude.
+
+    Rend TOUJOURS un dict NEUF : ``etude_params=devis.etude_params`` partageait
+    la même référence entre source et copie, et une mutation de l'un fuyait sur
+    l'autre (le dépôt nomme ce piège dans ``dupliquer_variante``).
+    """
+    bloc = {cle: valeur for cle, valeur in dict(etude_params or {}).items()
+            if cle not in CLES_DERIVEES_NON_COPIEES}
+    return bloc or None
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # QJR48 (29/08/2026) — ``refresh_etude_consistency`` A ÉTÉ SUPPRIMÉE
 # ════════════════════════════════════════════════════════════════════════════

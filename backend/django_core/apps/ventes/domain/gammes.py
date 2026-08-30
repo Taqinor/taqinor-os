@@ -130,6 +130,8 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     """
     from apps.ventes.models import Devis
     from apps.ventes.domain.lignes import cloner_lignes
+    from apps.ventes.domain.etudes import (
+        etude_params_pour_copie, rafraichir_etudes_du_devis)
     from apps.ventes.utils.company_settings import create_numbered
 
     nom_gamme = str(nom_gamme or '').strip()
@@ -141,7 +143,15 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
 
     # etude_params est COPIÉ (jamais partagé) : la gamme sœur porte son propre
     # bloc ``gamme`` sans jamais toucher celui de la source.
-    params_soeur = dict(getattr(devis, 'etude_params', None) or {})
+    #
+    # QJR117 / CS5 — et elle ne porte plus les CHIFFRES du frère : la docstring
+    # promet « chaque gamme a sa composition et ses prix PROPRES », or la sœur
+    # recevait son ``etude_horaire``, son ``dimensionnement`` (coût, payback)
+    # et ses économies. Les deux gammes partant ENSEMBLE par défaut
+    # (``GAMME_ENVOI_LES_DEUX``), le client comparait deux offres dont l'une
+    # affichait le payback de l'autre.
+    params_soeur = etude_params_pour_copie(
+        getattr(devis, 'etude_params', None)) or {}
     params_soeur['gamme'] = {
         'nom': nom_gamme,
         'recommandee': bool(recommandee),
@@ -176,6 +186,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     # (``domain/lignes.cloner_lignes``) : la sœur est une COPIE CONFORME, et
     # ce qu'« à l'identique » recouvre n'est plus retapé à trois endroits.
     cloner_lignes(devis, soeur)
+    # QJR117 — les études de la SŒUR sont recalculées sur SES lignes (force :
+    # le dimensionnement se court-circuite sinon sur empreinte concordante).
+    rafraichir_etudes_du_devis(soeur, force=True)
 
     # La SOURCE reçoit son propre libellé (défaut : l'autre nom proposé) et la
     # recommandation quand la sœur ne la prend pas.

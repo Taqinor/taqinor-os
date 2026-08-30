@@ -1298,7 +1298,11 @@ def renouveler_devis(devis, *, user=None):
             lead=devis.lead, statut=Devis.Statut.BROUILLON,
             taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
             note=devis.note, mode_installation=devis.mode_installation,
-            etude_params=devis.etude_params,
+            # QJR117 / CS6 — le renouvellement RE-TARIFE les lignes au
+            # catalogue courant : garder l'étude chiffrée aux ANCIENS prix
+            # servait au client un devis dont les lignes disent un prix et
+            # dont le payback en dit un autre. La CONFIGURATION reste.
+            etude_params=etude_params_pour_copie(devis.etude_params),
             prix_cible_kwc=devis.prix_cible_kwc,
             echeancier=devis.echeancier, devise=devis.devise,
             taux_change=devis.taux_change, entite=devis.entite,
@@ -1334,6 +1338,10 @@ def renouveler_devis(devis, *, user=None):
     # main avait le plus divergé : elle clonait ``optionnelle`` sans
     # ``variante``, et aucune des trois ne clonait ``lot``.
     cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
+    # QJR117 — les études du RENOUVELLEMENT sont recalculées sur ses lignes
+    # RE-TARIFÉES (force : le dimensionnement se court-circuite sinon sur
+    # empreinte concordante, et l'édition de ligne ne rattrape pas).
+    rafraichir_etudes_du_devis(nouveau, force=True)
 
     activity.log_devis_note(
         nouveau, user,
@@ -1458,7 +1466,11 @@ def verifier_devis_envoyable(devis):
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
 # lire un module à moitié construit. Chacun vise le module qui PORTE le corps —
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
-from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+from apps.ventes.domain.etudes import (  # noqa: E402,F401
+    etude_params_pour_copie,
+    rafraichir_etudes_du_devis,
+    refresh_marge_snapshot,
+)
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
 from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402,F401
 from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401

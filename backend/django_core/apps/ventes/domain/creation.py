@@ -113,7 +113,11 @@ def dupliquer_devis(devis, *, user):
             remise_globale=devis.remise_globale,
             note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
             mode_installation=devis.mode_installation,
-            etude_params=devis.etude_params,
+            # QJR117 — la CONFIGURATION du source, jamais ses chiffres
+            # dérivés : sans ``roof_layout``, le recalage qui les rendait
+            # honnêtes ne s'exécute pas sur la copie et le moteur les
+            # prenait verbatim (CS4).
+            etude_params=etude_params_pour_copie(devis.etude_params),
             prix_cible_kwc=devis.prix_cible_kwc,
             devise=devis.devise,
             taux_change=devis.taux_change,
@@ -134,6 +138,11 @@ def dupliquer_devis(devis, *, user):
     # renouvellement ou de la gamme sœur. Elle reprend le jeu COMPLET —
     # y compris le rattachement au LOT, qui manquait aux trois.
     cloner_lignes(devis, copie)
+    # QJR117 — les études de la COPIE sont recalculées sur SES lignes, en
+    # ``force`` : sans lui, le dimensionnement se court-circuite sur empreinte
+    # concordante et l'édition de ligne ne rattrape jamais. Best-effort — aucun
+    # rafraîchisseur ne lève, aucun ne touche statut/lignes/totaux (règle #4).
+    rafraichir_etudes_du_devis(copie, force=True)
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference, getattr(company, 'id', '?'))
     return copie
@@ -1492,6 +1501,7 @@ from apps.ventes.domain.composition import (  # noqa: E402,F401
     composition_residentielle,
 )
 from apps.ventes.domain.etudes import (  # noqa: E402,F401
+    etude_params_pour_copie,
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
