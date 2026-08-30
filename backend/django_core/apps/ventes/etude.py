@@ -352,27 +352,62 @@ def _zone_shading(devis, zone, index, monthly_share):
     return 0.0, None
 
 
-def production_horaire_zone(zone, matrix=None):
-    """PV70 — courbe de production horaire d'une zone (12 mois × 24 h = 288 pts).
+def _monthly_share_valide(monthly_share):
+    """QJR138 — 12 parts mensuelles normalisées, ou parts égales à défaut.
+
+    Tolérant par construction (comme tout ce module) : longueur ≠ 12, valeurs
+    illisibles ou somme nulle → répartition ÉGALE, jamais d'exception.
+    """
+    if not monthly_share or len(monthly_share) != 12:
+        return [1.0 / 12.0] * 12
+    parts = [max(0.0, _num(v, 0.0)) for v in monthly_share]
+    total = sum(parts)
+    if total <= 0:
+        return [1.0 / 12.0] * 12
+    return [p / total for p in parts]
+
+
+def production_horaire_zone(zone, matrix=None, monthly_share=None):
+    """PV70/QJR138 — courbe de production horaire d'une zone (12 × 24 = 288 pts).
 
     Tuile un jour-type mensuel (forme ciel clair,
     :func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`) sur les 12
-    mois — répartition mensuelle ÉGALE (1/12 du total annuel), faute d'un
-    profil mensuel par zone accessible à cet appel isolé — puis dérate chaque
+    mois selon ``monthly_share`` — la part mensuelle RÉELLE (TMY) de la zone,
+    la même que celle qui pondère déjà la perte d'ombrage — puis dérate chaque
     cellule par ``matrix`` (12×24, facteurs [0,1], convention shadingUi.ts)
     quand fournie. ``zone`` est le dict ENRICHI (issu de ``run_bankable_study``,
     porte ``base_production_kwh``) — sert de courbe de production à
     :func:`~apps.ventes.solar_design.hourly_self_consumption` (PV72).
 
-    ``base_production_kwh`` absent/≤ 0 → 288 zéros (jamais d'exception).
+    QJR138 — DEUX corrections, toutes deux dans le sens qui MAJORAIT l'économie
+    annoncée :
+
+    * ``production_nette_kwh`` porte la production NETTE (arbre de pertes
+      appliqué, hors ombrage — la matrice s'en charge cellule par cellule).
+      Sans elle, la courbe valait le productible BRUT : ≈ 20 % au-dessus de la
+      ``p50_kwh`` publiée dans le même dict, et l'autoconsommation avec.
+      Absente → repli sur ``base_production_kwh`` (appel isolé, comportement
+      historique).
+    * ``monthly_share`` remplace la répartition mensuelle plate. Charge ET
+      production lissées à plat, ``Σ min(charge, production)`` se prenait sur
+      des moyennes : par concavité de ``min``, l'autoconsommation était
+      SYSTÉMATIQUEMENT majorée et le déséquilibre saisonnier été/hiver — la
+      raison même de vendre une batterie — disparaissait. Absente → parts
+      égales (comportement historique).
+
+    Base absente/≤ 0 → 288 zéros (jamais d'exception).
     """
-    base = _num((zone or {}).get('base_production_kwh'), 0.0)
+    zone = zone or {}
+    base = _maybe_num(zone.get('production_nette_kwh'))
+    if base is None:
+        base = _num(zone.get('base_production_kwh'), 0.0)
     if base <= 0:
         return [0.0] * 288
-    monthly_kwh = base / 12.0
+    parts = _monthly_share_valide(monthly_share)
     hour_shape = _hour_weight_shape()
     curve = []
     for m in range(12):
+        monthly_kwh = base * parts[m]
         row = matrix[m] if matrix and m < len(matrix) else None
         for h in range(24):
             factor = 1.0
@@ -711,10 +746,18 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             'base_production_kwh': ctx['base_production_kwh'],
             'shading_annual_loss_pct': ctx['shading_annual_loss_pct'],
         })
-        # PV72 — courbe de production horaire de la zone (dérate matrice déjà
-        # résolue par _zone_base_production), agrégée plus bas.
-        zone_curves.append(
-            production_horaire_zone(zones_out[-1], ctx['shading_matrix']))
+        # PV72/QJR138 — courbe de production horaire de la zone. Elle part de la
+        # production NETTE (arbre de pertes canonique appliqué UNE fois, hors
+        # ombrage : la matrice le fait cellule par cellule) et suit la part
+        # mensuelle RÉELLE (TMY) — la même que celle qui pondère déjà la perte
+        # d'ombrage. Elle somme donc EXACTEMENT à la ``p50_kwh`` publiée, au
+        # lieu de la dépasser d'environ 20 %.
+        zone_curves.append(production_horaire_zone(
+            {**zones_out[-1],
+             'production_nette_kwh': production_nette_canonique_kwh(
+                 ctx['base_production_kwh'])},
+            ctx['shading_matrix'],
+            monthly_share=ctx['monthly_share']))
         base_total += ctx['base_production_kwh']
         kwc_total += kwc
         sources.add(ctx['source'])
