@@ -118,6 +118,27 @@ def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
         % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
 
 
+#: QJR219 / décision fondateur D12 — LE REFUS, NOMMÉ, DE PERMUTER UN ONDULEUR
+#: DONT LE PRIX A ÉTÉ TAPÉ PAR LE VENDEUR.
+#:
+#: COMPORTEMENT RETENU : L'ABSTENTION. ``_permuter_onduleur`` écrasait
+#: ``prix_unitaire`` avec le prix catalogue SANS consulter ``prix_manuel`` et
+#: SANS effacer le drapeau : le prix tapé disparaissait pendant que la ligne
+#: continuait d'affirmer qu'il avait été tapé — un état MENTEUR. Des deux
+#: comportements admissibles (s'abstenir en le disant, ou permuter ET effacer
+#: le drapeau dans la même écriture), on retient le premier, pour deux raisons
+#: déjà écrites dans ce fichier : (1) D12 — « le prix tapé par le commercial
+#: est souverain » (même abstention que ``lignes.retarifer_forfaits_par_panneau``)
+#: et (2) le bloc « DEUX onduleurs » juste au-dessus CONSERVE déjà, avec un
+#: avertissement, un onduleur intrus qui n'est pas au prix catalogue —
+#: permuter celui-ci en silence contredirait la règle voisine.
+MSG_PERMUTATION_PRIX_MANUEL = (
+    'Prix saisi à la main sur « %s » : l\'onduleur n\'a PAS été permuté vers '
+    '« %s » (le prix du vendeur fait foi, décision D12). Changez le produit à '
+    'la main si le scénario exige l\'autre famille d\'onduleur.'
+)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -776,6 +797,16 @@ def reconcilier(devis, intention):
                                        gamme=gamme)
             if remplacant is None:
                 avertissements.append(motif_absence)
+                return False
+            # QJR219 / D12 — ABSTENTION DITE sur un prix SAISI À LA MAIN. Sans
+            # cette garde, le prix tapé était écrasé par le prix catalogue et
+            # ``prix_manuel`` restait à True : la ligne affirmait un prix
+            # vendeur qui n'existait plus. Voir MSG_PERMUTATION_PRIX_MANUEL
+            # pour le choix entre les deux comportements admissibles.
+            if getattr(ligne, 'prix_manuel', False):
+                avertissements.append(MSG_PERMUTATION_PRIX_MANUEL % (
+                    ligne.designation or 'ligne sans désignation',
+                    remplacant.nom))
                 return False
             ligne.produit = remplacant
             ligne.designation = remplacant.nom
