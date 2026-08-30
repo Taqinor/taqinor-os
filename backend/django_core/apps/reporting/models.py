@@ -2,6 +2,7 @@
 # propre. N79 introduit SavedReport ; FG96 ajoute DashboardConfig (config de
 # tableau de bord par utilisateur / palier de rôle).
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -26,6 +27,9 @@ class SavedReport(models.Model):
         NONE = 'none', 'Aucune'
         DAILY = 'daily', 'Quotidien'
         WEEKLY = 'weekly', 'Hebdomadaire'
+        # NTDATA38 — cadence mensuelle : part le `jour_du_mois` configuré,
+        # à `heure_envoi` si elle est posée.
+        MONTHLY = 'monthly', 'Mensuel'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -40,6 +44,21 @@ class SavedReport(models.Model):
         max_length=20, choices=TargetKind.choices, default=TargetKind.SALES)
     schedule = models.CharField(
         max_length=10, choices=Schedule.choices, default=Schedule.NONE)
+    # NTDATA38 — fenêtre d'envoi. `heure_envoi` NULL = comportement HISTORIQUE
+    # (« à l'heure où le planificateur passe ») : les rapports existants ne
+    # changent pas d'un iota. Renseignée (0-23, heure de Casablanca), elle
+    # borne l'envoi à cette heure-là.
+    heure_envoi = models.PositiveSmallIntegerField(
+        'Heure d\'envoi', null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text='Heure locale (0-23) à laquelle envoyer. Vide = à l\'heure '
+                  'de passage du planificateur (comportement historique).')
+    # Jour du mois pour la cadence mensuelle. Borné à 28 pour qu'un rapport
+    # mensuel tombe TOUS les mois (février compris) — jamais de mois sauté.
+    jour_du_mois = models.PositiveSmallIntegerField(
+        'Jour du mois', default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text='Jour d\'envoi de la cadence mensuelle (1-28).')
     # Destinataires : une ou plusieurs adresses (séparées par virgule/point-virgule
     # ou retour à la ligne). Vide → aucun envoi (NO-OP).
     recipients = models.TextField(blank=True, default='')
