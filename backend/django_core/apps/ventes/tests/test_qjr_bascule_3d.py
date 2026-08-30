@@ -73,6 +73,11 @@ class _Base3D(TestCase):
         self.user = User.objects.create_user(
             username='qjr95user', password='x', role_legacy='responsable',
             company=self.company)
+        # Un golden qui rougit doit DIRE ce qui diverge. Sans ceci, unittest
+        # abrège le dict (« Diff is 893 characters long ») et le log de CI ne
+        # montre plus la valeur réelle — le rouge de la première ronde a coûté
+        # un aller-retour entier pour cette seule raison.
+        self.maxDiff = None
         self._seed()
 
     def _seed(self):
@@ -160,9 +165,28 @@ class GoldenLayoutReseau(_Base3D):
     sauté) :
 
         Panneau Jinko 550W                      ×12 à 1 100,00
-        Onduleur réseau Huawei 5kW Monophasé    × 1 à 14 000,00
+        Onduleur réseau Huawei 5kW Monophasé    × 2 à 14 000,00
 
     et AUCUNE batterie ni onduleur hybride — le scénario est « sans ».
+
+    DÉRIVATION DU COMPTE D'ONDULEURS — ×2, ET C'EST LE POINT INTÉRESSANT DE
+    CETTE FIXTURE. La règle de ``composition_residentielle`` est « un onduleur
+    suffit dès qu'il couvre le seuil ; sinon on en met assez pour absorber le
+    champ » (``quantite_onduleur``), le seuil valant 80 % de la puissance :
+
+        seuil    = 8,64 kWc × 0,8            = 6,912 kW
+        le seul onduleur réseau du catalogue =     5 kW  → 5 < 6,912
+        quantité = plafond(8,64 / 5)         = plafond(1,728) = 2
+
+    Cette fixture exerce donc la branche MULTI-ONDULEURS, et
+    :class:`GoldenLayoutAvecBatterie` (5,5 kWc ⇒ seuil 4,4 kW ≤ 5 kW ⇒ ×1) est
+    son témoin sur l'autre branche : les deux côtés de la règle sont couverts.
+
+    (La première rédaction de ce golden écrivait ×1 sans dériver ce seuil —
+    une attente posée de mémoire, pas calculée. Le rouge de CI venait de LÀ,
+    pas de la bascule : le corps supprimé passait à ``composer`` exactement les
+    mêmes ``kwc`` / ``nb_panneaux`` / ``panel_watt``, donc l'ancien chemin
+    quotait déjà DEUX onduleurs sur cette fixture.)
 
     DÉRIVATION DU kWc STOCKÉ (QJR63). Le calepinage propose 8,64 (720 W), les
     LIGNES disent 12 × 550 W = 6 600 W = 6,60 kWc. Le propriétaire du kWc est la
@@ -187,8 +211,9 @@ class GoldenLayoutReseau(_Base3D):
         self.assertEqual(self._par_designation(devis), {
             'Panneau Jinko 550W': (
                 Decimal('12'), PRIX['panneau'], '', Decimal('0')),
+            # ×2 : 5 kW < seuil (0,8 × 8,64 = 6,912) ⇒ plafond(8,64/5) = 2.
             'Onduleur réseau Huawei 5kW Monophasé': (
-                Decimal('1'), PRIX['onduleur_reseau'], '', Decimal('0')),
+                Decimal('2'), PRIX['onduleur_reseau'], '', Decimal('0')),
         })
         self._assert_ordre_explicite(devis)
 
