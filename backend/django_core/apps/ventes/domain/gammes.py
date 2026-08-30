@@ -272,6 +272,16 @@ def create_devis_from_reserve(*, reserve, user):
         note_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
     note = "\n".join(note_lines)
 
+    # QJR129 / CS7 — LE MODE DU CHANTIER. Le devis d'origine du chantier le
+    # porte le plus précisément ; à défaut le chantier lui-même
+    # (``Installation.type_installation``) ; à défaut COMMERCIAL — un devis de
+    # RÉPARATION n'est pas une étude solaire résidentielle, et le laisser à NULL
+    # le faisait router vers ce rendu-là (page publique client comprise).
+    from apps.ventes.domain.creation import mode_installation_declare
+    mode = mode_installation_declare(
+        getattr(installation, 'devis', None), installation,
+        defaut=Devis.ModeInstallation.COMMERCIAL)
+
     def _create(ref):
         return Devis.objects.create(
             company=company,
@@ -280,6 +290,7 @@ def create_devis_from_reserve(*, reserve, user):
             statut=Devis.Statut.BROUILLON,
             created_by=user,
             note=note,
+            mode_installation=mode,
         )
 
     devis = create_with_reference(Devis, 'DEV', company, _create)

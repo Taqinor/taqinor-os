@@ -35,6 +35,55 @@ from apps.ventes.domain.taille import _AUTO_PANEL_WATT
 logger = logging.getLogger("apps.ventes.services")
 
 
+# ── QJR129 — UN DEVIS NAÎT AVEC UN MARCHÉ, JAMAIS AVEC UN BLANC ─────────────
+#
+# Constat CS7 (audit du 30/08/2026), vérifié en code : les trois chemins qui
+# créent un devis « à partir de rien » (bordereau AO, OCR, réserve
+# d'intervention) laissaient ``mode_installation`` NULL, alors que le chemin
+# canonique le pose explicitement.
+#
+# Le discriminateur de rendu ACCEPTE le vide (``quote_engine/residential/
+# renderer.is_residential`` : ``if mode not in ("", "residentiel", …)``), un
+# repli que le dépôt qualifie lui-même de « défaut d'AFFICHAGE PDF choisi pour
+# ne jamais perdre le rendu d'un devis, PAS une preuve que ce devis EST
+# résidentiel » — et ``is_residential`` pilote AUSSI la page publique client.
+# Un bordereau de marché à prix unitaires (« Terrassement (m³) ») partait donc
+# au client dans la présentation « proposition solaire résidentielle ».
+#
+# La règle : le marché DÉCLARÉ quand il existe (le lead de l'affaire, le
+# chantier, le devis d'origine du chantier), sinon un défaut EXPLICITE et
+# documenté par chemin. Aucun de ces trois documents n'est une étude solaire
+# résidentielle : le défaut ne peut donc pas l'être.
+
+#: Les quatre marchés de ``Devis.ModeInstallation``. ``crm.Lead.
+#: TypeInstallation`` porte EXACTEMENT les mêmes quatre valeurs ;
+#: ``installations.Installation.TypeInstallation`` n'en porte que trois (son
+#: « industriel » est libellé « Industriel / Commercial »). Le recoupement est
+#: donc direct, sans table de correspondance.
+MODES_INSTALLATION = ('residentiel', 'industriel', 'commercial', 'agricole')
+
+
+def mode_installation_declare(*sources, defaut):
+    """QJR129 — le premier marché DÉCLARÉ parmi ``sources``, sinon ``defaut``.
+
+    ``sources`` — des objets susceptibles de porter ``mode_installation`` (un
+    devis) ou ``type_installation`` (un lead, un chantier) ; ``None`` est
+    ignoré. Le premier non vide et RECONNU gagne : une valeur hors des quatre
+    choix fermés est écartée plutôt que posée telle quelle.
+
+    Ne lit RIEN en base et n'écrit rien : elle ne fait que lire des attributs
+    d'objets déjà chargés par l'appelant (aucun import cross-app).
+    """
+    for source in sources:
+        if source is None:
+            continue
+        for attribut in ('mode_installation', 'type_installation'):
+            valeur = (getattr(source, attribut, None) or '').strip().lower()
+            if valeur in MODES_INSTALLATION:
+                return valeur
+    return defaut
+
+
 def create_draft_devis_from_ocr(*, company, user, lead, fields):
     """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
 
@@ -67,6 +116,14 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
             notes.append(f"{label} : {val}")
     note = "\n".join(notes)
 
+    # QJR129 / CS7 — le marché du LEAD quand il est déclaré, sinon COMMERCIAL.
+    # Un document OCR n'est PAS une étude solaire résidentielle : le laisser à
+    # NULL le faisait router vers le rendu « proposition solaire résidentielle »
+    # (écran client compris). Le brouillon ne porte de toute façon aucune ligne
+    # et le commercial fixe le vrai marché dans l'éditeur.
+    mode = mode_installation_declare(
+        lead, defaut=Devis.ModeInstallation.COMMERCIAL)
+
     def _create(ref):
         return Devis.objects.create(
             company=company,
@@ -76,6 +133,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
             statut=Devis.Statut.BROUILLON,
             created_by=user,
             note=note,
+            mode_installation=mode,
         )
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
