@@ -42,6 +42,11 @@ from django.test import SimpleTestCase, TestCase
 from apps.crm.models import Client, Lead
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import dimensionnement, services
+# QJR76 — `build_devis_auto` vit dans `domain/creation` et y LIT
+# `_panneaux_dimensionnement_horaire` (importé au niveau module depuis
+# `domain/taille`). Un `patch` ne double que l'espace de noms qu'il vise :
+# la doublure du moteur se pose donc sur le LECTEUR, pas sur la façade.
+from apps.ventes.domain import creation as domain_creation
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, option_lines,
@@ -280,7 +285,7 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
     def _auto(self, *, scenario, optimum_avec, email):
         # Depuis le 29/08/2026, ``profil_reel_existe`` ne garde plus l'entrée du
         # moteur (tout dimensionnement y passe) : seul le moteur est simulé.
-        with patch.object(services, '_panneaux_dimensionnement_horaire',
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
                           return_value=(8, 550, 'moteur_horaire',
                                         optimum_avec)):
             return services.build_devis_auto(
@@ -349,7 +354,7 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
         """
         lead = self._lead(email='pompage@example.com',
                           type_installation='agricole')
-        with patch.object(services, '_panneaux_dimensionnement_horaire',
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
                           return_value=(8, 550, 'moteur_horaire',
                                         self.OPTIMUM_AVEC)):
             with self.assertRaises(services.AutoDevisError):
