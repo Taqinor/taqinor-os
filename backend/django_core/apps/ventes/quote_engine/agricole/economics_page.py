@@ -106,6 +106,22 @@ def build(ctx) -> str:
     env_html = _env_block(show_env, co2_t, trees, fuel_qty, C, fmt, fmt_dec)
 
     # ── rentabilité hero (number panel + fuel chart, equal height) ───────────
+    # QJR151(a) — l'hypothèse qui produit le volume annuel pompé (donc la
+    # facture carburant d'aujourd'hui, l'économie, le cumul 20 ans, le payback
+    # et ce graphe) est ÉNONCÉE sous le graphe. Elle était jusqu'ici muette :
+    # « estimations basées sur vos données » (page 1) ne dit pas qu'on suppose
+    # N jours de pompage par an ni quel ratio pointe/moyenne est retenu, alors
+    # qu'un pompage 5 jours/semaine fausse le chiffre d'un facteur ~1,5.
+    hyp_days = d.get("pumping_days_per_year")
+    hyp_ratio = d.get("peak_to_avg")
+    hyp_html = ""
+    if hyp_days and hyp_ratio:
+        hyp_html = (
+            f'<div class="a4-hyp">Hypothèse de calcul : <b>{fmt(hyp_days)} jours '
+            f'de pompage par an</b>, à <b>{fmt(round(float(hyp_ratio) * 100))} %</b> '
+            'du débit de pointe en moyenne annuelle. Dites-nous vos jours réels '
+            'et nous recalculons.</div>')
+
     renta_html = ""
     if show_fuel and payback:
         pb_bits = []
@@ -129,6 +145,7 @@ def build(ctx) -> str:
       <div class="a4-h">Solaire vs butane vs diesel</div>
       <div class="a4-cap">Coût annuel du carburant pour pomper le même volume d'eau</div>
       <img class="a4-fuelimg" src="{charts['fuel']}" alt="Comparatif carburant">
+      {hyp_html}
     </div>
   </div>
   <div class="a4-msg">{punch_html}{env_html}</div>
@@ -225,8 +242,13 @@ def build(ctx) -> str:
 .a4-stat-hi{{margin-top:8px;}} .a4-stat-hi span{{color:{gold};font-size:16pt;}}
 /* Fixed height: WeasyPrint collapses a width:100%/height:auto <img> to 0 inside
    a flex column. Explicit height + object-fit keeps the chart visible & sharp. */
-.a4-fuelimg{{display:block;width:100%;height:34mm;object-fit:contain;
+.a4-fuelimg{{display:block;width:100%;height:30mm;object-fit:contain;
   object-position:left bottom;margin-top:10px;}}
+/* QJR151(a) — hypothèse de calcul, sous le graphe. La hauteur du graphe passe
+   de 34 à 30 mm pour absorber cette ligne : la carte garde sa hauteur, donc la
+   page 4 garde sa mise en page (la .page clippe à 297 mm). */
+.a4-hyp{{margin-top:6px;font-size:6.8pt;color:{muted_2};line-height:1.3;}}
+.a4-hyp b{{color:{muted};font-weight:700;}}
 /* punch + env */
 .a4-msg{{display:flex;gap:12px;margin-top:14px;align-items:stretch;}}
 .a4-punch{{flex:1 1 0;border-left:4px solid {gold};background:{wash};border-radius:8px;

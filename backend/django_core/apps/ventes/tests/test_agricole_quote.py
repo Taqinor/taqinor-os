@@ -98,7 +98,12 @@ class TestAgricoleEconomics(SimpleTestCase):
         eco = economics.compute(data)
         self.assertEqual(eco["current_fuel"], "diesel")
         self.assertEqual(eco["annual_saving"], eco["fuel_costs"]["diesel"])
-        self.assertIn("gasoil", eco["fuel_qty_label"])
+        # QJR151(b) — sans dépense carburant saisie, la consommation actuelle
+        # est INCONNUE : plus de quantité de carburant évitée (elle était
+        # modélisée sur le CV de la pompe solaire NEUVE).
+        self.assertEqual(eco["fuel_qty_label"], "")
+        data["etude"]["fuel_spend_current"] = 54000
+        self.assertIn("gasoil", economics.compute(data)["fuel_qty_label"])
 
     def test_curveless_pump_invents_nothing(self):
         data = sample_data.build("agrumes")
@@ -155,6 +160,58 @@ class TestAgricoleEconomics(SimpleTestCase):
         self.assertEqual(eco["annual_fuel_now"], 0)
         self.assertEqual(eco["annual_saving"], 0)
         self.assertIsNone(eco["payback"])
+
+    # ── QJR151 — les hypothèses forfaitaires sont dites, ou rien n'est publié ─
+    def test_jours_et_ratio_de_pompage_sont_saisissables(self):
+        data = sample_data.build("agrumes")
+        defaut = economics.compute(data)
+        data["etude"]["jours_pompage_an"] = 260      # 5 jours/semaine
+        data["etude"]["ratio_pointe_moyenne"] = 0.5
+        saisi = economics.compute(data)
+        self.assertEqual(saisi["pumping_days_per_year"], 260)
+        self.assertEqual(saisi["peak_to_avg"], 0.5)
+        self.assertLess(saisi["annual_m3"], defaut["annual_m3"])
+        # ce que la saisie change en cascade : facture, économie, amortissement
+        self.assertLess(saisi["fuel_costs"]["butane_today"],
+                        defaut["fuel_costs"]["butane_today"])
+        self.assertLess(saisi["annual_saving"], defaut["annual_saving"])
+        self.assertGreater(saisi["payback"], defaut["payback"])
+
+    def test_hypothese_de_pompage_est_publiee(self):
+        data = sample_data.build("agrumes")
+        eco = economics.compute(data)
+        self.assertEqual(eco["pumping_days_per_year"], 300)
+        self.assertEqual(eco["peak_to_avg"], 0.62)
+
+    def test_impact_environnemental_exige_la_consommation_actuelle(self):
+        """Les bonbonnes/CO₂ évités viennent de la dépense RÉELLE du client, pas
+        du CV de la pompe solaire NEUVE (qui n'a jamais brûlé un litre)."""
+        data = sample_data.build("agrumes")
+        eco = economics.compute(data)             # aucune dépense saisie
+        self.assertEqual(eco["co2_t"], 0)
+        self.assertEqual(eco["fuel_qty_label"], "")
+        data["etude"]["fuel_spend_current"] = 40000
+        eco2 = economics.compute(data)
+        self.assertGreater(eco2["co2_t"], 0)
+        self.assertIn("bonbonnes", eco2["fuel_qty_label"])
+        # 40 000 MAD / 50 MAD la bonbonne = 800 bonbonnes — une DÉRIVATION de la
+        # dépense saisie, jamais un modèle sur le CV de la pompe neuve.
+        self.assertIn("800", eco2["fuel_qty_label"])
+
+    def test_impact_ne_depend_plus_du_cv_de_la_pompe_neuve(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["fuel_spend_current"] = 40000
+        base = economics.compute(data)["co2_t"]
+        data["etude"]["pompe_cv"] = "15"          # pompe deux fois plus grosse
+        self.assertEqual(economics.compute(data)["co2_t"], base)
+
+    def test_hectares_seulement_si_surface_renseignee(self):
+        data = sample_data.build("agrumes")
+        self.assertEqual(economics.compute(data)["hectares_irrigable"], 2.0)
+        data["etude"].pop("surface_ha", None)     # champ optionnel, souvent vide
+        self.assertIsNone(economics.compute(data)["hectares_irrigable"])
+        data["etude"]["surface_ha"] = 0
+        self.assertIsNone(economics.compute(data)["hectares_irrigable"])
 
     def test_real_fuel_bill_overrides_model(self):
         """A captured current fuel spend (MAD/an) drives savings & payback."""
@@ -225,6 +282,30 @@ class TestAgricoleRender(SimpleTestCase):
     def test_renders_all_scenarios(self):
         for key in sample_data.keys():
             self.assertIn("a1-root", self._html(key))
+
+    # ── QJR151 — la page 4 dit son hypothèse ; page 1 n'invente pas d'hectares ─
+    def test_hypothese_de_pompage_imprimee_sous_le_graphe(self):
+        html = self._html()
+        self.assertIn("Hypothèse de calcul", html)
+        self.assertIn("300 jours de pompage par an", html)
+        self.assertIn("62 %", html)
+
+    def test_bandeau_environnemental_omis_sans_consommation_actuelle(self):
+        self.assertNotIn("évitées/an", self._html())
+
+    def test_bandeau_environnemental_publie_avec_la_depense_reelle(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["fuel_spend_current"] = 40000
+        html = render.build_html(renderer._augment(data))
+        self.assertIn("évitées/an", html)
+        self.assertIn("800 bonbonnes de butane", html)
+
+    def test_pastille_hectares_omise_sans_surface(self):
+        data = sample_data.build("agrumes")
+        data["etude"].pop("surface_ha", None)
+        html = render.build_html(renderer._augment(data))
+        self.assertNotIn("de cultures irriguées", html)
+        self.assertIn("de cultures irriguées", self._html())   # surface connue
 
     # ── QJR150 — « nouveau forage » : aucun montant d'économie sur le document ─
     def test_nouveau_forage_ne_publie_aucun_montant_deconomie(self):

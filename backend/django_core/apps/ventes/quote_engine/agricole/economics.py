@@ -94,15 +94,24 @@ def compute(data: dict, company_id=None) -> dict:
     quote_ttc = _num(totaux.get("ttc")) or _num(data.get("display_total"))
     quote_ht = _num(totaux.get("ht_net"))
 
-    pump_cv = _num(etude.get("pompe_cv"))
     pump_kw = _num(etude.get("pompe_kw"))
     hmt = _num(etude.get("hmt_m"))
-    heures = _num(etude.get("heures_pompage")) or 7.0
     m3_jour = _num(etude.get("m3_jour"))
     champ_kwc = _num(etude.get("champ_kwc")) or _num(data.get("puissance_kwc"))
 
-    days = _num(cfg["pumping_days_per_year"], 300) or 300
-    peak_to_avg = _num(cfg["peak_to_avg"], 0.62) or 0.62
+    # QJR151(a) — jours de pompage et ratio pointe/moyenne SAISISSABLES par
+    # devis (``etude_params``), exactement comme ``heures_pompage`` : ces deux
+    # valeurs pilotent ``annual_m3``, donc la facture carburant d'aujourd'hui,
+    # l'économie, le cumul 20 ans, l'amortissement et le graphe carburant — un
+    # pompage 5 jours/semaine fausse le tout d'un facteur ~1,5. La valeur du
+    # devis prime ; à défaut le réglage société ; à défaut la constante
+    # « à confirmer ». L'hypothèse RETENUE est imprimée sous le graphe de la
+    # page 4 (``economics_page``), plus jamais implicite.
+    days = (_num(etude.get("jours_pompage_an"))
+            or _num(cfg["pumping_days_per_year"], 300) or 300)
+    _ratio = _num(etude.get("ratio_pointe_moyenne"))
+    peak_to_avg = _ratio if 0 < _ratio <= 1 else (
+        _num(cfg["peak_to_avg"], 0.62) or 0.62)
 
     # Annual water pumped (only when a real m³/jour exists — never invented).
     annual_m3 = round(m3_jour * peak_to_avg * days) if m3_jour > 0 else 0
@@ -179,17 +188,31 @@ def compute(data: dict, company_id=None) -> dict:
     # ``constants.FDA_QUALITATIVE_NOTE`` for the qualitative wording.
     fda_pct = _num(cfg["fda_subsidy_pct"], 30)
 
-    # CO₂ avoided (bottom-up from the current fuel) — a calculation, not a stat.
-    if current_fuel == "diesel":
-        diesel_l_year = pump_cv * _num(cfg["diesel_l_per_h_per_cv"]) * heures * days
-        co2_kg = diesel_l_year * _num(cfg["diesel_kg_co2_per_l"])
-        fuel_qty_label = (f"{round(diesel_l_year):,}".replace(",", " ") + " L de gasoil")
-    else:
-        butane_kg_year = pump_cv * _num(cfg["butane_kg_per_h_per_cv"]) * heures * days
-        bottles = butane_kg_year / 12.0
-        co2_kg = butane_kg_year * _num(cfg["butane_kg_co2_per_kg"])
-        fuel_qty_label = (f"{round(bottles):,}".replace(",", " ")
-                          + " bonbonnes de butane")
+    # QJR151(b) — CARBURANT ÉVITÉ ET CO₂ : dérivés de la DÉPENSE CARBURANT
+    # ACTUELLE RÉELLE du client (``fuel_spend_current``, MAD/an), plus jamais
+    # modélisés sur ``pump_cv`` — le CV de la pompe SOLAIRE NEUVE, qui n'a
+    # jamais brûlé un litre — via un ``BUTANE_KG_PER_H_PER_CV`` « à confirmer ».
+    # Sans dépense saisie, la consommation actuelle est INCONNUE : le bandeau
+    # environnemental n'est pas publié (co2_t = 0 ⇒ ``_env_block`` s'omet),
+    # plutôt qu'un décompte de bonbonnes inventé — y compris sur un devis où le
+    # moteur refuse déjà de calculer le moindre m³.
+    co2_kg = 0.0
+    fuel_qty_label = ""
+    if fuel_spend > 0 and not aucun_carburant:
+        if current_fuel == "diesel":
+            _prix_l = _num(cfg["diesel_mad_per_l"])
+            if _prix_l > 0:
+                litres = fuel_spend / _prix_l
+                co2_kg = litres * _num(cfg["diesel_kg_co2_per_l"])
+                fuel_qty_label = (f"{round(litres):,}".replace(",", " ")
+                                  + " L de gasoil")
+        else:
+            _prix_bonbonne = _num(cfg["butane_12kg_subventionne"])
+            if _prix_bonbonne > 0:
+                bottles = fuel_spend / _prix_bonbonne
+                co2_kg = (bottles * 12.0) * _num(cfg["butane_kg_co2_per_kg"])
+                fuel_qty_label = (f"{round(bottles):,}".replace(",", " ")
+                                  + " bonbonnes de butane")
     co2_t = round(co2_kg / 1000.0, 1) if co2_kg > 0 else 0
     # M8 (audit du 19/08/2026) — MÊME constante partagée que le PDF
     # résidentiel et le site (22 kg CO₂/arbre/an) : ce module portait
@@ -201,21 +224,15 @@ def compute(data: dict, company_id=None) -> dict:
     # Annual PV production.
     prod_kwh = round(champ_kwc * _num(cfg["specific_yield_kwh_kwc"])) if champ_kwc > 0 else 0
 
-    # Hectares irrigable (tangibility) — surface if known, else from annual m³.
+    # QJR151(c) — Hectares irrigables : UNIQUEMENT la surface RENSEIGNÉE par le
+    # client. La pastille « ≈ X ha de cultures irriguées », imprimée en gros
+    # dans la bande de tangibilité de la page 1, était sinon dérivée par
+    # division inverse d'une table forfaitaire (défaut 8 000 m³/ha/an) sans
+    # AUCUNE donnée de surface — et cette branche s'activait dès que
+    # ``surface_ha`` était vide, c'est-à-dire sur la majorité des devis
+    # (le champ est optionnel). Surface absente ⇒ pastille OMISE.
     surface_ha = _num(etude.get("surface_ha"))
-    crop = etude.get("crop")
-    if surface_ha > 0:
-        hectares = round(surface_ha, 1)
-    elif has_water:
-        from . import constants as _K
-        per_ha = {
-            "olivier": 7000, "agrumes": 10000, "maraichage": 6000,
-            "luzerne": 12000, "dattier": 18000, "cereales": 5500,
-            "arganier": 4000,
-        }.get((crop or "").lower(), 8000)
-        hectares = round(annual_m3 / per_ha, 1) if per_ha else None
-    else:
-        hectares = None
+    hectares = round(surface_ha, 1) if surface_ha > 0 else None
 
     # Peak farm water need (FAO-56) — the sizing target the pump must cover.
     from . import agronomy
@@ -251,6 +268,9 @@ def compute(data: dict, company_id=None) -> dict:
         "trees": trees,
         "fuel_qty_label": fuel_qty_label,
         "hectares_irrigable": hectares,
+        # QJR151(a) — l'hypothèse de volume annuel, publiée sous le graphe.
+        "pumping_days_per_year": int(round(days)),
+        "peak_to_avg": round(peak_to_avg, 2),
         "besoin_m3j": besoin_m3j,
         "butane_12kg_subventionne": _num(cfg["butane_12kg_subventionne"]),
         "butane_12kg_reel": _num(cfg["butane_12kg_reel"]),
