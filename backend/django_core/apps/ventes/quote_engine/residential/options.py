@@ -303,7 +303,10 @@ def build_pages(ctx) -> list:
     # même tarif de repli × taux forfaitaire que la synthèse de la page 1 et part
     # avec elle. L'équipement, les totaux et la TVA — eux — sont les données du
     # devis : ils restent rendus à l'identique.
-    masquer_eco = bool(d.get("masquer_synthese"))
+    # QJR209 — même lecture double qu'en page 1 : ``masquer_economies`` (dossier
+    # MT sans économies d'étude) masque exactement la même couche que
+    # ``masquer_synthese``. Un seul des deux suffit à l'omettre d'un seul tenant.
+    masquer_eco = bool(d.get("masquer_synthese") or d.get("masquer_economies"))
 
     if deux_options:
         shared, delta_sans, delta_avec = _split_items(

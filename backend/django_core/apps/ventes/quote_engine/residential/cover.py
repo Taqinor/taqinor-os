@@ -76,7 +76,12 @@ def build(ctx):
     # le −N %, l'avant/après, la couverture, le graphe mensuel, l'économie
     # annuelle et la rentabilité sont OMIS D'UN SEUL BLOC — jamais un « 0 »,
     # jamais un demi-bloc, jamais un avertissement à la place.
-    masquer_eco = bool(d.get("masquer_synthese"))
+    # QJR209 — le drapeau MT (``masquer_economies``, levé par le builder sur un
+    # dossier moyenne tension sans économies d'étude) masque la MÊME couche :
+    # lu ici en plus de ``masquer_synthese`` pour qu'un appelant qui monterait
+    # un ``d`` sans passer par ``renderer._augment`` ne puisse pas imprimer un
+    # chiffre BT sur un dossier MT.
+    masquer_eco = bool(d.get("masquer_synthese") or d.get("masquer_economies"))
     annual_before = d.get("annual_before") or 0
     annual_after = d.get("annual_after") or 0
     coverage_pct = d.get("coverage_pct") or 0
