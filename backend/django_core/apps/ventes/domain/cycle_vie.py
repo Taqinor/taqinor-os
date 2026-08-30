@@ -142,6 +142,76 @@ def _generate_otp():
     return f'{_secrets.randbelow(1000000):06d}'
 
 
+# ── QJR147 / ES5 — PLAFOND CUMULATIF SUR LES DEMANDES D'OTP PUBLIQUES ───────
+#
+# CE QUI ÉTAIT FAUX. Les deux endpoints de DEMANDE sont ``AllowAny`` et leur
+# seul frein était ``PublicLinkRateThrottle`` (30/minute par IP + jeton) : ni
+# plafond journalier, ni plafond PAR JETON toutes IP confondues. Et chaque
+# demande RÉINITIALISAIT le compteur d'échecs — le verrouillage à cinq
+# tentatives n'était donc qu'un ralentisseur : cinq essais, on redemande un
+# code, cinq essais de plus, indéfiniment.
+#
+# LE DOMMAGE LE PLUS DÉMONTRABLE N'EST PAS LE BRUTE-FORCE : chaque demande
+# envoie un VRAI email au contact du devis. Un porteur de jeton pouvait donc
+# bombarder le client de son propre fournisseur.
+#
+# DEUX GESTES, ET LEUR RAISON :
+#   1. un compteur de DEMANDES par jeton, JOURNALIER, qui n'est JAMAIS remis à
+#      zéro par une nouvelle demande (c'est tout l'intérêt) ;
+#   2. le compteur d'ÉCHECS n'est plus effacé à la régénération — il expire de
+#      lui-même avec la fenêtre du code (10 min), ce qui donne un verrouillage
+#      TEMPOREL au lieu d'un verrou qu'un simple clic annule.
+#
+# ÉCHEC FERMÉ en cas de panne cache, comme tous les chemins OTP de ce module :
+# sans compteur lisible, on refuse d'envoyer plutôt que d'ouvrir un robinet.
+
+#: Nombre de DEMANDES de code tolérées par jeton et par jour, toutes IP
+#: confondues. Large pour un client qui ne reçoit pas son mail du premier coup,
+#: étroit pour qui voudrait s'en servir comme d'un canon à emails.
+OTP_DEMANDES_MAX_PAR_JOUR = 10
+#: TTL du compteur de demandes : 24 h glissantes à partir de la première.
+OTP_DEMANDES_TTL = 86400
+
+
+def _otp_demandes_key(prefixe, link_token, *, jour=None):
+    """Clé du compteur de DEMANDES — DATÉE, donc le plafond est journalier et
+    le compteur se périme tout seul (aucune purge à écrire)."""
+    from django.utils import timezone
+    jour = jour or timezone.now().strftime('%Y%m%d')
+    return f'{prefixe}_demandes:{jour}:{link_token}'
+
+
+#: Le message FR servi quand le plafond journalier est atteint. Il nomme le
+#: geste qui débloque (attendre, ou passer par le conseiller) plutôt que de
+#: laisser le client devant une erreur muette.
+OTP_PLAFOND_MESSAGE = (
+    "Trop de demandes de code pour ce lien aujourd'hui. Réessayez demain, ou "
+    "contactez votre conseiller pour recevoir votre code autrement.")
+
+
+def _plafond_demandes_otp_atteint(prefixe, link_token):
+    """QJR147 — compte CETTE demande et dit si le plafond est dépassé.
+
+    Le compteur est incrémenté À CHAQUE APPEL et n'est remis à zéro par
+    AUCUNE demande : c'est précisément ce que le compteur d'échecs ne faisait
+    pas. Rend ``True`` quand il faut refuser.
+    """
+    from django.core.cache import cache
+    cle = _otp_demandes_key(prefixe, link_token)
+    try:
+        # ``add`` ne pose la valeur que si la clé n'existe pas : la fenêtre de
+        # 24 h part de la PREMIÈRE demande et n'est pas repoussée par les
+        # suivantes (un TTL repoussé serait un plafond qui ne finit jamais).
+        cache.add(cle, 0, timeout=OTP_DEMANDES_TTL)
+        compte = cache.incr(cle)
+    except Exception:  # noqa: BLE001 — cache absent/illisible ⇒ échec FERMÉ
+        logger.warning(
+            'QJR147: compteur de demandes OTP illisible (%s) — demande '
+            'refusée par précaution.', cle, exc_info=True)
+        return True
+    return compte > OTP_DEMANDES_MAX_PAR_JOUR
+
+
 def request_esign_otp(link):
     """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
 
@@ -154,12 +224,20 @@ def request_esign_otp(link):
     if not _esign_otp_enabled():
         return None
 
+    # QJR147 — plafond JOURNALIER par jeton, compté AVANT toute génération et
+    # tout envoi : c'est l'email au client qu'il s'agit de plafonner.
+    if _plafond_demandes_otp_atteint('esign_otp', link.token):
+        return OTP_PLAFOND_MESSAGE
+
     from django.core.cache import cache
     code = _generate_otp()
     cache_key = _otp_cache_key(link.token)
     cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
-    # QX10 — un nouveau code réinitialise le compteur de tentatives (brute-force).
-    cache.delete(_otp_attempts_key(link.token))
+    # QJR147 — le compteur d'ÉCHECS N'EST PLUS EFFACÉ ICI. Le remettre à zéro
+    # à chaque nouveau code faisait du verrouillage à cinq tentatives un simple
+    # ralentisseur (cinq essais, on redemande, cinq essais de plus…). Il expire
+    # désormais tout seul avec la fenêtre du code : un verrou TEMPOREL, qu'un
+    # clic n'annule pas.
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -208,7 +286,12 @@ def validate_esign_otp(link, otp_code):
     QX10 — protection brute-force : un compteur par jeton (cache) verrouille
     la validation après ``OTP_MAX_ATTEMPTS`` échecs (l'espace 6 chiffres est
     trivial à balayer sans limite). Une validation réussie remet le compteur
-    à zéro ; un nouveau code doit être redemandé après verrouillage.
+    à zéro.
+
+    QJR147 — LE VERROU EST TEMPOREL, PAS ANNULABLE D'UN CLIC. Redemander un
+    code n'efface PLUS le compteur d'échecs (c'est ce qui faisait du
+    verrouillage un simple ralentisseur) : il expire de lui-même avec la
+    fenêtre du code.
     """
     if not _esign_otp_enabled():
         return None
@@ -220,8 +303,11 @@ def validate_esign_otp(link, otp_code):
     attempts_key = _otp_attempts_key(link.token)
     attempts = cache.get(attempts_key, 0)
     if attempts >= OTP_MAX_ATTEMPTS:
-        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
-                'de confirmation et réessayez.')
+        # QJR147 — le message ne promet PLUS qu'un nouveau code débloque :
+        # le compteur d'échecs n'est plus effacé à la régénération. Le
+        # verrou est TEMPOREL (il expire avec la fenêtre du code).
+        return ('Trop de tentatives incorrectes. Ce lien est « gelé » '
+                'quelques minutes ; patientez, puis redemandez un code.')
 
     cache_key = _otp_cache_key(link.token)
     stored = cache.get(cache_key)
@@ -232,8 +318,9 @@ def validate_esign_otp(link, otp_code):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
-            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
-                    'code de confirmation et réessayez.')
+            return ('Trop de tentatives incorrectes. Ce lien est '
+                    '« gelé » quelques minutes ; patientez, puis '
+                    'redemandez un code.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
     # Code valide : on le consomme (one-time use) et on réinitialise le compteur.
@@ -276,10 +363,16 @@ def request_otp_lecture(link):
     n'appelle cette fonction QUE quand ``link.otp_lecture`` est True. Retourne
     None (succès) ou un message d'erreur FR lisible — même contrat que
     ``request_esign_otp``."""
+    # QJR147 — même plafond journalier par jeton que l'OTP de signature, et
+    # pour la même raison : chaque demande envoie un VRAI email au client.
+    if _plafond_demandes_otp_atteint('otp_lecture', link.token):
+        return OTP_PLAFOND_MESSAGE
+
     from django.core.cache import cache
     code = _generate_otp()
     cache.set(_otp_lecture_cache_key(link.token), code, timeout=OTP_CACHE_TTL)
-    cache.delete(_otp_lecture_attempts_key(link.token))
+    # QJR147 — le compteur d'ÉCHECS n'est plus effacé à la régénération (voir
+    # ``request_esign_otp``).
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -314,8 +407,11 @@ def validate_otp_lecture(link, otp_code):
     attempts_key = _otp_lecture_attempts_key(link.token)
     attempts = cache.get(attempts_key, 0)
     if attempts >= OTP_MAX_ATTEMPTS:
-        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
-                'de confirmation et réessayez.')
+        # QJR147 — le message ne promet PLUS qu'un nouveau code débloque :
+        # le compteur d'échecs n'est plus effacé à la régénération. Le
+        # verrou est TEMPOREL (il expire avec la fenêtre du code).
+        return ('Trop de tentatives incorrectes. Ce lien est « gelé » '
+                'quelques minutes ; patientez, puis redemandez un code.')
 
     cache_key = _otp_lecture_cache_key(link.token)
     stored = cache.get(cache_key)
@@ -325,8 +421,9 @@ def validate_otp_lecture(link, otp_code):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
-            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
-                    'code de confirmation et réessayez.')
+            return ('Trop de tentatives incorrectes. Ce lien est '
+                    '« gelé » quelques minutes ; patientez, puis '
+                    'redemandez un code.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
     # Code valide : consommé (one-time use), compteur remis à zéro, la
@@ -841,7 +938,8 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
 
     import hashlib
     import time
-    import urllib.parse
+    # QJR147 — ``urllib.parse`` n'est plus nécessaire : le jeton ne part plus
+    # en query string (il est dans le corps JSON, voir plus bas).
     import urllib.request
     import json as _json
 
@@ -938,7 +1036,6 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
         'custom_data': custom_data,
     }
 
-    payload = _json.dumps({'data': [event]}).encode('utf-8')
     # ADSENG2 — version depuis la SOURCE UNIQUE partagée (v25 courante), jamais
     # la v19.0 codée en dur (expirée 02/2025 → 400 garanti dès qu'un pixel est
     # configuré). Constante plain (aucun modèle adsengine importé dans ventes).
@@ -952,10 +1049,15 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             getattr(devis, 'reference', '?'), fbclid, utm_source, value)
         return
 
-    params_qs = urllib.parse.urlencode({'access_token': token})
-    full_url = f'{api_url}?{params_qs}'
+    # ── QJR147 / ES7 — LE JETON VOYAGE DANS LE CORPS, PAS EN QUERY STRING ───
+    # L'API Conversions accepte ``access_token`` dans le corps JSON. En query
+    # string, il finit dans les journaux d'accès et les proxys traversés —
+    # risque ENVIRONNEMENTAL (vérifié : ce code ne le journalise pas lui-même,
+    # le ``logger.warning`` du bloc HTTP ne formate que l'exception).
+    payload = _json.dumps(
+        {'data': [event], 'access_token': token}).encode('utf-8')
     req = urllib.request.Request(
-        full_url, data=payload,
+        api_url, data=payload,
         headers={'Content-Type': 'application/json'},
         method='POST',
     )
