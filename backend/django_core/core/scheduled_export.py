@@ -300,27 +300,109 @@ class SnowflakeDestination(ExportDestinationProvider):
                 'detail': f'chargé dans {table}'}
 
 
+# ---------------------------------------------------------------------------
+# NTDATA30 — extraction incrémentale (high-watermark, CDC léger).
+
+MODE_COMPLET = 'complet'
+MODE_INCREMENTAL = 'incremental'
+
+
+def _valeur_curseur(valeur) -> str:
+    """Sérialise une borne de curseur en texte comparable (ISO pour les dates)."""
+    iso = getattr(valeur, 'isoformat', None)
+    return iso() if callable(iso) else str(valeur)
+
+
+def spec_effective(export) -> dict:
+    """Spec de requête effective : la spec de l'extrait + la borne incrémentale.
+
+    En mode ``complet`` (défaut) la spec est renvoyée TELLE QUELLE — aucun
+    changement de comportement pour les extraits existants. En mode
+    ``incremental``, un filtre ``<champ_curseur>__gt = <dernier_curseur>`` est
+    ajouté (le champ reste soumis à la liste blanche du dataset). Au tout
+    premier passage (``dernier_curseur`` vide) l'extrait est complet, puis
+    seules les lignes nouvelles/modifiées sortent.
+    """
+    spec = dict(export.spec or {})
+    if (getattr(export, 'mode', MODE_COMPLET) or MODE_COMPLET) != MODE_INCREMENTAL:
+        return spec
+    champ = (getattr(export, 'champ_curseur', '') or '').strip()
+    borne = (getattr(export, 'dernier_curseur', '') or '').strip()
+    if not champ or not borne:
+        return spec
+    filters = dict(spec.get('filters') or {})
+    filters[f'{champ}__gt'] = borne
+    spec['filters'] = filters
+    return spec
+
+
+def prochain_curseur(export, rows):
+    """Nouvelle borne haute atteinte par ``rows`` (ou ``None`` si pas d'avancée).
+
+    Cherche d'abord la valeur dans les lignes déjà extraites ; si le champ
+    curseur n'est pas projeté, une agrégation ``max`` bornée à la même
+    population le résout. Défensif : un champ hors liste blanche ou un dataset
+    en erreur ne fait JAMAIS échouer l'export (le curseur n'avance pas).
+    """
+    if (getattr(export, 'mode', MODE_COMPLET) or MODE_COMPLET) != MODE_INCREMENTAL:
+        return None
+    champ = (getattr(export, 'champ_curseur', '') or '').strip()
+    if not champ:
+        return None
+    valeurs = [r.get(champ) for r in (rows or []) if r.get(champ) is not None]
+    if valeurs:
+        return _valeur_curseur(max(valeurs))
+    if not rows:
+        return None
+    from . import data_explorer
+    spec = dict(spec_effective(export))
+    spec.pop('group_by', None)
+    spec.pop('select', None)
+    spec.pop('order_by', None)
+    spec.pop('formula_measures', None)
+    spec['aggregates'] = [{'alias': 'max_curseur', 'fn': 'max', 'field': champ}]
+    try:
+        agg = data_explorer.run_query(
+            export.dataset, export.company, None, spec)
+    except Exception:  # noqa: BLE001 — jamais d'échec d'export sur le curseur
+        logger.warning('curseur incrémental : max(%s) indisponible sur %r',
+                       champ, export.dataset, exc_info=True)
+        return None
+    valeur = (agg[0] if agg else {}).get('max_curseur')
+    return _valeur_curseur(valeur) if valeur is not None else None
+
+
 def rendre_extrait(export):
     """Rend le contenu de l'extrait depuis le dataset du ``ScheduledExport``.
 
     CSV par défaut (toujours disponible). ``parquet`` best-effort : si pyarrow
     n'est pas présent, on dégrade proprement en CSV (jamais d'exception ni de
     dépendance dure). Renvoie ``(filename, data: bytes, content_type)``.
+
+    NTDATA30 : en mode ``incremental``, seules les lignes dont le champ curseur
+    dépasse le dernier curseur enregistré sont matérialisées.
     """
+    filename, data, content_type, _rows = rendre_extrait_detaille(export)
+    return filename, data, content_type
+
+
+def rendre_extrait_detaille(export):
+    """Comme ``rendre_extrait`` mais renvoie AUSSI les lignes brutes extraites
+    (le runner en a besoin pour faire avancer le curseur incrémental)."""
     from . import data_explorer
 
     rows = data_explorer.run_query(
-        export.dataset, export.company, None, export.spec or {})
+        export.dataset, export.company, None, spec_effective(export))
     base = export.titre or export.dataset or 'extrait'
     safe = ''.join(c for c in base if c.isalnum() or c in ('-', '_')) or 'extrait'
 
     if export.format == FORMAT_PARQUET:
         data = _to_parquet(rows)
         if data is not None:
-            return f'{safe}.parquet', data, 'application/octet-stream'
+            return f'{safe}.parquet', data, 'application/octet-stream', rows
         # Dégradation propre : pas de pyarrow → CSV.
     data = _to_csv(rows)
-    return f'{safe}.csv', data, 'text/csv'
+    return f'{safe}.csv', data, 'text/csv', rows
 
 
 def _to_csv(rows) -> bytes:
@@ -374,7 +456,7 @@ def executer(export, now=None):
     Jamais d'exception réseau si non configuré.
     """
     now = now or timezone.now()
-    filename, data, content_type = rendre_extrait(export)
+    filename, data, content_type, rows = rendre_extrait_detaille(export)
     context = {
         'company_id': getattr(export, 'company_id', None),
         'dataset': export.dataset,
@@ -394,6 +476,15 @@ def executer(export, now=None):
         if res.get('key'):
             export.dernier_detail['key'] = res['key']
     export.derniere_execution_le = now
-    export.save(update_fields=['dernier_statut', 'dernier_detail',
-                               'derniere_execution_le', 'updated_at'])
+    champs = ['dernier_statut', 'dernier_detail', 'derniere_execution_le',
+              'updated_at']
+    # NTDATA30 — le curseur n'avance QUE sur un passage non-erreur : un
+    # chargement en échec doit pouvoir être rejoué sur la même population.
+    if export.dernier_statut != 'erreur':
+        curseur = prochain_curseur(export, rows)
+        if curseur and curseur != (export.dernier_curseur or ''):
+            export.dernier_curseur = curseur[:64]
+            champs.append('dernier_curseur')
+            export.dernier_detail['curseur'] = export.dernier_curseur
+    export.save(update_fields=champs)
     return export
