@@ -1,321 +1,346 @@
 // FOUNDER 26/08/2026 — « ça ne recalcule pas le meilleur choix (nombre de
 // panneaux) quand on change [la facture] — il devrait y avoir un BOUTON qui
-// recalcule ». Causes RÉELLES (confirmées en lisant DevisGenerator.jsx —
-// corrigé après une revue adversariale qui a prouvé que la toute première
-// version de ce commentaire avait la cause #2 À L'ENVERS, voir plus bas) :
-//   1. En ÉDITION (?edit=ID), `nbPanneaux` est posé UNE fois depuis les
-//      lignes du brouillon rouvert (comptage des lignes « panneau »), mais
-//      `fHiver`/`fEte` ne sont JAMAIS reposées depuis le devis serveur (aucun
-//      champ `etude_params` ne les porte encore) — retaper une facture part
-//      donc d'un champ vide, pas de la facture d'origine.
-//   2. Le bouton « Auto-remplir » existant (`handleAutoFill`) ne fait que
-//      RECOMPOSER le catalogue au `nbPanneaux`/`kwp` COURANT : il ne relit
-//      jamais la facture pour redériver ce compte (jamais un appel à
-//      `computeAutoSizing`).
-//   3. `syncBillEstimator` (déclenché à chaque frappe hiver/été) respecte
-//      DÉJÀ le garde-fou `nbPanneauxTouched` (N3) : une fois ce drapeau posé
-//      — ce qui arrive dès qu'un nombre de panneaux a été touché À LA MAIN,
-//      n'importe où dans la session — plus AUCUNE frappe sur la facture ne
-//      recalcule quoi que ce soit. IMPORTANT (revue adversariale 26/08) :
-//      CE N'EST PAS SPÉCIFIQUE À L'ÉDITION — rien dans l'effet de chargement
-//      ?edit= (lignes ~1544-1640) ne touche ce ref ; il reste à sa valeur
-//      `useRef(false)` par défaut juste après un chargement d'édition (donc
-//      OUVERT, pas fermé). La version initiale de ce commentaire affirmait
-//      le contraire — corrigée ici après preuve du reviewer.
-// Correctif : un bouton EXPLICITE « Recalculer le dimensionnement »
-// (`recalculerDimensionnement`) qui déverrouille temporairement le garde-fou,
-// rejoue le MÊME balayage palier/payback que `computeAutoSizing` sur la
-// facture ACTUELLE (sans ET avec batterie, L-2OPT), pose les deux résultats,
-// puis relance la composition par le chemin EXACT du bouton « Auto-remplir »
-// (`handleAutoFill`, jamais une seconde règle de composition) — et reverrouille
-// le garde-fou à SON ÉTAT D'AVANT LE CLIC (capturé, jamais un `true` figé —
-// F1 ci-dessous), dans la fenêtre SYNCHRONE la plus étroite possible (F2).
+// recalcule ». Causes RÉELLES d'alors :
+//   1. En ÉDITION (?edit=ID), `nbPanneaux` est reposé depuis les lignes du
+//      brouillon, mais `fHiver`/`fEte` ne le sont JAMAIS — retaper une facture
+//      part d'un champ vide, pas de la facture d'origine.
+//   2. « Auto-remplir » ne fait que RECOMPOSER au `nbPanneaux` COURANT : il ne
+//      relit jamais la facture pour redériver ce compte.
+//   3. Le garde-fou « nbPanneaux touché » (N3), une fois posé n'importe où
+//      dans la session, empêche toute frappe sur la facture de recalculer.
+// Correctif : un bouton EXPLICITE « Recalculer le dimensionnement » qui
+// déverrouille temporairement le garde-fou, pose la taille RETENUE (la
+// recommandation SERVEUR en résidentiel, le balayage local ailleurs — résolue
+// par l'appelant, jamais par le reducer), relance la composition, puis
+// RESTAURE le garde-fou à SON ÉTAT D'AVANT LE CLIC.
 //
-// DevisGenerator.jsx est du JSX/ESM non exécutable par `node --test` sans
-// node_modules (React, Redux dispatch réel) : ce test lit donc le SOURCE,
-// même patron que DevisGeneratorNbPanneauxTouched.test.mjs /
-// DevisGeneratorDeuxOptimiseurs.test.mjs. Un test COMPORTEMENTAL (rendu
-// React réel, vitest) complète ce fichier dans
-// DevisGeneratorRecalculerDimensionnementGuard.test.jsx — lui seul aurait
-// intercepté F1 (un test purement source-pattern passe même avec le
-// reverrouillage mal placé, tant que du texte « nbPanneauxTouched.current »
-// apparaît quelque part dans l'effet).
+// QJR108 — CE FICHIER A CESSÉ DE LIRE LE SOURCE. Il faisait de l'archéologie
+// par expression régulière sur `DevisGenerator.jsx` : « `setFHiver(` n'apparaît
+// pas dans ce bloc », « `PriorTouched` n'apparaît plus », « le texte
+// `if (estFait(mSans) && estFait(mAvec))` est présent », et — le pire — une
+// fonction `dedup()` RÉÉCRITE DANS LE TEST pour « prouver le comportement »
+// d'une fonction de production qu'il ne pouvait pas appeler : elle prouvait le
+// comportement de sa propre copie.
+//
+// LE CORRECTIF LUI-MÊME EST DEVENU UNE TRANSITION. `RECALCUL_DEMANDE`
+// (sizingReducer, invariant 3) fait EN UNE FOIS ce que l'écran faisait en
+// trois instructions — donc avec une FENÊTRE dans laquelle une frappe pouvait
+// s'engouffrer (régression F1). Cette transition est pure : elle est ici
+// EXÉCUTÉE, avec le lecteur qui l'accompagne
+// (`toucheNbPanneauxPourComposition`) et le sélecteur `deuxValeursDim`,
+// devenu importable en QJR108.
+//
+// CE QUI RESTE HORS DE PORTÉE D'UN TEST PUR, et n'est donc PAS revendiqué ici :
+// tout ce qui exige un rendu React — l'absence de `setFHiver` dans l'effet
+// `?edit=`, l'appel SYNCHRONE `Promise.resolve(handleAutoFill()).catch(…)` de
+// l'effet de composition (F2), le bouton lui-même et sa désactivation, le
+// garde d'affichage du bloc « Recommandé sans/avec batterie » (F4). Ces
+// comportements ont déjà leur spec RTL —
+// `DevisGeneratorRecalculerDimensionnementGuard.test.jsx` — qui, elle, monte
+// vraiment le composant : c'est elle, et non les regex retirées ici, qui a
+// intercepté F1.
 //
 // Run : node --test src/pages/ventes/DevisGeneratorRecalculerDimensionnement.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import {
+  sizingReducer, ETAT_INITIAL, toucheNbPanneauxPourComposition,
+  SCENARIO_LES_DEUX,
+} from '../../features/ventes/quote/sizingReducer.js'
+import { deuxValeursDim } from '../../features/ventes/quote/paireDimensionnement.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const rejouer = (actions, depart = ETAT_INITIAL) =>
+  actions.reduce((etat, action) => sizingReducer(etat, action), depart)
 
-// Même utilitaire que les tests voisins : extrait le contenu d'un bloc `{ … }`
-// en comptant les accolades (fiable même imbriqué).
-function extractBracedBlock(src, openBraceIdx) {
-  assert.equal(src[openBraceIdx], '{', 'index ne pointe pas sur une accolade ouvrante')
-  let depth = 0
-  for (let i = openBraceIdx; i < src.length; i++) {
-    if (src[i] === '{') depth++
-    else if (src[i] === '}') {
-      depth--
-      if (depth === 0) return { body: src.slice(openBraceIdx + 1, i), endIdx: i }
-    }
+const TAPE = (valeur) => ({ type: 'SAISI', champ: 'nbPanneaux', valeur })
+const RETENU = { nbPanneaux: 18, kwcOptimal: 12.78 }
+const RECALCUL = { type: 'RECALCUL_DEMANDE', retenu: RETENU }
+
+// ── CE QUE LE BOUTON POSE ───────────────────────────────────────────────────
+
+test('le recalcul pose la taille RETENUE et sa cible kWc', () => {
+  const etat = sizingReducer(ETAT_INITIAL, RECALCUL)
+  assert.equal(etat.nbPanneaux, '18')
+  assert.equal(etat.kwcCible, '12.78')
+})
+
+test('le recalcul referme l’attente moteur et efface un refus précédent', () => {
+  const avant = rejouer([
+    { type: 'PROFIL_SITE_APPLIQUE',
+      profil: { type_installation: 'residentiel', facture_hiver: 3000 } },
+    { type: 'MOTEUR_A_REFUSE', motif: 'Ville du lead absente.' },
+  ])
+  assert.equal(avant.motifMoteur, 'Ville du lead absente.')
+  const etat = sizingReducer(avant, RECALCUL)
+  assert.equal(etat.attenteMoteur, false)
+  assert.equal(etat.motifMoteur, null)
+})
+
+test('le reducer NE DÉRIVE RIEN de la facture : il pose ce que l’appelant a résolu', () => {
+  // C'est le partage de responsabilité U3-MOTEUR : en résidentiel l'appelant
+  // relit la recommandation SERVEUR, ailleurs il fait tourner le balayage
+  // local. Le reducer, lui, ne va jamais chercher un chiffre.
+  const etat = sizingReducer(ETAT_INITIAL, { type: 'RECALCUL_DEMANDE',
+    retenu: { nbPanneaux: 7, kwcOptimal: 4.97 } })
+  assert.equal(etat.nbPanneaux, '7')
+  assert.equal(etat.kwcCible, '4.97')
+})
+
+test('sans valeur retenue, le recalcul ne pose RIEN (jamais un chiffre supposé)', () => {
+  assert.equal(sizingReducer(ETAT_INITIAL, { type: 'RECALCUL_DEMANDE' }), ETAT_INITIAL)
+  assert.equal(sizingReducer(ETAT_INITIAL,
+    { type: 'RECALCUL_DEMANDE', retenu: null }), ETAT_INITIAL)
+  assert.equal(sizingReducer(ETAT_INITIAL,
+    { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 0 } }), ETAT_INITIAL)
+  const texte = sizingReducer(ETAT_INITIAL,
+    { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 'beaucoup' } })
+  assert.equal(texte, ETAT_INITIAL, 'un compte illisible n’est pas un compte')
+})
+
+test('une cible kWc absente laisse le champ VIDE plutôt que d’inventer une conversion', () => {
+  const etat = sizingReducer(ETAT_INITIAL,
+    { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 18 } })
+  assert.equal(etat.nbPanneaux, '18')
+  assert.equal(etat.kwcCible, '')
+})
+
+test('le recalcul ne touche QUE la taille : marché, scénario et options techniques sont intacts', () => {
+  const configure = rejouer([
+    { type: 'SAISI', champ: 'scenario', valeur: 'Avec batterie' },
+    { type: 'SAISI', champ: 'structure', valeur: 'aluminium' },
+    { type: 'SAISI', champ: 'tension', valeur: 'mt' },
+    { type: 'SAISI', champ: 'panelW', valeur: '600' },
+  ])
+  const etat = sizingReducer(configure, RECALCUL)
+  assert.equal(etat.scenario, 'Avec batterie')
+  assert.equal(etat.structure, 'aluminium')
+  assert.equal(etat.tension, 'mt')
+  assert.equal(etat.panelW, '600', 'la puissance panneau du vendeur n’est pas redéfinie')
+  assert.equal(etat.modeInstallation, 'residentiel')
+})
+
+test('le recalcul préserve TOUS les autres drapeaux « touché »', () => {
+  const configure = rejouer([
+    { type: 'SAISI', champ: 'scenario', valeur: 'Avec batterie' },
+    { type: 'SAISI', champ: 'structure', valeur: 'aluminium' },
+    { type: 'SAISI', champ: 'pompeAlim', valeur: 'mono' },
+  ])
+  const etat = sizingReducer(configure, RECALCUL)
+  assert.equal(etat.touche.scenario, true)
+  assert.equal(etat.touche.structure, true)
+  assert.equal(etat.touche.pompeAlim, true)
+  assert.equal(etat.touche.tension, false)
+})
+
+// ── U3-MOTEUR — LE « PALIER RETENU » NE DÉCRIT PAS LE MOTEUR ────────────────
+
+test('en résidentiel le recalcul n’épingle AUCUN « palier retenu » (notion du balayage local)', () => {
+  const etat = sizingReducer(ETAT_INITIAL, RECALCUL)
+  assert.equal(etat.modeInstallation, 'residentiel')
+  assert.equal(etat.sizingInfo, null,
+    'l’encart « palier retenu / besoin lu sur la facture » ne décrit pas ce que le moteur a fait')
+})
+
+test('sur un marché SANS moteur, le justificatif du balayage local est bien conservé', () => {
+  const industriel = sizingReducer(ETAT_INITIAL,
+    { type: 'MARCHE_CHANGE', mode: 'industriel' })
+  const etat = sizingReducer(industriel, RECALCUL)
+  assert.equal(etat.modeInstallation, 'industriel')
+  assert.deepEqual(etat.sizingInfo, RETENU)
+})
+
+// ── INVARIANT 3 — ROUVRIR ET RESTAURER DANS LA MÊME TRANSITION ──────────────
+// F1 (revue adversariale 26/08/2026, BLOQUANT) : l'écran CAPTURAIT le
+// garde-fou, le déverrouillait, puis le restaurait dans un effet — trois
+// instructions, donc une fenêtre où une frappe pouvait s'engouffrer et se
+// faire écraser. La transition fait les trois EN UNE FOIS : le drapeau RÉEL
+// n'est jamais écrit, seul le LECTEUR de composition le voit ouvert.
+
+test('F1 — un garde-fou POSÉ reste posé : le recalcul ne l’écrit jamais', () => {
+  const tape = sizingReducer(ETAT_INITIAL, TAPE('14'))
+  assert.equal(tape.touche.nbPanneaux, true)
+  const etat = sizingReducer(tape, RECALCUL)
+  assert.equal(etat.touche.nbPanneaux, true,
+    'le drapeau réel doit être INCHANGÉ — pas restauré après coup, jamais écrit')
+})
+
+test('F1 — un garde-fou INTACT n’est pas verrouillé à `true` par le recalcul', () => {
+  const etat = sizingReducer(ETAT_INITIAL, RECALCUL)
+  assert.equal(etat.touche.nbPanneaux, false,
+    'un `true` figé ferait de tout recalcul une « saisie » et gèlerait l’écran ensuite')
+})
+
+test('F1 — pendant la fenêtre, la COMPOSITION voit le garde-fou OUVERT (et lui seul)', () => {
+  const tape = sizingReducer(ETAT_INITIAL, TAPE('14'))
+  const etat = sizingReducer(tape, RECALCUL)
+  assert.equal(toucheNbPanneauxPourComposition(etat), false,
+    'c’est le déverrouillage explicite demandé par le fondateur')
+  assert.equal(etat.touche.nbPanneaux, true,
+    'l’état, lui, conserve la vérité — les deux lectures diffèrent, et c’est le point')
+})
+
+test('F1 — hors fenêtre, les deux lectures redisent la MÊME chose', () => {
+  const tape = sizingReducer(ETAT_INITIAL, TAPE('14'))
+  assert.equal(toucheNbPanneauxPourComposition(tape), true)
+  assert.equal(toucheNbPanneauxPourComposition(ETAT_INITIAL), false)
+})
+
+test('F2 — la fenêtre dure EXACTEMENT une transition : la moindre action suivante la referme', () => {
+  const ouverte = rejouer([TAPE('14'), RECALCUL])
+  assert.notEqual(ouverte.recalcul, null)
+  for (const suite of [
+    { type: 'SAISI', champ: 'panelW', valeur: '600' },
+    { type: 'MARCHE_CHANGE', mode: 'industriel' },
+    { type: 'MOTEUR_A_REPONDU', recommandation: { panneaux: 30 } },
+    { type: 'UNE_ACTION_DE_TROP' },
+    {},
+  ]) {
+    const apres = sizingReducer(ouverte, suite)
+    assert.equal(apres.recalcul, null, `action ${suite.type ?? '(sans type)'}`)
+    assert.equal(toucheNbPanneauxPourComposition(apres), apres.touche.nbPanneaux,
+      'refermée, la lecture de composition redit l’état réel')
   }
-  throw new Error('accolade fermante introuvable')
-}
-
-function corpsDe(needle, quoi) {
-  const start = DG.indexOf(needle)
-  assert.ok(start > -1, `${quoi} introuvable`)
-  return extractBracedBlock(DG, start + needle.length - 1).body
-}
-
-// ── Root cause : preuves lisibles dans le source ──
-
-test('ROOT CAUSE 1 — le chargement d\'édition (?edit=ID) ne repose JAMAIS fHiver/fEte depuis le devis serveur', () => {
-  const idx = DG.indexOf('if (!editId || editLoaded.current) return')
-  assert.ok(idx > -1, 'effet de chargement édition introuvable')
-  const end = DG.indexOf('}, [editId]) // eslint-disable-line react-hooks/exhaustive-deps', idx)
-  assert.ok(end > -1)
-  const bloc = DG.slice(idx, end)
-  assert.doesNotMatch(bloc, /setFHiver\(/, 'régression : fHiver est désormais reposée en édition — ce test/le correctif doivent être revus')
-  assert.doesNotMatch(bloc, /setFEte\(/, 'régression : fEte est désormais reposée en édition — ce test/le correctif doivent être revus')
-  // Le nombre de panneaux, lui, EST posé (depuis le comptage des lignes) —
-  // c'est ce compte qui reste figé sans le bouton de recalcul. QJR99 — il est
-  // posé par la transition `REOUVERTURE`, qui pose le compte SANS marquer le
-  // champ « touché » (`poserPanneaux`, cf. sizingReducer.test.mjs).
-  assert.match(bloc, /dispatchSizing\(\{\s*\n\s*type: 'REOUVERTURE',\s*\n\s*devis: \{[\s\S]{0,200}panneaux,/)
-  // Revue adversariale 26/08 (corrige la cause #2 initiale, qui affirmait le
-  // contraire) — CE MÊME chargement ne ferme JAMAIS le garde-fou
-  // « nbPanneaux touché » : il reste OUVERT juste après un chargement
-  // d'édition — la staleness ne vient pas d'un garde-fou fermé par l'édition,
-  // mais de fHiver/fEte vides (ci-dessus) + handleAutoFill qui ne redérive
-  // jamais depuis la facture (ROOT CAUSE 2).
-  assert.doesNotMatch(bloc, /champ: 'nbPanneaux'/,
-    'régression : un chargement d\'édition ne doit toujours PAS fermer le drapeau « nbPanneaux touché »')
-  assert.doesNotMatch(bloc, /champ: 'kwcCible'/,
-    'régression : un chargement d\'édition ne doit pas non plus passer par la frappe kWc (qui ferme le même drapeau)')
 })
 
-test('ROOT CAUSE 2 — la branche RÉSIDENTIELLE de handleAutoFill() ne redérive JAMAIS nbPanneaux depuis la facture : elle lit `kwp` (nbPanneaux COURANT), jamais computeAutoSizing', () => {
-  const bloc = corpsDe('const handleAutoFill = async () => {', 'handleAutoFill')
-  assert.doesNotMatch(bloc, /computeAutoSizing/,
-    'handleAutoFill ne doit pas redériver le dimensionnement lui-même : c\'est exactement le bug — il recompose au nbPanneaux courant, jamais depuis la facture')
-  // Scope la branche résidentielle SEULE (de son `if` jusqu'au `composeLocalement()`
-  // de fin de fonction, hors branche agricole ci-dessus qui pose bien nbPanneaux
-  // depuis pompageSel — hors sujet ici, dimensionnement HMT/débit, pas facture).
-  const residentielIdx = bloc.indexOf("if (modeInstallation === 'residentiel') {")
-  assert.ok(residentielIdx > -1)
-  const residentielBloc = bloc.slice(residentielIdx)
-  assert.doesNotMatch(residentielBloc, /'nbPanneaux'|'REOUVERTURE'/,
-    'la branche résidentielle ne pose jamais nbPanneaux — recomposer avec le compte courant est le comportement historique, inchangé')
+test('F2 — une frappe pendant la fenêtre la referme ET garde la valeur tapée', () => {
+  const ouverte = rejouer([TAPE('14'), RECALCUL])
+  assert.equal(ouverte.nbPanneaux, '18')
+  const frappe = sizingReducer(ouverte, TAPE('9'))
+  assert.equal(frappe.nbPanneaux, '9', 'la frappe la plus récente gagne')
+  assert.equal(frappe.recalcul, null)
+  assert.equal(frappe.touche.nbPanneaux, true)
 })
 
-test('ROOT CAUSE 3 — syncBillEstimator() ne recompose JAMAIS les lignes (setLines/handleAutoFill absents), garde « nbPanneaux touché » déjà en place (fermeture générale, pas spécifique à l\'édition)', () => {
-  const bloc = corpsDe('const syncBillEstimator = (hiverVal, eteVal) => {', 'syncBillEstimator')
-  assert.doesNotMatch(bloc, /setLines\(/)
-  assert.doesNotMatch(bloc, /handleAutoFill/)
-  assert.match(bloc, /if \(!sizing\.touche\.nbPanneaux\) \{/)
+test('la fenêtre porte le NUMÉRO de la composition qu’elle autorise', () => {
+  const etat = sizingReducer(ETAT_INITIAL, RECALCUL)
+  assert.equal(etat.recalcul.seq, etat.compositionSeq)
+  assert.equal(etat.recalcul.ignorerToucheNbPanneaux, true)
+  assert.equal(Object.isFrozen(etat.recalcul), true, 'la fenêtre ne se retouche pas')
 })
 
-// ── Le correctif : bouton + fonction ──
-
-test('recalculerDimensionnement() : sans facture hiver exploitable, pose une erreur et ne touche RIEN d\'autre', () => {
-  const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
-  const idxNull = bloc.indexOf('if (!sizing) {')
-  assert.ok(idxNull > -1)
-  const { body: guardBody } = extractBracedBlock(bloc, idxNull + 'if (!sizing) {'.length - 1)
-  assert.match(guardBody, /recalcDim:/)
-  assert.match(guardBody, /return/)
+test('F2 — refermer la fenêtre rend un état NEUF : l’état ouvert n’est jamais muté sur place', () => {
+  const ouverte = sizingReducer(ETAT_INITIAL, RECALCUL)
+  const refermee = sizingReducer(ouverte, { type: 'UNE_ACTION_DE_TROP' })
+  assert.notEqual(refermee, ouverte)
+  assert.notEqual(ouverte.recalcul, null, 'l’état d’origine garde sa fenêtre — aucune mutation')
+  assert.equal(refermee.recalcul, null)
+  assert.equal(refermee.nbPanneaux, ouverte.nbPanneaux, 'refermer ne défait pas le recalcul')
 })
 
-// QJR99 — F1 exigeait de CAPTURER le garde-fou avant de le déverrouiller, puis
-// de le restaurer dans un effet : trois instructions, donc une FENÊTRE. La
-// transition `RECALCUL_DEMANDE` fait les trois EN UNE FOIS (invariant 3 du
-// reducer, testé dans sizingReducer.test.mjs : le drapeau réel est INCHANGÉ, et
-// seul `toucheNbPanneauxPourComposition` le voit ouvert, sur cette unique
-// transition). L'épingle vérifie donc que l'écran n'a plus AUCUNE manœuvre de
-// verrouillage à lui — c'est plus fort que l'ancienne, pas plus faible.
-test('F1 (BLOQUANT, revue adversariale) — recalculerDimensionnement() ne manipule PLUS le garde-fou à la main : une seule transition le rouvre et le restaure', () => {
-  const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
-  assert.match(bloc, /const sizing = computeAutoSizing\(fHiver, fEte\)/)
-  // Aucune écriture manuelle du drapeau, dans aucun sens : ni capture, ni
-  // déverrouillage, ni restauration — c'est ce qui supprime la fenêtre de course.
-  assert.doesNotMatch(bloc, /touche\.nbPanneaux\s*=/,
-    'plus aucune écriture manuelle du garde-fou : `RECALCUL_DEMANDE` le rouvre et le restaure dans la MÊME transition (régression F1 si elle revient)')
-  assert.doesNotMatch(bloc, /PriorTouched/,
-    'la capture/restauration manuelle (et sa fenêtre) doit avoir disparu')
-  // La taille retenue part par la transition, avec sa cible kWc. U3-MOTEUR —
-  // en résidentiel `sizingInfo` reste NUL (le reducer le décide : son encart
-  // décrit le balayage local, « palier retenu / besoin lu sur la facture »,
-  // deux notions qui ne décrivent pas ce que le moteur a fait).
-  assert.match(bloc, /dispatchSizing\(\{ type: 'RECALCUL_DEMANDE', retenu \}\)/)
-  assert.match(bloc, /kwcOptimal: source\.kwc != null \? Number\(source\.kwc\) : null/)
+test('le lecteur de composition tolère un état SANS fenêtre (aucune exception sur un état ancien)', () => {
+  assert.equal(toucheNbPanneauxPourComposition({ touche: { nbPanneaux: true } }), true)
+  assert.equal(toucheNbPanneauxPourComposition({ touche: { nbPanneaux: false } }), false)
 })
 
-// U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
-// tool ») — le bouton « Recalculer le dimensionnement » était le DERNIER
-// endroit où un nombre de panneaux chiffré à l'écran (balayage par paliers de
-// 5 kWc) pouvait encore écraser celui du moteur horaire, quelle que soit la
-// facture. En résidentiel il relit désormais la recommandation SERVEUR (déjà
-// obtenue par le dry-run d'aperçu — aucun appel réseau supplémentaire).
-test("U3-MOTEUR — recalculerDimensionnement() : en résidentiel la taille vient du MOTEUR SERVEUR, le balayage local ne sert plus qu'aux marchés sans moteur", () => {
-  const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
-  const residIdx = bloc.indexOf("if (modeInstallation === 'residentiel') {")
-  assert.ok(residIdx > -1, 'la branche résidentielle du recalcul est introuvable')
-  const elseIdx = bloc.indexOf('} else {', residIdx)
-  assert.ok(elseIdx > -1, 'la branche des autres marchés est introuvable')
-  const brancheResid = bloc.slice(residIdx, elseIdx)
-  // Résidentiel : uniquement la recommandation du moteur, jamais un palier local.
-  assert.match(brancheResid, /etudeHoraireDonnees\?\.dimensionnement/)
-  assert.match(brancheResid, /recommandation_avec/)
-  assert.ok(!/computeAutoSizing\(/.test(brancheResid),
-    "la branche résidentielle ne doit plus chiffrer de palier localement")
-  // Refus : message FRANÇAIS du serveur (motivation/avertissements) en priorité.
-  assert.match(brancheResid, /recalcDim: dim\?\.motivation/)
-  assert.match(brancheResid, /etudeHoraireDonnees\?\.avertissements\?\.\[0\]/)
-  // Aucun chiffre posé sans recommandation exploitable.
-  assert.match(brancheResid, /if \(!\(Number\(source\?\.panneaux\) > 0\)\) \{/)
-  // Les autres marchés (aucun moteur serveur pour eux) gardent le balayage.
-  const brancheAutres = bloc.slice(elseIdx)
-  assert.match(brancheAutres, /const sizing = computeAutoSizing\(fHiver, fEte\)/)
+// ── LE COMPTEUR DE COMPOSITION ─────────────────────────────────────────────
+// Le correctif ne pouvait PAS caler la recomposition sur `nbPanneaux` : un
+// recalcul qui retombe sur le MÊME compte n'aurait rien redéclenché.
+
+test('un recalcul relance la composition MÊME si le compte ne bouge pas', () => {
+  const premier = sizingReducer(ETAT_INITIAL, RECALCUL)
+  assert.equal(premier.compositionSeq, 1)
+  const second = sizingReducer(premier, RECALCUL)
+  assert.equal(second.nbPanneaux, premier.nbPanneaux, 'même compte…')
+  assert.equal(second.compositionSeq, 2, '…et pourtant une nouvelle composition')
 })
 
-test('recalculerDimensionnement() : déclenche la recomposition via un COMPTEUR dédié (jamais un effet calé sur nbPanneaux qui pourrait ne pas se redéclencher à compte inchangé)', () => {
-  const bloc = corpsDe('const recalculerDimensionnement = () => {', 'recalculerDimensionnement')
-  // QJR99 — le compteur est `compositionSeq`, incrémenté PAR la transition
-  // (`RECALCUL_DEMANDE`), donc impossible à oublier côté écran ; l'effet de
-  // composition est calé dessus (`recalcDimTick`), jamais sur `nbPanneaux`.
-  assert.match(bloc, /dispatchSizing\(\{ type: 'RECALCUL_DEMANDE', retenu \}\)/)
-  assert.match(DG, /compositionSeq: recalcDimTick,/)
-  assert.match(DG, /\}, \[recalcDimTick\]\)/)
+test('deux recalculs successifs gardent la fenêtre ouverte, chacun avec SON numéro', () => {
+  const premier = sizingReducer(ETAT_INITIAL, RECALCUL)
+  const second = sizingReducer(premier, RECALCUL)
+  assert.equal(premier.recalcul.seq, 1)
+  assert.equal(second.recalcul.seq, 2)
+  assert.equal(toucheNbPanneauxPourComposition(second), false)
 })
 
-test('F2 (revue adversariale) — l\'effet de composition appelle handleAutoFill de façon SYNCHRONE (jamais un await/.finally qui rouvrirait la fenêtre sur tout l\'aller-retour réseau)', () => {
-  const idx = DG.indexOf('    if (!recalcDimTick) return')
-  assert.ok(idx > -1, 'effet de composition introuvable')
-  const depsIdx = DG.indexOf('}, [recalcDimTick])', idx)
-  assert.ok(depsIdx > -1)
-  const bloc = DG.slice(idx, depsIdx)
-  // F2 — une fonction async exécute tout son préfixe synchrone (jusqu'à son
-  // premier `await`) avant de rendre la main : `resolveKwcAvec()` (lu par
-  // handleAutoFill AVANT son `await ventesApi.composerDevis`) voit donc la
-  // fenêtre `recalcul` ouverte par la transition, et RIEN d'autre ne peut
-  // s'intercaler — le reducer la referme à l'action suivante.
-  assert.match(bloc, /Promise\.resolve\(handleAutoFill\(\)\)\.catch\(\(\) => \{\}\)/,
-    'handleAutoFill() doit être appelé de façon SYNCHRONE (promesse capturée, jamais attendue) — un `await handleAutoFill()` rouvrirait la fenêtre sur tout le round-trip réseau (régression F2)')
-  assert.doesNotMatch(bloc, /await /,
-    'aucun await dans cet effet : il bornerait la fenêtre au round-trip réseau (régression F2)')
-  // Plus AUCUNE manœuvre de verrouillage manuelle dans l'effet (régression F1).
-  assert.doesNotMatch(bloc, /touche\.nbPanneaux\s*=|PriorTouched/,
-    'le reverrouillage manuel doit avoir disparu : il vit dans la transition `RECALCUL_DEMANDE`')
+test('le compteur ne bouge QUE pour les transitions qui relancent la composition', () => {
+  assert.equal(sizingReducer(ETAT_INITIAL, TAPE('14')).compositionSeq, 0,
+    'taper un nombre ne recompose pas à chaque frappe')
+  assert.equal(sizingReducer(ETAT_INITIAL,
+    { type: 'MARCHE_CHANGE', mode: 'industriel' }).compositionSeq, 0)
+  assert.equal(sizingReducer(ETAT_INITIAL,
+    { type: 'TAILLE_APPLIQUEE', ligne: { panneaux: 12 } }).compositionSeq, 1,
+    '« Appliquer cette taille » recompose, comme le recalcul')
 })
 
-// ── Le bouton (JSX) ──
+// ── ROOT CAUSE 3, EXPRIMÉE PAR LE COMPORTEMENT ─────────────────────────────
 
-test('bouton « Recalculer le dimensionnement » : visible en création ET en édition (aucune condition editId), désactivé sans facture ni en agricole', () => {
-  const idx = DG.indexOf('data-testid="btn-recalculer-dimensionnement"')
-  assert.ok(idx > -1, 'bouton introuvable')
-  const bloc = DG.slice(Math.max(0, idx - 400), idx + 400)
-  assert.match(bloc, /onClick=\{recalculerDimensionnement\}/)
-  assert.match(bloc, /disabled=\{!\(parseFloat\(fHiver\) > 0\) \|\| modeInstallation === 'agricole'\}/)
-  assert.match(bloc, /Recalculer le dimensionnement/)
-  // Aucune garde `editId`/`embedded` autour du bouton : même bouton dans les
-  // deux modes (le composant DevisGenerator sert les deux routes).
-  assert.doesNotMatch(bloc, /editId &&[\s\S]{0,60}btn-recalculer/i)
+test('ROOT CAUSE 3 — sans le bouton, une frappe sur la facture ne recalcule plus rien une fois le garde-fou posé', () => {
+  const bloque = rejouer([
+    TAPE('14'),
+    { type: 'PROFIL_SITE_APPLIQUE',
+      profil: { type_installation: 'industriel', facture_hiver: 4800 },
+      sizingLocal: { nbPanneaux: 40, kwcOptimal: 28.4 } },
+  ])
+  assert.equal(bloque.nbPanneaux, '14', 'c’est exactement le blocage rapporté par le fondateur')
+  // Le BOUTON est la sortie explicite : il passe outre, une fois, sans jamais
+  // effacer le fait que le vendeur avait touché le champ.
+  const recalcule = sizingReducer(bloque, {
+    type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 40, kwcOptimal: 28.4 } })
+  assert.equal(recalcule.nbPanneaux, '40')
+  assert.equal(recalcule.touche.nbPanneaux, true)
+  assert.equal(toucheNbPanneauxPourComposition(recalcule), false)
 })
 
-// ── Les DEUX valeurs affichées (L-2OPT) ──
-
-test('deuxValeursDim : résidentiel UNIQUEMENT — agricole (pompage) et industriel/commercial ne fabriquent jamais de valeur « avec »', () => {
-  const bloc = corpsDe('const deuxValeursDim = (() => {', 'deuxValeursDim')
-  assert.match(bloc, /if \(modeInstallation !== 'residentiel'\) return \{ sans: null, avec: null \}/)
+test('ROOT CAUSE 1 — la réouverture d’un brouillon ne FERME pas le garde-fou (il reste ouvert après un ?edit=)', () => {
+  const etat = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'residentiel', panneaux: 20, scenario: SCENARIO_LES_DEUX },
+  })
+  assert.equal(etat.nbPanneaux, '20', 'le compte vient des lignes du devis')
+  assert.equal(etat.touche.nbPanneaux, false,
+    'la staleness ne venait pas d’un garde-fou fermé par l’édition — c’était la cause #2 initiale, corrigée')
+  assert.equal(etat.touche.scenario, true, 'le SCÉNARIO, lui, est un choix déjà posé')
+  assert.equal(etat.touche.mode, true)
 })
 
-test('deuxValeursDim : jamais un chiffre inventé — computeAutoSizing n\'est jamais appelé pendant le rendu (react-hooks/refs), tout vient de sizingInfo (état) ou du serveur', () => {
-  const bloc = corpsDe('const deuxValeursDim = (() => {', 'deuxValeursDim')
-  assert.match(bloc, /const dim = etudeHoraireDonnees\?\.dimensionnement/)
-  assert.match(bloc, /dim\?\.recommandation, dim\?\.recommandation_avec/)
-  // Jamais un appel à computeAutoSizing ICI : il lirait sizingCacheRef.current
-  // PENDANT le rendu (deuxValeursDim est une const calculée en ligne dans le
-  // corps du composant, pas dans un effet/gestionnaire) — interdit par la
-  // règle ESLint react-hooks/refs, vérifiée en CI (backend-lint côté frontend).
-  assert.doesNotMatch(bloc, /computeAutoSizing/)
-  // QJR102 — et plus AUCUN repli local non plus : `sizingInfo` vaut TOUJOURS
-  // `null` en résidentiel depuis U3-MOTEUR, donc la branche d'aperçu était
-  // injoignable ET masquait la paire mixte que F3 interdit.
-  assert.doesNotMatch(bloc, /sizingInfo/,
-    "le dimensionnement affiché ne peut plus venir que du moteur serveur")
+// ── LES DEUX VALEURS AFFICHÉES APRÈS UN RECALCUL ───────────────────────────
+
+test('les deux valeurs affichées viennent du MOTEUR, jamais du recalcul local', () => {
+  const paire = deuxValeursDim('residentiel', {
+    dimensionnement: {
+      recommandation: { panneaux: 12, kwc: 8.52 },
+      recommandation_avec: { panneaux: 16, kwc: 11.36 },
+    },
+  })
+  assert.deepEqual(paire.sans, { nbPanneaux: 12, kwc: 8.52 })
+  assert.deepEqual(paire.avec, { nbPanneaux: 16, kwc: 11.36 })
 })
 
-// QJR99 — la chaîne de ternaires est remplacée par `paireDimensionnement`, qui
-// SIGNE chaque branche (QJR86) au lieu de la deviner.
-// QJR102 — et la branche `apercu` (balayage LOCAL) est SUPPRIMÉE, parce qu'elle
-// était structurellement injoignable : `deuxValeursDim` rend `{null, null}`
-// hors résidentiel, et EN résidentiel `sizingInfo` vaut toujours `null` depuis
-// U3-MOTEUR. Il ne reste donc QU'UNE source possible — le moteur — ce qui rend
-// la règle F3 (« jamais une paire mixte ») VRAIE PAR CONSTRUCTION au lieu
-// d'être une comparaison à faire. La preuve par les données ci-dessous suit ce
-// changement : elle vérifie désormais qu'aucune combinaison ne peut produire
-// une valeur non-moteur.
-test('F3 (revue adversariale) + QJR102 — deuxValeursDim ne peut plus produire QU\'UNE source (moteur) : la paire mixte est impossible par construction', () => {
-  const idx = DG.indexOf('const paireDimensionnement = (srvSans, srvAvec) => {')
-  assert.ok(idx > -1, 'paireDimensionnement introuvable')
-  const bloc = DG.slice(idx, idx + 900)
-  // Chaque branche est SIGNÉE de sa source — jamais un nombre nu.
-  assert.match(bloc, /const mSans = valeurMoteurDim\(srvSans\)/)
-  assert.match(bloc, /const mAvec = valeurMoteurDim\(srvAvec\)/)
-  // Plus AUCUNE branche d'aperçu : ni la fonction, ni ses variables.
-  assert.doesNotMatch(bloc, /valeurApercuDim|localSans|localAvec/,
-    'la branche locale doit avoir disparu (QJR102)')
-  assert.doesNotMatch(DG, /const valeurApercuDim =/,
-    "l'aide de signature d'aperçu n'a plus d'appelant : elle doit être supprimée")
-  // La PAIRE exige les DEUX cases ; sinon UNE seule valeur, jamais un mélange.
-  assert.match(bloc, /if \(estFait\(mSans\) && estFait\(mAvec\)\) return \{ sans: mSans\.valeur, avec: mAvec\.valeur \}/)
-  assert.match(bloc, /if \(estFait\(mSans\)\) return \{ sans: mSans\.valeur, avec: null \}/)
-  assert.match(bloc, /if \(estFait\(mAvec\)\) return \{ sans: null, avec: mAvec\.valeur \}/)
-  assert.match(bloc, /return \{ sans: null, avec: null \}/)
+test('F3 — le serveur n’a chiffré que le SANS : aucune valeur « avec » n’est fabriquée pour compléter la paire', () => {
+  const paire = deuxValeursDim('residentiel',
+    { dimensionnement: { recommandation: { panneaux: 12, kwc: 8.52 } } })
+  assert.deepEqual(paire.sans, { nbPanneaux: 12, kwc: 8.52 })
+  assert.equal(paire.avec, null, 'c’était le bug rapporté')
+})
 
-  // Reproduit la logique EXACTE avec de vraies données pour prouver le
-  // comportement (pas seulement sa présence textuelle) : aucune combinaison
-  // ne doit produire une valeur qui ne vienne pas du moteur, et « sans »
-  // reste la première branche testée.
-  function dedup(srvSansOk, srvAvecOk) {
-    if (srvSansOk && srvAvecOk) return 'PAIRE_SERVEUR'
-    if (srvSansOk) return 'SANS_SEUL_SERVEUR'
-    if (srvAvecOk) return 'AVEC_SEUL_SERVEUR'
-    return 'RIEN'
+test('F3 — et l’inverse : le SANS ne se fabrique pas non plus depuis l’AVEC', () => {
+  const paire = deuxValeursDim('residentiel',
+    { dimensionnement: { recommandation_avec: { panneaux: 16, kwc: 11.36 } } })
+  assert.equal(paire.sans, null)
+  assert.deepEqual(paire.avec, { nbPanneaux: 16, kwc: 11.36 })
+})
+
+test('F3 — hors résidentiel, aucune des deux valeurs n’est affichée', () => {
+  for (const marche of ['industriel', 'commercial', 'agricole']) {
+    assert.deepEqual(
+      deuxValeursDim(marche, {
+        dimensionnement: {
+          recommandation: { panneaux: 12, kwc: 8.52 },
+          recommandation_avec: { panneaux: 16, kwc: 11.36 },
+        },
+      }),
+      { sans: null, avec: null }, `marché ${marche}`)
   }
-  assert.equal(dedup(true, true), 'PAIRE_SERVEUR')
-  // Le serveur n'a chiffré QUE le sans : jamais de valeur « avec » fabriquée
-  // pour compléter la paire (c'était le bug rapporté).
-  assert.equal(dedup(true, false), 'SANS_SEUL_SERVEUR')
-  assert.equal(dedup(false, true), 'AVEC_SEUL_SERVEUR')
-  assert.equal(dedup(false, false), 'RIEN')
 })
 
-test('affichage : le bloc « Recommandé sans/avec batterie » est résidentiel-only, respecte showSans/showAvec, ET son garde extérieur reflète EXACTEMENT ce qui va rendre (F4 — jamais un wrapper vide)', () => {
-  const idx = DG.indexOf('data-testid="dimensionnement-deux-valeurs"')
-  assert.ok(idx > -1, 'bloc deux-valeurs introuvable')
-  const bloc = DG.slice(Math.max(0, idx - 1400), idx + 700)
-  // F4 — le garde EXTÉRIEUR (celui qui décide si le <div> se monte DU TOUT)
-  // reprend les DEUX conditions (source ET scénario), pas seulement la source :
-  // sinon un wrapper vide (marge + data-testid orphelins) peut se monter en
-  // mono-option quand seule la branche masquée est calculable.
-  assert.match(bloc, /modeInstallation === 'residentiel'\s*\n\s*&& \(\(showSans && deuxValeursDim\.sans\) \|\| \(showAvec && deuxValeursDim\.avec\)\)/)
-  assert.doesNotMatch(bloc, /&& \(deuxValeursDim\.sans \|\| deuxValeursDim\.avec\) &&/,
-    'régression F4 : le garde extérieur ne doit plus ignorer showSans/showAvec')
-  assert.match(bloc, /\{showSans && deuxValeursDim\.sans && \(/)
-  assert.match(bloc, /\{showAvec && deuxValeursDim\.avec && \(/)
-  // F5 — libellés de RECOMMANDATION (pas une description des lignes
-  // composées : un nombre de panneaux tapé à la main peut diverger).
-  assert.match(bloc, /Recommandé sans batterie : <strong>\{deuxValeursDim\.sans\.nbPanneaux\} panneaux<\/strong>/)
-  assert.match(bloc, /Recommandé avec batterie : <strong>\{deuxValeursDim\.avec\.nbPanneaux\} panneaux<\/strong>/)
-})
-
-test('showSans\\/showAvec (contrat mono-option existant) restent la SEULE source de vérité pour ce qui est vendu sur le devis — non redéfinis par ce chantier', () => {
-  assert.match(DG, /const showSans = scenario !== 'Avec batterie'/)
-  assert.match(DG, /const showAvec = scenario !== 'Sans batterie'/)
+test('un recalcul ne change PAS les deux valeurs affichées : elles décrivent la RECOMMANDATION, pas ce qui est composé', () => {
+  // F5 — un nombre de panneaux tapé (ou recalculé) peut diverger de la
+  // recommandation : le bloc reste un rappel de ce que le moteur conseille.
+  const donnees = { dimensionnement: { recommandation: { panneaux: 12, kwc: 8.52 } } }
+  const avant = deuxValeursDim('residentiel', donnees)
+  const apres = deuxValeursDim('residentiel', donnees)
+  assert.deepEqual(avant, apres)
+  assert.equal(sizingReducer(ETAT_INITIAL, RECALCUL).nbPanneaux, '18')
+  assert.equal(avant.sans.nbPanneaux, 12,
+    'la recommandation affichée n’est pas réécrite par la taille retenue')
 })
