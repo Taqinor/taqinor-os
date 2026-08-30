@@ -1303,6 +1303,57 @@ def _garanties_du_devis():
     return out
 
 
+def _lignes_option_rendue():
+    """Lignes de l'option effectivement présentée (même choix que M6)."""
+    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
+    return list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+
+
+def _marques_du_devis():
+    """QJR121 — marques RÉELLEMENT vendues, par famille.
+
+    Même principe que ``_garanties_du_devis`` : la page signature ne peut
+    affirmer que ce que les LIGNES du devis portent. La source est le champ
+    ``marque`` de la fiche produit (celui-là même qu'imprime le tableau de la
+    page 2) — jamais une marque devinée dans une désignation libre. Aucune
+    marque lisible ⇒ dict vide ⇒ la carte est OMISE.
+    """
+    familles = {"panneaux": [], "onduleurs": [], "batteries": []}
+    predicats = (
+        ("panneaux", lambda d: "panneau" in d or "module" in d),
+        ("onduleurs", lambda d: "onduleur" in d),
+        ("batteries", lambda d: "batterie" in d),
+    )
+    for it in _lignes_option_rendue():
+        des = (it.get("designation") or "").lower()
+        marque = (it.get("marque") or "").strip()
+        if not marque:
+            continue
+        for cle, pred in predicats:
+            if pred(des) and marque not in familles[cle]:
+                familles[cle].append(marque)
+                break
+    return {k: v for k, v in familles.items() if v}
+
+
+#: Mots des désignations qui ATTESTENT une supervision vendue (passerelle,
+#: compteur communicant, dongle…). Sans l'un d'eux, aucune application de
+#: monitoring n'est promise : un devis pompage n'en porte aucune.
+_MOTS_MONITORING = ("monitoring", "supervis", "dongle", "wifi", "wi-fi",
+                    "smart meter", "smartmeter", "datalogger", "data logger",
+                    "passerelle", "compteur communicant")
+
+
+def _monitoring_vendu():
+    """QJR121 — une ligne du devis porte-t-elle la supervision promise ?"""
+    for it in _lignes_option_rendue():
+        blob = "%s %s" % ((it.get("designation") or "").lower(),
+                          (it.get("_produit_nom") or "").lower())
+        if any(mot in blob for mot in _MOTS_MONITORING):
+            return True
+    return False
+
+
 def equip_rows(items, totaux, hi_bat=False):
     rows = ""
     for i, it in enumerate(items):
@@ -1947,6 +1998,58 @@ def page3():
         "Garanties fabricant des produits install&#233;s, telles que "
         "d&#233;taill&#233;es sur leurs fiches techniques.")
 
+    # ── QJR121 — LA CARTE « ÉQUIPEMENTS » NOMME LES MARQUES DU DEVIS ────────
+    # Elle affirmait « Panneaux Canadian Solar, onduleurs Huawei & Deye —
+    # certifiés IEC » sur TOUT devis : contredit par le tableau de la page 2 dès
+    # que les lignes portent d'autres marques, et invérifiable pour la
+    # certification. La phrase se compose des marques RÉELLEMENT vendues (comme
+    # les garanties se composent des fiches produit) et s'OMET quand aucune
+    # marque n'est lisible.
+    _marques = _marques_du_devis()
+    _equip_card = ""
+    if _marques:
+        _bouts = []
+        if _marques.get("panneaux"):
+            _bouts.append("Panneaux %s" % " & ".join(_marques["panneaux"]))
+        if _marques.get("onduleurs"):
+            _bouts.append("onduleurs %s" % " & ".join(_marques["onduleurs"]))
+        if _marques.get("batteries"):
+            _bouts.append("batterie %s" % " & ".join(_marques["batteries"]))
+        _equip_txt = _esc(", ".join(_bouts))
+        _equip_card = f"""
+      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="{CA}" stroke="{CA}" stroke-width="1">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Équipements de votre installation</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_equip_txt} — avec la garantie fabricant de chaque produit.</div>
+        </div>
+      </div>
+"""
+
+    # QJR121 — l'« Application de monitoring 24/7 » n'est promise que si une
+    # LIGNE du devis la porte (passerelle, dongle, compteur communicant…).
+    # Aucune : la carte disparaît plutôt que de vendre un composant absent.
+    _monitoring_card = ""
+    if _monitoring_vendu():
+        _monitoring_card = f"""
+      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{CA}" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+            <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="3"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Suivi en temps réel</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">Supervision de la production, des économies et de l’état de votre installation, via le matériel de communication chiffré au devis.</div>
+        </div>
+      </div>
+"""
+
     # Q5 — sous-titres des « prochaines étapes » : délais des réglages
     # société, toujours suivis de « (indicatif) ». Réglage vidé ⇒
     # sous-titre VIDE : le document ne promet alors aucun délai. Ces
@@ -2089,9 +2192,9 @@ def page3():
   <!-- content wrapper: clipped so it never overlaps absolutely-positioned BPA + footer -->
   <div style="overflow:hidden;max-height:820px;">
 
-  <!-- WHY TAQINOR -->
+  <!-- QJR121 — POURQUOI NOUS : titre, marques et supervision dérivés du devis -->
   <div style="padding:6px 24px 4px;margin-bottom:5px;">
-    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir TAQINOR&#160;?</div>
+    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir {ENT_NOM_MARQUE}&#160;?</div>
     <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">Des experts engag\u00e9s pour votre transition \u00e9nerg\u00e9tique</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
 
@@ -2107,17 +2210,7 @@ def page3():
         </div>
       </div>
 
-      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="{CA}" stroke="{CA}" stroke-width="1">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
-        </div>
-        <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">\u00c9quipements premium certifi\u00e9s</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Panneaux Canadian Solar, onduleurs Huawei &amp; Deye \u2014 certifi\u00e9s IEC avec garantie fabricant compl\u00e8te.</div>
-        </div>
-      </div>
+      {_equip_card}
 
       <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
         <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -2131,18 +2224,7 @@ def page3():
         </div>
       </div>
 
-      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{CA}" stroke-width="2">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-            <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="3"/>
-          </svg>
-        </div>
-        <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Suivi en temps r\u00e9el</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Application de monitoring 24/7 pour suivre production, \u00e9conomies et \u00e9tat de votre installation.</div>
-        </div>
-      </div>
+      {_monitoring_card}
 
     </div>
   </div>
@@ -2228,7 +2310,7 @@ def page3():
         <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text("bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
-        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature TAQINOR</div>
+        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature {ENT_NOM_MARQUE}</div>
         <div style="border-bottom:1px solid {CG2};min-height:{'10' if DEVIS_FINAL else '14'}px;margin-bottom:3px;"></div>
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Repr\u00e9sentant&#160;: <span style="display:inline-block;min-width:80px;border-bottom:1px solid {CG2};">&nbsp;</span></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
