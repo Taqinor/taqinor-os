@@ -448,6 +448,62 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                        getattr(devis, 'reference', '?'), exc)
 
 
+def verifier_empreinte_signature(devis, *, lignes=None):
+    """QJR144 — LE VÉRIFICATEUR du sceau d'un devis signé.
+
+    ``DevisSignature.content_hash`` existait depuis QJ10 mais AUCUN code du
+    dépôt ne savait le recomparer : il était écrit une fois et relu seulement
+    par des tests — un sceau que personne ne pouvait vérifier. Ce service est
+    la porte de lecture, exposée en cross-app par ``apps.ventes.services``.
+
+    Rend un dict FRANÇAIS, affichable tel quel :
+
+    * ``signee`` — ce devis porte-t-il une signature électronique ;
+    * ``intacte`` — ``True`` (le contenu reproduit l'empreinte), ``False`` (il
+      a changé depuis la signature), ``None`` (aucune empreinte scellée : « on
+      ne sait pas » n'est pas « falsifié ») ;
+    * ``version`` — la version du payload qui concorde (2 = sceau étendu de
+      QJR144 ; 1 = sceau d'origine, qui ne couvrait NI le taux de TVA par
+      ligne, NI les lignes optionnelles, NI l'option retenue) ;
+    * ``message`` — la phrase à montrer.
+
+    LECTURE PURE : ne touche ni statut, ni ligne, ni total (règle #4).
+    """
+    from apps.ventes.models import DevisSignature
+
+    signature = DevisSignature.objects.filter(devis=devis).first()
+    if signature is None:
+        return {
+            'signee': False, 'intacte': None, 'version': None,
+            'message': "Ce devis ne porte aucune signature électronique.",
+        }
+    intacte, version = signature.verifier_contenu(lignes=lignes)
+    if intacte is None:
+        return {
+            'signee': True, 'intacte': None, 'version': None,
+            'message': ("Cette signature ne porte aucune empreinte de "
+                        "contenu : elle est antérieure au scellement, son "
+                        "contenu ne peut donc pas être vérifié."),
+        }
+    if not intacte:
+        return {
+            'signee': True, 'intacte': False, 'version': None,
+            'message': ("Le contenu de ce devis NE correspond PLUS à ce qui a "
+                        "été signé : l'empreinte scellée ne se reproduit pas."),
+        }
+    if version == DevisSignature.CONTENT_HASH_V1:
+        return {
+            'signee': True, 'intacte': True, 'version': version,
+            'message': ("Empreinte conforme (sceau d'origine). Portée : ce "
+                        "sceau ne couvre ni le taux de TVA par ligne, ni les "
+                        "lignes optionnelles, ni l'option retenue."),
+        }
+    return {
+        'signee': True, 'intacte': True, 'version': version,
+        'message': "Empreinte conforme : le contenu signé n'a pas changé.",
+    }
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 

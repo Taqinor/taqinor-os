@@ -1886,37 +1886,81 @@ class DevisSignature(models.Model):
     def __str__(self):
         return f'Signature {self.devis_id} — {self.signataire_nom}'
 
-    @staticmethod
-    def compute_content_hash(devis, lignes=None):
-        """SHA-256 du payload canonique du devis (sans aucune donnée interne).
+    # ── QJR144 / ES12 — L'EMPREINTE COUVRE CE QUI DÉTERMINE LE PRIX ─────────
+    #
+    # CE QUI MANQUAIT (audit du 30/08/2026, vérifié en code). Le payload
+    # portait ``reference|client|created|tva(global)|remise|lignes(designation:
+    # quantite:prix_unitaire:remise)`` et ne couvrait :
+    #
+    #   · NI le ``taux_tva`` PAR LIGNE (``LigneDevis.taux_tva``, consommé par
+    #     ``taux_tva_effectif`` et ``tva_par_taux``) — passer une ligne de 20 %
+    #     à 10 % change le TTC payé par le client SANS changer l'empreinte ;
+    #   · NI ``optionnelle``, qui décide de l'ENTRÉE d'une ligne dans les
+    #     totaux (``LigneDevis.compte_dans_totaux``) ;
+    #   · NI ``option_acceptee``, qui détermine ce qui sera FACTURÉ
+    #     (``utils/echeancier`` : « on facture UNIQUEMENT les lignes de
+    #     l'option retenue »).
+    #
+    # ATTÉNUATION VÉRIFIÉE, ET PRÉSERVÉE : l'édition post-acceptation est déjà
+    # refusée (``views/devis.py``, ``views/ligne_devis.py``). C'était donc une
+    # lacune de VALEUR PROBANTE, pas une brèche ouverte — et c'est pourquoi ce
+    # lot étend le sceau et lui donne un vérificateur, sans rien verrouiller de
+    # plus.
+    #
+    # LES SIGNATURES DÉJÀ POSÉES RESTENT VALIDES. Le payload est VERSIONNÉ :
+    # v1 est celui d'origine, octet pour octet ; v2 y ajoute les trois données
+    # manquantes. Les nouvelles empreintes sont calculées en v2 ; la
+    # vérification essaie v2 PUIS v1, si bien qu'une signature d'hier se
+    # vérifie encore — avec la portée qui était la sienne, et pas davantage.
 
-        Le hash couvre : référence, client (nom/email), date_creation,
-        lignes (designation/qte/pu_ht/remise), taux_tva, remise_globale.
-        JAMAIS prix_achat ni marge. Déterministe et reproductible.
+    #: Payload d'origine (QJ10). Ne JAMAIS le modifier : des empreintes déjà
+    #: scellées en dépendent.
+    CONTENT_HASH_V1 = 1
+    #: QJR144 — v1 + ``taux_tva``/``optionnelle`` par ligne + ``option_acceptee``.
+    CONTENT_HASH_V2 = 2
+    #: La version dont sont scellées les NOUVELLES signatures.
+    CONTENT_HASH_VERSION = CONTENT_HASH_V2
+
+    @classmethod
+    def _lignes_pour_empreinte(cls, devis, lignes=None):
+        """Les lignes du devis, normalisées et TRIÉES PAR ``id``.
 
         NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
-        l'appelant (chemin d'acceptation, qui les a en main). Elles sont
-        retriées par ``id`` : le payload — donc le hash — est le MÊME qu'avec
-        la requête, sans quoi une signature ne se vérifierait plus. Paramètre
-        absent (tout autre appelant) ⇒ la requête d'hier.
+        l'appelant (chemin d'acceptation, qui les a en main) : aucune requête
+        alors, et le payload est le MÊME qu'avec la requête.
         """
+        if lignes is None:
+            return list(devis.lignes.order_by('id').values(
+                'designation', 'quantite', 'prix_unitaire', 'remise',
+                'taux_tva', 'optionnelle'))
+        return [
+            {'designation': lg.designation, 'quantite': lg.quantite,
+             'prix_unitaire': lg.prix_unitaire, 'remise': lg.remise,
+             'taux_tva': lg.taux_tva, 'optionnelle': lg.optionnelle}
+            for lg in sorted(lignes, key=lambda li: li.id)
+        ]
+
+    @classmethod
+    def _payload_content_hash(cls, devis, lignes=None, *, version=None):
+        """Le payload canonique, dans la VERSION demandée (jamais du hash)."""
+        version = version or cls.CONTENT_HASH_VERSION
         client = getattr(devis, 'client', None)
         client_str = ''
         if client is not None:
             client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
-        if lignes is None:
-            lignes = list(devis.lignes.order_by('id').values(
-                'designation', 'quantite', 'prix_unitaire', 'remise'))
+        lignes = cls._lignes_pour_empreinte(devis, lignes)
+        if version >= cls.CONTENT_HASH_V2:
+            lignes_str = '|'.join(
+                f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}"
+                f":{lg['remise']}:{lg['taux_tva']}"
+                f":{int(bool(lg['optionnelle']))}"
+                for lg in lignes
+            )
         else:
-            lignes = [
-                {'designation': lg.designation, 'quantite': lg.quantite,
-                 'prix_unitaire': lg.prix_unitaire, 'remise': lg.remise}
-                for lg in sorted(lignes, key=lambda li: li.id)
-            ]
-        lignes_str = '|'.join(
-            f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
-            for lg in lignes
-        )
+            lignes_str = '|'.join(
+                f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
+                for lg in lignes
+            )
         payload = (
             f"ref={devis.reference}|"
             f"client={client_str}|"
@@ -1925,7 +1969,57 @@ class DevisSignature(models.Model):
             f"remise={devis.remise_globale}|"
             f"lignes={lignes_str}"
         )
+        if version >= cls.CONTENT_HASH_V2:
+            # Préfixe de version ET option retenue : deux payloads de versions
+            # différentes ne peuvent pas produire la même chaîne.
+            payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
+                       f"option={getattr(devis, 'option_acceptee', '') or ''}")
+        return payload
+
+    @classmethod
+    def compute_content_hash(cls, devis, lignes=None, *, version=None):
+        """SHA-256 du payload canonique du devis (sans aucune donnée interne).
+
+        Le hash couvre : référence, client (nom/email), date_creation,
+        ``taux_tva`` global, ``remise_globale``, les lignes
+        (designation/qte/pu_ht/remise **+ taux_tva de ligne + optionnelle**) et
+        l'**option acceptée**. JAMAIS prix_achat ni marge. Déterministe et
+        reproductible.
+
+        ``version`` — ``None`` (le défaut, et tous les appelants de production)
+        scelle dans la version COURANTE. La vérification (:meth:`verifier_
+        contenu`) est le seul appelant qui demande explicitement ``v1``, pour
+        pouvoir relire une empreinte d'hier.
+        """
+        payload = cls._payload_content_hash(devis, lignes, version=version)
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+    def verifier_contenu(self, lignes=None):
+        """QJR144 — l'empreinte scellée décrit-elle ENCORE ce devis ?
+
+        Le sceau existait mais AUCUN code ne savait le vérifier : il était
+        écrit une fois et relu seulement par des tests. Voici le vérificateur.
+
+        Rend ``(intacte, version)`` :
+
+        * ``(True, 2)`` — le contenu courant reproduit l'empreinte, sceau
+          étendu (taux de TVA par ligne, lignes optionnelles, option retenue) ;
+        * ``(True, 1)`` — il la reproduit dans le payload D'ORIGINE : la
+          signature est authentique, mais son sceau ne couvrait pas encore les
+          trois données ci-dessus. L'appelant qui a besoin de le SAVOIR lit la
+          version ;
+        * ``(False, None)`` — le contenu a changé depuis la signature ;
+        * ``(None, None)`` — aucune empreinte scellée (signatures très
+          anciennes) : « on ne sait pas » n'est pas « falsifié ».
+        """
+        scelle = (self.content_hash or '').strip()
+        if not scelle:
+            return None, None
+        for version in (self.CONTENT_HASH_V2, self.CONTENT_HASH_V1):
+            if self.compute_content_hash(
+                    self.devis, lignes=lignes, version=version) == scelle:
+                return True, version
+        return False, None
 
 
 # ── QJ16 — Reusable quote presets ────────────────────────────────────────────
