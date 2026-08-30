@@ -2595,6 +2595,11 @@ export function selectPompeByCurve(produits, { hmt, debit, typePompe, alim }) {
 
 // Variateur VEICHI : le plus petit dont kW ≥ kW pompe, tension assortie
 // (mono 220 V / tri 380 V). L'afficheur (sans kW) n'est jamais candidat.
+// QJR130(a) — repli JAMAIS silencieux : si des VEICHI compatibles existent
+// mais qu'AUCUN n'atteint la puissance requise, on ne sélectionne RIEN
+// (`insuffisant: true`) au lieu du plus gros disponible sous-dimensionné —
+// le commentaire ci-dessus promet « le plus petit dont kW ≥ kW pompe », pas
+// « le plus gros qu'on a sous la main ».
 export function selectVariateurVeichi(produits, kw, alim) {
   const want = alim === 'mono' ? 220 : 380
   const volts = (p) => {
@@ -2609,7 +2614,8 @@ export function selectVariateurVeichi(produits, kw, alim) {
       && x.kw > 0 && x.v === want && _hasPrix(x.p))
     .sort((a, b) => a.kw - b.kw
       || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
-  return cands.find(x => x.kw >= kw)?.p ?? cands[cands.length - 1]?.p ?? null
+  const fit = cands.find(x => x.kw >= kw)
+  return { vfd: fit?.p ?? null, insuffisant: !fit && cands.length > 0 }
 }
 
 export function findAfficheurVariateur(produits) {
@@ -2691,7 +2697,13 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
   const wantTri = alim === 'tri'
   const wantSurface = typePompe === 'surface'
 
+  // QJR130(c) — repli JAMAIS silencieux : si des pompes du bon type existent
+  // mais qu'AUCUNE n'atteint le CV demandé, on ne sélectionne RIEN
+  // (`pumpInsuffisant`) au lieu de la plus grande disponible — qui pouvait
+  // être PLUS PETITE que le CV saisi (le champ PV affiché à l'écran restait
+  // alors calculé sur un CV que la pompe facturée ne délivrait pas).
   let pump = null
+  let pumpInsuffisant = false
   if (sel.pump) {
     pump = { p: sel.pump }
   } else if (!sel.sansPrix.length) {
@@ -2701,24 +2713,32 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
       .filter(x => _isPompe(x.n) && !_isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
       .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
       .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
-    pump = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
+    const fit = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
       ?? pumps.find(x => x.cv === cvNum)
       ?? pumps.find(x => x.cv >= cvNum)
-      ?? pumps[pumps.length - 1] ?? null
+      ?? null
+    pump = fit ? { p: fit.p } : null
+    if (!pump && pumps.length > 0) pumpInsuffisant = true
   }
   // sel.sansPrix non vide → seules des pompes sans prix conviennent :
   // on n'en chiffre AUCUNE (l'écran l'explique), le reste du système est rempli.
 
-  // Variateur : VEICHI par kW + tension d'abord, anciens coffrets par CV sinon
-  let vfdP = selectVariateurVeichi(produits, sel.kw, alim)
+  // Variateur : VEICHI par kW + tension d'abord, anciens coffrets par CV sinon.
+  // QJR130(a)(b) — même garde sur les deux chemins : jamais le plus gros
+  // disponible sous-dimensionné, `vfdInsuffisant` porte l'avertissement.
+  const vfdSel = selectVariateurVeichi(produits, sel.kw, alim)
+  let vfdP = vfdSel.vfd
+  let vfdInsuffisant = vfdSel.insuffisant
   if (!vfdP) {
     const vfds = produits
       .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
       .filter(x => _isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
       .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+    if (vfds.length > 0) vfdInsuffisant = true
     vfdP = (vfds.find(x => x.cv >= cvNum && x.tri === wantTri)
       ?? vfds.find(x => x.cv >= cvNum)
-      ?? vfds[vfds.length - 1] ?? null)?.p ?? null
+      ?? null)?.p ?? null
+    if (vfdP) vfdInsuffisant = false
   }
   const afficheur = vfdP && /veichi/i.test(vfdP.nom) ? findAfficheurVariateur(produits) : null
 
@@ -2763,8 +2783,23 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
   })
 
   const rows = []
-  if (pump?.p) rows.push(line(pump.p, 'Pompe solaire', 1))
-  if (vfdP) rows.push(line(vfdP, 'Variateur solaire', 1))
+  if (pump?.p) {
+    rows.push(line(pump.p, 'Pompe solaire', 1))
+  } else if (pumpInsuffisant) {
+    // QJR130(c) — avertissement VISIBLE : ligne sans produit (jamais
+    // enregistrée, même patron que les placeholders du reste du fichier)
+    // plutôt qu'un repli muet sur une pompe plus petite que le CV saisi.
+    rows.push(line(null,
+      `Pompe solaire — AUCUNE pompe assez puissante pour ${cvNum} CV en stock `
+      + '(sélectionnez-en une manuellement)', 1))
+  }
+  if (vfdP) {
+    rows.push(line(vfdP, 'Variateur solaire', 1))
+  } else if (vfdInsuffisant) {
+    rows.push(line(null,
+      `Variateur solaire — AUCUN variateur assez puissant pour ${sel.kw} kW `
+      + 'en stock (sélectionnez-en un manuellement)', 1))
+  }
   if (afficheur) rows.push(line(afficheur, 'Afficheur variateur', 1))
   rows.push(
     line(panel, 'Panneaux', dims.nbPanneaux),

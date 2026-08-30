@@ -951,13 +951,63 @@ test('pompes sans prix : jamais chiffrées — signalées à la place', () => {
 
 test('variateur VEICHI : plus petit kW suffisant, tension assortie, jamais l\'afficheur', () => {
   const v = selectVariateurVeichi(VEICHI_FIXTURE, 7.5, 'tri')
-  assert.equal(v.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+  assert.equal(v.vfd.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+  assert.equal(v.insuffisant, false)
   // pompe mono 1.1 kW → 220 V, le moins cher des 2.2 kW (SI22)
   const v220 = selectVariateurVeichi(VEICHI_FIXTURE, 1.1, 'mono')
-  assert.equal(v220.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
+  assert.equal(v220.vfd.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
   // l'afficheur (sans kW) n'est jamais candidat
-  assert.ok(!/afficheur/i.test(v.nom) && !/afficheur/i.test(v220.nom))
+  assert.ok(!/afficheur/i.test(v.vfd.nom) && !/afficheur/i.test(v220.vfd.nom))
   assert.equal(findAfficheurVariateur(VEICHI_FIXTURE).id, 901)
+})
+
+// ── QJR130 — jamais de repli silencieux sur un matériel sous-dimensionné ──────
+test('QJR130(a) : variateur VEICHI trop puissant demandé → RIEN sélectionné, insuffisant=true', () => {
+  // Le plus gros VEICHI tri du fixture est 11 kW ; on demande 50 kW.
+  const v = selectVariateurVeichi(VEICHI_FIXTURE, 50, 'tri')
+  assert.equal(v.vfd, null)
+  assert.equal(v.insuffisant, true)
+  // Aucun candidat du tout (mono demandé alors que le fixture n'a que du tri
+  // à cette puissance) → insuffisant reste false (rien à sur-dimensionner).
+  const none = selectVariateurVeichi([], 5, 'tri')
+  assert.equal(none.vfd, null)
+  assert.equal(none.insuffisant, false)
+})
+
+test('QJR130(a)(b) : auto-fill pompage — variateur trop puissant demandé → avertissement visible, pas de repli', () => {
+  // Pompe OSP 30/8 (7.5 kW) mais AUCUN variateur (VEICHI ni coffret) du
+  // fixture n'atteint 7.5 kW : le plus gros VEICHI tri disponible ici est
+  // limité à 5.5 kW.
+  const SMALL_VEICHI = VEICHI_FIXTURE.filter(p => !/7\.5KW|11KW/.test(p.nom))
+  const produits = [ospPump()].concat(SMALL_VEICHI, SEEDED)
+  const rows = autoFillPompage(produits, {
+    cv: '', alim: 'tri', typePompe: 'immergee', distance: '40',
+    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
+  })
+  // aucune ligne « Variateur solaire » avec un variateur RÉEL sous-dimensionné
+  assert.ok(!rows.some(r => /VEICHI/i.test(r.designation)))
+  const warn = rows.find(r => r.designation.includes('Variateur solaire'))
+  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
+  assert.equal(warn.produit, '')                // jamais un produit réel
+  assert.equal(warn.prix_unit_ttc, 0)
+  assert.ok(/AUCUN variateur assez puissant/i.test(warn.designation))
+})
+
+test('QJR130(c) : auto-fill pompage — aucune pompe au CV demandé → avertissement visible, pas de repli', () => {
+  // Retire la pompe 7.5 CV du fixture : la plus grande immergée triphasée
+  // disponible reste 5.5 CV, plus PETITE que le CV demandé (7.5).
+  const SMALL_PUMPS = POMPAGE_FIXTURE.filter(p => !p.nom.includes('7.5 CV Triphasé'))
+  const rows = autoFillPompage(SMALL_PUMPS.concat(SEEDED), {
+    cv: '7.5', alim: 'tri', typePompe: 'immergee',
+    distance: '10', structureType: 'acier',
+  })
+  // jamais la pompe 5.5 CV (plus petite que le CV saisi) silencieusement facturée
+  assert.ok(!rows.some(r => /5\.5 CV/i.test(r.designation)))
+  const warn = rows.find(r => r.designation.includes('Pompe solaire'))
+  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
+  assert.equal(warn.produit, '')
+  assert.equal(warn.prix_unit_ttc, 0)
+  assert.ok(/AUCUNE pompe assez puissante/i.test(warn.designation))
 })
 
 test('m³/jour = débit à la HMT × heures de pompage (défaut 7 h)', () => {
