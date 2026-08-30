@@ -458,7 +458,18 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     avec_batterie = demande == 'avec'
     deux_options = demande not in ('avec', 'sans')
 
-    avertissements = []
+    # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
+    # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
+    # phrases françaises que le calepinage 3D oppose, sinon le commercial
+    # découvre le trou de catalogue à la génération du PDF. Ici c'est un
+    # AVERTISSEMENT et non un refus — le dry-run n'écrit rien, et le commercial
+    # reste libre de composer à la main ce que le catalogue ne sert pas.
+    avertissements = list(verifier(IntentionComposition(
+        company=company, nb_panneaux=nb_force, kwc=kwp,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
+        gamme_nom_devis=gamme_nom_devis)) or ())
     # ── QJR80 — LA MÊME ÉTAPE `composer` QUE LA CRÉATION ────────────────────
     # « Miroir EXACT de ``build_devis_from_layout`` » n'est plus une intention
     # écrite en commentaire : les deux chemins remplissent LE MÊME
@@ -763,6 +774,25 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # devis ne parleraient pas du même onduleur.
     from apps.ventes.compatibilites import normaliser_phase
     phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
+
+    # ── QJR82 — L'ÉTAPE `verifier`, LA MÊME QUE LE CHEMIN 3D ────────────────
+    # La pré-vérification n'était câblée que sur le calepinage 3D : le devis
+    # AUTOMATIQUE et le TUNNEL créaient des devis sans elle, et découvraient à
+    # la génération du PDF qu'une moitié de la composition n'existait pas au
+    # catalogue. C'est la MÊME étape et les MÊMES phrases françaises : un lead
+    # refusé et un devis refusé le sont désormais pour la même raison, dite de
+    # la même façon (c'est aussi ce que la note d'abstention du tunnel recopie,
+    # cf. ``corps_note_refus_auto_devis``).
+    #
+    # ELLE EST PRONONCÉE AVANT TOUTE ÉCRITURE : refuser vaut mieux que créer
+    # puis effacer — un devis effacé rendrait sa référence au compteur.
+    refus_composition = verifier(IntentionComposition(
+        company=company, nb_panneaux=panneaux, kwc=kwc,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS))))
+    if refus_composition:
+        raise AutoDevisError(refus_composition[0], field='composition')
 
     apercu = composer_devis_residentiel(
         company=company, nb_panneaux=panneaux,
@@ -1411,6 +1441,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402,F401
     COMPOSITION_SANS,
     IntentionComposition,
     composer,
+    verifier,
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_AVEC_BATTERIE,

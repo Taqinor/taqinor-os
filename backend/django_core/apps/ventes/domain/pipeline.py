@@ -224,15 +224,114 @@ def estampiller_variante(lignes, variante):
     return estampillees
 
 
+# ── Étape 4 — VERIFIER ───────────────────────────────────────────────────────
+# Le constat QB82 (audit L3 du 29/08/2026) : la pré-vérification
+# ``validate_composition_for_layout`` était (a) câblée sur UN SEUL des cinq
+# chemins de création — le calepinage 3D — si bien que le devis automatique et
+# le tunnel créaient des devis sans elle, et (b) MONO-SCÉNARIO : elle ne savait
+# dire que « avec batterie » OU « réseau », jamais « les deux ». Un devis à deux
+# options pouvait donc partir avec un seul onduleur composable, et ne servir
+# qu'une des deux options qu'il promettait au client.
+#
+# L'étape vit désormais ICI, elle parle les TROIS scénarios, et les messages
+# français n'existent qu'à UN seul endroit : le commercial lit la MÊME phrase
+# quel que soit le bouton par lequel le devis est né.
+
+#: Les messages FRANÇAIS de l'étape. Ils sont VERBATIM ceux que le chemin 3D
+#: prononçait déjà (des tests les épinglent) : généraliser l'étape ne change pas
+#: un mot de ce que le commercial lisait.
+MSG_AUCUN_PANNEAU = (
+    'Aucun panneau détecté dans le layout. '
+    'Terminez le tracé du toit et relancez l\'optimiseur avant de générer.')
+MSG_SANS_ONDULEUR_HYBRIDE = (
+    'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
+    'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
+MSG_SANS_ONDULEUR_RESEAU = (
+    'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
+    'Ajoutez un onduleur réseau/injection tarifé avant de générer.')
+MSG_SANS_BATTERIE = (
+    'Aucune batterie disponible (ou sans prix) dans le catalogue. '
+    'Ajoutez une batterie tarifée avant de générer ce devis.')
+
+
+def message_batterie_incompatible(plage):
+    """PVOND — « aucune batterie » et « aucune batterie COMPATIBLE avec cet
+    onduleur » n'appellent pas le même geste : on dit lequel."""
+    return ('Aucune batterie compatible tarifée pour cet onduleur '
+            '(plage %s-%s V). Ajoutez une batterie compatible tarifée, '
+            'ou choisissez un autre onduleur, avant de générer ce '
+            'devis.' % (_v_txt(plage[0]), _v_txt(plage[1])))
+
+
+def verifier(intention):
+    """Étape 4 — la composition demandée est-elle SERVABLE par ce catalogue ?
+
+    Rend ``None`` quand tout est servable, sinon la LISTE des messages
+    FRANÇAIS, affichables tels quels (l'appelant décide s'il refuse ou s'il
+    avertit — l'étape, elle, ne lève jamais et n'écrit rien).
+
+    LES TROIS SCÉNARIOS, et c'est la généralisation QJR82 :
+
+    * ``'sans'``      — il faut un onduleur RÉSEAU tarifé ;
+    * ``'avec'``      — il faut un onduleur HYBRIDE tarifé ET une batterie
+      COMPATIBLE de cet onduleur-là (garde PVOND pilotée par la donnée) ;
+    * ``'les_deux'``  — il faut LES DEUX à la fois : sans quoi le devis promet
+      au client une comparaison dont une moitié n'existe pas. C'est le cas que
+      la pré-vérification mono-scénario ne savait pas exprimer, et c'est
+      exactement la forme que le devis automatique compose PAR DÉFAUT.
+
+    ``nb_panneaux`` ET ``kwc`` tous deux nuls ⇒ il n'y a rien à composer : on
+    le dit d'abord, avec le message du calepinage (le seul chemin où l'absence
+    de panneaux a une cause actionnable).
+    """
+    erreurs = []
+    if (int(intention.nb_panneaux or 0) <= 0
+            and float(intention.kwc or 0) <= 0):
+        erreurs.append(MSG_AUCUN_PANNEAU)
+
+    scenario = (intention.scenario or '').strip().lower()
+    company = intention.company
+    veut_reseau = scenario in (COMPOSITION_SANS, COMPOSITION_LES_DEUX)
+    veut_stockage = scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX)
+
+    if veut_reseau:
+        if _pick_product(company, _is_reseau_inverter,
+                         role='onduleur_reseau',
+                         gamme=intention.gamme_nom_devis) is None:
+            erreurs.append(MSG_SANS_ONDULEUR_RESEAU)
+    if veut_stockage:
+        onduleur = _pick_product(company, _is_hybrid_inverter,
+                                 role='onduleur_hybride',
+                                 gamme=intention.gamme_nom_devis)
+        # PVOND — la batterie retenue doit entrer dans la plage batterie de
+        # l'onduleur hybride EFFECTIVEMENT choisi ci-dessus.
+        batterie = _pick_batterie(company, onduleur=onduleur)
+        if onduleur is None:
+            erreurs.append(MSG_SANS_ONDULEUR_HYBRIDE)
+        if batterie is None:
+            plage = _plage_batterie_de_l_onduleur(onduleur)
+            if plage and plage[1] > 0:
+                erreurs.append(message_batterie_incompatible(plage))
+            else:
+                erreurs.append(MSG_SANS_BATTERIE)
+    return erreurs or None
+
+
 # ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
 from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+    _is_hybrid_inverter,
+    _is_reseau_inverter,
+    _pick_batterie,
+    _pick_product,
+    _plage_batterie_de_l_onduleur,
     carte_marques_composition,
     catalogue_de_la_societe,
     ordre_lignes_societe,
 )
 from apps.ventes.domain.composition import (  # noqa: E402,F401
     CompositionLignes,
+    _v_txt,
     composition_deux_optimiseurs,
     composition_residentielle,
 )
@@ -242,7 +341,13 @@ __all__ = [
     'COMPOSITION_LES_DEUX',
     'COMPOSITION_SANS',
     'IntentionComposition',
+    'MSG_AUCUN_PANNEAU',
+    'MSG_SANS_BATTERIE',
+    'MSG_SANS_ONDULEUR_HYBRIDE',
+    'MSG_SANS_ONDULEUR_RESEAU',
     'SCENARIOS_COMPOSABLES',
     'composer',
     'estampiller_variante',
+    'message_batterie_incompatible',
+    'verifier',
 ]
