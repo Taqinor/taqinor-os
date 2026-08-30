@@ -69,34 +69,46 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     invest = d.get("_invest_ttc") or 0
-    economies = d.get("ind_economies") or 0
+    economies = d.get("ind_economies")
     om = d.get("ind_om_annuel")
     injection = d.get("ind_injection_dh")
 
+    # QJR119 — sans économies CHIFFRABLES il n'y a ni cashflow, ni point mort,
+    # ni TRI : le zéro fabriqué (``economies or 0``) produisait une table de
+    # 15 lignes à « 0 » et un « Point mort > 15 ans » d'apparence calculée.
+    # ``None`` traverse et la page bascule sur son motif d'omission.
+    chiffrable = economies is not None
     # Économie NETTE annuelle = économies d'autoconso (+ injection si calculée)
     # − O&M (si fourni). Rien d'inventé : chaque terme vient de l'étude/builder.
-    net_annual = economies + (injection or 0) - (om or 0)
+    net_annual = (economies + (injection or 0) - (om or 0)) if chiffrable else None
 
     payback = d.get("ind_payback")
-    tri = irr_flat(invest, net_annual)
+    tri = irr_flat(invest, net_annual) if chiffrable else None
 
     # Table cashflow 15 ans (cumul net = t × net − invest).
     rows = ""
     breakeven = None
-    for t in range(1, _HORIZON + 1):
-        cumul = round(t * net_annual - invest)
-        if breakeven is None and cumul >= 0:
-            breakeven = t
-        pos = cumul >= 0
-        cls = "i2-pos" if pos else "i2-neg"
-        star = ' class="i2-be"' if t == breakeven else ""
-        rows += (
-            f'<tr{star}><td class="i2-y">Année {t}</td>'
-            f'<td class="i2-e">{fmt(round(net_annual))}</td>'
-            f'<td class="i2-c {cls}">{fmt(cumul)}</td></tr>')
+    if chiffrable:
+        for t in range(1, _HORIZON + 1):
+            cumul = round(t * net_annual - invest)
+            if breakeven is None and cumul >= 0:
+                breakeven = t
+            pos = cumul >= 0
+            cls = "i2-pos" if pos else "i2-neg"
+            star = ' class="i2-be"' if t == breakeven else ""
+            rows += (
+                f'<tr{star}><td class="i2-y">Année {t}</td>'
+                f'<td class="i2-e">{fmt(round(net_annual))}</td>'
+                f'<td class="i2-c {cls}">{fmt(cumul)}</td></tr>')
 
+    # QJR119 — le payback n'est imprimé que s'il EXISTE : ``pricing`` pose 0.0
+    # comme sentinelle « pas de payback », d'où un « ≈ 0,0 ans » imprimé sur la
+    # page même qui annonce « Point mort > 15 ans ». Absent ⇒ phrase omise.
     payback_txt = (f"{payback:.1f}".replace(".", ",") + " ans"
-                   if isinstance(payback, (int, float)) else "—")
+                   if isinstance(payback, (int, float)) and payback > 0
+                   else None)
+    payback_phrase = (f"<b>Payback</b> (retour d'investissement) ≈ "
+                      f"{payback_txt}. " if payback_txt else "")
     tri_txt = (f"{tri:.1f}".replace(".", ",") + " %"
                if isinstance(tri, (int, float)) else "—")
     be_txt = (f"Année {breakeven}" if breakeven else "> 15 ans")
@@ -115,12 +127,19 @@ def build(ctx):
               else "O&amp;M (nettoyage, supervision) : inclus dans les économies nettes")
 
     # QXMT — chapô + ligne SOURCE du barème MT (jamais un chiffre nu).
-    lead_txt = (
-        "Le barème applicable à ce dossier est un barème MOYENNE TENSION : "
-        "aucun chiffre n'est repris du barème basse tension."
-        if d.get("ind_masquer_economies") else
-        "Hypothèse prudente : économies maintenues constantes (hors inflation "
-        "tarifaire, qui les augmenterait).")
+    # QJR119 — troisième chapô : économies non chiffrables (hors MT). Le chapô
+    # « Hypothèse prudente » qualifiait un modèle qui n'avait aucune donnée.
+    if d.get("ind_masquer_economies"):
+        lead_txt = ("Le barème applicable à ce dossier est un barème MOYENNE "
+                    "TENSION : aucun chiffre n'est repris du barème basse "
+                    "tension.")
+    elif not chiffrable:
+        lead_txt = ("Les économies annuelles de ce dossier ne sont pas encore "
+                    "chiffrées : aucune rentabilité n'est publiée tant qu'elle "
+                    "n'est pas calculée sur vos données.")
+    else:
+        lead_txt = ("Hypothèse prudente : économies maintenues constantes "
+                    "(hors inflation tarifaire, qui les augmenterait).")
     mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
                  if d.get("ind_mt_mention") else "")
 
@@ -196,6 +215,28 @@ def build(ctx):
     {om_txt}. Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
     Chiffres indicatifs, hors financement.
   </div>"""
+    elif not chiffrable:
+        # QJR119 — économies absentes de l'étude (hors MT) : même traitement
+        # que le dossier MT — le motif de l'omission remplace le corps chiffré,
+        # jamais une table de zéros. La page RACCOURCIT (pagination stable).
+        corps = f"""
+  <div class="i2-mt">
+    <div class="i2-mt-t">Rentabilité non chiffrée sur ce dossier</div>
+    <div class="i2-mt-b">
+      Les <b>économies annuelles</b> de cette installation n'ont pas encore été
+      calculées sur vos données. Nous préférons ne rien afficher plutôt que
+      d'afficher un cashflow, un point mort ou un TRI qui ne reposeraient sur
+      aucune mesure.
+      <br><br>
+      <b>Ce qu'il nous manque :</b> votre consommation réelle (12 mois de
+      factures ou votre profil horaire). Avec elle, nous chiffrons économies,
+      point mort, TRI et payback, et cette page se remplit.
+    </div>
+  </div>
+  <div class="i2-foot">
+    Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    Chiffres indicatifs, hors financement.
+  </div>"""
     else:
         corps = f"""
   <div class="i2-kpis">
@@ -218,7 +259,7 @@ def build(ctx):
   </table>
 
   <div class="i2-foot">
-    <b>Payback</b> (retour d'investissement) ≈ {payback_txt}. {om_txt}.
+    {payback_phrase}{om_txt}.
     Le TRI est calculé sur le flux d'économies ci-dessus (méthode actuarielle) ;
     aucune escalade tarifaire n'est supposée. Chiffres indicatifs, hors financement.
     {mt_source}

@@ -99,14 +99,21 @@ def _augment(data: dict) -> dict:
     masque = bool(d.get("masquer_economies"))
     d["ind_masquer_economies"] = masque
     d["ind_mt_mention"] = d.get("tarif_mt_mention") or ""
+    # QJR119 — un chiffre NON CHIFFRABLE reste ``None`` jusqu'au gabarit, qui
+    # OMET sa carte. L'ancien ``round(eco) if eco else 0`` écrasait ``None`` en
+    # ``0`` et faisait promettre « 0 MAD d'économies par an » sur un document
+    # client, exactement le zéro fabriqué que la règle fondateur interdit.
     eco = _num(etude.get("economies_annuelles"))
     if eco is None and not masque:
         eco = _num(d.get("eco_s_ann"))
-    d["ind_economies"] = round(eco) if eco else 0
+    d["ind_economies"] = round(eco) if eco else None
     pb = _num(etude.get("payback"))
     if pb is None and not masque:
         pb = _num(d.get("roi_s"))
-    d["ind_payback"] = pb
+    # ``pricing.compute_totals`` pose ``roi_opt* = 0.0`` comme SENTINELLE
+    # « pas de payback » quand l'économie est nulle : la reprendre imprimait
+    # « Payback ≈ 0,0 ans » sur la page même qui annonce « Point mort > 15 ans ».
+    d["ind_payback"] = pb if pb else None
     d["ind_prix_kwc"] = _num(etude.get("prix_kwc"))
 
     # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte (net des

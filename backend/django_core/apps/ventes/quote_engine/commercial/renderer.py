@@ -75,14 +75,17 @@ def _augment(data: dict) -> dict:
     masque = bool(d.get("masquer_economies"))
     d["com_masquer_economies"] = masque
     d["com_mt_mention"] = d.get("tarif_mt_mention") or ""
+    # QJR119 — voir ``industriel/renderer.py`` : ``None`` traverse jusqu'au
+    # gabarit, qui omet la carte, au lieu d'être écrasé en un « 0 MAD » qui se
+    # lit comme un chiffre mesuré.
     eco = _num(etude.get("economies_annuelles"))
     if eco is None and not masque:
         eco = _num(d.get("eco_s_ann"))
-    d["com_economies"] = round(eco) if eco else 0
+    d["com_economies"] = round(eco) if eco else None
     pb = _num(etude.get("payback"))
     if pb is None and not masque:
         pb = _num(d.get("roi_s"))
-    d["com_payback"] = pb
+    d["com_payback"] = pb if pb else None
 
     d["site_url"] = d.get("site_url") or "taqinor.ma"
     return d

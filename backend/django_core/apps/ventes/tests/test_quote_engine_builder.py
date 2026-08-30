@@ -454,7 +454,9 @@ class TestDossierMoyenneTension(TestCase):
         self.assertGreater(data['eco_s_ann'], 0)   # la valeur BT EXISTE…
         augmentee = industriel._augment(data)
         self.assertTrue(augmentee['ind_masquer_economies'])
-        self.assertEqual(augmentee['ind_economies'], 0)   # …et n'est PAS reprise
+        # QJR119 — l'absence est désormais ``None`` (et non plus « 0 »), pour
+        # que le gabarit OMETTE la carte au lieu d'imprimer « 0 MAD ».
+        self.assertIsNone(augmentee['ind_economies'])   # …et n'est PAS reprise
         self.assertIsNone(augmentee['ind_payback'])
 
     def test_le_renderer_commercial_n_herite_plus_du_chiffre_BT(self):
@@ -463,7 +465,8 @@ class TestDossierMoyenneTension(TestCase):
         data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0006')
         augmentee = commercial._augment(data)
         self.assertTrue(augmentee['com_masquer_economies'])
-        self.assertEqual(augmentee['com_economies'], 0)
+        # QJR119 — idem côté commercial : ``None`` ⇒ carte omise.
+        self.assertIsNone(augmentee['com_economies'])
         self.assertIsNone(augmentee['com_payback'])
 
     def test_la_page_CFO_remplace_les_chiffres_par_le_motif(self):
