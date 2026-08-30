@@ -53,9 +53,16 @@ AUCUN statut de devis, n'expose AUCUN prix d'achat/marge.
 from __future__ import annotations
 
 import datetime as _dt
+import math
 
+from apps.ventes.quote_engine.pricing import (
+    PRODUCTION_DERATE,
+    PVGIS_BUILTIN_LOSS,
+    SYSTEM_LOSS_TOTAL,
+)
 from apps.ventes.solar_design import (
     DEFAULT_LOSS_FACTORS,
+    SUBSCRIBED_CURVE_UNIT_KW,
     TYPICAL_LOAD_PROFILE_COMMERCIAL,
     TYPICAL_LOAD_PROFILE_RESIDENTIAL,
     hourly_self_consumption,
@@ -346,27 +353,62 @@ def _zone_shading(devis, zone, index, monthly_share):
     return 0.0, None
 
 
-def production_horaire_zone(zone, matrix=None):
-    """PV70 — courbe de production horaire d'une zone (12 mois × 24 h = 288 pts).
+def _monthly_share_valide(monthly_share):
+    """QJR138 — 12 parts mensuelles normalisées, ou parts égales à défaut.
+
+    Tolérant par construction (comme tout ce module) : longueur ≠ 12, valeurs
+    illisibles ou somme nulle → répartition ÉGALE, jamais d'exception.
+    """
+    if not monthly_share or len(monthly_share) != 12:
+        return [1.0 / 12.0] * 12
+    parts = [max(0.0, _num(v, 0.0)) for v in monthly_share]
+    total = sum(parts)
+    if total <= 0:
+        return [1.0 / 12.0] * 12
+    return [p / total for p in parts]
+
+
+def production_horaire_zone(zone, matrix=None, monthly_share=None):
+    """PV70/QJR138 — courbe de production horaire d'une zone (12 × 24 = 288 pts).
 
     Tuile un jour-type mensuel (forme ciel clair,
     :func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`) sur les 12
-    mois — répartition mensuelle ÉGALE (1/12 du total annuel), faute d'un
-    profil mensuel par zone accessible à cet appel isolé — puis dérate chaque
+    mois selon ``monthly_share`` — la part mensuelle RÉELLE (TMY) de la zone,
+    la même que celle qui pondère déjà la perte d'ombrage — puis dérate chaque
     cellule par ``matrix`` (12×24, facteurs [0,1], convention shadingUi.ts)
     quand fournie. ``zone`` est le dict ENRICHI (issu de ``run_bankable_study``,
     porte ``base_production_kwh``) — sert de courbe de production à
     :func:`~apps.ventes.solar_design.hourly_self_consumption` (PV72).
 
-    ``base_production_kwh`` absent/≤ 0 → 288 zéros (jamais d'exception).
+    QJR138 — DEUX corrections, toutes deux dans le sens qui MAJORAIT l'économie
+    annoncée :
+
+    * ``production_nette_kwh`` porte la production NETTE (arbre de pertes
+      appliqué, hors ombrage — la matrice s'en charge cellule par cellule).
+      Sans elle, la courbe valait le productible BRUT : ≈ 20 % au-dessus de la
+      ``p50_kwh`` publiée dans le même dict, et l'autoconsommation avec.
+      Absente → repli sur ``base_production_kwh`` (appel isolé, comportement
+      historique).
+    * ``monthly_share`` remplace la répartition mensuelle plate. Charge ET
+      production lissées à plat, ``Σ min(charge, production)`` se prenait sur
+      des moyennes : par concavité de ``min``, l'autoconsommation était
+      SYSTÉMATIQUEMENT majorée et le déséquilibre saisonnier été/hiver — la
+      raison même de vendre une batterie — disparaissait. Absente → parts
+      égales (comportement historique).
+
+    Base absente/≤ 0 → 288 zéros (jamais d'exception).
     """
-    base = _num((zone or {}).get('base_production_kwh'), 0.0)
+    zone = zone or {}
+    base = _maybe_num(zone.get('production_nette_kwh'))
+    if base is None:
+        base = _num(zone.get('base_production_kwh'), 0.0)
     if base <= 0:
         return [0.0] * 288
-    monthly_kwh = base / 12.0
+    parts = _monthly_share_valide(monthly_share)
     hour_shape = _hour_weight_shape()
     curve = []
     for m in range(12):
+        monthly_kwh = base * parts[m]
         row = matrix[m] if matrix and m < len(matrix) else None
         for h in range(24):
             factor = 1.0
@@ -422,6 +464,82 @@ def _zone_base_production(settings, zone, *, devis=None, index=0,
         'shading_matrix': shading_matrix,
         'warnings': warnings,
     }
+
+
+def base_avant_pertes_kwh(base_production_kwh):
+    """QJR114 — productible PVGIS (**net** de ``loss``) → base AVANT pertes.
+
+    ``apps.parametres.pvgis.fetch_productible`` interroge PVGIS avec
+    ``loss=14`` : la valeur rendue (et, hors ligne, le réglage manuel qui la
+    remplace) est DÉJÀ nette de ces 14 %. ``simulate_bankable_yield`` exige au
+    contraire une base « AVANT pertes » et réapplique un arbre complet — passer
+    la valeur nette telle quelle dérate DEUX FOIS (28,3 % cumulés au lieu des
+    20 % tranchés par le fondateur). On remonte donc d'abord au brut, une seule
+    fois, avec la constante que tout le dépôt partage déjà
+    (``pricing.PVGIS_BUILTIN_LOSS``).
+    """
+    base = _num(base_production_kwh, 0.0)
+    if base <= 0:
+        return 0.0
+    reste = 1.0 - _num(PVGIS_BUILTIN_LOSS, 0.0)
+    if reste <= 0:
+        return base
+    return base / reste
+
+
+def production_nette_canonique_kwh(base_production_kwh, shading_fraction=0.0):
+    """QJR114 — production annuelle NETTE au derate canonique du dépôt.
+
+    C'est la référence UNIQUE : ``productible PVGIS (net 14 %) ×
+    PRODUCTION_DERATE`` — la formule exacte de ``pricing`` (carte « Production
+    annuelle ») et d'``etude_horaire`` — moins l'ombrage MESURÉ du site. Le
+    bloc bancable doit atterrir dessus : c'est ce que la garde de QJR114
+    épingle, et ce que la courbe horaire consomme.
+    """
+    base = _num(base_production_kwh, 0.0)
+    if base <= 0:
+        return 0.0
+    ombrage = min(1.0, max(0.0, _num(shading_fraction, 0.0)))
+    return base * PRODUCTION_DERATE * (1.0 - ombrage)
+
+
+def loss_factors_canoniques(shading_fraction=0.0):
+    """QJR114 — l'arbre de pertes CALÉ sur les 20 % du fondateur.
+
+    ``DEFAULT_LOSS_FACTORS`` est le défaut marché du module PUR
+    ``solar_design`` : son produit vaut ≈ 0,827 (17,3 % de pertes), alors que
+    le dépôt entier — ``pricing.SYSTEM_LOSS_TOTAL``, ``etude_horaire``,
+    ``solar.js`` — retient **20 % AU TOTAL** (ordre fondateur du 18/08). Publier
+    les deux, c'est publier deux productions pour la même installation.
+
+    On garde donc les postes du contrat PACT10 (clés inchangées) mais on les
+    cale sur le total tranché, par une remise à l'échelle EXACTE en log :
+    ``1 − f'ᵢ = (1 − fᵢ)^k`` avec ``k = ln(1 − SYSTEM_LOSS_TOTAL) / Σ ln(1 − fᵢ)``.
+    Le produit vaut alors ``1 − SYSTEM_LOSS_TOTAL`` à la virgule près, chaque
+    poste garde son poids RELATIF d'origine, et aucun chiffre n'est inventé :
+    tout se dérive des deux seules sources déjà présentes au dépôt.
+
+    ``shading_fraction`` est une perte MESURÉE du site (matrice 12×24 ou
+    horizon), pas un poste générique : elle n'entre pas dans le calage et vient
+    s'ajouter telle quelle — la garde de QJR114 s'énonce donc « à ombrage nul ».
+    """
+    rendements = {}
+    somme_log = 0.0
+    for poste, frac in DEFAULT_LOSS_FACTORS.items():
+        r = 1.0 - min(1.0, max(0.0, _num(frac, 0.0)))
+        if r <= 0.0:
+            # Poste dégénéré (perte de 100 %) : rien à caler, on rend l'arbre
+            # d'origine plutôt qu'un log de zéro.
+            return {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
+        rendements[poste] = r
+        somme_log += math.log(r)
+    cible = 1.0 - _num(SYSTEM_LOSS_TOTAL, 0.0)
+    if somme_log >= 0.0 or cible <= 0.0:
+        return {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
+    k = math.log(cible) / somme_log
+    factors = {poste: 1.0 - (r ** k) for poste, r in rendements.items()}
+    factors['shading'] = shading_fraction
+    return factors
 
 
 def _pr_block(base_production_kwh, kwc_total, loss_factors):
@@ -518,6 +636,48 @@ def _hourly_flows(load_curve, production_curve):
     return load[:n], prod[:n], surplus, imported
 
 
+#: QJR139 — jours réels de chaque mois. Les courbes 288 points de ce module
+#: sont « 12 mois × jour type » : chaque case porte l'ÉNERGIE de tout le mois à
+#: cette heure-là. Pour en tirer une PUISSANCE, on divise par le nombre de jours
+#: du mois. Table importée de ``apps.parametres.pvgis_profils`` (app fondation,
+#: exemptée de la frontière cross-app) — jamais retapée.
+def _jours_par_mois():
+    from apps.parametres.pvgis_profils import JOURS_PAR_MOIS
+    return JOURS_PAR_MOIS
+
+
+def courbe_mensuelle_en_kw(curve):
+    """QJR139 — 288 points d'ÉNERGIE MENSUELLE → 288 puissances (kW).
+
+    ``_tiled_load_curve`` et :func:`production_horaire_zone` produisent une
+    grille « 12 mois × 24 h » où ``curve[m*24 + h]`` vaut l'énergie consommée
+    (ou produite) pendant l'heure ``h`` de TOUT le mois ``m``. Lue comme une
+    puissance instantanée, la case du soir d'un foyer à 12 000 kWh/an vaut
+    ≈ 90 « kW » au lieu de ≈ 3 kW réels — c'est exactement ce que recevait
+    ``optimize_subscribed_power``, dont la puissance souscrite recommandée
+    sortait donc ~30× trop grande.
+
+    On divise chaque case par le nombre RÉEL de jours de son mois : la case
+    devient l'énergie de cette heure sur le JOUR MOYEN du mois, c'est-à-dire la
+    puissance moyenne (kW) de cette heure.
+
+    Longueur ≠ 288 → ``None`` : la grille n'est pas celle de ce module, son
+    unité n'est donc pas établie et l'appelant devra le DIRE plutôt que de
+    supposer (règle « omettre plutôt que publier »).
+    """
+    serie = list(curve or [])
+    if len(serie) != 288:
+        return None
+    jours = _jours_par_mois()
+    sortie = []
+    for m in range(12):
+        n = jours[m] if m < len(jours) else 30
+        n = n if n else 1
+        for h in range(24):
+            sortie.append(_num(serie[m * 24 + h], 0.0) / n)
+    return sortie
+
+
 def _subscribed_power_block(devis, load_curve, production_curve):
     """Bloc ``subscribed_power`` du contrat — UNIQUEMENT calculé en industriel/
     commercial (règle métier : la notion de puissance souscrite optimisée ne
@@ -543,9 +703,26 @@ def _subscribed_power_block(devis, load_curve, production_curve):
             current_subscribed_kva = etude.get(key)
             break
 
-    result = optimize_subscribed_power(
-        load_curve=load_curve, production_curve=production_curve,
-        current_subscribed_kva=current_subscribed_kva)
+    # QJR139 — LES DEUX COURBES PARTENT EN kW, ET LEUR UNITÉ EST DÉCLARÉE.
+    # Elles portaient jusqu'ici l'ÉNERGIE MENSUELLE de chaque heure, lue comme
+    # une puissance instantanée par ``optimize_subscribed_power`` :
+    # ``recommended_subscribed`` et ``peak_pre_pv_kw`` sortaient absurdes (seul
+    # le ratio ``peak_reduction_pct`` survivait). Une grille qui n'est pas celle
+    # de ce module (longueur ≠ 288) a une unité NON ÉTABLIE : on la déclare
+    # telle quelle et la garde de ``solar_design`` refuse — plutôt qu'un
+    # nombre plausible et faux répété de vive voix par le vendeur.
+    load_kw = courbe_mensuelle_en_kw(load_curve)
+    prod_kw = courbe_mensuelle_en_kw(production_curve)
+    if load_kw is None or prod_kw is None:
+        result = optimize_subscribed_power(
+            load_curve=load_curve, production_curve=production_curve,
+            curve_unit=None,
+            current_subscribed_kva=current_subscribed_kva)
+    else:
+        result = optimize_subscribed_power(
+            load_curve=load_kw, production_curve=prod_kw,
+            curve_unit=SUBSCRIBED_CURVE_UNIT_KW,
+            current_subscribed_kva=current_subscribed_kva)
     block = {
         'peak_reduction_pct': result['peak_reduction_pct'],
         'recommended_subscribed': result['recommended_subscribed'],
@@ -629,10 +806,18 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             'base_production_kwh': ctx['base_production_kwh'],
             'shading_annual_loss_pct': ctx['shading_annual_loss_pct'],
         })
-        # PV72 — courbe de production horaire de la zone (dérate matrice déjà
-        # résolue par _zone_base_production), agrégée plus bas.
-        zone_curves.append(
-            production_horaire_zone(zones_out[-1], ctx['shading_matrix']))
+        # PV72/QJR138 — courbe de production horaire de la zone. Elle part de la
+        # production NETTE (arbre de pertes canonique appliqué UNE fois, hors
+        # ombrage : la matrice le fait cellule par cellule) et suit la part
+        # mensuelle RÉELLE (TMY) — la même que celle qui pondère déjà la perte
+        # d'ombrage. Elle somme donc EXACTEMENT à la ``p50_kwh`` publiée, au
+        # lieu de la dépasser d'environ 20 %.
+        zone_curves.append(production_horaire_zone(
+            {**zones_out[-1],
+             'production_nette_kwh': production_nette_canonique_kwh(
+                 ctx['base_production_kwh'])},
+            ctx['shading_matrix'],
+            monthly_share=ctx['monthly_share']))
         base_total += ctx['base_production_kwh']
         kwc_total += kwc
         sources.add(ctx['source'])
@@ -654,8 +839,16 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             * (z['shading_annual_loss_pct'] / 100.0)
             for z in zones_out)
 
-    loss_factors = {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
-    pr, sim_warnings = _pr_block(base_total, kwc_total, loss_factors)
+    # QJR114 — le derate ne s'applique plus DEUX FOIS. ``base_total`` est le
+    # productible PVGIS, DÉJÀ net des 14 % demandés à l'API : on remonte au brut
+    # (base_avant_pertes_kwh) et on n'applique qu'UN seul arbre, calé sur les
+    # 20 % du fondateur (loss_factors_canoniques). Résultat exact :
+    #     p50 = base_total × PRODUCTION_DERATE × (1 − ombrage)
+    # soit, à ombrage nul, EXACTEMENT la production annuelle canonique publiée
+    # par ``pricing`` sur la même page — plus deux vérités concurrentes.
+    loss_factors = loss_factors_canoniques(shading_fraction)
+    pr, sim_warnings = _pr_block(
+        base_avant_pertes_kwh(base_total), kwc_total, loss_factors)
     warnings.extend(sim_warnings)
 
     # PV72 — production agrégée horaire (Σ des courbes de zone, 288 pts).

@@ -33,6 +33,7 @@
         "methode": "inversion_bareme_tranches",
         "charges_fixes_mad": 39.94,
         "charges_fixes_source": "factures SRM Casablanca-Settat du fondateur (08/05/2026, 20/12/2025, 20/01/2026) — location du compteur 18,28 HT + entretien du branchement 15,00 HT ; montants identiques sur les trois relevés",
+        "tppan_source": "art. 16 dahir 1-96-77 (BO 4391 bis, relayé HACA) ; barème progressif, bornes proratisées aux jours et montant TTC VÉRIFIÉS sur la facture SRM du 08/05/2026 (56,80 MAD à 359 kWh sur 30 jours) ; seuil d'exonération retenu à 50 kWh/mois (celui du texte de 1996) — une page de régie annonce 200 kWh sans texte modificatif localisable, et aucune facture disponible ne départage : on retient la lecture prouvée, qui est aussi celle qui MINORE l'économie annoncée",
         "millesime": 2026
       },
       "occupation": "presence_jour",
@@ -771,6 +772,7 @@
         "methode": "inversion_bareme_tranches",
         "charges_fixes_mad": 39.94,
         "charges_fixes_source": "factures SRM Casablanca-Settat du fondateur",
+        "tppan_source": "art. 16 dahir 1-96-77 — seuil d'exonération retenu à 50 kWh/mois (texte de 1996), la lecture prouvée et la plus prudente",
         "millesime": 2026
       }
     },
