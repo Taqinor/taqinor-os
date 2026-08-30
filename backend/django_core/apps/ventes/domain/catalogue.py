@@ -643,17 +643,35 @@ def prix_forfait_ht(produit, nb_panneaux):
     stock les requote aussi, sans qu'aucun appelant n'ait sa propre copie de
     la règle.
     """
-    if produit is None:
+    if not porte_bareme_par_panneau(produit):
         return None
     fixe = getattr(produit, 'prix_fixe_ht', None)
     par_panneau = getattr(produit, 'prix_par_panneau_ht', None)
-    if fixe is None and par_panneau is None:
-        return None
     n = int(nb_panneaux or 0)
     total = Decimal(str(fixe or 0))
     if n > 0:
         total += Decimal(str(par_panneau or 0)) * Decimal(n)
     return _au_centime(total)
+
+
+def porte_bareme_par_panneau(produit):
+    """QJR83 — ce produit est-il TARIFÉ AU BARÈME plutôt qu'au ``prix_vente`` ?
+
+    Vrai dès qu'au moins une des deux parts du barème est renseignée
+    (``prix_fixe_ht`` / ``prix_par_panneau_ht``) — c'est-à-dire pour les seuls
+    forfaits (pose/installation, tableau AC/DC, accessoires, transport quand le
+    fondateur le barème), et pour AUCUN autre produit du catalogue.
+
+    Le prédicat est SORTI de ``prix_forfait_ht`` pour qu'un appelant puisse
+    poser la question SANS calculer un prix : la re-tarification des lignes
+    (``domain/lignes.retarifer_forfaits_par_panneau``) doit d'abord savoir
+    QUELLES lignes la concernent, et ``None`` ne distinguait pas « pas de
+    barème » de « barème à zéro panneau ».
+    """
+    if produit is None:
+        return False
+    return not (getattr(produit, 'prix_fixe_ht', None) is None
+                and getattr(produit, 'prix_par_panneau_ht', None) is None)
 
 
 _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)

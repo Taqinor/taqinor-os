@@ -2010,11 +2010,18 @@ def _dimensionnement_option_depuis_items(items):
     ``avec_items`` du builder — déjà splittés par option). MÊME discipline
     que ``quote_engine.builder.panneaux_et_watt_lu`` : un watt illisible
     laisse ``puissance_kwc`` à ``None`` (jamais le repli 710 W, réservé au
-    KPI interne — CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT). Une
-    batterie sans capacité lisible retombe sur ``BATTERY_DEFAULT_KWH`` —
-    même défaut que le moteur (``builder._battery_kwh_from_items``)."""
+    KPI interne — CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT).
+
+    QJR92b (29/08/2026) — MÊME discipline pour la CAPACITÉ BATTERIE : une
+    ligne batterie dont la désignation ne porte aucun kWh lisible contribuait
+    un défaut fabriqué de 5,0 kWh, publié sur la page proposition PUBLIQUE.
+    Elle contribue désormais 0, et ``capacite_batterie_kwh`` vaut ``None``
+    quand AUCUNE ligne batterie n'a de capacité lisible : le client OMET la
+    valeur (contrat ``dimensionnement_options.json``, note ``derivation``)
+    au lieu de lire un nombre inventé. ``nb_batteries`` reste le compte RÉEL —
+    c'est ainsi que l'inconnu remonte plutôt que d'être tu."""
     from .quote_engine.builder import (
-        BATTERY_DEFAULT_KWH, _is_battery, _is_panel, _parse_kwh, _parse_watt,
+        _is_battery, _is_panel, _parse_kwh, _parse_watt,
     )
     nb_panneaux = 0
     watt = None
@@ -2034,8 +2041,7 @@ def _dimensionnement_option_depuis_items(items):
             watt = watt or _parse_watt(designation, produit_nom)
         elif _is_battery(designation):
             nb_batteries += qty
-            capacite_batterie_kwh += qty * (
-                _parse_kwh(designation) or BATTERY_DEFAULT_KWH)
+            capacite_batterie_kwh += qty * (_parse_kwh(designation) or 0.0)
     puissance_kwc = (
         round(nb_panneaux * watt / 1000, 2)
         if (nb_panneaux and watt) else None)
@@ -2044,8 +2050,13 @@ def _dimensionnement_option_depuis_items(items):
         'nb_panneaux': nb_panneaux,
         'puissance_kwc': puissance_kwc,
         'nb_batteries': nb_batteries_int,
+        # QJR92b — ``0.0`` signifie ici « aucune capacité LISIBLE », jamais
+        # « zéro kWh vendu » : on l'omet (``None``) au lieu de publier un
+        # chiffre faux, exactement comme un watt illisible laisse ``puissance_kwc``
+        # absent juste au-dessus.
         'capacite_batterie_kwh': (
-            round(capacite_batterie_kwh, 2) if nb_batteries_int else None),
+            round(capacite_batterie_kwh, 2)
+            if (nb_batteries_int and capacite_batterie_kwh > 0) else None),
     }
 
 
@@ -4171,7 +4182,8 @@ def ecatalogue_demander_devis(request, token):
         transcript_text=transcript,
     )
 
-    from .models import Devis, LigneDevis
+    from .models import Devis
+    from .domain.lignes import creer_ligne
     from apps.crm.services import resolve_client_for_lead
     from .utils.company_settings import create_numbered
     client = resolve_client_for_lead(lead)
@@ -4181,12 +4193,16 @@ def ecatalogue_demander_devis(request, token):
             company=company, reference=ref, client=client, lead=lead,
             statut=Devis.Statut.BROUILLON,
         )
-        for c in clean_lignes:
+        for ordre, c in enumerate(clean_lignes):
             produit = c['produit']
-            LigneDevis.objects.create(
-                devis=devis, produit=produit, designation=produit.nom,
+            creer_ligne(
+                devis, produit=produit, designation=produit.nom,
                 quantite=c['quantite'], prix_unitaire=produit.prix_vente,
                 taux_tva=getattr(produit, 'tva', None),
+                # QJR84 — l'ordre VOULU est posé explicitement plutôt que
+                # laissé au tri de repli sur ``id`` (même garantie que les
+                # autres chemins de création, PVORD).
+                ordre=ordre,
             )
         return devis
 

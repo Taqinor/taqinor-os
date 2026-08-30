@@ -225,12 +225,42 @@ def layout_hash(layout):
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+def scenario_du_layout(layout):
+    """QJR82 — le scénario du pipeline (``'sans'``/``'avec'``/``'les_deux'``)
+    lu dans un layout 3D.
+
+    MÊME lecture que ``build_devis_from_layout`` — mots-clés « batterie » /
+    « hybride » dans ``scenario``, ou la clé ``battery`` — plus le libellé
+    ``'les_deux'`` que le calepinage sait désormais porter. Layout muet ⇒
+    ``'sans'``, le défaut résidentiel d'hier, à l'octet près.
+    """
+    brut = str((layout or {}).get('scenario') or '').lower()
+    if brut in (COMPOSITION_LES_DEUX, 'les deux', 'les-deux'):
+        return COMPOSITION_LES_DEUX
+    if ('batterie' in brut or 'hybride' in brut
+            or bool((layout or {}).get('battery'))):
+        return COMPOSITION_AVEC
+    return COMPOSITION_SANS
+
+
 def validate_composition_for_layout(layout, company):
     """QJ17 — pre-flight composition check before building a devis.
 
     Returns ``None`` when the composition is valid.  Returns a list of French
     error strings when problems are detected (caller should surface them inline
     rather than raising a PDF error at render time).
+
+    QJR82 — CE N'EST PLUS QU'UN ADAPTATEUR. Les règles et les messages vivent
+    dans ``pipeline.verifier``, l'étape 4 du pipeline, que les autres origines
+    (devis automatique, tunnel) appellent DIRECTEMENT. Cette fonction traduit
+    simplement un LAYOUT en ``IntentionComposition`` et délègue : le chemin 3D
+    garde donc, au caractère près, les messages qu'il prononçait — et le
+    commercial lit désormais les mêmes, quel que soit le bouton.
+
+    Deux gains de la généralisation : le layout peut déclarer ``'les_deux'``
+    (l'étape exige alors les DEUX onduleurs ET la batterie — un devis à deux
+    options ne peut plus partir en ne sachant servir qu'une moitié), et
+    ``role``/``gamme`` descendent jusqu'à la sélection catalogue.
 
     Rules (aligned with quote_engine/builder.py keyword classification):
     - At least 1 panel is required.
@@ -248,54 +278,17 @@ def validate_composition_for_layout(layout, company):
     if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
         nb_panneaux = int(toiture['nb_panneaux'])
 
-    errors = []
-    if nb_panneaux <= 0:
-        errors.append(
-            'Aucun panneau détecté dans le layout. '
-            'Terminez le tracé du toit et relancez l\'optimiseur avant de générer.')
-
-    scenario = (layout.get('scenario') or '').lower()
-    wants_battery = ('batterie' in scenario or 'hybride' in scenario
-                     or bool(layout.get('battery')))
-
-    if wants_battery:
-        # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme
-        # connue : ``marque_preferee`` retombe explicitement sur le slot
-        # Essentielle.
-        inv = _pick_product(company, _is_hybrid_inverter, role='onduleur_hybride')
-        # PVOND — garde batterie PILOTÉ PAR LA DONNÉE : la batterie retenue doit
-        # entrer dans la plage batterie de l'onduleur hybride effectivement
-        # choisi ci-dessus. Sans plage déclarée (ou sans fiche batterie), repli
-        # sur le mot-clé « haute tension » d'hier (PVG4) — jamais de régression
-        # silencieuse.
-        bat = _pick_batterie(company, onduleur=inv)
-        if inv is None:
-            errors.append(
-                'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
-                'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
-        if bat is None:
-            # PVOND — DIRE POURQUOI : « aucune batterie » et « aucune batterie
-            # COMPATIBLE avec cet onduleur » n'appellent pas le même geste.
-            plage = _plage_batterie_de_l_onduleur(inv)
-            if plage and plage[1] > 0:
-                errors.append(
-                    'Aucune batterie compatible tarifée pour cet onduleur '
-                    '(plage %s-%s V). Ajoutez une batterie compatible tarifée, '
-                    'ou choisissez un autre onduleur, avant de générer ce '
-                    'devis.' % (_v_txt(plage[0]), _v_txt(plage[1])))
-            else:
-                errors.append(
-                    'Aucune batterie disponible (ou sans prix) dans le '
-                    'catalogue. Ajoutez une batterie tarifée avant de générer '
-                    'ce devis.')
-    else:
-        inv = _pick_product(company, _is_reseau_inverter, role='onduleur_reseau')
-        if inv is None:
-            errors.append(
-                'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
-                'Ajoutez un onduleur réseau/injection tarifé avant de générer.')
-
-    return errors if errors else None
+    # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme connue :
+    # ``marque_preferee`` retombe explicitement sur le slot Essentielle.
+    # ``kwc`` n'est délibérément PAS transmis : la règle du calepinage est
+    # « aucun panneau détecté », pas « aucune puissance » — un layout à 0
+    # panneau doit être refusé même s'il porte encore un kWc d'une version
+    # antérieure du tracé. C'est le comportement d'hier, mot pour mot.
+    return verifier(IntentionComposition(
+        company=company,
+        nb_panneaux=nb_panneaux,
+        scenario=scenario_du_layout(layout),
+    ))
 
 
 # ── AOF164 — bascule du calcul résidentiel sur le MOTEUR PARTAGÉ ────────────
@@ -887,3 +880,10 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 )
 from apps.ventes.domain.composition import _v_txt  # noqa: E402,F401
 from apps.ventes.domain.gammes import gamme_nom  # noqa: E402,F401
+from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
+    IntentionComposition,
+    verifier,
+)

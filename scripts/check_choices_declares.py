@@ -577,6 +577,16 @@ REFUS = {
         ("Sanity check", "TEST")],
     "frontend/src/features/crm/CallLogPopover.jsx": [
         ("LeadActivity.OUTCOMES", "FORME")],
+    # QJR M4 (30/08/2026) — les trois promesses du lot front-purs/parité :
+    # les deux fichiers de test CITENT la notion pour la rendre vérifiable
+    # (motif TEST), et overrides.js s'adosse à un CONTRAT JSON (PACT10), pas
+    # à un champ choices= — son propre test d'exhaustivité fait la preuve.
+    "frontend/src/features/ventes/classifieurs.parite.test.mjs": [
+        ("miroir de solar.js", "TEST")],
+    "frontend/src/features/ventes/quote/overrides.js": [
+        ("contrat QJR1", "SANS_SOURCE")],
+    "frontend/src/features/ventes/quote/overrides.test.mjs": [
+        ("aligné sur le backend", "TEST")],
     "frontend/src/features/crm/crm-porte.test.jsx": [
         ("SECTION_LABELS", "TEST")],
     "frontend/src/features/crm/stages.js": [
