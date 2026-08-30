@@ -192,6 +192,114 @@ class MinioWarehouseDestination(ExportDestinationProvider):
                 'bucket': bucket, 'detail': f'déposé dans {bucket}/{key}'}
 
 
+# ---------------------------------------------------------------------------
+# NTDATA29 — connecteur Snowflake (GATED fondateur, livré DÉSARMÉ).
+#
+# Variables d'environnement REQUISES pour que le connecteur s'arme. Tant qu'une
+# seule manque, ``is_configured()`` est faux : AUCUN import du connecteur,
+# AUCUN appel réseau, AUCUNE dépendance dure ajoutée au projet
+# (``snowflake-connector-python`` reste optionnel, importé paresseusement).
+SNOWFLAKE_ENV_REQUIRED = (
+    'SNOWFLAKE_ACCOUNT',
+    'SNOWFLAKE_USER',
+    'SNOWFLAKE_PASSWORD',
+    'SNOWFLAKE_DATABASE',
+    'SNOWFLAKE_SCHEMA',
+)
+
+
+def snowflake_env():
+    """Paramètres Snowflake lus de l'environnement (jamais du code)."""
+    keys = SNOWFLAKE_ENV_REQUIRED + ('SNOWFLAKE_WAREHOUSE', 'SNOWFLAKE_STAGE')
+    return {k: os.environ.get(k, '') for k in keys}
+
+
+def snowflake_table(context) -> str:
+    """Nom de table DATÉE : ``<dataset>_<AAAAMMJJ>`` (identifiant SQL sûr)."""
+    ctx = dict(context or {})
+    dataset = ctx.get('dataset') or 'extrait'
+    date = ctx.get('date') or timezone.now().date().isoformat()
+    safe_ds = ''.join(c if (c.isalnum() or c == '_') else '_'
+                      for c in str(dataset)) or 'extrait'
+    safe_date = ''.join(c for c in str(date) if c.isdigit()) or '00000000'
+    return f'{safe_ds}_{safe_date}'.upper()
+
+
+def _snowflake_connect(env):  # pragma: no cover - exige un compte réel
+    """Connexion Snowflake (import PARESSEUX et OPTIONNEL du connecteur)."""
+    import snowflake.connector as sf
+    return sf.connect(
+        account=env['SNOWFLAKE_ACCOUNT'],
+        user=env['SNOWFLAKE_USER'],
+        password=env['SNOWFLAKE_PASSWORD'],
+        database=env['SNOWFLAKE_DATABASE'],
+        schema=env['SNOWFLAKE_SCHEMA'],
+        warehouse=env.get('SNOWFLAKE_WAREHOUSE') or None,
+    )
+
+
+@register_provider
+class SnowflakeDestination(ExportDestinationProvider):
+    """NTDATA29 — chargement d'un extrait dans Snowflake (GATED fondateur).
+
+    Livré DÉSARMÉ : sans les variables ``SNOWFLAKE_*``, ``is_configured()`` est
+    faux, ``deliver()`` est un no-op propre et le connecteur Python n'est même
+    pas importé (dépendance optionnelle, jamais dure — aucune nouvelle
+    dépendance payante n'entre dans le projet tant que le fondateur ne
+    provisionne pas le compte).
+
+    Armé, le flux est celui de l'outil : ``PUT`` du fichier dans un stage, puis
+    ``COPY INTO`` une table DATÉE ``<dataset>_<AAAAMMJJ>``.
+    """
+
+    code = 'snowflake'
+    label = 'Snowflake (entrepôt externe)'
+
+    def is_configured(self) -> bool:
+        env = snowflake_env()
+        if not all(env.get(k) for k in SNOWFLAKE_ENV_REQUIRED):
+            return False
+        try:
+            import snowflake.connector  # noqa: F401
+        except Exception:
+            return False
+        return True
+
+    def deliver(self, filename, data, content_type, context=None) -> dict:
+        if not self.is_configured():
+            return {'ok': False,
+                    'detail': 'Snowflake non configuré (variables '
+                              'SNOWFLAKE_* absentes) — aucun chargement.'}
+        env = snowflake_env()  # pragma: no cover - exige un compte réel
+        stage = (self.config.get('stage')
+                 or env.get('SNOWFLAKE_STAGE') or '~')
+        table = snowflake_table(context)
+        try:  # pragma: no cover - exige un compte Snowflake réel
+            import os as _os
+            import tempfile
+            tmpdir = tempfile.mkdtemp(prefix='sf_export_')
+            path = _os.path.join(tmpdir, filename or 'extrait.csv')
+            with open(path, 'wb') as fh:
+                fh.write(data or b'')
+            conn = _snowflake_connect(env)
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    f"PUT file://{path} @{stage} OVERWRITE = TRUE")
+                cur.execute(
+                    f"COPY INTO {table} FROM @{stage}/"
+                    f"{_os.path.basename(path)}")
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001 - jamais d'exception remontée
+            logger.warning('Snowflake : chargement de %s en échec', table,
+                           exc_info=True)
+            return {'ok': False, 'statut': 'erreur',
+                    'detail': f'Chargement Snowflake en échec : {exc}'}
+        return {'ok': True, 'bytes': len(data or b''),  # pragma: no cover
+                'detail': f'chargé dans {table}'}
+
+
 def rendre_extrait(export):
     """Rend le contenu de l'extrait depuis le dataset du ``ScheduledExport``.
 

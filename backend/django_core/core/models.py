@@ -1053,10 +1053,14 @@ class ScheduledExport(TimestampedModel):
     # le compose du repo, donc cette destination fonctionne sans aucun
     # credential externe (c'est le défaut d'un nouvel extrait).
     DEST_MINIO = 'minio'
+    # NTDATA29 — entrepôt externe Snowflake (GATED fondateur) : présent dans le
+    # catalogue mais DÉSARMÉ tant que les variables SNOWFLAKE_* sont absentes.
+    DEST_SNOWFLAKE = 'snowflake'
     DEST_CHOICES = [
         (DEST_MINIO, 'Entrepôt MinIO (interne)'),
         (DEST_SFTP, 'SFTP'),
         (DEST_S3, 'Bucket S3'),
+        (DEST_SNOWFLAKE, 'Snowflake (entrepôt externe)'),
     ]
 
     company = models.ForeignKey(
