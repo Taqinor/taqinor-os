@@ -157,6 +157,69 @@ class LOrdreDesHuitEtapes(SimpleTestCase):
             ('ecran', 'calepinage', 'auto', 'tunnel', 'resynchronisation'))
 
 
+class LesModesNExecutentQueLeursEtapes(SimpleTestCase):
+    """QJR93 — un mode DÉCLARE ses étapes, et ``appliquer`` n'en fait pas une
+    de plus.
+
+    C'est la propriété qui rend une bascule vérifiable : si le mode ``ecrire``
+    pouvait atteindre ``composer``, brancher l'écran dessus recomposerait le
+    devis depuis le catalogue et effacerait les prix tapés par le commercial.
+    Le test l'interdit par CONSTRUCTION, pas par relecture.
+    """
+
+    def test_mode_ecrire_n_ecrit_que_les_lignes(self):
+        journal = []
+        with _Etapes(journal) as etapes:
+            resultat = pipeline.appliquer(
+                etapes.verrou,
+                _intention(mode=pipeline.MODE_ECRIRE,
+                           composition=[{'produit': 1}]))
+        self.assertEqual(journal, ['ecrire_lignes'])
+        self.assertEqual(resultat['etapes'],
+                         list(pipeline.ETAPES_PAR_MODE[pipeline.MODE_ECRIRE]))
+        self.assertIs(resultat['devis'], etapes.verrou)
+
+    def test_mode_rafraichir_n_ecrit_aucune_ligne(self):
+        journal = []
+        with _Etapes(journal) as etapes:
+            resultat = pipeline.appliquer(
+                etapes.verrou, _intention(mode=pipeline.MODE_RAFRAICHIR))
+        self.assertEqual(journal, ['rafraichir_etudes'])
+        self.assertEqual(
+            resultat['etapes'],
+            list(pipeline.ETAPES_PAR_MODE[pipeline.MODE_RAFRAICHIR]))
+
+    def test_le_mode_par_defaut_est_le_pipeline_complet(self):
+        """Une intention qui ne dit rien se comporte comme avant QJR93."""
+        self.assertEqual(pipeline.IntentionDevis(
+            origine=pipeline.ORIGINE_ECRAN, company=object()).mode,
+            pipeline.MODE_COMPOSER)
+        self.assertEqual(pipeline.ETAPES_PAR_MODE[pipeline.MODE_COMPOSER],
+                         pipeline.ETAPES)
+
+    def test_un_mode_inconnu_est_refuse_en_francais(self):
+        journal = []
+        with _Etapes(journal):
+            with self.assertRaises(ValueError) as leve:
+                pipeline.appliquer(_FauxDevis(), _intention(mode='par-magie'))
+        self.assertIn('Mode de pipeline inconnu', str(leve.exception))
+        self.assertEqual(journal, [])
+
+    def test_les_deux_modes_exigent_un_devis_existant(self):
+        """Ils ne créent RIEN : seul le mode complet fait naître un brouillon.
+
+        Sans cette garde, un appelant qui oublie son devis créerait
+        silencieusement un second document — le contraire de ce que
+        ``replace-lines`` promet."""
+        for mode in (pipeline.MODE_ECRIRE, pipeline.MODE_RAFRAICHIR):
+            journal = []
+            with _Etapes(journal):
+                with self.assertRaises(ValueError) as leve:
+                    pipeline.appliquer(None, _intention(mode=mode))
+            self.assertIn('exige un devis existant', str(leve.exception))
+            self.assertEqual(journal, [])
+
+
 class LesEtudesPartentDeLInstanceRelue(SimpleTestCase):
     """QJR20 — la relecture n'est pas une précaution, c'est l'étape 7."""
 
@@ -164,8 +227,9 @@ class LesEtudesPartentDeLInstanceRelue(SimpleTestCase):
         vues = []
         ancien = pipeline.rafraichir_etudes_du_devis
         pipeline.rafraichir_etudes_du_devis = (
-            lambda devis: vues.append((devis, devis.relectures,
-                                       devis._prefetched_objects_cache)))
+            lambda devis, force=False: vues.append(
+                (devis, devis.relectures, devis._prefetched_objects_cache,
+                 force)))
         try:
             verrou = _FauxDevis()
             pipeline.rafraichir_etudes(verrou)
@@ -173,12 +237,27 @@ class LesEtudesPartentDeLInstanceRelue(SimpleTestCase):
             pipeline.rafraichir_etudes_du_devis = ancien
 
         self.assertEqual(len(vues), 1)
-        instance, relectures, cache = vues[0]
+        instance, relectures, cache, force = vues[0]
         self.assertIs(instance, verrou)
         # RELUE avant que la première étude ne parte…
         self.assertEqual(relectures, 1)
         # …et le cache de prefetch de l'appelant VIDÉ (ceinture explicite).
         self.assertEqual(cache, {})
+        # QJR94 — sans consigne, c'est l'EMPREINTE qui décide (QJR43/44/47).
+        self.assertFalse(force)
+
+    def test_force_est_transmis_aux_quatre(self):
+        """QJR94 — ``perform_update`` exigeait ``force=True`` de ses DEUX
+        rafraîchisseurs ; il l'exige des QUATRE, et le dial reste un dial."""
+        vus = []
+        ancien = pipeline.rafraichir_etudes_du_devis
+        pipeline.rafraichir_etudes_du_devis = (
+            lambda devis, force=False: vus.append(force))
+        try:
+            pipeline.rafraichir_etudes(_FauxDevis(), force=True)
+        finally:
+            pipeline.rafraichir_etudes_du_devis = ancien
+        self.assertEqual(vus, [True])
 
 
 class LIntentionDevisEstGelee(SimpleTestCase):
@@ -224,8 +303,31 @@ class LIntentionDevisEstGelee(SimpleTestCase):
         self.assertEqual(compo.dimensionnement_avec, {'nb_panneaux': 16})
 
 
-class AucunCheminNAppelleEncoreAppliquer(SimpleTestCase):
-    """La condition de sûreté de M4 : la fonction est POSÉE, pas branchée."""
+#: QJR93+ (M5) — LE LEDGER DES CHEMINS BASCULÉS, par fichier de production.
+#:
+#: En M4 cette garde disait « AUCUN chemin n'appelle ``appliquer`` » : la
+#: fonction était posée, pas branchée. M5 la branche, une bascule à la fois —
+#: et la garde devient le LEDGER de ce qui a été branché. Elle compte les
+#: appels PAR FICHIER (jamais par numéro de ligne : un numéro de ligne se périme
+#: à la première insertion en amont, et la recaler à la main est exactement le
+#: genre de bruit qui finit par masquer un vrai écart).
+#:
+#: UNE BASCULE DÉCLARE SON CHEMIN ICI, DANS LE MÊME COMMIT QUE SON GOLDEN.
+#: Un appel qui apparaît sans cette déclaration est rouge — brancher un chemin
+#: sans golden est exactement ce que cette garde interdit, hier comme
+#: aujourd'hui.
+CHEMINS_BASCULES = {
+    # QJR93 — l'écran : ``atomic`` (écrire + rafraîchir) et ``replace-lines``
+    # (écrire + rafraîchir). QJR94 — ``perform_update`` (rafraîchir).
+    'views/devis.py': 5,
+    # QJR95 — la création depuis un calepinage 3D : ``build_devis_from_layout``
+    # est devenue un adaptateur (elle LIT le layout, le pipeline fait le reste).
+    'domain/creation.py': 1,
+}
+
+
+class LesCheminsBasculesSontDeclares(SimpleTestCase):
+    """M5 — on ne branche un chemin qu'en le DÉCLARANT (avec son golden)."""
 
     def test_aucun_chemin_de_production_n_appelle_appliquer(self):
         appels = []
@@ -247,13 +349,17 @@ class AucunCheminNAppelleEncoreAppliquer(SimpleTestCase):
                        else cible.attr if isinstance(cible, ast.Attribute)
                        else '')
                 if nom == 'appliquer':
-                    appels.append('%s:%d'
-                                  % (chemin.relative_to(RACINE_VENTES)
-                                     .as_posix(), noeud.lineno))
+                    appels.append(
+                        chemin.relative_to(RACINE_VENTES).as_posix())
+
+        constate = {}
+        for fichier in appels:
+            constate[fichier] = constate.get(fichier, 0) + 1
 
         self.assertEqual(
-            appels, [],
-            'un chemin de production appelle déjà pipeline.appliquer : %s. '
-            'Les bascules sont M5 (QJR93 et suivantes), une par une, chacune '
-            'avec son test GOLDEN — brancher un chemin sans golden est '
-            'exactement ce que cette garde interdit.' % appels)
+            constate, CHEMINS_BASCULES,
+            'le ledger des chemins basculés ne décrit plus le dépôt : '
+            'constaté %s, déclaré %s. Une bascule M5 DÉCLARE son chemin dans '
+            'CHEMINS_BASCULES, dans le MÊME commit que son test GOLDEN — '
+            'brancher un chemin sans golden est exactement ce que cette garde '
+            'interdit.' % (constate, CHEMINS_BASCULES))

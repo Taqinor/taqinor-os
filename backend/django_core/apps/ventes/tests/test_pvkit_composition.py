@@ -409,12 +409,35 @@ class LeCatalogueIncompletDegradeSansCasser(_Base):
         for quantite, prix in kit.values():
             self.assertGreater(prix, 0)
 
-    def test_un_catalogue_sans_prix_du_tout_ne_produit_aucune_ligne(self):
+    def test_un_catalogue_sans_prix_du_tout_est_refuse_avant_toute_ecriture(
+            self):
+        """QJR95 — CE TEST A CHANGÉ DE VERDICT, DÉLIBÉRÉMENT.
+
+        Il attendait un devis à ZÉRO LIGNE : un document né vide, sans un mot
+        pour dire pourquoi, qu'un commercial pouvait envoyer tel quel. Depuis
+        que la création depuis un calepinage passe par ``pipeline.appliquer``,
+        la pré-vérification (QJR82) tourne AVANT toute écriture et REFUSE en
+        NOMMANT la donnée manquante.
+
+        La dégradation gracieuse que cette classe teste par ailleurs — un
+        composant du kit absent ou non tarifé est SAUTÉ — est intacte : elle
+        vaut pour les composants que la pré-vérification ne garde pas
+        (structures, socles, accessoires…). Ce qu'elle ne couvre plus est le
+        cas où l'ONDULEUR lui-même manque : là, il n'y a plus de devis à
+        dégrader."""
+        from apps.ventes.domain.pipeline import MSG_SANS_ONDULEUR_RESEAU
+        from apps.ventes.domain.taille import AutoDevisError
+
         Produit.objects.filter(company=self.company).update(
             prix_vente=Decimal('0'))
-        devis = self._devis()
-        self.assertEqual(devis.lignes.count(), 0)
-        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        avant = Devis.objects.filter(company=self.company).count()
+        with self.assertRaises(AutoDevisError) as leve:
+            self._devis()
+        self.assertIn(MSG_SANS_ONDULEUR_RESEAU, str(leve.exception))
+        # Refuser AVANT d'écrire : aucun devis créé, donc aucun numéro
+        # consommé (un devis effacé rendrait sa référence au compteur).
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), avant)
 
     def test_le_catalogue_d_une_autre_societe_ne_fuite_pas(self):
         # On RETIRE notre structure : si le scoping société fuitait, celle de
