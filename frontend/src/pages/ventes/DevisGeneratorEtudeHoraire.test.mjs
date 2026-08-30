@@ -1,301 +1,294 @@
-// CJ2b — l'écran générateur (résidentiel) appelle le moteur horaire serveur
-// (CJ2a, `POST /ventes/etude-horaire/preview/`) au lieu de ne montrer QUE son
-// miroir local `computeROI` : « on ne voit ni l'économie réelle calculée, ni
-// les données PVGIS — cette donnée devrait être comparée à la courbe de
-// consommation » (ordre fondateur, 20/08/2026).
+// CJ2b — l'écran générateur (résidentiel) appelle le moteur horaire SERVEUR
+// (`POST /ventes/etude-horaire/preview/`) au lieu de ne montrer que son miroir
+// local : « on ne voit ni l'économie réelle calculée, ni les données PVGIS —
+// cette donnée devrait être comparée à la courbe de consommation » (ordre
+// fondateur, 20/08/2026).
 //
-// DevisGenerator.jsx est du JSX/ESM non exécutable par `node --test` sans
-// node_modules (React, Redux dispatch réel) : ce test lit donc le SOURCE,
-// même patron que DevisGeneratorOrdreLignes.test.mjs /
-// DevisGeneratorFacturesSaisies.test.mjs.
+// QJR109 — CE FICHIER A CESSÉ DE LIRE LE SOURCE. Il épinglait par expression
+// régulière la présence des noms importés, la position d'un `indexOf` par
+// rapport à un autre, et la forme littérale d'une vingtaine de blocs JSX. Ce
+// qu'il ne faisait NULLE PART, c'était exécuter la CHAÎNE que l'écran
+// enchaîne réellement.
+//
+// CE QUE CE FICHIER TESTE MAINTENANT : cette chaîne, de bout en bout, avec le
+// SERVICE RÉSEAU MOCKÉ EN PUR.
+//
+//     construireCorpsPreview  →  service (mock)  →  decisionSizing  →  reducer
+//
+// Chaque maillon est un module pur du dépôt ; le seul faux est le service, qui
+// rend ici ce que `useEtudeHorairePreview` rendrait
+// (`{ donnees, chargement, erreur, corpsServi }`) et COMPTE ses appels — ce
+// qui permet de prouver la propriété la plus importante de CJ2b : quand rien
+// n'ancre un calcul réel, l'écran n'appelle même pas le serveur.
+//
+// PAS DE DOUBLON : les fonctions pures d'`etudeHorairePreviewPur.js` ont déjà
+// leur suite propre et complète (`features/ventes/etudeHorairePreview.test.mjs`,
+// 104 assertions) — ce fichier ne les re-teste pas, il les ENCHAÎNE.
+//
+// CE QUI RESTE HORS DE PORTÉE D'UN TEST PUR (pas revendiqué ici) : tous les
+// rendus — tableau de dimensionnement, boutons « Appliquer cette taille »,
+// détail saisonnier, blocs falaise / glitch / estimation mensuelle,
+// mémoïsation des blocs dérivés, `noValidate` du formulaire. Ce sont des specs
+// RTL ; les regex retirées ici les DÉCRIVAIENT, elles ne les prouvaient pas.
 //
 // Run : node --test src/pages/ventes/DevisGeneratorEtudeHoraire.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import {
+  construireCorpsPreview, verdictBatteriePourTaille, lignesAffichables,
+  etiquetteSource,
+} from '../../features/ventes/etudeHorairePreviewPur.js'
+import {
+  decisionSizing,
+} from '../../features/ventes/quote/hooks/useSizingMoteurPur.js'
+import {
+  sizingReducer, ETAT_INITIAL,
+} from '../../features/ventes/quote/sizingReducer.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
-
-const PUR = readFileSync(
-  join(HERE, '..', '..', 'features', 'ventes', 'etudeHorairePreviewPur.js'),
-  'utf8')
-
-test("DevisGenerator : importe les 5 exports de etudeHorairePreview (jamais une copie locale)", () => {
-  const idx = DG.indexOf("} from '../../features/ventes/etudeHorairePreview'")
-  assert.ok(idx > -1, "l'import du pont moteur horaire est introuvable")
-  const bloc = DG.slice(Math.max(0, idx - 300), idx)
-  for (const nom of ['construireCorpsPreview', 'etiquetteSource',
-    'lignesAffichables', 'useEtudeHorairePreview',
-    'verdictBatteriePourTaille']) {
-    assert.ok(bloc.includes(nom), `export « ${nom} » absent de l'import`)
+/**
+ * LE SERVICE, MOCKÉ EN PUR. Même forme de sortie que
+ * `useEtudeHorairePreview` ; `appels` enregistre chaque corps réellement
+ * envoyé — un corps `null` n'est JAMAIS envoyé, exactement comme le hook.
+ */
+function serviceMock(reponses = {}) {
+  const appels = []
+  return {
+    appels,
+    interroger(corps) {
+      if (corps === null) return { donnees: null, chargement: false, erreur: null, corpsServi: null }
+      const cle = JSON.stringify(corps)
+      appels.push(cle)
+      const r = reponses[cle] ?? reponses['*'] ?? {}
+      return {
+        donnees: r.donnees ?? null,
+        chargement: r.chargement ?? false,
+        erreur: r.erreur ?? null,
+        corpsServi: 'corpsServi' in r ? r.corpsServi : cle,
+      }
+    },
   }
-})
+}
 
-test("etudeHorairePreviewPur.js : AUCUN import — sinon les tests node --test meurent à l'import", () => {
-  // `src/api/axios.js` déréférence `import.meta.env` AU CHARGEMENT : toute
-  // chaîne d'import qui y mène jette hors de Vite, et un test qui importerait
-  // cette chaîne échouerait avant d'avoir vérifié quoi que ce soit. Les
-  // fonctions pures vivent donc dans un module SANS aucun import.
-  assert.ok(!/^\s*import\s/m.test(PUR),
-    'le module pur ne doit importer AUCUN module (ni react, ni le client API)')
-  for (const nom of ['construireCorpsPreview', 'etiquetteSource',
-    'lignesAffichables', 'verdictBatteriePourTaille']) {
-    assert.match(PUR, new RegExp(`export function ${nom}\\b`))
+/** LA CHAÎNE de l'écran : corps → service → décision → transition. */
+function tourDEcran(etat, champs, service) {
+  const corps = construireCorpsPreview(champs)
+  const cleCourante = corps ? JSON.stringify(corps) : null
+  const { donnees, chargement, erreur, corpsServi } = service.interroger(corps)
+  const decision = decisionSizing({
+    attente: etat.attenteMoteur,
+    toucheNbPanneaux: etat.touche.nbPanneaux,
+    chargement, donnees, erreur,
+    cleServie: corpsServi, cleErreur: erreur ? corpsServi : null, cleCourante,
+  })
+  let suivant = etat
+  if (decision.action === 'appliquer') {
+    suivant = sizingReducer(etat,
+      { type: 'MOTEUR_A_REPONDU', recommandation: decision.recommandation })
+  } else if (decision.action === 'refuser') {
+    suivant = sizingReducer(etat, { type: 'MOTEUR_A_REFUSE', motif: decision.motif })
   }
+  return { corps, decision, etat: suivant }
+}
+
+const RESIDENTIEL = { modeInstallation: 'residentiel', fHiver: '3000' }
+const RECO = { panneaux: 12, kwc: 8.52, panel_watt: 710 }
+const enAttente = () => sizingReducer(ETAT_INITIAL, {
+  type: 'PROFIL_SITE_APPLIQUE',
+  profil: { type_installation: 'residentiel', facture_hiver: 3000 },
 })
 
-test('DevisGenerator : construit le corps de requête (résidentiel uniquement) et appelle le hook', () => {
-  const idx = DG.indexOf('const etudeHoraireCorps = modeInstallation ===')
-  assert.ok(idx > -1, 'etudeHoraireCorps introuvable')
-  const bloc = DG.slice(idx, idx + 900)
-  assert.match(bloc, /modeInstallation === 'residentiel'/)
-  assert.match(bloc, /construireCorpsPreview\(\{/)
-  // QJR99 — l'écran passe désormais par `useSizingMoteur`, qui ENROBE
-  // `useEtudeHorairePreview` (aucun appel réseau supplémentaire) et rend en
-  // plus la décision de dimensionnement, garde de péremption comprise.
-  const hookIdx = DG.indexOf('} = useSizingMoteur(etudeHoraireCorps, {')
-  assert.ok(hookIdx > idx, 'useSizingMoteur(etudeHoraireCorps) introuvable après la construction du corps')
-  const hookBloc = DG.slice(hookIdx, hookIdx + 260)
-  assert.match(hookBloc, /attente: sizing\.attenteMoteur/)
-  assert.match(hookBloc, /toucheNbPanneaux: toucheNbPanneauxPourComposition\(sizing\)/)
-})
+// ── CJ2b — QUAND RIEN N'ANCRE UN CALCUL, LE SERVEUR N'EST MÊME PAS APPELÉ ───
 
-test('DevisGenerator : le serveur GAGNE sur le miroir local `roi` dès qu\'il a répondu (etude.annuel non nul)', () => {
-  assert.match(DG, /const etudeHoraireAnnuel = etudeHoraireDonnees\?\.etude\?\.annuel \|\| null/)
-  assert.match(DG, /const etudeHoraireSourceServeur = !!etudeHoraireAnnuel/)
-  // Les 3 chiffres affichés (Production / Économies / ROI) préfèrent le
-  // serveur, avec repli explicite sur `roi` (jamais supprimé).
-  assert.match(DG, /const apercuProductionKwh = etudeHoraireSourceServeur\s*\n\s*\? etudeHoraireAnnuel\.production_kwh : roi\?\.production_annuelle_kwh/)
-  assert.match(DG, /const apercuEcoSans = etudeHoraireSourceServeur\s*\n\s*\? etudeHoraireAnnuel\.economie_sans_mad : roi\?\.eco_annuelle_sans/)
-  // CJ2b — « Avec batterie » porte EN PLUS le verdict de livrabilité de la
-  // taille chiffrée : le serveur ne gagne que lorsque l'option est réellement
-  // vendable, sinon la valeur est ABSENTE (voir le test d'omission suivant).
-  // L-2OPT — et il gagne sur l'étude de SA branche (`etudeHoraireAnnuelAvec`),
-  // jamais sur celle du kWc SANS : les deux optimiseurs peuvent diverger.
-  assert.match(DG, /const apercuEcoAvec = etudeHoraireAnnuelAvec/)
-  assert.match(DG, /batterieInvendableServeur \? null : etudeHoraireAnnuelAvec\.economie_avec_mad/)
-  assert.match(DG, /: roiPourAvec\?\.eco_annuelle_avec/)
-})
-
-test('DevisGenerator : batterie non livrable -> AUCUN montant « avec batterie », la raison à la place', () => {
-  // ORDRE FONDATEUR — l'omission honnête, jamais un zéro inventé. Sans cette
-  // garde, `fmtNum(Math.round(null))` imprimait « 0 » : un chiffre FAUX sur
-  // l'option que le catalogue ne peut pas livrer (trou réel exhumé par CJ2a).
-  // L-2OPT — le verdict est demandé POUR LA TAILLE DE LA BRANCHE AVEC.
-  assert.match(DG, /verdictBatteriePourTaille\(etudeHoraireLignesAvec, kwpAvec\)/)
-  assert.match(DG, /const batterieInvendableServeur = verdictBatterieServeur/)
-  const idx = DG.indexOf('{batterieInvendableServeur ? (')
-  assert.ok(idx > -1, "la branche d'omission « avec batterie » est introuvable")
-  const bloc = DG.slice(idx, idx + 700)
-  assert.match(bloc, /data-testid="etude-horaire-batterie-invendable"/)
-  assert.match(bloc, /verdictBatterieServeur\.raison/)
-  // Aucune carte chiffrée ne subsiste dans la branche d'omission.
-  const omission = DG.slice(idx, DG.indexOf(') : (', idx))
-  assert.ok(!/MetricCard/.test(omission),
-    "aucune carte chiffrée ne doit subsister quand la batterie n'est pas livrable")
-})
-
-// ── L-2OPT — chaque option son kWc, jamais un croisement ───────────────────
-// Le bug corrigé : `kwp` restait le compte de la branche SANS (le rechargement
-// d'un brouillon exclut les lignes taguées 'avec') pendant que
-// `totals.totalAvec` et `batteryKwhFromLines` chiffraient la composition AVEC
-// entière — payback « avec » affiché plusieurs fois trop long, et étude
-// horaire serveur interrogée sur une chimère (kWc sans + batteries avec).
-
-test('L-2OPT : `kwpAvec` est dérivé des LIGNES (règle backend variante \'\'+\'avec\')', () => {
-  const idx = DG.indexOf('const kwpAvec = (() => {')
-  assert.ok(idx > -1, 'kwpAvec introuvable')
-  const bloc = DG.slice(idx, idx + 400)
-  assert.match(bloc, /comptePanneauxOption\(lines, 'sans'\)/)
-  assert.match(bloc, /comptePanneauxOption\(lines, 'avec'\)/)
-  // NON DIVERGENT ⇒ `kwp` renvoyé TEL QUEL (aucune re-dérivation flottante) :
-  // c'est ce qui garantit le comportement byte-identique à l'historique.
-  assert.match(bloc, /if \(nSans <= 0 \|\| nAvec === nSans\) return kwp/)
-})
-
-test("L-2OPT : l'étude horaire de la branche AVEC porte SON kWc, et n'est demandée que si ça diverge", () => {
-  const idx = DG.indexOf('const etudeHoraireCorpsAvec = ')
-  assert.ok(idx > -1, 'etudeHoraireCorpsAvec introuvable')
-  const bloc = DG.slice(idx, idx + 700)
-  // Garde : aucun second appel réseau tant que rien ne diverge.
-  assert.match(bloc, /kwpAvec !== kwp/)
-  assert.match(bloc, /kwp: kwpAvec/)
-  assert.match(DG, /useEtudeHorairePreview\(etudeHoraireCorpsAvec\)/)
-  // Divergent : on lit UNIQUEMENT l'étude de la branche avec — retomber sur
-  // celle du kWc SANS pendant le chargement recréerait le croisement.
-  assert.match(DG, /const etudeHoraireDonneesPourAvec = etudeHoraireCorpsAvec\s*\n\s*\? etudeHoraireDonneesAvec\s*\n\s*: etudeHoraireDonnees/)
-})
-
-test('L-2OPT : le miroir local `roiAvec` est calculé au kWc AVEC, null quand rien ne diverge', () => {
-  const idx = DG.indexOf('const roiAvec = useMemo(() => {')
-  assert.ok(idx > -1, 'roiAvec introuvable')
-  const bloc = DG.slice(idx, idx + 400)
-  assert.match(bloc, /if \(dKwpAvec === dKwp\) return null/)
-  assert.match(bloc, /kwp: dKwpAvec/)
-  assert.match(DG, /const roiPourAvec = roiAvec \|\| roi/)
-})
-
-// ── FINDING 25/08 — l'ascension écran ne peut plus rider le plafond ────────
-// `optimalKwcByPayback` ne plafonne l'économie à la consommation réelle que
-// si on la lui donne. Les deux appels de l'écran ne la passaient pas :
-// l'économie restait LINÉAIRE en kWc, chaque pas marginal se « remboursait »,
-// et l'ascension finissait toujours au plafond du balayage (mesuré : besoin
-// 100 kWc → 100 kWc retenus, 522 341 MAD).
-
-test('FINDING 25/08 : le dimensionnement passe la consommation réelle + le distributeur', () => {
-  const idx = DG.indexOf('const computeAutoSizing = useCallback(')
-  assert.ok(idx > -1, 'computeAutoSizing introuvable')
-  const bloc = DG.slice(idx, DG.indexOf('sizingCacheRef.current = { key, result }', idx))
-  // La consommation est DÉRIVÉE (barème), ou reprise du champ réel saisi —
-  // jamais un chiffre posé.
-  assert.match(bloc, /consoAnnuelleDepuisFactures\(factures, distributeurBalayage\)/)
-  assert.match(bloc, /Number\(consoAnnuelleReelle\) > 0/)
-  // QJR102 — il ne reste qu'UN balayage (le second, résidentiel-only, a été
-  // supprimé : injoignable depuis U3-MOTEUR). Il reçoit toujours la conso
-  // réelle et le distributeur — c'est CE contrat-là que le finding protège.
-  const appels = bloc.match(/consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage/g) || []
-  assert.equal(appels.length, 1,
-    "l'appel optimalKwcByPayback doit recevoir la conso réelle et le distributeur")
-  // Le distributeur pilote le barème : il entre dans la clé de cache, sinon
-  // le balayage resservirait un résultat calculé sur un autre barème.
-  assert.match(bloc, /distributeurBalayage, consoAnnuelleReelle \?\? ''\]\.join\('\|'\)/)
-})
-
-test('DevisGenerator : `roi` (computeROI, miroir local) reste appelé SANS changement — jamais supprimé', () => {
-  assert.match(DG, /const roi = useMemo\(\(\) => \{/)
-  assert.match(DG, /return computeROI\(\{/)
-})
-
-test('DevisGenerator : le nouveau bloc moteur horaire est gardé par modeInstallation === \'residentiel\'', () => {
-  const idx = DG.indexOf('{modeInstallation === \'residentiel\' && etudeHoraireCorps && (')
-  assert.ok(idx > -1, 'le garde résidentiel du bloc moteur horaire est introuvable')
-  const bloc = DG.slice(idx, idx + 400)
-  assert.match(bloc, /data-testid="etude-horaire-block"/)
-})
-
-test('DevisGenerator : rend le tableau de dimensionnement (paliers moteur horaire)', () => {
-  assert.match(DG, /data-testid="etude-horaire-dimensionnement"/)
-  assert.match(DG, /etudeHoraireLignes\.map\(\(ligne\) => \{/)
-  // Honnêteté rule #1 — pas de chiffre "avec" quand la ligne n'est pas vendable.
-  assert.match(DG, /ligne\.batterieVendable/)
-  assert.match(DG, /ligne\.raisonBatterie/)
-})
-
-test('DevisGenerator : chaque ligne du tableau porte un bouton « Appliquer cette taille »', () => {
-  assert.match(DG, /Appliquer cette taille/)
-  assert.match(DG, /onClick=\{\(\) => appliquerTailleDimensionnement\(ligne\)\}/)
-})
-
-test('DevisGenerator : « Appliquer cette taille » pose nbPanneaux\\/panelW puis relance handleAutoFill (jamais une seconde règle de composition)', () => {
-  // QJR99 — la pose de `nbPanneaux`/`panelW`/`kwcCible` et l'armement de la
-  // recomposition sont UNE transition (`TAILLE_APPLIQUEE`, testée dans
-  // sizingReducer.test.mjs : elle pose les trois champs ET incrémente
-  // `compositionSeq`). Le déclenchement, lui, reste ici et reste `handleAutoFill`.
-  const idx = DG.indexOf('const appliquerTailleDimensionnement = (ligne) => {')
-  assert.ok(idx > -1, 'appliquerTailleDimensionnement introuvable')
-  const bloc = DG.slice(idx, idx + 300)
-  assert.match(bloc, /if \(!ligne \|\| !\(ligne\.panneaux > 0\)\) return/)
-  assert.match(bloc, /dispatchSizing\(\{ type: 'TAILLE_APPLIQUEE', ligne \}\)/)
-  assert.doesNotMatch(bloc, /autoFillLines\(/)
-  // L'UNIQUE effet de composition (armé par `compositionSeq`) relance
-  // handleAutoFill — JAMAIS une réimplémentation d'autoFillLines.
-  const effetIdx = DG.indexOf('    if (!recalcDimTick) return')
-  assert.ok(effetIdx > -1, "l'effet de composition (compositionSeq) est introuvable")
-  // Fenêtre 700 : le corps de l'effet porte depuis la passe Fable M5c un
-  // commentaire de 6 lignes (différé en microtâche, règle set-state-in-effect).
-  const effet = DG.slice(effetIdx, effetIdx + 700)
-  assert.match(effet, /handleAutoFill\(\)/)
-  assert.doesNotMatch(effet, /autoFillLines\(/)
-})
-
-test('DevisGenerator : le détail saisonnier (production × consommation par saison) est rendu', () => {
-  assert.match(DG, /data-testid="etude-horaire-saisons"/)
-  assert.match(DG, /SAISON_LABELS/)
-  assert.match(DG, /etudeHoraireDonnees\.etude\.saisons\[cle\]/)
-})
-
-test('DevisGenerator : les avertissements serveur sont affichés VERBATIM (jamais réécrits)', () => {
-  const idx = DG.indexOf('data-testid="etude-horaire-avertissements"')
-  assert.ok(idx > -1)
-  const bloc = DG.slice(idx - 200, idx + 300)
-  assert.match(bloc, /etudeHoraireDonnees\.avertissements\.map\(/)
-})
-
-// ── L-FRONT lot 4 — falaise/résiduel/remplissage/glitch/mini-balayage/estimation ──
-
-test("DevisGenerator lot4 : importe les nouvelles aides pures (falaise/glitch/balayage/estimation)", () => {
-  const idx = DG.indexOf("} from '../../features/ventes/etudeHorairePreview'")
-  assert.ok(idx > -1)
-  const bloc = DG.slice(Math.max(0, idx - 400), idx)
-  for (const nom of ['falaiseAffichable', 'glitchAnnuel',
-    'balayageStockageAffichable', 'estimationConsoAffichable', 'LIBELLES_MOIS']) {
-    assert.ok(bloc.includes(nom), `export « ${nom} » absent de l'import`)
+test('hors résidentiel, aucun corps n’est construit et le service n’est jamais interrogé', () => {
+  const service = serviceMock()
+  for (const marche of ['industriel', 'commercial', 'agricole']) {
+    const { corps, decision } = tourDEcran(
+      enAttente(), { ...RESIDENTIEL, modeInstallation: marche }, service)
+    assert.equal(corps, null, `marché ${marche}`)
+    assert.equal(decision.action, 'attendre')
   }
+  assert.deepEqual(service.appels, [], 'aucun appel réseau ne doit partir')
 })
 
-test('DevisGenerator lot4 : les trois blocs dérivés sont memoïsés depuis le MÊME payload (aucun second appel réseau)', () => {
-  assert.match(DG, /const etudeHoraireFalaise = useMemo\(\s*\n\s*\(\) => falaiseAffichable\(etudeHoraireDonnees\?\.dimensionnement\)/)
-  assert.match(DG, /const etudeHoraireGlitch = useMemo\(\s*\n\s*\(\) => glitchAnnuel\(etudeHoraireDonnees\?\.etude\)/)
-  assert.match(DG, /const etudeHoraireEstimationConso = useMemo\(\s*\n\s*\(\) => estimationConsoAffichable\(etudeHoraireDonnees\?\.estimation_conso\)/)
+test('sans facture, sans devis et sans lead, l’écran n’appelle pas non plus : on omet, on n’approxime pas', () => {
+  const service = serviceMock()
+  const { corps } = tourDEcran(enAttente(), { modeInstallation: 'residentiel' }, service)
+  assert.equal(corps, null)
+  assert.equal(service.appels.length, 0)
 })
 
-test('DevisGenerator lot4 : colonnes résiduel + remplissage batterie rendues dans le tableau de dimensionnement, omises sans donnée', () => {
-  assert.match(DG, /data-testid="etude-horaire-residuel"/)
-  assert.match(DG, /data-testid="etude-horaire-remplissage"/)
-  const idxR = DG.indexOf('data-testid="etude-horaire-residuel"')
-  const blocR = DG.slice(idxR, idxR + 250)
-  assert.match(blocR, /residuelApres != null/)
-  const idxM = DG.indexOf('data-testid="etude-horaire-remplissage"')
-  const blocM = DG.slice(idxM, idxM + 250)
-  assert.match(blocM, /remplissageMoyen != null/)
+test('une facture d’hiver suffit à ancrer : UN appel, et le corps demande le dimensionnement', () => {
+  const service = serviceMock()
+  const { corps } = tourDEcran(enAttente(), RESIDENTIEL, service)
+  assert.deepEqual(corps, { dimensionner: true, facture_hiver: 3000 })
+  assert.equal(service.appels.length, 1)
 })
 
-test('DevisGenerator lot4 : mini-balayage stockage — un bouton toggle par ligne, rendu seulement si des paliers existent', () => {
-  assert.match(DG, /data-testid="etude-horaire-stockage-toggle"/)
-  assert.match(DG, /paliersStockage\.length > 0/)
-  assert.match(DG, /data-testid="etude-horaire-balayage-stockage"/)
-  assert.match(DG, /balayageStockageAffichable\(ligne\)/)
+// ── LA CHAÎNE COMPLÈTE, TOUR PAR TOUR ──────────────────────────────────────
+
+test('réponse EN VOL : rien n’est posé, l’attente reste ouverte', () => {
+  const service = serviceMock({ '*': { chargement: true } })
+  const { decision, etat } = tourDEcran(enAttente(), RESIDENTIEL, service)
+  assert.equal(decision.action, 'attendre')
+  assert.equal(decision.raison, 'en-vol')
+  assert.equal(etat.nbPanneaux, '', 'aucun chiffre pendant l’aller-retour')
+  assert.equal(etat.attenteMoteur, true)
 })
 
-test('DevisGenerator lot4 : bloc falaise tarifaire omis en entier quand falaiseAffichable renvoie null', () => {
-  const idx = DG.indexOf('data-testid="etude-horaire-falaise"')
-  assert.ok(idx > -1)
-  const bloc = DG.slice(idx - 200, idx)
-  assert.match(bloc, /\{etudeHoraireFalaise && \(/)
+test('réponse FRAÎCHE : la recommandation SERVEUR est posée telle quelle et l’attente se referme', () => {
+  const service = serviceMock({
+    '*': { donnees: { dimensionnement: { recommandation: RECO } } } })
+  const { decision, etat } = tourDEcran(enAttente(), RESIDENTIEL, service)
+  assert.equal(decision.action, 'appliquer')
+  assert.equal(etat.nbPanneaux, '12')
+  assert.equal(etat.kwcCible, '8.52')
+  assert.equal(etat.panelW, '710')
+  assert.equal(etat.attenteMoteur, false)
+  assert.equal(etat.motifMoteur, null)
 })
 
-test('DevisGenerator lot4 : résumé glitch omis en entier quand glitchAnnuel renvoie null', () => {
-  const idx = DG.indexOf('data-testid="etude-horaire-glitch"')
-  assert.ok(idx > -1)
-  const bloc = DG.slice(idx - 200, idx)
-  assert.match(bloc, /\{etudeHoraireGlitch && \(/)
+test('REFUS du serveur : le motif FR est épinglé VERBATIM, aucun chiffre posé', () => {
+  const service = serviceMock({
+    '*': { donnees: { avertissements: ['Ville du lead absente.'] } } })
+  const { decision, etat } = tourDEcran(enAttente(), RESIDENTIEL, service)
+  assert.equal(decision.action, 'refuser')
+  assert.equal(etat.motifMoteur, 'Ville du lead absente.')
+  assert.equal(etat.nbPanneaux, '', 'un refus est un vide honnête')
+  assert.equal(etat.attenteMoteur, false)
 })
 
-test('DevisGenerator lot4 : décomposition mensuelle estimation_conso omise en entier quand la clé est absente', () => {
-  const idx = DG.indexOf('data-testid="etude-horaire-estimation-conso"')
-  assert.ok(idx > -1)
-  const bloc = DG.slice(idx - 400, idx)
-  assert.match(bloc, /\{etudeHoraireEstimationConso && \(/)
-  // Les lignes d'ajout ne sont posées que pour les clés réellement présentes.
-  assert.match(DG, /etudeHoraireEstimationConso\.ajouts\.map\(\(a\) => \(/)
+test('RÉPONSE PÉRIMÉE : la facture a changé, la réponse de l’ANCIENNE n’est ni posée ni consommée', () => {
+  const service = serviceMock({
+    '*': {
+      donnees: { dimensionnement: { recommandation: RECO } },
+      // Le service répond pour un corps qui n'est plus celui à l'écran.
+      corpsServi: JSON.stringify({ dimensionner: true, facture_hiver: 1200 }),
+    },
+  })
+  const { decision, etat } = tourDEcran(
+    enAttente(), { ...RESIDENTIEL, fHiver: '3000' }, service)
+  assert.equal(decision.action, 'attendre')
+  assert.equal(decision.raison, 'reponse-perimee')
+  assert.equal(etat.nbPanneaux, '', 'c’est le bug « 1200 → 3000 restait bloqué sur la taille du 1200 »')
+  assert.equal(etat.attenteMoteur, true, 'l’attente doit rester ouverte pour la BONNE réponse')
 })
 
-test('DevisGenerator lot4 : le formulaire garde noValidate — les nouveaux blocs n\'ajoutent aucun champ de saisie', () => {
-  assert.match(DG, /noValidate/)
-  // Les blocs lot4 (résiduel/remplissage/falaise/glitch/estimation/mini-
-  // balayage) sont tous en LECTURE SEULE (<td>/<div> texte) : aucun <input>
-  // ne peut donc y romprer la garde anti-snap step="any" des champs existants.
-  for (const testid of ['etude-horaire-residuel', 'etude-horaire-remplissage',
-    'etude-horaire-falaise', 'etude-horaire-glitch',
-    'etude-horaire-estimation-conso', 'etude-horaire-balayage-stockage']) {
-    const idx = DG.indexOf(`data-testid="${testid}"`)
-    assert.ok(idx > -1, `bloc ${testid} introuvable`)
-    const bloc = DG.slice(idx, idx + 1200)
-    const fin = bloc.search(/\n {12}\)\}/) // fin approximative du bloc conditionnel
-    const zone = fin > -1 ? bloc.slice(0, fin) : bloc.slice(0, 600)
-    assert.doesNotMatch(zone, /<input\b/i, `${testid} ne doit porter aucun <input> brut`)
+test('ÉCHEC PÉRIMÉ : l’échec d’une facture remplacée n’épingle aucun refus', () => {
+  const service = serviceMock({
+    '*': { erreur: 'réseau indisponible',
+           corpsServi: JSON.stringify({ dimensionner: true, facture_hiver: 1200 }) },
+  })
+  const { decision, etat } = tourDEcran(enAttente(), RESIDENTIEL, service)
+  assert.equal(decision.action, 'attendre')
+  assert.equal(decision.raison, 'echec-perime')
+  assert.equal(etat.motifMoteur, null)
+  assert.equal(etat.attenteMoteur, true)
+})
+
+test('une frappe pendant l’aller-retour GAGNE : la réponse arrive et est abandonnée', () => {
+  const service = serviceMock({
+    '*': { donnees: { dimensionnement: { recommandation: RECO } } } })
+  const tape = sizingReducer(enAttente(),
+    { type: 'SAISI', champ: 'nbPanneaux', valeur: '14' })
+  const { decision, etat } = tourDEcran(tape, RESIDENTIEL, service)
+  assert.equal(decision.action, 'abandonner')
+  assert.equal(etat.nbPanneaux, '14')
+})
+
+test('deux tours successifs : une réponse fraîche APRÈS une périmée est bien consommée', () => {
+  const cleCourante = JSON.stringify({ dimensionner: true, facture_hiver: 3000 })
+  const perime = serviceMock({
+    '*': { donnees: { dimensionnement: { recommandation: RECO } },
+           corpsServi: JSON.stringify({ dimensionner: true, facture_hiver: 1200 }) } })
+  const tour1 = tourDEcran(enAttente(), RESIDENTIEL, perime)
+  assert.equal(tour1.etat.attenteMoteur, true)
+
+  const frais = serviceMock({
+    '*': { donnees: { dimensionnement: { recommandation: { panneaux: 21, kwc: 14.9 } } },
+           corpsServi: cleCourante } })
+  const tour2 = tourDEcran(tour1.etat, RESIDENTIEL, frais)
+  assert.equal(tour2.decision.action, 'appliquer')
+  assert.equal(tour2.etat.nbPanneaux, '21')
+})
+
+// ── CJ2b — LE CORPS PORTE CE QUI ANCRE LE CALCUL ───────────────────────────
+
+test('FINDING 25/08 — le corps transporte ville et raccordement quand ils existent, jamais fabriqués', () => {
+  const avec = construireCorpsPreview({
+    ...RESIDENTIEL, ville: 'Casablanca', raccordement: 'triphase', kwp: 8.52 })
+  assert.equal(avec.ville, 'Casablanca')
+  assert.equal(avec.raccordement, 'triphase')
+  assert.equal(avec.kwc, 8.52)
+  const sans = construireCorpsPreview(RESIDENTIEL)
+  assert.equal('ville' in sans, false, 'aucune ville inventée')
+  assert.equal('raccordement' in sans, false)
+  assert.equal('kwc' in sans, false)
+})
+
+test('L-QA1 — un DEVIS en édition prime sur le lead (même chaîne de résolution que le serveur)', () => {
+  const corps = construireCorpsPreview({
+    modeInstallation: 'residentiel', editId: '42', leadId: '7' })
+  assert.equal(corps.devis, 42)
+  assert.equal('lead' in corps, false)
+  const sansDevis = construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: '7' })
+  assert.equal(sansDevis.lead, 7)
+})
+
+test('un changement de facture change la CLÉ du corps — c’est ce qui rend la péremption détectable', () => {
+  const a = JSON.stringify(construireCorpsPreview({ ...RESIDENTIEL, fHiver: '1200' }))
+  const b = JSON.stringify(construireCorpsPreview({ ...RESIDENTIEL, fHiver: '3000' }))
+  assert.notEqual(a, b)
+  const bis = JSON.stringify(construireCorpsPreview({ ...RESIDENTIEL, fHiver: '3000' }))
+  assert.equal(b, bis, 'la clé doit être STABLE pour un même corps, sinon tout paraît périmé')
+})
+
+// ── HONNÊTETÉ #1 — UNE BATTERIE NON LIVRABLE N’A PAS DE MONTANT ────────────
+
+const DIMENSIONNEMENT = {
+  tableau: [
+    { kwc: 8.52, batterie_disponible: false, economie_avec_mad: 21000,
+      cout_avec_ttc: 95000, payback_avec_annees: 6.2, couverture_avec: 0.8,
+      taux_autoconso_avec: 0.7,
+      verdicts_bloquants_avec: ['Aucune batterie compatible tarifée.'] },
+    { kwc: 12.78, batterie_disponible: true, economie_avec_mad: 30000,
+      cout_avec_ttc: 140000, payback_avec_annees: 5.4, couverture_avec: 0.9,
+      taux_autoconso_avec: 0.85, verdicts_bloquants_avec: [] },
+  ],
+}
+
+test('batterie non livrable pour la taille chiffrée : le verdict porte la RAISON, jamais un montant', () => {
+  const lignes = lignesAffichables(DIMENSIONNEMENT)
+  assert.equal(lignes[0].batterieVendable, false)
+  assert.equal(lignes[0].raisonBatterie, 'Aucune batterie compatible tarifée.')
+  for (const champ of ['economie_avec_mad', 'cout_avec_ttc',
+                       'payback_avec_annees', 'couverture_avec',
+                       'taux_autoconso_avec']) {
+    assert.equal(lignes[0][champ], null,
+      `aucun chiffre d’une installation qu’on ne peut pas livrer : ${champ}`)
   }
+  assert.equal(lignes[1].batterieVendable, true)
+  assert.equal(lignes[1].economie_avec_mad, 30000, 'une taille livrable garde ses chiffres')
+  assert.equal(lignes[1].raisonBatterie, '')
+})
+
+test('le verdict appliqué aux cartes est celui de la taille RÉELLEMENT chiffrée par le vendeur', () => {
+  const lignes = lignesAffichables(DIMENSIONNEMENT)
+  const petit = verdictBatteriePourTaille(lignes, 8.52)
+  assert.equal(petit.vendable, false)
+  assert.equal(petit.raison, 'Aucune batterie compatible tarifée.')
+  const grand = verdictBatteriePourTaille(lignes, 12.78)
+  assert.equal(grand.vendable, true)
+  assert.equal(verdictBatteriePourTaille(lignes, 999), null,
+    'le moteur n’a rien dit sur cette taille : on ne suppose pas')
+})
+
+// ── HONNÊTETÉ #2 — UNE ESTIMATION SE DIT ESTIMATION ────────────────────────
+
+test('une facture répétée sur 12 mois est ÉTIQUETÉE estimation ; une vraie variation ne l’est pas', () => {
+  assert.equal(etiquetteSource('facture_hiver').estimation, true)
+  assert.equal(etiquetteSource('facture_hiver_ete').estimation, true)
+  assert.equal(etiquetteSource('factures_mensuelles_reelles').estimation, false)
+  assert.equal(etiquetteSource('kwh_mensuels_saisis').estimation, false)
+  assert.equal(typeof etiquetteSource('une_source_inconnue').libelle, 'string')
 })

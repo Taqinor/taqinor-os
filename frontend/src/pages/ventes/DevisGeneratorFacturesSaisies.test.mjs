@@ -1,179 +1,182 @@
-// N1/N4 (audit apercu-issues) — deux symptômes d'une même cause : `monthly`
-// démarre avec les valeurs D'EXEMPLE du simulateur (DEFAULT_MONTHLY_BILLS,
-// solar.js) et rien ne distinguait jamais « exemple encore intact » de
-// « vraie facture saisie ».
+// N1/N4 (audit apercu-issues) — deux symptômes d'une même cause : les factures
+// mensuelles de l'écran démarrent avec les valeurs D'EXEMPLE du simulateur
+// (`DEFAULT_MONTHLY_BILLS`, solar.js) et rien ne distinguait « exemple encore
+// intact » de « vraie facture saisie ».
 //
-//  N1 — Un devis créé À LA MAIN sur /ventes/devis/nouveau (hors devis auto
-//       d'un lead) n'avait AUCUN moyen d'alimenter
-//       `etude_params.factures_mensuelles_reelles` : le champ n'était semé
-//       QUE par le devis auto (autoQuote.js, bloc PACT10/QF-REAL). Sans lui,
-//       le moteur PDF perd la facture "avant" reconstruite (page 1
-//       économies). Correctif : à l'enregistrement, si l'utilisateur a
-//       RÉELLEMENT saisi une facture (hiver/été ou détail mensuel — jamais
-//       les valeurs d'exemple), on sème `factures_mensuelles_reelles` +
-//       `conso_annuelle` dérivée (même patron que S1 dans autoQuote.js) ;
-//       rien saisi → payload inchangé.
-//  N4 — Le graphique écran affichait « Facture ONEE » avec ces mêmes valeurs
-//       D'EXEMPLE comme si c'était un fait, dès qu'un nombre de panneaux
-//       était entré (roi ne dépend PAS de facturesSaisies). Correctif : le
-//       graphique est masqué (message explicite) tant qu'aucune facture
-//       réelle n'a été saisie.
+//  N1 — un devis créé À LA MAIN n'avait aucun moyen d'alimenter
+//       `etude_params.factures_mensuelles_reelles` ; sans lui le moteur PDF
+//       reconstruit la facture « avant » depuis l'économie SUPPOSÉE — un
+//       proxy circulaire.
+//  N4 — le graphique « Facture ONEE » affichait ces valeurs D'EXEMPLE comme si
+//       c'était un fait, dès qu'un nombre de panneaux était entré.
 //
-// Les deux partagent le MÊME drapeau `facturesSaisies` (une seule dérivation,
-// jamais deux logiques qui pourraient diverger).
+// QJR109 — CE FICHIER A CESSÉ DE LIRE LE SOURCE, et surtout de RÉÉCRIRE LA
+// RÈGLE POUR LA TESTER. Il épinglait par regex la forme exacte de
+// `const facturesSaisies = monthly.some(...)`, puis — pour « rejouer la
+// formule » — la RECOPIAIT dans le test et testait cette copie : la
+// production pouvait diverger sans que rien ne rougisse.
 //
-// DevisGenerator.jsx est du JSX/ESM non exécutable par `node --test` sans
-// node_modules (React, Redux dispatch réel) : ce test lit donc le SOURCE,
-// même patron que DevisGeneratorOrdreLignes.test.mjs — et importe solar.js
-// (pur, sans React) pour valider la formule avec les VRAIES constantes.
+// LA GARDE PERMANENTE N'EST PLUS UN `if` DANS L'ÉCRAN. Depuis QJR86/QJR89 elle
+// est un TYPE : une consommation voyage SIGNÉE de son origine
+// (`saisie` = tapée par le vendeur, `apercu` = dérivée localement — un repère
+// de vente, pas une mesure), et `etudeAutoconsommation` — la porte UNIQUE du
+// calcul industriel/commercial — refuse tout ce qui n'est pas `saisie`. Les
+// factures de DÉMONSTRATION, étant des valeurs d'aperçu, ne peuvent donc plus
+// se faire persister : ce n'est plus un garde-fou qu'on peut oublier, c'est
+// une porte qui ne s'ouvre pas. Ces modules sont purs : ils sont ici EXÉCUTÉS.
+//
+// CE QUI RESTE HORS DE PORTÉE D'UN TEST PUR (pas revendiqué ici) : le rendu du
+// graphique et de son message de remplacement `data-testid="chart-no-bills"`,
+// et le corps réellement envoyé par `persisterDevis` — deux comportements de
+// composant React.
 //
 // Run : node --test src/pages/ventes/DevisGeneratorFacturesSaisies.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import { DEFAULT_MONTHLY_BILLS } from '../../features/ventes/solar.js'
+import { apercu, saisie, moteur, absent, unwrap, PUCE_APERCU }
+  from '../../features/ventes/quote/valeur.js'
+import industriel, { MOTIF_SANS_CONSO }
+  from '../../features/ventes/quote/marches/industriel.js'
+import commercial from '../../features/ventes/quote/marches/commercial.js'
+import residentiel from '../../features/ventes/quote/marches/residentiel.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+/** Moyenne mensuelle des factures d'EXEMPLE — la valeur de démonstration. */
+const MENSUEL_DEMO = DEFAULT_MONTHLY_BILLS.reduce((s, v) => s + Number(v), 0)
+  / DEFAULT_MONTHLY_BILLS.length
 
-test('facturesSaisies est dérivé de monthly vs DEFAULT_MONTHLY_BILLS (une seule dérivation, partagée N1+N4)', () => {
-  assert.match(DG,
-    /const facturesSaisies = monthly\.some\(\s*\n\s*\(v, i\) => Number\(v\) !== DEFAULT_MONTHLY_BILLS\[i\]\)/)
-  // DEFAULT_MONTHLY_BILLS est bien importé de solar.js (pas une copie locale).
-  assert.match(DG, /DEFAULT_MONTHLY_BILLS,/)
+const ETAT = { kwc: 100, totalTtc: 900000, dayUsagePct: 80,
+               categorieCommerciale: 'hotel' }
+
+// ── LA GARDE PERMANENTE : UN MENSUEL D'APERÇU NE SE PERSISTE JAMAIS ─────────
+
+test('N1/N4 — un mensuel signé `apercu` (les factures de DÉMONSTRATION) fait rendre `absent`', () => {
+  const etude = industriel.etudePersistee({
+    ...ETAT, consommation: apercu(MENSUEL_DEMO) })
+  const vu = unwrap(etude)
+  assert.equal(vu.valeur, null, 'une facture de démonstration ne peut pas devenir une étude')
+  assert.equal(vu.source, null)
+  assert.equal(vu.motif, MOTIF_SANS_CONSO)
+  assert.equal(MOTIF_SANS_CONSO, 'aucune consommation saisie')
 })
 
-test('la formule facturesSaisies, rejouée avec les VRAIES constantes solar.js : False sur les valeurs d\'exemple, True dès qu\'une seule diffère', () => {
-  // Reproduit EXACTEMENT la formule verrouillée par le test précédent.
-  const facturesSaisies = (monthly) => monthly.some((v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])
-
-  // Rien saisi (état initial de useState(DEFAULT_MONTHLY_BILLS)).
-  assert.equal(facturesSaisies(DEFAULT_MONTHLY_BILLS), false)
-  // Un formulaire réel manipule des chaînes (event.target.value) : la
-  // coercition Number() doit rester insensible au type.
-  assert.equal(facturesSaisies(DEFAULT_MONTHLY_BILLS.map(String)), false)
-
-  // Un seul mois retouché à la main suffit.
-  const unMoisRetouche = DEFAULT_MONTHLY_BILLS.slice()
-  unMoisRetouche[3] = '999'
-  assert.equal(facturesSaisies(unMoisRetouche), true)
-
-  // Hiver/été estimé (estimerMois) diverge presque toujours des exemples.
-  const hiverEteReels = [820, 820, 820, 700, 700, 700, 700, 700, 820, 820, 820, 820]
-  assert.equal(facturesSaisies(hiverEteReels), true)
+test('la garde vaut aussi pour le marché COMMERCIAL — une seule porte, jamais deux règles', () => {
+  const vu = unwrap(commercial.etudePersistee({
+    ...ETAT, consommation: apercu(MENSUEL_DEMO) }))
+  assert.equal(vu.valeur, null)
+  assert.equal(vu.motif, MOTIF_SANS_CONSO)
 })
 
-// ── N1 SURVIT À QJR66 — IL A SEULEMENT CHANGÉ DE CANAL ───────────────────────
-// Le seed N1 vivait dans le bloc `etude_params` que `persisterDevis` posait EN
-// BLOC dans le corps du devis — le mécanisme même qui EFFAÇAIT `gamme`,
-// `etude_horaire`, `dimensionnement` et tout ce que les rafraîchisseurs
-// serveur avaient écrit, à chaque sauvegarde du vendeur. QJR66 supprime CE
-// MÉCANISME, pas la fonctionnalité : les 12 factures réelles partent
-// désormais par l'endpoint de FUSION `PATCH /ventes/devis/<id>/etude-params/`
-// (QJR62), où seules les clés envoyées bougent.
-// ARBITRAGE ORCHESTRATEUR (29/08/2026) — « zéro perte » : ces entrées sont
-// écrites pour TOUS les marchés, résidentiel COMPRIS. Un devis créé à la main
-// (hors devis auto d'un lead) doit garder son moyen d'alimenter
-// `factures_mensuelles_reelles`, sans quoi le moteur PDF reconstruit la
-// facture « avant » depuis l'économie SUPPOSÉE — un proxy circulaire.
-test('QJR66 — persisterDevis ne pose plus AUCUN etude_params dans le corps du devis (fin du remplacement en bloc)', () => {
-  const start = DG.indexOf('const payload = {')
-  assert.ok(start > -1, 'le payload de persisterDevis est introuvable')
-  const bloc = DG.slice(start, DG.indexOf('}', DG.indexOf('prix_cible_kwc', start)))
-  assert.doesNotMatch(bloc, /etude_params/,
-    'le corps du devis ne doit plus porter etude_params (il écrasait tout le bloc)')
-  assert.equal(DG.indexOf('buildEtudeParamsChoice('), -1,
-    "buildEtudeParamsChoice n'a plus d'appelant sur ce chemin d'enregistrement")
-  // Le bloc part par l'endpoint de FUSION, jamais par le corps du devis.
-  assert.match(DG, /await ventesApi\.patchEtudeParams\(devisId, etudeMarche\)/)
-})
-
-// Les entrées RÉELLES de l'écran, tous marchés (`entreesReellesEcran`).
-function entreesReelles() {
-  const start = DG.indexOf('const entreesReellesEcran = (consoDejaConnue) => {')
-  assert.ok(start > -1, 'entreesReellesEcran introuvable')
-  const end = DG.indexOf('const blocEtudeMarche = () => {', start)
-  assert.ok(end > start, 'la fin de entreesReellesEcran est introuvable')
-  return DG.slice(start, end)
-}
-
-test('N1 — les 12 factures RÉELLES sont semées UNIQUEMENT si facturesSaisies (jamais les valeurs d\'exemple)', () => {
-  const bloc = entreesReelles()
-  assert.match(bloc, /if \(facturesSaisies\) \{/)
-  assert.match(bloc,
-    /entrees\.factures_mensuelles_reelles = monthly\.map\(v => parseFloat\(v\) \|\| 0\)/)
-  // conso_annuelle dérivée via kwhFromBill (même patron que S1/autoQuote.js),
-  // jamais un chiffre supposé — et jamais si une source plus directe existe.
-  assert.match(bloc, /kwhFromBill\(bill, distributeur\)\.kwhMensuel \|\| 0/)
-  assert.match(bloc, /if \(conso == null && consoAnnuelleReelle > 0\)/)
-})
-
-test('N1 — aucune de ces entrées n\'est jamais envoyée à null (null SUPPRIME côté serveur, règle Z2)', () => {
-  const bloc = entreesReelles()
-  // Le bloc n'ASSIGNE jamais null à une clé d'entrée : une clé inconnue de
-  // l'écran est ABSENTE du corps, donc laissée intacte par la fusion — sinon
-  // ré-enregistrer un devis auto effacerait les factures qu'il avait semées.
-  assert.ok(!/entrees\.\w+ = null/.test(bloc),
-    'une entrée envoyée à null supprimerait la donnée du serveur')
-  assert.match(bloc, /if \(conso != null\) \{/)
-})
-
-test('QJR66 — l\'écran écrit les entrées réelles pour TOUS les marchés, et la sous-clé d\'étude de SON marché', () => {
-  const start = DG.indexOf('const blocEtudeMarche = () => {')
-  assert.ok(start > -1, 'blocEtudeMarche introuvable')
-  const bloc = DG.slice(start, DG.indexOf('const persisterDevis', start))
-  // Les trois branches de marché fusionnent les entrées réelles.
-  assert.equal((bloc.match(/entreesReellesEcran\(/g) || []).length, 3,
-    'les trois marchés doivent tous fusionner les entrées réelles de l\'écran')
-  // Résidentiel : les entrées réelles SEULES — et rien du tout si rien tapé.
-  assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
-  // Industriel / commercial : les cinq dérivées du marché (+ la catégorie).
-  for (const cle of ['taux_autoconso', 'taux_couverture', 'payback',
-                     'injection_kwh_an', 'injection_dh_an',
-                     'categorie_commerciale']) {
-    assert.ok(bloc.includes(cle), `clé industriel/commercial manquante : ${cle}`)
-  }
-  // Agricole : le bloc pompage du schéma.
-  for (const cle of ['pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h',
-                     'm3_jour', 'champ_kwc', 'irrigation_method']) {
-    assert.ok(bloc.includes(cle), `clé agricole manquante : ${cle}`)
-  }
-  // Aucune clé DÉRIVÉE dont l'écran n'est PAS propriétaire (le serveur les
-  // calcule ; le schéma les refuserait en 400 — on ne les envoie même pas).
-  // On scanne le CODE, pas les commentaires : le bloc PARLE de ces notions.
-  const code = bloc.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n')
-  for (const interdite of ['puissance_kwc', 'production_annuelle',
-                           'economies_annuelles', 'etude_horaire',
-                           'dimensionnement', 'profils_comparatifs']) {
-    assert.ok(!code.includes(interdite),
-      `clé dérivée non-propriétaire envoyée par l'écran : ${interdite}`)
+test('la garde ne dépend pas de la VALEUR : même un mensuel d’aperçu généreux est refusé', () => {
+  // C'est la différence entre un seuil et une PROVENANCE : ce qui est refusé,
+  // c'est l'origine du chiffre, pas sa grandeur.
+  for (const valeur of [MENSUEL_DEMO, 1, 999999, '4200']) {
+    const vu = unwrap(industriel.etudePersistee({ ...ETAT, consommation: apercu(valeur) }))
+    assert.equal(vu.valeur, null, `mensuel d’aperçu ${valeur}`)
   }
 })
 
-test('N1 — kwhFromBill est bien importé (réutilisé, jamais réécrit) dans DevisGenerator.jsx', () => {
-  assert.match(DG, /kwhFromBill,/)
+test('une consommation SIGNÉE MOTEUR n’est pas non plus une saisie du vendeur', () => {
+  const vu = unwrap(industriel.etudePersistee({
+    ...ETAT, consommation: moteur(4200) }))
+  assert.equal(vu.valeur, null,
+    'seule une consommation TAPÉE ouvre cette porte — le marché n’a pas de moteur serveur')
+  assert.equal(vu.motif, MOTIF_SANS_CONSO)
 })
 
-test('N4 — le graphique « Facture ONEE » est masqué (message explicite) tant que facturesSaisies est faux', () => {
-  const chartTitleIdx = DG.indexOf('<div className="gen-chart-title">Économies mensuelles estimées')
-  assert.ok(chartTitleIdx > -1, 'titre du graphique introuvable')
-  const bloc = DG.slice(chartTitleIdx, chartTitleIdx + 2600)
-  assert.match(bloc, /\{facturesSaisies \? \(/)
-  assert.match(bloc, /<ComposedChart data=\{chartData\}>/)
-  assert.match(bloc, /name="Facture ONEE \(MAD\)"/)
-  // La branche "rien saisi" ne rend JAMAIS le graphique : un message textuel,
-  // jamais des barres avec des valeurs par défaut qui se présenteraient comme
-  // un fait.
-  assert.match(bloc, /data-testid="chart-no-bills"/)
-  // La branche "rien saisi" est bien le ELSE du ternaire facturesSaisies (pas
-  // un second graphique caché juste à côté) : `) : (` précède immédiatement
-  // le paragraphe, et le paragraphe lui-même ne mentionne aucun graphique.
-  const ternaryElseIdx = bloc.indexOf(') : (')
-  const noBillsIdx = bloc.indexOf('data-testid="chart-no-bills"')
-  assert.ok(ternaryElseIdx > -1 && ternaryElseIdx < noBillsIdx,
-    'le message "no-bills" doit vivre dans la branche ELSE du ternaire facturesSaisies')
-  const paragraphBloc = bloc.slice(noBillsIdx, noBillsIdx + 300)
-  assert.doesNotMatch(paragraphBloc, /ComposedChart/)
+test('une consommation NON SIGNÉE (nombre nu) est refusée — aucun chiffre nu ne se persiste', () => {
+  for (const nu of [4200, '4200', null, undefined, {}, []]) {
+    const vu = unwrap(industriel.etudePersistee({ ...ETAT, consommation: nu }))
+    assert.equal(vu.valeur, null, `entrée nue ${JSON.stringify(nu)}`)
+  }
+})
+
+test('un `absent` explicite reste absent (le motif du refus n’est pas remplacé par un chiffre)', () => {
+  const vu = unwrap(industriel.etudePersistee({
+    ...ETAT, consommation: absent('le client n’a pas fourni ses factures') }))
+  assert.equal(vu.valeur, null)
+  assert.equal(vu.motif, MOTIF_SANS_CONSO)
+})
+
+// ── CE QUI PASSE, ET COMMENT IL EST ÉTIQUETÉ ───────────────────────────────
+
+test('N1 — une consommation RÉELLEMENT SAISIE ouvre la porte', () => {
+  const vu = unwrap(industriel.etudePersistee({ ...ETAT, consommation: saisie(4200) }))
+  assert.notEqual(vu.valeur, null, 'une vraie facture doit produire une étude')
+  assert.equal(vu.motif, null)
+})
+
+test('…mais l’étude produite reste ÉTIQUETÉE « estimation d’exemple » (aucun moteur serveur ici)', () => {
+  const vu = unwrap(industriel.etudePersistee({ ...ETAT, consommation: saisie(4200) }))
+  assert.equal(vu.source, 'apercu')
+  assert.equal(vu.puce, PUCE_APERCU)
+  assert.equal(vu.puce, "estimation d'exemple")
+})
+
+test('une saisie à ZÉRO n’est pas une saisie (jamais une étude bâtie sur rien)', () => {
+  for (const vide of [0, '0', '', 'abc']) {
+    const vu = unwrap(industriel.etudePersistee({ ...ETAT, consommation: saisie(vide) }))
+    assert.equal(vu.valeur, null, `saisie vide ${JSON.stringify(vide)}`)
+    assert.equal(vu.motif, MOTIF_SANS_CONSO)
+  }
+})
+
+test('sans kWc à étudier, le refus NOMME sa propre cause (jamais celle d’à côté)', () => {
+  const vu = unwrap(industriel.etudePersistee({
+    ...ETAT, kwc: 0, consommation: saisie(4200) }))
+  assert.equal(vu.valeur, null)
+  assert.match(vu.motif, /nombre de panneaux/)
+  assert.notEqual(vu.motif, MOTIF_SANS_CONSO)
+})
+
+// ── LE MÊME PRINCIPE CÔTÉ RÉSIDENTIEL ──────────────────────────────────────
+
+test('résidentiel — une étude d’APERÇU n’est jamais promue en étude persistée', () => {
+  const vu = unwrap(residentiel.etudePersistee({
+    etudeServeur: apercu({ economies: 1, factures: DEFAULT_MONTHLY_BILLS }) }))
+  assert.equal(vu.valeur, null)
+  assert.match(vu.motif, /moteur horaire/)
+})
+
+test('résidentiel — seule l’étude SERVEUR passe, et elle passe SANS puce', () => {
+  const vu = unwrap(residentiel.etudePersistee({
+    etudeServeur: moteur({ economies_annuelles: 12000 }) }))
+  assert.deepEqual(vu.valeur, { economies_annuelles: 12000 })
+  assert.equal(vu.source, 'moteur')
+  assert.equal(vu.puce, null, 'un chiffre serveur est publiable tel quel')
+})
+
+test('résidentiel — sans étude du tout, le motif est FRANÇAIS et explicite', () => {
+  const vu = unwrap(residentiel.etudePersistee({}))
+  assert.equal(vu.valeur, null)
+  assert.equal(typeof vu.motif, 'string')
+  assert.notEqual(vu.motif.trim(), '')
+})
+
+// ── LES FACTURES D'EXEMPLE ELLES-MÊMES ─────────────────────────────────────
+
+test('les factures d’EXEMPLE existent bien, et c’est précisément pour ça qu’il faut une garde', () => {
+  assert.equal(Array.isArray(DEFAULT_MONTHLY_BILLS), true)
+  assert.equal(DEFAULT_MONTHLY_BILLS.length, 12, 'douze mois')
+  assert.equal(DEFAULT_MONTHLY_BILLS.every(v => Number(v) > 0), true,
+    'des valeurs plausibles — c’est ce qui les rend dangereuses si elles fuitent')
+  assert.ok(MENSUEL_DEMO > 0)
+})
+
+test('une valeur d’aperçu ne peut pas être RE-SIGNÉE en saisie pour contourner la garde', () => {
+  // La primitive refuse de re-signer : on ne peut pas blanchir une valeur de
+  // démonstration en la faisant passer pour une saisie.
+  assert.throws(() => saisie(apercu(MENSUEL_DEMO)), TypeError)
+  assert.throws(() => moteur(apercu(MENSUEL_DEMO)), TypeError)
+  assert.throws(() => apercu(saisie(4200)), TypeError)
+})
+
+test('un `absent` sans motif est impossible : un vide sans explication est interdit', () => {
+  assert.throws(() => absent(''), TypeError)
+  assert.throws(() => absent(null), TypeError)
+})
+
+test('le déballeur REFUSE un nombre nu — c’est ce refus qui rend la règle exécutable', () => {
+  assert.throws(() => unwrap(MENSUEL_DEMO), TypeError)
+  assert.throws(() => unwrap(DEFAULT_MONTHLY_BILLS), TypeError)
 })

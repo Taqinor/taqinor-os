@@ -42,6 +42,10 @@ MOTEUR_SIMULATION = 'moteur_simulation'
 CALEPINAGE = 'calepinage'
 #: La création automatique depuis un lead (``services.build_devis_auto``).
 AUTO_DEVIS = 'auto_devis'
+#: L'ORDONNANCEUR lui-même (``domain/pipeline.appliquer``) — DC11/QJR106. Il ne
+#: calcule rien : la seule clé dont il est propriétaire est l'ESTAMPILLE de
+#: provenance, c'est-à-dire la trace de CE QU'IL A REPRIS du lead.
+PIPELINE = 'pipeline'
 #: Personne : clé HISTORIQUE que plus aucun chemin ne pose (voir les notes).
 ORPHELINE = 'orpheline'
 
@@ -115,6 +119,18 @@ SCHEMA = {
     # post-envoi (jamais un journal). Le booléen est toléré pour les devis
     # anciens qui n'ont qu'un drapeau.
     'resync_apres_envoi': _cle((bool, dict), CALEPINAGE, ENTREE),
+    # DC11 / QJR106 — L'ESTAMPILLE DE PROVENANCE des valeurs énergie/toiture
+    # REPRISES DU LEAD : ``{'source_lead_id', 'captured_at', 'valeurs'}``,
+    # produite par ``crm.selectors.lead_provenance_stamp`` et posée par
+    # ``pipeline.estampiller_provenance``. C'est une ENTRÉE, pas une dérivée :
+    # elle ne CALCULE rien, elle enregistre ce que le pipeline a RECOPIÉ, et
+    # c'est la comparaison de ces valeurs-là avec le lead COURANT
+    # (``crm.selectors.lead_values_changed_since``) qui allume la bannière
+    # « valeurs du lead modifiées depuis » sur l'écran générateur.
+    'provenance': _cle((dict,), PIPELINE, ENTREE,
+                       'DC11 — d’où viennent les valeurs énergie/toiture du '
+                       'devis. Jamais une entrée du moteur : rien ne se '
+                       'calcule à partir d’elle.'),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
