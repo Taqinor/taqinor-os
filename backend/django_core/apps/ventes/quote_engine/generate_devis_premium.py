@@ -756,23 +756,34 @@ def _multi_villa_html():
     mv = MULTI_VILLA
     if not isinstance(mv, dict) or not mv.get("groupes"):
         return ""
+
+    # QJR126 — un montant MANQUANT ne s'écrit pas « 0 ». Les replis
+    # ``t.get("ht_net", 0)`` / ``fmt(gt.get("ttc", 0))`` imprimaient
+    # « Total général : 0 MAD » d'apparence factuelle si la clé manquait.
+    def _mont(source, cle, formateur):
+        valeur = source.get(cle)
+        return (formateur(valeur)
+                if isinstance(valeur, (int, float)) else "")
+
     rows = ""
     for g in mv["groupes"]:
         t = g.get("totaux") or {}
         rows += (
             f'<tr><td style="padding:3px 8px;color:{CG7};">{_esc(g.get("label", ""))}</td>'
             f'<td style="padding:3px 8px;text-align:right;color:{CG7};">'
-            f'{_fmt2(t.get("ht_net", 0))}</td>'
+            f'{_mont(t, "ht_net", _fmt2)}</td>'
             f'<td style="padding:3px 8px;text-align:right;font-weight:700;'
-            f'color:{CN};white-space:nowrap;">{fmt(t.get("ttc", 0))}</td></tr>')
+            f'color:{CN};white-space:nowrap;">{_mont(t, "ttc", fmt)}</td></tr>')
     gt = mv.get("grand_total") or {}
-    rows += (
-        f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
-        f'font-weight:800;">Total général</td>'
-        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
-        f'{_fmt2(gt.get("ht_net", 0))}</td>'
-        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
-        f'white-space:nowrap;">{fmt(gt.get("ttc", 0))}</td></tr>')
+    # Pas de total général chiffrable ⇒ pas de ligne « Total général ».
+    if isinstance(gt.get("ttc"), (int, float)):
+        rows += (
+            f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
+            f'font-weight:800;">Total général</td>'
+            f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
+            f'{_mont(gt, "ht_net", _fmt2)}</td>'
+            f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
+            f'white-space:nowrap;">{_mont(gt, "ttc", fmt)}</td></tr>')
     return (
         f'<div style="border:1px solid {CG2};border-radius:8px;overflow:hidden;'
         f'margin-bottom:5px;">'

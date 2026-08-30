@@ -2906,7 +2906,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["prod_kwh_multi"] = int(round(roi["prod_kwh"] * _n))
             data["eco_s_ann_multi"] = int(round(roi["eco_s_ann"] * _n))
             data["eco_a_ann_multi"] = int(round(roi["eco_a_ann"] * _n))
-        _mv = multi_villa_totaux(devis)
+        # ── QJR126 — PAS DE « TOTAL GÉNÉRAL » SUR UN DOCUMENT À DEUX OPTIONS ─
+        # ``multi_villa_totaux`` calcule sur TOUTES les lignes du devis, et son
+        # déclenchement est HORS du garde ``_n > 1`` : il suffit qu'une ligne
+        # porte un ``groupe_index``. Sur un devis à deux options ainsi groupé,
+        # la page 2 affiche deux totaux (un par option) et la page 3 un total
+        # qui les ADDITIONNE — le montant sans signification que QJR24 et
+        # PACT10 combattent partout ailleurs. Deux options ⇒ la clé n'est pas
+        # posée (le détail par propriété n'a de sens que sur UNE offre).
+        _mv = None if deux_options else multi_villa_totaux(devis)
         if _mv is not None:
             # Rendu-friendly : totaux Decimal → float pour la sérialisation JSON.
             def _f(t):
