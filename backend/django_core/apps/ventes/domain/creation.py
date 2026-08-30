@@ -98,7 +98,7 @@ def dupliquer_devis(devis, *, user):
     lui-même, donc un brouillon frais n'en hérite jamais.
 
     Les lignes sont clonées à l'identique (mêmes quantités/prix/sections)."""
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
     company = devis.company
@@ -129,12 +129,20 @@ def dupliquer_devis(devis, *, user):
     copie = holder['obj']
 
     for ligne in devis.lignes.all():
-        LigneDevis.objects.create(
-            devis=copie, produit=ligne.produit, designation=ligne.designation,
+        creer_ligne(
+            copie, produit=ligne.produit, designation=ligne.designation,
             quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
             remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
             taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
             groupe_label=ligne.groupe_label,
+            # QJR84 — « les lignes sont clonées à l'identique » (docstring) :
+            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
+            # marqueurs de saisie manuelle (D12) sont de l'identique. Sans eux,
+            # la copie perdait son découpage en options et rouvrait à la
+            # réécriture les prix et quantités tapés par le commercial.
+            variante=ligne.variante, optionnelle=ligne.optionnelle,
+            quantite_manuelle=ligne.quantite_manuelle,
+            prix_manuel=ligne.prix_manuel,
         )
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference, getattr(company, 'id', '?'))
@@ -208,7 +216,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
     """
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
     from apps.ventes.utils.references import create_with_reference
 
     if client is None:
@@ -374,8 +382,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # l'écran s'était donnée, et sans elle l'ordre par défaut de la société
         # ne survivrait pas à la première renumérotation.
         for index, spec in enumerate(line_specs):
-            LigneDevis.objects.create(
-                devis=devis,
+            creer_ligne(
+                devis,
                 produit=spec.produit,
                 designation=spec.designation,
                 quantite=Decimal(str(spec.quantite)),
@@ -1237,7 +1245,6 @@ def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list
 
     RULE #4: this service only builds lines — it never changes Devis.statut.
     """
-    from apps.ventes.models import LigneDevis
     from apps.stock.models import Produit
 
     if preset.company_id != devis.company_id:
@@ -1268,8 +1275,8 @@ def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list
             continue
 
         taux_snap = snap.get('taux_tva')
-        ligne = LigneDevis.objects.create(
-            devis=devis,
+        ligne = creer_ligne(
+            devis,
             produit=produit,
             designation=snap['designation'],
             quantite=Decimal(str(snap['quantite'])),
@@ -1313,7 +1320,7 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     Renvoie le ``Devis`` créé (brouillon, sans lien lead — un ticket SAV n'a
     pas de lead d'origine).
     """
-    from ..models import Devis, LigneDevis
+    from ..models import Devis
     from ..utils.references import create_with_reference
     from apps.crm.models import Client
 
@@ -1331,8 +1338,8 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
         produit_id = ligne.get('produit_id')
         if not produit_id:
             continue
-        LigneDevis.objects.create(
-            devis=devis,
+        creer_ligne(
+            devis,
             produit_id=produit_id,
             designation=ligne.get('designation') or '',
             quantite=Decimal(str(ligne.get('quantite') or 1)),
@@ -1427,6 +1434,7 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
 from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _panneau_pour_calepinage,
     arbitrer_compte_calepinage,

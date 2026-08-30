@@ -325,6 +325,122 @@ def cible_depuis_lignes(devis, variante='sans'):
     }
 
 
+# ── QJR84 — L'UNIQUE CONSTRUCTEUR DE `LigneDevis` DE `apps/ventes` ──────────
+#
+# Constat QB84 (audit L3 du 29/08/2026) : ``services.py`` créait des
+# ``LigneDevis`` en direct sur QUATORZE sites, avec des jeux de champs
+# légèrement différents, pendant que les tests décrivaient
+# ``_replace_lines_atomic`` comme « le SEUL chemin d'écriture » des lignes.
+# Le coût de cette divergence est mesurable et documenté ailleurs dans ce
+# dépôt : un site qui oublie ``variante`` écrit une ligne COMMUNE là où elle
+# devait servir UNE option (QJR81) ; un site qui oublie ``ordre`` laisse le
+# tri retomber sur ``id`` et perd l'ordre voulu par la société (PVORD) ; un
+# site qui oublie ``prix_manuel``/``quantite_manuelle`` rouvre à la réécriture
+# une valeur que le commercial avait tapée (D12).
+#
+# LA PARADE N'EST PAS UNE CONVENTION, C'EST UN GOULOT : un seul appel
+# ``LigneDevis.objects.create`` dans toute l'app, ici, avec le jeu de champs
+# COMPLET nommé UNE fois (``CHAMPS_LIGNE``). Un champ ajouté au modèle se
+# déclare à un seul endroit, et un champ mal orthographié est REFUSÉ en
+# français au lieu d'être silencieusement perdu. Un test statique
+# (``tests/test_qjr_ecrivain_lignes.py``) vérifie qu'aucun second constructeur
+# ne réapparaît.
+
+# ── QJR84 / R4-B1 — RECENSEMENT DES CHEMINS DE CRÉATION SECONDAIRES ─────────
+#
+# L'audit L3 a demandé qu'aucun des six chemins de création « secondaires » ne
+# reste sans verdict écrit : soit il devient un SIXIÈME ADAPTATEUR du pipeline
+# (il compose, donc il doit composer comme les cinq autres), soit il est
+# déclaré HORS PIPELINE avec sa raison. Les six sont, aujourd'hui, TOUS passés
+# par ``creer_ligne`` — le goulot ci-dessous — mais aucun n'est un adaptateur.
+#
+# 1. ``domain/creation.create_draft_devis_from_ocr`` — HORS PIPELINE.
+#    Il ne crée AUCUNE ligne : un document OCR brut ne fournit pas de
+#    ``Produit`` du catalogue, et le brouillon est laissé à compléter dans
+#    l'éditeur. Rien à composer, donc rien à converger.
+#
+# 2. ``domain/creation.dupliquer_devis`` (NTUX13) — HORS PIPELINE.
+#    Une DUPLICATION recopie un devis existant ligne à ligne ; elle ne
+#    consulte ni catalogue, ni dimensionnement, ni scénario. La faire
+#    recomposer changerait en silence le devis que le commercial a
+#    délibérément dupliqué. Ce qu'elle DOIT faire — et ce que QJR84 lui donne —
+#    c'est recopier le jeu de champs COMPLET (``variante``, ``optionnelle``,
+#    ``quantite_manuelle``, ``prix_manuel``), sans quoi « cloné à l'identique »
+#    était faux.
+#
+# 3. ``domain/gammes.create_devis_from_reserve`` (XFSM18) — HORS PIPELINE.
+#    Même raison que (1) : aucune ligne n'est créée (la réserve d'intervention
+#    décrit un défaut, pas un kit).
+#
+# 4. ``domain/gammes.creer_variante_gamme`` — HORS PIPELINE **AUJOURD'HUI**,
+#    CANDIDAT DÉCLARÉ au sixième adaptateur. C'est le seul des six dont le
+#    verdict n'est pas définitif : une GAMME change les marques épinglées
+#    (PVMRQ, ``carte_marques_composition(company, gamme_nom_devis)``), donc une
+#    vraie variante de gamme devrait RECOMPOSER via
+#    ``pipeline.composer(..., gamme_nom_devis=...)`` au lieu de recopier les
+#    produits de la gamme d'origine. Le faire ici serait un changement de
+#    comportement (la sœur cesserait d'être une copie), donc hors de QJR84 :
+#    la tâche le NOMME et s'arrête là. En attendant, la copie passe par
+#    ``creer_ligne`` avec le jeu de champs complet.
+#
+# 5. ``domain/cycle_vie.renouveler_devis`` (NTCPQ13) — HORS PIPELINE.
+#    Un renouvellement REPREND le kit que le client a accepté et le RE-TARIFE
+#    au catalogue courant ; recomposer lui ferait vendre autre chose que ce qui
+#    a été accepté. QJR84 lui fait recopier le jeu complet ET honorer D12 : une
+#    ligne ``prix_manuel`` n'est pas re-tarifée (sans cette garde, le marqueur
+#    recopié aurait protégé une valeur qui venait d'être réécrite).
+#
+# 6. ``domain/bordereau.creer_devis_depuis_bordereau`` — HORS PIPELINE.
+#    Les lignes viennent d'un BORDEREAU (BOQ) chiffré par l'appel d'offres :
+#    une autre famille de documents, que le moteur solaire ne dimensionne
+#    jamais. Le pipeline résidentiel n'a rien à y dire.
+
+#: QJR84 — le jeu de champs COMPLET d'une ligne de devis. ``produit`` et
+#: ``produit_id`` sont les DEUX façons de rattacher le catalogue (la seconde
+#: recopie la string-FK sans charger un ``Produit`` par ligne, cf.
+#: ``domain/bordereau``) ; elles s'excluent.
+CHAMPS_LIGNE = (
+    'produit', 'produit_id', 'designation', 'quantite', 'prix_unitaire',
+    'remise', 'taux_tva', 'type_ligne', 'ordre', 'variante',
+    'groupe_index', 'groupe_label', 'optionnelle',
+    'quantite_manuelle', 'prix_manuel',
+    # NTCPQ18 — rattachement à un LOT (site/bâtiment). Aucun chemin de
+    # création ne l'écrit aujourd'hui (le lot se pose après coup, à l'écran),
+    # mais il APPARTIENT au jeu complet : un test le vérifie contre le modèle,
+    # pour qu'aucun champ ne devienne inatteignable par l'écrivain unique.
+    'lot', 'lot_id',
+)
+
+
+def creer_ligne(devis, **champs):
+    """QJR84 — crée UNE ``LigneDevis``. Le seul endroit de ``apps/ventes`` où
+    une ligne de devis naît.
+
+    Les champs NON fournis gardent le défaut du MODÈLE : un appelant qui
+    n'écrivait pas ``variante`` hier obtient exactement la ligne d'hier. Ce
+    n'est donc pas une couche de valeurs par défaut — c'est un GOULOT, et il
+    ne change aucun comportement à lui seul.
+
+    Lève ``ValueError`` (en français) sur un champ hors ``CHAMPS_LIGNE`` : un
+    nom mal orthographié n'a plus le droit de disparaître dans un ``**spec``.
+    """
+    from ..models import LigneDevis
+
+    inconnus = sorted(set(champs) - set(CHAMPS_LIGNE))
+    if inconnus:
+        raise ValueError(
+            'Champ de ligne de devis inconnu : %s. Le jeu de champs complet '
+            'est déclaré dans CHAMPS_LIGNE (apps/ventes/domain/lignes.py) — '
+            'ajoutez-l\'y plutôt que de contourner l\'écrivain unique.'
+            % ', '.join(inconnus))
+    for objet, cle in (('produit', 'produit_id'), ('lot', 'lot_id')):
+        if objet in champs and cle in champs:
+            raise ValueError(
+                'Une ligne se rattache à son %s par « %s » OU par « %s », '
+                'jamais par les deux.' % (objet, objet, cle))
+    return LigneDevis.objects.create(devis=devis, **champs)
+
+
 # ── L-FORFAIT / QJR83 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE ───────────
 #
 # Constat QB83 (audit L3 du 29/08/2026), vérifié en code : AUCUN chemin ne
@@ -497,8 +613,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
             if not designation:
                 raise ValueError(
                     'Une ligne de section/note doit porter un intitulé.')
-            LigneDevis.objects.create(
-                devis=devis, produit=None,
+            creer_ligne(
+                devis, produit=None,
                 designation=designation[:255],
                 quantite=None, prix_unitaire=None, remise=Decimal('0'),
                 taux_tva=None, type_ligne=type_ligne, ordre=ordre)
@@ -534,8 +650,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
         variante = str(li.get('variante') or '')
         if variante not in _VALID_VARIANTES:
             variante = ''
-        LigneDevis.objects.create(
-            devis=devis, produit=produit,
+        creer_ligne(
+            devis, produit=produit,
             designation=(li.get('designation') or produit.nom)[:255],
             quantite=qte, prix_unitaire=pu, remise=remise,
             taux_tva=Decimal(str(taux)) if taux is not None else None,

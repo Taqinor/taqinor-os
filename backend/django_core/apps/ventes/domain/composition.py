@@ -1390,8 +1390,6 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     ``pipeline.composer`` — LE composeur, celui de l'aperçu et de la création —
     et il ESTAMPILLE la variante de l'option qu'il répare.
     """
-    from apps.ventes.models import LigneDevis
-
     if float(kwc or 0) <= 0:
         # Sans puissance, le kit n'est pas dimensionnable : on ne devine pas.
         return 0
@@ -1494,8 +1492,8 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                     avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
                 continue
             ordre += 1
-            LigneDevis.objects.create(
-                devis=devis, produit=spec.produit,
+            creer_ligne(
+                devis, produit=spec.produit,
                 designation=spec.designation,
                 quantite=Decimal(str(spec.quantite)),
                 prix_unitaire=Decimal(spec.prix_unitaire),
@@ -1606,6 +1604,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
     cible_depuis_lignes,
+    creer_ligne,
     lignes_de_variante,
 )
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401

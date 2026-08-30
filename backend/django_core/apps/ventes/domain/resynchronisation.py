@@ -217,7 +217,7 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """
     from django.db import transaction
 
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import Devis
 
     layout = layout if isinstance(layout, dict) else {}
     nouveau_hash = layout_hash(layout)
@@ -360,8 +360,8 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                     'Aucun panneau tarifé au catalogue : la ligne de panneaux '
                     'n\'a pas pu être créée. Ajoutez un panneau tarifé.')
             else:
-                LigneDevis.objects.create(
-                    devis=verrou, produit=panneau, designation=panneau.nom,
+                creer_ligne(
+                    verrou, produit=panneau, designation=panneau.nom,
                     quantite=Decimal(str(cible_panneaux)),
                     prix_unitaire=Decimal(panneau.prix_vente),
                     remise=Decimal('0'))
@@ -638,8 +638,8 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                         'batterie n\'a pas pu être ajoutée. Ajoutez une '
                         'batterie tarifée.')
             else:
-                LigneDevis.objects.create(
-                    devis=verrou, produit=batterie, designation=batterie.nom,
+                creer_ligne(
+                    verrou, produit=batterie, designation=batterie.nom,
                     quantite=Decimal('1'),
                     prix_unitaire=Decimal(batterie.prix_vente),
                     remise=Decimal('0'))
@@ -740,8 +740,8 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                 return None
             ordre_max = max([int(li.ordre or 0)
                              for li in verrou.lignes.all()] or [0])
-            return LigneDevis.objects.create(
-                devis=verrou, produit=produit, designation=produit.nom,
+            return creer_ligne(
+                verrou, produit=produit, designation=produit.nom,
                 quantite=Decimal('1'),
                 prix_unitaire=Decimal(produit.prix_vente),
                 remise=Decimal('0'), ordre=ordre_max + 1)
@@ -967,6 +967,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
 from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
+    creer_ligne,
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_LES_DEUX,

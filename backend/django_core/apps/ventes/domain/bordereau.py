@@ -327,8 +327,8 @@ def ajouter_lignes_boq_electrique(devis, user=None):
             if produit is None:
                 manques.append({'designation': designation,
                                 'quantite': float(quantite), 'spec': spec})
-                LigneDevis.objects.create(
-                    devis=devis, produit=None, designation=intitule,
+                creer_ligne(
+                    devis, produit=None, designation=intitule,
                     quantite=None, prix_unitaire=None, remise=Decimal('0'),
                     taux_tva=None, type_ligne=LigneDevis.TypeLigne.NOTE,
                     ordre=ordre)
@@ -336,8 +336,8 @@ def ajouter_lignes_boq_electrique(devis, user=None):
                                'quantite': None, 'type_ligne': 'note',
                                'a_chiffrer': True})
             else:
-                LigneDevis.objects.create(
-                    devis=devis, produit=produit, designation=intitule,
+                creer_ligne(
+                    devis, produit=produit, designation=intitule,
                     quantite=quantite, prix_unitaire=_boq_prix(produit),
                     remise=Decimal('0'), taux_tva=None,
                     type_ligne=LigneDevis.TypeLigne.PRODUIT, ordre=ordre)
@@ -462,8 +462,6 @@ def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
     ``brouillon``."""
     from django.db import transaction
 
-    from apps.ventes.models import LigneDevis
-
     memes_lignes = (_signature_lignes_devis(devis)
                     == _signature_specs_bordereau(a_ecrire))
     memes_entetes = (
@@ -484,7 +482,7 @@ def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
     with transaction.atomic():
         devis.lignes.all().delete()
         for spec in a_ecrire:
-            LigneDevis.objects.create(devis=devis, **spec)
+            creer_ligne(devis, **spec)
         devis.taux_tva = Decimal(bordereau.taux_tva_defaut or 20)
         devis.remise_globale = Decimal(bordereau.remise_globale_pct or 0)
         etude = dict(devis.etude_params or {})
@@ -713,7 +711,7 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
             etude_params={'origine': origine},
         )
         for spec in a_ecrire:
-            LigneDevis.objects.create(devis=devis, **spec)
+            creer_ligne(devis, **spec)
         return devis
 
     devis = create_with_reference(Devis, 'DEV', company, _creer)
@@ -794,3 +792,5 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
 # façade : les ré-exports de ``services.py`` s'exécutent dans l'ordre des
 # tâches, donc le bloc QJR68 ne porte pas encore les noms de QJR75.
 from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+# QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
