@@ -125,7 +125,11 @@ import {
 } from '../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
-import { moteur, apercu, absent, estFait } from '../../features/ventes/quote/valeur'
+// QJR102 — `apercu` n'est plus importé ici : la seule valeur d'aperçu que cet
+// écran signait était le balayage local du dimensionnement affiché, devenu
+// injoignable (la puce « estimation d'exemple » des cartes ROI, elle, passe
+// par `CarteMetrique`, qui possède le déballeur).
+import { moteur, absent, estFait } from '../../features/ventes/quote/valeur'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -171,37 +175,26 @@ const valeurMoteurDim = (srv) => (Number(srv?.panneaux) > 0
   ? moteur({ nbPanneaux: srv.panneaux, kwc: srv.kwc })
   : absent(RIEN_A_CHIFFRER))
 
-/** Optimum du balayage LOCAL (`sizingInfo`) — un repère, pas une mesure. */
-const valeurApercuDim = (local) => (local?.nbPanneaux > 0
-  ? apercu({ nbPanneaux: local.nbPanneaux, kwc: local.kwcOptimal })
-  : absent(RIEN_A_CHIFFRER))
-
 /**
  * QJR99 — remplace la CHAÎNE DE TERNAIRES `deuxValeursDim`. Chaque branche
  * devient une VALEUR SIGNÉE (QJR86) : `moteur` = moteur horaire serveur,
- * `apercu` = balayage local (`sizingInfo`), `absent(motif)` = rien de
- * calculable — jamais un chiffre inventé. La règle F3 (26/08) est alors
- * EXPRIMÉE au lieu d'être une cascade de `if` : la PAIRE ne se rend que si les
- * deux branches partagent la MÊME source, sinon seule la branche sourcée sort.
- * Rend la même forme qu'avant (`{ sans, avec }`, chacun `{nbPanneaux, kwc}` ou
- * `null`) : le JSX est inchangé.
+ * `absent(motif)` = rien de calculable — jamais un chiffre inventé.
+ *
+ * QJR102 — la branche `apercu` (balayage local `sizingInfo`) EST SUPPRIMÉE :
+ * elle était injoignable (voir `deuxValeursDim`). Il ne reste donc QU'UNE
+ * source possible, et la règle F3 (« jamais une paire mixte ») devient une
+ * propriété du type au lieu d'une comparaison à faire : deux valeurs `moteur`
+ * ou rien. Rend la même forme qu'avant (`{ sans, avec }`, chacun
+ * `{nbPanneaux, kwc}` ou `null`) : le JSX est inchangé.
  */
-const paireDimensionnement = (srvSans, srvAvec, localSans, localAvec) => {
+const paireDimensionnement = (srvSans, srvAvec) => {
   const mSans = valeurMoteurDim(srvSans)
   const mAvec = valeurMoteurDim(srvAvec)
-  const aSans = valeurApercuDim(localSans)
-  const aAvec = valeurApercuDim(localAvec)
-  // La PAIRE ne sort que d'une SOURCE UNIQUE des deux côtés (F3) — le moteur
-  // d'abord, puis l'aperçu local. C'est la seule façon de rendre le DELTA
-  // affiché comparable.
   if (estFait(mSans) && estFait(mAvec)) return { sans: mSans.valeur, avec: mAvec.valeur }
-  if (estFait(aSans) && estFait(aAvec)) return { sans: aSans.valeur, avec: aAvec.valeur }
-  // Sinon UNE seule valeur, jamais la paire mixte — priorité moteur > aperçu,
-  // et « sans » avant « avec », comme la cascade historique.
+  // Une seule branche chiffrée : elle sort SEULE — « sans » avant « avec »,
+  // comme la cascade historique.
   if (estFait(mSans)) return { sans: mSans.valeur, avec: null }
-  if (estFait(aSans)) return { sans: aSans.valeur, avec: null }
   if (estFait(mAvec)) return { sans: null, avec: mAvec.valeur }
-  if (estFait(aAvec)) return { sans: null, avec: aAvec.valeur }
   return { sans: null, avec: null }
 }
 
@@ -1380,31 +1373,22 @@ export default function DevisGenerator({
       besoinKwc, marques: marquesActives,
       consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
     })
-    // L-2OPT (fondateur 24/08) — second optimiseur, MÊME balayage, objectif
-    // AVEC batterie (`avecBatterie: true` — optimalKwcByPayback l'accepte
-    // déjà, jamais utilisé jusqu'ici) : la taille optimale « avec » peut
-    // différer de la taille optimale « sans » (le coût batterie déplace le
-    // point de payback minimal). Exposé en `.avec`, JAMAIS à la place du
-    // résultat plat ci-dessous (`sizing.nbPanneaux` reste le SANS — contrat
-    // gardé par DevisGeneratorNbPanneauxTouched.test.mjs).
-    const optAvec = optimalKwcByPayback({
-      produits, factures, dayUsagePct,
-      panelW, structureType, discountPct,
-      kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-      besoinKwc, marques: marquesActives, avecBatterie: true,
-      // Même consommation réelle que la branche SANS : les deux optimiseurs
-      // dimensionnent le MÊME client, pas deux consommations différentes.
-      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
-    })
+    // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
+    // la clé imbriquée du même nom) EST SUPPRIMÉ : il était RÉSIDENTIEL-ONLY
+    // et le résidentiel ne passe plus jamais par ce balayage depuis U3-MOTEUR.
+    // Preuve d'injoignabilité (greps joints au commit) : cette clé n'avait
+    // qu'UN lecteur, la branche locale de `deuxValeursDim`, dans une fonction
+    // qui rend `{sans:null, avec:null}` hors résidentiel — et EN résidentiel le
+    // reducer met TOUJOURS `sizingInfo` à `null` (sizingReducer.js:253/278 pour
+    // les pré-remplissages, :358 pour le recalcul). Les trois appelants
+    // restants (`applyLead`, `applySiteProfile`, `syncBillEstimator`) sont tous
+    // gardés par `!== 'residentiel'`. Le balayage ci-dessus, lui, reste le seul
+    // dimensionneur des marchés sans moteur serveur.
+    // `optimalKwcByPayback` GARDE son paramètre d'axe stockage (décision
+    // fondateur D11 : il reste le moteur de 3 marchés sur 4, et
+    // solar.deuxOptimiseurs.test.mjs le couvre en propre).
     let result = null
-    if (opt.nbPanneaux > 0) {
-      const sansPart = { besoinKwc, ...opt }
-      // Jamais de chiffre inventé (règle #4) : sans optimum AVEC exploitable,
-      // il retombe sur le SANS — aucune divergence fabriquée entre les deux
-      // branches.
-      const avecPart = (optAvec.nbPanneaux > 0) ? { besoinKwc, ...optAvec } : sansPart
-      result = { ...sansPart, avec: avecPart }
-    }
+    if (opt.nbPanneaux > 0) result = { besoinKwc, ...opt }
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic,
@@ -1434,49 +1418,34 @@ export default function DevisGenerator({
 
   // FOUNDER 26/08 — les DEUX valeurs de dimensionnement pour l'AFFICHAGE
   // (« Recommandé sans batterie : N panneaux · X kWc » / « … avec … »),
-  // INDÉPENDANTES du scénario choisi — contrairement à `sizingInfo` qui
-  // aplatit déjà le résultat sur UNE seule branche (celle du scénario). Le
-  // moteur horaire serveur (recommandation/recommandation_avec, source de
-  // vérité) prime dès qu'il a répondu pour la composition EN COURS ; repli
-  // sur `sizingInfo` — déjà en ÉTAT (posé par applyLead/applySiteProfile/
-  // syncBillEstimator/recalculerDimensionnement), JAMAIS recalculé ici :
-  // appeler `computeAutoSizing` pendant le RENDU lirait `sizingCacheRef.current`
-  // hors d'un effet/gestionnaire (règle react-hooks/refs — ESLint le refuse).
-  // Résidentiel UNIQUEMENT : l'agricole n'a aucune notion de facture → kWc
-  // (dimensionnement pompage, HMT/débit) et l'industriel/commercial ne
-  // vendent jamais l'option batterie (`composeLocalement` force ces
-  // quantités à 0 quel que soit le scénario) — y afficher une valeur « avec »
-  // serait un chiffre fabriqué. `null` = rien de calculable pour l'instant
-  // (avant toute frappe/recalcul — jamais un défaut inventé, règle #4).
+  // INDÉPENDANTES du scénario choisi. Résidentiel UNIQUEMENT : l'agricole n'a
+  // aucune notion de facture → kWc (dimensionnement pompage, HMT/débit) et
+  // l'industriel/commercial ne vendent jamais l'option batterie
+  // (`composeLocalement` force ces quantités à 0 quel que soit le scénario) —
+  // y afficher une valeur « avec » serait un chiffre fabriqué. `null` = rien de
+  // calculable pour l'instant (jamais un défaut inventé, règle #4).
   //
   // F3 (revue adversariale 26/08) — sans/avec ne se repliaient PAS ensemble :
   // un côté pouvait venir du serveur (moteur horaire PVGIS) pendant que
-  // l'autre retombait sur le balayage local (`sizingInfo`/`.avec`) — deux
-  // méthodes de calcul DIFFÉRENTES dont l'ÉCART affiché n'était alors plus
-  // comparable (chaque nombre reste réel pris isolément, mais leur DELTA ne
-  // veut plus rien dire). Correctif : la PAIRE ne s'affiche que si les DEUX
-  // branches partagent la MÊME source (serveur+serveur ou local+local) ;
-  // sinon seule la valeur sourcée s'affiche, jamais la paire mixte.
+  // l'autre retombait sur le balayage local — deux méthodes de calcul
+  // DIFFÉRENTES dont l'ÉCART affiché n'était alors plus comparable. La règle
+  // (la paire n'existe qu'à SOURCE UNIQUE) vit maintenant dans
+  // `paireDimensionnement` (QJR99, haut de ce fichier), où elle est EXPRIMÉE
+  // par les valeurs signées (QJR86) au lieu d'être une cascade de `if`.
   //
-  // QJR99 — la chaîne de ternaires (`srvSansOk`/`localSansOk`/`asSans()`…) est
-  // SUPPRIMÉE au profit de `paireDimensionnement` (haut de ce fichier), qui
-  // SIGNE chaque branche (QJR86) au lieu de la deviner : `moteur` pour le
-  // serveur, `apercu` pour le balayage local, `absent(motif)` quand rien n'est
-  // chiffrable. La règle F3 devient alors une comparaison de sources, et la
-  // cascade ne peut plus se contredire elle-même (l'ancien `asSans()` préférait
-  // le serveur MÊME dans la branche « paire locale » — une paire mixte que la
-  // règle interdit, restée inatteignable seulement parce que `sizingInfo` est
-  // toujours `null` en résidentiel depuis U3-MOTEUR).
+  // QJR102 — LA BRANCHE LOCALE EST SUPPRIMÉE. Elle était structurellement
+  // injoignable : cette fonction rend `{sans:null, avec:null}` hors
+  // résidentiel, et EN résidentiel `sizingInfo` vaut TOUJOURS `null` depuis
+  // U3-MOTEUR (le reducer l'y met à `null` sur les trois pré-remplissages —
+  // sizingReducer.js:253/278 — et sur le recalcul — :358). Elle masquait le
+  // bug de SOURCE MIXTE que F3 interdit (l'ancien `asSans()` préférait le
+  // serveur jusque dans la branche « paire locale »). Le dimensionnement
+  // affiché ici ne peut donc plus venir que du MOTEUR — une seule source, un
+  // écart toujours comparable.
   const deuxValeursDim = (() => {
     if (modeInstallation !== 'residentiel') return { sans: null, avec: null }
     const dim = etudeHoraireDonnees?.dimensionnement
-    // `sizingInfo` porte DÉJÀ les chiffres « avec » directement (aplati) en
-    // scénario mono « Avec batterie » — même convention que ses producteurs
-    // (applyLead et consorts) ; sinon c'est la branche sans, avec `.avec` imbriqué.
-    const localSans = (scenario === SCENARIO_AVEC) ? null : sizingInfo
-    const localAvec = (scenario === SCENARIO_AVEC) ? sizingInfo : sizingInfo?.avec
-    return paireDimensionnement(
-      dim?.recommandation, dim?.recommandation_avec, localSans, localAvec)
+    return paireDimensionnement(dim?.recommandation, dim?.recommandation_avec)
   })()
 
   const applyLead = (id) => {

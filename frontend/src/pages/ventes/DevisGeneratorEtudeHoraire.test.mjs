@@ -145,7 +145,7 @@ test('L-2OPT : le miroir local `roiAvec` est calculé au kWc AVEC, null quand ri
 // et l'ascension finissait toujours au plafond du balayage (mesuré : besoin
 // 100 kWc → 100 kWc retenus, 522 341 MAD).
 
-test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation réelle + le distributeur', () => {
+test('FINDING 25/08 : le dimensionnement passe la consommation réelle + le distributeur', () => {
   const idx = DG.indexOf('const computeAutoSizing = useCallback(')
   assert.ok(idx > -1, 'computeAutoSizing introuvable')
   const bloc = DG.slice(idx, DG.indexOf('sizingCacheRef.current = { key, result }', idx))
@@ -153,10 +153,12 @@ test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation
   // jamais un chiffre posé.
   assert.match(bloc, /consoAnnuelleDepuisFactures\(factures, distributeurBalayage\)/)
   assert.match(bloc, /Number\(consoAnnuelleReelle\) > 0/)
-  // Les DEUX optimiseurs (sans ET avec batterie) la reçoivent.
+  // QJR102 — il ne reste qu'UN balayage (le second, résidentiel-only, a été
+  // supprimé : injoignable depuis U3-MOTEUR). Il reçoit toujours la conso
+  // réelle et le distributeur — c'est CE contrat-là que le finding protège.
   const appels = bloc.match(/consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage/g) || []
-  assert.equal(appels.length, 2,
-    'les deux appels optimalKwcByPayback (sans + avec batterie) doivent recevoir la conso réelle')
+  assert.equal(appels.length, 1,
+    "l'appel optimalKwcByPayback doit recevoir la conso réelle et le distributeur")
   // Le distributeur pilote le barème : il entre dans la clé de cache, sinon
   // le balayage resservirait un résultat calculé sur un autre barème.
   assert.match(bloc, /distributeurBalayage, consoAnnuelleReelle \?\? ''\]\.join\('\|'\)/)

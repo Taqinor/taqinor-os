@@ -243,66 +243,57 @@ test('deuxValeursDim : jamais un chiffre inventé — computeAutoSizing n\'est j
   // corps du composant, pas dans un effet/gestionnaire) — interdit par la
   // règle ESLint react-hooks/refs, vérifiée en CI (backend-lint côté frontend).
   assert.doesNotMatch(bloc, /computeAutoSizing/)
-  assert.match(bloc, /const localSans = \(scenario === SCENARIO_AVEC\) \? null : sizingInfo/)
-  assert.match(bloc, /const localAvec = \(scenario === SCENARIO_AVEC\) \? sizingInfo : sizingInfo\?\.avec/)
+  // QJR102 — et plus AUCUN repli local non plus : `sizingInfo` vaut TOUJOURS
+  // `null` en résidentiel depuis U3-MOTEUR, donc la branche d'aperçu était
+  // injoignable ET masquait la paire mixte que F3 interdit.
+  assert.doesNotMatch(bloc, /sizingInfo/,
+    "le dimensionnement affiché ne peut plus venir que du moteur serveur")
 })
 
 // QJR99 — la chaîne de ternaires est remplacée par `paireDimensionnement`, qui
-// SIGNE chaque branche (`moteur` / `apercu` / `absent`, QJR86) au lieu de la
-// deviner : la règle F3 devient une comparaison de sources explicite. Les
-// épingles suivent la fonction ; la PREUVE par les données ci-dessous est
-// inchangée, et c'est elle qui garde le comportement.
-test('F3 (revue adversariale) — deuxValeursDim n\'affiche la PAIRE que si sans/avec partagent la MÊME source (serveur+serveur ou local+local), jamais un mélange', () => {
-  const idx = DG.indexOf('const paireDimensionnement = (srvSans, srvAvec, localSans, localAvec) => {')
+// SIGNE chaque branche (QJR86) au lieu de la deviner.
+// QJR102 — et la branche `apercu` (balayage LOCAL) est SUPPRIMÉE, parce qu'elle
+// était structurellement injoignable : `deuxValeursDim` rend `{null, null}`
+// hors résidentiel, et EN résidentiel `sizingInfo` vaut toujours `null` depuis
+// U3-MOTEUR. Il ne reste donc QU'UNE source possible — le moteur — ce qui rend
+// la règle F3 (« jamais une paire mixte ») VRAIE PAR CONSTRUCTION au lieu
+// d'être une comparaison à faire. La preuve par les données ci-dessous suit ce
+// changement : elle vérifie désormais qu'aucune combinaison ne peut produire
+// une valeur non-moteur.
+test('F3 (revue adversariale) + QJR102 — deuxValeursDim ne peut plus produire QU\'UNE source (moteur) : la paire mixte est impossible par construction', () => {
+  const idx = DG.indexOf('const paireDimensionnement = (srvSans, srvAvec) => {')
   assert.ok(idx > -1, 'paireDimensionnement introuvable')
-  const bloc = DG.slice(idx, idx + 1300)
+  const bloc = DG.slice(idx, idx + 900)
   // Chaque branche est SIGNÉE de sa source — jamais un nombre nu.
   assert.match(bloc, /const mSans = valeurMoteurDim\(srvSans\)/)
   assert.match(bloc, /const mAvec = valeurMoteurDim\(srvAvec\)/)
-  assert.match(bloc, /const aSans = valeurApercuDim\(localSans\)/)
-  assert.match(bloc, /const aAvec = valeurApercuDim\(localAvec\)/)
-  // La PAIRE ne sort que d'un bloc qui exige les DEUX cases de la MÊME source.
+  // Plus AUCUNE branche d'aperçu : ni la fonction, ni ses variables.
+  assert.doesNotMatch(bloc, /valeurApercuDim|localSans|localAvec/,
+    'la branche locale doit avoir disparu (QJR102)')
+  assert.doesNotMatch(DG, /const valeurApercuDim =/,
+    "l'aide de signature d'aperçu n'a plus d'appelant : elle doit être supprimée")
+  // La PAIRE exige les DEUX cases ; sinon UNE seule valeur, jamais un mélange.
   assert.match(bloc, /if \(estFait\(mSans\) && estFait\(mAvec\)\) return \{ sans: mSans\.valeur, avec: mAvec\.valeur \}/)
-  assert.match(bloc, /if \(estFait\(aSans\) && estFait\(aAvec\)\) return \{ sans: aSans\.valeur, avec: aAvec\.valeur \}/)
-  // Et les replis à UNE valeur ne mélangent jamais deux sources.
   assert.match(bloc, /if \(estFait\(mSans\)\) return \{ sans: mSans\.valeur, avec: null \}/)
-  assert.match(bloc, /if \(estFait\(aSans\)\) return \{ sans: aSans\.valeur, avec: null \}/)
   assert.match(bloc, /if \(estFait\(mAvec\)\) return \{ sans: null, avec: mAvec\.valeur \}/)
-  assert.match(bloc, /if \(estFait\(aAvec\)\) return \{ sans: null, avec: aAvec\.valeur \}/)
+  assert.match(bloc, /return \{ sans: null, avec: null \}/)
+
   // Reproduit la logique EXACTE avec de vraies données pour prouver le
-  // comportement (pas seulement sa présence textuelle) : une PAIRE cohérente
-  // (même source pour les deux branches) prime toujours sur un repli
-  // partiel — un repli « serveur sans + local avec » (le mélange que F3
-  // interdit) ne doit JAMAIS sortir de cette fonction, quelle que soit la
-  // combinaison de disponibilités.
-  function dedup(srvSansOk, srvAvecOk, localSansOk, localAvecOk) {
+  // comportement (pas seulement sa présence textuelle) : aucune combinaison
+  // ne doit produire une valeur qui ne vienne pas du moteur, et « sans »
+  // reste la première branche testée.
+  function dedup(srvSansOk, srvAvecOk) {
     if (srvSansOk && srvAvecOk) return 'PAIRE_SERVEUR'
-    if (localSansOk && localAvecOk) return 'PAIRE_LOCAL'
     if (srvSansOk) return 'SANS_SEUL_SERVEUR'
-    if (localSansOk) return 'SANS_SEUL_LOCAL'
     if (srvAvecOk) return 'AVEC_SEUL_SERVEUR'
-    if (localAvecOk) return 'AVEC_SEUL_LOCAL'
     return 'RIEN'
   }
-  // Local a les DEUX branches prêtes → une paire COHÉRENTE (delta comparable,
-  // même méthode des deux côtés) prime sur un repli partiel serveur-seul,
-  // même si le serveur a AUSSI répondu pour une des deux branches : mélanger
-  // « sans » serveur avec « avec » local romprait la comparabilité (F3) — la
-  // paire locale cohérente est strictement meilleure qu'un repli à une seule
-  // valeur ici.
-  assert.equal(dedup(true, false, true, true), 'PAIRE_LOCAL',
-    'local dispo des deux côtés : une paire cohérente prime sur un repli sans-seul-serveur')
-  // Ni pair serveur ni pair local possible (sans=local seul dispo, avec=serveur
-  // seul dispo) : JAMAIS le mélange local-sans/serveur-avec — repli sur UNE
-  // seule valeur (sans, la première testée dans la cascade).
-  assert.equal(dedup(false, true, true, false), 'SANS_SEUL_LOCAL',
-    'aucune paire de même source possible : une seule valeur, jamais le mélange serveur-avec/local-sans')
-  // Preuve directe du bug rapporté : sans serveur dispo, avec NI serveur NI
-  // local dispo → jamais de valeur avec fabriquée, sans seul s'affiche.
-  assert.equal(dedup(true, false, false, false), 'SANS_SEUL_SERVEUR')
-  assert.equal(dedup(true, true, false, false), 'PAIRE_SERVEUR')
-  assert.equal(dedup(false, false, true, true), 'PAIRE_LOCAL')
-  assert.equal(dedup(false, false, false, false), 'RIEN')
+  assert.equal(dedup(true, true), 'PAIRE_SERVEUR')
+  // Le serveur n'a chiffré QUE le sans : jamais de valeur « avec » fabriquée
+  // pour compléter la paire (c'était le bug rapporté).
+  assert.equal(dedup(true, false), 'SANS_SEUL_SERVEUR')
+  assert.equal(dedup(false, true), 'AVEC_SEUL_SERVEUR')
+  assert.equal(dedup(false, false), 'RIEN')
 })
 
 test('affichage : le bloc « Recommandé sans/avec batterie » est résidentiel-only, respecte showSans/showAvec, ET son garde extérieur reflète EXACTEMENT ce qui va rendre (F4 — jamais un wrapper vide)', () => {
