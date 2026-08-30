@@ -121,8 +121,19 @@ class TestPV72FullChain(TestCase):
 
     def test_explicit_load_curve_skips_lead_synthesis(self, mock_prod, mock_tmy):
         devis = self._devis()  # aucun lead — mais load_curve fourni explicitement
+        # QJR146 (h) — LA COURBE EXPLICITE DOIT AVOIR LA RÉSOLUTION DE L'ÉTUDE :
+        # 288 points (12 mois × jour-type 24 h), comme la production agrégée et
+        # comme ``etude._tiled_load_curve``. Les 24 points d'avant décrivaient
+        # UN SEUL JOUR face à une production annuelle : l'étude rendait alors
+        # des totaux « annuels » calculés sur un jour, silencieusement — c'est
+        # exactement le défaut que ``hourly_self_consumption`` refuse désormais
+        # au lieu de tronquer sur la plus courte série. Le commentaire PV72 de
+        # ``etude.py`` posait déjà cette règle (« jamais l'auto-synthèse 24 pts
+        # …, qui tronquerait la production réelle ») : cette fixture ne la
+        # respectait pas. L'intention du test — une courbe explicite court-
+        # circuite la synthèse depuis le lead — est inchangée.
         result = run_bankable_study(
-            devis, zones=[self._zone()], load_curve=[5.0] * 24)
+            devis, zones=[self._zone()], load_curve=[5.0] * 288)
         self.assertFalse(any(
             'consommation du lead non renseignée' in w
             for w in result['warnings']))
