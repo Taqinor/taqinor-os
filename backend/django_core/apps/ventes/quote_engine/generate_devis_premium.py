@@ -350,6 +350,12 @@ FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
 CUMUL_A = [-TOTAL_AVEC + QUOTE_INPUT["eco_a_cumul"] * y for y in YEARS]
+# QJR125 — la série tracée est-elle le cashflow RÉEL du devis (dégradation,
+# rendement batterie, provision onduleur) ou le repli « économie plate » ? Le
+# repli est faux de +14,5 % / +36,6 % sur le gain final (M5) : on ne le TRACE
+# plus. Ces drapeaux sont posés par ``apply_quote_data``.
+CUMUL_S_REEL = False
+CUMUL_A_REEL = False
 
 SCENARIO    = "Les deux (Sans + Avec)"
 RECOMMENDED = "Avec batterie"
@@ -1108,6 +1114,34 @@ def _style_ax(fig, ax):
     ax.tick_params(colors=CG4, labelsize=8)
     ax.grid(axis="y", color="#F3F4F6", linewidth=0.8, zorder=0)
 
+def _roi_de_la_courbe(cumul):
+    """QJR125 — année du croisement à ZÉRO de la série TRACÉE (interpolée).
+
+    L'étoile « ROI ~N ans » était posée à l'abscisse de ``roi_s``/``roi_a``,
+    qui redevient un payback LINÉAIRE (``_ref_total / eco``) dès que l'étude
+    porte ses propres économies : le point d'équilibre ANNONCÉ ne coïncidait
+    alors pas avec celui DESSINÉ, sous un titre qui promet « Point de retour
+    sur investissement ». ``None`` quand la courbe ne croise jamais zéro —
+    l'étoile n'est alors pas posée.
+    """
+    for annee in range(1, len(cumul)):
+        if cumul[annee] >= 0:
+            precedent = cumul[annee - 1]
+            span = cumul[annee] - precedent
+            frac = (0 - precedent) / span if span else 0.0
+            return round((annee - 1) + frac, 1)
+    return None
+
+
+def _courbes_roi_tracables():
+    """QJR125 — les branches AFFICHÉES portent-elles toutes leur cumul réel ?"""
+    if SCENARIO != 'Avec batterie' and not CUMUL_S_REEL:
+        return False
+    if SCENARIO != 'Sans batterie' and not CUMUL_A_REEL:
+        return False
+    return True
+
+
 def make_chart_roi():
     # Ratio EXACTEMENT celui du cadre d'affichage (680×170 px = 4:1) et
     # rendu SANS recadrage : l'image remplit son cadre, nette, sans
@@ -1124,9 +1158,18 @@ def make_chart_roi():
     if _show_a:
         ax.fill_between(x, ya, 0, where=(ya >= 0), alpha=0.08, color=CA,  zorder=2)
         ax.plot(x, ya, color=CA,  linewidth=2.5, label="Avec batterie",  zorder=4, solid_capstyle="round")
+    # QJR125 — l'étoile sort du croisement à zéro de la courbe TRACÉE, plus du
+    # payback annoncé ailleurs : les deux pouvaient désigner deux années
+    # différentes sur la même image. Pas de croisement ⇒ pas d'étoile.
     _roi_pts = []
-    if _show_s: _roi_pts.append((ROI_S, CUMUL_S, CNM, f"ROI ~{ROI_S} ans"))
-    if _show_a: _roi_pts.append((ROI_A, CUMUL_A, CA,  f"ROI ~{ROI_A} ans"))
+    if _show_s:
+        _r = _roi_de_la_courbe(CUMUL_S)
+        if _r is not None:
+            _roi_pts.append((_r, CUMUL_S, CNM, f"ROI ~{_r} ans"))
+    if _show_a:
+        _r = _roi_de_la_courbe(CUMUL_A)
+        if _r is not None:
+            _roi_pts.append((_r, CUMUL_A, CA, f"ROI ~{_r} ans"))
     _y_offsets = [15, -25]  # Sans batterie above, Avec batterie below
     for i, (roi, cumul, color, lbl) in enumerate(_roi_pts):
         yr = int(roi); fr = roi - yr
@@ -2944,7 +2987,12 @@ def build_html():
     # QJR123 — UNE seule définition, partagée avec les blocs « méthode » et
     # « hypothèses » de la page 3 (qui n'en avaient aucune).
     _sans_economies = _sans_economies_publiees()
-    img_roi = "" if _sans_economies else make_chart_roi()
+    # QJR125 — AUCUN graphe sans cashflow RÉEL. Le repli « économie plate »
+    # (droite) est faux de +14,5 % / +36,6 % sur le gain final (M5) et était
+    # tracé sans la moindre mention : on omet la carte, comme sous
+    # ``_sans_economies``.
+    img_roi = ("" if (_sans_economies or not _courbes_roi_tracables())
+               else make_chart_roi())
     img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
     annexe_html = (page_annexe_technique()
@@ -3738,11 +3786,17 @@ def apply_quote_data(data: dict) -> None:
     # Le VRAI cumul est déjà dans les données (``cashflow_sans``/
     # ``cashflow_avec``, calculé par ``compute_cashflow_payback``) : on le trace
     # tel quel — la droite ne subsiste qu'en repli, si le cumul manque.
+    # QJR125 — le repli « droite plate » n'est plus TRACÉ : il n'est conservé
+    # que pour garder les listes bien formées (le graphe entier est omis quand
+    # le cumul réel manque, exactement comme sous ``_sans_economies``).
+    global CUMUL_S_REEL, CUMUL_A_REEL
     _cf_s = list(data.get("cashflow_sans") or [])
     _cf_a = list(data.get("cashflow_avec") or [])
-    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if len(_cf_s) >= 25
+    CUMUL_S_REEL = len(_cf_s) >= 25
+    CUMUL_A_REEL = len(_cf_a) >= 25
+    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if CUMUL_S_REEL
                else [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS])
-    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if len(_cf_a) >= 25
+    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if CUMUL_A_REEL
                else [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS])
 
 
