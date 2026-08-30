@@ -749,9 +749,16 @@ _DEFAULT_SITE = "taqinor.ma"
 
 
 def _esc(v) -> str:
-    """Échappe le minimum HTML pour une valeur d'identité insérée en texte."""
-    return (str(v or "").replace("&", "&amp;")
-            .replace("<", "&lt;").replace(">", "&gt;"))
+    """Échappe une valeur d'identité insérée dans le HTML — GUILLEMETS COMPRIS.
+
+    QJR145 (f) — l'échappement s'arrêtait à ``&``/``<``/``>`` alors que la même
+    valeur est insérée dans des ATTRIBUTS (``alt="{brand}"`` des couvertures
+    industrielle et commerciale) : une raison sociale portant un guillemet
+    droit cassait le balisage. ``html.escape(quote=True)`` couvre les deux
+    usages (texte ET attribut) et laisse le rendu inchangé sur toute valeur
+    sans guillemet.
+    """
+    return escape(str(v or ""), quote=True)
 
 
 def company_identity(data: dict) -> dict:

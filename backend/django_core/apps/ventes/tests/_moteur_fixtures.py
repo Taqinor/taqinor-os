@@ -30,6 +30,11 @@ def donnees_legacy(variante="deux", **surcharges):
     d.setdefault("eco_a_cumul", d["eco_a_ann"])
     d.setdefault("scenario", "Les deux (Sans + Avec)")
     d.setdefault("all_items", list(d["sans_items"]))
+    # QJR162 — le moteur LÈVE désormais quand les totaux canoniques manquent
+    # (il ne fabrique plus de chaîne de totaux à taux unique). ``build_quote_data``
+    # sert TOUJOURS ``totaux_all`` ; la fixture le sert donc aussi, aligné sur
+    # ``all_items`` ci-dessus (l'option « sans », par défaut).
+    d.setdefault("totaux_all", d["totaux_sans"])
     d.update(surcharges)
     return d
 

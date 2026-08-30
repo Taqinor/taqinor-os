@@ -44,6 +44,32 @@ def build(ctx):
             f'<div class="c3-step-t">{t}</div>'
             f'<div class="c3-step-s">{s}</div></td>{gap}')
 
+    # QJR118 — mêmes garanties que les paquets résidentiel et industriel :
+    # DÉRIVÉES de la composition réelle par ``residential.theme.warranties_for``
+    # (source unique QRES5), jamais des durées littérales. Les trois cellules
+    # codées en dur contredisaient la source (25 vs 30 ans de performance,
+    # 5-10 vs 10 ans d'onduleur) et surévaluaient de 5× l'engagement de pose
+    # (10 ans imprimés pour 2 ans réels). Aucune durée traçable ⇒ omission.
+    _warranties = [w for w in (theme.warranties_for(d) or [])
+                   if w and str(w[0]).strip()]
+    if _warranties:
+        _cells = "".join(
+            f'<div class="c3-warr-c">'
+            f'<div class="c3-warr-v">{theme._esc(str(n))} {theme._esc(str(u))}</div>'
+            f'<div class="c3-warr-l">{theme._esc(str(label))}</div></div>'
+            for n, u, label, _sub in _warranties)
+        warranties_html = f"""
+  <div class="c3-h2">Garanties</div>
+  <div class="c3-warr">
+    <div class="c3-warr-row">
+      {_cells}
+      <div class="c3-warr-c"><div class="c3-warr-v">O&amp;M</div><div class="c3-warr-l">Maintenance &amp; supervision</div></div>
+    </div>
+  </div>
+"""
+    else:
+        warranties_html = ""
+
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -98,15 +124,7 @@ def build(ctx):
   <div class="c3-sec">Comment nous procédons</div>
   <div class="c3-steprow">{steps_cells}</div>
 
-  <div class="c3-h2">Garanties</div>
-  <div class="c3-warr">
-    <div class="c3-warr-row">
-      <div class="c3-warr-c"><div class="c3-warr-v">25 ans</div><div class="c3-warr-l">Performance panneaux</div></div>
-      <div class="c3-warr-c"><div class="c3-warr-v">5-10 ans</div><div class="c3-warr-l">Onduleurs</div></div>
-      <div class="c3-warr-c"><div class="c3-warr-v">10 ans</div><div class="c3-warr-l">Installation</div></div>
-      <div class="c3-warr-c"><div class="c3-warr-v">O&amp;M</div><div class="c3-warr-l">Maintenance &amp; supervision</div></div>
-    </div>
-  </div>
+  {warranties_html}
 
   <div class="c3-trust">
     Un <b>interlocuteur unique</b> du devis à la mise en service, une <b>supervision

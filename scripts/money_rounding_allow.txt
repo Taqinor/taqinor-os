@@ -82,7 +82,7 @@ backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e2
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::56d1c0aaf98f | Arrondi d'AFFICHAGE du prix unitaire HT d'une ligne (moteur vendore, regle #4) ; le montant persiste passe par les modeles.
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::de15cf116981 | Ratio d'AFFICHAGE : prix au kWc (total de reference / puissance kWc).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::cdfb2513215b | Ratio d'AFFICHAGE : prix au kWc (QJR160 -- total et kWc de la MEME branche).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a598356ce | Multi-villa : total d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18a5faf41 | Total HT d'AFFICHAGE d'une ligne d'option (PU HT x quantite).

@@ -67,16 +67,30 @@ format — but **only when the data is already in context**:
   bursts (`services.rafraichir_etude_horaire_devis` → `etude_horaire.
   _finaliser_glitch`). This half is live today.
 * `etude_params['dimensionnement']` (falaise/résiduel/tranche_apres/
-  remplissage) — **[HANDOFF, still pending]**. It mirrors the exact shape
-  `apps.ventes.dimensionnement.recommander_taille()` returns (same as
-  `POST /ventes/etude-horaire/preview/` with `dimensionner: true`,
-  `apps/ventes/contract_samples/etude_horaire.json`), but as of this lot NO
-  backend write-path persists it onto `Devis.etude_params` — it only exists
-  transiently in the generator-screen preview (`DevisGenerator.jsx`), never
-  round-tripped on save. Until a producer lane writes that key, this half of
-  the renderer stays dark (renders `''`, byte-identical to before this lot)
-  on every real quote. The renderer code and its tests are ready for when it
-  lands — no quote_engine change will be needed on that day.
+  remplissage) — **LIVE depuis T5 (24/08/2026)**. Le producteur backend
+  existe : `services.rafraichir_dimensionnement_devis`
+  (`apps/ventes/domain/etudes.py`) pose la clé sur les devis RÉSIDENTIELS, et
+  le PDF la rend. Elle garde la forme exacte que rend
+  `apps.ventes.dimensionnement.recommander_taille()` (la même que
+  `POST /ventes/etude-horaire/preview/` avec `dimensionner: true`,
+  `apps/ventes/contract_samples/etude_horaire.json`).
+
+  Deux conséquences à ne PAS oublier avant de toucher à cette moitié :
+
+  1. **Le rafraîchisseur COURT-CIRCUITE sur empreinte concordante** (QJR43) :
+     le bloc rangé porte `_empreinte` et n'est recalculé que si l'empreinte des
+     entrées d'aujourd'hui diffère. Un bloc peut donc décrire un état plus
+     ancien du devis que la composition posée — c'est exactement le cas que la
+     garde ci-dessous existe pour attraper.
+  2. **`_optimum_decrit_ce_devis` (QJR13) est le SEUL rempart** entre ce bloc
+     et le document client : elle refuse de publier `residuel_kwh_mois`,
+     `tranche_apres` et `remplissage.moyen` quand l'optimum servi ne décrit
+     pas la composition RÉELLEMENT vendue. Ces chiffres atteignent de vrais
+     clients : ne relâchez pas cette garde, ne la « simplifiez » pas.
+
+  (Cette note affirmait le contraire — « aucun write-path backend », « cette
+  moitié du renderer reste éteinte sur tout devis réel » — ce qui invitait
+  précisément à relâcher la garde. QJR148.)
 
 ## How to catch overlaps before shipping
 
