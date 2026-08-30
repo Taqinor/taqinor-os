@@ -156,6 +156,9 @@ class CreerAutoRelayedCallTest(TestCase):
         # fixture doit donc porter un hybride avec prix, comme un vrai
         # catalogue — sans lui le 201 attendu ici devient un 422 légitime.
         mk('Onduleur hybride Deye 5kW Monophasé', f'ONDH-{company.pk}', 16000)
+        # ... et une batterie tarifée, pour la même raison (le refus QJR82 se
+        # déroule composant par composant : hybride, puis batterie).
+        mk('Batterie Dyness 5.12 kWh', f'BAT-{company.pk}', 9500)
 
     def setUp(self):
         self.company = Company.objects.create(nom='AG45 Relay', slug='ag45-relay')

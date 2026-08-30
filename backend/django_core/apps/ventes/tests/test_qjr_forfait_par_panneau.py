@@ -258,9 +258,16 @@ class LEcrivainUniqueRetarifeCeQuIlEcrit(TestCase):
             prix_par_panneau_ht=Decimal(POSE_PAR_PANNEAU))
 
     def _devis(self):
+        from apps.crm.models import Client
         from apps.ventes.models import Devis
+        # Devis.client est NOT NULL en base — la fixture doit porter un client
+        # réel (première exécution CI : NotNullViolation sans lui).
+        client, _ = Client.objects.get_or_create(
+            company=self.company, email='qjr83@example.com',
+            defaults={'nom': 'QJR83', 'prenom': 'Forfait',
+                      'telephone': '+212600000083'})
         return Devis.objects.create(
-            company=self.company, reference='DEV-QJR83-1',
+            company=self.company, client=client, reference='DEV-QJR83-1',
             statut=Devis.Statut.BROUILLON, created_by=self.user)
 
     def _corps(self, nb_panneaux, *, prix_pose, prix_manuel=False):
