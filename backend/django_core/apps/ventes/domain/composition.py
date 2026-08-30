@@ -1389,6 +1389,15 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     d'onduleur que le chemin de création s'interdit. Il passe désormais par
     ``pipeline.composer`` — LE composeur, celui de l'aperçu et de la création —
     et il ESTAMPILLE la variante de l'option qu'il répare.
+
+    QJR221 — ET IL HÉRITE AUSSI DU **GAMME DU DEVIS**. L'intention partait sans
+    ``gamme_nom_devis``, donc ``carte_marques_composition(company, None)``
+    résolvait la carte de marques PAR DÉFAUT de la société pendant que la
+    moitié CHIRURGICALE de la même resynchro (``_pick_product(..., gamme=
+    gamme_nom(devis))``) utilisait la vraie gamme : un devis Premium d'une
+    société à ``deux_gammes=True`` se faisait compléter avec les marques de
+    l'autre gamme. Une société mono-gamme est byte-identique (``gamme_nom``
+    rend alors la même chose que le défaut).
     """
     if float(kwc or 0) <= 0:
         # Sans puissance, le kit n'est pas dimensionnable : on ne devine pas.
@@ -1407,6 +1416,11 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     catalogue = catalogue_de_la_societe(devis.company)
     taux_tva = (devis.taux_tva if devis.taux_tva is not None
                 else Decimal('20'))
+    # QJR221 — LA GAMME DU DEVIS, lue par LA fonction qui la lit partout
+    # ailleurs dans la resynchro (``domain.gammes.gamme_nom``) : une seule
+    # définition, jamais une seconde lecture d'``etude_params['gamme']``.
+    from apps.ventes.domain.gammes import gamme_nom
+    gamme_devis = gamme_nom(devis)
 
     # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
     # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
@@ -1447,6 +1461,9 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             scenario=vue['scenario'],
             taux_tva=taux_tva,
             phase=phase,
+            # QJR221 — la GAMME du devis (PVMRQ) : sans elle, la carte des
+            # marques était celle par défaut de la société.
+            gamme_nom_devis=gamme_devis,
             # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte
             # à l'écran plutôt que de disparaître dans un kit silencieusement
             # amputé.
