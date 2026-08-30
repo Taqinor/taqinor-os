@@ -193,7 +193,14 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
     kwh = []
     for mad in serie_mad:
         resultat = _inverser(mad)
-        kwh.append(resultat['kwh_mensuel'])
+        valeur = resultat['kwh_mensuel']
+        # QJR142 (e) — l'inversion rend ``None`` quand le montant sort de la
+        # plage inversable (elle rendait ≈ 1 024 000 kWh/mois sans drapeau).
+        # Un mois non inversable rend la SÉRIE inexploitable : on omet tout
+        # plutôt que de mélanger un trou et onze vrais mois.
+        if valeur is None:
+            return None, {}
+        kwh.append(valeur)
 
     if not any(v > 0 for v in kwh):
         return None, {}
