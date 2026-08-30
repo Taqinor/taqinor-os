@@ -50,10 +50,11 @@ class TestDC2CompanyTariff(TestCase):
         self.assertEqual(base['prod_kwh'],
                          round(10.0 * pricing._DEFAULT_PRODUCTIBLE
                                * PRODUCTION_DERATE))
-        # productible surchargé → production différente
-        custom = calculate_savings_roi(10.0, 100000, 120000, productible=1600)
+        # productible surchargé (au-dessus du repli canonique) → production
+        # plus haute que la base
+        custom = calculate_savings_roi(10.0, 100000, 120000, productible=1700)
         self.assertEqual(custom['prod_kwh'],
-                         round(10.0 * 1600 * PRODUCTION_DERATE))
+                         round(10.0 * 1700 * PRODUCTION_DERATE))
         self.assertGreater(custom['prod_kwh'], base['prod_kwh'])
 
     def test_pricing_fallback_tarif_used_when_estimated(self):
