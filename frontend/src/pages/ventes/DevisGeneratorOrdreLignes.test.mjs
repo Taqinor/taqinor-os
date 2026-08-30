@@ -24,6 +24,10 @@ const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
 const DG = read('DevisGenerator.jsx')
 const AQ = read('../../features/ventes/autoQuote.js')
+// QJR100 — la table des lignes (et son bouton « Enregistrer cet ordre ») est
+// extraite dans `generator/LigneTable.jsx` ; la DÉRIVATION et l'appel réseau,
+// eux, restent dans l'écran. Les épingles suivent chaque moitié chez elle.
+const LT = read('generator/LigneTable.jsx')
 
 test('DevisGenerator : importe deriveRoleOrderFromLines de solar.js', () => {
   assert.match(DG, /deriveRoleOrderFromLines,?\s*\n\s*\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/)
@@ -35,9 +39,12 @@ test('DevisGenerator : handleSaveOrdreLignes dérive lines puis PATCH ordre_lign
   assert.match(DG, /ventesApi\.updateParametresGammes\(\{\s*ordre_lignes:\s*derived\s*\}\)/)
 })
 
-test('DevisGenerator : le bouton « Enregistrer cet ordre » appelle handleSaveOrdreLignes', () => {
-  assert.match(DG, /onClick=\{handleSaveOrdreLignes\}/)
-  assert.match(DG, /Enregistrer cet ordre comme ordre par défaut/)
+test('LigneTable : le bouton « Enregistrer cet ordre » appelle handleSaveOrdreLignes', () => {
+  assert.match(LT, /onClick=\{handleSaveOrdreLignes\}/)
+  assert.match(LT, /Enregistrer cet ordre comme ordre par défaut/)
+  // …et l'écran le lui passe bien (le cablage complet, pas seulement le bouton).
+  assert.match(DG, /handleSaveOrdreLignes=\{handleSaveOrdreLignes\}/)
+  assert.match(DG, /savingOrdreLignes=\{savingOrdreLignes\}/)
 })
 
 test('DevisGenerator : la composition locale (auto-remplir manuel) transmet ordreLignes de gammesConfig', () => {

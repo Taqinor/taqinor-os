@@ -10,7 +10,9 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
-  ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
+  // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
+  // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
+  StickyNote, FileText, RotateCcw, Sun, Plus,
   // EZ3 — actions du panneau de succès (envoyer / aperçu).
   Send, Eye,
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ».
@@ -30,7 +32,8 @@ import mrpApi from '../../api/mrpApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
-import DevisLineRow from './DevisLineRow'
+// QJR100 — `DevisLineRow` n'est plus importé ici : c'est `LigneTable` qui
+// l'enrobe désormais (un seul endroit monte une ligne de devis).
 // TAILLES (fondateur 26/08/2026) — écran vendeur Éco/Recommandé/Max, composant
 // autonome (se masque lui-même hors résidentiel/devis non enregistré) pour ne
 // pas alourdir ce fichier déjà volumineux.
@@ -43,7 +46,9 @@ import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
-  Button, IconButton, Card, CardContent,
+  // QJR100 — `IconButton` est parti avec la table de lignes (suppression d'une
+  // villa), seul endroit de cet écran qui l'utilisait.
+  Button, Card, CardContent,
   // APX12 — le langage UNIQUE des KPI d'argent (le total du rail).
   Stat,
   Input, Textarea, Label, Segmented,
@@ -121,6 +126,13 @@ import {
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 import { moteur, apercu, absent, estFait } from '../../features/ventes/quote/valeur'
+// QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
+// seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
+// (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
+// d'argent (totaux, remise, TVA, prix cible, marge interne).
+import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
+import LigneTable from './generator/LigneTable'
+import RailArgent from './generator/RailArgent'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -297,41 +309,10 @@ const structureLine = (typeLigne) => ({
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
-// En-tête de carte du générateur (style design system, repose sur Card).
-function GenCardHeader({ icon: Icon, title, children }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
-      {Icon && <Icon className="size-4 text-primary" aria-hidden="true" />}
-      <span className="font-display text-base font-semibold tracking-tight">{title}</span>
-      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
-    </div>
-  )
-}
-
-function MetricCard({ label, value, unit, recommended, accent, badge }) {
-  return (
-    <div className={`gen-metric${accent ? ' gen-metric-accent' : ''}${recommended ? ' gen-metric-rec' : ''}`}>
-      <div className="gen-metric-label">
-        {label}
-        {recommended && <span className="gen-rec-badge">★ Recommandé</span>}
-      </div>
-      <div className="gen-metric-value">
-        {value}
-        {/* QJR35 — la carte lit une économie/payback dérivé LOCALEMENT
-            (miroir `roi`, jamais serveur) sans facture réelle saisie ni
-            étude horaire serveur : puce visible À CÔTÉ de la valeur, la
-            carte reste rendue (le vendeur s'en sert comme repère). */}
-        {badge && (
-          <span className="ml-1.5 align-middle rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning"
-                data-testid="gen-metric-badge-exemple">
-            {badge}
-          </span>
-        )}
-      </div>
-      <div className="gen-metric-unit">{unit}</div>
-    </div>
-  )
-}
+// QJR100 — `GenCardHeader` et `MetricCard` ne sont plus DÉFINIS ici : ils
+// vivent dans `generator/CarteMetrique.jsx`, partagés par les morceaux
+// extraits (LigneTable, RailArgent). `MetricCard` s'appelle désormais
+// `CarteMetrique` et sait, EN PLUS, déballer une valeur signée (QJR86).
 
 /**
  * Générateur de devis. Utilisable en PLEINE PAGE (route /ventes/devis/nouveau,
@@ -4667,27 +4648,27 @@ export default function DevisGenerator({
             )}
             {etudeCI && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
-                <MetricCard label="Taux d'autoconsommation"
-                            value={`${etudeCI.taux_autoconso} %`}
-                            unit="part de la production consommée" accent />
+                <CarteMetrique label="Taux d'autoconsommation"
+                               value={`${etudeCI.taux_autoconso} %`}
+                               unit="part de la production consommée" accent />
                 {etudeCI.taux_couverture != null && (
-                  <MetricCard label="Taux de couverture"
-                              value={`${etudeCI.taux_couverture} %`}
-                              unit="part de la conso couverte" accent />
+                  <CarteMetrique label="Taux de couverture"
+                                 value={`${etudeCI.taux_couverture} %`}
+                                 unit="part de la conso couverte" accent />
                 )}
                 {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
                     vaut null : la carte est OMISE (jamais un « 0 » trompeur),
                     le motif est affiché juste en dessous. */}
                 {etudeCI.economies_annuelles != null && (
-                  <MetricCard label="Économies annuelles (étude)"
-                              value={fmtNum(etudeCI.economies_annuelles)}
-                              unit={etudeCI.tension_raccordement === 'mt'
-                                ? 'MAD / an · barème MT' : 'MAD / an'} />
+                  <CarteMetrique label="Économies annuelles (étude)"
+                                 value={fmtNum(etudeCI.economies_annuelles)}
+                                 unit={etudeCI.tension_raccordement === 'mt'
+                                   ? 'MAD / an · barème MT' : 'MAD / an'} />
                 )}
                 {etudeCI.payback != null && (
-                  <MetricCard label="Payback (étude)"
-                              value={`${etudeCI.payback} ans`}
-                              unit="retour sur invest." />
+                  <CarteMetrique label="Payback (étude)"
+                                 value={`${etudeCI.payback} ans`}
+                                 unit="retour sur invest." />
                 )}
               </div>
             )}
@@ -4746,17 +4727,17 @@ export default function DevisGenerator({
                   {/* CJ2b — Production/Autoconso/Couverture : le serveur
                       horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
                       sinon repli sur `roi` (miroir local, inchangé). */}
-                  <MetricCard label="Production annuelle"
-                              value={fmtNum(Math.round(apercuProductionKwh))}
-                              unit="kWh / an" accent />
+                  <CarteMetrique label="Production annuelle"
+                                 value={fmtNum(Math.round(apercuProductionKwh))}
+                                 unit="kWh / an" accent />
                   {etudeHoraireSourceServeur && (
                     <>
-                      <MetricCard label="Taux d'autoconsommation (sans)"
-                                  value={`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`}
-                                  unit="part de la production consommée" />
-                      <MetricCard label="Taux de couverture (sans)"
-                                  value={`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`}
-                                  unit="part de la conso couverte" />
+                      <CarteMetrique label="Taux d'autoconsommation (sans)"
+                                     value={`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`}
+                                     unit="part de la production consommée" />
+                      <CarteMetrique label="Taux de couverture (sans)"
+                                     value={`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`}
+                                     unit="part de la conso couverte" />
                     </>
                   )}
                 </div>
@@ -4771,17 +4752,17 @@ export default function DevisGenerator({
                         Sans batterie
                         {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
                       </div>
-                      <MetricCard label="Économies"
-                                  value={fmtNum(Math.round(apercuEcoSans))}
-                                  unit="MAD / an"
-                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
-                      <MetricCard label="ROI"
-                                  value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
-                                  unit="retour sur invest." accent
-                                  badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
-                      <MetricCard label="Coût"
-                                  value={fmtNum(Math.round(totals.totalSans))}
-                                  unit="MAD TTC" />
+                      <CarteMetrique label="Économies"
+                                     value={fmtNum(Math.round(apercuEcoSans))}
+                                     unit="MAD / an"
+                                     badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                      <CarteMetrique label="ROI"
+                                     value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
+                                     unit="retour sur invest." accent
+                                     badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                      <CarteMetrique label="Coût"
+                                     value={fmtNum(Math.round(totals.totalSans))}
+                                     unit="MAD TTC" />
                     </div>
                   )}
                   {showAvec && (
@@ -4803,17 +4784,17 @@ export default function DevisGenerator({
                         </p>
                       ) : (
                         <>
-                          <MetricCard label="Économies"
-                                      value={fmtNum(Math.round(apercuEcoAvec))}
-                                      unit="MAD / an"
-                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
-                          <MetricCard label="ROI"
-                                      value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
-                                      unit="retour sur invest." accent
-                                      badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
-                          <MetricCard label="Coût"
-                                      value={fmtNum(Math.round(totals.totalAvec))}
-                                      unit="MAD TTC" />
+                          <CarteMetrique label="Économies"
+                                         value={fmtNum(Math.round(apercuEcoAvec))}
+                                         unit="MAD / an"
+                                         badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                          <CarteMetrique label="ROI"
+                                         value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
+                                         unit="retour sur invest." accent
+                                         badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                          <CarteMetrique label="Coût"
+                                         value={fmtNum(Math.round(totals.totalAvec))}
+                                         unit="MAD TTC" />
                           {/* BAT5DEF — au moins une ligne batterie n'a pas de
                               kWh lisible : la capacité utilisée par le ROI et
                               l'étude horaire est SOUS-estimée (0 kWh pour
@@ -4888,296 +4869,64 @@ export default function DevisGenerator({
             chargé pour « Auto-remplir » (pas de second aller-retour réseau). */}
         <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits} />
 
-        {/* ── Lignes de produits ── */}
-        <Card>
-          <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
-            {/* XSAL14 — section (intertitre) / note (texte) : structurent le
-                devis sans prix, exclues de tous les totaux. */}
-            <Button type="button" size="sm" variant="ghost"
-                    onClick={() => addStructureLine('section')}
-                    title="Ajouter un intertitre de section (sans prix)">
-              + Section
-            </Button>
-            <Button type="button" size="sm" variant="ghost"
-                    onClick={() => addStructureLine('note')}
-                    title="Ajouter une note (texte sans prix)">
-              + Note
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={addLine}>
-              <Plus /> Ajouter ligne
-            </Button>
-            {/* PVORD (fondateur 19/08/2026) — persiste l'ordre ÉCRAN courant
-                comme nouvel ordre par défaut des PROCHAINS devis
-                (ParametresGammes.ordre_lignes). Réservé Admin/Responsable
-                côté serveur (même garde que Paramètres → Gammes & marques) ;
-                un rôle non autorisé reçoit un toast d'erreur, pas un crash. */}
-            <Button type="button" size="sm" variant="ghost"
-                    loading={savingOrdreLignes}
-                    onClick={handleSaveOrdreLignes}
-                    title="Enregistre l'ordre actuel des lignes comme ordre par défaut pour les prochains devis">
-              Enregistrer cet ordre comme ordre par défaut
-            </Button>
-          </GenCardHeader>
-          <CardContent className="px-0 pt-0">
-            {/* ── QJ31 — Multi-propriétés (un seul devis) ──
-                VX138(e) — accordéon : repliée PAR DÉFAUT en agricole (non
-                pertinent pour ce mode) mais jamais masquée ; l'utilisateur
-                peut toujours la rouvrir librement. */}
-            <details className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 sm:mx-5"
-                      open={multiAccordionOpen}
-                      onToggle={e => setMultiAccordionOpen(e.currentTarget.open)}>
-              <summary className="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">
-                Plusieurs propriétés ?
-                {multiMode !== 'none' && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    ({multiMode === 'multiplier' ? '× N identiques' : '+ Villas différentes'})
-                  </span>
-                )}
-              </summary>
-              <div className="border-t border-border p-3 sm:p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <Segmented
-                  className="flex-wrap"
-                  options={[
-                    { value: 'none', label: 'Une seule' },
-                    { value: 'multiplier', label: '× N identiques' },
-                    { value: 'villas', label: '+ Villas différentes' },
-                  ]}
-                  value={multiMode}
-                  onChange={onMultiModeChange}
-                />
-              </div>
-
-              {multiMode === 'multiplier' && (
-                <div className="mt-3 flex flex-wrap items-end gap-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="gen-nbprop">Nombre de propriétés identiques</Label>
-                    <Input id="gen-nbprop" type="number" min="1" step="any" className="w-40"
-                           value={nombreProprietes}
-                           onChange={e => setNombreProprietes(e.target.value)} />
-                  </div>
-                  {multiPreview?.mode === 'multiplicateur' && (
-                    <div className="text-sm text-muted-foreground">
-                      {multiPreview.nombreProprietes} × {formatMoney(multiPreview.totalUnitaireSans)}
-                      {' = '}
-                      <strong className="text-foreground">{formatMoney(multiPreview.totalMultiSans)}</strong>
-                      {' '}(total pour {multiPreview.nombreProprietes} propriétés)
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {multiMode === 'villas' && (
-                <div className="mt-3 flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {villaGroups.map(g => (
-                      <div key={g.index} className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1">
-                        <Input
-                          className="h-7 w-32 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
-                          value={g.label}
-                          onChange={e => renameVillaGroup(g.index, e.target.value)}
-                          aria-label={`Nom du groupe ${g.index}`} />
-                        {g.index !== 0 && (
-                          <IconButton type="button" label="Supprimer la villa" size="sm"
-                                      className="size-6 text-destructive hover:bg-destructive/10"
-                                      onClick={() => removeVillaGroup(g.index)}>
-                            <Trash2 />
-                          </IconButton>
-                        )}
-                      </div>
-                    ))}
-                    <Button type="button" size="sm" variant="outline" onClick={addVillaGroup}>
-                      <Plus /> Ajouter une villa
-                    </Button>
-                  </div>
-                  {multiPreview?.mode === 'villas' && (
-                    <div className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
-                      {multiPreview.groupes.map(g => (
-                        <div key={g.index} className="flex justify-between gap-4">
-                          <span>{g.label}</span>
-                          <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
-                        </div>
-                      ))}
-                      <div className="mt-1 flex justify-between gap-4 border-t border-info/30 pt-1 font-semibold">
-                        <span>Total général</span>
-                        <span className="tabular-nums">{formatMoney(multiPreview.grandTotalTtc)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              </div>
-            </details>
-
-            {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
-            {/* QX20 — échappatoire documentée à la garde d'équipement solaire */}
-            <label className="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-              <input type="checkbox" checked={accessoiresOnly}
-                     onChange={e => setAccessoiresOnly(e.target.checked)} />
-              Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
-            </label>
-            <div className="lines-table-wrap">
-              <table className="lines-table" ref={linesTableRef}>
-                <thead>
-                  <tr>
-                    <th style={{ minWidth: 160 }}>Désignation</th>
-                    <th style={{ minWidth: 170 }}>Produit (stock)</th>
-                    {multiMode === 'villas' && <th style={{ minWidth: 130 }}>Villa</th>}
-                    <th className="col-num">Qté</th>
-                    <th className="col-num">Prix Unit. TTC</th>
-                    <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
-                    <th className="col-num">Total TTC</th>
-                    {/* XSAL5 — case « option » : la ligne est un add-on proposé
-                        hors total (activable par le client sur la proposition). */}
-                    <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
-                    {/* PVORD — monter/descendre : ordre par défaut = ordre du
-                        simulateur (autoFillLines), réordonnable ici. */}
-                    <th className="col-ordre" title="Réordonner la ligne">Ordre</th>
-                    <th className="col-del"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* VX188 — ligne extraite en <DevisLineRow> mémoïsé : taper
-                      dans Note/farmSurfaceHa/n'importe lequel des autres
-                      useState ne re-rend plus les lignes inchangées (callbacks
-                      stabilisés ci-dessus, clé en argument). */}
-                  {lines.map((l, i) => (
-                    <DevisLineRow
-                      key={l._key}
-                      line={l}
-                      produits={produits}
-                      multiMode={multiMode}
-                      villaGroups={villaGroups}
-                      canRenameLine={canRenameLine}
-                      tarifBadge={tarifBadges[l._key]}
-                      tvaPanneaux={quoteLogic.tvaPanneaux}
-                      tvaStandard={quoteLogic.tvaStandard}
-                      onSetField={setLine}
-                      onDesignationBlur={onDesignationBlur}
-                      onProduitChange={onProduitChange}
-                      onProduitCreated={onProduitCreated}
-                      onQuantiteChange={onQuantiteChange}
-                      onSetGroupe={setLineGroupe}
-                      onRemove={removeLine}
-                      canMoveUp={i > 0}
-                      canMoveDown={i < lines.length - 1}
-                      onMoveUp={moveLineUp}
-                      onMoveDown={moveLineDown}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
-                brut (tier-1) → remise/TVA (tier-2) → total final (tier-3, le
-                TTC retenu devient le point focal). */}
-            <div className="gen-totals-row gen-tier-1">
-              {showSans && (
-                <div className="gen-total-item">
-                  <span className="gen-total-label">Total SANS batterie{sansRec ? ' ⭐' : ''}</span>
-                  <span className="gen-total-value">{formatMoney(totals.totalSansBrut)}</span>
-                </div>
-              )}
-              {showAvec && (
-                <div className="gen-total-item">
-                  <span className="gen-total-label">Total AVEC batterie{avecRec ? ' ⭐' : ''}</span>
-                  <span className="gen-total-value orange">{formatMoney(totals.totalAvecBrut)}</span>
-                </div>
-              )}
-            </div>
-            <div className="gen-totals-row gen-discount-row">
-              <div className="gen-total-item gen-total-inline gen-tier-2">
-                <span className="gen-total-label">Réduction</span>
-                <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                       value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
-                <span style={{ fontWeight: 700 }}>%</span>
-                {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
-                  /* VX17 — couleur d'avertissement via token de thème. */
-                  <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
-                    ⚠ au-delà de la limite conseillée ({remiseMax} %)
-                  </span>
-                )}
-              </div>
-              <div className="gen-total-item gen-total-inline gen-tier-2">
-                <span className="gen-total-label">TVA</span>
-                <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                       value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
-                <span style={{ fontWeight: 700 }}>%</span>
-              </div>
-              {parseFloat(discountPct) > 0 && showSans && (
-                <div className="gen-total-item gen-tier-3">
-                  <span className="gen-total-label green">Total final SANS batterie</span>
-                  <span className="gen-total-value green">{formatMoney(totals.totalSans)}</span>
-                </div>
-              )}
-              {parseFloat(discountPct) > 0 && showAvec && (
-                <div className="gen-total-item gen-tier-3">
-                  <span className="gen-total-label green">Total final AVEC batterie</span>
-                  <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
-                </div>
-              )}
-            </div>
-
-            {/* ── Prix par kWc, prix cible et marge (écran uniquement) ── */}
-            <div className="gen-totals-row gen-discount-row">
-              {pkwc != null && (() => {
-                // Repère vs cible société : vert si ≤ cible (bon), rouge si au-dessus.
-                const cibleNum = parseFloat(prixCible)
-                const hasCible = Number.isFinite(cibleNum) && cibleNum > 0
-                const sousCible = hasCible ? pkwc <= cibleNum : null
-                // VX17 — couleur via tokens de thème (success/destructive).
-                const couleurCls = sousCible == null ? ''
-                  : (sousCible ? 'text-success' : 'text-destructive')
-                return (
-                  <div className="gen-total-item">
-                    <span className="gen-total-label">Prix / kWc</span>
-                    <span className={`gen-total-value ${couleurCls}`}>
-                      {formatMoney(pkwc)}/kWc
-                    </span>
-                    {hasCible && (
-                      <span className={`gen-total-hint ${couleurCls}`} style={{ fontSize: 12 }}>
-                        {sousCible
-                          ? `≤ cible (${formatMoney(cibleNum)}/kWc)`
-                          : `au-dessus de la cible (${formatMoney(cibleNum)}/kWc)`}
-                      </span>
-                    )}
-                  </div>
-                )
-              })()}
-              <div className="gen-total-item gen-total-inline">
-                <span className="gen-total-label">Prix cible / kWc</span>
-                <input type="number" min="0" step="any" className="gen-discount-input"
-                       style={{ width: 100 }} placeholder="ex: 9000"
-                       value={prixCible} onChange={e => setPrixCible(e.target.value)} />
-                <Button type="button" size="sm" variant="outline"
-                        onClick={applyPrixCible}
-                        disabled={!(kwp > 0) || prixCible === ''}>
-                  Appliquer via remise
-                </Button>
-              </div>
-              {marge != null && (
-                <div className="gen-total-item">
-                  {/* VX17 — couleurs via tokens de thème (text-success/destructive)
-                      plutôt qu'un hex codé en dur. */}
-                  <span className={`gen-total-label ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-                    Marge indicative (interne)
-                  </span>
-                  <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-                    {formatMoney(marge)}
-                    {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
-                  </span>
-                </div>
-              )}
-            </div>
-            {marge != null && marge < 0 && (
-              <div className="mx-5 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                Le total après remise est INFÉRIEUR au coût d'achat estimé — vous
-                vendez à perte. Réduisez la remise ou le prix cible.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
+            l'ajout, la suppression et le réordonnancement ; <RailArgent/>
+            possède la chaîne d'argent, DANS la même carte comme avant) ── */}
+        <LigneTable
+          lines={lines}
+          produits={produits}
+          linesTableRef={linesTableRef}
+          canRenameLine={canRenameLine}
+          tarifBadges={tarifBadges}
+          quoteLogic={quoteLogic}
+          onSetField={setLine}
+          onDesignationBlur={onDesignationBlur}
+          onProduitChange={onProduitChange}
+          onProduitCreated={onProduitCreated}
+          onQuantiteChange={onQuantiteChange}
+          onSetGroupe={setLineGroupe}
+          onRemove={removeLine}
+          onMoveUp={moveLineUp}
+          onMoveDown={moveLineDown}
+          addLine={addLine}
+          addStructureLine={addStructureLine}
+          handleSaveOrdreLignes={handleSaveOrdreLignes}
+          savingOrdreLignes={savingOrdreLignes}
+          multiMode={multiMode}
+          onMultiModeChange={onMultiModeChange}
+          multiAccordionOpen={multiAccordionOpen}
+          setMultiAccordionOpen={setMultiAccordionOpen}
+          nombreProprietes={nombreProprietes}
+          setNombreProprietes={setNombreProprietes}
+          multiPreview={multiPreview}
+          villaGroups={villaGroups}
+          renameVillaGroup={renameVillaGroup}
+          removeVillaGroup={removeVillaGroup}
+          addVillaGroup={addVillaGroup}
+          errorLines={errors.lines}
+          accessoiresOnly={accessoiresOnly}
+          setAccessoiresOnly={setAccessoiresOnly}
+        >
+          <RailArgent
+            showSans={showSans}
+            showAvec={showAvec}
+            sansRec={sansRec}
+            avecRec={avecRec}
+            totals={totals}
+            discountPct={discountPct}
+            setDiscountPct={setDiscountPct}
+            remiseMax={remiseMax}
+            tauxTva={tauxTva}
+            setTauxTva={setTauxTva}
+            pkwc={pkwc}
+            prixCible={prixCible}
+            setPrixCible={setPrixCible}
+            applyPrixCible={applyPrixCible}
+            kwp={kwp}
+            marge={marge}
+            kpiTotal={kpiTotal}
+          />
+        </LigneTable>
 
         {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
             APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas

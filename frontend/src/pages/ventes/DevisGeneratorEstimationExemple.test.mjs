@@ -24,6 +24,10 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+// QJR100 — la carte de métrique est extraite dans `generator/CarteMetrique.jsx`
+// (elle y devient LE seul déballeur d'une valeur signée). Les épingles de la
+// carte suivent le composant ; celles des APPELANTS restent sur l'écran.
+const CARTE = readFileSync(join(HERE, 'generator/CarteMetrique.jsx'), 'utf8')
 
 test('QJR35 — apercuEstimationExemple est dérivé de !facturesSaisies && !etudeHoraireSourceServeur (une seule dérivation)', () => {
   assert.match(DG,
@@ -31,23 +35,29 @@ test('QJR35 — apercuEstimationExemple est dérivé de !facturesSaisies && !etu
     'la dérivation attendue est introuvable telle quelle')
 })
 
-test('QJR35 — MetricCard accepte un prop `badge` et le rend À CÔTÉ de la valeur (jamais en cachant la carte)', () => {
-  const idx = DG.indexOf('function MetricCard(')
-  assert.ok(idx > -1, 'MetricCard introuvable')
-  const bloc = DG.slice(idx, idx + 1200)
-  assert.match(bloc, /function MetricCard\(\{ label, value, unit, recommended, accent, badge \}\)/,
-    'MetricCard doit accepter un prop badge')
+test('QJR35 — CarteMetrique accepte un prop `badge` et le rend À CÔTÉ de la valeur (jamais en cachant la carte)', () => {
+  const idx = CARTE.indexOf('export default function CarteMetrique(')
+  assert.ok(idx > -1, 'CarteMetrique introuvable')
+  const bloc = CARTE.slice(idx)
+  assert.match(bloc, /label, value, unit, recommended, accent, badge,/,
+    'CarteMetrique doit accepter un prop badge (signature historique préservée)')
   // La carte reste TOUJOURS rendue (aucune condition badge && null autour de
-  // gen-metric-value) : le badge est un AJOUT à côté de {value}, pas un
+  // gen-metric-value) : le badge est un AJOUT à côté de la valeur, pas un
   // remplacement conditionnel de la carte entière.
-  assert.match(bloc, /<div className="gen-metric-value">\s*\n\s*\{value\}/,
+  assert.match(bloc, /<div className="gen-metric-value">\s*\n\s*\{contenu\}/,
     'la valeur doit rester rendue inconditionnellement')
-  assert.match(bloc, /\{badge && \(/, 'le badge doit être un ajout conditionnel, pas la carte entière')
+  assert.match(bloc, /\{puce && \(/, 'le badge doit être un ajout conditionnel, pas la carte entière')
   assert.match(bloc, /data-testid="gen-metric-badge-exemple"/,
     'le badge doit porter un data-testid stable pour les tests e2e')
-  // Le texte « estimation d'exemple » lui-même n'est PAS en dur dans
-  // MetricCard : il est passé par chaque appelant (badge={...}).
+  // Le texte « estimation d'exemple » lui-même n'est PAS en dur dans la
+  // carte : il est passé par chaque appelant (badge={...}) ou dérivé de la
+  // SOURCE d'une valeur signée (`unwrap().puce`), jamais écrit ici.
   assert.doesNotMatch(bloc, /estimation d'exemple/)
+  assert.match(bloc, /const u = unwrap\(valeur\)/,
+    'la voie signée doit passer par LE déballeur de valeur.js, jamais lire .valeur à la main')
+  // Un `absent(motif)` REMPLACE le chiffre par son motif FR — jamais un 0.
+  assert.match(bloc, /if \(u\.source === null\) \{[\s\S]{0,200}?contenu = null/)
+  assert.match(bloc, /data-testid="gen-metric-motif"/)
 })
 
 test('QJR35 — les 4 cartes Économies/ROI (Sans + Avec batterie) reçoivent le badge conditionnel, jamais les cartes Coût', () => {
@@ -64,11 +74,11 @@ test('QJR35 — les 4 cartes Économies/ROI (Sans + Avec batterie) reçoivent le
   // Colonne "Sans batterie" (1ʳᵉ occurrence).
   const sansBloc = DG.slice(titleIdxs[0], titleIdxs[0] + 900)
   assert.match(sansBloc, /Sans batterie/)
-  assert.match(sansBloc, /<MetricCard label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
-  assert.match(sansBloc, /<MetricCard label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  assert.match(sansBloc, /<CarteMetrique label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  assert.match(sansBloc, /<CarteMetrique label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
   // La carte Coût (chiffre réel du devis, jamais dérivé du miroir local ROI)
   // ne doit PAS recevoir ce badge.
-  const coutSansIdx = sansBloc.indexOf('<MetricCard label="Coût"')
+  const coutSansIdx = sansBloc.indexOf('<CarteMetrique label="Coût"')
   assert.ok(coutSansIdx > -1)
   const coutSansBloc = sansBloc.slice(coutSansIdx, coutSansIdx + 200)
   assert.doesNotMatch(coutSansBloc, /badge=/)
@@ -76,9 +86,9 @@ test('QJR35 — les 4 cartes Économies/ROI (Sans + Avec batterie) reçoivent le
   // Colonne "Avec batterie" (2ᵉ occurrence).
   const avecBloc = DG.slice(titleIdxs[1], titleIdxs[1] + 1900)
   assert.match(avecBloc, /Avec batterie/)
-  assert.match(avecBloc, /<MetricCard label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
-  assert.match(avecBloc, /<MetricCard label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
-  const coutAvecIdx = avecBloc.indexOf('<MetricCard label="Coût"')
+  assert.match(avecBloc, /<CarteMetrique label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  assert.match(avecBloc, /<CarteMetrique label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  const coutAvecIdx = avecBloc.indexOf('<CarteMetrique label="Coût"')
   assert.ok(coutAvecIdx > -1)
   const coutAvecBloc = avecBloc.slice(coutAvecIdx, coutAvecIdx + 200)
   assert.doesNotMatch(coutAvecBloc, /badge=/)
