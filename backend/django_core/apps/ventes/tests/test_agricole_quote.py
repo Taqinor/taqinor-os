@@ -329,6 +329,62 @@ class TestAgricoleRender(SimpleTestCase):
     def test_abh_authorisation_guardrail_present(self):
         self.assertIn("ABH", self._html())
 
+    # ── QJR153 — les garanties du PDF se dérivent du devis ───────────────────
+    def test_badges_de_garantie_derives_des_lignes(self):
+        from apps.ventes.quote_engine.agricole import theme as a_theme
+        data = sample_data.build("agrumes")
+        self.assertEqual(
+            a_theme.garanties_du_devis(data),
+            [("25", "ans", "Panneaux (perf.)"), ("5", "ans", "Variateur"),
+             ("2", "ans", "Pompe")])
+        html = render.build_html(renderer._augment(data))
+        # la structure du devis ne porte AUCUNE garantie : plus de badge
+        # « Structure 10 ans » promis sans donnée.
+        self.assertNotIn('a3-bl">Structure<', html)
+        self.assertIn('a3-bl">Pompe<', html)
+
+    def test_badges_suivent_une_garantie_differente_du_forfait(self):
+        data = sample_data.build("agrumes")
+        for it in data["all_items"]:
+            if "Panneau" in it["designation"]:
+                it["garantie"] = "30 ans (perf.)"
+            if "Structure" in it["designation"]:
+                it["garantie"] = "10 ans"
+        html = render.build_html(renderer._augment(data))
+        self.assertIn('a3-bn">30<span>ans', html)     # badge page 3
+        self.assertNotIn('a3-bn">25<span>', html)     # plus l'ancien forfait
+        self.assertIn('a3-bl">Structure<', html)      # catégorie désormais garantie
+        self.assertIn("Panneaux garantis <b>30 ans</b>", html)   # page 1
+
+    def test_garantie_structuree_du_catalogue_prime_sur_le_texte(self):
+        from apps.ventes.quote_engine.agricole import theme as a_theme
+        data = sample_data.build("agrumes")
+        for it in data["all_items"]:
+            if "Pompe" in it["designation"]:
+                it["garantie_mois"] = 36        # fiche produit : 3 ans
+        self.assertIn(("3", "ans", "Pompe"), a_theme.garanties_du_devis(data))
+
+    def test_aucune_duree_publiee_sans_garantie_au_devis(self):
+        data = sample_data.build("agrumes")
+        for it in data["all_items"]:
+            it["garantie"] = ""
+        html = render.build_html(renderer._augment(data))
+        self.assertNotIn("Nos garanties", html)      # bloc entier omis
+        self.assertNotIn('class="a3-badges"', html)
+        self.assertNotIn('class="a3-bn"', html)      # aucun badge chiffré
+        self.assertNotIn("Panneaux garantis", html)  # page 1
+        # (« 3,5 ans » d'amortissement reste : ce n'est pas une garantie)
+        for duree in ("25 ans", "10 ans", "2 ans"):
+            self.assertNotIn(duree, html)
+
+    def test_page4_degradee_derive_aussi_ses_garanties(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["m3_jour"] = None          # branche « Zéro carburant »
+        html = render.build_html(renderer._augment(data))
+        self.assertNotIn("Panneaux 25 ans · structure 10 ans · variateur 5 ans",
+                         html)
+        self.assertIn("Panneaux (perf.) 25 ans", html)
+
     def test_margin_never_leaks(self):
         html = self._html().lower()
         self.assertNotIn("prix_achat", html)

@@ -140,10 +140,19 @@ def build(ctx) -> str:
         return (f'<div class="a1-tr"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" '
                 f'fill="{green_bg}"/><path d="M7.5 12.3l3 3 6-6.5" stroke="{green_700}" stroke-width="2" '
                 f'stroke-linecap="round" stroke-linejoin="round"/></svg><span>{txt}</span></div>')
-    trust_txt = ["Panneaux garantis <b>25 ans</b>", "Pompe & variateur garantis",
-                 "Installation & SAV par TAQINOR",
-                 ("Aide au dossier de subvention FDA" if show_subsidy
-                  else "Mise en service & formation incluses")]
+    # QJR153 — plus aucune durée littérale ici : la ligne « Panneaux garantis
+    # 25 ans » répliquait le forfait de la page 3 et pouvait contredire la
+    # garantie RÉELLE du panneau vendu. Sans garantie panneau au devis, la
+    # ligne est simplement omise (jamais un chiffre par défaut).
+    _garanties = theme.garanties_du_devis(d)
+    _pan = next((g for g in _garanties if g[2].startswith("Panneaux")), None)
+    trust_txt = []
+    if _pan:
+        trust_txt.append(f"Panneaux garantis <b>{_pan[0]} {_pan[1]}</b>")
+    trust_txt += ["Pompe & variateur garantis",
+                  "Installation & SAV par TAQINOR",
+                  ("Aide au dossier de subvention FDA" if show_subsidy
+                   else "Mise en service & formation incluses")]
     trust_html = "".join(_chk(t) for t in trust_txt)
 
     # ── small "you cross into profit" payback graph (fills the lower third) ──

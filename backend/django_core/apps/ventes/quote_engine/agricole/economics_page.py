@@ -158,6 +158,14 @@ def build(ctx) -> str:
         # plafond FDA n'est pas confirmable) : mention qualitative, mot pour mot.
         net_line = (f'<div class="a4-qnet">{K.FDA_QUALITATIVE_NOTE}</div>'
                     ) if show_subsidy else ""
+        # QJR153 — la ligne « Garanties longues » répliquait les mêmes durées
+        # forfaitaires (25/10/5 ans) que la page 3 : elle se DÉRIVE désormais
+        # des lignes du devis, et sans aucune garantie au devis elle reste
+        # qualitative plutôt que d'annoncer des durées inventées.
+        _gar = theme.garanties_du_devis(d)
+        _gar_txt = (" · ".join(f"{lbl} {n} {u}" for n, u, lbl in _gar) + "."
+                    ) if _gar else ("Garantie constructeur sur chaque "
+                                    "composant, détaillée au devis.")
         whys = [
             ("Indépendance énergétique",
              "Votre énergie vient du soleil, pas du marché du carburant."),
@@ -165,8 +173,8 @@ def build(ctx) -> str:
              "Pas de facture de carburant qui grimpe d'année en année."),
             ("Zéro entretien carburant",
              "Pas de bonbonnes à transporter, pas de moteur thermique à réviser."),
-            ("Garanties longues",
-             "Panneaux 25 ans · structure 10 ans · variateur 5 ans."),
+            ("Garanties longues" if _gar else "Garanties",
+             _gar_txt),
         ]
         why_html = "".join(
             f'<div class="a4-why-i"><b>{t}</b><span>{s}</span></div>' for t, s in whys)

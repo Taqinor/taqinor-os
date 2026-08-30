@@ -85,11 +85,18 @@ def build(ctx) -> str:
                     'étudier les aides à l\'irrigation localisée disponibles.</div></div>')
 
     # ── garanties (folded up from the trust page) ────────────────────────────
-    badges = [("25", "ans", "Panneaux (perf.)"), ("5", "ans", "Variateur"),
-              ("2", "ans", "Pompe"), ("10", "ans", "Structure")]
+    # QJR153 — les durées ne sont plus codées ici (25/5/2/10 ans) : elles se
+    # DÉRIVENT des lignes du devis, comme la colonne « Garantie … » du tableau
+    # douze lignes au-dessus. Une catégorie absente du devis (une structure non
+    # vendue) n'a plus de badge, et aucun badge ne peut contredire le tableau.
+    from . import theme as _theme
+    badges = _theme.garanties_du_devis(d)
     badges_html = "".join(
         f'<div class="a3-badge"><div class="a3-bn">{n}<span>{u}</span></div>'
         f'<div class="a3-bl">{l}</div></div>' for n, u, l in badges)
+    garanties_html = (f'<div class="a3-gh">Nos garanties</div>'
+                      f'<div class="a3-badges">{badges_html}</div>'
+                      ) if badges_html else ""
 
     css = f"""
 <style>
@@ -150,8 +157,7 @@ def build(ctx) -> str:
       <div class="a3-ar">الثمن الإجمالي شامل الضريبة</div></div>
     {fda_html}
   </div>
-  <div class="a3-gh">Nos garanties</div>
-  <div class="a3-badges">{badges_html}</div>
+  {garanties_html}
   <div class="a3-note">Prix unitaires HT · total TTC. Fiches techniques sur taqinor.ma/produits.
     Rentabilité et comparatif carburant en page suivante.</div>
 </div>
