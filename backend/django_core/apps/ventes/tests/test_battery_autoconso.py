@@ -102,27 +102,79 @@ class TestMiroirJs(SimpleTestCase):
     16 214 à 16 350 (le client payait moins cher que le repo ne le croyait, donc
     il économise plus en descendant vers 151-210). L'option AVEC retombe en
     151-210, hors T5 : ses 2 330 / 22 013 MAD sont INCHANGÉS — recalculés, pas
-    supposés. Le jumeau JS solar.batterie.test.mjs porte le même recalage.
+    supposés.
+
+    ════════════════════════════════════════════════════════════════════════
+    RECALAGE QJR157 (30/08/2026) — LA FACTURE N'EST PLUS QUE L'ÉNERGIE
+    ════════════════════════════════════════════════════════════════════════
+    Les chiffres ci-dessus restent la composante ÉNERGIE, exacte. Mais
+    ``two_bills_savings`` tarife désormais les deux factures par
+    ``bareme.facture_mad`` — lignes fixes (location + entretien) et TPPAN
+    comprises — parce que le chemin ``savings_model='horaire'`` servait déjà
+    cette vignette charges comprises et que le même client voyait donc deux
+    « factures actuelles » différentes selon qu'un bloc horaire existait ou
+    non. Les attentes deviennent, composante par composante (mois moyen,
+    charges SOURCÉES des factures du fondateur) ::
+
+        facture sans solaire  énergie 24 342,84 + fixes 479,23 + TPPAN 1 200,00
+                              = 26 022,07 → 26 022 MAD/an
+        résiduel option SANS  énergie  7 993,43 + fixes 479,23 + TPPAN   977,04
+                              =  9 449,71 →  9 450 MAD/an
+                              ⇒ économie 26 022 − 9 450 = 16 572 MAD/an
+        résiduel option AVEC  énergie  2 330,33 + fixes 479,23 + TPPAN   260,28
+                              =  3 069,84 →  3 070 MAD/an
+                              ⇒ économie 26 022 − 3 070 = 22 952 MAD/an
+
+    Les 479,23 MAD/an de lignes fixes s'ANNULENT dans l'économie (mêmes deux
+    côtés) ; la TPPAN suit le kWh et ne s'annule donc PAS — c'est exactement
+    d'où viennent les +222 (16 350 → 16 572) et +939 (22 013 → 22 952).
+
+    ⚠️ LE VERROU MIROIR EST ROUGE, ET C'EST UN VRAI CONSTAT — PAS UNE
+    ATTENTE PÉRIMÉE. Le jumeau ``solar.batterie.test.mjs`` porte TOUJOURS
+    24 343 / 16 350 / 22 013, et il a RAISON pour ce qu'il décrit :
+    ``solar.js twoBillsSavings`` est resté le modèle ÉNERGIE SEULE
+    (``monthlyBillFromKwh``), sans lignes fixes ni TPPAN. QJR157 a donc
+    atterri côté serveur SANS son jumeau JS, et l'écran contredit le PDF sur
+    des montants MONTRÉS AU CLIENT :
+
+        facture actuelle      écran 24 343  vs  PDF 26 022  (+1 679 MAD/an)
+        économie option SANS  écran 16 350  vs  PDF 16 572  (+222 MAD/an)
+        économie option AVEC  écran 22 013  vs  PDF 22 952  (+939 MAD/an)
+
+    REFERMER CET ÉCART N'EST PAS UN RECALAGE DE TEST : il faut porter
+    ``bareme`` (montants de location/entretien et barème TPPAN, SOURCÉS de
+    vraies factures) dans ``solar.js``, ce qui change ce que le client voit à
+    l'écran — décision fondateur, pas correctif de CI. Tant que ce port n'est
+    pas fait, les deux fichiers ne sont plus des jumeaux sur l'axe CHARGES et
+    ce commentaire est le seul endroit qui le DIT.
     """
 
     def test_miroir_js_meme_fixture_memes_chiffres(self):
         sans = two_bills_savings(PROD, CONSO, AUTOCONSO_SANS, utility="onee")
         avec = two_bills_savings(
             PROD, CONSO, autoconso_avec_ratio(PROD, BATTERY), utility="onee")
-        self.assertEqual(sans["facture_sans"], 24343)
-        self.assertEqual(sans["facture_avec"], 7993)
-        self.assertEqual(sans["economie"], 16350)
+        # QJR157 — charges fixes + TPPAN comprises (dérivation en docstring).
+        self.assertEqual(sans["facture_sans"], 26022)
+        self.assertEqual(sans["facture_avec"], 9450)
+        self.assertEqual(sans["economie"], 16572)
         self.assertEqual(avec["autoconso_kwh"], 12865)
-        self.assertEqual(avec["facture_avec"], 2330)
-        self.assertEqual(avec["economie"], 22013)
+        self.assertEqual(avec["facture_avec"], 3070)
+        self.assertEqual(avec["economie"], 22952)
         self.assertGreater(avec["economie"], sans["economie"])
 
     def test_miroir_js_bout_en_bout_meme_production_memes_economies(self):
         """Jumeau EXACT du test JS « computeROI (modèle deux factures) ».
 
         Mêmes entrées (10 kWc, productible 1651, batterie 10 kWh, conso
-        15 000 kWh/an, ONEE) → MÊME production entière et MÊMES économies que
-        solar.batterie.test.mjs. C'est la garantie écran = PDF au dirham.
+        15 000 kWh/an, ONEE) → MÊME production entière que
+        solar.batterie.test.mjs. ``productible`` est passé EXPLICITEMENT : le
+        recalage QJR158 (d) du repli ne touche donc pas ce cas.
+
+        Les ÉCONOMIES, elles, ne sont plus les mêmes des deux côtés depuis
+        QJR157 — voir l'avertissement en tête de classe : l'écart (+222 /
+        +939 MAD/an) est la TPPAN, que le modèle JS ne porte pas encore. La
+        garantie « écran = PDF au dirham » est donc rompue sur cet axe, et
+        c'est un constat produit, pas une attente périmée.
         """
         roi = calculate_savings_roi(
             10.0, 100000, 140000, productible=1651, battery_kwh=BATTERY,
@@ -130,8 +182,8 @@ class TestMiroirJs(SimpleTestCase):
         self.assertEqual(roi["savings_model"], "factures")
         self.assertEqual(roi["prod_kwh"], PROD)                 # 15 358
         self.assertAlmostEqual(roi["autoconso_avec"], RATIO_ATTENDU, places=9)
-        self.assertEqual(roi["eco_s_ann"], 16350)
-        self.assertEqual(roi["eco_a_ann"], 22013)
+        self.assertEqual(roi["eco_s_ann"], 16572)
+        self.assertEqual(roi["eco_a_ann"], 22952)
 
 
 class TestPertesSysteme20Pct(SimpleTestCase):
@@ -228,42 +280,63 @@ class TestPlafondConsoModeleEstimation(SimpleTestCase):
     def test_repro_8kwc_conso_5000_batterie_10kwh(self):
         """Le cas exact du défaut, dérivé À LA MAIN.
 
-        production   = round(8 × 1 240 × 0,80/0,86) = round(9 227,906…) = 9 228
+        RECALAGE QJR158 (d) — LE REPLI DE PRODUCTIBLE VAUT 1651, PAS 1240.
+        Ce cas ne passe AUCUN ``productible`` : il tombe donc sur le repli de
+        ``pricing``, qui était un 1240 codé en dur, divergent du productible
+        canonique du dépôt (``productible.DEFAULT_PRODUCTIBLE`` = 1651
+        Casablanca, déjà la valeur du jumeau ``solar.js``). QJR158 (d) a
+        supprimé cette seconde source : la production dérivée MONTE, ce qui
+        n'a rien changé aux deux économies (elles saturent la consommation).
+
+        production   = round(8 × 1 651 × 0,80/0,86) = round(12 286,5116…)
+                       = 12 287                        (avant : 9 228)
         tarif        = repli 1,20 MAD/kWh (aucune table, aucun override)
-        conso/prod   = 5 000/9 228 = 0,5418292154…
-        taux SANS    : AVANT min() → 0,60 ⇒ 9 228 × 0,60 × 1,20 = 6 644,16
-                       → 6 644 MAD (on valorisait 5 536,8 kWh pour un client
+        conso/prod   = 5 000/12 287 = 0,4069341581…
+        taux SANS    : AVANT min() → 0,60 ⇒ 12 287 × 0,60 × 1,20 = 8 846,64
+                       → 8 847 MAD (on valorisait 7 372,2 kWh pour un client
                        qui n'en consomme que 5 000)
-                       APRÈS  → min(0,60 ; 0,5418292154) = 0,5418292154
-                       ⇒ 9 228 × 0,5418292154 × 1,20 = 6 000 MAD
-        taux AVEC    : 0,60 + 3 650/9 228 = 0,9955353273 → plafonné par la
-                       conso à 0,5418292154 ⇒ 6 000 MAD (inchangé)
-        ⇒ l'inversion 6 644 > 6 000 disparaît ; l'invariant tient à l'égalité
+                       APRÈS  → min(0,60 ; 0,4069341581) = 0,4069341581
+                       ⇒ 12 287 × 0,4069341581 × 1,20 = 6 000 MAD
+        taux AVEC    : 0,60 + 3 650/12 287 = 0,8970619354 → plafonné par la
+                       conso à 0,4069341581 ⇒ 6 000 MAD (inchangé)
+        ⇒ l'inversion 8 847 > 6 000 disparaît ; l'invariant tient à l'égalité
           (les deux options saturent la MÊME consommation).
+
+        LES 6 000 MAD SONT STRUCTURELS, PAS UNE COÏNCIDENCE : une fois le
+        plafond mordu, l'économie vaut prod × (conso/prod) × tarif = conso ×
+        tarif = 5 000 × 1,20 — elle ne dépend donc plus du productible. C'est
+        exactement ce que ce verrou protège, et il le protège toujours.
         """
         roi = calculate_savings_roi(
             8.0, 100000, 140000, conso_annuelle_kwh=5000, battery_kwh=10)
         self.assertEqual(roi["savings_model"], "estimation")
-        self.assertEqual(roi["prod_kwh"], 9228)
+        self.assertEqual(roi["prod_kwh"], 12287)
         self.assertEqual(roi["tarif_kwh"], 1.20)
-        self.assertAlmostEqual(roi["autoconso_sans"], 5000 / 9228, places=12)
-        self.assertAlmostEqual(roi["autoconso_avec"], 5000 / 9228, places=12)
+        self.assertAlmostEqual(roi["autoconso_sans"], 5000 / 12287, places=12)
+        self.assertAlmostEqual(roi["autoconso_avec"], 5000 / 12287, places=12)
         self.assertEqual(roi["eco_s_ann"], 6000)
         self.assertEqual(roi["eco_a_ann"], 6000)
-        # Le chiffre FAUX d'avant correctif ne doit jamais revenir.
-        self.assertNotEqual(roi["eco_s_ann"], 6644)
+        # Le chiffre FAUX d'avant correctif ne doit jamais revenir : c'est
+        # « 0,60 non plafonné », donc il suit le productible (6 644 → 8 847).
+        self.assertNotEqual(roi["eco_s_ann"], 8847)
 
     def test_sans_consommation_connue_comportement_historique(self):
-        """Aucune conso → aucun plafond : chiffres BYTE-IDENTIQUES à avant.
+        """Aucune conso → aucun plafond : les TAUX restent ceux d'avant.
 
-        9 228 × 0,60 × 1,20 = 6 644,16 → 6 644 ; côté AVEC le taux dérivé
-        0,9955353273 (non plafonné, faute de conso) ⇒ 9 228 × 0,9955353273
-        × 1,20 = 11 024,4… → 11 024.
+        Ce que ce test verrouille est l'ABSENCE de plafond (``autoconso_sans``
+        vaut exactement ``AUTOCONSO_SANS``), pas une valeur de production. Les
+        deux montants suivent donc le repli de productible recalé par
+        QJR158 (d) — 8 × 1 651 × 0,9302… = 12 287 kWh/an (avant : 9 228) :
+
+        12 287 × 0,60 × 1,20 = 8 846,64 → 8 847  (avant 6 644) ; côté AVEC le
+        taux dérivé 0,60 + 3 650/12 287 = 0,8970619354 (non plafonné, faute de
+        conso) ⇒ 12 287 × 0,8970619354 × 1,20 = 13 226,64… → 13 227
+        (avant 11 024).
         """
         roi = calculate_savings_roi(8.0, 100000, 140000, battery_kwh=10)
         self.assertEqual(roi["autoconso_sans"], AUTOCONSO_SANS)
-        self.assertEqual(roi["eco_s_ann"], 6644)
-        self.assertEqual(roi["eco_a_ann"], 11024)
+        self.assertEqual(roi["eco_s_ann"], 8847)
+        self.assertEqual(roi["eco_a_ann"], 13227)
 
     def test_invariant_avec_toujours_superieur_ou_egal_a_sans(self):
         """INVARIANT ABSOLU : une batterie ne peut jamais économiser MOINS.
@@ -297,8 +370,11 @@ class TestPlafondConsoModeleEstimation(SimpleTestCase):
         ``two_bills_savings`` borne déjà les kWh autoconsommés à la conso
         (``min(prod × ratio, conso)``) : plafonner le TAUX en amont donne le
         même minimum. Fixture du verrou JS (10 kWc, 15 358 kWh, ONEE,
-        15 000 kWh/an, barème TTC 2026) : 16 350 / 22 013 MAD, inchangés par le
-        plafond (le 16 350 vient du recalage T5 de QJR26, pas du plafond).
+        15 000 kWh/an, barème TTC 2026) : 16 572 / 22 952 MAD, inchangés par le
+        plafond — ce que ce test verrouille est l'invariance, pas les montants
+        eux-mêmes. Ils viennent du recalage T5 de QJR26 puis des charges fixes
+        et de la TPPAN de QJR157 (16 350 → 16 572, 22 013 → 22 952 ; dérivation
+        complète en tête de ``TestMiroirJs``), jamais du plafond.
         """
         roi = calculate_savings_roi(
             10.0, 100000, 140000, productible=1651, battery_kwh=BATTERY,
@@ -306,5 +382,5 @@ class TestPlafondConsoModeleEstimation(SimpleTestCase):
         self.assertEqual(roi["savings_model"], "factures")
         # conso/prod = 15 000/15 358 = 0,9767… > 0,60 → le plafond ne mord pas.
         self.assertEqual(roi["autoconso_sans"], AUTOCONSO_SANS)
-        self.assertEqual(roi["eco_s_ann"], 16350)
-        self.assertEqual(roi["eco_a_ann"], 22013)
+        self.assertEqual(roi["eco_s_ann"], 16572)
+        self.assertEqual(roi["eco_a_ann"], 22952)
