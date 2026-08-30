@@ -9,6 +9,7 @@ the residential package, so the brand stays identical across markets.
 """
 from __future__ import annotations
 import base64
+import re
 from pathlib import Path
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
@@ -176,6 +177,107 @@ def join_meta(*parts, sep=" · ") -> str:
     """Join non-empty, stripped meta fragments with `sep`."""
     clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
     return sep.join(c for c in clean if c)
+
+
+# ── QJR153 — garanties DÉRIVÉES du devis (une seule source pour le paquet) ───
+# Les durées de garantie du PDF agricole étaient codées en dur — 25/5/2/10 ans
+# sous « Nos garanties » (page 3), « Panneaux garantis 25 ans » (page 1) et
+# « Panneaux 25 ans · structure 10 ans · variateur 5 ans » (page 4) — alors que
+# le TABLEAU d'équipement de la MÊME page 3 imprime la VRAIE ``garantie`` de
+# chaque ligne : les deux pouvaient se contredire dans un même écran, et les
+# badges promettaient une « Structure 10 ans » même sans structure au devis.
+# Ce sont des engagements contractuels sur un document portant « Bon pour
+# accord ». Les trois surfaces lisent maintenant CETTE fonction.
+#
+# Doctrine identique au résidentiel (``residential.theme.warranties_for``) :
+# la donnée STRUCTURÉE du catalogue d'abord (``garantie_mois``, injectée par
+# ``builder._line_to_item``), sinon le texte de garantie de la ligne — celui-là
+# même qu'imprime le tableau —, sinon OMISSION. Jamais un chiffre par défaut,
+# jamais le chiffre d'un autre composant. La catégorie ABSENTE du devis n'a pas
+# de badge du tout.
+_GARANTIE_CATEGORIES = (
+    # (libellé du badge, marqueurs de désignation — testés dans CET ordre)
+    ("Panneaux", ("panneau", "module photovolt", "module pv")),
+    ("Variateur", ("variateur", "onduleur de pompage")),
+    ("Pompe", ("pompe",)),
+    ("Structure", ("structure", "support de fixation", "châssis", "chassis")),
+)
+
+_RE_DUREE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ans?|mois)", re.IGNORECASE)
+
+
+def _annees_de_mois(mois):
+    """Mois → années entières, ou None. MÊME règle que le résidentiel
+    (``residential.theme._annees``, source unique de la conversion) ; repli
+    local strictement identique si l'import échoue."""
+    try:
+        from ..residential.theme import _annees as _res_annees
+        return _res_annees(mois)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un import
+        try:
+            m = int(mois)
+        except (TypeError, ValueError):
+            return None
+        return m // 12 if m >= 12 else None
+
+
+def _duree_du_texte(txt):
+    """« 25 ans (perf.) » → ("25", "ans"). Rien de reconnaissable → None."""
+    m = _RE_DUREE.search(str(txt or ""))
+    if not m:
+        return None
+    val = m.group(1).replace(",", ".")
+    if "." in val:                       # « 2.5 » → « 2,5 » ; JAMAIS « 30 » → « 3 »
+        val = (val.rstrip("0").rstrip(".") or "0").replace(".", ",")
+    unite = m.group(2).lower()
+    if unite.startswith("an"):
+        unite = "ans" if val not in ("1",) else "an"
+    return (val, unite)
+
+
+def _categorie_de_ligne(designation):
+    blob = str(designation or "").lower()
+    for libelle, marqueurs in _GARANTIE_CATEGORIES:
+        if any(mk in blob for mk in marqueurs):
+            return libelle
+    return None
+
+
+def garanties_du_devis(data: dict):
+    """Badges de garantie (nombre, unité, libellé) DÉRIVÉS des lignes du devis.
+
+    Une catégorie n'apparaît que si (1) elle est présente dans la composition
+    ET (2) une de ses lignes porte une durée de garantie. Ordre stable :
+    Panneaux · Variateur · Pompe · Structure.
+    """
+    items = [it for it in ((data or {}).get("all_items") or [])
+             if isinstance(it, dict) and (it.get("quantite") or 0) > 0]
+    trouve = {}
+    for it in items:
+        cat = _categorie_de_ligne(it.get("designation"))
+        if not cat or cat in trouve:
+            continue
+        duree = None
+        # Le panneau porte sa garantie de PERFORMANCE quand le catalogue la
+        # documente ; c'est celle que le badge « Panneaux (perf.) » annonce.
+        if cat == "Panneaux":
+            ans = _annees_de_mois(it.get("garantie_production_mois"))
+            if ans:
+                duree = (str(ans), "ans" if ans > 1 else "an")
+        if duree is None:
+            ans = _annees_de_mois(it.get("garantie_mois"))
+            if ans:
+                duree = (str(ans), "ans" if ans > 1 else "an")
+        if duree is None:
+            duree = _duree_du_texte(it.get("garantie"))
+        if duree is None:
+            continue
+        libelle = cat
+        if cat == "Panneaux" and "perf" in str(it.get("garantie") or "").lower():
+            libelle = "Panneaux (perf.)"
+        trouve[cat] = (duree[0], duree[1], libelle)
+    return [trouve[libelle] for libelle, _ in _GARANTIE_CATEGORIES
+            if libelle in trouve]
 
 
 def base_css() -> str:
