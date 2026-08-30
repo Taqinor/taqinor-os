@@ -1126,3 +1126,149 @@ def resynchroniser_compteur_partenaire(deploiement):
         deploiement.partenaire_id, deploiement.company,
         compter_deploiements_reussis(
             deploiement.partenaire_id, deploiement.company))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG31 — parcours de certification partenaire (formation + badge). Réutilise
+# le MÉCANISME du parcours ``kb`` (XKB22, une séquence ordonnée d'articles)
+# comme CONTENU — jamais son suivi interne (nominatif pour un CustomUser),
+# inapplicable à un partenaire externe authentifié par jeton. La spécialité
+# proposée à la clôture est écrite via ``crm.services`` (frontière cross-app :
+# jamais ``crm.models`` ici) et reste une action admin EXPLICITE (jamais un
+# effet de bord automatique).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class ArticleInconnu(ValueError):
+    """L'id d'article coché n'appartient pas à cet instantané de parcours."""
+
+
+def _articles_instantanes(parcours):
+    """Aplatit les membres ordonnés d'un parcours kb en instantané plat."""
+    from apps.kb import selectors as kb_selectors
+
+    return [
+        {'article': membre.article_id, 'titre': membre.article.titre,
+         'ordre': membre.ordre}
+        for membre in kb_selectors.articles_ordonnes_parcours(parcours)
+    ]
+
+
+def instancier_parcours_certification(parcours, *, company, partenaire):
+    """Crée le parcours de certification d'UN partenaire pour un déploiement
+    de compétence donné.
+
+    ``parcours`` est un ``kb.KbParcours`` DÉJÀ résolu scopé société par
+    l'appelant (``kb.selectors.parcours_par_id``). Les articles sont figés
+    ici (même raison que ``instancier_playbook`` : la formation en cours ne
+    doit pas se réécrire sous les pieds de l'intégrateur si le parcours
+    modèle est édité). La spécialité PROPOSABLE se dérive du ``metier`` du
+    parcours SI elle appartient au référentiel fermé des spécialités
+    partenaire — sinon le parcours reste une simple formation, sans
+    proposition possible à la clôture.
+    """
+    from apps.crm import selectors as crm_selectors
+
+    from .models import ParcoursCertificationPartenaire
+
+    if partenaire.company_id != company.pk:
+        raise ValueError('Partenaire introuvable.')
+    articles = _articles_instantanes(parcours)
+    if not articles:
+        raise ValueError(
+            "Ce parcours n'a aucun article : rien à suivre. Complétez sa "
+            "séquence d'articles avant de l'instancier.")
+    metier = (parcours.metier or '').strip()
+    specialite = (
+        metier if metier in crm_selectors.specialites_partenaire_cles()
+        else '')
+    return ParcoursCertificationPartenaire.objects.create(
+        company=company,
+        partenaire=partenaire,
+        parcours=parcours,
+        parcours_nom=parcours.nom,
+        specialite=specialite,
+        articles=articles,
+        avancement={},
+    )
+
+
+def cocher_article_parcours(instance, article_id, fait=True):
+    """Coche (ou décoche) UN article lu d'un parcours de certification.
+
+    Écrit uniquement ``avancement`` : le statut reste une décision explicite
+    (``terminer_parcours_certification``), jamais un effet de bord.
+    """
+    cle = str(article_id or '')
+    if cle not in instance.cles_articles:
+        raise ArticleInconnu(
+            f'Article « {cle} » inconnu de ce parcours.')
+    avancement = dict(instance.avancement or {})
+    if fait:
+        avancement[cle] = True
+    else:
+        avancement.pop(cle, None)
+    instance.avancement = avancement
+    instance.save(update_fields=['avancement', 'updated_at'])
+    return instance
+
+
+def terminer_parcours_certification(instance):
+    """Passe le parcours en ``termine`` — refuse tant qu'il reste des
+    articles non lus.
+
+    Même esprit que NTMIG5/NTMIG22 : pas de « parcours terminé » déclaré
+    au-dessus d'une lecture incomplète. La clôture rend la spécialité
+    PROPOSABLE (si ``instance.specialite`` est renseignée) — elle ne
+    l'attribue jamais : voir ``valider_proposition_specialite``.
+    """
+    restants = [
+        article for article in (instance.articles or [])
+        if isinstance(article, dict)
+        and not (instance.avancement or {}).get(
+            str(article.get('article') or ''))
+    ]
+    if restants:
+        raise ReconcileBloque(
+            "Des articles du parcours ne sont pas lus : clôture refusée.",
+            ecarts=[{'article': a.get('article'), 'titre': a.get('titre')}
+                    for a in restants])
+    instance.statut = instance.Statut.TERMINE
+    instance.save(update_fields=['statut', 'updated_at'])
+    return instance
+
+
+class PropositionImpossible(ValueError):
+    """La proposition de spécialité ne peut pas être validée en l'état."""
+
+
+def valider_proposition_specialite(instance, user):
+    """Valide (action admin EXPLICITE) la spécialité proposée par un parcours
+    de certification TERMINÉ, et l'ajoute à la fiche partenaire.
+
+    Refuse tant que le parcours n'est pas terminé, si aucune spécialité n'est
+    proposable (``metier`` du parcours hors référentiel), ou si la
+    proposition a déjà été validée (jamais une double écriture). L'écriture
+    de la fiche passe par ``crm.services`` (frontière cross-app respectée).
+    """
+    from django.utils import timezone
+
+    from apps.crm import services as crm_services
+
+    if instance.statut != instance.Statut.TERMINE:
+        raise PropositionImpossible(
+            'Le parcours doit être terminé avant de valider sa proposition.')
+    if not instance.specialite:
+        raise PropositionImpossible(
+            'Ce parcours ne propose aucune spécialité (métier hors '
+            'référentiel).')
+    if instance.proposition_validee:
+        raise PropositionImpossible('Proposition déjà validée.')
+    crm_services.ajouter_specialite_partenaire(
+        instance.partenaire_id, instance.company, instance.specialite)
+    instance.proposition_validee = True
+    instance.valide_par = user
+    instance.date_validation = timezone.now()
+    instance.save(update_fields=[
+        'proposition_validee', 'valide_par', 'date_validation', 'updated_at'])
+    return instance

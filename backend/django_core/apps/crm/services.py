@@ -4265,3 +4265,37 @@ def poser_compteur_deploiements(partenaire_id, company, nb_reussis):
         partenaire.nb_deploiements_reussis = nb_reussis
         partenaire.save(update_fields=['nb_deploiements_reussis'])
     return partenaire
+
+
+# ── NTMIG31 — spécialité proposée par un parcours de formation partenaire ───
+
+def ajouter_specialite_partenaire(partenaire_id, company, specialite):
+    """Ajoute UNE spécialité à la fiche partenaire si elle n'y est pas déjà.
+
+    Point d'entrée d'ÉCRITURE pour ``apps.migration`` (qui possède le parcours
+    de certification NTMIG31) : la fiche partenaire vit ici, donc c'est ici
+    qu'on l'écrit — jamais un ``Partenaire.objects.update()`` depuis une
+    autre app. N'ajoute QUE si la clé appartient au référentiel FERMÉ
+    (``Partenaire.SPECIALITES_CLES``) — une spécialité hors liste rendrait
+    l'annuaire des certifiés (NTMIG29) infiltrable par une clé libre.
+    L'action reste une PROPOSITION validée explicitement par un admin en
+    amont (jamais un effet de bord automatique de fin de parcours) ; cette
+    fonction ne fait qu'exécuter la validation déjà décidée. Idempotent :
+    une spécialité déjà présente n'est jamais dupliquée. Renvoie le
+    partenaire mis à jour, ou ``None`` si l'id ne désigne aucun partenaire de
+    cette société (jamais une écriture cross-tenant).
+    """
+    from .models import Partenaire
+
+    partenaire = Partenaire.objects.filter(
+        pk=partenaire_id, company=company).first()
+    if partenaire is None:
+        return None
+    if specialite not in Partenaire.SPECIALITES_CLES:
+        return partenaire
+    specialites = list(partenaire.specialites or [])
+    if specialite not in specialites:
+        specialites.append(specialite)
+        partenaire.specialites = specialites
+        partenaire.save(update_fields=['specialites'])
+    return partenaire

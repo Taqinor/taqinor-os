@@ -44,6 +44,20 @@ const migrationApi = {
   derogerLot: (id, motif) =>
     api.post(`/migration/lots-migration/${id}/deroger/`, { motif }),
   terminerLot: (id) => api.post(`/migration/lots-migration/${id}/terminer/`),
+
+  // ── Instances de playbook (NTMIG22/25) ──
+  listPlaybookInstances: (params) =>
+    api.get('/migration/playbook-instances/', { params }),
+  instancierPlaybook: (data) =>
+    api.post('/migration/playbook-instances/instancier/', data),
+  cocherEtapePlaybook: (id, cle, fait = true) =>
+    api.post(`/migration/playbook-instances/${id}/cocher/`, { cle, fait }),
+  terminerPlaybookInstance: (id) =>
+    api.post(`/migration/playbook-instances/${id}/terminer/`),
+
+  // ── Annuaire des partenaires certifiés (NTMIG29) ──
+  listPartenairesCertifies: (params) =>
+    api.get('/migration/annuaire-partenaires-certifies/', { params }),
 }
 
 export default migrationApi

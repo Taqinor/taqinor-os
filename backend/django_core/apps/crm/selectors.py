@@ -2652,6 +2652,57 @@ def partenaires_certifies_qs(company, *, niveau_min=None, specialite=None,
     return qs.order_by('-rang_niveau', 'nom')
 
 
+def specialites_partenaire_cles():
+    """NTMIG31 — clés du référentiel FERMÉ des spécialités partenaire.
+
+    Simple accès en lecture à la liste de clés déclarée par le modèle
+    (``Partenaire.SPECIALITES_CLES``) — jamais un import de
+    ``apps.crm.models`` depuis une autre app pour cette seule constante.
+    """
+    from .models import Partenaire
+
+    return Partenaire.SPECIALITES_CLES
+
+
+def certifications_expirantes(company, within_days=60):
+    """NTMIG30 — partenaires dont la couche certification EXPIRE bientôt.
+
+    Réutilise le PATTERN d'échéances RH (FG175/YHIRE8) — jamais son code : la
+    fiche est ``crm.Partenaire``, une famille distincte de
+    ``rh.selectors.certifications_expirantes`` (habilitations employés).
+    Ne retient que les fiches avec un niveau de certification POSÉ (jamais
+    ``aucun`` — rien à alerter pour un partenaire non certifié) ET une
+    échéance renseignée tombant au plus tard dans ``within_days`` jours
+    (aujourd'hui + ``within_days`` inclus), PAS ENCORE échue (une certification
+    déjà expirée est visible directement sur l'annuaire NTMIG29 — cette alerte
+    est un rappel PRÉVENTIF, pas un état). Toujours scopé société ; triée par
+    échéance la plus proche.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Partenaire
+
+    if company is None:
+        return Partenaire.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 60
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    return (Partenaire.objects
+            .filter(company=company,
+                    date_expiration_certification__isnull=False,
+                    date_expiration_certification__gte=today,
+                    date_expiration_certification__lte=limite)
+            .exclude(niveau_certification=Partenaire.NiveauCertification.AUCUN)
+            .order_by('date_expiration_certification', 'id'))
+
+
 def _as_date(value):
     """Normalise un DateField/DateTimeField en `date` pour comparaison sûre."""
     if value is None:
