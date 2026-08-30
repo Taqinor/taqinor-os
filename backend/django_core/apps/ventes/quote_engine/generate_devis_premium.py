@@ -3175,6 +3175,12 @@ def _proposition_link():
 #: Toute la vignette QR tient sous cette hauteur, par construction.
 ONEPAGE_HEADER_MM = 21.17
 
+#: QJR161 — borne BASSE de la zone de contenu du une-page, en px CSS, telle que
+#: le gabarit la pose (``bottom:72px``). Au-delà, ``overflow:hidden`` ROGNE
+#: silencieusement : c'est la ligne que le bloc de totaux ne doit jamais
+#: franchir. Constante partagée par le gabarit, la mesure et les tests.
+ONEPAGE_FOOTER_PX = 72
+
 
 def _onepage_qr_uri(href):
     """QRP1 — QR PNG data-URI de la proposition (correction M, sans logo
@@ -3251,8 +3257,14 @@ def _onepage_header_html():
         f'{ref_html}</div></div>')
 
 
-def page_onepage(items):
-    """Single A4 page: header + summary strip + client block + HT product table + footer."""
+def page_onepage(items, tronquees=0):
+    """Single A4 page: header + summary strip + client block + HT product table + footer.
+
+    QJR161 — ``tronquees`` : nombre de lignes d'équipement RETIRÉES de la table
+    parce qu'elles ne tenaient pas dans la zone visible. Elles sont DÉCLARÉES
+    par une ligne finale ; les totaux, eux, restent ceux du devis ENTIER
+    (chaîne canonique du builder) — on n'a jamais retiré une ligne d'un total.
+    """
     # Totaux CANONIQUES du builder (chaîne HT → remise → TVA par taux → TTC,
     # calculée UNE fois) ; recalcul local uniquement en mode autonome.
     if TOTAUX_ALL:
@@ -3431,6 +3443,20 @@ def page_onepage(items):
         )
         row_idx += 1
 
+    # QJR161 — les lignes RETIRÉES faute de place sont DÉCLARÉES, jamais
+    # coupées en silence : le lecteur sait que la table n'est pas exhaustive et
+    # que le total, lui, porte bien TOUT le devis.
+    if tronquees > 0:
+        rows_html += (
+            f'<tr><td colspan="6" style="padding:{pad_px}px 10px;'
+            f'font-style:italic;font-size:7pt;color:{CG4};">'
+            f'&#8230; et {tronquees} autre'
+            f'{"s" if tronquees > 1 else ""} ligne'
+            f'{"s" if tronquees > 1 else ""} d&#8217;&#233;quipement '
+            f'&#8212; incluse'
+            f'{"s" if tronquees > 1 else ""} dans les totaux ci-dessous, '
+            f'd&#233;tail complet sur le devis multi-pages.</td></tr>')
+
     # ── Bloc totaux : Sous-total HT → Remise visible → Total HT → TVA → TTC ──
     def _tot_line(label, value, navy=False, neg=False):
         color = CGR if neg else (CN if not navy else CN)
@@ -3515,7 +3541,7 @@ def page_onepage(items):
 
   <!-- CONTENT AREA: block flow, footer space reserved (WeasyPrint-robuste :
        pas de flex:1 ni de gap, qui rendaient le total par-dessus le footer) -->
-  <div style="position:absolute;top:0;left:0;right:0;bottom:72px;overflow:hidden;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:{ONEPAGE_FOOTER_PX}px;overflow:hidden;">
 
   <!-- HEADER: navy (QRP1 — variante avec vignette QR quand le devis porte un
        lien de proposition tokenisé ; sinon rendu historique au bit près) -->
@@ -3603,15 +3629,77 @@ def page_onepage(items):
 """
 
 
-def build_html_onepage(items):
+def build_html_onepage(items, tronquees=0):
     """Minimal HTML shell for the one-page PDF."""
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
-<title>Devis TAQINOR N\u00b0 {REF}</title>
+<title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
 <style>{CSS}</style></head>
 <body style="background:#FFFFFF !important;">
-{page_onepage(items)}
+{page_onepage(items, tronquees)}
 </body></html>"""
+
+
+def _mesure_onepage(html):
+    """QJR161 \u2014 MESURE du bas du bloc de totaux et de la hauteur d'une ligne.
+
+    Rend ``(depassement_px, hauteur_ligne_px)`` : ``depassement_px`` est de
+    combien le bloc \u00ab Total TTC \u00bb franchit la ligne de rognage
+    (``ONEPAGE_FOOTER_PX``), ``0`` quand il tient. ``None`` quand la mesure est
+    IMPOSSIBLE (WeasyPrint absent, page non compos\u00e9e) : on ne devine alors
+    rien et le document reste celui d'aujourd'hui.
+
+    C'est une MESURE, pas une capacit\u00e9 devin\u00e9e : le gabarit n'a aucune borne
+    haute (``n_items > 12`` \u21d2 table compacte, et c'est tout) et la zone de
+    contenu est en ``overflow:hidden``, donc un devis dense faisait dispara\u00eetre
+    son propre Total TTC sans qu'aucun compteur de pages ne bouge.
+    """
+    try:
+        from weasyprint import HTML as _HTML
+    except Exception:  # noqa: BLE001 \u2014 pas de WeasyPrint : aucune mesure
+        return None
+    try:
+        pages = _HTML(string=_html_sans_base(html)).render().pages
+        if not pages:
+            return None
+        page = pages[0]
+        limite = page.height - ONEPAGE_FOOTER_PX
+        bas_totaux = None
+        hauteurs = []
+        for boite in _boites_texte_onepage(page):
+            texte = (getattr(boite, "text", "") or "")
+            if "Total TTC" in texte or "TOTAL TTC" in texte:
+                bas = boite.position_y + boite.height
+                bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
+            hauteurs.append(boite.height)
+        if bas_totaux is None:
+            return None
+        hauteur_ligne = 0.0
+        if hauteurs:
+            hauteurs.sort()
+            hauteur_ligne = hauteurs[len(hauteurs) // 2]
+        return (max(0.0, bas_totaux - limite), hauteur_ligne)
+    except Exception:  # noqa: BLE001 \u2014 un PDF ne casse jamais sur une mesure
+        return None
+
+
+def _html_sans_base(html):
+    """Le HTML tel quel \u2014 point d'extension si une base_url devient utile."""
+    return html
+
+
+def _boites_texte_onepage(page):
+    """Toutes les bo\u00eetes de texte compos\u00e9es d'une page WeasyPrint, \u00e0 plat."""
+    out = []
+
+    def _walk(box):
+        if getattr(box, "text", None):
+            out.append(box)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child)
+
+    _walk(page._page_box)
+    return out
 
 
 # ── Generate PDF ──────────────────────────────────────────────────────────────
@@ -3941,8 +4029,46 @@ def render_html_for(data: dict) -> str:
         # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
         # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
         # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
-        return build_html_onepage(_esc_items(data.get("all_items", [])))
+        return _onepage_html_qui_tient(_esc_items(data.get("all_items", [])))
     return build_html()
+
+
+#: QJR161 — nombre maximum de passes de mesure. Chaque passe compose la page,
+#: donc on borne le coût ; la première correction est déjà dimensionnée par la
+#: mesure (dépassement ÷ hauteur de ligne).
+_ONEPAGE_PASSES = 3
+
+
+def _onepage_html_qui_tient(items):
+    """QJR161 — le une-page dont le bloc de totaux EST composé dans la zone
+    visible.
+
+    Le gabarit n'a AUCUNE borne haute (``n_items > 12`` ⇒ table compacte, et
+    rien au-delà) tandis que ``.page`` et la zone de contenu sont en
+    ``overflow:hidden`` : un devis dense faisait DISPARAÎTRE son propre Total
+    TTC, et le PDF faisait toujours 1 page — le module le dit lui-même. On
+    MESURE donc le rendu et, s'il déborde, on retire des lignes d'équipement
+    en le DÉCLARANT (les totaux restent ceux du devis entier). Sans WeasyPrint,
+    la mesure est impossible : le document reste EXACTEMENT celui d'aujourd'hui.
+    """
+    lignes = list(items or [])
+    tronquees = 0
+    html = build_html_onepage(lignes, tronquees)
+    for _ in range(_ONEPAGE_PASSES):
+        mesure = _mesure_onepage(html)
+        if mesure is None:
+            return html
+        depassement, hauteur_ligne = mesure
+        if depassement <= 0 or len(lignes) <= 1:
+            return html
+        a_retirer = 1
+        if hauteur_ligne > 0:
+            a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
+        a_retirer = min(a_retirer, len(lignes) - 1)
+        lignes = lignes[:-a_retirer]
+        tronquees += a_retirer
+        html = build_html_onepage(lignes, tronquees)
+    return html
 
 
 def _render_premium_pdf(data: dict, out_path) -> str:

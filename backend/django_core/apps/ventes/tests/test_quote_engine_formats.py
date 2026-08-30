@@ -548,6 +548,102 @@ class TestPdfFormats(TestCase):
         'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
     }
 
+    # ── QJR161 — gardes de POSITION du format une-page ──────────────────────
+    @staticmethod
+    def _boites_texte(page):
+        """Toutes les boîtes de texte COMPOSÉES d'une page WeasyPrint."""
+        out = []
+
+        def _walk(box):
+            if getattr(box, 'text', None):
+                out.append(box)
+            for child in (getattr(box, 'children', None) or []):
+                _walk(child)
+
+        _walk(page._page_box)
+        return out
+
+    def _assert_bloc_totaux_visible(self, doc):
+        """Le bloc de totaux est-il composé DANS la zone visible ?
+
+        La zone de contenu du une-page est bornée à ``bottom:72px`` avec
+        ``overflow:hidden`` : tout ce qui la franchit DISPARAÎT du document
+        sans qu'aucun compteur de pages ne bouge. On vérifie donc la POSITION,
+        seule preuve que le client verra son Total TTC.
+        """
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        self.assertEqual(len(doc.pages), 1)
+        page = doc.pages[0]
+        limite = page.height - G.ONEPAGE_FOOTER_PX
+        boites = self._boites_texte(page)
+        for etiquette in ('Sous-total HT', 'Total TTC'):
+            cibles = [b for b in boites
+                      if etiquette.lower() in (b.text or '').lower()]
+            self.assertTrue(cibles, '« %s » introuvable dans la page composée'
+                            % etiquette)
+            for b in cibles:
+                self.assertLess(
+                    b.position_y + b.height, limite,
+                    '« %s » tombe sous la ligne de rognage : il serait '
+                    'INVISIBLE sur le document rendu' % etiquette)
+
+    def _assert_derniere_ligne_visible(self, doc, marqueur):
+        """La dernière ligne d'équipement rendue est-elle visible ?"""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        page = doc.pages[0]
+        limite = page.height - G.ONEPAGE_FOOTER_PX
+        lignes = [b for b in self._boites_texte(page)
+                  if marqueur in (b.text or '')]
+        self.assertTrue(lignes,
+                        'aucune ligne « %s » composée' % marqueur)
+        derniere = max(lignes, key=lambda b: b.position_y)
+        self.assertLess(
+            derniere.position_y + derniere.height, limite,
+            'la dernière ligne d’équipement tombe sous la ligne de rognage')
+
+    @tag('pdf')
+    def test_qjr161_une_page_dense_garde_ses_lignes_et_ses_totaux_VISIBLES(self):
+        """QJR161 — fixture DENSE (≥ 20 lignes) : la dernière ligne rendue ET
+        le bloc de totaux doivent être composés au-dessus de la ligne de
+        rognage. Sans cette garde, la densité adaptative n'a AUCUNE borne
+        haute et la page rogne silencieusement son propre Total TTC."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        lignes = [(f'D{i:02d} equipement dense', '2', '900') for i in range(24)]
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference='DEV-QJR161-DENSE')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        html = G.render_html_for(data)
+        doc = HTML(string=html).render()
+        self._assert_bloc_totaux_visible(doc)
+        self._assert_derniere_ligne_visible(doc, 'equipement dense')
+
+    @tag('pdf')
+    def test_qjr161_les_lignes_retirees_sont_declarees(self):
+        """Si la page ne peut pas tout montrer, elle le DIT — et ses totaux
+        restent ceux du devis ENTIER (aucune ligne retirée d'un total)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        lignes = [(f'E{i:02d} equipement tres dense', '2', '900')
+                  for i in range(60)]
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference='DEV-QJR161-XXL')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        html = G.render_html_for(data)
+        doc = HTML(string=html).render()
+        self._assert_bloc_totaux_visible(doc)
+        rendues = html.count('equipement tres dense')
+        if rendues < 60:
+            self.assertIn('autres lignes d&#8217;&#233;quipement', html)
+        # Le Total TTC reste celui du devis ENTIER, quoi qu'il arrive.
+        self.assertIn(G._fmt2(data['totaux_all']['ttc']), html)
+
     def _simulation(self):
         """QJR159 (b) — la simulation de test décrit LE champ PV de ce devis.
 
@@ -1247,7 +1343,12 @@ class TestPdfFormats(TestCase):
         # vérifié visuellement sur un rendu réel)
         self.assertNotIn('Ligne 1 de description', html)
         self.assertNotIn('Garantie constructeur 10 ans', html)
-        self.assertIn('Sous-total HT', html)
+        # QJR161 — ASSERTION DE POSITION, plus une assertion de CHAÎNE.
+        # ``assertEqual(len(doc.pages), 1)`` est une TAUTOLOGIE sur un gabarit
+        # à une page (la zone de contenu est en ``overflow:hidden`` : ce qui
+        # dépasse est ROGNÉ, jamais reporté), et ``assertIn('Sous-total HT')``
+        # prouve la présence de la chaîne dans le HTML, pas sa VISIBILITÉ.
+        self._assert_bloc_totaux_visible(doc)
 
         # Cas confortable : 6 lignes → descriptions présentes
         devis2 = make_devis(self.company, self.user, self.client_obj,
