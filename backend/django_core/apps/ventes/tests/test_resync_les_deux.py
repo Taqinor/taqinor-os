@@ -367,3 +367,257 @@ class TestQjr60QuantiteVerrouillee(_BaseDeuxOptions):
         autre.refresh_from_db()
         self.assertEqual(int(commune.quantite), 20)
         self.assertEqual(int(autre.quantite), 12)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# QJR81 — LE CHEMIN DE RÉPARATION (PVHEAL) HÉRITE DES RÈGLES DE LA CRÉATION
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Constat QB81 (audit L3 du 29/08/2026), vérifié en code :
+#
+#   1. ``_completer_kit_residentiel`` composait le « kit attendu » par un appel
+#      DIRECT à ``composition_residentielle``, SANS la carte des marques
+#      épinglées (PVMRQ), SANS l'ordre de lignes de la société (PVORD) et SANS
+#      la phase électrique déclarée du client (PVCOMPAT). Ce chemin pouvait
+#      donc coter une marque et une phase que le chemin de CRÉATION s'interdit.
+#   2. Sur un devis « Les deux » dont les deux optimums DIVERGENT, il ajoutait
+#      ses lignes SANS variante — donc COMMUNES — dimensionnées sur le compte
+#      de l'option SANS. La resynchronisation PVSTR refuse ensuite, par design,
+#      de porter une ferrure COMMUNE au compte d'une seule option : l'option
+#      AVEC restait durablement sous-structurée, et son forfait de pose par
+#      panneau sous-facturé.
+#
+# La réparation passe désormais par ``pipeline.composer`` — LE composeur, celui
+# de l'aperçu et de la création — et estampille la variante de l'option
+# réparée.
+
+class _BaseReparation(TestCase):
+    """Un devis SQUELETTE (aucune ligne de kit) et un catalogue COMPLET."""
+
+    slug = 'qjr81-reparation'
+
+    def setUp(self):
+        from apps.crm.models import Lead
+
+        self.company = make_company(self.slug)
+        self.user = User.objects.create_user(
+            username='qjr81-%s' % self.slug, password='x',
+            role_legacy='responsable', company=self.company)
+        self.api = auth_client(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client QJR81')
+        self._Lead = Lead
+        self.produits = {}
+        for nom, sku, prix in CATALOGUE_KIT:
+            fixe, par_panneau = BAREMES_FORFAIT.get(sku, (None, None))
+            self.produits[nom] = Produit.objects.create(
+                company=self.company, nom=nom, sku='QJR81-%s' % sku,
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=500,
+                prix_fixe_ht=None if fixe is None else Decimal(fixe),
+                prix_par_panneau_ht=(None if par_panneau is None
+                                     else Decimal(par_panneau)))
+        self.compteur = 0
+
+    def _lead(self, raccordement):
+        return self._Lead.objects.create(
+            company=self.company, nom='QJR81', prenom='Raccordement',
+            email='qjr81-%s@example.com' % raccordement,
+            raccordement=raccordement)
+
+    def _squelette(self, *, scenario_stocke, lignes, lead=None):
+        """Devis sans AUCUNE ligne de kit : ``lignes`` est une suite de
+        ``(désignation, quantité, variante)``."""
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJR81-%s' % self.compteur,
+            client=self.client_obj, lead=lead,
+            statut=Devis.Statut.BROUILLON, created_by=self.user,
+            etude_params={'scenario': scenario_stocke})
+        for ordre, (nom, quantite, variante) in enumerate(lignes, start=1):
+            produit = self.produits[nom]
+            devis.lignes.create(
+                produit=produit, designation=nom,
+                quantite=Decimal(str(quantite)),
+                prix_unitaire=Decimal(produit.prix_vente),
+                remise=Decimal('0'), ordre=ordre, variante=variante)
+        return devis
+
+    def _post(self, devis, corps):
+        return self.api.post(
+            '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
+            corps, format='json')
+
+
+class TestReparationHeriteDesReglesDeCreation(_BaseReparation):
+    """QJR81 #1 — marque épinglée et phase déclarée valent AUSSI ici."""
+
+    slug = 'qjr81-regles'
+
+    def test_la_marque_epinglee_gagne_sur_le_chemin_de_reparation(self):
+        """PVMRQ — deux transporteurs au catalogue, un seul épinglé : la
+        réparation doit coter CELUI-LÀ. Avant QJR81 elle prenait le premier
+        venu, la carte des marques ne lui étant jamais passée."""
+        from apps.ventes.models import ParametresGammes
+
+        # Le catalogue standard porte déjà « Transport » (sans marque) ; on
+        # ajoute un SECOND transporteur, celui que la société épingle.
+        Produit.objects.create(
+            company=self.company, nom='Transport Premium',
+            sku='QJR81-TRANS2', marque='SunRak',
+            prix_vente=Decimal('1400'), prix_achat=Decimal('1'),
+            quantite_stock=500)
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=False,
+            marques={ParametresGammes.SLOT_ESSENTIELLE:
+                     {'transport': 'SunRak'}})
+
+        devis = self._squelette(
+            scenario_stocke=SCENARIO_AVEC_BATTERIE,
+            lignes=((PANNEAU, 8, ''), (HYBRIDE, 1, ''), (BATTERIE, 1, '')))
+        resp = self._post(devis, layout(panels=8, kwc=4.4,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        transports = [li for li in devis.lignes.all()
+                      if 'Transport' in li.designation]
+        self.assertEqual(len(transports), 1,
+                         [li.designation for li in devis.lignes.all()])
+        self.assertEqual(transports[0].designation, 'Transport Premium',
+                         'la réparation n’a pas respecté la marque épinglée')
+
+    def test_la_marque_epinglee_introuvable_ne_retombe_pas_en_silence(self):
+        """Ordre fondateur #5 : une marque réglée SANS candidat vide le vivier
+        — la classe est alors DITE absente, jamais remplacée en douce."""
+        from apps.ventes.models import ParametresGammes
+
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=False,
+            marques={ParametresGammes.SLOT_ESSENTIELLE:
+                     {'transport': 'MarqueQuiNExistePas'}})
+        devis = self._squelette(
+            scenario_stocke=SCENARIO_AVEC_BATTERIE,
+            lignes=((PANNEAU, 8, ''), (HYBRIDE, 1, ''), (BATTERIE, 1, '')))
+        resp = self._post(devis, layout(panels=8, kwc=4.4,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        self.assertNotIn('Transport',
+                         [li.designation for li in devis.lignes.all()])
+        self.assertIn('Transport absent du catalogue ou sans prix — ligne non '
+                      'ajoutée.', resp.data['avertissements'])
+
+    def test_la_phase_declaree_descend_jusqua_la_reparation(self):
+        """PVCOMPAT/L-TRI — client TRIPHASÉ, catalogue 100 % monophasé : la
+        composition REFUSE de coter un monophasé et le DIT. Avant QJR81, la
+        phase n'était pas transmise : ce message ne pouvait pas sortir."""
+        devis = self._squelette(
+            scenario_stocke=SCENARIO_AVEC_BATTERIE,
+            lead=self._lead('triphase'),
+            lignes=((PANNEAU, 8, ''), (HYBRIDE, 1, ''), (BATTERIE, 1, '')))
+        resp = self._post(devis, layout(panels=8, kwc=4.4,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        avertissements = ' | '.join(resp.data['avertissements'])
+        self.assertIn('TRIPHASÉ', avertissements, avertissements)
+
+    def test_sans_lead_la_reparation_est_inchangee(self):
+        """Le témoin négatif : pas de raccordement déclaré ⇒ aucun filtre de
+        phase, aucun message, et le kit est complété comme avant."""
+        devis = self._squelette(
+            scenario_stocke=SCENARIO_AVEC_BATTERIE,
+            lignes=((PANNEAU, 8, ''), (HYBRIDE, 1, ''), (BATTERIE, 1, '')))
+        resp = self._post(devis, layout(panels=8, kwc=4.4,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertNotIn('TRIPHAS', ' | '.join(resp.data['avertissements']))
+        designations = {li.designation for li in devis.lignes.all()}
+        for attendu in ('Structures acier', 'Socles', 'Installation',
+                        'Transport', 'Tableau De Protection AC/DC'):
+            self.assertIn(attendu, designations)
+        # Devis NON varianté : le kit ajouté reste COMMUN, comme avant QJR81.
+        self.assertEqual({li.variante for li in devis.lignes.all()}, {''})
+
+
+class TestReparationDevisLesDeuxDivergent(_BaseReparation):
+    """QJR81 #2 — l'option AVEC porte ses PROPRES ferrures."""
+
+    slug = 'qjr81-divergent'
+
+    #: 8 panneaux sans stockage, 12 avec : les deux optimums DIVERGENT.
+    SANS, AVEC = 8, 12
+
+    def _devis_divergent(self):
+        return self._squelette(
+            scenario_stocke=SCENARIO_LES_DEUX,
+            lignes=((PANNEAU, self.SANS, 'sans'),
+                    (PANNEAU, self.AVEC, 'avec'),
+                    (RESEAU, 1, 'sans'),
+                    (HYBRIDE, 1, 'avec'),
+                    (BATTERIE, 1, 'avec')))
+
+    def _quantites(self, devis, designation):
+        return {(li.variante or ''): int(li.quantite)
+                for li in devis.lignes.all()
+                if li.designation == designation}
+
+    def test_chaque_option_recoit_ses_propres_ferrures(self):
+        devis = self._devis_divergent()
+        # Le calepinage est un PLAFOND (12 panneaux) : l'option SANS reste à 8,
+        # l'option AVEC à 12 — la divergence survit à la resynchro.
+        resp = self._post(devis, layout(panels=self.AVEC, kwc=6.6,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        structures = self._quantites(devis, 'Structures acier')
+        self.assertEqual(structures, {'sans': self.SANS, 'avec': self.AVEC},
+                         'l’option AVEC ne porte pas ses propres ferrures : '
+                         'elle reste sous-structurée (constat QB81)')
+        socles = self._quantites(devis, 'Socles')
+        self.assertEqual(socles,
+                         {'sans': self.SANS * 2, 'avec': self.AVEC * 2})
+
+    def test_le_forfait_de_pose_suit_le_compte_de_son_option(self):
+        """L-FORFAIT : 2 000 HT + 250 HT/panneau. 8 panneaux → 4 000,
+        12 panneaux → 5 000. Une ligne commune facturerait 4 000 aux deux."""
+        devis = self._devis_divergent()
+        resp = self._post(devis, layout(panels=self.AVEC, kwc=6.6,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        poses = {(li.variante or ''): Decimal(li.prix_unitaire)
+                 for li in devis.lignes.all()
+                 if li.designation == 'Installation'}
+        self.assertEqual(sorted(poses), ['avec', 'sans'])
+        self.assertEqual(poses['sans'], Decimal('4000.00'))
+        self.assertEqual(poses['avec'], Decimal('5000.00'))
+
+    def test_un_devis_les_deux_non_divergent_reste_en_lignes_communes(self):
+        """Témoin négatif : mêmes comptes des deux côtés ⇒ rien à distinguer,
+        le kit reste COMMUN — comportement d'avant QJR81, à l'octet."""
+        devis = self._squelette(
+            scenario_stocke=SCENARIO_LES_DEUX,
+            lignes=((PANNEAU, 12, 'sans'), (PANNEAU, 12, 'avec'),
+                    (RESEAU, 1, 'sans'), (HYBRIDE, 1, 'avec'),
+                    (BATTERIE, 1, 'avec')))
+        resp = self._post(devis, layout(panels=12, kwc=6.6,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        structures = self._quantites(devis, 'Structures acier')
+        self.assertEqual(structures, {'': 12})
+
+    def test_les_ferrures_variantees_sont_ensuite_resynchronisables(self):
+        """La raison d'être du #2 : PVSTR ne touche PAS une ferrure commune.
+        Estampillées, les deux ferrures suivent enfin leur propre compte."""
+        devis = self._devis_divergent()
+        self._post(devis, layout(panels=self.AVEC, kwc=6.6,
+                                 scenario='avec_batterie'))
+        # Second passage : le toit ne porte plus que 10 panneaux — l'option
+        # AVEC (12) redescend, l'option SANS (8) ne bouge pas.
+        resp = self._post(devis, layout(panels=10, kwc=5.5,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(self._quantites(devis, 'Structures acier'),
+                         {'sans': self.SANS, 'avec': 10})

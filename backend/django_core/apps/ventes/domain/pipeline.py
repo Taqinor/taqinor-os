@@ -94,6 +94,9 @@ class IntentionComposition:
       l'appelant fournit et que la composition enrichit sur place. ``None``
       (le défaut) laisse la composition sur son journal interne, comportement
       historique strictement inchangé.
+    * ``variante`` — QJR81, l'OPTION dont relèvent les lignes composées
+      (``''`` = commune aux deux, ``'sans'`` / ``'avec'`` = propre à
+      celle-là). ``''`` (LE DÉFAUT) ⇒ lignes communes, comportement inchangé.
     """
 
     company: object
@@ -108,6 +111,7 @@ class IntentionComposition:
     gamme_nom_devis: object = None
     dimensionnement_avec: object = None
     avertissements: object = None
+    variante: str = ''
 
 
 def composer(intention):
@@ -156,7 +160,7 @@ def composer(intention):
 
     # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ────────────
     if deux_options and avec:
-        return composition_deux_optimiseurs(
+        lignes = composition_deux_optimiseurs(
             catalogue,
             kwc_sans=kwc,
             nb_panneaux_sans=nb_panneaux,
@@ -164,17 +168,60 @@ def composer(intention):
             nb_panneaux_avec=avec.get('nb_panneaux'),
             batterie_cible_kwh=avec.get('batterie_kwh'),
             **commun)
-    return composition_residentielle(
-        catalogue,
-        kwc=kwc,
-        nb_panneaux=nb_panneaux,
-        avec_batterie=avec_batterie,
-        deux_options=deux_options,
-        # Un devis MONO « avec » retient la capacité du même optimum ;
-        # absente ⇒ la règle historique kWc/5 décide seule.
-        batterie_cible_kwh=(avec.get('batterie_kwh')
-                            if (avec_batterie and avec) else None),
-        **commun)
+    else:
+        lignes = composition_residentielle(
+            catalogue,
+            kwc=kwc,
+            nb_panneaux=nb_panneaux,
+            avec_batterie=avec_batterie,
+            deux_options=deux_options,
+            # Un devis MONO « avec » retient la capacité du même optimum ;
+            # absente ⇒ la règle historique kWc/5 décide seule.
+            batterie_cible_kwh=(avec.get('batterie_kwh')
+                                if (avec_batterie and avec) else None),
+            **commun)
+    return estampiller_variante(lignes, intention.variante)
+
+
+def estampiller_variante(lignes, variante):
+    """QJR81 — pose ``variante`` sur une composition dont les lignes sont
+    COMMUNES.
+
+    Une composition mono-optimum rend des lignes ``variante=''`` : elles
+    valent pour les DEUX options du devis. Un appelant qui compose
+    délibérément POUR UNE OPTION — la réparation d'un devis « Les deux » dont
+    les deux options divergent (``_completer_kit_residentiel``) — doit pouvoir
+    dire de quelle option relèvent les lignes qu'il vient de composer. Sans
+    cela, la ferrure ajoutée pour l'option AVEC est écrite COMMUNE, donc
+    dimensionnée sur le compte de l'option SANS, et la resynchronisation PVSTR
+    refuse ensuite par design de toucher une ferrure commune : l'option AVEC
+    reste durablement sous-structurée et son forfait de pose par panneau
+    sous-facturé.
+
+    ``variante`` vide (LE DÉFAUT de ``IntentionComposition``) ⇒ la liste est
+    rendue TELLE QUELLE, MÊME OBJET, comportement strictement inchangé. Une
+    composition DÉJÀ variantée (la fusion L-2OPT, qui a distingué les deux
+    options ligne à ligne) n'est JAMAIS réestampillée : l'écraser détruirait
+    précisément la distinction qu'elle vient d'établir.
+
+    ``LigneKit`` est un ``namedtuple`` — donc immuable : on reconstruit la
+    liste, en reportant les métadonnées portées par ``CompositionLignes``
+    (sans quoi le dry-run perdrait le wattage retenu, le kWc réel et les
+    marques introuvables).
+    """
+    marque = (variante or '').strip()
+    if not marque or not lignes:
+        return lignes
+    if any(getattr(ligne, 'variante', '') for ligne in lignes):
+        return lignes
+    estampillees = CompositionLignes(
+        ligne._replace(variante=marque) for ligne in lignes)
+    # Report GÉNÉRIQUE des métadonnées : on recopie le ``__dict__`` de
+    # l'instance plutôt qu'une liste de noms, qui se périmerait au premier
+    # attribut ajouté à la composition (``capacites_batterie_vivier`` est
+    # exactement ce cas).
+    estampillees.__dict__.update(getattr(lignes, '__dict__', None) or {})
+    return estampillees
 
 
 # ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
@@ -185,6 +232,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     ordre_lignes_societe,
 )
 from apps.ventes.domain.composition import (  # noqa: E402,F401
+    CompositionLignes,
     composition_deux_optimiseurs,
     composition_residentielle,
 )
@@ -196,4 +244,5 @@ __all__ = [
     'IntentionComposition',
     'SCENARIOS_COMPOSABLES',
     'composer',
+    'estampiller_variante',
 ]

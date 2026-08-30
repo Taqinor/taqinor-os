@@ -1308,6 +1308,71 @@ def _est_au_prix_catalogue(ligne):
         return False
 
 
+def _options_a_reparer(devis, lignes, *, kwc, watt, nb_panneaux,
+                       avec_batterie):
+    """QJR81 — LES vues d'option que la réparation doit traiter, une par une.
+
+    Constat QB81 : sur un devis « Les deux » dont les DEUX optimums divergent
+    (8 panneaux sans stockage, 12 avec), la réparation composait UN kit
+    dimensionné sur le compte SANS et écrivait ses lignes en COMMUN
+    (``variante=''``). La resynchronisation PVSTR refuse ensuite — par design,
+    et à raison — de porter une ferrure commune au compte d'une seule option :
+    l'option AVEC restait donc durablement sous-structurée, et son forfait de
+    pose par panneau sous-facturé.
+
+    Rend une liste de vues ``{variante, kwc, watt, nb_panneaux, scenario,
+    lignes}`` :
+
+    * devis NON varianté (tous ceux d'hier, et tout devis mono-option) ⇒ UNE
+      seule vue COMMUNE, avec exactement les paramètres reçus : comportement
+      strictement inchangé ;
+    * devis varianté dont les deux options portent le MÊME champ PV ⇒ une
+      seule vue commune elle aussi (rien ne les distingue, une ligne commune
+      est correcte pour les deux) ;
+    * devis varianté DIVERGENT ⇒ DEUX vues, chacune sur SON propre compte de
+      panneaux (lu par ``cible_depuis_lignes``, la lecture par variante déjà
+      en service) et sur SON propre scénario.
+    """
+    commune = [{
+        'variante': VARIANTE_COMMUNE,
+        'kwc': kwc,
+        'watt': watt,
+        'nb_panneaux': nb_panneaux,
+        'scenario': (COMPOSITION_AVEC if avec_batterie
+                     else COMPOSITION_SANS),
+        'lignes': lignes,
+    }]
+    if not any((getattr(ligne, 'variante', '') or '') for ligne in lignes):
+        return commune
+
+    cibles = {variante: cible_depuis_lignes(devis, variante)
+              for variante in (VARIANTE_SANS, VARIANTE_AVEC)}
+    comptes = {variante: int(cible.get('panneaux') or 0)
+               for variante, cible in cibles.items()}
+    if comptes[VARIANTE_SANS] == comptes[VARIANTE_AVEC]:
+        # Les deux options décrivent le MÊME champ PV : une ligne commune les
+        # sert toutes les deux, et c'est ce que ce dépôt écrivait déjà.
+        return commune
+
+    vues = []
+    for variante, scenario in ((VARIANTE_SANS, COMPOSITION_SANS),
+                               (VARIANTE_AVEC, COMPOSITION_AVEC)):
+        cible = cibles[variante]
+        if comptes[variante] <= 0 or float(cible.get('kwc') or 0) <= 0:
+            # Une option sans aucune ligne panneau n'est pas dimensionnable :
+            # on ne devine pas son champ (règle « zéro chiffre inventé »).
+            continue
+        vues.append({
+            'variante': variante,
+            'kwc': cible['kwc'],
+            'watt': cible['panel_watt'],
+            'nb_panneaux': comptes[variante],
+            'scenario': scenario,
+            'lignes': lignes_de_variante(lignes, variante),
+        })
+    return vues or commune
+
+
 def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                                avec_batterie, avertissements):
     """Ajoute les lignes du kit résidentiel ABSENTES du devis. N'écrit RIEN
@@ -1315,6 +1380,15 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
 
     ``avertissements`` est enrichi sur place pour chaque classe manquante que
     le catalogue ne sait pas servir. Rend le nombre de lignes AJOUTÉES.
+
+    QJR81 — LA RÉPARATION HÉRITE DES RÈGLES DE LA CRÉATION. Le « kit attendu »
+    se composait ici par un appel DIRECT à ``composition_residentielle``, sans
+    la carte des marques épinglées (PVMRQ), sans l'ordre de lignes de la
+    société (PVORD) et sans la phase électrique déclarée du client
+    (PVCOMPAT) : ce chemin pouvait donc coter une marque et une phase
+    d'onduleur que le chemin de création s'interdit. Il passe désormais par
+    ``pipeline.composer`` — LE composeur, celui de l'aperçu et de la création —
+    et il ESTAMPILLE la variante de l'option qu'il répare.
     """
     from apps.ventes.models import LigneDevis
 
@@ -1323,55 +1397,18 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
         return 0
 
     lignes = _lignes_produit(devis)
-    presentes = set()
-    onduleurs = []
-    for ligne in lignes:
-        classe = _classe_kit_de_ligne(ligne)
-        if classe:
-            presentes.add(classe)
-        if classe in ('onduleur_reseau', 'onduleur_hybride'):
-            onduleurs.append(ligne)
 
-    huawei = any(
-        'huawei' in _sans_accents('%s %s %s' % (
-            ligne.designation or '',
-            getattr(ligne.produit, 'nom', '') or '',
-            getattr(ligne.produit, 'marque', '') or ''))
-        for ligne in onduleurs)
+    # PVCOMPAT (QJR81) — le RACCORDEMENT déclaré du client descend jusqu'à la
+    # réparation, comme il descend jusqu'à la création : un client monophasé ne
+    # doit pas se voir compléter un kit autour d'un onduleur triphasé.
+    # « inconnu »/absent ⇒ ``None`` ⇒ aucun filtre, composition inchangée.
+    from apps.ventes.compatibilites import normaliser_phase
+    phase = normaliser_phase(
+        getattr(getattr(devis, 'lead', None), 'raccordement', None))
 
     catalogue = catalogue_de_la_societe(devis.company)
-    attendu = composition_residentielle(
-        catalogue, kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
-        avec_batterie=avec_batterie,
-        taux_tva=devis.taux_tva if devis.taux_tva is not None
-        else Decimal('20'),
-        # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte à
-        # l'écran plutôt que de disparaître dans un kit silencieusement amputé.
-        avertissements=avertissements)
-    par_classe = {}
-    for spec in attendu:
-        classe = classer_produit(spec.designation)
-        if classe and classe not in par_classe:
-            par_classe[classe] = spec
-
-    # Le duo Smart Meter + clé Wifi ne sort de la composition que si l'onduleur
-    # QU'ELLE a choisi est un Huawei — or ici c'est celui du DEVIS qui décide.
-    # On le retrouve donc directement au catalogue (même choix que la
-    # composition : le premier produit tarifé de la classe, à l'unité). Sans ce
-    # rattrapage, un devis Huawei face à un catalogue dont l'hybride est un
-    # Deye s'entendrait dire, à tort, que son Smart Meter manque au catalogue.
-    if huawei:
-        for classe in ('smart_meter', 'wifi_dongle'):
-            if classe in par_classe or classe in presentes:
-                continue
-            produit = next(
-                (p for p in catalogue
-                 if classer_produit(getattr(p, 'nom', '')) == classe
-                 and _has_price(p)), None)
-            if produit is not None:
-                par_classe[classe] = LigneKit(
-                    produit=produit, designation=produit.nom, quantite=1,
-                    prix_unitaire=Decimal(produit.prix_vente))
+    taux_tva = (devis.taux_tva if devis.taux_tva is not None
+                else Decimal('20'))
 
     # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
     # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
@@ -1379,22 +1416,94 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     ordre = max([int(ligne.ordre or 0)
                  for ligne in devis.lignes.all()] or [0])
     ajoutees = 0
-    for classe in CLASSES_KIT_COMPLETABLES:
-        if classe in presentes:
-            continue
-        if classe in ('smart_meter', 'wifi_dongle') and not huawei:
-            continue
-        spec = par_classe.get(classe)
-        if spec is None:
-            avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
-            continue
-        ordre += 1
-        LigneDevis.objects.create(
-            devis=devis, produit=spec.produit, designation=spec.designation,
-            quantite=Decimal(str(spec.quantite)),
-            prix_unitaire=Decimal(spec.prix_unitaire),
-            remise=Decimal('0'), ordre=ordre)
-        ajoutees += 1
+    # Une classe que le catalogue ne sait pas servir se dit UNE fois, même
+    # quand deux options la réclament : deux fois le même message ferait
+    # croire à deux manques distincts.
+    deja_dit = set()
+
+    for vue in _options_a_reparer(devis, lignes, kwc=kwc, watt=watt,
+                                  nb_panneaux=nb_panneaux,
+                                  avec_batterie=avec_batterie):
+        lignes_vue = vue['lignes']
+        presentes = set()
+        onduleurs = []
+        for ligne in lignes_vue:
+            classe = _classe_kit_de_ligne(ligne)
+            if classe:
+                presentes.add(classe)
+            if classe in ('onduleur_reseau', 'onduleur_hybride'):
+                onduleurs.append(ligne)
+
+        huawei = any(
+            'huawei' in _sans_accents('%s %s %s' % (
+                ligne.designation or '',
+                getattr(ligne.produit, 'nom', '') or '',
+                getattr(ligne.produit, 'marque', '') or ''))
+            for ligne in onduleurs)
+
+        attendu = composer(IntentionComposition(
+            company=devis.company,
+            kwc=vue['kwc'],
+            nb_panneaux=vue['nb_panneaux'],
+            panel_watt=vue['watt'],
+            scenario=vue['scenario'],
+            taux_tva=taux_tva,
+            phase=phase,
+            # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte
+            # à l'écran plutôt que de disparaître dans un kit silencieusement
+            # amputé.
+            avertissements=avertissements,
+            variante=vue['variante'],
+        ))
+        par_classe = {}
+        for spec in attendu:
+            classe = classer_produit(spec.designation)
+            if classe and classe not in par_classe:
+                par_classe[classe] = spec
+
+        # Le duo Smart Meter + clé Wifi ne sort de la composition que si
+        # l'onduleur QU'ELLE a choisi est un Huawei — or ici c'est celui du
+        # DEVIS qui décide. On le retrouve donc directement au catalogue (même
+        # choix que la composition : le premier produit tarifé de la classe, à
+        # l'unité). Sans ce rattrapage, un devis Huawei face à un catalogue
+        # dont l'hybride est un Deye s'entendrait dire, à tort, que son Smart
+        # Meter manque au catalogue.
+        if huawei:
+            for classe in ('smart_meter', 'wifi_dongle'):
+                if classe in par_classe or classe in presentes:
+                    continue
+                produit = next(
+                    (p for p in catalogue
+                     if classer_produit(getattr(p, 'nom', '')) == classe
+                     and _has_price(p)), None)
+                if produit is not None:
+                    par_classe[classe] = LigneKit(
+                        produit=produit, designation=produit.nom, quantite=1,
+                        prix_unitaire=Decimal(produit.prix_vente),
+                        variante=vue['variante'])
+
+        for classe in CLASSES_KIT_COMPLETABLES:
+            if classe in presentes:
+                continue
+            if classe in ('smart_meter', 'wifi_dongle') and not huawei:
+                continue
+            spec = par_classe.get(classe)
+            if spec is None:
+                if classe not in deja_dit:
+                    deja_dit.add(classe)
+                    avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
+                continue
+            ordre += 1
+            LigneDevis.objects.create(
+                devis=devis, produit=spec.produit,
+                designation=spec.designation,
+                quantite=Decimal(str(spec.quantite)),
+                prix_unitaire=Decimal(spec.prix_unitaire),
+                remise=Decimal('0'), ordre=ordre,
+                # QJR81 — l'option que cette ligne SERT. Vide (le cas de tout
+                # devis non varianté) ⇒ ligne COMMUNE, comme avant.
+                variante=getattr(spec, 'variante', '') or '')
+            ajoutees += 1
     return ajoutees
 
 
@@ -1496,5 +1605,13 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
 from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
+    cible_depuis_lignes,
+    lignes_de_variante,
+)
+from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_SANS,
+    IntentionComposition,
+    composer,
 )
 from apps.ventes.domain.resynchronisation import SyncLayoutError  # noqa: E402,F401
