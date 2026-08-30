@@ -4075,7 +4075,11 @@ def apply_quote_data(data: dict) -> None:
                 DOC_TEXTS[k] = v
     # N26 — métadonnées d'acceptation (posées côté serveur). Le tampon n'apparaît
     # que si les DEUX sont présents ; sinon byte-identique au devis d'aujourd'hui.
-    ACCEPTE_PAR_NOM = (data.get("accepte_par_nom") or "")
+    # QJR154 — ERR37 échappait le nom et l'adresse du client mais PAS celui-ci,
+    # qui est pourtant le seul texte du document écrit par une personne NON
+    # AUTHENTIFIÉE (le « nom » posté sur le portail public, repris par
+    # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
+    ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues

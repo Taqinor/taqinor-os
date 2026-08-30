@@ -86,7 +86,11 @@ def build(ctx):
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
-        sign_client = f'<div class="i3-sign-name">{theme._esc(accepte_nom)}</div><div class="i3-sign-date">Le {date_accept}</div>'
+        # QJR154 — UNE SEULE VÉRITÉ : ``builder.echapper_textes_client`` échappe
+        # désormais ``accepte_par_nom`` (le seul texte du document écrit par une
+        # personne NON authentifiée) pour les quatre renderers « maison ».
+        # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
+        sign_client = f'<div class="i3-sign-name">{accepte_nom}</div><div class="i3-sign-date">Le {date_accept}</div>'
     else:
         sign_client = '<div class="i3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
 

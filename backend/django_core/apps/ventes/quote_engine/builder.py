@@ -3063,8 +3063,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
 _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 #: Scalaires client rendus tels quels par les gabarits.
+#: QJR154 — ``accepte_par_nom`` en fait partie : il est écrit par
+#: ``services.accept_devis`` depuis le ``nom`` posté sur le PORTAIL PUBLIC,
+#: donc par une personne NON AUTHENTIFIÉE, et trois renderers l'injectent dans
+#: leur HTML (``agricole/economics_page``, ``industriel/trust``,
+#: ``commercial/trust``) — ``theme.titlecase_name`` n'échappe rien.
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
-                        "client_city", "client_phone", "client_ice")
+                        "client_city", "client_phone", "client_ice",
+                        "accepte_par_nom")
 
 
 def echapper_textes_client(data: dict) -> dict:
@@ -3087,6 +3093,22 @@ def echapper_textes_client(data: dict) -> dict:
 
     ``html.escape`` ne touche que ``&<>"'`` : un texte normal est rendu au bit
     près, et les mots-clés de classification (panneau, batterie…) sont intacts.
+
+    ── QJR154 — LE SOUS-DICTIONNAIRE ``etude`` EST COUVERT ─────────────────
+    ``data['etude']`` est ``dict(devis.etude_params or {})`` : un ``JSONField``
+    LIBRE, accepté du corps de requête. La liste blanche l'ignorait, et deux
+    paquets impriment ses textes bruts — ``agricole/study.py`` (``crop``,
+    ``region``, ``pompe_nom``, ``irrigation_method``) et
+    ``commercial/categories.py`` (``four``). Seuls les scalaires de type
+    ``str`` sont échappés, à plat : un nombre resterait un nombre (les gardes
+    numériques du document le comparent), et les sous-blocs (``toiture``,
+    ``etude_horaire``, ``bankable``, séries mensuelles) ne sont pas du texte
+    rendu tel quel.
+
+    LE SCHÉMA AGRICOLE A UNE SEULE VÉRITÉ : ``agricole/schematic.py``
+    s'échappait lui-même. Il ne le fait PLUS (il consomme les textes déjà
+    échappés ici) — sans quoi un simple « & » dans une culture sortait
+    « &amp;amp; » sur le PDF.
     """
     def _e(v):
         return html.escape(str(v)) if v is not None else v
@@ -3095,6 +3117,12 @@ def echapper_textes_client(data: dict) -> dict:
     for _cle in _CHAMPS_TEXTE_CLIENT:
         if sortie.get(_cle) is not None:
             sortie[_cle] = _e(sortie[_cle])
+    _etude = sortie.get("etude")
+    if isinstance(_etude, dict):
+        sortie["etude"] = {
+            cle: (_e(val) if isinstance(val, str) else val)
+            for cle, val in _etude.items()
+        }
     for _cle in ("sans_items", "avec_items", "all_items", "options_proposees"):
         _rows = sortie.get(_cle)
         if isinstance(_rows, list):

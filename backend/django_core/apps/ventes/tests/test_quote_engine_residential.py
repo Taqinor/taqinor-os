@@ -1721,3 +1721,155 @@ class TestOnepageQrProposition(SimpleTestCase):
                 b.position_y + b.height, limite,
                 "le Total TTC tombe sous la ligne de rognage de la page une "
                 "— il serait invisible sur le document rendu")
+
+
+class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
+    """QJR154 — la liste blanche couvre le dict ``etude`` et ``accepte_par_nom``.
+
+    Deux trous, même famille que QJR30 :
+
+    * ``data['etude']`` est ``dict(devis.etude_params or {})`` — un ``JSONField``
+      LIBRE accepté du corps de requête — et il n'était pas dans la liste
+      blanche. Deux paquets impriment ses textes bruts :
+      ``agricole/study.py`` (``crop``, ``region``, ``pompe_nom``,
+      ``irrigation_method``) et ``commercial/categories.py`` (``four``).
+    * ``accepte_par_nom`` est écrit par ``services.accept_devis`` depuis le
+      ``nom`` posté sur le PORTAIL PUBLIC, donc par une personne NON
+      AUTHENTIFIÉE, et ``agricole/economics_page`` l'injecte via
+      ``theme.titlecase_name``, qui n'échappe rien (le moteur legacy ne
+      l'échappait pas non plus à son ingestion ERR37).
+
+    Le puits est WeasyPrint côté serveur : le risque est la CORRUPTION du
+    document, pas du XSS. Et l'échappement doit avoir lieu UNE SEULE FOIS —
+    ``schematic.py`` et les deux pages de confiance s'échappaient AUSSI
+    eux-mêmes, ce qui aurait imprimé « &amp;amp; » sur « Blé & orge ».
+    """
+
+    #: « < » NON APPARIÉ (celui qui mange une page) + « & » + guillemet.
+    PIEGE = 'Blé <& "orge"'
+    DATE_ACC = "12/08/2026"
+
+    @staticmethod
+    def _echappe(d):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        return echapper_textes_client(d)
+
+    def _piege(self, d, **etude):
+        d = dict(d)
+        d["accepte_par_nom"] = self.PIEGE
+        d["date_acceptation"] = self.DATE_ACC
+        d["etude"] = {**(d.get("etude") or {}), **etude}
+        return self._echappe(d)
+
+    def _sans_chevron_brut(self, html):
+        """Le « < » du piège n'atteint jamais le balisage."""
+        self.assertNotIn("<&", html)
+        self.assertNotIn('<& "orge"', html)
+
+    # ── agricole : ``etude`` en texte libre (le seul paquet à le faire) ─────
+    def test_agricole_crop_et_pompe_nom_sont_echappes(self):
+        from apps.ventes.quote_engine.agricole import (
+            render, renderer, sample_data)
+        d = self._piege(sample_data.build("agrumes"),
+                        crop=self.PIEGE, pompe_nom=self.PIEGE,
+                        region=self.PIEGE, irrigation_method=self.PIEGE)
+        html = render.build_html(renderer._augment(d))
+        self._sans_chevron_brut(html)
+        self.assertIn("&lt;&amp;", html)   # arrivé échappé, UNE fois
+
+    def test_agricole_le_schema_echappe_une_seule_fois(self):
+        """UNE SEULE VÉRITÉ — ``schematic.py`` s'échappait lui-même par-dessus
+        l'échappement du builder : « Blé & orge » serait sorti « Blé &amp;amp; »
+        (double échappement visible sur un devis parfaitement ordinaire)."""
+        from apps.ventes.quote_engine.agricole import (
+            render, renderer, sample_data)
+        d = self._piege(sample_data.build("agrumes"), crop="Blé & orge")
+        html = render.build_html(renderer._augment(d))
+        self.assertNotIn("&amp;amp;", html)
+        self.assertIn("&amp; orge", html)
+
+    def test_agricole_accepte_par_nom_est_echappe(self):
+        from apps.ventes.quote_engine.agricole import (
+            render, renderer, sample_data)
+        html = render.build_html(
+            renderer._augment(self._piege(sample_data.build("agrumes"))))
+        self.assertIn(self.DATE_ACC, html)          # le tampon EST rendu
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    # ── industriel / commercial : le tampon de signature ────────────────────
+    def test_industriel_accepte_par_nom_est_echappe_une_fois(self):
+        from apps.ventes.quote_engine.industriel import (
+            render, renderer, sample_data)
+        html = render.build_html(
+            renderer._augment(self._piege(sample_data.build())))
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    def test_commercial_accepte_par_nom_et_four_sont_echappes(self):
+        from apps.ventes.quote_engine.commercial import (
+            render, renderer, sample_data)
+        html = render.build_html(renderer._augment(
+            self._piege(sample_data.build("boulangerie"), four=self.PIEGE)))
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    # ── résidentiel : non-régression ────────────────────────────────────────
+    def test_residentiel_ne_publie_rien_de_brut(self):
+        """Le paquet résidentiel n'imprime PAS le tampon d'acceptation (vérifié
+        en rendant le document avec le piège posé) : il ne doit donc rien
+        laisser passer non plus."""
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        html = render.build_html(
+            renderer._augment(self._piege(sample_data.build())))
+        self._sans_chevron_brut(html)
+
+    # ── le legacy garde son propre échappement (il reçoit les données brutes) ─
+    def test_le_legacy_echappe_le_nom_d_acceptation_a_l_ingestion(self):
+        """ERR37 échappait le nom et l'adresse du client, PAS celui-ci."""
+        from ._moteur_fixtures import html_legacy
+        html = html_legacy("deux", accepte_par_nom=self.PIEGE,
+                           date_acceptation=self.DATE_ACC)
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    # ── la garde ne change rien à un devis normal ───────────────────────────
+    def test_une_etude_sans_caractere_dangereux_traverse_au_bit_pres(self):
+        """``html.escape`` ne touche que ``&<>"'`` : une étude ordinaire — et
+        en particulier les SLUGS qui servent de clés (culture, région, méthode
+        d'irrigation, type de pompe) — ressort identique, donc les recherches
+        du moteur agronomique continuent d'aboutir."""
+        etude = {"crop": "agrumes", "region": "souss-massa",
+                 "irrigation_method": "goutte", "type_pompe": "immergee",
+                 "alim": "tri", "source": "forage", "hmt_m": 60}
+        self.assertEqual(self._echappe({"etude": dict(etude)})["etude"], etude)
+
+    def test_les_valeurs_non_texte_de_l_etude_sont_intactes(self):
+        """Un nombre reste un NOMBRE : les gardes numériques du document
+        (production, kWc, HMT) le comparent — les transformer en chaînes
+        casserait la page Étude."""
+        from apps.ventes.quote_engine.agricole import sample_data
+        d = sample_data.build("agrumes")
+        d["etude"] = {**d["etude"], "hmt_m": 60, "pompe_kw": 5.5,
+                      "prod_mensuelle": [1040] * 12, "toiture": {"kwc": 7.1}}
+        etude = self._echappe(d)["etude"]
+        self.assertEqual(etude["hmt_m"], 60)
+        self.assertEqual(etude["pompe_kw"], 5.5)
+        self.assertEqual(etude["prod_mensuelle"], [1040] * 12)
+        self.assertEqual(etude["toiture"], {"kwc": 7.1})
+
+    def test_la_source_n_est_jamais_mutee(self):
+        """Le MÊME dict part en JSON à la proposition publique."""
+        from apps.ventes.quote_engine.agricole import sample_data
+        d = sample_data.build("agrumes")
+        d["etude"] = {**d["etude"], "crop": self.PIEGE}
+        d["accepte_par_nom"] = self.PIEGE
+        echappe = self._echappe(d)
+        self.assertEqual(d["etude"]["crop"], self.PIEGE)
+        self.assertEqual(d["accepte_par_nom"], self.PIEGE)
+        self.assertNotEqual(echappe["etude"]["crop"], self.PIEGE)
+        self.assertNotEqual(echappe["accepte_par_nom"], self.PIEGE)
