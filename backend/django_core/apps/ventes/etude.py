@@ -62,6 +62,7 @@ from apps.ventes.quote_engine.pricing import (
 )
 from apps.ventes.solar_design import (
     DEFAULT_LOSS_FACTORS,
+    SUBSCRIBED_CURVE_UNIT_KW,
     TYPICAL_LOAD_PROFILE_COMMERCIAL,
     TYPICAL_LOAD_PROFILE_RESIDENTIAL,
     hourly_self_consumption,
@@ -635,6 +636,48 @@ def _hourly_flows(load_curve, production_curve):
     return load[:n], prod[:n], surplus, imported
 
 
+#: QJR139 — jours réels de chaque mois. Les courbes 288 points de ce module
+#: sont « 12 mois × jour type » : chaque case porte l'ÉNERGIE de tout le mois à
+#: cette heure-là. Pour en tirer une PUISSANCE, on divise par le nombre de jours
+#: du mois. Table importée de ``apps.parametres.pvgis_profils`` (app fondation,
+#: exemptée de la frontière cross-app) — jamais retapée.
+def _jours_par_mois():
+    from apps.parametres.pvgis_profils import JOURS_PAR_MOIS
+    return JOURS_PAR_MOIS
+
+
+def courbe_mensuelle_en_kw(curve):
+    """QJR139 — 288 points d'ÉNERGIE MENSUELLE → 288 puissances (kW).
+
+    ``_tiled_load_curve`` et :func:`production_horaire_zone` produisent une
+    grille « 12 mois × 24 h » où ``curve[m*24 + h]`` vaut l'énergie consommée
+    (ou produite) pendant l'heure ``h`` de TOUT le mois ``m``. Lue comme une
+    puissance instantanée, la case du soir d'un foyer à 12 000 kWh/an vaut
+    ≈ 90 « kW » au lieu de ≈ 3 kW réels — c'est exactement ce que recevait
+    ``optimize_subscribed_power``, dont la puissance souscrite recommandée
+    sortait donc ~30× trop grande.
+
+    On divise chaque case par le nombre RÉEL de jours de son mois : la case
+    devient l'énergie de cette heure sur le JOUR MOYEN du mois, c'est-à-dire la
+    puissance moyenne (kW) de cette heure.
+
+    Longueur ≠ 288 → ``None`` : la grille n'est pas celle de ce module, son
+    unité n'est donc pas établie et l'appelant devra le DIRE plutôt que de
+    supposer (règle « omettre plutôt que publier »).
+    """
+    serie = list(curve or [])
+    if len(serie) != 288:
+        return None
+    jours = _jours_par_mois()
+    sortie = []
+    for m in range(12):
+        n = jours[m] if m < len(jours) else 30
+        n = n if n else 1
+        for h in range(24):
+            sortie.append(_num(serie[m * 24 + h], 0.0) / n)
+    return sortie
+
+
 def _subscribed_power_block(devis, load_curve, production_curve):
     """Bloc ``subscribed_power`` du contrat — UNIQUEMENT calculé en industriel/
     commercial (règle métier : la notion de puissance souscrite optimisée ne
@@ -660,9 +703,26 @@ def _subscribed_power_block(devis, load_curve, production_curve):
             current_subscribed_kva = etude.get(key)
             break
 
-    result = optimize_subscribed_power(
-        load_curve=load_curve, production_curve=production_curve,
-        current_subscribed_kva=current_subscribed_kva)
+    # QJR139 — LES DEUX COURBES PARTENT EN kW, ET LEUR UNITÉ EST DÉCLARÉE.
+    # Elles portaient jusqu'ici l'ÉNERGIE MENSUELLE de chaque heure, lue comme
+    # une puissance instantanée par ``optimize_subscribed_power`` :
+    # ``recommended_subscribed`` et ``peak_pre_pv_kw`` sortaient absurdes (seul
+    # le ratio ``peak_reduction_pct`` survivait). Une grille qui n'est pas celle
+    # de ce module (longueur ≠ 288) a une unité NON ÉTABLIE : on la déclare
+    # telle quelle et la garde de ``solar_design`` refuse — plutôt qu'un
+    # nombre plausible et faux répété de vive voix par le vendeur.
+    load_kw = courbe_mensuelle_en_kw(load_curve)
+    prod_kw = courbe_mensuelle_en_kw(production_curve)
+    if load_kw is None or prod_kw is None:
+        result = optimize_subscribed_power(
+            load_curve=load_curve, production_curve=production_curve,
+            curve_unit=None,
+            current_subscribed_kva=current_subscribed_kva)
+    else:
+        result = optimize_subscribed_power(
+            load_curve=load_kw, production_curve=prod_kw,
+            curve_unit=SUBSCRIBED_CURVE_UNIT_KW,
+            current_subscribed_kva=current_subscribed_kva)
     block = {
         'peak_reduction_pct': result['peak_reduction_pct'],
         'recommended_subscribed': result['recommended_subscribed'],

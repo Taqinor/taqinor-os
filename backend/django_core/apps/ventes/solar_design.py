@@ -2793,8 +2793,54 @@ def tariff_escalation_projection(*, annual_savings_year1,
 # souscription recommandée (aléas météo, croissance de charge, démarrages).
 DEFAULT_SUBSCRIBED_SAFETY_MARGIN = 1.10
 
+#: QJR139 (audit QJR79) — LA SEULE UNITÉ QUE CETTE FONCTION SAIT LIRE.
+#: Ses courbes sont des PUISSANCES instantanées (kW, ≈ kWh sur l'heure), pas des
+#: énergies cumulées. Un appelant lui a réellement passé des kWh MENSUELS
+#: (``apps/ventes/etude.py``, 288 points « 12 mois × jour type ») : la case du
+#: soir valait 90 « kW » au lieu de ≈ 3 kW réels, et la puissance souscrite
+#: recommandée sortait ~30× trop grande. Le paramètre ``curve_unit`` rend
+#: l'unité DÉCLARÉE et refusable ; toute autre valeur (y compris ``None``, une
+#: unité d'énergie, ou une unité inconnue) fait REFUSER la courbe.
+SUBSCRIBED_CURVE_UNIT_KW = "kw"
+
+
+def _refus_unite_souscrite(curve_unit):
+    """QJR139 — refus STRUCTURÉ d'une courbe dont l'unité n'est pas la bonne.
+
+    Le module ne lève jamais (contrat) : on rend donc le MÊME jeu de clés avec
+    des valeurs ABSENTES plutôt qu'une pointe plausible et fausse — omettre
+    plutôt que publier, la règle du dépôt. L'avertissement nomme l'unité reçue
+    pour que l'appelant sache quoi corriger.
+    """
+    return {
+        "hours": 0,
+        "peak_pre_pv_kw": None,
+        "peak_post_pv_kw": None,
+        "peak_reduction_kw": None,
+        "peak_reduction_pct": None,
+        "demand_unit": None,
+        "power_factor": None,
+        "peak_post_pv_demand": None,
+        "current_subscribed": None,
+        "recommended_subscribed": None,
+        "subscribed_reduction": None,
+        "annual_capacity_tariff": None,
+        "annual_saving": None,
+        "monthly_saving": None,
+        "safety_margin": None,
+        "load_source": None,
+        "production_source": None,
+        "warnings": [
+            "unité de courbe non déclarée ou non lisible (%r) : cette fonction "
+            "lit des PUISSANCES instantanées (%r), jamais des énergies "
+            "cumulées — aucune puissance souscrite n'est recommandée."
+            % (curve_unit, SUBSCRIBED_CURVE_UNIT_KW)
+        ],
+    }
+
 
 def optimize_subscribed_power(load_curve=None, production_curve=None, *,
+                              curve_unit=SUBSCRIBED_CURVE_UNIT_KW,
                               current_subscribed_kva=None,
                               capacity_tariff=0.0,
                               tariff_period="year",
@@ -2817,6 +2863,13 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
         toute longueur. Valeurs illisibles/négatives → 0 (jamais de rejet). Si
         absent, on synthétise un profil type (``load_profile``) calé sur
         ``daily_load_kwh``.
+    curve_unit : QJR139 — l'unité DÉCLARÉE des deux courbes. Seule
+        :data:`SUBSCRIBED_CURVE_UNIT_KW` (``"kw"``, la puissance instantanée)
+        est lisible ; toute autre valeur — ``None``, une énergie cumulée, une
+        unité inconnue — fait REFUSER la courbe et rend un résultat aux
+        grandeurs ABSENTES avec l'avertissement qui l'explique, plutôt qu'une
+        pointe plausible et fausse. Un appelant a réellement passé ici des kWh
+        MENSUELS : la puissance recommandée sortait ~30× trop grande.
     production_curve : production PV horaire (kW/h). Si absent, on synthétise
         ``TYPICAL_PV_PROFILE`` calé sur ``daily_production_kwh``.
     current_subscribed_kva : puissance souscrite ACTUELLE (kVA ou kW selon le
@@ -2845,8 +2898,16 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
 
     Ne lève jamais : courbes vides → pointe 0 ; pas de réduction possible →
     recommandation = souscription actuelle et économie 0 ; division par zéro
-    bornée (cos φ ≤ 0 ignoré).
+    bornée (cos φ ≤ 0 ignoré) ; unité non déclarée → refus STRUCTURÉ (toutes
+    les grandeurs absentes + avertissement), jamais une exception.
     """
+    # QJR139 — GARDE D'UNITÉ, AVANT TOUT CALCUL. Une courbe d'énergies cumulées
+    # lue comme des puissances donne une pointe absurde sans le moindre signal :
+    # le refus est structuré, nommé, et ne publie aucun nombre.
+    if (not isinstance(curve_unit, str)
+            or curve_unit.strip().lower() != SUBSCRIBED_CURVE_UNIT_KW):
+        return _refus_unite_souscrite(curve_unit)
+
     warnings = []
 
     load = _coerce_series(load_curve)
