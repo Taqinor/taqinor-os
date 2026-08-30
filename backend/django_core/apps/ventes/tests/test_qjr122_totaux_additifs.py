@@ -134,10 +134,13 @@ class TestUnePageMemeChaine(SimpleTestCase):
     """Le une-page imprimait le même Total TTC arrondi à l'unité."""
 
     def _lignes_onepage(self):
+        # QJR162 — charge utile CANONIQUE : le moteur lève désormais quand les
+        # totaux canoniques manquent (il ne fabrique plus de chaîne à taux
+        # unique). On ne surcharge que ``totaux_all``, la chaîne testée ici.
+        from apps.ventes.tests import _moteur_fixtures as F
+
         totaux, _pct = FIXTURES["simple"]
-        data = dict(moteur.QUOTE_INPUT)
-        data.update(moteur.calculate_quote(moteur.QUOTE_INPUT))
-        data["pdf_mode"] = "onepage"
+        data = F.donnees_legacy(pdf_mode="onepage")
         data["totaux_all"] = {k: float(v) if isinstance(v, Decimal) else v
                               for k, v in totaux.items()}
         data["all_items"] = data["sans_items"]

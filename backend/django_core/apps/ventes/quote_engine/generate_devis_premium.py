@@ -3156,10 +3156,20 @@ def _proposition_link():
     url = (LINKS.get("signer") or "").strip()
     if "/proposition/" not in url:
         return "", ""
-    href = url if url.startswith("http") else "https://" + url
-    court = href.split("://", 1)[1]
+    # QJR162 (a) — EXIGER un schéma http(s) ET un hôte non vide. ``SITE_URL``
+    # n'est pas protégé contre la variable d'environnement PRÉSENTE MAIS VIDE
+    # (``PUBLIC_SITE_URL`` l'est, pas elle) : la base devenait '', le lien
+    # relatif, et « "https://" + url » imprimait un QR
+    # « https:///proposition/… » — MORT chez le client. La docstring promet
+    # d'omettre la vignette plutôt que de porter un QR qui mène à un 404 :
+    # on l'applique au lieu de fabriquer une URL.
+    if not re.match(r"^https?://", url, re.I):
+        return "", ""
+    court = url.split("://", 1)[1]
+    if not court.split("/", 1)[0].strip():
+        return "", ""
     morceaux = court.split("/")
-    return href, ("/".join(morceaux[:2]) if len(morceaux) > 2 else court)
+    return url, ("/".join(morceaux[:2]) if len(morceaux) > 2 else court)
 
 
 #: QRP1/A4 — hauteur de la bande d'en-tête du format UNE PAGE, en millimètres.
@@ -3267,20 +3277,16 @@ def page_onepage(items, tronquees=0):
     """
     # Totaux CANONIQUES du builder (chaîne HT → remise → TVA par taux → TTC,
     # calculée UNE fois) ; recalcul local uniquement en mode autonome.
-    if TOTAUX_ALL:
-        totaux = TOTAUX_ALL
-    else:
-        _ht = sum(
-            float(it.get("quantite", 0)) * _item_pu_ht(it)
-            for it in items
-            if float(it.get("quantite", 0)) > 0
-        )
-        _rem = _ht * DISCOUNT_PCT / 100 if DISCOUNT_PCT > 0 else 0.0
-        _net = _ht - _rem
-        _tva = _net * TVA_PCT / 100
-        totaux = {"ht_brut": _ht, "remise": _rem, "ht_net": _net,
-                  "tva": _tva, "tva_par_taux": [],
-                  "ttc": round(_net + _tva)}
+    # QJR162 (c) — le recalcul local portait le MÊME défaut que
+    # ``_fallback_totaux`` : un taux de TVA unique et ``tva_par_taux`` vide,
+    # alors que la colonne du tableau imprime le taux de CHAQUE ligne. Sans
+    # totaux canoniques, la page LÈVE plutôt que d'imprimer une chaîne qui
+    # n'additionne pas celle qu'elle affiche juste au-dessus.
+    if not TOTAUX_ALL:
+        raise ValueError(
+            "page_onepage: totaux canoniques manquants (totaux_all) — le "
+            "moteur ne fabrique pas de chaîne de totaux (QJR162).")
+    totaux = TOTAUX_ALL
     total_ht = totaux["ht_brut"]
     remise = totaux["remise"]
     net_ht = totaux["ht_net"]
@@ -3873,15 +3879,24 @@ def apply_quote_data(data: dict) -> None:
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
-    def _fallback_totaux(rows):
-        ht_brut = round(sum(r["quantite"] * _item_pu_ht(r) for r in rows), 2)
-        remise = round(ht_brut * DISCOUNT_PCT / 100, 2) if DISCOUNT_PCT > 0 else 0.0
-        ht_net = round(ht_brut - remise, 2)
-        tva = round(ht_net * TVA_PCT / 100, 2)
-        return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
-                "tva": tva, "ttc": round(ht_net + tva)}
-    TOTAUX_SANS = data.get("totaux_sans") or _fallback_totaux(data["sans_items"])
-    TOTAUX_AVEC = data.get("totaux_avec") or _fallback_totaux(data["avec_items"])
+    # ── QJR162 (c) — PAS DE CHAÎNE DE TOTAUX FABRIQUÉE ──────────────────────
+    # ``_fallback_totaux`` recalculait la chaîne avec un taux de TVA UNIQUE et
+    # SANS ``tva_par_taux`` : sur un devis à taux mixtes (réforme 10/20), la
+    # colonne affichait 10 % et 20 % par ligne pendant que le bloc n'imprimait
+    # qu'une ligne « TVA (20 %) ». Son ``or`` mordait de surcroît sur un dict
+    # VIDE. Les totaux canoniques sont calculés UNE fois par le builder : sans
+    # eux, le moteur LÈVE plutôt que de publier une chaîne inventée.
+    def _totaux_canoniques(cle):
+        valeur = data.get(cle)
+        if not isinstance(valeur, dict) or not valeur:
+            raise ValueError(
+                "generate_devis_premium: totaux canoniques manquants (%s) — "
+                "le moteur ne fabrique pas de chaîne de totaux (QJR162)."
+                % cle)
+        return valeur
+
+    TOTAUX_SANS = _totaux_canoniques("totaux_sans")
+    TOTAUX_AVEC = _totaux_canoniques("totaux_avec")
     TOTAUX_ALL = data.get("totaux_all") or None
     _terms = data.get("payment_terms") or {}
     PAY_A = int(_terms.get("acompte", 30))
@@ -4029,7 +4044,12 @@ def render_html_for(data: dict) -> str:
         # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
         # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
         # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
-        return _onepage_html_qui_tient(_esc_items(data.get("all_items", [])))
+        # QJR162 (b) — ACCÈS DUR. ``data.get("all_items", [])`` était un défaut
+        # SILENCIEUX à liste vide alors que le même appel exige
+        # ``data["sans_items"]`` en dur : une charge utile privée d'``all_items``
+        # mais porteuse de ``totaux_all`` produisait un tableau d'équipements
+        # VIDE sous un Total TTC complet.
+        return _onepage_html_qui_tient(_esc_items(data["all_items"]))
     return build_html()
 
 

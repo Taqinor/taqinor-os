@@ -23,20 +23,18 @@ import re
 from django.test import SimpleTestCase
 
 from apps.ventes.quote_engine import generate_devis_premium as moteur
+from apps.ventes.tests import _moteur_fixtures as F
 
 
 def _data(**surcharges):
-    """Jeu de données du moteur (démo intégrée), surchargeable."""
-    entree = dict(moteur.QUOTE_INPUT)
-    entree.update({k: v for k, v in surcharges.items()
-                   if k in ("puissance_kwc", "nb_panneaux", "battery_option",
-                            "overrides")})
-    data = dict(entree)
-    data.update(moteur.calculate_quote(entree))
-    data["pdf_mode"] = "full"
-    for cle, val in surcharges.items():
-        if cle not in ("battery_option", "overrides"):
-            data[cle] = val
+    """Charge utile CANONIQUE du moteur (forme ``build_quote_data``).
+
+    QJR162 — on part de la fixture partagée plutôt que de ``QUOTE_INPUT`` : le
+    moteur LÈVE désormais quand les totaux canoniques manquent, il ne fabrique
+    plus de chaîne de totaux à taux unique.
+    """
+    data = F.donnees_legacy(pdf_mode="full")
+    data.update(surcharges)
     return data
 
 
@@ -92,7 +90,8 @@ class TestMarquesDerivees(SimpleTestCase):
     def test_les_marques_du_devis_sont_celles_imprimees(self):
         html = moteur.render_html_for(_data())
         txt = _visible(_page3(html))
-        self.assertIn("Panneaux Canadian Solar", txt)
+        # Les marques de la fixture, telles que ses LIGNES les portent.
+        self.assertIn("Panneaux Canadien Solar", txt)
         self.assertIn("onduleurs Huawei", txt)
         # …et plus la liste gravée dans le moteur.
         self.assertNotIn("certifiés IEC", txt)
@@ -100,14 +99,15 @@ class TestMarquesDerivees(SimpleTestCase):
     def test_un_devis_a_marques_differentes_dit_SES_marques(self):
         data = _data()
         for it in data["sans_items"]:
-            if "Panneaux" in it["designation"]:
+            des = it["designation"].lower()
+            if "panneau" in des:
                 it["marque"] = "Longi"
-            if "Onduleur" in it["designation"]:
+            if "onduleur" in des:
                 it["marque"] = "SMA"
         txt = _visible(_page3(moteur.render_html_for(data)))
         self.assertIn("Panneaux Longi", txt)
         self.assertIn("onduleurs SMA", txt)
-        self.assertNotIn("Canadian Solar", txt)
+        self.assertNotIn("Canadien Solar", txt)
         self.assertNotIn("Huawei", txt)
 
     def test_aucune_marque_lisible_omet_la_carte(self):
@@ -129,8 +129,12 @@ class TestSupervisionAdossee(SimpleTestCase):
     """« Suivi en temps réel » n'est promis que si une ligne le porte."""
 
     def test_promesse_rendue_quand_le_devis_porte_le_materiel(self):
-        # La démo vend un Smart Meter + un Wifi Dongle.
-        txt = _visible(_page3(moteur.render_html_for(_data())))
+        data = _data()
+        data["sans_items"] = list(data["sans_items"]) + [{
+            "designation": "Smart Meter Huawei", "marque": "Huawei",
+            "quantite": 1, "prix_unit_ht": 1500.0,
+            "prix_unit_ttc": 1800.0, "taux_tva": 20.0}]
+        txt = _visible(_page3(moteur.render_html_for(data)))
         self.assertIn("Suivi en temps réel", txt)
 
     def test_promesse_omise_sans_materiel_de_communication(self):

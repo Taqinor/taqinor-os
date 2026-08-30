@@ -21,6 +21,7 @@ Run (sans base de données) :
 from django.test import SimpleTestCase
 
 from apps.ventes.quote_engine import generate_devis_premium as moteur
+from apps.ventes.tests import _moteur_fixtures as F
 
 
 #: Textes que le builder produit AU BARÈME BASSE TENSION.
@@ -40,9 +41,8 @@ HYPOTHESES_BT = {
 
 
 def _data(**surcharges):
-    data = dict(moteur.QUOTE_INPUT)
-    data.update(moteur.calculate_quote(moteur.QUOTE_INPUT))
-    data["pdf_mode"] = "full"
+    """Charge utile CANONIQUE (QJR162 : le moteur lève sans totaux canoniques)."""
+    data = F.donnees_legacy(pdf_mode="full")
     data["savings_method"] = dict(METHODE_BT)
     data["hypotheses"] = dict(HYPOTHESES_BT)
     data.update(surcharges)

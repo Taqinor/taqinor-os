@@ -439,7 +439,11 @@ class M6GarantiesCodeesEnDurTests(SimpleTestCase):
     def test_les_badges_reprennent_les_durees_des_fiches(self):
         html = F.html_legacy(**self.LONGI)
         durees = re.findall(r'letter-spacing:-1px;">(\d+)</div>', html)
-        self.assertEqual(durees, ["10", "12", "30"])
+        # QJR145 (d) — sur un document « Les deux (Sans + Avec) », les
+        # garanties unissent les DEUX paniers : la batterie, qui n'existe que
+        # dans ``avec_items``, obtient enfin son badge (120 mois → 10 ans).
+        # Elle n'en avait JAMAIS alors que le document la vend.
+        self.assertEqual(durees, ["10", "12", "30", "10"])
         self.assertIn("Garanties jusqu&#8217;&#224; 30 ans", html)
 
     def test_aucune_garantie_saisie_aucun_badge(self):

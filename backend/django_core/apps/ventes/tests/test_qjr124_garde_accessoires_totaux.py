@@ -62,9 +62,10 @@ class TestUnePageNeReFiltrePlus(SimpleTestCase):
     """Le rendu une-page imprime EXACTEMENT les lignes qu'on lui donne."""
 
     def test_les_lignes_servies_sont_toutes_rendues(self):
-        data = dict(moteur.QUOTE_INPUT)
-        data.update(moteur.calculate_quote(moteur.QUOTE_INPUT))
-        data["pdf_mode"] = "onepage"
+        # QJR162 — charge utile CANONIQUE (le moteur lève sans totaux).
+        from apps.ventes.tests import _moteur_fixtures as F
+
+        data = F.donnees_legacy(pdf_mode="onepage")
         # Charge utile « devis libre » : le builder l'aurait déjà filtrée ;
         # le renderer ne doit plus rien retirer de son côté.
         data["all_items"] = [ONDULEUR_DEYE, SMART_METER]

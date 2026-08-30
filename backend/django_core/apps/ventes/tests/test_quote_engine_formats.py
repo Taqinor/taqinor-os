@@ -1735,10 +1735,11 @@ class QJR145FinitionsTests(SimpleTestCase):
     """
 
     def _data(self, **surcharges):
-        from apps.ventes.quote_engine import generate_devis_premium as G
-        d = dict(G.QUOTE_INPUT)
-        d.update(G.calculate_quote(G.QUOTE_INPUT))
-        d['pdf_mode'] = 'full'
+        # QJR162 — charge utile CANONIQUE (forme ``build_quote_data``) : le
+        # moteur LÈVE désormais quand les totaux canoniques manquent, il ne
+        # fabrique plus de chaîne de totaux à taux unique.
+        from apps.ventes.tests import _moteur_fixtures as F
+        d = F.donnees_legacy(pdf_mode='full')
         for it in d['sans_items'] + d['avec_items']:
             des = it['designation']
             if 'Panneaux' in des:
@@ -1755,9 +1756,14 @@ class QJR145FinitionsTests(SimpleTestCase):
 
     # (a) ------------------------------------------------------------------
     def test_a_la_puissance_s_imprime_a_la_francaise(self):
-        html = self._html()
-        self.assertIn('10,65&nbsp;kWc', html)
-        self.assertNotIn('10.65', html)
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        data = self._data()
+        html = G.render_html_for(data)
+        attendu = G.kwc_fr(data['puissance_kwc'])
+        self.assertIn(',', attendu, 'fixture sans décimale : test sans objet')
+        self.assertIn(f'{attendu}&nbsp;kWc', html)
+        # …et plus jamais le point décimal anglais sur une puissance.
+        self.assertNotIn(f"{data['puissance_kwc']}&nbsp;kWc", html)
 
     def test_a_kwc_fr_supprime_les_decimales_inutiles(self):
         from apps.ventes.quote_engine import generate_devis_premium as G
