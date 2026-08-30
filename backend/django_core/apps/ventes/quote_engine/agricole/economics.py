@@ -130,21 +130,38 @@ def compute(data: dict, company_id=None) -> dict:
 
     current_fuel = (etude.get("current_fuel")
                     or cfg.get("default_current_fuel") or "butane")
-    if current_fuel == "diesel":
+    # QJR150 — « Aucune énergie actuelle / nouveau forage » est une option RÉELLE
+    # du générateur (``etude_params.current_fuel == "none"``). Ce client ne paie
+    # AUCUNE facture de carburant aujourd'hui : lui publier une économie annuelle,
+    # un amortissement et un cumul 20 ans adossés à une facture de butane qu'il
+    # ne paie pas est un chiffre inventé (règle fondateur « zéro chiffre
+    # inventé » — OMETTRE, jamais un repli). Tout ce qui dérive de la dépense
+    # actuelle vaut donc 0/None, et la page 4 bascule d'elle-même sur sa branche
+    # dégradée « Zéro carburant » (``economics_page``), la page 1 sur son héros
+    # « Votre carburant · 0 DH » (``cover``). La comparaison de MARCHÉ
+    # solaire/butane/diesel (``fuel_costs``) reste calculée : elle ne prétend pas
+    # être la facture du client.
+    aucun_carburant = current_fuel == "none"
+    if aucun_carburant:
+        annual_fuel_now = 0
+    elif current_fuel == "diesel":
         annual_fuel_now = diesel
-    else:  # butane (default) / none → butane baseline
+    else:  # butane — carburant de référence par défaut
         annual_fuel_now = butane_today
 
     # The farmer's REAL current fuel bill (MAD/an), when captured, overrides the
     # modelled cost — savings & payback then reflect what he actually pays today.
+    # Une dépense saisie CONTREDIT « aucune énergie actuelle » (deux champs
+    # indépendants du formulaire) : on n'arbitre pas entre les deux, on n'en
+    # publie aucun.
     fuel_spend = _num(etude.get("fuel_spend_current"))
-    if fuel_spend > 0:
+    if fuel_spend > 0 and not aucun_carburant:
         annual_fuel_now = round(fuel_spend)
 
     # Savings = the whole fuel bill solar eliminates (solar fuel cost = 0).
-    saving_vs_butane = butane_today
-    saving_vs_diesel = diesel
-    annual_saving = annual_fuel_now or saving_vs_butane
+    saving_vs_butane = 0 if aucun_carburant else butane_today
+    saving_vs_diesel = 0 if aucun_carburant else diesel
+    annual_saving = 0 if aucun_carburant else (annual_fuel_now or saving_vs_butane)
     # Cumulative fuel saved over the system life (panels are warrantied 25 yr;
     # use a conservative 20-yr horizon). A big, tangible anchor for the quote.
     savings_20y = annual_saving * 20

@@ -122,6 +122,40 @@ class TestAgricoleEconomics(SimpleTestCase):
             data["etude"].pop(k, None)
         self.assertIsNone(economics.compute(data)["besoin_m3j"])
 
+    # ── QJR150 — « Aucune énergie actuelle / nouveau forage » ────────────────
+    def test_aucune_energie_actuelle_na_ni_economie_ni_payback(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["current_fuel"] = "none"
+        eco = economics.compute(data)
+        self.assertEqual(eco["annual_fuel_now"], 0)
+        self.assertEqual(eco["annual_saving"], 0)
+        self.assertEqual(eco["savings_20y"], 0)
+        self.assertEqual(eco["saving_vs_butane"], 0)
+        self.assertEqual(eco["saving_vs_diesel"], 0)
+        self.assertIsNone(eco["payback"])
+        self.assertIsNone(eco["payback_butane"])
+        self.assertIsNone(eco["payback_diesel"])
+
+    def test_aucune_energie_garde_la_comparaison_de_marche(self):
+        """La comparaison solaire/butane/diesel est un coût de MARCHÉ, pas la
+        facture du client : elle reste calculée (elle n'est pas publiée comme
+        une économie)."""
+        data = sample_data.build("agrumes")
+        data["etude"]["current_fuel"] = "none"
+        eco = economics.compute(data)
+        self.assertGreater(eco["fuel_costs"]["butane_today"], 0)
+        self.assertGreater(eco["fuel_costs"]["diesel"], 0)
+
+    def test_depense_saisie_ne_ressuscite_pas_une_economie_sans_carburant(self):
+        """Deux champs indépendants qui se contredisent → on ne publie rien."""
+        data = sample_data.build("agrumes")
+        data["etude"]["current_fuel"] = "none"
+        data["etude"]["fuel_spend_current"] = 40000
+        eco = economics.compute(data)
+        self.assertEqual(eco["annual_fuel_now"], 0)
+        self.assertEqual(eco["annual_saving"], 0)
+        self.assertIsNone(eco["payback"])
+
     def test_real_fuel_bill_overrides_model(self):
         """A captured current fuel spend (MAD/an) drives savings & payback."""
         data = sample_data.build("agrumes")
@@ -191,6 +225,28 @@ class TestAgricoleRender(SimpleTestCase):
     def test_renders_all_scenarios(self):
         for key in sample_data.keys():
             self.assertIn("a1-root", self._html(key))
+
+    # ── QJR150 — « nouveau forage » : aucun montant d'économie sur le document ─
+    def test_nouveau_forage_ne_publie_aucun_montant_deconomie(self):
+        data = sample_data.build("agrumes")
+        data["etude"]["current_fuel"] = "none"
+        html = render.build_html(renderer._augment(data))
+        # la page 4 bascule sur la branche dégradée, sans économie ni payback
+        self.assertIn("Zéro carburant", html)
+        self.assertNotIn("économisés sur 20 ans", html)
+        self.assertNotIn("de butane économisé", html)
+        self.assertNotIn("MAD/an", html)
+        # la page 1 sert son héros « Votre carburant · 0 DH », pas un montant
+        self.assertNotIn("en ne payant plus", html)
+        self.assertIn("Votre carburant", html)
+        self.assertNotIn("Le jour où le solaire vous rembourse", html)
+        # aucun des montants modélisés sur une facture de butane non payée
+        eco = economics.compute(sample_data.build("agrumes"))
+        from apps.ventes.quote_engine.agricole import theme as a_theme
+        for montant in (eco["fuel_costs"]["butane_today"],
+                        eco["fuel_costs"]["butane_today"] * 20):
+            self.assertNotIn(f"{a_theme.fmt(montant)} MAD", html)
+            self.assertNotIn(f"{a_theme.fmt(montant)}<span", html)
 
     # ── QJR149 — validité : jamais « None jours », jamais un 30 forfaitaire ───
     def _html_sans_validite(self):
