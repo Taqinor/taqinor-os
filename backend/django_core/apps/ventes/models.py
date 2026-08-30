@@ -2136,6 +2136,12 @@ class DevisNudgeLog(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: purge tenant. QJR144 a décalé ce fichier de +94 lignes
+        # (méthodes d'empreinte dans ``DevisSignature``), donc l'entrée
+        # `file:line` de `scripts/on_delete_allowlist.txt` ne matchait plus.
+        # Le commentaire INLINE est le patron IMMUNISÉ aux décalages (celui que
+        # porte déjà la FK ``devis`` juste en dessous) : la politique n'a pas
+        # changé d'un octet, elle est simplement justifiée là où elle vit.
         on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='devis_nudge_logs',
