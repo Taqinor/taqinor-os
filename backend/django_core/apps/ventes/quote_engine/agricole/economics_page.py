@@ -14,6 +14,18 @@ def _yrs(v):
     return str(int(f)) if f == int(f) else f"{f:.1f}".replace(".", ",")
 
 
+def _validity_days(v):
+    """QJR149 — nombre de jours de validité, ou None quand il est indéterminable.
+
+    Aucun repli forfaitaire : la valeur vient du devis ou n'est pas publiée.
+    """
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def _link(url):
     url = (url or "").strip()
     if not url:
@@ -61,7 +73,17 @@ def build(ctx) -> str:
     b_reel = d.get("butane_12kg_reel") or 128
 
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name")) or "Le client"
-    validity = d.get("validity_days", 30)
+    # QJR149 — la validité vient du DEVIS (``validity_days`` / ``valid_until``
+    # posés par le builder depuis ``date_validite``, sinon création + réglage
+    # société ``quote_validity_days``), jamais d'un « 30 jours » codé ici.
+    # ``renderer._augment`` pose TOUJOURS les deux clés (``setdefault(..., None)``),
+    # donc le défaut ``30`` de ``d.get("validity_days", 30)`` n'était JAMAIS
+    # atteint : un devis sans validité calculable imprimait « None jours » dans
+    # les conditions ET « None jours de validité » dans la pastille d'appel à
+    # l'action. Indéterminable ⇒ la ligne ET la pastille sont OMISES, exactement
+    # comme la pastille de ``cover.py`` (correctif M7).
+    validity = _validity_days(d.get("validity_days"))
+    valid_until = (d.get("valid_until") or "").strip()
     pay = d.get("payment_terms", {}) or {}
     acompte = pay.get("acompte", 30); materiel = pay.get("materiel", 60); solde = pay.get("solde", 10)
     tva_note = (d.get("tva_note", "") or "").strip()
@@ -151,10 +173,15 @@ def build(ctx) -> str:
 
     # ── closing: conditions · étapes · signature (3 equal-height cols) ────────
     paiement = f"{acompte}% commande · {materiel}% matériel · {solde}% service"
-    conditions = [("Validité", f"{validity} jours"), ("Paiement", paiement),
-                  ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
-                  ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
-                   "nous vous orientons pour la démarche")]
+    conditions = []
+    if validity is not None:
+        conditions.append(("Validité", f"{validity} jours"))
+    elif valid_until:
+        conditions.append(("Validité", f"Jusqu'au {valid_until}"))
+    conditions += [("Paiement", paiement),
+                   ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
+                   ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
+                    "nous vous orientons pour la démarche")]
     # QRES66 (fondateur, 18/08/2026) — la ligne de conditions « Financement »
     # (CAM Saquii Solaire + FDA) est SUPPRIMÉE. Ne pas la réintroduire.
     cond_html = "".join(
@@ -169,6 +196,11 @@ def build(ctx) -> str:
         for n, t, s in steps)
     stamp = (f'<div class="a4-stamp">Accepté par <b>{theme.titlecase_name(accepte_nom)}</b> '
              f'le {date_acc}</div>') if (accepte_nom and date_acc) else ""
+    # QJR149 — pastille de validité OMISE quand le nombre de jours est
+    # indéterminable (elle imprimait « None jours de validité »).
+    cta_validity = (f'<div class="a4-cta-r"><b>{validity}</b>'
+                    f'<span>jours de validité</span></div>'
+                    ) if validity is not None else ""
 
     css = f"""
 <style>
@@ -278,7 +310,7 @@ def build(ctx) -> str:
     <div><div class="a4-cta-t">Prêt à passer au pompage solaire ?</div>
       <div class="a4-cta-s">Validez votre devis et lancez votre projet d'irrigation.</div>
       <a class="a4-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>→</span> {_disp(l_sign)}</a></div>
-    <div class="a4-cta-r"><b>{validity}</b><span>jours de validité</span></div>
+    {cta_validity}
   </div>
 </div>
 """

@@ -192,6 +192,40 @@ class TestAgricoleRender(SimpleTestCase):
         for key in sample_data.keys():
             self.assertIn("a1-root", self._html(key))
 
+    # ── QJR149 — validité : jamais « None jours », jamais un 30 forfaitaire ───
+    def _html_sans_validite(self):
+        """Le cas réel : ``builder`` n'a pas pu calculer la validité (devis sans
+        date de création, ou date de validité ≤ création) → ``renderer._augment``
+        pose ``validity_days``/``valid_until`` à None."""
+        data = sample_data.build("agrumes")
+        data.pop("validity_days", None)
+        data.pop("valid_until", None)
+        augmented = renderer._augment(data)
+        self.assertIsNone(augmented["validity_days"])
+        self.assertIsNone(augmented["valid_until"])
+        return render.build_html(augmented)
+
+    def test_validite_indeterminable_nimprime_pas_none(self):
+        html = self._html_sans_validite()
+        self.assertNotIn("None", html)          # les 4 pages du document
+        self.assertNotIn("jours de validité", html)   # pastille CTA omise
+        self.assertNotIn("30 jours", html)      # aucun repli forfaitaire
+
+    def test_validite_du_devis_est_imprimee(self):
+        html = self._html()                     # sample_data → 30 jours réels
+        self.assertIn("30 jours", html)
+        self.assertIn("jours de validité", html)
+
+    def test_validite_repli_sur_la_date_dexpiration(self):
+        """Sans nombre de jours mais avec une date d'échéance, la ligne des
+        conditions publie la date — jamais un « None »."""
+        data = sample_data.build("agrumes")
+        data.pop("validity_days", None)
+        data["valid_until"] = "31/12/2026"
+        html = render.build_html(renderer._augment(data))
+        self.assertIn("31/12/2026", html)
+        self.assertNotIn("None", html)
+
 
 class TestInstallationPhotoSelector(SimpleTestCase):
     def test_nearest_kwc_same_mode_wins(self):
