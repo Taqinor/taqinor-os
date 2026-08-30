@@ -1209,11 +1209,11 @@ export default function DevisGenerator({
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
   // APX17 — la confirmation QX23 vit maintenant dans `onModeChangeUi` (le SEUL
-  // chemin où l'utilisateur choisit lui-même un marché). `onModeChange` reste
-  // SYNCHRONE : les trois appels programmatiques (préremplissage lead/payload,
-  // rechargement d'un brouillon) doivent poser leur état dans le même tour —
-  // le rendre asynchrone ferait écraser `scenario` chargé par le défaut du
-  // mode.
+  // chemin où l'utilisateur choisit lui-même un marché). `appliquerMarcheEcran`
+  // reste SYNCHRONE : les trois appels programmatiques (préremplissage
+  // lead/payload, rechargement d'un brouillon) doivent poser leur état dans le
+  // même tour — le rendre asynchrone ferait écraser `scenario` chargé par le
+  // défaut du mode.
   // QJR99 — la CASCADE de quatre branches (`if industriel … else résidentiel`)
   // qui reposait `setScenario` SANS CONDITION est SUPPRIMÉE : le défaut de
   // marché vit dans `DEFAUT_SCENARIO_PAR_MODE` (reducer) et ne s'applique plus
@@ -1227,8 +1227,10 @@ export default function DevisGenerator({
     onInstTypeChange(INST_TYPE_PAR_MODE[m] ?? 'Résidentielle')
   }
   // Chemins PROGRAMMATIQUES (pré-remplissage lead/payload, rechargement d'un
-  // brouillon) : ils ne marquent JAMAIS le marché comme choisi par le vendeur.
-  const onModeChange = (m) => appliquerMarcheEcran(m, 'programme')
+  // brouillon) : ils appellent `appliquerMarcheEcran(m, 'programme')`
+  // directement — ils ne marquent JAMAIS le marché comme choisi par le
+  // vendeur. (Passe Fable M5c : l'ancien alias `onModeChange` n'avait plus
+  // aucun appelant — supprimé, eslint no-unused-vars est ERROR en CI.)
   // Pose le drapeau « le commercial a choisi son marché » sans rien changer
   // d'autre (ex-`modeTouched.current = true` du gestionnaire JSX) : le marché
   // visé EST le marché courant, donc seule la marque du drapeau subsiste — y
