@@ -168,6 +168,34 @@ const INST_TYPE_PAR_MODE = {
   agricole: 'Agricole',
 }
 
+// DC11 / QJR106 — libellés FRANÇAIS des champs du lead surveillés par
+// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`). La
+// LISTE des champs reste au serveur : cette table ne fait que les NOMMER pour
+// le vendeur. Un champ inconnu d'ici s'affiche sous son nom technique plutôt
+// que de disparaître de la bannière.
+const LIBELLE_CHAMP_LEAD = {
+  facture_hiver: 'facture d’hiver',
+  facture_ete: 'facture d’été',
+  ete_differente: 'facture d’été différente',
+  bill_kwh: 'consommation facturée (kWh)',
+  type_toiture: 'type de toiture',
+  surface_toiture_m2: 'surface de toiture',
+  orientation: 'orientation',
+  inclinaison_deg: 'inclinaison',
+  gps_lat: 'latitude GPS',
+  gps_lng: 'longitude GPS',
+}
+
+/** DC11 — la phrase de la bannière, ou `null` quand rien n'a bougé. NON
+ *  exportée : ce fichier n'exporte que des composants (react-refresh). */
+const messageValeursLeadModifiees = (champs) => {
+  const noms = (Array.isArray(champs) ? champs : [])
+    .filter(c => typeof c === 'string' && c)
+    .map(c => LIBELLE_CHAMP_LEAD[c] || c)
+  if (noms.length === 0) return null
+  return `Valeurs du lead modifiées depuis la reprise dans ce devis : ${noms.join(', ')}.`
+}
+
 const RIEN_A_CHIFFRER = 'aucun dimensionnement chiffré pour cette branche'
 
 /** Recommandation du MOTEUR horaire serveur — publiable telle quelle. */
@@ -542,6 +570,13 @@ export default function DevisGenerator({
   // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
   // Ne change PAS le comportement du repli, seulement le rend visible.
   const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
+  // DC11 / QJR106 — même patron que `sizingServeurMessage` et
+  // `compositionSourceLocale` ci-dessus : un VERDICT DU SERVEUR, rendu tel
+  // quel, jamais recalculé ici. Le devis porte l'estampille des valeurs
+  // énergie/toiture qu'il a REPRISES du lead ; le serveur (`apps.crm`) compare
+  // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
+  // (`lead_valeurs_modifiees` du GET devis). Liste vide ⇒ rien à dire.
+  const [leadValeursModifiees, setLeadValeursModifiees] = useState([])
   // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
   // best-effort : une société sans réglage ou un rôle non responsable/admin
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
@@ -1635,6 +1670,12 @@ export default function DevisGenerator({
       }
       if (d.lead) setLeadId(String(d.lead))
       else if (d.client) setClientId(String(d.client))
+      // DC11 / QJR106 — le verdict de dérive du serveur, posé À LA LECTURE du
+      // brouillon (`?edit=`). Backend plus ancien / devis sans estampille ⇒
+      // champ absent ou `null` ⇒ liste vide ⇒ aucune bannière : comportement
+      // historique strictement inchangé.
+      setLeadValeursModifiees(
+        Array.isArray(d.lead_valeurs_modifiees) ? d.lead_valeurs_modifiees : [])
       setDiscountPct(String(parseFloat(d.remise_globale) || 0))
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
@@ -4297,6 +4338,22 @@ export default function DevisGenerator({
                     plus sans dire pourquoi elle a remplacé celle du serveur. */}
                 <div className="mt-1 text-xs" data-testid="composition-source-locale-raison">
                   {compositionSourceLocale}
+                </div>
+              </div>
+            )}
+            {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
+                `composition-source-locale` ci-dessus. Le lead a bougé APRÈS que
+                ce devis en a repris les valeurs : on le DIT, en nommant les
+                champs, au lieu de laisser le vendeur chiffrer sur une facture
+                périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
+                du GET devis) — l'écran ne compare rien. */}
+            {messageValeursLeadModifiees(leadValeursModifiees) && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+                   data-testid="lead-valeurs-modifiees">
+                {messageValeursLeadModifiees(leadValeursModifiees)}
+                <div className="mt-1 text-xs">
+                  Vérifiez la fiche du lead avant d’envoyer : ce devis a été
+                  chiffré sur les valeurs d’origine.
                 </div>
               </div>
             )}
