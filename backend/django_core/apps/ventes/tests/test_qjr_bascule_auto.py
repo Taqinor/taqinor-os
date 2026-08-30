@@ -82,6 +82,45 @@ PANNEAUX_ATTENDUS = 10
 #: su servir — les stocker mettrait deux bases de puissance dans le document.
 KWC_STOCKE = 5.5
 
+# ── LES QUANTITÉS DÉRIVÉES DU KIT — CALCULÉES, JAMAIS ÉCRITES DE MÉMOIRE ─────
+#
+# Une attente de golden posée « de mémoire » est un aller-retour de CI garanti :
+# c'est très exactement ce qui a coûté une ronde à ce fichier (et une autre à
+# ``test_qjr_bascule_3d`` avant lui). Chaque nombre ci-dessous est donc DÉRIVÉ
+# de la fixture, avec son calcul écrit, contre la règle réelle de
+# ``domain/composition.composition_residentielle``.
+#
+# LE CHAMP PV COMPOSÉ. L'adaptateur passe au composeur le kWc du
+# DIMENSIONNEMENT (panneau de référence à 710 Wc), pas celui du catalogue :
+#
+#     kwp = 10 panneaux × 710 Wc / 1000 = 7,10 kWc
+#
+# LES ONDULEURS — ``quantite_onduleur`` : « un onduleur suffit dès qu'il couvre
+# le seuil ; sinon on en met assez pour absorber le champ », le seuil valant
+# 80 % de la puissance :
+#
+#     seuil                                 = 7,10 × 0,8 = 5,68 kW
+#     les DEUX onduleurs de cette fixture   =        5 kW → 5 < 5,68
+#     quantité = plafond(kwp / kW_onduleur) = plafond(7,10 / 5) = plafond(1,42)
+#                                           = 2
+#
+# Les deux familles (réseau et hybride) portent le MÊME palier 5 kW, donc la
+# MÊME quantité : cette fixture exerce la branche MULTI-ONDULEURS des deux
+# côtés. (Le témoin de l'autre branche vit dans ``test_qjr_bascule_3d``, où
+# 5,5 kWc ⇒ seuil 4,4 kW ≤ 5 kW ⇒ ×1.)
+ONDULEURS_ATTENDUS = 2
+
+# LA BATTERIE — capacité VISÉE puis modules du calibre catalogue. Aucun
+# ``batterie_cible_kwh`` n'est transmis sur le chemin d'une taille DEMANDÉE
+# (le moteur n'est pas appelé, donc pas d'optimum « avec ») : la règle
+# historique kWc/5 décide seule.
+#
+#     cible_kwh = max(5, arrondi(kwp / 5) × 5) = max(5, arrondi(1,42) × 5)
+#               = max(5, 1 × 5) = 5 kWh
+#     calibre du catalogue (« Batterie Dyness 5 kWh »)          = 5 kWh
+#     modules   = max(1, plafond(cible_kwh / calibre))          = 1
+BATTERIES_ATTENDUES = 1
+
 # Un carré d'environ 20 m de côté à Casablanca, en [lat, lng] — la forme
 # EXACTE que le webhook range dans ``Lead.roof_outline``.
 _LAT0, _LNG0 = 33.5731, -7.5898
@@ -102,6 +141,11 @@ class _BaseAuto(TestCase):
         self.user = User.objects.create_user(
             username='qjr96user', password='x', role_legacy='responsable',
             company=self.company)
+        # Un golden qui rougit doit DIRE ce qui diverge. Sans ceci, unittest
+        # abrège le dict (« Diff is N characters long ») et le log de CI ne
+        # montre plus la valeur réelle — l'abréviation a déjà coûté un
+        # aller-retour entier à la lane jumelle (``test_qjr_bascule_3d``).
+        self.maxDiff = None
         self._seed()
 
     def _seed(self):
@@ -169,21 +213,17 @@ class GoldenLeadLesDeuxOptions(_BaseAuto):
     ``plafond(7 100 / 710) = 10`` panneaux, soit 7,10 kWc de dimensionnement.
 
     DÉRIVATION DES LIGNES (catalogue minimal : tout ce qui n'y est pas est
-    sauté ; ``deux_options`` compose les DEUX onduleurs et la batterie) :
+    sauté ; ``deux_options`` compose les DEUX onduleurs et la batterie ; les
+    quantités viennent du bloc de dérivation en tête de module) :
 
         Panneau Jinko 550W                      ×10 à 1 100,00
-        Onduleur réseau Huawei 5kW Monophasé    × 1 à 14 000,00
-        Onduleur hybride Deye 5kW Monophasé     × 1 à 17 000,00
-        Batterie Dyness 5 kWh                   × N à 17 000,00
+        Onduleur réseau Huawei 5kW Monophasé    × 2 à 14 000,00
+        Onduleur hybride Deye 5kW Monophasé     × 2 à 17 000,00
+        Batterie Dyness 5 kWh                   × 1 à 17 000,00
 
     Toutes COMMUNES (``variante=''``) : sans ``dimensionnement_avec``, les deux
     options partagent le MÊME champ PV et la composition reste mono-optimum —
     c'est le repli documenté de la fusion L-2OPT.
-
-    Le NOMBRE de modules batterie (``N``) est arrêté par
-    ``composition_residentielle`` (règle kWc/5), qui a ses propres tests : le
-    golden épingle ici la PRÉSENCE et le PRIX, pas une règle de dimensionnement
-    qui ne lui appartient pas.
     """
 
     def _construire(self):
@@ -192,21 +232,21 @@ class GoldenLeadLesDeuxOptions(_BaseAuto):
 
     def test_golden_les_lignes_creees(self):
         devis = self._construire()
-        lignes = self._par_designation(devis)
-
-        self.assertEqual(
-            lignes['Panneau Jinko 550W'],
-            (Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')))
-        self.assertEqual(
-            lignes['Onduleur réseau Huawei 5kW Monophasé'],
-            (Decimal('1'), PRIX['onduleur_reseau'], '', Decimal('0')))
-        self.assertEqual(
-            lignes['Onduleur hybride Deye 5kW Monophasé'],
-            (Decimal('1'), PRIX['onduleur_hybride'], '', Decimal('0')))
-        quantite, prix, variante, remise = lignes['Batterie Dyness 5 kWh']
-        self.assertGreater(quantite, Decimal('0'))
-        self.assertEqual((prix, variante, remise),
-                         (PRIX['batterie'], '', Decimal('0')))
+        self.assertEqual(self._par_designation(devis), {
+            'Panneau Jinko 550W': (
+                Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')),
+            # ×2 : 5 kW < seuil (0,8 × 7,10 = 5,68) ⇒ plafond(7,10/5) = 2.
+            'Onduleur réseau Huawei 5kW Monophasé': (
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_reseau'], '',
+                Decimal('0')),
+            'Onduleur hybride Deye 5kW Monophasé': (
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_hybride'], '',
+                Decimal('0')),
+            # ×1 : cible 5 kWh (arrondi(7,10/5) × 5) servie par un module 5 kWh.
+            'Batterie Dyness 5 kWh': (
+                Decimal(BATTERIES_ATTENDUES), PRIX['batterie'], '',
+                Decimal('0')),
+        })
         self._assert_ordre_explicite(devis)
 
     def test_golden_le_devis_reste_un_brouillon_numerote(self):
@@ -250,15 +290,18 @@ class GoldenLeadAvecBatterie(_BaseAuto):
 
     Un choix EXPLICITE du lead reste souverain (U2) : on ne repropose pas une
     option que le client a déjà écartée. La composition est MONO « avec », donc
+    (mêmes dérivations qu'en tête de module : seuil 5,68 kW, cible 5 kWh)
 
         Panneau Jinko 550W                  ×10 à 1 100,00
-        Onduleur hybride Deye 5kW Monophasé × 1 à 17 000,00
-        Batterie Dyness 5 kWh               × N à 17 000,00
+        Onduleur hybride Deye 5kW Monophasé × 2 à 17 000,00
+        Batterie Dyness 5 kWh               × 1 à 17 000,00
 
-    et JAMAIS l'onduleur réseau.
+    et JAMAIS l'onduleur réseau — c'est le dict COMPLET, donc son absence est
+    épinglée par l'égalité elle-même.
 
     ``optimum_avec`` reste ``None`` : le moteur n'est pas appelé sur le chemin
-    d'une puissance DEMANDÉE — elle vaut pour les deux axes.
+    d'une puissance DEMANDÉE — elle vaut pour les deux axes, et la batterie
+    retombe donc sur la règle historique kWc/5.
     """
 
     def _construire(self):
@@ -268,16 +311,18 @@ class GoldenLeadAvecBatterie(_BaseAuto):
 
     def test_golden_les_lignes_creees(self):
         devis = self._construire()
-        lignes = self._par_designation(devis)
-
-        self.assertEqual(
-            lignes['Panneau Jinko 550W'],
-            (Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')))
-        self.assertEqual(
-            lignes['Onduleur hybride Deye 5kW Monophasé'],
-            (Decimal('1'), PRIX['onduleur_hybride'], '', Decimal('0')))
-        self.assertIn('Batterie Dyness 5 kWh', lignes)
-        self.assertNotIn('Onduleur réseau Huawei 5kW Monophasé', lignes)
+        self.assertEqual(self._par_designation(devis), {
+            'Panneau Jinko 550W': (
+                Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')),
+            # ×2 : 5 kW < seuil (0,8 × 7,10 = 5,68) ⇒ plafond(7,10/5) = 2.
+            'Onduleur hybride Deye 5kW Monophasé': (
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_hybride'], '',
+                Decimal('0')),
+            # ×1 : cible 5 kWh (arrondi(7,10/5) × 5) servie par un module 5 kWh.
+            'Batterie Dyness 5 kWh': (
+                Decimal(BATTERIES_ATTENDUES), PRIX['batterie'], '',
+                Decimal('0')),
+        })
         self._assert_ordre_explicite(devis)
 
     def test_golden_l_etude(self):
@@ -291,9 +336,11 @@ class GoldenLeadSansBatterie(_BaseAuto):
     """FIXTURE 3 — ``batterie_souhaitee='sans'`` : le réseau SEUL.
 
         Panneau Jinko 550W                   ×10 à 1 100,00
-        Onduleur réseau Huawei 5kW Monophasé × 1 à 14 000,00
+        Onduleur réseau Huawei 5kW Monophasé × 2 à 14 000,00
 
-    et AUCUNE batterie, AUCUN onduleur hybride.
+    et AUCUNE batterie, AUCUN onduleur hybride (dict COMPLET : leur absence est
+    épinglée par l'égalité). La quantité d'onduleur vient de la même dérivation
+    qu'en tête de module — seuil 5,68 kW, palier catalogue 5 kW.
     """
 
     def _construire(self):
@@ -306,8 +353,10 @@ class GoldenLeadSansBatterie(_BaseAuto):
         self.assertEqual(self._par_designation(devis), {
             'Panneau Jinko 550W': (
                 Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')),
+            # ×2 : 5 kW < seuil (0,8 × 7,10 = 5,68) ⇒ plafond(7,10/5) = 2.
             'Onduleur réseau Huawei 5kW Monophasé': (
-                Decimal('1'), PRIX['onduleur_reseau'], '', Decimal('0')),
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_reseau'], '',
+                Decimal('0')),
         })
         self._assert_ordre_explicite(devis)
 
