@@ -405,21 +405,44 @@ CLES_DERIVEES_NON_COPIEES = (
     'profils_comparatifs',
 )
 
+#: QJR136 / ES13 — L'ATTRIBUTION PUBLICITAIRE NE SE RECOPIE PAS NON PLUS.
+#: ``etude_params['attribution']`` est le snapshot first-touch (fbclid/UTM) que
+#: ``_persist_attribution`` pose à l'ACCEPTATION, et il SORT immédiatement si
+#: la clé existe déjà. Un devis renouvelé qui hérite du snapshot de sa source
+#: recrédite donc le MÊME clic publicitaire une seconde fois — et la
+#: déduplication Meta ne rattrape rien, l'``event_id`` portant la référence,
+#: qui a changé. C'est le patron « double application ».
+#: Elle est listée à part des six clés d'étude (QJR117) parce que ce n'est pas
+#: une valeur d'étude : c'est une trace de provenance, et le motif est le
+#: comptage publicitaire, pas la fraîcheur d'un chiffre.
+#: PORTÉE EXACTE, sans exagérer : la copie repart SANS snapshot hérité. Si elle
+#: est acceptée à son tour, ``_persist_attribution`` en reposera un, relu du
+#: LEAD À CE MOMENT-LÀ — une valeur d'aujourd'hui plutôt qu'un héritage figé.
+#: Une déduplication publicitaire complète demanderait en plus une DATE DE CLIC
+#: conservée (constat ES10), qui exige un champ neuf : hors de ce lot.
+CLES_ATTRIBUTION_NON_COPIEES = ('attribution',)
+
+#: Ce qu'une copie de devis ne reprend JAMAIS, toutes raisons confondues.
+CLES_NON_COPIEES = (
+    CLES_DERIVEES_NON_COPIEES + CLES_ATTRIBUTION_NON_COPIEES)
+
 
 def etude_params_pour_copie(etude_params):
-    """QJR117 — le bloc d'étude qu'une COPIE de devis reçoit.
+    """QJR117 / QJR136 — le bloc d'étude qu'une COPIE de devis reçoit.
 
     La CONFIGURATION du source, jamais ses chiffres dérivés
-    (:data:`CLES_DERIVEES_NON_COPIEES`). Rend ``None`` quand il ne reste rien —
-    ``Devis.etude_params`` est ``null=True`` et une clé absente vaut « pas
-    calculable » (règle Z2), donc un devis sans étude reste sans étude.
+    (:data:`CLES_DERIVEES_NON_COPIEES`) ni son snapshot d'attribution
+    publicitaire (:data:`CLES_ATTRIBUTION_NON_COPIEES`). Rend ``None`` quand il
+    ne reste rien — ``Devis.etude_params`` est ``null=True`` et une clé absente
+    vaut « pas calculable » (règle Z2), donc un devis sans étude reste sans
+    étude.
 
     Rend TOUJOURS un dict NEUF : ``etude_params=devis.etude_params`` partageait
     la même référence entre source et copie, et une mutation de l'un fuyait sur
     l'autre (le dépôt nomme ce piège dans ``dupliquer_variante``).
     """
     bloc = {cle: valeur for cle, valeur in dict(etude_params or {}).items()
-            if cle not in CLES_DERIVEES_NON_COPIEES}
+            if cle not in CLES_NON_COPIEES}
     return bloc or None
 
 

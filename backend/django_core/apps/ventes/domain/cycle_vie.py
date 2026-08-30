@@ -799,20 +799,44 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     phone_raw = ''
     if client:
         phone_raw = getattr(client, 'telephone', '') or ''
-    phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
-    phone_hash = _sha256(phone_digits) if phone_digits else ''
+    # ── QJR136 / ES9 — LE TÉLÉPHONE PART EN E.164, PAS EN CHIFFRES NUS ──────
+    #
+    # CE QUI ÉTAIT FAUX. Le hash portait ``''.join(c for c in phone_raw if
+    # c.isdigit())`` — donc « 0600000000 » SANS indicatif pays, alors que Meta
+    # apparie sur un numéro E.164. L'appariement ``ph`` échouait donc
+    # SYSTÉMATIQUEMENT et l'EMQ chutait. La MÊME app expose déjà la règle
+    # (``utils/phone.normalize_phone_e164``), ``apps/adsengine/audiences.py``
+    # l'utilise pour ses uploads Meta, et ce fichier savait le faire cent
+    # lignes plus haut pour le lien wa.me : une quatrième dérivation locale
+    # n'avait aucune raison d'exister.
+    #
+    # Un numéro NON normalisable (local ambigu, saisie incomplète) ne produit
+    # plus un hash faux : il ne produit AUCUNE clé ``ph``.
+    from apps.ventes.utils.phone import normalize_phone_e164
+    phone_e164 = normalize_phone_e164(phone_raw)
+    phone_hash = _sha256(phone_e164) if phone_e164 else ''
 
+    # ── QJR136 / ES8 — AUCUNE VALEUR N'EST ENVOYÉE SI ELLE N'EST PAS SÛRE ───
+    #
     # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
-    # canonique QX1), jamais le TTC brut du devis (mal calibré sur un devis à
-    # 2 options ou avec remise globale). Sans prix d'achat (règle #4).
+    # canonique QX1), jamais le TTC brut du devis. Le repli sur
+    # ``Devis.total_ttc`` était précisément ce TTC BRUT (``models.Devis`` ne
+    # déduit jamais ``remise_globale``) et la SOMME des deux options — le
+    # motif brut-vs-net (QJR22/23/24) survivant dans un repli, et corrompant le
+    # ROAS et l'optimisation d'enchères de la campagne.
+    #
+    # On ne devine plus : quand la chaîne canonique échoue, on N'ENVOIE RIEN.
+    # Un événement manquant se rattrape ; un montant faux entraîne durablement
+    # l'algorithme d'enchères.
     try:
         from apps.ventes.utils.options import option_totaux
         value = float(option_totaux(devis)['ttc'])
     except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
-        try:
-            value = float(getattr(devis, 'total_ttc', None) or 0)
-        except (TypeError, ValueError):
-            value = 0.0
+        logger.warning(
+            'QJR136: CAPI SignedQuote NON envoyé pour devis %s — la valeur de '
+            "conversion canonique est indisponible (aucun montant n'est "
+            'deviné).', getattr(devis, 'reference', '?'), exc_info=True)
+        return
 
     user_data = {}
     if email_hash:
