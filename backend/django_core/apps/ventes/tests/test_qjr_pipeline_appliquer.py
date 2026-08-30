@@ -322,7 +322,10 @@ CHEMINS_BASCULES = {
     'views/devis.py': 5,
     # QJR95 — la création depuis un calepinage 3D : ``build_devis_from_layout``
     # est devenue un adaptateur (elle LIT le layout, le pipeline fait le reste).
-    'domain/creation.py': 1,
+    # QJR96 — le devis AUTOMATIQUE et le TUNNEL : ``build_devis_auto`` est
+    # devenue le second adaptateur de ce fichier (origines ``auto``/``tunnel``),
+    # et ne repasse plus par ``build_devis_from_layout``.
+    'domain/creation.py': 2,
 }
 
 
