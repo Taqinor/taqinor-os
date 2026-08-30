@@ -1030,9 +1030,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models.py:1876` | RevisionKit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1931` | FicheTechnique.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1935` | FicheTechnique.produit | Produit | PROTECT |
-| `backend/django_core/apps/stock/models.py:2163` | ModeleBonCommandeFournisseur.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py:2196` | ModeleBonCommandeFournisseurLigne.produit | Produit | CASCADE |
-| `backend/django_core/apps/stock/models.py:2226` | NomenclatureCodeBarres.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py:2186` | ModeleBonCommandeFournisseur.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py:2219` | ModeleBonCommandeFournisseurLigne.produit | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py:2249` | NomenclatureCodeBarres.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models_consignation.py:32` | DepotConsignation.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/stock/models_incident_fournisseur.py:40` | IncidentQualiteFournisseur.produit | stock.Produit | SET_NULL |
 | `backend/django_core/apps/stock/models_negoce_params.py:19` | ParametresNegoce.company | authentication.Company | CASCADE |

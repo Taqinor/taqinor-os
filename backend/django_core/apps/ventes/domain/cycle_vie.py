@@ -319,7 +319,12 @@ def validate_esign_otp(link, otp_code):
     # sort au premier caractère différent : le temps de réponse fuit la
     # longueur du préfixe correct. Le plafond de tentatives (QX10) borne
     # le brute-force, il ne ferme pas ce canal-là.
-    if not secrets.compare_digest(str(stored), otp_code.strip()):
+    # Passe Fable finale (30/08/2026) — comparer en BYTES :
+    # `compare_digest(str, str)` leve TypeError sur tout caractere non-ASCII
+    # (un U+200B colle depuis un email survivait a .strip()) — hier un 400
+    # << code incorrect >>, sinon un 500 public. En bytes, tout octet compare.
+    if not secrets.compare_digest(str(stored).encode('utf-8'),
+                                  otp_code.strip().encode('utf-8')):
         # QX10 — incrémente le compteur d'échecs (TTL = fenêtre du code).
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
@@ -427,7 +432,12 @@ def validate_otp_lecture(link, otp_code):
     # sort au premier caractère différent : le temps de réponse fuit la
     # longueur du préfixe correct. Le plafond de tentatives (QX10) borne
     # le brute-force, il ne ferme pas ce canal-là.
-    if not secrets.compare_digest(str(stored), otp_code.strip()):
+    # Passe Fable finale (30/08/2026) — comparer en BYTES :
+    # `compare_digest(str, str)` leve TypeError sur tout caractere non-ASCII
+    # (un U+200B colle depuis un email survivait a .strip()) — hier un 400
+    # << code incorrect >>, sinon un 500 public. En bytes, tout octet compare.
+    if not secrets.compare_digest(str(stored).encode('utf-8'),
+                                  otp_code.strip().encode('utf-8')):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
