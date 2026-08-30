@@ -567,6 +567,21 @@ def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
     return _monthly_bill_from_kwh(kwh_mensuel, tranches) / kwh_mensuel
 
 
+def _table_tarifaire(utility: str | None, tranches_override: list | None):
+    """QJR156 — LA table qui tarifera, ou ``None`` si aucune n'est connue.
+
+    Source UNIQUE de la résolution (surcharge appelant → distributeur connu →
+    rien) : le point d'appel a besoin de distinguer « aucune donnée tarifaire »
+    de « une grille réelle mais pas de consommation », deux cas que le seul
+    drapeau ``is_estimated`` confondrait depuis QJR156.
+    """
+    if tranches_override:
+        return tranches_override
+    if utility and utility.lower() in UTILITY_TABLES:
+        return UTILITY_TABLES[utility.lower()]
+    return None
+
+
 def _avg_kwh_price_from_tranches(
     conso_annuelle_kwh: float | None,
     utility: str | None,
@@ -581,17 +596,31 @@ def _avg_kwh_price_from_tranches(
 
     When annual consumption is available, converts it to monthly average for the
     weighted-tranche calculation.
+
+    QJR156 (audit QJR79) — SANS CONSOMMATION, LE PRIX EST UNE ESTIMATION, ET LE
+    DIT. Consommation absente ou nulle + distributeur renseigné :
+    ``_weighted_kwh_price(0.0, table)`` rend, par construction, le tarif LE PLUS
+    BAS de la grille (la tranche 0-100 kWh) — et le tuple sortait
+    ``is_estimated=False``. Le PDF imprimait alors « Tarif électricité retenu :
+    0,92 MAD/kWh (Lydec) » SANS le mot « estimation », et les économies étaient
+    calculées à ce prix. Le cas est atteignable (l'écran ne neutralise le
+    distributeur sans consommation que pour ONEE). Le prix reste celui de la
+    grille RÉELLE du client — c'est plus honnête qu'un forfait sans rapport avec
+    son distributeur — mais il part désormais ÉTIQUETÉ.
     """
-    if tranches_override:
-        table = tranches_override
-    elif utility and utility.lower() in UTILITY_TABLES:
-        table = UTILITY_TABLES[utility.lower()]
-    else:
+    table = _table_tarifaire(utility, tranches_override)
+    if table is None:
         # No tariff data → honest fallback
         return _FALLBACK_KWH_PRICE, True
 
-    kwh_mensuel = (conso_annuelle_kwh / 12) if conso_annuelle_kwh else 0.0
-    prix = _weighted_kwh_price(kwh_mensuel, table)
+    if not conso_annuelle_kwh or conso_annuelle_kwh <= 0:
+        # Grille réelle, mais AUCUNE consommation pour la pondérer : le prix
+        # rendu est la borne BASSE de la grille, pas le prix moyen de ce
+        # client. On le rend quand même (il vient de son distributeur) mais
+        # ÉTIQUETÉ estimation — jamais présenté comme « le tarif retenu ».
+        return _weighted_kwh_price(0.0, table), True
+
+    prix = _weighted_kwh_price(conso_annuelle_kwh / 12, table)
     return prix, False
 
 
@@ -1091,7 +1120,13 @@ def calculate_savings_roi(
         # DC2 — quand aucune donnée tarifaire n'existe (repli 1.20 « estimation »),
         # préférer le tarif ONEE de la société (CompanyProfile.onee_tarif_kwh) s'il
         # est fourni. Reste marqué « estimation » (pas de données de conso).
-        if savings_estimated and fallback_tarif_kwh and fallback_tarif_kwh > 0:
+        # QJR156 — la condition est explicitement « AUCUNE TABLE », plus
+        # « savings_estimated » : depuis QJR156 ce drapeau se lève AUSSI quand
+        # une grille réelle existe mais qu'aucune consommation ne la pondère, et
+        # dans ce cas-là le prix du distributeur du client vaut mieux qu'un
+        # forfait maison. DC2 garde donc exactement son périmètre d'origine.
+        _sans_table = _table_tarifaire(utility, tranches_override) is None
+        if _sans_table and fallback_tarif_kwh and fallback_tarif_kwh > 0:
             prix_kwh = float(fallback_tarif_kwh)
 
     # ORDRE FONDATEUR (18/08) — taux « avec batterie » DÉRIVÉ de la capacité
