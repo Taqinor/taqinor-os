@@ -21,6 +21,16 @@ const CLIENT_FORM = read('../pages/crm/ClientForm.jsx')
 const CLIENT_QUICK = read('../pages/ventes/ClientQuickCreateModal.jsx')
 const DEVIS_GEN = read('../pages/ventes/DevisGenerator.jsx')
 const FACTURE_FORM = read('../pages/ventes/FactureForm.jsx')
+// QJR101 — les trois champs de facture ont suivi les panneaux de marché : ils
+// vivent maintenant dans les trois panneaux raccordés au réseau. La garde suit
+// le déplacement au lieu de s'élargir : elle vérifie les DEUX moitiés (les
+// gestes naissent dans l'écran porteur, les inputs les posent dans chaque
+// panneau) — donc trois fois plus de champs couverts qu'avant.
+const PANNEAUX_RESEAU = [
+  ['PanneauResidentiel', read('../pages/ventes/generator/PanneauResidentiel.jsx')],
+  ['PanneauIndustriel', read('../pages/ventes/generator/PanneauIndustriel.jsx')],
+  ['PanneauCommercial', read('../pages/ventes/generator/PanneauCommercial.jsx')],
+]
 
 test('VX237 : SectionContact — Nom (carte), Téléphone, WhatsApp posent onPaste', () => {
   assert.match(SECTION_CONTACT, /import \{ usePasteClean, parsePastedPhone, parsePasteCard \} from '\.\.\/\.\.\/\.\.\/\.\.\/hooks\/usePasteClean'/)
@@ -46,9 +56,19 @@ test('VX237 : ClientQuickCreateModal — Téléphone pose onPaste', () => {
 })
 
 test('VX237 : DevisGenerator — Facture Hiver/Été/réelle posent onPaste (montant)', () => {
-  assert.match(DEVIS_GEN, /onPaste=\{onHiverPaste\}/)
-  assert.match(DEVIS_GEN, /onPaste=\{onEtePaste\}/)
-  assert.match(DEVIS_GEN, /onPaste=\{onRealBillPaste\}/)
+  // Moitié « fabrique » : les trois gestes naissent toujours dans l'écran…
+  assert.match(DEVIS_GEN, /const onHiverPaste = usePasteClean\(parsePastedAmount,/)
+  assert.match(DEVIS_GEN, /const onEtePaste = usePasteClean\(parsePastedAmount,/)
+  assert.match(DEVIS_GEN, /const onRealBillPaste = usePasteClean\(parsePastedAmount,/)
+  // …et descendent aux panneaux par le socle de props (jamais recréés en bas).
+  assert.match(DEVIS_GEN, /onHiverPaste, onEtePaste, handleEstimerMois/)
+  assert.match(DEVIS_GEN, /onRealBillPaste, consoAnnuelleReelle,/)
+  // Moitié « pose » : les trois champs portent le geste dans CHAQUE panneau.
+  for (const [nom, src] of PANNEAUX_RESEAU) {
+    assert.match(src, /onPaste=\{onHiverPaste\}/, nom)
+    assert.match(src, /onPaste=\{onEtePaste\}/, nom)
+    assert.match(src, /onPaste=\{onRealBillPaste\}/, nom)
+  }
 })
 
 test('VX237 : FactureForm — Prix HT de ligne pose onPaste (montant)', () => {

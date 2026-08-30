@@ -9,7 +9,9 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
+  // QJR101 — `Sprout` est parti avec le panneau agricole (`PanneauAgricole`),
+  // qui l'importe désormais lui-même.
+  ArrowLeft, Target, ClipboardList, User, Zap, BarChart3,
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
   StickyNote, FileText, RotateCcw, Sun, Plus,
@@ -54,7 +56,9 @@ import {
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  HelpTip, ScrollProgress,
+  // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
+  // panneaux réseau l'importent chacun pour leur aide « distributeur ».
+  ScrollProgress,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
@@ -62,7 +66,11 @@ import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
-  MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
+  // QJR101 — `MONTHS_FR` (grille des 12 mois), `TARIF_MT_ONEE` (barème MT) et
+  // `COMMERCIAL_CATEGORIES` sont partis avec les panneaux de marché qui les
+  // rendent ; `tarifMtDisponible` et `commercialDayShare` restent ici, appelés
+  // par l'avertissement de vente et par l'étude commerciale.
+  CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
@@ -81,8 +89,8 @@ import {
   // sur ce chemin d'enregistrement.
   kwhFromBill, multiPropertyPreviewTTC,
   productibleForCity,
-  COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
-  TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen,
+  COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
+  tarifMtDisponible, tarifMtMoyen,
   // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
   // au payback le plus court (jamais un panneau/900 MAD nu).
   estimerKwcDepuisFacture, optimalKwcByPayback,
@@ -141,6 +149,15 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
+// QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
+// SON marché et lit la clé de son module de stratégie (QJR89) pour se retirer
+// ailleurs. Cet écran garde l'en-tête, le sélecteur de marché, le lead/client,
+// la table de lignes, le rail d'argent, l'enregistrement — et TOUTE la logique
+// transverse (chaîne d'étude horaire, roi, études par marché, validate).
+import PanneauResidentiel from './generator/PanneauResidentiel'
+import PanneauIndustriel from './generator/PanneauIndustriel'
+import PanneauCommercial from './generator/PanneauCommercial'
+import PanneauAgricole from './generator/PanneauAgricole'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -3350,6 +3367,24 @@ export default function DevisGenerator({
     )
   }
 
+  // QJR101 — le branchement des trois panneaux raccordés au réseau
+  // (résidentiel / industriel / commercial). QUE des props : aucun calcul ne
+  // descend ici, l'état et les gestes restent définis ci-dessus.
+  const socleFactures = {
+    marche: modeInstallation,
+    fHiver, setFHiver, fEte, setFEte, syncBillEstimator,
+    onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
+    distributeur, setDistributeur, realBillMode, setRealBillMode,
+    realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
+    onRealBillPaste, consoAnnuelleReelle,
+  }
+  // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
+  const socleEtudeReseau = {
+    consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
+    tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
+    tarifMtApplique,
+  }
+
   return (
     <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
       {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
@@ -3647,498 +3682,43 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
 
-        {/* ── Factures électriques (masquées en mode pompage) ── */}
-        {modeInstallation !== 'agricole' && (
-        <Card>
-          <GenCardHeader icon={Zap} title="Factures Électriques" />
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">
-              Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants
-              hiver/été. Ces valeurs servent au calcul ROI dans le devis.
-            </p>
-            <div className="mt-3 grid items-end gap-4 sm:grid-cols-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-hiver">Facture Hiver moy. (MAD/mois)</Label>
-                <Input id="gen-hiver" type="number" min="0" step="any"
-                       placeholder="ex: 600" value={fHiver}
-                       onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }}
-                       onPaste={onHiverPaste} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-ete">Facture Été moy. (MAD/mois)</Label>
-                <Input id="gen-ete" type="number" min="0" step="any"
-                       placeholder="ex: 400" value={fEte}
-                       onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }}
-                       onPaste={onEtePaste} />
-              </div>
-              <Button type="button" variant="outline" onClick={handleEstimerMois}>
-                <BarChart3 /> Estimer 12 mois
-              </Button>
-            </div>
-            {errors.bills && <p className="mt-1 text-xs text-destructive">{errors.bills}</p>}
-            <div className="gen-monthly-grid">
-              {MONTHS_FR.map((m, i) => (
-                <div key={m} className="gen-month">
-                  <span className="gen-month-label">{m}</span>
-                  <input type="number" min="0" step="any" className="form-control form-control-sm"
-                         value={monthly[i]}
-                         onChange={e => setMonth(i, e.target.value)} />
-                </div>
-              ))}
-            </div>
-
-            {/* QF4 — distributeur réel + facture/consommation réelle : nourrit
-                le calcul « deux factures » par tranche (backend QF2) avec les
-                vrais chiffres du client au lieu des défauts. */}
-            <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Zap className="size-4 text-info" aria-hidden="true" />
-                <span className="font-display text-sm font-semibold tracking-tight">
-                  Facture réelle du client (recommandé)
-                </span>
-                {/* VX47 — aide contextuelle : le calcul « par tranche » selon
-                    le distributeur n'est pas intuitif pour un nouvel employé. */}
-                <HelpTip label="Aide — distributeur et tranches">
-                  Chaque distributeur (ONEE, Lydec, Redal) facture l'électricité
-                  par <strong>tranches</strong> : plus la consommation est
-                  élevée, plus le prix du kWh grimpe. En renseignant la facture
-                  ou consommation réelle du client, l'économie solaire est
-                  calculée avec le vrai barème du distributeur choisi — sans
-                  ces champs, une estimation par défaut est utilisée.
-                </HelpTip>
-                <span className="text-xs text-muted-foreground">
-                  affine les économies avec le barème par tranche du distributeur
-                </span>
-              </div>
-              <div className="mt-3 grid gap-4 sm:grid-cols-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-distributeur">Distributeur</Label>
-                  <Select value={distributeur} onValueChange={setDistributeur}>
-                    <SelectTrigger id="gen-distributeur"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="onee">ONEE</SelectItem>
-                      <SelectItem value="lydec">Lydec (Casablanca)</SelectItem>
-                      <SelectItem value="redal">Redal (Rabat-Salé-Kénitra)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-realbill">
-                    {realBillMode === 'mad' ? 'Facture réelle (MAD/mois)' : 'Consommation réelle (kWh/mois)'}
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input id="gen-realbill" type="number" min="0" step="any" className="flex-1"
-                           placeholder={realBillMode === 'mad' ? 'ex: 850' : 'ex: 650'}
-                           value={realBillMode === 'mad' ? realBillMad : realBillKwh}
-                           onChange={e => (realBillMode === 'mad'
-                             ? setRealBillMad(e.target.value)
-                             : setRealBillKwh(e.target.value))}
-                           onPaste={onRealBillPaste} />
-                    <Select value={realBillMode} onValueChange={setRealBillMode}>
-                      <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mad">MAD</SelectItem>
-                        <SelectItem value="kwh">kWh</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Consommation annuelle dérivée</Label>
-                  <div className="gen-kwp">
-                    {consoAnnuelleReelle != null ? `${fmtNum(consoAnnuelleReelle)} kWh/an` : '—'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {(modeInstallation === 'industriel' || modeInstallation === 'commercial') && (
-              <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-conso">Consommation mensuelle (kWh) — pour l'étude</Label>
-                  <Input id="gen-conso" type="number" min="0" step="any"
-                         placeholder="ex: 12000" value={consoMensuelle}
-                         onChange={e => setConsoMensuelle(e.target.value)} />
-                </div>
-                {/* QX50 — injection du surplus (loi 82-21), OFF par défaut */}
-                <div className="grid gap-1.5">
-                  <Label>Injection du surplus (loi 82-21)</Label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={injectionEnabled}
-                           onChange={e => setInjectionEnabled(e.target.checked)} />
-                    Valoriser le surplus injecté (plafond 20 %, tarif ANRE net)
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    Tarif ANRE 03/2026-02/2027, plafond en révision.
-                  </p>
-                </div>
-                {/* QXMT — tension de raccordement : un site MT n'est pas
-                    facturé au barème BT. 'bt' par défaut → étude inchangée. */}
-                <div className="grid gap-1.5">
-                  <Label>Raccordement du site</Label>
-                  <Segmented
-                    data-testid="gen-tension"
-                    options={[
-                      { value: 'bt', label: 'Basse tension (BT)' },
-                      { value: 'mt', label: 'Moyenne tension (MT)' },
-                    ]}
-                    value={tensionRaccordement}
-                    onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: v })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Au-delà de ~50 kW le site est en général raccordé en MT :
-                    l'étude bascule alors sur le barème horaire ONEE MT.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* QXMT — répartition horaire du site MT. Aucune valeur par défaut :
-                les plages horaires MT officielles ne sont pas publiées, donc
-                aucune répartition n'est inventée. Sans saisie, l'étude OMET
-                les économies plutôt que d'afficher un chiffre douteux. */}
-            {estMt && (
-              <div className="mt-3.5" data-testid="gen-mt-block">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {[
-                    ['pointe', 'Heures de pointe (%)', TARIF_MT_ONEE.POINTE],
-                    ['pleines', 'Heures pleines (%)', TARIF_MT_ONEE.PLEINES],
-                    ['creuses', 'Heures creuses (%)', TARIF_MT_ONEE.CREUSES],
-                  ].map(([key, label, prix]) => (
-                    <div className="grid gap-1.5" key={key}>
-                      <Label htmlFor={`gen-mt-${key}`}>{label}</Label>
-                      <Input id={`gen-mt-${key}`} type="number" min="0" step="any"
-                             data-testid={`gen-mt-${key}`}
-                             placeholder="ex: 20"
-                             value={repartitionMt[key]}
-                             onChange={e => setPartMt(key, e.target.value)} />
-                      <p className="text-xs text-muted-foreground">
-                        {prix != null
-                          ? `${formatNumber(prix, { decimals: 4 })} DH/kWh`
-                          : 'tarif à fournir par le fondateur'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                {tarifMtApplique != null ? (
-                  <p className="mt-2 text-xs text-muted-foreground" data-testid="gen-mt-tarif">
-                    Tarif MT moyen retenu ≈{' '}
-                    <strong>{formatNumber(tarifMtApplique, { decimals: 4 })} DH/kWh</strong>
-                    {' · '}{TARIF_MT_ONEE.MENTION}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-warning" data-testid="gen-mt-manquant">
-                    {tarifMtDisponible()
-                      ? 'Répartition horaire non renseignée : les économies et le '
-                        + 'payback sont volontairement omis de l\'étude (les plages '
-                        + 'horaires MT officielles ne sont pas publiées — aucun '
-                        + 'chiffre n\'est supposé à votre place).'
-                      : 'Barème MT ONEE indisponible en source officielle : les '
-                        + 'économies et le payback sont omis de l\'étude.'}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* QX44 — étude commerciale par catégorie */}
-            {modeInstallation === 'commercial' && (
-              <div className="mt-3.5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="grid gap-1.5">
-                    <Label>Catégorie commerciale</Label>
-                    <Select value={categorieCommerciale} onValueChange={setCategorieCommerciale}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {COMMERCIAL_CATEGORIES.map(c => (
-                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Profil de charge diurne ≈ {commercialDayShare(categorieCommerciale)} %
-                      (ajuste l'autoconsommation de l'étude).
-                    </p>
-                  </div>
-                </div>
-                {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).length > 0 && (
-                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                    {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).map(q => (
-                      <div className="grid gap-1.5" key={q.key}>
-                        <Label htmlFor={`gen-com-${q.key}`}>{q.label}</Label>
-                        {q.type === 'number' && (
-                          <Input id={`gen-com-${q.key}`} type="number" min="0" step="any"
-                                 value={commercialAnswers[q.key] ?? ''}
-                                 onChange={e => setCommercialAnswer(q.key, e.target.value)} />
-                        )}
-                        {q.type === 'select' && (
-                          <Select value={commercialAnswers[q.key] ?? ''}
-                                  onValueChange={v => setCommercialAnswer(q.key, v)}>
-                            <SelectTrigger id={`gen-com-${q.key}`}><SelectValue placeholder="—" /></SelectTrigger>
-                            <SelectContent>
-                              {q.options.map(o => (
-                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        {q.type === 'bool' && (
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input id={`gen-com-${q.key}`} type="checkbox"
-                                   checked={!!commercialAnswers[q.key]}
-                                   onChange={e => setCommercialAnswer(q.key, e.target.checked)} />
-                            Oui
-                          </label>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-
-        {/* ── Pompage solaire (mode Agricole) ── */}
-        {modeInstallation === 'agricole' && (
-        <Card>
-          <GenCardHeader icon={Sprout} title="Pompage solaire" />
-          <CardContent className="pt-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-pompecv">
-                  Puissance pompe (CV){pompageSel?.mode === 'courbe' && ' — auto (courbe)'}
-                </Label>
-                <Input id="gen-pompecv" type="number" min="0" step="any"
-                       value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
-                {pompageDims && (
-                  <p className="text-xs text-muted-foreground">
-                    ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
-                    ({pompageDims.nbPanneaux} panneaux 710 W)
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Type de pompe</Label>
-                <Segmented
-                  options={[
-                    { value: 'immergee', label: 'Immergée' },
-                    { value: 'surface', label: 'Surface' },
-                  ]}
-                  value={pompeType}
-                  onChange={setPompeType}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Alimentation</Label>
-                <Segmented
-                  options={[
-                    { value: 'mono', label: 'Mono 220V' },
-                    { value: 'tri', label: 'Tri 380V' },
-                  ]}
-                  value={pompeAlim}
-                  onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: v })}
-                />
-              </div>
-            </div>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-hmt">HMT (m)</Label>
-                <Input id="gen-hmt" type="number" min="0" step="any"
-                       placeholder="ex: 120" value={pompeHmt}
-                       onChange={e => setPompeHmt(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-debit">Débit souhaité (m³/h)</Label>
-                <Input id="gen-debit" type="number" min="0" step="any"
-                       placeholder="ex: 30" value={pompeDebit}
-                       onChange={e => setPompeDebit(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-heures">Heures de pompage effectives / jour</Label>
-                <Input id="gen-heures" type="number" min="0" step="any"
-                       value={pompeHeures}
-                       onChange={e => setPompeHeures(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-profondeur">Profondeur forage (m) — optionnel</Label>
-                <Input id="gen-profondeur" type="number" min="0" step="any"
-                       value={pompeProfondeur}
-                       onChange={e => setPompeProfondeur(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-distance">Distance panneaux → coffret (m)</Label>
-                <Input id="gen-distance" type="number" min="0" step="any"
-                       value={pompeDistance}
-                       onChange={e => setPompeDistance(e.target.value)} />
-              </div>
-            </div>
-
-            {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
-            {/* Encouragées : elles permettent au PDF de dimensionner et chiffrer
-                sur les données réelles du fermier (besoin en eau FAO-56, économies
-                vs carburant). Aucune n'est obligatoire — chacune a un défaut. */}
-            <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 sm:p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Sprout className="size-4 text-success" aria-hidden="true" />
-                <span className="font-display text-sm font-semibold tracking-tight">
-                  Votre exploitation
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  recommandé — affine le devis avec les données réelles du fermier
-                </span>
-              </div>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-surface">
-                    Surface irriguée (ha)
-                  </Label>
-                  <Input id="gen-farm-surface" type="number" min="0" step="any"
-                         placeholder="ex: 5" value={farmSurfaceHa}
-                         onChange={e => setFarmSurfaceHa(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-crop">Culture</Label>
-                  <Select value={farmCrop} onValueChange={setFarmCrop}>
-                    <SelectTrigger id="gen-farm-crop"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="agrumes">Agrumes</SelectItem>
-                      <SelectItem value="maraichage">Maraîchage</SelectItem>
-                      <SelectItem value="olivier">Olivier</SelectItem>
-                      <SelectItem value="dattier">Dattier (palmier)</SelectItem>
-                      <SelectItem value="cereales">Céréales</SelectItem>
-                      <SelectItem value="luzerne">Luzerne / fourrage</SelectItem>
-                      <SelectItem value="arganier">Arganier</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-region">Région</Label>
-                  <Select value={farmRegion} onValueChange={setFarmRegion}>
-                    <SelectTrigger id="gen-farm-region"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="souss-massa">Souss-Massa (Agadir)</SelectItem>
-                      <SelectItem value="doukkala">Doukkala (El Jadida)</SelectItem>
-                      <SelectItem value="tadla">Tadla (Béni Mellal)</SelectItem>
-                      <SelectItem value="saiss">Saïss (Fès-Meknès)</SelectItem>
-                      <SelectItem value="oriental">Oriental (Berkane)</SelectItem>
-                      <SelectItem value="draa-tafilalet">Drâa-Tafilalet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-irrigation">Mode d'irrigation</Label>
-                  <Select value={farmIrrigation} onValueChange={setFarmIrrigation}>
-                    <SelectTrigger id="gen-farm-irrigation"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="goutte">Goutte-à-goutte</SelectItem>
-                      <SelectItem value="aspersion">Aspersion</SelectItem>
-                      <SelectItem value="gravitaire">Gravitaire</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-fuel">Énergie actuelle</Label>
-                  <Select value={farmFuel} onValueChange={setFarmFuel}>
-                    <SelectTrigger id="gen-farm-fuel"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="butane">Butane (gaz)</SelectItem>
-                      <SelectItem value="diesel">Diesel (gasoil)</SelectItem>
-                      <SelectItem value="none">Aucune / nouveau forage</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-fuelspend">
-                    Dépense carburant actuelle (MAD) — optionnel
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input id="gen-farm-fuelspend" type="number" min="0" step="any"
-                           className="flex-1"
-                           placeholder="ex: 2000" value={farmFuelSpend}
-                           onChange={e => setFarmFuelSpend(e.target.value)} />
-                    <Select value={farmFuelPeriod} onValueChange={setFarmFuelPeriod}>
-                      <SelectTrigger id="gen-farm-fuelperiod" className="w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mois">/ mois</SelectItem>
-                        <SelectItem value="an">/ an</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {farmFuelSpendAnnual !== '' && farmFuelPeriod === 'mois' && (
-                    <p className="text-xs text-muted-foreground">
-                      ≈ {fmtNum(farmFuelSpendAnnual)} MAD / an
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-static">
-                    Niveau statique de l'eau (m) — optionnel
-                  </Label>
-                  <Input id="gen-farm-static" type="number" min="0" step="any"
-                         placeholder="ex: 40" value={farmHmtStatic}
-                         onChange={e => setFarmHmtStatic(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="gen-farm-drawdown">
-                    Rabattement en pompage (m) — optionnel
-                  </Label>
-                  <Input id="gen-farm-drawdown" type="number" min="0" step="any"
-                         placeholder="ex: 15" value={farmHmtDrawdown}
-                         onChange={e => setFarmHmtDrawdown(e.target.value)} />
-                </div>
-              </div>
-
-              {/* Readout FAO-56 : besoin estimé vs débit livré par la pompe.
-                  Purement informatif (le backend recalcule le besoin lui-même). */}
-              {farmWaterDemand && (
-                pumpM3Day != null ? (
-                  <div className={`mt-3 rounded-lg border p-3 text-sm ${
-                    pumpM3Day >= farmWaterDemand.m3DayPeak
-                      ? 'border-success/30 bg-success/10 text-success'
-                      : 'border-warning/40 bg-warning/10 text-warning'
-                  }`}>
-                    Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
-                    {' '}(pointe estivale) — votre pompe livre{' '}
-                    <strong>{fmtNum(pumpM3Day)} m³/jour</strong>{' '}
-                    {pumpM3Day >= farmWaterDemand.m3DayPeak ? '✓' : '⚠ insuffisant'}
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                    Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
-                    {' '}(pointe estivale). Renseignez HMT + débit souhaité pour comparer
-                    au débit livré par la pompe.
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* ── Résultat du dimensionnement (source des chiffres du PDF) ── */}
-            {pompageSel?.mode === 'courbe' && (
-              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                <strong>Pompe sélectionnée : {pompageSel.pump.nom}</strong>
-                <div className="mt-1">
-                  {pompageSel.cv} CV ({pompageSel.kw} kW) · débit à {pompeHmt} m
-                  de HMT : <strong>{pompageSel.debitHmt} m³/h</strong>
-                  {pompageSel.m3Jour != null && (
-                    <> · <strong>≈ {pompageSel.m3Jour} m³/jour</strong> sur {pompeHeures} h
-                    de pompage effectif</>
-                  )}
-                </div>
-              </div>
-            )}
-            {pompageSel?.sansPrix?.length > 0 && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-                Seules des pompes <strong>sans prix renseigné</strong> conviennent à cette
-                HMT et ce débit ({pompageSel.sansPrix.join(', ')}). Renseignez leur prix
-                dans Stock pour les chiffrer — aucune pompe ne sera ajoutée au devis.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
+        {/* ── Le panneau du marché choisi (QJR101) ──────────────────────
+            Quatre panneaux, un par marché : chacun porte SES champs et se
+            retire lui-même hors de sa clé de marché, donc exactement un rend,
+            à la place qu'occupaient les deux cartes conditionnelles. */}
+        <PanneauResidentiel {...socleFactures} />
+        <PanneauIndustriel {...socleFactures} {...socleEtudeReseau} />
+        <PanneauCommercial
+          {...socleFactures}
+          {...socleEtudeReseau}
+          categorieCommerciale={categorieCommerciale}
+          setCategorieCommerciale={setCategorieCommerciale}
+          commercialAnswers={commercialAnswers}
+          setCommercialAnswer={setCommercialAnswer}
+        />
+        <PanneauAgricole
+          marche={modeInstallation}
+          pompeCv={pompeCv} setPompeCv={setPompeCv}
+          pompageSel={pompageSel} pompageDims={pompageDims}
+          pompeType={pompeType} setPompeType={setPompeType}
+          pompeAlim={pompeAlim} dispatchSizing={dispatchSizing}
+          pompeHmt={pompeHmt} setPompeHmt={setPompeHmt}
+          pompeDebit={pompeDebit} setPompeDebit={setPompeDebit}
+          pompeHeures={pompeHeures} setPompeHeures={setPompeHeures}
+          pompeProfondeur={pompeProfondeur} setPompeProfondeur={setPompeProfondeur}
+          pompeDistance={pompeDistance} setPompeDistance={setPompeDistance}
+          farmSurfaceHa={farmSurfaceHa} setFarmSurfaceHa={setFarmSurfaceHa}
+          farmCrop={farmCrop} setFarmCrop={setFarmCrop}
+          farmRegion={farmRegion} setFarmRegion={setFarmRegion}
+          farmIrrigation={farmIrrigation} setFarmIrrigation={setFarmIrrigation}
+          farmFuel={farmFuel} setFarmFuel={setFarmFuel}
+          farmFuelSpend={farmFuelSpend} setFarmFuelSpend={setFarmFuelSpend}
+          farmFuelPeriod={farmFuelPeriod} setFarmFuelPeriod={setFarmFuelPeriod}
+          farmFuelSpendAnnual={farmFuelSpendAnnual}
+          farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
+          farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
+          farmWaterDemand={farmWaterDemand} pumpM3Day={pumpM3Day}
+        />
 
         {/* ── Paramètres techniques ── */}
         <Card>
