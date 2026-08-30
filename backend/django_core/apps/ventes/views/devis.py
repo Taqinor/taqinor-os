@@ -947,6 +947,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # QJR204 — ALIGNÉ SUR ``/atomic``, QUI REFUSE DÉJÀ L'ENSEMBLE VIDE.
+        # Cet endpoint SUPPRIME puis recrée : une liste VIDE effaçait toutes
+        # les lignes d'un devis brouillon/envoyé et répondait 200. Vérifié
+        # avant d'en faire un refus : aucun flux légitime de « tout vider »
+        # n'existe (``ventesApi.replaceLignesDevis`` est l'unique appelant de
+        # production et l'écran n'offre aucun geste de ce genre). L'écrivain
+        # unique du domaine porte la même garde, pour les chemins non-HTTP.
+        if not lignes_in:
+            from ..domain.lignes import MSG_REMPLACEMENT_VIDE
+            return Response({'detail': MSG_REMPLACEMENT_VIDE},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction

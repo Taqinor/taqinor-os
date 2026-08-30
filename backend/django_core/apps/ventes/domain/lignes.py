@@ -634,7 +634,16 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
     return messages
 
 
-def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
+#: QJR204 — LE REFUS, EN FRANÇAIS, D'UN REMPLACEMENT PAR LE VIDE.
+MSG_REMPLACEMENT_VIDE = (
+    "Au moins une ligne est requise : un remplacement par une liste VIDE "
+    "effacerait tout le devis. Pour retirer une ligne, renvoyez les lignes "
+    "restantes ; pour abandonner le devis, supprimez-le ou révisez-le."
+)
+
+
+def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
+                     autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
     transaction par l'appelant). Produits bornés à la société de
     l'utilisateur OU au catalogue global (PV15, même portée que
@@ -662,11 +671,24 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
     écrites (``retarifer_forfaits_par_panneau``), en respectant ``prix_manuel``
     (D12). ``avertissements`` (optionnel) reçoit les messages FRANÇAIS des
     lignes qui ont REFUSÉ de suivre ; la fonction les rend aussi — elle ne
-    rendait rien jusqu'ici, aucun appelant ne régresse."""
+    rendait rien jusqu'ici, aucun appelant ne régresse.
+
+    QJR204 (31/08/2026) — UNE LISTE VIDE EST REFUSÉE, PAS EXÉCUTÉE. Cet
+    écrivain SUPPRIME puis recrée : appelé avec ``[]`` il effaçait toutes les
+    lignes d'un devis brouillon/envoyé et rendait 200, là où ``/atomic``
+    refusait déjà l'ensemble vide par un 400. Le balayage du dépôt (front
+    compris : ``ventesApi.replaceLignesDevis`` est l'unique appelant de
+    production et ``DevisGenerator`` n'a AUCUN geste « tout vider ») n'a trouvé
+    aucun flux légitime de vidage — il est donc refusé ici pour TOUS les
+    chemins d'écriture, ``ecrire_lignes(composition=None)`` compris. Un futur
+    flux de vidage devra le DÉCLARER (``autoriser_vidage=True``), jamais
+    l'obtenir par une liste vide."""
     from decimal import Decimal, InvalidOperation
     from django.db.models import Q
     from ..models import LigneDevis
     from apps.stock.models import Produit
+    if not lignes_in and not autoriser_vidage:
+        raise ValueError(MSG_REMPLACEMENT_VIDE)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     devis.lignes.all().delete()
