@@ -1,8 +1,10 @@
 """Resynchronisation — le devis suit le layout 3D qu'on vient de redessiner.
 
-`sync_devis_from_layout` et ce qui l'entoure : le verrou de quantité manuelle
-et son avertissement, le rafraîchissement de l'instance de l'appelant, et
-l'erreur métier qu'un layout impossible lève.
+L'étape `reconcilier` — le MODE « réconcilier » du pipeline (QJR97) — et ce qui
+l'entoure : le verrou de quantité manuelle et son avertissement, le
+rafraîchissement de l'instance de l'appelant, l'erreur métier qu'un layout
+impossible lève, et l'adaptateur historique `sync_devis_from_layout` qui DEMANDE
+ce mode (il ne porte plus le geste : il n'y a pas deux implémentations).
 
 IL RESTE ICI, PAS DANS `domain/lignes.py`. La base de
 `check_override_registry` annonce que ses écritures de ligne « migreront vers
@@ -116,8 +118,23 @@ def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
         % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
 
 
-def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
-    """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
+def reconcilier(devis, intention):
+    """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
+
+    Le devis EXISTE et il est VIVANT : on l'aligne sur une nouvelle cible sans
+    jamais le recomposer. C'est l'étape que ``pipeline.appliquer`` exécute — et
+    la seule qu'il exécute — dans ce mode ; elle est appelée par les DEUX
+    adaptateurs qui la demandent, la resynchronisation 3D
+    (:func:`sync_devis_from_layout`) et le chemin apply-taille
+    (``offres_tailles.appliquer_au_devis``, ``exact=True``).
+
+    Elle lit son geste dans l'``IntentionDevis`` : ``layout`` (le calepinage à
+    appliquer), ``user`` (qui le demande — journal seulement) et ``exact`` (la
+    cible est un NOMBRE TAPÉ, pas une contenance de toit — voir plus bas).
+
+    Le reste de cette docstring décrit la règle PV18, inchangée par la bascule.
+
+    PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
     Sous ``transaction.atomic()`` + ``select_for_update`` sur la ligne du devis
     (deux commerciaux sur le même devis ne peuvent pas s'écraser l'un l'autre).
@@ -181,7 +198,12 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
       dominante) ; une option qui reste EN DESSOUS n'est JAMAIS augmentée —
       l'optimum économique a le droit de choisir moins que le toit, et une
       resynchro n'a pas à lui vendre des panneaux qu'il a refusés ;
-    * les structures et les socles suivent le compte DE LEUR VARIANTE.
+    * les structures et les socles suivent le compte DE LEUR VARIANTE ;
+    * QJR98 — une option SANS ligne de panneaux propre ne se corrige PAS sur
+      une ligne COMMUNE : la commune sert les deux options, la bouger les
+      bouge toutes les deux. Elle n'est mobilisable que si l'AUTRE option a
+      besoin EXACTEMENT du même écart (le cas du plafond de toit, où les deux
+      débordent du même toit) ; sinon l'écart est NOMMÉ et rien n'est écrit.
 
     Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
     historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
@@ -219,7 +241,12 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
 
     from apps.ventes.models import Devis
 
-    layout = layout if isinstance(layout, dict) else {}
+    # QJR97 — LE GESTE EST LU DANS L'INTENTION, plus dans une liste
+    # d'arguments propre à ce chemin : c'est ce qui fait de la resynchro un
+    # MODE du pipeline et non plus un cinquième chemin parallèle.
+    user = intention.user
+    cible_exacte = bool(intention.exact)
+    layout = intention.layout if isinstance(intention.layout, dict) else {}
     nouveau_hash = layout_hash(layout)
     toiture = extract_roof_config(layout)
     cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
@@ -403,14 +430,47 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
                 # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
                 # tient peut-être sur le toit.
                 propres = [li for li in vue if _var(li) == variante]
+                # ── QJR98 — ET LE REPLI SUR LA COMMUNE EST CONDITIONNÉ ───────
+                # Le vivier était ``propres or vue`` : sans ligne propre, la
+                # boucle retombait sur ``vue``, qui contient les lignes
+                # COMMUNES — et une commune sert LES DEUX options, donc la
+                # bouger les bouge toutes les deux. C'est très exactement
+                # l'issue que le commentaire ci-dessus dit d'éviter, et sur le
+                # chemin apply-taille (``cible_exacte``) elle emportait une
+                # option DÉJÀ au compte tapé quatre panneaux au-dessus.
+                #
+                # Une commune n'est donc mobilisable que si l'AUTRE option a
+                # besoin EXACTEMENT du même écart : là, la bouger les sert à
+                # l'identique et ne lèse personne (c'est le cas du plafond de
+                # toit, où les deux options débordent du même toit). Sinon
+                # l'écart est NOMMÉ et RIEN n'est écrit — même discipline que
+                # pour une quantité verrouillée : on ne corrige pas une option
+                # en cassant l'autre.
+                vivier = propres
+                if not vivier:
+                    autre = (VARIANTE_AVEC if variante == VARIANTE_SANS
+                             else VARIANTE_SANS)
+                    if _total_de(autre) == total_vue:
+                        vivier = vue
+                    else:
+                        avertissements.append(
+                            'L\'option « %s » n\'a aucune ligne de panneaux '
+                            'qui lui soit propre : l\'écart de %d panneau(x) '
+                            'n\'a pas été appliqué, car il aurait fallu rogner '
+                            'une ligne COMMUNE aux deux options — et l\'autre '
+                            'option, elle, n\'a pas le même écart. Ajoutez une '
+                            'ligne de panneaux propre à cette option, ou '
+                            'corrigez les quantités à la main.'
+                            % (variante, abs(total_vue - cible_panneaux)))
+                        continue
                 # QJR60 / D12 — une quantité TAPÉE par le vendeur n'est pas
                 # réécrite : elle sort du vivier, et si tout le vivier est
                 # verrouillé l'écart est NOMMÉ au lieu d'être appliqué.
-                libres = [li for li in (propres or vue)
+                libres = [li for li in vivier
                           if not _quantite_verrouillee(li)]
                 if not libres:
                     _avertir_verrouillee(
-                        avertissements, (propres or vue),
+                        avertissements, vivier,
                         "l'écart de %d panneau(x) de l'option « %s »"
                         % (abs(total_vue - cible_panneaux), variante))
                     continue
@@ -845,14 +905,17 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
         # création (U2) : on ne le re-stocke que si les lignes peuvent
         # RÉELLEMENT servir les deux côtés (réseau d'un côté, hybride +
         # batterie de l'autre) — sinon on dégrade au libellé mono honnête.
-        deux_options_servies = bool(
-            devis_deux_options and lignes_reseau and lignes_hybride
-            and a_batterie)
-        if deux_options_servies:
-            _scenario_auto = SCENARIO_LES_DEUX
-        else:
-            _scenario_auto = _scenario_stocke(
-                a_batterie and bool(lignes_hybride))
+        #
+        # QJR97 — ET C'EST LA MÊME FONCTION QU'À LA CRÉATION. Cette garde était
+        # écrite EN ENTIER ici ET dans ``pipeline.ecrire_etude_params``, sous
+        # deux formulations des mêmes conditions. Les deux appellent désormais
+        # ``domain.scenario`` : la règle qui décide de ce que le client voit sur
+        # sa proposition n'a plus qu'un seul endroit où diverger — aucun.
+        _faits = dict(a_reseau=bool(lignes_reseau),
+                      a_hybride=bool(lignes_hybride),
+                      a_batterie=bool(a_batterie))
+        deux_options_servies = sert_les_deux(devis_deux_options, **_faits)
+        _scenario_auto = scenario_servable(devis_deux_options, **_faits)
         # QJR64 / décision fondateur D12 — UN SCÉNARIO DÉCLARÉ SURVIT À TOUT
         # RECALCUL. Ce site RE-DÉRIVAIT le scénario sans condition : un
         # « Les deux (Sans + Avec) » posé par un humain pouvait redevenir
@@ -919,12 +982,40 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     # HORS de la transaction, et en meilleur effort : une étude électrique en
     # panne ne doit ni annuler la resynchro déjà validée, ni salir sa
     # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
-    concevoir_electrique_du_devis(verrou, origine='resynchronisation')
+    concevoir_electrique_du_devis(verrou, origine=ORIGINE_RESYNCHRONISATION)
     # QJR20 — l'appelant repart de CE QUI VIENT D'ÊTRE ÉCRIT (voir
     # ``_resynchroniser_instance_appelante`` : sans cela, les études
     # rafraîchies juste après décrivent la composition d'AVANT la resynchro).
     _resynchroniser_instance_appelante(devis, verrou)
     return resultat
+
+
+def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
+    """PV18 — ADAPTATEUR (QJR97, bascule 5/5a).
+
+    Cette fonction ne PORTE plus le geste : elle le DEMANDE. Elle traduit ses
+    arguments historiques en ``IntentionDevis`` et laisse ``pipeline.appliquer``
+    ordonner le mode « réconcilier », dont l'étape unique est
+    :func:`reconcilier` (juste au-dessus, où la règle PV18 est documentée).
+    Son ancien corps — le geste chirurgical lui-même — n'existe plus ici : il
+    n'y a pas deux implémentations, il y en a une, appelée par un pipeline.
+
+    La SIGNATURE et le RÉSULTAT sont INCHANGÉS À L'OCTET : le viewset PV18, le
+    chemin apply-taille et la commande de réparation lisent exactement le même
+    dict ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
+    lignes_ajoutees, avertissements}``, et ``SyncLayoutError`` remonte telle
+    quelle à travers le pipeline (aucune étape ne l'intercepte).
+    """
+    resultat = appliquer(devis, IntentionDevis(
+        origine=ORIGINE_RESYNCHRONISATION,
+        company=getattr(devis, 'company', None),
+        user=user,
+        layout=layout if isinstance(layout, dict) else {},
+        # La cible vient-elle d'un NOMBRE TAPÉ (apply-taille) plutôt que d'un
+        # toit ? C'est le seul choix que cet adaptateur transmet.
+        exact=bool(cible_exacte),
+        mode=MODE_RECONCILIER))
+    return resultat['resynchro']
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -969,9 +1060,21 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _lignes_produit,
     creer_ligne,
 )
+# QJR97 — le pipeline est importé EN BAS, comme tout pont de ce paquet. Il n'y
+# a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de
+# son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
+# toujours complètement chargé quand cette ligne s'exécute.
+from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    MODE_RECONCILIER,
+    ORIGINE_RESYNCHRONISATION,
+    IntentionDevis,
+    appliquer,
+)
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_LES_DEUX,
     _scenario_stocke,
     puissance_kwc_du_devis,
     scenario_effectif,
+    scenario_servable,
+    sert_les_deux,
 )

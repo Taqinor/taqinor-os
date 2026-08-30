@@ -149,6 +149,71 @@ def dupliquer_devis(devis, *, user):
     return copie
 
 
+def _arbitrage_du_calepinage(layout, nb_panneaux, kwc, *, company):
+    """AOF164 / PVG2 — le compte RETENU pour ce layout, et le kWc qui le SUIT.
+
+    UNE SEULE écriture de cette règle, pour les DEUX chemins de création qui la
+    subissent (le calepinage 3D et le devis automatique, QJR96) : la recopier
+    aurait suffi à ce que la bascule A/B du moteur de calepinage s'applique d'un
+    côté et pas de l'autre — c'est-à-dire à ce que le même toit sorte avec deux
+    comptes de modules selon le bouton par lequel le devis est né.
+
+    Drapeau ``USE_MOTEUR_CALEPINAGE`` baissé (le défaut) ⇒ ``arbitrer_compte_
+    calepinage`` rend ``None`` AVANT tout calcul et ce couple ressort tel quel :
+    comportement bit-identique à l'historique. Au-delà de la tolérance PVG2,
+    ``retenu`` REDEVIENT le compte historique et rien ne bouge non plus.
+
+    Le kWc SUIT le compte : laisser l'ancien kWc face au nouveau compte
+    produirait un devis dont la puissance ne correspond plus aux panneaux.
+    """
+    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
+                                           company=company)
+    if arbitrage is None or arbitrage['retenu'] == nb_panneaux:
+        return nb_panneaux, kwc
+    watt_reference = layout.get('panelWatt') or layout.get('watt')
+    if not watt_reference and nb_panneaux and kwc:
+        watt_reference = kwc * 1000.0 / nb_panneaux
+    nb_panneaux = arbitrage['retenu']
+    if watt_reference:
+        kwc = round(nb_panneaux * float(watt_reference) / 1000.0, 3)
+    return nb_panneaux, kwc
+
+
+def _calepinage_range(layout, toiture, kwc):
+    """QJ21 / FG248 — ce qu'un calepinage APPORTE au devis, lu UNE fois.
+
+    Rend ``(layout_stocke, etude_initiale)`` :
+
+    * ``layout_stocke`` est une COPIE du layout de l'appelant (on ne mute jamais
+      son dict) enrichie de ``_pans_geometry``, la géométrie par pan DÉJÀ
+      PROCESSÉE, pour qu'aucun consommateur n'ait à rejouer
+      ``extract_roof_config`` ;
+    * ``etude_initiale`` est l'étude que ce chemin APPORTE, et lui seul : le kWc
+      que le TOIT modélise et la configuration de toiture importée du builder
+      3D. Le pipeline la transporte jusqu'à la création ; il n'en dérive rien.
+      Le kWc, lui, est RE-POSÉ ensuite par son propriétaire sur les lignes
+      réellement écrites (QJR63, étape 8) — le calepinage modélise à 720 W
+      constants quand le devis vend le panneau RÉEL (710 W sur
+      DEV-202608-0007), et stocker les deux mettrait deux bases de puissance
+      dans le même document.
+
+    QJR96 — LES DEUX ADAPTATEURS DE CRÉATION LISENT ICI. Le devis automatique
+    synthétise lui aussi un layout (le tracé du client devient une vraie zone
+    roofPro11, ``zone_toit_depuis_contour``) : sans ce lecteur commun, un devis
+    né du tunnel repartait sans ``_pans_geometry`` ni ``etude_params['toiture']``
+    dès qu'il cessait de passer par ``build_devis_from_layout``.
+    """
+    layout_stocke = dict(layout or {})
+    if toiture and toiture.get('pans'):
+        layout_stocke['_pans_geometry'] = toiture['pans']
+    etude_initiale = {}
+    if kwc:
+        etude_initiale['puissance_kwc'] = kwc
+    if toiture:
+        etude_initiale['toiture'] = toiture
+    return layout_stocke, etude_initiale
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
@@ -265,26 +330,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         if not kwc and toiture.get('kwc'):
             kwc = float(toiture['kwc'])
 
-    # AOF164 — BASCULE A/B sur le moteur de calepinage partagé, derrière le
-    # drapeau ``USE_MOTEUR_CALEPINAGE`` (défaut OFF). Drapeau OFF : la fonction
-    # rend ``None`` AVANT tout calcul — aucun appel moteur, aucun journal,
-    # comportement bit-identique à aujourd'hui. Drapeau ON : le compte vient du
-    # moteur et l'écart ancien/nouveau est journalisé pour arbitrage.
-    # PVG2 — au-delà de la tolérance (TOLERANCE_ARBITRAGE_MODULES modules OU
-    # TOLERANCE_ARBITRAGE_PCT %), ``retenu`` REDEVIENT le compte historique :
-    # la condition ci-dessous est alors fausse et le devis garde ses panneaux,
-    # l'anomalie partant en avertissement plutôt qu'en remplacement silencieux.
-    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
-                                           company=company)
-    if arbitrage is not None and arbitrage['retenu'] != nb_panneaux:
-        watt_reference = layout.get('panelWatt') or layout.get('watt')
-        if not watt_reference and nb_panneaux and kwc:
-            watt_reference = kwc * 1000.0 / nb_panneaux
-        nb_panneaux = arbitrage['retenu']
-        # Le kWc SUIT le compte : laisser l'ancien kWc face au nouveau compte
-        # produirait un devis dont la puissance ne correspond plus aux panneaux.
-        if watt_reference:
-            kwc = round(nb_panneaux * float(watt_reference) / 1000.0, 3)
+    # AOF164 / PVG2 — la bascule A/B du moteur de calepinage, écrite une seule
+    # fois pour les deux chemins de création (cf. ``_arbitrage_du_calepinage``).
+    nb_panneaux, kwc = _arbitrage_du_calepinage(
+        layout, nb_panneaux, kwc, company=company)
 
     # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
     watt = layout.get('panelWatt') or layout.get('watt')
@@ -305,27 +354,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
     kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
 
-    # QJ21 — enrich roof_layout with a ``_pans_geometry`` key carrying the
-    # PROCESSED per-pan data (azimut_deg, inclinaison_deg, kwc, nb_panneaux,
-    # orientation, label, roof_type) so consumers never have to re-run
-    # extract_roof_config.  We copy rather than mutate the caller's dict.
-    stored_layout = dict(layout)
-    if toiture and toiture.get('pans'):
-        stored_layout['_pans_geometry'] = toiture['pans']
-
-    # L'ÉTUDE QUE CE CHEMIN APPORTE, et lui seul : le kWc que le TOIT modélise
-    # et la configuration de toiture importée du builder 3D (FG248, prête à
-    # servir au chantier). Le pipeline la transporte jusqu'à la création ; il
-    # n'en dérive rien. Le kWc, lui, sera RE-POSÉ par son propriétaire sur les
-    # lignes réellement écrites (QJR63, étape 8) — le calepinage modélise à
-    # 720 W constants quand le devis vend le panneau RÉEL (710 W sur
-    # DEV-202608-0007), et stocker les deux mettait deux bases de puissance
-    # dans le même document.
-    etude_initiale = {}
-    if kwc:
-        etude_initiale['puissance_kwc'] = kwc
-    if toiture:
-        etude_initiale['toiture'] = toiture
+    # QJ21 / FG248 — le layout RANGÉ (avec sa géométrie par pan déjà processée)
+    # et l'étude que ce chemin APPORTE, par LE MÊME lecteur que le devis
+    # automatique (cf. ``_calepinage_range``).
+    stored_layout, etude_initiale = _calepinage_range(layout, toiture, kwc)
 
     # ── QJR95 — LE PIPELINE, DANS SON ORDRE UNIQUE ─────────────────────────
     # La cible est SOUVERAINE : elle vient du toit que le commercial a dessiné,
@@ -523,7 +555,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
-                     journal_auto=None):
+                     journal_auto=None, origine=None):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Dimensionne le champ PV par le MOTEUR HORAIRE (ordre fondateur du
@@ -533,11 +565,18 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     la forme DEUX OPTIONS
     (« sans batterie » ET « avec batterie » — U2 ; un ``batterie_souhaitee``
     explicite du lead, « avec » ou « sans », reste souverain et compose cette
-    option-là seule) et délègue à ``build_devis_from_layout``
+    option-là seule) et confie la création à ``pipeline.appliquer``
     (sélection catalogue, numérotation anti-collision, devis ``brouillon``). Lève
     ``AutoDevisError`` (→ 422) si le marché n'est pas résidentiel ou si aucune
     donnée de dimensionnement n'est exploitable — l'agent demande alors la donnée
     plutôt que de produire un devis vide. Ne change aucun statut (règle #4).
+
+    ``origine`` (QJR96) — laquelle des deux origines SANS COMMERCIAL DANS LA
+    BOUCLE demande ce devis : ``'auto'`` (LE DÉFAUT — le bouton « devis
+    automatique » de la fiche lead) ou ``'tunnel'`` (le webhook du site, cf.
+    :func:`creer_devis_automatique_depuis_lead`). Elle NE DÉCIDE AUCUNE LIGNE :
+    les deux traversent le même pipeline, avec les mêmes entrées et le même
+    composeur — elle NOMME seulement d'où vient la demande.
 
     Trois réglages POUR CE DEVIS-LÀ (U3), qui ne réécrivent JAMAIS la fiche du
     lead — c'est un choix ponctuel du commercial, pas une correction du lead :
@@ -790,20 +829,76 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             'changez la marque dans Paramètres → Gammes.' % detail,
             field='marques')
 
-    journal = {}
-    devis = build_devis_from_layout(
-        layout=layout, user=user, company=company, lead=lead,
-        taux_tva=taux_tva, remise_globale=remise_globale,
-        deux_options=deux_options, journal=journal, phase=phase_client,
-        dimensionnement_avec=optimum_avec)
-    for avertissement in journal.get('avertissements') or []:
+    # ── QJR96 (M5, bascule 4/5) — LE PIPELINE, DANS SON ORDRE UNIQUE ────────
+    # Ce chemin RECONSTRUISAIT un layout pour le repasser à
+    # ``build_devis_from_layout``, qui le relisait aussitôt pour en ressortir le
+    # compte, le wattage et le scénario que cette fonction venait d'arrêter :
+    # un aller-retour par une sérialisation intermédiaire, sur le seul chemin où
+    # AUCUN commercial n'est dans la boucle pour rattraper un écart. Ce corps est
+    # SUPPRIMÉ. La cible est passée TELLE QUELLE au pipeline, qui compose par LE
+    # MÊME composeur que l'écran, écrit ses lignes par L'ÉCRIVAIN UNIQUE et
+    # rafraîchit les quatre études sur l'instance relue.
+    #
+    # LE LAYOUT RESTE, et il est lu par LE MÊME lecteur (``_calepinage_range``)
+    # que le calepinage 3D : c'est une donnée RÉELLE — le tracé du client — que
+    # l'écran 3D rouvre, pas un intermédiaire de calcul.
+    #
+    # LA RÈGLE SOUVERAINE EST CONSERVÉE TELLE QUELLE : une puissance DEMANDÉE
+    # (``target_kwc``, sinon ``lead.taille_souhaitee_kwc``) gagne sur le moteur,
+    # et elle ne réécrit JAMAIS la fiche du lead. Elle est désormais portée par
+    # la CIBLE de l'étape 2 — ``decider_taille`` rend une cible fournie telle
+    # quelle et n'interroge alors aucun moteur — et par rien d'autre. Elle n'est
+    # PAS posée dans ``Devis.overrides`` : les chemins ``taille.*`` du registre
+    # (D12) portent des déclarations HUMAINES que ``puissance_kwc_du_devis``
+    # fait gagner sur les lignes ; un chemin automatique qui en poserait une
+    # signerait d'une main humaine un chiffre que personne n'a tapé, et ferait
+    # publier la puissance DEMANDÉE là où QJR63 a établi que seules les LIGNES
+    # font foi.
+    from apps.ventes.models import Devis
+
+    toiture = extract_roof_config(layout)
+    panneaux, kwc = _arbitrage_du_calepinage(
+        layout, panneaux, kwc, company=company)
+    layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
+
+    resultat = appliquer(None, IntentionDevis(
+        origine=origine or ORIGINE_AUTO,
+        company=company,
+        user=user,
+        lead=lead,
+        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+        # QJR42 — LES ENTRÉES DU MOTEUR, LUES UNE FOIS. Sans elles l'étape 1 les
+        # relirait pour son compte : deux lectures de la même fiche, donc deux
+        # occasions de dimensionner un même lead différemment.
+        entrees=entrees_depuis_lead(lead, company),
+        cible=CibleDevis(
+            nb_panneaux=panneaux,
+            panel_watt=watt_dimensionnement,
+            kwc=kwc,
+            source=source_dimensionnement,
+            dimensionnement_avec=optimum_avec),
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        layout=layout_range,
+        etude_initiale=etude_initiale or None,
+        taux_tva=taux_tva,
+        remise_globale=remise_globale,
+        phase=phase_client,
+    ))
+    devis = resultat['devis']
+    # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
+    # (vivier batterie vide, forfait au panneau non re-tarifé…). Sur un chemin
+    # sans commercial dans la boucle, le journal serveur est le seul lecteur.
+    for avertissement in resultat['avertissements'] or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
 
-    # QJR63 — LE kWc EST POSÉ PAR SON PROPRIÉTAIRE, sur les lignes RÉELLEMENT
-    # composées : ni ``target_kwc``, ni ``lead.taille_souhaitee_kwc``, qui sont
-    # des DEMANDES et non ce que le catalogue a su servir (l'arrondi au palier
-    # et le plafond de toit peuvent faire atterrir ailleurs).
-    poser_puissance_kwc(devis)
+    # QJR63 — LE kWc a été posé par son propriétaire à l'étape 8 (``finaliser``),
+    # sur les lignes RÉELLEMENT composées : ni ``target_kwc``, ni
+    # ``lead.taille_souhaitee_kwc``, qui sont des DEMANDES et non ce que le
+    # catalogue a su servir (l'arrondi au palier et le plafond de toit peuvent
+    # faire atterrir ailleurs). Le second appel que ce corps faisait ici est
+    # SUPPRIMÉ : il reposait la même valeur sur la même instance.
 
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
     # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
@@ -1052,7 +1147,13 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
                 # utilisateur inventé pour la circonstance.
                 user=getattr(lead, 'owner', None),
                 company=company, plafond_toit=plafond,
-                journal_auto=journal_auto)
+                journal_auto=journal_auto,
+                # QJR96 — L'ORIGINE DÉCLARÉE AU PIPELINE. Le tunnel n'est pas un
+                # autre moteur : c'est le MÊME geste, demandé par le webhook du
+                # site au lieu du bouton d'un commercial. Elle ne décide aucune
+                # ligne — elle NOMME la demande, pour le journal et pour les
+                # propriétaires d'étude.
+                origine=ORIGINE_TUNNEL)
     except AutoDevisError as exc:
         _liberer_marque_auto_devis(company, lead_id)
         logger.info(
@@ -1413,11 +1514,14 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )
+from apps.ventes.domain.entrees import entrees_depuis_lead  # noqa: E402,F401
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,
+    ORIGINE_AUTO,
     ORIGINE_CALEPINAGE,
+    ORIGINE_TUNNEL,
     CibleDevis,
     IntentionComposition,
     IntentionDevis,

@@ -45,6 +45,45 @@ def _scenario_stocke(avec_batterie):
     return SCENARIO_AVEC_BATTERIE if avec_batterie else SCENARIO_SANS_BATTERIE
 
 
+def sert_les_deux(demande_les_deux, *, a_reseau, a_hybride, a_batterie):
+    """QJR97 — LA GARDE ANTI-MENSONGE, écrite UNE fois. Forme booléenne.
+
+    « Les deux (Sans + Avec) » promet au client une COMPARAISON : l'option
+    « sans » a besoin d'un onduleur RÉSEAU, l'option « avec » d'un onduleur
+    HYBRIDE **et** d'une BATTERIE. Un document qui déclare les deux sans
+    pouvoir en servir une moitié ment — et le moteur PDF, qui lit cette
+    déclaration (PV86/QF6), rendrait une comparaison dont un côté est vide.
+
+    CE QUE CETTE FONCTION FERME. La règle vivait EN ENTIER à DEUX endroits —
+    à la création (``pipeline.ecrire_etude_params``, sur les DÉSIGNATIONS
+    composées) et à la resynchronisation (sur les LIGNES du devis) — avec deux
+    formulations différentes des mêmes conditions. Deux écritures d'une même
+    règle finissent toujours par diverger ; celle-ci décide de ce qu'un client
+    voit sur sa proposition.
+
+    ``demande_les_deux`` est la DEMANDE (le scénario voulu par ce devis-là) ;
+    les trois autres décrivent ce que la composition ou les lignes servent
+    RÉELLEMENT.
+    """
+    return bool(demande_les_deux and a_reseau and a_hybride and a_batterie)
+
+
+def scenario_servable(demande_les_deux, *, a_reseau, a_hybride, a_batterie):
+    """QJR97 — LE LIBELLÉ à ranger dans ``etude_params['scenario']``.
+
+    Jumelle de :func:`sert_les_deux` : « Les deux » quand les deux côtés sont
+    servis, sinon le libellé MONO honnête — « Avec batterie » seulement quand
+    l'équipement peut réellement le servir (onduleur hybride ET batterie).
+    Fonction PURE : elle ne lit ni base ni registre. La DÉCLARATION humaine,
+    elle, prime toujours et se lit par :func:`scenario_effectif` — l'appelant
+    enveloppe donc ce résultat, comme il le faisait déjà.
+    """
+    if sert_les_deux(demande_les_deux, a_reseau=a_reseau, a_hybride=a_hybride,
+                     a_batterie=a_batterie):
+        return SCENARIO_LES_DEUX
+    return _scenario_stocke(bool(a_batterie and a_hybride))
+
+
 def scenario_effectif(devis, auto):
     """QJR64 — LE SCÉNARIO QUI FAIT FOI : le registre d'abord, la dérivation
     moteur seulement en son ABSENCE.
