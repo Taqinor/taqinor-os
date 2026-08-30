@@ -1276,7 +1276,16 @@ class TestPdfFormats(TestCase):
         pattern = r'[\s   ]?'.join(
             [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
              for i in range((len(digits) + 2) // 3 - 1, -1, -1)])
-        self.assertGreaterEqual(len(re.findall(pattern, html)), 2)
+        self.assertGreaterEqual(len(re.findall(pattern, html)), 1)
+        # QJR122 — LE BLOC DE TOTAUX IMPRIME LE MÊME NOMBRE, AU CENTIME.
+        # Le Total TTC passait par ``fmt`` (arrondi à l'unité) alors que les
+        # lignes au-dessus étaient au centime : la chaîne affichée
+        # n'additionnait pas. Il s'imprime désormais comme elles — la carte de
+        # la page 1 garde, elle, le format DIRHAM (convention ``fmt``, tranches
+        # arrondies au millier). Les deux décrivent le MÊME nombre canonique :
+        # on vérifie donc la présence des DEUX formes, pas deux fois la même.
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertIn(G._fmt2(data['totaux_sans']['ttc']), html)
 
     def test_tva_note_matches_applied_math(self):
         """Le texte TVA décrit exactement le taux appliqué — l'ancienne

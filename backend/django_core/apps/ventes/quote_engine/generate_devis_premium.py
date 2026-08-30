@@ -10,6 +10,7 @@ Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
 import base64, html, io, json, re, subprocess, sys, tempfile, threading
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -1176,8 +1177,26 @@ def make_chart_monthly():
 
 # ── Equipment rows ────────────────────────────────────────────────────────────
 def _fmt2(v):
-    """Two-decimal French money formatting: 1\u202f166,67."""
-    return f"{v:,.2f}".replace(",", "\u202f").replace(".", ",")
+    """Montant au CENTIME \u00e0 la fran\u00e7aise : 1\u202f166,67.
+
+    QJR122 \u2014 l'arrondi est align\u00e9 sur la cha\u00eene canonique
+    (``selectors._canonical_totaux`` quantifie en ``ROUND_HALF_UP`` au
+    centime) : le formatage flottant de Python arrondit en mode BANQUIER,
+    de sorte que le M\u00caME devis pouvait afficher deux nombres diff\u00e9rents
+    entre le PDF et l'\u00e9ch\u00e9ancier / ``option_totaux``. On repasse par
+    ``Decimal(str(v))`` \u2014 la repr\u00e9sentation d\u00e9cimale courte, celle que la
+    cha\u00eene canonique aurait produite \u2014 avant de quantifier.
+    """
+    try:
+        d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return str(v)
+    return f"{d:,.2f}".replace(",", "\u202f").replace(".", ",")
+
+
+def _fmt2_mad(v):
+    """``_fmt2`` suffix\u00e9 \u00ab MAD \u00bb \u2014 le format des lignes de total."""
+    return _fmt2(v) + "\u00a0MAD"
 
 
 def _item_pu_ht(it):
@@ -1238,7 +1257,11 @@ def _totals_block_rows(totaux, colspan):
         rate = buckets[0]["taux"] if buckets else TVA_PCT
         tva_pct = int(rate) if rate == int(rate) else rate
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva))
-    rows += row("Total TTC", fmt(ttc), navy=True)
+    # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
+    # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
+    # (52 655,42 + 10 531,08 s'imprimait « 63 186 MAD »), et c'est ce montant
+    # qui sert de base à l'échéancier de la page 3.
+    rows += row("Total TTC", _fmt2_mad(ttc), navy=True)
     return rows
 
 
@@ -3212,7 +3235,9 @@ def page_onepage(items):
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
         _tva_pct = int(_rate) if _rate == int(_rate) else _rate
         totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
-    totals_html += _tot_line("Total TTC", fmt(total), navy=True)
+    # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
+    # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
+    totals_html += _tot_line("Total TTC", _fmt2(total) + "&nbsp;MAD", navy=True)
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
