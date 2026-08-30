@@ -53,6 +53,35 @@ def build(ctx):
         + tranche("Solde", s_pct, "à la mise en service & réception")
     )
 
+    # QJR118 — les DURÉES de garantie se dérivent de la composition réelle du
+    # devis (source unique ``residential.theme.warranties_for``), exactement
+    # comme le paquet résidentiel. Les trois cellules codées en dur disaient
+    # « 25 ans Performance » (la source dit 30 ans à 87,4 %), « 5-10 ans
+    # Onduleurs » (10 ans) et surtout « 10 ans Installation », soit CINQ FOIS
+    # l'engagement de pose réel (2 ans) — deux chiffres contradictoires dans
+    # le même document, ce que le commentaire QRES5 de la source interdit.
+    # Aucune durée traçable ⇒ la bande entière s'OMET (jamais un chiffre
+    # inventé, jamais un zéro d'apparence factuelle).
+    _warranties = [w for w in (theme.warranties_for(d) or [])
+                   if w and str(w[0]).strip()]
+    if _warranties:
+        _cells = "".join(
+            f'<div class="i3-warr-c">'
+            f'<div class="i3-warr-v">{theme._esc(str(n))} {theme._esc(str(u))}</div>'
+            f'<div class="i3-warr-l">{theme._esc(str(label))}</div></div>'
+            for n, u, label, _sub in _warranties)
+        warranties_html = f"""
+  <div class="i3-warr">
+    <div class="i3-blk-t">Garanties</div>
+    <div class="i3-warr-row" style="margin-top:8px;">
+      {_cells}
+      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
+    </div>
+  </div>
+"""
+    else:
+        warranties_html = ""
+
     # Signature — tampon d'acceptation posé à l'acceptation (sinon champ vierge).
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
@@ -132,15 +161,7 @@ def build(ctx):
     </div></div>
   </div>
 
-  <div class="i3-warr">
-    <div class="i3-blk-t">Garanties</div>
-    <div class="i3-warr-row" style="margin-top:8px;">
-      <div class="i3-warr-c"><div class="i3-warr-v">25 ans</div><div class="i3-warr-l">Performance panneaux</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">5-10 ans</div><div class="i3-warr-l">Onduleurs</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">10 ans</div><div class="i3-warr-l">Installation &amp; main-d'œuvre</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
-    </div>
-  </div>
+  {warranties_html}
 
   <div class="i3-sign">
     <div class="i3-sign-c">
