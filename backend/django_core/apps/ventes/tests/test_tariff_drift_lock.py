@@ -184,13 +184,28 @@ class TestClientT5UneSeuleValeur(SimpleTestCase):
         # Le client pose du solaire : 4 000 kWh/an produits, 60 % autoconsommés
         # (2 400 kWh) ⇒ résiduel 2 400 kWh/an = 200 kWh/mois, qui retombe dans
         # la bande 151–210 (1,091388) — la marche sélective, pas un prorata.
-        #   facture sans : 400 × 1,381704 = 552,6816 × 12 = 6 632,1792 → 6 632
-        #   facture avec : 200 × 1,091388 = 218,2776  × 12 = 2 619,3312 → 2 619
-        #   économie     : 6 632 − 2 619 = 4 013 MAD/an
+        #
+        # RECALAGE QJR157 (30/08/2026) — LA FACTURE N'EST PLUS QUE L'ÉNERGIE.
+        # ``two_bills_savings`` tarife désormais les deux factures par
+        # ``bareme.facture_mad``, lignes fixes (location + entretien) et TPPAN
+        # comprises. La composante ÉNERGIE ci-dessous est INCHANGÉE — c'est
+        # elle que ce verrou surveille, et elle porte toujours la valeur T5
+        # prouvée par la facture — mais les totaux annuels montent :
+        #   facture sans : 400 × 1,381704 = 552,6816 × 12 = 6 632,18 d'énergie
+        #                  + 479,23 de lignes fixes + 780,00 de TPPAN
+        #                  = 7 891,41 → 7 891
+        #   facture avec : 200 × 1,091388 = 218,2776  × 12 = 2 619,33 d'énergie
+        #                  + 479,23 de lignes fixes + 300,00 de TPPAN
+        #                  = 3 398,56 → 3 399
+        #   économie     : 7 891 − 3 399 = 4 492 MAD/an
+        # Les lignes fixes s'annulent dans l'écart ; la TPPAN suit le kWh et ne
+        # s'annule donc pas — d'où 4 013 → 4 492. Le second bloc de ce test
+        # isole justement l'ÉNERGIE pour que le verrou T5 reste indépendant des
+        # charges.
         out = two_bills_savings(4000, self.CONSO_ANNUELLE, 0.60, utility='onee')
-        self.assertEqual(out['facture_sans'], 6632)
-        self.assertEqual(out['facture_avec'], 2619)
-        self.assertEqual(out['economie'], 4013)
+        self.assertEqual(out['facture_sans'], 7891)
+        self.assertEqual(out['facture_avec'], 3399)
+        self.assertEqual(out['economie'], 4492)
 
         # Le moteur « factures » (bareme.py) valorise le MÊME écart d'énergie :
         # charges fixes et TPPAN mises à part (elles ne dépendent pas du tarif

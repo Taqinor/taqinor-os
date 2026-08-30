@@ -834,7 +834,16 @@ class TestQuoteNumbersHonestyPack(TestCase):
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertIsNone(data['conso_annuelle_kwh'])
-        self.assertFalse(data['savings_estimated'])
+        # QJR156 (audit QJR79) — SANS CONSOMMATION, LE PRIX EST UNE ESTIMATION,
+        # ET LE DIT. Ce cas a une grille RÉELLE (onee) mais aucune conso pour la
+        # pondérer : ``_weighted_kwh_price(0.0, table)`` rend alors, par
+        # construction, le tarif LE PLUS BAS de la grille (tranche 0-100), qui
+        # n'est pas le prix moyen de CE client. Le drapeau se lève donc AUSSI
+        # sur ``savings_estimated`` (il ne se levait avant que faute de table),
+        # et le PDF cesse d'imprimer « Tarif électricité retenu : 0,92 MAD/kWh »
+        # sans le mot « estimation ». C'est le sens même de ce test — il
+        # l'épinglait déjà sur ``coverage_estimated``, désormais sur les deux.
+        self.assertTrue(data['savings_estimated'])
         d = renderer._augment(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertTrue(d['coverage_estimated'])
@@ -1216,7 +1225,17 @@ class TestSavingsMath(TestCase):
         self.assertAlmostEqual(roi["tarif_kwh"], 2.50, places=4)
         self.assertFalse(roi["savings_estimated"])
         prod = roi["prod_kwh"]
-        self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 2.50))
+        # LE PLAFOND CONSOMMATION FAIT PARTIE DU MODÈLE (ordre fondateur 18/08) :
+        # on ne valorise jamais plus de kWh que le client n'en consomme. La
+        # formule d'origine (prod × 0,60 × tarif) l'ignorait ; elle passait
+        # seulement parce que la production était alors trop petite pour que le
+        # plafond morde. Le recalage QJR158 (d) du repli de productible
+        # (1240 → 1651) l'a fait mordre : 5 kWc → 7 679 kWh/an, dont 60 % =
+        # 4 607 kWh > 3 600 kWh consommés. L'économie vaut donc 3 600 × 2,50 =
+        # 9 000 MAD, et non 11 518. On épingle la règle, pas le nombre : ainsi
+        # l'attente reste vraie des deux côtés du plafond.
+        autoconso = min(prod * 0.60, 3600)
+        self.assertEqual(roi["eco_s_ann"], round(autoconso * 2.50))
 
     def test_roi_computed_from_totals(self):
         """QX39 — le payback n'est plus un ratio année-1 (total / éco annuelle)

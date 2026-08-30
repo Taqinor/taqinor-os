@@ -15,6 +15,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
+from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import (
     ONEE_TRANCHES,
     _weighted_kwh_price,
@@ -25,8 +26,30 @@ from apps.ventes.quote_engine.pricing import (
 User = get_user_model()
 
 
-def _onee_annual_bill(kwh_month):
+def _onee_energy_only(kwh_month):
+    """La composante ÉNERGIE seule, au barème (le modèle d'AVANT QJR157)."""
     return _weighted_kwh_price(kwh_month, ONEE_TRANCHES) * kwh_month * 12
+
+
+def _onee_annual_bill(kwh_month):
+    """La facture annuelle TTC COMPLÈTE, telle que la tarife le moteur.
+
+    QJR157 (30/08/2026) — ``two_bills_savings`` ne modélise plus la seule
+    ÉNERGIE : les deux factures passent par ``bareme.facture_mad``, lignes
+    fixes (location + entretien) et TPPAN comprises, parce que le chemin
+    ``savings_model='horaire'`` servait déjà cette vignette charges comprises
+    et que le même client voyait donc deux « factures actuelles » différentes
+    selon qu'un bloc horaire existait ou non.
+
+    Ce témoin suit donc la MÊME chaîne que le code testé, au lieu de figer des
+    nombres : il reste une DÉRIVATION (barème → charges → TPPAN), et il bougera
+    tout seul le jour où le barème bouge. Sur 300 kWh/mois : énergie 4 274,60
+    + fixes 479,23 + TPPAN 540,00 = 5 293,83 → 5 294 MAD/an.
+    """
+    from apps.ventes.quote_engine import bareme
+
+    return bareme.facture_mad(
+        kwh_month, tranches=ONEE_TRANCHES)['total_mad'] * 12
 
 
 class TestTwoBillsSavingsPure(SimpleTestCase):
@@ -49,15 +72,30 @@ class TestTwoBillsSavingsPure(SimpleTestCase):
         self.assertFalse(out["approximatif"])
 
     def test_self_consumption_capped_at_consumption(self):
-        """Production above consumption: savings cap at the FULL bill — the
-        surplus injected to the grid is never valued (loi 82-21)."""
+        """Production above consumption: savings cap at the bill MINUS the
+        subscription — the surplus injected to the grid is never valued
+        (loi 82-21), and the meter rental stays due either way.
+
+        QJR157 — le résiduel tombe bien à 0 kWh, mais la facture ne tombe PAS
+        à 0 MAD : ``bareme.facture_mad`` documente que « les charges fixes
+        RESTENT dues (c'est la réalité d'un abonnement) ». Un client qui
+        autoconsomme 100 % de sa consommation paie encore sa location de
+        compteur — 479,23 MAD/an. C'est le plafond VRAI des économies, et le
+        dire ici évite de promettre au client une facture nulle.
+        """
         out = two_bills_savings(6200, 3600, 0.60, utility="onee")
         # 6200 × 0.60 = 3720 > 3600 → autoconso capped at conso, residual 0.
         self.assertEqual(out["autoconso_kwh"], 3600)
-        self.assertEqual(out["facture_avec"], 0)
-        self.assertEqual(out["economie"], out["facture_sans"])
+        # Énergie 0 + TPPAN 0 + charges fixes 479,23 → 479 MAD/an.
+        charges_fixes = round(
+            bareme.charges_fixes_ttc(bareme.MILLESIME_COURANT) * 12)
+        self.assertEqual(out["facture_avec"], charges_fixes)
+        self.assertEqual(out["economie"],
+                         out["facture_sans"] - charges_fixes)
         # NEVER above the full bill (no injection bonus).
         self.assertLessEqual(out["economie"], round(_onee_annual_bill(300)) + 1)
+        # …et STRICTEMENT en dessous : l'abonnement n'est jamais économisé.
+        self.assertLess(out["economie"], out["facture_sans"])
 
     def test_lydec_lit_la_grille_nationale_et_n_est_plus_approximatif(self):
         """Q7 (décision fondateur du 20/08/2026) — les grilles « approximatives »
