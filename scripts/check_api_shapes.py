@@ -58,6 +58,12 @@ CE QU'ELLE FAIT (analyse statique pure, sans base de donnees, sans dependance)
    proche). Resultat : cle -> nature (objet / liste / nombre / texte /
    booleen / inconnu).
 2. Relie chaque fonction d'un client ``frontend/src/api/*.js`` a son chemin.
+2 bis. QJR110 — couvre AUSSI la moitie SITE PUBLIC (``apps/web``), par un
+   repli assume et documente (section « 3 quinquies ») : egalite des
+   echantillons web <-> backend, echantillons web passes au meme controle
+   contre le serveur, et verification que chaque ``/api/django/...`` ecrit
+   dans ``apps/web/src/lib/*.ts`` ou dans un proxy
+   ``apps/web/src/pages/api/*.ts`` resout vers une vraie route.
 3. Lit les mocks des tests frontend (``X.maFonction.mockResolvedValue({data:
    ...})``) et ECHOUE si le mock nomme une cle que le serveur ne renvoie pas,
    ou lui donne une nature incompatible.
@@ -1321,11 +1327,222 @@ def mocks_contre_serialiseur(serialiseurs, fichiers=None):
 
 
 # ===========================================================================
+# 3 quinquies. QJR110 — LA MOITIE SITE PUBLIC (`apps/web`)
+# ===========================================================================
+#
+# LE TROU. Jusqu'ici cette garde ne connaissait QUE `frontend/src/api/*.js`.
+# Toute la moitie SITE PUBLIC du parcours devis — la charge utile lead du
+# tunnel et le lecteur `proposal_data` de la page proposition — n'avait donc
+# AUCUN contrat verifie par la machine avec son serveur : exactement l'angle
+# mort PACT10, mais sur la surface la plus visible du parcours.
+#
+# LA ROUTE PRISE, ET POURQUOI (a dire dans le DONE LOG — QJR110 l'exige).
+# Le resolveur de ce script lit du JAVASCRIPT par expressions regulieres sur
+# des jetons de chaine ; il ne connait ni les types ni les interfaces
+# TypeScript. `apps/web/src/lib/proposition.ts` fait 4 700 lignes dont
+# l'essentiel est une INTERFACE (`ProposalResponse`) : apparier ses champs aux
+# cles du serveur demanderait un vrai parseur TS — un second resolveur a
+# maintenir, en Python, pour un langage qu'aucun autre controle de ce depot ne
+# lit. C'est le REPLI que QJR110 declare acceptable qui est retenu, et il est
+# fait de TROIS controles qui, ensemble, ferment la boucle :
+#
+#   (a) EGALITE DES ECHANTILLONS — `apps/web/src/contract_samples/<x>.json`
+#       doit etre JSON-egal a son jumeau `apps/ventes/contract_samples/<x>.json`.
+#       C'est la garde du groupe QJW ;
+#   (b) ECHANTILLONS WEB CONTRE LE SERVEUR — la copie web entre dans le MEME
+#       controle `echantillons_de_contrat` que les echantillons backend : une
+#       cle en trop, une cle manquante ou une nature incompatible rougit ;
+#   (c) CHEMINS DES CLIENTS TS — `apps/web/src/lib/*.ts` et les proxys
+#       `apps/web/src/pages/api/*.ts` construisent leurs URL backend en clair
+#       (`${base}/api/django/...`). Chaque chemin ainsi ecrit doit resoudre
+#       vers une ROUTE CONNUE du serveur.
+#
+# (a) + (b) donnent la chaine complete : la copie web egale la copie backend,
+# et la copie backend egale la reponse REELLE du serveur — donc la copie web
+# aussi. Une derive de cle inventee entre le backend et `apps/web` rougit des
+# le premier des deux controles.
+#
+# CE QUI N'EST PAS CHANGE : le scan `frontend/src/api` n'est pas assoupli d'un
+# octet pour faire entrer `apps/web` — c'est une surface AJOUTEE, avec ses
+# propres controles.
+
+WEB_ROOT = ROOT / "apps" / "web"
+#: Les deux surfaces TS qui parlent au backend : les modules de `lib/` (dont
+#: `proposition.ts`, `tailleDetail.ts`, `offresTailles.ts`, `lead.ts`) et les
+#: proxys same-origin de `pages/api/`.
+WEB_CLIENT_GLOBS = ("src/lib/*.ts", "src/pages/api/*.ts")
+_MONTAGES_API = ("/api/django/", "/api/fastapi/")
+
+
+def echantillons_web_jumeaux(racine_web: Path = None, racine_apps: Path = None):
+    """(a) — la copie `apps/web` d'un echantillon EGALE sa copie backend.
+
+    Le jumelage se fait par NOM DE FICHIER : `proposal_data.json` cote web doit
+    avoir un `proposal_data.json` cote backend, et les deux documents doivent
+    etre JSON-egaux (la comparaison est faite sur le JSON decode, pas sur les
+    octets : une fin de ligne ou une indentation ne sont pas un contrat).
+
+    Un echantillon web SANS jumeau backend est un constat, et c'est voulu : il
+    serait alors le seul de son espece, verifie par personne — exactement
+    l'invention de contrat que PACT10 existe pour empecher.
+    """
+    import json
+
+    racine_web = WEB_ROOT if racine_web is None else racine_web
+    racine_apps = APPS_ROOT if racine_apps is None else racine_apps
+    backend_par_nom = {f.name: f for f in fichiers_echantillons(racine_apps)}
+    constats = []
+    for fichier in fichiers_echantillons(racine_web):
+        relatif = _relatif(fichier)
+        jumeau = backend_par_nom.get(fichier.name)
+        if jumeau is None:
+            constats.append((
+                relatif, 1, fichier.stem, "?", "<jumeau>",
+                "cet echantillon de `apps/web` n'a AUCUN jumeau backend "
+                f"`apps/<x>/contract_samples/{fichier.name}` : il ne serait "
+                "verifie contre le serveur par personne"))
+            continue
+        try:
+            gauche = json.loads(fichier.read_text(encoding="utf-8"))
+            droite = json.loads(jumeau.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as erreur:
+            constats.append((relatif, 1, fichier.stem, "?", "<fichier>",
+                             f"JSON illisible : {erreur}"))
+            continue
+        if gauche == droite:
+            continue
+        exemple_g = gauche.get("exemple") if isinstance(gauche, dict) else None
+        exemple_d = droite.get("exemple") if isinstance(droite, dict) else None
+        if isinstance(exemple_g, dict) and isinstance(exemple_d, dict):
+            for champ in sorted(set(exemple_g) ^ set(exemple_d)):
+                cote = "apps/web" if champ in exemple_g else "backend"
+                constats.append((
+                    relatif, 1, fichier.stem, "?", champ,
+                    f"'{champ}' n'existe que du cote {cote} : les deux copies "
+                    f"de {fichier.name} ont DIVERGE"))
+        constats.append((
+            relatif, 1, fichier.stem, "?", "<echantillon>",
+            f"la copie `apps/web` de {fichier.name} n'est plus JSON-egale a "
+            f"`{_relatif(jumeau)}` : recopier la copie backend (elle, est "
+            "verifiee contre la reponse REELLE du serveur)"))
+    return constats
+
+
+def _relatif(chemin: Path) -> str:
+    try:
+        return chemin.relative_to(ROOT).as_posix()
+    except ValueError:  # pragma: no cover - chemin hors depot (tests)
+        return chemin.name
+
+
+def fichiers_clients_web(racine: Path = None):
+    """Les fichiers TS de `apps/web` qui construisent des URL backend."""
+    racine = WEB_ROOT if racine is None else racine
+    trouves = []
+    for motif in WEB_CLIENT_GLOBS:
+        trouves.extend(sorted(racine.glob(motif)))
+    return [p for p in trouves if p.is_file()]
+
+
+def _chemins_api_du_source(source: str):
+    """[(ligne, chemin brut)] — chaque `/api/django/...` ecrit dans ce source.
+
+    Le decoupage COMMENCE au montage (`/api/django/`) et non au debut du
+    jeton : `${base}/api/django/...` est la forme NORMALE de ces modules, et
+    un chemin qui ne commence pas par `/` serait sinon rejete par
+    `normalise_call`. Les commentaires sont deja retires par `scan_js` — une
+    URL citee dans une docstring ne compte donc pas.
+    """
+    _code, jetons, _masque = scan_js(source)
+    trouves = []
+    for debut, _fin, quote, brut in jetons:
+        texte = resolve_template(brut, quote, {})
+        if texte is None:
+            continue
+        for montage in _MONTAGES_API:
+            index = texte.find(montage)
+            while index != -1:
+                trouves.append((source.count("\n", 0, debut) + 1,
+                                texte[index:]))
+                index = texte.find(montage, index + 1)
+    return trouves
+
+
+def _prefixe_de_route(trie: RouteTrie, call) -> bool:
+    """`call` est-il un PREFIXE STRICT d'au moins une route connue ?
+
+    POURQUOI CE PREDICAT EXISTE, et ce qu'il empeche. `tailleDetail.
+    tailleDetailEndpoint` construit son URL en DEUX litteraux adjacents
+    (`` `${base}/api/django/public/proposal/${token}` + `/taille/${cle}/?…` ``) :
+    le premier, lu seul, donne un chemin plus COURT que la vraie route. Le
+    signaler serait un faux positif sur du code parfaitement correct — et le
+    principe de ce script est qu'un doute ne rougit JAMAIS.
+    """
+    noeuds = [trie.root]
+    for segment in call:
+        suivants = []
+        for noeud in noeuds:
+            if segment == contract.ANY:
+                suivants.extend(valeur for clef, valeur in noeud.items()
+                                if clef != RouteTrie.TERMINAL)
+                continue
+            for clef in (segment, contract.ANY, contract.PK):
+                enfant = noeud.get(clef)
+                if enfant is not None:
+                    suivants.append(enfant)
+        if not suivants:
+            return False
+        noeuds = suivants
+    return any(clef != RouteTrie.TERMINAL
+               for noeud in noeuds for clef in noeud)
+
+
+def routes_client_web(known: RouteTrie, fichiers=None):
+    """(c) — un chemin backend ecrit dans `apps/web` doit EXISTER.
+
+    Trois refus de signaler, tous des DOUTES et non des preuves d'innocence :
+    un chemin que `normalise_call` ne sait pas lire, un chemin qui matche une
+    route, et un chemin qui n'est qu'un PREFIXE d'une route (URL construite en
+    plusieurs morceaux). Reste ce qui est vraiment introuvable : une URL
+    inventee, la classe de defaut que l'audit L3 a nommee.
+    """
+    if known is None:
+        return []
+    constats = []
+    for fichier in (fichiers_clients_web() if fichiers is None else fichiers):
+        relatif = _relatif(fichier)
+        try:
+            source = fichier.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for ligne, brut in _chemins_api_du_source(source):
+            montage = ("api/fastapi" if brut.startswith("/api/fastapi/")
+                       else "api/django")
+            call = normalise_call(brut, montage)
+            if call is None:
+                continue
+            if known.matches(call) or _prefixe_de_route(known, call):
+                continue
+            constats.append((
+                relatif, ligne, fichier.stem, "/" + "/".join(call),
+                "<route>",
+                "ce chemin backend n'existe sur AUCUNE route du serveur : la "
+                "page publique appellerait une URL 404. Corriger l'URL, ou "
+                "ajouter la route cote backend."))
+    return constats
+
+
+# ===========================================================================
 # 4. Rapprochement + contrat versionne
 # ===========================================================================
 
 def build_contract_complet():
-    """(shapes agregees, contrats de serialiseur) — un SEUL balayage du backend."""
+    """(shapes agregees, contrats de serialiseur, arbre des routes serveur).
+
+    UN SEUL balayage du backend (~40 s). L'arbre des routes est rendu avec le
+    reste depuis QJR110 : le controle des chemins de `apps/web` en a besoin, et
+    le reconstruire couterait un second balayage complet.
+    """
     backend = contract.BackendRoutes()
     backend.build()
     reader = ShapeReader(backend)
@@ -1356,7 +1573,7 @@ def build_contract_complet():
         contrat = serialiseurs_reader.contrat_de_route(route)
         if contrat is not None:
             serialiseurs[(module, name)] = ("/" + "/".join(route),) + contrat
-    return shapes, serialiseurs
+    return shapes, serialiseurs, known
 
 
 def build_contract():
@@ -1365,9 +1582,12 @@ def build_contract():
 
 def analyse(shapes=None):
     if shapes is None:
-        shapes, serialiseurs = build_contract_complet()
+        shapes, serialiseurs, known = build_contract_complet()
     else:
-        serialiseurs = {}
+        # Un appelant qui APPORTE les formes (les tests du script) n'a pas
+        # construit l'arbre des routes : le controle des chemins `apps/web`
+        # est alors sauté — un doute ne rougit jamais.
+        serialiseurs, known = {}, None
     findings = []
     for path in test_files():
         relative = path.relative_to(ROOT).as_posix()
@@ -1393,6 +1613,13 @@ def analyse(shapes=None):
     # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
     # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
     findings.extend(echantillons_de_contrat(shapes))
+    # QJR110 (a) — la copie `apps/web` d'un echantillon EGALE sa copie backend.
+    findings.extend(echantillons_web_jumeaux())
+    # QJR110 (b) — et la copie web passe le MEME controle contre le serveur.
+    findings.extend(echantillons_de_contrat(shapes, racine=WEB_ROOT))
+    # QJR110 (c) — un chemin backend ecrit dans `apps/web/src/lib/*.ts` ou dans
+    # un proxy `apps/web/src/pages/api/*.ts` doit resoudre vers une vraie route.
+    findings.extend(routes_client_web(known))
     # PACT13 — un mock ecrit a la main est une DEUXIEME source de verite : des
     # que l'endpoint porte un exemple committe, le test l'importe.
     findings.extend(mocks_litteraux_sous_contrat(shapes))
