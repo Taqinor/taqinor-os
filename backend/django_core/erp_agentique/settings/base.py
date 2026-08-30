@@ -1102,6 +1102,8 @@ CELERY_TASK_ROUTES = {
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
     # NTMIG35 — purge planifiée des fichiers source de migration.
     'migration.purger_fichiers_migration': {'queue': 'scheduled'},
+    # NTMIG30 — alerte planifiée d'expiration de certification partenaire.
+    'migration.alerter_certifications_expirantes': {'queue': 'scheduled'},
     'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
