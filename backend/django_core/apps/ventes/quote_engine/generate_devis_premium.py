@@ -2690,14 +2690,24 @@ def _falaise_context():
     ``POST /ventes/etude-horaire/preview/`` avec ``dimensionner: true`` — voir
     ``apps/ventes/contract_samples/etude_horaire.json``).
 
-    [HANDOFF backend] À la date de ce lot, AUCUN devis réel ne porte cette
-    clé : ``recommander_taille`` n'est appelé QUE par l'aperçu écran du
-    générateur (``etude_horaire_view._dimensionner``), jamais persisté sur
-    ``Devis.etude_params`` (``services.rafraichir_etude_horaire`` ne pose que
-    le bloc ``etude_horaire``, pas ``dimensionnement``). Cette fonction lit
-    défensivement le contrat au cas où un producteur backend viendrait à
-    poser ``etude_params['dimensionnement']`` — tant que cette clé est
-    absente, elle rend ``None`` et le PDF est BYTE-IDENTIQUE à avant ce lot.
+    QJR148 — CE BLOC EST LIVE. Cette docstring affirmait « à la date de ce
+    lot, AUCUN devis réel ne porte cette clé » : c'est FAUX depuis T5
+    (24/08/2026). ``services.rafraichir_dimensionnement_devis``
+    (``apps/ventes/domain/etudes.py``) pose ``etude_params['dimensionnement']``
+    sur les devis RÉSIDENTIELS, et ces chiffres atteignent de vrais clients.
+
+    Deux choses à savoir avant d'y toucher :
+
+    * le rafraîchisseur COURT-CIRCUITE quand l'empreinte des entrées concorde
+      (QJR43) : le bloc servi peut décrire un état plus ancien du devis que la
+      composition posée ;
+    * ``_optimum_decrit_ce_devis`` (QJR13) est le SEUL rempart entre ce bloc et
+      le document client : elle refuse de publier ``residuel_kwh_mois``,
+      ``tranche_apres`` et ``remplissage.moyen`` quand l'optimum ne décrit pas
+      la composition réellement vendue. Ne pas la relâcher, ne pas la
+      « simplifier ».
+
+    Clé absente ⇒ ``None`` ⇒ cette moitié de la page étude ne rend rien.
     Zero chiffre inventé : chaque valeur vient telle quelle du contrat, rien
     n'est recalculé ici (le moteur ne fait que RENDRE — règle #4).
     """
