@@ -500,9 +500,14 @@ class BasculePerformUpdate(_BaseEcran):
             taux_tva=Decimal('20'), created_by=self.user)
         journal = self._espionner_les_quatre()
 
+        # Passe Fable M5a — ``etude_params`` est READ-ONLY depuis QJR67 : le
+        # PATCHer décrirait une écriture devenue impossible. Le dispatch des
+        # quatre études est inconditionnel sur tout PATCH accepté ; on exerce
+        # donc un champ ENCORE écrivable.
         reponse = self.api.patch(
             '/api/django/ventes/devis/%s/' % devis.id,
-            {'etude_params': {'scenario': 'Avec batterie'}}, format='json')
+            {'note': 'QJR94 — un PATCH quelconque rafraîchit les 4 études'},
+            format='json')
         self.assertEqual(reponse.status_code, 200, reponse.content)
 
         # LES QUATRE, dans l'ordre de ``rafraichir_etudes_du_devis`` (L-1V) :

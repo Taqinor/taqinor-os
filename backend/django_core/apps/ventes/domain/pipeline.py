@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -751,15 +753,22 @@ def appliquer(devis, intention):
     if refus:
         raise AutoDevisError(refus[0], field='composition')
 
-    verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
-        intention)
+    # Passe Fable M5a (30/08/2026) — LA FRONTIÈRE TRANSACTIONNELLE DE L'ANCIEN
+    # CHEMIN EST PRÉSERVÉE : `build_devis_from_layout` créait le Devis ET ses
+    # lignes sous le `transaction.atomic()` de `create_with_reference` — une
+    # panne en pleine écriture annulait TOUT (aucun brouillon fantôme, aucune
+    # référence brûlée). Création + étapes 5-6 restent donc UN bloc atomique ;
+    # les études (étape 7) restent DEHORS, comme sur tous les chemins.
+    with transaction.atomic():
+        verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
+            intention)
 
-    ecrire_lignes(verrou, composition, company=intention.company,
-                  avertissements=avertissements)
-    journal.append('ecrire_lignes')
+        ecrire_lignes(verrou, composition, company=intention.company,
+                      avertissements=avertissements)
+        journal.append('ecrire_lignes')
 
-    ecrire_etude_params(verrou, intention, composition)
-    journal.append('ecrire_etude_params')
+        ecrire_etude_params(verrou, intention, composition)
+        journal.append('ecrire_etude_params')
 
     rafraichir_etudes(verrou)
     journal.append('rafraichir_etudes')
