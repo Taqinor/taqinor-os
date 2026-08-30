@@ -451,8 +451,6 @@ class IntentionDevis:
     * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'`` ; vide ⇒
       ``'les_deux'`` (le défaut fondateur U2) ;
     * ``layout`` — le calepinage 3D, quand il y en a un ;
-    * ``overrides`` — le patch de surcharges déclarées (QJR58), appliqué par
-      ``domain/overrides`` — jamais réinventé ici ;
     * ``exact`` — la cible vient d'un NOMBRE TAPÉ, pas d'un toit : les deux
       options y sont portées à la hausse comme à la baisse (cf.
       ``sync_devis_from_layout(cible_exacte=...)``).
@@ -469,7 +467,19 @@ class IntentionDevis:
       Posée à la création, jamais recalculée ici ;
     * ``force_etudes`` — QJR94, ``force=True`` des quatre rafraîchisseurs :
       « recalcule même si l'empreinte concorde ». ``False`` (LE DÉFAUT) laisse
-      l'empreinte décider (QJR43/QJR44/QJR47).
+      l'empreinte décider (QJR43/QJR44/QJR47). QJR227 — il est transmis sur
+      TOUS les modes qui rafraîchissent, plus seulement ``MODE_RAFRAICHIR`` :
+      un appelant qui demandait des études forcées sur un compose/create
+      recevait les études EN CACHE, sans le savoir.
+
+    QJR227 — ``overrides`` A ÉTÉ SUPPRIMÉ DE CETTE INTENTION. Le champ était
+    déclaré et documenté « le patch de surcharges déclarées (QJR58), appliqué
+    par ``domain/overrides`` » et n'était POSÉ par personne ni LU par personne
+    (grep du dépôt). Le registre de surcharges se pose par son endpoint
+    (``PATCH /devis/<id>/overrides/`` → ``domain.overrides.fusionner`` +
+    ``ecrire_colonne``) et se LIT par ``domain.overrides.effectif`` là où il
+    compte ; le pipeline n'a jamais eu de rôle dedans. Arbitrage « câbler ou
+    supprimer » : SUPPRIMER — un champ qui ment coûte plus qu'il ne rapporte.
     """
 
     origine: str
@@ -482,7 +492,6 @@ class IntentionDevis:
     cible: object = None
     scenario: str = ''
     layout: object = None
-    overrides: object = None
     exact: bool = False
     taux_tva: Decimal = Decimal('20')
     remise_globale: Decimal = Decimal('0')
@@ -840,7 +849,12 @@ def appliquer(devis, intention):
         ecrire_etude_params(verrou, intention, composition)
         journal.append('ecrire_etude_params')
 
-    rafraichir_etudes(verrou)
+    # QJR227 — ``force_etudes`` EST TRANSMIS ICI AUSSI. Il ne l'était que par
+    # la branche ``MODE_RAFRAICHIR`` : un appelant qui demandait des études
+    # FORCÉES sur un compose/create recevait silencieusement les études en
+    # cache (les empreintes QJR43/QJR44 court-circuitent), c'est-à-dire
+    # l'inverse exact de ce qu'il avait demandé.
+    rafraichir_etudes(verrou, force=intention.force_etudes)
     journal.append('rafraichir_etudes')
 
     finaliser(verrou, intention)

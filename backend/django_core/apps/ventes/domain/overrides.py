@@ -28,11 +28,27 @@ silencieusement l'override sur la MAUVAISE ligne. ``LigneDevis.quantite_manuelle
 et ``prix_manuel`` (QJR59) sont des CHAMPS DU MODÈLE, adressés par l'identifiant
 STABLE de la ligne.
 
-CE QUE QJR57 NE FAIT PAS. Il ne PERSISTE rien : la colonne ``Devis.overrides``
-n'existe pas encore (migration QJR58), et aucun appelant n'est branché. Les
-fonctions d'écriture sont donc PURES — elles rendent le registre RÉSULTANT, que
-l'endpoint de QJR58 écrira par un UPDATE d'UNE SEULE colonne (patron
-``offres_tailles._ecrire_colonne``).
+L'ÉTAT RÉEL DE CE MODULE (QJR227, 31/08/2026) — CE PARAGRAPHE DISAIT TROIS
+CHOSES FAUSSES : « il ne persiste rien », « la colonne ``Devis.overrides``
+n'existe pas encore », « aucun appelant n'est branché ». Les trois ont cessé
+d'être vraies et c'est le premier texte que lit le prochain lecteur :
+
+* la colonne ``Devis.overrides`` EXISTE (migration ``0107_qjr58_devis_overrides``) ;
+* :func:`ecrire_colonne` la PERSISTE — par un ``UPDATE`` d'UNE SEULE colonne
+  (patron ``offres_tailles._ecrire_colonne``), délibérément PAS par
+  ``Devis.save`` : ni ``updated_at`` ni le gel ``prix_par_kwc`` ne doivent
+  bouger pour une pose de surcharge ;
+* les appelants SONT branchés — l'endpoint ``GET/PATCH/DELETE
+  /ventes/devis/<pk>/overrides/`` (QJR58), les lecteurs
+  :func:`effectif` de ``domain.scenario`` (scénario, option recommandée, kWc)
+  et de ``quote_engine.builder``, et la règle de préséance R4-A
+  (:func:`preseance_nb_panneaux`, appelée par
+  ``domain.scenario.puissance_kwc_du_devis`` depuis QJR217).
+
+CE QUI RESTE VRAI, ET QUI COMPTE : les fonctions de construction du registre
+(:func:`poser`, :func:`regenerer`, :func:`fusionner`) sont PURES — elles rendent
+le registre RÉSULTANT sans rien écrire. Seule :func:`ecrire_colonne` touche la
+base, et elle ne touche QUE cette colonne.
 """
 #: Les ORIGINES admises d'un override — jamais une quatrième inventée sans que
 #: le contrat PACT10 ne soit d'abord mis à jour.
