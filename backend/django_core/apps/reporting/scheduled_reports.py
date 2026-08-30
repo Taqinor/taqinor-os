@@ -158,6 +158,28 @@ def _send_report_email(report, content, title):
         return False
 
 
+def journaliser_envoi(report, canal, destinataires, statut, erreur=''):
+    """NTDATA40 — trace UNE tentative de diffusion (réussie ou non).
+
+    ``company`` est reprise DU RAPPORT (côté serveur, jamais d'un corps de
+    requête). Best-effort : un journal qui échoue ne doit jamais empêcher — ni
+    faire croire à — un envoi ; il est simplement logué."""
+    from .models import EnvoiRapport
+    try:
+        return EnvoiRapport.objects.create(
+            company=report.company,
+            saved_report=report,
+            canal=canal,
+            destinataires=', '.join(destinataires or []),
+            statut=statut,
+            erreur=(erreur or '')[:2000],
+        )
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('journaliser_envoi: écriture impossible (rapport %s)',
+                       getattr(report, 'pk', None), exc_info=True)
+        return None
+
+
 def _due_schedules(now):
     """Cadences dues à l'instant `now` (Casablanca).
 
@@ -247,21 +269,46 @@ def email_saved_reports():
             # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.
             if getattr(report, 'canal', 'email') == 'whatsapp':
                 from .diffusion_views import diffuser_whatsapp
-                envoyes, _detail = diffuser_whatsapp(report)
+                envoyes, detail = diffuser_whatsapp(report)
+                numeros = report.whatsapp_list()
                 if envoyes:
                     report.last_sent_at = now
                     report.save(update_fields=['last_sent_at'])
                     sent += 1
+                    journaliser_envoi(report, 'whatsapp', numeros, 'envoye')
+                elif not numeros:
+                    journaliser_envoi(report, 'whatsapp', numeros,
+                                      'sans_destinataire', detail)
+                else:
+                    journaliser_envoi(report, 'whatsapp', numeros,
+                                      'non_configure', detail)
                 continue
-            if not report.recipient_list():
+            destinataires = report.recipient_list()
+            if not destinataires:
+                journaliser_envoi(report, 'email', destinataires,
+                                  'sans_destinataire',
+                                  'Aucune adresse destinataire configurée.')
+                continue
+            if not _is_email_configured():
+                journaliser_envoi(report, 'email', destinataires,
+                                  'non_configure',
+                                  "Email non configuré (aucune clé d'envoi) — "
+                                  'aucun message envoyé.')
                 continue
             content, title = render_report_xlsx(report)
             if content is None:
+                journaliser_envoi(report, 'email', destinataires, 'echec',
+                                  'Rendu du rapport impossible (format ou '
+                                  'données indisponibles).')
                 continue
             if _send_report_email(report, content, title):
                 report.last_sent_at = now
                 report.save(update_fields=['last_sent_at'])
                 sent += 1
+                journaliser_envoi(report, 'email', destinataires, 'envoye')
+            else:
+                journaliser_envoi(report, 'email', destinataires, 'echec',
+                                  "Envoi refusé par le backend email.")
         except Exception:  # pragma: no cover - défensif par rapport
             logger.warning('email_saved_reports: échec sur le rapport %s',
                            getattr(report, 'pk', None), exc_info=True)

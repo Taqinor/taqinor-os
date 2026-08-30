@@ -115,6 +115,63 @@ class SavedReport(models.Model):
         return self._split_destinataires(self.destinataires_whatsapp)
 
 
+class EnvoiRapport(models.Model):
+    """NTDATA40 — journal de diffusion d'un rapport sauvegardé.
+
+    UNE ligne par TENTATIVE d'envoi (email ou WhatsApp), réussie OU NON : sans
+    ce journal, un rapport qui ne part plus est invisible — le destinataire ne
+    sait pas qu'il n'a rien reçu, et l'admin n'a aucun motif à lire. Chaque
+    échec porte donc son MOTIF en clair.
+
+    Multi-tenant : `company` est posée CÔTÉ SERVEUR depuis le rapport source,
+    jamais lue d'un corps de requête. Lecture seule côté API (c'est un
+    journal : il se consulte, il ne se corrige pas)."""
+
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        ECHEC = 'echec', 'Échec'
+        NON_CONFIGURE = 'non_configure', 'Canal non configuré'
+        SANS_DESTINATAIRE = 'sans_destinataire', 'Aucun destinataire'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        null=True, blank=True, related_name='envois_rapports',
+        verbose_name='Société')
+    saved_report = models.ForeignKey(
+        SavedReport, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='envois', verbose_name='Rapport')
+    canal = models.CharField(
+        'Canal', max_length=10, choices=Canal.choices, default=Canal.EMAIL)
+    destinataires = models.TextField(
+        'Destinataires', blank=True, default='',
+        help_text='Adresses/numéros visés par cette tentative.')
+    statut = models.CharField(
+        'Statut', max_length=20, choices=Statut.choices,
+        default=Statut.ENVOYE)
+    erreur = models.TextField(
+        'Motif', blank=True, default='',
+        help_text="Motif lisible quand l'envoi n'a pas abouti.")
+    envoye_le = models.DateTimeField('Horodatage', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Envoi de rapport'
+        verbose_name_plural = 'Envois de rapport'
+        ordering = ['-envoye_le', '-id']
+        indexes = [
+            models.Index(fields=['company', 'saved_report'],
+                         name='reporting_envoi_co_rap_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='reporting_envoi_co_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.saved_report_id} · {self.canal} · {self.statut}'
+
+
 # ── FG96 — Config tableau de bord par utilisateur / palier de rôle ───────────
 
 # Ensemble complet des cartes disponibles sur le tableau de bord reporting.

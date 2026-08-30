@@ -18,7 +18,7 @@ from .calendar import (
 from .diffusion_views import rapport_partage_public
 from .geo import geo_points
 from .balance_export import balance_agee_export
-from .saved_reports_api import SavedReportViewSet
+from .saved_reports_api import EnvoiRapportViewSet, SavedReportViewSet
 from .commercial import commercial_dashboard, win_loss_by_source
 from .dashboard_config_api import DashboardConfigViewSet
 from .sav_sla import sav_sla_insight
@@ -39,6 +39,10 @@ from .vitals import collect_vital, vitals_p75
 # FG96 — CRUD + effective/ pour la config tableau de bord.
 router = DefaultRouter()
 router.register(r'saved-reports', SavedReportViewSet, basename='saved-report')
+# NTDATA40 — historique de diffusion (email/WhatsApp), lecture seule : un
+# échec d'envoi est visible avec son motif.
+router.register(r'envois-rapports', EnvoiRapportViewSet,
+                basename='envoi-rapport')
 router.register(r'dashboard-config', DashboardConfigViewSet,
                 basename='dashboard-config')
 # XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
