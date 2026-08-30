@@ -3,8 +3,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    DeploiementPartenaireViewSet, LotMigrationViewSet,
-    PlaybookInstanceViewSet, ProjetMigrationViewSet,
+    AnnuairePartenairesCertifiesView, DeploiementPartenaireViewSet,
+    LotMigrationViewSet, PlaybookInstanceViewSet, ProjetMigrationViewSet,
     ScoreCertificationView)
 
 router = DefaultRouter()
@@ -26,5 +26,9 @@ urlpatterns = [
     path('certification/<int:partenaire_id>/score/',
          ScoreCertificationView.as_view(),
          name='migration-certification-score'),
+    # NTMIG29 — annuaire interne des partenaires certifiés (lecture seule).
+    path('annuaire-partenaires-certifies/',
+         AnnuairePartenairesCertifiesView.as_view(),
+         name='migration-annuaire-partenaires-certifies'),
     path('', include(router.urls)),
 ]

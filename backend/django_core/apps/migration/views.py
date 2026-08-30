@@ -23,9 +23,9 @@ from .serializers import ScoreCertificationSerializer
 from .models import (
     DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration)
 from .serializers import (
-    DeploiementPartenaireSerializer, LotMigrationSerializer,
-    PlaybookInstanceSerializer, ProjetMigrationSerializer,
-    RapportReconciliationSerializer)
+    AnnuairePartenaireCertifieSerializer, DeploiementPartenaireSerializer,
+    LotMigrationSerializer, PlaybookInstanceSerializer,
+    ProjetMigrationSerializer, RapportReconciliationSerializer)
 
 logger = logging.getLogger(__name__)
 
@@ -556,3 +556,64 @@ class ScoreCertificationView(GenericAPIView):
                 {'detail': 'Partenaire introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(calculer_score_certification(partenaire))
+
+
+class AnnuairePartenairesCertifiesView(GenericAPIView):
+    """NTMIG29 — annuaire interne des partenaires certifiés.
+
+    Distinct du portail partenaire lui-même (owned NTPRT) : réservé à
+    l'équipe interne (Administrateur/Directeur), filtrable par
+    niveau/spécialité/zone, affiche le score PROPOSÉ (NTMIG27) et l'historique
+    des déploiements (NTMIG28). LECTURE SEULE — jamais une écriture sur la
+    fiche partenaire (qui reste un PATCH explicite sur ``crm/partenaires/``).
+    """
+
+    permission_classes = [IsDirecteurOuAdmin]
+    serializer_class = AnnuairePartenaireCertifieSerializer
+
+    def get_queryset(self):
+        """Partenaires filtrés, toujours scopés à la société de l'appelant.
+
+        Passe par ``crm.selectors`` (lecture seule) — jamais un import des
+        modèles d'une autre app métier.
+        """
+        from apps.crm import selectors as crm_selectors
+
+        params = self.request.query_params
+        return crm_selectors.partenaires_certifies_qs(
+            self.request.user.company,
+            niveau_min=params.get('niveau_min') or None,
+            specialite=params.get('specialite') or None,
+            zone=params.get('zone') or None)
+
+    def get(self, request):
+        from .certification import calculer_score_certification
+
+        rows = []
+        for partenaire in self.get_queryset():
+            score_info = calculer_score_certification(partenaire)
+            historique = list(
+                DeploiementPartenaire.objects
+                .filter(company=request.user.company, partenaire=partenaire)
+                .order_by('-date_go_live', '-created_at')
+                .values('client_final', 'statut', 'date_go_live',
+                        'note_satisfaction')[:10])
+            rows.append({
+                'id': partenaire.pk,
+                'nom': partenaire.nom,
+                'type_partenaire': partenaire.type_partenaire,
+                'zone': partenaire.zone,
+                'niveau_certification': partenaire.niveau_certification,
+                'niveau_certification_display':
+                    partenaire.get_niveau_certification_display(),
+                'specialites': partenaire.specialites or [],
+                'date_certification': partenaire.date_certification,
+                'date_expiration_certification':
+                    partenaire.date_expiration_certification,
+                'certification_expiree': partenaire.certification_expiree,
+                'nb_deploiements_reussis': partenaire.nb_deploiements_reussis,
+                'score': score_info['score'],
+                'historique_deploiements': historique,
+            })
+        serializer = self.get_serializer(rows, many=True)
+        return Response(serializer.data)

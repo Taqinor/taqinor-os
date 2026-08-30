@@ -38,6 +38,31 @@ export function labelSource(value) {
   return SOURCES.find((s) => s.value === value)?.label || value || '—'
 }
 
+/* NTMIG29 — miroir d'affichage de ``crm.Partenaire.NiveauCertification``
+   (échelle croissante, cf. ``NIVEAUX_ORDONNES`` côté serveur). */
+export const NIVEAUX_CERTIFICATION = [
+  { value: '', label: 'Tous niveaux' },
+  { value: 'aucun', label: 'Aucun' },
+  { value: 'enregistre', label: 'Enregistré' },
+  { value: 'certifie', label: 'Certifié' },
+  { value: 'or', label: 'Or' },
+  { value: 'platine', label: 'Platine' },
+]
+
+/* NTMIG29 — miroir d'affichage de ``crm.SPECIALITES_PARTENAIRE`` (liste
+   FERMÉE des modules qu'un partenaire intégrateur peut déclarer). */
+export const SPECIALITES_PARTENAIRE = [
+  { value: '', label: 'Toutes spécialités' },
+  { value: 'crm', label: 'CRM & prospection' },
+  { value: 'ventes', label: 'Ventes & devis' },
+  { value: 'compta', label: 'Comptabilité' },
+  { value: 'stock', label: 'Stock & achats' },
+  { value: 'installations', label: 'Chantiers & installations' },
+  { value: 'sav', label: 'SAV & maintenance' },
+  { value: 'rh', label: 'RH & paie' },
+  { value: 'migration', label: 'Migration de données' },
+]
+
 /** Message d'erreur lisible depuis une erreur axios (jamais « [object Object] »). */
 export function errMessage(err, repli) {
   const data = err?.response?.data
