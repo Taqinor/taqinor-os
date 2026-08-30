@@ -467,13 +467,22 @@ CHAMPS_CLONES = tuple(champ for champ in CHAMPS_LIGNE
                       if champ not in ('produit_id', 'lot_id'))
 
 
-def cloner_lignes(source, cible, *, prix_unitaire=None):
+def cloner_lignes(source, cible, *, prix_unitaire=None, remplacements=None):
     """QJR116 — recopie TOUTES les lignes de ``source`` sur ``cible``.
 
-    Le SEUL cloneur de lignes de l'app : les trois chemins de copie
-    (``dupliquer_devis``, ``creer_variante_gamme``, ``renouveler_devis``)
+    Le SEUL cloneur de lignes de l'app : les CINQ chemins de copie
+    (``dupliquer_devis``, ``creer_variante_gamme``, ``renouveler_devis``, et
+    depuis QJR224 les deux chemins de VUE ``/variante`` et ``/reviser``)
     passent par lui, donc un champ ne peut plus tomber sur un chemin et pas
-    sur les deux autres.
+    sur les autres.
+
+    ``remplacements`` — QJR224, appelable optionnel ``(ligne) -> dict`` de
+    champs à SUBSTITUER sur la copie. Il existe parce que ``/variante`` MET À
+    L'ÉCHELLE les quantités : sa règle d'échelle lui est propre (0,8 / 1,2 avec
+    son arrondi et son plancher), le JEU DE CHAMPS ne l'est pas. Les clés sont
+    validées contre :data:`CHAMPS_CLONES` — un champ mal orthographié lève,
+    il ne disparaît pas en silence. ``None`` (tous les appelants d'hier) ⇒
+    aucune substitution, copie byte-identique.
 
     ``prix_unitaire`` — appelable optionnel ``(ligne) -> prix``. Absent (les
     deux copies « à l'identique »), le prix de la ligne source est repris tel
@@ -510,6 +519,15 @@ def cloner_lignes(source, cible, *, prix_unitaire=None):
         champs['lot'] = jumeaux.get(ligne.lot_id)
         if prix_unitaire is not None:
             champs['prix_unitaire'] = prix_unitaire(ligne)
+        if remplacements is not None:
+            substitutions = remplacements(ligne) or {}
+            inconnus = sorted(set(substitutions) - set(CHAMPS_CLONES))
+            if inconnus:
+                raise ValueError(
+                    'Champ de clonage inconnu : %s. Le jeu cloné est déclaré '
+                    'dans CHAMPS_CLONES (apps/ventes/domain/lignes.py).'
+                    % ', '.join(inconnus))
+            champs.update(substitutions)
         creees.append(creer_ligne(cible, **champs))
     return creees
 
