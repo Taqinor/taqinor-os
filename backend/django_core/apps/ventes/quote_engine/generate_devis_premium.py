@@ -1291,10 +1291,25 @@ def _fmt2_mad(v):
 
 
 def _item_pu_ht(it):
-    """Per-line HT unit price (stored, or derived from the TTC)."""
+    """Per-line HT unit price (stored, or derived from the TTC).
+
+    QJR146 (e) — LE TAUX DE DÉRIVATION EST CELUI DE LA LIGNE. Le repli
+    divisait par le taux GLOBAL du devis (``TVA_PCT``) alors que la MÊME ligne
+    imprime son PROPRE taux dans la colonne d'à côté (``it['taux_tva']``,
+    réforme des taux par ligne) : sur un devis mixte 20 %/10 %, le P.U. HT
+    d'une ligne à 10 % sortait 8,3 % trop bas, sous un « 10% » affiché. Le
+    taux global reste le repli quand la ligne n'en porte pas.
+    """
     pu_ht = it.get("prix_unit_ht")
     if pu_ht is None:
-        pu_ht = it["prix_unit_ttc"] / (1 + TVA_PCT / 100)
+        taux = it.get("taux_tva")
+        if taux in (None, ""):
+            taux = TVA_PCT
+        try:
+            taux = float(taux)
+        except (TypeError, ValueError):
+            taux = float(TVA_PCT)
+        pu_ht = it["prix_unit_ttc"] / (1 + taux / 100)
     return float(pu_ht)
 
 
@@ -1501,9 +1516,15 @@ def equip_rows(items, totaux, hi_bat=False):
         bg = f"background:{CAL};" if is_bat else (f"background:{CG1};" if i % 2 == 1 else "")
         qty_s = int(qty) if qty == int(qty) else qty
         desc_html = _desc_lines_html(it, max_lines=2, font_pt=5)
+        # QJR146 (e) \u2014 LE TIRET NE MASQUE QUE L'ABSENCE DE PRIX, jamais un
+        # prix N\u00c9GATIF. ``pu_ht > 0`` renvoyait \u00ab \u2014 \u00bb sur une ligne \u00e0 montant
+        # n\u00e9gatif (une reprise, un geste commercial pass\u00e9 en ligne) alors que
+        # ce montant P\u00c8SE dans le sous-total imprim\u00e9 juste dessous : le client
+        # ne pouvait pas rapprocher les lignes du total. Seul un prix NUL
+        # continue de s'afficher en tiret.
         dash = "\u2014"
-        pu_ht_s = _fmt2(pu_ht) if pu_ht > 0 else dash
-        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht > 0 else dash
+        pu_ht_s = _fmt2(pu_ht) if pu_ht else dash
+        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht else dash
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
@@ -2317,7 +2338,14 @@ def page3():
             # RIB bar
             f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
             f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
-            f'{ENT_RIB_LINE.format(cg7=CG7)}</div>'
+            # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
+            # ``ENT_RIB_LINE`` est RECONSTRUITE à l'ingestion avec la raison
+            # sociale, la banque et le RIB du tenant (échappés HTML, ce qui ne
+            # touche PAS les accolades) : une raison sociale portant « { » ou
+            # « } » faisait lever ``.format()`` (KeyError/ValueError) ICI, hors
+            # de tout try — le PDF entier échouait sur un caractère du nom de
+            # la société. ``str.replace`` ne lit aucun champ de format.
+            f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
             f'</div>'
             f'</div>'
         )
@@ -3990,6 +4018,32 @@ def apply_quote_data(data: dict) -> None:
     TOTAUX_SANS = _totaux_canoniques("totaux_sans")
     TOTAUX_AVEC = _totaux_canoniques("totaux_avec")
     TOTAUX_ALL = data.get("totaux_all") or None
+
+    # ── QJR146 (e) — UN SEUL TOTAL PAR OPTION, ET IL EST PROUVÉ ──────────────
+    # ``total_sans``/``total_avec`` (scalaires TTC des vignettes d'option) et
+    # ``totaux_sans``/``totaux_avec`` (la chaîne canonique Sous-total → TVA →
+    # Total TTC du tableau) étaient ingérés depuis QUATRE clés INDÉPENDANTES,
+    # sans le moindre invariant : une charge utile où elles divergent imprimait
+    # deux totaux différents pour la MÊME option, sur deux pages du même
+    # document. Le builder les DÉRIVE l'une de l'autre
+    # (``total_sans = totaux_sans['ttc']``) — on exige donc ici qu'elles
+    # coïncident, et on LÈVE plutôt que de choisir en silence (même doctrine
+    # que ``_totaux_canoniques`` ci-dessus, QJR162).
+    for _cle_scalaire, _valeur, _totaux in (
+            ("total_sans", TOTAL_SANS, TOTAUX_SANS),
+            ("total_avec", TOTAL_AVEC, TOTAUX_AVEC)):
+        try:
+            _ttc = float(_totaux.get("ttc"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "generate_devis_premium: totaux canoniques sans TTC lisible "
+                "(%s) — le moteur ne choisit pas entre deux totaux."
+                % _cle_scalaire)
+        if abs(_ttc - float(_valeur)) > 0.01:
+            raise ValueError(
+                "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
+                "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
+                "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
     PAY_A = int(_terms.get("acompte", 30))
     PAY_M = int(_terms.get("materiel", 60))

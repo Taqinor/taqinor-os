@@ -171,6 +171,24 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             prix_cible_kwc=devis.prix_cible_kwc,
             devise=devis.devise,
             taux_change=devis.taux_change,
+            # ── QJR146 (a) — LA SŒUR HÉRITE DES CONDITIONS, PAS DU MONTANT ──
+            # Sans ``echeancier``, une gamme sœur repartait sur l'échéancier
+            # par DÉFAUT de la société pendant que son frère gardait celui qui
+            # avait été négocié — deux offres envoyées ENSEMBLE (défaut
+            # ``GAMME_ENVOI_LES_DEUX``) avec deux acomptes différents, dont un
+            # que personne n'a décidé.
+            # ``acompte_montant`` est délibérément EXCLU : c'est un MONTANT en
+            # MAD qui décrit le total du frère, et la docstring de cette
+            # fonction promet à la sœur « sa composition et SES prix propres ».
+            # Le pourcentage, lui, est une CONDITION : il suit.
+            echeancier=(list(devis.echeancier)
+                        if isinstance(devis.echeancier, list)
+                        else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
+            entite=devis.entite,
+            custom_data=(dict(devis.custom_data)
+                         if isinstance(devis.custom_data, dict)
+                         else devis.custom_data),
             created_by=user,
             version=devis.version + 1,
             version_parent=root,

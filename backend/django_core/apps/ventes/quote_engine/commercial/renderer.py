@@ -46,9 +46,22 @@ def _augment(data: dict) -> dict:
     if not any((it.get("quantite") or 0) > 0 for it in items):
         raise Unsupported("commercial quote has no priced lines")
 
+    # ── QJR146 (g) — LA CHAÎNE DE TOTAUX EST EXIGÉE, PAS REPLIÉE SUR ZÉRO ───
+    # ``equip.py`` lisait ``totaux_all`` clé par clé avec un repli à 0 : une
+    # charge utile privée de ce bloc imprimait « Sous-total HT 0 · Remise 0 ·
+    # TVA 0 » sous un Total TTC réel (repris de ``_invest_ttc``) — une chaîne
+    # de totaux fausse, en bas d'un tableau d'équipements juste. Même doctrine
+    # que le moteur legacy (QJR162) : sans totaux canoniques, ce renderer
+    # REFUSE le devis, et le dispatch retombe sur le moteur legacy en le
+    # DISANT (repli journalisé), au lieu de publier des zéros.
+    _totaux = data.get("totaux_all")
+    if not isinstance(_totaux, dict) or not _totaux:
+        raise Unsupported("commercial quote has no canonical totals "
+                          "(totaux_all)")
+
     invest = _num(data.get("display_total")) or 0.0
     if invest <= 0:
-        invest = _num((data.get("totaux_all") or {}).get("ttc")) or 0.0
+        invest = _num(_totaux.get("ttc")) or 0.0
     if invest <= 0:
         raise Unsupported("commercial quote has no investment total")
 

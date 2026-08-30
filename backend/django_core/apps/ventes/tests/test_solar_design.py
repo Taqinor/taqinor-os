@@ -504,9 +504,11 @@ class EvChargerSizingTest(SimpleTestCase):
 
     def test_pv_surplus_from_kwc(self):
         # Sans production fournie, déduite de kWc × productible / 365.
+        # QJR146 (h) — le productible est DONNE par l'appelant : la fonction
+        # n'arme plus le forfait 1700 en silence.
         res = sd.ev_charger_sizing(
             borne_kw=7.4, pv_kwc=5.0, pv_surplus_kwh=10.0,
-            energy_per_session_kwh=8.0)
+            energy_per_session_kwh=8.0, productible_kwh_kwc_year=1700.0)
         prod = res["pv_impact"]["pv_daily_production_kwh"]
         # 5 kWc × 1700 / 365 ≈ 23.3 kWh/jour.
         self.assertAlmostEqual(prod, 23.29, places=1)
@@ -565,9 +567,10 @@ class BatteryStorageSizingTest(SimpleTestCase):
 
     def test_autoconso_surplus_from_kwc(self):
         # Sans production fournie, déduite de kWc × productible / 365.
+        # QJR146 (h) — productible EXPLICITE (plus de forfait 1700 arme).
         res = sd.battery_storage_sizing(
             mode="autoconso", pv_kwc=6.0, pv_self_consumption_kwh=10.0,
-            night_load_kwh=100.0)
+            night_load_kwh=100.0, productible_kwh_kwc_year=1700.0)
         prod = res["autoconso"]["pv_daily_production_kwh"]
         # 6 kWc × 1700 / 365 ≈ 27.95 kWh/jour.
         self.assertAlmostEqual(prod, 27.95, places=1)
@@ -885,13 +888,26 @@ class HourlySelfConsumptionTest(SimpleTestCase):
         # autoconso = min = [0, 0, 3, 0] = 3.
         self.assertEqual(res["self_consumed_kwh"], 3.0)
 
-    def test_mismatched_lengths_aligned_to_shorter(self):
+    def test_mismatched_lengths_refusees(self):
+        """QJR146 (h) — deux courbes NON VIDES de longueurs différentes ne
+        décrivent pas la même période : elles étaient TRONQUÉES sur la plus
+        courte (une charge de 288 points contre 24 h de production sortait des
+        totaux « annuels » calculés sur un jour, avec un avertissement que rien
+        n'imprime). Elles lèvent désormais."""
+        with self.assertRaises(ValueError) as ctx:
+            sd.hourly_self_consumption(
+                load_curve=[1, 1, 1, 1, 1],
+                production_curve=[2, 2])
+        self.assertIn("longueurs différentes", str(ctx.exception))
+
+    def test_serie_vide_n_est_pas_une_divergence(self):
+        """Rien de connu d'un côté ⇒ 0 h et des zéros, jamais une exception
+        ni 24 zéros qui tronqueraient l'autre série."""
         res = sd.hourly_self_consumption(
-            load_curve=[1, 1, 1, 1, 1],
-            production_curve=[2, 2])
-        self.assertEqual(res["hours"], 2)
-        self.assertTrue(any("longueurs différentes" in w
-                            for w in res["warnings"]))
+            load_curve=[1.0] * 288, production_curve=[])
+        self.assertEqual(res["hours"], 0)
+        self.assertEqual(res["total_production_kwh"], 0.0)
+        self.assertEqual(res["self_consumed_kwh"], 0.0)
 
     def test_8760_annual_curve(self):
         # Une courbe annuelle 8760 h fonctionne comme un profil 24 h.

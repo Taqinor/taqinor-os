@@ -44,6 +44,8 @@ suit pas un patch posé ici, et réciproquement. D'où la règle :
 """
 import logging
 import os
+# QJR146 (i) — comparaison d'OTP à temps constant (``compare_digest``).
+import secrets
 
 logger = logging.getLogger("apps.ventes.services")
 
@@ -313,7 +315,11 @@ def validate_esign_otp(link, otp_code):
     stored = cache.get(cache_key)
     if stored is None:
         return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
-    if stored != otp_code.strip():
+    # QJR146 (i) — COMPARAISON À TEMPS CONSTANT. ``!=`` sur des chaînes
+    # sort au premier caractère différent : le temps de réponse fuit la
+    # longueur du préfixe correct. Le plafond de tentatives (QX10) borne
+    # le brute-force, il ne ferme pas ce canal-là.
+    if not secrets.compare_digest(str(stored), otp_code.strip()):
         # QX10 — incrémente le compteur d'échecs (TTL = fenêtre du code).
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
@@ -417,7 +423,11 @@ def validate_otp_lecture(link, otp_code):
     stored = cache.get(cache_key)
     if stored is None:
         return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
-    if stored != otp_code.strip():
+    # QJR146 (i) — COMPARAISON À TEMPS CONSTANT. ``!=`` sur des chaînes
+    # sort au premier caractère différent : le temps de réponse fuit la
+    # longueur du préfixe correct. Le plafond de tentatives (QX10) borne
+    # le brute-force, il ne ferme pas ce canal-là.
+    if not secrets.compare_digest(str(stored), otp_code.strip()):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
@@ -468,7 +478,20 @@ def _send_otp_email(email, code, devis_ref, company=None):
 
     N100(c) white-label : la signature vient de la société du devis
     (``email_service._signature`` — BrandedTemplate ou « L'équipe {nom} »),
-    jamais d'une marque codée en dur."""
+    jamais d'une marque codée en dur.
+
+    QJR146 (i) — DESTINATAIRE VIDE ⇒ ``False``, SANS APPELER ``send_mail``.
+    Un email absent partait jusqu'au backend d'envoi, qui décide seul de lever
+    ou non : sur le backend console (développement) et sur certains backends
+    tolérants, ``send_mail(..., [''])`` NE lève pas et cette fonction rendait
+    ``True`` — l'appelant croyait alors le code envoyé et l'écran l'annonçait
+    au client. L'absence de destinataire est un fait connu AVANT l'appel : on
+    le dit, une fois, ici.
+    """
+    if not str(email or '').strip():
+        logger.warning('QJ11: email OTP non envoyé (devis %s) — '
+                       'aucune adresse destinataire', devis_ref)
+        return False
     try:
         from django.core.mail import send_mail
         from django.conf import settings
@@ -1637,6 +1660,7 @@ def renouveler_devis(devis, *, user=None):
     Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
     Renvoie le nouveau devis."""
     from rest_framework.exceptions import ValidationError
+    from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.utils.company_settings import create_numbered
@@ -1663,14 +1687,25 @@ def renouveler_devis(devis, *, user=None):
             # dont le payback en dit un autre. La CONFIGURATION reste.
             etude_params=etude_params_pour_copie(devis.etude_params),
             prix_cible_kwc=devis.prix_cible_kwc,
-            echeancier=devis.echeancier, devise=devis.devise,
+            # QJR146 (a) — l'échéancier était bien copié, mais par RÉFÉRENCE :
+            # deux devis partageaient la même liste JSON, exactement le piège
+            # que QJR117 a fermé pour ``etude_params``. Et ``acompte_pct``
+            # (une CONDITION) comme ``custom_data`` manquaient.
+            # ``acompte_montant`` reste EXCLU : ce renouvellement re-tarife les
+            # lignes au catalogue courant, donc le montant de l'acompte du
+            # devis source ne décrit plus ce total.
+            echeancier=(list(devis.echeancier)
+                        if isinstance(devis.echeancier, list)
+                        else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
+            custom_data=(dict(devis.custom_data)
+                         if isinstance(devis.custom_data, dict)
+                         else devis.custom_data),
+            devise=devis.devise,
             taux_change=devis.taux_change, entite=devis.entite,
             created_by=user, devis_origine=racine,
             numero_renouvellement=(devis.numero_renouvellement or 0) + 1)
         return cree['obj']
-
-    create_numbered(Devis, company, 'devis', _save)
-    nouveau = cree['obj']
 
     def _prix_courant(ligne):
         """Le prix que CE renouvellement pose sur la ligne clonée.
@@ -1691,12 +1726,27 @@ def renouveler_devis(devis, *, user=None):
                 'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
             return ligne.prix_unitaire
 
-    # QJR116 — le renouvellement clone par le MÊME cloneur unique que le
-    # duplicata et la gamme sœur (``domain/lignes.cloner_lignes``) ; il n'y
-    # ajoute que sa re-tarification. C'est là que la liste maintenue à la
-    # main avait le plus divergé : elle clonait ``optionnelle`` sans
-    # ``variante``, et aucune des trois ne clonait ``lot``.
-    cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
+    # ── QJR146 (c) — LE DEVIS ET SES LIGNES NAISSENT ENSEMBLE, OU PAS ──────
+    # ``create_numbered`` n'ouvrait de transaction que pour son PROPRE retry de
+    # référence (savepoint de ``core.numbering.create_with_reference``), et
+    # elle était commitée avant le clonage : une erreur pendant
+    # ``cloner_lignes`` laissait un renouvellement BROUILLON à ZÉRO ligne —
+    # donc à zéro dirham — dans la liste du commercial, sous un numéro
+    # définitivement consommé. Les deux entrent maintenant dans le MÊME bloc.
+    # Le savepoint interne reste valide : imbriqué, ``atomic()`` pose un
+    # SAVEPOINT, et le retry sur collision de référence continue de rouler
+    # jusqu'à lui seul.
+    # ``rafraichir_etudes_du_devis`` reste DEHORS : best-effort par contrat
+    # (aucun rafraîchisseur ne lève), il n'a pas à tenir la transaction.
+    with transaction.atomic():
+        create_numbered(Devis, company, 'devis', _save)
+        nouveau = cree['obj']
+        # QJR116 — le renouvellement clone par le MÊME cloneur unique que le
+        # duplicata et la gamme sœur (``domain/lignes.cloner_lignes``) ; il
+        # n'y ajoute que sa re-tarification. C'est là que la liste maintenue à
+        # la main avait le plus divergé : elle clonait ``optionnelle`` sans
+        # ``variante``, et aucune des trois ne clonait ``lot``.
+        cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
     # QJR117 — les études du RENOUVELLEMENT sont recalculées sur ses lignes
     # RE-TARIFÉES (force : le dimensionnement se court-circuite sinon sur
     # empreinte concordante, et l'édition de ligne ne rattrape pas).
