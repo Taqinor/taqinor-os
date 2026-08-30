@@ -440,12 +440,21 @@ def _chantier_composants(chantier):
 
     Lecture STRICTEMENT publique : ``prix_achat`` n'est jamais lu — impossible
     de le faire fuiter dans un document client.
+
+    QJR128 — ne liste QUE l'équipement RÉELLEMENT installé : ``option_lines``
+    (voie canonique déjà utilisée par la facturation, ``views/bon_commande.py``)
+    filtre par l'option acceptée (``option_effective``) et exclut les lignes
+    ``optionnelle`` non activées. Un devis à option unique, un pompage ou une
+    liste libre gardent toutes leurs lignes — comportement inchangé ; seul un
+    VRAI devis à deux options est filtré, comme l'échéancier et la nomenclature
+    du bon de commande.
     """
     devis = getattr(chantier, "devis", None)
     if devis is None:
         return []
+    from apps.ventes.utils.options import option_lines
     out = []
-    for ligne in devis.lignes.select_related("produit").all():
+    for ligne in option_lines(devis):
         produit = ligne.produit
         garantie = ((getattr(produit, "garantie", None) or "").strip()
                     if produit else "")
