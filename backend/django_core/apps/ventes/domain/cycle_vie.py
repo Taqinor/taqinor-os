@@ -1309,35 +1309,31 @@ def renouveler_devis(devis, *, user=None):
     create_numbered(Devis, company, 'devis', _save)
     nouveau = cree['obj']
 
-    for ligne in devis.lignes.all().select_related('produit'):
-        prix = ligne.prix_unitaire
-        # QJR84 / D12 — un prix TAPÉ par le commercial n'est pas re-tarifé,
-        # même par un renouvellement : c'est un prix NÉGOCIÉ, pas une valeur
-        # de catalogue périmée. Sans cette garde, le marqueur ``prix_manuel``
-        # recopié plus bas protégerait une valeur qui vient d'être réécrite.
-        if ligne.produit_id is not None and not ligne.prix_manuel:
-            try:
-                prix = prix_applicable(
-                    produit=ligne.produit, client=devis.client,
-                    quantite=ligne.quantite)['prix']
-            except Exception:  # noqa: BLE001 — repli sur le prix historique
-                logger.exception(
-                    'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
-                prix = ligne.prix_unitaire
-        creer_ligne(
-            nouveau, produit=ligne.produit,
-            designation=ligne.designation, quantite=ligne.quantite,
-            prix_unitaire=prix, remise=ligne.remise,
-            taux_tva=ligne.taux_tva, type_ligne=ligne.type_ligne,
-            ordre=ligne.ordre, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle,
-            # QJR84 — le renouvellement RECOPIE le devis : les marqueurs de
-            # saisie manuelle (D12) et l'option servie (L-2OPT) font partie de
-            # ce qui est recopié, sinon le nouveau devis rouvre à la
-            # réécriture des prix négociés et perd son découpage en options.
-            variante=ligne.variante,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel)
+    def _prix_courant(ligne):
+        """Le prix que CE renouvellement pose sur la ligne clonée.
+
+        QJR84 / D12 — un prix TAPÉ par le commercial n'est pas re-tarifé,
+        même par un renouvellement : c'est un prix NÉGOCIÉ, pas une valeur de
+        catalogue périmée. Sans cette garde, le marqueur ``prix_manuel``
+        cloné protégerait une valeur qui vient d'être réécrite.
+        """
+        if ligne.produit_id is None or ligne.prix_manuel:
+            return ligne.prix_unitaire
+        try:
+            return prix_applicable(
+                produit=ligne.produit, client=devis.client,
+                quantite=ligne.quantite)['prix']
+        except Exception:  # noqa: BLE001 — repli sur le prix historique
+            logger.exception(
+                'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
+            return ligne.prix_unitaire
+
+    # QJR116 — le renouvellement clone par le MÊME cloneur unique que le
+    # duplicata et la gamme sœur (``domain/lignes.cloner_lignes``) ; il n'y
+    # ajoute que sa re-tarification. C'est là que la liste maintenue à la
+    # main avait le plus divergé : elle clonait ``optionnelle`` sans
+    # ``variante``, et aucune des trois ne clonait ``lot``.
+    cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
 
     activity.log_devis_note(
         nouveau, user,
@@ -1464,5 +1460,5 @@ def verifier_devis_envoyable(devis):
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
 from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
+from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402,F401
 from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401

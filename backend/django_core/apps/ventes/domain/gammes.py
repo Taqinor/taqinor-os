@@ -129,7 +129,7 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     par défaut le devis porteur EST la gamme recommandée.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.domain.lignes import creer_ligne
+    from apps.ventes.domain.lignes import cloner_lignes
     from apps.ventes.utils.company_settings import create_numbered
 
     nom_gamme = str(nom_gamme or '').strip()
@@ -172,22 +172,10 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     create_numbered(Devis, company, 'devis', _save)
     soeur = holder['obj']
 
-    for ligne in devis.lignes.all():
-        creer_ligne(
-            soeur, produit=ligne.produit, designation=ligne.designation,
-            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label,
-            # QJR84 — la variante de gamme est une COPIE CONFORME du devis :
-            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
-            # marqueurs de saisie manuelle (D12) en font partie. Sans eux, la
-            # sœur perdait son découpage en options et rouvrait à la
-            # réécriture les prix négociés de l'originale.
-            variante=ligne.variante, optionnelle=ligne.optionnelle,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel,
-        )
+    # QJR116 — même cloneur unique que le duplicata et le renouvellement
+    # (``domain/lignes.cloner_lignes``) : la sœur est une COPIE CONFORME, et
+    # ce qu'« à l'identique » recouvre n'est plus retapé à trois endroits.
+    cloner_lignes(devis, soeur)
 
     # La SOURCE reçoit son propre libellé (défaut : l'autre nom proposé) et la
     # recommandation quand la sœur ne la prend pas.

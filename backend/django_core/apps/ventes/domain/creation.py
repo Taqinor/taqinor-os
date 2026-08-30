@@ -128,22 +128,12 @@ def dupliquer_devis(devis, *, user):
     create_numbered(Devis, company, 'devis', _save)
     copie = holder['obj']
 
-    for ligne in devis.lignes.all():
-        creer_ligne(
-            copie, produit=ligne.produit, designation=ligne.designation,
-            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label,
-            # QJR84 — « les lignes sont clonées à l'identique » (docstring) :
-            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
-            # marqueurs de saisie manuelle (D12) sont de l'identique. Sans eux,
-            # la copie perdait son découpage en options et rouvrait à la
-            # réécriture les prix et quantités tapés par le commercial.
-            variante=ligne.variante, optionnelle=ligne.optionnelle,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel,
-        )
+    # QJR116 — UN SEUL cloneur pour les trois chemins de copie
+    # (``domain/lignes.cloner_lignes``) : la liste de champs n'est plus
+    # maintenue à la main ici, donc elle ne peut plus diverger de celle du
+    # renouvellement ou de la gamme sœur. Elle reprend le jeu COMPLET —
+    # y compris le rattachement au LOT, qui manquait aux trois.
+    cloner_lignes(devis, copie)
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference, getattr(company, 'id', '?'))
     return copie
@@ -1505,7 +1495,10 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402,F401
+    cloner_lignes,
+    creer_ligne,
+)
 from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _panneau_pour_calepinage,
     arbitrer_compte_calepinage,
