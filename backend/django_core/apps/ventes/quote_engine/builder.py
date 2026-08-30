@@ -266,11 +266,11 @@ _is_battery = _sd.is_battery
 
 
 # Capacité batterie lisible sur une désignation (« Batterie 5 kWh », « 10kwh »).
-# Miroir de solar.js KWH_RE / parseKwh — même regex, même défaut 5 kWh par
-# ligne batterie sans capacité écrite (ordre fondateur 18/08 : « chaque
-# batterie apporte 5 kWh par jour »).
+# Même expression que ``solar.js KWH_RE`` — la parité des deux lecteurs est
+# VÉRIFIÉE par la fixture de contrat
+# ``apps/ventes/contract_samples/classification_lignes.json`` (QJR2) et le test
+# de parité QJR91, jamais par cette phrase.
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
-BATTERY_DEFAULT_KWH = 5.0
 
 
 def _parse_kwh(text: str):
@@ -284,8 +284,21 @@ def _parse_kwh(text: str):
 
 
 def _battery_kwh_from_items(rows, blob=None) -> float:
-    """Capacité batterie TOTALE (kWh) d'une liste d'items — miroir
-    ``solar.js batteryKwhFromLines`` (quantité × kWh lus, défaut 5 kWh)."""
+    """Capacité batterie TOTALE (kWh) d'une liste d'items : Σ quantité × kWh
+    LUS sur la désignation.
+
+    QJR92b (29/08/2026) — RÈGLE FONDATEUR « zéro chiffre inventé ». Une ligne
+    batterie dont la désignation ne porte AUCUN kWh lisible (« Batterie Deye
+    BOS-B-Pack ») contribuait un défaut fabriqué de 5,0 kWh, publié tel quel
+    sur le PDF client : un nombre qu'aucune donnée ne soutient. Elle contribue
+    désormais 0 — la capacité SOUS-ESTIME au lieu d'inventer, et les deux
+    appelants (``or None``) rendent alors ``None``, donc le document OMET la
+    valeur au lieu d'en afficher une fausse. C'est la règle BAT5DEF que
+    ``solar.js batteryKwhFromLines`` applique depuis le 26/08 ; la parité des
+    deux lecteurs est VÉRIFIÉE par
+    ``apps/ventes/contract_samples/classification_lignes.json`` (QJR2) et le
+    test de parité QJR91.
+    """
     total = 0.0
     for it in rows or []:
         text = blob(it) if blob else (it.get("designation") or "")
@@ -297,7 +310,7 @@ def _battery_kwh_from_items(rows, blob=None) -> float:
             qty = 0.0
         if qty <= 0:
             continue
-        total += qty * (_parse_kwh(text) or BATTERY_DEFAULT_KWH)
+        total += qty * (_parse_kwh(text) or 0.0)
     return total
 
 

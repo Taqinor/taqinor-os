@@ -944,7 +944,37 @@ export const isReseauInverter = (d) => {
 // suffit). Sert à repérer la ligne dont le prix réel provisionne le
 // remplacement à l'année 12 — jamais un forfait sur l'investissement.
 export const isAnyInverter = (d) => _norm(d).includes('onduleur')
-export const isPanel = (d) => _norm(d).includes('panneau')
+
+// ── QJR92a (29/08/2026) — DÉTECTION PANNEAU ÉLARGIE CÔTÉ ÉCRAN ──────────────
+// Le seul mot « panneau » rejetait les désignations que les vendeurs écrivent
+// vraiment (« Module PV 550 W », « Canadian Solar TOPHiKu7 710 Wc ») : l'écran
+// comptait alors 0 panneau et REFUSAIT l'enregistrement d'un devis dont la
+// seule ligne panneau s'appelle ainsi, pendant que le PDF la classait
+// correctement. La table de référence est la fixture de contrat
+// `apps/ventes/contract_samples/classification_lignes.json` (QJR2), et le test
+// de parité QJR91 fait tourner ces prédicats sur chacun de ses cas.
+// Les marques ne suffisent JAMAIS seules : Canadian Solar, Huawei et consorts
+// vendent aussi des onduleurs — il faut un watt lisible en plus.
+const PANEL_MODULE_QUALIFIERS = ['pv', 'photovolta', 'solaire', 'solar']
+const PANEL_BRANDS = [
+  'canadian solar', 'canadien solar', 'jinko', 'longi', 'trina',
+  'ja solar', 'risen', 'sunpower', 'qcells', 'q cells', 'astronergy',
+  'znshine',
+]
+export const isPanel = (d, produitNom = '') => {
+  const blob = _norm(`${d ?? ''} ${produitNom ?? ''}`)
+  if (blob.includes('panneau')) return true
+  // Exclusions d'abord : un onduleur / une batterie / un accessoire n'est
+  // jamais un panneau, quelle que soit la marque écrite dessus.
+  if (blob.includes('onduleur') || blob.includes('batterie')
+      || blob.includes('smart meter') || blob.includes('wifi')
+      || blob.includes('dongle')) return false
+  if (blob.includes('module')
+      && PANEL_MODULE_QUALIFIERS.some(q => blob.includes(q))) return true
+  // Marque de panneau ET puissance lisible : sans watt, une marque seule reste
+  // ambiguë — on préfère l'omission à un faux positif.
+  return PANEL_BRANDS.some(b => blob.includes(b)) && WATT_RE.test(blob)
+}
 
 // F14 (26/08/2026) — panier « sans »/« avec » d'UNE ligne, MIROIR EXACT du
 // moteur PDF canonique (quote_engine/builder.py `_repartir_options`,
