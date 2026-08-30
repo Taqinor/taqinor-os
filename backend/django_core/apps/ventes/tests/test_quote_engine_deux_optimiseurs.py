@@ -676,17 +676,33 @@ class TestUnePageProductionDeSaBranche(SimpleTestCase):
         m = re.search(r">([\d   ]+) kWh/an<", html[i:i + 400])
         return re.sub(r"[^\d]", "", m.group(1)) if m else None
 
+    # QJR145 (a) — LA PUISSANCE S'IMPRIME À LA FRANÇAISE : « 5,68 kWc », plus
+    # jamais « 5.68 kWc ». Le formateur ``kwc_fr`` existait depuis l'origine
+    # SANS aucun site d'appel ; QJR145 l'a branché sur les cinq impressions de
+    # puissance du document, qui sortaient jusque-là le point décimal anglais.
+    # Ces attentes suivent donc le rendu RÉEL (vérifié : la branche « sans » ne
+    # rend qu'une seule chaîne kWc, « 5,68 kWc » ; la branche « avec »,
+    # « 6,39 kWc »). 8 × 710 W = 5,68 kWc et 9 × 710 W = 6,39 kWc : ce sont des
+    # PUISSANCES posées en dur dans ``BRANCHES``, jamais dérivées d'un
+    # productible — le recalage QJR158 (d) du repli ne les touche pas.
+    KWC_SANS = "5,68 kWc"      # 8 panneaux × 710 W
+    KWC_AVEC = "6,39 kWc"      # 9 panneaux × 710 W
+
     def test_la_branche_sans_affiche_la_production_de_ses_8_panneaux(self):
         html = F.html_onepage(onepage_branche="sans", **self.BRANCHES)
         self.assertEqual(self._prod(html), "8065")
         # …et la puissance de la même branche (garde L-2OPT, déjà en place).
-        self.assertIn("5.68 kWc", html)
-        self.assertNotIn("6.39 kWc", html)
+        # Le NÉGATIF doit porter la MÊME forme que le positif : avec l'ancien
+        # « 6.39 kWc » il serait devenu vrai par accident (cette chaîne n'est
+        # plus jamais rendue) et cesserait de garder quoi que ce soit.
+        self.assertIn(self.KWC_SANS, html)
+        self.assertNotIn(self.KWC_AVEC, html)
 
     def test_la_branche_avec_affiche_la_production_de_ses_9_panneaux(self):
         html = F.html_onepage(onepage_branche="avec", **self.BRANCHES)
         self.assertEqual(self._prod(html), "9070")
-        self.assertIn("6.39 kWc", html)
+        self.assertIn(self.KWC_AVEC, html)
+        self.assertNotIn(self.KWC_SANS, html)
 
     def test_sans_divergence_la_une_page_ne_recale_rien(self):
         d = F.donnees_legacy()
