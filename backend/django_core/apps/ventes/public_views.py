@@ -2373,7 +2373,10 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
         from .etude_horaire import (
             banque_batterie_du_devis, couverture_batterie_publique,
         )
-        banque = banque_batterie_du_devis(devis)
+        # QJR167 — cette surface ne rend le curseur « N batteries » que quand
+        # ``avec_ok`` (garde ci-dessus) : l'option effective est donc TOUJOURS
+        # « avec », nommée explicitement (jamais le défaut implicite).
+        banque = banque_batterie_du_devis(devis, option='avec')
         if not banque:
             return None
         kwc, conso, ville, lat, lon, occupation, equipements = (

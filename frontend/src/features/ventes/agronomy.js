@@ -1,34 +1,21 @@
 // Calcul du besoin en EAU agricole (méthode FAO-56) pour le devis pompage solaire.
-// Sert à dimensionner la pompe sur le mois de POINTE : ETc = ET0 × Kc (besoin net
-// cultural en mm/j), 1 mm sur 1 ha = 10 m³, volume brut pompé = net ÷ rendement
-// d'irrigation. Fonctions pures, sans I/O, défensives : jamais d'exception sur une
-// entrée invalide (on renvoie null / 0 raisonnablement). Aligné sur solar.js
-// (mode Agricole / pompage) — le débit choisi alimente ensuite selectPompeByCurve.
+// QJR166 — UN SEUL moteur, miroir strict du backend post-QJR152
+// (apps/ventes/quote_engine/agricole/agronomy.py) : le besoin de POINTE n'est
+// plus un moteur séparé (ET0 de pointe fixe × Kc mi-saison, sans pluie) mais
+// simplement le MAXIMUM de la série MENSUELLE FAO-56 (monthlyWaterDemand, le
+// graphe QX47, plus bas dans ce fichier) — même règle des deux côtés. L'ancien
+// moteur « mois de pointe » (KC_MID, ET0_PEAK_MM_J, LIVESTOCK_L_PER_DAY) est
+// supprimé avec son frère backend : il ignorait la pluie efficace et son
+// abreuvement du cheptel n'était alimenté par aucun write-path (aucun devis ne
+// porte etude.livestock côté client). Fonctions pures, sans I/O, défensives :
+// jamais d'exception sur une entrée invalide (on renvoie null / 0
+// raisonnablement). Aligné sur solar.js (mode Agricole / pompage) — le débit
+// choisi alimente ensuite selectPompeByCurve.
 
-// ── Coefficients culturaux mi-saison Kc (FAO-56, valeurs Maroc) ───────────────
-// Clé culture → Kc mid-season. Valeurs « molles » à affiner par région/variété.
-export const KC_MID = {
-  olivier: 0.70,      // à confirmer (olivier conduit, sol couvert partiel)
-  agrumes: 0.65,      // à confirmer (verger adulte)
-  maraichage: 1.05,   // à confirmer (cultures maraîchères plein développement)
-  luzerne: 0.95,      // à confirmer (entre deux coupes)
-  dattier: 0.95,      // à confirmer (palmier dattier adulte)
-  cereales: 1.15,     // à confirmer (céréales à épiaison)
-  arganier: 0.55,     // à confirmer (arganeraie, peu exigeant)
-}
-export const KC_MID_DEFAUT = 0.85 // culture inconnue → Kc moyen prudent
-
-// ── ET0 de pointe estivale (mm/jour) par région agricole marocaine ────────────
-// Clé région → ET0 max d'été (juillet-août). Valeurs indicatives à confirmer.
-export const ET0_PEAK_MM_J = {
-  'souss-massa': 7.5,      // à confirmer (Agadir / plaine du Souss)
-  doukkala: 7.0,          // à confirmer (El Jadida / Doukkala)
-  tadla: 8.0,             // à confirmer (Béni Mellal / Tadla, très chaud)
-  saiss: 7.0,             // à confirmer (Fès-Meknès / plateau du Saïss)
-  oriental: 7.5,          // à confirmer (Berkane / Oriental)
-  'draa-tafilalet': 8.0,  // à confirmer (oasis présahariennes, très chaud)
-}
-export const ET0_PEAK_DEFAUT = 7.5 // région inconnue → valeur médiane Maroc
+// Kc moyen prudent — culture inconnue (moteur mensuel, cf. cropKcMonthly plus
+// bas). Seule constante que le v1 supprimé et le v2 partagent (miroir de
+// KC_MID_DEFAUT côté agronomy.py).
+export const KC_MID_DEFAUT = 0.85
 
 // ── Rendement d'irrigation selon la technique ─────────────────────────────────
 // Goutte-à-goutte le plus efficient, gravitaire le moins. Valeurs FAO classiques.
@@ -38,17 +25,6 @@ export const IRRIGATION_EFFICIENCY = {
   gravitaire: 0.55,  // irrigation gravitaire (à la raie / submersion)
 }
 export const IRRIGATION_EFFICIENCY_DEFAUT = 0.75
-
-// ── Abreuvement du cheptel (litres/tête/jour, en pointe) ──────────────────────
-// Besoin d'eau de boisson par tête en période chaude. À confirmer (varie selon
-// production laitière, climat, alimentation).
-export const LIVESTOCK_L_PER_DAY = {
-  vache_laitiere: 150, // à confirmer (vache en lactation, forte chaleur)
-  bovin: 55,          // à confirmer (bovin viande / génisse)
-  mouton: 12,         // à confirmer
-  chevre: 10,         // à confirmer
-  volaille: 0.35,     // à confirmer (par sujet)
-}
 
 // ── Consommation annuelle brute typique (m³/ha/an) ────────────────────────────
 // Pour donner un ordre de grandeur et le calcul inverse (ha irrigables depuis un
@@ -70,57 +46,24 @@ const _num = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 
-// ── Besoin en eau d'une exploitation (cultures + cheptel), mois de POINTE ──────
-// Renvoie le détail du dimensionnement sur le mois le plus exigeant :
-//   { etcPeakMm, netM3HaDay, grossM3HaDay, cropM3Day, livestockM3Day,
-//     m3DayPeak, inputs:{...} }.
-// Ne renvoie null QUE si ni surface positive ni cheptel n'est fourni.
-export function waterDemandFromFarm({ crop, region, surfaceHa, method, trees, livestock } = {}) {
+// ── Besoin en eau de POINTE d'une exploitation ──────────────────────────────
+// QJR166 — miroir de peak_need_m3_day() (agronomy.py) : le besoin de pointe
+// EST le maximum de la série mensuelle FAO-56 (monthlyWaterDemand, plus bas
+// dans ce fichier), jamais un second moteur. Renvoie
+// { m3DayPeak, peakM3HaDay, inputs:{...} } ou null si aucune surface positive
+// n'est fournie (on ne devine pas). NOTE : `monthlyWaterDemand` est déclarée
+// plus bas via `function` (hoistée) — l'appel ici est résolu à l'exécution.
+export function waterDemandFromFarm({ crop, region, surfaceHa, method } = {}) {
   const surface = _num(surfaceHa)
-  const livestockObj = (livestock && typeof livestock === 'object') ? livestock : {}
+  if (!(surface > 0)) return null // rien à dimensionner → null, on ne devine pas
 
-  // Cheptel : somme des têtes × litres/tête/jour ÷ 1000 (→ m³/jour)
-  let livestockM3Day = 0
-  for (const key of Object.keys(livestockObj)) {
-    const lParTete = LIVESTOCK_L_PER_DAY[key]
-    if (!(lParTete > 0)) continue
-    const count = _num(livestockObj[key])
-    if (count > 0) livestockM3Day += count * lParTete / 1000
-  }
-
-  // Rien à dimensionner → null (entrée vide, on ne devine pas)
-  if (!(surface > 0) && livestockM3Day <= 0) return null
-
-  // ETc de pointe = ET0 de pointe régional × Kc mi-saison de la culture
-  const et0 = ET0_PEAK_MM_J[region] ?? ET0_PEAK_DEFAUT
-  const kc = KC_MID[crop] ?? KC_MID_DEFAUT
-  const etcPeakMm = et0 * kc
-
-  // Besoin net (mm/j → m³/ha/j : 1 mm sur 1 ha = 10 m³) puis brut (÷ rendement)
-  const netM3HaDay = etcPeakMm * 10
-  const eff = IRRIGATION_EFFICIENCY[method] ?? IRRIGATION_EFFICIENCY_DEFAUT
-  const grossM3HaDay = eff > 0 ? netM3HaDay / eff : 0
-
-  const cropM3Day = grossM3HaDay * (surface > 0 ? surface : 0)
-  const m3DayPeak = Math.round(cropM3Day + livestockM3Day)
+  const monthly = monthlyWaterDemand({ crop, region, surfaceHa: surface, method })
+  const peak = _num(monthly.peakM3FarmDay)
 
   return {
-    etcPeakMm: Math.round(etcPeakMm * 1000) / 1000,
-    netM3HaDay: Math.round(netM3HaDay * 100) / 100,
-    grossM3HaDay: Math.round(grossM3HaDay * 100) / 100,
-    cropM3Day: Math.round(cropM3Day * 100) / 100,
-    livestockM3Day: Math.round(livestockM3Day * 100) / 100,
-    m3DayPeak,
-    inputs: {
-      crop: crop ?? null,
-      region: region ?? null,
-      surfaceHa: surface,
-      method: method ?? null,
-      trees: _num(trees) || null,
-      kc,
-      et0,
-      efficiency: eff,
-    },
+    m3DayPeak: peak > 0 ? Math.round(peak) : null,
+    peakM3HaDay: monthly.peakM3HaDay,
+    inputs: monthly.inputs,
   }
 }
 
@@ -157,8 +100,8 @@ export function annualWater(m3Day, pumpingDaysPerYear = 300, peakToAvg = 0.62) {
 // ═══════════════════════════════════════════════════════════════════════════
 // QX48 — Moteur agronomique v2 (FAO-56 réel, série MENSUELLE partagée)
 // ═══════════════════════════════════════════════════════════════════════════
-// Le v1 ci-dessus (mois de POINTE) reste inchangé pour compatibilité. Le v2
-// produit une SÉRIE mensuelle d'ETc (le graphe QX47) via des stades Kc FAO-56
+// waterDemandFromFarm (ci-dessus) route par ce moteur (QJR166). Il produit une
+// SÉRIE mensuelle d'ETc (le graphe QX47) via des stades Kc FAO-56
 // (ini/dev/mid/late), des ET0 MENSUELS régionaux, crédite la pluie efficace par
 // région (le v1 surestimait le Gharb) et annualise par INTÉGRALE de la série
 // (plus le forfait plat 0,62×300 j). CHAQUE constante porte sa source ; « EST. »

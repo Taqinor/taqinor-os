@@ -2479,28 +2479,44 @@ def capacite_batterie_du_devis(devis, option='avec'):
         return None
 
 
-def banque_batterie_du_devis(devis):
-    """COUVBAT — la BANQUE de batteries d'un devis, pack par pack.
+def banque_batterie_du_devis(devis, option='avec'):
+    """COUVBAT — la BANQUE de batteries d'UNE option de ce devis, pack par pack.
 
     Renvoie ``{nb_packs, capacite_utile_totale_kwh, capacite_utile_pack_kwh,
     pack_decharge_kw, pack_charge_kw, ond_decharge_kw, ond_charge_kw}``, ou
-    ``None`` quand ce devis ne porte AUCUNE ligne batterie (« pas de
+    ``None`` quand cette option ne porte AUCUNE ligne batterie (« pas de
     stockage » — jamais un pack de capacité nulle).
+
+    QJR167 (frère non corrigé de QJR140/``capacite_batterie_du_devis``, signalé
+    au fold du 30/08) — LA SOMME EST PRISE PAR OPTION, PLUS SUR LE DEVIS ENTIER.
+    Cette fonction additionnait TOUTE ligne classée batterie de
+    ``devis.lignes.all()`` sans distinguer l'option qui la porte (même bug que
+    QJR140, même découpage amont : ``builder._repartir_options``). Sur un devis
+    à deux paliers de stockage variantés, elle additionnait donc des capacités
+    qui ne coexistent dans AUCUNE option vendue — une banque vendue nulle part,
+    qui alimentait pourtant la surface CLIENT du curseur « N batteries »
+    (``_couverture_batterie_publique``). Même filtre que QJR140
+    (:func:`ligne_dans_option`), même défaut ``'avec'`` (l'option qui porte le
+    stockage), même garantie mono-option byte-identique (lignes communes
+    ``variante=''`` comptent dans les deux options — le parc existant est
+    inchangé) et même repli ``option=None`` pour un appelant qui veut
+    sciemment la somme brute.
 
     LA CAPACITÉ EST UTILE, PAS NOMINALE (règle CAPUTIL) : chaque ligne est lue
     par ``dimensionnement.capacite_utile_batterie`` (fiche ``kwh_usable``,
     sinon ``kwh_nominal × dod_pct``, et seulement en dernier recours le kWh du
     NOM) — jamais un « 5 kWh » codé en dur, qui ne serait qu'un module du
     catalogue du jour. ``capacite_utile_pack_kwh`` est la capacité utile
-    MOYENNE d'un pack de CE devis (total ÷ quantité), c'est-à-dire le module
-    que le curseur « N batteries » ajoute réellement.
+    MOYENNE d'un pack de CETTE option (total ÷ quantité), c'est-à-dire le
+    module que le curseur « N batteries » ajoute réellement.
 
-    Les quatre puissances sont celles de :func:`puissance_batterie_du_devis`,
-    RAMENÉES AU PACK pour les packs (Σ fiches ÷ quantité — l'inverse exact du
-    « Σ valeur de fiche × quantité » qui les a construites) et laissées telles
-    quelles pour le port batterie de l'onduleur (le même onduleur sert toute
-    la banque). ``None`` partout où la fiche ne publie rien : le moteur
-    retombe alors sur sa règle conservatrice. Ne lève jamais.
+    Les quatre puissances sont celles de :func:`puissance_batterie_du_devis`
+    (elle-même non filtrée par option — hors du périmètre de ce constat, voir
+    NOTE ci-dessous), RAMENÉES AU PACK pour les packs (Σ fiches ÷ quantité —
+    l'inverse exact du « Σ valeur de fiche × quantité » qui les a construites)
+    et laissées telles quelles pour le port batterie de l'onduleur (le même
+    onduleur sert toute la banque). ``None`` partout où la fiche ne publie
+    rien : le moteur retombe alors sur sa règle conservatrice. Ne lève jamais.
     """
     try:
         from apps.ventes.dimensionnement import capacite_utile_batterie
@@ -2508,6 +2524,8 @@ def banque_batterie_du_devis(devis):
         nb_packs = 0.0
         capacite_totale = 0.0
         for ligne in devis.lignes.all():
+            if not ligne_dans_option(ligne, option):
+                continue
             designation = getattr(ligne, 'designation', '') or ''
             if classer_produit(designation) != 'batterie':
                 continue
