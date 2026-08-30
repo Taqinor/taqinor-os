@@ -191,20 +191,41 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
 // possible est un rendu React (spec RTL). La convertir en pur est IMPOSSIBLE ;
 // la retirer DESSERRERAIT la garde. Elle reste donc telle quelle, nommée pour
 // que la prochaine passe ne la prenne pas pour un oubli.
+// QJR101 — les champs nombres du marché ont suivi les quatre panneaux
+// (`generator/Panneau*.jsx`). La garde les SUIT au lieu de rester verte en ne
+// regardant plus qu'une fraction de l'écran : sans ce recalage elle passait de
+// 20 champs surveillés à 3. Un cinquième panneau de marché rejoint cette liste.
+const SURFACES_SAISIE = [
+  '../../pages/ventes/DevisGenerator.jsx',
+  '../../pages/ventes/generator/PanneauResidentiel.jsx',
+  '../../pages/ventes/generator/PanneauIndustriel.jsx',
+  '../../pages/ventes/generator/PanneauCommercial.jsx',
+  '../../pages/ventes/generator/PanneauAgricole.jsx',
+]
+
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
-  const jsx = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
-    'utf-8',
-  )
-  assert.ok(jsx.includes('noValidate'),
+  const ici = dirname(fileURLToPath(import.meta.url))
+  const lire = (rel) => readFileSync(join(ici, rel), 'utf-8')
+  assert.ok(lire(SURFACES_SAISIE[0]).includes('noValidate'),
     'le formulaire doit être noValidate (aucun rejet navigateur)')
-  for (const bad of ['step="100"', 'step="10"', 'step="1"', 'step="0.01"']) {
-    assert.ok(!jsx.includes(bad), `contrainte de saisie restrictive trouvée : ${bad}`)
+  let champsNombre = 0
+  for (const rel of SURFACES_SAISIE) {
+    const jsx = lire(rel)
+    for (const bad of ['step="100"', 'step="10"', 'step="1"', 'step="0.01"']) {
+      assert.ok(!jsx.includes(bad), `contrainte de saisie restrictive dans ${rel} : ${bad}`)
+    }
+    // Seul le curseur (type="range") garde un pas ; aucun champ nombre n'en a.
+    const numberSteps = jsx.split('type="number"').slice(1)
+      .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
+    numberSteps.forEach(s => assert.equal(s, 'any', `${rel} : champ nombre sans step="any"`))
+    champsNombre += numberSteps.length
   }
-  // Seul le curseur (type="range") garde un pas ; aucun champ nombre n'en a.
-  const numberSteps = jsx.split('type="number"').slice(1)
-    .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
-  numberSteps.forEach(s => assert.equal(s, 'any'))
+  // Cliquet : 34 champs nombres mesurés sur les cinq surfaces (le socle des
+  // factures est monté par les trois panneaux raccordés au réseau, donc compté
+  // trois fois). Un champ qui migrerait vers un fichier absent de la liste
+  // ci-dessus ferait tomber ce compte au lieu de sortir de la garde en silence.
+  assert.ok(champsNombre >= 34,
+    `seulement ${champsNombre} champs nombres sous garde (34 attendus)`)
 })
 
 // QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne

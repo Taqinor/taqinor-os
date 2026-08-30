@@ -13,6 +13,13 @@ import { panneauxPourKwc } from '../../features/ventes/solar.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+// QJR101 — les champs de saisie du marché vivent maintenant dans les quatre
+// panneaux. La garde « rien n'est jamais rejeté » les lit AVEC l'écran : sinon
+// elle resterait verte en ne surveillant plus que les champs restés en haut.
+const SAISIES = [gen].concat(
+  ['Residentiel', 'Industriel', 'Commercial', 'Agricole'].map(m => readFileSync(
+    path.join(__dirname, 'generator', `Panneau${m}.jsx`), 'utf8')),
+)
 
 // QJR99 — `kwcCible` (comme les dix autres champs de dimensionnement) est
 // désormais porté par le reducer QJR87 : l'écran le LIT sous le même nom, et
@@ -70,5 +77,5 @@ test('la garde de saisie du générateur est intacte (rien n’est jamais rejet�
   // Le nouveau champ accepte n'importe quelle valeur tapée.
   assert.match(gen, /id="gen-kwc-cible" type="number" min="0" step="any"/)
   assert.match(gen, /<form id="gen-form"[\s\S]{0,200}?noValidate/)
-  assert.doesNotMatch(gen, /step="0\.\d+"/)
+  for (const src of SAISIES) assert.doesNotMatch(src, /step="0\.\d+"/)
 })
