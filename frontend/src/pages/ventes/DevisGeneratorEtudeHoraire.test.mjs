@@ -204,7 +204,9 @@ test('DevisGenerator : « Appliquer cette taille » pose nbPanneaux\\/panelW pui
   // handleAutoFill — JAMAIS une réimplémentation d'autoFillLines.
   const effetIdx = DG.indexOf('    if (!recalcDimTick) return')
   assert.ok(effetIdx > -1, "l'effet de composition (compositionSeq) est introuvable")
-  const effet = DG.slice(effetIdx, effetIdx + 300)
+  // Fenêtre 700 : le corps de l'effet porte depuis la passe Fable M5c un
+  // commentaire de 6 lignes (différé en microtâche, règle set-state-in-effect).
+  const effet = DG.slice(effetIdx, effetIdx + 700)
   assert.match(effet, /handleAutoFill\(\)/)
   assert.doesNotMatch(effet, /autoFillLines\(/)
 })
