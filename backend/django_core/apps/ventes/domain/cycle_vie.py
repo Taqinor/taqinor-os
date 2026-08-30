@@ -535,15 +535,42 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
         # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
         # de confirmation inchangé.
         acompte_bloc = _acceptance_deposit_block(devis, lignes=lignes)
+        # ── QJR134 / ES11 — L'EMAIL NE PROMET QUE CE QUI EXISTE ────────────
+        #
+        # CE QUI ÉTAIT FAUX. ``_create_esign_record`` est best-effort : son
+        # échec est avalé en WARNING, ``_store_signed_pdf`` sort alors
+        # silencieusement, et cet email affirmait INCONDITIONNELLEMENT « Votre
+        # signature électronique a été enregistrée » — au client, par écrit,
+        # alors qu'il pouvait n'exister ni image, ni IP, ni empreinte, ni PDF
+        # scellé. Le devis étant gelé à l'édition après acceptation, la
+        # situation n'était même pas rattrapable.
+        #
+        # La phrase (et la mention de l'exemplaire signé joint) ne part
+        # désormais que si l'enregistrement de signature EXISTE vraiment. Sur
+        # le chemin nominal — celui de toutes les signatures en ligne — il
+        # existe, et l'email est byte-identique à celui d'hier.
+        preuve = False
+        try:
+            from apps.ventes.models import DevisSignature
+            preuve = DevisSignature.objects.filter(devis=devis).exists()
+        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien
+            preuve = False
+        bloc_signature = (
+            "Votre signature électronique a été enregistrée conformément "
+            "à la loi 43-20 relative à l'échange électronique de données "
+            "juridiques.\n\n"
+        ) if preuve else ''
+        bloc_exemplaire = (
+            "Vous trouverez ci-joint votre exemplaire signé pour vos "
+            "archives.\n\n"
+        ) if preuve else ''
         corps = (
             f"{salut}\n\n"
             f"Nous avons bien reçu votre acceptation du devis "
             f"{devis.reference}.\n\n"
-            f"Votre signature électronique a été enregistrée conformément "
-            f"à la loi 43-20 relative à l'échange électronique de données "
-            f"juridiques.\n\n"
+            f"{bloc_signature}"
             f"{acompte_bloc}"
-            f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
+            f"{bloc_exemplaire}"
             f"Merci pour votre confiance.\n\n"
             f"Cordialement,\n{_signature_societe(devis.company)}"
         )
@@ -863,10 +890,67 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
                        getattr(devis, 'reference', '?'), exc)
 
 
+def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
+                                 groupe=None):
+    """QJR134 — L'AVAL D'UNE ACCEPTATION, dans la transaction de l'appelant.
+
+    YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles doit
+    effondrer ses SŒURS (même groupe ``version_parent``=racine) plutôt que de
+    les laisser ``is_active=True`` et elles-mêmes acceptables (double comptage
+    du funnel). Ne touche jamais un devis d'un autre groupe ni les révisions
+    déjà terminales. Un devis sans variante est inchangé.
+
+    M6 — puis PUBLIE ``devis_accepted`` : c'est cet événement qui déclenche la
+    chaîne bon-commande / facture / chantier. Il vit ici, avec l'effondrement,
+    parce que les deux forment UNE seule vente : les séparer, c'est exactement
+    l'état partiel qu'ES3 décrit.
+
+    ``groupe`` — les devis du groupe DÉJÀ verrouillés par l'appelant (il les a
+    lus sous ``select_for_update``, dans l'ordre des ``pk``). Absent, ils sont
+    relus et verrouillés ici, dans le même ordre : la fonction est donc
+    utilisable seule, sans jamais relâcher la garantie anti-course.
+
+    N'ATTRAPE RIEN : une exception remonte, donc la transaction de l'appelant
+    est annulée en bloc. C'est le point de QJR134.
+    """
+    from django.db.models import Q
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_accepted
+
+    racine = devis.version_parent_id or devis.pk
+    if groupe is None:
+        groupe = list(
+            Devis.objects
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+    for soeur in groupe:
+        # Le filtre est celui d'hier, mot pour mot — mais appliqué aux lignes
+        # DÉJÀ VERROUILLÉES plutôt que par une seconde requête non verrouillée.
+        if soeur.pk == devis.pk or not soeur.is_active:
+            continue
+        if soeur.company_id != devis.company_id:
+            continue
+        if soeur.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+            continue
+        soeur.statut = Devis.Statut.REFUSE
+        soeur.date_refus = date_acc
+        soeur.motif_refus = 'variante non retenue'
+        soeur.is_active = False
+        soeur.save(update_fields=[
+            'statut', 'date_refus', 'motif_refus', 'is_active'])
+        activity.log_devis_refusal(
+            soeur, user, 'variante non retenue', date_acc)
+
+    devis_accepted.send(
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
-                 idempotent_reaccept=True):
+                 idempotent_reaccept=True, rejouer_aval=False):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -883,13 +967,21 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     an already-accepted devis raises ``AcceptError(conflict=True)`` → 409,
     preserving the ERR33 re-accept guard.
 
+    QJR134 — TOUT CE QUI ÉCRIT EN BASE EST DANS UNE SEULE TRANSACTION, sous un
+    verrou pris sur le GROUPE DE VARIANTES entier : statut, chatter, preuve de
+    signature, attribution, effondrement des sœurs et ``devis_accepted``
+    tombent ou tiennent ENSEMBLE. Le PDF scellé, les emails et l'événement Meta
+    restent APRÈS le commit (entrées-sorties best-effort). ``rejouer_aval=True``
+    rejoue l'aval d'un devis DÉJÀ accepté — le geste de réparation d'un devis
+    accepté AVANT ce lot, quand le statut pouvait être commité seul.
+
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
     from django.db import transaction
+    from django.db.models import Q
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
-    from core.events import devis_accepted
 
     # QX41 — verrou anti-course sur le chemin public d'acceptation : deux POST
     # concurrents (double-clic / rejeu) pouvaient tous deux passer le contrôle
@@ -907,30 +999,60 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.now().date()
     with transaction.atomic():
-        try:
-            # NPLUS1 (27/08/2026) — la relecture verrouillée est LA seule
-            # instance utilisée par tout le reste de l'acceptation : ses trois
-            # relations sont jointes ici plutôt que relues paresseusement une
-            # par une plus bas (``_create_esign_record`` → ``devis.company``,
-            # ``_send_acceptance_emails``/``_notify_seller_accepted`` →
-            # ``devis.client``, ``_persist_attribution`` → ``devis.lead``).
-            # Aucun changement de comportement : les mêmes objets, en une
-            # requête.
-            # ``of=('self',)`` est OBLIGATOIRE ici : ``company`` et ``lead``
-            # sont nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL
-            # refuse « FOR UPDATE » sur le côté nullable d'une jointure
-            # externe. On verrouille donc la SEULE ligne devis, exactement le
-            # verrou d'avant (QX41, anti-course sur le double POST).
-            devis = (Devis.objects
-                     .select_related('client', 'company', 'lead')
-                     .select_for_update(of=('self',))
-                     .get(pk=devis.pk))
-        except Devis.DoesNotExist:
+        # ── QJR134 / ES14 — LE GROUPE DE VARIANTES EST VERROUILLÉ EN ENTIER ──
+        #
+        # CE QUI ÉTAIT FAUX. Le verrou ne portait que sur LA ligne du devis
+        # accepté (``of=('self',)``), et l'effondrement des sœurs s'exécutait
+        # hors de lui, sans ``select_for_update`` : deux POST concurrents sur
+        # DEUX jetons du MÊME groupe de variantes basculaient TOUS DEUX en
+        # « accepté » — deux événements, deux chaînes bon-commande/facture pour
+        # une seule vente.
+        #
+        # On verrouille donc TOUT le groupe (la racine et ses variantes), et
+        # dans un ORDRE DÉTERMINISTE (``order_by('pk')``) : deux acceptations
+        # concurrentes sur deux sœurs prennent les verrous dans le MÊME ordre,
+        # donc l'une attend l'autre au lieu de s'inter-bloquer. La seconde
+        # relit alors des sœurs déjà refusées et son propre devis déjà accepté.
+        #
+        # NPLUS1 (27/08/2026, préservé) — les trois relations sont jointes ici
+        # plutôt que relues paresseusement plus bas (``_create_esign_record``
+        # → ``devis.company``, ``_send_acceptance_emails``/
+        # ``_notify_seller_accepted`` → ``devis.client``,
+        # ``_persist_attribution`` → ``devis.lead``).
+        # ``of=('self',)`` reste OBLIGATOIRE : ``company`` et ``lead`` sont
+        # nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL refuse
+        # « FOR UPDATE » sur le côté nullable d'une jointure externe.
+        racine = devis.version_parent_id or devis.pk
+        groupe = list(
+            Devis.objects
+            .select_related('client', 'company', 'lead')
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+        courant = next((d for d in groupe if d.pk == devis.pk), None)
+        if courant is None:
             raise AcceptError('Devis introuvable.', conflict=True)
+        devis = courant
 
         # Re-submit on an already-accepted devis: a no-op for the tokenized
         # web proposal, but rejected (409) for the in-app action (ERR33 guard).
         if devis.statut == Devis.Statut.ACCEPTE:
+            # QJR134 — LE REJEU DE L'AVAL. Depuis ce lot, « accepté » SIGNIFIE
+            # que tout l'aval a été commité avec le statut (voir ci-dessous) :
+            # c'est LE drapeau de complétion. Un devis accepté AVANT ce lot
+            # peut, lui, porter un état partiel (statut commité seul, puis un
+            # abonné en échec) que la garde d'idempotence rendait
+            # définitivement irréparable — ``rejouer_aval=True`` rejoue cet
+            # aval sans retoucher ni le statut, ni le tampon, ni la signature.
+            if rejouer_aval:
+                _effondrer_soeurs_et_publier(
+                    devis=devis, user=user, date_acc=date_acc,
+                    # Un devis accepté vient TOUJOURS de brouillon/envoyé
+                    # (garde ERR33) et le SEUL récepteur qui lit
+                    # ``ancien_statut`` s'en sert pour avancer un funnel qui ne
+                    # recule jamais : le rejeu est donc idempotent.
+                    ancien=Devis.Statut.ENVOYE, groupe=groupe)
+                return devis
             if idempotent_reaccept:
                 return devis
             raise AcceptError('Ce devis est déjà accepté.', conflict=True)
@@ -1012,42 +1134,77 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis.option_acceptee = option
         devis.save(update_fields=[
             'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
-    activity.log_devis_acceptance(devis, user, nom, date_acc, option)
-    if ip:
-        # Trace the e-signature origin IP in the chatter (Q7) without a new
-        # column — kept beside the acceptance stamp for the audit trail.
-        activity.log_devis_note(
-            devis, user, f'Signature en ligne acceptée — IP {ip}')
 
-    # NPLUS1 (27/08/2026) — LES LIGNES DU DEVIS, CHARGÉES UNE SEULE FOIS. Le
-    # statut vient d'être basculé sous verrou : les lignes ne changent plus
-    # pendant la suite de l'acceptation. Elles alimentent l'empreinte de
-    # signature (``compute_content_hash``) ET l'acompte de l'email
-    # (``_acceptance_deposit_block`` → ``next_tranche`` → ``option_totaux``),
-    # qui refaisaient chacun leur propre requête lignes+produit. Best-effort :
-    # un échec de chargement rend ``None`` et chaque appelé requête comme
-    # avant — jamais une acceptation cassée pour une optimisation.
-    try:
-        lignes_devis = list(devis.lignes.select_related('produit').all())
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        lignes_devis = None
+        # ── QJR134 / ES3 — L'AVAL EST DANS LA MÊME TRANSACTION ─────────────
+        #
+        # CE QUI ÉTAIT FAUX. Le ``with transaction.atomic()`` se refermait
+        # ICI : le statut était commité SEUL, puis chatter, signature,
+        # attribution, effondrement des sœurs et ``devis_accepted.send``
+        # s'exécutaient hors transaction et hors verrou, sans
+        # ``ATOMIC_REQUESTS`` (vérifié : absent des settings). Un échec chez
+        # UN abonné (``send()`` propage la première exception) laissait un
+        # devis « accepté » SANS bon de commande ni facture — et la garde
+        # d'idempotence rendait le rejeu impossible : l'état partiel était
+        # PERMANENT et SILENCIEUX.
+        #
+        # Tout ce qui écrit en BASE est donc remonté ici : soit la vente
+        # entière est enregistrée, soit RIEN ne l'est et le client peut
+        # simplement re-signer. « accepté » redevient ainsi un drapeau de
+        # complétion qui dit la vérité.
+        #
+        # CE QUI RESTE DEHORS, et pourquoi : le PDF scellé, les emails et
+        # l'événement Meta sont des ENTRÉES-SORTIES. Les exécuter dans la
+        # transaction tiendrait les verrous pendant un rendu de document et un
+        # appel réseau — et surtout, un email annonçant une vente qui vient
+        # d'être annulée par un rollback serait pire que pas d'email du tout.
+        activity.log_devis_acceptance(devis, user, nom, date_acc, option)
+        if ip:
+            # Trace the e-signature origin IP in the chatter (Q7) without a new
+            # column — kept beside the acceptance stamp for the audit trail.
+            activity.log_devis_note(
+                devis, user, f'Signature en ligne acceptée — IP {ip}')
 
-    # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
-    # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
-    # on ne crée pas de second enregistrement — la signature d'origine fait foi.
-    _create_esign_record(
-        devis=devis, nom=nom, ip=ip,
-        user_agent=user_agent, consentement=consentement,
-        signature_image=signature_image, signed_at_client=signed_at_client,
-        on_behalf_of=on_behalf_of, lignes=lignes_devis,
-    )
-    # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
-    # du devis pour que l'attribution reste lossless même si le lead est fusionné.
-    try:
-        _persist_attribution(devis=devis)
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning('QJ9: _persist_attribution échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+        # NPLUS1 (27/08/2026) — LES LIGNES DU DEVIS, CHARGÉES UNE SEULE FOIS.
+        # Le statut vient d'être basculé sous verrou : les lignes ne changent
+        # plus pendant la suite de l'acceptation. Elles alimentent l'empreinte
+        # de signature (``compute_content_hash``) ET l'acompte de l'email
+        # (``_acceptance_deposit_block`` → ``next_tranche`` →
+        # ``option_totaux``), qui refaisaient chacun leur propre requête
+        # lignes+produit. Best-effort : un échec de chargement rend ``None`` et
+        # chaque appelé requête comme avant — jamais une acceptation cassée
+        # pour une optimisation.
+        try:
+            lignes_devis = list(devis.lignes.select_related('produit').all())
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            lignes_devis = None
+
+        # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
+        # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
+        # on ne crée pas de second enregistrement — la signature d'origine fait
+        # foi.
+        _create_esign_record(
+            devis=devis, nom=nom, ip=ip,
+            user_agent=user_agent, consentement=consentement,
+            signature_image=signature_image, signed_at_client=signed_at_client,
+            on_behalf_of=on_behalf_of, lignes=lignes_devis,
+        )
+        # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
+        # etude_params du devis pour que l'attribution reste lossless même si
+        # le lead est fusionné.
+        try:
+            _persist_attribution(devis=devis)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'QJ9: _persist_attribution échoué pour devis %s : %s',
+                getattr(devis, 'reference', '?'), exc)
+
+        # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
+        # l'événement, sous le verrou du groupe pris plus haut.
+        _effondrer_soeurs_et_publier(
+            devis=devis, user=user, date_acc=date_acc, ancien=ancien,
+            groupe=groupe)
+
+    # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -1066,31 +1223,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
-    # YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles
-    # doit effondrer ses SŒURS (même groupe version_parent=root) plutôt que
-    # de les laisser is_active=True et elles-mêmes acceptables (double
-    # comptage du funnel). Ne touche jamais un devis d'un autre groupe ni les
-    # révisions déjà terminales. Un devis sans variante est inchangé.
-    from django.db.models import Q
-    root = devis.version_parent_id or devis.id
-    siblings = Devis.objects.filter(
-        company=devis.company, is_active=True,
-        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
-    ).filter(
-        Q(version_parent_id=root) | Q(pk=root)
-    ).exclude(pk=devis.pk)
-    for sibling in siblings:
-        sibling.statut = Devis.Statut.REFUSE
-        sibling.date_refus = date_acc
-        sibling.motif_refus = 'variante non retenue'
-        sibling.is_active = False
-        sibling.save(update_fields=[
-            'statut', 'date_refus', 'motif_refus', 'is_active'])
-        activity.log_devis_refusal(
-            sibling, user, 'variante non retenue', date_acc)
-
-    devis_accepted.send(
-        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
     # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
     try:
