@@ -1004,6 +1004,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     _sans_paires = _drop_huawei_accessories(_sans_paires)
     _avec_paires = _drop_huawei_accessories(_avec_paires)
+
+    # ── QJR124 — LA LISTE LIBRE EST FILTRÉE ICI, PAS AU RENDU ───────────────
+    # Le filtrage QF9 ci-dessus ne s'applique qu'à ``sans_items``/``avec_items``.
+    # Le chemin « devis libre / pompage / scénario non apparié » (plus bas :
+    # ``_all_rows = items`` et ``onepage_source = items``) servait donc la liste
+    # COMPLÈTE : ``totaux_all`` était figé sur les lignes NON filtrées pendant
+    # que le renderer re-filtrait le TABLEAU au dernier moment. Le client lisait
+    # alors un « Total TTC » incluant un accessoire absent du tableau.
+    # On filtre EN AMONT, une fois, pour que le tableau et les totaux
+    # décrivent le même panier.
+    # La règle est celle du BON SENS sur une liste à plat : les accessoires
+    # Huawei ne sont retirés que si AUCUN onduleur Huawei n'est facturé — une
+    # liste libre portant à la fois un onduleur Huawei et un onduleur Deye
+    # garde légitimement le Smart Meter du premier.
+    def _aucun_onduleur_huawei(rows):
+        inverters = [it for it in rows if _is_inverter(_blob(it))]
+        if not inverters:
+            return True
+        return not any(
+            "huawei" in (f"{it.get('designation', '')} {it.get('marque', '')} "
+                         f"{it.get('_produit_nom', '')}").lower()
+            for it in inverters)
+
+    _items_libres = list(items)
+    if _aucun_onduleur_huawei(items):
+        _items_libres = [it for it in items
+                         if not _is_smart_meter(it.get("designation", ""))
+                         and not _is_wifi_dongle(it.get("designation", ""))]
     sans_items = [it for _, it in _sans_paires]
     avec_items = [it for _, it in _avec_paires]
     # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
@@ -1463,7 +1491,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif scenario == 'Sans batterie' and has_reseau:
         _all_rows = sans_items
     else:
-        _all_rows = items
+        # QJR124 — la liste libre DÉJÀ filtrée (accessoires Huawei orphelins) :
+        # les totaux ne peuvent plus inclure une ligne absente du tableau.
+        _all_rows = _items_libres
     totaux_all = _canonical_totaux(_all_rows)
 
     # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
@@ -2258,7 +2288,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Liste libre / pompage : les lignes du devis entier. La branche se
         # déduit alors de la composition RÉELLEMENT facturée — un panier qui
         # porte une batterie est l'option « avec », sinon « sans ».
-        onepage_source = items
+        # QJR124 — MÊME liste que ``_all_rows`` ci-dessus (filtrée en amont).
+        onepage_source = _items_libres
         onepage_branche = 'avec' if has_batterie else 'sans'
     onepage_note_batterie = deux_options
 

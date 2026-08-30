@@ -67,13 +67,26 @@ def _guard_huawei_accessories(items):
     (dongle) quand l'onduleur des lignes n'est pas Huawei. Le builder filtre
     déjà ces lignes en amont ; ce garde-fou empêche qu'une ligne obsolète glissée
     dans ``data`` réapparaisse dans le PDF. Huawei détecté sur la désignation +
-    la marque de l'onduleur des lignes fournies."""
+    la marque de l'onduleur des lignes fournies.
+
+    QJR124 — n'est PLUS appliqué au tableau une-page : ses lignes sont filtrées
+    en amont par le builder, en même temps que ``totaux_all``, de sorte que la
+    somme des lignes rendues et le Total TTC imprimé décrivent le même panier
+    (le re-filtrage au rendu retirait une ligne DÉJÀ comptée dans le total).
+    Il ne subsiste que sur les listes PAR OPTION, dont les totaux sont eux
+    aussi calculés sur des listes filtrées.
+
+    QJR124 — la détection passe de ``all`` à ``any`` : sur une liste portant
+    DEUX marques d'onduleur (Huawei réseau + Deye hybride), ``all`` retirait le
+    Smart Meter de l'onduleur Huawei RÉELLEMENT facturé. Un accessoire n'est
+    retiré que s'il est ORPHELIN — aucun onduleur Huawei sur la liste.
+    """
     rows = items or []
     inverters = [it for it in rows
                  if "onduleur" in (it.get("designation", "") or "").lower()]
     if not inverters:
         return list(rows)
-    is_huawei = all(
+    is_huawei = any(
         "huawei" in (f"{it.get('designation', '')} "
                      f"{it.get('marque', '')}").lower()
         for it in inverters)
@@ -3742,8 +3755,10 @@ def render_html_for(data: dict) -> str:
     """
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":
-        return build_html_onepage(
-            _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
+        # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
+        # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
+        # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
+        return build_html_onepage(_esc_items(data.get("all_items", [])))
     return build_html()
 
 
