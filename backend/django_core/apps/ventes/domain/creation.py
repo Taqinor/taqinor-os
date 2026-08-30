@@ -215,9 +215,28 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
 
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
+
+    QJR95 (M5, bascule 3/5) — CETTE FONCTION EST DEVENUE UN ADAPTATEUR. Ce
+    qu'elle garde est la LECTURE DU CALEPINAGE : d'un layout 3D tirer un compte
+    de panneaux, un wattage, un kWc, un scénario et une toiture. C'est la seule
+    chose que ce chemin sait faire et que les quatre autres ne savent pas, donc
+    la seule qui reste ici. Tout ce qui suivait — composer, vérifier, créer,
+    écrire les lignes, écrire l'étude, finaliser — était une recopie des mêmes
+    étapes dans un ordre qui n'était celui d'aucun autre chemin ; elle est
+    SUPPRIMÉE et remplacée par un appel à ``pipeline.appliquer``.
+
+    DEUX GAINS ASSUMÉS (R4-C.5, portés au DONE LOG) :
+
+    * les QUATRE ÉTUDES sont désormais rafraîchies. Ce chemin n'appelait
+      ``rafraichir_etudes_du_devis`` **pas du tout** : un devis né du calepinage
+      partait sans bloc horaire, sans tableau de dimensionnement et sans profils
+      comparatifs, et n'en recevait qu'au premier enregistrement ultérieur ;
+    * la PRÉ-VÉRIFICATION passe aux trois scénarios (QJR82). Elle n'existait ici
+      que dans la vue appelante, en version mono-scénario : un devis à deux
+      options pouvait naître avec un seul onduleur composable, et ne servir
+      qu'une des deux options qu'il promet au client.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
 
     if client is None:
         if lead is None:
@@ -228,8 +247,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     result = dict((layout or {}).get('result') or {})
     nb_panneaux = int(result.get('panels') or 0)
     kwc = float(result.get('kwc') or 0)
-    annual_kwh = result.get('annualKwh')
-    savings = result.get('savings')
+    # QJR95 — ``annualKwh`` / ``savings`` ne sont plus relus ICI : la
+    # production et les économies que le calepinage porte sont écrites par
+    # l'étape 6 (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME
+    # bloc ``result`` du layout transmis. Les relire des deux côtés, c'était
+    # deux lecteurs pour une donnée.
 
     # FG248 — pont 3D toiture → ERP : extrait la config toiture (surface/pans/
     # orientation/inclinaison/kWc) du builder 3D. Quand le bloc ``result`` ne
@@ -277,83 +299,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     wants_battery = ('batterie' in scenario or 'hybride' in scenario
                      or bool(layout.get('battery')))
 
-    # ── Compose the equipment lines from the catalogue ──
     # PVKIT — le KIT COMPLET du simulateur (structures, socles, accessoires,
     # tableau de protection, installation, transport…), plus le squelette
     # panneau + onduleur ± batterie d'hier : voir ``composition_residentielle``.
     # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
     kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
-    # Sans ``journal``, on ne fournit AUCUN canal d'avertissement : la
-    # composition retombe alors sur son log interne — comportement historique
-    # strictement inchangé. Fournir une liste que personne ne lit reviendrait
-    # à ÉTEINDRE ce log.
-    _avertissements = [] if journal is not None else None
-    # ── QJR80 — L'ÉTAPE `composer` DU PIPELINE, LA MÊME QUE L'APERÇU ────────
-    # Le jeu de paramètres n'est plus construit ici : il est NOMMÉ une fois,
-    # dans ``domain/pipeline.IntentionComposition``, et le dry-run
-    # (``composer_devis_residentiel``) remplit le MÊME. ``mppt_paires`` et
-    # ``structure_type`` cessent donc de tomber en route entre l'aperçu que le
-    # vendeur approuve et le devis réellement créé.
-    #
-    # L-2OPT — la fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux »
-    # ET quand l'appelant a réellement une recommandation « avec » à opposer ;
-    # ``composer`` porte cet arbitrage (et le filtre ``isinstance`` qui allait
-    # avec), à l'identique.
-    line_specs = composer(IntentionComposition(
-        company=company,
-        kwc=kwc_composition,
-        nb_panneaux=nb_panneaux,
-        panel_watt=watt,
-        # Le scénario du layout, dit dans le SEUL vocabulaire du pipeline.
-        # ``deux_options`` l'emporte : c'est déjà ce que faisait la
-        # composition, où ``avec_batterie`` n'a aucun effet dès que la forme
-        # est à deux options.
-        scenario=(COMPOSITION_LES_DEUX if deux_options
-                  else (COMPOSITION_AVEC if wants_battery
-                        else COMPOSITION_SANS)),
-        structure_type=structure_type,
-        taux_tva=taux_tva,
-        mppt_paires=mppt_paires,
-        # PVCOMPAT — le raccordement du client, quand l'appelant le connaît.
-        phase=phase,
-        dimensionnement_avec=dimensionnement_avec,
-        avertissements=_avertissements,
-    ))
-    if journal is not None:
-        journal['marques_manquantes'] = list(
-            getattr(line_specs, 'marques_manquantes', ()) or ())
-        journal['avertissements'] = list(_avertissements or ())
-        journal['nb_panneaux'] = getattr(line_specs, 'nb_panneaux', 0)
-        journal['kwc_reel'] = getattr(line_specs, 'kwc_reel', 0.0)
-
-    etude_params = {}
-    # PVSCE — le SCÉNARIO est stocké dès la création. Sans lui, le moteur PDF
-    # (QF6) retombe sur l'inférence par les lignes, qui se trompe dès que la
-    # composition est partielle. On stocke ce que les lignes peuvent RÉELLEMENT
-    # servir : « Avec batterie » exige l'onduleur hybride ET la batterie.
-    # U2 — un devis à DEUX OPTIONS ne stocke ni « sans » ni « avec » : il
-    # stocke « les deux », le seul libellé qui dise au moteur PDF de rendre la
-    # comparaison. Il faut que les lignes puissent RÉELLEMENT servir les deux
-    # côtés (onduleur réseau d'un côté, hybride + batterie de l'autre) — sinon
-    # on retombe sur le libellé mono-option, même garde anti-mensonge
-    # qu'``_scenario_stocke``.
-    _a_batterie = any(_is_battery(s.designation) for s in line_specs)
-    _a_hybride = any(_is_hybrid_inverter(s.designation) for s in line_specs)
-    _a_reseau = any(_is_reseau_inverter(s.designation) for s in line_specs)
-    if deux_options and _a_reseau and _a_hybride and _a_batterie:
-        etude_params['scenario'] = SCENARIO_LES_DEUX
-    else:
-        etude_params['scenario'] = _scenario_stocke(_a_batterie and _a_hybride)
-    if annual_kwh is not None:
-        etude_params['production_annuelle'] = int(annual_kwh)
-    if savings is not None:
-        etude_params['economies_annuelles'] = int(savings)
-    if kwc:
-        etude_params['puissance_kwc'] = kwc
-    # FG248 — la config toiture importée du builder 3D est conservée avec le
-    # devis (prête à servir au chantier).
-    if toiture:
-        etude_params['toiture'] = toiture
 
     # QJ21 — enrich roof_layout with a ``_pans_geometry`` key carrying the
     # PROCESSED per-pan data (azimut_deg, inclinaison_deg, kwc, nb_panneaux,
@@ -363,56 +313,76 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     if toiture and toiture.get('pans'):
         stored_layout['_pans_geometry'] = toiture['pans']
 
-    def _create(ref):
-        devis = Devis.objects.create(
-            company=company,
-            reference=ref,
-            client=client,
-            lead=lead,
-            statut=Devis.Statut.BROUILLON,
-            taux_tva=taux_tva,
-            remise_globale=remise_globale,
-            created_by=user,
-            mode_installation=Devis.ModeInstallation.RESIDENTIEL,
-            etude_params=etude_params or None,
-            roof_layout=stored_layout,
-        )
-        # U3/PVORD — l'ordre VOULU est posé EXPLICITEMENT (``ordre=index``),
-        # jamais laissé au tri de repli sur ``id`` : c'est la même garantie que
-        # l'écran s'était donnée, et sans elle l'ordre par défaut de la société
-        # ne survivrait pas à la première renumérotation.
-        for index, spec in enumerate(line_specs):
-            creer_ligne(
-                devis,
-                produit=spec.produit,
-                designation=spec.designation,
-                quantite=Decimal(str(spec.quantite)),
-                prix_unitaire=Decimal(spec.prix_unitaire),
-                remise=Decimal('0'),
-                ordre=index,
-                # L-2OPT — '' sur toute composition mono-optimum : la colonne
-                # ne se remplit que quand la fusion a réellement distingué les
-                # deux options.
-                variante=getattr(spec, 'variante', '') or '',
-            )
-        return devis
+    # L'ÉTUDE QUE CE CHEMIN APPORTE, et lui seul : le kWc que le TOIT modélise
+    # et la configuration de toiture importée du builder 3D (FG248, prête à
+    # servir au chantier). Le pipeline la transporte jusqu'à la création ; il
+    # n'en dérive rien. Le kWc, lui, sera RE-POSÉ par son propriétaire sur les
+    # lignes réellement écrites (QJR63, étape 8) — le calepinage modélise à
+    # 720 W constants quand le devis vend le panneau RÉEL (710 W sur
+    # DEV-202608-0007), et stocker les deux mettait deux bases de puissance
+    # dans le même document.
+    etude_initiale = {}
+    if kwc:
+        etude_initiale['puissance_kwc'] = kwc
+    if toiture:
+        etude_initiale['toiture'] = toiture
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
-    # QJR63 — LE kWc EST RE-POSÉ PAR SON PROPRIÉTAIRE, sur les LIGNES qui
-    # viennent d'être créées. Le kWc du calepinage 3D est celui de roofPro
-    # (720 W constants) ; le devis, lui, vend le panneau RÉEL (710 W sur
-    # DEV-202608-0007). Les stocker tous les deux mettait deux bases de
-    # puissance dans le même document — c'est exactement ce que PVUNI corrige
-    # au RENDU, et que la donnée STOCKÉE contredisait jusqu'ici.
-    poser_puissance_kwc(devis)
-    # QX23be — fige la marge interne dès la création (manager-only).
-    refresh_marge_snapshot(devis)
-    # PV42 — la boucle se ferme ici : calepinage rangé → conception électrique
-    # par pan. Meilleur effort : un échec ne fait JAMAIS perdre le devis.
-    concevoir_electrique_du_devis(devis, origine='création')
+    # ── QJR95 — LE PIPELINE, DANS SON ORDRE UNIQUE ─────────────────────────
+    # La cible est SOUVERAINE : elle vient du toit que le commercial a dessiné,
+    # et l'étape 2 ne redimensionne donc rien. Le scénario du layout est dit
+    # dans le SEUL vocabulaire du pipeline — ``deux_options`` l'emporte, comme
+    # le faisait déjà la composition (où ``avec_batterie`` n'a aucun effet dès
+    # que la forme est à deux options). PVCOMPAT (``phase``), QJR80
+    # (``mppt_paires`` / ``structure_type``) et L-2OPT (``dimensionnement_avec``)
+    # sont transmis par les mêmes champs que les quatre autres origines.
+    resultat = appliquer(None, IntentionDevis(
+        origine=ORIGINE_CALEPINAGE,
+        company=company,
+        user=user,
+        lead=lead,
+        client=client,
+        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+        cible=CibleDevis(
+            nb_panneaux=nb_panneaux,
+            panel_watt=watt,
+            kwc=kwc_composition,
+            source='calepinage',
+            dimensionnement_avec=dimensionnement_avec),
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        layout=stored_layout,
+        etude_initiale=etude_initiale or None,
+        taux_tva=taux_tva,
+        remise_globale=remise_globale,
+        structure_type=structure_type,
+        mppt_paires=mppt_paires,
+        phase=phase,
+    ))
+    devis = resultat['devis']
+    line_specs = resultat['composition']
+    avertissements = resultat['avertissements']
+
+    # U3 — le canal de l'appelant, rempli sur place comme avant. Il porte en
+    # plus, désormais, ce que l'ÉCRIVAIN de lignes a refusé de faire (QJR83,
+    # forfaits au panneau) : la composition n'était que la moitié des choses
+    # qu'un commercial doit apprendre.
+    if journal is not None:
+        journal['marques_manquantes'] = list(
+            getattr(line_specs, 'marques_manquantes', ()) or ())
+        journal['avertissements'] = list(avertissements or ())
+        journal['nb_panneaux'] = getattr(line_specs, 'nb_panneaux', 0)
+        journal['kwc_reel'] = getattr(line_specs, 'kwc_reel', 0.0)
+    elif avertissements:
+        # Sans canal fourni, la composition journalisait elle-même ses refus.
+        # Le pipeline, lui, les COLLECTE toujours : on les journalise ici
+        # plutôt que de les laisser dans une liste que personne ne lit.
+        for message in avertissements:
+            logger.warning('Q3: devis depuis layout — %s', message)
+
     logger.info(
         'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
-        devis.reference, len(line_specs), kwc,
+        devis.reference, len(line_specs or ()), kwc,
         len(toiture.get('pans', [])) if toiture else 0,
         getattr(company, 'id', '?'))
     return devis
@@ -1447,7 +1417,11 @@ from apps.ventes.domain.pipeline import (  # noqa: E402,F401
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,
+    ORIGINE_CALEPINAGE,
+    CibleDevis,
     IntentionComposition,
+    IntentionDevis,
+    appliquer,
     composer,
     verifier,
 )

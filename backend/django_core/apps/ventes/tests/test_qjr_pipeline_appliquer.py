@@ -320,6 +320,9 @@ CHEMINS_BASCULES = {
     # QJR93 — l'écran : ``atomic`` (écrire + rafraîchir) et ``replace-lines``
     # (écrire + rafraîchir). QJR94 — ``perform_update`` (rafraîchir).
     'views/devis.py': 5,
+    # QJR95 — la création depuis un calepinage 3D : ``build_devis_from_layout``
+    # est devenue un adaptateur (elle LIT le layout, le pipeline fait le reste).
+    'domain/creation.py': 1,
 }
 
 
