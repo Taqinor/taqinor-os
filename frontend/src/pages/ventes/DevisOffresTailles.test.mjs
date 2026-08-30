@@ -85,7 +85,10 @@ test('DevisGenerator.jsx monte <DevisOffresTailles> UNE fois, avec editId/modeIn
 test('le composant reste SOUS le montage recalcDim/Aperçu — coordination avec la lane du bouton « Recalculer le dimensionnement » (correction #5), jamais entrelacé', () => {
   const idxAppercu = GENERATEUR.indexOf('Aperçu de la Simulation')
   const idxTailles = GENERATEUR.indexOf('<DevisOffresTailles')
-  const idxLignes = GENERATEUR.indexOf('Lignes de Produits')
+  // QJR100 — la carte « Lignes de Produits » est montée par `<LigneTable/>`
+  // (son titre vit dans `generator/LigneTable.jsx`) : l'ancre d'ordre suit le
+  // point de montage, la contrainte de position est inchangée.
+  const idxLignes = GENERATEUR.indexOf('<LigneTable')
   assert.ok(idxAppercu > -1 && idxTailles > -1 && idxLignes > -1)
   assert.ok(idxAppercu < idxTailles && idxTailles < idxLignes,
     'DevisOffresTailles doit être monté ENTRE la carte Aperçu de la Simulation et la carte Lignes de Produits')

@@ -31,7 +31,9 @@ test('QJR36 — un état compositionSourceLocale existe (même patron que sizing
 test('QJR36 — le catch du dry-run résidentiel pose compositionSourceLocale AVANT composeLocalement, sans changer le repli', () => {
   const idx = DG.indexOf("const { data } = await ventesApi.composerDevis(body)")
   assert.ok(idx > -1, "l'appel composerDevis est introuvable")
-  const bloc = DG.slice(idx, idx + 700)
+  // Fenêtre élargie (700→1300) : QJR99 a ajouté la note de bascule dans le
+  // catch ; l'ordre et le contenu vérifiés, eux, sont inchangés.
+  const bloc = DG.slice(idx, idx + 1300)
   // Succès : la bannière est effacée AVANT d'appliquer la composition serveur.
   assert.match(bloc, /setCompositionSourceLocale\(null\)\s*\n\s*appliquerCompositionServeur\(data\)/,
     'le succès doit effacer compositionSourceLocale avant appliquerCompositionServeur')
@@ -40,10 +42,15 @@ test('QJR36 — le catch du dry-run résidentiel pose compositionSourceLocale AV
   assert.match(bloc, /catch \(err\) \{/)
   assert.match(bloc, /console\.error\('composerDevis \(dry-run\) indisponible, repli local :', err\)/,
     'le console.error existant doit rester (comportement inchangé)')
-  assert.match(bloc, /setCompositionSourceLocale\(err\?\.message \|\| 'panne réseau\/serveur'\)/)
+  // QJR99 — la raison n'est plus rédigée dans ce catch : `raisonRepli` (moitié
+  // pure de `useComposition`) la produit, ce qui la rend STRUCTURELLE. La cause
+  // brute qu'elle reçoit est INCHANGÉE, et l'ordre catch → pose → repli aussi.
+  assert.match(bloc, /setCompositionSourceLocale\(raisonRepli\(err\?\.message \|\| 'panne réseau\/serveur'\)\)/)
+  assert.match(DG, /import \{ raisonRepli \} from '\.\.\/\.\.\/features\/ventes\/quote\/hooks\/useComposition'/,
+    'la raison de repli doit venir du module de composition, jamais d\'une phrase locale')
   // composeLocalement() doit venir APRÈS la pose de l'état, dans le même catch.
   const catchIdx = bloc.indexOf('catch (err) {')
-  const setIdx = bloc.indexOf('setCompositionSourceLocale(err')
+  const setIdx = bloc.indexOf('setCompositionSourceLocale(raisonRepli(err')
   const composeIdx = bloc.indexOf('composeLocalement()', catchIdx)
   assert.ok(catchIdx > -1 && setIdx > catchIdx && composeIdx > setIdx,
     'ordre attendu : catch → setCompositionSourceLocale(raison) → composeLocalement()')

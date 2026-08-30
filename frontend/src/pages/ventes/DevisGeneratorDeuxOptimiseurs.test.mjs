@@ -39,22 +39,41 @@ test('DevisGenerator : fusionnerVariantes est importé de solar.js', () => {
   assert.match(DG, /\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/)
 })
 
-test('computeAutoSizing : calcule les DEUX optima (sans + avec), le SANS reste au niveau plat (contrat NbPanneauxTouched)', () => {
+// QJR102 — LE SECOND BALAYAGE (`optAvec`, `avecBatterie: true`, exposé en
+// `.avec`) EST SUPPRIMÉ de l'écran : il était RÉSIDENTIEL-ONLY et le
+// résidentiel ne passe plus par ce balayage depuis U3-MOTEUR ; son unique
+// lecteur (`deuxValeursDim.localAvec`) était lui-même injoignable. Le second
+// optimiseur RESTE dans `solar.js` (décision fondateur D11) et garde sa
+// couverture propre — `solar.deuxOptimiseurs.test.mjs`, inchangé.
+test('computeAutoSizing : UN seul balayage (le SANS), résultat plat — contrat NbPanneauxTouched', () => {
   const needle = 'const computeAutoSizing = useCallback((hiverVal, eteVal) => {'
   const start = DG.indexOf(needle)
   assert.ok(start > -1, 'computeAutoSizing introuvable')
   const { body } = extractBracedBlock(DG, start + needle.length - 1)
-  // Le premier balayage (SANS) est inchangé.
+  // Le balayage (SANS) est inchangé.
   assert.match(body, /const opt = optimalKwcByPayback\(\{/)
-  // Le second balayage (AVEC) existe, avec avecBatterie: true — jamais utilisé
-  // avant L-2OPT.
-  assert.match(body, /const optAvec = optimalKwcByPayback\(\{/)
-  assert.match(body, /avecBatterie:\s*true,/)
-  // Le résultat plat reste le SANS (spread `sansPart`) — contrat gardé par
+  // Le résultat reste plat — contrat gardé par
   // DevisGeneratorNbPanneauxTouched.test.mjs (`sizing.nbPanneaux`).
-  assert.match(body, /result = \{ \.\.\.sansPart, avec: avecPart \}/)
-  // Jamais de chiffre inventé : sans optimum AVEC exploitable, repli sur le SANS.
-  assert.match(body, /avecPart = \(optAvec\.nbPanneaux > 0\) \? \{ besoinKwc, \.\.\.optAvec \} : sansPart/)
+  assert.match(body, /result = \{ besoinKwc, \.\.\.opt \}/)
+  // Plus AUCUN second balayage ni clé `.avec` : l'écran ne fabrique plus de
+  // divergence sans/avec côté local (règle chiffres-vérifiés).
+  assert.doesNotMatch(body, /optAvec/,
+    'le second balayage résidentiel-only doit avoir disparu (QJR102)')
+  assert.doesNotMatch(body, /avecBatterie/,
+    "l'écran ne demande plus d'optimum « avec batterie » au balayage local")
+  assert.doesNotMatch(body, /avec:\s*avecPart/)
+})
+
+test('QJR102 — plus AUCUN lecteur du `.avec` local : le dimensionnement affiché ne vient que du MOTEUR', () => {
+  assert.doesNotMatch(DG, /sizingInfo\?\.avec/,
+    'la branche locale de deuxValeursDim doit avoir disparu')
+  const needle = 'const deuxValeursDim = (() => {'
+  const start = DG.indexOf(needle)
+  assert.ok(start > -1, 'deuxValeursDim introuvable')
+  const { body } = extractBracedBlock(DG, start + needle.length - 1)
+  assert.doesNotMatch(body, /sizingInfo/,
+    "deuxValeursDim ne doit plus lire le balayage local : il est injoignable en résidentiel")
+  assert.match(body, /paireDimensionnement\(dim\?\.recommandation, dim\?\.recommandation_avec\)/)
 })
 
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
@@ -70,8 +89,10 @@ test('resolveKwcAvec : respecte nbPanneauxTouched, lit UNIQUEMENT le serveur (re
   assert.ok(start > -1, 'resolveKwcAvec introuvable')
   const { body } = extractBracedBlock(DG, start + needle.length - 1)
   // 1. touché → kwc_sans pour les deux branches (aucune divergence recomposée
-  //    par-dessus un choix déjà fait par l'utilisateur).
-  assert.match(body, /if \(nbPanneauxTouched\.current\) return kwp/)
+  //    par-dessus un choix déjà fait par l'utilisateur). QJR99 — le drapeau se
+  //    lit désormais via `toucheNbPanneauxPourComposition` (reducer QJR87), LE
+  //    lecteur qui borne le déverrouillage du recalcul à UNE transition.
+  assert.match(body, /if \(toucheNbPanneauxPourComposition\(sizing\)\) return kwp/)
   // 2. le moteur horaire serveur (source de vérité) prime dès qu'il a répondu.
   assert.match(body, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation_avec/)
   // 3. AUCUN balayage local : ce kWc est un dimensionnement (il part en
