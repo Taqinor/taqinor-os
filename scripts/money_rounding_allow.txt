@@ -1,4 +1,4 @@
-﻿# Base de reference de scripts/check_money_rounding.py (YDATA8 / QJR4).
+# Base de reference de scripts/check_money_rounding.py (YDATA8 / QJR4).
 #
 # FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
 # `|` (patron de scripts/read_modify_write_allow.txt). Les lignes vides et
@@ -101,12 +101,9 @@ backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::e
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::954cddadc518 | Tranche "Acompte" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, montant deja clampe (ERR76) dans [0, total-solde].
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::fbd79f54bc63 | Tranche "Solde" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, meme chaine que le site ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::1427d8eaee01 | Pourcentage affiche de la tranche "Acompte" (derive du montant deja arrondi) -- QJR145(c) documente que la somme des trois peut deriver de 100%, connu et accepte.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::1ab568d68a93 | Pourcentage affiche de la tranche "Materiel" -- jumeau du site ci-dessus (QJR145c).
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::9eb3fbb89e23 | Pourcentage affiche de la tranche "Solde" (cas standard 3 cases) -- jumeau des deux sites ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::b084ae3970cf | Pourcentage affiche de la tranche "Solde" (variante 2 cases, QX7b, quand la case Materiel est vide) -- meme famille que les trois sites ci-dessus.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::355ee0f9ad49 | TTC de repli du one-page quand aucun totaux_all n'est fourni par l'appelant -- meme chaine HT->remise->net->TVA que le fallback canonique, affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::a379dbcff3dd | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::apply_quote_data._fallback_totaux::993d6b29df8c | HT brut de repli (appelant legacy sans totaux_sans/avec precalcules) : sum(quantite x PU HT) -- reconstruit la meme chaine que le builder canonique.
 
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
 # QJR143 : premiere capture. Les 4 sites couvrent l'estimation kWh<-facture
