@@ -1,5 +1,6 @@
 {
   "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "forme_serveur": "complete",
   "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
   "notes": {
     "structure_de_la_reponse": "44 clés TOUJOURS présentes (littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 17 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
@@ -8,7 +9,9 @@
     "cles_avec_contrat_dedie": "Six des clés additives ont DÉJÀ leur propre contrat PACT10, plus détaillé que ce qui est repris ci-dessous (repris ici en version COMPACTE, illustrative de la NATURE seulement — le contrat dédié fait foi sur la forme complète) : `variantes_servables.json`, `profils_comparatifs.json`, `offres_tailles.json`, `calepinage_options.json`, `paliers_batterie.json`, `couverture_batterie.json`. `conception_electrique.json` documente de même la clé de BASE `conception_electrique`.",
     "additif_vs_null": "Distinction importante que `exemple`/`exemple_standard`/`exemple_sections_masquees` illustrent ensemble : une clé de BASE (les 44) qui n'a rien à montrer vaut `null` (elle reste dans la réponse — ex. `roof_image_url: null`) ; une clé ADDITIVE (les ~17) qui n'a rien à montrer est ABSENTE de la réponse (elle n'apparaît PAS du tout — jamais `\"bankable\": null`). Un consommateur qui teste `'bankable' in reponse` pour savoir si le bloc bancable existe, et `reponse.roof_image_url === null` pour savoir si la photo manque, lit donc le contrat correctement.",
     "argent": "Règle #4 partout : aucune clé de cette carte, à aucun niveau d'imbrication, ne porte `prix_achat` ni une marge — uniquement des montants CLIENT (TTC, ou HT explicitement nommé).",
-    "futur_test_de_forme": "QJR7 (M1) écrit le test qui exerce CETTE carte contre le code serveur réel — il n'est délibérément pas construit ici (M0 reste contrats seuls, aucun test)."
+    "futur_test_de_forme": "QJR7 (M1) écrit le test qui exerce CETTE carte contre le code serveur réel — il n'est délibérément pas construit ici (M0 reste contrats seuls, aucun test).",
+    "forme_serveur_qjr228": "`\"forme_serveur\": \"complete\"` (en tête de ce document) est ce qui SORT cet échantillon du chemin « doute → vert » de `scripts/check_api_shapes.py`. Avant QJR228, la garde n'appariait un exemple qu'aux routes réellement appelées par `frontend/src/api/*.js` ; cette route-ci n'est servie qu'au site public (`apps/web`, TypeScript), donc elle n'avait AUCUNE forme connue et l'échantillon était simplement sauté — la principale charge utile client de la page proposition n'était confrontée à rien, contrairement à ce qu'affirmait la docstring QJR110. La déclaration fait lire la vue `public_views.py::proposal_data` en AST (à travers l'enveloppe `_noindex(Response(payload))`) et comparer DANS LES DEUX SENS : un renommage de clé côté serveur rougit. Les SEPT autres échantillons qui partagent cet `endpoint` (`offres_tailles.json`, `couverture_batterie.json`, `dimensionnement_options.json`, `calepinage_options.json`, `paliers_batterie.json`, `profils_comparatifs.json`, `variantes_servables.json`) ne documentent QU'UNE clé additive chacun : ils ne déclarent rien et gardent le comportement d'avant (ils peuvent l'écrire `\"forme_serveur\": \"partielle\"`).",
+    "cle_detail": "`detail` figure dans `exemple` (à `null`) parce que la forme lue côté serveur est l'UNION de tout ce que la vue peut renvoyer, réponses d'erreur comprises : jeton expiré/invalide et proposition indisponible répondent `{\"detail\": \"…\"}` en 404, OTP de lecture non vérifié en 403. Même convention que `apps/ventes/contract_samples/etude_horaire.json`, dont `detail` n'apparaît que sur le 400. Cela ne contredit pas `structure_de_la_reponse` : sur une réponse 200, les 44 clés de base sont là et `detail` n'y est pas."
   },
   "exemple": {
     "niveau": "confiance",
@@ -205,7 +208,8 @@
     },
     "parametres_site": {
       "orientation": "Sud", "inclinaison_deg": 30, "source_irradiation": "PVGIS"
-    }
+    },
+    "detail": null
   },
   "exemple_standard": {
     "niveau": "standard",

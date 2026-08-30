@@ -429,6 +429,243 @@ class EchantillonDeContratTests(unittest.TestCase):
         self.assertEqual(shapes.echantillons_de_contrat(contrat_reel()), [])
 
 
+# ===========================================================================
+# QJR228 — L'ECHANTILLON DECLARE COMPLET EST CONFRONTE AU SERVEUR
+# ===========================================================================
+
+VUE_ENVELOPPEE = """
+from rest_framework.response import Response
+
+
+def _noindex(response):
+    response['X-Robots-Tag'] = 'noindex, nofollow'
+    return response
+
+
+def _not_found():
+    return _noindex(Response({'detail': 'expire'}, status=404))
+
+
+def proposal_data(request, token):
+    if token is None:
+        return _not_found()
+    payload = {
+        'reference': 'DEV-1',
+        %s: 'Amine',
+        'accepted': False,
+    }
+    payload['offres_tailles'] = _tailles(token)
+    return _noindex(Response(payload))
+"""
+
+URLS_PUBLIQUES = """
+from django.urls import path
+from .public_views import proposal_data
+urlpatterns = [path('proposal/<str:token>/data/', proposal_data)]
+"""
+
+RACINE_PUBLIQUE = """
+from django.urls import include, path
+urlpatterns = [path('api/django/', include([
+    path('public/', include('apps.ventes.public_urls'))]))]
+"""
+
+ROUTE_PUBLIQUE = ("api", "django", "public", "proposal", contract.ANY, "data")
+CHEMIN_PUBLIC = "/api/django/public/proposal/<token>/data/"
+
+
+class EnveloppeTransparenteTests(unittest.TestCase):
+    """QJR228 (a) — `return _noindex(Response(payload))` devient lisible.
+
+    C'est CE detail qui laissait `proposal_data` — la principale charge utile
+    client de la page proposition — hors de toute forme connue : une seule des
+    trois sorties de la vue etait illisible, et la regle « si UN return n'est
+    pas lisible, la forme entiere est incertaine » emportait tout le reste.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", RACINE_PUBLIQUE)
+        write(self.base / "apps" / "ventes" / "public_urls.py", URLS_PUBLIQUES)
+
+    def _lecteur(self, source: str, enveloppes: bool = True):
+        write(self.base / "apps" / "ventes" / "public_views.py", source)
+        backend = contract.BackendRoutes(self.base)
+        backend.build()
+        return shapes.ShapeReader(backend, enveloppes=enveloppes)
+
+    def test_l_enveloppe_est_traversee(self):
+        forme = self._lecteur(VUE_ENVELOPPEE % "'client_name'").shape_of_route(
+            ROUTE_PUBLIQUE, "get")
+        # Les cles du payload ET le `detail` de la sortie 404 : la forme est
+        # l'UNION de tout ce que la vue peut renvoyer (convention du script,
+        # cf. `etude_horaire.json`).
+        self.assertEqual(sorted(forme), [
+            "accepted", "client_name", "detail", "offres_tailles", "reference"])
+        self.assertEqual(forme["accepted"], shapes.BOOLEEN)
+        self.assertEqual(forme["reference"], shapes.TEXTE)
+
+    def test_l_extension_est_OPT_IN(self):
+        # Controle negatif : allumee partout, elle deplacerait le contrat
+        # versionne et reveillerait des constats etrangers a QJR228. Eteinte,
+        # le lecteur se comporte EXACTEMENT comme avant.
+        self.assertIsNone(
+            self._lecteur(VUE_ENVELOPPEE % "'client_name'",
+                          enveloppes=False).shape_of_route(ROUTE_PUBLIQUE, "get"))
+
+    def test_une_fonction_qui_N_EST_PAS_une_enveloppe_reste_illisible(self):
+        # Un doute ne rougit jamais : `_noindex` ne rend pas son parametre.
+        source = VUE_ENVELOPPEE % "'client_name'"
+        source = source.replace("    return response\n",
+                                "    return habillage\n")
+        self.assertIsNone(self._lecteur(source).shape_of_route(
+            ROUTE_PUBLIQUE, "get"))
+
+
+class EchantillonDeclareCompletTests(unittest.TestCase):
+    """QJR228 (b) — `forme_serveur: complete` sort du chemin « doute -> vert ».
+
+    Le test central est `test_un_renommage_de_cle_serveur_rougit` : c'est la
+    seule preuve qui compte — avant cette tache, renommer une cle du serveur
+    ne faisait rougir ABSOLUMENT RIEN sur cette route.
+    """
+
+    EXEMPLE = ('{"endpoint": "GET %s", %s"exemple": {"reference": "DEV-1", '
+               '"client_name": "Amine", "accepted": false, '
+               '"offres_tailles": {}, "detail": null}}')
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", RACINE_PUBLIQUE)
+        write(self.base / "apps" / "ventes" / "public_urls.py", URLS_PUBLIQUES)
+
+    def _constats(self, cle_serveur="'client_name'", declaration="complete",
+                  exemple=None, avec_lecteur=True):
+        write(self.base / "apps" / "ventes" / "public_views.py",
+              VUE_ENVELOPPEE % cle_serveur)
+        entete = "" if declaration is None else \
+            f'"forme_serveur": "{declaration}", '
+        write(self.base / "apps" / "ventes" / "contract_samples" /
+              "proposal_data.json",
+              exemple if exemple is not None
+              else self.EXEMPLE % (CHEMIN_PUBLIC, entete))
+        lecteur = None
+        if avec_lecteur:
+            backend = contract.BackendRoutes(self.base)
+            backend.build()
+            lecteur = shapes.lecteur_serveur_des_echantillons(backend)
+        return shapes.echantillons_de_contrat(
+            {}, self.base / "apps", lecteur_serveur=lecteur)
+
+    def test_un_echantillon_conforme_ne_produit_rien(self):
+        self.assertEqual(self._constats(), [])
+
+    def test_un_renommage_de_cle_serveur_rougit(self):
+        # LE point de QJR228. Le serveur rend desormais `nom_client` ; personne
+        # n'a touche a l'echantillon ni a la page qui le lit.
+        constats = self._constats(cle_serveur="'nom_client'")
+        self.assertEqual(sorted(c[4] for c in constats),
+                         ["client_name", "nom_client"])
+        motifs = {c[4]: c[5] for c in constats}
+        self.assertIn("ne renvoie PAS", motifs["client_name"])
+        self.assertIn("l'OMET", motifs["nom_client"])
+
+    def test_sans_declaration_l_echantillon_reste_hors_controle(self):
+        # Les SEPT echantillons partiels qui partagent cet `endpoint`
+        # (`offres_tailles.json`…) gardent EXACTEMENT le comportement d'avant.
+        self.assertEqual(
+            self._constats(cle_serveur="'nom_client'", declaration=None), [])
+
+    def test_une_declaration_partielle_explicite_ne_rougit_pas(self):
+        self.assertEqual(
+            self._constats(cle_serveur="'nom_client'", declaration="partielle"),
+            [])
+
+    def test_une_valeur_de_declaration_inconnue_rougit(self):
+        constats = self._constats(declaration="oui")
+        self.assertEqual([c[4] for c in constats], ["forme_serveur"])
+        self.assertIn("'complete'", constats[0][5])
+        self.assertIn("'partielle'", constats[0][5])
+
+    def test_un_echantillon_complet_dont_la_VUE_est_illisible_rougit(self):
+        # Une declaration qui ne verifie plus rien est un CONSTAT, jamais un
+        # silence : c'est ce qui l'empeche de s'eteindre au prochain
+        # refactoring de la vue.
+        write(self.base / "apps" / "ventes" / "public_views.py",
+              "def proposal_data(request, token):\n    return construire(token)\n")
+        write(self.base / "apps" / "ventes" / "contract_samples" /
+              "proposal_data.json",
+              self.EXEMPLE % (CHEMIN_PUBLIC, '"forme_serveur": "complete", '))
+        backend = contract.BackendRoutes(self.base)
+        backend.build()
+        constats = shapes.echantillons_de_contrat(
+            {}, self.base / "apps",
+            lecteur_serveur=shapes.lecteur_serveur_des_echantillons(backend))
+        self.assertEqual([c[4] for c in constats], ["forme_serveur"])
+        self.assertIn("n'est pas lisible statiquement", constats[0][5])
+
+    def test_sans_lecteur_serveur_la_declaration_reste_sans_effet(self):
+        # Un appelant qui APPORTE ses formes (les tests du script) n'a pas
+        # balaye le backend : un doute ne rougit jamais.
+        self.assertEqual(
+            self._constats(cle_serveur="'nom_client'", avec_lecteur=False), [])
+
+    def test_un_chemin_a_parametre_django_est_resolu(self):
+        # `normalise_call` ne connaissait que le trou du frontend : `<token>`,
+        # `<int:pk>` et `{id}` etaient refuses en bloc.
+        for chemin, attendu in (
+                ("/api/django/public/proposal/<token>/data/", ROUTE_PUBLIQUE),
+                ("/api/django/public/proposal/<str:token>/data/", ROUTE_PUBLIQUE),
+                ("/api/django/public/proposal/{id}/data/", ROUTE_PUBLIQUE)):
+            self.assertEqual(shapes.route_serveur(chemin), attendu, chemin)
+
+
+class ProposalDataSousContratTests(unittest.TestCase):
+    """QJR228 sur le VRAI depot : `proposal_data.json` est bien confronte."""
+
+    FICHIER = (ROOT / "backend" / "django_core" / "apps" / "ventes"
+               / "contract_samples" / "proposal_data.json")
+
+    def _document(self):
+        import json
+        return json.loads(self.FICHIER.read_text(encoding="utf-8"))
+
+    def test_l_echantillon_se_declare_complet(self):
+        self.assertEqual(self._document().get(shapes.FORME_SERVEUR),
+                         shapes.FORME_COMPLETE)
+
+    def test_la_vue_publique_est_desormais_LISIBLE(self):
+        forme = contrat_complet_reel()[3]("GET", CHEMIN_PUBLIC)
+        self.assertTrue(forme, "la forme serveur de proposal_data est perdue : "
+                               "l'echantillon retomberait dans « doute -> vert »")
+        self.assertEqual(sorted(forme), sorted(self._document()["exemple"]))
+
+    def test_un_renommage_de_cle_serveur_SIMULE_rougit(self):
+        # Simulation fidele d'un renommage cote serveur : la forme lue perd
+        # `client_name` et gagne `nom_client`, l'echantillon ne bouge pas.
+        reelle = dict(contrat_complet_reel()[3]("GET", CHEMIN_PUBLIC))
+        self.assertIn("client_name", reelle)
+        reelle["nom_client"] = reelle.pop("client_name")
+        constats = shapes.echantillons_de_contrat(
+            {}, lecteur_serveur=lambda verbe, chemin: reelle)
+        champs = {c[4] for c in constats if c[2] == "proposal_data"}
+        self.assertEqual(champs, {"client_name", "nom_client"})
+
+    def test_le_depot_reel_ne_produit_aucun_constat(self):
+        shapes_reelles, _, _, lecteur = contrat_complet_reel()
+        self.assertEqual(
+            shapes.echantillons_de_contrat(shapes_reelles,
+                                           lecteur_serveur=lecteur), [])
+        self.assertEqual(
+            shapes.echantillons_de_contrat(shapes_reelles,
+                                           racine=shapes.WEB_ROOT,
+                                           lecteur_serveur=lecteur), [])
+
+
 class MocksLitterauxTests(unittest.TestCase):
     """PACT13 — un mock écrit à la main est une DEUXIÈME source de vérité.
 
