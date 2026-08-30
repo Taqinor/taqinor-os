@@ -2401,15 +2401,46 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
     return None, 'absente', {}
 
 
-def capacite_batterie_du_devis(devis):
-    """Capacité UTILE totale (kWh) réellement chiffrée sur un devis, ou ``None``.
+def ligne_dans_option(ligne, option):
+    """QJR140 — la ligne appartient-elle à CETTE option du devis ?
+
+    ``LigneDevis.variante`` porte l'appartenance EXPLICITEMENT : ``''`` =
+    commune aux deux options (le défaut, et la valeur de toute ligne d'un devis
+    mono-option), ``'sans'`` / ``'avec'`` = propre à cette option-là. Une ligne
+    commune compte dans les deux ; une ligne variantée ne compte que dans la
+    sienne. ``option=None`` ⇒ aucune sélection (toutes les lignes).
+    """
+    if option is None:
+        return True
+    return (getattr(ligne, 'variante', '') or '') in ('', option)
+
+
+def capacite_batterie_du_devis(devis, option='avec'):
+    """Capacité UTILE (kWh) réellement chiffrée sur UNE option, ou ``None``.
 
     Somme les lignes classées ``batterie`` par ``services.classer_produit`` (le
     MÊME classifieur que la composition — jamais une seconde règle de
     reconnaissance) en lisant la capacité utile de chaque fiche
     (``dimensionnement.capacite_utile_batterie``).
 
-    ``None`` (et non 0,0) quand le devis ne porte aucune batterie : le moteur
+    QJR140 (audit QJR79) — LA SOMME EST PRISE PAR OPTION, PLUS SUR LE DEVIS
+    ENTIER. Cette fonction additionnait TOUTE ligne classée batterie sans
+    distinguer l'option qui la porte, alors que le découpage existe en amont
+    (``builder._repartir_options`` / ``_battery_kwh_from_items(avec_items…)``).
+    Sur un devis à plusieurs paliers de stockage, elle additionnait donc des
+    capacités qui ne coexistent dans AUCUNE option vendue — un chiffre qui ne
+    décrit rien de ce que le client peut acheter.
+
+    ``option`` vaut ``'avec'`` par DÉFAUT : c'est l'option qui porte le
+    stockage, et le seul contexte où une capacité batterie a un sens. Sur un
+    devis mono-option, toutes les lignes valent ``variante=''`` (communes) —
+    le résultat est donc byte-identique à l'historique pour tout le parc
+    existant ; seuls les devis à deux options RÉELLEMENT variantés changent, et
+    c'est précisément le cas que le défaut corrige. ``option=None`` rend
+    explicitement la somme BRUTE de toutes les lignes (comportement d'avant,
+    pour un appelant qui le veut sciemment).
+
+    ``None`` (et non 0,0) quand l'option ne porte aucune batterie : le moteur
     distingue ainsi « pas de stockage » de « stockage de capacité nulle ».
     """
     try:
@@ -2417,6 +2448,8 @@ def capacite_batterie_du_devis(devis):
         from apps.ventes.services import classer_produit
         total = 0.0
         for ligne in devis.lignes.all():
+            if not ligne_dans_option(ligne, option):
+                continue
             designation = getattr(ligne, 'designation', '') or ''
             if classer_produit(designation) != 'batterie':
                 continue
@@ -2858,11 +2891,17 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # LA BATTERIE VIENT DU DEVIS RÉEL. Sans cela, un devis « deux options »
     # sortirait avec « avec batterie » économisant EXACTEMENT autant que
     # « sans » — donc plus cher pour rien sur la proposition client.
+    # QJR140 — les DEUX premiers chemins sont inchangés à l'octet (une capacité
+    # explicite, puis celle que ``data`` porte, déjà issue de la SEULE option
+    # AVEC en amont). Le troisième, le repli sur les lignes, lit désormais la
+    # capacité de l'option AVEC et non la somme de tout le devis : sur un devis
+    # à plusieurs paliers de stockage, cette somme décrivait une banque qui
+    # n'existe dans AUCUNE option vendue.
     capacite = batterie_kwh_utile
     if capacite is None:
         capacite = data.get('batterie_kwh_total')
     if capacite is None:
-        capacite = capacite_batterie_du_devis(devis)
+        capacite = capacite_batterie_du_devis(devis, option='avec')
 
     # L-GLITCH + L-DECH — les puissances PUBLIÉES du chemin batterie, lues sur
     # les fiches du devis. Elles ne décident rien d'autre que ceci : la batterie
