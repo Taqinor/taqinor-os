@@ -2373,7 +2373,10 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
         from .etude_horaire import (
             banque_batterie_du_devis, couverture_batterie_publique,
         )
-        banque = banque_batterie_du_devis(devis)
+        # QJR167 — cette surface ne rend le curseur « N batteries » que quand
+        # ``avec_ok`` (garde ci-dessus) : l'option effective est donc TOUJOURS
+        # « avec », nommée explicitement (jamais le défaut implicite).
+        banque = banque_batterie_du_devis(devis, option='avec')
         if not banque:
             return None
         kwc, conso, ville, lat, lon, occupation, equipements = (
@@ -3727,6 +3730,34 @@ def proposal_accept(request, token):
     # jeton interne d'un jeton simplement invalide).
     if link.via_interne:
         return _not_found()
+    # ── QJR132 / ES1 (audit du 30/08/2026) — SIGNER EST AU MOINS AUSSI GARDÉ
+    #    QUE LIRE. Ce endpoint n'appelait JAMAIS ``otp_lecture_verified``,
+    #    contrairement aux TROIS routes de LECTURE de la même proposition
+    #    (``proposal_data``, la page et ``proposal_pdf``). Sur un lien où le
+    #    commercial a activé l'OTP de lecture, quiconque détenait le jeton
+    #    pouvait donc ENGAGER le client sans jamais fournir de code : le geste
+    #    le plus lourd du parcours était le moins gardé.
+    #
+    #    INDÉPENDANT DU TOGGLE DE SIGNATURE. L'OTP de SIGNATURE
+    #    (``validate_esign_otp``, plus bas) est gouverné par
+    #    ``ESIGN_OTP_ENABLED``, dont l'audit a vérifié qu'il n'apparaît dans
+    #    AUCUN ``.env.example``, settings ou ``docker-compose`` — il vaut donc
+    #    '0' en production et ce contrôle-là est un no-op. La garde ci-dessous
+    #    ne dépend d'aucun réglage : elle suit ce que LE LIEN porte
+    #    (``ShareLink.otp_lecture``), exactement comme les trois lectures.
+    #
+    #    NO-OP SUR UN LIEN SANS OTP DE LECTURE : ``otp_lecture_verified``
+    #    répond True quand ``link.otp_lecture`` est faux — aucun lien
+    #    d'aujourd'hui ne change de comportement. Le jeton interne, lui, est
+    #    déjà refusé au-dessus (il ne signe jamais).
+    #
+    #    Posée AVANT toute lecture du corps et tout effet de bord, et sur le
+    #    MÊME contrat que les lectures (403 ``otp_required``) pour que l'écran
+    #    client sache redemander le code au lieu d'afficher une erreur nue.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
     nom = (request.data.get('nom') or request.data.get('name') or '').strip()
     if not nom:
@@ -3763,7 +3794,18 @@ def proposal_accept(request, token):
             {'detail': otp_err},
             status=status.HTTP_400_BAD_REQUEST))
     try:
-        accept_devis(
+        # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
+        #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture
+        #    VERROUILLÉE ; l'objet de CETTE fonction restait celui d'AVANT.
+        #    La réponse sérialisait donc une instance périmée :
+        #    ``option_acceptee`` y valait '', donc ``option_effective``
+        #    retombait sur AVEC_BATTERIE (``utils/options``) et un client qui
+        #    venait de signer « sans batterie » voyait l'acompte de l'option
+        #    AVEC — plus élevé — pendant que l'email, qui reçoit l'instance
+        #    FRAÎCHE, annonçait le bon montant. ``statut`` renvoyé valait
+        #    « envoye » et ``accepte_par_nom`` '' juste après une signature
+        #    réussie. On reprend donc la VALEUR DE RETOUR du service.
+        devis = accept_devis(
             devis=devis, user=None, nom=nom, option=option,
             ip=_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],

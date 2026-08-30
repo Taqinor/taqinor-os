@@ -35,6 +35,55 @@ from apps.ventes.domain.taille import _AUTO_PANEL_WATT
 logger = logging.getLogger("apps.ventes.services")
 
 
+# ── QJR129 — UN DEVIS NAÎT AVEC UN MARCHÉ, JAMAIS AVEC UN BLANC ─────────────
+#
+# Constat CS7 (audit du 30/08/2026), vérifié en code : les trois chemins qui
+# créent un devis « à partir de rien » (bordereau AO, OCR, réserve
+# d'intervention) laissaient ``mode_installation`` NULL, alors que le chemin
+# canonique le pose explicitement.
+#
+# Le discriminateur de rendu ACCEPTE le vide (``quote_engine/residential/
+# renderer.is_residential`` : ``if mode not in ("", "residentiel", …)``), un
+# repli que le dépôt qualifie lui-même de « défaut d'AFFICHAGE PDF choisi pour
+# ne jamais perdre le rendu d'un devis, PAS une preuve que ce devis EST
+# résidentiel » — et ``is_residential`` pilote AUSSI la page publique client.
+# Un bordereau de marché à prix unitaires (« Terrassement (m³) ») partait donc
+# au client dans la présentation « proposition solaire résidentielle ».
+#
+# La règle : le marché DÉCLARÉ quand il existe (le lead de l'affaire, le
+# chantier, le devis d'origine du chantier), sinon un défaut EXPLICITE et
+# documenté par chemin. Aucun de ces trois documents n'est une étude solaire
+# résidentielle : le défaut ne peut donc pas l'être.
+
+#: Les quatre marchés de ``Devis.ModeInstallation``. ``crm.Lead.
+#: TypeInstallation`` porte EXACTEMENT les mêmes quatre valeurs ;
+#: ``installations.Installation.TypeInstallation`` n'en porte que trois (son
+#: « industriel » est libellé « Industriel / Commercial »). Le recoupement est
+#: donc direct, sans table de correspondance.
+MODES_INSTALLATION = ('residentiel', 'industriel', 'commercial', 'agricole')
+
+
+def mode_installation_declare(*sources, defaut):
+    """QJR129 — le premier marché DÉCLARÉ parmi ``sources``, sinon ``defaut``.
+
+    ``sources`` — des objets susceptibles de porter ``mode_installation`` (un
+    devis) ou ``type_installation`` (un lead, un chantier) ; ``None`` est
+    ignoré. Le premier non vide et RECONNU gagne : une valeur hors des quatre
+    choix fermés est écartée plutôt que posée telle quelle.
+
+    Ne lit RIEN en base et n'écrit rien : elle ne fait que lire des attributs
+    d'objets déjà chargés par l'appelant (aucun import cross-app).
+    """
+    for source in sources:
+        if source is None:
+            continue
+        for attribut in ('mode_installation', 'type_installation'):
+            valeur = (getattr(source, attribut, None) or '').strip().lower()
+            if valeur in MODES_INSTALLATION:
+                return valeur
+    return defaut
+
+
 def create_draft_devis_from_ocr(*, company, user, lead, fields):
     """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
 
@@ -67,6 +116,14 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
             notes.append(f"{label} : {val}")
     note = "\n".join(notes)
 
+    # QJR129 / CS7 — le marché du LEAD quand il est déclaré, sinon COMMERCIAL.
+    # Un document OCR n'est PAS une étude solaire résidentielle : le laisser à
+    # NULL le faisait router vers le rendu « proposition solaire résidentielle »
+    # (écran client compris). Le brouillon ne porte de toute façon aucune ligne
+    # et le commercial fixe le vrai marché dans l'éditeur.
+    mode = mode_installation_declare(
+        lead, defaut=Devis.ModeInstallation.COMMERCIAL)
+
     def _create(ref):
         return Devis.objects.create(
             company=company,
@@ -76,6 +133,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
             statut=Devis.Statut.BROUILLON,
             created_by=user,
             note=note,
+            mode_installation=mode,
         )
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
@@ -113,10 +171,34 @@ def dupliquer_devis(devis, *, user):
             remise_globale=devis.remise_globale,
             note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
             mode_installation=devis.mode_installation,
-            etude_params=devis.etude_params,
+            # QJR117 — la CONFIGURATION du source, jamais ses chiffres
+            # dérivés : sans ``roof_layout``, le recalage qui les rendait
+            # honnêtes ne s'exécute pas sur la copie et le moteur les
+            # prenait verbatim (CS4).
+            etude_params=etude_params_pour_copie(devis.etude_params),
             prix_cible_kwc=devis.prix_cible_kwc,
             devise=devis.devise,
             taux_change=devis.taux_change,
+            # ── QJR146 (a) — LES CONDITIONS DE PAIEMENT SUIVENT LA COPIE ────
+            # Un duplicata est une copie EXACTE : sans ces champs, un devis
+            # portant un échéancier NÉGOCIÉ repartait sur l'échéancier par
+            # DÉFAUT de la société (``utils/echeancier.tranches_normalisees``
+            # retombe sur ``payment_terms_for`` dès que ``echeancier`` est
+            # vide) — et c'est cette première tranche que l'email de
+            # confirmation annonce au client comme acompte. ``renouveler_devis``
+            # copiait déjà ``echeancier`` et ``entite`` : la preuve que c'était
+            # un oubli, pas une décision.
+            # Les deux JSONField sont COPIÉS, jamais partagés par référence
+            # (le piège que QJR117 a fermé pour ``etude_params``).
+            echeancier=(list(devis.echeancier)
+                        if isinstance(devis.echeancier, list)
+                        else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
+            acompte_montant=devis.acompte_montant,
+            entite=devis.entite,
+            custom_data=(dict(devis.custom_data)
+                         if isinstance(devis.custom_data, dict)
+                         else devis.custom_data),
             created_by=user,
             # Duplicata indépendant : jamais de groupe de version (à la
             # différence de dupliquer-variante, QJ15).
@@ -128,22 +210,17 @@ def dupliquer_devis(devis, *, user):
     create_numbered(Devis, company, 'devis', _save)
     copie = holder['obj']
 
-    for ligne in devis.lignes.all():
-        creer_ligne(
-            copie, produit=ligne.produit, designation=ligne.designation,
-            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label,
-            # QJR84 — « les lignes sont clonées à l'identique » (docstring) :
-            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
-            # marqueurs de saisie manuelle (D12) sont de l'identique. Sans eux,
-            # la copie perdait son découpage en options et rouvrait à la
-            # réécriture les prix et quantités tapés par le commercial.
-            variante=ligne.variante, optionnelle=ligne.optionnelle,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel,
-        )
+    # QJR116 — UN SEUL cloneur pour les trois chemins de copie
+    # (``domain/lignes.cloner_lignes``) : la liste de champs n'est plus
+    # maintenue à la main ici, donc elle ne peut plus diverger de celle du
+    # renouvellement ou de la gamme sœur. Elle reprend le jeu COMPLET —
+    # y compris le rattachement au LOT, qui manquait aux trois.
+    cloner_lignes(devis, copie)
+    # QJR117 — les études de la COPIE sont recalculées sur SES lignes, en
+    # ``force`` : sans lui, le dimensionnement se court-circuite sur empreinte
+    # concordante et l'édition de ligne ne rattrape jamais. Best-effort — aucun
+    # rafraîchisseur ne lève, aucun ne touche statut/lignes/totaux (règle #4).
+    rafraichir_etudes_du_devis(copie, force=True)
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
                 devis.reference, copie.reference, getattr(company, 'id', '?'))
     return copie
@@ -309,44 +386,37 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         from apps.crm.services import resolve_client_for_lead
         client = resolve_client_for_lead(lead)
 
-    result = dict((layout or {}).get('result') or {})
-    nb_panneaux = int(result.get('panels') or 0)
-    kwc = float(result.get('kwc') or 0)
-    # QJR95 — ``annualKwh`` / ``savings`` ne sont plus relus ICI : la
-    # production et les économies que le calepinage porte sont écrites par
-    # l'étape 6 (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME
-    # bloc ``result`` du layout transmis. Les relire des deux côtés, c'était
-    # deux lecteurs pour une donnée.
-
-    # FG248 — pont 3D toiture → ERP : extrait la config toiture (surface/pans/
-    # orientation/inclinaison/kWc) du builder 3D. Quand le bloc ``result`` ne
-    # porte pas le nombre de panneaux / la puissance, on retombe sur la somme des
-    # pans (cohérence kWc/panneaux écran ↔ pont 3D). Layout sans géométrie →
-    # dict vide → comportement historique strictement inchangé.
-    toiture = extract_roof_config(layout)
-    if toiture:
-        if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
-            nb_panneaux = int(toiture['nb_panneaux'])
-        if not kwc and toiture.get('kwc'):
-            kwc = float(toiture['kwc'])
+    # ── QJR165 — LE LECTEUR UNIQUE DU LAYOUT ───────────────────────────────
+    # Ce chemin lisait le layout INLINE (compte, kWc, wattage, batterie)
+    # pendant que la resynchronisation le lisait par ``geometrie.lire_layout``.
+    # Les deux chaînes de repli avaient réellement divergé — ``result.count``
+    # accepté d'un seul côté, le forfait 550 W posé d'un seul côté, le wattage
+    # normalisé d'un seul côté, le scénario « les deux » compris d'un seul
+    # côté : le même toit pouvait ressortir avec deux comptes ou deux wattages
+    # selon le bouton. La lecture inline est SUPPRIMÉE ; la chaîne tranchée
+    # vit dans ``lire_layout``, et ``toiture`` (FG248, le pont 3D → ERP) en
+    # revient avec le reste au lieu d'être re-extraite ici.
+    #
+    # QJR95 — ``annualKwh`` / ``savings`` ne sont pas relus ICI : la production
+    # et les économies que le calepinage porte sont écrites par l'étape 6
+    # (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME bloc
+    # ``result`` du layout transmis. Les relire des deux côtés, c'était deux
+    # lecteurs pour une donnée.
+    lecture = lire_layout(layout)
+    toiture = lecture.toiture
 
     # AOF164 / PVG2 — la bascule A/B du moteur de calepinage, écrite une seule
     # fois pour les deux chemins de création (cf. ``_arbitrage_du_calepinage``).
     nb_panneaux, kwc = _arbitrage_du_calepinage(
-        layout, nb_panneaux, kwc, company=company)
-
-    # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
-    watt = layout.get('panelWatt') or layout.get('watt')
-    if not watt and nb_panneaux and kwc:
-        watt = int(round(kwc * 1000 / nb_panneaux / 10) * 10)
-    if not watt and kwc:
-        watt = 550
-
-    # Scenario: 'avec_batterie' / 'hybride' → hybrid inverter + battery;
-    # anything else → réseau (grid-tie). Default réseau (residential injection).
-    scenario = (layout.get('scenario') or '').lower()
-    wants_battery = ('batterie' in scenario or 'hybride' in scenario
-                     or bool(layout.get('battery')))
+        layout, lecture.compte, lecture.kwc, company=company)
+    if (nb_panneaux, kwc) != (lecture.compte, lecture.kwc):
+        # Le couple ARBITRÉ devient la base de lecture : le wattage se déduit
+        # du compte RETENU, jamais de celui que l'arbitrage vient d'écarter.
+        # Drapeau moteur baissé (le défaut) ⇒ l'arbitrage est l'identité et
+        # cette relecture n'a pas lieu.
+        lecture = lire_layout(layout, toiture=toiture,
+                              compte=nb_panneaux, kwc=kwc)
+    watt = lecture.watt
 
     # PVKIT — le KIT COMPLET du simulateur (structures, socles, accessoires,
     # tableau de protection, installation, transport…), plus le squelette
@@ -380,9 +450,15 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             kwc=kwc_composition,
             source='calepinage',
             dimensionnement_avec=dimensionnement_avec),
-        scenario=(COMPOSITION_LES_DEUX if deux_options
-                  else (COMPOSITION_AVEC if wants_battery
-                        else COMPOSITION_SANS)),
+        # QJR165 — le scénario vient du MÊME lecteur que la pré-vérification
+        # qui précède cette création (``validate_composition_for_layout`` lit
+        # déjà ``scenario_du_layout``). Le couple ``batterie``/``hybride`` +
+        # la clé ``battery`` est lu à l'identique ; c'est le libellé
+        # « les deux » que la lecture inline ne savait pas comprendre — elle
+        # composait alors une option SANS un devis que le pré-vol venait de
+        # vérifier sur DEUX. ``deux_options`` reste souverain quand
+        # l'appelant le demande explicitement.
+        scenario=(COMPOSITION_LES_DEUX if deux_options else lecture.scenario),
         layout=stored_layout,
         etude_initiale=etude_initiale or None,
         taux_tva=taux_tva,
@@ -1502,15 +1578,20 @@ from apps.ventes.domain.composition import (  # noqa: E402,F401
     composition_residentielle,
 )
 from apps.ventes.domain.etudes import (  # noqa: E402,F401
+    etude_params_pour_copie,
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402,F401
+    cloner_lignes,
+    creer_ligne,
+)
 from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _panneau_pour_calepinage,
     arbitrer_compte_calepinage,
     contour_client_lnglat,
     extract_roof_config,
+    lire_layout,
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )

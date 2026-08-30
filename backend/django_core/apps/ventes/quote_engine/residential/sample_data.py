@@ -182,8 +182,18 @@ def build(variant: str = "deux") -> dict:
         # QRES39 — démo : vraie photo d'installation en guise de plan de
         # toiture (le variant « sans » garde le repli schéma).
         "roof_photo": _demo_roof_b64(),
+        # QJR162 (a) — LIEN DE DÉMO COMPLET, SCHÉMA COMPRIS. ``_proposition_
+        # link`` exige désormais ``^https?://`` et un hôte non vide : il OMET
+        # la vignette QR plutôt que de fabriquer une URL (avant, le moteur
+        # préfixait « https:// » lui-même, ce qui masquait le fait que cette
+        # démo n'a jamais porté une vraie URL). Les vrais liens sont bâtis par
+        # ``utils/client_links.py`` à partir de ``settings.SITE_URL``, qui
+        # porte toujours le schéma — la démo le porte donc aussi. La forme
+        # COURTE affichée reste « taqinor.ma/proposition » (le schéma est
+        # retiré à l'affichage), donc les tests qui l'épinglent ne bougent pas.
         "links": {"signer":
-                  "taqinor.ma/proposition/rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"},
+                  "https://taqinor.ma/proposition/"
+                  "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"},
         "entreprise": {"nom": "TAQINOR Solutions",
                        "email": "contact@taqinor.ma",
                        "telephone": "+212 6 61 85 04 10"},

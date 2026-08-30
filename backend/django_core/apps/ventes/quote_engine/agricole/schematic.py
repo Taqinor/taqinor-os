@@ -9,6 +9,17 @@ and headless Chromium. viewBox 0 0 1000 340 → ~180mm wide in the A4 PDF.
 Flow, left → right: Soleil → Panneaux PV → Variateur (VFD) → Pompe (forage
 immergé / surface) → Bassin → Champ. Every ``params`` key is optional and
 degrades gracefully — a label whose value is missing is omitted (never "None").
+
+QJR154 — ÉCHAPPEMENT : UNE SEULE VÉRITÉ, ET ELLE EST EN AMONT.
+Les textes libres de ``params`` (``crop``, ``pump_cv``) descendent tous de
+``Devis.etude_params``, que ``builder.echapper_textes_client`` échappe
+désormais AVANT d'appeler le renderer agricole. Ce module n'échappe donc plus
+rien : il l'a fait longtemps DEUX fois sur ``crop`` (``_esc`` explicite, puis
+``_esc`` de ``_text``), ce qui imprimait « Blé &amp;amp; orge » sur le PDF
+d'une culture aussi banale que « Blé & orge ». Tout le reste de ce qu'il écrit
+est soit un libellé littéral du module, soit un nombre formaté par ``_thin`` /
+``_dec`` (chiffres, virgule, signe) — rien qui puisse casser le SVG.
+CONTRAT : les textes passés à ``build()`` doivent déjà être XML-safe.
 """
 from __future__ import annotations
 import math
@@ -65,13 +76,6 @@ def _dec(v, d=1):
     return f"{n:.{d}f}".replace(".", ",")
 
 
-def _esc(t):
-    if t is None:
-        return ""
-    return (str(t).replace("&", "&amp;").replace("<", "&lt;")
-            .replace(">", "&gt;").replace('"', "&quot;"))
-
-
 def _cap(parts):
     return " · ".join(p for p in parts if p and str(p).strip())
 
@@ -81,7 +85,7 @@ def _text(x, y, content, size=12, fill=INK, weight="normal", anchor="middle"):
         return ""
     return (f'<text x="{x:.1f}" y="{y:.1f}" font-family="{FONT}" '
             f'font-size="{size}" font-weight="{weight}" fill="{fill}" '
-            f'text-anchor="{anchor}">{_esc(content)}</text>')
+            f'text-anchor="{anchor}">{content}</text>')
 
 
 def _rrect(x, y, w, h, rx=12, fill=WHITE, stroke=LINE, sw=1.4):
@@ -253,7 +257,7 @@ def _borehole(cx, params):
             out.append(f'<text x="{dx - 7:.1f}" y="{ly:.1f}" font-family="{FONT}" '
                        f'font-size="10" font-weight="bold" fill="{NAVY}" '
                        f'text-anchor="middle" transform="rotate(-90 {dx - 7:.1f} '
-                       f'{ly:.1f})">HMT {_esc(hmt)} m</text>')
+                       f'{ly:.1f})">HMT {hmt} m</text>')
         if prof:
             dx = sx + sw + 12
             out.append(_line(dx, top, dx, bottom - 2, stroke=MUTED, sw=1.1, dash="3 3"))
@@ -262,7 +266,7 @@ def _borehole(cx, params):
             out.append(f'<text x="{dx + 9:.1f}" y="{ly:.1f}" font-family="{FONT}" '
                        f'font-size="9" fill="{MUTED}" text-anchor="middle" '
                        f'transform="rotate(90 {dx + 9:.1f} {ly:.1f})">'
-                       f'Prof. {_esc(prof)} m</text>')
+                       f'Prof. {prof} m</text>')
         title = "Pompe immergée"
         cap_src = {"forage": "Forage", "puits": "Puits", "oued": "Oued",
                    "reseau": "Réseau"}.get(src, "Forage")
@@ -293,13 +297,13 @@ def _borehole(cx, params):
             out.append(f'<text x="{dx + 9:.1f}" y="{ly:.1f}" font-family="{FONT}" '
                        f'font-size="10" font-weight="bold" fill="{NAVY}" '
                        f'text-anchor="middle" transform="rotate(90 {dx + 9:.1f} '
-                       f'{ly:.1f})">HMT {_esc(hmt)} m</text>')
+                       f'{ly:.1f})">HMT {hmt} m</text>')
         title = "Pompe de surface"
         cap_src = {"puits": "Puits", "oued": "Oued", "forage": "Forage",
                    "reseau": "Réseau"}.get(src, "Puits")
     cv = params.get("pump_cv")
     kw = _dec(params.get("pump_kw"), 1)  # 1 decimal, consistent with cover/study
-    cv_txt = "" if _blank(cv) else f"{_esc(cv)} CV"
+    cv_txt = "" if _blank(cv) else f"{cv} CV"
     power = " ".join(t for t in (cv_txt, f"({kw} kW)" if kw else "") if t)
     return "".join(out), title, (power or None), cap_src
 
@@ -312,7 +316,7 @@ def build(params: dict) -> str:
     debit = _dec(p.get("debit_m3h"), 1)
     m3j = _thin(p.get("m3_jour"))
     surface_ha = _dec(p.get("surface_ha"), 1)
-    crop = "" if _blank(p.get("crop")) else _esc(p.get("crop"))
+    crop = "" if _blank(p.get("crop")) else str(p.get("crop"))
 
     panel_main = (f"{nb} × {watt} W" if nb and watt
                   else (f"{nb} panneaux" if nb else (f"{watt} W" if watt else "")))

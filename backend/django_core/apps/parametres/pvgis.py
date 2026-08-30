@@ -60,6 +60,16 @@ def fetch_productible(settings, lat, lon, peakpower_kwc=1.0,
         défaut = réglage société. Passé tel quel à PVGIS (même convention).
     loss : pertes système PVGIS (%) — défaut 14 (valeur PVGIS usuelle).
 
+    QJR114 — ``productible_kwh_kwc`` est rendu **NET de ``loss``** : PVGIS a
+    déjà retranché ces 14 % (et le repli hors-ligne ``_manual_result`` rend un
+    réglage manuel qui suit la MÊME convention, quel que soit ``loss``). Un
+    appelant ne doit donc JAMAIS lui réappliquer un arbre de pertes complet —
+    seulement le COMPLÉMENT canonique
+    (``quote_engine.pricing.PRODUCTION_DERATE``, 14 % → 20 % au total, ordre
+    fondateur du 18/08), sous peine de dérater deux fois. Pour repartir du brut,
+    diviser par ``1 − pricing.PVGIS_BUILTIN_LOSS``
+    (``apps.ventes.etude.base_avant_pertes_kwh``).
+
     Retourne TOUJOURS un dict ; ``source`` ∈ {'pvgis', 'manual'}. Jamais
     d'exception réseau remontée à l'appelant.
     """

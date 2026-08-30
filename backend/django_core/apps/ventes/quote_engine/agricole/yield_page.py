@@ -73,6 +73,14 @@ def build(ctx) -> str:
     # AUCUN montant de subvention (ni "jusqu'à X MAD", ni un net-après-
     # subvention). Mention QUALITATIVE, mot pour mot (K.FDA_QUALITATIVE_NOTE) ;
     # le taux (sourcé) reste affichable.
+    # QJR155 (g) — L'INTRO NE PROMET PAS UNE AIDE QU'ON N'AFFICHE PAS. Elle
+    # annonçait « et la subvention qui réduit votre coût réel » SANS condition,
+    # y compris quand ``show_subsidy`` est éteint et que le bloc d'à côté ne
+    # parle plus de subvention du tout.
+    intro_txt = ("Équipement premium, prix détaillé en toute transparence — et "
+                 "la subvention qui réduit votre coût réel."
+                 if show_subsidy else
+                 "Équipement premium, prix détaillé en toute transparence.")
     fda_html = ""
     if show_subsidy:
         fda_html = (
@@ -85,11 +93,18 @@ def build(ctx) -> str:
                     'étudier les aides à l\'irrigation localisée disponibles.</div></div>')
 
     # ── garanties (folded up from the trust page) ────────────────────────────
-    badges = [("25", "ans", "Panneaux (perf.)"), ("5", "ans", "Variateur"),
-              ("2", "ans", "Pompe"), ("10", "ans", "Structure")]
+    # QJR153 — les durées ne sont plus codées ici (25/5/2/10 ans) : elles se
+    # DÉRIVENT des lignes du devis, comme la colonne « Garantie … » du tableau
+    # douze lignes au-dessus. Une catégorie absente du devis (une structure non
+    # vendue) n'a plus de badge, et aucun badge ne peut contredire le tableau.
+    from . import theme as _theme
+    badges = _theme.garanties_du_devis(d)
     badges_html = "".join(
         f'<div class="a3-badge"><div class="a3-bn">{n}<span>{u}</span></div>'
         f'<div class="a3-bl">{l}</div></div>' for n, u, l in badges)
+    garanties_html = (f'<div class="a3-gh">Nos garanties</div>'
+                      f'<div class="a3-badges">{badges_html}</div>'
+                      ) if badges_html else ""
 
     css = f"""
 <style>
@@ -142,16 +157,14 @@ def build(ctx) -> str:
 <div class="a3-root">
   <div class="a3-kicker">Équipement & investissement</div>
   <div class="a3-title">Votre installation, et son prix</div>
-  <div class="a3-intro">Équipement premium, prix détaillé en toute transparence — et la subvention
-    qui réduit votre coût réel.</div>
+  <div class="a3-intro">{intro_txt}</div>
   {table_html}
   <div class="a3-band">
     <div class="a3-band-col"><div class="a3-h">Le prix, en toute transparence</div>{chain_html}
       <div class="a3-ar">الثمن الإجمالي شامل الضريبة</div></div>
     {fda_html}
   </div>
-  <div class="a3-gh">Nos garanties</div>
-  <div class="a3-badges">{badges_html}</div>
+  {garanties_html}
   <div class="a3-note">Prix unitaires HT · total TTC. Fiches techniques sur taqinor.ma/produits.
     Rentabilité et comparatif carburant en page suivante.</div>
 </div>

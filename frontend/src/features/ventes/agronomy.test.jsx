@@ -4,25 +4,21 @@ import {
   requiredFlow,
   hectaresIrrigable,
   annualWater,
-  KC_MID,
-  ET0_PEAK_MM_J,
   IRRIGATION_EFFICIENCY,
+  monthlyWaterDemand,
 } from './agronomy'
 
-describe('waterDemandFromFarm', () => {
-  it('exemple travaillé : 2 ha agrumes Souss-Massa goutte', () => {
-    const r = waterDemandFromFarm({
-      crop: 'agrumes', region: 'souss-massa', surfaceHa: 2, method: 'goutte',
-    })
-    // ET0 7.5 × Kc 0.65 = 4.875 mm/j
-    expect(r.etcPeakMm).toBeCloseTo(4.875, 3)
-    // net 48.75 m³/ha/j ÷ 0.90 ≈ 54.17 m³/ha/j
-    expect(r.grossM3HaDay).toBeCloseTo(54.2, 1)
-    // × 2 ha ≈ 108 m³/jour
-    expect(r.m3DayPeak).toBeGreaterThanOrEqual(107)
-    expect(r.m3DayPeak).toBeLessThanOrEqual(109)
-    expect(r.inputs.kc).toBe(KC_MID.agrumes)
-    expect(r.inputs.et0).toBe(ET0_PEAK_MM_J['souss-massa'])
+// QJR166 — waterDemandFromFarm n'est plus un second moteur (ET0 de pointe fixe
+// × Kc mi-saison, sans pluie créditée) : il route désormais par le moteur
+// mensuel v2 (monthlyWaterDemand, QX48) et renvoie le MAXIMUM de la série —
+// miroir exact de peak_need_m3_day() côté backend (agronomy.py, post-QJR152).
+describe('waterDemandFromFarm — route par le moteur mensuel v2 (QJR166)', () => {
+  it('le résultat EST le maximum de la série mensuelle (même appel, même valeur)', () => {
+    const args = { crop: 'agrumes', region: 'souss-massa', surfaceHa: 2, method: 'goutte' }
+    const r = waterDemandFromFarm(args)
+    const monthly = monthlyWaterDemand(args)
+    expect(r.m3DayPeak).toBe(Math.round(monthly.peakM3FarmDay))
+    expect(r.peakM3HaDay).toBe(monthly.peakM3HaDay)
   })
 
   it('la technique d’irrigation change le résultat (gravitaire > goutte)', () => {
@@ -30,37 +26,43 @@ describe('waterDemandFromFarm', () => {
     const goutte = waterDemandFromFarm({ ...base, method: 'goutte' })
     const gravitaire = waterDemandFromFarm({ ...base, method: 'gravitaire' })
     expect(gravitaire.m3DayPeak).toBeGreaterThan(goutte.m3DayPeak)
-    expect(gravitaire.grossM3HaDay).toBeGreaterThan(goutte.grossM3HaDay)
     expect(IRRIGATION_EFFICIENCY.gravitaire).toBeLessThan(IRRIGATION_EFFICIENCY.goutte)
   })
 
-  it('exploitation 100 % cheptel (sans surface) donne un m3DayPeak positif', () => {
-    const r = waterDemandFromFarm({ livestock: { vache_laitiere: 20, mouton: 100 } })
-    expect(r).not.toBeNull()
-    // 20 × 150 + 100 × 12 = 4200 L = 4.2 m³/j
-    expect(r.livestockM3Day).toBeCloseTo(4.2, 1)
-    expect(r.cropM3Day).toBe(0)
-    expect(r.m3DayPeak).toBeGreaterThan(0)
-  })
-
-  it('cultures + cheptel s’additionnent', () => {
-    const cropsOnly = waterDemandFromFarm({
-      crop: 'maraichage', region: 'tadla', surfaceHa: 1, method: 'goutte',
-    })
-    const both = waterDemandFromFarm({
-      crop: 'maraichage', region: 'tadla', surfaceHa: 1, method: 'goutte',
-      livestock: { vache_laitiere: 10 },
-    })
-    expect(both.m3DayPeak).toBeGreaterThan(cropsOnly.m3DayPeak)
-  })
-
-  it('culture / région inconnues retombent sur les valeurs par défaut', () => {
+  it('culture / région inconnues ne lèvent pas (repli sur les défauts du moteur mensuel)', () => {
     const r = waterDemandFromFarm({
       crop: 'inconnue', region: 'mars', surfaceHa: 1, method: 'magie',
     })
-    expect(r.etcPeakMm).toBeCloseTo(6.375, 3)
-    expect(r.inputs.kc).toBe(0.85)
-    expect(r.inputs.efficiency).toBe(0.75)
+    expect(r).not.toBeNull()
+    expect(r.m3DayPeak).toBeGreaterThan(0)
+  })
+})
+
+// Parité 3 cultures — valeurs v2 mesurées au fold du 30/08 (dérivées, pas
+// inventées : `monthlyWaterDemand` réel sur une région/surface/méthode
+// représentative de la culture — Souss-Massa = bassin agrumicole, Saïss =
+// « capitale » oléicole marocaine, Drâa-Tafilalet = oasis phoenicicoles).
+// Même fixture côté backend : apps/ventes/tests/test_qx48_agronomy_v2.py.
+describe('waterDemandFromFarm — parité 3 cultures (QJR166)', () => {
+  it('agrumes, Souss-Massa, 2 ha, goutte → 90 m³/jour (89.6 arrondi)', () => {
+    const r = waterDemandFromFarm({
+      crop: 'agrumes', region: 'souss-massa', surfaceHa: 2, method: 'goutte',
+    })
+    expect(r.m3DayPeak).toBe(90)
+  })
+
+  it('olivier, Saïss, 1.5 ha, goutte → 82 m³/jour (81.8 arrondi)', () => {
+    const r = waterDemandFromFarm({
+      crop: 'olivier', region: 'saiss', surfaceHa: 1.5, method: 'goutte',
+    })
+    expect(r.m3DayPeak).toBe(82)
+  })
+
+  it('dattier, Drâa-Tafilalet, 2.8 ha, goutte → 250 m³/jour (250.2 arrondi)', () => {
+    const r = waterDemandFromFarm({
+      crop: 'dattier', region: 'draa-tafilalet', surfaceHa: 2.8, method: 'goutte',
+    })
+    expect(r.m3DayPeak).toBe(250)
   })
 })
 

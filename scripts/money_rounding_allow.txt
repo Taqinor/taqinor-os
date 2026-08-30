@@ -38,6 +38,16 @@
 # autre ligne n'a bouge (les cles sont des empreintes de CONTENU : les deux
 # `round()` restants de ce bloc -- le prix BARRE `ttc_avant` -- gardent la
 # meme expression, donc la meme cle).
+#
+# 30/08/2026 (QJR143) : SIX modules PDF ajoutes a TARGET_FILES -- l'audit du
+# 29/08 avait montre que la liste ne couvrait AUCUN module qui IMPRIME
+# l'argent au client (generate_devis_premium.py, quote_engine/pricing.py,
+# bareme.py, agricole/economics.py, industriel/finance.py, commercial/
+# equip.py). Les 27 sites captures ici sont ceux dont l'expression porte un
+# nom d'apparence monetaire (le meme filtre heuristique que le reste de la
+# base) ; industriel/finance.py n'introduit aucun site sous ce filtre (ses
+# round() portent des noms courts -- net_annual, invest, injection, om --
+# qui n'accrochent pas MONEY_NAME_RE), ce n'est pas une lacune de portee.
 
 # --- backend/django_core/apps/ventes/domain/geometrie.py
 #
@@ -72,11 +82,61 @@ backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e2
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::56d1c0aaf98f | Arrondi d'AFFICHAGE du prix unitaire HT d'une ligne (moteur vendore, regle #4) ; le montant persiste passe par les modeles.
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
-backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::de15cf116981 | Ratio d'AFFICHAGE : prix au kWc (total de reference / puissance kWc).
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::cdfb2513215b | Ratio d'AFFICHAGE : prix au kWc (QJR160 -- total et kWc de la MEME branche).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data._scale_tot::9284748ed227 | Multi-villa : montant de TVA d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a598356ce | Multi-villa : total d'affichage multiplie par le nombre de villas.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18a5faf41 | Total HT d'AFFICHAGE d'une ligne d'option (PU HT x quantite).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
+
+# --- backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
+# QJR143 (30/08/2026) : premiere capture, module jamais scanne avant l'audit
+# du 29/08. Les 16 sites ci-dessous couvrent les cartes d'option de la page 1
+# (QJR53, meme arrondi que fmt()), l'echeancier de paiement de la page
+# "Devis Final" (page 3), le resume du one-page et le repli de calcul des
+# totaux canoniques pour un appelant qui n'a pas fourni totaux_sans/avec.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::fdd393eb39d1 | Carte option "Sans batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() pour ne plus diverger du bloc totaux page 2 sur un TTC au centime -- affichage seul.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::ede41a9a2000 | Prix barre (avant remise) de la carte "Sans batterie" -- QJR53 : doit suivre le meme arrondi que le total qu'il barre, affichage seul.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::e0078433f1a0 | Prix barre (avant remise) de la carte "Avec batterie" -- QJR53, affichage seul, jumeau du site ci-dessus.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::954cddadc518 | Tranche "Acompte" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, montant deja clampe (ERR76) dans [0, total-solde].
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::fbd79f54bc63 | Tranche "Solde" de l'echeancier (page Devis Final) : arrondi au millier avant affichage, meme chaine que le site ci-dessus.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::1427d8eaee01 | Pourcentage affiche de la tranche "Acompte" (derive du montant deja arrondi) -- QJR145(c) documente que la somme des trois peut deriver de 100%, connu et accepte.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::9eb3fbb89e23 | Pourcentage affiche de la tranche "Solde" (cas standard 3 cases) -- jumeau des deux sites ci-dessus.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::b084ae3970cf | Pourcentage affiche de la tranche "Solde" (variante 2 cases, QX7b, quand la case Materiel est vide) -- meme famille que les trois sites ci-dessus.
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::a379dbcff3dd | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
+
+# --- backend/django_core/apps/ventes/quote_engine/pricing.py
+# QJR143 : premiere capture. Les 4 sites couvrent l'estimation kWh<-facture
+# sans table tarifaire, la provision de remplacement onduleur affichee dans
+# les hypotheses cashflow, et les deux economies annuelles (sans/avec
+# batterie) qui alimentent le PDF et la page proposition.
+backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::46412da316ea | Repli plat kWh<-facture quand aucune table tarifaire n'est resolue -- resultat marque "approximatif"/"estimation" (ESTIMATION_LABEL), jamais un chiffre precis non etiquete.
+backend/django_core/apps/ventes/quote_engine/pricing.py::cashflow_assumptions::cbb83e600cac | Montant REEL provisionne (MAD TTC) pour le remplacement onduleur, lu par la legende de la courbe cashflow 25 ans (None si aucun onduleur chiffre, jamais un montant fabrique).
+backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::ff5bcfe4895b | Economie annuelle "sans batterie" (production x autoconso x prix kWh) -- coeur du calcul d'economie affiche au client, loi 82-21 (autoconsommation seule valorisee).
+backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::f21f8e619aea | Economie annuelle "avec batterie" -- jumeau du site ci-dessus, meme formule sur le taux d'autoconso avec stockage.
+
+# --- backend/django_core/apps/ventes/quote_engine/bareme.py
+# QJR143 : premiere capture -- un seul site accroche le filtre nom-monetaire.
+backend/django_core/apps/ventes/quote_engine/bareme.py::_tranche::28414c7ffdff | Prix MAD/kWh de la tranche tarifaire ONEE dans le descripteur JSON-serialisable _tranche -- constante de bareme reproduite au client, arrondie a 6 decimales (precision du tarif officiel).
+
+# --- backend/django_core/apps/ventes/quote_engine/agricole/economics.py
+# QJR143 : premiere capture -- repartition mensuelle et payback carburant.
+backend/django_core/apps/ventes/quote_engine/agricole/economics.py::_monthly::15b30d2dc7c2 | Repartition mensuelle d'un total annuel au prorata de poids saisonniers (graphe agricole) -- affichage seul, la somme reste bornee par le total source.
+backend/django_core/apps/ventes/quote_engine/agricole/economics.py::compute._payback::fd6a3003c14c | Payback (annees) = investissement / economie annuelle -- garde deja None si economie <= 0 (jamais de division par zero ni de payback fictif).
+
+# --- backend/django_core/apps/ventes/quote_engine/industriel/finance.py
+# QJR143 : module SCANNE (ajoute a TARGET_FILES) mais AUCUN site capture --
+# ses 7 round() (cumul cashflow, net_annual, invest, injection, om) portent
+# des noms qui n'accrochent pas MONEY_NAME_RE. Ligne intentionnellement vide :
+# la garde couvre desormais le fichier, elle n'y trouve rien a inscrire.
+
+# --- backend/django_core/apps/ventes/quote_engine/commercial/equip.py
+# QJR143 : premiere capture -- chaine Sous-total HT -> Remise -> Total HT ->
+# TVA -> Total TTC (regle #4) du tableau "Equipements & investissement".
+backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b3af1360cab3 | Total TTC d'une ligne d'equipement (PU TTC x quantite) dans le tableau "Equipements & investissement" du PDF commercial.
+backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::b800525fcef3 | P.U. TTC affiche par ligne dans le meme tableau -- meme montant que le total ci-dessus, affichage seul.
+backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::1a0be99387dc | Ligne "Remise" de la chaine Sous-total HT -> Remise -> Total HT -> TVA -> Total TTC exigee par la regle #4, rendue seulement si remise > 0.
+backend/django_core/apps/ventes/quote_engine/commercial/equip.py::build::8de073d61e02 | Ligne "TVA" de la meme chaine de totaux -- maillon entre Total HT et Total TTC.
 
 # --- backend/django_core/apps/ventes/public_views.py
 backend/django_core/apps/ventes/public_views.py::_variant_summaries::d9ea0585d95f | affichage relu : TTC du frere arrondi au MAD pour la carte des autres tailles (QJR11 - la valeur vient desormais de option_totaux, arrondi d'affichage inchange)
@@ -105,3 +165,4 @@ backend/django_core/apps/compta/services.py::taux_completion_enquete::5f05f07ebb
 backend/django_core/apps/compta/services.py::kpi_campagne_mere::80cea040fbbb | ROI en POURCENTAGE de la campagne mere.
 backend/django_core/apps/ventes/domain/dimensionnement_devis.py::capacite_batterie_des_lignes::5a537e209151 | pas un montant : capacite batterie totale en kWh lue des lignes (le scan matche 'total') — arrondi d'affichage pre-existant, deplace tel quel par QJR77
 backend/django_core/apps/ventes/domain/dimensionnement_devis.py::_echelle_paliers_batterie.rendu::ad498c1a580d | affichage relu : cout TTC par palier de l'echelle batterie (page publique), arrondi au MAD pre-existant deplace tel quel par QJR77 — la vraie conversion quantize est en aval, cf. note QJR79/QJR104
+backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::8751e504b4a4 | pas un montant : kWh entiers derives d'une facture MAD (QJR157/QJR141 ont recompose l'expression) — arrondi de grandeur physique, l'argent est en amont

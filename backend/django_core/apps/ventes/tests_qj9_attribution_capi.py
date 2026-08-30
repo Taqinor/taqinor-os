@@ -9,6 +9,7 @@ Deux axes :
 Tests company-scoped : la copie d'attribution est toujours scopée au devis
 et à son lead (multi-tenant par construction — FK Devis→Lead→Company).
 """
+from decimal import Decimal
 from unittest import mock
 
 from django.test import TestCase, override_settings
@@ -139,6 +140,33 @@ class PersistAttributionTests(TestCase):
 class FireCapiSignedQuoteTests(TestCase):
     """Tests pour _fire_capi_signed_quote (QJ9)."""
 
+    #: QJR136 — LA VALEUR DE CONVERSION NE VIENT PLUS DE ``Devis.total_ttc``.
+    #: Elle est désormais le TTC **NET** de la chaîne canonique
+    #: (``utils.options.option_totaux``), et quand cette chaîne échoue le code
+    #: N'ENVOIE RIEN plutôt que de deviner un montant (un montant faux entraîne
+    #: durablement l'algorithme d'enchères de Meta).
+    #:
+    #: Ces deux nombres sont le témoin brut-vs-net de cette suite à stubs : le
+    #: 48 500 historique est le TTC **BRUT**, et le net en est dérivé par une
+    #: remise globale de 10 % (48 500 − 4 850 = 43 650). Ils DIFFÈRENT, donc le
+    #: test prouve que c'est bien le net qui part chez Meta.
+    TTC_BRUT = 48500.0
+    TTC_NET = Decimal('43650.00')
+
+    def setUp(self):
+        super().setUp()
+        # Le stub n'a pas de vraies lignes : ``option_totaux`` lèverait
+        # (``list(Mock)`` → TypeError) et le code, fidèle à QJR136, n'enverrait
+        # RIEN — ce qui masquerait tout ce que cette suite veut vérifier
+        # (attribution, URL, event_name). On sert donc la chaîne canonique.
+        # L'ancrage de cette chaîne sur un VRAI devis est couvert par
+        # ``tests/test_qjr136_capi_valeur_et_hash.py``, pas ici.
+        correctif = mock.patch(
+            'apps.ventes.utils.options.option_totaux',
+            return_value={'ttc': self.TTC_NET})
+        self.mock_option_totaux = correctif.start()
+        self.addCleanup(correctif.stop)
+
     def _make_devis_stub(self, lead=None):
         """Stub minimal (pas de DB) pour les tests CAPI."""
         stub = mock.Mock()
@@ -147,7 +175,7 @@ class FireCapiSignedQuoteTests(TestCase):
         stub.client = None
         stub.client_id = None
         stub.etude_params = {}
-        stub.total_ttc = 48500.0
+        stub.total_ttc = self.TTC_BRUT
         return stub
 
     @override_settings(META_CAPI_ACCESS_TOKEN='')
@@ -196,6 +224,14 @@ class FireCapiSignedQuoteTests(TestCase):
             call_args = mock_open.call_args[0][0]
             self.assertIn('graph.facebook.com', call_args.full_url)
             self.assertIn('SignedQuote', call_args.data.decode())
+            # QJR136 — la valeur envoyée est le TTC NET canonique, jamais le
+            # brut du modèle : les deux nombres diffèrent, donc c'est probant.
+            import json
+            envoye = json.loads(call_args.data.decode())['data'][0]
+            self.assertAlmostEqual(
+                envoye['custom_data']['value'], float(self.TTC_NET), places=2)
+            self.assertNotAlmostEqual(
+                envoye['custom_data']['value'], self.TTC_BRUT, places=2)
 
     @override_settings(META_CAPI_ACCESS_TOKEN='TEST_TOKEN',
                        META_CAPI_PIXEL_ID='123456789')

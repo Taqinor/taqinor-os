@@ -129,7 +129,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     par défaut le devis porteur EST la gamme recommandée.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.domain.lignes import creer_ligne
+    from apps.ventes.domain.lignes import cloner_lignes
+    from apps.ventes.domain.etudes import (
+        etude_params_pour_copie, rafraichir_etudes_du_devis)
     from apps.ventes.utils.company_settings import create_numbered
 
     nom_gamme = str(nom_gamme or '').strip()
@@ -141,7 +143,15 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
 
     # etude_params est COPIÉ (jamais partagé) : la gamme sœur porte son propre
     # bloc ``gamme`` sans jamais toucher celui de la source.
-    params_soeur = dict(getattr(devis, 'etude_params', None) or {})
+    #
+    # QJR117 / CS5 — et elle ne porte plus les CHIFFRES du frère : la docstring
+    # promet « chaque gamme a sa composition et ses prix PROPRES », or la sœur
+    # recevait son ``etude_horaire``, son ``dimensionnement`` (coût, payback)
+    # et ses économies. Les deux gammes partant ENSEMBLE par défaut
+    # (``GAMME_ENVOI_LES_DEUX``), le client comparait deux offres dont l'une
+    # affichait le payback de l'autre.
+    params_soeur = etude_params_pour_copie(
+        getattr(devis, 'etude_params', None)) or {}
     params_soeur['gamme'] = {
         'nom': nom_gamme,
         'recommandee': bool(recommandee),
@@ -161,6 +171,24 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             prix_cible_kwc=devis.prix_cible_kwc,
             devise=devis.devise,
             taux_change=devis.taux_change,
+            # ── QJR146 (a) — LA SŒUR HÉRITE DES CONDITIONS, PAS DU MONTANT ──
+            # Sans ``echeancier``, une gamme sœur repartait sur l'échéancier
+            # par DÉFAUT de la société pendant que son frère gardait celui qui
+            # avait été négocié — deux offres envoyées ENSEMBLE (défaut
+            # ``GAMME_ENVOI_LES_DEUX``) avec deux acomptes différents, dont un
+            # que personne n'a décidé.
+            # ``acompte_montant`` est délibérément EXCLU : c'est un MONTANT en
+            # MAD qui décrit le total du frère, et la docstring de cette
+            # fonction promet à la sœur « sa composition et SES prix propres ».
+            # Le pourcentage, lui, est une CONDITION : il suit.
+            echeancier=(list(devis.echeancier)
+                        if isinstance(devis.echeancier, list)
+                        else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
+            entite=devis.entite,
+            custom_data=(dict(devis.custom_data)
+                         if isinstance(devis.custom_data, dict)
+                         else devis.custom_data),
             created_by=user,
             version=devis.version + 1,
             version_parent=root,
@@ -172,22 +200,13 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
     create_numbered(Devis, company, 'devis', _save)
     soeur = holder['obj']
 
-    for ligne in devis.lignes.all():
-        creer_ligne(
-            soeur, produit=ligne.produit, designation=ligne.designation,
-            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label,
-            # QJR84 — la variante de gamme est une COPIE CONFORME du devis :
-            # l'option servie (L-2OPT), le caractère facultatif (XSAL5) et les
-            # marqueurs de saisie manuelle (D12) en font partie. Sans eux, la
-            # sœur perdait son découpage en options et rouvrait à la
-            # réécriture les prix négociés de l'originale.
-            variante=ligne.variante, optionnelle=ligne.optionnelle,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel,
-        )
+    # QJR116 — même cloneur unique que le duplicata et le renouvellement
+    # (``domain/lignes.cloner_lignes``) : la sœur est une COPIE CONFORME, et
+    # ce qu'« à l'identique » recouvre n'est plus retapé à trois endroits.
+    cloner_lignes(devis, soeur)
+    # QJR117 — les études de la SŒUR sont recalculées sur SES lignes (force :
+    # le dimensionnement se court-circuite sinon sur empreinte concordante).
+    rafraichir_etudes_du_devis(soeur, force=True)
 
     # La SOURCE reçoit son propre libellé (défaut : l'autre nom proposé) et la
     # recommandation quand la sœur ne la prend pas.
@@ -271,6 +290,16 @@ def create_devis_from_reserve(*, reserve, user):
         note_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
     note = "\n".join(note_lines)
 
+    # QJR129 / CS7 — LE MODE DU CHANTIER. Le devis d'origine du chantier le
+    # porte le plus précisément ; à défaut le chantier lui-même
+    # (``Installation.type_installation``) ; à défaut COMMERCIAL — un devis de
+    # RÉPARATION n'est pas une étude solaire résidentielle, et le laisser à NULL
+    # le faisait router vers ce rendu-là (page publique client comprise).
+    from apps.ventes.domain.creation import mode_installation_declare
+    mode = mode_installation_declare(
+        getattr(installation, 'devis', None), installation,
+        defaut=Devis.ModeInstallation.COMMERCIAL)
+
     def _create(ref):
         return Devis.objects.create(
             company=company,
@@ -279,6 +308,7 @@ def create_devis_from_reserve(*, reserve, user):
             statut=Devis.Statut.BROUILLON,
             created_by=user,
             note=note,
+            mode_installation=mode,
         )
 
     devis = create_with_reference(Devis, 'DEV', company, _create)

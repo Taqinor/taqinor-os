@@ -144,16 +144,43 @@ def build(ctx) -> str:
                    f'<div class="a2-steps">{steps_html}</div></div>') if steps_html else ""
 
     # ── worst-month reassurance (Lorentz's strongest line) ───────────────────
-    if besoin_m3j and m3j and float(m3j) >= float(besoin_m3j):
-        assure_lead = (f'Votre pompe livre <b>{fmt(m3j)} m³/jour</b>, au-dessus de '
-                       f'votre besoin de pointe de <b>{fmt(besoin_m3j)} m³/jour</b>.')
+    # QJR152(b) — l'encadré « De l'eau toute l'année, sans manquer / votre
+    # installation donne plus d'eau qu'il n'en faut » était construit puis
+    # injecté SANS AUCUNE GARDE, y compris quand l'eau livrée est INFÉRIEURE au
+    # besoin de pointe : le PDF affirmait la suffisance pendant que le graphe
+    # juste dessous colorait en ambre les mois tendus. La promesse n'est plus
+    # servie que si elle est vraie ; sinon un texte de couverture PARTIELLE, et
+    # quand la comparaison n'est pas calculable, un texte de méthode sans
+    # aucune promesse de suffisance.
+    _couvre = None
+    if besoin_m3j and m3j:
+        try:
+            _couvre = float(m3j) >= float(besoin_m3j)
+        except (TypeError, ValueError):
+            _couvre = None
+    if _couvre is True:
+        assure_ic, assure_cls = "✓", ""
+        assure_h = "De l'eau toute l'année, sans manquer"
+        assure_t = (f'Même au mois le moins ensoleillé, votre installation donne '
+                    f'plus d\'eau qu\'il n\'en faut. Votre pompe livre '
+                    f'<b>{fmt(m3j)} m³/jour</b>, au-dessus de votre besoin de pointe '
+                    f'de <b>{fmt(besoin_m3j)} m³/jour</b>.')
+    elif _couvre is False:
+        assure_ic, assure_cls = "!", " a2-assure-part"
+        assure_h = "Couverture partielle au mois de pointe"
+        assure_t = (f'Votre pompe livre <b>{fmt(m3j)} m³/jour</b> ; au mois le plus '
+                    f'exigeant, votre culture en demande <b>{fmt(besoin_m3j)} m³/jour</b> '
+                    f'(les mois en ambre du graphe ci-dessous). Le reste de l\'année, '
+                    f'vous avez de la marge — pour la pointe, nous ajustons ensemble '
+                    f'(bassin de stockage, heures de pompage, ou une pompe plus grande).')
     else:
-        assure_lead = ('Nous dimensionnons sur le <b>mois le plus exigeant</b> (plein '
-                       'été). Le reste de l\'année, vous avez de la marge.')
-    assure = (f'<div class="a2-assure"><div class="a2-assure-ic">✓</div>'
-              f'<div class="a2-assure-tx"><div class="a2-assure-h">De l\'eau toute l\'année, sans manquer</div>'
-              f'<div class="a2-assure-t">Même au mois le moins ensoleillé, votre installation '
-              f'donne plus d\'eau qu\'il n\'en faut. {assure_lead}</div></div></div>')
+        assure_ic, assure_cls = "✓", ""
+        assure_h = "Dimensionné sur le mois le plus exigeant"
+        assure_t = ('Nous dimensionnons sur le <b>mois le plus exigeant</b> (plein '
+                    'été). Le reste de l\'année, vous avez de la marge.')
+    assure = (f'<div class="a2-assure{assure_cls}"><div class="a2-assure-ic">{assure_ic}</div>'
+              f'<div class="a2-assure-tx"><div class="a2-assure-h">{assure_h}</div>'
+              f'<div class="a2-assure-t">{assure_t}</div></div></div>')
 
     # site facts chips
     facts = []
@@ -288,6 +315,13 @@ def build(ctx) -> str:
 .a2-assure-h{{font-family:{f_serif};font-weight:700;font-size:11.5pt;color:{C['green_700']};}}
 .a2-assure-t{{font-size:9pt;color:{ink};line-height:1.45;margin-top:3px;}}
 .a2-assure-t b{{color:{C['green_700']};}}
+/* QJR152(b) — couverture PARTIELLE : même encadré, code couleur ambre, aucune
+   promesse de suffisance (le graphe dessous colore les mois tendus en ambre). */
+.a2-assure-part{{border-color:#F3E1BD;border-left-color:{gold};
+  background:linear-gradient(110deg,{C['gold_soft']},#fff 72%);}}
+.a2-assure-part .a2-assure-ic{{background:{gold};}}
+.a2-assure-part .a2-assure-h{{color:{C['earth']};}}
+.a2-assure-part .a2-assure-t b{{color:{C['earth']};}}
 /* facts */
 .a2-facts{{display:flex;flex-wrap:wrap;gap:9px;margin-top:11px;}}
 .a2-fact{{flex:1 1 30%;border:1px solid {line};border-radius:11px;background:{wash};padding:9px 12px;}}

@@ -1004,6 +1004,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     _sans_paires = _drop_huawei_accessories(_sans_paires)
     _avec_paires = _drop_huawei_accessories(_avec_paires)
+
+    # ── QJR124 — LA LISTE LIBRE EST FILTRÉE ICI, PAS AU RENDU ───────────────
+    # Le filtrage QF9 ci-dessus ne s'applique qu'à ``sans_items``/``avec_items``.
+    # Le chemin « devis libre / pompage / scénario non apparié » (plus bas :
+    # ``_all_rows = items`` et ``onepage_source = items``) servait donc la liste
+    # COMPLÈTE : ``totaux_all`` était figé sur les lignes NON filtrées pendant
+    # que le renderer re-filtrait le TABLEAU au dernier moment. Le client lisait
+    # alors un « Total TTC » incluant un accessoire absent du tableau.
+    # On filtre EN AMONT, une fois, pour que le tableau et les totaux
+    # décrivent le même panier.
+    # La règle est celle du BON SENS sur une liste à plat : les accessoires
+    # Huawei ne sont retirés que si AUCUN onduleur Huawei n'est facturé — une
+    # liste libre portant à la fois un onduleur Huawei et un onduleur Deye
+    # garde légitimement le Smart Meter du premier.
+    def _aucun_onduleur_huawei(rows):
+        inverters = [it for it in rows if _is_inverter(_blob(it))]
+        if not inverters:
+            return True
+        return not any(
+            "huawei" in (f"{it.get('designation', '')} {it.get('marque', '')} "
+                         f"{it.get('_produit_nom', '')}").lower()
+            for it in inverters)
+
+    _items_libres = list(items)
+    if _aucun_onduleur_huawei(items):
+        _items_libres = [it for it in items
+                         if not _is_smart_meter(it.get("designation", ""))
+                         and not _is_wifi_dongle(it.get("designation", ""))]
     sans_items = [it for _, it in _sans_paires]
     avec_items = [it for _, it in _avec_paires]
     # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
@@ -1463,7 +1491,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif scenario == 'Sans batterie' and has_reseau:
         _all_rows = sans_items
     else:
-        _all_rows = items
+        # QJR124 — la liste libre DÉJÀ filtrée (accessoires Huawei orphelins) :
+        # les totaux ne peuvent plus inclure une ligne absente du tableau.
+        _all_rows = _items_libres
     totaux_all = _canonical_totaux(_all_rows)
 
     # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
@@ -1661,6 +1691,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
+        # sur le productible de repli SANS que rien, nulle part, n'indique que
+        # le repère de la société n'avait pas pu être lu : une production
+        # publiée 25 % trop basse (« ≈ N kWh par kWc et par an ») était
+        # indistinguable d'un calcul normal. Le PDF ne casse toujours pas.
+        logger.warning(
+            "barème société illisible (devis %s) — repli productible",
+            getattr(devis, "reference", None), exc_info=True)
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
@@ -1674,6 +1712,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _productible = productible_for_city(
             _client_city, override=_co_productible)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
+        # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
+        # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
+        # cette ligne dit qu'on y est arrivé par une erreur.
+        logger.warning(
+            "productible par ville illisible (devis %s, ville %r) — repli",
+            getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
@@ -1792,8 +1837,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
             etude["payback"] = roi["roi_s"]
-        if (puissance_kwc or 0) > 0:
-            etude["prix_kwc"] = round(_ref_total / puissance_kwc)
+        # ── QJR160 — LE PRIX PAR KWC DÉCRIT UNE OFFRE, PAS UN MÉLANGE ───────
+        # ``_ref_total`` est le TTC de l'option 1 (« sans » quand elle est
+        # servable) tandis que ``puissance_kwc`` a été recalé sur le kWc de
+        # l'option 2 dès que les champs PV divergent (repli documenté
+        # ``panneaux_divergents``, plus haut) : le quotient ne décrivait alors
+        # AUCUNE des deux offres. On apparie donc le total et le kWc de la
+        # MÊME branche. Et sur un document qui chiffre DEUX options de tailles
+        # différentes, aucun prix au kWc unique n'a de sens : la carte est
+        # OMISE plutôt que de faire choisir au client entre deux vérités.
+        _kwc_ref = (puissance_kwc_sans if sans_ok else puissance_kwc_avec)
+        if not _kwc_ref or _kwc_ref <= 0:
+            _kwc_ref = puissance_kwc
+        if deux_options and panneaux_divergents:
+            etude.pop("prix_kwc", None)
+        elif (_kwc_ref or 0) > 0:
+            etude["prix_kwc"] = round(_ref_total / _kwc_ref)
 
     # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
     #
@@ -2055,16 +2114,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # une donnée PVGIS). Sinon : None ⇒ omission.
     _productible_net_pvgis = None
     _ville_pvgis = None
+    _ville_pvgis_est_reference = False
     if _prod_net_kwc:
-        from .productible import ville_reconnue as _ville_ok
+        # QJR127 — on publie la ville de RÉFÉRENCE, jamais la ville du client.
+        # ``ville_reconnue`` répond « oui » pour les 15 villes d'ALIAS (Settat,
+        # Kénitra, Témara…) qui ne sont PAS dans la table PVGIS : la pastille
+        # imprimait « à Settat (donnée PVGIS) » avec la valeur de Casablanca et
+        # l'annexe publiait ``{'source': 'PVGIS', 'ville': 'Settat'}`` — le
+        # « national moyen déguisé en donnée locale » que le docstring de la
+        # fonction interdit lui-même.
+        from .productible import (est_ville_de_reference as _est_ref,
+                                  ville_reference as _ville_ref)
         _force_societe = bool(
             _co_productible and abs(float(_co_productible) - 1600) > 0.5)
-        if _ville_ok(_client_city) and not _force_societe:
+        _ref = _ville_ref(_client_city)
+        if _ref and not _force_societe:
             # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :
             # deux phrases du même document ne peuvent pas annoncer deux
             # productibles différents pour la même installation.
             _productible_net_pvgis = int(round(_prod_net_kwc))
-            _ville_pvgis = _client_city
+            _ville_pvgis = _ref
+            # Vrai quand la ville du client EST elle-même dans la table : le
+            # rendu peut alors dire « à <ville> » sans autre précision ; sinon
+            # il DIT que c'est la ville de référence la plus proche.
+            _ville_pvgis_est_reference = _est_ref(_client_city)
 
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
@@ -2108,7 +2181,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # réglage société : la phrase s'OMET — jamais une moyenne nationale
         # présentée comme la donnée du client.
         "productible_net_kwh_kwc": _productible_net_pvgis,
+        # QJR127 — ville de RÉFÉRENCE de la table PVGIS (jamais la ville du
+        # client quand elle n'y figure pas), + le drapeau qui dit si les deux
+        # coïncident. L'annexe technique (``calepinage_options``) lit la même
+        # clé : elle cesse elle aussi de publier une ville hors table.
         "productible_ville": _ville_pvgis,
+        "productible_ville_est_reference": _ville_pvgis_est_reference,
     }
 
     # ── M1 (audit adversarial du 19/08/2026) — PLUS AUCUN PROXY DE FACTURE ────
@@ -2258,7 +2336,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Liste libre / pompage : les lignes du devis entier. La branche se
         # déduit alors de la composition RÉELLEMENT facturée — un panier qui
         # porte une batterie est l'option « avec », sinon « sans ».
-        onepage_source = items
+        # QJR124 — MÊME liste que ``_all_rows`` ci-dessus (filtrée en amont).
+        onepage_source = _items_libres
         onepage_branche = 'avec' if has_batterie else 'sans'
     onepage_note_batterie = deux_options
 
@@ -2875,7 +2954,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["prod_kwh_multi"] = int(round(roi["prod_kwh"] * _n))
             data["eco_s_ann_multi"] = int(round(roi["eco_s_ann"] * _n))
             data["eco_a_ann_multi"] = int(round(roi["eco_a_ann"] * _n))
-        _mv = multi_villa_totaux(devis)
+        # ── QJR126 — PAS DE « TOTAL GÉNÉRAL » SUR UN DOCUMENT À DEUX OPTIONS ─
+        # ``multi_villa_totaux`` calcule sur TOUTES les lignes du devis, et son
+        # déclenchement est HORS du garde ``_n > 1`` : il suffit qu'une ligne
+        # porte un ``groupe_index``. Sur un devis à deux options ainsi groupé,
+        # la page 2 affiche deux totaux (un par option) et la page 3 un total
+        # qui les ADDITIONNE — le montant sans signification que QJR24 et
+        # PACT10 combattent partout ailleurs. Deux options ⇒ la clé n'est pas
+        # posée (le détail par propriété n'a de sens que sur UNE offre).
+        _mv = None if deux_options else multi_villa_totaux(devis)
         if _mv is not None:
             # Rendu-friendly : totaux Decimal → float pour la sérialisation JSON.
             def _f(t):
@@ -2976,8 +3063,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
 _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 #: Scalaires client rendus tels quels par les gabarits.
+#: QJR154 — ``accepte_par_nom`` en fait partie : il est écrit par
+#: ``services.accept_devis`` depuis le ``nom`` posté sur le PORTAIL PUBLIC,
+#: donc par une personne NON AUTHENTIFIÉE, et trois renderers l'injectent dans
+#: leur HTML (``agricole/economics_page``, ``industriel/trust``,
+#: ``commercial/trust``) — ``theme.titlecase_name`` n'échappe rien.
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
-                        "client_city", "client_phone", "client_ice")
+                        "client_city", "client_phone", "client_ice",
+                        "accepte_par_nom")
 
 
 def echapper_textes_client(data: dict) -> dict:
@@ -3000,6 +3093,22 @@ def echapper_textes_client(data: dict) -> dict:
 
     ``html.escape`` ne touche que ``&<>"'`` : un texte normal est rendu au bit
     près, et les mots-clés de classification (panneau, batterie…) sont intacts.
+
+    ── QJR154 — LE SOUS-DICTIONNAIRE ``etude`` EST COUVERT ─────────────────
+    ``data['etude']`` est ``dict(devis.etude_params or {})`` : un ``JSONField``
+    LIBRE, accepté du corps de requête. La liste blanche l'ignorait, et deux
+    paquets impriment ses textes bruts — ``agricole/study.py`` (``crop``,
+    ``region``, ``pompe_nom``, ``irrigation_method``) et
+    ``commercial/categories.py`` (``four``). Seuls les scalaires de type
+    ``str`` sont échappés, à plat : un nombre resterait un nombre (les gardes
+    numériques du document le comparent), et les sous-blocs (``toiture``,
+    ``etude_horaire``, ``bankable``, séries mensuelles) ne sont pas du texte
+    rendu tel quel.
+
+    LE SCHÉMA AGRICOLE A UNE SEULE VÉRITÉ : ``agricole/schematic.py``
+    s'échappait lui-même. Il ne le fait PLUS (il consomme les textes déjà
+    échappés ici) — sans quoi un simple « & » dans une culture sortait
+    « &amp;amp; » sur le PDF.
     """
     def _e(v):
         return html.escape(str(v)) if v is not None else v
@@ -3008,6 +3117,12 @@ def echapper_textes_client(data: dict) -> dict:
     for _cle in _CHAMPS_TEXTE_CLIENT:
         if sortie.get(_cle) is not None:
             sortie[_cle] = _e(sortie[_cle])
+    _etude = sortie.get("etude")
+    if isinstance(_etude, dict):
+        sortie["etude"] = {
+            cle: (_e(val) if isinstance(val, str) else val)
+            for cle, val in _etude.items()
+        }
     for _cle in ("sans_items", "avec_items", "all_items", "options_proposees"):
         _rows = sortie.get(_cle)
         if isinstance(_rows, list):

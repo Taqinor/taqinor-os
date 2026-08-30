@@ -1192,7 +1192,8 @@ def specs_for_produit(produit):
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
-        max_charge_kw, max_decharge_kw, max_modules_par_banc}``.
+        max_charge_kw, max_decharge_kw, max_modules_par_banc,
+        rendement_ar_pct}``.
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -1265,6 +1266,14 @@ def specs_for_produit(produit):
             # champ récent — absent ≡ NULL (illimité, comportement inchangé).
             ('max_modules_par_banc',
              getattr(fiche, 'bat_max_modules_par_banc', None)),
+            # QJR137 (2026-08-30) — le rendement aller-retour PUBLIÉ. Sans lui,
+            # le moteur horaire n'avait que le forfait 0,90 de
+            # ``quote_engine.pricing`` pour borner ce que la batterie restitue,
+            # donc l'économie « avec batterie » montrée au client. getattr :
+            # les doubles de test (_FausseFiche) ne portent pas forcément le
+            # champ récent — absent ≡ NULL (non publié, hypothèse déclarée).
+            ('rendement_ar_pct',
+             getattr(fiche, 'bat_rendement_ar_pct', None)),
         ):
             _put(out, key, value)
     return out

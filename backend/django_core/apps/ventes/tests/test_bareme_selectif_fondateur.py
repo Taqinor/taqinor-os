@@ -187,15 +187,50 @@ class TestScenarioFondateur(SimpleTestCase):
     def test_deux_factures_annuelles_meme_chaine(self):
         # 8 400 kWh/an (= 700/mois), production 8 400 kWh/an autoconsommée à
         # 60 % → 5 040 kWh effacés, résiduel 3 360 kWh/an = 280 kWh/mois.
-        #   facture sans : 1 135,9992 × 12 = 13 631,9904 → 13 632
-        #   facture avec :   332,46864 × 12 =  3 989,62368 →  3 990
-        #   économie      : 13 632 − 3 990 = 9 642 MAD/an
+        #
+        # RECALÉ PAR QJR157 (30/08/2026) — LA FACTURE PUBLIÉE COMPTE CE QUE LE
+        # CLIENT PAIE. Ce verrou tenait la facture ÉNERGIE SEULE (13 632 /
+        # 3 990) alors que le chemin horaire servait déjà, pour le MÊME client,
+        # la facture COMPLÈTE : redevance de compteur et TPPAN comprises. Les
+        # deux modèles publiaient donc deux factures actuelles différentes.
+        # ``two_bills_savings`` passe désormais par ``bareme``. Dérivation à la
+        # main, poste par poste (millésime 2026) :
+        #   700 kWh : énergie 1 135,9992 + fixes 39,936 (18,28 × 1,20 +
+        #             15,00 × 1,20) + TPPAN 100,00 (10 + 15 + 500 × 0,20 = 125,
+        #             PLAFONNÉE à 100) = 1 275,9352 → × 12 = 15 311,2224
+        #             → 15 311
+        #   280 kWh : énergie   332,46864 + fixes 39,936 + TPPAN 41,00
+        #             (10 + 15 + 80 × 0,20) = 413,40464 → × 12 = 4 960,856
+        #             → 4 961
+        #   économie : 15 311 − 4 961 = 10 350 MAD/an — plus que les 9 642
+        #             d'avant, et c'est JUSTE : les lignes fixes s'annulent
+        #             (39,936 des deux côtés) mais la TPPAN SUIT le kWh
+        #             (100 → 41), donc elle fait partie de l'économie réelle.
+        # La chaîne ÉNERGIE reste épinglée telle quelle par
+        # ``test_economie_mensuelle_au_barème`` juste au-dessus.
         out = two_bills_savings(8400, 8400, 0.60, utility="onee")
-        self.assertEqual(out["facture_sans"], 13632)
-        self.assertEqual(out["facture_avec"], 3990)
-        self.assertEqual(out["economie"], 9642)
+        self.assertEqual(out["facture_sans"], 15311)
+        self.assertEqual(out["facture_avec"], 4961)
+        self.assertEqual(out["economie"], 10350)
         self.assertEqual(out["autoconso_kwh"], 5040)
         self.assertFalse(out["approximatif"])
+
+    def test_les_deux_factures_se_derivent_poste_par_poste(self):
+        """QJR157 — chaque composante du verrou ci-dessus, isolément."""
+        from apps.ventes.quote_engine import bareme as B
+        avant = B.facture_mad(700)
+        apres = B.facture_mad(280)
+        self.assertAlmostEqual(avant["energie_mad"], 1135.9992, places=9)
+        self.assertAlmostEqual(apres["energie_mad"], 332.46864, places=9)
+        # Les lignes fixes sont IDENTIQUES des deux côtés : elles s'annulent.
+        self.assertEqual(avant["location_entretien_mad"],
+                         apres["location_entretien_mad"])
+        # La TPPAN, elle, suit le kWh — c'est pourquoi elle ne s'annule pas.
+        self.assertAlmostEqual(avant["tppan_mad"], 100.0, places=6)
+        self.assertAlmostEqual(apres["tppan_mad"], 41.0, places=6)
+        out = two_bills_savings(8400, 8400, 0.60, utility="onee")
+        self.assertEqual(out["facture_sans"], round(avant["total_mad"] * 12))
+        self.assertEqual(out["facture_avec"], round(apres["total_mad"] * 12))
 
     def test_le_residuel_sous_311_retombe_encore_plus_bas(self):
         # Borne basse du site (autoconsommation 75 % réellement synchrone) :
@@ -247,3 +282,103 @@ class TestUnSeulBaremeNational(SimpleTestCase):
         self.assertAlmostEqual(
             kwh_from_bill(350, tranches_override=custom)["kwh_mensuel"], 150.0,
             places=1)
+
+
+class TestSeuilExonerationTPPAN(SimpleTestCase):
+    """QJR141 — le seuil d'exonération TPPAN, tranché et documenté.
+
+    Deux sources officielles se contredisaient (≤ 50 kWh, texte de 1996 ;
+    ≤ 200 kWh, page Lydec) et le module retenait 200 — la branche NON prouvée,
+    et celle qui MAXIMISE l'économie vendue : la facture AVANT solaire est
+    presque toujours > 200 kWh (le seuil n'y change rien), tandis que la
+    facture APRÈS solaire retombe souvent entre 50 et 200, exactement la plage
+    où le seuil décide. Décision QJR141 : on retient 50, la lecture PROUVÉE
+    (le texte dont ce module tire déjà ses tranches et son plafond) et la plus
+    prudente, et la réserve VOYAGE avec le chiffre.
+    """
+
+    def test_le_seuil_retenu_est_celui_du_texte_de_1996(self):
+        from apps.ventes.quote_engine import bareme as B
+        self.assertEqual(B.TPPAN_EXONERATION_KWH_MOIS, 50.0)
+
+    def test_la_source_publie_le_seuil_retenu_et_sa_reserve(self):
+        from apps.ventes.quote_engine import bareme as B
+        source = B.TPPAN_SOURCE
+        self.assertIn('50 kWh', source)
+        self.assertIn('200 kWh', source)          # la lecture écartée est DITE
+        self.assertIn('dahir 1-96-77', source)
+        self.assertIn('ne départage', source)
+
+    def test_la_marche_du_seuil_retenu_est_celle_de_la_premiere_tranche(self):
+        """Dérivé de ``TPPAN_TRANCHES``, jamais recopié : 50 × 0,10 = 5,00."""
+        from apps.ventes.quote_engine import bareme as B
+        marche_50 = B.tppan_mad(50.0001, jours=30, exoneration_kwh=None)
+        self.assertAlmostEqual(marche_50, 5.00, places=2)
+
+    def test_la_marche_de_la_lecture_ecartee_etait_cinq_fois_plus_raide(self):
+        """200 kWh → 100 × 0,10 + 100 × 0,15 = 25,00 MAD d'un seul coup."""
+        from apps.ventes.quote_engine import bareme as B
+        marche_200 = B.tppan_mad(200.0001, jours=30, exoneration_kwh=None)
+        self.assertAlmostEqual(marche_200, 25.00, places=2)
+        self.assertAlmostEqual(
+            marche_200 / B.tppan_mad(50.0001, jours=30, exoneration_kwh=None),
+            5.0, places=2)
+
+    def test_l_asymetrie_est_bien_du_cote_de_la_facture_APRES(self):
+        """Le seuil ne touche QUE le résidu après solaire, pas la facture avant."""
+        from apps.ventes.quote_engine import bareme as B
+        avant = 600.0        # facture avant solaire : au-dessus des DEUX seuils
+        self.assertAlmostEqual(
+            B.tppan_mad(avant, jours=30, exoneration_kwh=50.0),
+            B.tppan_mad(avant, jours=30, exoneration_kwh=200.0), places=6)
+        # Le résidu, lui, bascule entièrement.
+        apres = 150.0
+        self.assertEqual(B.tppan_mad(apres, jours=30, exoneration_kwh=200.0),
+                         0.0)
+        self.assertGreater(B.tppan_mad(apres, jours=30, exoneration_kwh=50.0),
+                           0.0)
+
+    def test_la_correction_annuelle_est_de_l_ordre_de_grandeur_annonce(self):
+        """Ce que la lecture écartée ajoutait à l'économie vendue, par an."""
+        from apps.ventes.quote_engine import bareme as B
+        # Résidu de 150 kWh/mois : 100 × 0,10 + 50 × 0,15 = 17,50 MAD/mois.
+        self.assertAlmostEqual(B.tppan_mad(150, jours=30) * 12, 210.00,
+                               places=2)
+        # Haut de la plage concernée (juste sous l'ancien seuil).
+        self.assertAlmostEqual(B.tppan_mad(199, jours=30) * 12, 298.20,
+                               places=2)
+
+    def test_les_factures_du_fondateur_sont_INCHANGEES(self):
+        """Toutes > 200 kWh : le seuil ne les touche ni avant ni après."""
+        from apps.ventes.quote_engine import bareme as B
+        self.assertAlmostEqual(B.tppan_mad(359, jours=30), 56.80, places=2)
+        detail = B.facture_mad(359, jours=30)
+        self.assertAlmostEqual(detail['total_mad'], 592.77, places=2)
+        self.assertAlmostEqual(
+            B.kwh_depuis_facture_mad(592.77, jours=30)['kwh_mensuel'],
+            359.0, places=1)
+
+    # ── La réserve voyage avec le chiffre ──────────────────────────────────
+
+    def test_l_inversion_rend_desormais_tppan_source(self):
+        from apps.ventes.quote_engine import bareme as B
+        sortie = B.kwh_depuis_facture_mad(592.77, jours=30)
+        self.assertIn('tppan_source', sortie)
+        self.assertEqual(sortie['tppan_source'], B.TPPAN_SOURCE)
+
+    def test_sans_tppan_la_source_est_vide(self):
+        from apps.ventes.quote_engine import bareme as B
+        sortie = B.kwh_depuis_facture_mad(592.77, jours=30, tppan=False)
+        self.assertEqual(sortie['tppan_source'], '')
+
+    def test_le_bloc_de_consommation_estimee_porte_la_reserve(self):
+        from apps.ventes import etude_horaire as EH
+        from apps.ventes.quote_engine import bareme as B
+        _kwh, detail = EH.serie_kwh_depuis_mad([592.77] * 12)
+        self.assertEqual(detail['tppan_source'], B.TPPAN_SOURCE)
+
+    def test_sans_tppan_le_bloc_garde_sa_forme_d_avant(self):
+        """Clé ADDITIVE : absente quand la TPPAN ne s'applique pas."""
+        from apps.ventes import etude_horaire as EH
+        _kwh, detail = EH.serie_kwh_depuis_mad([592.77] * 12, tppan=False)
+        self.assertNotIn('tppan_source', detail)

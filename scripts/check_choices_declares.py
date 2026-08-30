@@ -606,7 +606,13 @@ REFUS = {
     "frontend/src/features/stock/labels.js": [
         ("Préfixes connus", "SANS_SOURCE")],
     "frontend/src/features/ventes/agronomy.js": [
-        ("Aligné sur solar.js", "MIROIR_JS")],
+        ("Aligné sur solar.js", "MIROIR_JS"),
+        # QJR166 (30/08) — les deux promesses du moteur unifié : KC_MID_DEFAUT
+        # est une constante scalaire (0.85), et peak_need_m3_day() décrit le
+        # COMPORTEMENT « pointe = max de la série mensuelle » — la parité réelle
+        # est épinglée par le test 3 cultures d'agronomy.test.mjs.
+        ("Seule constante", "SCALAIRE"),
+        ("peak_need_m3_day", "COMPORTEMENT")],
     "frontend/src/features/ventes/ConceptionElectrique.jsx": [
         # PV43 — DC_M_MINIMUM/DC_M_PAR_CHAINE : constantes scalaires de
         # préremplissage (la valeur AFFICHÉE vient du serveur), pas une liste.

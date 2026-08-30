@@ -1795,3 +1795,138 @@ class JourReferenceExpliciteTests(SimpleTestCase):
         self.assertIsNotNone(a)
         self.assertIsNotNone(b)
         self.assertNotEqual(a['paliers'], b['paliers'])
+
+
+class JourReferenceTousLesAppelantsTests(SimpleTestCase):
+    """QJR164 — le ``jour_reference`` de QJR45 atteint TOUS les appelants.
+
+    L'audit QJR79 a montré que la dépendance à l'horloge touche aussi la chaîne
+    d'AUTOCONSOMMATION par la courbe de charge, pas seulement la production :
+    tout ce qui rejoue les douze jours types via :func:`jours_types_annee`
+    dépend de la fenêtre Ramadan, donc d'une DATE. Deux appelants la
+    transmettaient déjà (l'étude complète, le balayage du stockage) ; les deux
+    surfaces PUBLIQUES — ``jours_types`` et ``couverture_batterie``, toutes deux
+    servies au client — retombaient sur l'horloge du serveur au moment du rendu.
+
+    Les quatre sont vérifiés ici, un test par appelant, plus la garde
+    structurelle : le module ne contient qu'UN SEUL appel d'horloge, au fond de
+    ``jours_types_annee``.
+    """
+
+    VILLE = 'Casablanca'
+    CONSO = [420.0] * 12
+    #: Mêmes dates que ``JourReferenceExpliciteTests`` — lues sur la table
+    #: ``ramadan.RAMADAN_PLAGES`` (2027 : 8 fév → 8 mars ; 2028 : 28 jan →
+    #: 25 fév), jamais inventées : leurs Ramadans tombent sur des mois
+    #: différents, donc les jours types de janvier/février diffèrent.
+    JOUR_A = date(2027, 1, 5)
+    JOUR_B = date(2028, 1, 5)
+
+    # ── 1. jours_types_publics (sortie CLIENT : payload ``jours_types``) ────
+
+    def _jours_types(self, jour_reference):
+        return EH.jours_types_publics(
+            kwc=6.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE,
+            jour_reference=jour_reference)
+
+    def test_jours_types_publics_recoit_la_date(self):
+        a = self._jours_types(self.JOUR_A)
+        b = self._jours_types(self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual(a, b)
+
+    def test_jours_types_publics_sans_date_garde_l_ancien_comportement(self):
+        from django.utils import timezone
+        self.assertEqual(self._jours_types(None),
+                         self._jours_types(timezone.localdate()))
+
+    # ── 2. calculer_etude_horaire (l'étude complète) ────────────────────────
+
+    def test_etude_complete_recoit_la_date(self):
+        def _etude(jour):
+            return EH.calculer_etude_horaire(
+                kwc=5.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
+                occupation=CJ.OCCUPATION_PRESENCE, jour_reference=jour)
+        a, b = _etude(self.JOUR_A), _etude(self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual([m['economie_sans_mad'] for m in a['mois']],
+                            [m['economie_sans_mad'] for m in b['mois']])
+
+    # ── 3. balayer_stockage_horaire (le balayage du stockage, DIM2) ─────────
+
+    def test_balayage_du_stockage_recoit_la_date(self):
+        def _balayage(jour):
+            return EH.balayer_stockage_horaire(
+                kwc=5.0, conso_kwh_mensuelles=self.CONSO, capacites_kwh=[5.0],
+                ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
+                jour_reference=jour)
+        a, b = _balayage(self.JOUR_A), _balayage(self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual(a['paliers'], b['paliers'])
+
+    # ── 4. couverture_batterie_publique (sortie CLIENT : curseur N packs) ───
+
+    def _couverture(self, jour_reference):
+        return EH.couverture_batterie_publique(
+            kwc=8.5, conso_kwh_mensuelles=[900.0] * 12,
+            capacite_utile_pack_kwh=4.6, nb_packs_max=2,
+            ville=self.VILLE, jour_reference=jour_reference)
+
+    def test_couverture_batterie_publique_recoit_la_date(self):
+        a = self._couverture(self.JOUR_A)
+        b = self._couverture(self.JOUR_B)
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual(a, b)
+
+    def test_couverture_batterie_sans_date_garde_l_ancien_comportement(self):
+        from django.utils import timezone
+        self.assertEqual(self._couverture(None),
+                         self._couverture(timezone.localdate()))
+
+    # ── La garde structurelle : UN SEUL appel d'horloge dans le module ──────
+
+    def test_un_seul_appel_d_horloge_dans_le_module(self):
+        """Aucun nouvel appel d'horloge : la date entre par le paramètre.
+
+        Un second ``localdate()`` ailleurs dans le module rendrait le
+        ``jour_reference`` du pipeline partiellement inopérant — un appelant
+        lirait la date passée, un autre celle du serveur, et les deux moitiés
+        du même tableau décriraient deux jours différents.
+        """
+        import ast
+
+        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        horloge = {'localdate', 'now', 'today', 'localtime'}
+        appels = [
+            '%s.%s' % (getattr(noeud.func.value, 'id', '?'),
+                       noeud.func.attr)
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr in horloge
+        ]
+        self.assertEqual(len(appels), 1,
+                         "appels d'horloge trouvés : %r" % (appels,))
+        self.assertEqual(appels[0], 'timezone.localdate')
+
+    def test_les_quatre_appelants_transmettent_le_parametre(self):
+        """Garde de source : aucun appel à ``jours_types_annee`` n'oublie la date."""
+        import ast
+
+        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        sites = [
+            noeud for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Name)
+            and noeud.func.id == 'jours_types_annee'
+        ]
+        self.assertEqual(len(sites), 4, '%d sites trouvés' % len(sites))
+        for site in sites:
+            self.assertIn(
+                'jour_reference', [kw.arg for kw in site.keywords],
+                'appel ligne %d sans jour_reference' % site.lineno)

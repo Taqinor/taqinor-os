@@ -63,23 +63,41 @@ def build(ctx):
     conso = d.get("ind_conso")
     autoconso = d.get("ind_autoconso")
     couverture = d.get("ind_couverture")
-    economies = d.get("ind_economies") or 0
+    economies = d.get("ind_economies")
     invest = d.get("_invest_ttc") or 0
 
+    # QJR119 — les factures manquantes ne se REMBOURRENT PLUS de zéros.
+    # ``builder`` pose ``factures_mensuelles = None`` sur tout dossier chiffré
+    # depuis une consommation annuelle : le rembourrage imprimait alors
+    # « 0 MAD/an — Facture électrique actuelle » et douze barres vides, un
+    # chiffre d'apparence mesurée qui n'a jamais été mesuré. Sans facture
+    # exploitable, la baseline chiffrée et son graphe sont OMIS.
     bills = [float(b or 0) for b in (d.get("factures_mensuelles") or [])][:12]
-    while len(bills) < 12:
-        bills.append(0.0)
-    annual_bill = round(sum(bills))
-    avg_bill = round(annual_bill / 12) if annual_bill else 0
-    bmax = max(bills) or 1.0
-
-    # Barres CSS (hauteurs en mm — déterministes, jamais de % dans une cellule).
-    bar_cells = ""
-    for i, b in enumerate(bills):
-        h = round(b / bmax * 26.0, 1)
-        bar_cells += (
-            f'<td class="i1-bc"><div class="i1-bar" style="height:{h}mm"></div>'
-            f'<div class="i1-mn">{_MONTHS[i]}</div></td>')
+    bills_ok = any(b > 0 for b in bills)
+    annual_bill = round(sum(bills)) if bills_ok else None
+    avg_bill = round(annual_bill / 12) if annual_bill else None
+    if bills_ok:
+        while len(bills) < 12:
+            bills.append(0.0)
+        bmax = max(bills) or 1.0
+        # Barres CSS (hauteurs en mm — déterministes, jamais de % en cellule).
+        bar_cells = ""
+        for i, b in enumerate(bills):
+            h = round(b / bmax * 26.0, 1)
+            bar_cells += (
+                f'<td class="i1-bc"><div class="i1-bar" style="height:{h}mm">'
+                f'</div><div class="i1-mn">{_MONTHS[i]}</div></td>')
+        bars_html = f'<table class="i1-bars"><tr>{bar_cells}</tr></table>'
+        bill_html = (
+            f'<div class="i1-big">{fmt(annual_bill)}<span>&nbsp;MAD/an</span>'
+            f'</div>'
+            f'<div class="i1-basel">Facture électrique actuelle · ≈ '
+            f'{fmt(avg_bill)} MAD/mois</div>')
+    else:
+        bars_html = ""
+        bill_html = ('<div class="i1-basel">Facture électrique actuelle '
+                     'non communiquée — transmettez 12 mois de factures et '
+                     'la baseline se chiffre.</div>')
 
     # KPI (autoconso/couverture omis proprement si non calculés).
     def kpi(val, unit, label):
@@ -96,7 +114,10 @@ def build(ctx):
                             "Couverture conso"))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
-    if not d.get("ind_masquer_economies"):
+    # QJR119 — la même omission couvre désormais « valeur non chiffrable »
+    # (économies absentes de l'étude), pas seulement le cas MT : le garde ne
+    # testait que ``ind_masquer_economies`` et laissait passer un « 0 MAD ».
+    if not d.get("ind_masquer_economies") and economies is not None:
         cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
     kpis = '<td class="i1-kgap"></td>'.join(cellules)
 
@@ -202,16 +223,15 @@ def build(ctx):
   </div>
 
   <div class="i1-wrap">
-    <div class="i1-sec">Baseline énergétique — 12 mois</div>
+    <div class="i1-sec">Baseline énergétique{' — 12 mois' if bills_ok else ''}</div>
     <div class="i1-card">
       <div class="i1-baserow">
         <div class="i1-basecell">
-          <div class="i1-big">{fmt(annual_bill)}<span>&nbsp;MAD/an</span></div>
-          <div class="i1-basel">Facture électrique actuelle · ≈ {fmt(avg_bill)} MAD/mois</div>
+          {bill_html}
           <div class="i1-basel">{conso_line}{(' · ' + prod_line) if prod_line else ''}</div>
         </div>
       </div>
-      <table class="i1-bars"><tr>{bar_cells}</tr></table>
+      {bars_html}
     </div>
 
     <div class="i1-kpirow">{kpis}</div>

@@ -14,6 +14,18 @@ def _yrs(v):
     return str(int(f)) if f == int(f) else f"{f:.1f}".replace(".", ",")
 
 
+def _validity_days(v):
+    """QJR149 — nombre de jours de validité, ou None quand il est indéterminable.
+
+    Aucun repli forfaitaire : la valeur vient du devis ou n'est pas publiée.
+    """
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def _link(url):
     url = (url or "").strip()
     if not url:
@@ -61,7 +73,17 @@ def build(ctx) -> str:
     b_reel = d.get("butane_12kg_reel") or 128
 
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name")) or "Le client"
-    validity = d.get("validity_days", 30)
+    # QJR149 — la validité vient du DEVIS (``validity_days`` / ``valid_until``
+    # posés par le builder depuis ``date_validite``, sinon création + réglage
+    # société ``quote_validity_days``), jamais d'un « 30 jours » codé ici.
+    # ``renderer._augment`` pose TOUJOURS les deux clés (``setdefault(..., None)``),
+    # donc le défaut ``30`` de ``d.get("validity_days", 30)`` n'était JAMAIS
+    # atteint : un devis sans validité calculable imprimait « None jours » dans
+    # les conditions ET « None jours de validité » dans la pastille d'appel à
+    # l'action. Indéterminable ⇒ la ligne ET la pastille sont OMISES, exactement
+    # comme la pastille de ``cover.py`` (correctif M7).
+    validity = _validity_days(d.get("validity_days"))
+    valid_until = (d.get("valid_until") or "").strip()
     pay = d.get("payment_terms", {}) or {}
     acompte = pay.get("acompte", 30); materiel = pay.get("materiel", 60); solde = pay.get("solde", 10)
     tva_note = (d.get("tva_note", "") or "").strip()
@@ -84,6 +106,25 @@ def build(ctx) -> str:
     env_html = _env_block(show_env, co2_t, trees, fuel_qty, C, fmt, fmt_dec)
 
     # ── rentabilité hero (number panel + fuel chart, equal height) ───────────
+    # QJR151(a) — l'hypothèse qui produit le volume annuel pompé (donc la
+    # facture carburant d'aujourd'hui, l'économie, le cumul 20 ans, le payback
+    # et ce graphe) est ÉNONCÉE sous le graphe. Elle était jusqu'ici muette :
+    # « estimations basées sur vos données » (page 1) ne dit pas qu'on suppose
+    # N jours de pompage par an ni quel ratio pointe/moyenne est retenu, alors
+    # qu'un pompage 5 jours/semaine fausse le chiffre d'un facteur ~1,5.
+    hyp_days = d.get("pumping_days_per_year")
+    hyp_ratio = d.get("peak_to_avg")
+    # QJR155 (c) — l'énoncé de la projection : linéaire, et il le DIT.
+    _lineaire = ('Projection linéaire : prix du carburant constant, sans '
+                 'dégradation des panneaux ni remplacement du variateur.')
+    hyp_html = f'<div class="a4-hyp">{_lineaire}</div>'
+    if hyp_days and hyp_ratio:
+        hyp_html = (
+            f'<div class="a4-hyp">Hypothèse de calcul : <b>{fmt(hyp_days)} jours '
+            f'de pompage par an</b>, à <b>{fmt(round(float(hyp_ratio) * 100))} %</b> '
+            'du débit de pointe en moyenne annuelle. Dites-nous vos jours réels '
+            f'et nous recalculons. {_lineaire}</div>')
+
     renta_html = ""
     if show_fuel and payback:
         pb_bits = []
@@ -91,8 +132,18 @@ def build(ctx) -> str:
             pb_bits.append(f"butane <b>{_yrs(payback_butane)} ans</b>")
         if payback_diesel:
             pb_bits.append(f"diesel <b>{_yrs(payback_diesel)} ans</b>")
+        # QJR155 (c) — LA PROJECTION DIT CE QU'ELLE NE MODÉLISE PAS.
+        # ``savings_20y = annual_saving × 20`` et la courbe d'amortissement sont
+        # strictement LINÉAIRES : ni inflation du carburant, ni dégradation des
+        # panneaux, ni remplacement du variateur (garanti 5 ans). C'était en
+        # contradiction douce avec le « punch » de cette même page, qui annonce
+        # que la facture carburant « va plus que doubler ». Aucun de ces trois
+        # taux n'existe dans le dépôt : les inventer serait un chiffre fabriqué
+        # (règle fondateur) — on les ÉNONCE, dans le sous-titre de la vignette,
+        # sans ajouter une ligne à une page à hauteur fixe.
         twenty = (f'<div class="a4-stat a4-stat-hi"><span>≈ {fmt(savings_20y)} MAD</span>'
-                  f'<small>économisés sur 20 ans</small></div>') if savings_20y else ""
+                  f'<small>économisés sur 20 ans, au prix du carburant '
+                  f'd\'aujourd\'hui</small></div>') if savings_20y else ""
         renta_html = f"""
   <div class="a4-renta">
     <div class="a4-card a4-num">
@@ -107,6 +158,7 @@ def build(ctx) -> str:
       <div class="a4-h">Solaire vs butane vs diesel</div>
       <div class="a4-cap">Coût annuel du carburant pour pomper le même volume d'eau</div>
       <img class="a4-fuelimg" src="{charts['fuel']}" alt="Comparatif carburant">
+      {hyp_html}
     </div>
   </div>
   <div class="a4-msg">{punch_html}{env_html}</div>
@@ -119,6 +171,14 @@ def build(ctx) -> str:
         # plafond FDA n'est pas confirmable) : mention qualitative, mot pour mot.
         net_line = (f'<div class="a4-qnet">{K.FDA_QUALITATIVE_NOTE}</div>'
                     ) if show_subsidy else ""
+        # QJR153 — la ligne « Garanties longues » répliquait les mêmes durées
+        # forfaitaires (25/10/5 ans) que la page 3 : elle se DÉRIVE désormais
+        # des lignes du devis, et sans aucune garantie au devis elle reste
+        # qualitative plutôt que d'annoncer des durées inventées.
+        _gar = theme.garanties_du_devis(d)
+        _gar_txt = (" · ".join(f"{lbl} {n} {u}" for n, u, lbl in _gar) + "."
+                    ) if _gar else ("Garantie constructeur sur chaque "
+                                    "composant, détaillée au devis.")
         whys = [
             ("Indépendance énergétique",
              "Votre énergie vient du soleil, pas du marché du carburant."),
@@ -126,8 +186,8 @@ def build(ctx) -> str:
              "Pas de facture de carburant qui grimpe d'année en année."),
             ("Zéro entretien carburant",
              "Pas de bonbonnes à transporter, pas de moteur thermique à réviser."),
-            ("Garanties longues",
-             "Panneaux 25 ans · structure 10 ans · variateur 5 ans."),
+            ("Garanties longues" if _gar else "Garanties",
+             _gar_txt),
         ]
         why_html = "".join(
             f'<div class="a4-why-i"><b>{t}</b><span>{s}</span></div>' for t, s in whys)
@@ -151,10 +211,15 @@ def build(ctx) -> str:
 
     # ── closing: conditions · étapes · signature (3 equal-height cols) ────────
     paiement = f"{acompte}% commande · {materiel}% matériel · {solde}% service"
-    conditions = [("Validité", f"{validity} jours"), ("Paiement", paiement),
-                  ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
-                  ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
-                   "nous vous orientons pour la démarche")]
+    conditions = []
+    if validity is not None:
+        conditions.append(("Validité", f"{validity} jours"))
+    elif valid_until:
+        conditions.append(("Validité", f"Jusqu'au {valid_until}"))
+    conditions += [("Paiement", paiement),
+                   ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
+                   ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
+                    "nous vous orientons pour la démarche")]
     # QRES66 (fondateur, 18/08/2026) — la ligne de conditions « Financement »
     # (CAM Saquii Solaire + FDA) est SUPPRIMÉE. Ne pas la réintroduire.
     cond_html = "".join(
@@ -169,6 +234,11 @@ def build(ctx) -> str:
         for n, t, s in steps)
     stamp = (f'<div class="a4-stamp">Accepté par <b>{theme.titlecase_name(accepte_nom)}</b> '
              f'le {date_acc}</div>') if (accepte_nom and date_acc) else ""
+    # QJR149 — pastille de validité OMISE quand le nombre de jours est
+    # indéterminable (elle imprimait « None jours de validité »).
+    cta_validity = (f'<div class="a4-cta-r"><b>{validity}</b>'
+                    f'<span>jours de validité</span></div>'
+                    ) if validity is not None else ""
 
     css = f"""
 <style>
@@ -193,8 +263,13 @@ def build(ctx) -> str:
 .a4-stat-hi{{margin-top:8px;}} .a4-stat-hi span{{color:{gold};font-size:16pt;}}
 /* Fixed height: WeasyPrint collapses a width:100%/height:auto <img> to 0 inside
    a flex column. Explicit height + object-fit keeps the chart visible & sharp. */
-.a4-fuelimg{{display:block;width:100%;height:34mm;object-fit:contain;
+.a4-fuelimg{{display:block;width:100%;height:30mm;object-fit:contain;
   object-position:left bottom;margin-top:10px;}}
+/* QJR151(a) — hypothèse de calcul, sous le graphe. La hauteur du graphe passe
+   de 34 à 30 mm pour absorber cette ligne : la carte garde sa hauteur, donc la
+   page 4 garde sa mise en page (la .page clippe à 297 mm). */
+.a4-hyp{{margin-top:6px;font-size:6.8pt;color:{muted_2};line-height:1.3;}}
+.a4-hyp b{{color:{muted};font-weight:700;}}
 /* punch + env */
 .a4-msg{{display:flex;gap:12px;margin-top:14px;align-items:stretch;}}
 .a4-punch{{flex:1 1 0;border-left:4px solid {gold};background:{wash};border-radius:8px;
@@ -278,7 +353,7 @@ def build(ctx) -> str:
     <div><div class="a4-cta-t">Prêt à passer au pompage solaire ?</div>
       <div class="a4-cta-s">Validez votre devis et lancez votre projet d'irrigation.</div>
       <a class="a4-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>→</span> {_disp(l_sign)}</a></div>
-    <div class="a4-cta-r"><b>{validity}</b><span>jours de validité</span></div>
+    {cta_validity}
   </div>
 </div>
 """

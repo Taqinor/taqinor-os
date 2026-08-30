@@ -2,7 +2,14 @@
 
   * ``_send_otp_whatsapp`` renvoie False (stub) → repli email pour un client
     téléphone-seul ;
-  * verrouillage après OTP_MAX_ATTEMPTS échecs, réinitialisé par un nouveau code.
+  * verrouillage après OTP_MAX_ATTEMPTS échecs.
+
+QJR147 (30/08/2026) — LA RÈGLE A CHANGÉ, ET CE MODULE LA SUIT. Le verrouillage
+était « réinitialisé par un nouveau code » : cinq essais, un clic sur
+« Envoyer le code », cinq essais de plus — le verrou n'était qu'un
+ralentisseur. Il est désormais TEMPOREL (il expire avec la fenêtre du code) et
+aucune demande ne l'efface. Le test qui épinglait l'ancienne règle épingle la
+nouvelle, sous son nouveau nom.
 """
 from decimal import Decimal
 from unittest.mock import patch
@@ -60,7 +67,11 @@ class Qx10OtpHardeningTests(TestCase):
             err = validate_esign_otp(link=self.link, otp_code='111111')
             self.assertIn('Trop de tentatives', err)
 
-    def test_new_code_resets_lockout(self):
+    def test_un_nouveau_code_ne_reinitialise_PLUS_le_verrou(self):
+        """QJR147 — le compteur d'échecs SURVIT à la régénération.
+
+        C'est exactement ce qui faisait du verrouillage à cinq tentatives un
+        simple ralentisseur : il suffisait de redemander un code."""
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             cache.set(_otp_attempts_key(self.link.token), OTP_MAX_ATTEMPTS, 600)
             with patch('apps.ventes.domain.cycle_vie._send_otp_whatsapp',
@@ -68,7 +79,12 @@ class Qx10OtpHardeningTests(TestCase):
                     patch('apps.ventes.domain.cycle_vie._send_otp_email',
                           return_value=True):
                 request_esign_otp(self.link)
-            self.assertIsNone(cache.get(_otp_attempts_key(self.link.token)))
+            self.assertEqual(
+                cache.get(_otp_attempts_key(self.link.token)),
+                OTP_MAX_ATTEMPTS)
+            # Et le verrou tient : le nouveau code ne s'ouvre pas non plus.
+            err = validate_esign_otp(link=self.link, otp_code='000000')
+            self.assertIn('Trop de tentatives', err)
 
     def test_correct_code_still_works_before_lockout(self):
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):

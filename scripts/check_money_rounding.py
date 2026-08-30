@@ -70,9 +70,22 @@ NEW_SITE_REASON = "A RELIRE -- capture par --regenerate, raison a completer."
 # et une liste figee sur ce seul fichier ne surveillerait plus RIEN dans ventes
 # tout en restant verte. Le sous-paquet entier est donc scanne : un module de
 # `domain/` cree demain est couvert d'office.
+#
+# QJR143 AJOUTE LES MODULES PDF -- l'audit du 29/08 a montre que la liste
+# ci-dessus ne couvrait AUCUN module qui IMPRIME l'argent au client (87
+# sites `round()` hors garde, repartis sur ces six fichiers). Le moteur
+# calcule dans `builder.py`/`pricing.py`/`bareme.py` puis les paquets par
+# marche (agricole/industriel/commercial) et le rendu premium mettent le
+# chiffre en page -- les deux bouts de la chaine sont desormais scannes.
 TARGET_FILES = [
     VENTES / "services.py",
     VENTES / "quote_engine" / "builder.py",
+    VENTES / "quote_engine" / "generate_devis_premium.py",
+    VENTES / "quote_engine" / "pricing.py",
+    VENTES / "quote_engine" / "bareme.py",
+    VENTES / "quote_engine" / "agricole" / "economics.py",
+    VENTES / "quote_engine" / "industriel" / "finance.py",
+    VENTES / "quote_engine" / "commercial" / "equip.py",
     VENTES / "public_views.py",
     VENTES / "offres_tailles.py",
     VENTES / "taille_detail.py",

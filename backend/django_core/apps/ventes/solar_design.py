@@ -1330,7 +1330,7 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
                       pv_daily_production_kwh=None,
                       pv_self_consumption_kwh=None,
                       pv_surplus_kwh=None, charge_window_h=None,
-                      productible_kwh_kwc_year=1700.0):
+                      productible_kwh_kwc_year=None):
     """FG255 — dimensionne une borne VE et chiffre son impact autoconsommation.
 
     Côté BORNE, à partir de la puissance ``borne_kw``, du nombre de phases
@@ -1432,8 +1432,10 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
     if prod is None:
         kwc = _nonneg(pv_kwc)
         if kwc is not None and kwc > 0:
-            prod = round(
-                kwc * _pos(productible_kwh_kwc_year, 1700.0) / 365.0, 2)
+            # QJR146 (h) — AUCUN PRODUCTIBLE ARME ICI (cf. jumelle).
+            _prodctbl = _pos(productible_kwh_kwc_year, 0.0)
+            if _prodctbl > 0:
+                prod = round(kwc * _prodctbl / 365.0, 2)
 
     surplus = _nonneg(pv_surplus_kwh)
     base_self = _nonneg(pv_self_consumption_kwh)
@@ -1538,7 +1540,7 @@ def battery_storage_sizing(*, mode="autoconso",
                            daily_surplus_kwh=None,
                            night_load_kwh=None,
                            pv_kwc=None,
-                           productible_kwh_kwc_year=1700.0,
+                           productible_kwh_kwc_year=None,
                            critical_load_kw=None,
                            backup_hours=None,
                            evening_peak_kw=None,
@@ -1631,8 +1633,15 @@ def battery_storage_sizing(*, mode="autoconso",
         if prod is None:
             kwc = _nonneg(pv_kwc)
             if kwc is not None and kwc > 0:
-                prod = round(
-                    kwc * _pos(productible_kwh_kwc_year, 1700.0) / 365.0, 2)
+                # QJR146 (h) — AUCUN PRODUCTIBLE ARME ICI. Le forfait
+                # 1700 kWh/kWc/an etait applique en silence des qu'un
+                # appelant donnait un kWc sans productible : une production
+                # journaliere INVENTEE, dans une fonction qu'aucun appelant
+                # de production n'utilise (donc jamais confrontee au reel).
+                # Sans productible fourni, la production reste inconnue.
+                _prodctbl = _pos(productible_kwh_kwc_year, 0.0)
+                if _prodctbl > 0:
+                    prod = round(kwc * _prodctbl / 365.0, 2)
 
         surplus = _nonneg(daily_surplus_kwh)
         base_self = _nonneg(pv_self_consumption_kwh)
@@ -2011,9 +2020,16 @@ def _scaled_typical_load(total_kwh, profile_key="residential"):
     profile = _TYPICAL_LOAD_PROFILES.get(
         (profile_key or "residential").lower(),
         TYPICAL_LOAD_PROFILE_RESIDENTIAL)
+    # QJR146 (h) — RIEN DE CONNU ⇒ LISTE VIDE, jamais 24 zéros. Une série de
+    # 24 zéros est INDISTINGUABLE d'une journée réellement mesurée à zéro :
+    # elle donnait à ``hourly_self_consumption`` une longueur de 24 h qui
+    # TRONQUAIT une production de 288 points, et faisait publier « hours: 24 »
+    # sur un calcul qui n'avait aucune donnée d'entrée.
+    if total <= 0.0:
+        return []
     s = sum(profile)
     if s <= 0:
-        return [0.0] * len(profile)
+        return []
     return [total * (p / s) for p in profile]
 
 
@@ -2025,9 +2041,12 @@ def _scaled_typical_pv(total_kwh):
         total = 0.0
     if total < 0.0:
         total = 0.0
+    # QJR146 (h) — même règle que la jumelle ci-dessus : rien de connu ⇒ [].
+    if total <= 0.0:
+        return []
     s = sum(TYPICAL_PV_PROFILE)
     if s <= 0:
-        return [0.0] * len(TYPICAL_PV_PROFILE)
+        return []
     return [total * (p / s) for p in TYPICAL_PV_PROFILE]
 
 
@@ -2069,9 +2088,14 @@ def hourly_self_consumption(load_curve=None, production_curve=None, *,
          coverage_rate, coverage_pct,
          load_source, production_source, warnings: []}
 
-    Ne lève jamais : Σproduction = 0 → taux d'autoconso 0 ; Σcharge = 0 →
-    couverture 0. Des courbes de longueurs différentes sont alignées sur la plus
-    courte (avec un avertissement).
+    Σproduction = 0 → taux d'autoconso 0 ; Σcharge = 0 → couverture 0 ; une
+    série absente ou vide (rien de connu de ce côté) rend 0 h et des zéros.
+
+    QJR146 (h) — SEULE EXCEPTION AU « ne lève jamais » historique : deux
+    courbes NON VIDES de longueurs DIFFÉRENTES lèvent ``ValueError`` au lieu
+    d'être tronquées sur la plus courte. Une charge de 288 points contre une
+    production de 24 h produisait des totaux « annuels » calculés sur un seul
+    jour, avec un avertissement que rien n'imprime.
     """
     warnings = []
 
@@ -2087,12 +2111,21 @@ def hourly_self_consumption(load_curve=None, production_curve=None, *,
         prod = _scaled_typical_pv(daily_production_kwh)
         production_source = "profil type PV"
 
-    # ── Alignement des longueurs (on borne sur la plus courte) ──
+    # ── QJR146 (h) — DEUX COURBES DE LONGUEURS DIFFÉRENTES SONT REFUSÉES ────
+    # Elles étaient TRONQUÉES sur la plus courte, avec un simple avertissement
+    # que personne n'imprime : une charge de 288 points (12 mois × 24 h) contre
+    # une production de 24 h sortait des totaux « annuels » calculés sur UN
+    # jour — un chiffre faux d'un facteur 12, présenté comme un calcul. Deux
+    # séries qui ne décrivent pas la même période ne s'intègrent pas.
+    # Une seule série vide (rien de connu de ce côté) n'est PAS une divergence :
+    # elle rend 0 h, donc des zéros honnêtes.
+    if load and prod and len(load) != len(prod):
+        raise ValueError(
+            "hourly_self_consumption: courbes de longueurs différentes "
+            f"(charge={len(load)} h, production={len(prod)} h) — elles ne "
+            "décrivent pas la même période ; aucun total n'est calculable "
+            "(QJR146).")
     n = min(len(load), len(prod))
-    if len(load) != len(prod) and load and prod:
-        warnings.append(
-            f"courbes de longueurs différentes (charge={len(load)} h, "
-            f"production={len(prod)} h) — alignées sur {n} h")
 
     total_load = 0.0
     total_prod = 0.0
@@ -2793,8 +2826,54 @@ def tariff_escalation_projection(*, annual_savings_year1,
 # souscription recommandée (aléas météo, croissance de charge, démarrages).
 DEFAULT_SUBSCRIBED_SAFETY_MARGIN = 1.10
 
+#: QJR139 (audit QJR79) — LA SEULE UNITÉ QUE CETTE FONCTION SAIT LIRE.
+#: Ses courbes sont des PUISSANCES instantanées (kW, ≈ kWh sur l'heure), pas des
+#: énergies cumulées. Un appelant lui a réellement passé des kWh MENSUELS
+#: (``apps/ventes/etude.py``, 288 points « 12 mois × jour type ») : la case du
+#: soir valait 90 « kW » au lieu de ≈ 3 kW réels, et la puissance souscrite
+#: recommandée sortait ~30× trop grande. Le paramètre ``curve_unit`` rend
+#: l'unité DÉCLARÉE et refusable ; toute autre valeur (y compris ``None``, une
+#: unité d'énergie, ou une unité inconnue) fait REFUSER la courbe.
+SUBSCRIBED_CURVE_UNIT_KW = "kw"
+
+
+def _refus_unite_souscrite(curve_unit):
+    """QJR139 — refus STRUCTURÉ d'une courbe dont l'unité n'est pas la bonne.
+
+    Le module ne lève jamais (contrat) : on rend donc le MÊME jeu de clés avec
+    des valeurs ABSENTES plutôt qu'une pointe plausible et fausse — omettre
+    plutôt que publier, la règle du dépôt. L'avertissement nomme l'unité reçue
+    pour que l'appelant sache quoi corriger.
+    """
+    return {
+        "hours": 0,
+        "peak_pre_pv_kw": None,
+        "peak_post_pv_kw": None,
+        "peak_reduction_kw": None,
+        "peak_reduction_pct": None,
+        "demand_unit": None,
+        "power_factor": None,
+        "peak_post_pv_demand": None,
+        "current_subscribed": None,
+        "recommended_subscribed": None,
+        "subscribed_reduction": None,
+        "annual_capacity_tariff": None,
+        "annual_saving": None,
+        "monthly_saving": None,
+        "safety_margin": None,
+        "load_source": None,
+        "production_source": None,
+        "warnings": [
+            "unité de courbe non déclarée ou non lisible (%r) : cette fonction "
+            "lit des PUISSANCES instantanées (%r), jamais des énergies "
+            "cumulées — aucune puissance souscrite n'est recommandée."
+            % (curve_unit, SUBSCRIBED_CURVE_UNIT_KW)
+        ],
+    }
+
 
 def optimize_subscribed_power(load_curve=None, production_curve=None, *,
+                              curve_unit=SUBSCRIBED_CURVE_UNIT_KW,
                               current_subscribed_kva=None,
                               capacity_tariff=0.0,
                               tariff_period="year",
@@ -2817,6 +2896,13 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
         toute longueur. Valeurs illisibles/négatives → 0 (jamais de rejet). Si
         absent, on synthétise un profil type (``load_profile``) calé sur
         ``daily_load_kwh``.
+    curve_unit : QJR139 — l'unité DÉCLARÉE des deux courbes. Seule
+        :data:`SUBSCRIBED_CURVE_UNIT_KW` (``"kw"``, la puissance instantanée)
+        est lisible ; toute autre valeur — ``None``, une énergie cumulée, une
+        unité inconnue — fait REFUSER la courbe et rend un résultat aux
+        grandeurs ABSENTES avec l'avertissement qui l'explique, plutôt qu'une
+        pointe plausible et fausse. Un appelant a réellement passé ici des kWh
+        MENSUELS : la puissance recommandée sortait ~30× trop grande.
     production_curve : production PV horaire (kW/h). Si absent, on synthétise
         ``TYPICAL_PV_PROFILE`` calé sur ``daily_production_kwh``.
     current_subscribed_kva : puissance souscrite ACTUELLE (kVA ou kW selon le
@@ -2845,8 +2931,16 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
 
     Ne lève jamais : courbes vides → pointe 0 ; pas de réduction possible →
     recommandation = souscription actuelle et économie 0 ; division par zéro
-    bornée (cos φ ≤ 0 ignoré).
+    bornée (cos φ ≤ 0 ignoré) ; unité non déclarée → refus STRUCTURÉ (toutes
+    les grandeurs absentes + avertissement), jamais une exception.
     """
+    # QJR139 — GARDE D'UNITÉ, AVANT TOUT CALCUL. Une courbe d'énergies cumulées
+    # lue comme des puissances donne une pointe absurde sans le moindre signal :
+    # le refus est structuré, nommé, et ne publie aucun nombre.
+    if (not isinstance(curve_unit, str)
+            or curve_unit.strip().lower() != SUBSCRIBED_CURVE_UNIT_KW):
+        return _refus_unite_souscrite(curve_unit)
+
     warnings = []
 
     load = _coerce_series(load_curve)
