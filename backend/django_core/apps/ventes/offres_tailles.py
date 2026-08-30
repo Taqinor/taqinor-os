@@ -1599,9 +1599,11 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     devis », mot pour mot.
 
     UNE SEULE MACHINERIE DE RECOMPOSITION, JAMAIS UNE SECONDE.
-    :func:`~apps.ventes.services.sync_devis_from_layout` (PV18) est LE chemin
-    qui porte un devis vivant à un nouveau compte de panneaux : il protège les
-    prix négociés (il ne touche QUE des quantités), suit la ferrure, les câbles,
+    Le MODE « réconcilier » du pipeline (QJR97 — étape
+    :func:`~apps.ventes.domain.resynchronisation.reconcilier`, PV18) est LE
+    chemin qui porte un devis vivant à un nouveau compte de panneaux : il
+    protège les prix négociés (il ne touche QUE des quantités), suit la
+    ferrure, les câbles,
     l'onduleur et la batterie, complète le kit manquant, et — surtout — porte
     DÉJÀ la garde de statut. On lui passe le calepinage DU DEVIS avec le seul
     champ ``result`` réécrit : la géométrie réelle du toit est conservée, seule
@@ -1628,7 +1630,7 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     * **Un devis « Les deux » reçoit la taille SUR SES DEUX OPTIONS** (F1).
       Chacune garde son identité (son onduleur, sa batterie), mais panneaux,
       structures et socles vont au compte demandé — à la HAUSSE comme à la
-      baisse (``sync_devis_from_layout(cible_exacte=True)`` : le compte tapé
+      baisse (mode « réconcilier », ``exact=True`` : le compte tapé
       n'est pas une contenance de toit, c'est le devis voulu), et une
       substitution touche TOUTES les lignes du rôle, pas la première.
     * **Tout ou rien.** Le tout tient dans une transaction : un refus tardif
@@ -1643,10 +1645,11 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     """
     from django.db import transaction
 
+    from apps.ventes.domain.pipeline import (
+        MODE_RECONCILIER, ORIGINE_RESYNCHRONISATION, IntentionDevis, appliquer)
     from apps.ventes.models import DevisActivity
     from apps.ventes.services import (
-        SyncLayoutError, extract_roof_config, rafraichir_etudes_du_devis,
-        sync_devis_from_layout)
+        SyncLayoutError, extract_roof_config, rafraichir_etudes_du_devis)
 
     if cle != 'recommande':
         raise ApplicationImpossible(
@@ -1701,10 +1704,17 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
 
     with transaction.atomic():
         try:
-            resultat = sync_devis_from_layout(
-                devis, _layout_de_la_taille(devis, contexte, nb_panneaux,
-                                            modules, extract_roof_config),
+            # ── QJR97 (M5, bascule 5/5a) — LE MODE « RÉCONCILIER » ───────────
+            # Ce chemin appelait ``sync_devis_from_layout``, l'autre porte du
+            # même geste. Il DEMANDE désormais le mode directement au pipeline,
+            # comme la resynchronisation 3D : une seule machinerie, un seul
+            # ordonnanceur, et plus deux façons d'entrer dans la même étape.
+            resultat = appliquer(devis, IntentionDevis(
+                origine=ORIGINE_RESYNCHRONISATION,
+                company=getattr(devis, 'company', None),
                 user=utilisateur,
+                layout=_layout_de_la_taille(devis, contexte, nb_panneaux,
+                                            modules, extract_roof_config),
                 # F1 — LE COMPTE TAPÉ DEVIENT LE DEVIS. Sur un devis
                 # « Les deux » (lignes variantées), le calepinage est
                 # normalement un PLAFOND : une option en dessous n'est jamais
@@ -1712,7 +1722,8 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
                 # décision du vendeur — elle s'applique aux DEUX options, à la
                 # hausse comme à la baisse. La contenance réelle du toit, elle,
                 # a déjà refusé au-dessus.
-                cible_exacte=True)
+                exact=True,
+                mode=MODE_RECONCILIER))['resynchro']
         except SyncLayoutError as erreur:
             raise ApplicationImpossible(
                 erreur.detail,

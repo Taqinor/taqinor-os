@@ -48,13 +48,20 @@ backend/django_core/apps/ventes/offres_tailles.py::_substituer_sur_le_devis::lig
 # <chemin> bouge -- c'est la preuve, dans la cle elle-meme, qu'aucune ecriture
 # n'a ete ajoutee ni deplacee hors de sa fonction.
 #
+# 30/08/2026 (QJR97) : les QUATRE cles `sync_devis_from_layout*` ci-dessous ont ete
+# RE-CLEES en `reconcilier*`, pas re-capturees. La bascule 5/5a a fait de
+# `sync_devis_from_layout` un ADAPTATEUR (elle demande le mode << reconcilier >> au
+# pipeline) et le geste chirurgical est devenu l'etape `reconcilier`, DANS LE MEME
+# FICHIER : seul le qualname bouge. Cible, fichier et expression sont inchanges --
+# c'est la preuve, dans la cle elle-meme, qu'aucune ecriture n'a ete ajoutee.
+#
 # `sync_devis_from_layout` N'A PAS ETE POSEE DANS `domain/lignes.py`, contrairement
 # a ce qu'annoncaient les raisons ci-dessous : `lignes.py` est un module SANCTIONNE,
 # donc EXEMPTE de ce scan. L'y poser aujourd'hui aurait fait DISPARAITRE quatre
 # sites de la garde sans qu'aucun n'ait ete converti au registre. Cette convergence
 # est une BASCULE (QJR84), pas un deplacement.
-backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
-backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
-backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
-backend/django_core/apps/ventes/domain/resynchronisation.py::sync_devis_from_layout._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
 backend/django_core/apps/ventes/domain/catalogue_events.py::resynchroniser_devis_pour_produit::ligne::ligne.prix_unitaire | Existant 29/08/2026 : le prix ne suit le catalogue que si la ligne etait AU PRIX CATALOGUE sans remise (un prix negocie reste intouchable). Migrera vers domain/lignes.py.

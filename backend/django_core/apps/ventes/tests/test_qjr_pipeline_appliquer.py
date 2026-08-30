@@ -343,7 +343,17 @@ CHEMINS_BASCULES = {
     'views/devis.py': 5,
     # QJR95 — la création depuis un calepinage 3D : ``build_devis_from_layout``
     # est devenue un adaptateur (elle LIT le layout, le pipeline fait le reste).
-    'domain/creation.py': 1,
+    # QJR96 — le devis AUTOMATIQUE et le TUNNEL : ``build_devis_auto`` est
+    # devenue le second adaptateur de ce fichier (origines ``auto``/``tunnel``),
+    # et ne repasse plus par ``build_devis_from_layout``.
+    'domain/creation.py': 2,
+    # QJR97 — la resynchronisation 3D : ``sync_devis_from_layout`` est devenue
+    # un adaptateur qui DEMANDE le mode « réconcilier » ; le geste lui-même est
+    # l'étape ``reconcilier`` de ce même module.
+    'domain/resynchronisation.py': 1,
+    # QJR97 — le chemin apply-taille demande le MÊME mode, directement : il ne
+    # passe plus par la seconde porte qu'était ``sync_devis_from_layout``.
+    'offres_tailles.py': 1,
 }
 
 
