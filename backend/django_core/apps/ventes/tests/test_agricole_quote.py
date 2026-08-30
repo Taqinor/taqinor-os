@@ -506,6 +506,106 @@ class TestInstallationPhotoSelector(SimpleTestCase):
         self.assertIn("data:image/jpeg;base64,", html)    # installation photo hero
 
 
+class TestQjr155LotDeFinition(SimpleTestCase):
+    """QJR155 — lot de finition du paquet agricole (les points encore ouverts
+    après QJR149-153 et QJR154).
+
+    (a) ``charts.cost_per_m3`` était rendu par matplotlib à CHAQUE PDF alors
+        qu'aucune page ne lisait ``charts['cost_m3']`` — travail jeté ;
+    (b) ``agricole/trust.py`` (209 lignes) était un module MORT ;
+    (c) le cumul 20 ans et la courbe d'amortissement sont strictement
+        LINÉAIRES (ni inflation carburant, ni dégradation PV, ni remplacement
+        du variateur) — aucun de ces taux n'existe au dépôt, donc on le DIT ;
+    (d) le pied de page imprimait « TAQINOR · contact@taqinor.com » quelle que
+        soit la ``Company`` — seul paquet à ne pas lire l'identité société ;
+    (e) ``date_palm_cited_per_tree()`` n'avait aucun appelant de production ;
+    (g) l'intro de la page 3 promettait « et la subvention qui réduit votre
+        coût réel » même quand la subvention n'est PAS affichée ;
+    (h) « ≈ N camions-citernes » ne disait pas sur quelle contenance il est
+        compté (le bidon voisin, lui, dit ses 20 L).
+
+    Les points (f) et le paramètre ``trees`` de (e) avaient déjà été fermés par
+    QJR152 (moteur agronomique unique) ; le point (i) l'a été par QJR154
+    (échappement à une seule vérité).
+    """
+
+    def _html(self, **surcharges):
+        d = dict(sample_data.build("agrumes"))
+        d.update(surcharges)
+        return render.build_html(renderer._augment(d))
+
+    # (a) — plus de graphe fabriqué pour personne
+    def test_a_le_graphe_cout_par_m3_n_est_plus_construit(self):
+        from apps.ventes.quote_engine.agricole import charts
+        data = renderer._augment(sample_data.build("agrumes"))
+        self.assertEqual(sorted(charts.build_all(data)), ["fuel", "payback"])
+        self.assertFalse(hasattr(charts, "cost_per_m3"))
+        # La SORTIE d'``economics`` ne porte plus la clé qui n'alimentait que
+        # ce graphe ; les TARIFS, eux, restent la source des coûts calculés.
+        eco = economics.compute(sample_data.build("agrumes"))
+        self.assertNotIn("cost_per_m3", eco)
+        self.assertGreater(eco["fuel_costs"]["butane_today"], 0)
+
+    # (b) — le module mort a disparu
+    def test_b_le_module_trust_agricole_n_existe_plus(self):
+        import importlib
+        with self.assertRaises(ModuleNotFoundError):
+            importlib.import_module(
+                "apps.ventes.quote_engine.agricole.trust")
+
+    # (c) — la projection linéaire est ÉNONCÉE
+    def test_c_la_projection_dit_qu_elle_est_lineaire(self):
+        html = self._html()
+        self.assertIn("Projection linéaire", html)
+        self.assertIn("sans dégradation des panneaux ni remplacement du "
+                      "variateur", html)
+        self.assertIn("au prix du carburant d'aujourd'hui", html)
+
+    # (d) — le pied de page suit la société
+    def test_d_le_pied_de_page_suit_la_societe(self):
+        html = self._html(
+            entreprise={"nom": "Sud Energie", "email": "contact@sud.ma",
+                        "telephone": "+212 5 22 00 00 00"},
+            site_url="sud.ma")
+        self.assertIn("<b>SUD ENERGIE</b>", html)
+        self.assertIn("contact@sud.ma", html)
+        self.assertNotIn("contact@taqinor.com", html)
+
+    def test_d_sans_profil_le_pied_est_celui_d_hier(self):
+        """Repli mot pour mot : une société sans profil (et Taqinor) sort un
+        pied byte-identique — le conflit .com/.ma n'est PAS tranché ici."""
+        html = self._html()
+        self.assertIn("<b>TAQINOR</b>", html)
+        self.assertIn("contact@taqinor.com", html)
+        self.assertIn("+212 6 61 85 04 10", html)
+
+    # (e) — le raccourci mort a disparu, la valeur citée reste
+    def test_e_le_raccourci_par_arbre_a_disparu(self):
+        from apps.ventes.quote_engine.agricole import agronomy
+        self.assertFalse(hasattr(agronomy, "date_palm_cited_per_tree"))
+        self.assertEqual(
+            agronomy.CROP_CITED["dattier"]["m3_per_tree_year"], 51)
+
+    # (g) — plus de promesse inconditionnelle
+    def test_g_l_intro_ne_promet_la_subvention_que_si_elle_est_montree(self):
+        self.assertIn("et la subvention", self._html(show_subsidy=True))
+        self.assertNotIn("et la subvention", self._html(show_subsidy=False))
+
+    # (h) — la contenance du camion est dite
+    def test_h_la_contenance_du_camion_citerne_est_enoncee(self):
+        html = self._html()
+        self.assertIn("camions-citernes de 15", html)
+        self.assertIn("bidons de 20 L", html)          # symétrie conservée
+
+    # ── rien d'autre ne bouge ───────────────────────────────────────────────
+    def test_le_document_garde_ses_quatre_feuilles(self):
+        for cle in sample_data.keys():
+            with self.subTest(cle=cle):
+                html = render.build_html(
+                    renderer._augment(sample_data.build(cle)))
+                self.assertEqual(html.count('<div class="page"'), 4)
+
+
 @tag("weasyprint")
 class TestAgricolePageCount(SimpleTestCase):
     """Real PDF render — exactly 4 A4 pages (WeasyPrint, CI/Docker)."""

@@ -177,48 +177,6 @@ def fuel_comparison(costs, w=6.6, h=2.15) -> str:
     return _uri(fig)
 
 
-def cost_per_m3(rates, w=3.0, h=2.0) -> str:
-    """Cost per m³ of water pumped — small horizontal bars (GREEN/GOLD/RED)."""
-    import numpy as np
-    rates = rates or {}
-
-    def _v(k):
-        try:
-            f = float(rates.get(k, 0) or 0)
-            return f if np.isfinite(f) and f >= 0 else 0.0
-        except (TypeError, ValueError):
-            return 0.0
-
-    # Top-to-bottom: Solaire, Butane, Diesel -> y positions reversed so Solaire
-    # sits on top.
-    names = ["Solaire", "Butane", "Diesel"]
-    keys = ["solaire", "butane", "diesel"]
-    cols = [GREEN, GOLD, RED]
-    vals = [_v(k) for k in keys]
-    y = np.arange(3)[::-1]
-
-    fig, ax = plt.subplots(figsize=(w, h))
-    ax.barh(y, vals, 0.58, color=cols, edgecolor="none", zorder=3)
-
-    xmax = max(vals + [0.1])
-    ax.set_xlim(0, xmax * 1.34)
-    for yi, v in zip(y, vals):
-        ax.annotate(_fr_dec(v) + " MAD/m³", (v, yi),
-                    textcoords="offset points", xytext=(5, 0),
-                    ha="left", va="center", fontsize=7.4,
-                    color=NAVY, fontweight="bold")
-
-    ax.set_yticks(y); ax.set_yticklabels(names, fontsize=8, color=INK)
-    ax.set_xticks([])
-    for s in ("top", "right", "bottom", "left"):
-        ax.spines[s].set_visible(False)
-    ax.tick_params(length=0)
-    ax.set_axisbelow(True)
-    ax.margins(y=0.10)
-    fig.tight_layout()
-    return _uri(fig)
-
-
 def payback_curve(total, annual_saving, years=20, w=6.6, h=2.2) -> str:
     """Cumulative net cashflow (k MAD) over `years` — single GOLD curve."""
     import numpy as np
@@ -280,11 +238,16 @@ def build_all(data: dict) -> dict:
     chart for this audience), so they are no longer built here. ``water_per_month``
     / ``production_per_month`` remain in the module for any future use, but the
     premium agricole PDF must NOT show a monthly bar graph.
+
+    QJR155 (a) — ``cost_m3`` ne figure plus ici. Le graphe « coût par m³ » était
+    rendu par matplotlib À CHAQUE PDF alors qu'AUCUNE page ne lisait
+    ``charts['cost_m3']`` (seuls ``fuel`` et ``payback`` sont consommés, par
+    ``economics_page`` et ``cover``) : du travail jeté à chaque document — et,
+    par un effet de bord heureux, le 0,44 MAD/m³ n'atteignait jamais le client.
     """
     data = data or {}
     return {
         "fuel": fuel_comparison(data.get("fuel_costs")),
-        "cost_m3": cost_per_m3(data.get("cost_per_m3")),
         "payback": payback_curve(
             data.get("quote_total"), data.get("annual_saving")),
     }

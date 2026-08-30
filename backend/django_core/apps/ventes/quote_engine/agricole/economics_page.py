@@ -114,13 +114,16 @@ def build(ctx) -> str:
     # qu'un pompage 5 jours/semaine fausse le chiffre d'un facteur ~1,5.
     hyp_days = d.get("pumping_days_per_year")
     hyp_ratio = d.get("peak_to_avg")
-    hyp_html = ""
+    # QJR155 (c) — l'énoncé de la projection : linéaire, et il le DIT.
+    _lineaire = ('Projection linéaire : prix du carburant constant, sans '
+                 'dégradation des panneaux ni remplacement du variateur.')
+    hyp_html = f'<div class="a4-hyp">{_lineaire}</div>'
     if hyp_days and hyp_ratio:
         hyp_html = (
             f'<div class="a4-hyp">Hypothèse de calcul : <b>{fmt(hyp_days)} jours '
             f'de pompage par an</b>, à <b>{fmt(round(float(hyp_ratio) * 100))} %</b> '
             'du débit de pointe en moyenne annuelle. Dites-nous vos jours réels '
-            'et nous recalculons.</div>')
+            f'et nous recalculons. {_lineaire}</div>')
 
     renta_html = ""
     if show_fuel and payback:
@@ -129,8 +132,18 @@ def build(ctx) -> str:
             pb_bits.append(f"butane <b>{_yrs(payback_butane)} ans</b>")
         if payback_diesel:
             pb_bits.append(f"diesel <b>{_yrs(payback_diesel)} ans</b>")
+        # QJR155 (c) — LA PROJECTION DIT CE QU'ELLE NE MODÉLISE PAS.
+        # ``savings_20y = annual_saving × 20`` et la courbe d'amortissement sont
+        # strictement LINÉAIRES : ni inflation du carburant, ni dégradation des
+        # panneaux, ni remplacement du variateur (garanti 5 ans). C'était en
+        # contradiction douce avec le « punch » de cette même page, qui annonce
+        # que la facture carburant « va plus que doubler ». Aucun de ces trois
+        # taux n'existe dans le dépôt : les inventer serait un chiffre fabriqué
+        # (règle fondateur) — on les ÉNONCE, dans le sous-titre de la vignette,
+        # sans ajouter une ligne à une page à hauteur fixe.
         twenty = (f'<div class="a4-stat a4-stat-hi"><span>≈ {fmt(savings_20y)} MAD</span>'
-                  f'<small>économisés sur 20 ans</small></div>') if savings_20y else ""
+                  f'<small>économisés sur 20 ans, au prix du carburant '
+                  f'd\'aujourd\'hui</small></div>') if savings_20y else ""
         renta_html = f"""
   <div class="a4-renta">
     <div class="a4-card a4-num">

@@ -240,6 +240,10 @@ def annual_water_from_monthly(monthly):
     return _jsround(total)
 
 
-def date_palm_cited_per_tree():
-    """Volume annuel CITÉ par arbre (dattier) — valeur MA de référence."""
-    return CROP_CITED["dattier"]["m3_per_tree_year"]
+# QJR155 (e) — ``date_palm_cited_per_tree()`` a été RETIRÉ : ce raccourci sur
+# ``CROP_CITED['dattier']['m3_per_tree_year']`` n'avait aucun appelant de
+# production (seul un test le chargeait, et il lit désormais la table). Le
+# volume par arbre CITÉ reste dans ``CROP_CITED``, sa seule source.
+#
+# Le paramètre ``trees``, accepté puis jamais utilisé par le moteur v1, a
+# disparu avec ce moteur (QJR152 — un seul moteur agronomique).
