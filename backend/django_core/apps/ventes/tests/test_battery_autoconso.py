@@ -129,24 +129,13 @@ class TestMiroirJs(SimpleTestCase):
     côtés) ; la TPPAN suit le kWh et ne s'annule donc PAS — c'est exactement
     d'où viennent les +222 (16 350 → 16 572) et +939 (22 013 → 22 952).
 
-    ⚠️ LE VERROU MIROIR EST ROUGE, ET C'EST UN VRAI CONSTAT — PAS UNE
-    ATTENTE PÉRIMÉE. Le jumeau ``solar.batterie.test.mjs`` porte TOUJOURS
-    24 343 / 16 350 / 22 013, et il a RAISON pour ce qu'il décrit :
-    ``solar.js twoBillsSavings`` est resté le modèle ÉNERGIE SEULE
-    (``monthlyBillFromKwh``), sans lignes fixes ni TPPAN. QJR157 a donc
-    atterri côté serveur SANS son jumeau JS, et l'écran contredit le PDF sur
-    des montants MONTRÉS AU CLIENT :
-
-        facture actuelle      écran 24 343  vs  PDF 26 022  (+1 679 MAD/an)
-        économie option SANS  écran 16 350  vs  PDF 16 572  (+222 MAD/an)
-        économie option AVEC  écran 22 013  vs  PDF 22 952  (+939 MAD/an)
-
-    REFERMER CET ÉCART N'EST PAS UN RECALAGE DE TEST : il faut porter
-    ``bareme`` (montants de location/entretien et barème TPPAN, SOURCÉS de
-    vraies factures) dans ``solar.js``, ce qui change ce que le client voit à
-    l'écran — décision fondateur, pas correctif de CI. Tant que ce port n'est
-    pas fait, les deux fichiers ne sont plus des jumeaux sur l'axe CHARGES et
-    ce commentaire est le seul endroit qui le DIT.
+    QJR168 (30/08/2026) — LES DEUX FICHIERS SONT À NOUVEAU JUMEAUX. QJR157
+    avait atterri côté serveur seul : ``solar.js twoBillsSavings`` était resté
+    le modèle ÉNERGIE SEULE (``monthlyBillFromKwh``) et l'écran annonçait
+    1 679 MAD/an de moins que le PDF sur la facture actuelle. Le barème
+    (lignes fixes + TPPAN, SOURCÉS des factures du fondateur) est désormais
+    porté dans ``solar.js`` : les six nombres ci-dessus sont les mêmes des
+    deux côtés, au dirham.
     """
 
     def test_miroir_js_meme_fixture_memes_chiffres(self):
@@ -170,11 +159,9 @@ class TestMiroirJs(SimpleTestCase):
         solar.batterie.test.mjs. ``productible`` est passé EXPLICITEMENT : le
         recalage QJR158 (d) du repli ne touche donc pas ce cas.
 
-        Les ÉCONOMIES, elles, ne sont plus les mêmes des deux côtés depuis
-        QJR157 — voir l'avertissement en tête de classe : l'écart (+222 /
-        +939 MAD/an) est la TPPAN, que le modèle JS ne porte pas encore. La
-        garantie « écran = PDF au dirham » est donc rompue sur cet axe, et
-        c'est un constat produit, pas une attente périmée.
+        Les ÉCONOMIES aussi sont les mêmes des deux côtés : depuis QJR168 le
+        modèle JS porte le barème complet (lignes fixes + TPPAN), donc la
+        garantie « écran = PDF au dirham » vaut de nouveau sur cet axe.
         """
         roi = calculate_savings_roi(
             10.0, 100000, 140000, productible=1651, battery_kwh=BATTERY,
