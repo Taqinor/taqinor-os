@@ -429,6 +429,21 @@ def _extract_web_questionnaire(data):
     # ── QX51 — Mode COMMERCIAL (catégorie + réponses par catégorie) ──
     # Clés snake_case alignées sur COMMERCIAL_CATEGORY_QUESTIONS (générateur) et
     # etude_params. Bornées, choix fermés ; byte-identique sans ces champs.
+    #
+    # QJR107 (30/08/2026) — SUPPRESSION REFUSÉE, PREMISSE FALSIFIÉE. La tâche
+    # QJR107 demandait de retirer ce bloc et le bloc INDUSTRIEL v2 ci-dessous
+    # (~90 lignes) au motif que « le tunnel ne les envoie plus depuis le
+    # 18/08 ». Le grep d'appelants exigé par la tâche PROUVE le contraire :
+    # `apps/web/src/lib/lead.ts` valide et transmet `categorieCommerciale`,
+    # `chambresFroides`, `surfaceVenteM2`, `cuissonNocturne`,
+    # `saisonnaliteRecolte`, `cosPhiConnu`, `dieselDhMois`… ;
+    # `apps/web/src/lib/commercialCategories.ts` fait le mappage snake→camel ;
+    # `apps/web/src/lib/tunnel/champs.ts` + `tunnel/i18n.ts` et les trois pages
+    # `devis/mon-toit.astro` (fr/en/ar) posent les questions. Aucun commentaire
+    # de CE fichier n'affirme d'ailleurs que le tunnel aurait cessé d'envoyer
+    # ces clés. Supprimer ce bloc ferait donc TOMBER SILENCIEUSEMENT des
+    # réponses client réelles dans le blob `web_questionnaire` — le contraire
+    # d'un nettoyage. NE PAS SUPPRIMER sans une preuve côté `apps/web`.
     _choice('categorieCommerciale', 'categorie_commerciale',
             ('hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole',
              'hammam', 'boulangerie', 'froid', 'autre'))

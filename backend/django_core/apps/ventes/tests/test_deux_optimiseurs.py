@@ -289,8 +289,10 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
                     'batterie_kwh': 10.0}
 
     def _auto(self, *, scenario, optimum_avec, email):
-        # Depuis le 29/08/2026, ``profil_reel_existe`` ne garde plus l'entrée du
-        # moteur (tout dimensionnement y passe) : seul le moteur est simulé.
+        # Depuis le 29/08/2026, AUCUN prédicat ne garde plus l'entrée du moteur
+        # (« ALL sizing should go through the new sizing tool ») : tout lead y
+        # passe, donc seul le moteur est simulé ici. Le prédicat historique
+        # ``profil_reel_existe`` a été SUPPRIMÉ par QJR107 (30/08/2026).
         with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
                           return_value=(8, 550, 'moteur_horaire',
                                         optimum_avec)):

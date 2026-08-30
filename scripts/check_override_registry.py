@@ -8,7 +8,7 @@ lecture, et rien du tout pour d'autres champs). Le registre unique
 (`Devis.overrides`, QJR58) les remplace tous ; cette garde existe pour qu'AUCUN
 nouveau site epars n'apparaisse pendant la transition.
 
-Elle signale deux familles d'ecritures :
+Elle signale trois familles d'ecritures :
 
   (A) une ecriture sur `etude_params` qui touche un CHEMIN DU REGISTRE --
       `etude_params['scenario'] = ...`, `etude_params['taille']['kwc'] = ...`,
@@ -17,11 +17,27 @@ Elle signale deux familles d'ecritures :
       n'importe quel chemin) ;
   (B) une ecriture de `LigneDevis.quantite` / `.prix_unitaire` dans
       `apps/ventes` -- affectation d'attribut (`ligne.quantite = ...`) ou
-      `.update(quantite=...)` sur un queryset.
+      `.update(quantite=...)` sur un queryset ;
+  (C) QJR105 -- un REMPLACEMENT EN BLOC de `etude_params` :
+      `devis.etude_params = <n'importe quoi>` (dict litteral ou variable) ou
+      `.update(etude_params=...)` sur un queryset, hors du SEUL ecrivain
+      sanctionne `apps/ventes/domain/etude_schema.py`.
+
+POURQUOI LA FAMILLE (C) EXISTE. Le bug qu'elle empeche de revenir est celui
+que QJR62 a ferme : l'ecran sauvegardait le devis en RECONSTRUISANT
+`etude_params` de zero, si bien que chaque cle qu'il ne reconstruit pas
+lui-meme -- `factures_mensuelles_reelles`, `gamme`, et tout ce que les quatre
+rafraichisseurs du serveur avaient ecrit -- DISPARAISSAIT a la sauvegarde
+suivante. Une affectation en bloc est une SUPPRESSION SILENCIEUSE de tout ce
+que l'ecrivain ne reconstruit pas : c'est `etude_schema.ecrire` (fusion cle a
+cle, proprietaire declare) qui doit ecrire, et lui seul. La garde vaut cote
+BACKEND comme cote SERIALISEUR -- elle scanne toute la surface de production,
+sans exception de couche.
 
 Les modules SANCTIONNES (`apps/ventes/domain/overrides.py`,
-`apps/ventes/domain/lignes.py` -- poses par M3/M5, ils n'existent pas encore)
-sont exemptes des deux familles : ce sont eux, a terme, les seuls ecrivains.
+`apps/ventes/domain/lignes.py`) sont exemptes des familles (A) et (B) : ce sont
+eux, a terme, les seuls ecrivains. `apps/ventes/domain/etude_schema.py` est
+exempte de la SEULE famille (C) -- il reste scanne pour (A) et (B).
 
 LES CHEMINS DU REGISTRE NE SONT JAMAIS RECOPIES ICI : ils sont lus a chaque
 execution dans le contrat PACT10 QJR1
@@ -40,7 +56,7 @@ DE CONTENU et le format de la base).
   * `chemin`   -- chemin POSIX relatif a la racine du depot ;
   * `qualname` -- marche des parents AST (`Classe.methode`) ; `<module>` au
     niveau module ;
-  * `famille`  -- `etude_params` ou `ligne` ;
+  * `famille`  -- `etude_params`, `ligne` ou `etude_params_bloc` ;
   * `cible`    -- le chemin ecrit (`scenario`, `taille.kwc`,
     `profil.equipements.piscine`, `<clef dynamique>`) ou `obj.attribut`.
 
@@ -89,12 +105,23 @@ WILDCARD = "<clef>"
 
 FAMILY_ETUDE = "etude_params"
 FAMILY_LIGNE = "ligne"
+#: QJR105 -- le REMPLACEMENT EN BLOC de `etude_params`.
+FAMILY_BLOC = "etude_params_bloc"
 
 #: Les seuls modules autorises a ecrire un chemin du registre (M3/M5 les
 #: posent ; ils n'existent pas encore, la garde les exempte d'avance).
 SANCTIONED = (
     "backend/django_core/apps/ventes/domain/overrides.py",
     "backend/django_core/apps/ventes/domain/lignes.py",
+)
+
+#: QJR105 -- le SEUL ecrivain autorise a REMPLACER `etude_params` en bloc.
+#: Il n'est PAS dans `SANCTIONED` : il reste scanne pour les familles (A) et
+#: (B), seule la famille (C) l'exempte. Une exemption plus large lui donnerait
+#: le droit d'ecrire des chemins du registre a la main -- ce n'est pas son
+#: role, et personne ne le verrait.
+SANCTIONED_BLOC = (
+    "backend/django_core/apps/ventes/domain/etude_schema.py",
 )
 
 
@@ -314,7 +341,37 @@ def _ligne_sites(node):
     return out
 
 
-def collect_sites_in_source(source, rel, registry_paths, scan_lignes=True):
+def _bloc_sites(node):
+    """Sites de la famille (C) portes par ce noeud -- QJR105.
+
+    Deux formes, et deux seulement :
+
+      * `<porteur>.etude_params = <quoi que ce soit>` -- affectation
+        d'ATTRIBUT (jamais un `Subscript`, qui est la famille (A) : ecrire UNE
+        cle n'est pas remplacer le bloc) ;
+      * `.update(etude_params=...)` sur un queryset -- le meme remplacement,
+        en masse et sans passer par l'instance.
+
+    LE CONTENU DE LA DROITE N'EST PAS REGARDE, ET C'EST VOULU. `etude_schema.
+    ecrire` ne rend RIEN a affecter : il ecrit lui-meme, cle a cle, avec un
+    proprietaire declare. Toute affectation en bloc hors de lui est donc, par
+    construction, une reconstruction -- litterale ou depuis une variable, le
+    resultat pour les cles absentes est le meme : elles disparaissent.
+    """
+    out = []
+    for target in _assign_targets(node):
+        if isinstance(target, ast.Attribute) and target.attr == ETUDE_PARAMS:
+            holder = _base_name(target.value) or "?"
+            out.append((FAMILY_BLOC, f"{holder}.{ETUDE_PARAMS}"))
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if (node.func.attr == "update"
+                and ETUDE_PARAMS in _keyword_names(node)):
+            out.append((FAMILY_BLOC, f"update({ETUDE_PARAMS}=...)"))
+    return out
+
+
+def collect_sites_in_source(source, rel, registry_paths, scan_lignes=True,
+                            scan_bloc=True):
     """Rend les Site trouves dans ce source, en ordre de source."""
     tree = ast.parse(source)
     raw = []
@@ -322,6 +379,8 @@ def collect_sites_in_source(source, rel, registry_paths, scan_lignes=True):
         hits = _etude_params_sites(node, qualname, registry_paths)
         if scan_lignes:
             hits = hits + _ligne_sites(node)
+        if scan_bloc:
+            hits = hits + _bloc_sites(node)
         for family, target in hits:
             raw.append((getattr(node, "lineno", 0),
                         getattr(node, "col_offset", 0),
@@ -360,12 +419,15 @@ def _skip(rel: str) -> bool:
 
 
 def iter_scanned_files():
-    """Rend (chemin, scan_lignes) pour chaque module de production scanne.
+    """Rend (chemin, scan_lignes, scan_bloc) pour chaque module scanne.
 
     Famille (A) : tout `apps/**` (le champ `etude_params` est lu et ecrit
     au-dela de `ventes`). Famille (B) : `apps/ventes/**` seulement -- c'est la
     ou vit `LigneDevis` ; les `.quantite` de `stock`/`installations` sont un
-    AUTRE modele et n'ont rien a voir avec le registre.
+    AUTRE modele et n'ont rien a voir avec le registre. Famille (C) : tout
+    `apps/**` SAUF l'ecrivain sanctionne -- un remplacement en bloc de
+    `etude_params` est aussi dangereux depuis `crm` ou `contrats` que depuis
+    `ventes`.
     """
     if not APPS_DIR.is_dir():
         return
@@ -373,17 +435,21 @@ def iter_scanned_files():
         rel = _rel(path)
         if _skip(rel):
             continue
-        yield path, rel.startswith("backend/django_core/apps/ventes/")
+        yield (path,
+               rel.startswith("backend/django_core/apps/ventes/"),
+               rel not in SANCTIONED_BLOC)
 
 
-def collect_sites_in_file(path: Path, registry_paths, scan_lignes):
+def collect_sites_in_file(path: Path, registry_paths, scan_lignes,
+                          scan_bloc=True):
     try:
         source = path.read_text(encoding="utf-8")
     except OSError:
         return []
     try:
         return collect_sites_in_source(source, _rel(path), registry_paths,
-                                       scan_lignes=scan_lignes)
+                                       scan_lignes=scan_lignes,
+                                       scan_bloc=scan_bloc)
     except SyntaxError as exc:  # pragma: no cover - fichier casse
         print(f"check_override_registry: {_rel(path)} illisible ({exc})")
         return []
@@ -394,8 +460,9 @@ def scan(registry_paths=None):
     if registry_paths is None:
         registry_paths = load_registry_paths()
     sites = []
-    for path, scan_lignes in iter_scanned_files():
-        sites.extend(collect_sites_in_file(path, registry_paths, scan_lignes))
+    for path, scan_lignes, scan_bloc in iter_scanned_files():
+        sites.extend(collect_sites_in_file(path, registry_paths, scan_lignes,
+                                           scan_bloc))
     return sites
 
 
@@ -445,11 +512,12 @@ HEADER = """\
 # changer la cible change la cle -- c'est voulu, ce sont les deux evenements
 # qu'un humain doit relire.
 #
-# La garde est ADVISORY (v1) : le registre unique `Devis.overrides` (QJR58)
-# n'existe pas encore, les sites ci-dessous sont l'existant releve au moment de
-# la capture. Un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
-# ecrive sa raison ici -- ou, mieux, passe l'ecriture par
-# apps/ventes/domain/overrides.py / lignes.py (les modules sanctionnes).
+# La garde est ADVISORY (v1) : les sites ci-dessous sont l'existant releve au
+# moment de la capture. Un site NOUVEAU fait echouer backend-lint, le temps
+# qu'un humain ecrive sa raison ici -- ou, mieux, passe l'ecriture par
+# apps/ventes/domain/overrides.py / lignes.py (familles A et B) ou par
+# apps/ventes/domain/etude_schema.ecrire (famille C, QJR105 : `etude_params`
+# ne se remplace jamais en bloc).
 #
 # Les chemins gardes viennent du contrat QJR1
 # (apps/ventes/contract_samples/devis_overrides.json), jamais de ce fichier.
@@ -507,6 +575,10 @@ def main(argv=None):
                                   encoding="utf-8")
         print(f"check_override_registry: {len(sites)} site(s) ecrit(s) dans "
               f"{_rel(ALLOWLIST_PATH)}.")
+        print("  ATTENTION : la base a ete REECRITE. Les raisons par cle sont "
+              "conservees, mais les BLOCS DE COMMENTAIRE libres du fichier "
+              "(les notes de re-clage QJR76/QJR95/QJR97, la note de la "
+              "famille C) sont PERDUS -- relire le diff avant de commettre.")
         return 0
 
     allowed = load_allowlist()
@@ -537,10 +609,16 @@ def main(argv=None):
             print(f"    cle: {site.key}")
         print("\nUn chemin du registre d'override s'ecrit dans "
               "apps/ventes/domain/overrides.py (ou lignes.py pour "
-              "quantite/prix_unitaire) -- jamais ailleurs. Si ce site est "
-              "legitime pendant la transition, ajouter sa cle et sa raison "
-              f"dans {_rel(ALLOWLIST_PATH)} (ou --regenerate puis ecrire la "
-              "raison).")
+              "quantite/prix_unitaire) -- jamais ailleurs.")
+        if any(site.family == FAMILY_BLOC for site in offenders):
+            print("`etude_params` ne se REMPLACE JAMAIS EN BLOC (QJR105) : "
+                  "une affectation `devis.etude_params = <bloc>` SUPPRIME "
+                  "en silence toutes les cles que l'ecrivain ne reconstruit "
+                  "pas. Passer par apps/ventes/domain/etude_schema.ecrire "
+                  "(fusion cle a cle, proprietaire declare).")
+        print("Si ce site est legitime pendant la transition, ajouter sa cle "
+              f"et sa raison dans {_rel(ALLOWLIST_PATH)} (ou --regenerate "
+              "puis ecrire la raison).")
         return 1
 
     print("\ncheck_override_registry: OK (advisory -- tous les sites sont "

@@ -2387,6 +2387,51 @@ def _capacite_batterie_vendue():
     return float(BATTERIE_KWH_TOTAL or 0.0)
 
 
+#: QJR104 — tolérance de comparaison des capacités batterie, en kWh. MÊME
+#: nombre que ``apps.ventes.dimensionnement.TOLERANCE_CAPACITE_KWH`` : un
+#: arrondi d'affichage n'est pas un écart de palier.
+TOLERANCE_CAPACITE_KWH = 0.05
+
+
+def _config_identifiante(panneaux, batterie_kwh):
+    """QJR104 — la CONFIGURATION IDENTIFIANTE d'une installation, ou ``None``.
+
+    Deux nombres et deux seulement : le compte de panneaux et la capacité
+    batterie. ``None`` dès que l'un des deux n'est pas lisible — un booléen
+    est refusé explicitement (en Python ``int(True) == 1`` aurait fait passer
+    un drapeau pour un compte de panneaux).
+    """
+    if isinstance(panneaux, bool) or not isinstance(panneaux, (int, float)):
+        return None
+    if (isinstance(batterie_kwh, bool)
+            or not isinstance(batterie_kwh, (int, float))):
+        return None
+    return (int(panneaux), float(batterie_kwh))
+
+
+def _decrit(config_optimum, config_vendue):
+    """QJR104 — ``config_optimum`` décrit-elle bien l'installation VENDUE ?
+
+    LA MÊME RÈGLE, MOT POUR MOT, que
+    ``apps.ventes.dimensionnement.decrit`` : identité du compte de panneaux et
+    égalité des capacités batterie à :data:`TOLERANCE_CAPACITE_KWH` près.
+
+    POURQUOI UN JUMEAU, ET PAS UN IMPORT. Ce module est le moteur VENDORÉ : il
+    n'importe RIEN de ``apps`` (voir ses imports — ``base64``, ``matplotlib``,
+    et c'est tout) et il s'exécute aussi comme ``__main__``. Lui faire importer
+    ``apps.ventes.dimensionnement`` — qui cite ``apps.ventes.services`` — le
+    rendrait indémarrable hors Django. Le jumeau est donc assumé, et il est
+    ÉPINGLÉ : ``apps/ventes/tests/test_qjr_optimum_publie.py`` fait passer la
+    MÊME table de cas dans les deux implémentations et exige le MÊME verdict —
+    une divergence rougit au lieu de dormir dans un PDF client.
+    """
+    if config_optimum is None or config_vendue is None:
+        return False
+    if config_optimum[0] != config_vendue[0]:
+        return False
+    return abs(config_optimum[1] - config_vendue[1]) <= TOLERANCE_CAPACITE_KWH
+
+
 def _optimum_decrit_ce_devis(combinaison):
     """QJR13 — ``combinaison`` (un optimum du moteur) décrit-elle CE devis ?
 
@@ -2397,26 +2442,19 @@ def _optimum_decrit_ce_devis(combinaison):
     ses chiffres comme ceux « de ce dimensionnement » décrit au client une
     installation qu'il n'achète pas.
 
-    Règle (zéro chiffre inventé) : on ne publie que si la configuration de
-    l'optimum ÉGALE la configuration vendue (compte de panneaux + capacité
-    batterie des lignes). Tout ce qui n'est pas prouvé — contrat malformé,
-    compte de panneaux du devis inconnu, capacité illisible — rend ``False``,
-    et l'appelant OMET la mention : jamais un chiffre de repli.
+    Règle (zéro chiffre inventé, QJR104) : on ne publie que si la configuration
+    de l'optimum ÉGALE la configuration vendue. Tout ce qui n'est pas prouvé —
+    contrat malformé, compte de panneaux du devis inconnu, capacité illisible —
+    rend ``False``, et l'appelant OMET la mention : jamais un chiffre de repli.
     """
     if not isinstance(combinaison, dict):
         return False
-    _pan = combinaison.get("panneaux")
-    _bat = combinaison.get("batterie_kwh")
-    if isinstance(_pan, bool) or not isinstance(_pan, (int, float)):
-        return False
-    if isinstance(_bat, bool) or not isinstance(_bat, (int, float)):
-        return False
     if not NB_PAN:  # configuration vendue inconnue ⇒ rien à prouver, on omet
         return False
-    if int(_pan) != int(NB_PAN):
-        return False
-    # 0,05 kWh : tolérance d'arrondi d'affichage, jamais un écart de palier.
-    return abs(float(_bat) - _capacite_batterie_vendue()) <= 0.05
+    return _decrit(
+        _config_identifiante(combinaison.get("panneaux"),
+                             combinaison.get("batterie_kwh")),
+        _config_identifiante(NB_PAN, _capacite_batterie_vendue()))
 
 
 def _falaise_context():

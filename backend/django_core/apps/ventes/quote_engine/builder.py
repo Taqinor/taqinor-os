@@ -1064,8 +1064,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
     #
-    # Le moteur INJECTAIT ici une « Batterie 5 kWh » tirée du catalogue vendorisé
-    # (``catalog.pick_default_battery``) dès qu'un devis portait un onduleur
+    # Le moteur INJECTAIT ici une « Batterie 5 kWh » tirée d'un catalogue
+    # vendorisé (``quote_engine/catalog.py``, module SUPPRIMÉ par QJR107 le
+    # 30/08/2026 : il n'avait plus AUCUN appelant, et son seul rôle survivant
+    # était de porter cet avertissement — qui vit désormais ICI, au point
+    # exact où la tentation revient) dès qu'un devis portait un onduleur
     # HYBRIDE sans ligne batterie réelle, pour pouvoir composer l'option « Avec
     # batterie » du document résidentiel à deux options. Le client recevait donc
     # un COMPOSANT et un PRIX qui n'existaient dans AUCUN document : le fondateur
@@ -2546,6 +2549,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # PVUNI — le calepinage 3D ne colle plus aux lignes (quelqu'un a édité
         # une quantité de panneaux sans rejouer la 3D). False sur un devis sain
         # ET sur un devis sans calepinage : rendu inchangé dans les deux cas.
+        #
+        # QJR107 (30/08/2026) — CES DEUX CLÉS NE SONT PAS DU CODE MORT, et la
+        # confusion est facile : AUCUN renderer PDF ne les lit. Leur
+        # consommateur est la PAGE WEB de proposition — ``public_views``
+        # (~ligne 2745) les recopie dans la charge utile publique et
+        # ``apps/web/src/lib/proposition.ts`` les déclare (``layout_stale`` →
+        # ``layoutStale``). Les supprimer parce qu'un grep du moteur PDF ne
+        # trouve rien casserait l'avertissement « calepinage périmé » de la
+        # page client. Décision explicite du nettoyage QJR107 : DOCUMENTER,
+        # ne pas supprimer.
         "layout_stale": layout_stale,
         "layout_nb_panneaux": layout_nb_panneaux or None,
         "prod_kwh": roi["prod_kwh"],

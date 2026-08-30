@@ -12,9 +12,13 @@ DEUX PRÉCISIONS SUR LE PÉRIMÈTRE DE QJR75 :
   QJR48 l'a SUPPRIMÉE (avec ses deux récepteurs) le 29/08/2026, et
   `tests/test_qjr_coherence_etude.py` garde qu'elle ne revienne pas. Il n'y
   avait donc rien à déplacer ;
-* `profil_reel_existe` reste dans `services.py` : sa suppression a été
-  extraite de QJR75 par R4-C.5 et appartient à QJR107 (une tâche déplace OU
-  corrige, jamais les deux).
+* `profil_reel_existe` a été SUPPRIMÉE par QJR107 le 30/08/2026 (sa
+  suppression avait été extraite de QJR75 par R4-C.5 — une tâche déplace OU
+  corrige, jamais les deux). Elle ne conditionnait plus AUCUN dimensionnement
+  depuis l'ordre fondateur du 29/08 (« ALL sizing should go through the new
+  sizing tool ») et un balayage du dépôt ne trouvait plus AUCUN appelant :
+  ni production, ni test — seulement sa définition, son ré-export et le pin
+  de surface. Voir la note de suppression plus bas.
 
 QJR75 (M3) — DÉPLACEMENT PUR depuis ``apps/ventes/services.py``. Les corps
 sont recopiés à l'identique ; la SEULE retouche est mécanique et obligatoire :
@@ -421,55 +425,27 @@ def refresh_marge_snapshot(devis):
                        getattr(devis, 'reference', '?'), exc)
 
 
-# ── QJR76 : les ENTRÉES des études, et le prédicat de profil réel ───────────
+# ── QJR76 : les ENTRÉES des études ──────────────────────────────────────────
 # `entrees_dimensionnement_du_devis` alimente `rafraichir_dimensionnement_devis`
 # (plus haut) : il vivait dans `services.py`, ce module l'importait par un pont.
-# `profil_reel_existe` arrive ici SANS être supprimé — sa suppression est
-# QJR107 (R4-C.5), et ce commit ne fait que déplacer.
-def profil_reel_existe(lead):
-    """CJ2a — le lead porte-t-il un PROFIL réel, et non juste une facture ?
-
-    « Profil » = ce que le script d'appel a réellement recueilli et qui change
-    la forme de la consommation heure par heure :
-
-    * la présence en journée (``occupation_jour``) — le signal le plus fort :
-      à facture égale, un foyer présent en journée autoconsomme presque le
-      double d'un foyer absent ;
-    * un équipement déclaré AVEC sa grandeur (piscine + kW, clim + pièces, VE +
-      km/semaine) — les seules couches que le moteur sait composer ;
-    * douze factures mensuelles réelles saisies sur le devis.
-
-    NE CONDITIONNE PLUS AUCUN DIMENSIONNEMENT (ordre fondateur du 29/08/2026 :
-    « ALL sizing should go through the new sizing tool »). Cette fonction était
-    la porte du chemin horaire dans ``build_devis_auto`` ; elle n'y est plus
-    appelée, car un lead SANS profil se dimensionne désormais lui aussi par le
-    moteur (facture d'hiver inversée au barème ONEE + silhouette du DÉFAUT
-    RÉSIDENTIEL FONDATEUR ``courbes_journalieres.DEFAUT_RESIDENTIEL``, QJR10 /
-    D4), et non plus par la règle des 900 DH/mois — qui n'existe plus.
-
-    Elle reste EXPOSÉE comme lecture de qualité de fiche (« ce lead porte-t-il
-    autre chose qu'une facture ? »), utile pour nuancer un affichage ou
-    relancer un commercial, jamais pour décider d'une taille.
-    """
-    if lead is None:
-        return False
-    if getattr(lead, 'occupation_jour', None) in ('present', 'absent', 'partiel'):
-        return True
-    couples = (
-        ('equip_piscine', 'equip_piscine_pompe_kw'),
-        ('equip_clim', 'equip_clim_pieces'),
-        ('equip_voiture_electrique', 'equip_ve_km_semaine'),
-    )
-    for drapeau, grandeur in couples:
-        if getattr(lead, drapeau, None) is True:
-            valeur = getattr(lead, grandeur, None)
-            if valeur not in (None, ''):
-                try:
-                    if float(valeur) > 0:
-                        return True
-                except (TypeError, ValueError):
-                    continue
-    return False
+#
+# QJR107 (30/08/2026) — `profil_reel_existe` A ÉTÉ SUPPRIMÉE D'ICI. Elle
+# répondait « ce lead porte-t-il autre chose qu'une facture ? » (présence en
+# journée, équipement déclaré avec sa grandeur, douze factures réelles) et
+# gardait autrefois l'entrée du chemin horaire dans `build_devis_auto`. Depuis
+# l'ordre fondateur du 29/08/2026 — « ALL sizing should go through the new
+# sizing tool » — TOUT lead se dimensionne par le moteur (facture d'hiver
+# inversée au barème ONEE + `courbes_journalieres.DEFAUT_RESIDENTIEL`,
+# QJR10/D4), donc elle ne conditionnait plus rien. Un balayage du dépôt au
+# moment de la suppression ne trouvait AUCUN appelant : ni production, ni
+# test — seulement sa définition, son ré-export dans `services.py` et
+# l'entrée du pin de surface, tous trois retirés dans le même commit.
+#
+# NE PAS LA RÉINTRODUIRE POUR DÉCIDER D'UNE TAILLE : un prédicat « ce lead
+# a-t-il un vrai profil ? » redeviendrait immédiatement une porte de
+# dimensionnement, c'est-à-dire un second dimensionneur — exactement ce que
+# l'ordre du 29/08 interdit. Une lecture de QUALITÉ DE FICHE (score du lead,
+# complétude du questionnaire) appartient à `apps/crm`, pas ici.
 
 
 def entrees_dimensionnement_du_devis(devis, *, contexte=True):

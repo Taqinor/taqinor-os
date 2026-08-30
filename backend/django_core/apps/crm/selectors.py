@@ -680,6 +680,18 @@ def conception_3d_du_lead(lead):
 # DC12 — profil site/énergie réutilisable par client ─────────────────────────
 
 # Champs du profil que le générateur peut pré-remplir (source unique).
+#
+# QJR107 / DÉCISION FONDATEUR D7 (29/08/2026) — `orientation`,
+# `inclinaison_deg` et `ombrage` (+ `ombrage_notes`) NE SONT PAS DU CODE MORT.
+# Une passe de nettoyage les prend facilement pour tels : AUCUN calcul du
+# moteur ne les lit — ni le dimensionnement, ni l'étude horaire, ni le PDF.
+# C'est VOULU et c'est TRANCHÉ : ils sont CRM-SEULEMENT (score du lead +
+# complétude du questionnaire d'appel), et ils ne seront JAMAIS branchés au
+# calcul tant que le fondateur n'aura pas fourni les COEFFICIENTS réels
+# (perte par orientation, par inclinaison, par ombrage). Les brancher sans
+# ces coefficients reviendrait à inventer un facteur de perte — c'est-à-dire
+# à inventer un chiffre montré au client, ce que la règle fondateur interdit
+# sans exception. NE PAS LES SUPPRIMER, NE PAS LES CÂBLER : les laisser ici.
 SITE_PROFILE_FIELDS = (
     'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
     'tranche_onee', 'raccordement', 'regularisation_8221', 'type_installation',
