@@ -51,10 +51,20 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 # `_replace_lines_atomic` vivait ici, donc hors d'atteinte de tout autre
 # appelant, alors que les tests le décrivent comme « le SEUL chemin d'écriture »
 # des lignes. Son corps est parti TEL QUEL dans `domain/lignes.remplacer_lignes`
-# (dédenté, `self` retiré, pas une ligne de logique touchée) ; les deux appels
-# de ce fichier sont les MÊMES appels, aux mêmes endroits, sous les mêmes
-# `transaction.atomic()` — les réponses des endpoints sont inchangées à l'octet.
-from ..domain.lignes import creer_ligne, remplacer_lignes  # noqa: F401
+# (dédenté, `self` retiré, pas une ligne de logique touchée).
+# QJR93 (M5, bascule 1/5) — CE FICHIER N'APPELLE PLUS `remplacer_lignes`.
+# `atomic` et `replace-lines` recopiaient la MÊME paire de gestes (écrire les
+# lignes sous transaction, puis rafraîchir les quatre études hors transaction),
+# chacun avec son propre commentaire de dix lignes expliquant l'autre. Les deux
+# passent désormais par `domain/pipeline.appliquer` — le mode `ecrire` pour la
+# première moitié, le mode `rafraichir` pour la seconde — donc par LE MÊME
+# écrivain et LE MÊME ordonnancement que les quatre autres origines de devis.
+# Les frontières de transaction n'ont pas bougé d'une ligne : les réponses des
+# endpoints sont inchangées à l'octet.
+from ..domain.lignes import creer_ligne  # noqa: F401
+from ..domain.pipeline import (  # noqa: F401
+    MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -858,7 +868,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     devis = serializer.save(
                         reference=ref, client=client,
                         created_by=request.user, company=company)
-                    remplacer_lignes(devis, lignes_in, company)
+                    # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
+                    # la composition est celle que l'écran a arrêtée, le
+                    # pipeline ne la recompose pas (recomposer détruirait les
+                    # prix et quantités tapés par le commercial).
+                    appliquer(devis, IntentionDevis(
+                        origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
+                        company=company, composition=lignes_in))
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError:
@@ -893,8 +909,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # l'EMPREINTE des entrées (et, pour le bloc horaire, la composition)
         # qui décide — un devis qui vient d'être créé n'a aucun bloc, donc les
         # quatre études se calculent de toute façon.
-        from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis)
+        # QJR93 — l'ÉTAPE 7 du pipeline. Elle RELIT l'instance avant les
+        # études (QJR20) : sur un devis qui vient d'être créé la relecture ne
+        # change rien, mais le contrat cesse d'être « espéré » selon le chemin.
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company))
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -930,7 +949,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
-                remplacer_lignes(devis, lignes_in, devis.company)
+                # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
+                # qu'hier : un échec préserve les lignes d'origine.
+                appliquer(devis, IntentionDevis(
+                    origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
+                    company=devis.company, composition=lignes_in))
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -953,8 +976,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # horaire et les profils, le profil client pour l'empreinte des
         # entrées), donc un vrai changement recalcule et un faux ne coûte plus
         # trois balayages complets.
-        from ..services import rafraichir_etudes_du_devis
-        rafraichir_etudes_du_devis(devis)
+        # QJR93 — l'ÉTAPE 7 du pipeline, HORS de la transaction ci-dessus,
+        # comme hier. La relecture (QJR20) est ce que ce chemin faisait déjà
+        # implicitement : ``remplacer_lignes`` supprime la relation préchargée
+        # par le queryset, ce qui vide son cache de résultats — le contrat est
+        # désormais EXPLICITE plutôt que dépendant de ce détail de Django.
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+            company=devis.company))
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
