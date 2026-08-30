@@ -325,7 +325,127 @@ def cible_depuis_lignes(devis, variante='sans'):
     }
 
 
-def remplacer_lignes(devis, lignes_in, company):
+# ── L-FORFAIT / QJR83 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE ───────────
+#
+# Constat QB83 (audit L3 du 29/08/2026), vérifié en code : AUCUN chemin ne
+# re-tarifait les lignes de forfait par panneau après un changement de compte.
+# Un devis passé de 9 à 20 panneaux gardait une pose facturée POUR 9 — alors
+# que la docstring de ``prix_forfait_ht`` affirme précisément le contraire
+# (« changer le nombre de panneaux requote mécaniquement les forfaits »). Elle
+# ne disait vrai que pour une COMPOSITION neuve : dès que le devis existait,
+# plus rien ne repassait sur ses lignes.
+#
+# La re-tarification vit donc chez L'ÉCRIVAIN UNIQUE (QJR73) : tout chemin qui
+# finit par écrire les lignes d'un devis l'obtient, et aucun n'a sa propre
+# copie de la règle. Le barème, lui, reste au STOCK
+# (``prix_fixe_ht``/``prix_par_panneau_ht``) — aucun montant n'est écrit ici.
+#
+# D12 (décision fondateur du 29/08/2026) — UNE LIGNE ``prix_manuel`` N'EST
+# JAMAIS RÉÉCRITE. Le prix négocié que le commercial a tapé est souverain ; ce
+# qui change, c'est qu'on le DIT au lieu de laisser croire que le barème a
+# joué.
+
+
+def avertissement_forfait_verrouille(designation, nb_panneaux, attendu):
+    """Le message FR d'un forfait au barème que ``prix_manuel`` protège."""
+    return ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
+            'les %d panneaux du devis (barème du stock : %s MAD HT). Effacez '
+            'la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau '
+            'le barème.' % (designation, nb_panneaux, attendu))
+
+
+def avertissement_forfait_commun_divergent(designation):
+    """Le message FR d'un forfait COMMUN à deux options qui ne portent pas le
+    même champ de panneaux : le tarifer sur l'une fausserait l'autre."""
+    return ('« %s » : ce forfait est COMMUN aux deux options, dont les champs '
+            'de panneaux diffèrent — il n\'a PAS été re-tarifé, car le tarifer '
+            'sur une option fausserait l\'autre. Dupliquez-le par option pour '
+            'qu\'il suive chaque compte.' % designation)
+
+
+def _comptes_panneaux(lignes):
+    """Le compte de panneaux de CHAQUE vue, lu sur les lignes du devis.
+
+    Rend ``{variante: nb}`` pour les trois valeurs de ``variante``. Sur un
+    devis NON varianté — tous ceux d'hier — les trois valent le même total.
+    Sur un devis varianté, la vue « sans » et la vue « avec » comptent chacune
+    les lignes COMMUNES plus les leurs (même règle que
+    ``lignes_de_variante``), et la clé COMMUNE vaut ``None`` quand les deux
+    divergent : il n'existe alors AUCUN compte qui décrive les deux options.
+    """
+    def _quantite(ligne):
+        try:
+            # ArithmeticError couvre decimal.InvalidOperation.
+            return int(Decimal(str(ligne.quantite or 0)))
+        except (ArithmeticError, TypeError, ValueError):
+            return 0
+
+    panneaux = [li for li in lignes if _classe_ligne(li, _is_panel)]
+    if not any((getattr(li, 'variante', '') or '') for li in panneaux):
+        total = sum(_quantite(li) for li in panneaux)
+        return {VARIANTE_COMMUNE: total,
+                VARIANTE_SANS: total, VARIANTE_AVEC: total}
+    comptes = {}
+    for variante in (VARIANTE_SANS, VARIANTE_AVEC):
+        comptes[variante] = sum(
+            _quantite(li) for li in lignes_de_variante(panneaux, variante))
+    comptes[VARIANTE_COMMUNE] = (
+        comptes[VARIANTE_SANS]
+        if comptes[VARIANTE_SANS] == comptes[VARIANTE_AVEC] else None)
+    return comptes
+
+
+def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
+    """QJR83 — remet au barème les lignes de forfait TARIFÉES AU PANNEAU.
+
+    Ne touche QUE les lignes dont le produit porte un barème
+    (``porte_bareme_par_panneau``) : tout le reste du catalogue garde son prix,
+    négocié ou non. Rend la liste des avertissements FRANÇAIS (et enrichit
+    ``avertissements`` sur place quand l'appelant en fournit un).
+
+    TROIS ABSTENTIONS, toutes DITES :
+
+    * ``prix_manuel`` posé (D12) — le prix tapé par le commercial est souverain ;
+    * forfait COMMUN d'un devis à deux options DIVERGENTES — aucun compte ne
+      décrit les deux, et inventer une moyenne serait un chiffre inventé ;
+    * barème illisible (``prix_forfait_ht`` rend ``None``) — silencieux, c'est
+      simplement un produit sans barème.
+
+    Aucune écriture quand le prix est DÉJÀ celui du barème : une ligne
+    inchangée ne doit pas voir sa date de modification bouger.
+    """
+    messages = avertissements if isinstance(avertissements, list) else []
+    lignes = _lignes_produit(devis)
+    comptes = _comptes_panneaux(lignes)
+    for ligne in lignes:
+        produit = getattr(ligne, 'produit', None)
+        if not porte_bareme_par_panneau(produit):
+            continue
+        variante = getattr(ligne, 'variante', '') or VARIANTE_COMMUNE
+        nb_panneaux = comptes.get(variante, comptes.get(VARIANTE_COMMUNE))
+        if nb_panneaux is None:
+            messages.append(
+                avertissement_forfait_commun_divergent(ligne.designation))
+            continue
+        attendu = prix_forfait_ht(produit, nb_panneaux)
+        if attendu is None:
+            continue
+        try:
+            actuel = Decimal(str(ligne.prix_unitaire or 0))
+        except (ArithmeticError, TypeError, ValueError):
+            actuel = None
+        if actuel == attendu:
+            continue
+        if getattr(ligne, 'prix_manuel', False):
+            messages.append(avertissement_forfait_verrouille(
+                ligne.designation, nb_panneaux, attendu))
+            continue
+        ligne.prix_unitaire = attendu
+        ligne.save(update_fields=['prix_unitaire'])
+    return messages
+
+
+def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
     transaction par l'appelant). Produits bornés à la société de
     l'utilisateur OU au catalogue global (PV15, même portée que
@@ -347,7 +467,13 @@ def remplacer_lignes(devis, lignes_in, company):
     l'aval (``devis_variante`` dans ``services``, le comparatif du PDF, les
     cartes par option de la page publique) lisait un devis mono-option.
     Valeur inconnue ⇒ ``''`` (la ligne reste commune) : jamais une erreur
-    d'enregistrement pour un tag mal formé."""
+    d'enregistrement pour un tag mal formé.
+
+    QJR83 — LES FORFAITS AU PANNEAU SONT REMIS AU BARÈME une fois les lignes
+    écrites (``retarifer_forfaits_par_panneau``), en respectant ``prix_manuel``
+    (D12). ``avertissements`` (optionnel) reçoit les messages FRANÇAIS des
+    lignes qui ont REFUSÉ de suivre ; la fonction les rend aussi — elle ne
+    rendait rien jusqu'ici, aucun appelant ne régresse."""
     from decimal import Decimal, InvalidOperation
     from django.db.models import Q
     from ..models import LigneDevis
@@ -425,6 +551,10 @@ def remplacer_lignes(devis, lignes_in, company):
             # historique strictement inchangé.
             quantite_manuelle=bool(li.get('quantite_manuelle', False)),
             prix_manuel=bool(li.get('prix_manuel', False)))
+    # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
+    # ci-dessus (jamais celui que l'appelant croyait envoyer).
+    return retarifer_forfaits_par_panneau(devis,
+                                          avertissements=avertissements)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -436,6 +566,8 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _is_hybrid_inverter,
     _is_panel,
     _parse_watt,
+    porte_bareme_par_panneau,
+    prix_forfait_ht,
 )
 from apps.ventes.domain.composition import (  # noqa: E402,F401
     VARIANTE_AVEC,
