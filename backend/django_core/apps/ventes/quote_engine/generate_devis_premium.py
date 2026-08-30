@@ -3029,8 +3029,13 @@ def page_annexe_technique():
                 f'text-align:{align};'
                 f'{"font-weight:700;" if bold else ""}">{texte}</td>')
 
+    # QJR163 (a) — LA TRONCATURE EST DÉCLARÉE. La nomenclature était
+    # coupée à 22 lignes sans mention ni marqueur : le lecteur croyait
+    # tenir la liste complète des composants.
+    _bom = [it for it in (design.get("bom") or []) if isinstance(it, dict)]
+    _bom_reste = max(0, len(_bom) - BOM_MAX_LIGNES)
     lignes = []
-    for item in (design.get("bom") or [])[:22]:
+    for item in _bom[:BOM_MAX_LIGNES]:
         if not isinstance(item, dict):
             continue
         quantite = item.get("quantite")
@@ -3042,6 +3047,13 @@ def page_annexe_technique():
             + _cell(f'<span style="color:{CG4};">'
                     f'{_esc(item.get("spec") or "")}</span>')
             + "</tr>")
+    if _bom_reste > 0:
+        lignes.append(
+            f'<tr><td colspan="3" style="padding:3px 6px;font-style:italic;'
+            f'font-size:6.5pt;color:{CG4};">&#8230; et {_bom_reste} autre'
+            f'{"s" if _bom_reste > 1 else ""} composant'
+            f'{"s" if _bom_reste > 1 else ""} &#8212; nomenclature '
+            f'compl&#232;te fournie avec le dossier technique.</td></tr>')
     bom_html = (
         f'<div style="background:{CG1};border:1px solid {CG2};border-radius:7px;'
         f'padding:8px 10px;">'
@@ -3190,6 +3202,11 @@ ONEPAGE_HEADER_MM = 21.17
 #: silencieusement : c'est la ligne que le bloc de totaux ne doit jamais
 #: franchir. Constante partagée par le gabarit, la mesure et les tests.
 ONEPAGE_FOOTER_PX = 72
+
+#: QJR163 (a) — capacité de la nomenclature de l'annexe technique. Au-delà, les
+#: lignes ne tiennent plus sur la page : elles sont retirées ET DÉCLARÉES par
+#: une ligne finale (« … et N autres composants »), jamais coupées en silence.
+BOM_MAX_LIGNES = 22
 
 
 def _onepage_qr_uri(href):
@@ -3363,7 +3380,9 @@ def page_onepage(items, tronquees=0):
         if _fctx_onepage and _fctx_onepage.get("residuel_kwh_mois") is not None:
             _rtxt = f"{fnum(_fctx_onepage['residuel_kwh_mois'])} kWh/mois"
             if _fctx_onepage.get("tranche_apres"):
-                _rtxt += f" ({_fctx_onepage['tranche_apres']})"
+                # QJR163 (b) — ÉCHAPPÉ comme sur la page étude : ce libellé
+                # vient du contrat de dimensionnement, pas d'une constante.
+                _rtxt += f" ({_esc(_fctx_onepage['tranche_apres'])})"
             _sum_cells.append(("R&#233;siduel vis&#233;", _rtxt))
     else:
         _sum_cells = []
@@ -3742,7 +3761,9 @@ def generate():
     Path(tmp).unlink(missing_ok=True)
 
     kb = out.stat().st_size // 1024
-    msg = (f"\n\u2705 Saved: {out.name} | Pages: 3 | {kb} KB\n")
+    # QJR163 (c) \u2014 le VRAI nombre de pages, pas un \u00ab 3 \u00bb cod\u00e9 : ``PAGES_TOTAL``
+    # est d\u00e9j\u00e0 calcul\u00e9 par ``apply_quote_data`` (3 + \u00e9tude + annexe).
+    msg = (f"\n\u2705 Saved: {out.name} | Pages: {PAGES_TOTAL} | {kb} KB\n")
     sys.stdout.buffer.write(msg.encode("utf-8", errors="replace"))
     sys.stdout.buffer.flush()
     return str(out)
@@ -3776,6 +3797,12 @@ def apply_quote_data(data: dict) -> None:
     dans le HTML EXACT qui part chez WeasyPrint. Le chemin PDF est inchangé :
     ``_render_premium_pdf`` appelle ces deux fonctions, dans le même ordre,
     sous le même verrou.
+
+    QJR163 (d) — SANS VERROU : cette fonction ÉCRIT les globales du module
+    (ERR17) et n'acquiert PAS ``_RENDER_LOCK`` — seul ``generate_premium_pdf``
+    le prend. Tout appelant en contexte CONCURRENT doit donc le prendre
+    lui-même (ou passer par ``generate_premium_pdf``), sous peine d'entrelacer
+    les données de deux devis dans un même document.
     """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
@@ -4036,8 +4063,21 @@ def render_html_for(data: dict) -> str:
     """HTML EXACT que le moteur legacy envoie à WeasyPrint pour ``data``.
 
     Point d'entrée des tests « document rendu » : aucune dépendance PDF, même
-    ingestion et même sélection de gabarit que le chemin PDF. N'acquiert PAS
-    ``_RENDER_LOCK`` (``_render_premium_pdf`` le tient déjà autour de l'appel).
+    ingestion et même sélection de gabarit que le chemin PDF.
+
+    ── QJR163 (d) — CONCURRENCE : LIRE AVANT D'APPELER ─────────────────────
+    Cette fonction et ``apply_quote_data`` sont PUBLIQUES et n'acquièrent PAS
+    ``_RENDER_LOCK`` : seul ``generate_premium_pdf`` le prend. Or l'ingestion
+    ÉCRIT les globales du module (ERR17) et le rendu les relit — deux appels
+    CONCURRENTS à ``render_html_for`` (ou un appel pendant un
+    ``generate_premium_pdf``) peuvent donc entrelacer les données de deux
+    devis dans un même document.
+    Elles restent sans verrou À DESSEIN : ``_render_premium_pdf`` les appelle
+    DÉJÀ sous ``_RENDER_LOCK`` (un ``RLock`` réentrant le permettrait, mais
+    l'imbrication resterait à la charge de l'appelant) et toute la suite de
+    tests les appelle en séquence. **Tout nouvel appelant en contexte
+    concurrent doit prendre ``_RENDER_LOCK`` lui-même**, ou passer par
+    ``generate_premium_pdf``.
     """
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":

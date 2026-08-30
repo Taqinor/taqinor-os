@@ -1832,3 +1832,100 @@ class QJR145FinitionsTests(SimpleTestCase):
             renderer as i_renderer, sample_data as i_sample)
         self.assertNotIn('com_prod', c_renderer._augment(c_sample.build()))
         self.assertNotIn('ind_prix_kwc', i_renderer._augment(i_sample.build()))
+
+
+# ── QJR163 — lot de finition page étude / annexe / une-page ──────────────────
+class QJR163FinitionsTests(SimpleTestCase):
+    """(a) la nomenclature de l'annexe technique était tronquée à 22 lignes
+    SANS mention ni marqueur ; (b) ``tranche_apres`` était interpolée sans
+    échappement dans le une-page alors que la page étude l'échappe ;
+    (c) le message de console du chemin ``__main__`` annonçait « Pages: 3 » en
+    dur alors que ``PAGES_TOTAL`` est déjà calculé ; (d) ``render_html_for`` et
+    ``apply_quote_data`` sont deux fonctions publiques SANS verrou."""
+
+    @staticmethod
+    def _design(n_composants):
+        return {
+            'chaines': [{'pan': 1, 'mppt': 1, 'nb_modules': 7,
+                         'vmp_froid_v': 268.0, 'voc_froid_v': 327.2,
+                         'vmp_chaud_v': 212.8, 'conforme': True}],
+            'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+            'bom': [{'designation': 'Composant %02d' % i, 'quantite': i + 1,
+                     'spec': 'spec %02d' % i} for i in range(n_composants)],
+        }
+
+    @staticmethod
+    def _annexe(design):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+        data = F.donnees_legacy(pdf_mode='full', electrical_design=design,
+                                include_annexe_technique=True)
+        G.apply_quote_data(data)
+        return G.page_annexe_technique()
+
+    # (a) ------------------------------------------------------------------
+    def test_a_une_nomenclature_courte_est_rendue_entiere(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(5))
+        self.assertIn('Composant 04', html)
+        self.assertNotIn('autres composants', html)
+        self.assertEqual(G.BOM_MAX_LIGNES, 22)
+
+    def test_a_une_nomenclature_longue_declare_sa_troncature(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(G.BOM_MAX_LIGNES + 8))
+        self.assertIn('Composant 00', html)
+        self.assertIn('Composant %02d' % (G.BOM_MAX_LIGNES - 1), html)
+        # …et le lecteur SAIT que la liste n'est pas complète.
+        self.assertIn('et 8 autres composants', html)
+        self.assertNotIn('Composant %02d' % (G.BOM_MAX_LIGNES + 7), html)
+
+    def test_a_un_seul_composant_de_trop_est_dit_au_singulier(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(G.BOM_MAX_LIGNES + 1))
+        self.assertIn('et 1 autre composant ', html)
+
+    # (b) ------------------------------------------------------------------
+    def test_b_la_tranche_est_echappee_sur_le_une_page(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+
+        piege = 'Tranche <script>alert("x")</script> & Cie'
+        data = F.donnees_legacy(pdf_mode='onepage')
+        dim = {
+            'falaise': {
+                'cible_kwh_mois': 500.0,
+                'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6'},
+            },
+            # La garde QJR13 refuse un optimum qui ne décrit pas le devis : on
+            # aligne la combinaison sur la composition RENDUE pour exercer le
+            # chemin d'échappement.
+            'meilleure_falaise': {
+                'panneaux': int(data['nb_panneaux']), 'kwc': 0,
+                'batterie_kwh': 0.0, 'residuel_kwh_mois': 420.0,
+                'tranche_apres': {'rang': 5, 'libelle': piege},
+            },
+        }
+        data['etude'] = dict(data.get('etude') or {}, dimensionnement=dim)
+        data['batterie_kwh_total'] = 0.0
+        data['onepage_branche'] = 'sans'
+        html = G.render_html_for(data)
+        self.assertNotIn('<script>alert', html)
+        self.assertIn('&lt;script&gt;', html)
+
+    # (c) ------------------------------------------------------------------
+    def test_c_le_message_console_lit_le_vrai_nombre_de_pages(self):
+        import inspect
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        src = inspect.getsource(G.generate)
+        self.assertNotIn('Pages: 3 ', src)
+        self.assertIn('Pages: {PAGES_TOTAL}', src)
+
+    # (d) ------------------------------------------------------------------
+    def test_d_l_absence_de_verrou_est_documentee(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        for fonction in (G.render_html_for, G.apply_quote_data):
+            doc = fonction.__doc__ or ''
+            with self.subTest(fonction=fonction.__name__):
+                self.assertIn('_RENDER_LOCK', doc)
+                self.assertIn('concurrent', doc.lower())
