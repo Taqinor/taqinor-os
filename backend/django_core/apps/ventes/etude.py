@@ -53,7 +53,13 @@ AUCUN statut de devis, n'expose AUCUN prix d'achat/marge.
 from __future__ import annotations
 
 import datetime as _dt
+import math
 
+from apps.ventes.quote_engine.pricing import (
+    PRODUCTION_DERATE,
+    PVGIS_BUILTIN_LOSS,
+    SYSTEM_LOSS_TOTAL,
+)
 from apps.ventes.solar_design import (
     DEFAULT_LOSS_FACTORS,
     TYPICAL_LOAD_PROFILE_COMMERCIAL,
@@ -424,6 +430,82 @@ def _zone_base_production(settings, zone, *, devis=None, index=0,
     }
 
 
+def base_avant_pertes_kwh(base_production_kwh):
+    """QJR114 — productible PVGIS (**net** de ``loss``) → base AVANT pertes.
+
+    ``apps.parametres.pvgis.fetch_productible`` interroge PVGIS avec
+    ``loss=14`` : la valeur rendue (et, hors ligne, le réglage manuel qui la
+    remplace) est DÉJÀ nette de ces 14 %. ``simulate_bankable_yield`` exige au
+    contraire une base « AVANT pertes » et réapplique un arbre complet — passer
+    la valeur nette telle quelle dérate DEUX FOIS (28,3 % cumulés au lieu des
+    20 % tranchés par le fondateur). On remonte donc d'abord au brut, une seule
+    fois, avec la constante que tout le dépôt partage déjà
+    (``pricing.PVGIS_BUILTIN_LOSS``).
+    """
+    base = _num(base_production_kwh, 0.0)
+    if base <= 0:
+        return 0.0
+    reste = 1.0 - _num(PVGIS_BUILTIN_LOSS, 0.0)
+    if reste <= 0:
+        return base
+    return base / reste
+
+
+def production_nette_canonique_kwh(base_production_kwh, shading_fraction=0.0):
+    """QJR114 — production annuelle NETTE au derate canonique du dépôt.
+
+    C'est la référence UNIQUE : ``productible PVGIS (net 14 %) ×
+    PRODUCTION_DERATE`` — la formule exacte de ``pricing`` (carte « Production
+    annuelle ») et d'``etude_horaire`` — moins l'ombrage MESURÉ du site. Le
+    bloc bancable doit atterrir dessus : c'est ce que la garde de QJR114
+    épingle, et ce que la courbe horaire consomme.
+    """
+    base = _num(base_production_kwh, 0.0)
+    if base <= 0:
+        return 0.0
+    ombrage = min(1.0, max(0.0, _num(shading_fraction, 0.0)))
+    return base * PRODUCTION_DERATE * (1.0 - ombrage)
+
+
+def loss_factors_canoniques(shading_fraction=0.0):
+    """QJR114 — l'arbre de pertes CALÉ sur les 20 % du fondateur.
+
+    ``DEFAULT_LOSS_FACTORS`` est le défaut marché du module PUR
+    ``solar_design`` : son produit vaut ≈ 0,827 (17,3 % de pertes), alors que
+    le dépôt entier — ``pricing.SYSTEM_LOSS_TOTAL``, ``etude_horaire``,
+    ``solar.js`` — retient **20 % AU TOTAL** (ordre fondateur du 18/08). Publier
+    les deux, c'est publier deux productions pour la même installation.
+
+    On garde donc les postes du contrat PACT10 (clés inchangées) mais on les
+    cale sur le total tranché, par une remise à l'échelle EXACTE en log :
+    ``1 − f'ᵢ = (1 − fᵢ)^k`` avec ``k = ln(1 − SYSTEM_LOSS_TOTAL) / Σ ln(1 − fᵢ)``.
+    Le produit vaut alors ``1 − SYSTEM_LOSS_TOTAL`` à la virgule près, chaque
+    poste garde son poids RELATIF d'origine, et aucun chiffre n'est inventé :
+    tout se dérive des deux seules sources déjà présentes au dépôt.
+
+    ``shading_fraction`` est une perte MESURÉE du site (matrice 12×24 ou
+    horizon), pas un poste générique : elle n'entre pas dans le calage et vient
+    s'ajouter telle quelle — la garde de QJR114 s'énonce donc « à ombrage nul ».
+    """
+    rendements = {}
+    somme_log = 0.0
+    for poste, frac in DEFAULT_LOSS_FACTORS.items():
+        r = 1.0 - min(1.0, max(0.0, _num(frac, 0.0)))
+        if r <= 0.0:
+            # Poste dégénéré (perte de 100 %) : rien à caler, on rend l'arbre
+            # d'origine plutôt qu'un log de zéro.
+            return {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
+        rendements[poste] = r
+        somme_log += math.log(r)
+    cible = 1.0 - _num(SYSTEM_LOSS_TOTAL, 0.0)
+    if somme_log >= 0.0 or cible <= 0.0:
+        return {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
+    k = math.log(cible) / somme_log
+    factors = {poste: 1.0 - (r ** k) for poste, r in rendements.items()}
+    factors['shading'] = shading_fraction
+    return factors
+
+
 def _pr_block(base_production_kwh, kwc_total, loss_factors):
     """Bloc ``pr`` du contrat (clés EXACTES) depuis ``simulate_bankable_yield``.
 
@@ -654,8 +736,16 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             * (z['shading_annual_loss_pct'] / 100.0)
             for z in zones_out)
 
-    loss_factors = {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
-    pr, sim_warnings = _pr_block(base_total, kwc_total, loss_factors)
+    # QJR114 — le derate ne s'applique plus DEUX FOIS. ``base_total`` est le
+    # productible PVGIS, DÉJÀ net des 14 % demandés à l'API : on remonte au brut
+    # (base_avant_pertes_kwh) et on n'applique qu'UN seul arbre, calé sur les
+    # 20 % du fondateur (loss_factors_canoniques). Résultat exact :
+    #     p50 = base_total × PRODUCTION_DERATE × (1 − ombrage)
+    # soit, à ombrage nul, EXACTEMENT la production annuelle canonique publiée
+    # par ``pricing`` sur la même page — plus deux vérités concurrentes.
+    loss_factors = loss_factors_canoniques(shading_fraction)
+    pr, sim_warnings = _pr_block(
+        base_avant_pertes_kwh(base_total), kwc_total, loss_factors)
     warnings.extend(sim_warnings)
 
     # PV72 — production agrégée horaire (Σ des courbes de zone, 288 pts).
