@@ -31,9 +31,10 @@ PATHS = [
 REL = "backend/django_core/apps/ventes/services.py"
 
 
-def _sites(src, rel=REL, paths=None, scan_lignes=True):
+def _sites(src, rel=REL, paths=None, scan_lignes=True, scan_bloc=True):
     return cor.collect_sites_in_source(src, rel, paths or PATHS,
-                                       scan_lignes=scan_lignes)
+                                       scan_lignes=scan_lignes,
+                                       scan_bloc=scan_bloc)
 
 
 def _targets(src, **kw):
@@ -228,6 +229,112 @@ class TestFamilleLigne(unittest.TestCase):
         self.assertEqual(_targets(LIGNE_QUANTITE, scan_lignes=False), [])
 
 
+# ---------------------------------------------------------------- famille C
+
+BLOC_LITTERAL = '''
+def poser(devis):
+    devis.etude_params = {'scenario': 'Avec batterie'}
+    devis.save(update_fields=['etude_params'])
+'''
+
+BLOC_VARIABLE = '''
+def poser(devis, etude):
+    devis.etude_params = etude
+'''
+
+BLOC_COPIE_PUIS_MUTEE = '''
+def poser(devis, valeur):
+    etude = dict(devis.etude_params or {})
+    etude['simulation'] = valeur
+    devis.etude_params = etude
+'''
+
+BLOC_VIA_FUSIONNER = '''
+def poser(verrou, etude):
+    verrou.etude_params = fusionner(etude, proprietaire='calepinage')
+'''
+
+BLOC_AUTRE_PORTEUR = '''
+def poser(verrou, etude):
+    verrou.etude_params = etude
+'''
+
+BLOC_QUERYSET = '''
+def poser(qs, etude):
+    qs.filter(pk=1).update(etude_params=etude)
+'''
+
+BLOC_UNE_SEULE_CLE = '''
+def poser(devis):
+    devis.etude_params['scenario'] = 'Sans batterie'
+'''
+
+BLOC_LECTURE = '''
+def lire(devis):
+    etude = devis.etude_params or {}
+    return etude.get('scenario')
+'''
+
+BLOC_AUTRE_CHAMP = '''
+def poser(devis, valeur):
+    devis.roof_layout = valeur
+    devis.offres_tailles_config = valeur
+'''
+
+
+class TestFamilleBlocEtudeParams(unittest.TestCase):
+    """QJR105 — `etude_params` ne se remplace jamais en bloc."""
+
+    def test_dict_litteral_signale(self):
+        self.assertEqual(_targets(BLOC_LITTERAL),
+                         [("etude_params_bloc", "devis.etude_params")])
+
+    def test_variable_signalee(self):
+        self.assertEqual(_targets(BLOC_VARIABLE),
+                         [("etude_params_bloc", "devis.etude_params")])
+
+    def test_copie_puis_mutation_signalee_aussi(self):
+        """Le geste SUR d'aujourd'hui est signale AUSSI : la garde protege du
+        jour ou quelqu'un retirera la copie, pas seulement du bloc nu."""
+        self.assertEqual(_targets(BLOC_COPIE_PUIS_MUTEE),
+                         [("etude_params_bloc", "devis.etude_params")])
+
+    def test_passage_par_fusionner_signale_aussi(self):
+        """`fusionner` fusionne bien, mais c'est `ecrire` qui doit AFFECTER :
+        la garde vise l'AFFECTATION, jamais le contenu de la droite."""
+        self.assertEqual(_targets(BLOC_VIA_FUSIONNER),
+                         [("etude_params_bloc", "verrou.etude_params")])
+
+    def test_le_porteur_est_nomme_dans_la_cible(self):
+        self.assertEqual(_targets(BLOC_AUTRE_PORTEUR),
+                         [("etude_params_bloc", "verrou.etude_params")])
+
+    def test_update_de_queryset_signale(self):
+        self.assertEqual(_targets(BLOC_QUERYSET),
+                         [("etude_params_bloc", "update(etude_params=...)")])
+
+    def test_ecrire_UNE_cle_nest_pas_un_remplacement_en_bloc(self):
+        """`devis.etude_params['scenario'] = ...` reste la famille (A) : c'est
+        une ecriture de CHEMIN, pas une reconstruction du bloc."""
+        self.assertEqual(_targets(BLOC_UNE_SEULE_CLE),
+                         [("etude_params", "scenario")])
+
+    def test_lecture_ignoree(self):
+        self.assertEqual(_targets(BLOC_LECTURE), [])
+
+    def test_autre_champ_json_ignore(self):
+        self.assertEqual(_targets(BLOC_AUTRE_CHAMP), [])
+
+    def test_la_famille_C_peut_etre_desactivee(self):
+        """C'est ce drapeau qui exempte l'ecrivain sanctionne."""
+        self.assertEqual(_targets(BLOC_LITTERAL, scan_bloc=False), [])
+
+    def test_la_cle_porte_la_famille_et_le_qualname(self):
+        self.assertEqual(
+            _keys(BLOC_VARIABLE),
+            [f"{REL}::poser::etude_params_bloc::devis.etude_params"])
+
+
 # ------------------------------------------------------- surface & modules
 
 
@@ -247,13 +354,37 @@ class TestSurfaceScannee(unittest.TestCase):
             "backend/django_core/apps/ventes/services.py"))
 
     def test_la_famille_ligne_est_scannee_sur_ventes_seulement(self):
-        flags = {rel: lignes for rel, lignes in
-                 ((cor._rel(p), f) for p, f in cor.iter_scanned_files())}
+        flags = {cor._rel(p): lignes
+                 for p, lignes, _bloc in cor.iter_scanned_files()}
         self.assertTrue(
             flags["backend/django_core/apps/ventes/services.py"])
         stock = "backend/django_core/apps/stock/services.py"
         if stock in flags:
             self.assertFalse(flags[stock])
+
+    def test_l_ecrivain_sanctionne_est_exempte_de_la_SEULE_famille_C(self):
+        """QJR105 — `etude_schema.py` reste scanne pour (A) et (B) : une
+        exemption plus large lui donnerait le droit d'ecrire un chemin du
+        registre a la main, sans que personne ne le voie."""
+        flags = {cor._rel(p): (lignes, bloc)
+                 for p, lignes, bloc in cor.iter_scanned_files()}
+        ecrivain = "backend/django_core/apps/ventes/domain/etude_schema.py"
+        self.assertIn(ecrivain, flags, "l'ecrivain sanctionne n'est plus "
+                                       "scanne du tout")
+        self.assertFalse(flags[ecrivain][1], "famille (C) non exemptee")
+        self.assertTrue(flags[ecrivain][0], "familles (A)/(B) desactivees")
+        for rel in cor.SANCTIONED_BLOC:
+            self.assertFalse(cor._skip(rel),
+                             f"{rel} ne doit PAS etre saute entierement")
+
+    def test_la_famille_C_est_scannee_hors_ventes_aussi(self):
+        """Un remplacement en bloc depuis `crm` ou `contrats` est aussi
+        dangereux que depuis `ventes` : le drapeau (C) y est vrai."""
+        hors_ventes = [bloc for p, _lignes, bloc in cor.iter_scanned_files()
+                       if not cor._rel(p).startswith(
+                           "backend/django_core/apps/ventes/")]
+        self.assertTrue(hors_ventes, "aucun module hors ventes scanne")
+        self.assertTrue(all(hors_ventes))
 
     def test_le_scan_reel_nest_pas_vide(self):
         # Un glob casse rendrait la garde silencieusement inoffensive.
@@ -386,6 +517,21 @@ class TestBaseDeReference(unittest.TestCase):
         offenders, _orphans = cor.evaluate(list(_real_sites()),
                                            cor.load_allowlist())
         self.assertEqual([s.key for s in offenders], [])
+
+    def test_un_remplacement_en_bloc_INVENTE_fait_rougir(self):
+        """QJR105 — la garde est VERTE sur l'arbre courant et ROUGE sur un
+        `devis.etude_params = <bloc>` neuf. Le site invente est place dans un
+        fichier REEL et non sanctionne : c'est exactement ce qu'un futur
+        commit ajouterait."""
+        sites = _sites(BLOC_LITTERAL,
+                       rel="backend/django_core/apps/ventes/views/devis.py")
+        offenders, _orphans = cor.evaluate(sites, cor.load_allowlist())
+        self.assertEqual(
+            [s.key for s in offenders],
+            ["backend/django_core/apps/ventes/views/devis.py"
+             "::poser::etude_params_bloc::devis.etude_params"])
+        self.assertEqual([s.family for s in offenders],
+                         [cor.FAMILY_BLOC])
 
 
 if __name__ == "__main__":
