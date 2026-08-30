@@ -333,9 +333,13 @@ class M5CourbeVingtCinqAnsTests(SimpleTestCase):
 class Q6ProductibleLocalTests(SimpleTestCase):
     """Q6 — la donnée PVGIS locale remplace « 3 000 h/an d'ensoleillement »."""
 
+    # QJR127 — ``productible_ville`` porte désormais la ville de RÉFÉRENCE de
+    # la table PVGIS, accompagnée du drapeau disant si elle est aussi celle du
+    # client (ici Casablanca : les deux coïncident).
     PVGIS = {"titre": "Nos hypothèses", "items": [],
              "productible_net_kwh_kwc": 1651,
-             "productible_ville": "casablanca"}
+             "productible_ville": "casablanca",
+             "productible_ville_est_reference": True}
 
     def test_le_slogan_national_a_disparu(self):
         self.assertNotIn("h/an d&#8217;ensoleillement", F.html_legacy())
@@ -348,13 +352,36 @@ class Q6ProductibleLocalTests(SimpleTestCase):
     def test_ville_inconnue_la_phrase_s_omet(self):
         self.assertNotIn("(donn&#233;e PVGIS)", F.html_legacy())
 
+    def test_une_ville_d_alias_nomme_sa_ville_de_reference(self):
+        """QJR127 — « Settat » ne peut plus être nommée SOURCE PVGIS.
+
+        ``ville_reconnue`` répondait « oui » pour les 15 alias hors table, et
+        le builder publiait alors la ville du CLIENT : la pastille imprimait
+        « à Settat (donnée PVGIS) » avec la valeur de Casablanca."""
+        html = F.html_legacy(hypotheses=dict(
+            self.PVGIS, productible_ville="casablanca",
+            productible_ville_est_reference=False))
+        self.assertIn("&#224; Casablanca", html)
+        self.assertNotIn("Settat", html)
+        self.assertIn("ville de r&#233;f&#233;rence la plus proche", html)
+
     def test_le_builder_omet_hors_table_pvgis(self):
-        from apps.ventes.quote_engine.productible import ville_reconnue
+        from apps.ventes.quote_engine.productible import (
+            est_ville_de_reference, ville_reconnue, ville_reference)
+        # ``ville_reconnue`` garde son sens : « une valeur PVGIS existe-t-elle
+        # pour cette ville ? » — alias compris (c'est le CALCUL, inchangé).
         self.assertTrue(ville_reconnue("Casablanca"))
         self.assertTrue(ville_reconnue("settat"))   # alias → casablanca
         self.assertFalse(ville_reconnue("Ouarzazate"))
         self.assertFalse(ville_reconnue(""))
         self.assertFalse(ville_reconnue(None))
+        # QJR127 — mais l'AFFICHAGE ne nomme que la ville de référence.
+        self.assertEqual(ville_reference("settat"), "casablanca")
+        self.assertEqual(ville_reference("Casablanca"), "casablanca")
+        self.assertIsNone(ville_reference("Ouarzazate"))
+        self.assertIsNone(ville_reference(""))
+        self.assertFalse(est_ville_de_reference("settat"))
+        self.assertTrue(est_ville_de_reference("Casablanca"))
 
     def test_le_cent_pour_cent_propre_n_est_plus_chiffre(self):
         html = F.html_legacy()

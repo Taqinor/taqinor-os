@@ -108,6 +108,33 @@ def ville_reconnue(city) -> bool:
     return _CITY_ALIASES.get(key, key) in PRODUCTIBLE_PAR_VILLE
 
 
+def ville_reference(city):
+    """QJR127 — ville de la table PVGIS dont la valeur sera RÉELLEMENT servie.
+
+    ``ville_reconnue`` répond « oui » pour les 15 villes d'alias — Settat,
+    Kénitra, Témara… — qui ne sont PAS dans ``PRODUCTIBLE_PAR_VILLE`` : le
+    document imprimait alors « à Settat (donnée PVGIS) » avec la valeur de
+    Casablanca, et l'annexe publiait ``{'source': 'PVGIS', 'ville': 'Settat'}``.
+    Cette fonction rend le nom de la ville de RÉFÉRENCE (``'casablanca'`` pour
+    Settat), ou ``None`` quand aucune valeur PVGIS n'existe — de sorte qu'aucune
+    ville hors table ne puisse être nommée comme source PVGIS.
+
+    Le CALCUL (``productible_for_city``) est inchangé : les alias continuent de
+    servir la valeur de leur ville de référence.
+    """
+    key = _normalize_city(city)
+    if not key:
+        return None
+    key = _CITY_ALIASES.get(key, key)
+    return key if key in PRODUCTIBLE_PAR_VILLE else None
+
+
+def est_ville_de_reference(city) -> bool:
+    """La ville EST-elle une ville de la table PVGIS (et non un alias) ?"""
+    key = _normalize_city(city)
+    return bool(key) and key in PRODUCTIBLE_PAR_VILLE
+
+
 def productible_for_city(city, override=None) -> float:
     """Productible canonique (kWh/kWc/an) pour une ville.
 

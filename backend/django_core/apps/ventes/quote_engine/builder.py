@@ -2085,16 +2085,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # une donnée PVGIS). Sinon : None ⇒ omission.
     _productible_net_pvgis = None
     _ville_pvgis = None
+    _ville_pvgis_est_reference = False
     if _prod_net_kwc:
-        from .productible import ville_reconnue as _ville_ok
+        # QJR127 — on publie la ville de RÉFÉRENCE, jamais la ville du client.
+        # ``ville_reconnue`` répond « oui » pour les 15 villes d'ALIAS (Settat,
+        # Kénitra, Témara…) qui ne sont PAS dans la table PVGIS : la pastille
+        # imprimait « à Settat (donnée PVGIS) » avec la valeur de Casablanca et
+        # l'annexe publiait ``{'source': 'PVGIS', 'ville': 'Settat'}`` — le
+        # « national moyen déguisé en donnée locale » que le docstring de la
+        # fonction interdit lui-même.
+        from .productible import (est_ville_de_reference as _est_ref,
+                                  ville_reference as _ville_ref)
         _force_societe = bool(
             _co_productible and abs(float(_co_productible) - 1600) > 0.5)
-        if _ville_ok(_client_city) and not _force_societe:
+        _ref = _ville_ref(_client_city)
+        if _ref and not _force_societe:
             # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :
             # deux phrases du même document ne peuvent pas annoncer deux
             # productibles différents pour la même installation.
             _productible_net_pvgis = int(round(_prod_net_kwc))
-            _ville_pvgis = _client_city
+            _ville_pvgis = _ref
+            # Vrai quand la ville du client EST elle-même dans la table : le
+            # rendu peut alors dire « à <ville> » sans autre précision ; sinon
+            # il DIT que c'est la ville de référence la plus proche.
+            _ville_pvgis_est_reference = _est_ref(_client_city)
 
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
@@ -2138,7 +2152,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # réglage société : la phrase s'OMET — jamais une moyenne nationale
         # présentée comme la donnée du client.
         "productible_net_kwh_kwc": _productible_net_pvgis,
+        # QJR127 — ville de RÉFÉRENCE de la table PVGIS (jamais la ville du
+        # client quand elle n'y figure pas), + le drapeau qui dit si les deux
+        # coïncident. L'annexe technique (``calepinage_options``) lit la même
+        # clé : elle cesse elle aussi de publier une ville hors table.
         "productible_ville": _ville_pvgis,
+        "productible_ville_est_reference": _ville_pvgis_est_reference,
     }
 
     # ── M1 (audit adversarial du 19/08/2026) — PLUS AUCUN PROXY DE FACTURE ────

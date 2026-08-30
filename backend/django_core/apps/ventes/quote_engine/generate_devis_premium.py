@@ -1803,12 +1803,23 @@ def page1():
     _h = HYPOTHESES if isinstance(HYPOTHESES, dict) else {}
     _prod_net = _h.get("productible_net_kwh_kwc")
     _prod_ville = (_h.get("productible_ville") or "").strip()
+    # QJR127 — la ville NOMMÉE est celle de la table PVGIS. Quand ce n'est pas
+    # la ville du client (Settat → Casablanca), la pastille le DIT au lieu de
+    # présenter une valeur de Casablanca comme « donnée PVGIS à Settat ».
+    _ville_est_ref = bool(_h.get("productible_ville_est_reference"))
+    _prod_suffixe = (
+        "(donn&#233;e PVGIS)" if _ville_est_ref
+        else "(donn&#233;e PVGIS &#8212; ville de r&#233;f&#233;rence "
+             "la plus proche)")
+    # La pastille courte garde son ``nowrap`` d'origine (rendu inchangé) ; la
+    # forme longue s'autorise un retour à la ligne plutôt que de déborder.
+    _prod_wrap = "white-space:nowrap;" if _ville_est_ref else ""
     _pill_productible = (
         '<span style="background:rgba(255,255,255,0.08);border:1px solid '
         'rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;'
-        'font-size:6.5pt;color:white;white-space:nowrap;">'
+        f'font-size:6.5pt;color:white;{_prod_wrap}">'
         f'{SVG_SUN}&#8776;&#160;{fnum(_prod_net)}&#160;kWh par kWc et par an '
-        f'&#224; {_esc(_prod_ville.title())} (donn&#233;e PVGIS)</span>'
+        f'&#224; {_esc(_prod_ville.title())} {_prod_suffixe}</span>'
     ) if (_prod_net and _prod_ville) else ""
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
