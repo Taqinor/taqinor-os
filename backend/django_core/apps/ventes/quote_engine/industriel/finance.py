@@ -46,6 +46,56 @@ def irr_flat(invest, annual_net, years=_HORIZON):
     return round((lo + hi) / 2 * 100, 1)
 
 
+def _flux_annuels(cumule, invest):
+    """Flux ANNUELS déduits de la série CUMULÉE servie par le builder.
+
+    ``pricing`` publie le cumul NET d'investissement (année 1 = −invest + f1) :
+    le flux de chaque année est donc la différence avec l'année précédente,
+    la première se lisant depuis ``−invest``. Aucune hypothèse locale."""
+    flux, precedent = [], -float(invest or 0)
+    for valeur in (cumule or []):
+        try:
+            v = float(valeur)
+        except (TypeError, ValueError):
+            return []
+        flux.append(v - precedent)
+        precedent = v
+    return flux
+
+
+def irr_series(invest, flux, _bornes=(-0.9, 5.0)):
+    """TRI (%) d'un flux [-invest, f1, f2, …] RÉEL (bisection).
+
+    Même méthode que ``irr_flat``, mais sur les flux effectivement imprimés
+    (dégradation panneau et provision de remplacement onduleur comprises) —
+    plus un flux constant qui ne décrit aucune des lignes de la table."""
+    try:
+        invest = float(invest)
+        flux = [float(f) for f in (flux or [])]
+    except (TypeError, ValueError):
+        return None
+    if invest <= 0 or not flux or sum(flux) <= invest:
+        return None
+
+    def npv(r):
+        return -invest + sum(f / ((1 + r) ** t)
+                             for t, f in enumerate(flux, start=1))
+
+    lo, hi = _bornes
+    if npv(lo) < 0 or npv(hi) > 0:
+        return None
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        v = npv(mid)
+        if abs(v) < 1e-6:
+            break
+        if v > 0:
+            lo = mid
+        else:
+            hi = mid
+    return round((lo + hi) / 2 * 100, 1)
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -69,49 +119,73 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     invest = d.get("_invest_ttc") or 0
-    economies = d.get("ind_economies")
     om = d.get("ind_om_annuel")
     injection = d.get("ind_injection_dh")
 
-    # QJR119 — sans économies CHIFFRABLES il n'y a ni cashflow, ni point mort,
-    # ni TRI : le zéro fabriqué (``economies or 0``) produisait une table de
-    # 15 lignes à « 0 » et un « Point mort > 15 ans » d'apparence calculée.
-    # ``None`` traverse et la page bascule sur son motif d'omission.
-    chiffrable = economies is not None
-    # Économie NETTE annuelle = économies d'autoconso (+ injection si calculée)
-    # − O&M (si fourni). Rien d'inventé : chaque terme vient de l'étude/builder.
-    net_annual = (economies + (injection or 0) - (om or 0)) if chiffrable else None
+    # ── QJR120 — LE CASHFLOW AFFICHÉ EST LE CASHFLOW CANONIQUE ──────────────
+    # Le renderer sert la série CUMULÉE de ``pricing.compute_cashflow_payback``
+    # pour la branche dont le PRIX est rendu (voir ``renderer._augment``). Elle
+    # porte la dégradation panneau et la provision de remplacement onduleur —
+    # que la droite plate « t × économie − investissement » ignorait, alors que
+    # l'année 12 du remplacement tombe DANS les 15 années imprimées.
+    # QJR119 — sans série chiffrable, la page bascule sur son motif d'omission
+    # (jamais une table de 15 lignes à « 0 » ni un « Point mort > 15 ans »
+    # d'apparence calculée).
+    serie = d.get("ind_cashflow") or []
+    flux = _flux_annuels(serie, invest)
+    chiffrable = len(flux) >= 2 and invest > 0
+    horizon = min(_HORIZON, len(flux)) if chiffrable else 0
 
-    payback = d.get("ind_payback")
-    tri = irr_flat(invest, net_annual) if chiffrable else None
-
-    # Table cashflow 15 ans (cumul net = t × net − invest).
+    # Table cashflow — les cumulés SERVIS, pas un modèle local.
     rows = ""
     breakeven = None
-    if chiffrable:
-        for t in range(1, _HORIZON + 1):
-            cumul = round(t * net_annual - invest)
-            if breakeven is None and cumul >= 0:
-                breakeven = t
-            pos = cumul >= 0
-            cls = "i2-pos" if pos else "i2-neg"
-            star = ' class="i2-be"' if t == breakeven else ""
-            rows += (
-                f'<tr{star}><td class="i2-y">Année {t}</td>'
-                f'<td class="i2-e">{fmt(round(net_annual))}</td>'
-                f'<td class="i2-c {cls}">{fmt(cumul)}</td></tr>')
+    payback = None
+    for t in range(1, horizon + 1):
+        cumul = round(serie[t - 1])
+        precedent = serie[t - 2] if t > 1 else -float(invest)
+        if breakeven is None and cumul >= 0:
+            breakeven = t
+            # QJR120 (c) — le payback sort du MÊME flux que le point mort
+            # (croisement à zéro interpolé dans l'année), plus d'un ratio
+            # année-1 calculé sur une AUTRE option et une économie brute.
+            span = serie[t - 1] - precedent
+            payback = round((t - 1) + ((0 - precedent) / span if span else 0), 1)
+        cls = "i2-pos" if cumul >= 0 else "i2-neg"
+        star = ' class="i2-be"' if t == breakeven else ""
+        rows += (
+            f'<tr{star}><td class="i2-y">Année {t}</td>'
+            f'<td class="i2-e">{fmt(round(flux[t - 1]))}</td>'
+            f'<td class="i2-c {cls}">{fmt(cumul)}</td></tr>')
 
-    # QJR119 — le payback n'est imprimé que s'il EXISTE : ``pricing`` pose 0.0
-    # comme sentinelle « pas de payback », d'où un « ≈ 0,0 ans » imprimé sur la
-    # page même qui annonce « Point mort > 15 ans ». Absent ⇒ phrase omise.
+    # TRI sur le MÊME flux et le MÊME horizon que la table (méthode actuarielle).
+    tri = irr_series(invest, flux[:horizon]) if chiffrable else None
+    # Économie de l'ANNÉE 1 du flux servi — jamais une moyenne inventée.
+    eco_an1 = round(flux[0]) if chiffrable else None
+
+    # QJR119 — le payback n'est imprimé que s'il EXISTE ; QJR120 — et il vient
+    # désormais du croisement à zéro de la courbe imprimée juste dessous.
     payback_txt = (f"{payback:.1f}".replace(".", ",") + " ans"
                    if isinstance(payback, (int, float)) and payback > 0
                    else None)
     payback_phrase = (f"<b>Payback</b> (retour d'investissement) ≈ "
-                      f"{payback_txt}. " if payback_txt else "")
+                      f"{payback_txt} — c'est le croisement à zéro de la "
+                      f"courbe ci-dessus. " if payback_txt else "")
     tri_txt = (f"{tri:.1f}".replace(".", ",") + " %"
                if isinstance(tri, (int, float)) else "—")
-    be_txt = (f"Année {breakeven}" if breakeven else "> 15 ans")
+    be_txt = (f"Année {breakeven}" if breakeven else f"> {horizon or _HORIZON} ans")
+
+    # QJR120 (a) — LES HYPOTHÈSES DU MODÈLE SONT DÉCLARÉES, pas seulement
+    # appliquées : ``pricing.cashflow_assumptions`` les rédige (dégradation,
+    # provision onduleur et son montant réel, rendement batterie, tarif
+    # constant) et le renderer les sert. Absentes ⇒ bloc omis.
+    _notes = ((d.get("ind_cashflow_hypotheses") or {}).get("notes")
+              if chiffrable else None)
+    hypotheses_html = ""
+    if _notes:
+        hypotheses_html = (
+            '<div class="i2-hyp"><div class="i2-hyp-t">Nos hypothèses</div>'
+            + "".join(f'<div class="i2-hyp-i">{n}</div>' for n in _notes)
+            + '</div>')
 
     # Ligne injection 82-21 — rendue UNIQUEMENT si l'étude la porte (QX50).
     injection_row = ""
@@ -123,8 +197,12 @@ def build(ctx):
             f'<span class="i2-mini">Tarif ANRE 03/2026-02/2027, plafond en révision.</span>'
             f'</div>')
 
+    # QJR120 (b) — « inclus dans les économies nettes » était affirmé sur TOUT
+    # devis, alors qu'aucun producteur d'``om_annuel`` n'existe dans le dépôt :
+    # les montants ci-dessus ne déduisent RIEN. Le document le DIT.
     om_txt = (f"O&amp;M déduit : {fmt(round(om))} MAD/an" if om
-              else "O&amp;M (nettoyage, supervision) : inclus dans les économies nettes")
+              else ("O&amp;M (nettoyage, supervision) <b>non déduit</b> de ces "
+                    "montants — chiffré séparément"))
 
     # QXMT — chapô + ligne SOURCE du barème MT (jamais un chiffre nu).
     # QJR119 — troisième chapô : économies non chiffrables (hors MT). Le chapô
@@ -138,8 +216,13 @@ def build(ctx):
                     "chiffrées : aucune rentabilité n'est publiée tant qu'elle "
                     "n'est pas calculée sur vos données.")
     else:
-        lead_txt = ("Hypothèse prudente : économies maintenues constantes "
-                    "(hors inflation tarifaire, qui les augmenterait).")
+        # QJR120 — le chapô décrit le modèle RÉELLEMENT appliqué (celui de
+        # ``pricing``), pas une droite plate qualifiée de « prudente » : les
+        # hypothèses détaillées sont rendues sous la table.
+        lead_txt = ("Projection au modèle de référence : dégradation panneau "
+                    "et provision de remplacement onduleur intégrées, aucune "
+                    "hausse du tarif électrique supposée (toute hausse réelle "
+                    "améliore le résultat). Hypothèses détaillées ci-dessous.")
     mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
                  if d.get("ind_mt_mention") else "")
 
@@ -185,6 +268,14 @@ def build(ctx):
 .i2-mt-t{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
 .i2-mt-b{{margin-top:6px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .i2-mt-b b{{color:{navy};}}
+/* QJR120 — hypothèses DÉCLARÉES du modèle de cashflow (source : pricing). */
+.i2-hyp{{margin-top:9px;border:1px solid {line_soft};border-radius:10px;
+  background:{wash};padding:9px 12px;}}
+.i2-hyp-t{{font-size:8pt;font-weight:700;color:{navy};}}
+.i2-hyp-i{{font-size:7pt;color:{muted};line-height:1.35;margin-top:4px;
+  padding-left:10px;position:relative;}}
+.i2-hyp-i:before{{content:'';position:absolute;left:0;top:4px;width:4px;
+  height:4px;border-radius:50%;background:{blue};}}
 </style>
 """
 
@@ -240,23 +331,24 @@ def build(ctx):
     else:
         corps = f"""
   <div class="i2-kpis">
-    <div class="i2-kpi i2-hi"><div class="i2-kv">{fmt(round(net_annual))}</div>
-      <div class="i2-kl">Économie nette / an (MAD)</div></div>
+    <div class="i2-kpi i2-hi"><div class="i2-kv">{fmt(eco_an1)}</div>
+      <div class="i2-kl">Économie année 1 (MAD, hors O&amp;M)</div></div>
     <div class="i2-kgap"></div>
     <div class="i2-kpi i2-hi"><div class="i2-kv">{be_txt}</div>
       <div class="i2-kl">Point mort (cumul ≥ 0)</div></div>
     <div class="i2-kgap"></div>
     <div class="i2-kpi i2-hi"><div class="i2-kv">{tri_txt}</div>
-      <div class="i2-kl">TRI sur {_HORIZON} ans</div></div>
+      <div class="i2-kl">TRI sur {horizon} ans</div></div>
   </div>
 
   {injection_row}
 
   <div class="i2-cfhead">Cashflow cumulé</div>
   <table class="i2-tbl">
-    <tr><th>Période</th><th class="i2-r">Économie nette</th><th class="i2-r">Cumul net (MAD)</th></tr>
+    <tr><th>Période</th><th class="i2-r">Économie de l'année</th><th class="i2-r">Cumul net (MAD)</th></tr>
     {rows}
   </table>
+  {hypotheses_html}
 
   <div class="i2-foot">
     {payback_phrase}{om_txt}.
@@ -268,7 +360,7 @@ def build(ctx):
     html = f"""{css}
 <div class="i2-root">
   <div class="i2-kicker">Analyse financière</div>
-  <div class="i2-sec">Rentabilité sur {_HORIZON} ans</div>
+  <div class="i2-sec">Rentabilité sur {horizon or _HORIZON} ans</div>
   <div class="i2-lead">{lead_txt}</div>
 {corps}
 </div>

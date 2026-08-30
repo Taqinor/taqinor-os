@@ -45,6 +45,10 @@ def _sans_donnees(sample_mod, renderer_mod):
     data["eco_s_ann"] = None
     data["roi_s"] = None
     data.pop("etude", None)
+    # Sans économie année 1, ``pricing.compute_cashflow_payback`` rend une
+    # série VIDE : la fixture reproduit ce que le builder servirait vraiment.
+    for cle in ("cashflow_sans", "cashflow_avec", "cashflow_assumptions"):
+        data.pop(cle, None)
     return renderer_mod._augment(data)
 
 

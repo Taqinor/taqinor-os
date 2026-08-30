@@ -116,6 +116,34 @@ def _augment(data: dict) -> dict:
     d["ind_payback"] = pb if pb else None
     d["ind_prix_kwc"] = _num(etude.get("prix_kwc"))
 
+    # ── QJR120 — LE CASHFLOW DE LA PAGE 2 EST LE CASHFLOW CANONIQUE ─────────
+    # ``finance.py`` projetait « t × économie − investissement », une droite
+    # PLATE qui ignore la dégradation panneau et la provision de remplacement
+    # onduleur — alors que le modèle canonique (``pricing.compute_cashflow_
+    # payback``) les impose, que son horizon de remplacement (année 12) tombe
+    # DANS les 15 ans affichés, et que la série est DÉJÀ servie au renderer.
+    # On sert donc la série qui décrit le PRIX RENDU (``display_total``) :
+    #   · égalité au dirham avec ``total_avec`` → branche « avec » ;
+    #   · égalité avec ``total_sans`` → branche « sans » ;
+    #   · aucune correspondance → AUCUNE série (la page omet plutôt que de
+    #     publier le cashflow d'une autre offre que celle chiffrée ici).
+    # Un dossier MT n'expose AUCUNE série : elle dérive du barème basse tension.
+    serie, branche = None, None
+    if not masque:
+        _t_avec, _t_sans = _num(d.get("total_avec")), _num(d.get("total_sans"))
+        if _t_avec is not None and abs(_t_avec - invest) < 1.0:
+            branche, serie = "avec", d.get("cashflow_avec")
+        elif _t_sans is not None and abs(_t_sans - invest) < 1.0:
+            branche, serie = "sans", d.get("cashflow_sans")
+    if not isinstance(serie, (list, tuple)) or len(serie) < 2:
+        serie, branche = None, None
+    d["ind_cashflow"] = [float(x) for x in serie] if serie else None
+    d["ind_cashflow_branche"] = branche
+    # Hypothèses DÉCLARÉES du même modèle (dégradation, provision onduleur,
+    # rendement batterie) — le bloc « Nos hypothèses » de la page les rend.
+    _hyp = d.get("cashflow_assumptions") if not masque else None
+    d["ind_cashflow_hypotheses"] = _hyp if isinstance(_hyp, dict) else None
+
     # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte (net des
     # frais réseau, plafonnée 20 %). Absente aujourd'hui → aucune ligne inventée.
     d["ind_injection_dh"] = _num(etude.get("injection_dh_an"))
