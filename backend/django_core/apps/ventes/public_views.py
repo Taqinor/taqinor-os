@@ -1632,25 +1632,44 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
 # ÉGALE la configuration vendue ; sinon la clé est ABSENTE — jamais zéro,
 # jamais un repli. (Le PDF porte la même garde côté moteur, QJR13.)
 
-#: Tolérance de comparaison des capacités batterie, en kWh — LA MÊME que le
-#: marquage « retenu » des paliers (``dimensionnement.echelle_paliers_batterie``)
-#: pour que l'écran, le PDF et cette charge utile tranchent identiquement.
-_TOLERANCE_CAPACITE_KWH = 0.05
+# QJR104 — CES QUATRE GARDES SONT DÉSORMAIS DES APPELS, PLUS UNE RÈGLE.
+# La règle « un optimum ne se publie pas sans sa configuration » vit dans UN
+# seul endroit, ``apps.ventes.dimensionnement`` (le type ``Optimum`` +
+# ``ConfigInstallation`` + ``decrit`` / ``decrit_la_capacite`` /
+# ``publier_si_decrit``). Ce qui suit n'en est plus qu'une lecture nommée :
+# les fonctions gardent leur nom et leur signature (leurs tests QJR14 les
+# importent tels quels), leur CORPS ne réécrit plus la règle.
+
+# LA TOLÉRANCE N'EST PLUS RECOPIÉE ICI. Elle vit chez son propriétaire
+# (``dimensionnement.TOLERANCE_CAPACITE_KWH``), avec la règle qui l'applique :
+# c'est le nombre du marquage « retenu » des paliers ET de la garde du moteur
+# PDF, et le recopier était la moitié du bug que QJR104 ferme.
+
+
+def _dim():
+    """Le module ``dimensionnement``, importé À L'APPEL.
+
+    Import PARESSEUX comme les autres emprunts de ce module : ``public_views``
+    est chargé par l'URLconf, ``dimensionnement`` cite ``services`` — un import
+    de tête ferait dépendre l'ordre de chargement d'un détail."""
+    from . import dimensionnement
+    return dimensionnement
+
+
+def _config_vendue(devis):
+    """La configuration que ce devis VEND — panneaux + capacité batterie.
+
+    Source unique : ``dimensionnement.config_vendue_du_devis``. Ne lève
+    jamais (la garde y est déjà)."""
+    return _dim().config_vendue_du_devis(devis)
 
 
 def _capacite_batterie_vendue(devis):
     """Capacité batterie (kWh) des LIGNES RÉELLES de ce devis, ou ``None``.
 
-    Source unique : ``dimensionnement.capacite_batterie_des_lignes`` — ce que
-    le client ACHÈTE, jamais l'optimum du moteur. ``None`` quand le devis ne
-    porte aucune ligne batterie. Ne lève jamais."""
-    try:
-        from .dimensionnement import capacite_batterie_des_lignes
-        return _nombre_publiable(capacite_batterie_des_lignes(devis))
-    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
-        logger.warning("Capacité batterie vendue illisible (devis %s)",
-                       getattr(devis, 'pk', None))
-        return None
+    Ce que le client ACHÈTE, jamais l'optimum du moteur. ``None`` quand le
+    devis ne porte aucune ligne batterie."""
+    return _config_vendue(devis).batterie_kwh
 
 
 def _panneaux_vendus(devis):
@@ -1658,46 +1677,28 @@ def _panneaux_vendus(devis):
 
     MÊME lecture que le moteur de devis et que ``profils_comparatifs``
     (``quote_engine.builder.panneaux_et_watt_lu`` sur les lignes produit non
-    optionnelles) — jamais une seconde dérivation. Ne lève jamais."""
-    try:
-        from .quote_engine.builder import panneaux_et_watt_lu
-        lignes = [
-            li for li in devis.lignes.select_related(
-                'produit', 'produit__fiche_technique').all()
-            if getattr(li, 'type_ligne', 'produit') == 'produit'
-            and not getattr(li, 'optionnelle', False)
-        ]
-        nb_panneaux, _watt = panneaux_et_watt_lu(lignes)
-        nb_panneaux = _nombre_publiable(nb_panneaux)
-        if nb_panneaux is None or nb_panneaux <= 0:
-            return None
-        return int(round(nb_panneaux))
-    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
-        logger.warning("Panneaux vendus illisibles (devis %s)",
-                       getattr(devis, 'pk', None))
-        return None
+    optionnelles) — jamais une seconde dérivation."""
+    return _config_vendue(devis).panneaux
 
 
 def _meme_capacite_batterie(bloc, devis) -> bool:
     """Le bloc moteur décrit-il la capacité batterie RÉELLEMENT vendue ?
 
     ``False`` dès qu'un des deux côtés est illisible — en particulier quand le
-    devis ne vend AUCUNE batterie (``capacite_batterie_des_lignes`` rend alors
-    ``None``) : il n'y a rien à décrire, donc rien à publier."""
-    if not isinstance(bloc, dict):
-        return False
-    capacite_bloc = _nombre_publiable(bloc.get('batterie_kwh'))
-    capacite_vendue = _capacite_batterie_vendue(devis)
-    if capacite_bloc is None or capacite_vendue is None:
-        return False
-    return abs(capacite_bloc - capacite_vendue) < _TOLERANCE_CAPACITE_KWH
+    devis ne vend AUCUNE batterie : il n'y a rien à décrire, donc rien à
+    publier."""
+    module = _dim()
+    return module.decrit_la_capacite(module.config_du_bloc(bloc),
+                                     _config_vendue(devis))
 
 
 def _remplissage_batterie_publiable(dimensionnement, devis) -> bool:
     """``batterie_regime.remplissage_moyen_pct`` décrit-il CE devis ?
 
     Il vient de ``recommandation_avec`` — la batterie que le moteur CONSEILLE.
-    Publiable seulement quand cette capacité est celle des lignes vendues."""
+    Publiable seulement quand cette capacité est celle des lignes vendues :
+    ce chiffre décrit le RÉGIME du stockage, donc la règle de CAPACITÉ suffit
+    (et resserrer la règle changerait le comportement épinglé par QJR14)."""
     if not isinstance(dimensionnement, dict):
         return False
     return _meme_capacite_batterie(
@@ -1713,14 +1714,10 @@ def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
     exactement la règle que le PDF applique (QJR13)."""
     if not isinstance(dimensionnement, dict):
         return False
-    bloc = dimensionnement.get('meilleure_falaise')
-    if not _meme_capacite_batterie(bloc, devis):
-        return False
-    panneaux_bloc = _nombre_publiable(bloc.get('panneaux'))
-    panneaux_vendus = _panneaux_vendus(devis)
-    if panneaux_bloc is None or panneaux_vendus is None:
-        return False
-    return int(round(panneaux_bloc)) == panneaux_vendus
+    module = _dim()
+    return module.decrit(
+        module.config_du_bloc(dimensionnement.get('meilleure_falaise')),
+        _config_vendue(devis))
 
 
 #: L-PCMP — la note de méthode des variantes d'occupation, par niveau. Les

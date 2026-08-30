@@ -10,7 +10,9 @@ module —, d'où ce pin, jumeau de ``test_services_surface`` (QJR5).
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 38 noms PUBLICS que le module offre : ceux qu'il
+* ``SURFACE_PUBLIQUE`` — les 49 noms PUBLICS que le module offre (38 avant
+  QJR104, + les 11 du type ``Optimum`` et de sa règle de publication) : ceux
+  qu'il
   DÉFINIT (le balayage pur) ET ceux qu'il RÉ-EXPORTE depuis
   ``domain/dimensionnement_devis.py``. La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
@@ -64,9 +66,24 @@ MODULE_DEVIS = "apps.ventes.domain.dimensionnement_devis"
 # Elle se re-dérive mécaniquement (ne jamais la retaper de mémoire) : c'est
 # exactement ce que calcule ``_surface_niveau_module`` plus bas, filtré sur les
 # noms sans préfixe ``_``.
+# LA LISTE EST TRIÉE, ET C'EST UN CONTRAT (``test_la_liste_doree_est_triee_et
+# _sans_doublon``) : une liste triée se relit en diff, un doublon masque un
+# retrait. QJR104 a inséré ses onze noms d'optimum EN TÊTE, dans un bloc à part
+# — la liste est passée de 38 à 49 noms et a cessé d'être triée. Les onze noms
+# sont donc RÉINSÉRÉS À LEUR RANG (contenu identique, ordre rétabli) et le
+# regroupement par lot vit désormais dans ce commentaire, où il ne peut plus
+# entrer en conflit avec l'ordre : les onze noms QJR104 sont
+# ``ConfigInstallation``, ``Optimum``, ``TOLERANCE_CAPACITE_KWH``,
+# ``config_du_bloc``, ``config_vendue_du_devis``, ``decrit``,
+# ``decrit_la_capacite``, ``optima_publiables``, ``optimum_de_ligne``,
+# ``optimum_du_bloc`` et ``publier_si_decrit`` — le TYPE d'optimum et sa règle
+# de publication, ici parce que c'est ici que les optima sont PRODUITS (les
+# consommateurs — charge utile publique QJR14, moteur PDF QJR13 — ne font que
+# les lire).
 SURFACE_PUBLIQUE = (
     "CRITERES",
     "CRITERE_DEFAUT",
+    "ConfigInstallation",
     "EGALITE_PAYBACK_ANNEES",
     "FACTEUR_MAX_FALAISE",
     "HORIZON_MARGINAL_BATTERIE",
@@ -75,7 +92,9 @@ SURFACE_PUBLIQUE = (
     "MAX_PALIERS_STOCKAGE",
     "MAX_PANNEAUX_BALAYAGE",
     "MAX_SONDES_ECHELLE",
+    "Optimum",
     "RATIO_ONDULEUR_MIN",
+    "TOLERANCE_CAPACITE_KWH",
     "balayer_tailles",
     "bornes_candidates",
     "capacite_batterie_des_lignes",
@@ -84,8 +103,12 @@ SURFACE_PUBLIQUE = (
     "choisir_recommandation",
     "choisir_recommandation_avec",
     "combos_champ_stockage",
+    "config_du_bloc",
+    "config_vendue_du_devis",
     "contenance_toit_du_devis",
     "contour_du_devis_lnglat",
+    "decrit",
+    "decrit_la_capacite",
     "depart_dans_horizon",
     "echelle_paliers_batterie",
     "facteur_remise_du_devis",
@@ -93,11 +116,15 @@ SURFACE_PUBLIQUE = (
     "horizon_du_pas",
     "logger",
     "module_batterie_du_devis",
+    "optima_publiables",
+    "optimum_de_ligne",
+    "optimum_du_bloc",
     "paliers_stockage_candidats",
     "plafond_physique_du_devis",
     "plafond_toit_du_devis",
     "plus_grande_contenance",
     "point_depart_meilleur_payback",
+    "publier_si_decrit",
     "ratio_pas_marginal",
     "recommander_taille",
     "residuel_minimal",

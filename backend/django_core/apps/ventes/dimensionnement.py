@@ -207,6 +207,362 @@ def _num(valeur, defaut=0.0):
         return float(defaut)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# QJR104 — UN OPTIMUM DU MOTEUR NE SE PUBLIE PAS SANS SA CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# LE PATRON QUI A PRODUIT LES PIRES DÉFAUTS CLIENT-FACING. Le moteur rend des
+# blocs d'OPTIMUM : ``meilleure_falaise`` (la combinaison champ + stockage qui
+# franchit la marche du barème), ``recommandation_avec`` (la batterie
+# conseillée), et chaque LIGNE de balayage (dont le ``residuel_kwh_mois`` /
+# ``tranche_apres`` décrivent son meilleur palier AVEC batterie, pas la
+# recommandation SANS batterie que la même ligne décrit par ailleurs). Chacun
+# porte SA configuration identifiante — panneaux, kWc, capacité batterie — et
+# chaque consommateur la DÉPOUILLAIT pour publier le nombre nu comme celui du
+# client. Rien, dans le code, ne distinguait « un nombre à propos de CE devis »
+# d'« un nombre à propos d'une configuration que le moteur a seulement
+# considérée » : QJR13 (le résiduel de falaise dans le PDF) et QJR14 (le taux
+# de remplissage dans la charge utile publique) ont été deux corrections du
+# MÊME défaut, écrites deux fois, à deux endroits, dans deux vocabulaires.
+#
+# CE QUE CE BLOC POSE : le TYPE qui manquait. Un :class:`Optimum` est un
+# nombre INSÉPARABLE de la configuration qu'il décrit, et
+# :func:`publier_si_decrit` est la SEULE porte par laquelle ce nombre devient
+# publiable — elle rend ``None`` (donc « OMETTRE », jamais un repli) dès que la
+# configuration ne décrit pas le devis vendu.
+#
+# LES SHAPES NE CHANGENT PAS. Les producteurs continuent de rendre les MÊMES
+# dicts (contrat PACT10 ``contract_samples/etude_horaire.json``, lu par la page
+# Astro et par le moteur PDF) : ce bloc ajoute la LECTURE TYPÉE de ces dicts
+# (:func:`optimum_du_bloc`), il ne réécrit aucune charge utile.
+
+#: Tolérance de comparaison des capacités batterie, en kWh. LA MÊME que le
+#: marquage « retenu » des paliers (``echelle_paliers_batterie``) et que la
+#: garde du moteur PDF, pour que l'écran, le PDF et la charge utile publique
+#: tranchent IDENTIQUEMENT — un écart d'affichage n'est pas un écart de palier.
+TOLERANCE_CAPACITE_KWH = 0.05
+
+
+class ConfigInstallation:
+    """La configuration IDENTIFIANTE d'une installation — gelée.
+
+    Trois nombres, et seulement ceux qui IDENTIFIENT : le compte de panneaux
+    et la capacité batterie (le kWc est PORTÉ pour la lisibilité mais ne
+    départage rien — il est dérivé de panneaux × wattage, donc redondant avec
+    le premier et sujet aux arrondis d'affichage).
+
+    GELÉE (``__slots__`` + ``__setattr__`` refusé) parce que le bug qu'elle
+    ferme est précisément une MUTATION de contexte : un consommateur qui
+    « corrigeait » la config d'un optimum pour la faire coïncider avec le devis
+    republierait exactement le nombre faux.
+    """
+
+    __slots__ = ('panneaux', 'batterie_kwh', 'kwc')
+
+    def __init__(self, panneaux=None, batterie_kwh=None, kwc=None):
+        object.__setattr__(self, 'panneaux', panneaux)
+        object.__setattr__(self, 'batterie_kwh', batterie_kwh)
+        object.__setattr__(self, 'kwc', kwc)
+
+    def __setattr__(self, nom, valeur):
+        raise AttributeError(
+            'ConfigInstallation est gelée : une configuration d\'optimum ne '
+            'se corrige pas pour la faire coïncider avec le devis.')
+
+    def __eq__(self, autre):
+        return (isinstance(autre, ConfigInstallation)
+                and self.panneaux == autre.panneaux
+                and self.batterie_kwh == autre.batterie_kwh
+                and self.kwc == autre.kwc)
+
+    def __hash__(self):
+        return hash((self.panneaux, self.batterie_kwh, self.kwc))
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return ('ConfigInstallation(panneaux=%r, batterie_kwh=%r, kwc=%r)'
+                % (self.panneaux, self.batterie_kwh, self.kwc))
+
+    @property
+    def panneaux_lisibles(self):
+        """Le compte de panneaux est-il un entier exploitable ?"""
+        return isinstance(self.panneaux, int)
+
+    @property
+    def capacite_lisible(self):
+        """La capacité batterie est-elle un nombre exploitable ?
+
+        ``None`` ici veut dire « aucune batterie » ou « illisible » — les deux
+        se traitent pareil : il n'y a rien à décrire, donc rien à publier.
+        """
+        return isinstance(self.batterie_kwh, float)
+
+    @property
+    def identifiable(self):
+        """Les DEUX nombres qui départagent sont-ils lisibles ?
+
+        Un optimum dont la configuration n'est pas identifiable n'est jamais
+        publiable : « on ne sait pas ce que ce nombre décrit » se traite comme
+        « il ne décrit pas ce devis » (règle fondateur zéro chiffre inventé).
+        """
+        return self.panneaux_lisibles and self.capacite_lisible
+
+
+class Optimum:
+    """Un nombre du moteur, INSÉPARABLE de la configuration qu'il décrit.
+
+    ``valeur`` peut être n'importe quoi de publiable (un kWh/mois, un libellé
+    de tranche, un pourcentage) ; ``config`` dit DE QUELLE installation il
+    parle. Gelé pour la même raison que :class:`ConfigInstallation`.
+
+    Un ``Optimum`` ne se lit JAMAIS par ``.valeur`` sur un chemin
+    client-facing : il se lit par :func:`publier_si_decrit`, qui est la seule
+    porte. ``.valeur`` reste accessible pour les chemins INTERNES (tableau
+    d'aperçu vendeur, journal), où le nombre est légitimement celui d'une
+    combinaison explorée.
+    """
+
+    __slots__ = ('valeur', 'config')
+
+    def __init__(self, valeur, config):
+        object.__setattr__(self, 'valeur', valeur)
+        object.__setattr__(self, 'config',
+                           config if isinstance(config, ConfigInstallation)
+                           else ConfigInstallation())
+
+    def __setattr__(self, nom, valeur):
+        raise AttributeError(
+            'Optimum est gelé : ni sa valeur ni sa configuration ne se '
+            'réécrivent — c\'est ce qui empêche de republier le nombre d\'une '
+            'autre installation.')
+
+    def __eq__(self, autre):
+        return (isinstance(autre, Optimum) and self.valeur == autre.valeur
+                and self.config == autre.config)
+
+    def __hash__(self):
+        return hash((repr(self.valeur), self.config))
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return 'Optimum(valeur=%r, config=%r)' % (self.valeur, self.config)
+
+
+def _entier_publiable(valeur):
+    """La valeur en ``int``, ou ``None`` si ce n'en est pas un.
+
+    ``True``/``False`` sont REFUSÉS explicitement : en Python un booléen EST
+    un entier, et ``int(True) == 1`` aurait fait passer un drapeau pour un
+    compte de panneaux.
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    try:
+        return int(round(float(valeur)))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _flottant_publiable(valeur):
+    """La valeur en ``float``, ou ``None`` si ce n'en est pas un."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    try:
+        return float(valeur)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def config_du_bloc(bloc):
+    """La :class:`ConfigInstallation` que DÉCRIT un bloc du moteur.
+
+    ``bloc`` est un dict rendu par le moteur — ``meilleure_falaise``,
+    ``recommandation_avec``, ou une LIGNE du tableau de balayage : les trois
+    portent les mêmes clés identifiantes (``panneaux``, ``kwc``,
+    ``batterie_kwh``). Un bloc absent, malformé ou aux clés illisibles rend une
+    config NON identifiable — jamais une config partiellement inventée.
+    """
+    if not isinstance(bloc, dict):
+        return ConfigInstallation()
+    return ConfigInstallation(
+        panneaux=_entier_publiable(bloc.get('panneaux')),
+        batterie_kwh=_flottant_publiable(bloc.get('batterie_kwh')),
+        kwc=_flottant_publiable(bloc.get('kwc')))
+
+
+def optimum_du_bloc(bloc, clef):
+    """L':class:`Optimum` porté par ``bloc[clef]`` — valeur ET configuration.
+
+    C'est l'ACCESSEUR TYPÉ des producteurs : ``meilleure_falaise``,
+    ``recommandation_avec`` et les lignes de balayage rendent toujours leurs
+    dicts (les contrats PACT10 en dépendent), et c'est ici qu'on les LIT comme
+    ce qu'ils sont — un nombre plus sa configuration.
+
+    ``clef`` accepte un chemin pointé (``'remplissage.moyen'``) : les
+    producteurs imbriquent certains optima d'un cran.
+    """
+    valeur = bloc if isinstance(bloc, dict) else None
+    for part in str(clef).split('.'):
+        if not isinstance(valeur, dict):
+            return Optimum(None, config_du_bloc(bloc))
+        valeur = valeur.get(part)
+    return Optimum(valeur, config_du_bloc(bloc))
+
+
+def optimum_de_ligne(ligne, clef='residuel_kwh_mois'):
+    """L'optimum porté par UNE LIGNE du tableau de balayage.
+
+    LE PIÈGE QUE CE NOM FERME. Une ligne de balayage décrit DEUX choses à la
+    fois : la variante SANS batterie de cette taille (``residuel_sans_kwh_mois``,
+    ``tranche_apres_sans``) et son MEILLEUR PALIER AVEC batterie
+    (``residuel_kwh_mois``, ``tranche_apres`` — voir ``_ligne_avec_palier``).
+    Les deux clés NON suffixées décrivent donc la variante AVEC, dont la
+    configuration inclut ``batterie_kwh`` : les publier comme « le résiduel de
+    ce devis » sur un devis sans batterie republierait le nombre d'une AUTRE
+    installation. Passer par ici rend cette configuration inséparable du
+    nombre.
+    """
+    return optimum_du_bloc(ligne, clef)
+
+
+def optima_publiables(dimensionnement):
+    """Les optima CLIENT-FACING d'un bloc ``etude_params['dimensionnement']``.
+
+    Les TROIS nombres que le parcours publie effectivement au client, chacun
+    rendu avec la configuration qu'il décrit — c'est-à-dire prêts pour
+    :func:`publier_si_decrit`, jamais pour une lecture directe de ``.valeur`` :
+
+    * ``residuel_falaise`` / ``tranche_apres_falaise`` — de ``meilleure_falaise``
+      (la combinaison champ + stockage que le balayage a TROUVÉE) ;
+    * ``remplissage_recommandation`` — de ``recommandation_avec`` (la batterie
+      que le moteur CONSEILLE), la fraction moyenne de remplissage.
+
+    Un bloc absent ou malformé rend trois optima non identifiables — donc trois
+    refus de publier, jamais une erreur.
+    """
+    bloc = dimensionnement if isinstance(dimensionnement, dict) else {}
+    falaise = bloc.get('meilleure_falaise')
+    return {
+        'residuel_falaise': optimum_du_bloc(falaise, 'residuel_kwh_mois'),
+        'tranche_apres_falaise': optimum_du_bloc(falaise,
+                                                 'tranche_apres.libelle'),
+        'remplissage_recommandation': optimum_du_bloc(
+            bloc.get('recommandation_avec'), 'remplissage.moyen'),
+    }
+
+
+def decrit_la_capacite(config_optimum, config_vendue):
+    """Les DEUX configurations parlent-elles de la MÊME capacité batterie ?
+
+    La moitié « stockage » de la règle. Publier séparément est délibéré : un
+    chiffre qui décrit le RÉGIME de la batterie (son taux de remplissage) est
+    vrai dès que la capacité est la bonne — c'est la décision QJR14, et la
+    resserrer changerait un comportement que ses tests épinglent.
+
+    ``False`` dès qu'un côté est illisible, notamment quand le devis ne vend
+    AUCUNE batterie : il n'y a rien à décrire, donc rien à publier.
+    """
+    if not (isinstance(config_optimum, ConfigInstallation)
+            and isinstance(config_vendue, ConfigInstallation)):
+        return False
+    if not (config_optimum.capacite_lisible and config_vendue.capacite_lisible):
+        return False
+    return (abs(config_optimum.batterie_kwh - config_vendue.batterie_kwh)
+            <= TOLERANCE_CAPACITE_KWH)
+
+
+def decrit(config_optimum, config_vendue):
+    """``config_optimum`` décrit-elle bien l'installation VENDUE ?
+
+    LA RÈGLE COMPLÈTE, écrite UNE fois pour tous les consommateurs (QJR13 côté
+    PDF, QJR14 côté charge utile publique) : identité du compte de panneaux ET
+    :func:`decrit_la_capacite`.
+
+    LA BORNE, ET LE FAIT QU'ELLE ÉTAIT ÉCRITE DEUX FOIS. Le moteur PDF
+    comparait à ``<= 0,05`` et la charge utile publique à ``< 0,05`` : deux
+    écritures d'une même règle, divergentes sur l'unique valeur exactement
+    égale à la tolérance. La règle unifiée retient ``<=`` (la formulation du
+    PDF, la plus indulgente) — aucune assertion existante ne porte sur cette
+    borne exacte, et une capacité tombant au flottant près sur 0,05 d'écart
+    n'est pas un écart de palier. C'est précisément le genre de divergence que
+    ce type existe pour rendre impossible.
+
+    Ce qui n'est pas PROUVÉ n'est pas publié.
+    """
+    if not (isinstance(config_optimum, ConfigInstallation)
+            and isinstance(config_vendue, ConfigInstallation)):
+        return False
+    if not (config_optimum.panneaux_lisibles
+            and config_vendue.panneaux_lisibles):
+        return False
+    if config_optimum.panneaux != config_vendue.panneaux:
+        return False
+    return decrit_la_capacite(config_optimum, config_vendue)
+
+
+def config_vendue_du_devis(devis):
+    """La :class:`ConfigInstallation` que le devis VEND RÉELLEMENT.
+
+    Deux lectures, toutes deux la SOURCE UNIQUE de leur nombre — jamais une
+    seconde dérivation :
+
+    * les panneaux, par ``quote_engine.builder.panneaux_et_watt_lu`` sur les
+      lignes produit non optionnelles (la lecture PVUNI, celle du moteur de
+      devis et de ``profils_comparatifs``) ;
+    * la capacité batterie, par
+      ``domain.dimensionnement_devis.capacite_batterie_des_lignes``.
+
+    Ne lève JAMAIS : une garde qui casse la page publique serait pire que le
+    chiffre qu'elle protège. Un côté illisible rend une config non
+    identifiable, donc un refus de publier.
+    """
+    panneaux = batterie = None
+    try:
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, _watt = panneaux_et_watt_lu(lignes)
+        panneaux = _entier_publiable(nb_panneaux)
+        if panneaux is not None and panneaux <= 0:
+            panneaux = None
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning('QJR104 : panneaux vendus illisibles (devis %s)',
+                       getattr(devis, 'pk', None), exc_info=True)
+    try:
+        # ``capacite_batterie_des_lignes`` est RÉ-EXPORTÉ par ce module (bloc
+        # de bas de fichier, QJR77) : on l'appelle par ce nom, sans le
+        # ré-importer localement — un second import masquerait le ré-export.
+        batterie = _flottant_publiable(capacite_batterie_des_lignes(devis))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning('QJR104 : capacité batterie vendue illisible '
+                       '(devis %s)', getattr(devis, 'pk', None),
+                       exc_info=True)
+    return ConfigInstallation(panneaux=panneaux, batterie_kwh=batterie)
+
+
+def publier_si_decrit(optimum, devis, regle=None):
+    """LA SEULE PORTE — la valeur de l'optimum, ou ``None`` s'il ne décrit
+    pas CE devis.
+
+    ``None`` veut dire OMETTRE : la carte disparaît, la clé de charge utile
+    est ABSENTE. Jamais zéro, jamais un repli forfaitaire (règle fondateur
+    « zéro chiffre inventé »).
+
+    ``regle`` est la règle d'identité à appliquer — :func:`decrit` par défaut
+    (panneaux ET capacité). Le seul appelant qui en passe une autre est le
+    taux de remplissage batterie, qui décrit le RÉGIME du stockage et se
+    contente de :func:`decrit_la_capacite` (décision QJR14). La règle est un
+    ARGUMENT NOMMÉ et non un mode caché : le choix se lit sur le site d'appel.
+    """
+    if not isinstance(optimum, Optimum) or optimum.valeur is None:
+        return None
+    if not (regle or decrit)(optimum.config, config_vendue_du_devis(devis)):
+        return None
+    return optimum.valeur
+
+
 def bornes_candidates(*, conso_annuelle_kwh, productible_annuel_kwh_kwc,
                       panel_watt, cible_residuel_kwh_mois=None,
                       sonde_residuel=None, plafond=MAX_PANNEAUX_BALAYAGE):

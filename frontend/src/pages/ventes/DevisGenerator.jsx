@@ -129,7 +129,11 @@ import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 // écran signait était le balayage local du dimensionnement affiché, devenu
 // injoignable (la puce « estimation d'exemple » des cartes ROI, elle, passe
 // par `CarteMetrique`, qui possède le déballeur).
-import { moteur, absent, estFait } from '../../features/ventes/quote/valeur'
+// QJR108 — l'écran ne SIGNE plus aucune valeur lui-même : les trois
+// helpers (`moteur`/`absent`/`estFait`) n'étaient utilisés que par
+// `paireDimensionnement`, qui vit désormais dans son propre module pur.
+import { deuxValeursDim as selecteurDeuxValeursDim }
+  from '../../features/ventes/quote/paireDimensionnement'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -168,35 +172,40 @@ const INST_TYPE_PAR_MODE = {
   agricole: 'Agricole',
 }
 
-const RIEN_A_CHIFFRER = 'aucun dimensionnement chiffré pour cette branche'
-
-/** Recommandation du MOTEUR horaire serveur — publiable telle quelle. */
-const valeurMoteurDim = (srv) => (Number(srv?.panneaux) > 0
-  ? moteur({ nbPanneaux: srv.panneaux, kwc: srv.kwc })
-  : absent(RIEN_A_CHIFFRER))
-
-/**
- * QJR99 — remplace la CHAÎNE DE TERNAIRES `deuxValeursDim`. Chaque branche
- * devient une VALEUR SIGNÉE (QJR86) : `moteur` = moteur horaire serveur,
- * `absent(motif)` = rien de calculable — jamais un chiffre inventé.
- *
- * QJR102 — la branche `apercu` (balayage local `sizingInfo`) EST SUPPRIMÉE :
- * elle était injoignable (voir `deuxValeursDim`). Il ne reste donc QU'UNE
- * source possible, et la règle F3 (« jamais une paire mixte ») devient une
- * propriété du type au lieu d'une comparaison à faire : deux valeurs `moteur`
- * ou rien. Rend la même forme qu'avant (`{ sans, avec }`, chacun
- * `{nbPanneaux, kwc}` ou `null`) : le JSX est inchangé.
- */
-const paireDimensionnement = (srvSans, srvAvec) => {
-  const mSans = valeurMoteurDim(srvSans)
-  const mAvec = valeurMoteurDim(srvAvec)
-  if (estFait(mSans) && estFait(mAvec)) return { sans: mSans.valeur, avec: mAvec.valeur }
-  // Une seule branche chiffrée : elle sort SEULE — « sans » avant « avec »,
-  // comme la cascade historique.
-  if (estFait(mSans)) return { sans: mSans.valeur, avec: null }
-  if (estFait(mAvec)) return { sans: null, avec: mAvec.valeur }
-  return { sans: null, avec: null }
+// DC11 / QJR106 — libellés FRANÇAIS des champs du lead surveillés par
+// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`). La
+// LISTE des champs reste au serveur : cette table ne fait que les NOMMER pour
+// le vendeur. Un champ inconnu d'ici s'affiche sous son nom technique plutôt
+// que de disparaître de la bannière.
+const LIBELLE_CHAMP_LEAD = {
+  facture_hiver: 'facture d’hiver',
+  facture_ete: 'facture d’été',
+  ete_differente: 'facture d’été différente',
+  bill_kwh: 'consommation facturée (kWh)',
+  type_toiture: 'type de toiture',
+  surface_toiture_m2: 'surface de toiture',
+  orientation: 'orientation',
+  inclinaison_deg: 'inclinaison',
+  gps_lat: 'latitude GPS',
+  gps_lng: 'longitude GPS',
 }
+
+/** DC11 — la phrase de la bannière, ou `null` quand rien n'a bougé. NON
+ *  exportée : ce fichier n'exporte que des composants (react-refresh). */
+const messageValeursLeadModifiees = (champs) => {
+  const noms = (Array.isArray(champs) ? champs : [])
+    .filter(c => typeof c === 'string' && c)
+    .map(c => LIBELLE_CHAMP_LEAD[c] || c)
+  if (noms.length === 0) return null
+  return `Valeurs du lead modifiées depuis la reprise dans ce devis : ${noms.join(', ')}.`
+}
+
+// QJR108 — `RIEN_A_CHIFFRER` / `valeurMoteurDim` / `paireDimensionnement`
+// vivaient ICI, non exportés (ce fichier n'exporte que des composants —
+// react-refresh), donc vérifiables SEULEMENT par expression régulière sur le
+// source. Ils vivent désormais dans le module PUR
+// `features/ventes/quote/paireDimensionnement.js`, où ils sont testés par
+// EXÉCUTION. Déplacement seul : pas une ligne de logique n'a changé.
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -542,6 +551,13 @@ export default function DevisGenerator({
   // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
   // Ne change PAS le comportement du repli, seulement le rend visible.
   const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
+  // DC11 / QJR106 — même patron que `sizingServeurMessage` et
+  // `compositionSourceLocale` ci-dessus : un VERDICT DU SERVEUR, rendu tel
+  // quel, jamais recalculé ici. Le devis porte l'estampille des valeurs
+  // énergie/toiture qu'il a REPRISES du lead ; le serveur (`apps.crm`) compare
+  // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
+  // (`lead_valeurs_modifiees` du GET devis). Liste vide ⇒ rien à dire.
+  const [leadValeursModifiees, setLeadValeursModifiees] = useState([])
   // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
   // best-effort : une société sans réglage ou un rôle non responsable/admin
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
@@ -1444,11 +1460,11 @@ export default function DevisGenerator({
   // serveur jusque dans la branche « paire locale »). Le dimensionnement
   // affiché ici ne peut donc plus venir que du MOTEUR — une seule source, un
   // écart toujours comparable.
-  const deuxValeursDim = (() => {
-    if (modeInstallation !== 'residentiel') return { sans: null, avec: null }
-    const dim = etudeHoraireDonnees?.dimensionnement
-    return paireDimensionnement(dim?.recommandation, dim?.recommandation_avec)
-  })()
+  // QJR108 — le sélecteur ENTIER (garde de marché comprise) vit dans le module
+  // pur `features/ventes/quote/paireDimensionnement.js` : il est désormais
+  // exécuté par les tests, plus seulement décrit par une regex.
+  const deuxValeursDim = selecteurDeuxValeursDim(
+    modeInstallation, etudeHoraireDonnees)
 
   const applyLead = (id) => {
     setLeadId(id)
@@ -1635,6 +1651,12 @@ export default function DevisGenerator({
       }
       if (d.lead) setLeadId(String(d.lead))
       else if (d.client) setClientId(String(d.client))
+      // DC11 / QJR106 — le verdict de dérive du serveur, posé À LA LECTURE du
+      // brouillon (`?edit=`). Backend plus ancien / devis sans estampille ⇒
+      // champ absent ou `null` ⇒ liste vide ⇒ aucune bannière : comportement
+      // historique strictement inchangé.
+      setLeadValeursModifiees(
+        Array.isArray(d.lead_valeurs_modifiees) ? d.lead_valeurs_modifiees : [])
       setDiscountPct(String(parseFloat(d.remise_globale) || 0))
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
@@ -4297,6 +4319,22 @@ export default function DevisGenerator({
                     plus sans dire pourquoi elle a remplacé celle du serveur. */}
                 <div className="mt-1 text-xs" data-testid="composition-source-locale-raison">
                   {compositionSourceLocale}
+                </div>
+              </div>
+            )}
+            {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
+                `composition-source-locale` ci-dessus. Le lead a bougé APRÈS que
+                ce devis en a repris les valeurs : on le DIT, en nommant les
+                champs, au lieu de laisser le vendeur chiffrer sur une facture
+                périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
+                du GET devis) — l'écran ne compare rien. */}
+            {messageValeursLeadModifiees(leadValeursModifiees) && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+                   data-testid="lead-valeurs-modifiees">
+                {messageValeursLeadModifiees(leadValeursModifiees)}
+                <div className="mt-1 text-xs">
+                  Vérifiez la fiche du lead avant d’envoyer : ce devis a été
+                  chiffré sur les valeurs d’origine.
                 </div>
               </div>
             )}

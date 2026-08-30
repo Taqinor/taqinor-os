@@ -110,6 +110,122 @@ _MSG_POSITION = (
 )
 
 
+#: R4-A — LA TABLE DE PRÉSÉANCE entre les DEUX niveaux de surcharge de
+#: quantité de panneaux. Message d'AVERTISSEMENT, jamais un refus : les deux
+#: surcharges sont légitimes séparément, seule leur COEXISTENCE divergente
+#: mérite d'être dite au vendeur — et elle doit l'être en NOMMANT la ligne.
+MSG_CONFLIT_QUANTITE = (
+    'Quantité de panneaux déclarée deux fois sur « %s » : la ligne est '
+    'verrouillée à %s (saisie du vendeur, elle fait foi pour cette ligne) '
+    'tandis que la surcharge de devis « taille.nb_panneaux » vaut %s (elle '
+    'alimente le dimensionnement). Alignez les deux si le document doit '
+    'annoncer un seul nombre de panneaux.'
+)
+
+#: Les trois provenances possibles de la quantité RETENUE pour la ligne
+#: panneau dominante — jamais une quatrième inventée.
+SOURCE_LIGNE_MANUELLE = 'ligne_manuelle'
+SOURCE_DEVIS = 'devis'
+SOURCE_AUTO = 'auto'
+
+
+class PreseanceQuantite:
+    """Le verdict de :func:`preseance_nb_panneaux` — R4-A, tranché le 29/08.
+
+    * ``quantite_ligne`` — la quantité qui vaut pour CETTE ligne ;
+    * ``source_ligne`` — laquelle des trois l'a décidée ;
+    * ``cible_dimensionnement`` — le ``taille.nb_panneaux`` de NIVEAU DEVIS
+      qui alimente ``pipeline.decider_taille`` (``None`` s'il n'est pas
+      surchargé). Il RESTE renseigné même quand la ligne gagne : les deux
+      chemins ne servent pas la même chose, et écraser l'un par l'autre est
+      exactement ce que cette table existe pour empêcher ;
+    * ``conflit`` / ``avertissement`` — vrai et NOMMÉ quand les deux niveaux
+      annoncent des nombres différents.
+    """
+
+    __slots__ = ('quantite_ligne', 'source_ligne', 'cible_dimensionnement',
+                 'conflit', 'avertissement')
+
+    def __init__(self, quantite_ligne, source_ligne, cible_dimensionnement,
+                 conflit, avertissement):
+        self.quantite_ligne = quantite_ligne
+        self.source_ligne = source_ligne
+        self.cible_dimensionnement = cible_dimensionnement
+        self.conflit = conflit
+        self.avertissement = avertissement
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return ('<PreseanceQuantite %s par %s (cible %s, conflit=%s)>'
+                % (self.quantite_ligne, self.source_ligne,
+                   self.cible_dimensionnement, self.conflit))
+
+
+def _entier_ou_none(valeur):
+    """La valeur en entier, ou ``None`` si elle n'en est pas un.
+
+    Un override illisible (texte, ``None``, objet) ne DÉCIDE rien : il est
+    ignoré comme une absence, jamais converti en un nombre inventé.
+    """
+    try:
+        return int(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
+    """R4-A — QUI GAGNE entre ``taille.nb_panneaux`` et ``quantite_manuelle`` ?
+
+    LE PROBLÈME. Le registre D12 porte ``taille.nb_panneaux`` au niveau du
+    DEVIS ; ``LigneDevis.quantite_manuelle`` (QJR59) marque, au niveau de LA
+    LIGNE, une quantité TAPÉE par le vendeur. Rien ne disait lequel gagne — et
+    tant que rien ne le dit, chaque appelant tranche à sa façon : c'est
+    littéralement le patron « quatre mécanismes de surcharge incompatibles »
+    que le registre existe pour fermer.
+
+    LA RÈGLE (R4-A, tranchée le 29/08/2026), en trois phrases :
+
+    1. **Le drapeau de LIGNE gagne pour la quantité de CETTE ligne.** Le
+       vendeur a tapé ce nombre sur cette ligne-là ; aucun recalcul ne
+       l'écrase (même geste que ``resynchronisation._quantite_verrouillee``).
+    2. **Le chemin de NIVEAU DEVIS alimente ``decider_taille``.** Il ne
+       disparaît pas parce qu'une ligne est verrouillée : il décrit la CIBLE
+       du dimensionnement, pas la quantité d'une ligne.
+    3. **Un désaccord entre les deux émet un AVERTISSEMENT FR qui NOMME la
+       ligne** — jamais un silence, jamais un refus : le vendeur doit
+       apprendre l'écart AVANT que le client ne le lise sur le PDF.
+
+    ``ligne_dominante`` est la ligne PANNEAU dominante du devis (``None`` s'il
+    n'y en a pas). ``avertissements``, quand une liste est fournie, reçoit le
+    message — même convention que ``resynchronisation._avertir_verrouillee``.
+
+    LECTURE PURE : rien n'est écrit, ni sur le devis, ni sur la ligne.
+    """
+    nb_devis_brut, source_devis = effectif(devis, 'taille.nb_panneaux', None)
+    cible = (_entier_ou_none(nb_devis_brut)
+             if source_devis != 'auto' else None)
+
+    verrou = bool(getattr(ligne_dominante, 'quantite_manuelle', False))
+    qte_ligne = _entier_ou_none(getattr(ligne_dominante, 'quantite', None))
+
+    if verrou:
+        quantite, source = qte_ligne, SOURCE_LIGNE_MANUELLE
+    elif cible is not None:
+        quantite, source = cible, SOURCE_DEVIS
+    else:
+        quantite, source = qte_ligne, SOURCE_AUTO
+
+    conflit = bool(verrou and cible is not None and qte_ligne is not None
+                   and qte_ligne != cible)
+    message = None
+    if conflit:
+        message = MSG_CONFLIT_QUANTITE % (
+            (getattr(ligne_dominante, 'designation', '') or '?'),
+            qte_ligne, cible)
+        if avertissements is not None:
+            avertissements.append(message)
+    return PreseanceQuantite(quantite, source, cible, conflit, message)
+
+
 def chemin_autorise(chemin):
     """Le chemin est-il dans la liste blanche D12 ?
 

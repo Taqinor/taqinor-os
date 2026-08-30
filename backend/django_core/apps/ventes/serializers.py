@@ -235,6 +235,31 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     # pour tout rendu non authentifié (voir to_representation).
     marge_sous_seuil = serializers.SerializerMethodField()
 
+    # DC11 / QJR106 — LE CANAL DE LA BANNIÈRE « valeurs du lead modifiées
+    # depuis ». Le devis porte une ESTAMPILLE de provenance
+    # (``etude_params['provenance']``, posée par ``pipeline.appliquer``) ; ce
+    # champ rend la liste des champs du lead qui ONT BOUGÉ depuis cette
+    # capture, telle que ``apps.crm`` la calcule — jamais une comparaison
+    # réinventée ici. Liste VIDE = rien n'a bougé ; ``None`` = pas d'estampille
+    # (ou rendu en liste, voir ci-dessous), donc rien à dire.
+    lead_valeurs_modifiees = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.CharField(), allow_null=True))
+    def get_lead_valeurs_modifiees(self, obj):
+        # NTCPQ21 — MÊME MOTIF que ``configuration`` : la détection coûte une
+        # lecture du lead PAR DEVIS. Elle n'a de sens que sur le DÉTAIL (c'est
+        # le GET que l'écran générateur fait en rouvrant un brouillon avec
+        # ``?edit=``) ; en LISTE (``self.parent`` est le ListSerializer) on ne
+        # la calcule pas, pour ne pas transformer une page de devis en N+1.
+        if self.parent is not None:
+            return None
+        stamp = (obj.etude_params or {}).get('provenance')
+        if not isinstance(stamp, dict):
+            return None
+        from apps.crm.selectors import lead_values_changed_since
+        return lead_values_changed_since(stamp, company=obj.company)
+
     def get_marge_sous_seuil(self, obj):
         from apps.cpq.selectors import devis_marge_sous_seuil
         return devis_marge_sous_seuil(obj)

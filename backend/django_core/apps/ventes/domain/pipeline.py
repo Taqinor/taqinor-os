@@ -627,7 +627,60 @@ def ecrire_etude_params(devis, intention, composition):
         cles['production_annuelle'] = int(resultat['annualKwh'])
     if resultat.get('savings') is not None:
         cles['economies_annuelles'] = int(resultat['savings'])
-    return ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
+    bloc = ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
+    # DC11 / QJR106 — la PROVENANCE fait partie de l'étape 6 : c'est une clé
+    # d'``etude_params``, écrite par le MÊME écrivain unique, dans la même
+    # étape. Elle n'ouvre pas une neuvième étape (le journal des étapes est un
+    # contrat) — elle est le dernier geste de celle-ci.
+    return estampiller_provenance(devis, intention) or bloc
+
+
+def estampiller_provenance(devis, intention):
+    """DC11 / QJR106 — la TRACE de ce que le devis a REPRIS du lead.
+
+    LE CONSTAT (audit L3 du 29/08/2026, décision fondateur D6). ``apps.crm``
+    portait depuis DC11 un mécanisme de provenance ENTIÈREMENT écrit et testé —
+    ``lead_provenance_stamp`` / ``lead_values_changed_since`` /
+    ``LEAD_PROVENANCE_FIELDS`` — que PERSONNE n'appelait : ``etude_params`` n'a
+    jamais porté de clé de provenance, et la bannière « valeurs du lead
+    modifiées depuis » n'existait nulle part. La docstring du sélecteur, qui
+    affirme « ``ventes`` appelle ceci à la création/maj du devis », était
+    fausse. D6 tranche : BRANCHER, ne pas supprimer. Cette fonction est ce
+    branchement, et rien d'autre — la RÈGLE reste chez ``crm``, qui seul sait
+    quels champs du lead comptent.
+
+    QUAND ELLE ÉCRIT, ET QUAND ELLE S'ABSTIENT. Elle estampille à la CRÉATION
+    (le devis reprend les valeurs du lead : on note lesquelles) et à la MISE À
+    JOUR (un devis né avant DC11, ou rattaché depuis à un autre lead, reçoit
+    ainsi son estampille). Elle NE RÉÉCRIT PAS une estampille qui signale déjà
+    une DÉRIVE : réestampiller là éteindrait précisément le signal que la
+    bannière existe pour porter — un simple enregistrement de l'écran ferait
+    disparaître un « le lead a bougé depuis » que personne n'a traité. Le
+    verdict de dérive est demandé à ``crm``, par la MÊME fonction que la
+    bannière lit : deux comparaisons différentes donneraient deux vérités.
+
+    Rend le bloc ``etude_params`` écrit, ou ``None`` quand il n'y avait rien à
+    estampiller (pas de lead, ou dérive en cours à préserver).
+    """
+    lead = intention.lead
+    if lead is None:
+        lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return None
+
+    from apps.crm.selectors import (lead_provenance_stamp,
+                                    lead_values_changed_since)
+
+    stamp = lead_provenance_stamp(lead)
+    if stamp is None:
+        return None
+
+    ancienne = (getattr(devis, 'etude_params', None) or {}).get('provenance')
+    if isinstance(ancienne, dict) and ancienne.get('source_lead_id') == getattr(
+            lead, 'pk', None):
+        if lead_values_changed_since(ancienne, company=intention.company):
+            return None
+    return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
 
 
 def rafraichir_etudes(verrou, *, force=False):
@@ -831,6 +884,13 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
                       company=intention.company,
                       avertissements=avertissements)
         journal.append('ecrire_lignes')
+        # DC11 / QJR106 — LE GESTE D'ENREGISTREMENT DE L'ÉCRAN passe ici, à la
+        # création (``atomic``) comme à la mise à jour (``replace-lines``) :
+        # c'est donc ici que la provenance des valeurs reprises du lead est
+        # estampillée sur ce chemin-là. Aucune étape n'est ajoutée au journal —
+        # ``ETAPES_PAR_MODE`` reste le contrat, et la fonction s'abstient
+        # entièrement pour un devis SANS lead (le cas le plus courant).
+        estampiller_provenance(devis, intention)
     elif mode == MODE_RECONCILIER:
         # QJR97 — L'ÉTAPE VIT DANS ``domain/resynchronisation``, comme
         # ``composer`` vit dans ``domain/composition`` et l'écrivain de lignes
@@ -889,6 +949,7 @@ from apps.ventes.domain.entrees import (  # noqa: E402,F401
     entrees_depuis_lead,
 )
 from apps.ventes.domain.etude_schema import CALEPINAGE  # noqa: E402,F401
+from apps.ventes.domain.etude_schema import PIPELINE  # noqa: E402,F401
 from apps.ventes.domain.etude_schema import ecrire as ecrire_etude  # noqa: E402,F401,E501
 from apps.ventes.domain.etudes import (  # noqa: E402,F401
     rafraichir_etudes_du_devis,
@@ -940,6 +1001,7 @@ __all__ = [
     'decider_taille',
     'ecrire_etude_params',
     'ecrire_lignes',
+    'estampiller_provenance',
     'estampiller_variante',
     'finaliser',
     'intention_de_composition',

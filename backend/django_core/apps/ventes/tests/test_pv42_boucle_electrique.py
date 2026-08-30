@@ -331,7 +331,23 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
             ('Panneau Jinko 550W', 9, Decimal('1100')),
             ('Onduleur réseau Huawei 10kW Triphasé', 1, Decimal('14000')),
         ]))
-        self.assertEqual(devis.etude_params, {
+        # QJR106 / décision fondateur D6 (30/08/2026) — DC11 est BRANCHÉ : un
+        # devis créé À PARTIR D'UN LEAD (c'est le cas ici, `_devis` passe
+        # `lead=self._lead()`) porte désormais une ESTAMPILLE DE PROVENANCE,
+        # posée par `pipeline.appliquer` à l'étape 6. Ce pin compare
+        # `etude_params` à l'EXACT ; il voit donc une clé de plus, légitime.
+        # Elle est mise de côté ICI, et NULLE PART AILLEURS : l'esprit du test
+        # — « rien d'AUTRE n'a bougé sur un layout sans géométrie » — est
+        # intact, et la clé retirée est vérifiée juste en dessous plutôt que
+        # simplement ignorée.
+        etude = dict(devis.etude_params)
+        provenance = etude.pop('provenance', None)
+        self.assertIsNotNone(
+            provenance,
+            "QJR106 — un devis né d'un lead doit porter son estampille de "
+            "provenance ; son absence est une régression, pas un progrès.")
+        self.assertEqual(provenance['source_lead_id'], devis.lead_id)
+        self.assertEqual(etude, {
             # PVSCE — le scénario est désormais STOCKÉ dès la création : sans
             # lui, le moteur PDF (QF6) déduit l'option depuis les lignes, et se
             # trompe dès que la composition est partielle. Ici le catalogue n'a
