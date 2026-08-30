@@ -913,6 +913,14 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
         # ``resynchronisation`` importe ce module (son adaptateur appelle
         # ``appliquer``), et un import de haut de fichier des deux côtés ferait
         # lire un module à moitié construit.
+        #
+        # QJR220 — CE MODE N'APPELLE PAS ``ecrire_lignes``, ET C'EST VOULU : il
+        # ajuste CHIRURGICALEMENT des lignes existantes (prix négociés, ordre,
+        # groupes préservés), là où l'écrivain SUPPRIME et RECRÉE tout. La
+        # re-tarification des forfaits au panneau (QJR83), que ``ecrire_lignes``
+        # obtient gratuitement, est donc appelée par ``reconcilier`` lui-même,
+        # après TOUTES ses écritures de lignes — jamais en faisant passer ce
+        # mode par l'écrivain, ce qui détruirait ce qu'il protège.
         from apps.ventes.domain.resynchronisation import reconcilier
 
         resynchro = reconcilier(devis, intention)

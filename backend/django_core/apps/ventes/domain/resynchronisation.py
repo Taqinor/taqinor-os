@@ -933,6 +933,26 @@ def reconcilier(devis, intention):
                 avec_batterie=True if devis_deux_options else a_batterie,
                 avertissements=avertissements)
 
+        # ── QJR220 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE RÉELLEMENT
+        # ÉCRIT ──
+        #
+        # ``retarifer_forfaits_par_panneau`` (QJR83) n'avait qu'UN appelant dans
+        # tout le dépôt : ``lignes.remplacer_lignes``. Or ``MODE_RECONCILIER``
+        # n'appelle JAMAIS ``ecrire_lignes`` — et c'est précisément LE mode qui
+        # change un compte de panneaux sur un devis EXISTANT (les trois sites
+        # ``dominante.quantite = …`` ci-dessus). Une sync-layout 9 → 20
+        # panneaux laissait donc la pose, les accessoires et le tableau au
+        # barème de 9 : de l'argent faux sur un document client (l'incident
+        # 9→20 que le fichier de test de QJR83 nomme lui-même).
+        #
+        # APPELÉE ICI, après TOUTES les écritures de lignes (quantités,
+        # permutations, complétion du kit) : le barème s'applique au compte
+        # RÉEL, jamais à celui que l'appelant croyait poser. Les abstentions
+        # D12 (prix_manuel, forfait commun divergent) sont préservées et DITES
+        # — elles rejoignent la même liste que les autres refus de resynchro,
+        # celle que l'écran affiche déjà.
+        retarifer_forfaits_par_panneau(verrou, avertissements=avertissements)
+
         # ── Étude : les clés géométriques + le scénario, jamais les champs
         # d'étude du générateur ──
         etude = dict(verrou.etude_params or {})
@@ -1130,6 +1150,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
     creer_ligne,
+    retarifer_forfaits_par_panneau,
 )
 # QJR97 — le pipeline est importé EN BAS, comme tout pont de ce paquet. Il n'y
 # a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de

@@ -602,6 +602,19 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
 
     Aucune écriture quand le prix est DÉJÀ celui du barème : une ligne
     inchangée ne doit pas voir sa date de modification bouger.
+
+    QJR220 (31/08/2026) — TROIS APPELANTS, PLUS UN. Cette fonction était
+    correcte et n'avait qu'UN appelant dans tout le dépôt
+    (:func:`remplacer_lignes`, plus bas) alors que DEUX autres chemins changent
+    le compte de panneaux d'un devis EXISTANT et ne passaient pas par lui :
+
+    * ``MODE_RECONCILIER`` (``domain/resynchronisation.reconcilier``, les trois
+      sites qui écrivent ``dominante.quantite``) — une sync-layout 9 → 20
+      panneaux laissait la pose au barème de 9, l'incident que le fichier de
+      test de QJR83 nomme lui-même ;
+    * ``LigneDevisViewSet`` (ajout / modification / suppression d'UNE ligne).
+
+    Les deux l'appellent désormais, APRÈS toutes leurs écritures de lignes.
     """
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
