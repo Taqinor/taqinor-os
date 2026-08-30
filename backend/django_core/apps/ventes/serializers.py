@@ -244,6 +244,8 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     # (ou rendu en liste, voir ci-dessous), donc rien à dire.
     lead_valeurs_modifiees = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.ListField(
+        child=serializers.CharField(), allow_null=True))
     def get_lead_valeurs_modifiees(self, obj):
         # NTCPQ21 — MÊME MOTIF que ``configuration`` : la détection coûte une
         # lecture du lead PAR DEVIS. Elle n'a de sens que sur le DÉTAIL (c'est
