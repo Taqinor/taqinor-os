@@ -144,8 +144,18 @@ def dupliquer_devis(devis, *, user):
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
-                            dimensionnement_avec=None):
+                            dimensionnement_avec=None,
+                            mppt_paires=1, structure_type='acier'):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
+
+    ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
+    composition que cette fonction n'acceptait pas et ne transmettait donc
+    jamais, pendant que le dry-run qui l'approuve
+    (``composer_devis_residentiel``) les transmettait : l'aperçu et le devis
+    pouvaient diverger sur les mètres de câble DC et sur le matériau de
+    structure. Les défauts sont ceux de ``composition_residentielle``
+    (1 paire, acier), donc un appelant qui ne les renseigne pas compose
+    EXACTEMENT ce que ce dépôt composait déjà.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
     OPTIONS (« sans batterie » ET « avec batterie » dans un seul devis, cf.
@@ -270,49 +280,37 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # strictement inchangé. Fournir une liste que personne ne lit reviendrait
     # à ÉTEINDRE ce log.
     _avertissements = [] if journal is not None else None
-    _commun_composition = dict(
+    # ── QJR80 — L'ÉTAPE `composer` DU PIPELINE, LA MÊME QUE L'APERÇU ────────
+    # Le jeu de paramètres n'est plus construit ici : il est NOMMÉ une fois,
+    # dans ``domain/pipeline.IntentionComposition``, et le dry-run
+    # (``composer_devis_residentiel``) remplit le MÊME. ``mppt_paires`` et
+    # ``structure_type`` cessent donc de tomber en route entre l'aperçu que le
+    # vendeur approuve et le devis réellement créé.
+    #
+    # L-2OPT — la fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux »
+    # ET quand l'appelant a réellement une recommandation « avec » à opposer ;
+    # ``composer`` porte cet arbitrage (et le filtre ``isinstance`` qui allait
+    # avec), à l'identique.
+    line_specs = composer(IntentionComposition(
+        company=company,
+        kwc=kwc_composition,
+        nb_panneaux=nb_panneaux,
         panel_watt=watt,
+        # Le scénario du layout, dit dans le SEUL vocabulaire du pipeline.
+        # ``deux_options`` l'emporte : c'est déjà ce que faisait la
+        # composition, où ``avec_batterie`` n'a aucun effet dès que la forme
+        # est à deux options.
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        structure_type=structure_type,
         taux_tva=taux_tva,
-        # U3 — les règles de gamme vivent CÔTÉ SERVEUR : marques épinglées
-        # (PVMRQ) et ordre par défaut (PVORD) sont lus ici et donnés à la
-        # fonction pure, plus jamais recalculés par l'écran.
-        marques=carte_marques_composition(company),
-        ordre_lignes=ordre_lignes_societe(company),
-        avertissements=_avertissements,
+        mppt_paires=mppt_paires,
         # PVCOMPAT — le raccordement du client, quand l'appelant le connaît.
         phase=phase,
-    )
-    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ───────────
-    # La fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux » ET quand
-    # l'appelant a réellement une recommandation « avec » à opposer. Sinon
-    # (défaut, calepinage 3D, devis mono-option) c'est le chemin d'hier, mot
-    # pour mot.
-    _avec = dimensionnement_avec if isinstance(
-        dimensionnement_avec, dict) else None
-    if deux_options and _avec:
-        line_specs = composition_deux_optimiseurs(
-            catalogue_de_la_societe(company),
-            kwc_sans=kwc_composition,
-            nb_panneaux_sans=nb_panneaux,
-            kwc_avec=_avec.get('kwc'),
-            nb_panneaux_avec=_avec.get('nb_panneaux'),
-            batterie_cible_kwh=_avec.get('batterie_kwh'),
-            **_commun_composition)
-    else:
-        line_specs = composition_residentielle(
-            catalogue_de_la_societe(company),
-            kwc=kwc_composition,
-            nb_panneaux=nb_panneaux,
-            avec_batterie=wants_battery,
-            deux_options=deux_options,
-            # L-2OPT — devis MONO « avec batterie » : le champ PV vient déjà de
-            # l'optimum AVEC (l'appelant l'a mis dans le layout) ; la CAPACITÉ
-            # retenue par ce même optimum se transmet ici. Absente ⇒ la règle
-            # historique kWc/5 décide seule, à l'octet près.
-            batterie_cible_kwh=(
-                _avec.get('batterie_kwh')
-                if (wants_battery and not deux_options and _avec) else None),
-            **_commun_composition)
+        dimensionnement_avec=dimensionnement_avec,
+        avertissements=_avertissements,
+    ))
     if journal is not None:
         journal['marques_manquantes'] = list(
             getattr(line_specs, 'marques_manquantes', ()) or ())
@@ -461,43 +459,30 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     deux_options = demande not in ('avec', 'sans')
 
     avertissements = []
-    _avec = dimensionnement_avec if isinstance(
-        dimensionnement_avec, dict) else None
-    _commun = dict(
+    # ── QJR80 — LA MÊME ÉTAPE `composer` QUE LA CRÉATION ────────────────────
+    # « Miroir EXACT de ``build_devis_from_layout`` » n'est plus une intention
+    # écrite en commentaire : les deux chemins remplissent LE MÊME
+    # ``IntentionComposition`` et appellent LA MÊME fonction. Un paramètre ne
+    # peut plus être transmis d'un côté et oublié de l'autre.
+    lignes = composer(IntentionComposition(
+        company=company,
+        kwc=kwp,
+        nb_panneaux=nb_force,
         panel_watt=watt,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
         structure_type=structure_type,
         taux_tva=taux_tva,
-        avertissements=avertissements,
-        marques=carte_marques_composition(company, gamme_nom_devis),
-        ordre_lignes=ordre_lignes_societe(company),
         mppt_paires=mppt_paires,
         # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement
         # que la construction, sinon l'aperçu montrerait un onduleur que le
         # devis ne composerait pas.
         phase=phase,
-    )
-    if deux_options and _avec:
-        lignes = composition_deux_optimiseurs(
-            catalogue_de_la_societe(company),
-            kwc_sans=kwp,
-            nb_panneaux_sans=nb_force,
-            kwc_avec=_avec.get('kwc'),
-            nb_panneaux_avec=_avec.get('nb_panneaux'),
-            batterie_cible_kwh=_avec.get('batterie_kwh'),
-            **_commun)
-    else:
-        lignes = composition_residentielle(
-            catalogue_de_la_societe(company),
-            kwc=kwp,
-            nb_panneaux=nb_force,
-            avec_batterie=avec_batterie,
-            deux_options=deux_options,
-            # L-2OPT — miroir EXACT de ``build_devis_from_layout`` : un devis
-            # mono « avec » retient la capacité du même optimum.
-            batterie_cible_kwh=(
-                _avec.get('batterie_kwh')
-                if (avec_batterie and _avec) else None),
-            **_commun)
+        gamme_nom_devis=gamme_nom_devis,
+        dimensionnement_avec=dimensionnement_avec,
+        avertissements=avertissements,
+    ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
@@ -1419,6 +1404,13 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     extract_roof_config,
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
+)
+from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
+    IntentionComposition,
+    composer,
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_AVEC_BATTERIE,

@@ -1,0 +1,199 @@
+# -*- coding: utf-8 -*-
+"""``apps.ventes.domain.pipeline`` — LES ÉTAPES du parcours devis.
+
+Le parcours devis a CINQ origines (l'écran générateur, le calepinage 3D, le
+devis automatique depuis un lead, le tunnel du site, la resynchronisation) et,
+jusqu'à M4, chacune recomposait à sa façon. Ce module est l'endroit où les
+étapes deviennent COMMUNES, une par une, sans big-bang :
+
+    resoudre_entrees → decider_taille → composer → verifier
+        → ecrire_lignes → ecrire_etude_params → rafraichir_etudes
+        → marge_snapshot + conception électrique
+
+QJR80 pose la TROISIÈME étape, ``composer``, et elle seule. Les autres étapes
+existent déjà, à leur place (``domain/entrees``, ``domain/taille``,
+``domain/geometrie``, ``domain/lignes``, ``domain/etude_schema``,
+``domain/etudes``) ; leur ORDONNANCEMENT est QJR85, les bascules des cinq
+chemins sont M5. Rien ici n'appelle un chemin : ce sont les chemins qui
+appellent ici.
+
+RÈGLE D'IMPORT (cf. ``domain/__init__.py``) : les noms lus dans d'autres
+modules de ``domain/`` sont importés EN BAS de ce fichier, en visant le module
+qui porte le corps — jamais la façade ``services.py``.
+
+NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
+"""
+from dataclasses import dataclass
+from decimal import Decimal
+import logging
+
+logger = logging.getLogger("apps.ventes.services")
+
+
+# ── Étape 3 — COMPOSER ───────────────────────────────────────────────────────
+# Le constat QB80 (audit L3 du 29/08/2026) : ``composer_devis_residentiel``
+# (le dry-run que le vendeur APPROUVE) et ``build_devis_from_layout`` (ce qui
+# est RÉELLEMENT créé) enrobaient tous deux ``composition_residentielle`` mais
+# lui passaient des jeux de paramètres DIFFÉRENTS — la création n'acceptait ni
+# ne transmettait ``mppt_paires`` ni ``structure_type``. L'aperçu pouvait donc
+# montrer les mètres de câble DC de trois paires de MPPT et des structures
+# ALUMINIUM là où le devis créé facturait une paire et de l'ACIER. Ce ne sont
+# pas des détails : c'est du câble au mètre et un matériau de structure, tous
+# deux facturés au client.
+#
+# Le correctif structurel est un SEUL jeu de paramètres, nommé une fois ici, et
+# deux appelants qui le remplissent. Un troisième paramètre ajouté dans six
+# mois le sera POUR LES DEUX chemins — c'est exactement la propriété qu'on
+# achète.
+
+#: Les trois scénarios qu'une composition résidentielle sait servir. Mêmes
+#: valeurs que ``SCENARIOS_DEMANDABLES`` (``domain/creation``), volontairement
+#: redéclarées ici : ``pipeline`` ne doit pas dépendre de ``creation``, qui
+#: l'appelle.
+COMPOSITION_SANS = 'sans'
+COMPOSITION_AVEC = 'avec'
+COMPOSITION_LES_DEUX = 'les_deux'
+SCENARIOS_COMPOSABLES = (COMPOSITION_SANS, COMPOSITION_AVEC,
+                         COMPOSITION_LES_DEUX)
+
+
+@dataclass(frozen=True)
+class IntentionComposition:
+    """LE jeu de paramètres de l'étape ``composer`` — un seul, pour tous.
+
+    GELÉ (``frozen=True``) : une étape ne réécrit jamais l'intention de
+    l'appelant sur place ; elle en dérive une autre (``dataclasses.replace``)
+    si elle a besoin d'en changer un champ. C'est ce qui rend une composition
+    REJOUABLE à l'identique, et c'est la même garantie que ``IntentionDevis``
+    portera pour le pipeline entier (QJR85).
+
+    Les valeurs par défaut sont EXACTEMENT celles de
+    ``composition_residentielle`` : un appelant qui ne renseigne rien compose
+    ce que ce dépôt composait déjà.
+
+    * ``company`` — la société ; le catalogue et les règles de gamme (marques
+      épinglées PVMRQ, ordre des lignes PVORD) en sont déduits ICI, une seule
+      fois, pour que deux appelants ne puissent pas les résoudre autrement.
+    * ``kwc`` / ``nb_panneaux`` / ``panel_watt`` — le champ PV, DÉJÀ arrêté par
+      l'étape ``decider_taille`` (le pipeline ne redimensionne pas : chaque
+      appelant a sa propre façon de lire un layout ou une fiche lead, et c'est
+      LÀ que cette lecture reste).
+    * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'``, la SEULE façon
+      de dire quelle forme composer. Les deux drapeaux historiques
+      (``avec_batterie`` / ``deux_options``) en sont dérivés ici : ils ne
+      peuvent donc plus être posés dans une combinaison contradictoire.
+    * ``structure_type`` / ``mppt_paires`` — les deux paramètres que la
+      création ne transmettait pas (QB80).
+    * ``phase`` — PVCOMPAT, le raccordement déclaré du client.
+    * ``gamme_nom_devis`` — la gamme demandée POUR CE DEVIS-LÀ, lue par
+      ``carte_marques_composition``. ``None`` ⇒ les marques par défaut de la
+      société.
+    * ``dimensionnement_avec`` — L-2OPT, l'optimum de l'axe AVEC BATTERIE
+      (``{'nb_panneaux', 'kwc', 'batterie_kwh'}``) quand il diverge.
+    * ``avertissements`` — LE canal de la composition : une liste que
+      l'appelant fournit et que la composition enrichit sur place. ``None``
+      (le défaut) laisse la composition sur son journal interne, comportement
+      historique strictement inchangé.
+    """
+
+    company: object
+    kwc: float = 0.0
+    nb_panneaux: int = 0
+    panel_watt: object = None
+    scenario: str = COMPOSITION_SANS
+    structure_type: str = 'acier'
+    taux_tva: Decimal = Decimal('20')
+    mppt_paires: int = 1
+    phase: object = None
+    gamme_nom_devis: object = None
+    dimensionnement_avec: object = None
+    avertissements: object = None
+
+
+def composer(intention):
+    """Étape 3 — LE composeur, unique, de toutes les origines résidentielles.
+
+    Rend une ``CompositionLignes`` (une liste de ``LigneKit`` porteuse des
+    métadonnées de composition) — ou une liste VIDE quand la puissance est
+    nulle, exactement comme ``composition_residentielle``.
+
+    Fonction sans écriture : elle LIT le catalogue et les réglages de gamme de
+    la société, puis délègue aux deux fonctions pures de
+    ``domain/composition``. Aucun devis, aucune ligne, aucun statut.
+    """
+    scenario = (intention.scenario or '').strip().lower()
+    if scenario not in SCENARIOS_COMPOSABLES:
+        raise ValueError(
+            'Scénario de composition inconnu « %s » — attendu : %s.'
+            % (intention.scenario, ', '.join(SCENARIOS_COMPOSABLES)))
+    # Les deux drapeaux historiques, dérivés d'une SEULE source. Le couple
+    # (``avec_batterie=True``, ``deux_options=True``) — que l'ancien chemin de
+    # création pouvait former et qui n'a aucun effet sur les lignes composées
+    # (``deux_options`` décide seul dès qu'il est vrai) — n'est plus
+    # exprimable.
+    avec_batterie = scenario == COMPOSITION_AVEC
+    deux_options = scenario == COMPOSITION_LES_DEUX
+
+    avec = (intention.dimensionnement_avec
+            if isinstance(intention.dimensionnement_avec, dict) else None)
+
+    company = intention.company
+    commun = dict(
+        panel_watt=intention.panel_watt,
+        structure_type=intention.structure_type,
+        taux_tva=intention.taux_tva,
+        avertissements=intention.avertissements,
+        # U3 — les règles de gamme vivent CÔTÉ SERVEUR et sont résolues ICI :
+        # marques épinglées (PVMRQ) et ordre par défaut (PVORD).
+        marques=carte_marques_composition(company, intention.gamme_nom_devis),
+        ordre_lignes=ordre_lignes_societe(company),
+        mppt_paires=intention.mppt_paires,
+        phase=intention.phase,
+    )
+    catalogue = catalogue_de_la_societe(company)
+    kwc = float(intention.kwc or 0)
+    nb_panneaux = int(intention.nb_panneaux or 0)
+
+    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ────────────
+    if deux_options and avec:
+        return composition_deux_optimiseurs(
+            catalogue,
+            kwc_sans=kwc,
+            nb_panneaux_sans=nb_panneaux,
+            kwc_avec=avec.get('kwc'),
+            nb_panneaux_avec=avec.get('nb_panneaux'),
+            batterie_cible_kwh=avec.get('batterie_kwh'),
+            **commun)
+    return composition_residentielle(
+        catalogue,
+        kwc=kwc,
+        nb_panneaux=nb_panneaux,
+        avec_batterie=avec_batterie,
+        deux_options=deux_options,
+        # Un devis MONO « avec » retient la capacité du même optimum ;
+        # absente ⇒ la règle historique kWc/5 décide seule.
+        batterie_cible_kwh=(avec.get('batterie_kwh')
+                            if (avec_batterie and avec) else None),
+        **commun)
+
+
+# ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
+# Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
+from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+    carte_marques_composition,
+    catalogue_de_la_societe,
+    ordre_lignes_societe,
+)
+from apps.ventes.domain.composition import (  # noqa: E402,F401
+    composition_deux_optimiseurs,
+    composition_residentielle,
+)
+
+__all__ = [
+    'COMPOSITION_AVEC',
+    'COMPOSITION_LES_DEUX',
+    'COMPOSITION_SANS',
+    'IntentionComposition',
+    'SCENARIOS_COMPOSABLES',
+    'composer',
+]
