@@ -9,10 +9,11 @@ un cycle de CI complet au lieu de quelques secondes.
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 177 noms PUBLICS définis au niveau module
-  (178 avant QJR107, qui a supprimé ``profil_reel_existe``). Ce compte de
-  prose n'est vérifié par AUCUNE assertion — il était déjà périmé (« 175 »)
-  avant ce lot ; seule la LISTE fait foi, et elle, elle est vérifiée EXACTE.
+* ``SURFACE_PUBLIQUE`` — les 178 noms PUBLICS définis au niveau module
+  (177 après QJR107, qui a supprimé ``profil_reel_existe`` ; QJR144 ajoute
+  ``verifier_empreinte_signature``). Ce compte de prose n'est vérifié par
+  AUCUNE assertion — il était déjà périmé (« 175 ») avant ce lot ; seule la
+  LISTE fait foi, et elle, elle est vérifiée EXACTE.
   (fonctions, classes, constantes). La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
   tout élargissement de surface visible en revue).
@@ -238,6 +239,11 @@ SURFACE_PUBLIQUE = (
     "ventiler_avance",
     "verifier_credit_hold",
     "verifier_devis_envoyable",
+    # QJR144 (30/08/2026) — AJOUT LÉGITIME : le vérificateur du sceau d'un
+    # devis signé. ``DevisSignature.content_hash`` existait depuis QJ10 mais
+    # aucun code ne savait le recomparer ; ce nom est la porte de lecture,
+    # exposée en cross-app comme le reste de la surface d'écriture ventes.
+    "verifier_empreinte_signature",
     "verifier_sale_warnings",
     "zone_toit_depuis_contour",
 )

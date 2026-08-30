@@ -441,6 +441,79 @@ def creer_ligne(devis, **champs):
     return LigneDevis.objects.create(devis=devis, **champs)
 
 
+# ── QJR116 — UN SEUL CLONEUR DE LIGNES POUR LES TROIS CHEMINS DE COPIE ──────
+#
+# Constat CS1/CS2/CS3 (audit du 30/08/2026), vérifié en code : les trois
+# chemins qui recopient un devis — ``dupliquer_devis``, ``creer_variante_
+# gamme``, ``renouveler_devis`` — nommaient chacun SA liste de champs, à la
+# main. Elles avaient déjà divergé : ``renouveler_devis`` clonait
+# ``optionnelle`` que les deux autres avaient reçue au même moment (QJR84),
+# et AUCUNE des trois ne clonait ``lot``. Le coût d'un champ oublié n'est pas
+# cosmétique : sans ``variante``, ``_repartir_options`` (``quote_engine/
+# builder.py``) retombe sur son filtre par mots-clés et range panneaux,
+# structures et pose dans les DEUX paniers d'options ; sans ``optionnelle``,
+# un add-on hors totaux (``LigneDevis.compte_dans_totaux``) redevient une
+# ligne facturée.
+#
+# LA PARADE EST LA MÊME QUE POUR L'ÉCRITURE : un seul endroit. Le jeu cloné
+# est DÉRIVÉ de ``CHAMPS_LIGNE`` (jamais retapé), donc un champ ajouté demain
+# au modèle entre dans les trois copies par le seul ajout que le test statique
+# ``test_qjr_ecrivain_lignes`` exige déjà.
+
+#: QJR116 — ce qu'une COPIE de devis reprend : le jeu COMPLET moins les deux
+#: formes « par identifiant », qui s'excluent avec leur objet (``creer_ligne``
+#: refuse le couple).
+CHAMPS_CLONES = tuple(champ for champ in CHAMPS_LIGNE
+                      if champ not in ('produit_id', 'lot_id'))
+
+
+def cloner_lignes(source, cible, *, prix_unitaire=None):
+    """QJR116 — recopie TOUTES les lignes de ``source`` sur ``cible``.
+
+    Le SEUL cloneur de lignes de l'app : les trois chemins de copie
+    (``dupliquer_devis``, ``creer_variante_gamme``, ``renouveler_devis``)
+    passent par lui, donc un champ ne peut plus tomber sur un chemin et pas
+    sur les deux autres.
+
+    ``prix_unitaire`` — appelable optionnel ``(ligne) -> prix``. Absent (les
+    deux copies « à l'identique »), le prix de la ligne source est repris tel
+    quel. Fourni (le RENOUVELLEMENT, qui re-tarife au catalogue courant), sa
+    valeur remplace le prix cloné et RIEN d'autre : les marqueurs D12
+    (``prix_manuel``/``quantite_manuelle``) restent ceux de la source, et
+    c'est à l'appelable de les honorer.
+
+    LES LOTS SUIVENT LEUR DEVIS. ``LigneDevis.lot`` pointe un ``LotDevis`` qui
+    appartient à UN devis (contrainte d'unicité ``devis``+``nom_lot``) :
+    recopier la clé telle quelle rattacherait les lignes de la copie aux lots
+    de la SOURCE. Les lots sont donc recréés sur ``cible`` et les lignes
+    re-pointées vers leur jumeau. Un devis sans lot — tous ceux d'hier, aucun
+    chemin de création n'en pose — ne crée rien et voit ``lot=None`` partout :
+    comportement strictement inchangé.
+
+    Rend la liste des lignes créées, dans l'ordre de lecture de la source
+    (``LigneDevis.Meta.ordering`` = ``ordre``, ``id``).
+    """
+    from ..models import LotDevis
+
+    jumeaux = {}
+    for lot in source.lots.all():
+        jumeaux[lot.pk] = LotDevis.objects.create(
+            company=cible.company, devis=cible, nom_lot=lot.nom_lot,
+            adresse_site=lot.adresse_site, ordre=lot.ordre)
+
+    creees = []
+    for ligne in source.lignes.all().select_related('produit'):
+        champs = {champ: getattr(ligne, champ) for champ in CHAMPS_CLONES
+                  # ``lot`` est re-résolu ci-dessous : le lire ici coûterait
+                  # une requête par ligne pour une valeur aussitôt remplacée.
+                  if champ != 'lot'}
+        champs['lot'] = jumeaux.get(ligne.lot_id)
+        if prix_unitaire is not None:
+            champs['prix_unitaire'] = prix_unitaire(ligne)
+        creees.append(creer_ligne(cible, **champs))
+    return creees
+
+
 # ── L-FORFAIT / QJR83 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE ───────────
 #
 # Constat QB83 (audit L3 du 29/08/2026), vérifié en code : AUCUN chemin ne

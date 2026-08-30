@@ -142,6 +142,76 @@ def _generate_otp():
     return f'{_secrets.randbelow(1000000):06d}'
 
 
+# ── QJR147 / ES5 — PLAFOND CUMULATIF SUR LES DEMANDES D'OTP PUBLIQUES ───────
+#
+# CE QUI ÉTAIT FAUX. Les deux endpoints de DEMANDE sont ``AllowAny`` et leur
+# seul frein était ``PublicLinkRateThrottle`` (30/minute par IP + jeton) : ni
+# plafond journalier, ni plafond PAR JETON toutes IP confondues. Et chaque
+# demande RÉINITIALISAIT le compteur d'échecs — le verrouillage à cinq
+# tentatives n'était donc qu'un ralentisseur : cinq essais, on redemande un
+# code, cinq essais de plus, indéfiniment.
+#
+# LE DOMMAGE LE PLUS DÉMONTRABLE N'EST PAS LE BRUTE-FORCE : chaque demande
+# envoie un VRAI email au contact du devis. Un porteur de jeton pouvait donc
+# bombarder le client de son propre fournisseur.
+#
+# DEUX GESTES, ET LEUR RAISON :
+#   1. un compteur de DEMANDES par jeton, JOURNALIER, qui n'est JAMAIS remis à
+#      zéro par une nouvelle demande (c'est tout l'intérêt) ;
+#   2. le compteur d'ÉCHECS n'est plus effacé à la régénération — il expire de
+#      lui-même avec la fenêtre du code (10 min), ce qui donne un verrouillage
+#      TEMPOREL au lieu d'un verrou qu'un simple clic annule.
+#
+# ÉCHEC FERMÉ en cas de panne cache, comme tous les chemins OTP de ce module :
+# sans compteur lisible, on refuse d'envoyer plutôt que d'ouvrir un robinet.
+
+#: Nombre de DEMANDES de code tolérées par jeton et par jour, toutes IP
+#: confondues. Large pour un client qui ne reçoit pas son mail du premier coup,
+#: étroit pour qui voudrait s'en servir comme d'un canon à emails.
+OTP_DEMANDES_MAX_PAR_JOUR = 10
+#: TTL du compteur de demandes : 24 h glissantes à partir de la première.
+OTP_DEMANDES_TTL = 86400
+
+
+def _otp_demandes_key(prefixe, link_token, *, jour=None):
+    """Clé du compteur de DEMANDES — DATÉE, donc le plafond est journalier et
+    le compteur se périme tout seul (aucune purge à écrire)."""
+    from django.utils import timezone
+    jour = jour or timezone.now().strftime('%Y%m%d')
+    return f'{prefixe}_demandes:{jour}:{link_token}'
+
+
+#: Le message FR servi quand le plafond journalier est atteint. Il nomme le
+#: geste qui débloque (attendre, ou passer par le conseiller) plutôt que de
+#: laisser le client devant une erreur muette.
+OTP_PLAFOND_MESSAGE = (
+    "Trop de demandes de code pour ce lien aujourd'hui. Réessayez demain, ou "
+    "contactez votre conseiller pour recevoir votre code autrement.")
+
+
+def _plafond_demandes_otp_atteint(prefixe, link_token):
+    """QJR147 — compte CETTE demande et dit si le plafond est dépassé.
+
+    Le compteur est incrémenté À CHAQUE APPEL et n'est remis à zéro par
+    AUCUNE demande : c'est précisément ce que le compteur d'échecs ne faisait
+    pas. Rend ``True`` quand il faut refuser.
+    """
+    from django.core.cache import cache
+    cle = _otp_demandes_key(prefixe, link_token)
+    try:
+        # ``add`` ne pose la valeur que si la clé n'existe pas : la fenêtre de
+        # 24 h part de la PREMIÈRE demande et n'est pas repoussée par les
+        # suivantes (un TTL repoussé serait un plafond qui ne finit jamais).
+        cache.add(cle, 0, timeout=OTP_DEMANDES_TTL)
+        compte = cache.incr(cle)
+    except Exception:  # noqa: BLE001 — cache absent/illisible ⇒ échec FERMÉ
+        logger.warning(
+            'QJR147: compteur de demandes OTP illisible (%s) — demande '
+            'refusée par précaution.', cle, exc_info=True)
+        return True
+    return compte > OTP_DEMANDES_MAX_PAR_JOUR
+
+
 def request_esign_otp(link):
     """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
 
@@ -154,12 +224,20 @@ def request_esign_otp(link):
     if not _esign_otp_enabled():
         return None
 
+    # QJR147 — plafond JOURNALIER par jeton, compté AVANT toute génération et
+    # tout envoi : c'est l'email au client qu'il s'agit de plafonner.
+    if _plafond_demandes_otp_atteint('esign_otp', link.token):
+        return OTP_PLAFOND_MESSAGE
+
     from django.core.cache import cache
     code = _generate_otp()
     cache_key = _otp_cache_key(link.token)
     cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
-    # QX10 — un nouveau code réinitialise le compteur de tentatives (brute-force).
-    cache.delete(_otp_attempts_key(link.token))
+    # QJR147 — le compteur d'ÉCHECS N'EST PLUS EFFACÉ ICI. Le remettre à zéro
+    # à chaque nouveau code faisait du verrouillage à cinq tentatives un simple
+    # ralentisseur (cinq essais, on redemande, cinq essais de plus…). Il expire
+    # désormais tout seul avec la fenêtre du code : un verrou TEMPOREL, qu'un
+    # clic n'annule pas.
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -208,7 +286,12 @@ def validate_esign_otp(link, otp_code):
     QX10 — protection brute-force : un compteur par jeton (cache) verrouille
     la validation après ``OTP_MAX_ATTEMPTS`` échecs (l'espace 6 chiffres est
     trivial à balayer sans limite). Une validation réussie remet le compteur
-    à zéro ; un nouveau code doit être redemandé après verrouillage.
+    à zéro.
+
+    QJR147 — LE VERROU EST TEMPOREL, PAS ANNULABLE D'UN CLIC. Redemander un
+    code n'efface PLUS le compteur d'échecs (c'est ce qui faisait du
+    verrouillage un simple ralentisseur) : il expire de lui-même avec la
+    fenêtre du code.
     """
     if not _esign_otp_enabled():
         return None
@@ -220,8 +303,11 @@ def validate_esign_otp(link, otp_code):
     attempts_key = _otp_attempts_key(link.token)
     attempts = cache.get(attempts_key, 0)
     if attempts >= OTP_MAX_ATTEMPTS:
-        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
-                'de confirmation et réessayez.')
+        # QJR147 — le message ne promet PLUS qu'un nouveau code débloque :
+        # le compteur d'échecs n'est plus effacé à la régénération. Le
+        # verrou est TEMPOREL (il expire avec la fenêtre du code).
+        return ('Trop de tentatives incorrectes. Ce lien est « gelé » '
+                'quelques minutes ; patientez, puis redemandez un code.')
 
     cache_key = _otp_cache_key(link.token)
     stored = cache.get(cache_key)
@@ -232,8 +318,9 @@ def validate_esign_otp(link, otp_code):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
-            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
-                    'code de confirmation et réessayez.')
+            return ('Trop de tentatives incorrectes. Ce lien est '
+                    '« gelé » quelques minutes ; patientez, puis '
+                    'redemandez un code.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
     # Code valide : on le consomme (one-time use) et on réinitialise le compteur.
@@ -276,10 +363,16 @@ def request_otp_lecture(link):
     n'appelle cette fonction QUE quand ``link.otp_lecture`` est True. Retourne
     None (succès) ou un message d'erreur FR lisible — même contrat que
     ``request_esign_otp``."""
+    # QJR147 — même plafond journalier par jeton que l'OTP de signature, et
+    # pour la même raison : chaque demande envoie un VRAI email au client.
+    if _plafond_demandes_otp_atteint('otp_lecture', link.token):
+        return OTP_PLAFOND_MESSAGE
+
     from django.core.cache import cache
     code = _generate_otp()
     cache.set(_otp_lecture_cache_key(link.token), code, timeout=OTP_CACHE_TTL)
-    cache.delete(_otp_lecture_attempts_key(link.token))
+    # QJR147 — le compteur d'ÉCHECS n'est plus effacé à la régénération (voir
+    # ``request_esign_otp``).
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -314,8 +407,11 @@ def validate_otp_lecture(link, otp_code):
     attempts_key = _otp_lecture_attempts_key(link.token)
     attempts = cache.get(attempts_key, 0)
     if attempts >= OTP_MAX_ATTEMPTS:
-        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
-                'de confirmation et réessayez.')
+        # QJR147 — le message ne promet PLUS qu'un nouveau code débloque :
+        # le compteur d'échecs n'est plus effacé à la régénération. Le
+        # verrou est TEMPOREL (il expire avec la fenêtre du code).
+        return ('Trop de tentatives incorrectes. Ce lien est « gelé » '
+                'quelques minutes ; patientez, puis redemandez un code.')
 
     cache_key = _otp_lecture_cache_key(link.token)
     stored = cache.get(cache_key)
@@ -325,8 +421,9 @@ def validate_otp_lecture(link, otp_code):
         cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
         restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
         if restantes == 0:
-            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
-                    'code de confirmation et réessayez.')
+            return ('Trop de tentatives incorrectes. Ce lien est '
+                    '« gelé » quelques minutes ; patientez, puis '
+                    'redemandez un code.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
     # Code valide : consommé (one-time use), compteur remis à zéro, la
@@ -448,6 +545,62 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                        getattr(devis, 'reference', '?'), exc)
 
 
+def verifier_empreinte_signature(devis, *, lignes=None):
+    """QJR144 — LE VÉRIFICATEUR du sceau d'un devis signé.
+
+    ``DevisSignature.content_hash`` existait depuis QJ10 mais AUCUN code du
+    dépôt ne savait le recomparer : il était écrit une fois et relu seulement
+    par des tests — un sceau que personne ne pouvait vérifier. Ce service est
+    la porte de lecture, exposée en cross-app par ``apps.ventes.services``.
+
+    Rend un dict FRANÇAIS, affichable tel quel :
+
+    * ``signee`` — ce devis porte-t-il une signature électronique ;
+    * ``intacte`` — ``True`` (le contenu reproduit l'empreinte), ``False`` (il
+      a changé depuis la signature), ``None`` (aucune empreinte scellée : « on
+      ne sait pas » n'est pas « falsifié ») ;
+    * ``version`` — la version du payload qui concorde (2 = sceau étendu de
+      QJR144 ; 1 = sceau d'origine, qui ne couvrait NI le taux de TVA par
+      ligne, NI les lignes optionnelles, NI l'option retenue) ;
+    * ``message`` — la phrase à montrer.
+
+    LECTURE PURE : ne touche ni statut, ni ligne, ni total (règle #4).
+    """
+    from apps.ventes.models import DevisSignature
+
+    signature = DevisSignature.objects.filter(devis=devis).first()
+    if signature is None:
+        return {
+            'signee': False, 'intacte': None, 'version': None,
+            'message': "Ce devis ne porte aucune signature électronique.",
+        }
+    intacte, version = signature.verifier_contenu(lignes=lignes)
+    if intacte is None:
+        return {
+            'signee': True, 'intacte': None, 'version': None,
+            'message': ("Cette signature ne porte aucune empreinte de "
+                        "contenu : elle est antérieure au scellement, son "
+                        "contenu ne peut donc pas être vérifié."),
+        }
+    if not intacte:
+        return {
+            'signee': True, 'intacte': False, 'version': None,
+            'message': ("Le contenu de ce devis NE correspond PLUS à ce qui a "
+                        "été signé : l'empreinte scellée ne se reproduit pas."),
+        }
+    if version == DevisSignature.CONTENT_HASH_V1:
+        return {
+            'signee': True, 'intacte': True, 'version': version,
+            'message': ("Empreinte conforme (sceau d'origine). Portée : ce "
+                        "sceau ne couvre ni le taux de TVA par ligne, ni les "
+                        "lignes optionnelles, ni l'option retenue."),
+        }
+    return {
+        'signee': True, 'intacte': True, 'version': version,
+        'message': "Empreinte conforme : le contenu signé n'a pas changé.",
+    }
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -535,15 +688,42 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
         # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
         # de confirmation inchangé.
         acompte_bloc = _acceptance_deposit_block(devis, lignes=lignes)
+        # ── QJR134 / ES11 — L'EMAIL NE PROMET QUE CE QUI EXISTE ────────────
+        #
+        # CE QUI ÉTAIT FAUX. ``_create_esign_record`` est best-effort : son
+        # échec est avalé en WARNING, ``_store_signed_pdf`` sort alors
+        # silencieusement, et cet email affirmait INCONDITIONNELLEMENT « Votre
+        # signature électronique a été enregistrée » — au client, par écrit,
+        # alors qu'il pouvait n'exister ni image, ni IP, ni empreinte, ni PDF
+        # scellé. Le devis étant gelé à l'édition après acceptation, la
+        # situation n'était même pas rattrapable.
+        #
+        # La phrase (et la mention de l'exemplaire signé joint) ne part
+        # désormais que si l'enregistrement de signature EXISTE vraiment. Sur
+        # le chemin nominal — celui de toutes les signatures en ligne — il
+        # existe, et l'email est byte-identique à celui d'hier.
+        preuve = False
+        try:
+            from apps.ventes.models import DevisSignature
+            preuve = DevisSignature.objects.filter(devis=devis).exists()
+        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien
+            preuve = False
+        bloc_signature = (
+            "Votre signature électronique a été enregistrée conformément "
+            "à la loi 43-20 relative à l'échange électronique de données "
+            "juridiques.\n\n"
+        ) if preuve else ''
+        bloc_exemplaire = (
+            "Vous trouverez ci-joint votre exemplaire signé pour vos "
+            "archives.\n\n"
+        ) if preuve else ''
         corps = (
             f"{salut}\n\n"
             f"Nous avons bien reçu votre acceptation du devis "
             f"{devis.reference}.\n\n"
-            f"Votre signature électronique a été enregistrée conformément "
-            f"à la loi 43-20 relative à l'échange électronique de données "
-            f"juridiques.\n\n"
+            f"{bloc_signature}"
             f"{acompte_bloc}"
-            f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
+            f"{bloc_exemplaire}"
             f"Merci pour votre confiance.\n\n"
             f"Cordialement,\n{_signature_societe(devis.company)}"
         )
@@ -758,7 +938,8 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
 
     import hashlib
     import time
-    import urllib.parse
+    # QJR147 — ``urllib.parse`` n'est plus nécessaire : le jeton ne part plus
+    # en query string (il est dans le corps JSON, voir plus bas).
     import urllib.request
     import json as _json
 
@@ -772,20 +953,44 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     phone_raw = ''
     if client:
         phone_raw = getattr(client, 'telephone', '') or ''
-    phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
-    phone_hash = _sha256(phone_digits) if phone_digits else ''
+    # ── QJR136 / ES9 — LE TÉLÉPHONE PART EN E.164, PAS EN CHIFFRES NUS ──────
+    #
+    # CE QUI ÉTAIT FAUX. Le hash portait ``''.join(c for c in phone_raw if
+    # c.isdigit())`` — donc « 0600000000 » SANS indicatif pays, alors que Meta
+    # apparie sur un numéro E.164. L'appariement ``ph`` échouait donc
+    # SYSTÉMATIQUEMENT et l'EMQ chutait. La MÊME app expose déjà la règle
+    # (``utils/phone.normalize_phone_e164``), ``apps/adsengine/audiences.py``
+    # l'utilise pour ses uploads Meta, et ce fichier savait le faire cent
+    # lignes plus haut pour le lien wa.me : une quatrième dérivation locale
+    # n'avait aucune raison d'exister.
+    #
+    # Un numéro NON normalisable (local ambigu, saisie incomplète) ne produit
+    # plus un hash faux : il ne produit AUCUNE clé ``ph``.
+    from apps.ventes.utils.phone import normalize_phone_e164
+    phone_e164 = normalize_phone_e164(phone_raw)
+    phone_hash = _sha256(phone_e164) if phone_e164 else ''
 
+    # ── QJR136 / ES8 — AUCUNE VALEUR N'EST ENVOYÉE SI ELLE N'EST PAS SÛRE ───
+    #
     # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
-    # canonique QX1), jamais le TTC brut du devis (mal calibré sur un devis à
-    # 2 options ou avec remise globale). Sans prix d'achat (règle #4).
+    # canonique QX1), jamais le TTC brut du devis. Le repli sur
+    # ``Devis.total_ttc`` était précisément ce TTC BRUT (``models.Devis`` ne
+    # déduit jamais ``remise_globale``) et la SOMME des deux options — le
+    # motif brut-vs-net (QJR22/23/24) survivant dans un repli, et corrompant le
+    # ROAS et l'optimisation d'enchères de la campagne.
+    #
+    # On ne devine plus : quand la chaîne canonique échoue, on N'ENVOIE RIEN.
+    # Un événement manquant se rattrape ; un montant faux entraîne durablement
+    # l'algorithme d'enchères.
     try:
         from apps.ventes.utils.options import option_totaux
         value = float(option_totaux(devis)['ttc'])
     except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
-        try:
-            value = float(getattr(devis, 'total_ttc', None) or 0)
-        except (TypeError, ValueError):
-            value = 0.0
+        logger.warning(
+            'QJR136: CAPI SignedQuote NON envoyé pour devis %s — la valeur de '
+            "conversion canonique est indisponible (aucun montant n'est "
+            'deviné).', getattr(devis, 'reference', '?'), exc_info=True)
+        return
 
     user_data = {}
     if email_hash:
@@ -831,7 +1036,6 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
         'custom_data': custom_data,
     }
 
-    payload = _json.dumps({'data': [event]}).encode('utf-8')
     # ADSENG2 — version depuis la SOURCE UNIQUE partagée (v25 courante), jamais
     # la v19.0 codée en dur (expirée 02/2025 → 400 garanti dès qu'un pixel est
     # configuré). Constante plain (aucun modèle adsengine importé dans ventes).
@@ -845,10 +1049,15 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             getattr(devis, 'reference', '?'), fbclid, utm_source, value)
         return
 
-    params_qs = urllib.parse.urlencode({'access_token': token})
-    full_url = f'{api_url}?{params_qs}'
+    # ── QJR147 / ES7 — LE JETON VOYAGE DANS LE CORPS, PAS EN QUERY STRING ───
+    # L'API Conversions accepte ``access_token`` dans le corps JSON. En query
+    # string, il finit dans les journaux d'accès et les proxys traversés —
+    # risque ENVIRONNEMENTAL (vérifié : ce code ne le journalise pas lui-même,
+    # le ``logger.warning`` du bloc HTTP ne formate que l'exception).
+    payload = _json.dumps(
+        {'data': [event], 'access_token': token}).encode('utf-8')
     req = urllib.request.Request(
-        full_url, data=payload,
+        api_url, data=payload,
         headers={'Content-Type': 'application/json'},
         method='POST',
     )
@@ -863,10 +1072,67 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
                        getattr(devis, 'reference', '?'), exc)
 
 
+def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
+                                 groupe=None):
+    """QJR134 — L'AVAL D'UNE ACCEPTATION, dans la transaction de l'appelant.
+
+    YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles doit
+    effondrer ses SŒURS (même groupe ``version_parent``=racine) plutôt que de
+    les laisser ``is_active=True`` et elles-mêmes acceptables (double comptage
+    du funnel). Ne touche jamais un devis d'un autre groupe ni les révisions
+    déjà terminales. Un devis sans variante est inchangé.
+
+    M6 — puis PUBLIE ``devis_accepted`` : c'est cet événement qui déclenche la
+    chaîne bon-commande / facture / chantier. Il vit ici, avec l'effondrement,
+    parce que les deux forment UNE seule vente : les séparer, c'est exactement
+    l'état partiel qu'ES3 décrit.
+
+    ``groupe`` — les devis du groupe DÉJÀ verrouillés par l'appelant (il les a
+    lus sous ``select_for_update``, dans l'ordre des ``pk``). Absent, ils sont
+    relus et verrouillés ici, dans le même ordre : la fonction est donc
+    utilisable seule, sans jamais relâcher la garantie anti-course.
+
+    N'ATTRAPE RIEN : une exception remonte, donc la transaction de l'appelant
+    est annulée en bloc. C'est le point de QJR134.
+    """
+    from django.db.models import Q
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_accepted
+
+    racine = devis.version_parent_id or devis.pk
+    if groupe is None:
+        groupe = list(
+            Devis.objects
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+    for soeur in groupe:
+        # Le filtre est celui d'hier, mot pour mot — mais appliqué aux lignes
+        # DÉJÀ VERROUILLÉES plutôt que par une seconde requête non verrouillée.
+        if soeur.pk == devis.pk or not soeur.is_active:
+            continue
+        if soeur.company_id != devis.company_id:
+            continue
+        if soeur.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+            continue
+        soeur.statut = Devis.Statut.REFUSE
+        soeur.date_refus = date_acc
+        soeur.motif_refus = 'variante non retenue'
+        soeur.is_active = False
+        soeur.save(update_fields=[
+            'statut', 'date_refus', 'motif_refus', 'is_active'])
+        activity.log_devis_refusal(
+            soeur, user, 'variante non retenue', date_acc)
+
+    devis_accepted.send(
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
-                 idempotent_reaccept=True):
+                 idempotent_reaccept=True, rejouer_aval=False):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -883,13 +1149,21 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     an already-accepted devis raises ``AcceptError(conflict=True)`` → 409,
     preserving the ERR33 re-accept guard.
 
+    QJR134 — TOUT CE QUI ÉCRIT EN BASE EST DANS UNE SEULE TRANSACTION, sous un
+    verrou pris sur le GROUPE DE VARIANTES entier : statut, chatter, preuve de
+    signature, attribution, effondrement des sœurs et ``devis_accepted``
+    tombent ou tiennent ENSEMBLE. Le PDF scellé, les emails et l'événement Meta
+    restent APRÈS le commit (entrées-sorties best-effort). ``rejouer_aval=True``
+    rejoue l'aval d'un devis DÉJÀ accepté — le geste de réparation d'un devis
+    accepté AVANT ce lot, quand le statut pouvait être commité seul.
+
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
     from django.db import transaction
+    from django.db.models import Q
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
-    from core.events import devis_accepted
 
     # QX41 — verrou anti-course sur le chemin public d'acceptation : deux POST
     # concurrents (double-clic / rejeu) pouvaient tous deux passer le contrôle
@@ -907,30 +1181,60 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.now().date()
     with transaction.atomic():
-        try:
-            # NPLUS1 (27/08/2026) — la relecture verrouillée est LA seule
-            # instance utilisée par tout le reste de l'acceptation : ses trois
-            # relations sont jointes ici plutôt que relues paresseusement une
-            # par une plus bas (``_create_esign_record`` → ``devis.company``,
-            # ``_send_acceptance_emails``/``_notify_seller_accepted`` →
-            # ``devis.client``, ``_persist_attribution`` → ``devis.lead``).
-            # Aucun changement de comportement : les mêmes objets, en une
-            # requête.
-            # ``of=('self',)`` est OBLIGATOIRE ici : ``company`` et ``lead``
-            # sont nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL
-            # refuse « FOR UPDATE » sur le côté nullable d'une jointure
-            # externe. On verrouille donc la SEULE ligne devis, exactement le
-            # verrou d'avant (QX41, anti-course sur le double POST).
-            devis = (Devis.objects
-                     .select_related('client', 'company', 'lead')
-                     .select_for_update(of=('self',))
-                     .get(pk=devis.pk))
-        except Devis.DoesNotExist:
+        # ── QJR134 / ES14 — LE GROUPE DE VARIANTES EST VERROUILLÉ EN ENTIER ──
+        #
+        # CE QUI ÉTAIT FAUX. Le verrou ne portait que sur LA ligne du devis
+        # accepté (``of=('self',)``), et l'effondrement des sœurs s'exécutait
+        # hors de lui, sans ``select_for_update`` : deux POST concurrents sur
+        # DEUX jetons du MÊME groupe de variantes basculaient TOUS DEUX en
+        # « accepté » — deux événements, deux chaînes bon-commande/facture pour
+        # une seule vente.
+        #
+        # On verrouille donc TOUT le groupe (la racine et ses variantes), et
+        # dans un ORDRE DÉTERMINISTE (``order_by('pk')``) : deux acceptations
+        # concurrentes sur deux sœurs prennent les verrous dans le MÊME ordre,
+        # donc l'une attend l'autre au lieu de s'inter-bloquer. La seconde
+        # relit alors des sœurs déjà refusées et son propre devis déjà accepté.
+        #
+        # NPLUS1 (27/08/2026, préservé) — les trois relations sont jointes ici
+        # plutôt que relues paresseusement plus bas (``_create_esign_record``
+        # → ``devis.company``, ``_send_acceptance_emails``/
+        # ``_notify_seller_accepted`` → ``devis.client``,
+        # ``_persist_attribution`` → ``devis.lead``).
+        # ``of=('self',)`` reste OBLIGATOIRE : ``company`` et ``lead`` sont
+        # nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL refuse
+        # « FOR UPDATE » sur le côté nullable d'une jointure externe.
+        racine = devis.version_parent_id or devis.pk
+        groupe = list(
+            Devis.objects
+            .select_related('client', 'company', 'lead')
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+        courant = next((d for d in groupe if d.pk == devis.pk), None)
+        if courant is None:
             raise AcceptError('Devis introuvable.', conflict=True)
+        devis = courant
 
         # Re-submit on an already-accepted devis: a no-op for the tokenized
         # web proposal, but rejected (409) for the in-app action (ERR33 guard).
         if devis.statut == Devis.Statut.ACCEPTE:
+            # QJR134 — LE REJEU DE L'AVAL. Depuis ce lot, « accepté » SIGNIFIE
+            # que tout l'aval a été commité avec le statut (voir ci-dessous) :
+            # c'est LE drapeau de complétion. Un devis accepté AVANT ce lot
+            # peut, lui, porter un état partiel (statut commité seul, puis un
+            # abonné en échec) que la garde d'idempotence rendait
+            # définitivement irréparable — ``rejouer_aval=True`` rejoue cet
+            # aval sans retoucher ni le statut, ni le tampon, ni la signature.
+            if rejouer_aval:
+                _effondrer_soeurs_et_publier(
+                    devis=devis, user=user, date_acc=date_acc,
+                    # Un devis accepté vient TOUJOURS de brouillon/envoyé
+                    # (garde ERR33) et le SEUL récepteur qui lit
+                    # ``ancien_statut`` s'en sert pour avancer un funnel qui ne
+                    # recule jamais : le rejeu est donc idempotent.
+                    ancien=Devis.Statut.ENVOYE, groupe=groupe)
+                return devis
             if idempotent_reaccept:
                 return devis
             raise AcceptError('Ce devis est déjà accepté.', conflict=True)
@@ -944,13 +1248,58 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
+        #
+        # ── QJR133 / ES2 (audit du 30/08/2026) — ON NE DEVINE PLUS L'OPTION ──
+        #
+        # CE QUI ÉTAIT FAUX. ``build_quote_data`` était le SEUL détecteur
+        # consulté, et son ``except Exception: nb_options, scenario = 1, ''``
+        # faisait disparaître le garde-fou « deux options → choix explicite »
+        # PUIS retombait sur un repli FIXE (« sans_batterie »). Or l'option
+        # acceptée est AUTORITATIVE en aval (``utils/echeancier`` : « on facture
+        # UNIQUEMENT les lignes de l'option retenue ») : le client se retrouvait
+        # engagé, facturé et approvisionné sur un périmètre qu'il n'avait pas
+        # choisi, sans qu'aucune erreur ne soit levée. Chemin d'atteinte : un
+        # POST public sur ``/proposal/<token>/accept`` sans champ ``option``.
+        #
+        # LA RÈGLE. Quand la détection est INDISPONIBLE et que l'appelant n'a
+        # pas dit l'option, on REFUSE (``AcceptError`` → 400) au lieu d'en
+        # figer une. Le prédicat LÉGER ``deux_options_declarees`` (QJR55 : LE
+        # prédicat du dépôt, deux requêtes, AUCUN rendu de document) sert alors
+        # à formuler le bon refus — « précisez l'option » quand il voit deux
+        # options, sinon « le document n'a pas pu être construit ».
+        #
+        # LE MOTEUR RESTE LE DÉTECTEUR QUAND IL RÉPOND, délibérément : c'est
+        # lui qui a produit le document que le CLIENT a sous les yeux. Faire
+        # trancher le prédicat léger PAR-DESSUS un moteur qui a répondu
+        # « une option » exigerait un choix que l'écran client n'offre pas.
+        #
+        # Un appelant qui a DÉJÀ passé ``option`` n'est jamais bloqué : il n'y
+        # a plus rien à deviner.
+        detection_sure = True
         try:
             from apps.ventes.quote_engine.builder import build_quote_data
             qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
             nb_options = qd.get('nb_options', 1)
             scenario = qd.get('scenario', '')
         except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+            logger.exception(
+                'QJR133 : détection des options indisponible sur le devis %s '
+                "— l'acceptation sans option explicite est refusée.",
+                getattr(devis, 'reference', '?'))
+            detection_sure = False
             nb_options, scenario = 1, ''
+        if not detection_sure and not option:
+            from apps.ventes.utils.options import deux_options_declarees
+            if deux_options_declarees(devis):
+                raise AcceptError(
+                    'Ce devis comporte deux options — précisez celle choisie '
+                    'par le client (« sans_batterie » ou « avec_batterie »).')
+            raise AcceptError(
+                "Le récapitulatif de ce devis n'a pas pu être construit : "
+                "l'option retenue ne peut donc pas être déterminée. "
+                "L'acceptation est refusée plutôt que d'engager le client sur "
+                "un périmètre qu'il n'a pas choisi. Réessayez, ou précisez "
+                'l\'option (« sans_batterie » ou « avec_batterie »).')
         if nb_options == 2 and not option:
             raise AcceptError(
                 'Ce devis comporte deux options — précisez celle choisie par '
@@ -967,42 +1316,77 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis.option_acceptee = option
         devis.save(update_fields=[
             'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
-    activity.log_devis_acceptance(devis, user, nom, date_acc, option)
-    if ip:
-        # Trace the e-signature origin IP in the chatter (Q7) without a new
-        # column — kept beside the acceptance stamp for the audit trail.
-        activity.log_devis_note(
-            devis, user, f'Signature en ligne acceptée — IP {ip}')
 
-    # NPLUS1 (27/08/2026) — LES LIGNES DU DEVIS, CHARGÉES UNE SEULE FOIS. Le
-    # statut vient d'être basculé sous verrou : les lignes ne changent plus
-    # pendant la suite de l'acceptation. Elles alimentent l'empreinte de
-    # signature (``compute_content_hash``) ET l'acompte de l'email
-    # (``_acceptance_deposit_block`` → ``next_tranche`` → ``option_totaux``),
-    # qui refaisaient chacun leur propre requête lignes+produit. Best-effort :
-    # un échec de chargement rend ``None`` et chaque appelé requête comme
-    # avant — jamais une acceptation cassée pour une optimisation.
-    try:
-        lignes_devis = list(devis.lignes.select_related('produit').all())
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        lignes_devis = None
+        # ── QJR134 / ES3 — L'AVAL EST DANS LA MÊME TRANSACTION ─────────────
+        #
+        # CE QUI ÉTAIT FAUX. Le ``with transaction.atomic()`` se refermait
+        # ICI : le statut était commité SEUL, puis chatter, signature,
+        # attribution, effondrement des sœurs et ``devis_accepted.send``
+        # s'exécutaient hors transaction et hors verrou, sans
+        # ``ATOMIC_REQUESTS`` (vérifié : absent des settings). Un échec chez
+        # UN abonné (``send()`` propage la première exception) laissait un
+        # devis « accepté » SANS bon de commande ni facture — et la garde
+        # d'idempotence rendait le rejeu impossible : l'état partiel était
+        # PERMANENT et SILENCIEUX.
+        #
+        # Tout ce qui écrit en BASE est donc remonté ici : soit la vente
+        # entière est enregistrée, soit RIEN ne l'est et le client peut
+        # simplement re-signer. « accepté » redevient ainsi un drapeau de
+        # complétion qui dit la vérité.
+        #
+        # CE QUI RESTE DEHORS, et pourquoi : le PDF scellé, les emails et
+        # l'événement Meta sont des ENTRÉES-SORTIES. Les exécuter dans la
+        # transaction tiendrait les verrous pendant un rendu de document et un
+        # appel réseau — et surtout, un email annonçant une vente qui vient
+        # d'être annulée par un rollback serait pire que pas d'email du tout.
+        activity.log_devis_acceptance(devis, user, nom, date_acc, option)
+        if ip:
+            # Trace the e-signature origin IP in the chatter (Q7) without a new
+            # column — kept beside the acceptance stamp for the audit trail.
+            activity.log_devis_note(
+                devis, user, f'Signature en ligne acceptée — IP {ip}')
 
-    # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
-    # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
-    # on ne crée pas de second enregistrement — la signature d'origine fait foi.
-    _create_esign_record(
-        devis=devis, nom=nom, ip=ip,
-        user_agent=user_agent, consentement=consentement,
-        signature_image=signature_image, signed_at_client=signed_at_client,
-        on_behalf_of=on_behalf_of, lignes=lignes_devis,
-    )
-    # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
-    # du devis pour que l'attribution reste lossless même si le lead est fusionné.
-    try:
-        _persist_attribution(devis=devis)
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning('QJ9: _persist_attribution échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+        # NPLUS1 (27/08/2026) — LES LIGNES DU DEVIS, CHARGÉES UNE SEULE FOIS.
+        # Le statut vient d'être basculé sous verrou : les lignes ne changent
+        # plus pendant la suite de l'acceptation. Elles alimentent l'empreinte
+        # de signature (``compute_content_hash``) ET l'acompte de l'email
+        # (``_acceptance_deposit_block`` → ``next_tranche`` →
+        # ``option_totaux``), qui refaisaient chacun leur propre requête
+        # lignes+produit. Best-effort : un échec de chargement rend ``None`` et
+        # chaque appelé requête comme avant — jamais une acceptation cassée
+        # pour une optimisation.
+        try:
+            lignes_devis = list(devis.lignes.select_related('produit').all())
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            lignes_devis = None
+
+        # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
+        # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
+        # on ne crée pas de second enregistrement — la signature d'origine fait
+        # foi.
+        _create_esign_record(
+            devis=devis, nom=nom, ip=ip,
+            user_agent=user_agent, consentement=consentement,
+            signature_image=signature_image, signed_at_client=signed_at_client,
+            on_behalf_of=on_behalf_of, lignes=lignes_devis,
+        )
+        # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
+        # etude_params du devis pour que l'attribution reste lossless même si
+        # le lead est fusionné.
+        try:
+            _persist_attribution(devis=devis)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'QJ9: _persist_attribution échoué pour devis %s : %s',
+                getattr(devis, 'reference', '?'), exc)
+
+        # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
+        # l'événement, sous le verrou du groupe pris plus haut.
+        _effondrer_soeurs_et_publier(
+            devis=devis, user=user, date_acc=date_acc, ancien=ancien,
+            groupe=groupe)
+
+    # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -1021,31 +1405,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
-    # YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles
-    # doit effondrer ses SŒURS (même groupe version_parent=root) plutôt que
-    # de les laisser is_active=True et elles-mêmes acceptables (double
-    # comptage du funnel). Ne touche jamais un devis d'un autre groupe ni les
-    # révisions déjà terminales. Un devis sans variante est inchangé.
-    from django.db.models import Q
-    root = devis.version_parent_id or devis.id
-    siblings = Devis.objects.filter(
-        company=devis.company, is_active=True,
-        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
-    ).filter(
-        Q(version_parent_id=root) | Q(pk=root)
-    ).exclude(pk=devis.pk)
-    for sibling in siblings:
-        sibling.statut = Devis.Statut.REFUSE
-        sibling.date_refus = date_acc
-        sibling.motif_refus = 'variante non retenue'
-        sibling.is_active = False
-        sibling.save(update_fields=[
-            'statut', 'date_refus', 'motif_refus', 'is_active'])
-        activity.log_devis_refusal(
-            sibling, user, 'variante non retenue', date_acc)
-
-    devis_accepted.send(
-        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
     # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
     try:
@@ -1298,7 +1657,11 @@ def renouveler_devis(devis, *, user=None):
             lead=devis.lead, statut=Devis.Statut.BROUILLON,
             taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
             note=devis.note, mode_installation=devis.mode_installation,
-            etude_params=devis.etude_params,
+            # QJR117 / CS6 — le renouvellement RE-TARIFE les lignes au
+            # catalogue courant : garder l'étude chiffrée aux ANCIENS prix
+            # servait au client un devis dont les lignes disent un prix et
+            # dont le payback en dit un autre. La CONFIGURATION reste.
+            etude_params=etude_params_pour_copie(devis.etude_params),
             prix_cible_kwc=devis.prix_cible_kwc,
             echeancier=devis.echeancier, devise=devis.devise,
             taux_change=devis.taux_change, entite=devis.entite,
@@ -1309,35 +1672,35 @@ def renouveler_devis(devis, *, user=None):
     create_numbered(Devis, company, 'devis', _save)
     nouveau = cree['obj']
 
-    for ligne in devis.lignes.all().select_related('produit'):
-        prix = ligne.prix_unitaire
-        # QJR84 / D12 — un prix TAPÉ par le commercial n'est pas re-tarifé,
-        # même par un renouvellement : c'est un prix NÉGOCIÉ, pas une valeur
-        # de catalogue périmée. Sans cette garde, le marqueur ``prix_manuel``
-        # recopié plus bas protégerait une valeur qui vient d'être réécrite.
-        if ligne.produit_id is not None and not ligne.prix_manuel:
-            try:
-                prix = prix_applicable(
-                    produit=ligne.produit, client=devis.client,
-                    quantite=ligne.quantite)['prix']
-            except Exception:  # noqa: BLE001 — repli sur le prix historique
-                logger.exception(
-                    'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
-                prix = ligne.prix_unitaire
-        creer_ligne(
-            nouveau, produit=ligne.produit,
-            designation=ligne.designation, quantite=ligne.quantite,
-            prix_unitaire=prix, remise=ligne.remise,
-            taux_tva=ligne.taux_tva, type_ligne=ligne.type_ligne,
-            ordre=ligne.ordre, groupe_index=ligne.groupe_index,
-            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle,
-            # QJR84 — le renouvellement RECOPIE le devis : les marqueurs de
-            # saisie manuelle (D12) et l'option servie (L-2OPT) font partie de
-            # ce qui est recopié, sinon le nouveau devis rouvre à la
-            # réécriture des prix négociés et perd son découpage en options.
-            variante=ligne.variante,
-            quantite_manuelle=ligne.quantite_manuelle,
-            prix_manuel=ligne.prix_manuel)
+    def _prix_courant(ligne):
+        """Le prix que CE renouvellement pose sur la ligne clonée.
+
+        QJR84 / D12 — un prix TAPÉ par le commercial n'est pas re-tarifé,
+        même par un renouvellement : c'est un prix NÉGOCIÉ, pas une valeur de
+        catalogue périmée. Sans cette garde, le marqueur ``prix_manuel``
+        cloné protégerait une valeur qui vient d'être réécrite.
+        """
+        if ligne.produit_id is None or ligne.prix_manuel:
+            return ligne.prix_unitaire
+        try:
+            return prix_applicable(
+                produit=ligne.produit, client=devis.client,
+                quantite=ligne.quantite)['prix']
+        except Exception:  # noqa: BLE001 — repli sur le prix historique
+            logger.exception(
+                'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
+            return ligne.prix_unitaire
+
+    # QJR116 — le renouvellement clone par le MÊME cloneur unique que le
+    # duplicata et la gamme sœur (``domain/lignes.cloner_lignes``) ; il n'y
+    # ajoute que sa re-tarification. C'est là que la liste maintenue à la
+    # main avait le plus divergé : elle clonait ``optionnelle`` sans
+    # ``variante``, et aucune des trois ne clonait ``lot``.
+    cloner_lignes(devis, nouveau, prix_unitaire=_prix_courant)
+    # QJR117 — les études du RENOUVELLEMENT sont recalculées sur ses lignes
+    # RE-TARIFÉES (force : le dimensionnement se court-circuite sinon sur
+    # empreinte concordante, et l'édition de ligne ne rattrape pas).
+    rafraichir_etudes_du_devis(nouveau, force=True)
 
     activity.log_devis_note(
         nouveau, user,
@@ -1462,7 +1825,11 @@ def verifier_devis_envoyable(devis):
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
 # lire un module à moitié construit. Chacun vise le module qui PORTE le corps —
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
-from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+from apps.ventes.domain.etudes import (  # noqa: E402,F401
+    etude_params_pour_copie,
+    rafraichir_etudes_du_devis,
+    refresh_marge_snapshot,
+)
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402,F401
+from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402,F401
 from apps.ventes.domain.tarification import prix_applicable  # noqa: E402,F401

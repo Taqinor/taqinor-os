@@ -193,6 +193,10 @@ otp_lecture_verified = _cycle_vie.otp_lecture_verified
 _send_otp_whatsapp = _cycle_vie._send_otp_whatsapp
 _send_otp_email = _cycle_vie._send_otp_email
 _create_esign_record = _cycle_vie._create_esign_record
+# QJR144 — le VÉRIFICATEUR du sceau d'un devis signé (le hash existait, rien ne
+# savait le recomparer). Nom PUBLIC : il est déclaré dans `__all__` et dans le
+# pin `tests/test_services_surface.py`, mis à jour dans le même commit.
+verifier_empreinte_signature = _cycle_vie.verifier_empreinte_signature
 _store_signed_pdf = _cycle_vie._store_signed_pdf
 _acceptance_deposit_block = _cycle_vie._acceptance_deposit_block
 _send_acceptance_emails = _cycle_vie._send_acceptance_emails
@@ -683,6 +687,7 @@ __all__ = [
     'ventiler_avance',
     'verifier_credit_hold',
     'verifier_devis_envoyable',
+    'verifier_empreinte_signature',
     'verifier_sale_warnings',
     'zone_toit_depuis_contour',
 ]

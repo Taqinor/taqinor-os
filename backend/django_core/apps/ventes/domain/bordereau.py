@@ -451,7 +451,7 @@ def _signature_specs_bordereau(a_ecrire):
 
 
 def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
-                                     avertissements):
+                                     avertissements, mode):
     """Rouvre le brouillon déjà issu de ce bordereau — RAFRAÎCHI s'il diverge.
 
     Un brouillon n'engage personne : quand le bordereau a bougé (lignes, P.U.,
@@ -468,7 +468,13 @@ def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
         Decimal(devis.taux_tva or 0)
         == Decimal(bordereau.taux_tva_defaut or 20)
         and Decimal(devis.remise_globale or 0)
-        == Decimal(bordereau.remise_globale_pct or 0))
+        == Decimal(bordereau.remise_globale_pct or 0)
+        # QJR129 / CS7 — un brouillon d'AVANT ce correctif porte un mode VIDE,
+        # que le discriminateur de rendu lit comme « résidentiel » : il part
+        # alors au client dans la présentation « proposition solaire
+        # résidentielle ». C'est une divergence d'en-tête comme les deux
+        # autres, réalignée à la réouverture (une seule fois par devis).
+        and (devis.mode_installation or '') == mode)
 
     if memes_lignes and memes_entetes:
         return (devis, {
@@ -485,12 +491,13 @@ def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
             creer_ligne(devis, **spec)
         devis.taux_tva = Decimal(bordereau.taux_tva_defaut or 20)
         devis.remise_globale = Decimal(bordereau.remise_globale_pct or 0)
+        devis.mode_installation = mode
         etude = dict(devis.etude_params or {})
         etude['origine'] = origine
         devis.etude_params = etude
         # ``update_fields`` EXCLUT ``statut`` (règle #4).
         devis.save(update_fields=['taux_tva', 'remise_globale',
-                                  'etude_params'])
+                                  'mode_installation', 'etude_params'])
     refresh_marge_snapshot(devis)
     logger.info(
         'Devis %s RAFRAÎCHI depuis le bordereau %s (%d ligne(s))',
@@ -686,6 +693,17 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
         'clause_reserve': clause,
     }
 
+    # QJR129 / CS7 — LE MARCHÉ DU DEVIS, JAMAIS UN BLANC. Un bordereau AO est
+    # un marché de travaux à prix unitaires (« Terrassement (m³) ») : laissé à
+    # NULL, il partait au client dans la présentation « proposition solaire
+    # résidentielle », page publique comprise. Le marché DÉCLARÉ par le lead
+    # prime QUAND ce chemin l'a résolu (client non fourni) ; à défaut
+    # INDUSTRIEL, le marché des appels d'offres. Aucune requête de plus : on ne
+    # va PAS chercher le lead de l'affaire quand l'appelant a fourni le client.
+    from apps.ventes.domain.creation import mode_installation_declare
+    mode = mode_installation_declare(
+        lead, defaut=Devis.ModeInstallation.INDUSTRIEL)
+
     # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
     # Placée APRÈS la construction des lignes : c'est elle qui permet de
     # COMPARER l'existant au bordereau d'aujourd'hui plutôt que de le renvoyer
@@ -696,7 +714,7 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
     if existant is not None:
         return _reouvrir_devis_depuis_bordereau(
             existant, bordereau=bordereau, a_ecrire=a_ecrire, origine=origine,
-            avertissements=avertissements)
+            avertissements=avertissements, mode=mode)
 
     def _creer(reference):
         devis = Devis.objects.create(
@@ -707,6 +725,7 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
             statut=Devis.Statut.BROUILLON,
             taux_tva=Decimal(bordereau.taux_tva_defaut or 20),
             remise_globale=Decimal(bordereau.remise_globale_pct or 0),
+            mode_installation=mode,
             created_by=user,
             etude_params={'origine': origine},
         )
