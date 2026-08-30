@@ -156,7 +156,7 @@ class LeDrapeauEstBaisseParDefaut(SimpleTestCase):
                 services.arbitrer_compte_calepinage(
                     layout_avec_geometrie(), 12))
         finally:
-            services.compte_moteur_du_layout = original
+            geometrie.compte_moteur_du_layout = original
         self.assertEqual(appels, [])
 
 
@@ -243,8 +243,14 @@ class DrapeauOnLeMoteurDonneLeCompte(_Base):
         def _explose(_layout, **_kwargs):
             raise RuntimeError('moteur indisponible')
 
-        original = services.compte_moteur_du_layout
-        services.compte_moteur_du_layout = _explose
+        # QJR72 — LE LECTEUR EST `domain/geometrie`, PAS LA FAÇADE.
+        # `arbitrer_compte_calepinage` y est défini et y lit
+        # `compte_moteur_du_layout` dans les globales de SON module ; le nom
+        # que `services` porte n'est qu'un ré-export, un cliché pris à
+        # l'import. Remplacer la façade laissait donc le vrai moteur tourner,
+        # et la panne simulée n'arrivait jamais.
+        original = geometrie.compte_moteur_du_layout
+        geometrie.compte_moteur_du_layout = _explose
         try:
             self.assertIsNone(
                 services.arbitrer_compte_calepinage(
