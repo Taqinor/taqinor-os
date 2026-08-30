@@ -2664,7 +2664,12 @@ export default function DevisGenerator({
   // toute action ultérieure referme la fenêtre côté reducer.
   useEffect(() => {
     if (!recalcDimTick) return
-    Promise.resolve(handleAutoFill()).catch(() => {})
+    // Différé en MICROTÂCHE (règle react-hooks/set-state-in-effect — les
+    // setState du préfixe synchrone de `handleAutoFill` cascaderaient dans
+    // l'effet). Aucun événement utilisateur ni re-rendu ne peut s'intercaler
+    // avant une microtâche, et `handleAutoFill` lit la fenêtre `recalcul` par
+    // CLÔTURE du rendu qui l'a ouverte — F2 reste satisfait à l'identique.
+    queueMicrotask(() => { Promise.resolve(handleAutoFill()).catch(() => {}) })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au compteur de composition du reducer
   }, [recalcDimTick])
 
