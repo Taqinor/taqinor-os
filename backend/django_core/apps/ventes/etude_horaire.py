@@ -1195,7 +1195,8 @@ JOURS_TYPES_PUBLICS_MOIS = (1, 4, 7, 11)
 
 
 def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
-                        lon=None, occupation=None, equipements=None):
+                        lon=None, occupation=None, equipements=None,
+                        jour_reference=None):
     """T4 (24/08/2026) — les 4 mois « jour type » du payload public
     ``jours_types`` (contrat ``apps/web/src/lib/proposition.ts
     ProposalResponse.jours_types``) : ``{"1"|"4"|"7"|"11": {prod_kw[24],
@@ -1213,6 +1214,14 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     des quatre mois publics manque (saison sans forme PVGIS) — discipline
     « tout ou rien » côté page (``proposalJoursTypes``) : jamais un jeu
     partiel. Ne lève jamais.
+
+    ``jour_reference`` — QJR164/QJR45 : la DATE contre laquelle le moteur
+    calcule (fenêtre Ramadan). Ce jeu part au CLIENT (payload public
+    ``jours_types``) : sans elle, il retombait sur l'horloge du serveur au
+    moment du rendu, donc un même devis pouvait servir deux jours types
+    différents selon l'heure d'affichage — le pipeline pose la date, on la
+    transmet. ``None`` ⇒ repli d'horloge posé au fond, dans
+    :func:`jours_types_annee` et nulle part ailleurs.
     """
     try:
         from .solar_design import hourly_self_consumption
@@ -1220,7 +1229,8 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         jours_types, _avertissements, _sources = jours_types_annee(
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
             ville=ville, lat=lat, lon=lon,
-            occupation=occupation, equipements=equipements)
+            occupation=occupation, equipements=equipements,
+            jour_reference=jour_reference)
         if not jours_types:
             return None
         par_mois = {j['mois']: j for j in jours_types}
@@ -1358,7 +1368,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                                  nb_packs_plancher=0,
                                  ville=None, lat=None, lon=None,
                                  occupation=None, equipements=None,
-                                 puissances_par_pack=None):
+                                 puissances_par_pack=None,
+                                 jour_reference=None):
     """COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
     DOIT MONTRER : la part de la consommation du client réellement COUVERTE
     (solaire direct + batterie) pour chaque N, heure par heure ET sur l'année,
@@ -1390,6 +1401,13 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
     ``None`` (jamais un chiffre inventé) quand l'année n'est pas complète,
     quand la capacité utile d'un pack n'est pas connue, ou sur toute erreur —
     la page garde alors EXACTEMENT son affichage d'avant. Ne lève jamais.
+
+    ``jour_reference`` — QJR164/QJR45 : même transmission que les trois autres
+    appelants de :func:`jours_types_annee`. Ce bloc part au CLIENT (payload
+    ``couverture_batterie``) ; il doit donc rejouer les jours types du MÊME
+    jour que l'étude complète et le balayage, pas ceux de l'horloge du serveur
+    au moment du rendu. ``None`` ⇒ repli d'horloge posé au fond, dans
+    :func:`jours_types_annee` et nulle part ailleurs.
     """
     try:
         capacite_pack = _num(capacite_utile_pack_kwh)
@@ -1414,7 +1432,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
         jours_types, _avertissements, _sources = jours_types_annee(
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
             ville=ville, lat=lat, lon=lon,
-            occupation=occupation, equipements=equipements)
+            occupation=occupation, equipements=equipements,
+            jour_reference=jour_reference)
         if not jours_types or len(jours_types) != 12:
             return None
 
