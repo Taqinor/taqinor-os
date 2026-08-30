@@ -317,9 +317,383 @@ def verifier(intention):
     return erreurs or None
 
 
+# ── QJR85 — `appliquer()` : L'ORDRE UNIQUE DES HUIT ÉTAPES ──────────────────
+#
+# Constat QB85 (audit L3 du 29/08/2026) : les CINQ origines d'un devis
+# enchaînent les mêmes étapes, mais chacune dans SON ordre, avec SES oublis.
+# Ce n'est pas une divergence de règles — les règles, elles, viennent d'être
+# rendues communes (QJR80 `composer`, QJR82 `verifier`, QJR83/QJR84
+# `ecrire_lignes`, QJR62 `ecrire_etude_params`, L-1V `rafraichir_etudes`) —
+# c'est une divergence d'ORDONNANCEMENT. Et un ordonnancement qui diverge
+# produit des devis qui divergent : QJR20 a documenté le cas le plus cher, où
+# les quatre études repartaient de la composition d'AVANT parce que personne
+# n'avait relu l'instance verrouillée.
+#
+# ``appliquer`` est donc DÉLIBÉRÉMENT SANS RÈGLE PROPRE : elle ne compose pas,
+# ne dimensionne pas, ne tarife pas. Elle APPELLE, dans l'ordre, huit étapes
+# déjà en service, et c'est tout ce qu'elle fait. C'est ce qui la rend
+# relisable, et c'est ce qui rendra chaque bascule (M5) vérifiable par un
+# simple golden.
+#
+# AUCUN DES CINQ CHEMINS NE L'APPELLE ENCORE — c'est voulu, et c'est la
+# condition de sûreté de cette vague : la fonction est posée, testée, et les
+# bascules sont M5 (QJR93 et suivantes), une par une, chacune avec son golden.
+
+#: QJR85 — les CINQ origines d'un devis. Elles ne changent AUCUNE règle : elles
+#: nomment d'où vient la demande (journal, propriétaire d'étude, message).
+ORIGINE_ECRAN = 'ecran'
+ORIGINE_CALEPINAGE = 'calepinage'
+ORIGINE_AUTO = 'auto'
+ORIGINE_TUNNEL = 'tunnel'
+ORIGINE_RESYNCHRONISATION = 'resynchronisation'
+ORIGINES = (ORIGINE_ECRAN, ORIGINE_CALEPINAGE, ORIGINE_AUTO,
+            ORIGINE_TUNNEL, ORIGINE_RESYNCHRONISATION)
+
+#: LES HUIT ÉTAPES, dans l'ordre, nommées UNE fois. Le journal rendu par
+#: ``appliquer`` les liste dans l'ordre où elles ont réellement tourné : c'est
+#: ce que le test d'ordre assertit, et ce qu'une bascule pourra comparer.
+ETAPES = ('resoudre_entrees', 'decider_taille', 'composer', 'verifier',
+          'ecrire_lignes', 'ecrire_etude_params', 'rafraichir_etudes',
+          'finaliser')
+
+
+@dataclass(frozen=True)
+class CibleDevis:
+    """Le CHAMP PV arrêté par l'étape 2 — ce que le devis va vendre.
+
+    GELÉ : une cible arrêtée ne se retouche pas en cours de pipeline ; on en
+    dérive une autre (``dataclasses.replace``) si un plafond de toit mord.
+    """
+
+    nb_panneaux: int = 0
+    panel_watt: object = None
+    kwc: float = 0.0
+    source: str = ''
+    dimensionnement_avec: object = None
+
+
+@dataclass(frozen=True)
+class IntentionDevis:
+    """LE jeu de paramètres du pipeline entier — un seul, pour les cinq
+    origines. GELÉ, pour la même raison qu'``IntentionComposition``.
+
+    * ``origine`` — laquelle des cinq (``ORIGINES``) ;
+    * ``company`` / ``user`` — jamais lus d'un corps de requête ;
+    * ``lead`` / ``client`` — au moins un des deux ; le client se résout depuis
+      le lead par ``crm.services.resolve_client_for_lead``, jamais ici ;
+    * ``mode_installation`` — le marché (``Devis.ModeInstallation``) ;
+    * ``entrees`` — un ``EntreesMoteur`` DÉJÀ lu, quand l'appelant l'a
+      (l'étape 1 le relit sinon) ;
+    * ``cible`` — une ``CibleDevis`` DÉJÀ arrêtée, quand l'appelant l'a
+      (l'étape 2 la demande au moteur horaire sinon). C'est ce qui permet à
+      l'écran et au calepinage — où le commercial a DÉJÀ tranché — de ne pas
+      se faire redimensionner sous les pieds ;
+    * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'`` ; vide ⇒
+      ``'les_deux'`` (le défaut fondateur U2) ;
+    * ``layout`` — le calepinage 3D, quand il y en a un ;
+    * ``overrides`` — le patch de surcharges déclarées (QJR58), appliqué par
+      ``domain/overrides`` — jamais réinventé ici ;
+    * ``exact`` — la cible vient d'un NOMBRE TAPÉ, pas d'un toit : les deux
+      options y sont portées à la hausse comme à la baisse (cf.
+      ``sync_devis_from_layout(cible_exacte=...)``).
+    """
+
+    origine: str
+    company: object
+    user: object = None
+    lead: object = None
+    client: object = None
+    mode_installation: str = 'residentiel'
+    entrees: object = None
+    cible: object = None
+    scenario: str = ''
+    layout: object = None
+    overrides: object = None
+    exact: bool = False
+    taux_tva: Decimal = Decimal('20')
+    remise_globale: Decimal = Decimal('0')
+    structure_type: str = 'acier'
+    mppt_paires: int = 1
+    phase: object = None
+    gamme_nom_devis: object = None
+
+
+def _scenario_de(intention):
+    """Le scénario du pipeline : celui de l'intention, sinon LES DEUX (U2)."""
+    demande = (intention.scenario or '').strip().lower()
+    return demande if demande in SCENARIOS_COMPOSABLES else COMPOSITION_LES_DEUX
+
+
+def resoudre_entrees(devis, intention):
+    """Étape 1 — LES ENTRÉES du moteur, lues UNE fois et par une seule
+    fonction (``domain/entrees``, QJR42/QJR43).
+
+    L'intention peut les porter déjà lues (l'appelant vient de les afficher) :
+    on ne relit alors rien — deux lectures donneraient deux dimensionnements.
+    """
+    if intention.entrees is not None:
+        return intention.entrees
+    if devis is not None and getattr(devis, 'pk', None) is not None:
+        return entrees_depuis_devis(devis)
+    if intention.lead is not None:
+        return entrees_depuis_lead(intention.lead, intention.company)
+    return None
+
+
+def decider_taille(intention, entrees):
+    """Étape 2 — LE CHAMP PV.
+
+    Le pipeline NE REDIMENSIONNE PAS de sa propre initiative : une cible déjà
+    arrêtée par l'appelant (écran, calepinage, puissance demandée) est
+    SOUVERAINE. À défaut, et seulement à défaut, le moteur horaire tranche —
+    le seul dimensionneur, ordre fondateur du 29/08/2026 (« ALL sizing should
+    go through the new sizing tool ») — et son refus est NOMMÉ, jamais remplacé
+    par un repli forfaitaire.
+    """
+    if intention.cible is not None:
+        return intention.cible
+    if intention.lead is None:
+        return None
+    nb_panneaux, watt, source, avec = _panneaux_dimensionnement_horaire(
+        lead=intention.lead, company=intention.company,
+        phase=phase_client_pour_dimensionnement(intention.lead))
+    if nb_panneaux <= 0:
+        raise _refus_dimensionnement(source)
+    watt = watt or _AUTO_PANEL_WATT
+    return CibleDevis(
+        nb_panneaux=nb_panneaux, panel_watt=watt,
+        kwc=round(nb_panneaux * float(watt) / 1000.0, 2),
+        source=source, dimensionnement_avec=avec)
+
+
+def intention_de_composition(intention, cible, *, avertissements=None):
+    """Traduit l'intention de devis en intention de COMPOSITION (étapes 3-4).
+
+    Pure traduction : aucun choix n'est fait ici, tout vient de l'intention ou
+    de la cible que l'étape 2 a arrêtée.
+    """
+    cible = cible or CibleDevis()
+    return IntentionComposition(
+        company=intention.company,
+        kwc=cible.kwc,
+        nb_panneaux=cible.nb_panneaux,
+        panel_watt=cible.panel_watt,
+        scenario=_scenario_de(intention),
+        structure_type=intention.structure_type,
+        taux_tva=intention.taux_tva,
+        mppt_paires=intention.mppt_paires,
+        phase=intention.phase,
+        gamme_nom_devis=intention.gamme_nom_devis,
+        dimensionnement_avec=cible.dimensionnement_avec,
+        avertissements=avertissements,
+    )
+
+
+def ecrire_lignes(devis, composition, *, company, avertissements=None):
+    """Étape 5 — les lignes, par L'ÉCRIVAIN UNIQUE (QJR73 + QJR84).
+
+    L'ordre VOULU est posé EXPLICITEMENT (``ordre=index``), jamais laissé au
+    tri de repli sur ``id`` : sans lui l'ordre par défaut de la société (PVORD)
+    ne survivrait pas à la première renumérotation. La re-tarification des
+    forfaits au panneau (QJR83) est faite par l'écrivain lui-même.
+    """
+    lignes_in = [
+        {
+            'produit': getattr(spec.produit, 'id', None),
+            'designation': spec.designation,
+            'quantite': str(spec.quantite),
+            'prix_unitaire': str(spec.prix_unitaire),
+            'ordre': index,
+            'variante': getattr(spec, 'variante', '') or '',
+        }
+        for index, spec in enumerate(composition or ())
+    ]
+    return remplacer_lignes(devis, lignes_in, company,
+                            avertissements=avertissements)
+
+
+def ecrire_etude_params(devis, intention, composition):
+    """Étape 6 — l'étude, par L'ÉCRIVAIN UNIQUE d'``etude_params`` (QJR62).
+
+    Le pipeline n'écrit ici que ce qu'il vient lui-même d'arrêter : le
+    SCÉNARIO réellement servable par les lignes (même garde anti-mensonge que
+    ``_scenario_stocke`` — « Les deux » exige les deux onduleurs ET la
+    batterie) et, quand un calepinage est fourni, la production et les
+    économies qu'il porte. Le kWc, lui, a un propriétaire séparé
+    (``poser_puissance_kwc``, QJR63) : il est posé à l'étape 8, sur les lignes
+    RÉELLEMENT écrites.
+    """
+    a_batterie = any(_is_battery(s.designation) for s in (composition or ()))
+    a_hybride = any(_is_hybrid_inverter(s.designation)
+                    for s in (composition or ()))
+    a_reseau = any(_is_reseau_inverter(s.designation)
+                   for s in (composition or ()))
+    if (_scenario_de(intention) == COMPOSITION_LES_DEUX
+            and a_reseau and a_hybride and a_batterie):
+        scenario = SCENARIO_LES_DEUX
+    else:
+        scenario = _scenario_stocke(a_batterie and a_hybride)
+
+    cles = {'scenario': scenario}
+    resultat = (intention.layout or {}).get('result') or {}
+    if resultat.get('annualKwh') is not None:
+        cles['production_annuelle'] = int(resultat['annualKwh'])
+    if resultat.get('savings') is not None:
+        cles['economies_annuelles'] = int(resultat['savings'])
+    return ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
+
+
+def rafraichir_etudes(verrou):
+    """Étape 7 — LES QUATRE études, sur l'instance VERROUILLÉE **ET RELUE**.
+
+    QJR20 (29/08/2026) — LA RELECTURE N'EST PAS UNE PRÉCAUTION, C'EST L'ÉTAPE.
+    Les quatre études repartent des LIGNES du devis ; l'instance que le
+    pipeline tient a été chargée AVANT l'écriture (et, côté viewset, avec un
+    ``prefetch_related('lignes')``). Sans relecture, elles recalculent sur la
+    composition d'AVANT et RÉÉCRIVENT ``etude_params`` par-dessus ce que les
+    étapes 5-6 viennent d'y poser — la conception électrique, seule des quatre
+    à n'être jamais recalculée à la lecture, PERSISTE alors un schéma faux.
+
+    ``refresh_from_db()`` sans ``fields`` vide déjà
+    ``_prefetched_objects_cache`` (Django) ; le vidage explicite est une
+    ceinture, pour que ce contrat ne dépende pas d'un détail du framework.
+    """
+    verrou.refresh_from_db()
+    verrou._prefetched_objects_cache = {}
+    return rafraichir_etudes_du_devis(verrou)
+
+
+def finaliser(devis, intention):
+    """Étape 8 — le kWc par son propriétaire, la marge interne, le schéma.
+
+    Les trois sont BEST-EFFORT et n'annulent jamais un devis écrit :
+    ``poser_puissance_kwc`` (QJR63 — le kWc vient des LIGNES, pas du layout),
+    ``refresh_marge_snapshot`` (QX23be, manager-only) et
+    ``concevoir_electrique_du_devis`` (PV42).
+    """
+    poser_puissance_kwc(devis)
+    refresh_marge_snapshot(devis)
+    concevoir_electrique_du_devis(devis, origine=intention.origine)
+    return devis
+
+
+def _verrouiller(devis):
+    """Recharge le devis sous ``select_for_update`` — l'instance que le
+    pipeline écrit, et la seule que l'étape 7 relit."""
+    from apps.ventes.models import Devis
+
+    return Devis.objects.select_for_update().get(pk=devis.pk)
+
+
+def _creer_brouillon(intention):
+    """Le devis n'existe pas encore : on le crée BROUILLON, avec la
+    numérotation anti-collision (``core.numbering``, JAMAIS count()+1).
+
+    Le client est résolu depuis le lead par ``crm.services`` — la frontière
+    cross-app sanctionnée, jamais un import de ``crm.models``.
+    """
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    client = intention.client
+    if client is None:
+        if intention.lead is None:
+            raise ValueError(
+                'appliquer() exige un lead ou un client pour créer un devis.')
+        from apps.crm.services import resolve_client_for_lead
+        client = resolve_client_for_lead(intention.lead)
+
+    def _create(reference):
+        return Devis.objects.create(
+            company=intention.company, reference=reference,
+            client=client, lead=intention.lead,
+            statut=Devis.Statut.BROUILLON,
+            taux_tva=intention.taux_tva,
+            remise_globale=intention.remise_globale,
+            created_by=intention.user,
+            mode_installation=intention.mode_installation,
+            roof_layout=intention.layout or None,
+        )
+
+    return create_with_reference(Devis, 'DEV', intention.company, _create)
+
+
+def appliquer(devis, intention):
+    """QJR85 — L'ORDRE UNIQUE des huit étapes. AUCUNE règle nouvelle.
+
+    ``devis`` peut être ``None`` : le pipeline crée alors un BROUILLON (aucun
+    statut aval n'est jamais touché — règle #4). Sinon il VERROUILLE le devis
+    reçu et travaille sur l'instance verrouillée.
+
+    Rend un dict ``{'devis', 'etapes', 'entrees', 'cible', 'composition',
+    'avertissements'}``. ``etapes`` liste les étapes DANS L'ORDRE OÙ ELLES ONT
+    RÉELLEMENT TOURNÉ — c'est le contrat que le test assertit, et ce qu'une
+    bascule (M5) pourra comparer à l'ancien chemin.
+
+    Lève ``AutoDevisError`` quand l'étape 4 refuse : refuser AVANT d'écrire
+    vaut mieux que créer puis effacer (un devis effacé rendrait sa référence
+    au compteur, et le numéro suivant la reprendrait).
+
+    **AUCUN des cinq chemins n'appelle encore cette fonction** (QJR85) : les
+    bascules sont M5, une par une, chacune avec son golden.
+    """
+    if intention.origine not in ORIGINES:
+        raise ValueError(
+            'Origine de devis inconnue « %s » — attendu : %s.'
+            % (intention.origine, ', '.join(ORIGINES)))
+
+    journal = []
+    avertissements = []
+
+    entrees = resoudre_entrees(devis, intention)
+    journal.append('resoudre_entrees')
+
+    cible = decider_taille(intention, entrees)
+    journal.append('decider_taille')
+
+    intention_compo = intention_de_composition(
+        intention, cible, avertissements=avertissements)
+    composition = composer(intention_compo)
+    journal.append('composer')
+
+    refus = verifier(intention_compo)
+    journal.append('verifier')
+    if refus:
+        raise AutoDevisError(refus[0], field='composition')
+
+    verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
+        intention)
+
+    ecrire_lignes(verrou, composition, company=intention.company,
+                  avertissements=avertissements)
+    journal.append('ecrire_lignes')
+
+    ecrire_etude_params(verrou, intention, composition)
+    journal.append('ecrire_etude_params')
+
+    rafraichir_etudes(verrou)
+    journal.append('rafraichir_etudes')
+
+    finaliser(verrou, intention)
+    journal.append('finaliser')
+
+    return {
+        'devis': verrou,
+        'etapes': journal,
+        'entrees': entrees,
+        'cible': cible,
+        'composition': composition,
+        'avertissements': avertissements,
+    }
+
+
 # ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
+from apps.ventes.domain.bordereau import (  # noqa: E402,F401
+    concevoir_electrique_du_devis,
+)
 from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+    _is_battery,
     _is_hybrid_inverter,
     _is_reseau_inverter,
     _pick_batterie,
@@ -335,19 +709,59 @@ from apps.ventes.domain.composition import (  # noqa: E402,F401
     composition_deux_optimiseurs,
     composition_residentielle,
 )
+from apps.ventes.domain.entrees import (  # noqa: E402,F401
+    entrees_depuis_devis,
+    entrees_depuis_lead,
+)
+from apps.ventes.domain.etude_schema import CALEPINAGE  # noqa: E402,F401
+from apps.ventes.domain.etude_schema import ecrire as ecrire_etude  # noqa: E402,F401,E501
+from apps.ventes.domain.etudes import (  # noqa: E402,F401
+    rafraichir_etudes_du_devis,
+    refresh_marge_snapshot,
+)
+from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402,F401
+from apps.ventes.domain.scenario import (  # noqa: E402,F401
+    SCENARIO_LES_DEUX,
+    _scenario_stocke,
+    poser_puissance_kwc,
+)
+from apps.ventes.domain.taille import (  # noqa: E402,F401
+    _AUTO_PANEL_WATT,
+    AutoDevisError,
+    _panneaux_dimensionnement_horaire,
+    _refus_dimensionnement,
+    phase_client_pour_dimensionnement,
+)
 
 __all__ = [
     'COMPOSITION_AVEC',
     'COMPOSITION_LES_DEUX',
     'COMPOSITION_SANS',
+    'ETAPES',
+    'ORIGINES',
+    'ORIGINE_AUTO',
+    'ORIGINE_CALEPINAGE',
+    'ORIGINE_ECRAN',
+    'ORIGINE_RESYNCHRONISATION',
+    'ORIGINE_TUNNEL',
+    'CibleDevis',
     'IntentionComposition',
+    'IntentionDevis',
     'MSG_AUCUN_PANNEAU',
     'MSG_SANS_BATTERIE',
     'MSG_SANS_ONDULEUR_HYBRIDE',
     'MSG_SANS_ONDULEUR_RESEAU',
     'SCENARIOS_COMPOSABLES',
+    'appliquer',
     'composer',
+    'decider_taille',
+    'ecrire_etude_params',
+    'ecrire_lignes',
     'estampiller_variante',
+    'finaliser',
+    'intention_de_composition',
     'message_batterie_incompatible',
+    'rafraichir_etudes',
+    'resoudre_entrees',
     'verifier',
 ]
