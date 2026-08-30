@@ -18,17 +18,11 @@ from django.test import SimpleTestCase, TestCase
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import (
     ONEE_TRANCHES,
-    _weighted_kwh_price,
     calculate_savings_roi,
     two_bills_savings,
 )
 
 User = get_user_model()
-
-
-def _onee_energy_only(kwh_month):
-    """La composante ÉNERGIE seule, au barème (le modèle d'AVANT QJR157)."""
-    return _weighted_kwh_price(kwh_month, ONEE_TRANCHES) * kwh_month * 12
 
 
 def _onee_annual_bill(kwh_month):
@@ -44,10 +38,9 @@ def _onee_annual_bill(kwh_month):
     Ce témoin suit donc la MÊME chaîne que le code testé, au lieu de figer des
     nombres : il reste une DÉRIVATION (barème → charges → TPPAN), et il bougera
     tout seul le jour où le barème bouge. Sur 300 kWh/mois : énergie 4 274,60
-    + fixes 479,23 + TPPAN 540,00 = 5 293,83 → 5 294 MAD/an.
+    + fixes 479,23 + TPPAN 540,00 = 5 293,83 → 5 294 MAD/an. Le modèle d'AVANT
+    QJR157 était l'énergie seule, ``_weighted_kwh_price × kWh × 12``.
     """
-    from apps.ventes.quote_engine import bareme
-
     return bareme.facture_mad(
         kwh_month, tranches=ONEE_TRANCHES)['total_mad'] * 12
 
