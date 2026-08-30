@@ -25,20 +25,24 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 
-test('nbPanneauxTouched.current est posé par la frappe directe (onNbPanneauxChange/onKwcCibleChange)', () => {
-  assert.match(DG, /const onKwcCibleChange = \(v\) => \{[\s\S]{0,300}nbPanneauxTouched\.current = true/)
-  assert.match(DG, /const onNbPanneauxChange = \(v\) => \{\s*\n\s*nbPanneauxTouched\.current = true/)
+// QJR99 — le garde-fou N3 est passé du ref `nbPanneauxTouched` à l'ÉTAT
+// `sizing.touche.nbPanneaux` (reducer QJR87). Les épingles ci-dessous suivent
+// le garde-fou là où il vit ; AUCUNE n'est relâchée — la frappe directe le
+// pose toujours, les trois pré-remplissages le respectent toujours, et le
+// redimensionnement reste enfermé dedans pendant que `setMonthly` reste dehors.
+test('le drapeau « nbPanneaux touché » est posé par la frappe directe (onNbPanneauxChange/onKwcCibleChange)', () => {
+  // La frappe passe par `SAISI`, la SEULE transition qui pose le drapeau (et
+  // qui efface le justificatif « palier retenu ») — vérifié par
+  // features/ventes/quote/sizingReducer.test.mjs.
+  assert.match(DG, /const onKwcCibleChange = \(v\) =>\s*\n\s*dispatchSizing\(\{ type: 'SAISI', champ: 'kwcCible', valeur: v \}\)/)
+  assert.match(DG, /const onNbPanneauxChange = \(v\) =>\s*\n\s*dispatchSizing\(\{ type: 'SAISI', champ: 'nbPanneaux', valeur: v \}\)/)
 })
 
-test('applyLead()/applySiteProfile() respectent déjà nbPanneauxTouched (référence du patron à reproduire)', () => {
-  assert.match(DG, /!nbPanneauxTouched\.current && tailleKwc > 0/, 'applyLead : garde absente')
+test('applyLead()/applySiteProfile() respectent déjà le drapeau (référence du patron à reproduire)', () => {
+  assert.match(DG, /!sizing\.touche\.nbPanneaux && tailleKwc > 0/, 'applyLead : garde absente')
   const spStart = DG.indexOf('const applySiteProfile = (p) => {')
   assert.ok(spStart > -1, 'applySiteProfile introuvable')
-  // QJR38 — la fenêtre est élargie (1600→2200) : le correctif QJR38 a ajouté
-  // le calcul local `modeCible` + son commentaire juste après l'ouverture de
-  // la fonction, repoussant d'autant la position du garde nbPanneauxTouched
-  // ci-dessous ; le contenu vérifié, lui, est inchangé.
-  assert.match(DG.slice(spStart, spStart + 2200), /if \(!nbPanneauxTouched\.current\) \{/)
+  assert.match(DG.slice(spStart, spStart + 2200), /!sizing\.touche\.nbPanneaux/)
 })
 
 // Extrait le contenu d'un bloc `{ ... }` en comptant les accolades (fiable
@@ -56,31 +60,33 @@ function extractBracedBlock(src, openBraceIdx) {
   throw new Error('accolade fermante introuvable')
 }
 
-test('syncBillEstimator() ne resynchronise plus nbPanneaux/sizingInfo quand nbPanneauxTouched.current est vrai', () => {
+test('syncBillEstimator() ne resynchronise plus nbPanneaux/sizingInfo quand le drapeau « touché » est vrai', () => {
   const fnNeedle = 'const syncBillEstimator = (hiverVal, eteVal) => {'
   const start = DG.indexOf(fnNeedle)
   assert.ok(start > -1, 'syncBillEstimator introuvable')
   const { body } = extractBracedBlock(DG, start + fnNeedle.length - 1)
 
   // La garde existe : extrait précisément SON bloc (comptage d'accolades).
-  const guardNeedle = 'if (!nbPanneauxTouched.current) {'
+  const guardNeedle = 'if (!sizing.touche.nbPanneaux) {'
   const guardIdx = body.indexOf(guardNeedle)
-  assert.ok(guardIdx > -1, 'garde nbPanneauxTouched absente de syncBillEstimator — régression N3')
+  assert.ok(guardIdx > -1, 'garde « nbPanneaux touché » absente de syncBillEstimator — régression N3')
   const openBraceIdx = guardIdx + guardNeedle.length - 1
   const { body: guardedBlock, endIdx: guardEndIdx } = extractBracedBlock(body, openBraceIdx)
 
   // Le redimensionnement automatique (nbPanneaux + son justificatif) est
-  // ENTIÈREMENT contenu dans le bloc protégé.
-  assert.match(guardedBlock, /setNbPanneaux\(String\(sizing\.nbPanneaux\)\)/)
-  assert.match(guardedBlock, /setSizingInfo\(sizing\)/)
+  // ENTIÈREMENT contenu dans le bloc protégé : il passe par la MÊME transition
+  // que le profil site (qui pose panneaux + `sizingInfo`, ou l'attente moteur).
+  assert.match(guardedBlock, /const sizingLocal = modeInstallation === 'residentiel'\s*\n\s*\? null : computeAutoSizing\(hiver, ete\)/)
+  assert.match(guardedBlock, /dispatchSizing\(\{\s*\n\s*type: 'PROFIL_SITE_APPLIQUE',/)
+  assert.match(guardedBlock, /sizingLocal,/)
   // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux` (panneaux/
   // 900 MAD, supprimé) : sous le seuil du balayage local, le garde-fou pose
-  // `attenteSizingServeur` (repris par l'effet qui applique la recommandation
-  // du moteur horaire SERVEUR, ou son message de refus) au lieu de deviner un
-  // nombre de panneaux.
+  // l'ATTENTE du moteur horaire SERVEUR (transition du reducer : `sizingInfo`
+  // effacé + `attenteMoteur`) au lieu de deviner un nombre de panneaux.
   assert.doesNotMatch(guardedBlock, /estimerPanneaux/,
     'le repli estimerPanneaux (règle des 900 MAD) doit être totalement retiré')
-  assert.match(guardedBlock, /attenteSizingServeur\.current = true/)
+  assert.doesNotMatch(guardedBlock, /String\(\s*hiver\s*\/\s*900/,
+    'aucune taille ne doit être devinée depuis la facture à l\'écran')
 
   // setMonthly, lui, reste appelé INCONDITIONNELLEMENT, APRÈS le bloc protégé
   // (donc jamais sauté) — les factures continuent de se mettre à jour même
@@ -96,6 +102,7 @@ test('handleEstimerMois() (bouton "Estimer 12 mois") ne touche jamais nbPanneaux
   assert.ok(start > -1, 'handleEstimerMois introuvable')
   const openBraceIdx = start + needle.length - 1
   const { body } = extractBracedBlock(DG, openBraceIdx)
-  assert.doesNotMatch(body, /setNbPanneaux/)
+  assert.doesNotMatch(body, /nbPanneaux/)
+  assert.doesNotMatch(body, /dispatchSizing/)
   assert.match(body, /setMonthly\(estimerMois\(hiver, ete\)\)/)
 })

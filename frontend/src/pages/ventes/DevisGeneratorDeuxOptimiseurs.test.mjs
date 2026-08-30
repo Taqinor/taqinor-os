@@ -70,8 +70,10 @@ test('resolveKwcAvec : respecte nbPanneauxTouched, lit UNIQUEMENT le serveur (re
   assert.ok(start > -1, 'resolveKwcAvec introuvable')
   const { body } = extractBracedBlock(DG, start + needle.length - 1)
   // 1. touché → kwc_sans pour les deux branches (aucune divergence recomposée
-  //    par-dessus un choix déjà fait par l'utilisateur).
-  assert.match(body, /if \(nbPanneauxTouched\.current\) return kwp/)
+  //    par-dessus un choix déjà fait par l'utilisateur). QJR99 — le drapeau se
+  //    lit désormais via `toucheNbPanneauxPourComposition` (reducer QJR87), LE
+  //    lecteur qui borne le déverrouillage du recalcul à UNE transition.
+  assert.match(body, /if \(toucheNbPanneauxPourComposition\(sizing\)\) return kwp/)
   // 2. le moteur horaire serveur (source de vérité) prime dès qu'il a répondu.
   assert.match(body, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation_avec/)
   // 3. AUCUN balayage local : ce kWc est un dimensionnement (il part en

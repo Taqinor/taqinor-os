@@ -53,8 +53,14 @@ test('DevisGenerator : construit le corps de requête (résidentiel uniquement) 
   const bloc = DG.slice(idx, idx + 900)
   assert.match(bloc, /modeInstallation === 'residentiel'/)
   assert.match(bloc, /construireCorpsPreview\(\{/)
-  const hookIdx = DG.indexOf('= useEtudeHorairePreview(etudeHoraireCorps)')
-  assert.ok(hookIdx > idx, 'useEtudeHorairePreview(etudeHoraireCorps) introuvable après la construction du corps')
+  // QJR99 — l'écran passe désormais par `useSizingMoteur`, qui ENROBE
+  // `useEtudeHorairePreview` (aucun appel réseau supplémentaire) et rend en
+  // plus la décision de dimensionnement, garde de péremption comprise.
+  const hookIdx = DG.indexOf('} = useSizingMoteur(etudeHoraireCorps, {')
+  assert.ok(hookIdx > idx, 'useSizingMoteur(etudeHoraireCorps) introuvable après la construction du corps')
+  const hookBloc = DG.slice(hookIdx, hookIdx + 260)
+  assert.match(hookBloc, /attente: sizing\.attenteMoteur/)
+  assert.match(hookBloc, /toucheNbPanneaux: toucheNbPanneauxPourComposition\(sizing\)/)
 })
 
 test('DevisGenerator : le serveur GAGNE sur le miroir local `roi` dès qu\'il a répondu (etude.annuel non nul)', () => {
@@ -182,16 +188,23 @@ test('DevisGenerator : chaque ligne du tableau porte un bouton « Appliquer cett
 })
 
 test('DevisGenerator : « Appliquer cette taille » pose nbPanneaux\\/panelW puis relance handleAutoFill (jamais une seconde règle de composition)', () => {
+  // QJR99 — la pose de `nbPanneaux`/`panelW`/`kwcCible` et l'armement de la
+  // recomposition sont UNE transition (`TAILLE_APPLIQUEE`, testée dans
+  // sizingReducer.test.mjs : elle pose les trois champs ET incrémente
+  // `compositionSeq`). Le déclenchement, lui, reste ici et reste `handleAutoFill`.
   const idx = DG.indexOf('const appliquerTailleDimensionnement = (ligne) => {')
   assert.ok(idx > -1, 'appliquerTailleDimensionnement introuvable')
-  const bloc = DG.slice(idx, idx + 900)
-  assert.match(bloc, /setNbPanneaux\(String\(ligne\.panneaux\)\)/)
-  assert.match(bloc, /if \(ligne\.panel_watt\) setPanelW\(String\(ligne\.panel_watt\)\)/)
-  assert.match(bloc, /appliquerTaillePending\.current = true/)
-  // Le déclenchement effectif de la composition passe par handleAutoFill,
-  // JAMAIS une réimplémentation d'autoFillLines ici.
-  assert.match(bloc, /handleAutoFill\(\)/)
+  const bloc = DG.slice(idx, idx + 300)
+  assert.match(bloc, /if \(!ligne \|\| !\(ligne\.panneaux > 0\)\) return/)
+  assert.match(bloc, /dispatchSizing\(\{ type: 'TAILLE_APPLIQUEE', ligne \}\)/)
   assert.doesNotMatch(bloc, /autoFillLines\(/)
+  // L'UNIQUE effet de composition (armé par `compositionSeq`) relance
+  // handleAutoFill — JAMAIS une réimplémentation d'autoFillLines.
+  const effetIdx = DG.indexOf('    if (!recalcDimTick) return')
+  assert.ok(effetIdx > -1, "l'effet de composition (compositionSeq) est introuvable")
+  const effet = DG.slice(effetIdx, effetIdx + 300)
+  assert.match(effet, /handleAutoFill\(\)/)
+  assert.doesNotMatch(effet, /autoFillLines\(/)
 })
 
 test('DevisGenerator : le détail saisonnier (production × consommation par saison) est rendu', () => {

@@ -1,4 +1,7 @@
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment, useCallback, useDeferredValue, useEffect, useMemo, useReducer,
+  useRef, useState,
+} from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -104,6 +107,20 @@ import {
   falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
   estimationConsoAffichable, LIBELLES_MOIS,
 } from '../../features/ventes/etudeHorairePreview'
+// QJR99 — LA BASCULE : l'écran adopte la machine à états du dimensionnement
+// (QJR87) et les hooks QJR90. Les six `useRef` « touché », l'effet de sizing
+// écrit à la main, les écritures gardées d'applyLead/applySiteProfile,
+// `onModeChange`, la chaîne de ternaires `deuxValeursDim` et le repli de
+// composition silencieux ont été SUPPRIMÉS dans le même commit — aucun double
+// chemin.
+import {
+  sizingReducer, ETAT_INITIAL,
+  SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
+  toucheNbPanneauxPourComposition,
+} from '../../features/ventes/quote/sizingReducer'
+import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
+import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
+import { moteur, apercu, absent, estFait } from '../../features/ventes/quote/valeur'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -121,17 +138,59 @@ const SAISON_LABELS = { hiver: 'Hiver', mi_saison: 'Mi-saison', ete: 'Été' }
 // OPTIONS (sans + avec batterie), sauf si le commercial le précise sur le devis
 // modifiable ». Le vocabulaire est le contrat EXACT du moteur PDF (constantes
 // SCENARIO_* d'apps/ventes/services.py) : jamais reformulé ici.
-const SCENARIO_LES_DEUX = 'Les deux (Sans + Avec)'
-const SCENARIO_SANS = 'Sans batterie'
-const SCENARIO_AVEC = 'Avec batterie'
-const SCENARIOS_VALIDES = [SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC]
-// QX19 — scénario déjà CHOISI par le client dans le tunnel (crm.Lead.
-// batterie_souhaitee) : même table de correspondance que le devis auto
-// (features/ventes/autoQuote.js), jamais une seconde traduction divergente.
-const BATTERIE_LEAD_VERS_SCENARIO = {
-  sans: SCENARIO_SANS,
-  avec: SCENARIO_AVEC,
-  les_deux: SCENARIO_LES_DEUX,
+// QJR99 — les quatre constantes ET la table QX19 `BATTERIE_LEAD_VERS_SCENARIO`
+// ne sont plus RE-DÉCLARÉES ici : elles viennent du reducer (source unique,
+// `features/ventes/quote/sizingReducer.js`), qui les possède depuis QJR87.
+
+// Type d'installation (libellé du simulateur) par marché — la seule chose que
+// `onModeChange` faisait EN PLUS de poser le mode/scénario, et que le reducer
+// (pur, sans notion d'autoconsommation par défaut) ne modélise pas.
+const INST_TYPE_PAR_MODE = {
+  residentiel: 'Résidentielle',
+  industriel: 'Industrielle',
+  commercial: 'Commerciale',
+  agricole: 'Agricole',
+}
+
+const RIEN_A_CHIFFRER = 'aucun dimensionnement chiffré pour cette branche'
+
+/** Recommandation du MOTEUR horaire serveur — publiable telle quelle. */
+const valeurMoteurDim = (srv) => (Number(srv?.panneaux) > 0
+  ? moteur({ nbPanneaux: srv.panneaux, kwc: srv.kwc })
+  : absent(RIEN_A_CHIFFRER))
+
+/** Optimum du balayage LOCAL (`sizingInfo`) — un repère, pas une mesure. */
+const valeurApercuDim = (local) => (local?.nbPanneaux > 0
+  ? apercu({ nbPanneaux: local.nbPanneaux, kwc: local.kwcOptimal })
+  : absent(RIEN_A_CHIFFRER))
+
+/**
+ * QJR99 — remplace la CHAÎNE DE TERNAIRES `deuxValeursDim`. Chaque branche
+ * devient une VALEUR SIGNÉE (QJR86) : `moteur` = moteur horaire serveur,
+ * `apercu` = balayage local (`sizingInfo`), `absent(motif)` = rien de
+ * calculable — jamais un chiffre inventé. La règle F3 (26/08) est alors
+ * EXPRIMÉE au lieu d'être une cascade de `if` : la PAIRE ne se rend que si les
+ * deux branches partagent la MÊME source, sinon seule la branche sourcée sort.
+ * Rend la même forme qu'avant (`{ sans, avec }`, chacun `{nbPanneaux, kwc}` ou
+ * `null`) : le JSX est inchangé.
+ */
+const paireDimensionnement = (srvSans, srvAvec, localSans, localAvec) => {
+  const mSans = valeurMoteurDim(srvSans)
+  const mAvec = valeurMoteurDim(srvAvec)
+  const aSans = valeurApercuDim(localSans)
+  const aAvec = valeurApercuDim(localAvec)
+  // La PAIRE ne sort que d'une SOURCE UNIQUE des deux côtés (F3) — le moteur
+  // d'abord, puis l'aperçu local. C'est la seule façon de rendre le DELTA
+  // affiché comparable.
+  if (estFait(mSans) && estFait(mAvec)) return { sans: mSans.valeur, avec: mAvec.valeur }
+  if (estFait(aSans) && estFait(aAvec)) return { sans: aSans.valeur, avec: aAvec.valeur }
+  // Sinon UNE seule valeur, jamais la paire mixte — priorité moteur > aperçu,
+  // et « sans » avant « avec », comme la cascade historique.
+  if (estFait(mSans)) return { sans: mSans.valeur, avec: null }
+  if (estFait(aSans)) return { sans: aSans.valeur, avec: null }
+  if (estFait(mAvec)) return { sans: null, avec: mAvec.valeur }
+  if (estFait(aAvec)) return { sans: null, avec: aAvec.valeur }
+  return { sans: null, avec: null }
 }
 
 let _keyCounter = 0
@@ -329,19 +388,20 @@ export default function DevisGenerator({
   const [loadFailed, setLoadFailed] = useState([])
   const [searchParams] = useSearchParams()
   const autoRan = useRef(false)
-  // Mode choisi PAR L'UTILISATEUR : un lead sélectionné ensuite ne l'écrase
-  // jamais (le pré-réglage depuis le lead ne joue que sur le défaut intact).
-  const modeTouched = useRef(false)
-  // Mêmes garde-fous « intact » pour les champs que applyLead peut pré-remplir :
-  // dès que l'utilisateur y a touché, le lead ne les écrase plus.
-  const structureTouched = useRef(false)
-  const tensionTouched = useRef(false)
-  const pompeAlimTouched = useRef(false)
-  const nbPanneauxTouched = useRef(false)
-  // ORDRE FONDATEUR (24/08) — le scénario par défaut est « Les deux (Sans +
-  // Avec) » ; il ne cède qu'à un choix EXPLICITE (celui du commercial à
-  // l'écran, ou celui déjà porté par le lead / le devis rouvert).
-  const scenarioTouched = useRef(false)
+  // QJR99 — LA MACHINE À ÉTATS DU DIMENSIONNEMENT (QJR87) remplace les SIX
+  // `useRef` « touché » (`modeTouched`, `structureTouched`, `tensionTouched`,
+  // `pompeAlimTouched`, `nbPanneauxTouched`, `scenarioTouched`), le ref
+  // `attenteSizingServeur` et les douze `useState` de champs qu'ils gardaient.
+  // Un drapeau est désormais de l'ÉTAT : énumérable, testable, sérialisable —
+  // c'est ce qui rend « ce que le vendeur a touché » lisible au lieu d'être
+  // enfoui dans des refs invisibles.
+  //
+  // Mode choisi PAR L'UTILISATEUR (`touche.mode`) : un lead sélectionné ensuite
+  // ne l'écrase jamais. Mêmes garde-fous « intact » pour structure / tension /
+  // alimentation pompe / nombre de panneaux. ORDRE FONDATEUR (24/08) — le
+  // scénario par défaut est « Les deux (Sans + Avec) » et ne cède qu'à un choix
+  // EXPLICITE (`touche.scenario`).
+  const [sizing, dispatchSizing] = useReducer(sizingReducer, ETAT_INITIAL)
 
   // EZ3 — L'ABANDON POST-CRÉATION. En pleine page, `finish()` renvoyait sur la
   // liste NUE en JETANT l'id du devis qu'on venait de passer 20 minutes à
@@ -434,8 +494,6 @@ export default function DevisGenerator({
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
-  // Défaut fondateur : DEUX options (sans + avec batterie) sur tout devis vierge.
-  const [scenario, setScenario] = useState(SCENARIO_LES_DEUX)
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
 
@@ -458,42 +516,32 @@ export default function DevisGenerator({
   // appellent (règle react-hooks/immutability : pas d'accès avant déclaration).
 
   // ── Paramètres techniques ──
-  const [nbPanneaux, setNbPanneaux] = useState('')
-  // EZ5 — puissance cible saisie par l'utilisateur (kWc). Miroir bidirectionnel
-  // de `nbPanneaux` ; jamais envoyée au serveur (le devis porte les lignes, pas
-  // une puissance cible) — c'est un champ de SAISIE, pas un champ de données.
-  const [kwcCible, setKwcCible] = useState('')
-  const [panelW, setPanelW] = useState('710')
-  const [structureType, setStructureType] = useState('acier')
+  // QJR99 — les onze champs ci-dessous SONT l'état du reducer : l'écran les lit
+  // sous leurs noms historiques (aucune ligne de rendu changée), mais plus
+  // aucun `setState` ne les écrit — seuls des dispatches.
+  //   · `kwcCible` (EZ5) est le miroir bidirectionnel de `nbPanneaux` ; la
+  //     conversion vit dans le reducer (`SAISI`), plus dans deux gestionnaires.
+  //   · `sizingInfo` (règle fondateur 18/08) justifie le palier retenu du
+  //     balayage LOCAL (kWc, besoin lu sur la facture, payback). `null` = rien à
+  //     montrer — et c'est TOUJOURS `null` en résidentiel depuis U3-MOTEUR.
+  //   · `sizingServeurMessage` (= `motifMoteur`, U3-900) porte le message
+  //     FRANÇAIS EXACT du serveur quand il décline : un vide honnête, jamais
+  //     une supposition sur 900 DH.
+  //   · `recalcDimTick` (= `compositionSeq`) fait relancer la composition même
+  //     quand le recalcul retombe sur le MÊME nombre de panneaux.
+  const {
+    nbPanneaux, kwcCible, panelW, scenario, modeInstallation, sizingInfo,
+    structure: structureType,
+    tension: tensionRaccordement,
+    pompeAlim,
+    motifMoteur: sizingServeurMessage,
+    compositionSeq: recalcDimTick,
+  } = sizing
   const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
-  // Règle fondateur du 18/08 — justificatif du palier retenu (kWc, besoin lu
-  // sur la facture, payback) quand le nombre de panneaux vient du nouveau
-  // dimensionnement facture → paliers. Null = pas de justificatif à montrer
-  // (taille posée à la main, ou sous le seuil du balayage local → moteur
-  // horaire serveur, voir attenteSizingServeur ci-dessous).
-  const [sizingInfo, setSizingInfo] = useState(null)
-  // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
-  // tool ») — REMPLACE le repli `estimerPanneaux` (panneaux/900 MAD, supprimé
-  // du backend le même jour). Sous le seuil du balayage local
-  // (`computeAutoSizing` → `null`), l'écran n'invente plus de taille : il
-  // attend la recommandation du moteur horaire SERVEUR (`etudeHoraireDonnees`,
-  // déjà interrogé dès que fHiver/lead est posé — l'effet plus bas applique le
-  // résultat) — posé par applyLead/applySiteProfile/syncBillEstimator, lu et
-  // effacé par cet effet. `sizingServeurMessage` porte le message FRANÇAIS
-  // EXACT du serveur quand il décline (donnée nommée), pour qu'un vide honnête
-  // remplace la supposition sur 900 DH plutôt que de rester silencieux.
-  const attenteSizingServeur = useRef(false)
-  const [sizingServeurMessage, setSizingServeurMessage] = useState(null)
   // Cache du dernier calcul (optimalKwcByPayback chiffre CHAQUE palier avec
   // le catalogue réel — pas gratuit) : évite de le rejouer à chaque frappe
   // de `syncBillEstimator` quand rien de pertinent n'a changé depuis.
   const sizingCacheRef = useRef({ key: '', result: null })
-  // FOUNDER 26/08 — compteur du bouton « Recalculer le dimensionnement »
-  // (voir `recalculerDimensionnement` plus bas) : dédié pour que l'effet qui
-  // relance la composition se redéclenche même quand le recalcul retombe sur
-  // le MÊME nombre de panneaux qu'avant (React ne verrait alors aucun
-  // changement sur `nbPanneaux`/`panelW`).
-  const [recalcDimTick, setRecalcDimTick] = useState(0)
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
@@ -556,8 +604,7 @@ export default function DevisGenerator({
     { index: 1, label: 'Villa 1' },
   ])
 
-  // ── Multi-marchés ──
-  const [modeInstallation, setModeInstallation] = useState('residentiel')
+  // ── Multi-marchés ── (`modeInstallation` vient du reducer, voir plus haut)
   // VX138(e) — le bloc « Plusieurs propriétés ? » est un accordéon replié PAR
   // DÉFAUT en agricole (carte non pertinente pour ce mode, jamais masquée) ;
   // état local pour que l'utilisateur puisse toujours le rouvrir librement —
@@ -581,7 +628,7 @@ export default function DevisGenerator({
   // défaut : tant qu'on n'a pas déclaré 'mt', l'étude est EXACTEMENT celle
   // d'avant. Le questionnaire du tunnel web pose déjà la question
   // (lead.web_questionnaire.tension_raccordement) — on la reprend s'il l'a.
-  const [tensionRaccordement, setTensionRaccordement] = useState('bt')
+  // (`tensionRaccordement` vient du reducer, voir plus haut.)
   // Répartition horaire de la consommation MT (%, saisie libre). VIDE par
   // défaut : les plages horaires MT officielles ne sont pas publiées, donc
   // aucune répartition n'est inventée — sans elle, l'étude MT omet les
@@ -623,7 +670,7 @@ export default function DevisGenerator({
   // Pompage (agricole)
   const [pompeCv, setPompeCv] = useState('5.5')
   const [pompeType, setPompeType] = useState('immergee')
-  const [pompeAlim, setPompeAlim] = useState('tri')
+  // (`pompeAlim` vient du reducer, voir plus haut.)
   const [pompeHmt, setPompeHmt] = useState('')
   const [pompeDebit, setPompeDebit] = useState('')
   const [pompeProfondeur, setPompeProfondeur] = useState('')
@@ -717,8 +764,11 @@ export default function DevisGenerator({
     if (d.dateValidite != null) setDateValidite(d.dateValidite)
     if (d.instType != null) setInstType(d.instType)
     // Le scénario du brouillon local est lui aussi un choix déjà posé : un lead
-    // sélectionné après restauration ne le réécrit pas.
-    if (d.scenario != null) { scenarioTouched.current = true; setScenario(d.scenario) }
+    // sélectionné après restauration ne le réécrit pas. QJR99 — même effet
+    // qu'avant (`scenarioTouched.current = true` + `setScenario`), en UNE
+    // transition. Il DOIT précéder le marché ci-dessous : c'est ce qui empêche
+    // `MARCHE_CHANGE` de reposer le défaut du marché par-dessus.
+    if (d.scenario != null) dispatchSizing({ type: 'SAISI', champ: 'scenario', valeur: d.scenario })
     if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
     if (d.note != null) setNote(d.note)
     if (d.fHiver != null) setFHiver(d.fHiver)
@@ -728,9 +778,15 @@ export default function DevisGenerator({
     if (d.realBillMode != null) setRealBillMode(d.realBillMode)
     if (d.realBillMad != null) setRealBillMad(d.realBillMad)
     if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
-    if (d.nbPanneaux != null) setNbPanneaux(d.nbPanneaux)
-    if (d.panelW != null) setPanelW(d.panelW)
-    if (d.structureType != null) setStructureType(d.structureType)
+    // QJR99 — les champs du reducer se restaurent par dispatch. `REOUVERTURE`
+    // pose le compte de panneaux SANS le marquer « touché » (comportement
+    // historique : un brouillon restauré n'est pas une frappe) ; `SAISI panelW`
+    // n'a jamais eu de drapeau propre. `MARCHE_CHANGE` en origine
+    // `programme` ne marque pas le marché non plus — le lead peut encore le
+    // pré-régler, exactement comme avant.
+    if (d.panelW != null) dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: d.panelW })
+    if (d.nbPanneaux != null) dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: d.nbPanneaux } })
+    if (d.structureType != null) dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: d.structureType })
     if (d.dayUsage != null) setDayUsage(d.dayUsage)
     if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
     if (d.tauxTva != null) setTauxTva(d.tauxTva)
@@ -738,19 +794,23 @@ export default function DevisGenerator({
     if (d.multiMode != null) setMultiMode(d.multiMode)
     if (d.nombreProprietes != null) setNombreProprietes(d.nombreProprietes)
     if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
-    if (d.modeInstallation != null) setModeInstallation(d.modeInstallation)
+    if (d.modeInstallation != null) {
+      dispatchSizing({ type: 'MARCHE_CHANGE', mode: d.modeInstallation, origine: 'programme' })
+    }
     if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
     if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
     if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
     if (d.injectionEnabled != null) setInjectionEnabled(d.injectionEnabled)
-    if (d.tensionRaccordement != null) setTensionRaccordement(d.tensionRaccordement)
+    if (d.tensionRaccordement != null) {
+      dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: d.tensionRaccordement })
+    }
     if (d.repartitionMt && typeof d.repartitionMt === 'object') setRepartitionMt(d.repartitionMt)
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
     if (d.pompeCv != null) setPompeCv(d.pompeCv)
     if (d.pompeType != null) setPompeType(d.pompeType)
-    if (d.pompeAlim != null) setPompeAlim(d.pompeAlim)
+    if (d.pompeAlim != null) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: d.pompeAlim })
     if (d.pompeHmt != null) setPompeHmt(d.pompeHmt)
     if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
     if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
@@ -823,33 +883,26 @@ export default function DevisGenerator({
   // rejetée ni « snappée » : le champ garde EXACTEMENT ce qui est tapé, la
   // conversion ne s'applique qu'une fois le nombre lisible (garde `step="any"`
   // + `noValidate` intactes).
-  const onKwcCibleChange = (v) => {
-    setKwcCible(v)
-    const n = panneauxPourKwc(v, panelW)
-    if (n > 0) {
-      nbPanneauxTouched.current = true
-      setNbPanneaux(String(n))
-      // Taille posée à la main : le justificatif « palier retenu » de
-      // l'auto-dimensionnement ne s'applique plus à cette valeur.
-      setSizingInfo(null)
-    }
-  }
-  const onNbPanneauxChange = (v) => {
-    nbPanneauxTouched.current = true
-    setNbPanneaux(v)
-    const puissance = (parseFloat(v) || 0) * (parseFloat(panelW) || 0) / 1000
-    setKwcCible(puissance > 0 ? String(Math.round(puissance * 100) / 100) : '')
-    setSizingInfo(null)
-  }
+  // QJR99 — les deux gestionnaires ne sont plus que des dispatches : la
+  // conversion bidirectionnelle, le drapeau « touché » et l'effacement du
+  // justificatif « palier retenu » vivent DANS le reducer (`SAISI`), en une
+  // seule transition — plus deux gestionnaires qui devaient rester d'accord.
+  const onKwcCibleChange = (v) =>
+    dispatchSizing({ type: 'SAISI', champ: 'kwcCible', valeur: v })
+  const onNbPanneauxChange = (v) =>
+    dispatchSizing({ type: 'SAISI', champ: 'nbPanneaux', valeur: v })
   // Le nombre de panneaux peut aussi être posé SANS passer par le champ
   // (pré-remplissage depuis un lead, dimensionnement pompage, reprise de
   // brouillon) : on renseigne alors la cible si elle est encore vide — jamais
-  // par-dessus une valeur tapée par l'utilisateur.
+  // par-dessus une valeur tapée par l'utilisateur. Re-dispatcher la puissance
+  // panneau COURANTE recale la cible sur le compte courant sans poser aucun
+  // drapeau (`SAISI panelW` n'en a jamais eu) : c'est le seul chemin du reducer
+  // qui écrit `kwcCible` sans rien marquer.
   useEffect(() => {
     if (kwcCible !== '' || kwp <= 0) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- miroir d'un champ posé ailleurs
-    setKwcCible(String(Math.round(kwp * 100) / 100))
-  }, [kwp, kwcCible])
+    dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: panelW })
+  }, [kwp, kwcCible, panelW])
 
   const showSans = scenario !== 'Avec batterie'
   const showAvec = scenario !== 'Sans batterie'
@@ -1020,81 +1073,60 @@ export default function DevisGenerator({
         batterieKwh: batteryKwhFromLines(lines),
       })
     : null
+  // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
+  // les mêmes données réseau (aucun appel supplémentaire) PLUS une `decision`
+  // déjà prise par sa moitié pure. La garde de réponse PÉRIMÉE y couvre les
+  // DEUX branches : l'ancienne comparaison de clé en ligne ne valait que pour
+  // `donnees`, si bien que la branche d'ÉCHEC refermait l'attente et épinglait
+  // le refus d'une facture qu'on venait de remplacer (correctif intentionnel).
   const {
+    decision: decisionMoteur,
     donnees: etudeHoraireDonnees,
     chargement: etudeHoraireChargement,
     erreur: etudeHoraireErreur,
-    corpsServi: etudeHoraireCorpsServi,
-  } = useEtudeHorairePreview(etudeHoraireCorps)
-  // Clé du corps ACTUELLEMENT à l'écran, à comparer à celui qui a produit la
-  // réponse (`corpsServi`) : mêmes règles de sérialisation que le hook.
-  const etudeHoraireCorpsKey = etudeHoraireCorps
-    ? JSON.stringify(etudeHoraireCorps) : null
+  } = useSizingMoteur(etudeHoraireCorps, {
+    attente: sizing.attenteMoteur,
+    toucheNbPanneaux: toucheNbPanneauxPourComposition(sizing),
+  })
   const { donnees: etudeHoraireDonneesAvec } =
     useEtudeHorairePreview(etudeHoraireCorpsAvec)
   // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
   // tool ») — LE SEUL remplaçant du repli `estimerPanneaux` (panneaux/900 MAD,
   // supprimé du backend le même jour, cf. apps/ventes/dimensionnement.py).
-  // `attenteSizingServeur` est posé par applyLead/applySiteProfile/
-  // syncBillEstimator quand le balayage local (`computeAutoSizing`) ne peut
-  // rien chiffrer : cet effet applique alors la recommandation du moteur
-  // horaire SERVEUR (`etudeHoraireDonnees`, déjà interrogé dès que fHiver/lead
-  // est posé — AUCUN appel réseau supplémentaire) dès qu'elle répond. Un
-  // devis dry-run qui décline (ville manquante, catalogue incomplet…) affiche
-  // son message FRANÇAIS EXACT (`avertissements`, nommant la donnée
-  // manquante) et ne préremplit RIEN — un vide honnête plutôt qu'une
-  // supposition sur 900 DH (règle #4 CLAUDE.md). Une frappe manuelle
-  // (`nbPanneauxTouched`) gagne toujours, comme partout ailleurs sur ce champ.
+  // L'attente (`sizing.attenteMoteur`) est posée par applyLead /
+  // applySiteProfile / syncBillEstimator quand le résidentiel ne se dimensionne
+  // plus à l'écran : la recommandation du moteur horaire SERVEUR
+  // (`etudeHoraireDonnees`, déjà interrogé dès que fHiver/lead est posé — AUCUN
+  // appel réseau supplémentaire) la satisfait dès qu'elle répond. Un dry-run qui
+  // décline (ville manquante, catalogue incomplet…) affiche son message
+  // FRANÇAIS EXACT et ne préremplit RIEN — un vide honnête plutôt qu'une
+  // supposition sur 900 DH (règle #4 CLAUDE.md). Une frappe manuelle gagne
+  // toujours, comme partout ailleurs sur ce champ.
+  //
+  // QJR99 — la DÉCISION (appliquer / refuser / abandonner / attendre) est prise
+  // par `useSizingMoteur` ; il ne reste ici que sa traduction en transition. La
+  // garde de réponse périmée, les deux formes de motif (F4 :
+  // `avertissements[0]` PUIS `dimensionnement.motivation`, rendues VERBATIM) et
+  // la priorité de la frappe manuelle sont toutes dans la moitié pure, testée.
+  const actionMoteur = decisionMoteur.action
+  const recoMoteur = decisionMoteur.recommandation ?? null
+  const motifMoteurServeur = decisionMoteur.motif ?? null
   useEffect(() => {
-    if (!attenteSizingServeur.current) return
-    if (nbPanneauxTouched.current) { attenteSizingServeur.current = false; return }
-    if (etudeHoraireChargement) return // réponse en vol — on ne décide rien
-    // U3-MOTEUR — LA RÉPONSE DOIT DÉCRIRE CE QU'ON A SOUS LES YEUX. Une
-    // réponse déjà EN VOL quand la nouvelle facture est tapée arrive après,
-    // parfaitement valide, mais pour l'ANCIENNE : la consommer posait un
-    // nombre de panneaux RÉEL pour un AUTRE profil, et refermait le drapeau
-    // avant l'arrivée de la bonne réponse (reproduit : 1200 → 3000 restait
-    // bloqué sur 9 panneaux). On attend SA réponse.
-    if (etudeHoraireDonnees && etudeHoraireCorpsServi !== etudeHoraireCorpsKey) return
-    const reco = etudeHoraireDonnees?.dimensionnement?.recommandation
-    if (Number(reco?.panneaux) > 0) {
-      attenteSizingServeur.current = false
-      // setState SYNCHRONE dans l'effet, idiome MAISON (ProductTour.jsx,
-      // Avatar.jsx, FollowToggle.jsx…) : la valeur arrive d'un aller-retour
-      // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer
-      // encore d'une microtâche n'ajouterait qu'un tour de boucle entre la
-      // réponse et l'affichage — sans rien changer au rendu, mais en rendant
-      // les tests dépendants d'un `await` de plus (échecs mouvants constatés
-      // sur ProductTour.test.jsx). Aucune de ces valeurs n'est relue dans le
-      // MÊME rendu : elles ne font que reporter la réponse serveur dans les
-      // champs du formulaire.
-      // La règle ne signale que le PREMIER setState du corps : une seule
-      // dérogation la couvre, et en poser une par ligne ferait échouer
-      // `reportUnusedDisableDirectives` (avertissements « directive inutile »).
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reporte la recommandation SERVEUR (déjà asynchrone) dans les champs, jamais relue dans le même rendu
-      setSizingServeurMessage(null)
-      setNbPanneaux(String(reco.panneaux))
-      if (reco.panel_watt) setPanelW(String(reco.panel_watt))
-      if (reco.kwc != null) setKwcCible(String(reco.kwc))
-      return
+    // dispatch SYNCHRONE dans l'effet, idiome MAISON (ProductTour.jsx,
+    // Avatar.jsx, FollowToggle.jsx…) : la valeur arrive d'un aller-retour
+    // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer encore
+    // d'une microtâche n'ajouterait qu'un tour de boucle entre la réponse et
+    // l'affichage. Aucune de ces valeurs n'est relue dans le MÊME rendu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reporte la décision du moteur SERVEUR (déjà asynchrone) dans le reducer, jamais relue dans le même rendu
+    if (actionMoteur === 'appliquer') {
+      dispatchSizing({ type: 'MOTEUR_A_REPONDU', recommandation: recoMoteur })
+    } else if (actionMoteur === 'refuser') {
+      dispatchSizing({ type: 'MOTEUR_A_REFUSE', motif: motifMoteurServeur })
+    } else if (actionMoteur === 'abandonner') {
+      // Une frappe manuelle a gagné : l'attente se referme sans rien appliquer.
+      dispatchSizing({ type: 'MOTEUR_A_REPONDU' })
     }
-    if (etudeHoraireDonnees || etudeHoraireErreur) {
-      attenteSizingServeur.current = false
-      // F4 (revue Fable 29/08) — un refus PROPRE du moteur (catalogue
-      // incomplet, localisation inconnue…) arrive en
-      // `dimensionnement.motivation` : une phrase FRANÇAISE qui NOMME la
-      // cause, et AUCUN `avertissements`. Ne lire que `avertissements[0]`
-      // remplaçait donc la cause réelle par le message générique de repli —
-      // le commercial voyait « indisponible » au lieu de « ville manquante ».
-      // Les deux formes sont lues, et rendues VERBATIM (texte du serveur).
-      setSizingServeurMessage(
-        etudeHoraireDonnees?.avertissements?.[0]
-        || etudeHoraireDonnees?.dimensionnement?.motivation
-        || etudeHoraireErreur
-        || "Dimensionnement indisponible : le serveur n'a pas pu chiffrer de recommandation.")
-    }
-  }, [etudeHoraireDonnees, etudeHoraireChargement, etudeHoraireErreur,
-    etudeHoraireCorpsServi, etudeHoraireCorpsKey])
+  }, [actionMoteur, recoMoteur, motifMoteurServeur])
   // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
   // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
@@ -1208,31 +1240,27 @@ export default function DevisGenerator({
   // rechargement d'un brouillon) doivent poser leur état dans le même tour —
   // le rendre asynchrone ferait écraser `scenario` chargé par le défaut du
   // mode.
-  const onModeChange = (m) => {
+  // QJR99 — la CASCADE de quatre branches (`if industriel … else résidentiel`)
+  // qui reposait `setScenario` SANS CONDITION est SUPPRIMÉE : le défaut de
+  // marché vit dans `DEFAUT_SCENARIO_PAR_MODE` (reducer) et ne s'applique plus
+  // qu'à un scénario INTACT — correctif intentionnel, l'ancienne cascade jetait
+  // en silence un choix explicite du commercial. Ne reste ici que le seul effet
+  // que le reducer ne modélise pas : le type d'installation (autoconsommation
+  // par défaut du simulateur).
+  const appliquerMarcheEcran = (m, origine) => {
     if (m === modeInstallation) return
-    setModeInstallation(m)
-    if (m === 'industriel') {
-      onInstTypeChange('Industrielle')
-      // Défaut industriel : sans batterie, réseau. L'auto-remplissage de ces
-      // deux marchés MET À ZÉRO batterie + onduleur hybride (voir
-      // `handleAutoFill`) et l'écran annonce un « document à option unique » :
-      // le double scénario n'y est donc PAS servable, l'ordre fondateur des
-      // deux options par défaut ne s'y applique pas.
-      setScenario(SCENARIO_SANS)
-    } else if (m === 'commercial') {
-      // QX43 — commercial : comme l'industriel, autoconsommation réseau sans
-      // batterie par défaut (l'étude par catégorie arrive avec QX44).
-      onInstTypeChange('Commerciale')
-      setScenario(SCENARIO_SANS)
-    } else if (m === 'agricole') {
-      // Pompage : ni batterie ni onduleur (règle du repo) — le scénario n'est
-      // pas touché, aucune option batterie n'est composée de toute façon.
-      onInstTypeChange('Agricole')
-    } else {
-      onInstTypeChange('Résidentielle')
-      setScenario(SCENARIO_LES_DEUX)
-    }
+    dispatchSizing({ type: 'MARCHE_CHANGE', mode: m, origine })
+    onInstTypeChange(INST_TYPE_PAR_MODE[m] ?? 'Résidentielle')
   }
+  // Chemins PROGRAMMATIQUES (pré-remplissage lead/payload, rechargement d'un
+  // brouillon) : ils ne marquent JAMAIS le marché comme choisi par le vendeur.
+  const onModeChange = (m) => appliquerMarcheEcran(m, 'programme')
+  // Pose le drapeau « le commercial a choisi son marché » sans rien changer
+  // d'autre (ex-`modeTouched.current = true` du gestionnaire JSX) : le marché
+  // visé EST le marché courant, donc seule la marque du drapeau subsiste — y
+  // compris si la confirmation ci-dessous est refusée, comme avant.
+  const marquerMarcheTouche = () =>
+    dispatchSizing({ type: 'MARCHE_CHANGE', mode: modeInstallation, origine: 'utilisateur' })
 
   // QX23 — changer de marché après saisie écrase l'étude/ROI et les lignes
   // auto-remplies : on confirme AVANT (jamais de rejet silencieux de l'étude).
@@ -1249,15 +1277,14 @@ export default function DevisGenerator({
       })
       if (!ok) return
     }
-    onModeChange(m)
+    appliquerMarcheEcran(m, 'utilisateur')
   }
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
   const onScenarioChange = (v) => {
     // « sauf si le commercial le précise » : dès qu'il choisit lui-même, aucun
     // pré-remplissage (lead, profil site) ne réécrit son scénario.
-    scenarioTouched.current = true
-    setScenario(v)
+    dispatchSizing({ type: 'SAISI', champ: 'scenario', valeur: v })
     if ((v === 'Sans batterie' && recommendedChoice === 'Avec batterie') ||
         (v === 'Avec batterie' && recommendedChoice === 'Sans batterie')) {
       setRecommendedChoice('Auto')
@@ -1411,7 +1438,7 @@ export default function DevisGenerator({
   // champ) vaut pour les DEUX branches : aucune divergence n'est recomposée
   // par-dessus un choix déjà fait par l'utilisateur.
   const resolveKwcAvec = () => {
-    if (nbPanneauxTouched.current) return kwp
+    if (toucheNbPanneauxPourComposition(sizing)) return kwp
     const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
     if (Number(backendAvec?.kwc) > 0) return Number(backendAvec.kwc)
     // U3-MOTEUR (fondateur 29/08/2026) — le repli local (balayage par paliers
@@ -1449,35 +1476,26 @@ export default function DevisGenerator({
   // veut plus rien dire). Correctif : la PAIRE ne s'affiche que si les DEUX
   // branches partagent la MÊME source (serveur+serveur ou local+local) ;
   // sinon seule la valeur sourcée s'affiche, jamais la paire mixte.
+  //
+  // QJR99 — la chaîne de ternaires (`srvSansOk`/`localSansOk`/`asSans()`…) est
+  // SUPPRIMÉE au profit de `paireDimensionnement` (haut de ce fichier), qui
+  // SIGNE chaque branche (QJR86) au lieu de la deviner : `moteur` pour le
+  // serveur, `apercu` pour le balayage local, `absent(motif)` quand rien n'est
+  // chiffrable. La règle F3 devient alors une comparaison de sources, et la
+  // cascade ne peut plus se contredire elle-même (l'ancien `asSans()` préférait
+  // le serveur MÊME dans la branche « paire locale » — une paire mixte que la
+  // règle interdit, restée inatteignable seulement parce que `sizingInfo` est
+  // toujours `null` en résidentiel depuis U3-MOTEUR).
   const deuxValeursDim = (() => {
     if (modeInstallation !== 'residentiel') return { sans: null, avec: null }
-    const srvSans = etudeHoraireDonnees?.dimensionnement?.recommandation
-    const srvAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
+    const dim = etudeHoraireDonnees?.dimensionnement
     // `sizingInfo` porte DÉJÀ les chiffres « avec » directement (aplati) en
     // scénario mono « Avec batterie » — même convention que ses producteurs
     // (applyLead et consorts) ; sinon c'est la branche sans, avec `.avec` imbriqué.
     const localSans = (scenario === SCENARIO_AVEC) ? null : sizingInfo
     const localAvec = (scenario === SCENARIO_AVEC) ? sizingInfo : sizingInfo?.avec
-    const srvSansOk = Number(srvSans?.panneaux) > 0
-    const srvAvecOk = Number(srvAvec?.panneaux) > 0
-    const localSansOk = localSans?.nbPanneaux > 0
-    const localAvecOk = localAvec?.nbPanneaux > 0
-    const asSans = () => (srvSansOk
-      ? { nbPanneaux: srvSans.panneaux, kwc: srvSans.kwc }
-      : { nbPanneaux: localSans.nbPanneaux, kwc: localSans.kwcOptimal })
-    const asAvec = () => (srvAvecOk
-      ? { nbPanneaux: srvAvec.panneaux, kwc: srvAvec.kwc }
-      : { nbPanneaux: localAvec.nbPanneaux, kwc: localAvec.kwcOptimal })
-    if (srvSansOk && srvAvecOk) return { sans: asSans(), avec: asAvec() }
-    if (localSansOk && localAvecOk) return { sans: asSans(), avec: asAvec() }
-    // Sources dépareillées (ou une seule branche calculable) : UNE seule
-    // valeur, jamais la paire — priorité serveur > local, indépendamment
-    // pour la branche qui EST affichée seule.
-    if (srvSansOk) return { sans: asSans(), avec: null }
-    if (localSansOk) return { sans: asSans(), avec: null }
-    if (srvAvecOk) return { sans: null, avec: asAvec() }
-    if (localAvecOk) return { sans: null, avec: asAvec() }
-    return { sans: null, avec: null }
+    return paireDimensionnement(
+      dim?.recommandation, dim?.recommandation_avec, localSans, localAvec)
   })()
 
   const applyLead = (id) => {
@@ -1486,100 +1504,51 @@ export default function DevisGenerator({
     setClientId('') // le client est résolu côté serveur depuis le lead
     const lead = leads.find(l => String(l.id) === String(id))
     if (!lead) return
-    // Pré-réglage du mode depuis le lead UNIQUEMENT si l'utilisateur n'a pas
-    // déjà choisi un mode lui-même — son choix ne se réinitialise JAMAIS.
-    const modeLead = !modeTouched.current && lead.type_installation
+    // QJR99 — les SEPT écritures gardées (mode, scénario, structure, tension,
+    // alimentation pompe, taille souhaitée, dimensionnement par facture) sont
+    // devenues UNE transition `LEAD_APPLIQUE`. Chaque garde-fou « intact » y
+    // est écrit une fois, testé, et le bug QJR38 (« brancher sur le mode du
+    // rendu PRÉCÉDENT ») ne peut plus revenir : le mode visé EST dans l'état
+    // que la transition produit.
+    //
+    // Ce qui reste ICI est tout ce que le reducer ne modélise PAS : le type
+    // d'installation (autoconsommation par défaut), les champs pompe, la
+    // consommation, les factures affichées, et la RÉSOLUTION du balayage local
+    // — un reducer pur ne va jamais chercher un chiffre au catalogue.
+    const modeLead = !sizing.touche.mode && lead.type_installation
       ? LEAD_TYPE_TO_MODE[lead.type_installation] : null
-    if (modeLead) onModeChange(modeLead)
-    // Mode RÉELLEMENT visé par ce pré-remplissage : `modeInstallation` est
-    // encore la valeur du rendu courant après `onModeChange` (setState ne
-    // rafraîchit pas la constante fermée).
+    // Mode RÉELLEMENT visé par ce pré-remplissage (miroir EXACT du calcul que
+    // fait le reducer) : il décide du type d'installation et du dimensionneur.
     const modeCible = modeLead || modeInstallation
-    // ORDRE FONDATEUR (24/08) — le scénario du lead est un choix DÉJÀ FAIT
-    // (tunnel : batterie_souhaitee) : il l'emporte sur le défaut du mode, dans
-    // les deux sens (« sans » restreint, « les deux » rouvre un mode qui
-    // partait mono). Rien de renseigné → le défaut du mode reste, exactement
-    // comme le devis auto (autoQuote.js, QX19). Posé APRÈS `onModeChange`
-    // ci-dessus, qui repose justement ce défaut. JAMAIS en pompage : un devis
-    // agricole ne porte ni batterie ni onduleur, quoi qu'ait coché le lead.
-    // L-2OPT — le scénario réellement visé servait au choix sans/avec du
-    // balayage local `computeAutoSizing` ci-dessous ; U3-MOTEUR l'a retiré du
-    // chemin résidentiel (le moteur serveur dimensionne), et les autres
-    // marchés ne vendent jamais l'option batterie. Il n'y a donc plus rien à
-    // en dériver ici : on se contente de poser le scénario du lead.
-    if (!scenarioTouched.current && modeCible !== 'agricole') {
-      const scenarioLead = BATTERIE_LEAD_VERS_SCENARIO[String(lead.batterie_souhaitee ?? '')]
-      if (scenarioLead) setScenario(scenarioLead)
+    if (modeLead && modeLead !== modeInstallation) {
+      onInstTypeChange(INST_TYPE_PAR_MODE[modeLead] ?? 'Résidentielle')
     }
-    // Structure préférée du lead (acier/aluminium) si non touchée par l'utilisateur.
-    if (!structureTouched.current
-        && (lead.structure_pref === 'acier' || lead.structure_pref === 'aluminium')) {
-      setStructureType(lead.structure_pref)
-    }
-    // QXMT — le tunnel web pose déjà la tension de raccordement (BT/MT) au
-    // client pro : on la reprend telle quelle plutôt que de la redemander,
-    // tant que le vendeur n'a pas fixé lui-même le sélecteur.
-    if (!tensionTouched.current) {
-      const tensionLead = String(
-        lead.web_questionnaire?.tension_raccordement ?? '').toLowerCase()
-      if (tensionLead === 'bt' || tensionLead === 'mt') setTensionRaccordement(tensionLead)
-    }
-    // Lead agricole : recopie pompe CV / HMT / débit ; l'alimentation suit le
-    // raccordement (monophase→mono / triphase→tri) tant qu'elle est intacte.
+    // Lead agricole : recopie pompe CV / HMT / débit (l'alimentation, elle,
+    // suit le raccordement DANS la transition ci-dessous).
     if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
       if (lead.pompe_cv != null && lead.pompe_cv !== '') setPompeCv(String(lead.pompe_cv))
       if (lead.pompe_hmt_m != null && lead.pompe_hmt_m !== '') setPompeHmt(String(lead.pompe_hmt_m))
       if (lead.pompe_debit_m3h != null && lead.pompe_debit_m3h !== '') setPompeDebit(String(lead.pompe_debit_m3h))
-      if (!pompeAlimTouched.current) {
-        if (lead.raccordement === 'monophase') setPompeAlim('mono')
-        else if (lead.raccordement === 'triphase') setPompeAlim('tri')
-      }
     }
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
-    // Taille souhaitée (kWc) du lead → nb de panneaux, prioritaire sur
-    // l'estimation par facture, tant que le champ n'a pas été touché.
+    const hiver = parseFloat(lead.facture_hiver) || 0
+    // bascule OFF → la valeur unique vaut hiver ET été
+    const ete = (lead.ete_differente && lead.facture_ete)
+      ? parseFloat(lead.facture_ete) : hiver
+    // La taille souhaitée du lead est PRIORITAIRE sur la facture : on ne
+    // chiffre le balayage local que si elle ne fournit rien (même garde que le
+    // reducer, pour ne pas payer `optimalKwcByPayback` pour rien). Résidentiel :
+    // AUCUN balayage local — U3-MOTEUR, le moteur horaire serveur dimensionne.
     const tailleKwc = parseFloat(lead.taille_souhaitee_kwc) || 0
-    const fromTaille = (!nbPanneauxTouched.current && tailleKwc > 0)
+    const fromTaille = (!sizing.touche.nbPanneaux && tailleKwc > 0)
       ? panneauxPourKwc(tailleKwc, panelW)
       : 0
-    if (fromTaille > 0) setNbPanneaux(String(fromTaille))
-    const hiver = parseFloat(lead.facture_hiver) || 0
+    const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
+      ? computeAutoSizing(hiver, ete) : null
+    dispatchSizing({ type: 'LEAD_APPLIQUE', lead, sizingLocal })
     if (hiver > 0) {
-      // bascule OFF → la valeur unique vaut hiver ET été
-      const ete = (lead.ete_differente && lead.facture_ete)
-        ? parseFloat(lead.facture_ete) : hiver
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
-      // L'estimation par facture ne s'applique que si la taille souhaitée n'a
-      // pas déjà fourni un nombre de panneaux (taille prioritaire). Règle
-      // fondateur du 18/08 — dimensionnement par paliers de 5 kWc au payback
-      // le plus court ; sous ce seuil, attend le moteur horaire SERVEUR
-      // (U3-900 — plus de repli `estimerPanneaux`, voir attenteSizingServeur).
-      if (fromTaille <= 0) {
-        if (modeCible === 'residentiel') {
-          // U3-MOTEUR — voir la note de `computeAutoSizing` : en résidentiel
-          // le dimensionnement vient du MOTEUR HORAIRE serveur, quelle que
-          // soit la facture. On ne préremplit donc RIEN ici (ni panneaux, ni
-          // `sizingInfo`) : l'effet `attenteSizingServeur` applique la
-          // recommandation dès que le dry-run répond, ou affiche son refus
-          // FRANÇAIS nommé.
-          setSizingInfo(null)
-          attenteSizingServeur.current = true
-        } else {
-          // Industriel/commercial : aucun moteur serveur pour eux — le
-          // balayage local par paliers reste leur seule source de taille.
-          // L-2OPT — l'optimum « avec batterie » ne concernait que le
-          // résidentiel (`composeLocalement` force ces quantités à 0 ailleurs) :
-          // ces marchés lisent l'optimum SANS, comme avant.
-          const sizing = computeAutoSizing(hiver, ete)
-          if (sizing) {
-            setNbPanneaux(String(sizing.nbPanneaux))
-            setSizingInfo(sizing)
-          } else {
-            setSizingInfo(null)
-          }
-        }
-      }
       setMonthly(estimerMois(hiver, ete))
     }
   }
@@ -1592,52 +1561,36 @@ export default function DevisGenerator({
   // strict : le comportement historique est inchangé.
   const applySiteProfile = (p) => {
     if (!p) return
-    const modeLead = !modeTouched.current
+    // QJR99 — miroir d'`applyLead` : une SEULE transition
+    // (`PROFIL_SITE_APPLIQUE`) porte le mode, l'alimentation pompe et le
+    // dimensionnement par facture. QJR38 — le mode RÉELLEMENT visé est calculé
+    // ici comme dans le reducer (et non lu sur le rendu précédent) : c'est ce
+    // bug-là qui faisait armer au résidentiel une attente que le moteur
+    // résidentiel-only ne satisferait jamais pour un profil industriel.
+    const modeLead = !sizing.touche.mode
         && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
       ? LEAD_TYPE_TO_MODE[p.type_installation] : null
-    if (modeLead) onModeChange(modeLead)
-    // QJR38 — Mode RÉELLEMENT visé par ce pré-remplissage : `modeInstallation`
-    // est encore la valeur du rendu courant après `onModeChange` (setState ne
-    // rafraîchit pas la constante fermée) — même patron qu'applyLead (le bug
-    // vivait ici : la branche `attenteSizingServeur` ci-dessous lisait
-    // `modeInstallation`, donc un profil industriel/commercial prenait encore
-    // le chemin résidentiel et armait une attente que le moteur résidentiel-
-    // only ne satisferait jamais).
     const modeCible = modeLead || modeInstallation
+    if (modeLead && modeLead !== modeInstallation) {
+      onInstTypeChange(INST_TYPE_PAR_MODE[modeLead] ?? 'Résidentielle')
+    }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
       if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
       if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
-      if (!pompeAlimTouched.current) {
-        if (p.raccordement === 'monophase') setPompeAlim('mono')
-        else if (p.raccordement === 'triphase') setPompeAlim('tri')
-      }
     }
     if (p.conso_mensuelle_kwh) setConsoMensuelle(String(p.conso_mensuelle_kwh))
     const hiver = parseFloat(p.facture_hiver) || 0
+    const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
+    // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead (voir
+    // computeAutoSizing) ; le résidentiel, lui, attend le moteur horaire
+    // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
+    const sizingLocal = (hiver > 0 && !sizing.touche.nbPanneaux && modeCible !== 'residentiel')
+      ? computeAutoSizing(hiver, ete) : null
+    dispatchSizing({ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal })
     if (hiver > 0) {
-      const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
       setFHiver(String(p.facture_hiver))
       setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
-      // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead
-      // (voir computeAutoSizing) ; sous le seuil, attend le moteur horaire
-      // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
-      if (!nbPanneauxTouched.current) {
-        if (modeCible === 'residentiel') {
-          // U3-MOTEUR — même règle qu'applyLead : le résidentiel ne se
-          // dimensionne plus ici, il attend le moteur horaire serveur.
-          setSizingInfo(null)
-          attenteSizingServeur.current = true
-        } else {
-          const sizing = computeAutoSizing(hiver, ete)
-          if (sizing) {
-            setNbPanneaux(String(sizing.nbPanneaux))
-            setSizingInfo(sizing)
-          } else {
-            setSizingInfo(null)
-          }
-        }
-      }
       setMonthly(estimerMois(hiver, ete))
     }
   }
@@ -1720,9 +1673,13 @@ export default function DevisGenerator({
       }
       setEditDevis({ id: d.id, reference: d.reference,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
-      if (d.mode_installation) {
-        modeTouched.current = true
-        onModeChange(d.mode_installation)
+      // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
+      // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
+      // sont lus) : mode + compte de panneaux + scénario, dans cet ordre, avec
+      // les drapeaux « déjà choisi » que ce round-trip exige. Ne reste ici que
+      // le type d'installation, hors modèle du reducer.
+      if (d.mode_installation && d.mode_installation !== modeInstallation) {
+        onInstTypeChange(INST_TYPE_PAR_MODE[d.mode_installation] ?? 'Résidentielle')
       }
       if (d.lead) setLeadId(String(d.lead))
       else if (d.client) setClientId(String(d.client))
@@ -1769,8 +1726,24 @@ export default function DevisGenerator({
       const panneaux = rows
         .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
-      if (panneaux > 0) setNbPanneaux(String(panneaux))
       const e = d.etude_params || {}
+      // ORDRE FONDATEUR (24/08) — round-trip du MARCHÉ, du COMPTE DE PANNEAUX
+      // et du SCÉNARIO déjà choisis sur ce devis (etude_params.scenario, posé
+      // par `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
+      // brouillon reposait le défaut du MODE et l'enregistrement suivant
+      // ÉCRASAIT silencieusement le choix du client — un devis « Avec
+      // batterie » repartait « Les deux », un devis industriel « Les deux »
+      // repartait « Sans batterie ». Le défaut ne vaut que pour un devis
+      // VIERGE. Un scénario hors contrat du moteur PDF est IGNORÉ (le Select
+      // ne doit jamais l'afficher) — la garde vit dans le reducer.
+      dispatchSizing({
+        type: 'REOUVERTURE',
+        devis: {
+          mode_installation: d.mode_installation,
+          panneaux,
+          scenario: e.scenario,
+        },
+      })
       // PVMRQ — round-trip de la gamme du devis (`etude_params.gamme.nom`,
       // posée par `services.creer_variante_gamme`/`gamme_nom`) : résout la
       // carte de marques Essentielle/Premium à réappliquer aux
@@ -1778,19 +1751,8 @@ export default function DevisGenerator({
       if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) {
         setGammeNomDevis(String(e.gamme.nom))
       }
-      // ORDRE FONDATEUR (24/08) — round-trip du SCÉNARIO déjà choisi sur ce
-      // devis (etude_params.scenario/recommended_choice, posés par
-      // `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
-      // brouillon reposait le défaut du MODE (`onModeChange` ci-dessus) et
-      // l'enregistrement suivant ÉCRASAIT silencieusement le choix du client —
-      // un devis « Avec batterie » repartait « Les deux », un devis
-      // industriel « Les deux » repartait « Sans batterie ». Le défaut ne vaut
-      // que pour un devis VIERGE. Valeurs inconnues ignorées : le Select ne
-      // doit jamais afficher un scénario hors contrat du moteur PDF.
-      if (SCENARIOS_VALIDES.includes(e.scenario)) {
-        scenarioTouched.current = true
-        setScenario(e.scenario)
-      }
+      // (le scénario du devis est repris par la transition `REOUVERTURE`
+      // ci-dessus, avec son drapeau « déjà choisi ».)
       if (['Auto', 'Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
         .includes(e.recommended_choice)) {
         setRecommendedChoice(e.recommended_choice)
@@ -1810,7 +1772,9 @@ export default function DevisGenerator({
       // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
       // qu'un devis MT rouvert recalcule au MÊME barème (jamais un retour BT
       // silencieux). Les clés absentes laissent le défaut 'bt' intact.
-      if (e.tension_raccordement === 'mt') setTensionRaccordement('mt')
+      if (e.tension_raccordement === 'mt') {
+        dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
+      }
       if (e.repartition_mt && typeof e.repartition_mt === 'object') {
         setRepartitionMt({
           pointe: e.repartition_mt.pointe != null ? String(e.repartition_mt.pointe) : '',
@@ -1865,10 +1829,7 @@ export default function DevisGenerator({
       // défaut, et la déduction depuis le raccordement du lead ne doit plus
       // l'écraser.
       if (e.type_pompe) setPompeType(String(e.type_pompe))
-      if (e.alim) {
-        pompeAlimTouched.current = true
-        setPompeAlim(String(e.alim))
-      }
+      if (e.alim) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: String(e.alim) })
       if (e.distance_m != null && e.distance_m !== '') setPompeDistance(String(e.distance_m))
     }).catch(() => {
       setErrors(prev => ({
@@ -1961,29 +1922,30 @@ export default function DevisGenerator({
     const hiver = parseFloat(hiverVal) || 0
     const ete = parseFloat(eteVal) || 0
     if (hiver <= 0) return
-    // N3 — un nombre de panneaux TAPÉ À LA MAIN (nbPanneauxTouched, le MÊME
+    // N3 — un nombre de panneaux TAPÉ À LA MAIN (`touche.nbPanneaux`, le MÊME
     // garde-fou « intact » qu'applyLead/applySiteProfile ci-dessus) n'est plus
     // jamais re-forcé par le redimensionnement automatique déclenché par la
     // frappe sur les factures : il ne se resynchronise qu'via une recomposition
     // EXPLICITE (« Auto-remplir », ou en retouchant nbPanneaux/kwcCible
     // eux-mêmes). Les factures (monthly), elles, restent toujours à jour.
-    if (!nbPanneauxTouched.current) {
-      if (modeInstallation === 'residentiel') {
-        // U3-MOTEUR — même règle qu'applyLead/applySiteProfile : chaque frappe
-        // sur la facture relance le dry-run serveur (le corps d'aperçu porte
-        // `fHiver`/`fEte`), et c'est SA recommandation qui remplit le nombre de
-        // panneaux. Plus aucun palier chiffré à l'écran ne s'y substitue.
-        setSizingInfo(null)
-        attenteSizingServeur.current = true
-      } else {
-        const sizing = computeAutoSizing(hiver, ete)
-        if (sizing) {
-          setNbPanneaux(String(sizing.nbPanneaux))
-          setSizingInfo(sizing)
-        } else {
-          setSizingInfo(null)
-        }
-      }
+    //
+    // QJR99 — un montant de facture tapé à l'écran est un PRÉ-REMPLISSAGE de
+    // profil énergétique comme un autre : il emprunte la MÊME transition que
+    // le profil site (`PROFIL_SITE_APPLIQUE`), qui porte déjà le garde-fou N3,
+    // le choix résidentiel-attend-le-moteur / autres-marchés-balayage-local, et
+    // l'effacement du justificatif. Une seule règle, trois appelants — plus
+    // trois copies à garder d'accord. U3-MOTEUR : en résidentiel, chaque frappe
+    // relance le dry-run serveur (le corps d'aperçu porte `fHiver`/`fEte`) et
+    // c'est SA recommandation qui remplit le nombre de panneaux ; aucun palier
+    // chiffré à l'écran ne s'y substitue, donc aucun balayage local à résoudre.
+    if (!sizing.touche.nbPanneaux) {
+      const sizingLocal = modeInstallation === 'residentiel'
+        ? null : computeAutoSizing(hiver, ete)
+      dispatchSizing({
+        type: 'PROFIL_SITE_APPLIQUE',
+        profil: { type_installation: modeInstallation, facture_hiver: hiver },
+        sizingLocal,
+      })
     }
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
@@ -2441,6 +2403,9 @@ export default function DevisGenerator({
     // plutôt que de les laisser disparaître sans explication.
     setOnduleursIncomplets(metaOnduleursIncomplets)
     setLines(withKeys(generated))
+    // QJR99 — rend les lignes composées : `resoudreComposition` (moitié pure de
+    // `useComposition`) en a besoin pour NOMMER la source du repli.
+    return generated
   }
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -2550,7 +2515,13 @@ export default function DevisGenerator({
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
       setLines(withKeys(generated))
-      if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
+      // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
+      // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
+      // marquer le champ « touché » (ce n'est pas une frappe) et tient la
+      // cible kWc à jour avec elle.
+      if (pompageSel) {
+        dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: pompageSel.dims.nbPanneaux } })
+      }
       setPompageAutoFilled(true)
       return
     }
@@ -2604,7 +2575,11 @@ export default function DevisGenerator({
         // QJR36 — la raison est posée dans l'état (comme `sizingServeurMessage`
         // pour le refus serveur) ; le vendeur reçoit désormais la bannière
         // visible ci-dessous au lieu d'un simple console.error silencieux.
-        setCompositionSourceLocale(err?.message || 'panne réseau/serveur')
+        // QJR99 — cette raison n'est plus rédigée ici : `raisonRepli` (moitié
+        // pure de `useComposition`) la produit, ce qui la rend STRUCTURELLE —
+        // une composition locale ne peut plus s'afficher sans dire d'où elle
+        // vient ni pourquoi. Le repli lui-même est INCHANGÉ.
+        setCompositionSourceLocale(raisonRepli(err?.message || 'panne réseau/serveur'))
         composeLocalement()
       } finally {
         setAutoFillLoading(false)
@@ -2618,26 +2593,19 @@ export default function DevisGenerator({
   // dimensionnement (moteur horaire serveur) : pose `nbPanneaux`/`panelW`
   // depuis la ligne choisie puis relance EXACTEMENT le même chemin de
   // composition que le bouton « Auto-remplir » (`handleAutoFill`) — jamais
-  // une seconde règle de composition. `setState` est asynchrone : on ne peut
-  // pas appeler `handleAutoFill()` dans la même passe (il lirait encore
-  // l'ancien `nbPanneaux`/`panelW` par fermeture) — un drapeau + un effet
-  // déclenchent l'auto-remplissage une fois les deux champs à jour.
-  const appliquerTaillePending = useRef(false)
+  // une seconde règle de composition.
+  //
+  // QJR99 — le couple `appliquerTaillePending` (ref) + effet calé sur
+  // `[nbPanneaux, panelW]` est SUPPRIMÉ : la transition `TAILLE_APPLIQUEE`
+  // incrémente elle-même `compositionSeq`, et l'UNIQUE effet de composition
+  // ci-dessous relance l'auto-remplissage. Au passage l'ancien montage ne
+  // repartait PAS quand la ligne choisie retombait sur le compte courant (aucun
+  // changement de dépendance → drapeau laissé armé pour la frappe suivante) ;
+  // un compteur, lui, avance toujours.
   const appliquerTailleDimensionnement = (ligne) => {
     if (!ligne || !(ligne.panneaux > 0)) return
-    nbPanneauxTouched.current = true
-    setSizingInfo(null)
-    setKwcCible(ligne.kwc != null ? String(ligne.kwc) : '')
-    if (ligne.panel_watt) setPanelW(String(ligne.panel_watt))
-    setNbPanneaux(String(ligne.panneaux))
-    appliquerTaillePending.current = true
+    dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne })
   }
-  useEffect(() => {
-    if (!appliquerTaillePending.current) return
-    appliquerTaillePending.current = false
-    handleAutoFill()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au drapeau « Appliquer cette taille », pas à chaque frappe de nbPanneaux/panelW
-  }, [nbPanneaux, panelW])
 
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
   // (revue adversariale 26/08 — corrige la prose initiale, qui affirmait à
@@ -2655,7 +2623,7 @@ export default function DevisGenerator({
   //      jamais appelé).
   //   3. Dès qu'un nombre de panneaux a été touché À LA MAIN (n'importe où,
   //      n'importe quand dans la session — pas spécifiquement à cause de
-  //      l'édition), `nbPanneauxTouched` se ferme et plus AUCUNE frappe sur
+  //      l'édition), `touche.nbPanneaux` se ferme et plus AUCUNE frappe sur
   //      la facture ne recalcule quoi que ce soit (N3, comportement voulu).
   // Ce bouton est le déverrouillage EXPLICITE demandé par le fondateur : un
   // clic vaut consentement à remplacer les quantités auto-dérivées (jamais
@@ -2670,20 +2638,16 @@ export default function DevisGenerator({
   // remplacement intégral des lignes que l'Auto-remplir existant produit déjà
   // aujourd'hui (il ne préserve pas plus les lignes ajoutées à la main que
   // lui — comportement historique inchangé, pas régressé par ce bouton).
-  const recalcDimPending = useRef(false)
-  // F1 (revue adversariale 26/08, BLOQUANT) — capture l'état RÉEL du
-  // garde-fou juste AVANT de le déverrouiller : le reverrouillage (effet
-  // ci-dessous) restaure EXACTEMENT cette valeur, JAMAIS un `true` figé. Un
-  // `true` figé (l'ancien code) verrouillait PERMANEMMENT le garde-fou après
-  // le tout premier clic — y compris en création, où il partait FAUX : (a)
-  // le redimensionnement facture→panneaux en direct (règle N3,
-  // `syncBillEstimator`) mourait silencieusement pour le reste de la
-  // session ; (b) une « Auto-remplir » ultérieure retombait sur `kwp` via
-  // `resolveKwcAvec()` (court-circuit `nbPanneauxTouched.current`) alors que
-  // l'écran continuait d'afficher l'optimum AVEC réellement divergent
-  // (`deuxValeursDim`) — un nombre affiché qui ne correspondait plus à ce
-  // qui venait d'être composé (violation de la règle chiffres-vérifiés).
-  const recalcDimPriorTouched = useRef(false)
+  //
+  // QJR99 — F1/F2 (revue adversariale 26/08) exigeaient de DÉVERROUILLER le
+  // garde-fou « touché » le temps du calcul synchrone, puis de restaurer
+  // EXACTEMENT sa valeur d'avant le clic — une danse à trois instructions
+  // (`recalcDimPriorTouched` / `= false` / restauration dans l'effet) entre
+  // lesquelles une frappe pouvait s'engouffrer. Les deux refs SONT SUPPRIMÉES :
+  // `RECALCUL_DEMANDE` rouvre le drapeau POUR LA COMPOSITION QUI SUIT et le
+  // restaure DANS LA MÊME TRANSITION (invariant 3 du reducer) — la fenêtre
+  // n'existe plus, et `toucheNbPanneauxPourComposition` est le seul lecteur qui
+  // la voit ouverte, sur une seule transition.
   const recalculerDimensionnement = () => {
     // U3-MOTEUR (fondateur 29/08/2026) — en RÉSIDENTIEL, ce bouton relit la
     // recommandation du MOTEUR HORAIRE serveur (déjà interrogée par le dry-run
@@ -2730,44 +2694,26 @@ export default function DevisGenerator({
       retenu = sizing
     }
     setErrors(e => ({ ...e, recalcDim: null }))
-    // Déverrouille temporairement le garde-fou « touché » : sinon
-    // `resolveKwcAvec()` (lu par `handleAutoFill` ci-dessous) court-circuite
-    // sur `kwp` et les deux optimiseurs ne pourraient plus jamais diverger
-    // après un premier recalcul. Reverrouillé dans l'effet ci-dessous — à
-    // l'état d'AVANT ce clic (capturé ici), jamais à `true` en dur.
-    recalcDimPriorTouched.current = nbPanneauxTouched.current
-    nbPanneauxTouched.current = false
-    setSizingInfo(modeInstallation === 'residentiel' ? null : retenu)
-    setKwcCible(retenu.kwcOptimal != null ? String(retenu.kwcOptimal) : '')
-    setNbPanneaux(String(retenu.nbPanneaux))
-    // Compteur (jamais `nbPanneaux`/`panelW` eux-mêmes) : un recalcul qui
-    // retombe sur le MÊME compte de panneaux (palier inchangé) doit quand
-    // même relancer la composition (catalogue/marques/scénario ont pu
-    // changer) — un effet calé sur `nbPanneaux` ne se redéclencherait pas
-    // dans ce cas (React n'y voit aucun changement de valeur).
-    recalcDimPending.current = true
-    setRecalcDimTick(t => t + 1)
+    // Une seule transition : la taille retenue est posée, `sizingInfo` reste
+    // NUL en résidentiel (son encart parle de « palier retenu », une notion du
+    // balayage local), le garde-fou « touché » est rouvert POUR LA COMPOSITION
+    // QUI SUIT et restauré dans le même mouvement, et `compositionSeq` avance —
+    // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
+    // relancer la composition (catalogue/marques/scénario ont pu changer).
+    dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu })
   }
+  // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
+  // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et
+  // relancent donc EXACTEMENT le chemin du bouton « Auto-remplir » (dry-run
+  // serveur résidentiel, repli local ailleurs) — jamais une seconde règle de
+  // composition. F2 (26/08) reste satisfait sans aucune manœuvre de
+  // verrouillage : `handleAutoFill` lit `resolveKwcAvec()` — donc la fenêtre
+  // `recalcul` ouverte par CETTE transition — dans son préfixe SYNCHRONE, et
+  // toute action ultérieure referme la fenêtre côté reducer.
   useEffect(() => {
-    if (!recalcDimPending.current) return
-    recalcDimPending.current = false
-    // F2 (revue adversariale 26/08) — la fenêtre de déverrouillage doit être
-    // bornée au calcul SYNCHRONE, jamais à tout l'aller-retour réseau. Une
-    // fonction async exécute la totalité de son préfixe SYNCHRONE (tout ce
-    // qui précède son premier `await`) AVANT de rendre la main à l'appelant :
-    // `handleAutoFill()` lit déjà `resolveKwcAvec()` — donc déjà
-    // `nbPanneauxTouched.current` — dans ce préfixe (branche résidentielle),
-    // avant son `await ventesApi.composerDevis(...)`. Reverrouiller ICI
-    // (jamais dans un `.finally()` après le round-trip, comme avant) ferme la
-    // fenêtre avant qu'une frappe sur la facture ait la moindre chance de s'y
-    // engouffrer : sinon `syncBillEstimator` pouvait recomposer
-    // nbPanneaux/sizingInfo PENDANT que la réponse en vol écrasait les lignes
-    // calculées sur l'ANCIEN kwc (incident identifié en revue — deux sources
-    // divergentes en course).
-    const pending = handleAutoFill()
-    nbPanneauxTouched.current = recalcDimPriorTouched.current
-    Promise.resolve(pending).catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au drapeau posé par recalculerDimensionnement
+    if (!recalcDimTick) return
+    Promise.resolve(handleAutoFill()).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au compteur de composition du reducer
   }, [recalcDimTick])
 
   // ── Sauvegarde ──
@@ -3536,7 +3482,7 @@ export default function DevisGenerator({
               className="flex-wrap"
               options={MODE_OPTIONS}
               value={modeInstallation}
-              onChange={(v) => { modeTouched.current = true; onModeChangeUi(v) }}
+              onChange={(v) => { marquerMarcheTouche(); onModeChangeUi(v) }}
             />
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
@@ -3858,7 +3804,7 @@ export default function DevisGenerator({
                       { value: 'mt', label: 'Moyenne tension (MT)' },
                     ]}
                     value={tensionRaccordement}
-                    onChange={(v) => { tensionTouched.current = true; setTensionRaccordement(v) }}
+                    onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: v })}
                   />
                   <p className="text-xs text-muted-foreground">
                     Au-delà de ~50 kW le site est en général raccordé en MT :
@@ -4012,7 +3958,7 @@ export default function DevisGenerator({
                     { value: 'tri', label: 'Tri 380V' },
                   ]}
                   value={pompeAlim}
-                  onChange={(v) => { pompeAlimTouched.current = true; setPompeAlim(v) }}
+                  onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: v })}
                 />
               </div>
             </div>
@@ -4243,7 +4189,8 @@ export default function DevisGenerator({
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
                 <Input id="gen-panelw" type="number" min="100" max="1000" step="any"
-                       value={panelW} onChange={e => setPanelW(e.target.value)} />
+                       value={panelW}
+                       onChange={e => dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
                 <Label>Puissance PV (kWp) — calculée</Label>
@@ -4257,7 +4204,7 @@ export default function DevisGenerator({
                     { value: 'aluminium', label: 'Aluminium' },
                   ]}
                   value={structureType}
-                  onChange={(v) => { structureTouched.current = true; setStructureType(v) }}
+                  onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: v })}
                 />
               </div>
             </div>
@@ -4388,6 +4335,12 @@ export default function DevisGenerator({
                    data-testid="composition-source-locale">
                 Composition établie localement (serveur indisponible) — les
                 quantités peuvent différer du devis serveur.
+                {/* QJR99 — la CAUSE, NOMMÉE (`raisonRepli`, moitié pure de
+                    `useComposition`) : une composition de secours ne s'affiche
+                    plus sans dire pourquoi elle a remplacé celle du serveur. */}
+                <div className="mt-1 text-xs" data-testid="composition-source-locale-raison">
+                  {compositionSourceLocale}
+                </div>
               </div>
             )}
             {onduleursIncomplets.length > 0 && (
