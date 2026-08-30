@@ -444,7 +444,9 @@ concevoir_electrique_du_devis = _bordereau.concevoir_electrique_du_devis
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : entrées d'étude → ``domain/etudes.py``
 # ═════════════════════════════════════════════════════════════════════════
-profil_reel_existe = _etudes.profil_reel_existe
+# QJR107 (30/08/2026) — le ré-export `profil_reel_existe` est SUPPRIMÉ avec la
+# fonction (aucun appelant dans tout le dépôt ; voir la note de suppression en
+# tête de `domain/etudes.py`).
 entrees_dimensionnement_du_devis = _etudes.entrees_dimensionnement_du_devis
 
 
@@ -652,7 +654,6 @@ __all__ = [
     'poser_puissance_kwc',
     'prix_applicable',
     'prix_forfait_ht',
-    'profil_reel_existe',
     'puissance_kwc_du_devis',
     'qr_svg_for_facture_pdf',
     'rafraichir_dimensionnement_devis',

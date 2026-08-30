@@ -9,7 +9,10 @@ un cycle de CI complet au lieu de quelques secondes.
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 175 noms PUBLICS définis au niveau module
+* ``SURFACE_PUBLIQUE`` — les 177 noms PUBLICS définis au niveau module
+  (178 avant QJR107, qui a supprimé ``profil_reel_existe``). Ce compte de
+  prose n'est vérifié par AUCUNE assertion — il était déjà périmé (« 175 »)
+  avant ce lot ; seule la LISTE fait foi, et elle, elle est vérifiée EXACTE.
   (fonctions, classes, constantes). La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
   tout élargissement de surface visible en revue).
@@ -201,7 +204,9 @@ SURFACE_PUBLIQUE = (
     "poser_puissance_kwc",
     "prix_applicable",
     "prix_forfait_ht",
-    "profil_reel_existe",
+    # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :
+    # la fonction est supprimée (aucun appelant dans tout le dépôt), voir la
+    # note de suppression en tête de ``domain/etudes.py``.
     "puissance_kwc_du_devis",
     "qr_svg_for_facture_pdf",
     "rafraichir_dimensionnement_devis",
