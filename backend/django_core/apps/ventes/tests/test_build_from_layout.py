@@ -106,14 +106,32 @@ class TestBuildFromLayout(TestCase):
         self.assertGreater(panel.prix_unitaire, 0)
         self.assertEqual(panel.designation, 'Panneau Pricey 550W')
 
-    def test_all_priceless_skips_line(self):
+    def test_all_priceless_is_refused_before_any_write(self):
+        """QJR95 — CE TEST A CHANGÉ DE VERDICT, DÉLIBÉRÉMENT.
+
+        Il attendait un devis à ZÉRO LIGNE : un document né vide, sans un mot
+        pour dire pourquoi, qu'un commercial pouvait envoyer tel quel. Depuis
+        que ce chemin passe par ``pipeline.appliquer``, la pré-vérification
+        (QJR82) tourne AVANT toute écriture et REFUSE en nommant la donnée
+        manquante — le même message français que le calepinage prononçait déjà
+        dans sa vue.
+
+        Refuser vaut mieux que créer puis effacer : un devis effacé rendrait sa
+        référence au compteur, et le numéro suivant la reprendrait."""
+        from apps.ventes.domain.pipeline import MSG_SANS_ONDULEUR_RESEAU
+        from apps.ventes.domain.taille import AutoDevisError
+
         Produit.objects.all().update(prix_vente=0)
         layout = {'scenario': 'reseau',
                   'result': {'panels': 8, 'kwc': 4.4}}
-        devis = build_devis_from_layout(
-            layout=layout, user=self.user, company=self.company,
-            lead=self._lead())
-        self.assertEqual(devis.lignes.count(), 0)
+        with self.assertRaises(AutoDevisError) as leve:
+            build_devis_from_layout(
+                layout=layout, user=self.user, company=self.company,
+                lead=self._lead())
+        self.assertIn(MSG_SANS_ONDULEUR_RESEAU, str(leve.exception))
+        from apps.ventes.models import Devis
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), 0)
 
     def test_client_resolved_from_lead_no_duplicate(self):
         lead = self._lead()

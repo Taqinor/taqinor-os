@@ -27,6 +27,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 import logging
 
+from django.db import transaction
+
+# Alias module-local : les tests sans base (test_qjr_pipeline_appliquer)
+# remplacent ``pipeline._atomic`` par un enregistreur no-op sans toucher au
+# module ``django.db.transaction`` partagé.
+_atomic = transaction.atomic
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -335,9 +342,12 @@ def verifier(intention):
 # relisable, et c'est ce qui rendra chaque bascule (M5) vérifiable par un
 # simple golden.
 #
-# AUCUN DES CINQ CHEMINS NE L'APPELLE ENCORE — c'est voulu, et c'est la
-# condition de sûreté de cette vague : la fonction est posée, testée, et les
-# bascules sont M5 (QJR93 et suivantes), une par une, chacune avec son golden.
+# LES BASCULES (M5) BRANCHENT LES CHEMINS UN PAR UN, chacune avec son golden et
+# la SUPPRESSION de l'ancien corps dans le même commit (R4-C.7) : QJR93 a
+# branché l'écran (``atomic`` / ``replace-lines``), QJR94 ``perform_update``,
+# QJR95 la création depuis un calepinage 3D. Le ledger des chemins branchés est
+# tenu par ``tests/test_qjr_pipeline_appliquer.py`` : tout appel non déclaré y
+# est rouge.
 
 #: QJR85 — les CINQ origines d'un devis. Elles ne changent AUCUNE règle : elles
 #: nomment d'où vient la demande (journal, propriétaire d'étude, message).
@@ -355,6 +365,46 @@ ORIGINES = (ORIGINE_ECRAN, ORIGINE_CALEPINAGE, ORIGINE_AUTO,
 ETAPES = ('resoudre_entrees', 'decider_taille', 'composer', 'verifier',
           'ecrire_lignes', 'ecrire_etude_params', 'rafraichir_etudes',
           'finaliser')
+
+# ── QJR93 (M5) — LES MODES : QUELLES étapes le geste demandé recouvre ────────
+#
+# Une bascule ne peut pas faire passer un chemin par des étapes qu'il ne
+# faisait pas : ce serait un changement de comportement déguisé en
+# refactoring. Le mode DÉCLARE donc, une fois, le sous-ensemble d'étapes que
+# chaque geste recouvre — et ``appliquer`` n'en exécute jamais d'autres.
+#
+# * ``composer``   — LE geste complet : le pipeline compose lui-même (les huit
+#   étapes). C'est le mode de QJR85, et le DÉFAUT : une intention qui ne dit
+#   rien se comporte exactement comme avant cette bascule ;
+# * ``ecrire``     — LA COMPOSITION EST FOURNIE par l'appelant. C'est le geste
+#   de l'ÉCRAN générateur (``atomic`` / ``replace-lines``, QJR93) : le
+#   commercial a composé, édité, tapé des prix ; recomposer depuis le
+#   catalogue DÉTRUIRAIT son travail. Les étapes 3 (``composer``) et 4
+#   (``verifier``) n'ont donc rien à décider ici, et le pipeline se réduit à
+#   l'ÉCRIVAIN UNIQUE des lignes ;
+# * ``rafraichir`` — RIEN N'EST ÉCRIT : les quatre études repartent de
+#   l'instance RELUE (QJR20). C'est la moitié « après la transaction » de
+#   l'écran, et le geste entier de ``perform_update`` (QJR94).
+#
+# POURQUOI DEUX APPELS ET NON UN SUR LE CHEMIN DE L'ÉCRAN. Les lignes
+# s'écrivent SOUS transaction (« soit RIEN, soit un devis complet ») ; les
+# quatre études, elles, sont délibérément HORS transaction et best-effort — un
+# devis correctement écrit ne doit jamais être annulé par une étude, et une
+# étude qui avale une erreur de base à l'intérieur d'une transaction la rendrait
+# inutilisable pour tout ce qui suit. Les deux modes gardent donc chacun leur
+# côté de la frontière, exactement là où l'ancien corps les tenait.
+MODE_COMPOSER = 'composer'
+MODE_ECRIRE = 'ecrire'
+MODE_RAFRAICHIR = 'rafraichir'
+MODES = (MODE_COMPOSER, MODE_ECRIRE, MODE_RAFRAICHIR)
+
+#: Les étapes de CHAQUE mode, dans l'ordre. Le journal rendu par ``appliquer``
+#: est exactement cette liste — c'est ce qu'une bascule compare.
+ETAPES_PAR_MODE = {
+    MODE_COMPOSER: ETAPES,
+    MODE_ECRIRE: ('ecrire_lignes',),
+    MODE_RAFRAICHIR: ('rafraichir_etudes',),
+}
 
 
 @dataclass(frozen=True)
@@ -396,6 +446,20 @@ class IntentionDevis:
     * ``exact`` — la cible vient d'un NOMBRE TAPÉ, pas d'un toit : les deux
       options y sont portées à la hausse comme à la baisse (cf.
       ``sync_devis_from_layout(cible_exacte=...)``).
+    * ``mode`` — QJR93, lequel des ``MODES`` : quelles étapes le geste
+      recouvre. ``'composer'`` (LE DÉFAUT) ⇒ les huit, comportement de QJR85
+      strictement inchangé ;
+    * ``composition`` — QJR93, les LIGNES DÉJÀ ARRÊTÉES par l'appelant, en mode
+      ``'ecrire'``. Même souveraineté qu'``entrees`` et ``cible`` : ce que
+      l'écran a composé/édité ne se refait pas. Acceptée sous les deux formes
+      que ce dépôt produit — des ``LigneKit`` (une composition du pipeline) ou
+      des dicts déjà au format de l'écrivain (le corps de l'écran) ;
+    * ``etude_initiale`` — QJR95, l'étude que l'appelant apporte DÉJÀ au devis
+      qu'il fait créer (le calepinage apporte sa toiture et son kWc de toit).
+      Posée à la création, jamais recalculée ici ;
+    * ``force_etudes`` — QJR94, ``force=True`` des quatre rafraîchisseurs :
+      « recalcule même si l'empreinte concorde ». ``False`` (LE DÉFAUT) laisse
+      l'empreinte décider (QJR43/QJR44/QJR47).
     """
 
     origine: str
@@ -416,6 +480,10 @@ class IntentionDevis:
     mppt_paires: int = 1
     phase: object = None
     gamme_nom_devis: object = None
+    mode: str = MODE_COMPOSER
+    composition: object = None
+    etude_initiale: object = None
+    force_etudes: bool = False
 
 
 def _scenario_de(intention):
@@ -496,9 +564,16 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
     tri de repli sur ``id`` : sans lui l'ordre par défaut de la société (PVORD)
     ne survivrait pas à la première renumérotation. La re-tarification des
     forfaits au panneau (QJR83) est faite par l'écrivain lui-même.
+
+    QJR93 — DEUX FORMES D'ENTRÉE, UN SEUL ÉCRIVAIN. Une ``LigneKit`` (ce que
+    ``composer`` rend) est TRADUITE ci-dessous ; un dict est passé TEL QUEL,
+    sans un champ ajouté ni retiré. C'est ce qui permet à l'écran — qui envoie
+    déjà le format de l'écrivain, avec ses sections, ses ``optionnelle`` et ses
+    marqueurs de saisie manuelle (D12) — d'emprunter cette étape sans qu'un
+    seul octet de son corps de requête change de sens en route.
     """
     lignes_in = [
-        {
+        spec if isinstance(spec, dict) else {
             'produit': getattr(spec.produit, 'id', None),
             'designation': spec.designation,
             'quantite': str(spec.quantite),
@@ -543,7 +618,7 @@ def ecrire_etude_params(devis, intention, composition):
     return ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
 
 
-def rafraichir_etudes(verrou):
+def rafraichir_etudes(verrou, *, force=False):
     """Étape 7 — LES QUATRE études, sur l'instance VERROUILLÉE **ET RELUE**.
 
     QJR20 (29/08/2026) — LA RELECTURE N'EST PAS UNE PRÉCAUTION, C'EST L'ÉTAPE.
@@ -557,10 +632,16 @@ def rafraichir_etudes(verrou):
     ``refresh_from_db()`` sans ``fields`` vide déjà
     ``_prefetched_objects_cache`` (Django) ; le vidage explicite est une
     ceinture, pour que ce contrat ne dépende pas d'un détail du framework.
+
+    ``force`` (QJR94) — passé TEL QUEL aux quatre rafraîchisseurs : « recalcule
+    même si l'empreinte concorde ». ``False`` (LE DÉFAUT) laisse l'empreinte
+    décider, comme QJR47 l'a établi sur les chemins de l'écran ; ``True`` est
+    ce que ``perform_update`` exigeait déjà de ses deux rafraîchisseurs et
+    qu'il continue d'exiger des quatre.
     """
     verrou.refresh_from_db()
     verrou._prefetched_objects_cache = {}
-    return rafraichir_etudes_du_devis(verrou)
+    return rafraichir_etudes_du_devis(verrou, force=force)
 
 
 def finaliser(devis, intention):
@@ -612,6 +693,13 @@ def _creer_brouillon(intention):
             remise_globale=intention.remise_globale,
             created_by=intention.user,
             mode_installation=intention.mode_installation,
+            # QJR95 — l'étude que l'appelant APPORTE (la toiture du calepinage
+            # et son kWc de toit) est posée à la création, comme le faisait le
+            # corps de ``build_devis_from_layout``. Le pipeline n'en dérive
+            # rien : il la transporte. Ce que le pipeline arrête LUI-MÊME est
+            # écrit à l'étape 6, par l'écrivain unique.
+            etude_params=(dict(intention.etude_initiale)
+                          if intention.etude_initiale else None),
             roof_layout=intention.layout or None,
         )
 
@@ -634,13 +722,22 @@ def appliquer(devis, intention):
     vaut mieux que créer puis effacer (un devis effacé rendrait sa référence
     au compteur, et le numéro suivant la reprendrait).
 
-    **AUCUN des cinq chemins n'appelle encore cette fonction** (QJR85) : les
-    bascules sont M5, une par une, chacune avec son golden.
+    ``intention.mode`` (QJR93) choisit QUELLES étapes le geste recouvre — voir
+    ``MODES``. Le défaut ``'composer'`` est le pipeline complet décrit
+    ci-dessus ; ``'ecrire'`` et ``'rafraichir'`` sont les deux moitiés du geste
+    de l'écran, de part et d'autre de la frontière de transaction.
     """
     if intention.origine not in ORIGINES:
         raise ValueError(
             'Origine de devis inconnue « %s » — attendu : %s.'
             % (intention.origine, ', '.join(ORIGINES)))
+    mode = (intention.mode or MODE_COMPOSER)
+    if mode not in MODES:
+        raise ValueError(
+            'Mode de pipeline inconnu « %s » — attendu : %s.'
+            % (intention.mode, ', '.join(MODES)))
+    if mode != MODE_COMPOSER:
+        return _appliquer_sur_devis_existant(devis, intention, mode)
 
     journal = []
     avertissements = []
@@ -661,15 +758,22 @@ def appliquer(devis, intention):
     if refus:
         raise AutoDevisError(refus[0], field='composition')
 
-    verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
-        intention)
+    # Passe Fable M5a (30/08/2026) — LA FRONTIÈRE TRANSACTIONNELLE DE L'ANCIEN
+    # CHEMIN EST PRÉSERVÉE : `build_devis_from_layout` créait le Devis ET ses
+    # lignes sous le `transaction.atomic()` de `create_with_reference` — une
+    # panne en pleine écriture annulait TOUT (aucun brouillon fantôme, aucune
+    # référence brûlée). Création + étapes 5-6 restent donc UN bloc atomique ;
+    # les études (étape 7) restent DEHORS, comme sur tous les chemins.
+    with _atomic():
+        verrou = _verrouiller(devis) if devis is not None else _creer_brouillon(
+            intention)
 
-    ecrire_lignes(verrou, composition, company=intention.company,
-                  avertissements=avertissements)
-    journal.append('ecrire_lignes')
+        ecrire_lignes(verrou, composition, company=intention.company,
+                      avertissements=avertissements)
+        journal.append('ecrire_lignes')
 
-    ecrire_etude_params(verrou, intention, composition)
-    journal.append('ecrire_etude_params')
+        ecrire_etude_params(verrou, intention, composition)
+        journal.append('ecrire_etude_params')
 
     rafraichir_etudes(verrou)
     journal.append('rafraichir_etudes')
@@ -683,6 +787,47 @@ def appliquer(devis, intention):
         'entrees': entrees,
         'cible': cible,
         'composition': composition,
+        'avertissements': avertissements,
+    }
+
+
+def _appliquer_sur_devis_existant(devis, intention, mode):
+    """QJR93 — les deux modes qui travaillent sur un devis QUI EXISTE DÉJÀ.
+
+    Ils ne créent rien, ne composent rien et ne décident rien : chacun exécute
+    LA seule étape que son mode déclare (``ETAPES_PAR_MODE``), sur le devis que
+    l'appelant tient. Aucune transaction n'est ouverte ni fermée ici — c'est
+    l'appelant qui place la frontière, exactement là où son ancien corps la
+    plaçait : les lignes DEDANS, les études DEHORS.
+
+    Le devis n'est pas re-verrouillé : en mode ``'ecrire'`` l'appelant l'a créé
+    ou chargé dans la transaction qu'il tient déjà, et un second
+    ``select_for_update`` n'ajouterait qu'une requête. La RELECTURE, elle, n'est
+    pas facultative : elle vit dans ``rafraichir_etudes`` (QJR20) et vaut donc
+    pour ce mode comme pour le pipeline complet.
+    """
+    if devis is None:
+        raise ValueError(
+            'Le mode « %s » exige un devis existant : seul le mode « %s » '
+            'crée un brouillon.' % (mode, MODE_COMPOSER))
+
+    journal = []
+    avertissements = []
+    if mode == MODE_ECRIRE:
+        ecrire_lignes(devis, intention.composition,
+                      company=intention.company,
+                      avertissements=avertissements)
+        journal.append('ecrire_lignes')
+    else:  # MODE_RAFRAICHIR
+        rafraichir_etudes(devis, force=intention.force_etudes)
+        journal.append('rafraichir_etudes')
+
+    return {
+        'devis': devis,
+        'etapes': journal,
+        'entrees': None,
+        'cible': None,
+        'composition': intention.composition,
         'avertissements': avertissements,
     }
 
@@ -738,6 +883,11 @@ __all__ = [
     'COMPOSITION_LES_DEUX',
     'COMPOSITION_SANS',
     'ETAPES',
+    'ETAPES_PAR_MODE',
+    'MODES',
+    'MODE_COMPOSER',
+    'MODE_ECRIRE',
+    'MODE_RAFRAICHIR',
     'ORIGINES',
     'ORIGINE_AUTO',
     'ORIGINE_CALEPINAGE',

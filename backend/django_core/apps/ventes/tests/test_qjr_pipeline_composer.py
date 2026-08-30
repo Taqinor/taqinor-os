@@ -196,6 +196,18 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
               'gamme_nom_devis', 'dimensionnement_avec')
 
     def _capturer(self, appel):
+        """Capture L'UNIQUE ``IntentionComposition`` que l'appel construit.
+
+        QJR95 — L'ESPION EST POSÉ SUR LES DEUX NOMS, et c'est nécessaire depuis
+        la bascule 3/5. Le dry-run appelle ``composer`` par le nom global de
+        ``domain/creation`` ; la CRÉATION, elle, ne l'appelle plus elle-même :
+        elle délègue à ``pipeline.appliquer``, qui résout ``composer`` dans les
+        globales de ``domain/pipeline``. Ce sont deux NOMS pour la même
+        fonction — n'en patcher qu'un rendrait ce test aveugle au chemin qu'il
+        est justement censé comparer (il verrait zéro appel côté création).
+        Ce que le test vérifie n'a pas changé d'un mot : les deux appelants
+        remplissent la MÊME intention.
+        """
         vues = []
         vrai = _creation.composer
 
@@ -204,10 +216,12 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
             return vrai(intention)
 
         _creation.composer = espion
+        pipeline.composer = espion
         try:
             appel()
         finally:
             _creation.composer = vrai
+            pipeline.composer = vrai
         self.assertEqual(len(vues), 1)
         return vues[0]
 
