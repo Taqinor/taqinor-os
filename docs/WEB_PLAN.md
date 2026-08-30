@@ -403,21 +403,21 @@ reads cheap on a considered purchase — honest response-time promises + real va
 architecture change, or a taste call — it builds and NOTES it. What remains here genuinely needs
 **you**: a real-world data drop, a Cloudflare dashboard secret, or a taste/business call.
 
-### BLOCKED on a backend prerequisite not yet on `main` (composition guard)
+### BLOCKED on a backend prerequisite — RÉSOLU 2026-08-30 (section conservée pour mémoire)
 
-- **WJ115 — `/suivi/<token>` post-sign status page.** Waits on **PLAN2 QX34** (the ERP endpoint
-  that serves the milestone timeline). QX34 is still unchecked in `docs/PLAN2.md`, so the JSON
-  contract the page must render does not exist on `main` yet — building the consumer against an
-  invented shape is exactly the coupling the founder's composition guard forbids. Unblocks
-  automatically the moment QX34 lands (a future PLAN2/QX run) — no founder action needed, just
-  ordering.
-- **WJ116 — parrainage real links.** Waits on **PLAN2 QX35** (webhook auto-creates `Parrainage`
-  + real referral codes). The task itself reads « **Once QX35 lands** … » — the code mechanism it
-  must describe does not exist yet, so writing the copy now would be fabrication. Unblocks when
-  QX35 lands.
-
-*Neither needs anything from you — they need the two backend tasks built first. They return to the
-BUILD QUEUE automatically on the next web run after QX34/QX35 are on `main`.*
+- **[x] WJ115 (already present)** — le gate QX34 est levé ET la moitié web existe déjà sur `main`,
+  vérifiée contre le code réel : backend `suivi_public` (`public_views.py`) + sélecteur
+  `devis_milestones` (lecture seule, tokenisé, jamais de marge) ; côté site
+  `pages/suivi/[token].astro` + `lib/suivi.ts` (contrat QX34 documenté, libellés AR, garde
+  anti-date-inventée) + `tests/suiviWJ115.test.ts` (vert dans les suites complètes du 29/08).
+  Construite lors du drain round-6 puis pointée (commit « WJ115/WJ116 — tick plan ») ; cette note
+  de blocage était un reliquat périmé.
+- **[x] WJ116 (already present)** — QX35 est LIVE côté backend (code `Client.code_parrainage`
+  déterministe `TQ-<id>`, création auto du `Parrainage`, avancement à l'acceptation du devis) et
+  la page `/parrainage` (FR/EN/AR) communique la vraie mécanique — jamais un code auto-choisi ;
+  `tests/parrainageWJ116.test.ts` vert (recalibré au run du 29/08). Reliquat de note périmé
+  également. Le MONTANT de la récompense reste gated par **WG14** (décision fondateur), comme
+  prévu — la page publie la mécanique sans chiffre inventé.
 
 ### GATE DECISIONS — RESOLVED by Reda 2026-07-03 (a build run honors these; do NOT re-ask)
 
@@ -600,5 +600,6 @@ each for Lydec/Redal/Amendis).
 - 2026-08-29 — QJW9 : la région de swap de la page proposition passe de ~500 lignes de câblage à ~45 lignes d'orchestration (garde ≤60) ; les ~50 constantes de nœuds supprimées ; 2 améliorations volontaires (restauration du `hidden` serveur par nœud, masquage de chargement couvrant tout le tableau) ; la vérification navigateur réelle N'EST PAS revendiquée — remplacée par un test jsdom de restauration byte-à-byte (aller-retour simple, triple, et après échec réseau) car aucun chemin de fixture local n'existe ; clic réel à faire par Reda sur une proposition live.
 - 2026-08-29 — QJW10 : garde de couverture — chaque clé feuille de `taille_detail.json` est liée OU justifiée par écrit dans `NON_AFFICHE` (rouge démontré sur clé non décidée) ; c'est le test qui aurait attrapé l'oubli du tableau de trésorerie.
 - 2026-08-29 — QJW11 : `lireProposal` typé dans `lib/proposition.ts`, même forme de parseur que `tailleDetail.ts`, validé contre l'échantillon ; un renommage de clé simulé fait rougir trois tests au lieu de rendre une page vide.
+- 2026-08-30 — WJ115/WJ116 : sur « go » fondateur après vérification QX34/QX35, constat que les DEUX étaient déjà construites et testées sur `main` (page `/suivi/[token]` + `lib/suivi.ts` + test ; mécanique parrainage réelle + test) — marquées `[x] (already present)`, notes de blocage périmées purgées de NEEDS YOUR INPUT. Aucun code changé ; le montant de la récompense parrainage reste gated WG14.
 - 2026-08-29 — NOTES DE RUN : aucune nouvelle dépendance npm ; 69 échecs vitest pré-existants dans 4 fichiers carte/capture = artefact d'environnement local (jonction node_modules, « Denied ID maplibre-gl.css?url »), vérifiés identiques sur la base avant travaux, verts en CI ; collision de numérotation relevée : les IDs WJ128/WJ129 avaient déjà servi pour le schéma SLD (tests `propositionSldWJ128/129`) — numérotation du plan à assainir au prochain « clean the plans ».
 
