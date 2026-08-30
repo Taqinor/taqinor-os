@@ -10,8 +10,10 @@ de dédup ET la mémoire de ce qui attend / a échoué :
   * une opération refusée par le serveur reste en base avec `statut='rejetee'`
     et son message : elle ne DISPARAÎT jamais en silence (VX119) et reste
     rejouable après correction ;
-  * `statut='conflit'` est réservé à NTMOB2 (l'enregistrement cible a bougé
-    entre la mise en file et l'application) — jamais posé ici.
+  * `statut='conflit'` (NTMOB2) : l'enregistrement cible a bougé entre la mise
+    en file et l'application. L'op N'EST PAS appliquée — elle attend un
+    arbitrage HUMAIN (`resolution` : ma version / celle du serveur / fusion) ;
+    aucun écrasement silencieux, dans un sens comme dans l'autre.
 
 Multi-tenant : `company` vient de ``TenantModel`` et est TOUJOURS posée côté
 serveur depuis ``request.user.company``, jamais lue du corps. La clé
@@ -43,8 +45,20 @@ class OfflineOperation(TenantModel):
         EN_ATTENTE = 'en_attente', 'En attente'
         APPLIQUEE = 'appliquee', 'Appliquée'
         REJETEE = 'rejetee', 'Rejetée'
-        # Réservé NTMOB2 — résolution explicite de conflit, jamais silencieuse.
+        # NTMOB2 — la cible a bougé entre la mise en file et l'application :
+        # l'op N'EST PAS appliquée et attend un arbitrage HUMAIN explicite.
         CONFLIT = 'conflit', 'En conflit'
+
+    class Resolution(models.TextChoices):
+        """NTMOB2 — comment un conflit a été tranché (trace d'audit).
+
+        La ligne QUITTE ``conflit`` en même temps (``appliquee`` pour « ma
+        version » et « fusion », ``rejetee`` pour « celle du serveur ») : les
+        conflits OUVERTS sont donc exactement ``statut='conflit'``."""
+
+        MIENNE = 'mienne', 'Ma version conservée'
+        SERVEUR = 'serveur', 'Version du serveur conservée'
+        FUSION = 'fusion', 'Fusion manuelle'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -69,6 +83,20 @@ class OfflineOperation(TenantModel):
         'Mise en file (terminal)', null=True, blank=True)
     date_traitement = models.DateTimeField(
         'Traitée le', null=True, blank=True)
+    # ── NTMOB2 — conflit détecté et son arbitrage ──────────────────────────
+    # Instantané de la DIVERGENCE : ``{champ, base, serveur}`` — la version que
+    # le terminal avait lue et celle que porte la cible au moment du rejeu.
+    # Vide tant qu'aucun conflit n'a été détecté ; jamais deviné.
+    conflit = models.JSONField('Détail du conflit', default=dict, blank=True)
+    resolution = models.CharField(
+        'Arbitrage', max_length=12, choices=Resolution.choices,
+        blank=True, default='')
+    date_resolution = models.DateTimeField(
+        'Arbitré le', null=True, blank=True)
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Arbitré par')
 
     class Meta:
         verbose_name = 'Opération hors-ligne'
