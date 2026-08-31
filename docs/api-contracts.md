@@ -3119,8 +3119,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: createSavedReport -> /api/django/reporting/saved-reports  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: deleteClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3134,8 +3134,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: deleteSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: getClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3151,8 +3151,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: listSavedReports -> /api/django/reporting/saved-reports  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: updateClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3164,8 +3164,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: updateSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/rhApi.js :: attribuerBadge -> /api/django/rh/attributions-badge  [AttributionBadgeSerializer]
     champs: attribue_par, attribue_par_nom, badge, badge_icone, badge_nom, beneficiaire, beneficiaire_nom, date_creation, id, message

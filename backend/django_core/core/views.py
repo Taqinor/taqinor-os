@@ -35,6 +35,7 @@ from authentication.permissions import (
 from django.db.models import Q
 
 from . import bulk_edit as bulk_edit_infra
+from . import dashboard_data
 from . import data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
@@ -289,6 +290,38 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         # Ne jamais réécrire company/owner depuis le corps.
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'])
+    def donnees(self, request, pk=None):
+        """NTDATA32 — données de TOUS les widgets sous les filtres globaux.
+
+        ``?filtre=<json>`` remplace les ``global_filters`` enregistrés dans le
+        ``layout`` le temps de la requête (changer la période rafraîchit tout
+        le dashboard en UNE requête, sans rien persister). Sans paramètre, les
+        filtres du layout s'appliquent.
+
+        Le scoping société est celui de ``data_explorer`` (queryset du dataset
+        déjà borné) ; un champ hors liste blanche remonte en erreur DU widget.
+        """
+        import json
+
+        dashboard = self.get_object()
+        brut = request.query_params.get('filtre')
+        globaux = None
+        if brut not in (None, ''):
+            try:
+                globaux = json.loads(brut)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': "Paramètre « filtre » : JSON invalide."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            donnees = dashboard_data.executer_dashboard(
+                dashboard, request.user.company, request.user, globaux=globaux)
+        except dashboard_data.FiltreGlobalInvalide as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(donnees)
 
 
 class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
