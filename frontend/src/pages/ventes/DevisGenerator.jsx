@@ -992,7 +992,7 @@ export default function DevisGenerator({
   // qui écrit `kwcCible` sans rien marquer.
   useEffect(() => {
     if (kwcCible !== '' || kwp <= 0) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- miroir d'un champ posé ailleurs
+     
     dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: panelW })
   }, [kwp, kwcCible, panelW])
 
@@ -1209,7 +1209,7 @@ export default function DevisGenerator({
     // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer encore
     // d'une microtâche n'ajouterait qu'un tour de boucle entre la réponse et
     // l'affichage. Aucune de ces valeurs n'est relue dans le MÊME rendu.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reporte la décision du moteur SERVEUR (déjà asynchrone) dans le reducer, jamais relue dans le même rendu
+     
     if (actionMoteur === 'appliquer') {
       dispatchSizing({ type: 'MOTEUR_A_REPONDU', recommandation: recoMoteur })
     } else if (actionMoteur === 'refuser') {

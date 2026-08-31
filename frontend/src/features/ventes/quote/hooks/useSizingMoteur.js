@@ -65,7 +65,7 @@ export function useSizingMoteur(corps, { attente = false, toucheNbPanneaux = fal
   }, [chargement, cleDebouncee])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- attribue l'échec au corps qui l'a produit
+     
     setCleErreur(erreur ? cleEnVol.current : null)
   }, [erreur])
 
