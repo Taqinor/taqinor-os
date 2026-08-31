@@ -16,8 +16,10 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr227_cavaliers_cablage -v 2
 """
+import ast
 import dataclasses
 import inspect
+import textwrap
 
 from django.test import SimpleTestCase
 
@@ -29,13 +31,32 @@ class CavalierADocstringDuRegistre(SimpleTestCase):
     """(a) — les trois affirmations fausses ont disparu, et ce qu'elles
     remplacent est VRAI (vérifié, pas affirmé)."""
 
+    #: Bornes de la RÉTRACTATION : la docstring réécrite CITE les trois phrases
+    #: fausses pour annoncer qu'elles ont cessé d'être vraies. Chercher les
+    #: phrases dans la docstring ENTIÈRE ferait rougir la garde sur sa propre
+    #: correction — elle porte donc sur le texte HORS de cette citation.
+    DEBUT_RETRACTATION = 'CE PARAGRAPHE DISAIT TROIS'
+    FIN_RETRACTATION = 'Les trois ont cessé'
+
     def _doc(self):
         return registre.__doc__ or ''
 
-    def test_les_trois_affirmations_fausses_ont_disparu(self):
+    def _doc_hors_retractation(self):
         doc = self._doc()
+        debut = doc.find(self.DEBUT_RETRACTATION)
+        if debut == -1:
+            return doc
+        fin = doc.find(self.FIN_RETRACTATION, debut)
+        self.assertNotEqual(
+            fin, -1,
+            "la rétractation est ouverte sans être refermée : borne à revoir")
+        return doc[:debut] + doc[fin:]
+
+    def test_les_trois_affirmations_fausses_ont_disparu(self):
+        """Elles ne sont plus AFFIRMÉES — seulement citées comme démenties."""
+        doc = self._doc_hors_retractation().lower()
         for mensonge in (
-                "Il ne PERSISTE rien",
+                "il ne persiste rien",
                 "n'existe pas encore",
                 "aucun appelant n'est branché"):
             with self.subTest(mensonge=mensonge):
@@ -47,20 +68,44 @@ class CavalierADocstringDuRegistre(SimpleTestCase):
         champs = {f.name for f in Devis._meta.get_fields()}
         self.assertIn('overrides', champs)
 
+    @staticmethod
+    def _corps(fonction):
+        """La source SANS sa docstring.
+
+        Ces gardes portent sur ce que le code FAIT. Les docstrings de ce module
+        EXPLIQUENT pourquoi ``Devis.save`` est écarté et citent donc l'appel :
+        les inclure ferait rougir la garde sur son propre commentaire.
+
+        Le découpage passe par l'AST, jamais par ``source.replace(__doc__)`` :
+        depuis Python 3.13 le compilateur DÉSINDENTE ``__doc__``, qui n'est
+        alors plus un sous-texte de la source — la garde deviendrait muette
+        selon la version de l'interpréteur.
+        """
+        source = textwrap.dedent(inspect.getsource(fonction))
+        noeud = ast.parse(source).body[0]
+        premier = noeud.body[0] if noeud.body else None
+        if not (isinstance(premier, ast.Expr)
+                and isinstance(premier.value, ast.Constant)
+                and isinstance(premier.value.value, str)):
+            return source
+        lignes = source.splitlines(keepends=True)
+        del lignes[premier.lineno - 1:premier.end_lineno]
+        return ''.join(lignes)
+
     def test_ecrire_colonne_est_le_seul_ecrivain_et_il_persiste(self):
         """``ecrire_colonne`` écrit par un UPDATE d'UNE SEULE colonne — jamais
         ``Devis.save`` (ni ``updated_at`` ni le gel ``prix_par_kwc``)."""
-        source = inspect.getsource(registre.ecrire_colonne)
-        self.assertIn('.update(overrides=registre)', source)
-        self.assertNotIn('.save(', source)
+        corps = self._corps(registre.ecrire_colonne)
+        self.assertIn('.update(overrides=registre)', corps)
+        self.assertNotIn('.save(', corps)
 
     def test_les_constructeurs_de_registre_restent_purs(self):
         for fonction in (registre.poser, registre.regenerer,
                          registre.fusionner):
             with self.subTest(fonction=fonction.__name__):
-                source = inspect.getsource(fonction)
-                self.assertNotIn('.save(', source)
-                self.assertNotIn('.update(', source)
+                corps = self._corps(fonction)
+                self.assertNotIn('.save(', corps)
+                self.assertNotIn('.update(', corps)
 
     def test_la_preseance_a_bien_un_appelant_de_production(self):
         """La docstring l'affirme — on le vérifie sur le code réel."""

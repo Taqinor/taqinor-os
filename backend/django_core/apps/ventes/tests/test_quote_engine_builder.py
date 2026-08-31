@@ -214,7 +214,12 @@ class TestBuildQuoteData(TestCase):
                 generate_premium_devis_pdf(devis.id)
         trace = '\n'.join(journal.output)
         self.assertIn('Repli moteur legacy', trace)
-        self.assertIn('residential', trace)
+        # QJR235 (31/08/2026) — le repli nomme désormais le MARCHÉ tel que le
+        # registre des renderers l'appelle (« residentiel », comme
+        # « industriel » et « commercial »), et non plus le nom du module
+        # Python (« residential »). Le fait épinglé est le même : la trace dit
+        # QUI a refusé.
+        self.assertIn('residentiel', trace)
         self.assertIn('DEV-QJR17-D', trace)
         self.assertIn('missing quote field: puissance_kwc', trace)
         # le PDF sort quand même (le repli reste un repli, pas une panne)

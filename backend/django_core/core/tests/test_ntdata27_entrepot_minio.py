@@ -81,8 +81,14 @@ class EntrepotMinioTests(TestCase):
             scheduled_export.executer(exp)
         exp.refresh_from_db()
         self.assertEqual(exp.dernier_statut, 'ok')
-        self.assertEqual(len(fake.objects), 1)
-        (bucket, key), body = next(iter(fake.objects.items()))
+        # NTDATA31 a ajouté un SECOND dépôt à côté de l'extrait : son manifeste
+        # de schéma. Ce test-ci ne juge que le fichier de DONNÉES ; le manifeste
+        # a le sien (``test_ntdata31_manifeste``), et on le sélectionne par son
+        # suffixe plutôt que par l'ordre d'insertion du dict.
+        self.assertEqual(len(fake.objects), 2)
+        (bucket, key), body = next(
+            (bk, v) for bk, v in fake.objects.items()
+            if not bk[1].endswith('.manifest.json'))
         self.assertEqual(bucket, scheduled_export.warehouse_bucket())
         self.assertTrue(key.startswith(f'{self.company.pk}/societes/'))
         self.assertTrue(key.endswith('.csv'))

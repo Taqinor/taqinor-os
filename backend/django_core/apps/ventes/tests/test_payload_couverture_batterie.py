@@ -717,9 +717,16 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
     décrivaient une installation que le client n'achète pas.
 
     Règle fondateur « zéro chiffre inventé » : publié seulement si le contexte
-    identifiant du bloc égale la configuration vendue (capacité batterie des
-    lignes pour le remplissage ; panneaux ET capacité pour le résiduel), sinon
-    la clé est **ABSENTE** — jamais zéro, jamais un repli.
+    identifiant du bloc égale la configuration vendue — panneaux ET capacité,
+    pour les DEUX chiffres depuis QJR233 (31/08/2026) : le remplissage se
+    contentait de la capacité alors qu'il est une grandeur PAR NOMBRE DE
+    PANNEAUX, une règle plus laxiste que celle que le PDF applique au même
+    concept. Sinon la clé est **ABSENTE** — jamais zéro, jamais un repli.
+
+    Chaque bloc porte donc ses trois clés identifiantes (``panneaux``, ``kwc``,
+    ``batterie_kwh``), exactement comme les LIGNES du balayage dont le moteur
+    les tire (``dimensionnement.choisir_recommandation_avec`` rend une ligne du
+    tableau) : un bloc sans ``panneaux`` est illisible, donc non publiable.
 
     Le devis de référence (``_PayloadBase.LIGNES``) vend 14 panneaux et
     2 × « Batterie Dyness 5 kWh » ⇒ 10 kWh de capacité utile.
@@ -737,13 +744,18 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
     }
 
     def _poser_dimensionnement(self, devis, *, reco_batterie_kwh,
-                               falaise_panneaux, falaise_batterie_kwh):
+                               falaise_panneaux, falaise_batterie_kwh,
+                               reco_panneaux=None):
         """Écrit un bloc ``dimensionnement`` DÉTERMINISTE sur le devis.
 
         Même patron que ``test_t4_payload_public_helpers`` : ce sont les
         entrées d'un cas de test, jamais un chiffre client. Le moteur réel
         n'est pas lancé ici — c'est la GARDE de publication qu'on épingle, pas
-        le balayage."""
+        le balayage.
+
+        ``reco_panneaux`` vaut par défaut le champ VENDU : c'est le cas normal
+        (la recommandation décrit ce devis), et depuis QJR233 le bloc doit
+        porter ce compte pour que le remplissage soit publiable."""
         devis.refresh_from_db()
         params = dict(devis.etude_params or {})
         params['dimensionnement'] = {
@@ -755,6 +767,8 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
                 'residuel_kwh_mois': self.RESIDUEL_KWH_MOIS,
             },
             'recommandation_avec': {
+                'panneaux': (self.PANNEAUX_VENDUS if reco_panneaux is None
+                             else reco_panneaux),
                 'batterie_kwh': reco_batterie_kwh,
                 'remplissage': {'moyen': self.REMPLISSAGE_MOYEN},
             },
@@ -863,7 +877,8 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
         un arrondi amont ne doit pas faire disparaître un chiffre juste."""
         from apps.ventes.public_views import _remplissage_batterie_publiable
         devis = self._devis('qjr14-tolerance')
-        dim = {'recommandation_avec': {'batterie_kwh': 10.02,
+        dim = {'recommandation_avec': {'panneaux': self.PANNEAUX_VENDUS,
+                                       'batterie_kwh': 10.02,
                                        'remplissage': {'moyen': 0.5}}}
         self.assertTrue(_remplissage_batterie_publiable(dim, devis))
         dim['recommandation_avec']['batterie_kwh'] = 10.5
