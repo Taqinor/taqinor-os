@@ -3284,22 +3284,29 @@ def _filigrane_standard_texte(devis):
 # en retirer un = retirer sa ligne. Aucun ``if is_*`` de dispatch ne subsiste
 # (un test le vérifie par grep sur ce module).
 #
-# L'ORDRE EST SIGNIFIANT et repris tel quel : agricole d'abord, puis industriel
-# (QX45), puis commercial (QX46), puis résidentiel — le premier dont le
-# prédicat accepte le devis rend le document.
+# L'ORDRE EST SIGNIFIANT et repris tel quel : industriel (QX45), puis
+# commercial (QX46), puis résidentiel — le premier dont le prédicat accepte le
+# devis rend le document. (L'entrée agricole a été supprimée par QJR236 /
+# décision DV1 : elle était injoignable depuis QJR32.)
 #
 # LES IMPORTS SONT PARESSEUX, comme avant : chaque paquet de renderer importe
 # des dépendances lourdes, et ce module est chargé au démarrage.
 
 def registre_renderers():
-    """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre."""
-    from .agricole import renderer as agricole
+    """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre.
+
+    QJR236 (décision fondateur DV1) — L'ENTRÉE ``agricole`` A ÉTÉ RETIRÉE avec
+    son renderer. Depuis QJR32 (le dispatch lit le ``pdf_mode`` NORMALISÉ) elle
+    était INJOIGNABLE : ``build_quote_data`` dégrade par conception toute
+    demande agricole « full » en une page. Le devis agricole passe donc par le
+    repli NOMMÉ ci-dessous (``_journaliser_repli``) vers le moteur legacy, qui
+    le sert seul depuis juin — et le document rendu est byte-identique.
+    """
     from .commercial import renderer as commercial
     from .industriel import renderer as industriel
     from .residential import renderer as residential
 
     return (
-        ('agricole', agricole, agricole.is_agricultural),
         ('industriel', industriel, industriel.is_industrial),
         ('commercial', commercial, commercial.is_commercial),
         ('residentiel', residential, residential.is_residential),

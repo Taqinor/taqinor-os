@@ -182,8 +182,11 @@ GRANDFATHERED_WEASYPRINT = frozenset({
     # Exclusions permanentes — règle #4 (moteur de devis vendorisé).
     "apps/ventes/quote_engine/generate_devis_premium.py",
     "apps/ventes/quote_engine/extra_docs.py",
-    "apps/ventes/quote_engine/agricole/render.py",
-    "apps/ventes/quote_engine/agricole/renderer.py",
+    # QJR236 (décision fondateur DV1) — les deux entrées
+    # ``apps/ventes/quote_engine/agricole/{render,renderer}.py`` ont été
+    # RETIRÉES avec les fichiers eux-mêmes : le renderer agricole premium
+    # multi-pages était injoignable depuis QJR32 et a été supprimé. Le PDF
+    # agricole une-page reste rendu par le moteur legacy, déjà listé plus haut.
     "apps/ventes/quote_engine/residential/render.py",
     "apps/ventes/quote_engine/residential/renderer.py",
     # QX45/QX46 — renderers dédiés industriel/commercial (mêmes mirrors rule #4

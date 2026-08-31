@@ -25,10 +25,12 @@ from apps.ventes.quote_engine import builder as B
 
 class LeRegistreEstLaSeuleListe(SimpleTestCase):
 
-    def test_l_ordre_du_registre_est_celui_des_quatre_blocs(self):
+    def test_l_ordre_du_registre_est_celui_des_blocs(self):
+        """L'ordre des anciens blocs, moins l'entrée agricole que QJR236
+        (décision DV1) a supprimée avec son renderer injoignable."""
         marches = [marche for marche, _mod, _pred in B.registre_renderers()]
-        self.assertEqual(
-            marches, ['agricole', 'industriel', 'commercial', 'residentiel'])
+        self.assertEqual(marches, ['industriel', 'commercial', 'residentiel'])
+        self.assertNotIn('agricole', marches)
 
     def test_chaque_entree_porte_un_renderer_et_son_predicat(self):
         for marche, module, predicat in B.registre_renderers():
