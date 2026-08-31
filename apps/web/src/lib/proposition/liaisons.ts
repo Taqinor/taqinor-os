@@ -43,12 +43,27 @@ import { formatMAD, formatNumber, formatPayback, formatPercent } from '../propos
 // l'inverse.
 
 /**
- * COMMENT ON MOISSONNE L'ORIGINAL D'UN NŒUD. Trois natures, et trois
- * seulement, parce que la page n'en a que trois : du texte, du balisage rendu
- * par le serveur (le corps du tableau année par année), et un attribut
- * géométrique (l'arc de l'anneau de couverture).
+ * COMMENT ON MOISSONNE L'ORIGINAL D'UN NŒUD. Quatre natures, parce que la page
+ * n'en a que quatre : du texte, du balisage rendu par le serveur (le corps du
+ * tableau année par année), un attribut géométrique (l'arc de l'anneau de
+ * couverture), et une STRUCTURE dont les nœuds enfants doivent survivre tels
+ * quels.
+ *
+ * `fragment` (QJW17) EST LE MODE DES NŒUDS QUI NE SONT PAS DU TEXTE. Un bloc
+ * qui contient des enfants — une étiquette traduisible `data-i18n` et un
+ * montant stylé, par exemple — ne peut pas être moissonné en `texte` : le
+ * `textContent` APLATIT ses enfants en une chaîne, et les reposer par
+ * `el.textContent = …` les DÉTRUIT. Sur ce bloc précis, le crochet de
+ * traduction avait déjà été remplacé par `prepareI18n()` en un triplet
+ * FR/EN/AR (deux masqués) : l'aplatissement rendait donc les TROIS langues
+ * lisibles d'un coup, dès le premier affichage, et détachait le bloc du
+ * sélecteur FR/EN/عربي.
+ *
+ * `fragment` mémorise les nœuds enfants EUX-MÊMES — jamais des clones. Un
+ * clone rebrancherait un triplet FANTÔME : la bascule de langue continuerait
+ * de piloter les nœuds d'origine, désormais hors du document.
  */
-export type ModeCapture = 'texte' | 'html' | { readonly attribut: string };
+export type ModeCapture = 'texte' | 'html' | 'fragment' | { readonly attribut: string };
 
 /** Un nœud piloté : son sélecteur, s'il en désigne un ou plusieurs, sa capture. */
 export interface SpecNoeud {
@@ -245,7 +260,15 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
       mois: { sel: '[data-detail-eco-mois]', tous: true },
       moisAvec: { sel: '[data-detail-eco-mois-avec]', tous: true },
       total: { sel: '[data-detail-eco-total]' },
-      totalAvec: { sel: '[data-detail-eco-total-avec-bloc]' },
+      // QJW17 — CE NŒUD N'EST PAS DU TEXTE : il porte deux `<span>` (l'étiquette
+      // traduisible `data-i18n` et le montant stylé `dir="ltr"`). Aucune
+      // liaison ne lui écrit jamais de valeur — `peindre` ne fait que le
+      // MASQUER, parce que le « avec batterie » est un chiffre d'une AUTRE
+      // variante. Mais `restaurer` tourne DÈS LE CHARGEMENT, et en capture
+      // `texte` il reposait `textContent`, ce qui détruisait ses enfants : les
+      // trois langues du triplet i18n s'affichaient bout à bout et le
+      // sélecteur FR/EN/عربي ne pilotait plus le bloc.
+      totalAvec: { sel: '[data-detail-eco-total-avec-bloc]', capture: 'fragment' },
     },
     lire(detail) {
       if (detail === null) return { mode: 'echec' };
