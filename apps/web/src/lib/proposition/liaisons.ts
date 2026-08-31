@@ -105,7 +105,16 @@ export function unEl(noeuds: NoeudsResolus, nom: string): Element | null {
   return n instanceof Element ? n : null;
 }
 
-/** Un nœud unique `HTMLElement` (le cas ordinaire : il porte `hidden`). */
+/**
+ * Un nœud unique `HTMLElement` (le cas ordinaire : il porte `hidden`).
+ *
+ * ATTENTION (QJW18) — UN NŒUD SVG N'EST PAS UN `HTMLElement`. `<text>`,
+ * `<circle>`… sont des `SVGElement` : ce helper rend `null` sur eux, et une
+ * peinture qui l'utilise est alors SILENCIEUSEMENT sautée. C'est exactement ce
+ * qui laissait le chiffre au centre de l'anneau de couverture sur le
+ * pourcentage du DEVIS OFFICIEL pendant que l'arc, lui, décrivait la taille
+ * chargée. Pour un nœud SVG : `unEl` + `textContent` (voir `couverture`).
+ */
 export function unHtml(noeuds: NoeudsResolus, nom: string): HTMLElement | null {
   const n = noeuds[nom];
   return n instanceof HTMLElement ? n : null;
@@ -353,7 +362,15 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
           arc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));
         }
       }
-      const val = unHtml(noeuds, 'valeur');
+      // QJW18 — LE CHIFFRE AU CENTRE EST UN `<text>` SVG, PAS UN HTMLElement.
+      // Il était récupéré par `unHtml`, qui rend `null` sur un `SVGElement` :
+      // la peinture était silencieusement sautée, et l'anneau décrivait la
+      // taille chargée pendant que le chiffre gardait le pourcentage du DEVIS
+      // OFFICIEL — deux chiffres contradictoires dans la même figure. `unEl`
+      // couvre les deux natures ; `textContent` est la seule écriture (un nœud
+      // SVG n'a pas de `innerText`). Le FORMAT ne change pas : `formatPercent`,
+      // la même fonction qu'avant.
+      const val = unEl(noeuds, 'valeur');
       if (val) val.textContent = formatPercent(pct, 0);
     },
   }),

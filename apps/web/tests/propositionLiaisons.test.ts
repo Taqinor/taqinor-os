@@ -386,3 +386,123 @@ describe('QJW17 — la restauration du bloc « total avec » PRÉSERVE ses nœud
     expect(document.body.innerHTML).toBe(avant);
   });
 });
+
+// ── QJW18 — L'ARC ET LE CHIFFRE DÉCRIVENT LA MÊME TAILLE ────────────────────
+//
+// L'INCIDENT. Le nombre au centre de l'anneau de couverture est un `<text>`
+// SVG. La liaison le récupérait par `unHtml`, qui exige un `HTMLElement` — or
+// un nœud SVG est un `SVGElement` : le helper rendait `null` et la peinture
+// était SILENCIEUSEMENT sautée. L'arc, lui, passait par `unEl` et se
+// redessinait correctement. Résultat sous les yeux du client : l'ANNEAU décrit
+// la taille chargée pendant que le CHIFFRE au milieu garde le pourcentage du
+// devis officiel — deux chiffres contradictoires dans la même figure.
+//
+// POURQUOI AUCUN TEST NE L'AVAIT VU. Le DOM de test écrivait le `<text>` À
+// CÔTÉ du `<svg>`, pas DEDANS : hors contenu étranger, l'analyseur HTML en
+// fait un `HTMLUnknownElement`… qui EST un `HTMLElement`. Le helper rendait
+// donc un nœud, la peinture avait lieu, et le test était vert sur une
+// structure que la page n'a jamais rendue. Le DOM ci-dessous met le `<text>`
+// DANS le `<svg>`, comme la page (`[...token].astro` ~4384-4393), et la
+// première assertion VÉRIFIE cette nature : sans elle, la garde retomberait
+// dans le même faux vert au moindre copier-coller.
+
+/** L'anneau, tel que le serveur le rend : le `<text>` est DANS le `<svg>`. */
+const DONUT_HTML = `
+  <div class="flex items-center gap-4" data-hero-couverture-card>
+    <svg viewBox="0 0 100 100" width="112" height="112" role="img" aria-label="Couverture solaire : 62 %">
+      <circle cx="50" cy="50" r="42" fill="none" stroke-width="10"></circle>
+      <circle cx="50" cy="50" r="42" fill="none" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="163.72 100.16" transform="rotate(-90 50 50)"
+        data-detail-couverture-arc data-detail-donut-r="42"></circle>
+      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+        font-size="24" font-weight="700" dir="ltr" data-detail-couverture-value>62%</text>
+    </svg>
+  </div>
+`;
+
+/** Le pourcentage que l'ARC dessine réellement, relu depuis sa géométrie. */
+function pctDeLArc(arc: Element): number {
+  const rayon = Number(arc.getAttribute('data-detail-donut-r'));
+  const dash = Number((arc.getAttribute('stroke-dasharray') ?? '').split(/\s+/)[0]);
+  return (dash / (2 * Math.PI * rayon)) * 100;
+}
+
+/** L'entier que le CHIFFRE affiche, relu depuis son texte. */
+function pctDuChiffre(el: Element): number {
+  return Number((el.textContent ?? '').replace(/[^\d]/g, ''));
+}
+
+describe('QJW18 — le pourcentage DANS l’anneau suit la taille chargée', () => {
+  const arc = (): Element => document.querySelector('[data-detail-couverture-arc]')!;
+  const chiffre = (): Element => document.querySelector('[data-detail-couverture-value]')!;
+
+  function monterDonut(): void {
+    document.body.innerHTML = DONUT_HTML;
+  }
+
+  it('le nœud du chiffre est bien un `<text>` SVG (et NON un HTMLElement)', () => {
+    monterDonut();
+    // La garde qui empêche le faux vert de revenir : si un jour ce nœud
+    // redevenait un HTMLElement, c'est que le DOM de test aurait cessé de
+    // ressembler à la page.
+    expect(chiffre().namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(chiffre() instanceof HTMLElement).toBe(false);
+  });
+
+  it('une taille chargée repeint l’ARC **et** le CHIFFRE', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+
+    expect(document.querySelector<HTMLElement>('[data-hero-couverture-card]')!.hidden).toBe(false);
+    expect(arc().getAttribute('stroke-dasharray')).not.toBe('163.72 100.16');
+    expect(chiffre().textContent, 'le chiffre est resté sur le pourcentage du devis officiel')
+      .toBe('48 %');
+  });
+
+  it('arc et chiffre décrivent LA MÊME taille, pas deux', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    for (const exemple of [ECHANTILLON.exemple, ECHANTILLON.exemple_avec_batterie]) {
+      appliquer(PROFONDS, tailleDetail(exemple));
+      expect(
+        Math.round(pctDeLArc(arc())),
+        'l’anneau et le nombre au centre annoncent deux tailles différentes',
+      ).toBe(pctDuChiffre(chiffre()));
+    }
+  });
+
+  it('un aller-retour repose l’arc ET le chiffre du devis officiel, à l’octet', () => {
+    monterDonut();
+    const avant = document.body.innerHTML;
+    const originaux = capturerOriginaux(PROFONDS);
+
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+    expect(document.body.innerHTML).not.toBe(avant);
+
+    restaurer(PROFONDS, originaux);
+    expect(document.body.innerHTML).toBe(avant);
+  });
+
+  it('sans pourcentage servi, le chiffre est OMIS — jamais un faux repeint', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    // Le contrat ne sert PAS `carte.couverture_pct` : la carte entière
+    // disparaît, et le chiffre du devis officiel n'est ni réécrit ni resservi
+    // sous une autre offre — il reste intact, MASQUÉ avec son enveloppe.
+    const sansCouverture = tailleDetail({
+      cle: 'eco', titre: 'Éco', variante: 'sans', est_le_devis: false,
+      carte: { prix_ttc: 71400 },
+    });
+    expect(sansCouverture!.carte!.couverturePct).toBeNull();
+
+    appliquer(PROFONDS, sansCouverture);
+
+    expect(document.querySelector<HTMLElement>('[data-hero-couverture-card]')!.hidden).toBe(true);
+    expect(chiffre().textContent).toBe('62%');
+    expect(arc().getAttribute('stroke-dasharray')).toBe('163.72 100.16');
+  });
+});
