@@ -3270,6 +3270,66 @@ def _filigrane_standard_texte(devis):
     return ' · '.join(morceaux)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# QJR235 — LE REGISTRE DES RENDERERS PREMIUM (marché → renderer)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# CE QU'IL REMPLACE. Le choix du renderer était QUATRE blocs ``if``
+# copiés-collés — même forme, même ``except``, même message à un mot près. Un
+# cinquième marché dont le bloc était oublié dégradait SILENCIEUSEMENT vers le
+# moteur legacy, sans le journal de repli nommé que le code promet pourtant
+# ailleurs (le ``except Unsupported`` agricole, lui, journalise bien — QJR17(d)).
+#
+# CE REGISTRE EST LA SEULE LISTE. Ajouter un marché = ajouter une ligne ici ;
+# en retirer un = retirer sa ligne. Aucun ``if is_*`` de dispatch ne subsiste
+# (un test le vérifie par grep sur ce module).
+#
+# L'ORDRE EST SIGNIFIANT et repris tel quel : agricole d'abord, puis industriel
+# (QX45), puis commercial (QX46), puis résidentiel — le premier dont le
+# prédicat accepte le devis rend le document.
+#
+# LES IMPORTS SONT PARESSEUX, comme avant : chaque paquet de renderer importe
+# des dépendances lourdes, et ce module est chargé au démarrage.
+
+def registre_renderers():
+    """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre."""
+    from .agricole import renderer as agricole
+    from .commercial import renderer as commercial
+    from .industriel import renderer as industriel
+    from .residential import renderer as residential
+
+    return (
+        ('agricole', agricole, agricole.is_agricultural),
+        ('industriel', industriel, industriel.is_industrial),
+        ('commercial', commercial, commercial.is_commercial),
+        ('residentiel', residential, residential.is_residential),
+    )
+
+
+def _marche_du_devis(devis):
+    """Le marché de ce devis pour le JOURNAL — jamais un verdict de rendu."""
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    return mode or 'résidentiel (par défaut)'
+
+
+def _journaliser_repli(marche, raison, reference, *, niveau=None, trace=False):
+    """QJR17(d) / QJR235 — TOUT repli vers le moteur legacy est NOMMÉ.
+
+    Trois faits, toujours les mêmes : le MARCHÉ, la RAISON, le DEVIS. Sans
+    trace, une proposition premium se dégradait sans que personne ne le sache
+    (un champ manquant, un ``None``, et le devis sortait sur l'autre moteur en
+    silence).
+
+    ``niveau`` — ``logger.warning`` par défaut (un renderer qui REFUSE ou qui
+    LÈVE est anormal) ; l'absence d'entrée de registre passe en ``logger.info``
+    (le une-page et les formats hors périmètre y passent normalement), mais
+    elle est DITE.
+    """
+    (niveau or logger.warning)(
+        "Repli moteur legacy — marché « %s », devis %s : %s",
+        marche, reference, raison, exc_info=trace)
+
+
 def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     """Render the quote PDF for a Devis in the requested format and store it
     in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
@@ -3351,94 +3411,37 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     _opts_dispatch = dict(pdf_options or {})
     _opts_dispatch['pdf_mode'] = (
         data.get('pdf_mode') or _opts_dispatch.get('pdf_mode') or 'full')
+    # QJR235 — LE CHOIX DU RENDERER EST UN REGISTRE, PLUS QUATRE ``if``.
     pdf_bytes = None
-    # Agricole premium multi-page proposal (full format). One-page agricole and
-    # every other mode/format stay on the legacy engine / residential renderer.
-    from .agricole import renderer as agricole
-    if agricole.is_agricultural(devis, _opts_dispatch):
+    _reference = getattr(devis, "reference", devis_id)
+    _servi_par = None
+    for _marche, _renderer, _sert in registre_renderers():
+        if pdf_bytes is not None:
+            break
+        if not _sert(devis, _opts_dispatch):
+            continue
+        _servi_par = _marche
         try:
-            pdf_bytes = agricole.render_pdf_bytes(data_rendu)
-        except agricole.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer agricole refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
+            pdf_bytes = _renderer.render_pdf_bytes(data_rendu)
+        except _renderer.Unsupported as _hors_perimetre:
+            _journaliser_repli(_marche, _hors_perimetre, _reference)
             pdf_bytes = None
         except Exception:
-            logger.warning(
-                "Agricole renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    # QX45 — renderer INDUSTRIEL (CFO) : full/premium seulement, intercepté APRÈS
-    # l'agricole et AVANT le repli legacy (qui reste l'off-switch / one-page).
-    from .industriel import renderer as industriel
-    if pdf_bytes is None and industriel.is_industrial(devis, _opts_dispatch):
-        try:
-            pdf_bytes = industriel.render_pdf_bytes(data_rendu)
-        except industriel.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer industriel refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Industriel renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    # QX46 — renderer COMMERCIAL (catégorie-aware) : full/premium seulement,
-    # intercepté AVANT le repli legacy (comme QX45).
-    from .commercial import renderer as commercial
-    if pdf_bytes is None and commercial.is_commercial(devis, _opts_dispatch):
-        try:
-            pdf_bytes = commercial.render_pdf_bytes(data_rendu)
-        except commercial.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer commercial refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Commercial renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    from .residential import renderer as residential
-    if pdf_bytes is None and residential.is_residential(devis, _opts_dispatch):
-        try:
-            pdf_bytes = residential.render_pdf_bytes(data_rendu)
-        except residential.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer residential refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Residential renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
+            _journaliser_repli(
+                _marche, "erreur inattendue du renderer", _reference,
+                trace=True)
             pdf_bytes = None
     if pdf_bytes is None:
+        if _servi_par is None:
+            # QJR235 — LE REPLI SILENCIEUX N'EXISTE PLUS. Un marché qu'AUCUNE
+            # entrée du registre ne sert (un cinquième marché dont on a oublié
+            # la ligne, un format hors périmètre des renderers premium)
+            # dégradait vers le moteur legacy sans une trace : le journal le
+            # NOMME désormais, comme le fait déjà le refus explicite.
+            _journaliser_repli(
+                _marche_du_devis(devis),
+                "aucune entrée du registre ne sert ce marché dans ce format",
+                _reference, niveau=logger.info)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
             tmp_path = tf.name
         try:
