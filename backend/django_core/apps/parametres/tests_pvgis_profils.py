@@ -1,7 +1,8 @@
 """Profils PVGIS journaliers — chaîne de résolution, décalage UTC+1, épingles.
 
-Les valeurs ÉPINGLÉES ici viennent du relevé PVGIS 5.3 du 21/08/2026 (13 villes
-marocaines), aux URLs citées dans ``apps/parametres/pvgis_profils.py`` ::
+Les valeurs ÉPINGLÉES ici viennent des relevés PVGIS 5.3 du 21/08/2026 (13
+villes marocaines) et du 31/08/2026 (19 villes de plus, mêmes appels), aux URLs
+citées dans ``apps/parametres/pvgis_profils.py`` ::
 
     https://re.jrc.ec.europa.eu/api/v5_3/PVcalc?lat={lat}&lon={lon}
         &peakpower=1&loss=14&pvtechchoice=crystSi&outputformat=json
@@ -37,11 +38,11 @@ def _payload_pvcalc(valeurs):
 
 
 class TableReferenceTests(SimpleTestCase):
-    """Intégrité du jeu de données committé (13 villes → 7 courbes)."""
+    """Intégrité du jeu de données committé (32 villes → 10 courbes)."""
 
-    def test_treize_villes_sept_courbes(self):
-        self.assertEqual(len(pp.PRODUCTIBLE_MENSUEL_VILLE), 13)
-        self.assertEqual(len(pp.COURBES_REFERENCE), 7)
+    def test_trente_deux_villes_dix_courbes(self):
+        self.assertEqual(len(pp.PRODUCTIBLE_MENSUEL_VILLE), 32)
+        self.assertEqual(len(pp.COURBES_REFERENCE), 10)
 
     def test_chaque_ville_pointe_sur_une_courbe_existante(self):
         for ville, entree in pp.PRODUCTIBLE_MENSUEL_VILLE.items():
@@ -73,20 +74,23 @@ class TableReferenceTests(SimpleTestCase):
         self.assertAlmostEqual(max(forme), 0.151, delta=0.002)
 
     def test_epingle_ordre_des_productibles_annuels(self):
-        """ÉPINGLE PVGIS : classement E_y (PVcalc, 21/08/2026)."""
+        """ÉPINGLE PVGIS : classement E_y (PVcalc, 21/08 + 31/08/2026)."""
         attendu = [
-            'dakhla', 'laayoune', 'ouarzazate', 'agadir', 'el jadida',
-            'marrakech', 'casablanca', 'bouskoura', 'mohammedia', 'oujda',
-            'rabat', 'fes', 'tanger',
+            'dakhla', 'laayoune', 'ouarzazate', 'guelmim', 'errachidia',
+            'tiznit', 'essaouira', 'agadir', 'safi', 'taroudant', 'tan tan',
+            'el jadida', 'khouribga', 'marrakech', 'settat', 'taza',
+            'casablanca', 'bouskoura', 'mohammedia', 'bouznika', 'oujda',
+            'rabat', 'ifrane', 'fes', 'kenitra', 'meknes', 'larache',
+            'tanger', 'beni mellal', 'al hoceima', 'nador', 'tetouan',
         ]
         obtenu = sorted(pp.PRODUCTIBLE_MENSUEL_VILLE,
                         key=lambda v: -pp.PRODUCTIBLE_MENSUEL_VILLE[v]['e_y'])
         self.assertEqual(obtenu, attendu)
-        # Les deux extrêmes, verbatim du relevé.
+        # Les deux extrêmes, verbatim des relevés (max Dakhla, min Tétouan).
         self.assertAlmostEqual(
             pp.PRODUCTIBLE_MENSUEL_VILLE['dakhla']['e_y'], 1927.71, places=2)
         self.assertAlmostEqual(
-            pp.PRODUCTIBLE_MENSUEL_VILLE['tanger']['e_y'], 1660.57, places=2)
+            pp.PRODUCTIBLE_MENSUEL_VILLE['tetouan']['e_y'], 1585.89, places=2)
 
     def test_saisons_couvrent_les_douze_mois_une_seule_fois(self):
         vus = []
@@ -104,10 +108,22 @@ class NormalisationVilleTests(SimpleTestCase):
         self.assertEqual(pp.cle_ville('Marrakesh'), 'marrakech')
 
     def test_ville_inconnue_reste_inconnue(self):
-        # Q6 : jamais de « ville la plus proche » devinée.
-        for inconnue in ('Ifrane', 'Chefchaouen', '', None, '   '):
+        # cle_ville reste TABLE SEULEMENT : Chefchaouen (gazetier, pas table)
+        # et Tombouctou (hors Maroc) n'y sont pas — la résolution douce des
+        # villes du gazetier vit dans productible_mensuel/profil_production.
+        for inconnue in ('Tombouctou', 'Chefchaouen', '', None, '   '):
             self.assertIsNone(pp.cle_ville(inconnue), repr(inconnue))
             self.assertFalse(pp.ville_connue(inconnue))
+
+    def test_villes_du_31_aout_sont_dans_la_table(self):
+        # Bouznika = LA ville de l'incident du 31/08/2026 (devis auto refusé
+        # alors que Rabat passait) : désormais une ville de table à part
+        # entière, avec ses propres données PVGIS.
+        self.assertEqual(pp.cle_ville('Bouznika'), 'bouznika')
+        self.assertEqual(pp.cle_ville('Ifrane'), 'ifrane')
+        # Tiret/espace : même clé (« Tan-Tan » = « Tan Tan »).
+        self.assertEqual(pp.cle_ville('Tan-Tan'), 'tan tan')
+        self.assertEqual(pp.cle_ville('TAN TAN'), 'tan tan')
 
     def test_repli_tolerant_texte_libre_avec_ville_connue(self):
         """L-QA1 FIX2 — le tunnel web range du texte libre dans Lead.ville
@@ -124,9 +140,10 @@ class NormalisationVilleTests(SimpleTestCase):
         self.assertEqual(pp.cle_ville('Route de El Jadida'), 'el jadida')
 
     def test_repli_tolerant_sans_aucune_ville_connue_reste_none(self):
-        # Q6 tient toujours : un texte libre SANS ville connue reste None,
-        # jamais une ville voisine devinée.
-        self.assertIsNone(pp.cle_ville('Quartier Riad, Ifrane'))
+        # Un texte libre SANS ville de table reste None pour cle_ville —
+        # jamais une ville voisine devinée à CE niveau (le gazetier, lui,
+        # est exercé dans ChaineResolutionTests).
+        self.assertIsNone(pp.cle_ville('Quartier Riad, Tombouctou'))
         self.assertIsNone(pp.cle_ville('Chefchaouen medina'))
 
 
@@ -189,11 +206,41 @@ class ChaineResolutionTests(SimpleTestCase):
             pp.productible_mensuel(ville='Rabat')[0])
 
     def test_c_ville_inconnue_sans_coordonnees_renvoie_none(self):
+        # Hors table ET hors gazetier (Tombouctou n'est pas au Maroc) :
+        # l'omission historique tient — jamais un chiffre inventé.
         self.assertIsNone(pp.profil_production_journalier(
-            saison='hiver', ville='Ifrane'))
+            saison='hiver', ville='Tombouctou'))
         self.assertIsNone(pp.profil_production_journalier(saison='hiver'))
-        self.assertIsNone(pp.productible_mensuel(ville='Ifrane'))
+        self.assertIsNone(pp.productible_mensuel(ville='Tombouctou'))
         self.assertIsNone(pp.productible_mensuel())
+
+    def test_c_ville_du_gazetier_sert_l_ancre_la_plus_proche(self):
+        """Fondateur 31/08/2026 — une ville marocaine HORS table (Skhirat)
+        n'est plus omise : le gazetier GeoNames donne sa position et la
+        chaîne sert la table PVGIS de l'ancre la plus proche (Bouznika,
+        ~14 km), la source nommant l'ancre et la distance. Aucun réseau."""
+        with mock.patch.object(pp, '_appel_pvgis') as reseau:
+            valeurs, source = pp.productible_mensuel(ville='Skhirat')
+            forme, source_forme = pp.profil_production_journalier(
+                saison='hiver', ville='Skhirat')
+        reseau.assert_not_called()
+        self.assertEqual(
+            valeurs, pp.PRODUCTIBLE_MENSUEL_VILLE['bouznika']['e_m'])
+        self.assertTrue(source.startswith('pvgis_ville_proche:bouznika~'),
+                        source)
+        self.assertTrue(source.endswith('km'), source)
+        # La forme vient du groupe de l'ancre (casa_atlantique → Casablanca).
+        self.assertEqual(source_forme, 'pvgis_ville_proche:casablanca')
+        self.assertEqual(len(forme), 24)
+        self.assertAlmostEqual(sum(forme), 1.0, places=4)
+
+    def test_c_texte_libre_du_gazetier_resolu_aussi(self):
+        # Le tunnel range du texte libre dans Lead.ville : une ville du
+        # gazetier nichée dans le texte est trouvée en mot entier.
+        resolu = pp.productible_mensuel(ville='Centre ville, Chefchaouen')
+        self.assertIsNotNone(resolu)
+        self.assertTrue(
+            resolu[1].startswith('pvgis_ville_proche:'), resolu[1])
 
     def test_saison_inconnue_renvoie_none(self):
         self.assertIsNone(pp.profil_production_journalier(
@@ -227,10 +274,20 @@ class ChaineResolutionTests(SimpleTestCase):
         self.assertEqual(source, 'pvgis_ville:casablanca')
         self.assertEqual(forme.index(max(forme)), 12)
 
-    def test_a_live_indisponible_et_ville_inconnue_renvoie_none(self):
+    def test_a_live_indisponible_et_ville_inconnue_ancre_le_point(self):
+        # 31/08/2026 — live en panne + ville illisible MAIS un point GPS
+        # connu : l'ancre de table la plus proche du POINT sert (avant :
+        # None, et le devis auto refusait un lead pourtant localisé).
         with mock.patch.object(pp, '_appel_pvgis', return_value=None):
-            self.assertIsNone(pp.profil_production_journalier(
-                saison='hiver', lat=33.5, lon=-7.6, ville='Ifrane'))
+            forme, source = pp.profil_production_journalier(
+                saison='hiver', lat=33.5, lon=-7.6, ville='Tombouctou')
+            valeurs, source_prod = pp.productible_mensuel(
+                lat=33.5, lon=-7.6, ville='Tombouctou')
+        self.assertTrue(source.startswith('pvgis_ville_proche:'), source)
+        self.assertEqual(len(forme), 24)
+        self.assertTrue(
+            source_prod.startswith('pvgis_ville_proche:'), source_prod)
+        self.assertEqual(len(valeurs), 12)
 
     def test_coordonnees_nulles_ignorees(self):
         # (0, 0) = coordonnée non renseignée, pas l'Atlantique.
