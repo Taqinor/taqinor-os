@@ -105,6 +105,10 @@ ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/ventes/DevisGeneratorRoundTripEtude.test.mjs":
         "DevisGenerator.jsx non importable pur sous node --test - verifie "
         "le round-trip etude_params par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorReplyLocal.test.mjs":
+        "QJR211 - DevisGenerator.jsx non importable pur sous node --test - "
+        "verifie que compositionSourceLocale s'efface sur CHAQUE succes "
+        "(agricole/indus-commercial/residentiel) par lecture de SOURCE.",
 }
 
 

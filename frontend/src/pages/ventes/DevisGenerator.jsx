@@ -565,7 +565,12 @@ export default function DevisGenerator({
   // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
   // documente lui-même comme divergente du serveur (câbles, marques épinglées,
   // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
-  // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
+  // Posé dans le `catch` avec la raison. QJR211 — effacé à CHAQUE succès de
+  // `handleAutoFill`, quel que soit le marché (dry-run résidentiel, pompage
+  // agricole, ou composition locale indus/commercial) et à chaque changement
+  // d'entrées qui relance le moteur avec succès : avant QJR211, seul le
+  // chemin de succès résidentiel l'effaçait, et la bannière survivait à un
+  // repli sur un autre marché en décrivant un calcul qui ne s'applique plus.
   // Ne change PAS le comportement du repli, seulement le rend visible.
   const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
   // DC11 / QJR106 — même patron que `sizingServeurMessage` et
@@ -2506,6 +2511,10 @@ export default function DevisGenerator({
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
       setLines(withKeys(generated))
+      // QJR211 — succès sur le marché agricole : la bannière « composition
+      // locale (serveur indisponible) » d'un repli résidentiel antérieur ne
+      // décrit plus rien après ce changement de marché.
+      setCompositionSourceLocale(null)
       // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
       // marquer le champ « touché » (ce n'est pas une frappe) et tient la
@@ -2577,7 +2586,12 @@ export default function DevisGenerator({
       }
       return
     }
-    composeLocalement()
+    // QJR211 — marchés indus/commercial (aucun dry-run serveur pour eux) :
+    // un succès efface une bannière de repli résidentiel antérieure, qui ne
+    // décrirait plus qu'un calcul périmé sur ce marché. `composeLocalement()`
+    // renvoie les lignes générées en cas de succès, `undefined` sur un échec
+    // (garde-fous ci-dessus) — la bannière ne s'efface que sur un VRAI succès.
+    if (composeLocalement()) setCompositionSourceLocale(null)
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
