@@ -20,8 +20,13 @@ export function effectiveStatut(d) {
   return d?.is_expired ? 'expire' : d?.statut
 }
 
-/* Colonnes ordonnées, avec compteur et TOTAL TTC. Un statut inconnu n'invente
-   aucune colonne (et n'est compté nulle part). */
+/* Colonnes ordonnées, avec compteur et TOTAL AFFICHÉ. Un statut inconnu
+   n'invente aucune colonne (et n'est compté nulle part).
+   QJR205 — le total de colonne lit le MÊME champ que la vue liste
+   (`total_affiche ?? total_ttc`, `DevisList.jsx`) : sur un devis à deux
+   options, `total_affiche` porte le total de l'option 1 (jamais la somme des
+   deux) tandis que `total_ttc` peut différer — additionner `total_ttc` seul
+   ferait afficher un montant de colonne incohérent avec la carte. */
 export function devisBoardColumns(devis = []) {
   const buckets = new Map(DEVIS_BOARD_COLUMNS.map(c => [c.key, []]))
   for (const d of devis ?? []) {
@@ -34,7 +39,7 @@ export function devisBoardColumns(devis = []) {
       ...c,
       devis: items,
       count: items.length,
-      total: items.reduce((s, d) => s + (Number(d.total_ttc) || 0), 0),
+      total: items.reduce((s, d) => s + (Number(d.total_affiche ?? d.total_ttc) || 0), 0),
     }
   })
 }
