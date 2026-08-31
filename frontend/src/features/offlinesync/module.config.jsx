@@ -33,7 +33,7 @@ const config = {
     { path: '/mobile/cockpit', component: CockpitHome },
     { path: '/mobile/equipe-terrain', component: EquipeTerrainHome },
     { path: '/mobile/equipe-commerciale', component: EquipeCommercialeHome },
-    { path: '/synchro/conflits', component: SyncConflictsPanel },
+    { path: '/synchro/conflits', component: SyncConflictsPanel }, // contextuelle: atteinte depuis l'état « en attente de synchro » (badge/bandeau) ; dans le cas nominal il n'y a AUCUN conflit, une entrée de menu permanente serait du bruit.
   ],
 }
 
