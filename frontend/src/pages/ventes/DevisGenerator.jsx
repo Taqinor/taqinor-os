@@ -278,6 +278,11 @@ const withKeys = (rows) => rows.map(r => ({
   // brouillon (VX62 draft restore), sinon False (chargement serveur/auto-fill —
   // rien n'a encore été tapé sur CES lignes-là).
   prixManuel: !!r.prixManuel,
+  // QJR218 — même patron que `prixManuel` juste au-dessus : le verrou
+  // « quantité tapée à la main » (posé aujourd'hui côté serveur, ex. une
+  // resynchronisation, `domain/lignes`) doit lui aussi survivre au
+  // rechargement d'un brouillon/devis, jamais retomber à False en silence.
+  quantiteManuelle: !!r.quantiteManuelle,
   // L-2OPT (fondateur 24/08) — '' commun (défaut, comportement historique
   // inchangé) | 'sans' | 'avec' : posée par `fusionnerVariantes` quand les
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un
@@ -306,6 +311,8 @@ const emptyLine = () => ({
   typeLigne: 'produit',
   // N2 — aucun prix tapé à la main pour l'instant.
   prixManuel: false,
+  // QJR218 — aucune quantité tapée à la main pour l'instant (ligne neuve).
+  quantiteManuelle: false,
   // L-2OPT — ligne ajoutée à la main : commune par défaut.
   variante: '',
 })
@@ -1786,6 +1793,11 @@ export default function DevisGenerator({
           // absent d'un backend plus ancien ⇒ `false`, comportement historique
           // strictement inchangé.
           prixManuel: !!l.prix_manuel,
+          // QJR218 — même trou, même correctif : `quantite_manuelle` est déjà
+          // round-trippé par le backend (`domain/lignes`) mais ce mappeur ne
+          // le relisait pas, donc `?edit=` ne restaurait JAMAIS le verrou de
+          // quantité (revenait `undefined → false` via `withKeys`).
+          quantiteManuelle: !!l.quantite_manuelle,
         }))
       setLines(withKeys(rows))
       linesInitialized.current = true
@@ -3168,6 +3180,12 @@ export default function DevisGenerator({
           // réécrive le prix négocié. Sans lui, le marqueur serait remis à
           // `False` à CHAQUE enregistrement — le trou que D12 referme.
           prix_manuel: !!l.prixManuel,
+          // QJR218 — même patron que `prix_manuel` juste au-dessus : sans ce
+          // marqueur, `replace-lignes` défaute `quantite_manuelle` à False à
+          // CHAQUE enregistrement — une ligne verrouillée en quantité (posée
+          // côté serveur, ex. une resynchronisation) perd son verrou au
+          // prochain enregistrement du vendeur.
+          quantite_manuelle: !!l.quantiteManuelle,
         }
       })
 

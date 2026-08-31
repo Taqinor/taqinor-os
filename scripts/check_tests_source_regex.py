@@ -117,6 +117,10 @@ ALLOWLIST: dict[str, str] = {
         "QJR215 - DevisGenerator.jsx non importable pur sous node --test - "
         "verifie le round-trip lire/poser/regenerer du registre d'overrides "
         "et l'affichage verbatim d'un refus 400, par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorQuantiteManuelle.test.mjs":
+        "QJR218 - DevisGenerator.jsx non importable pur sous node --test - "
+        "verifie le round-trip quantite_manuelle (enregistrement + ?edit=), "
+        "meme patron que prix_manuel, par lecture de SOURCE.",
 }
 
 
