@@ -19,6 +19,12 @@
 // réelle). Voir apps/ventes/quote_engine/pricing.py ONEE_TRANCHES pour la
 // dérivation HT/TTC complète.
 //
+// QJW12 — DÉCISION FONDATEUR D5 (29/08/2026) : la tranche 311–510 kWh vaut
+// 1,381704 MAD/kWh TTC (facture SRM n° 643769639 du 08/05/2026 : 1,15142 HT
+// × 1,20), et non plus l'extrapolation 1,405116. Les montants attendus de la
+// borne basse ci-dessous sont RE-DÉRIVÉS de ce tarif à la main (385 × 1,381704),
+// jamais recopiés d'une exécution.
+//
 // Ce fichier verrouille ce comportement de bout en bout, avec les chiffres
 // dérivés à la main depuis REGIE_TARIFF (barème du cerveau, WJ23).
 import { describe, expect, it } from 'vitest';
@@ -34,11 +40,17 @@ import {
 const TARIF_HAUT = 1.622856;
 /** Tarif de la tranche 211–310 kWh/mois (2026, TVA 20%). */
 const TARIF_300 = 1.187388;
+/**
+ * Tarif de la tranche 311–510 kWh/mois (2026, TVA 20%) — QJW12/D5 : PROUVÉ par
+ * la facture SRM n° 643769639 du 08/05/2026 (1,15142 HT × 1,20), miroir de
+ * apps/ventes/quote_engine/bareme.py TRANCHES_2026 (T5).
+ */
+const TARIF_500 = 1.381704;
 
 describe('Barème : le seuil des 500 kWh/mois existe vraiment', () => {
   it('la grille porte bien la marche 500 kWh et le haut de grille', () => {
     const bandes = REGIE_TARIFF.selective.map((b) => [b.upToKwh, b.rate]);
-    expect(bandes).toContainEqual([500, 1.405116]);
+    expect(bandes).toContainEqual([500, TARIF_500]);
     expect(bandes).toContainEqual([Infinity, TARIF_HAUT]);
   });
 
@@ -104,10 +116,17 @@ describe('Chaîne annuelle — jamais annualiser avant de tarifer', () => {
     expect(high).toBeCloseTo(9642.37, 1);
     // Borne basse : 75 % de l'autoconsommation réellement synchrone (315 kWh)
     // → résiduel 385 kWh/mois, encore sous 500 mais dans la tranche ≤ 500 :
-    // 385 × 1,405116 = 540,96966 MAD → économie 1 135,9992 − 540,96966 =
-    // 595,02954 MAD/mois, soit 7 140,35 MAD/an.
-    expect(low).toBeCloseTo(595.02954 * 12, 1);
-    expect(low).toBeCloseTo(7140.35, 1);
+    // 385 × 1,381704 = 531,95604 MAD → économie 1 135,9992 − 531,95604 =
+    // 604,04316 MAD/mois, soit 7 248,52 MAD/an (QJW12 : re-dérivé du tarif T5
+    // PROUVÉ ; avec l'ancienne extrapolation 1,405116 on annonçait 7 140,35,
+    // soit ~1,5 % de moins — l'écart que cette correction ferme).
+    expect(low).toBeCloseTo(604.04316 * 12, 1);
+    expect(low).toBeCloseTo(7248.52, 1);
+    // Le montant attendu n'est pas un nombre recopié : il se REFAIT depuis le
+    // tarif de la grille, à la main, ligne à ligne.
+    expect(385 * TARIF_500).toBeCloseTo(531.95604, 6);
+    expect(billMAD(385)).toBeCloseTo(385 * TARIF_500, 9);
+    expect(low).toBeCloseTo((billMAD(700) - 385 * TARIF_500) * 12, 6);
     expect(low).toBeLessThan(high);
   });
 
