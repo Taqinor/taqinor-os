@@ -17,6 +17,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
+  adsConsentFromBody,
   buildLeadRecord,
   crossSiteRejection,
   fireCapi,
@@ -66,9 +67,25 @@ export const POST: APIRoute = async ({ request }) => {
   // reste inchangé, ce lead n'est simplement jamais transmis.
   if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
 
+  // QJW22 — CETTE LIGNE EST LA LISTE BLANCHE. Ce n'est PAS le corps construit
+  // par le registre du tunnel qui part au webhook, mais `validation.lead` :
+  // une clé correctement déclarée dans `src/lib/tunnel/champs.ts` mais jamais
+  // ajoutée à la main dans `validateOptionalFields` (lib/lead.ts) est
+  // SILENCIEUSEMENT JETÉE ici, sans une ligne de log. Les tests de parité
+  // assertaient sur le corps d'AVANT : ils ne pouvaient structurellement pas le
+  // voir. La garde d'appariement registre ↔ liste blanche vit désormais dans
+  // tests/tunnelParite.test.ts (describe « QJW22 »), et les assertions de
+  // parité portent sur le corps POST-liste-blanche — celui qui part vraiment.
+  // Seule exception voulue : le honeypot `website_url`, jugé côté serveur et
+  // qui ne doit JAMAIS atteindre le CRM.
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
   const lead = validation.lead;
+
+  // QJW14 — même gate que /api/simulate et /api/preview-lead : un « Refuser »
+  // explicite bloque le beacon Meta. La capture, elle, part au CRM même
+  // NON QUALIFIÉE (includeUnqualified plus bas) — jamais gatée par ce signal.
+  const adsConsent = adsConsentFromBody(body);
 
   const env = (cf.env ?? {}) as LeadEnv;
   const band = await runSimulation(lead, env, fetch);
@@ -122,8 +139,8 @@ export const POST: APIRoute = async ({ request }) => {
     // preview-lead) : Meta optimisait donc les campagnes sur une tranche non
     // représentative du trafic. Même appel, même tolérance de panne (silencieux,
     // jamais bloquant), fireCapi se gate déjà lui-même sur `record.qualified`.
-    const capi = await fireCapi(record, env, fetch);
-    if (!capi.sent && baseRecord.qualified) {
+    const capi = await fireCapi(record, env, fetch, { adsConsent });
+    if (!capi.sent && baseRecord.qualified && capi.reason !== 'consent-denied') {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();

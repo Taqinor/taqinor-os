@@ -5,7 +5,12 @@
  *
  * Tout est paramétré par (env, fetchFn) pour rester testable hors Workers.
  */
-import { isBillRangeId, localEstimateBand, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
+import { billRangeBounds, isBillRangeId, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
+// QJW13 — le repli local du formulaire de conversion appelle le MÊME moteur que
+// l'estimateur d'accueil. `billEstimate` n'importe de ce module qu'un TYPE
+// (`import type { OmbrageId }`, effacé à la compilation) : aucun cycle à
+// l'exécution.
+import { estimateFromBill } from './billEstimate';
 import { normalizeMoroccanPhone } from './phone';
 import { COMMERCIAL_CATEGORY_IDS } from './commercialCategories';
 
@@ -68,6 +73,49 @@ export const HONEYPOT_FIELD = 'website_url';
 export function isHoneypotTripped(body: unknown): boolean {
   const v = (body as Record<string, unknown> | null | undefined)?.[HONEYPOT_FIELD];
   return typeof v === 'string' && v.trim().length > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// QJW14 — CONSENTEMENT PUBLICITAIRE ET BEACON META (CAPI)
+//
+// LE CONSTAT. `fireCapi` ne lisait JAMAIS le signal de consentement du site
+// (`tq_consent` en localStorage, posé par ConsentBanner.astro) : un visiteur
+// qui cliquait explicitement « Refuser » puis soumettait le formulaire voyait
+// quand même partir chez Meta son téléphone, sa ville et son e-mail HACHÉS.
+//
+// LA DÉCISION (tranchée dans QJW14, inversable d'un mot par le fondateur) :
+//  - « Refuser » EXPLICITE (`denied`) ⇒ le beacon CAPI NE PART PAS. De la PII
+//    hachée envoyée à Meta APRÈS un refus explicite est l'exposition la plus
+//    difficile à défendre (loi 09-08) et la plus facile à éviter.
+//  - AUCUNE INTERACTION avec la bannière (`unset`, le cas le plus fréquent :
+//    le visiteur va droit au formulaire) ⇒ comportement INCHANGÉ, le beacon
+//    part. Justification retenue : le CAPI est ici attaché à un ACTE EXPLICITE
+//    du prospect (il remplit un formulaire de demande de devis et coche le
+//    consentement de traitement), pas à de la navigation anonyme. C'est le
+//    point exact que le fondateur peut renverser : passer `unset` du côté
+//    bloquant tient en une ligne (`adsConsent !== 'granted'` ci-dessous).
+//  - LA CAPTURE DU LEAD N'EST JAMAIS GATÉE. Le contrat webhook
+//    (validateLead → forwardLead → CRM, seuil 1 000 MAD, consent/UTM/fbclid)
+//    reste intact octet pour octet : quoi qu'il arrive, le lead part au CRM.
+//    Seul le beacon publicitaire est concerné.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Nom du champ transmis par le formulaire (jamais forwardé au CRM : il n'est
+ *  pas dans la liste blanche de `validateOptionalFields`). */
+export const ADS_CONSENT_FIELD = 'adsConsent';
+
+/** Valeurs du signal `tq_consent` (ConsentBanner.astro) + l'état « pas encore
+ *  répondu », qui est le cas NORMAL et n'est jamais fabriqué en « granted ». */
+export type AdsConsent = 'granted' | 'denied' | 'unset';
+
+/**
+ * Lit le signal de consentement publicitaire dans le corps POSTé. Tolérant :
+ * tout ce qui n'est pas exactement 'granted'/'denied' (champ absent, ancien
+ * client, valeur bricolée) vaut `unset` — jamais une supposition.
+ */
+export function adsConsentFromBody(body: unknown): AdsConsent {
+  const v = (body as Record<string, unknown> | null | undefined)?.[ADS_CONSENT_FIELD];
+  return v === 'granted' || v === 'denied' ? v : 'unset';
 }
 
 export const ROOF_TYPES = [
@@ -1013,8 +1061,67 @@ export function validateLead(body: unknown): ValidationResult {
 }
 
 /**
+ * QJW13 — REPLI LOCAL DÉRIVÉ DU MOTEUR DU SITE, plus d'une table à la main.
+ *
+ * `runSimulation` servait au prospect une table statique (`LOCAL_BANDS`,
+ * billRange.ts) (a) quand `SIMULATOR_API_URL` n'est pas configurée et (b) sur
+ * TOUT échec réseau/HTTP/parse — deux chemins réellement exécutables. Or le
+ * même site répond à EXACTEMENT la même question avec un moteur bien plus
+ * précis (`billEstimate.estimateFromBill` → `estimatorBrainV2` : barème ONEE
+ * réel par tranche, table PVGIS, pertes committées), utilisé par
+ * `InstantEstimator.astro` en page d'accueil. Écart mesuré : 3 000 MAD/mois →
+ * 16 kWc au moteur contre « 5 à 9 kWc » à la table (+78 % sur le plafond).
+ * Deux endroits du même site répondaient différemment au même prospect.
+ *
+ * La bande est donc DÉRIVÉE des bornes de la tranche : `kwcMin` = moteur à la
+ * borne basse, `kwcMax` = moteur à la borne haute. Aucun chiffre nouveau — les
+ * deux extrémités sont littéralement des sorties du moteur d'accueil, donc la
+ * parité est structurelle (garde : tests/leadBandParite.test.ts).
+ *
+ * Le moteur est appelé SANS option, exactement comme l'accueil
+ * (`estimateFromBill(bill)`) : même latitude par défaut, même grille tarifaire.
+ * Passer la ville du lead donnerait un autre chiffre que l'accueil et
+ * recréerait la divergence que cette tâche supprime.
+ */
+/** kWc en français, sans dépendre d'ICU : 4.5 → « 4,5 », 16 → « 16 ». */
+function formatKwc(kwc: number): string {
+  return String(kwc).replace('.', ',');
+}
+
+export function engineEstimateBand(id: BillRangeId): EstimateBand {
+  const { min, max } = billRangeBounds(id);
+  // La première tranche part de 0 MAD, montant non chiffrable : on interroge
+  // alors le moteur au plus petit montant entier (1 MAD), dont la sortie est
+  // exactement son PLANCHER structurel documenté (`Math.max(1, …)` dans
+  // `estimateFromBill`, soit 1 kWc). Aucune facture inventée — la borne basse
+  // du moteur lui-même.
+  const low = estimateFromBill(Math.max(min, 1));
+  const high = Number.isFinite(max) ? estimateFromBill(max) : null;
+
+  const kwcMin = low?.kwc ?? 1;
+  // Tranche ouverte (« Plus de 10 000 MAD ») : aucune borne haute à chiffrer —
+  // on annonce « à partir de », jamais un plafond fabriqué.
+  const kwcMax = high?.kwc ?? kwcMin;
+
+  const kwcLabel = !Number.isFinite(max)
+    ? `${formatKwc(kwcMin)} kWc et plus (étude dédiée)`
+    : kwcMin === kwcMax
+      ? `${formatKwc(kwcMin)} kWc`
+      : `${formatKwc(kwcMin)} à ${formatKwc(kwcMax)} kWc`;
+
+  // Amortissement : l'étiquette du moteur à la borne BASSE — la plus prudente,
+  // puisque plus l'installation est petite, plus le libellé committé annonce un
+  // retour long (LOCAL_PAYBACK_BY_KWC, billRange.ts). Jamais un nombre inventé :
+  // c'est le libellé que le moteur produit déjà pour cette taille.
+  const paybackLabel = (low ?? high)?.paybackLabel ?? '';
+
+  return { kwcMin, kwcMax, kwcLabel, paybackLabel, source: 'local' };
+}
+
+/**
  * Bande kWc + ROI : proxy vers SIMULATOR_API_URL si configurée (timeout 5 s),
- * sinon estimation locale. Le navigateur n'appelle JAMAIS l'API directement.
+ * sinon estimation locale (QJW13 : dérivée du moteur du site, cf. ci-dessus).
+ * Le navigateur n'appelle JAMAIS l'API directement.
  */
 export async function runSimulation(
   lead: ValidatedLead,
@@ -1027,7 +1134,7 @@ export async function runSimulation(
   if (!lead.billRange) {
     return { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' };
   }
-  const fallback = localEstimateBand(lead.billRange);
+  const fallback = engineEstimateBand(lead.billRange);
   const url = env.SIMULATOR_API_URL?.trim();
   if (!url) return fallback;
   try {
@@ -1361,7 +1468,13 @@ export async function fireCapi(
   record: LeadRecord,
   env: LeadEnv,
   fetchFn: typeof fetch = fetch,
-): Promise<{ sent: boolean }> {
+  opts: { adsConsent?: AdsConsent } = {},
+): Promise<{ sent: boolean; reason?: 'consent-denied' }> {
+  // QJW14 — un « Refuser » EXPLICITE sur la bannière bloque le beacon (et lui
+  // seul : le lead est déjà parti au CRM par `forwardLead`, jamais gaté ici).
+  // Sans signal (`unset`/appel sans option), comportement inchangé — cf. le
+  // bloc de décision QJW14 en tête de fichier.
+  if (opts.adsConsent === 'denied') return { sent: false, reason: 'consent-denied' };
   if (!record.qualified) return { sent: false };
   const url = env.CAPI_URL?.trim();
   if (!url) return { sent: false };
