@@ -84,9 +84,11 @@ _REFUS_DIMENSIONNEMENT = {
         "facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead.",
         'facture_hiver'),
     MOTIF_LOCALISATION: (
-        "Le chantier n'est pas localisé : renseignez la ville (ou les "
-        "coordonnées GPS) du lead — sans elle, le productible solaire du site "
-        "est inconnu et aucune taille ne peut être calculée.",
+        "Le chantier n'est pas localisé : la ville du lead est vide ou n'est "
+        "pas reconnue (villes du Maroc et leurs orthographes courantes), et "
+        "aucune coordonnée GPS n'est posée — sans localisation, le "
+        "productible solaire du site est inconnu et aucune taille ne peut "
+        "être calculée. Corrigez la ville ou posez le point GPS sur la fiche.",
         'ville'),
     MOTIF_CATALOGUE: (
         "Le catalogue de la société ne permet de composer aucune installation "
