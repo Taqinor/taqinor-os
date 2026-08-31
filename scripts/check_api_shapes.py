@@ -131,9 +131,40 @@ MUTATIONS_OPAQUES = ("update", "pop", "popitem", "clear", "setdefault")
 # 1. Forme renvoyee par une vue (lecture du code serveur)
 # ===========================================================================
 
+def _sans_response(expression):
+    """`Response(x, status=…)` -> `x`. Toute autre expression, inchangee.
+
+    Le deballage existait deja pour un `return Response(...)` de premier
+    niveau ; QJR228 en a besoin AUSSI a l'interieur d'une enveloppe
+    (`return _noindex(Response(payload))`).
+    """
+    if isinstance(expression, ast.Call) \
+            and contract._call_name(expression) == "Response" \
+            and expression.args:
+        return expression.args[0]
+    return expression
+
+
 class ShapeReader:
-    def __init__(self, backend: contract.BackendRoutes):
+    """Lecteur AST d'une vue.
+
+    ``enveloppes`` (QJR228) elargit la lecture aux vues qui rendent leur
+    reponse a travers une ENVELOPPE TRANSPARENTE (`return
+    _noindex(Response(payload))`). Il est OPTIONNEL et par defaut ETEINT, pour
+    une raison mesuree : allume partout, il fait passer le contrat versionne de
+    560 a 573 endpoints d'un coup et reveille des constats reels mais etrangers
+    a la tache qui l'introduit (un mock `frontend/src/pages/ged/
+    PublicSignaturePage.test.jsx` qui declare un champ `champs` que la vue
+    `ged/signataire/<>` ne renvoie pas). L'elargissement general est donc un
+    chantier a lui seul ; ici, il ne sert QUE les echantillons de contrat qui
+    DECLARENT porter la carte complete de leur route (`forme_serveur:
+    complete`), et ne touche ni `docs/api-contracts.md` ni la base de
+    reference des mocks.
+    """
+
+    def __init__(self, backend: contract.BackendRoutes, enveloppes: bool = False):
         self.backend = backend
+        self.enveloppes = enveloppes
         self._cache: dict[tuple, dict | None] = {}
 
     # -- utilitaires de resolution ---------------------------------------
@@ -330,8 +361,48 @@ class ShapeReader:
         if isinstance(expression, ast.Call) and depth < MAX_DEPTH:
             cible = self._fonction_appelee(expression, module)
             if cible is not None:
+                # QJR228 (a) — ENVELOPPE TRANSPARENTE. `return
+                # _noindex(Response(payload))` : `_noindex` pose un en-tete
+                # puis rend SON PROPRE PARAMETRE. La forme renvoyee est donc
+                # celle de `payload`, mais le lecteur s'arretait sur un
+                # parametre illisible et declarait TOUTE la vue incertaine —
+                # c'est ce qui laissait `proposal_data` (la charge utile de la
+                # page proposition) confrontee a RIEN cote serveur.
+                if self._est_enveloppe(cible[0], cible[1]) and expression.args:
+                    return self._shape_of_expression(
+                        _sans_response(expression.args[0]), module,
+                        assignments, depth + 1, fonction)
                 return self.shape_of_function(cible[0], cible[1], depth + 1)
         return None
+
+    def _est_enveloppe(self, module: str, nom: str) -> bool:
+        """La fonction rend-elle SON PREMIER PARAMETRE, inchange ?
+
+        Volontairement etroit : il faut au moins un `return`, et TOUS les
+        `return` doivent etre le nom nu du premier parametre. Un `return
+        autre_chose`, un `return None` implicite en plus, ou une fonction sans
+        parametre ne sont pas des enveloppes — un doute ne rougit jamais.
+        """
+        if not self.enveloppes:
+            return False
+        cle = ("env", module, nom)
+        if cle in self._cache:
+            return self._cache[cle]
+        self._cache[cle] = False               # anti-recursion
+        trouve = self._find_function(module, nom)
+        verdict = False
+        if trouve is not None:
+            _, node = trouve
+            parametres = node.args.args
+            if parametres:
+                premier = parametres[0].arg
+                retours = [s for s in ast.walk(node)
+                           if isinstance(s, ast.Return) and s.value is not None]
+                verdict = bool(retours) and all(
+                    isinstance(r.value, ast.Name) and r.value.id == premier
+                    for r in retours)
+        self._cache[cle] = verdict
+        return verdict
 
     def _fonction_appelee(self, appel: ast.Call, module: str):
         """(module, nom) de la fonction appelee, ou None si non resoluble.
@@ -950,6 +1021,68 @@ DOSSIER_ECHANTILLONS = "contract_samples"
 
 _ENDPOINT = re.compile(r"^(?P<verbe>[A-Z]+)\s+(?P<chemin>/\S*)$")
 
+# ---------------------------------------------------------------------------
+# QJR228 — L'ECHANTILLON QUI SE DECLARE COMPLET SORT DU CHEMIN « DOUTE -> VERT »
+# ---------------------------------------------------------------------------
+#
+# LE TROU MESURE. `echantillons_de_contrat` n'appariait un exemple qu'aux
+# routes REELLEMENT APPELEES par `frontend/src/api/*.js`. Une route servie
+# uniquement au site public (`apps/web`, TypeScript) n'avait donc aucune forme
+# connue, et le `continue` « un doute ne rougit JAMAIS » la laissait passer.
+# C'etait exactement le cas de `apps/ventes/contract_samples/proposal_data.json`
+# — la principale charge utile CLIENT de la page proposition — confrontee a
+# RIEN cote serveur, alors que la docstring QJR110 affirmait le contraire.
+#
+# LE REMEDE, ET SES BORNES. Un echantillon peut DECLARER, dans son propre
+# document, qu'il porte la carte COMPLETE de sa route :
+#
+#     "forme_serveur": "complete"
+#
+# La garde resout alors son `endpoint` contre l'arbre des routes du SERVEUR
+# (plus seulement contre les appels du frontend), lit la vue en AST et compare
+# — dans les deux sens, comme pour toute route deja couverte. Un renommage de
+# cle cote serveur rougit.
+#
+# La declaration est OPT-IN et c'est deliberé : HUIT echantillons partagent la
+# route `GET /api/django/public/proposal/<token>/data/`, dont sept ne
+# documentent qu'UNE clé additive (`offres_tailles.json`,
+# `couverture_batterie.json`…). Les confronter tous a la carte complete
+# produirait sept faux rouges. Ceux-la peuvent l'ecrire noir sur blanc
+# (`"forme_serveur": "partielle"`) ; leur silence garde le comportement
+# d'avant, documente ici plutot que subi.
+#
+# UN ECHANTILLON DECLARE COMPLET NE PEUT PLUS ETRE MUET : si sa route est
+# introuvable ou si sa vue n'est pas lisible statiquement, c'est un CONSTAT.
+# Sans cela, la declaration se serait silencieusement eteinte au premier
+# refactoring de la vue — le mode de panne que cette tache ferme.
+FORME_SERVEUR = "forme_serveur"
+FORME_COMPLETE = "complete"
+FORME_PARTIELLE = "partielle"
+FORMES_DECLARABLES = (FORME_COMPLETE, FORME_PARTIELLE)
+
+#: `<str:token>`, `<int:pk>`, `{id}` : les parametres de chemin cote SERVEUR.
+#: `normalise_call` ne connait que le trou du frontend (`${...}`), il refusait
+#: donc en bloc les chemins ecrits a la Django dans les echantillons.
+_PARAM_CHEMIN = re.compile(r"<[^/>]*>|\{[^/}]*\}")
+
+
+def route_serveur(chemin: str):
+    """Chemin d'un `endpoint` d'echantillon -> segments normalises, ou None."""
+    return normalise_call(_PARAM_CHEMIN.sub(HOLE, chemin), "api/django")
+
+
+def lecteur_serveur_des_echantillons(backend):
+    """(verbe, chemin) -> forme lue dans la vue, ou None si non resoluble."""
+    lecteur = ShapeReader(backend, enveloppes=True)
+
+    def lire(verbe: str, chemin: str):
+        route = route_serveur(chemin)
+        if route is None:
+            return None
+        return lecteur.shape_of_route(route, verbe.lower())
+
+    return lire
+
 
 def _nature_json(valeur) -> str:
     if isinstance(valeur, bool):
@@ -972,8 +1105,15 @@ def fichiers_echantillons(racine: Path = None):
     return sorted(racine.glob(f"*/{DOSSIER_ECHANTILLONS}/*.json"))
 
 
-def echantillons_de_contrat(shapes, racine: Path = None):
-    """[(fichier, ligne, endpoint, chemin, champ, motif)] — exemples qui derivent."""
+def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
+    """[(fichier, ligne, endpoint, chemin, champ, motif)] — exemples qui derivent.
+
+    ``lecteur_serveur`` (QJR228) : (verbe, chemin) -> forme lue dans la vue.
+    Il n'est consulte que pour un echantillon qui se DECLARE
+    `forme_serveur: complete` — voir le bloc d'en-tete ci-dessus. Absent (un
+    appelant qui apporte ses propres formes, comme les tests du script), une
+    declaration `complete` reste sans effet : un doute ne rougit jamais.
+    """
     import json
 
     par_route = {}
@@ -1001,7 +1141,28 @@ def echantillons_de_contrat(shapes, racine: Path = None):
             continue
         route = normalise_call(entete.group("chemin"), "api/django")
         chemin = "/" + "/".join(route) if route else entete.group("chemin")
+        declaration = (document or {}).get(FORME_SERVEUR)
+        if declaration is not None and declaration not in FORMES_DECLARABLES:
+            constats.append((
+                relatif, 1, fichier.stem, chemin, FORME_SERVEUR,
+                f"`{FORME_SERVEUR}` vaut {declaration!r} : les seules valeurs "
+                f"declarables sont {' et '.join(repr(v) for v in FORMES_DECLARABLES)}"))
+            continue
         forme = par_route.get(chemin)
+        if forme is None and declaration == FORME_COMPLETE \
+                and lecteur_serveur is not None:
+            # QJR228 — cet echantillon AFFIRME porter la carte complete de sa
+            # route : on lit la vue du serveur au lieu de s'abstenir.
+            forme = lecteur_serveur(entete.group("verbe"), entete.group("chemin"))
+            if not forme:
+                constats.append((
+                    relatif, 1, fichier.stem, chemin, FORME_SERVEUR,
+                    f"cet echantillon se declare `{FORME_SERVEUR}: "
+                    f"{FORME_COMPLETE}` mais la forme renvoyee par la vue de "
+                    f"{entete.group('verbe')} {entete.group('chemin')} n'est "
+                    "pas lisible statiquement : la declaration ne verifie plus "
+                    "rien. Rendre la vue lisible, ou retirer la declaration"))
+                continue
         if forme is None:
             # Endpoint hors contrat (forme non certaine statiquement) : un doute
             # ne rougit JAMAIS. L'exemple reste utile au frontend.
@@ -1537,11 +1698,12 @@ def routes_client_web(known: RouteTrie, fichiers=None):
 # ===========================================================================
 
 def build_contract_complet():
-    """(shapes agregees, contrats de serialiseur, arbre des routes serveur).
+    """(shapes, contrats de serialiseur, arbre des routes, lecteur serveur).
 
     UN SEUL balayage du backend (~40 s). L'arbre des routes est rendu avec le
     reste depuis QJR110 : le controle des chemins de `apps/web` en a besoin, et
-    le reconstruire couterait un second balayage complet.
+    le reconstruire couterait un second balayage complet. Meme raison pour le
+    lecteur serveur des echantillons (QJR228) : il reutilise CE balayage.
     """
     backend = contract.BackendRoutes()
     backend.build()
@@ -1573,7 +1735,7 @@ def build_contract_complet():
         contrat = serialiseurs_reader.contrat_de_route(route)
         if contrat is not None:
             serialiseurs[(module, name)] = ("/" + "/".join(route),) + contrat
-    return shapes, serialiseurs, known
+    return shapes, serialiseurs, known, lecteur_serveur_des_echantillons(backend)
 
 
 def build_contract():
@@ -1582,12 +1744,13 @@ def build_contract():
 
 def analyse(shapes=None):
     if shapes is None:
-        shapes, serialiseurs, known = build_contract_complet()
+        shapes, serialiseurs, known, lecteur = build_contract_complet()
     else:
         # Un appelant qui APPORTE les formes (les tests du script) n'a pas
         # construit l'arbre des routes : le controle des chemins `apps/web`
-        # est alors sauté — un doute ne rougit jamais.
-        serialiseurs, known = {}, None
+        # est alors sauté — un doute ne rougit jamais. Idem pour la lecture
+        # serveur des echantillons declares complets (QJR228).
+        serialiseurs, known, lecteur = {}, None, None
     findings = []
     for path in test_files():
         relative = path.relative_to(ROOT).as_posix()
@@ -1612,11 +1775,12 @@ def analyse(shapes=None):
     findings.extend(champs_fantomes(shapes))
     # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
     # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
-    findings.extend(echantillons_de_contrat(shapes))
+    findings.extend(echantillons_de_contrat(shapes, lecteur_serveur=lecteur))
     # QJR110 (a) — la copie `apps/web` d'un echantillon EGALE sa copie backend.
     findings.extend(echantillons_web_jumeaux())
     # QJR110 (b) — et la copie web passe le MEME controle contre le serveur.
-    findings.extend(echantillons_de_contrat(shapes, racine=WEB_ROOT))
+    findings.extend(echantillons_de_contrat(shapes, racine=WEB_ROOT,
+                                            lecteur_serveur=lecteur))
     # QJR110 (c) — un chemin backend ecrit dans `apps/web/src/lib/*.ts` ou dans
     # un proxy `apps/web/src/pages/api/*.ts` doit resoudre vers une vraie route.
     findings.extend(routes_client_web(known))

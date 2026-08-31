@@ -7,7 +7,7 @@ Multi-tenant : la détection est scopée société.
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
 from apps.crm.models import Lead
@@ -285,3 +285,81 @@ class LeCheminVivantDeLaProvenance(TestCase):
         page = DevisSerializer(
             Devis.objects.filter(pk=self.devis.pk), many=True).data
         self.assertIsNone(page[0]['lead_valeurs_modifiees'])
+
+
+class TestGardeProvenanceQJR234(SimpleTestCase):
+    """QJR234 — un champ énergie/toit du lead ne peut plus disparaître en silence.
+
+    Le défaut fermé ici : ``LEAD_PROVENANCE_FIELDS`` est une liste écrite à la
+    main. Une valeur énergie/toiture ajoutée à ``crm.Lead`` et oubliée dedans
+    sortait de la bannière « valeurs du lead modifiées depuis » SANS QUE RIEN
+    NE LE DISE — ni test, ni garde.
+
+    Aucune base de données : la garde ne lit que des NOMS de champs, et
+    ``lead_provenance_omissions(champs=…)`` accepte la liste — ce qui permet de
+    simuler l'ajout d'un champ au modèle sans migration.
+    """
+
+    def test_le_modele_REEL_ne_produit_aucune_omission(self):
+        self.assertEqual(selectors.lead_provenance_omissions(), [])
+
+    def test_les_champs_declares_existent_bien_sur_le_modele(self):
+        noms = {f.name for f in Lead._meta.get_fields()
+                if getattr(f, 'concrete', False)}
+        for champ in selectors.LEAD_PROVENANCE_FIELDS:
+            self.assertIn(champ, noms, champ)
+
+    def test_les_champs_declares_sont_bien_vus_comme_energie_toit(self):
+        # Si un marqueur disparaissait, la garde cesserait de surveiller la
+        # famille correspondante SANS rien dire — le mode de panne exact.
+        energie = selectors.lead_provenance_champs_energie_toit()
+        for champ in selectors.LEAD_PROVENANCE_FIELDS:
+            self.assertIn(champ, energie, champ)
+
+    def test_un_champ_energie_AJOUTE_et_non_declare_ROUGIT(self):
+        # LE négatif de QJR234, exécuté : on simule l'ajout de
+        # `facture_printemps` au modèle sans toucher à la liste.
+        constats = selectors.lead_provenance_omissions(
+            self._champs() + ['facture_printemps'])
+        self.assertEqual([c[0] for c in constats], ['facture_printemps'])
+        self.assertIn('facture_printemps', constats[0][1])
+        self.assertIn('valeurs du lead modifiées depuis', constats[0][1])
+        self.assertIn('AVEC SA RAISON', constats[0][1])
+
+    def test_un_champ_declare_qui_DISPARAIT_du_modele_rougit(self):
+        constats = selectors.lead_provenance_omissions(
+            [c for c in self._champs() if c != 'gps_lng'])
+        self.assertEqual([c[0] for c in constats], ['gps_lng'])
+        self.assertIn('fantôme', constats[0][1])
+
+    def test_une_EXCLUSION_perimee_rougit(self):
+        constats = selectors.lead_provenance_omissions(
+            [c for c in self._champs() if c != 'pompe_cv'])
+        self.assertEqual([c[0] for c in constats], ['pompe_cv'])
+        self.assertIn('périmée', constats[0][1])
+
+    def test_une_exclusion_DECLAREE_ne_rougit_pas(self):
+        # Contrôle positif : `occupation_jour` porte bien un marqueur — il est
+        # donc surveillé, et ne passe QUE parce que sa raison est ÉCRITE.
+        self.assertIn('occupation_jour',
+                      selectors.lead_provenance_champs_energie_toit())
+        self.assertIn('occupation_jour', selectors.LEAD_PROVENANCE_EXCLUSIONS)
+        self.assertEqual(selectors.lead_provenance_omissions(), [])
+
+    def test_chaque_exclusion_porte_une_raison_ECRITE(self):
+        # « une exclusion volontaire s'écrit dans la garde avec sa raison,
+        # jamais par omission » : une raison vide serait une omission déguisée.
+        self.assertTrue(selectors.LEAD_PROVENANCE_EXCLUSIONS)
+        for champ, raison in selectors.LEAD_PROVENANCE_EXCLUSIONS.items():
+            self.assertTrue(isinstance(raison, str) and len(raison) > 40,
+                            f"{champ} : exclusion sans raison écrite")
+
+    def test_aucun_champ_n_est_a_la_fois_declare_ET_exclu(self):
+        self.assertEqual(
+            set(selectors.LEAD_PROVENANCE_FIELDS)
+            & set(selectors.LEAD_PROVENANCE_EXCLUSIONS), set())
+
+    @staticmethod
+    def _champs():
+        return [f.name for f in Lead._meta.get_fields()
+                if getattr(f, 'concrete', False)]

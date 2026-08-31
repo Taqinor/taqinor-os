@@ -996,6 +996,145 @@ LEAD_PROVENANCE_FIELDS = (
 )
 
 
+# ── QJR234 — LA GARDE : plus une seule omission SILENCIEUSE ──────────────────
+#
+# LE DÉFAUT. ``LEAD_PROVENANCE_FIELDS`` est une liste écrite à la main. Une
+# valeur énergie/toiture ajoutée au modèle ``crm.Lead`` et oubliée ici sort de
+# la bannière « valeurs du lead modifiées depuis » SANS QUE RIEN NE LE DISE :
+# le commercial ne verra jamais que cette valeur a bougé depuis la capture. Ni
+# test ni garde ne signalaient l'omission.
+#
+# LA RÈGLE. Tout champ concret de ``crm.Lead`` dont le NOM porte un marqueur
+# énergie/toiture ci-dessous doit être, au choix : dans
+# ``LEAD_PROVENANCE_FIELDS``, ou dans ``LEAD_PROVENANCE_EXCLUSIONS`` AVEC SA
+# RAISON. Jamais par omission. Les marqueurs sont volontairement larges : un
+# faux positif se règle en écrivant une ligne d'exclusion (trente secondes),
+# un faux négatif se paye en chiffres périmés montrés à un client.
+_LEAD_PROVENANCE_MARQUEURS = (
+    'facture', 'ete_differente', 'conso_', 'kwh', 'bill_', 'tranche_onee',
+    'raccordement', 'regularisation_', 'equip_', 'occupation_jour', 'pompe_',
+    'toiture', 'roof_', 'orientation', 'inclinaison', 'ombrage', 'gps_',
+    'nb_etages', 'structure_pref', 'kwc', 'batterie', 'distributeur',
+)
+
+# Les raisons, mutualisées par famille : une seule phrase à relire, et un champ
+# ajouté à une famille reste malgré tout un ROUGE tant qu'il n'est pas nommé
+# ci-dessous (l'exclusion est par CHAMP, jamais par préfixe).
+_RAISON_LU_EN_DIRECT = (
+    "lu EN DIRECT sur le lead au moment du rendu, jamais recopié dans "
+    "`Devis.etude_params` : une valeur qui n'a pas de copie ne peut pas "
+    "diverger de sa copie. L'ajouter ferait clignoter la bannière sur un "
+    "champ que le devis n'a jamais repris."
+)
+_RAISON_PROFIL_APPEL = (
+    "profil d'équipements du script d'appel (L-BACK / L-WEBT2) : le devis ne "
+    "le RECOPIE pas — il est lu sur le lead quand l'étude en a besoin. "
+    "À déclarer le jour où l'écran générateur le re-saisit."
+)
+_RAISON_POMPAGE = (
+    "questionnaire de pompage agricole : hors du bloc énergie/toiture "
+    "RÉSIDENTIEL que le devis recopie (les valeurs de "
+    "`LEAD_PROVENANCE_FIELDS`). À déclarer le jour où l'écran agricole "
+    "re-saisit ces valeurs depuis le lead."
+)
+_RAISON_QUALIFICATION = (
+    "donnée de QUALIFICATION du lead (ce que le prospect a déclaré au "
+    "premier contact), pas une valeur d'étude re-saisie dans le devis : elle "
+    "vit sa vie côté CRM et n'a pas de copie dans `etude_params`."
+)
+_RAISON_TRANCHE = (
+    "valeur RE-DÉRIVÉE par l'étude à chaque rendu depuis la facture et la "
+    "consommation (elles, sont estampillées) : l'estampiller en plus ferait "
+    "signaler deux fois la même dérive."
+)
+
+LEAD_PROVENANCE_EXCLUSIONS = dict(
+    [(champ, _RAISON_PROFIL_APPEL) for champ in (
+        'equip_piscine', 'equip_piscine_pompe_kw', 'equip_piscine_heures_jour',
+        'equip_piscine_creneau', 'equip_voiture_electrique',
+        'equip_ve_km_semaine', 'equip_ve_chargeur_kw', 'equip_ve_creneau',
+        'equip_clim', 'equip_clim_pieces', 'equip_clim_kw',
+        'equip_clim_creneau', 'equip_chauffe_eau_electrique',
+        'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+    )]
+    + [(champ, _RAISON_POMPAGE) for champ in (
+        'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    )]
+    + [(champ, _RAISON_QUALIFICATION) for champ in (
+        'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
+        'raccordement', 'batterie_souhaitee', 'taille_souhaitee_kwc',
+        'structure_pref', 'nb_etages', 'regularisation_8221',
+    )]
+    + [
+        ('occupation_jour', _RAISON_LU_EN_DIRECT),
+        ('roof_point', _RAISON_LU_EN_DIRECT),
+        ('roof_outline', _RAISON_LU_EN_DIRECT),
+        ('ombrage', _RAISON_LU_EN_DIRECT),
+        ('ombrage_notes',
+         "note de terrain en TEXTE LIBRE : aucun chiffre d'étude n'en "
+         "dérive, il n'y a rien à comparer."),
+        ('conso_mensuelle_kwh', _RAISON_TRANCHE),
+        ('tranche_onee', _RAISON_TRANCHE),
+    ]
+)
+
+
+def _lead_champs_concrets():
+    """Les noms des champs CONCRETS de ``crm.Lead`` (sans les relations inverses)."""
+    from .models import Lead
+    return [f.name for f in Lead._meta.get_fields()
+            if getattr(f, 'concrete', False)]
+
+
+def lead_provenance_champs_energie_toit(champs=None):
+    """Les champs de ``crm.Lead`` que les marqueurs désignent énergie/toiture."""
+    noms = _lead_champs_concrets() if champs is None else list(champs)
+    return [nom for nom in noms
+            if any(marqueur in nom for marqueur in _LEAD_PROVENANCE_MARQUEURS)]
+
+
+def lead_provenance_omissions(champs=None):
+    """QJR234 — [(champ, motif FR)] : tout ce qui rompt la règle ci-dessus.
+
+    ``champs`` (facultatif) remplace la lecture du modèle : c'est ce qui permet
+    de PROUVER la garde en simulant l'ajout d'un champ énergie au lead, sans
+    migration et sans base de données. Liste vide = rien à signaler.
+    """
+    noms = _lead_champs_concrets() if champs is None else list(champs)
+    connus = set(noms)
+    energie_toit = lead_provenance_champs_energie_toit(noms)
+    constats = []
+    for champ in energie_toit:
+        if champ in LEAD_PROVENANCE_FIELDS:
+            continue
+        raison = LEAD_PROVENANCE_EXCLUSIONS.get(champ)
+        if raison:
+            continue
+        constats.append((
+            champ,
+            f"« {champ} » est un champ énergie/toiture de `crm.Lead` que "
+            "`LEAD_PROVENANCE_FIELDS` ne déclare PAS : s'il change après la "
+            "capture, la bannière « valeurs du lead modifiées depuis » ne le "
+            "dira jamais. L'ajouter à `LEAD_PROVENANCE_FIELDS`, ou l'inscrire "
+            "dans `LEAD_PROVENANCE_EXCLUSIONS` AVEC SA RAISON — jamais par "
+            "omission."))
+    for champ in LEAD_PROVENANCE_FIELDS:
+        if champ not in connus:
+            constats.append((
+                champ,
+                f"« {champ} » est déclaré dans `LEAD_PROVENANCE_FIELDS` mais "
+                "n'existe plus sur `crm.Lead` : l'estampille porterait un "
+                "champ fantôme (toujours None des deux côtés, donc une dérive "
+                "invisible)."))
+    for champ in LEAD_PROVENANCE_EXCLUSIONS:
+        if champ not in connus:
+            constats.append((
+                champ,
+                f"« {champ} » est exclu de la provenance alors qu'il n'existe "
+                "plus sur `crm.Lead` : exclusion périmée, à retirer."))
+    return constats
+
+
 def _lead_provenance_valeurs(lead):
     """Snapshot {champ: valeur} des valeurs énergie/toiture d'un lead.
 
