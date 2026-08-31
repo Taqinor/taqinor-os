@@ -78,6 +78,10 @@ class _FixtureBase:
         creer_ligne(self.devis, produit=produit, designation='Panneau 710W',
                     quantite=Decimal('12'), prix_unitaire=Decimal('1000'),
                     remise=Decimal('0'))
+        # SCA47 — le gel n'a lieu qu'à un ``Devis.save()`` où kWc ET total
+        # coexistent (« on gèlera au prochain save utile ») : ``creer_ligne``
+        # ne re-save pas le devis, ce save-ci EST le prochain save utile.
+        self.devis.save()
         self.devis.refresh_from_db()
         self.url = f'/api/django/ventes/devis/{self.devis.id}/overrides/'
 
@@ -220,17 +224,18 @@ class DeuxPatchConcurrentsNePerdentPlusUnChemin(_FixtureBase, TransactionTestCas
             self.assertTrue(
                 b_a_tente.wait(5), 'le thread B n’a jamais tenté le verrou')
             # Attend que le SELECT ... FOR UPDATE de B soit RÉELLEMENT bloqué
-            # dans PostgreSQL AVANT de relâcher A — une attente de CONDITION
-            # observée dans pg_stat_activity (wait_event_type='Lock'), jamais
-            # un délai arbitraire : un ordonnancement chanceux ne prouverait
-            # rien (le défaut d'origine est justement une course de timing).
+            # dans PostgreSQL AVANT de relâcher A — une attente de CONDITION,
+            # jamais un délai arbitraire : un ordonnancement chanceux ne
+            # prouverait rien (le défaut d'origine est justement une course de
+            # timing). Observée dans ``pg_locks.granted = false`` (un waiter de
+            # verrou non accordé), PAS dans pg_stat_activity : en CI le texte
+            # de ``query`` d'une autre session n'est pas fiable (troncature,
+            # visibilité) — la ligne de verrou, elle, existe toujours.
 
             def _b_bloque_sur_le_verrou():
                 with connection.cursor() as curseur:
                     curseur.execute(
-                        "SELECT count(*) FROM pg_stat_activity "
-                        "WHERE wait_event_type = 'Lock' "
-                        "AND query LIKE '%FOR UPDATE%'")
+                        "SELECT count(*) FROM pg_locks WHERE granted = false")
                     return curseur.fetchone()[0] > 0
             pacage = threading.Event()  # jamais signalé : pur régulateur de boucle
             limite = time.monotonic() + 5

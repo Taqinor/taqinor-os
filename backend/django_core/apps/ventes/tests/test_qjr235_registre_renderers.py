@@ -48,10 +48,12 @@ class LeRegistreEstLaSeuleListe(SimpleTestCase):
                 self.assertNotIn(interdit, source)
 
     def test_les_quatre_blocs_copies_colles_ont_disparu(self):
-        """Le patron dupliqué (``except <mod>.Unsupported``) n'existe plus."""
+        """Le patron dupliqué (``except <module>.Unsupported`` PAR MARCHÉ)
+        n'existe plus — il ne reste que la capture GÉNÉRIQUE de la boucle du
+        registre (``_renderer`` est sa variable de boucle, pas un module)."""
         source = inspect.getsource(B.generate_premium_devis_pdf)
         copies = re.findall(r'except\s+\w+\.Unsupported', source)
-        self.assertEqual(copies, [], copies)
+        self.assertEqual(copies, ['except _renderer.Unsupported'], copies)
 
 
 class LeRepliEstNomme(SimpleTestCase):
