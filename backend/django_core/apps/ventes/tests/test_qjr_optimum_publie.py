@@ -36,7 +36,10 @@ Lancer :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr_optimum_publie -v 2
 """
+import ast
+import inspect
 import itertools
+import textwrap
 import uuid
 from decimal import Decimal
 
@@ -51,6 +54,24 @@ from apps.ventes.models import Devis, LigneDevis, ShareLink
 User = get_user_model()
 
 _seq = itertools.count(1)
+
+
+def _corps_sans_docstring(fonction):
+    """La source d'une fonction PRIVÉE de sa docstring.
+
+    Une garde « telle chaîne n'apparaît plus » doit lire le CODE : une
+    docstring qui EXPLIQUE la règle remplacée la cite forcément.
+    """
+    source = textwrap.dedent(inspect.getsource(fonction))
+    noeud = ast.parse(source).body[0]
+    premier = noeud.body[0] if noeud.body else None
+    if not (isinstance(premier, ast.Expr)
+            and isinstance(premier.value, ast.Constant)
+            and isinstance(premier.value.value, str)):
+        return source
+    lignes = source.splitlines(keepends=True)
+    del lignes[premier.lineno - 1:premier.end_lineno]
+    return ''.join(lignes)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -421,14 +442,20 @@ class ChargeUtilePubliqueTests(_DevisBase):
                          payload.get('batterie_regime') or {})
 
     def test_qjr233_la_garde_publique_est_celle_du_pdf(self):
-        """Une seule formulation, IMPORTÉE : ``dimensionnement.decrit``."""
-        import inspect
+        """Une seule formulation, IMPORTÉE : ``dimensionnement.decrit``.
 
+        La garde porte sur le CODE : la docstring de la fonction RACONTE la
+        règle laxiste remplacée (``dimensionnement.decrit_la_capacite``) et la
+        citerait donc à jamais. Le retrait passe par l'AST plutôt que par
+        ``source.replace(__doc__)`` — depuis Python 3.13 ``__doc__`` est
+        désindenté et n'est plus un sous-texte de la source.
+        """
         from apps.ventes import public_views
 
-        source = inspect.getsource(public_views._remplissage_batterie_publiable)
-        self.assertIn('module.decrit(', source)
-        self.assertNotIn('decrit_la_capacite', source)
+        corps = _corps_sans_docstring(
+            public_views._remplissage_batterie_publiable)
+        self.assertIn('module.decrit(', corps)
+        self.assertNotIn('decrit_la_capacite', corps)
         # Et la variante « capacité seule » n'a plus de lecture nommée ici.
         self.assertFalse(hasattr(public_views, '_meme_capacite_batterie'))
 
