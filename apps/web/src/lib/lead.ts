@@ -5,7 +5,12 @@
  *
  * Tout est paramétré par (env, fetchFn) pour rester testable hors Workers.
  */
-import { isBillRangeId, localEstimateBand, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
+import { billRangeBounds, isBillRangeId, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
+// QJW13 — le repli local du formulaire de conversion appelle le MÊME moteur que
+// l'estimateur d'accueil. `billEstimate` n'importe de ce module qu'un TYPE
+// (`import type { OmbrageId }`, effacé à la compilation) : aucun cycle à
+// l'exécution.
+import { estimateFromBill } from './billEstimate';
 import { normalizeMoroccanPhone } from './phone';
 import { COMMERCIAL_CATEGORY_IDS } from './commercialCategories';
 
@@ -1013,8 +1018,67 @@ export function validateLead(body: unknown): ValidationResult {
 }
 
 /**
+ * QJW13 — REPLI LOCAL DÉRIVÉ DU MOTEUR DU SITE, plus d'une table à la main.
+ *
+ * `runSimulation` servait au prospect une table statique (`LOCAL_BANDS`,
+ * billRange.ts) (a) quand `SIMULATOR_API_URL` n'est pas configurée et (b) sur
+ * TOUT échec réseau/HTTP/parse — deux chemins réellement exécutables. Or le
+ * même site répond à EXACTEMENT la même question avec un moteur bien plus
+ * précis (`billEstimate.estimateFromBill` → `estimatorBrainV2` : barème ONEE
+ * réel par tranche, table PVGIS, pertes committées), utilisé par
+ * `InstantEstimator.astro` en page d'accueil. Écart mesuré : 3 000 MAD/mois →
+ * 16 kWc au moteur contre « 5 à 9 kWc » à la table (+78 % sur le plafond).
+ * Deux endroits du même site répondaient différemment au même prospect.
+ *
+ * La bande est donc DÉRIVÉE des bornes de la tranche : `kwcMin` = moteur à la
+ * borne basse, `kwcMax` = moteur à la borne haute. Aucun chiffre nouveau — les
+ * deux extrémités sont littéralement des sorties du moteur d'accueil, donc la
+ * parité est structurelle (garde : tests/leadBandParite.test.ts).
+ *
+ * Le moteur est appelé SANS option, exactement comme l'accueil
+ * (`estimateFromBill(bill)`) : même latitude par défaut, même grille tarifaire.
+ * Passer la ville du lead donnerait un autre chiffre que l'accueil et
+ * recréerait la divergence que cette tâche supprime.
+ */
+/** kWc en français, sans dépendre d'ICU : 4.5 → « 4,5 », 16 → « 16 ». */
+function formatKwc(kwc: number): string {
+  return String(kwc).replace('.', ',');
+}
+
+export function engineEstimateBand(id: BillRangeId): EstimateBand {
+  const { min, max } = billRangeBounds(id);
+  // La première tranche part de 0 MAD, montant non chiffrable : on interroge
+  // alors le moteur au plus petit montant entier (1 MAD), dont la sortie est
+  // exactement son PLANCHER structurel documenté (`Math.max(1, …)` dans
+  // `estimateFromBill`, soit 1 kWc). Aucune facture inventée — la borne basse
+  // du moteur lui-même.
+  const low = estimateFromBill(Math.max(min, 1));
+  const high = Number.isFinite(max) ? estimateFromBill(max) : null;
+
+  const kwcMin = low?.kwc ?? 1;
+  // Tranche ouverte (« Plus de 10 000 MAD ») : aucune borne haute à chiffrer —
+  // on annonce « à partir de », jamais un plafond fabriqué.
+  const kwcMax = high?.kwc ?? kwcMin;
+
+  const kwcLabel = !Number.isFinite(max)
+    ? `${formatKwc(kwcMin)} kWc et plus (étude dédiée)`
+    : kwcMin === kwcMax
+      ? `${formatKwc(kwcMin)} kWc`
+      : `${formatKwc(kwcMin)} à ${formatKwc(kwcMax)} kWc`;
+
+  // Amortissement : l'étiquette du moteur à la borne BASSE — la plus prudente,
+  // puisque plus l'installation est petite, plus le libellé committé annonce un
+  // retour long (LOCAL_PAYBACK_BY_KWC, billRange.ts). Jamais un nombre inventé :
+  // c'est le libellé que le moteur produit déjà pour cette taille.
+  const paybackLabel = (low ?? high)?.paybackLabel ?? '';
+
+  return { kwcMin, kwcMax, kwcLabel, paybackLabel, source: 'local' };
+}
+
+/**
  * Bande kWc + ROI : proxy vers SIMULATOR_API_URL si configurée (timeout 5 s),
- * sinon estimation locale. Le navigateur n'appelle JAMAIS l'API directement.
+ * sinon estimation locale (QJW13 : dérivée du moteur du site, cf. ci-dessus).
+ * Le navigateur n'appelle JAMAIS l'API directement.
  */
 export async function runSimulation(
   lead: ValidatedLead,
@@ -1027,7 +1091,7 @@ export async function runSimulation(
   if (!lead.billRange) {
     return { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' };
   }
-  const fallback = localEstimateBand(lead.billRange);
+  const fallback = engineEstimateBand(lead.billRange);
   const url = env.SIMULATOR_API_URL?.trim();
   if (!url) return fallback;
   try {
