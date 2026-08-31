@@ -67,6 +67,17 @@ export const POST: APIRoute = async ({ request }) => {
   // reste inchangé, ce lead n'est simplement jamais transmis.
   if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
 
+  // QJW22 — CETTE LIGNE EST LA LISTE BLANCHE. Ce n'est PAS le corps construit
+  // par le registre du tunnel qui part au webhook, mais `validation.lead` :
+  // une clé correctement déclarée dans `src/lib/tunnel/champs.ts` mais jamais
+  // ajoutée à la main dans `validateOptionalFields` (lib/lead.ts) est
+  // SILENCIEUSEMENT JETÉE ici, sans une ligne de log. Les tests de parité
+  // assertaient sur le corps d'AVANT : ils ne pouvaient structurellement pas le
+  // voir. La garde d'appariement registre ↔ liste blanche vit désormais dans
+  // tests/tunnelParite.test.ts (describe « QJW22 »), et les assertions de
+  // parité portent sur le corps POST-liste-blanche — celui qui part vraiment.
+  // Seule exception voulue : le honeypot `website_url`, jugé côté serveur et
+  // qui ne doit JAMAIS atteindre le CRM.
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
   const lead = validation.lead;

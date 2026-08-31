@@ -46,6 +46,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { CHAMPS_TUNNEL, DOM_IDS_TUNNEL, etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { validateLead } from '../src/lib/lead';
 import { CHAMPS_DOM_TUNNEL, lireChampsDomTunnel, type ChampDomTunnel } from '../src/lib/tunnel/lecture';
 import { construireCorps, type LocaleTunnel } from '../src/lib/tunnel/corps';
 import { ERREURS } from '../src/lib/tunnel/i18n';
@@ -90,14 +91,21 @@ function contextePage(): Omit<EtatTunnel, keyof ReturnType<typeof lireChampsDomT
     creneauVisitePartie: 'matin',
     creneauVisiteSemaine: 'cette_semaine',
     occupationJour: 'present',
-    clientRef: 'KAS-1',
-    idempotencyKey: 'idem-1',
-    eventId: 'evt-1',
-    appareilId: 'app-1',
+    // Jetons au FORMAT RÉEL : la liste blanche de lead.ts les valide (regex
+    // clientRef `^[A-Z0-9-]{4,24}$`, jetons 8–64, appareilId = uuid v4). Des
+    // valeurs bidon seraient écartées par le FORMAT, pas par la liste blanche,
+    // et brouilleraient ce que la garde QJW22 mesure.
+    clientRef: 'TQ-AB2C',
+    idempotencyKey: 'a'.repeat(32),
+    eventId: 'b'.repeat(32),
+    appareilId: '3f0c1e8a-7b21-4a5e-9c3d-2b4f6a8e1d20',
     estimationAffichee: { kwc: 6.4, nbPanneaux: 9 },
     tracking: { utm_source: 'meta', fbclid: 'fb-1' },
     repereToit: { lat: 33.57, lng: -7.59 },
-    contourToit: [[1, 2], [3, 4], [5, 6]],
+    // Contour PLAUSIBLE (Casablanca) : `cleanRoofOutline` borne les coordonnées
+    // au Maroc — un triangle [1,2]/[3,4]/[5,6] serait rejeté par le FORMAT et
+    // non par la liste blanche.
+    contourToit: [[33.57, -7.59], [33.571, -7.59], [33.571, -7.589]],
   } as Omit<EtatTunnel, keyof ReturnType<typeof lireChampsDomTunnel>>;
 }
 
@@ -115,7 +123,11 @@ const VALEURS_TEXTE: Record<string, string> = {
 };
 
 function valeurTexte(c: ChampDomTunnel): string {
-  return VALEURS_TEXTE[c.domId] ?? (c.domId.endsWith('-creneau') ? 'nuit' : 'x');
+  // 'soir' est la SEULE valeur commune aux quatre énumérations de créneau de
+  // lead.ts (chauffe-eau, VE, clim, piscine) : une valeur hors énumération
+  // serait écartée par le FORMAT, pas par la liste blanche, et fausserait ce
+  // que mesure la garde QJW22.
+  return VALEURS_TEXTE[c.domId] ?? (c.domId.endsWith('-creneau') ? 'soir' : 'x');
 }
 
 /**
@@ -151,11 +163,65 @@ function corpsDeLocale(locale: LocaleTunnel, src: string) {
 
 const clesEmises = (locale: LocaleTunnel, src: string): string[] => Object.keys(corpsDeLocale(locale, src).body).sort();
 
+/**
+ * QJW22 — LE CORPS QUI PART VRAIMENT AU WEBHOOK, c'est-à-dire APRÈS la liste
+ * blanche. `capture-lead.ts` (comme simulate/preview-lead) ne transmet pas le
+ * corps construit par le registre : il transmet `validateLead(corps).lead`.
+ * Une clé correctement déclarée au registre mais jamais ajoutée à la liste
+ * blanche de `lib/lead.ts` est donc SILENCIEUSEMENT JETÉE — et les assertions
+ * de parité, qui portaient sur le corps d'AVANT, ne pouvaient structurellement
+ * pas le voir.
+ */
+function clesApresListeBlanche(corps: Record<string, unknown>): string[] {
+  const v = validateLead(corps);
+  if (!v.ok) throw new Error(`corps refusé par validateLead : ${JSON.stringify(v.errors)}`);
+  return Object.keys(v.lead).sort();
+}
+
+/**
+ * Les clés du corps que `validateLead` RENOMME ou CONSOMME délibérément — la
+ * seule liste d'exceptions autorisée. Tout le reste doit ressortir sous son
+ * propre nom, sinon c'est une clé jetée en silence.
+ */
+const RENOMMEES: Record<string, string> = {
+  phone: 'phoneE164',
+  utm_source: 'utm',
+  utm_medium: 'utm',
+  utm_campaign: 'utm',
+  utm_content: 'utm',
+  utm_term: 'utm',
+};
+
+/**
+ * La SEULE clé du tunnel qui doit être jetée : le honeypot. Il part au serveur
+ * pour être JUGÉ (`isHoneypotTripped`) et ne doit jamais atteindre le CRM —
+ * son absence de la liste blanche est le comportement voulu, pas un oubli.
+ */
+const JETEES_VOULUES = new Set(['website_url']);
+
+/** Les clés du corps que la liste blanche a JETÉES (hors renommages connus). */
+function clesJetees(corps: Record<string, unknown>): string[] {
+  const survivantes = new Set(clesApresListeBlanche(corps));
+  return Object.keys(corps)
+    .filter((k) => !JETEES_VOULUES.has(k) && !survivantes.has(RENOMMEES[k] ?? k))
+    .sort();
+}
+
 describe('QJW21 (1) — égalité d’ENSEMBLES des clés, chaque locale lue depuis SON DOM', () => {
-  it('les trois pages émettent exactement les mêmes clés', () => {
+  it('les trois pages émettent exactement les mêmes clés — APRÈS liste blanche', () => {
+    // QJW22 — l'assertion porte désormais sur le corps RÉELLEMENT ÉMIS au
+    // webhook (post-liste-blanche), pas seulement sur celui que le registre a
+    // construit. Les deux sont vérifiés, dans cet ordre d'importance.
+    const [refEmis, ...autresEmis] = SOURCES.map(([locale, src]) =>
+      clesApresListeBlanche(corpsDeLocale(locale, src).body),
+    );
+    for (const [i, cles] of autresEmis.entries()) {
+      expect(cles, `${SOURCES[i + 1][0]} (corps webhook)`).toEqual(refEmis);
+    }
+
     const [reference, ...autres] = SOURCES.map(([locale, src]) => clesEmises(locale, src));
     for (const [i, cles] of autres.entries()) {
-      expect(cles, SOURCES[i + 1][0]).toEqual(reference);
+      expect(cles, `${SOURCES[i + 1][0]} (corps registre)`).toEqual(reference);
     }
   });
 
@@ -247,6 +313,44 @@ describe('QJW21 — les trois pages passent par LE MÊME lecteur de DOM', () => 
       (id) => !CHAMPS_DOM_TUNNEL.some((c) => c.domId === id) && !LUS_PAR_LETAT_DE_PAGE.includes(id),
     );
     expect(nonLus, 'ids déclarés au registre que personne ne lit').toEqual([]);
+  });
+});
+
+describe('QJW22 — le registre du tunnel et la liste blanche de lead.ts sont APPARIÉS', () => {
+  it('aucune clé émise par le registre n’est jetée en silence par la liste blanche', () => {
+    // Le piège de maintenance : ajouter un champ au registre suffit à le faire
+    // apparaître dans le corps construit, mais PAS à le faire arriver au CRM —
+    // il faut aussi l'ajouter à la main dans `validateOptionalFields`. Sans
+    // cette garde, l'oubli est invisible (les tests portaient sur le corps
+    // d'AVANT liste blanche) et le champ disparaît sans une ligne de log.
+    for (const [locale, src] of SOURCES) {
+      const corps = corpsDeLocale(locale, src).body;
+      expect(clesJetees(corps), `${locale} : clés du registre absentes du lead transmis`).toEqual([]);
+    }
+  });
+
+  it('LE TEST NÉGATIF — une clé de registre absente de la liste blanche fait ROUGIR la garde', () => {
+    // On simule EXACTEMENT l'oubli visé : une clé parfaitement formée dans le
+    // corps du tunnel, qu'aucune ligne de `validateOptionalFields` ne connaît.
+    const corps = corpsDeLocale('fr', SOURCES[0][1]).body;
+    expect(clesJetees({ ...corps, champ_ajoute_au_registre: 'valeur' })).toEqual(['champ_ajoute_au_registre']);
+  });
+
+  it('les clés RENOMMÉES le sont volontairement, et sont toutes présentes sous leur nouveau nom', () => {
+    const corps = corpsDeLocale('fr', SOURCES[0][1]).body;
+    const survivantes = new Set(clesApresListeBlanche(corps));
+    for (const [avant, apres] of Object.entries(RENOMMEES)) {
+      if (!(avant in corps)) continue;
+      expect(survivantes, `${avant} → ${apres}`).toContain(apres);
+    }
+  });
+
+  it('le corps post-liste-blanche porte bien les réponses du tunnel (pas qu’un squelette)', () => {
+    const cles = clesApresListeBlanche(corpsDeLocale('fr', SOURCES[0][1]).body);
+    // Un échantillon transversal : identité, énergie, L-WEBT, jetons, carte.
+    for (const cle of ['fullName', 'phoneE164', 'city', 'billRange', 'equip_clim_kw', 'appareilId', 'gpsLat']) {
+      expect(cles, cle).toContain(cle);
+    }
   });
 });
 
