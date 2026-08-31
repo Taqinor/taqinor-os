@@ -187,8 +187,12 @@ class RegleDeConcordanceTests(SimpleTestCase):
                     attendu, nom)
 
     def test_la_regle_de_capacite_ignore_les_panneaux(self):
-        """``decrit_la_capacite`` est la moitié STOCKAGE : QJR14 s'en contente
-        pour le taux de remplissage, qui décrit le régime de la batterie."""
+        """``decrit_la_capacite`` est la moitié STOCKAGE de ``decrit``.
+
+        QJR233 — ce n'est PLUS une règle de publication à elle seule : aucun
+        consommateur ne s'en contente. Elle reste testée comme COMPOSANT, et
+        cette divergence est précisément le trou que QJR233 a refermé (20
+        panneaux vendus contre 14, même capacité)."""
         optimum = D.config_du_bloc({'panneaux': 20, 'batterie_kwh': 5.0})
         vendue = D.ConfigInstallation(panneaux=14, batterie_kwh=5.0)
         self.assertTrue(D.decrit_la_capacite(optimum, vendue))
@@ -402,6 +406,31 @@ class ChargeUtilePubliqueTests(_DevisBase):
         payload = self._payload(self._devis(_dim(panneaux=20)))
         self.assertNotIn('residuel_kwh_mois',
                          payload.get('tranche_tarifaire') or {})
+
+    def test_qjr233_une_autre_taille_retire_AUSSI_le_remplissage(self):
+        """QJR233 — TEST ROUGE D'ABORD.
+
+        La garde de remplissage ne contrôlait que la CAPACITÉ batterie, alors
+        que le taux publié est une grandeur PAR NOMBRE DE PANNEAUX : un devis
+        dont l'optimum diverge en panneaux (20) mais PAS en capacité publiait
+        donc un pourcentage calculé sur un autre champ PV — plus laxiste que la
+        garde du PDF sur le même concept.
+        """
+        payload = self._payload(self._devis(_dim(panneaux=20)))
+        self.assertNotIn('remplissage_moyen_pct',
+                         payload.get('batterie_regime') or {})
+
+    def test_qjr233_la_garde_publique_est_celle_du_pdf(self):
+        """Une seule formulation, IMPORTÉE : ``dimensionnement.decrit``."""
+        import inspect
+
+        from apps.ventes import public_views
+
+        source = inspect.getsource(public_views._remplissage_batterie_publiable)
+        self.assertIn('module.decrit(', source)
+        self.assertNotIn('decrit_la_capacite', source)
+        # Et la variante « capacité seule » n'a plus de lecture nommée ici.
+        self.assertFalse(hasattr(public_views, '_meme_capacite_batterie'))
 
     def test_un_devis_sans_batterie_ne_recoit_aucun_des_deux(self):
         payload = self._payload(self._devis_sans_batterie(_dim()))
