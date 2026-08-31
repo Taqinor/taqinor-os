@@ -109,6 +109,10 @@ ALLOWLIST: dict[str, str] = {
         "QJR211 - DevisGenerator.jsx non importable pur sous node --test - "
         "verifie que compositionSourceLocale s'efface sur CHAQUE succes "
         "(agricole/indus-commercial/residentiel) par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorProvenanceDV3.test.mjs":
+        "QJR213/DV3 - DevisGenerator.jsx non importable pur sous node --test "
+        "- verifie que les 4 cartes du miroir local (et SEULEMENT elles) "
+        "portent la pastille estimation locale, par lecture de SOURCE.",
 }
 
 

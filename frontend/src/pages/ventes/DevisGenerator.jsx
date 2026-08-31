@@ -4256,13 +4256,21 @@ export default function DevisGenerator({
             )}
             {etudeCI && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
+                {/* QJR213/DV3 (30/08/2026) — ces QUATRE cartes SEULEMENT sont
+                    nourries par `computeEtudeIndustrielle` (le miroir local
+                    `features/ventes/solar.js`), pas par le moteur serveur :
+                    étiquetage SEULEMENT (mot du fondateur D10) — ne JAMAIS
+                    serveriser l'étude indus/commercial dans cette tâche. Les
+                    9 autres cartes de cet écran sont hors périmètre DV3. */}
                 <CarteMetrique label="Taux d'autoconsommation"
                                value={`${etudeCI.taux_autoconso} %`}
-                               unit="part de la production consommée" accent />
+                               unit="part de la production consommée" accent
+                               badge="estimation locale" />
                 {etudeCI.taux_couverture != null && (
                   <CarteMetrique label="Taux de couverture"
                                  value={`${etudeCI.taux_couverture} %`}
-                                 unit="part de la conso couverte" accent />
+                                 unit="part de la conso couverte" accent
+                                 badge="estimation locale" />
                 )}
                 {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
                     vaut null : la carte est OMISE (jamais un « 0 » trompeur),
@@ -4271,12 +4279,14 @@ export default function DevisGenerator({
                   <CarteMetrique label="Économies annuelles (étude)"
                                  value={fmtNum(etudeCI.economies_annuelles)}
                                  unit={etudeCI.tension_raccordement === 'mt'
-                                   ? 'MAD / an · barème MT' : 'MAD / an'} />
+                                   ? 'MAD / an · barème MT' : 'MAD / an'}
+                                 badge="estimation locale" />
                 )}
                 {etudeCI.payback != null && (
                   <CarteMetrique label="Payback (étude)"
                                  value={`${etudeCI.payback} ans`}
-                                 unit="retour sur invest." />
+                                 unit="retour sur invest."
+                                 badge="estimation locale" />
                 )}
               </div>
             )}
