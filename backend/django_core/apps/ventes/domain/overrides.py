@@ -499,6 +499,38 @@ def _identite(utilisateur):
             or getattr(utilisateur, 'username', None) or None)
 
 
+def relire_verrouille(devis):
+    """QJR223 — relit CE devis SOUS VERROU DE LIGNE (``select_for_update``).
+
+    À APPELER DANS un ``transaction.atomic()`` déjà ouvert par l'appelant —
+    le verrou ne sert à rien hors transaction, et cette fonction n'en ouvre
+    pas elle-même : c'est l'appelant qui décide de la portée du cycle
+    lire-fusionner-écrire à protéger.
+
+    POURQUOI. :func:`ecrire_colonne` fait un ``UPDATE`` inconditionnel de
+    TOUTE la colonne ``overrides`` : sans ce verrou, deux écritures
+    concurrentes (:func:`fusionner` ou :func:`regenerer`) sur deux chemins
+    DIFFÉRENTS relisent toutes deux le MÊME registre de départ et
+    s'écrasent l'une l'autre au ``UPDATE`` — la perdante répond quand même
+    200 comme si sa surcharge était stockée (``ecrire_colonne`` réécrit
+    aussi ``devis.overrides`` EN MÉMOIRE avant que la course ne tranche).
+    Le verrou SÉRIALISE les deux requêtes : la seconde, une fois le tour de
+    la première passé, relit ici un registre DÉJÀ enrichi et fusionne
+    par-dessus — les deux surcharges survivent.
+
+    ``of=('self',)`` (jamais un ``select_related`` sur cette requête) :
+    aucune jointure n'est ajoutée ici, mais l'expliciter protège contre une
+    future jointure nullable qui rendrait ``SELECT ... FOR UPDATE`` invalide
+    côté PostgreSQL (même garde que ``domain.cycle_vie.accept_devis``).
+
+    JAMAIS ``Devis.save()`` — ce serait réintroduire les deux effets de bord
+    que :func:`ecrire_colonne` existe pour éviter (SCA47 : gel de
+    ``prix_par_kwc`` ; VX98 : avance de ``updated_at``).
+    """
+    from ..models import Devis
+    return Devis.objects.select_for_update(of=('self',)).get(pk=devis.pk)
+
+
 def ecrire_colonne(devis, registre):
     """QJR58 — écrit ``Devis.overrides`` — CETTE COLONNE, ET RIEN D'AUTRE.
 

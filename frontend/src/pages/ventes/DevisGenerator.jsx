@@ -133,6 +133,9 @@ import {
 } from '../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
+// QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
+// du même module que le client API (QJR214) : jamais une liste recopiée ici.
+import { CHEMINS_AUTORISES } from '../../features/ventes/quote/overrides'
 // QJR102 — `apercu` n'est plus importé ici : la seule valeur d'aperçu que cet
 // écran signait était le balayage local du dimensionnement affiché, devenu
 // injoignable (la puce « estimation d'exemple » des cartes ROI, elle, passe
@@ -275,6 +278,11 @@ const withKeys = (rows) => rows.map(r => ({
   // brouillon (VX62 draft restore), sinon False (chargement serveur/auto-fill —
   // rien n'a encore été tapé sur CES lignes-là).
   prixManuel: !!r.prixManuel,
+  // QJR218 — même patron que `prixManuel` juste au-dessus : le verrou
+  // « quantité tapée à la main » (posé aujourd'hui côté serveur, ex. une
+  // resynchronisation, `domain/lignes`) doit lui aussi survivre au
+  // rechargement d'un brouillon/devis, jamais retomber à False en silence.
+  quantiteManuelle: !!r.quantiteManuelle,
   // L-2OPT (fondateur 24/08) — '' commun (défaut, comportement historique
   // inchangé) | 'sans' | 'avec' : posée par `fusionnerVariantes` quand les
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un
@@ -303,6 +311,8 @@ const emptyLine = () => ({
   typeLigne: 'produit',
   // N2 — aucun prix tapé à la main pour l'instant.
   prixManuel: false,
+  // QJR218 — aucune quantité tapée à la main pour l'instant (ligne neuve).
+  quantiteManuelle: false,
   // L-2OPT — ligne ajoutée à la main : commune par défaut.
   variante: '',
 })
@@ -454,6 +464,76 @@ export default function DevisGenerator({
     }
   }
 
+  // QJR215 — le registre de surcharges (QJR214/QJR216) : lecture à l'ouverture,
+  // pose EXPLICITE d'un chemin (le vendeur DÉCLARE, il ne devine pas), retour à
+  // l'automatique par DELETE ?chemin=. `overridesReg` porte la forme EXACTE du
+  // contrat (`overrides`/`effectif`/`lignes`, apps/ventes/contract_samples/
+  // devis_overrides.json) — jamais recalculée ici, seulement affichée.
+  const [overridesReg, setOverridesReg] = useState(null)
+  const [overridesBusy, setOverridesBusy] = useState(false)
+  // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
+  // ni remplacé par une phrase générique) — les formes varient selon le refus
+  // (`{detail}`, `{chemin: "..."}`, `{chemin: ["..."]}`) : on en extrait la
+  // PREMIÈRE valeur textuelle, sans reformuler son contenu.
+  const [overridesErreur, setOverridesErreur] = useState(null)
+  const [ovChemin, setOvChemin] = useState(CHEMINS_AUTORISES[0])
+  const [ovValeur, setOvValeur] = useState('')
+
+  const messageErreurOverrides = (err) => {
+    const data = err?.response?.data
+    if (data && typeof data === 'object') {
+      const brut = Object.values(data)[0]
+      const texte = Array.isArray(brut) ? brut[0] : brut
+      if (typeof texte === 'string') return texte
+    }
+    return 'La surcharge a été refusée par le serveur.'
+  }
+
+  const chargerOverrides = (id) => {
+    if (!id) return
+    ventesApi.lireOverrides(id)
+      .then(({ data }) => setOverridesReg(data))
+      .catch(() => {})
+  }
+
+  // Lecture du registre À L'OUVERTURE d'un devis existant.
+  useEffect(() => {
+    if (editDevis?.id) chargerOverrides(editDevis.id)
+  }, [editDevis?.id])
+
+  const poserOverride = async () => {
+    if (!editDevis?.id || !ovChemin) return
+    setOverridesBusy(true)
+    setOverridesErreur(null)
+    let valeur
+    try { valeur = JSON.parse(ovValeur) } catch { valeur = ovValeur }
+    try {
+      const { data } = await ventesApi.poserOverrides(editDevis.id, {
+        [ovChemin]: { valeur },
+      })
+      setOverridesReg(data)
+      setOvValeur('')
+    } catch (err) {
+      setOverridesErreur(messageErreurOverrides(err))
+    } finally {
+      setOverridesBusy(false)
+    }
+  }
+
+  const regenererOverride = async (chemin) => {
+    if (!editDevis?.id) return
+    setOverridesBusy(true)
+    setOverridesErreur(null)
+    try {
+      const { data } = await ventesApi.regenererOverride(editDevis.id, chemin)
+      setOverridesReg(data)
+    } catch (err) {
+      setOverridesErreur(messageErreurOverrides(err))
+    } finally {
+      setOverridesBusy(false)
+    }
+  }
+
   // NTMFG18 — « Vérifier faisabilité atelier » : simule SANS RIEN ENREGISTRER
   // la charge additionnelle qu'induiraient les lignes du devis en cours de
   // saisie sur les postes de charge (module mrp). No-op silencieux si aucun
@@ -565,7 +645,12 @@ export default function DevisGenerator({
   // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
   // documente lui-même comme divergente du serveur (câbles, marques épinglées,
   // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
-  // Posé dans le `catch` avec la raison, effacé dès qu'un dry-run réussit.
+  // Posé dans le `catch` avec la raison. QJR211 — effacé à CHAQUE succès de
+  // `handleAutoFill`, quel que soit le marché (dry-run résidentiel, pompage
+  // agricole, ou composition locale indus/commercial) et à chaque changement
+  // d'entrées qui relance le moteur avec succès : avant QJR211, seul le
+  // chemin de succès résidentiel l'effaçait, et la bannière survivait à un
+  // repli sur un autre marché en décrivant un calcul qui ne s'applique plus.
   // Ne change PAS le comportement du repli, seulement le rend visible.
   const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
   // DC11 / QJR106 — même patron que `sizingServeurMessage` et
@@ -1708,6 +1793,11 @@ export default function DevisGenerator({
           // absent d'un backend plus ancien ⇒ `false`, comportement historique
           // strictement inchangé.
           prixManuel: !!l.prix_manuel,
+          // QJR218 — même trou, même correctif : `quantite_manuelle` est déjà
+          // round-trippé par le backend (`domain/lignes`) mais ce mappeur ne
+          // le relisait pas, donc `?edit=` ne restaurait JAMAIS le verrou de
+          // quantité (revenait `undefined → false` via `withKeys`).
+          quantiteManuelle: !!l.quantite_manuelle,
         }))
       setLines(withKeys(rows))
       linesInitialized.current = true
@@ -2506,6 +2596,10 @@ export default function DevisGenerator({
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
       setLines(withKeys(generated))
+      // QJR211 — succès sur le marché agricole : la bannière « composition
+      // locale (serveur indisponible) » d'un repli résidentiel antérieur ne
+      // décrit plus rien après ce changement de marché.
+      setCompositionSourceLocale(null)
       // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
       // marquer le champ « touché » (ce n'est pas une frappe) et tient la
@@ -2577,7 +2671,12 @@ export default function DevisGenerator({
       }
       return
     }
-    composeLocalement()
+    // QJR211 — marchés indus/commercial (aucun dry-run serveur pour eux) :
+    // un succès efface une bannière de repli résidentiel antérieure, qui ne
+    // décrirait plus qu'un calcul périmé sur ce marché. `composeLocalement()`
+    // renvoie les lignes générées en cas de succès, `undefined` sur un échec
+    // (garde-fous ci-dessus) — la bannière ne s'efface que sur un VRAI succès.
+    if (composeLocalement()) setCompositionSourceLocale(null)
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
@@ -3081,6 +3180,12 @@ export default function DevisGenerator({
           // réécrive le prix négocié. Sans lui, le marqueur serait remis à
           // `False` à CHAQUE enregistrement — le trou que D12 referme.
           prix_manuel: !!l.prixManuel,
+          // QJR218 — même patron que `prix_manuel` juste au-dessus : sans ce
+          // marqueur, `replace-lignes` défaute `quantite_manuelle` à False à
+          // CHAQUE enregistrement — une ligne verrouillée en quantité (posée
+          // côté serveur, ex. une resynchronisation) perd son verrou au
+          // prochain enregistrement du vendeur.
+          quantite_manuelle: !!l.quantiteManuelle,
         }
       })
 
@@ -4242,13 +4347,21 @@ export default function DevisGenerator({
             )}
             {etudeCI && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
+                {/* QJR213/DV3 (30/08/2026) — ces QUATRE cartes SEULEMENT sont
+                    nourries par `computeEtudeIndustrielle` (le miroir local
+                    `features/ventes/solar.js`), pas par le moteur serveur :
+                    étiquetage SEULEMENT (mot du fondateur D10) — ne JAMAIS
+                    serveriser l'étude indus/commercial dans cette tâche. Les
+                    9 autres cartes de cet écran sont hors périmètre DV3. */}
                 <CarteMetrique label="Taux d'autoconsommation"
                                value={`${etudeCI.taux_autoconso} %`}
-                               unit="part de la production consommée" accent />
+                               unit="part de la production consommée" accent
+                               badge="estimation locale" />
                 {etudeCI.taux_couverture != null && (
                   <CarteMetrique label="Taux de couverture"
                                  value={`${etudeCI.taux_couverture} %`}
-                                 unit="part de la conso couverte" accent />
+                                 unit="part de la conso couverte" accent
+                                 badge="estimation locale" />
                 )}
                 {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
                     vaut null : la carte est OMISE (jamais un « 0 » trompeur),
@@ -4257,12 +4370,14 @@ export default function DevisGenerator({
                   <CarteMetrique label="Économies annuelles (étude)"
                                  value={fmtNum(etudeCI.economies_annuelles)}
                                  unit={etudeCI.tension_raccordement === 'mt'
-                                   ? 'MAD / an · barème MT' : 'MAD / an'} />
+                                   ? 'MAD / an · barème MT' : 'MAD / an'}
+                                 badge="estimation locale" />
                 )}
                 {etudeCI.payback != null && (
                   <CarteMetrique label="Payback (étude)"
                                  value={`${etudeCI.payback} ans`}
-                                 unit="retour sur invest." />
+                                 unit="retour sur invest."
+                                 badge="estimation locale" />
                 )}
               </div>
             )}
@@ -4531,6 +4646,89 @@ export default function DevisGenerator({
             section « Enregistrer comme modèle » dit honnêtement qu'elle
             attend que le devis existe. */}
         <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
+
+        {/* QJR215 — registre de surcharges (QJR214/QJR216) : lecture à
+            l'ouverture (au montage de ce panneau), pose EXPLICITE d'un
+            chemin, retour à l'automatique par chemin. N'existe que sur un
+            devis DÉJÀ enregistré (le registre vit sur `Devis.overrides`). */}
+        {editDevis?.id && (
+          <Card data-testid="overrides-panel">
+            <GenCardHeader icon={FileText} title="Surcharges (registre)" />
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <select
+                  data-testid="overrides-chemin"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  value={ovChemin}
+                  onChange={(e) => setOvChemin(e.target.value)}
+                >
+                  {CHEMINS_AUTORISES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <Input
+                  data-testid="overrides-valeur"
+                  placeholder="Valeur (ex. 14, &quot;ONEE&quot;, [1,2,3])"
+                  value={ovValeur}
+                  onChange={(e) => setOvValeur(e.target.value)}
+                  className="max-w-xs"
+                />
+                <Button type="button" size="sm" data-testid="overrides-poser"
+                        disabled={overridesBusy || !ovValeur}
+                        onClick={poserOverride}>
+                  Poser
+                </Button>
+              </div>
+              {/* Un refus 400 est affiché VERBATIM — jamais avalé. */}
+              {overridesErreur && (
+                <p className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
+                   data-testid="overrides-erreur">
+                  {overridesErreur}
+                </p>
+              )}
+              {/* Bloc `effectif` : valeur AUTO vs valeur MANUELLE, côte à
+                  côte — la déclaration devient visible, jamais tacite. */}
+              {overridesReg?.effectif && Object.keys(overridesReg.effectif).length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" data-testid="overrides-effectif-table">
+                    <thead>
+                      <tr className="text-left text-muted-foreground">
+                        <th className="pr-3 py-1">Chemin</th>
+                        <th className="pr-3 py-1">Auto</th>
+                        <th className="pr-3 py-1">Manuel</th>
+                        <th className="pr-3 py-1">Effectif</th>
+                        <th className="pr-3 py-1">Source</th>
+                        <th className="py-1" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(overridesReg.effectif).map(([chemin, v]) => (
+                        <tr key={chemin} className="border-t border-border"
+                            data-testid={`overrides-effectif-row-${chemin}`}>
+                          <td className="pr-3 py-1 font-mono">{chemin}</td>
+                          <td className="pr-3 py-1">{v.auto == null ? '—' : JSON.stringify(v.auto)}</td>
+                          <td className="pr-3 py-1">{v.manuel == null ? '—' : JSON.stringify(v.manuel)}</td>
+                          <td className="pr-3 py-1 font-medium">{v.effectif == null ? '—' : JSON.stringify(v.effectif)}</td>
+                          <td className="pr-3 py-1">{v.source}</td>
+                          <td className="py-1">
+                            {v.source === 'manuel' && (
+                              <Button type="button" size="sm" variant="ghost"
+                                      data-testid={`overrides-regenerer-${chemin}`}
+                                      disabled={overridesBusy}
+                                      onClick={() => regenererOverride(chemin)}>
+                                Régénérer
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Notes ── */}
         <Card>

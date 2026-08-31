@@ -55,9 +55,12 @@ export default function DevisKanbanBoard({ devis, onOpenDevis }) {
                 onClick={() => onOpenDevis?.(d)}
               >
                 <article className="kb-card">
-                  {/* Le MONTANT est le héros : c'est l'app de l'argent. */}
+                  {/* Le MONTANT est le héros : c'est l'app de l'argent.
+                      QJR205 — même champ que la vue liste (`DevisList.jsx`) :
+                      `total_affiche` (option 1 sur un devis à deux options),
+                      repli `total_ttc`. */}
                   <div className="num dkb-card-amount">
-                    {d.total_ttc != null ? formatMAD(d.total_ttc) : '—'}
+                    {(d.total_affiche ?? d.total_ttc) != null ? formatMAD(d.total_affiche ?? d.total_ttc) : '—'}
                   </div>
                   <div className="dkb-card-ref">{d.reference}</div>
                   <div className="dkb-card-client">{d.client_nom ?? '—'}</div>

@@ -1,4 +1,9 @@
 import api from './axios'
+// QJR214 — validation client-side des chemins d'overrides, DÉRIVÉE du même
+// contrat que le serveur (`apps/ventes/contract_samples/devis_overrides.json`,
+// recopié une seule fois dans `overrides.js` et vérifié là-bas contre le JSON
+// sur disque) : jamais une seconde liste blanche écrite en dur ici.
+import { cheminsRefuses } from '../features/ventes/quote/overrides'
 
 const ventesApi = {
   // XSAL3 — résolution de prix (liste client / palier de quantité), lecture
@@ -72,6 +77,27 @@ const ventesApi = {
   // 400 français, jamais en silence.
   patchEtudeParams: (id, cles) =>
     api.patch(`/ventes/devis/${id}/etude-params/`, cles),
+  // QJR214 — client HTTP du REGISTRE de surcharges (`domain.overrides`,
+  // QJR58/QJR216) : GET/PATCH/DELETE `/ventes/devis/<pk>/overrides/` (contrat
+  // `apps/ventes/contract_samples/devis_overrides.json`). PATCH = FUSION du
+  // sous-ensemble envoyé (`notes.fusion`) — jamais un remplacement intégral
+  // du registre. DELETE `?chemin=<chemin>` = `regenerer` (retour à
+  // l'automatique) ; la réponse porte alors le chemin régénéré avec sa
+  // valeur moteur (QJR216).
+  lireOverrides: (id) => api.get(`/ventes/devis/${id}/overrides/`),
+  // Refus CLIENT-SIDE d'un chemin hors liste blanche, AVANT le réseau —
+  // miroir du 400 serveur, jamais un round-trip pour découvrir un chemin
+  // qu'`overrides.js` sait déjà refuser.
+  poserOverrides: (id, patch) => {
+    const refuses = cheminsRefuses(patch)
+    if (refuses.length) {
+      return Promise.reject(new TypeError('ventesApi.poserOverrides : chemin(s) '
+        + `hors liste blanche du contrat QJR1 — ${refuses.join(', ')}.`))
+    }
+    return api.patch(`/ventes/devis/${id}/overrides/`, patch)
+  },
+  regenererOverride: (id, chemin) =>
+    api.delete(`/ventes/devis/${id}/overrides/`, { params: { chemin } }),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).

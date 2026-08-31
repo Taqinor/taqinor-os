@@ -2622,6 +2622,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         ``prix_par_kwc`` ne bougent — les deux effets de bord de ``Devis.save``
         sont faux pour une pose d'override. Aucune ligne, aucun total, aucun
         statut n'est touché (règle #4).
+
+        QJR223 — LE CYCLE LIRE-FUSIONNER-ÉCRIRE EST VERROUILLÉ (``select_for_
+        update``), PAS SEULEMENT L'ÉCRITURE. ``ecrire_colonne`` fait un
+        ``UPDATE`` inconditionnel de la colonne entière : sans verrou, deux
+        PATCH concurrents sur deux chemins DIFFÉRENTS relisent tous deux le
+        MÊME registre de départ, fusionnent chacun sur cette même base, puis
+        s'écrasent l'un l'autre au ``UPDATE`` — le perdant répond quand même
+        200 comme si sa surcharge était stockée (``ecrire_colonne`` réécrit
+        aussi ``devis.overrides`` EN MÉMOIRE avant que la course ne tranche).
+        Le verrou de ligne (``domain.overrides.relire_verrouille``, jamais
+        ``Devis.save()`` — ce serait réintroduire les deux effets de bord
+        ci-dessus) SÉRIALISE les deux requêtes : la seconde relit alors le
+        registre DÉJÀ enrichi par la première et fusionne par-dessus — les
+        deux surcharges survivent.
         """
         from ..domain import overrides as registre_overrides
         from ..serializers import OverridesSerializer
@@ -2640,8 +2654,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 return Response(
                     {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
                     status=status.HTTP_400_BAD_REQUEST)
-            registre_overrides.ecrire_colonne(
-                devis, registre_overrides.regenerer(devis, chemin))
+            with transaction.atomic():
+                devis = registre_overrides.relire_verrouille(devis)
+                registre_overrides.ecrire_colonne(
+                    devis, registre_overrides.regenerer(devis, chemin))
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
             # valeur du moteur (avant, il en disparaissait : « retour à
             # l'automatique » se soldait par un trou).
@@ -2651,12 +2667,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            registre = registre_overrides.fusionner(
-                devis, serializer.validated_data, utilisateur=request.user)
+            with transaction.atomic():
+                devis = registre_overrides.relire_verrouille(devis)
+                registre = registre_overrides.fusionner(
+                    devis, serializer.validated_data, utilisateur=request.user)
+                registre_overrides.ecrire_colonne(devis, registre)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        registre_overrides.ecrire_colonne(devis, registre)
         return Response(self._overrides_reponse(devis))
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',

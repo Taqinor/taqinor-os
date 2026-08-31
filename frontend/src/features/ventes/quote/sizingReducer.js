@@ -40,7 +40,13 @@ export const SCENARIO_SANS = 'Sans batterie'
 export const SCENARIO_AVEC = 'Avec batterie'
 export const SCENARIOS_VALIDES = [SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC]
 
-/** Les quatre marchés canoniques (miroir de `autoQuote.LEAD_TYPE_TO_MODE`). */
+/** Les quatre marchés canoniques (miroir de `autoQuote.LEAD_TYPE_TO_MODE`).
+ * QJR231 — l'un des SIX sites qui énumèrent ces marchés indépendamment
+ * (réducteur, panneau de choix à l'écran, classifieur de création, deux
+ * modèles Django, sélecteur de photos du moteur PDF) ; le contrat partagé
+ * `apps/ventes/contract_samples/modes_marche.json` en fait foi et
+ * `scripts/check_modes_marche.py` compare les six sites à ce contrat — un
+ * marché ajouté ici sans être ajouté au contrat fait rougir la garde. */
 export const MODES = ['residentiel', 'industriel', 'commercial', 'agricole']
 
 /** Scénario par DÉFAUT d'un marché — ne s'applique qu'à un scénario intact. */
@@ -248,10 +254,18 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       // 8. Facture : le résidentiel ATTEND le moteur serveur (U3-900, plus de
       //    repli « panneaux/900 MAD ») ; les autres marchés n'ont que le
       //    balayage local, résolu par l'appelant (`action.sizingLocal`).
+      //    QJR208 — la branche « balayage local » (indus/commercial/agricole)
+      //    reçoit la MÊME garde `!s.touche.nbPanneaux` que la transition
+      //    miroir PROFIL_SITE_APPLIQUE (:276) : sans elle, appliquer un lead
+      //    écrasait silencieusement un compte de panneaux DÉJÀ TAPÉ par le
+      //    vendeur sur ces trois marchés. Le cas résidentiel (attente moteur)
+      //    reste INCHANGÉ — ce n'est pas la branche visée par le défaut.
       if (nombre(lead.facture_hiver) > 0 && fromTaille <= 0) {
-        s = (modeCible === 'residentiel')
-          ? { ...s, sizingInfo: null, attenteMoteur: true, motifMoteur: null }
-          : appliquerSizingLocal(s, action.sizingLocal)
+        if (modeCible === 'residentiel') {
+          s = { ...s, sizingInfo: null, attenteMoteur: true, motifMoteur: null }
+        } else if (!s.touche.nbPanneaux) {
+          s = appliquerSizingLocal(s, action.sizingLocal)
+        }
       }
       return s
     }

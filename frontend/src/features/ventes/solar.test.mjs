@@ -11,7 +11,7 @@ import {
   sizingReducer, ETAT_INITIAL,
 } from './quote/sizingReducer.js'
 import {
-  DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
+  DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
@@ -86,23 +86,6 @@ test('factures par défaut : la série saisonnière du simulateur', () => {
   assert.deepEqual(DEFAULT_MONTHLY_BILLS,
     [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480])
   DEFAULT_MONTHLY_BILLS.forEach(v => assert.ok(CLEAN_INT(v)))
-})
-
-test('suggestion panneaux : 8 par tranche de 900 MAD hiver', () => {
-  assert.equal(estimerPanneaux(600), 0)
-  assert.equal(estimerPanneaux(900), 8)
-  assert.equal(estimerPanneaux(1900), 16)
-})
-
-test('D5 — ratio de dimensionnement éditable, défaut inchangé', () => {
-  // Sans argument : exactement le comportement historique (8 par tranche).
-  assert.equal(estimerPanneaux(1900), 16)
-  // Ratio personnalisé : 10 par tranche de 900 MAD.
-  assert.equal(estimerPanneaux(900, 10), 10)
-  assert.equal(estimerPanneaux(1900, 10), 20)
-  // Valeur invalide → repli sur 8 (jamais 0/NaN panneaux).
-  assert.equal(estimerPanneaux(900, 0), 8)
-  assert.equal(estimerPanneaux(900, undefined), 8)
 })
 
 test('formatMoney : toujours arrondi à l\'entier (jamais de partie fractionnaire)', () => {
@@ -195,12 +178,19 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
 // (`generator/Panneau*.jsx`). La garde les SUIT au lieu de rester verte en ne
 // regardant plus qu'une fraction de l'écran : sans ce recalage elle passait de
 // 20 champs surveillés à 3. Un cinquième panneau de marché rejoint cette liste.
+// QJR244 — la carte « Factures Électriques » (factures hiver/été, grille des
+// 12 mois, bloc facture réelle du client) a quitté les trois panneaux réseau
+// pour un composant partagé unique (`CarteFacturesElectriques.jsx`) : ses
+// champs nombre ne sont plus lus TROIS FOIS (une fois par panneau copié-collé)
+// mais UNE seule fois — la garde ajoute ce fichier, sinon elle retomberait
+// silencieusement de 34 à ~4 champs surveillés.
 const SURFACES_SAISIE = [
   '../../pages/ventes/DevisGenerator.jsx',
   '../../pages/ventes/generator/PanneauResidentiel.jsx',
   '../../pages/ventes/generator/PanneauIndustriel.jsx',
   '../../pages/ventes/generator/PanneauCommercial.jsx',
   '../../pages/ventes/generator/PanneauAgricole.jsx',
+  '../../pages/ventes/generator/CarteFacturesElectriques.jsx',
 ]
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
@@ -220,12 +210,16 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
     numberSteps.forEach(s => assert.equal(s, 'any', `${rel} : champ nombre sans step="any"`))
     champsNombre += numberSteps.length
   }
-  // Cliquet : 34 champs nombres mesurés sur les cinq surfaces (le socle des
-  // factures est monté par les trois panneaux raccordés au réseau, donc compté
-  // trois fois). Un champ qui migrerait vers un fichier absent de la liste
-  // ci-dessus ferait tomber ce compte au lieu de sortir de la garde en silence.
-  assert.ok(champsNombre >= 34,
-    `seulement ${champsNombre} champs nombres sous garde (34 attendus)`)
+  // Cliquet : 26 champs nombres mesurés sur les SIX surfaces (recalé par
+  // QJR244, qui a fait passer le socle des factures — hiver/été + grille des
+  // 12 mois (une seule expression `.map()` en SOURCE, jamais comptée 12 fois)
+  // + facture réelle, 4 occurrences en source — de « recopié dans les trois
+  // panneaux réseau » (compté 3 fois, 12 occurrences) à « un seul composant
+  // partagé » (compté 1 fois, 4 occurrences) : 34 − 12 + 4 = 26. Un champ qui
+  // migrerait vers un fichier absent de la liste ci-dessus ferait tomber ce
+  // compte au lieu de sortir de la garde en silence.
+  assert.ok(champsNombre >= 26,
+    `seulement ${champsNombre} champs nombres sous garde (26 attendus)`)
 })
 
 // QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne

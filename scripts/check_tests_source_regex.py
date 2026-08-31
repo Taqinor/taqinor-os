@@ -68,6 +68,11 @@ ALLOWLIST: dict[str, str] = {
         "U3-900/U3-MOTEUR : verrouille par lecture de SOURCE la suppression "
         "de estimerPanneaux et la souverainete de la taille explicite - "
         "meme contrainte node --test que autoQuote.ordre.test.mjs.",
+    "frontend/src/features/ventes/autoQuote.test.mjs":
+        "QJR245 - autoQuote.js importe ventesSlice/ventesApi (non importable "
+        "sous node --test) - noticePalierKwc est EXECUTEE (extraite du "
+        "fichier reel) ; seule la preuve de cablage LeadDevisPanel.jsx/"
+        "DevisTab.jsx (composants React non importables) lit leur SOURCE.",
     "frontend/src/features/ventes/solar.test.mjs":
         "Lecteur de MARKUP legitime (noValidate/step=\"any\" des 5 ecrans "
         "de saisie) - explicitement exclu par l'enonce de QJR239, pas une "
@@ -105,6 +110,22 @@ ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/ventes/DevisGeneratorRoundTripEtude.test.mjs":
         "DevisGenerator.jsx non importable pur sous node --test - verifie "
         "le round-trip etude_params par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorReplyLocal.test.mjs":
+        "QJR211 - DevisGenerator.jsx non importable pur sous node --test - "
+        "verifie que compositionSourceLocale s'efface sur CHAQUE succes "
+        "(agricole/indus-commercial/residentiel) par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorProvenanceDV3.test.mjs":
+        "QJR213/DV3 - DevisGenerator.jsx non importable pur sous node --test "
+        "- verifie que les 4 cartes du miroir local (et SEULEMENT elles) "
+        "portent la pastille estimation locale, par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorOverrides.test.mjs":
+        "QJR215 - DevisGenerator.jsx non importable pur sous node --test - "
+        "verifie le round-trip lire/poser/regenerer du registre d'overrides "
+        "et l'affichage verbatim d'un refus 400, par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorQuantiteManuelle.test.mjs":
+        "QJR218 - DevisGenerator.jsx non importable pur sous node --test - "
+        "verifie le round-trip quantite_manuelle (enregistrement + ?edit=), "
+        "meme patron que prix_manuel, par lecture de SOURCE.",
 }
 
 

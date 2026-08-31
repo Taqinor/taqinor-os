@@ -71,6 +71,34 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 })
 
 /**
+ * QJR245 — NOTICE PALIER, PORTÉE PAR LA FONCTION QUI ARRONDIT : UNE SEULE
+ * FORMULATION (le texte FR complet, pas seulement le calcul), réutilisée par
+ * les écrans qui déclenchent `createAutoQuote` — `DevisTab.jsx` et
+ * `LeadDevisPanel.jsx` — au lieu que chacun recopie sa propre phrase. Rend le
+ * texte lui-même (pas des morceaux à assembler) pour qu'un grep sur ce
+ * fichier retrouve l'UNIQUE définition — chaque écran se contente de
+ * `{noticeKwc}`, jamais une seconde phrase qui pourrait diverger en mot.
+ *
+ * Applique EXACTEMENT la même précédence et le même arrondi que la branche
+ * `mode !== 'agricole'` de `createAutoQuote` ci-dessous (cible explicite du
+ * devis, sinon `lead.taille_souhaitee_kwc`, `arrondirAuPasKwc`) : le kWc que
+ * cette fonction dit « arrondi » est TOUJOURS celui que `createAutoQuote`
+ * appliquera réellement.
+ *
+ * Rend `null` quand rien ne diverge (aucune notice à montrer) — jamais un
+ * palier deviné sur une valeur illisible ou nulle.
+ */
+export function noticePalierKwc(kwcSaisi) {
+  const num = parseFloat(kwcSaisi)
+  if (!(num > 0)) return null
+  const palier = arrondirAuPasKwc(num)
+  if (palier === num) return null
+  const saisieAffichee = String(kwcSaisi).trim().replace('.', ',')
+  return `Palier appliqué : ${palier} kWc (saisie ${saisieAffichee} kWc) — le devis `
+    + 'automatique ne sort jamais hors palier de 5 kWc.'
+}
+
+/**
  * Crée un devis auto-dimensionné depuis un lead. Retourne l'id du devis créé.
  * Lève { detail } si le lead n'a pas les données requises (mêmes règles que la
  * garde serveur POST /devis-auto/).

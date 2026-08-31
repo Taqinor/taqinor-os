@@ -271,6 +271,35 @@ test('LEAD_APPLIQUE : une frappe antérieure bloque la reprise par la facture', 
   }).nbPanneaux, '9')
 })
 
+test('QJR208 : LEAD_APPLIQUE n’écrase JAMAIS un nbPanneaux DÉJÀ TAPÉ, sur les 3 marchés non résidentiels', () => {
+  // Répro exacte du Done= : panneaux tapés = 22, LEAD_APPLIQUE avec un
+  // balayage local différent (18) — AVANT le correctif, `appliquerSizingLocal`
+  // était appelé sans garde et écrasait la saisie du vendeur avec 18.
+  for (const type_installation of ['industriel', 'commercial', 'agricole']) {
+    const tape = red(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '22' })
+    const s = sizingReducer(tape, {
+      type: 'LEAD_APPLIQUE',
+      lead: { type_installation, facture_hiver: '3000' },
+      sizingLocal: { nbPanneaux: 18, kwcOptimal: 12.78 },
+    })
+    assert.equal(s.nbPanneaux, '22', `${type_installation} : la saisie du vendeur a été écrasée`)
+    assert.equal(s.touche.nbPanneaux, true, `${type_installation} : le drapeau touché doit survivre`)
+  }
+})
+
+test('QJR208 : le cas résidentiel (attente moteur) reste INCHANGÉ — ce n’est pas la branche visée', () => {
+  // Épinglé tel quel : la branche résidentielle arme l’attente moteur même
+  // par-dessus une saisie (l’invariant 1, testé plus haut, la neutralise déjà
+  // à la transition MOTEUR_A_REPONDU) — QJR208 ne touche QUE le balayage local.
+  const tape = red(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '22' })
+  const s = sizingReducer(tape, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', facture_hiver: '3000' },
+  })
+  assert.equal(s.attenteMoteur, true)
+  assert.equal(s.nbPanneaux, '22')
+})
+
 // ── PROFIL_SITE_APPLIQUE (QJR38 : le mode VISÉ, pas celui du rendu précédent) ─
 
 test('PROFIL_SITE_APPLIQUE industriel : chemin INDUSTRIEL, aucune attente serveur', () => {
