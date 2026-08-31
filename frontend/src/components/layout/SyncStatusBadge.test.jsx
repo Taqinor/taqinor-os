@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 
 /* NTMOB3 — le badge de synchro global : masqué quand tout est synchronisé et
    le réseau présent, visible avec le compteur d'opérations en attente dès
@@ -28,6 +29,12 @@ function etatOutbox(over = {}) {
 
 beforeEach(() => { useFieldOutbox.mockReset() })
 afterEach(() => cleanup())
+
+// NTMOB2 — le badge contient un <Link> (route contextuelle des conflits) :
+// tout rendu passe par un MemoryRouter.
+function rendre(ui) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
 
 describe('NTMOB3 syncState', () => {
   it('agrège les photos dans le même compteur', () => {
@@ -63,13 +70,13 @@ describe('NTMOB3 syncState', () => {
 describe('NTMOB3 SyncStatusBadge', () => {
   it('reste masqué quand tout est synchronisé et le réseau présent', () => {
     useFieldOutbox.mockReturnValue(etatOutbox())
-    render(<SyncStatusBadge />)
+    rendre(<SyncStatusBadge />)
     expect(screen.queryByTestId('sync-status-badge')).not.toBeInTheDocument()
   })
 
   it('apparaît hors ligne avec le compteur d’opérations en attente', () => {
     useFieldOutbox.mockReturnValue(etatOutbox({ online: false, pending: 2 }))
-    render(<SyncStatusBadge />)
+    rendre(<SyncStatusBadge />)
     const badge = screen.getByTestId('sync-status-badge')
     expect(badge).toHaveAttribute('data-sync-state', 'attente')
     expect(badge).toHaveAttribute('aria-label', '2 opérations en attente')
@@ -78,7 +85,7 @@ describe('NTMOB3 SyncStatusBadge', () => {
 
   it('reste visible hors ligne même sans opération en file', () => {
     useFieldOutbox.mockReturnValue(etatOutbox({ online: false }))
-    render(<SyncStatusBadge />)
+    rendre(<SyncStatusBadge />)
     expect(screen.getByTestId('sync-status-badge'))
       .toHaveAttribute('data-sync-state', 'ok')
   })
@@ -91,8 +98,17 @@ describe('NTMOB3 SyncStatusBadge', () => {
         serverError: 'Chantier introuvable',
       }],
     }))
-    render(<SyncStatusBadge />)
+    rendre(<SyncStatusBadge />)
     expect(screen.getByTestId('sync-status-badge'))
       .toHaveAttribute('data-sync-state', 'erreur')
+  })
+
+  it('NTMOB2 — le popover du badge mène à l’écran des conflits', () => {
+    useFieldOutbox.mockReturnValue(etatOutbox({ online: false, pending: 1 }))
+    rendre(<SyncStatusBadge />)
+    fireEvent.click(screen.getByTestId('sync-status-badge'))
+    const lien = screen.getByTestId('sync-status-conflicts-link')
+    expect(lien).toHaveAttribute('href', '/synchro/conflits')
+    expect(lien).toHaveTextContent('Conflits de synchronisation')
   })
 })
