@@ -75,6 +75,49 @@ export function isHoneypotTripped(body: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// QJW14 — CONSENTEMENT PUBLICITAIRE ET BEACON META (CAPI)
+//
+// LE CONSTAT. `fireCapi` ne lisait JAMAIS le signal de consentement du site
+// (`tq_consent` en localStorage, posé par ConsentBanner.astro) : un visiteur
+// qui cliquait explicitement « Refuser » puis soumettait le formulaire voyait
+// quand même partir chez Meta son téléphone, sa ville et son e-mail HACHÉS.
+//
+// LA DÉCISION (tranchée dans QJW14, inversable d'un mot par le fondateur) :
+//  - « Refuser » EXPLICITE (`denied`) ⇒ le beacon CAPI NE PART PAS. De la PII
+//    hachée envoyée à Meta APRÈS un refus explicite est l'exposition la plus
+//    difficile à défendre (loi 09-08) et la plus facile à éviter.
+//  - AUCUNE INTERACTION avec la bannière (`unset`, le cas le plus fréquent :
+//    le visiteur va droit au formulaire) ⇒ comportement INCHANGÉ, le beacon
+//    part. Justification retenue : le CAPI est ici attaché à un ACTE EXPLICITE
+//    du prospect (il remplit un formulaire de demande de devis et coche le
+//    consentement de traitement), pas à de la navigation anonyme. C'est le
+//    point exact que le fondateur peut renverser : passer `unset` du côté
+//    bloquant tient en une ligne (`adsConsent !== 'granted'` ci-dessous).
+//  - LA CAPTURE DU LEAD N'EST JAMAIS GATÉE. Le contrat webhook
+//    (validateLead → forwardLead → CRM, seuil 1 000 MAD, consent/UTM/fbclid)
+//    reste intact octet pour octet : quoi qu'il arrive, le lead part au CRM.
+//    Seul le beacon publicitaire est concerné.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Nom du champ transmis par le formulaire (jamais forwardé au CRM : il n'est
+ *  pas dans la liste blanche de `validateOptionalFields`). */
+export const ADS_CONSENT_FIELD = 'adsConsent';
+
+/** Valeurs du signal `tq_consent` (ConsentBanner.astro) + l'état « pas encore
+ *  répondu », qui est le cas NORMAL et n'est jamais fabriqué en « granted ». */
+export type AdsConsent = 'granted' | 'denied' | 'unset';
+
+/**
+ * Lit le signal de consentement publicitaire dans le corps POSTé. Tolérant :
+ * tout ce qui n'est pas exactement 'granted'/'denied' (champ absent, ancien
+ * client, valeur bricolée) vaut `unset` — jamais une supposition.
+ */
+export function adsConsentFromBody(body: unknown): AdsConsent {
+  const v = (body as Record<string, unknown> | null | undefined)?.[ADS_CONSENT_FIELD];
+  return v === 'granted' || v === 'denied' ? v : 'unset';
+}
+
 export const ROOF_TYPES = [
   { id: 'villa', label: 'Villa' },
   { id: 'hangar', label: 'Hangar industriel' },
@@ -1425,7 +1468,13 @@ export async function fireCapi(
   record: LeadRecord,
   env: LeadEnv,
   fetchFn: typeof fetch = fetch,
-): Promise<{ sent: boolean }> {
+  opts: { adsConsent?: AdsConsent } = {},
+): Promise<{ sent: boolean; reason?: 'consent-denied' }> {
+  // QJW14 — un « Refuser » EXPLICITE sur la bannière bloque le beacon (et lui
+  // seul : le lead est déjà parti au CRM par `forwardLead`, jamais gaté ici).
+  // Sans signal (`unset`/appel sans option), comportement inchangé — cf. le
+  // bloc de décision QJW14 en tête de fichier.
+  if (opts.adsConsent === 'denied') return { sent: false, reason: 'consent-denied' };
   if (!record.qualified) return { sent: false };
   const url = env.CAPI_URL?.trim();
   if (!url) return { sent: false };

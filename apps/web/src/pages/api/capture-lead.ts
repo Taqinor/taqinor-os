@@ -17,6 +17,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
+  adsConsentFromBody,
   buildLeadRecord,
   crossSiteRejection,
   fireCapi,
@@ -70,6 +71,11 @@ export const POST: APIRoute = async ({ request }) => {
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
   const lead = validation.lead;
 
+  // QJW14 — même gate que /api/simulate et /api/preview-lead : un « Refuser »
+  // explicite bloque le beacon Meta. La capture, elle, part au CRM même
+  // NON QUALIFIÉE (includeUnqualified plus bas) — jamais gatée par ce signal.
+  const adsConsent = adsConsentFromBody(body);
+
   const env = (cf.env ?? {}) as LeadEnv;
   const band = await runSimulation(lead, env, fetch);
   const page = request.headers.get('referer');
@@ -122,8 +128,8 @@ export const POST: APIRoute = async ({ request }) => {
     // preview-lead) : Meta optimisait donc les campagnes sur une tranche non
     // représentative du trafic. Même appel, même tolérance de panne (silencieux,
     // jamais bloquant), fireCapi se gate déjà lui-même sur `record.qualified`.
-    const capi = await fireCapi(record, env, fetch);
-    if (!capi.sent && baseRecord.qualified) {
+    const capi = await fireCapi(record, env, fetch, { adsConsent });
+    if (!capi.sent && baseRecord.qualified && capi.reason !== 'consent-denied') {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();
