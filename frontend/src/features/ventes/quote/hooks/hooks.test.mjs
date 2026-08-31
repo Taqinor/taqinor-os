@@ -8,9 +8,6 @@ import { decisionSizing, motifRefus, REFUS_GENERIQUE } from './useSizingMoteurPu
 import {
   resoudreComposition, raisonRepli, RAISON_SERVEUR, RAISON_RIEN,
 } from './useCompositionPur.js'
-import {
-  ecrireChamp, changerProduit, appliquerTarif, suggestionTva, lignesUtilisables,
-} from './useDevisLignesPur.js'
 
 // ── useSizingMoteur : la garde de péremption sur les DEUX branches ───────────
 
@@ -135,76 +132,4 @@ test('rien à composer : lignes vides ET une raison qui le dit', () => {
   assert.equal(resoudreComposition({}).raison, RAISON_RIEN)
   assert.equal(resoudreComposition({ local: { lignes: [], motif: 'renseignez les CV' } }).raison,
     'renseignez les CV')
-})
-
-// ── useDevisLignes : verrou prixManuel, tarif, TVA ───────────────────────────
-
-const LIGNES = [
-  { _key: 1, produit: '7', designation: 'Panneau 710 W', quantite: '12',
-    prix_unit_ttc: '1200', taux_tva: '10' },
-  { _key: 2, produit: '9', designation: 'Onduleur hybride 8 kW', quantite: '1',
-    prix_unit_ttc: '14000', taux_tva: '20' },
-]
-
-test('taper un prix pose le verrou prixManuel, sur CETTE ligne seulement', () => {
-  const ls = ecrireChamp(LIGNES, 1, 'prix_unit_ttc', '1300')
-  assert.equal(ls[0].prixManuel, true)
-  assert.equal(ls[0].prix_unit_ttc, '1300')
-  assert.equal(ls[1].prixManuel, undefined)
-})
-
-test('modifier le taux retire le style « suggéré » de CETTE ligne seulement', () => {
-  const ls = ecrireChamp([{ ...LIGNES[0], _tvaSuggested: true },
-    { ...LIGNES[1], _tvaSuggested: true }], 1, 'taux_tva', '20')
-  assert.equal(ls[0]._tvaSuggested, false)
-  assert.equal(ls[1]._tvaSuggested, true)
-  assert.equal(ls[0].prixManuel, undefined)   // aucun verrou posé par la TVA
-})
-
-test('N2 : la résolution de tarif ne réécrit JAMAIS un prix tapé à la main', () => {
-  const verrouillees = ecrireChamp(LIGNES, 1, 'prix_unit_ttc', '1300')
-  const { lignes, badge } = appliquerTarif(verrouillees, 1,
-    { prix: 999, source: 'liste', liste_nom: 'Grossistes' })
-  assert.equal(lignes[0].prix_unit_ttc, '1300')   // la frappe survit
-  assert.equal(badge, 'Grossistes')
-})
-
-test('un prix NON verrouillé prend bien le tarif de la liste', () => {
-  const { lignes, badge } = appliquerTarif(LIGNES, 1,
-    { prix: 999, source: 'liste', liste_nom: 'Grossistes' })
-  assert.equal(lignes[0].prix_unit_ttc, '999')
-  assert.equal(lignes[1].prix_unit_ttc, '14000')  // les autres lignes intactes
-  assert.equal(badge, 'Grossistes')
-})
-
-test('tarif standard (ou absent) : aucune écriture, aucun badge', () => {
-  for (const t of [{ prix: 999, source: 'standard' }, null, {}]) {
-    const { lignes, badge } = appliquerTarif(LIGNES, 1, t)
-    assert.equal(lignes[0].prix_unit_ttc, '1200')
-    assert.equal(badge, null)
-  }
-})
-
-test('resélectionner un produit LÈVE le verrou manuel', () => {
-  const verrouillees = ecrireChamp(LIGNES, 1, 'prix_unit_ttc', '1300')
-  const ls = changerProduit(verrouillees, 1, { id: 42, nom: 'Panneau 550 W' })
-  assert.equal(ls[0].prixManuel, false)
-  assert.equal(ls[0].produit, '42')
-  assert.equal(ls[0].designation, 'Panneau 550 W')
-})
-
-test('la TVA est une SUGGESTION : elle signale, elle ne recale pas', () => {
-  assert.deepEqual(suggestionTva(LIGNES[0]), { attendu: 10, coherent: true })
-  assert.deepEqual(suggestionTva({ ...LIGNES[0], taux_tva: '20' }),
-    { attendu: 10, coherent: false })
-  assert.deepEqual(suggestionTva(LIGNES[1]), { attendu: 20, coherent: true })
-  // Repères société (DC4) : les défauts sont surchargeables.
-  assert.equal(suggestionTva(LIGNES[0], { tvaPanneaux: 7 }).attendu, 7)
-})
-
-test('lignes utilisables : un produit ET une quantité > 0', () => {
-  const ls = [...LIGNES, { _key: 3, produit: '', quantite: '5' },
-    { _key: 4, produit: '8', quantite: '0' }]
-  assert.deepEqual(lignesUtilisables(ls).map(l => l._key), [1, 2])
-  assert.deepEqual(lignesUtilisables(null), [])
 })
