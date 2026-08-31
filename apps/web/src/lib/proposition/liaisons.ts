@@ -43,12 +43,27 @@ import { formatMAD, formatNumber, formatPayback, formatPercent } from '../propos
 // l'inverse.
 
 /**
- * COMMENT ON MOISSONNE L'ORIGINAL D'UN NŒUD. Trois natures, et trois
- * seulement, parce que la page n'en a que trois : du texte, du balisage rendu
- * par le serveur (le corps du tableau année par année), et un attribut
- * géométrique (l'arc de l'anneau de couverture).
+ * COMMENT ON MOISSONNE L'ORIGINAL D'UN NŒUD. Quatre natures, parce que la page
+ * n'en a que quatre : du texte, du balisage rendu par le serveur (le corps du
+ * tableau année par année), un attribut géométrique (l'arc de l'anneau de
+ * couverture), et une STRUCTURE dont les nœuds enfants doivent survivre tels
+ * quels.
+ *
+ * `fragment` (QJW17) EST LE MODE DES NŒUDS QUI NE SONT PAS DU TEXTE. Un bloc
+ * qui contient des enfants — une étiquette traduisible `data-i18n` et un
+ * montant stylé, par exemple — ne peut pas être moissonné en `texte` : le
+ * `textContent` APLATIT ses enfants en une chaîne, et les reposer par
+ * `el.textContent = …` les DÉTRUIT. Sur ce bloc précis, le crochet de
+ * traduction avait déjà été remplacé par `prepareI18n()` en un triplet
+ * FR/EN/AR (deux masqués) : l'aplatissement rendait donc les TROIS langues
+ * lisibles d'un coup, dès le premier affichage, et détachait le bloc du
+ * sélecteur FR/EN/عربي.
+ *
+ * `fragment` mémorise les nœuds enfants EUX-MÊMES — jamais des clones. Un
+ * clone rebrancherait un triplet FANTÔME : la bascule de langue continuerait
+ * de piloter les nœuds d'origine, désormais hors du document.
  */
-export type ModeCapture = 'texte' | 'html' | { readonly attribut: string };
+export type ModeCapture = 'texte' | 'html' | 'fragment' | { readonly attribut: string };
 
 /** Un nœud piloté : son sélecteur, s'il en désigne un ou plusieurs, sa capture. */
 export interface SpecNoeud {
@@ -90,7 +105,16 @@ export function unEl(noeuds: NoeudsResolus, nom: string): Element | null {
   return n instanceof Element ? n : null;
 }
 
-/** Un nœud unique `HTMLElement` (le cas ordinaire : il porte `hidden`). */
+/**
+ * Un nœud unique `HTMLElement` (le cas ordinaire : il porte `hidden`).
+ *
+ * ATTENTION (QJW18) — UN NŒUD SVG N'EST PAS UN `HTMLElement`. `<text>`,
+ * `<circle>`… sont des `SVGElement` : ce helper rend `null` sur eux, et une
+ * peinture qui l'utilise est alors SILENCIEUSEMENT sautée. C'est exactement ce
+ * qui laissait le chiffre au centre de l'anneau de couverture sur le
+ * pourcentage du DEVIS OFFICIEL pendant que l'arc, lui, décrivait la taille
+ * chargée. Pour un nœud SVG : `unEl` + `textContent` (voir `couverture`).
+ */
 export function unHtml(noeuds: NoeudsResolus, nom: string): HTMLElement | null {
   const n = noeuds[nom];
   return n instanceof HTMLElement ? n : null;
@@ -245,7 +269,15 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
       mois: { sel: '[data-detail-eco-mois]', tous: true },
       moisAvec: { sel: '[data-detail-eco-mois-avec]', tous: true },
       total: { sel: '[data-detail-eco-total]' },
-      totalAvec: { sel: '[data-detail-eco-total-avec-bloc]' },
+      // QJW17 — CE NŒUD N'EST PAS DU TEXTE : il porte deux `<span>` (l'étiquette
+      // traduisible `data-i18n` et le montant stylé `dir="ltr"`). Aucune
+      // liaison ne lui écrit jamais de valeur — `peindre` ne fait que le
+      // MASQUER, parce que le « avec batterie » est un chiffre d'une AUTRE
+      // variante. Mais `restaurer` tourne DÈS LE CHARGEMENT, et en capture
+      // `texte` il reposait `textContent`, ce qui détruisait ses enfants : les
+      // trois langues du triplet i18n s'affichaient bout à bout et le
+      // sélecteur FR/EN/عربي ne pilotait plus le bloc.
+      totalAvec: { sel: '[data-detail-eco-total-avec-bloc]', capture: 'fragment' },
     },
     lire(detail) {
       if (detail === null) return { mode: 'echec' };
@@ -330,7 +362,15 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
           arc.setAttribute('stroke-dasharray', dasharrayDonut(pct, rayon));
         }
       }
-      const val = unHtml(noeuds, 'valeur');
+      // QJW18 — LE CHIFFRE AU CENTRE EST UN `<text>` SVG, PAS UN HTMLElement.
+      // Il était récupéré par `unHtml`, qui rend `null` sur un `SVGElement` :
+      // la peinture était silencieusement sautée, et l'anneau décrivait la
+      // taille chargée pendant que le chiffre gardait le pourcentage du DEVIS
+      // OFFICIEL — deux chiffres contradictoires dans la même figure. `unEl`
+      // couvre les deux natures ; `textContent` est la seule écriture (un nœud
+      // SVG n'a pas de `innerText`). Le FORMAT ne change pas : `formatPercent`,
+      // la même fonction qu'avant.
+      const val = unEl(noeuds, 'valeur');
       if (val) val.textContent = formatPercent(pct, 0);
     },
   }),

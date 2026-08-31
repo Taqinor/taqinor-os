@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * QJW10 — LA GARDE DE COUVERTURE : le test qui aurait attrapé l'oubli du
  * tableau de trésorerie.
@@ -33,6 +34,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+import { PROFONDS } from '../src/lib/proposition/liaisons';
+import { appliquer, capturerOriginaux, restaurer } from '../src/lib/proposition/swap';
+import { tailleDetail } from '../src/lib/tailleDetail';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -232,5 +237,272 @@ describe('QJW10 — les tables restent celles que la page attend', () => {
     const bloc = LIAISONS.slice(LIAISONS.indexOf('export const PROFONDS'));
     expect((bloc.match(/profond</g) || [])).toHaveLength(6);
     expect((bloc.match(/^\s{4}enveloppe: '/gm) || [])).toHaveLength(6);
+  });
+});
+
+// ── QJW17 — LE BLOC « TOTAL AVEC » N'EST PAS DU TEXTE, C'EST UNE STRUCTURE ──
+//
+// L'INCIDENT. `[data-detail-eco-total-avec-bloc]` (page `[...token].astro`)
+// contient DEUX `<span>` : l'étiquette traduisible `data-i18n` et le montant
+// stylé `dir="ltr"`. Il était déclaré avec la capture par DÉFAUT (`texte`),
+// donc `swap.reposer` le restaurait par `el.textContent = …` — ce qui DÉTRUIT
+// ses enfants.
+//
+// POURQUOI C'ÉTAIT VISIBLE DÈS LE PREMIER AFFICHAGE, ET PAS SEULEMENT APRÈS
+// UN ALLER-RETOUR. `restaurer` tourne AU CHARGEMENT : `appliquer()` (fin de
+// l'îlot) → `chargerDetail()` → `restaurerDetail()`. Et il tourne APRÈS
+// `prepareI18n()`, qui a remplacé chaque nœud `data-i18n` par un TRIPLET de
+// `<span>` (FR visible, EN et AR masqués). Le `textContent` moissonné
+// contenait donc DÉJÀ les trois langues bout à bout : l'aplatir les rendait
+// toutes les trois visibles — « · avec batterie :· with a battery:· مع
+// بطارية: » — et emportait au passage le crochet de traduction, si bien que
+// le sélecteur FR/EN/عربي ne pilotait plus ce bloc.
+//
+// LA GARANTIE RÉPARÉE. « Identité byte-à-byte après un aller-retour »
+// (annoncée en tête de `liaisons.ts` et dans la page) est de nouveau vraie
+// pour ce bloc : la capture `fragment` mémorise les nœuds enfants EUX-MÊMES —
+// jamais des clones, sinon le triplet i18n rebranché serait un triplet
+// FANTÔME que la bascule de langue ne toucherait plus.
+
+/** Le triplet que `prepareI18n` fabrique pour un nœud `data-i18n`. */
+interface Triplet { fr: HTMLElement; en: HTMLElement; ar: HTMLElement }
+
+/** Le MÊME geste que `prepareI18n()` de la page — reproduit, pas approximé. */
+function preparerI18n(racine: ParentNode): Triplet[] {
+  const triplets: Triplet[] = [];
+  racine.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+    const arText = el.dataset.ar;
+    if (typeof arText !== 'string') return;
+    const enText = typeof el.dataset.en === 'string' ? el.dataset.en : el.innerHTML;
+    const frSpan = document.createElement('span');
+    frSpan.innerHTML = el.innerHTML;
+    const enSpan = document.createElement('span');
+    enSpan.textContent = enText;
+    enSpan.hidden = true;
+    const arSpan = document.createElement('span');
+    arSpan.textContent = arText;
+    arSpan.hidden = true;
+    el.textContent = '';
+    el.append(frSpan, enSpan, arSpan);
+    triplets.push({ fr: frSpan, en: enSpan, ar: arSpan });
+  });
+  return triplets;
+}
+
+/** Le MÊME geste que `applyLang()` : on montre une langue, on masque les deux autres. */
+function basculer(triplets: readonly Triplet[], lang: 'fr' | 'en' | 'ar'): void {
+  for (const { fr, en, ar } of triplets) {
+    fr.hidden = lang !== 'fr';
+    en.hidden = lang !== 'en';
+    ar.hidden = lang !== 'ar';
+  }
+}
+
+/** Ce que le CLIENT lit réellement : le texte des nœuds non masqués. */
+function texteVisible(el: Element): string {
+  let out = '';
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === 3) { out += n.textContent ?? ''; return; }
+    if (n.nodeType !== 1) return;
+    if (n instanceof HTMLElement && n.hidden) return;
+    out += texteVisible(n as Element);
+  });
+  return out;
+}
+
+/** Le bloc des économies mensuelles, tel que le serveur le rend (extrait fidèle). */
+const ECO_HTML = `
+  <div data-detail-eco-bloc>
+    <p class="mt-3 text-sm text-lune-soft">
+      <span data-i18n data-fr="Total annuel estimé :" data-en="Estimated annual total:" data-ar="المجموع السنوي المقدّر:">Total annuel estimé :</span>
+      <span class="font-semibold text-lune" dir="ltr" data-detail-eco-total>11 430 MAD</span>
+      <span data-detail-eco-total-avec-bloc> <span data-i18n data-fr="· avec batterie :" data-en="· with a battery:" data-ar="· مع بطارية:">· avec batterie :</span> <span class="font-semibold text-brass-300" dir="ltr">14 950 MAD</span></span>
+    </p>
+    <p class="mt-2 text-xs text-lune-faint" data-detail-banque hidden></p>
+  </div>
+`;
+
+describe('QJW17 — la restauration du bloc « total avec » PRÉSERVE ses nœuds enfants', () => {
+  function monter(): { triplets: Triplet[]; bloc: HTMLElement } {
+    document.body.innerHTML = ECO_HTML;
+    const triplets = preparerI18n(document);
+    return {
+      triplets,
+      bloc: document.querySelector<HTMLElement>('[data-detail-eco-total-avec-bloc]')!,
+    };
+  }
+
+  it('les deux <span> enfants survivent, et le DOM revient à l’OCTET', () => {
+    const { bloc } = monter();
+    const avant = bloc.innerHTML;
+    const originaux = capturerOriginaux(PROFONDS);
+
+    restaurer(PROFONDS, originaux);
+
+    expect(bloc.querySelectorAll(':scope > span')).toHaveLength(2);
+    expect(bloc.querySelector('[data-i18n]'), 'le crochet de traduction a disparu').not.toBeNull();
+    expect(bloc.innerHTML).toBe(avant);
+  });
+
+  it('le client ne lit PAS les trois langues mélangées après restauration', () => {
+    const { bloc } = monter();
+    const originaux = capturerOriginaux(PROFONDS);
+
+    restaurer(PROFONDS, originaux);
+
+    const vu = texteVisible(bloc);
+    expect(vu).toContain('· avec batterie :');
+    expect(vu, 'l’anglais est visible sous la page française').not.toContain('· with a battery:');
+    expect(vu, 'l’arabe est visible sous la page française').not.toContain('· مع بطارية:');
+  });
+
+  it('la bascule FR/EN/عربي pilote ENCORE ce bloc après restauration', () => {
+    const { triplets, bloc } = monter();
+    const originaux = capturerOriginaux(PROFONDS);
+
+    restaurer(PROFONDS, originaux);
+
+    basculer(triplets, 'en');
+    expect(texteVisible(bloc)).toContain('· with a battery:');
+    expect(texteVisible(bloc)).not.toContain('· avec batterie :');
+    basculer(triplets, 'ar');
+    expect(texteVisible(bloc)).toContain('· مع بطارية:');
+    basculer(triplets, 'fr');
+    expect(texteVisible(bloc)).toContain('· avec batterie :');
+    expect(texteVisible(bloc)).not.toContain('· with a battery:');
+  });
+
+  it('un aller-retour COMPLET (détail servi puis « Recommandé ») revient aussi à l’octet', () => {
+    monter();
+    const avant = document.body.innerHTML;
+    const originaux = capturerOriginaux(PROFONDS);
+
+    // Un détail servi masque le total « avec » (c'est une AUTRE variante)…
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+    expect(document.body.innerHTML).not.toBe(avant);
+
+    // …et le retour sur « Recommandé » le repose EXACTEMENT tel quel.
+    restaurer(PROFONDS, originaux);
+    expect(document.body.innerHTML).toBe(avant);
+  });
+});
+
+// ── QJW18 — L'ARC ET LE CHIFFRE DÉCRIVENT LA MÊME TAILLE ────────────────────
+//
+// L'INCIDENT. Le nombre au centre de l'anneau de couverture est un `<text>`
+// SVG. La liaison le récupérait par `unHtml`, qui exige un `HTMLElement` — or
+// un nœud SVG est un `SVGElement` : le helper rendait `null` et la peinture
+// était SILENCIEUSEMENT sautée. L'arc, lui, passait par `unEl` et se
+// redessinait correctement. Résultat sous les yeux du client : l'ANNEAU décrit
+// la taille chargée pendant que le CHIFFRE au milieu garde le pourcentage du
+// devis officiel — deux chiffres contradictoires dans la même figure.
+//
+// POURQUOI AUCUN TEST NE L'AVAIT VU. Le DOM de test écrivait le `<text>` À
+// CÔTÉ du `<svg>`, pas DEDANS : hors contenu étranger, l'analyseur HTML en
+// fait un `HTMLUnknownElement`… qui EST un `HTMLElement`. Le helper rendait
+// donc un nœud, la peinture avait lieu, et le test était vert sur une
+// structure que la page n'a jamais rendue. Le DOM ci-dessous met le `<text>`
+// DANS le `<svg>`, comme la page (`[...token].astro` ~4384-4393), et la
+// première assertion VÉRIFIE cette nature : sans elle, la garde retomberait
+// dans le même faux vert au moindre copier-coller.
+
+/** L'anneau, tel que le serveur le rend : le `<text>` est DANS le `<svg>`. */
+const DONUT_HTML = `
+  <div class="flex items-center gap-4" data-hero-couverture-card>
+    <svg viewBox="0 0 100 100" width="112" height="112" role="img" aria-label="Couverture solaire : 62 %">
+      <circle cx="50" cy="50" r="42" fill="none" stroke-width="10"></circle>
+      <circle cx="50" cy="50" r="42" fill="none" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="163.72 100.16" transform="rotate(-90 50 50)"
+        data-detail-couverture-arc data-detail-donut-r="42"></circle>
+      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+        font-size="24" font-weight="700" dir="ltr" data-detail-couverture-value>62%</text>
+    </svg>
+  </div>
+`;
+
+/** Le pourcentage que l'ARC dessine réellement, relu depuis sa géométrie. */
+function pctDeLArc(arc: Element): number {
+  const rayon = Number(arc.getAttribute('data-detail-donut-r'));
+  const dash = Number((arc.getAttribute('stroke-dasharray') ?? '').split(/\s+/)[0]);
+  return (dash / (2 * Math.PI * rayon)) * 100;
+}
+
+/** L'entier que le CHIFFRE affiche, relu depuis son texte. */
+function pctDuChiffre(el: Element): number {
+  return Number((el.textContent ?? '').replace(/[^\d]/g, ''));
+}
+
+describe('QJW18 — le pourcentage DANS l’anneau suit la taille chargée', () => {
+  const arc = (): Element => document.querySelector('[data-detail-couverture-arc]')!;
+  const chiffre = (): Element => document.querySelector('[data-detail-couverture-value]')!;
+
+  function monterDonut(): void {
+    document.body.innerHTML = DONUT_HTML;
+  }
+
+  it('le nœud du chiffre est bien un `<text>` SVG (et NON un HTMLElement)', () => {
+    monterDonut();
+    // La garde qui empêche le faux vert de revenir : si un jour ce nœud
+    // redevenait un HTMLElement, c'est que le DOM de test aurait cessé de
+    // ressembler à la page.
+    expect(chiffre().namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(chiffre() instanceof HTMLElement).toBe(false);
+  });
+
+  it('une taille chargée repeint l’ARC **et** le CHIFFRE', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+
+    expect(document.querySelector<HTMLElement>('[data-hero-couverture-card]')!.hidden).toBe(false);
+    expect(arc().getAttribute('stroke-dasharray')).not.toBe('163.72 100.16');
+    expect(chiffre().textContent, 'le chiffre est resté sur le pourcentage du devis officiel')
+      .toBe('48 %');
+  });
+
+  it('arc et chiffre décrivent LA MÊME taille, pas deux', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    for (const exemple of [ECHANTILLON.exemple, ECHANTILLON.exemple_avec_batterie]) {
+      appliquer(PROFONDS, tailleDetail(exemple));
+      expect(
+        Math.round(pctDeLArc(arc())),
+        'l’anneau et le nombre au centre annoncent deux tailles différentes',
+      ).toBe(pctDuChiffre(chiffre()));
+    }
+  });
+
+  it('un aller-retour repose l’arc ET le chiffre du devis officiel, à l’octet', () => {
+    monterDonut();
+    const avant = document.body.innerHTML;
+    const originaux = capturerOriginaux(PROFONDS);
+
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+    expect(document.body.innerHTML).not.toBe(avant);
+
+    restaurer(PROFONDS, originaux);
+    expect(document.body.innerHTML).toBe(avant);
+  });
+
+  it('sans pourcentage servi, le chiffre est OMIS — jamais un faux repeint', () => {
+    monterDonut();
+    capturerOriginaux(PROFONDS);
+
+    // Le contrat ne sert PAS `carte.couverture_pct` : la carte entière
+    // disparaît, et le chiffre du devis officiel n'est ni réécrit ni resservi
+    // sous une autre offre — il reste intact, MASQUÉ avec son enveloppe.
+    const sansCouverture = tailleDetail({
+      cle: 'eco', titre: 'Éco', variante: 'sans', est_le_devis: false,
+      carte: { prix_ttc: 71400 },
+    });
+    expect(sansCouverture!.carte!.couverturePct).toBeNull();
+
+    appliquer(PROFONDS, sansCouverture);
+
+    expect(document.querySelector<HTMLElement>('[data-hero-couverture-card]')!.hidden).toBe(true);
+    expect(chiffre().textContent).toBe('62%');
+    expect(arc().getAttribute('stroke-dasharray')).toBe('163.72 100.16');
   });
 });
