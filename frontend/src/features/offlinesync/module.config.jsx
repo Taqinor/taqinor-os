@@ -20,6 +20,10 @@ const CockpitHome = lazy(() => import('./mobile/CockpitHome'))
 const EquipeTerrainHome = lazy(() => import('./mobile/EquipeTerrainHome'))
 // NTMOB26 — accueil mobile du Commercial responsable (onglets Moi/Équipe).
 const EquipeCommercialeHome = lazy(() => import('./mobile/EquipeCommercialeHome'))
+// NTMOB2 — écran d'arbitrage des conflits de synchronisation. Atteint depuis
+// l'état « en attente de synchro » (badge/bandeau), jamais par un lien de menu
+// permanent : dans le cas nominal il n'y a AUCUN conflit à montrer.
+const SyncConflictsPanel = lazy(() => import('./SyncConflictsPanel'))
 
 const config = {
   key: 'offlinesync',
@@ -29,6 +33,7 @@ const config = {
     { path: '/mobile/cockpit', component: CockpitHome },
     { path: '/mobile/equipe-terrain', component: EquipeTerrainHome },
     { path: '/mobile/equipe-commerciale', component: EquipeCommercialeHome },
+    { path: '/synchro/conflits', component: SyncConflictsPanel }, // contextuelle: atteinte depuis l'état « en attente de synchro » (badge/bandeau) ; dans le cas nominal il n'y a AUCUN conflit, une entrée de menu permanente serait du bruit.
   ],
 }
 

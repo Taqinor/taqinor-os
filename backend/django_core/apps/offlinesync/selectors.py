@@ -24,6 +24,21 @@ def operation_scoped(company, client_op_id):
         company=company, client_op_id=client_op_id).first()
 
 
+def conflits_ouverts(company):
+    """NTMOB2 — opérations EN CONFLIT non encore arbitrées, bornées société.
+
+    Un arbitrage fait QUITTER le statut ``conflit`` (appliquée ou rejetée) :
+    « conflit ouvert » et ``statut='conflit'`` sont donc la même chose — pas de
+    second critère à tenir synchronisé."""
+    return operations_scoped(
+        company, statut=OfflineOperation.Statut.CONFLIT)
+
+
+def compte_conflits_ouverts(company):
+    """Compteur pour le badge « synchro » (0 quand tout est arbitré)."""
+    return conflits_ouverts(company).count()
+
+
 def compte_par_statut(company):
     """``{statut: n}`` pour la société — alimente un écran de diagnostic."""
     from django.db.models import Count
