@@ -242,14 +242,24 @@ def _arbitrage_du_calepinage(layout, nb_panneaux, kwc, *, company):
 
     Le kWc SUIT le compte : laisser l'ancien kWc face au nouveau compte
     produirait un devis dont la puissance ne correspond plus aux panneaux.
+
+    QJR243 (c) — LE WATTAGE PASSE PAR LE LECTEUR UNIQUE. Cette fonction
+    re-parsait ``panelWatt`` EN LIGNE, sans la normalisation ni la garde
+    d'exception de ``geometrie.lire_layout`` (QJR165) : un blob portant
+    ``"abc"`` faisait LEVER la création de devis (``float("abc")``), et un
+    ``545.6`` produisait un kWc calculé sur un wattage que le reste du dépôt
+    aurait arrondi. Le lecteur est appelé AVANT la réaffectation du compte,
+    donc sur le couple (compte, kWc) d'ORIGINE : la déduction de repli garde
+    exactement la même base qu'avant. ``watt_declare`` (et non ``watt``) parce
+    qu'un wattage INCONNU doit laisser le kWc tel quel, jamais le recalculer
+    sur le défaut catalogue.
     """
     arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
                                            company=company)
     if arbitrage is None or arbitrage['retenu'] == nb_panneaux:
         return nb_panneaux, kwc
-    watt_reference = layout.get('panelWatt') or layout.get('watt')
-    if not watt_reference and nb_panneaux and kwc:
-        watt_reference = kwc * 1000.0 / nb_panneaux
+    watt_reference = lire_layout(
+        layout, compte=nb_panneaux, kwc=kwc).watt_declare
     nb_panneaux = arbitrage['retenu']
     if watt_reference:
         kwc = round(nb_panneaux * float(watt_reference) / 1000.0, 3)

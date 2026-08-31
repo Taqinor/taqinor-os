@@ -185,14 +185,20 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
     décrire une installation qui n'existe plus (règle Z2 appliquée à la
     fraîcheur) — jamais un bloc laissé en place au hasard.
 
-    ``force`` — recalculer MÊME si la composition n'a pas bougé. Les chemins
-    « lignes » (ajout/modification/suppression, calepinage) ne touchent QUE la
-    composition : quand celle-ci est inchangée, le bloc l'est aussi et
-    ``_bloc_horaire_deja_a_jour`` court-circuite un calcul qui peut coûter un
-    appel PVGIS. Les chemins « devis » (``perform_update``, ``replace-lines``)
-    peuvent en revanche avoir changé les FACTURES ou le profil dans
-    ``etude_params`` — grandeurs qu'aucune lecture de lignes ne verrait : ils
-    passent ``force=True`` et acceptent le recalcul.
+    ``force`` — recalculer MÊME si la composition n'a pas bougé. Quand elle est
+    inchangée, ``_bloc_horaire_deja_a_jour`` court-circuite un calcul qui peut
+    coûter un appel PVGIS.
+
+    QJR243 (e) — CE PARAGRAPHE DOCUMENTAIT LE CONTRAT D'AVANT QJR47, ET IL
+    ÉTAIT FAUX DES DEUX CÔTÉS. Il affirmait que les chemins « devis »
+    (``perform_update``, ``replace-lines``) passent ``force=True`` pour couvrir
+    un changement de FACTURES ou de profil : QJR47 a RETIRÉ ce ``force`` des
+    deux — depuis QJR43/QJR44, c'est l'EMPREINTE DES ENTRÉES qui décide (le
+    profil client entre dedans, donc un vrai changement recalcule tout seul et
+    un faux ne coûte plus trois balayages). ``force=True`` ne subsiste que là
+    où l'empreinte ne peut RIEN dire : les COPIES de devis (``creation``,
+    ``cycle_vie``, ``gammes``, et ``/variante`` depuis QJR202), dont les clés
+    dérivées viennent d'être purgées.
 
     Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux du devis
     (règle #4) : appelable en toute sécurité juste après une sauvegarde.

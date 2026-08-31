@@ -394,6 +394,61 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    Les lignes viennent d'un BORDEREAU (BOQ) chiffré par l'appel d'offres :
 #    une autre famille de documents, que le moteur solaire ne dimensionne
 #    jamais. Le pipeline résidentiel n'a rien à y dire.
+#
+# ── QJR243 (g) — LE RECENSEMENT N'ÉTAIT PAS EXHAUSTIF : QUATRE CHEMINS DE PLUS,
+#    ET DEUX CONTOURNEMENTS DE LA GARDE. Chacun reçoit ici son verdict ÉCRIT ;
+#    AUCUN n'est recâblé par cette tâche (« constater, pas corriger »).
+#
+# 7. ``domain/composition._completer_kit_residentiel`` — ADAPTATEUR DE FAIT,
+#    et c'est LE chemin secondaire qui COMPOSE un kit. Il n'a pas besoin de
+#    converger : il passe DÉJÀ par ``pipeline.composer`` (QJR81) — carte des
+#    marques, ordre de lignes, phase électrique et, depuis QJR221, la gamme du
+#    devis. Il écrit ensuite par ``creer_ligne``. Verdict : CONFORME, aucun
+#    travail.
+#
+# 8. ``domain/resynchronisation.reconcilier`` (trois créations : panneau,
+#    batterie, onduleur manquant) — HORS PIPELINE **par conception**. C'est le
+#    mode ``MODE_RECONCILIER`` : il ajuste CHIRURGICALEMENT un devis existant
+#    (prix négociés, ordre, groupes préservés) là où l'écrivain de lignes
+#    SUPPRIME et RECRÉE. Le faire converger vers ``ecrire_lignes`` détruirait
+#    exactement ce qu'il protège (cf. la note QJR220 dans ``pipeline``).
+#
+# 9. ``domain/creation.apply_preset_to_devis`` (QJ16) — HORS PIPELINE. Un
+#    PRESET est un instantané de lignes que le commercial a délibérément
+#    enregistré : recomposer trahirait le geste. Il honore déjà le jeu de
+#    champs complet et saute les produits non tarifés en le DISANT.
+#
+# 10. ``public_views`` (devis automatique depuis le tunnel public) — HORS
+#    PIPELINE pour la CRÉATION DE LIGNES : la composition lui est fournie
+#    toute faite ; il ne fait qu'écrire, par ``creer_ligne``, avec l'ordre
+#    explicite (PVORD).
+#
+# 11. ``management/commands/reparer_devis_deux_options`` — HORS PIPELINE.
+#    Commande de RÉPARATION d'historique, exécutée à la main par le fondateur :
+#    elle recrée la ligne manquante d'un devis déjà vendu, elle ne compose pas.
+#
+# ── LES DEUX CONTOURNEMENTS DE LA GARDE AST, NOMMÉS ─────────────────────────
+#
+# A. ``LigneDevisViewSet`` → ``LigneDevisSerializer`` (``ModelSerializer``,
+#    ``fields = '__all__'``). Le sérialiseur DRF appelle ``Model.objects
+#    .create(**validated_data)`` DANS DRF, pas dans ce dépôt : la garde AST de
+#    ``test_qjr_ecrivain_lignes`` ne peut structurellement pas le voir.
+#    VERDICT : ADAPTATEUR LÉGITIME, et il est SÛR — précisément parce que
+#    ``fields = '__all__'`` : il porte le jeu de champs du MODÈLE, donc il ne
+#    peut pas en oublier un (c'est le risque que ``CHAMPS_LIGNE`` couvre pour
+#    les appelants Python). Le faire passer par ``creer_ligne`` reviendrait à
+#    réécrire un ``ModelSerializer`` à la main pour un gain nul.
+#
+# B. ``apps/cpq/services.py`` — cinq ``LigneDevis.objects.create`` (offre
+#    groupée NTCPQ3, avenant, règle CPQ résolue…). VERDICT : HORS PIPELINE et
+#    HORS GOULOT, écriture cross-app ASSUMÉE (le module le documente en tête).
+#    ``creer_ligne`` vit dans ``apps.ventes.domain`` : l'appeler depuis ``cpq``
+#    serait un import de domaine à domaine, que la règle de frontière interdit.
+#    RISQUE RÉEL, ÉCRIT plutôt que tu : ces cinq sites nomment leurs champs à
+#    la main et n'héritent donc PAS d'un champ ajouté demain à
+#    ``CHAMPS_LIGNE`` (``variante``, ``quantite_manuelle``…). La parade
+#    correcte est une fonction de ``ventes/services.py`` que ``cpq`` appellerait
+#    — c'est une TÂCHE À OUVRIR, pas un recâblage de ce lot.
 
 #: QJR84 — le jeu de champs COMPLET d'une ligne de devis. ``produit`` et
 #: ``produit_id`` sont les DEUX façons de rattacher le catalogue (la seconde
@@ -413,8 +468,16 @@ CHAMPS_LIGNE = (
 
 
 def creer_ligne(devis, **champs):
-    """QJR84 — crée UNE ``LigneDevis``. Le seul endroit de ``apps/ventes`` où
-    une ligne de devis naît.
+    """QJR84 — crée UNE ``LigneDevis``. LE GOULOT PYTHON de ``apps/ventes``.
+
+    QJR243 (g) — CETTE PHRASE DISAIT « le seul endroit où une ligne de devis
+    naît », ET C'ÉTAIT FAUX SUR DEUX POINTS, tous deux désormais recensés avec
+    leur verdict juste au-dessus (§ « LES DEUX CONTOURNEMENTS ») : le
+    sérialiseur DRF de ``LigneDevisViewSet`` crée ses lignes DANS DRF (sûr — il
+    porte le jeu de champs du MODÈLE), et ``apps/cpq/services`` en crée cinq
+    par une écriture cross-app assumée. Le goulot reste vrai pour tout ce qui
+    s'écrit EN PYTHON dans cette app — ce qui est déjà la garantie qui compte,
+    et ce que la garde AST vérifie.
 
     Les champs NON fournis gardent le défaut du MODÈLE : un appelant qui
     n'écrivait pas ``variante`` hier obtient exactement la ligne d'hier. Ce
