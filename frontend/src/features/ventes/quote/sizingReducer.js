@@ -248,10 +248,18 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       // 8. Facture : le résidentiel ATTEND le moteur serveur (U3-900, plus de
       //    repli « panneaux/900 MAD ») ; les autres marchés n'ont que le
       //    balayage local, résolu par l'appelant (`action.sizingLocal`).
+      //    QJR208 — la branche « balayage local » (indus/commercial/agricole)
+      //    reçoit la MÊME garde `!s.touche.nbPanneaux` que la transition
+      //    miroir PROFIL_SITE_APPLIQUE (:276) : sans elle, appliquer un lead
+      //    écrasait silencieusement un compte de panneaux DÉJÀ TAPÉ par le
+      //    vendeur sur ces trois marchés. Le cas résidentiel (attente moteur)
+      //    reste INCHANGÉ — ce n'est pas la branche visée par le défaut.
       if (nombre(lead.facture_hiver) > 0 && fromTaille <= 0) {
-        s = (modeCible === 'residentiel')
-          ? { ...s, sizingInfo: null, attenteMoteur: true, motifMoteur: null }
-          : appliquerSizingLocal(s, action.sizingLocal)
+        if (modeCible === 'residentiel') {
+          s = { ...s, sizingInfo: null, attenteMoteur: true, motifMoteur: null }
+        } else if (!s.touche.nbPanneaux) {
+          s = appliquerSizingLocal(s, action.sizingLocal)
+        }
       }
       return s
     }
