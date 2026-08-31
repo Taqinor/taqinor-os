@@ -1087,9 +1087,9 @@
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: appliquerPackage -> /api/django/adminops/config-packages/appliquer
-    custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+    custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
-    custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+    custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: backtest -> /api/django/adsengine/regles/<>/backtest
     label_fr:inconnu, proposals:inconnu, range:objet, reason:texte, summary:objet, supported:booleen, template_key:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: checklist -> /api/django/adsengine/creatifs/checklist
