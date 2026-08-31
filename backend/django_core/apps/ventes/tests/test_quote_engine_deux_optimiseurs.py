@@ -975,3 +975,110 @@ class TestNonDivergentInchangeAuBitPres(SimpleTestCase):
                           lambda s, a: ([], s, a)):
             ancien = "".join(options.build_pages(ctx))
         self.assertEqual(neuf, ancien)
+
+
+class TestQjr210ModeleDeclareParCarte(_DevisVariantesMixin, TestCase):
+    """QJR210 (contre-visite du 30/08/2026) — LA MOITIÉ *RENDU* DE QJR28.
+
+    QJR28 a bâti la moitié DONNÉES : sur un devis divergent, ``builder``
+    enregistre le modèle d'économies EFFECTIF de chaque colonne
+    (``savings_model_sans`` / ``savings_model_avec``) parce que la garde de
+    fraîcheur de ``pricing`` fait retomber sur le forfait la colonne dont la
+    puissance ne correspond plus au bloc horaire. Personne ne LISAIT ces clés :
+    la page 1 étiquetait les DEUX cartes avec le modèle du DOCUMENT, et la
+    ligne « Économies … / an » du comparatif de page 2 déclarait un mot unique
+    pour deux colonnes chiffrées par deux moteurs.
+
+    Rendu seulement : ``builder`` n'est pas touché (aucune donnée nouvelle —
+    ces quatre clés sont publiées depuis QJR28).
+
+    Classe volontairement NON taguée ``pdf`` : elle ne rend que du HTML (comme
+    ``TestPageUnQrProposition``), donc elle garde le comportement dans le
+    palier de CI courant plutôt que dans le seul palier release-verify.
+    """
+
+    #: le bloc horaire décrit l'option AVEC : 26 × 710 W = 18,46 kWc ; la
+    #: colonne SANS fait 22 × 710 W = 15,62 kWc — hors tolérance, donc chiffrée
+    #: par l'autre moteur.
+    KWC_AVEC = 18.46
+
+    def _data_divergent_horaire(self, reference):
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        return self._build(self._devis(
+            self.DIVERGENT, reference,
+            self._etude_params(etude_horaire=bloc_horaire(self.KWC_AVEC))))
+
+    def _cover(self, data):
+        from apps.ventes.quote_engine.residential import (
+            cover, render, renderer)
+        return cover.build(render.build_ctx(renderer._augment(data)))
+
+    def _page2(self, data):
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer)
+        ctx = render.build_ctx(renderer._augment(data))
+        return "".join(options.build_pages(ctx))
+
+    @staticmethod
+    def _libelles_cartes(html):
+        """Le libellé de chaque carte d'option, DANS L'ORDRE DU DOCUMENT
+        (Option 1 « Sans batterie », puis Option 2 « Avec batterie »)."""
+        return re.findall(r'<div class="c1-opt-eco">(.*?) ≈', html)
+
+    # ── page 1 : une carte, un modèle ───────────────────────────────────────
+    def test_chaque_carte_porte_le_modele_de_son_option(self):
+        data = self._data_divergent_horaire('DEV-QJR210-DIV')
+        # Préalable (déjà épinglé par QJR28) : les deux colonnes ONT été
+        # chiffrées par deux moteurs différents.
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertNotEqual(data['savings_model_sans'], 'horaire')
+
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(len(libelles), 2, libelles)
+        self.assertNotEqual(
+            libelles[0], libelles[1],
+            "les deux cartes portaient le modèle du DOCUMENT")
+        self.assertEqual(libelles, ['Économie estimée', 'Économie calculée'])
+
+    def test_un_devis_a_un_seul_moteur_garde_le_meme_mot_des_deux_cotes(self):
+        """Non-régression : quand les deux colonnes sont chiffrées par le même
+        moteur (tout l'existant), les deux cartes portent le même mot."""
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        # LEGACY = 14 × 710 W = 9,94 kWc, exactement la puissance du bloc.
+        data = self._build(self._devis(
+            self.LEGACY, 'DEV-QJR210-LEG',
+            self._etude_params(etude_horaire=bloc_horaire(9.94))))
+        self.assertEqual(data['savings_model_sans'],
+                         data['savings_model_avec'])
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(libelles, ['Économie calculée', 'Économie calculée'])
+
+    def test_sans_les_cles_l_etiquette_est_omise_jamais_devinee(self):
+        """Dict d'appelant antérieur à QJR28 : le modèle de chaque colonne est
+        inconnu — le mot disparaît, l'économie reste. Jamais le modèle du
+        document réattribué à une carte qui ne l'a peut-être pas."""
+        data = self._data_divergent_horaire('DEV-QJR210-NOKEY')
+        self.assertEqual(data['savings_model'], 'horaire')   # le document, lui
+        data.pop('savings_model_sans')
+        data.pop('savings_model_avec')
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(libelles, ['Économie', 'Économie'])
+
+    # ── page 2 : la ligne « Économies … / an » du comparatif ────────────────
+    def test_le_comparatif_n_impose_pas_un_mot_a_deux_moteurs(self):
+        data = self._data_divergent_horaire('DEV-QJR210-CMP')
+        html = self._page2(data)
+        self.assertIn('Économies / an', html)
+        self.assertNotIn('Économies estimées / an', html)
+        self.assertNotIn('Économies calculées / an', html)
+
+    def test_le_comparatif_garde_son_mot_quand_les_deux_colonnes_concordent(self):
+        """Le devis divergent SANS bloc horaire : un seul moteur pour les deux
+        colonnes ⇒ le libellé garde son qualificatif (rendu d'aujourd'hui).
+        Le mot attendu est LU dans les données, jamais recopié à la main."""
+        data = self._build(self._devis_divergent('DEV-QJR210-CMP2'))
+        self.assertEqual(data['savings_model_sans'],
+                         data['savings_model_avec'])
+        attendu = (' calculées' if data['savings_model_sans'] == 'horaire'
+                   else ' estimées')
+        self.assertIn(f'Économies{attendu} / an', self._page2(data))

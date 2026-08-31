@@ -1,0 +1,18 @@
+{
+  "forme_serveur": "non_applicable",
+  "pourquoi": "QJR231 (contre-visite du 30/08/2026, addition-walkthrough-11) — au moins SIX énumérations indépendantes des quatre marchés (résidentiel/industriel/commercial/agricole) coexistent dans le dépôt, sans aucune garde : réducteur, panneau de choix à l'écran, classifieur de création côté domaine, deux modèles Django (Devis et Lead), et le sélecteur de photos d'installation du moteur PDF. Un cinquième marché ajouté correctement dans certaines et oublié dans d'autres ne fait rougir aucun test. Ce fichier EST la liste blanche partagée ; `scripts/check_modes_marche.py` compare les six sites CONNUS à cette liste — jamais l'inverse, ce fichier ne devine rien, il est la référence déposée (PACT10).",
+  "modes": ["residentiel", "industriel", "commercial", "agricole"],
+  "notes": {
+    "ordre": "L'ordre ci-dessus (résidentiel d'abord) est celui de l'historique (QX43 : industriel et commercial ont été distingués en dernier). Chaque site est comparé comme un ENSEMBLE — l'ordre du site source n'a pas à correspondre à celui-ci.",
+    "sites": {
+      "reducteur": "`frontend/src/features/ventes/quote/sizingReducer.js` — `export const MODES = [...]` (tableau JS, comparé tel quel).",
+      "panneaux": "`frontend/src/pages/ventes/DevisGenerator.jsx` — `const MODE_OPTIONS = [...]` (le sélecteur de marché à l'écran) ; le champ `value` de chaque entrée est comparé, jamais `label` (les libellés FR/emoji ne sont pas des clés machine).",
+      "classifieurs": "`backend/django_core/apps/ventes/domain/creation.py` — `MODES_INSTALLATION = (...)` (tuple Python, validation de création de devis).",
+      "backend_devis": "`backend/django_core/apps/ventes/models.py` — `Devis.ModeInstallation` (Django `TextChoices` imbriquée dans `Devis`) ; la valeur (premier élément) de chaque membre est comparée, jamais son libellé.",
+      "backend_lead": "`backend/django_core/apps/crm/models.py` — `Lead.TypeInstallation` (Django `TextChoices` imbriquée dans `Lead`, le tunnel web) ; même règle valeur/libellé.",
+      "quote_engine_photos": "`backend/django_core/apps/ventes/quote_engine/installations.py` — `_MODES = (...)` (tuple Python, sélection des photos d'installation par marché dans le PDF)."
+    },
+    "hors_perimetre": "`apps/web` (site public — contrat et garde séparés, Groupe QJW, `docs/WEB_PLAN.md`, jamais construits ici — règle 4 du Groupe QJR2) et les énumérations à TROIS entrées qui fusionnent délibérément commercial dans industriel (`apps.installations.models_installation.Installation.TypeInstallation`, `apps.compta.models.ModeleDevis.Marche`, la classe `ModeleProjet.TypeInstallation` qui remplace COMMERCIAL par un AUTRE distinct) sont HORS PÉRIMÈTRE de cette garde — ce ne sont pas des divergences à corriger, ce sont des vocabulaires DIFFÉRENTS et documentés comme tels dans leur propre module. Le registre `quote_engine/builder.py::registre_renderers()` a lui aussi RETIRÉ délibérément 'agricole' de son propre dispatch (décision DV1/QJR236, agricole a son propre chemin de rendu) — il n'est donc pas un site de parité pour CETTE garde.",
+    "regeneration": "Aucune commande de régénération : cette liste est stable depuis QX43 (industriel/commercial distingués). Un cinquième marché ajouté à l'un des six sites SANS être ajouté ici fait rougir `scripts/check_modes_marche.py` — la première étape est alors une décision fondateur qui met à jour CE fichier, puis les six sites."
+  }
+}

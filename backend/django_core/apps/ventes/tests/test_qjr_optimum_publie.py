@@ -36,7 +36,10 @@ Lancer :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr_optimum_publie -v 2
 """
+import ast
+import inspect
 import itertools
+import textwrap
 import uuid
 from decimal import Decimal
 
@@ -51,6 +54,24 @@ from apps.ventes.models import Devis, LigneDevis, ShareLink
 User = get_user_model()
 
 _seq = itertools.count(1)
+
+
+def _corps_sans_docstring(fonction):
+    """La source d'une fonction PRIVÉE de sa docstring.
+
+    Une garde « telle chaîne n'apparaît plus » doit lire le CODE : une
+    docstring qui EXPLIQUE la règle remplacée la cite forcément.
+    """
+    source = textwrap.dedent(inspect.getsource(fonction))
+    noeud = ast.parse(source).body[0]
+    premier = noeud.body[0] if noeud.body else None
+    if not (isinstance(premier, ast.Expr)
+            and isinstance(premier.value, ast.Constant)
+            and isinstance(premier.value.value, str)):
+        return source
+    lignes = source.splitlines(keepends=True)
+    del lignes[premier.lineno - 1:premier.end_lineno]
+    return ''.join(lignes)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -187,8 +208,12 @@ class RegleDeConcordanceTests(SimpleTestCase):
                     attendu, nom)
 
     def test_la_regle_de_capacite_ignore_les_panneaux(self):
-        """``decrit_la_capacite`` est la moitié STOCKAGE : QJR14 s'en contente
-        pour le taux de remplissage, qui décrit le régime de la batterie."""
+        """``decrit_la_capacite`` est la moitié STOCKAGE de ``decrit``.
+
+        QJR233 — ce n'est PLUS une règle de publication à elle seule : aucun
+        consommateur ne s'en contente. Elle reste testée comme COMPOSANT, et
+        cette divergence est précisément le trou que QJR233 a refermé (20
+        panneaux vendus contre 14, même capacité)."""
         optimum = D.config_du_bloc({'panneaux': 20, 'batterie_kwh': 5.0})
         vendue = D.ConfigInstallation(panneaux=14, batterie_kwh=5.0)
         self.assertTrue(D.decrit_la_capacite(optimum, vendue))
@@ -402,6 +427,37 @@ class ChargeUtilePubliqueTests(_DevisBase):
         payload = self._payload(self._devis(_dim(panneaux=20)))
         self.assertNotIn('residuel_kwh_mois',
                          payload.get('tranche_tarifaire') or {})
+
+    def test_qjr233_une_autre_taille_retire_AUSSI_le_remplissage(self):
+        """QJR233 — TEST ROUGE D'ABORD.
+
+        La garde de remplissage ne contrôlait que la CAPACITÉ batterie, alors
+        que le taux publié est une grandeur PAR NOMBRE DE PANNEAUX : un devis
+        dont l'optimum diverge en panneaux (20) mais PAS en capacité publiait
+        donc un pourcentage calculé sur un autre champ PV — plus laxiste que la
+        garde du PDF sur le même concept.
+        """
+        payload = self._payload(self._devis(_dim(panneaux=20)))
+        self.assertNotIn('remplissage_moyen_pct',
+                         payload.get('batterie_regime') or {})
+
+    def test_qjr233_la_garde_publique_est_celle_du_pdf(self):
+        """Une seule formulation, IMPORTÉE : ``dimensionnement.decrit``.
+
+        La garde porte sur le CODE : la docstring de la fonction RACONTE la
+        règle laxiste remplacée (``dimensionnement.decrit_la_capacite``) et la
+        citerait donc à jamais. Le retrait passe par l'AST plutôt que par
+        ``source.replace(__doc__)`` — depuis Python 3.13 ``__doc__`` est
+        désindenté et n'est plus un sous-texte de la source.
+        """
+        from apps.ventes import public_views
+
+        corps = _corps_sans_docstring(
+            public_views._remplissage_batterie_publiable)
+        self.assertIn('module.decrit(', corps)
+        self.assertNotIn('decrit_la_capacite', corps)
+        # Et la variante « capacité seule » n'a plus de lecture nommée ici.
+        self.assertFalse(hasattr(public_views, '_meme_capacite_batterie'))
 
     def test_un_devis_sans_batterie_ne_recoit_aucun_des_deux(self):
         payload = self._payload(self._devis_sans_batterie(_dim()))

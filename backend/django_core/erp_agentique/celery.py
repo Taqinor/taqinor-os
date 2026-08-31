@@ -689,6 +689,12 @@ app.conf.beat_schedule = {
         'task': 'migration.purger_fichiers_migration',
         'schedule': crontab(hour=2, minute=50),
     },
+    # NTMIG30 — alerte quotidienne J-60 avant expiration d'une certification
+    # partenaire (crm.Partenaire), 07:35.
+    'migration-alerter-certifications-expirantes': {
+        'task': 'migration.alerter_certifications_expirantes',
+        'schedule': crontab(hour=7, minute=35),
+    },
     # NTADM11 — purge quotidienne des sandbox expirés (soft puis hard après
     # délai de grâce), 03:05.
     'adminops-purger-sandbox-expires': {

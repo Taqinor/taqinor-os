@@ -85,6 +85,52 @@ def seeder_playbook(company, *, cle_graine, titre, categorie, corps,
     return article, True
 
 
+def appliquer_playbook_config(company, data):
+    """NTMIG24 — (ré)écrit UN playbook depuis un snapshot ``ConfigPackage``.
+
+    Point d'entrée d'ÉCRITURE pour ``apps.adminops`` (qui possède le moteur
+    ConfigPackage, NTADM13/14) : jamais un ``KbArticle.objects.create()``
+    depuis là-bas. Identité de correspondance = ``cle`` (le tag de graine, ou
+    l'identifiant dérivé du titre pour un playbook non seedé) — un import
+    répété sur le MÊME tenant met à jour l'existant au lieu de le dupliquer.
+
+    Contrairement à :func:`seeder_playbook` (qui protège un playbook déjà
+    personnalisé), un ``ConfigPackage`` réapplique TOUJOURS le contenu
+    importé — même comportement que les autres catégories du package
+    (rôles/champs custom/gabarits de message). Renvoie ``(article, cree)``.
+    """
+    cle = (data.get('cle') or '').strip()
+    tags = data.get('tags') or cle
+    titre = data.get('titre') or 'Playbook importé'
+    defaults = {
+        'titre': titre,
+        'categorie': data.get('categorie', ''),
+        'tags': tags,
+        'corps': data.get('corps', ''),
+        'type_article': KbArticle.TypeArticle.PLAYBOOK,
+        'contenu_structure': data.get('contenu_structure') or [],
+        'statut': KbArticle.Statut.PUBLIE,
+    }
+    existant = None
+    if tags:
+        existant = (KbArticle.objects
+                    .filter(company=company, tags=tags,
+                            type_article=KbArticle.TypeArticle.PLAYBOOK)
+                    .first())
+    if existant is None and cle.startswith('titre:'):
+        existant = (KbArticle.objects
+                    .filter(company=company, titre=titre,
+                            type_article=KbArticle.TypeArticle.PLAYBOOK)
+                    .first())
+    if existant is not None:
+        for field, value in defaults.items():
+            setattr(existant, field, value)
+        existant.save(update_fields=list(defaults.keys()))
+        return existant, False
+    article = KbArticle.objects.create(company=company, **defaults)
+    return article, True
+
+
 def snapshot_article(article, *, auteur=None):
     """Fige titre + contenu de l'article dans une nouvelle ligne de version.
 

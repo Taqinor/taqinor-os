@@ -54,8 +54,18 @@ ENTREE = 'entree'
 DERIVEE = 'derivee'
 
 
-def _cle(type_attendu, proprietaire, nature, note='', moteur=False):
+def _cle(type_attendu, proprietaire, nature, note='', moteur=False,
+         exclusif=False):
     """Une règle de clé. ``moteur=True`` la déclare ENTRÉE DU MOTEUR.
+
+    QJR222 (31/08/2026) — ``exclusif=True`` DÉCLARE UNE ENTRÉE RÉSERVÉE À SON
+    PROPRIÉTAIRE. Le contrôle de propriété ne portait que sur les clés
+    DÉRIVÉES ; une ENTRÉE dont le propriétaire est une ÉTAPE (et non le
+    commercial) passait donc par ``PATCH /devis/<id>/etude-params/`` depuis le
+    navigateur. Une ENTRÉE reste écrivable par n'importe quelle étape par
+    DÉFAUT — c'est un choix du commercial, il peut arriver de plusieurs écrans
+    — sauf quand elle est déclarée exclusive ici, NOMMÉMENT et avec sa raison.
+    Une exclusion s'écrit, jamais par omission.
 
     QJR66 / passe Fable pré-merge (29/08/2026) — POURQUOI CE QUATRIÈME
     ATTRIBUT. Depuis que l'écran écrit ``etude_params`` par l'endpoint de
@@ -71,7 +81,8 @@ def _cle(type_attendu, proprietaire, nature, note='', moteur=False):
     demain se déclare ici, une seule fois.
     """
     return {'type': type_attendu, 'proprietaire': proprietaire,
-            'nature': nature, 'note': note, 'moteur': bool(moteur)}
+            'nature': nature, 'note': note, 'moteur': bool(moteur),
+            'exclusif': bool(exclusif)}
 
 
 #: LE SCHÉMA des clés de TÊTE d'``etude_params``, relevé par scan de l'arbre
@@ -127,10 +138,17 @@ SCHEMA = {
     # c'est la comparaison de ces valeurs-là avec le lead COURANT
     # (``crm.selectors.lead_values_changed_since``) qui allume la bannière
     # « valeurs du lead modifiées depuis » sur l'écran générateur.
+    # QJR222 — EXCLUSIVE. C'est l'ESTAMPILLE du pipeline, pas une saisie : sa
+    # forme interne (``source_lead_id`` / ``captured_at`` / ``valeurs``) est
+    # lue telle quelle par ``crm.selectors.lead_values_changed_since``, et une
+    # forme malformée levait ENSUITE, à l'intérieur du bloc atomique du
+    # pipeline — cassant durablement TOUT enregistrement de ligne sur ce devis
+    # (déni de service auto-infligé, réversible mais silencieux à la pose).
+    # Un navigateur ne peut donc plus l'écrire : refus 400 FR NOMMANT la clé.
     'provenance': _cle((dict,), PIPELINE, ENTREE,
                        'DC11 — d’où viennent les valeurs énergie/toiture du '
                        'devis. Jamais une entrée du moteur : rien ne se '
-                       'calcule à partir d’elle.'),
+                       'calcule à partir d’elle.', exclusif=True),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
@@ -292,7 +310,7 @@ def valider(etude_params):
 
 
 def cles_refusees_pour(proprietaire, cles):
-    """Les clés DÉRIVÉES que ``proprietaire`` n'a pas le droit d'écrire.
+    """Les clés RÉSERVÉES que ``proprietaire`` n'a pas le droit d'écrire.
 
     Une clé d'ENTRÉE est écrivable par n'importe quelle étape (c'est un choix
     du commercial, il peut arriver de plusieurs écrans). Une clé DÉRIVÉE
@@ -300,13 +318,24 @@ def cles_refusees_pour(proprietaire, cles):
     c'est exactement le mécanisme par lequel un chiffre du moteur se faisait
     remplacer par un chiffre d'écran.
 
-    ``proprietaire=None`` (aucune étape déclarée) ⇒ AUCUNE clé dérivée n'est
-    admise : un écrivain anonyme ne pose que des entrées.
+    QJR222 — LE CONTRÔLE COUVRE AUSSI LES ENTRÉES DÉCLARÉES EXCLUSIVES
+    (``_cle(..., exclusif=True)``). Il ne portait que sur la NATURE, si bien
+    qu'une entrée appartenant à une ÉTAPE — ``provenance``, l'estampille de
+    dérive DC11 posée par le pipeline — était écrivable depuis le navigateur.
+    L'extension est NOMMÉE clé par clé (et non appliquée à tout propriétaire
+    déclaré) parce que le calepinage écrit LÉGITIMEMENT des entrées dont le
+    propriétaire est l'écran (``scenario``, ``toiture``…) : un contrôle
+    aveugle les refuserait et casserait la resynchro.
+
+    ``proprietaire=None`` (aucune étape déclarée) ⇒ AUCUNE clé réservée n'est
+    admise : un écrivain anonyme ne pose que des entrées ordinaires.
     """
     refusees = []
     for cle in cles:
         regle = SCHEMA.get(cle)
-        if regle is None or regle['nature'] != DERIVEE:
+        if regle is None:
+            continue
+        if regle['nature'] != DERIVEE and not regle.get('exclusif'):
             continue
         if regle['proprietaire'] != proprietaire:
             refusees.append(cle)
@@ -330,7 +359,7 @@ def fusionner(bloc, *, proprietaire=None, **cles):
     refusees = cles_refusees_pour(proprietaire, cles)
     if refusees:
         raise ValueError(
-            'Clé(s) dérivée(s) %s : seule l\'étape qui les CALCULE peut les '
+            'Clé(s) réservée(s) %s : seule l\'étape PROPRIÉTAIRE peut les '
             'écrire (propriétaire déclaré : %s).'
             % (', '.join(sorted(refusees)), proprietaire or 'aucun'))
     reproches = valider(cles)

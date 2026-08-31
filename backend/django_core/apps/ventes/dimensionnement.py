@@ -452,10 +452,15 @@ def optima_publiables(dimensionnement):
 def decrit_la_capacite(config_optimum, config_vendue):
     """Les DEUX configurations parlent-elles de la MÊME capacité batterie ?
 
-    La moitié « stockage » de la règle. Publier séparément est délibéré : un
-    chiffre qui décrit le RÉGIME de la batterie (son taux de remplissage) est
-    vrai dès que la capacité est la bonne — c'est la décision QJR14, et la
-    resserrer changerait un comportement que ses tests épinglent.
+    La moitié « stockage » de :func:`decrit` — un COMPOSANT, plus une règle de
+    publication à elle seule.
+
+    QJR233 (31/08/2026) — ELLE N'EST PLUS UNE RÈGLE DE PUBLICATION. Le taux de
+    remplissage batterie de la charge utile publique s'en contentait (décision
+    QJR14) alors que ce taux est une grandeur PAR NOMBRE DE PANNEAUX : une page
+    client pouvait publier un pourcentage calculé sur un champ PV différent de
+    celui qui est vendu, et la garde du PDF sur le MÊME concept était déjà plus
+    stricte. Tous les consommateurs passent désormais par :func:`decrit`.
 
     ``False`` dès qu'un côté est illisible, notamment quand le devis ne vend
     AUCUNE batterie : il n'y a rien à décrire, donc rien à publier.
@@ -551,10 +556,12 @@ def publier_si_decrit(optimum, devis, regle=None):
     « zéro chiffre inventé »).
 
     ``regle`` est la règle d'identité à appliquer — :func:`decrit` par défaut
-    (panneaux ET capacité). Le seul appelant qui en passe une autre est le
-    taux de remplissage batterie, qui décrit le RÉGIME du stockage et se
-    contente de :func:`decrit_la_capacite` (décision QJR14). La règle est un
-    ARGUMENT NOMMÉ et non un mode caché : le choix se lit sur le site d'appel.
+    (panneaux ET capacité). QJR233 : PLUS AUCUN appelant n'en passe une autre.
+    Le taux de remplissage batterie, seul à s'être contenté de
+    :func:`decrit_la_capacite` (décision QJR14), est aligné sur la règle
+    complète — il décrit un régime PAR NOMBRE DE PANNEAUX. Le paramètre reste
+    un ARGUMENT NOMMÉ et non un mode caché : si une règle plus souple devait
+    revenir un jour, le choix se lirait sur le site d'appel.
     """
     if not isinstance(optimum, Optimum) or optimum.valeur is None:
         return None

@@ -67,14 +67,17 @@ test('QJR36 — la bannière est rendue avec le texte EXACT et un data-testid st
     'le texte exact de la bannière fondateur doit être rendu verbatim')
 })
 
-test('QJR36 — les autres marchés (agricole/industriel/commercial), qui n\'appellent jamais le dry-run serveur, ne posent PAS compositionSourceLocale', () => {
+test('QJR36 — les autres marchés (industriel/commercial), qui n\'appellent jamais le dry-run serveur, ne POSENT jamais de raison — au plus ils EFFACENT (QJR211)', () => {
   // Le composeLocalement() de fin de fonction (branche non-résidentielle,
-  // comportement local historique) ne doit avoir aucune pose de l'état juste
-  // avant lui — seul le catch du dry-run résidentiel le fait.
-  const m = DG.match(/composeLocalement\(\)\r?\n\s*\}/g)
-  assert.ok(m && m.length >= 1, "l'appel de clôture de handleAutoFill (branches non-résidentielles) est introuvable")
-  const idx = DG.lastIndexOf(m[m.length - 1])
+  // comportement local historique) ne doit JAMAIS écrire une raison de repli
+  // (il n'a pas de dry-run à raconter) — seul le catch du dry-run résidentiel
+  // le fait. QJR211 l'a fait passer de « aucune mention de l'état » à
+  // « efface la bannière sur un succès » (une bannière de repli résidentiel
+  // antérieure ne doit pas survivre à un marché qui a composé avec succès) :
+  // ce test vérifie l'invariant qui SURVIT à QJR211, pas le texte exact.
+  const idx = DG.lastIndexOf('if (composeLocalement()) setCompositionSourceLocale(null)')
+  assert.ok(idx > -1, "l'appel de clôture de handleAutoFill (branches non-résidentielles) est introuvable")
   const bloc = DG.slice(Math.max(0, idx - 120), idx)
-  assert.doesNotMatch(bloc, /setCompositionSourceLocale/,
-    'les marchés sans dry-run serveur ne doivent jamais poser cette bannière')
+  assert.doesNotMatch(bloc, /setCompositionSourceLocale\(raisonRepli/,
+    'les marchés sans dry-run serveur ne doivent jamais ÉCRIRE une raison de repli (ils peuvent seulement effacer, QJR211)')
 })

@@ -43,7 +43,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.domain.argent import Vue, totaux
 from apps.ventes.models import Devis, LigneDevis
 
 User = get_user_model()
@@ -119,13 +118,27 @@ class _BaseEcran(TestCase):
             for li in devis.lignes.order_by('ordre', 'id')
         ]
 
+    # QJR242 — ``Vue.BRUT`` et ``Vue.PAR_OPTION`` ont été SUPPRIMÉES de la
+    # façade (aucun appelant de production, et ``PAR_OPTION`` jetait l'option
+    # nommée dès qu'on lui fournissait des lignes). Les deux relevés golden
+    # ci-dessous passent donc par les chemins VIVANTS, qui rendent EXACTEMENT
+    # les mêmes nombres sur ces fixtures — aucune valeur d'assertion ne bouge.
     def _brut(self, devis):
-        vue = totaux(devis, vue=Vue.BRUT)
-        return (vue.ht_brut, vue.tva, vue.ttc)
+        """La somme de TOUTES les lignes, remise globale ignorée."""
+        from apps.ventes.utils.options import _totaux_canoniques
+
+        lignes = list(devis.lignes.select_related('produit').all())
+        vue = _totaux_canoniques(devis, lignes)
+        return (vue['ht_brut'], vue['tva'], vue['ttc'])
 
     def _par_option(self, devis, option):
-        vue = totaux(devis, vue=Vue.PAR_OPTION, option=option)
-        return (vue.ht_brut, vue.remise, vue.ht_net, vue.tva, vue.ttc)
+        """Les totaux d'une option NOMMÉE — ``utils.options.option_totaux``,
+        la chaîne que le document lui-même emprunte."""
+        from apps.ventes.utils.options import option_totaux
+
+        vue = option_totaux(devis, option)
+        return (vue['ht_brut'], vue['remise'], vue['ht'],
+                vue['tva'], vue['ttc'])
 
 
 class GoldenMonoOption(_BaseEcran):

@@ -136,7 +136,29 @@ def recommended_option_effective(devis, auto):
     return valeur
 
 
-def puissance_kwc_du_devis(devis):
+def ligne_panneau_dominante(lignes):
+    """La ligne PANNEAU qui porte le plus grand nombre de panneaux, ou ``None``.
+
+    QJR217 — c'est l'argument que :func:`domain.overrides.preseance_nb_panneaux`
+    attend : la ligne sur laquelle un ``quantite_manuelle`` du vendeur peut
+    contredire la surcharge de NIVEAU DEVIS. Le critère de dominance est celui
+    que ``domain/resynchronisation`` applique déjà (le plus grand compte), et le
+    prédicat panneau est le lecteur unique ``solar_design.is_panel`` — jamais
+    une seconde définition.
+    """
+    from apps.ventes import solar_design as _sd
+
+    panneaux = [
+        li for li in lignes
+        if _sd.is_panel(getattr(li, 'designation', '') or '',
+                        getattr(getattr(li, 'produit', None), 'nom', '') or '')]
+    if not panneaux:
+        return None
+    return max(panneaux,
+               key=lambda li: float(getattr(li, 'quantite', 0) or 0))
+
+
+def puissance_kwc_du_devis(devis, *, avertissements=None):
     """QJR63 — LE kWc D'UN DEVIS. Une règle, un propriétaire, deux sources.
 
     CE QUI ÉTAIT FAUX. ``etude_params['puissance_kwc']`` avait QUATRE
@@ -163,9 +185,24 @@ def puissance_kwc_du_devis(devis):
     calepinage 3D n'est PAS une source ici — il modélise à 720 W constants,
     ce n'est pas le panneau vendu.
 
+    QJR217 — LA RÈGLE DE PRÉSÉANCE R4-A S'APPLIQUE ICI, ET ELLE LE DIT.
+    ``domain.overrides.preseance_nb_panneaux`` écrivait la règle en trois
+    phrases et n'avait AUCUN appelant de production : quand une ligne panneau
+    VERROUILLÉE (``quantite_manuelle``) contredisait ``taille.nb_panneaux``, ce
+    lecteur suivait silencieusement le niveau DEVIS pendant que le moteur PDF
+    (``quote_engine.builder``, qui ne lit que ``taille.kwc``) suivait les
+    LIGNES — deux consommateurs de kWc qui divergeaient sans que personne ne
+    le sache. Désormais : le verrou de ligne gagne pour la quantité de CETTE
+    ligne (phrase 1), le chemin de niveau devis reste LU tel quel par
+    ``decider_taille`` (phrase 2 — cette étape ne passe pas ici), et un
+    désaccord émet l'avertissement FR qui NOMME la ligne (phrase 3) dans
+    ``avertissements`` quand une liste est fournie.
+
     LECTURE PURE (règle #4).
     """
-    from apps.ventes.domain.overrides import effectif
+    from apps.ventes.domain.overrides import (
+        SOURCE_DEVIS, effectif, preseance_nb_panneaux,
+    )
     from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
 
     lignes = [li for li in devis.lignes.select_related(
@@ -182,10 +219,17 @@ def puissance_kwc_du_devis(devis):
             return round(float(kwc_surcharge), 2)
         except (TypeError, ValueError):
             pass
-    nb_surcharge, source_nb = effectif(devis, 'taille.nb_panneaux', None)
-    if source_nb != 'auto' and nb_surcharge and watt_lu:
+    verdict = preseance_nb_panneaux(
+        devis, ligne_panneau_dominante(lignes),
+        avertissements=avertissements)
+    # Seule la préséance de NIVEAU DEVIS déplace le kWc : quand la ligne est
+    # verrouillée (R4-A phrase 1), le kWc décrit ce qui est RÉELLEMENT vendu,
+    # c'est-à-dire les lignes — et l'avertissement vient d'être émis.
+    if (verdict.source_ligne == SOURCE_DEVIS
+            and verdict.cible_dimensionnement and watt_lu):
         try:
-            return round(int(nb_surcharge) * float(watt_lu) / 1000, 2)
+            return round(
+                int(verdict.cible_dimensionnement) * float(watt_lu) / 1000, 2)
         except (TypeError, ValueError):
             pass
     return auto

@@ -44,6 +44,9 @@ vi.mock('../../api/ventesApi', () => ({
     // en résidentiel/édition) interroge ce endpoint au montage (best-effort,
     // même patron PVMRQ ci-dessus) ; sans mock l'effet lève sur `undefined(...)`.
     getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    // QJR214/215 — le panneau Surcharges charge le registre au montage en
+    // édition (même patron PVMRQ) ; sans mock l'effet lève sur `undefined(...)`.
+    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(),
     patchDevis: vi.fn(),
     replaceLignesDevis: vi.fn(),

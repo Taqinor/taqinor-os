@@ -2,6 +2,7 @@
 # propre. N79 introduit SavedReport ; FG96 ajoute DashboardConfig (config de
 # tableau de bord par utilisateur / palier de rôle).
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -26,6 +27,9 @@ class SavedReport(models.Model):
         NONE = 'none', 'Aucune'
         DAILY = 'daily', 'Quotidien'
         WEEKLY = 'weekly', 'Hebdomadaire'
+        # NTDATA38 — cadence mensuelle : part le `jour_du_mois` configuré,
+        # à `heure_envoi` si elle est posée.
+        MONTHLY = 'monthly', 'Mensuel'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -40,9 +44,40 @@ class SavedReport(models.Model):
         max_length=20, choices=TargetKind.choices, default=TargetKind.SALES)
     schedule = models.CharField(
         max_length=10, choices=Schedule.choices, default=Schedule.NONE)
+    # NTDATA38 — fenêtre d'envoi. `heure_envoi` NULL = comportement HISTORIQUE
+    # (« à l'heure où le planificateur passe ») : les rapports existants ne
+    # changent pas d'un iota. Renseignée (0-23, heure de Casablanca), elle
+    # borne l'envoi à cette heure-là.
+    heure_envoi = models.PositiveSmallIntegerField(
+        'Heure d\'envoi', null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text='Heure locale (0-23) à laquelle envoyer. Vide = à l\'heure '
+                  'de passage du planificateur (comportement historique).')
+    # Jour du mois pour la cadence mensuelle. Borné à 28 pour qu'un rapport
+    # mensuel tombe TOUS les mois (février compris) — jamais de mois sauté.
+    jour_du_mois = models.PositiveSmallIntegerField(
+        'Jour du mois', default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text='Jour d\'envoi de la cadence mensuelle (1-28).')
+    # NTDATA39 — canal de diffusion. `email` = comportement historique (pièce
+    # jointe .xlsx). `whatsapp` envoie un LIEN tokenisé (jamais la pièce
+    # jointe) et reste un NO-OP total tant que le canal BSP n'est pas armé.
+    CANAL_EMAIL = 'email'
+    CANAL_WHATSAPP = 'whatsapp'
+    CANAL_CHOICES = [
+        (CANAL_EMAIL, 'Email'),
+        (CANAL_WHATSAPP, 'WhatsApp'),
+    ]
+    canal = models.CharField(
+        'Canal', max_length=10, choices=CANAL_CHOICES, default=CANAL_EMAIL)
     # Destinataires : une ou plusieurs adresses (séparées par virgule/point-virgule
     # ou retour à la ligne). Vide → aucun envoi (NO-OP).
     recipients = models.TextField(blank=True, default='')
+    # Numéros WhatsApp du canal `whatsapp` (même séparateurs que `recipients`).
+    # Séparés des emails : un numéro n'est pas une adresse, les mélanger dans
+    # un seul champ enverrait n'importe quoi à n'importe qui.
+    destinataires_whatsapp = models.TextField(
+        'Numéros WhatsApp', blank=True, default='')
     # Dernier envoi réussi (anti-doublon léger / traçabilité). NULL = jamais.
     last_sent_at = models.DateTimeField(null=True, blank=True)
     # FG91 — épingle le rapport comme carte sur le tableau de bord. ADDITIF,
@@ -62,15 +97,82 @@ class SavedReport(models.Model):
     def __str__(self):
         return f'{self.name} ({self.get_target_kind_display()})'
 
+    @staticmethod
+    def _split_destinataires(raw):
+        parts = []
+        for chunk in (raw or '').replace(';', ',').replace('\n', ',').split(','):
+            valeur = chunk.strip()
+            if valeur:
+                parts.append(valeur)
+        return parts
+
     def recipient_list(self):
         """Adresses email destinataires, nettoyées. Liste vide si aucune."""
-        raw = self.recipients or ''
-        parts = []
-        for chunk in raw.replace(';', ',').replace('\n', ',').split(','):
-            addr = chunk.strip()
-            if addr:
-                parts.append(addr)
-        return parts
+        return self._split_destinataires(self.recipients)
+
+    def whatsapp_list(self):
+        """NTDATA39 — numéros WhatsApp destinataires. Liste vide si aucun."""
+        return self._split_destinataires(self.destinataires_whatsapp)
+
+
+class EnvoiRapport(TenantModel):
+    """NTDATA40 — journal de diffusion d'un rapport sauvegardé.
+
+    UNE ligne par TENTATIVE d'envoi (email ou WhatsApp), réussie OU NON : sans
+    ce journal, un rapport qui ne part plus est invisible — le destinataire ne
+    sait pas qu'il n'a rien reçu, et l'admin n'a aucun motif à lire. Chaque
+    échec porte donc son MOTIF en clair.
+
+    Multi-tenant par le socle ``core.TenantModel`` (ARC1/SCA4) : `company` est
+    posée CÔTÉ SERVEUR depuis le rapport source, jamais lue d'un corps de
+    requête. Elle est REDÉCLARÉE ici pour rester NULLABLE comme celle de
+    ``SavedReport`` — un rapport sans société doit quand même laisser une trace
+    d'échec, sinon le seul cas où le journal compte est celui où il manque.
+    Lecture seule côté API (un journal se consulte, il ne se corrige pas)."""
+
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+
+    class Statut(models.TextChoices):
+        ENVOYE = 'envoye', 'Envoyé'
+        ECHEC = 'echec', 'Échec'
+        NON_CONFIGURE = 'non_configure', 'Canal non configuré'
+        SANS_DESTINATAIRE = 'sans_destinataire', 'Aucun destinataire'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        null=True, blank=True, related_name='envois_rapports',
+        verbose_name='Société')
+    saved_report = models.ForeignKey(
+        SavedReport, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='envois', verbose_name='Rapport')
+    canal = models.CharField(
+        'Canal', max_length=10, choices=Canal.choices, default=Canal.EMAIL)
+    destinataires = models.TextField(
+        'Destinataires', blank=True, default='',
+        help_text='Adresses/numéros visés par cette tentative.')
+    statut = models.CharField(
+        'Statut', max_length=20, choices=Statut.choices,
+        default=Statut.ENVOYE)
+    erreur = models.TextField(
+        'Motif', blank=True, default='',
+        help_text="Motif lisible quand l'envoi n'a pas abouti.")
+    envoye_le = models.DateTimeField('Horodatage', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Envoi de rapport'
+        verbose_name_plural = 'Envois de rapport'
+        ordering = ['-envoye_le', '-id']
+        indexes = [
+            models.Index(fields=['company', 'saved_report'],
+                         name='reporting_envoi_co_rap_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='reporting_envoi_co_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.saved_report_id} · {self.canal} · {self.statut}'
 
 
 # ── FG96 — Config tableau de bord par utilisateur / palier de rôle ───────────

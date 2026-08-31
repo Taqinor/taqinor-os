@@ -172,7 +172,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // signalement, centre de pièces jointes, recette IEC, panneaux scan montés…).
 // Mesuré 3479,3 Ko en CI une fois la queue crédit foldée — aucune nouvelle
 // dépendance npm, tout en lazy par onglet ; palier serré (~21 Ko).
-const TOTAL_BUDGET_KB = 3500
+// 2026-08-31 — 3500 -> 3520. Drain QJR2+NT (62 tâches, 5 écrans/panneaux neufs :
+// conflits de synchro, annuaire partenaires certifiés, playbook kb interactif,
+// panneau Surcharges du générateur, CarteFacturesElectriques partagée).
+// Mesuré 3501,7 Ko en CI — aucune nouvelle dépendance npm, tout en lazy ;
+// palier serré (~18 Ko), même convention que les deux paliers précédents.
+const TOTAL_BUDGET_KB = 3520
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

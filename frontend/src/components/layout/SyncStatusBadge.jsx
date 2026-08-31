@@ -21,6 +21,7 @@
 // événements `online`/`offline` du navigateur et après chaque flush (le hook
 // partagé s'en charge).
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useFieldOutbox } from '../../features/installations/offline/useFieldOutbox'
 import { Popover, PopoverTrigger, PopoverContent } from '../../ui/Popover'
 import { syncState } from './syncState'
@@ -91,6 +92,16 @@ export default function SyncStatusBadge() {
         >
           {flushing ? 'Synchronisation…' : 'Synchroniser maintenant'}
         </button>
+        {/* NTMOB2 — l'écran des conflits est atteignable depuis CE badge
+            (route contextuelle, aucune entrée de menu permanente). */}
+        <Link
+          to="/synchro/conflits"
+          className="mt-2 block text-center text-xs underline decoration-dotted underline-offset-2"
+          data-testid="sync-status-conflicts-link"
+          onClick={() => setOpen(false)}
+        >
+          Conflits de synchronisation
+        </Link>
       </PopoverContent>
     </Popover>
   )

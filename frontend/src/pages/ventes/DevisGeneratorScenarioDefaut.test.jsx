@@ -40,6 +40,9 @@ vi.mock('../../api/ventesApi', () => ({
     // devis serveur) interroge ce endpoint au montage (best-effort) ; sans
     // mock l'effet lève sur `undefined(...)`.
     getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    // QJR214/215 — le panneau Surcharges charge le registre au montage en
+    // édition ; sans mock l'effet lève sur `undefined(...)` et la page meurt.
+    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 

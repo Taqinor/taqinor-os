@@ -215,26 +215,13 @@ export function estimerMois(hiver, ete) {
   return interpolerFactures(hiver, ete).map(v => Math.round(v))
 }
 
-// 8 panneaux par tranche de 900 MAD de facture hiver — LA RÈGLE DES 900 DH,
-// SUPPRIMÉE COMME SOURCE DE DIMENSIONNEMENT (ordre fondateur du 29/08/2026 :
-// « ALL sizing should go through the new sizing tool »). Le backend
-// (`apps.ventes.dimensionnement` / `services._panneaux_dimensionnement_horaire`)
-// ne l'appelle plus, et ni `DevisGenerator.jsx` ni `autoQuote.js` ne l'appellent
-// plus non plus (U3-900) : le dernier repli client-facing dimensionnait
-// silencieusement une taille sur ce ratio quand la facture était sous le seuil
-// du balayage local — remplacé par une attente/refus du moteur horaire
-// SERVEUR, qui NOMME la donnée manquante plutôt que de deviner. Cette fonction
-// n'a donc plus AUCUN consommateur de production : conservée seulement pour
-// ses tests historiques (`solar.test.mjs`) et pour ne pas casser un
-// paramétrage explicite en nombre de panneaux qui l'appellerait directement
-// depuis ailleurs (grep vérifié 29/08/2026 : aucun). NE PLUS L'UTILISER pour
-// dimensionner quoi que ce soit — le réglage qui l'alimentait
-// (`panneaux_par_900mad`, apps/parametres/models_company.py) a lui-même été
-// supprimé le même jour (plus aucun lecteur, plus aucun effet).
-export function estimerPanneaux(factureHiver, perTranche = 8) {
-  const n = Number(perTranche)
-  return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
-}
+// QJR238 (30/08/2026) — `estimerPanneaux` (règle des 900 MAD, retirée comme
+// source de dimensionnement par l'ordre fondateur du 29/08/2026) a été
+// SUPPRIMÉE : elle n'avait plus aucun consommateur de production (grep
+// vérifié) et ses seuls tests étaient des épinglages des nombres que le
+// fondateur a explicitement retirés. `KWC_STEP`/`MAD_PAR_PALIER` ci-dessous
+// SONT CONSERVÉS : ils alimentent toujours la doctrine de paliers réelle
+// (`estimerKwcDepuisFacture`/`optimalKwcByPayback`).
 
 // ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum sous
 //    HORIZON FIXE 25/08) ────────────────────────────────────────────────────

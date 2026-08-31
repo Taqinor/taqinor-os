@@ -1049,9 +1049,27 @@ class ScheduledExport(TimestampedModel):
 
     DEST_SFTP = 'sftp'
     DEST_S3 = 's3'
+    # NTDATA27 — entrepôt analytique interne : MinIO est DÉJÀ provisionné par
+    # le compose du repo, donc cette destination fonctionne sans aucun
+    # credential externe (c'est le défaut d'un nouvel extrait).
+    DEST_MINIO = 'minio'
+    # NTDATA29 — entrepôt externe Snowflake (GATED fondateur) : présent dans le
+    # catalogue mais DÉSARMÉ tant que les variables SNOWFLAKE_* sont absentes.
+    DEST_SNOWFLAKE = 'snowflake'
     DEST_CHOICES = [
+        (DEST_MINIO, 'Entrepôt MinIO (interne)'),
         (DEST_SFTP, 'SFTP'),
         (DEST_S3, 'Bucket S3'),
+        (DEST_SNOWFLAKE, 'Snowflake (entrepôt externe)'),
+    ]
+
+    # NTDATA30 — mode d'extraction. ``complet`` reste le défaut : un extrait
+    # existant garde EXACTEMENT le comportement d'avant.
+    MODE_COMPLET = 'complet'
+    MODE_INCREMENTAL = 'incremental'
+    MODE_CHOICES = [
+        (MODE_COMPLET, 'Complet'),
+        (MODE_INCREMENTAL, 'Incrémental'),
     ]
 
     company = models.ForeignKey(
@@ -1068,11 +1086,27 @@ class ScheduledExport(TimestampedModel):
     format = models.CharField(
         'Format', max_length=10, choices=FORMAT_CHOICES, default=FORMAT_CSV)
     destination = models.CharField(
-        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_SFTP)
+        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_MINIO)
     cron = models.CharField(
         'Planification (cron)', max_length=120, blank=True, default='',
         help_text='Expression cron interprétée par Celery Beat (hors core).')
     actif = models.BooleanField('Actif', default=True)
+
+    # NTDATA30 — extraction incrémentale (high-watermark, CDC léger).
+    # ``complet`` = comportement historique (tout le dataset à chaque passage).
+    mode = models.CharField(
+        'Mode d\'extraction', max_length=12, choices=MODE_CHOICES,
+        default=MODE_COMPLET,
+        help_text='« incrémental » n\'extrait que les lignes dont le champ '
+                  'curseur dépasse le dernier curseur enregistré.')
+    champ_curseur = models.CharField(
+        'Champ curseur', max_length=80, blank=True, default='',
+        help_text='Champ monotone du dataset (ex. updated_at/created_at). '
+                  'Doit appartenir à la liste blanche du dataset.')
+    dernier_curseur = models.CharField(
+        'Dernier curseur', max_length=64, blank=True, default='',
+        help_text='Borne haute atteinte au dernier passage (posée par le '
+                  'runner, jamais saisie).')
 
     derniere_execution_le = models.DateTimeField(
         'Dernière exécution', null=True, blank=True)

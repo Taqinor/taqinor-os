@@ -303,7 +303,10 @@ def build_pages(ctx) -> list:
     # même tarif de repli × taux forfaitaire que la synthèse de la page 1 et part
     # avec elle. L'équipement, les totaux et la TVA — eux — sont les données du
     # devis : ils restent rendus à l'identique.
-    masquer_eco = bool(d.get("masquer_synthese"))
+    # QJR209 — même lecture double qu'en page 1 : ``masquer_economies`` (dossier
+    # MT sans économies d'étude) masque exactement la même couche que
+    # ``masquer_synthese``. Un seul des deux suffit à l'omettre d'un seul tenant.
+    masquer_eco = bool(d.get("masquer_synthese") or d.get("masquer_economies"))
 
     if deux_options:
         shared, delta_sans, delta_avec = _split_items(
@@ -565,7 +568,21 @@ def build_pages(ctx) -> list:
                              f'{fmt(_ta["ttc"])} MAD'))
         _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
         if not masquer_eco and _eco_s and _eco_a:
-            cmp_rows.append(("Économies estimées / an",
+            # QJR210 — CE TABLEAU N'EXISTE QUE SUR UN DEVIS DIVERGENT, celui-là
+            # même dont les deux colonnes peuvent être chiffrées par deux
+            # moteurs différents (QJR28) : « Économies estimées » y déclarait un
+            # modèle unique pour les deux. Le libellé lit désormais le modèle
+            # EFFECTIF de chaque colonne — mot commun quand les deux coïncident
+            # (tout l'existant : « estimées »), mot OMIS quand elles divergent
+            # ou quand une clé manque. Jamais un modèle déclaré au nom de
+            # l'autre colonne.
+            _m_s = d.get("savings_model_sans")
+            _m_a = d.get("savings_model_avec")
+            if _m_s and _m_a and _m_s == _m_a:
+                _mot = " calculées" if _m_s == "horaire" else " estimées"
+            else:
+                _mot = ""
+            cmp_rows.append((f"Économies{_mot} / an",
                              f'{fmt(_eco_s)} MAD', f'{fmt(_eco_a)} MAD'))
         if not masquer_eco and roi_s and roi_a:
             cmp_rows.append(("Retour sur investissement",

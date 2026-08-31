@@ -922,6 +922,51 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
         ramadan=ramadan)[0]
 
 
+def renormalisation_redistribution(niveau_kwh, ve_kwh, brute_totale_kwh):
+    """``(base, facteur)`` — LE contrat de renormalisation des couches de
+    REDISTRIBUTION, écrit ICI et nulle part ailleurs.
+
+    ``base`` est le niveau que la journée (ou le mois) doit retrouver une fois
+    les bosses posées : le niveau facture MOINS l'énergie du véhicule
+    électrique, seule couche d'ADDITION — charge FUTURE ajoutée APRÈS la
+    renormalisation et jamais rediluée (voir
+    :func:`forme_consommation_detaillee`). ``facteur`` ramène ``base + bosses``
+    à ``base`` : une couche de redistribution pèse donc EXACTEMENT
+    ``brute × facteur`` dans ce qui est servi. Sans bosse (ou sans base), il
+    vaut 1,0 — le chemin historique, qui ne renormalisait pas.
+
+    Les trois grandeurs sont homogènes : trois énergies du même pas de temps.
+    Le rapport est invariant d'échelle (multiplier les trois par le nombre de
+    jours du mois donne le même facteur), ce qui permet au calcul MENSUEL de
+    :func:`apps.ventes.etude_horaire.estimation_conso_mensuelle` de lire le
+    facteur de la JOURNÉE sans le réécrire.
+
+    QJR207 (31/08/2026) — POURQUOI UNE FONCTION. Ce rapport existait en DEUX
+    copies : celle-ci et celle de la publication client, qui avait omis de
+    retirer l'énergie VE du niveau. Dès qu'un véhicule électrique coexistait
+    avec une piscine/clim/chauffe-eau, la copie publiait plus de kWh par couche
+    que ce module n'en place réellement dans la journée (mesuré : +19,17 kWh en
+    juillet sur un profil 600 kWh/mois + clim 1,4 kW + VE 4 kWh/jour). Une
+    seule écriture, importée par les deux appelants.
+    """
+    try:
+        niveau = float(niveau_kwh)
+    except (TypeError, ValueError):
+        niveau = 0.0
+    try:
+        ve = float(ve_kwh)
+    except (TypeError, ValueError):
+        ve = 0.0
+    try:
+        brute = float(brute_totale_kwh)
+    except (TypeError, ValueError):
+        brute = 0.0
+    base = max(0.0, niveau - max(0.0, ve))
+    if base > 0 and brute > 0:
+        return base, base / (base + brute)
+    return base, 1.0
+
+
 def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
                                  equipements=None, ramadan=None):
     """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
@@ -983,9 +1028,6 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         and (not ve.get('saisons') or saison is None
              or saison in ve['saisons']))
     ve_kwh = float(ve['kwh_jour']) if ve_actif else 0.0
-    base_total = max(0.0, total - ve_kwh)
-
-    sortie = [part * base_total for part in forme]
 
     # ── Passe 1 : redistribution (piscine / clim / chauffe-eau) ──
     bosse = [0.0] * 24
@@ -1008,15 +1050,15 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         if heures_couche:
             actives[cle] = {'kw': kw, 'heures': heures_couche,
                             'source': couche.get('source')}
-    # ``facteur`` reste à 1,0 tant qu'aucune bosse n'est posée — exactement le
-    # chemin historique, qui ne renormalisait pas dans ce cas.
-    facteur = 1.0
+    # LE NIVEAU ET LE FACTEUR — une seule écriture, partagée avec la
+    # publication client (:func:`renormalisation_redistribution`). ``facteur``
+    # reste à 1,0 tant qu'aucune bosse n'est posée — exactement le chemin
+    # historique, qui ne renormalisait pas dans ce cas.
+    base_total, facteur = renormalisation_redistribution(
+        total, ve_kwh, sum(bosse))
+    sortie = [part * base_total for part in forme]
     if any(bosse):
-        sortie = [v + bosse[h] for h, v in enumerate(sortie)]
-        somme = sum(sortie)
-        if somme > 0 and base_total > 0:
-            facteur = base_total / somme
-            sortie = [v * facteur for v in sortie]
+        sortie = [(v + bosse[h]) * facteur for h, v in enumerate(sortie)]
 
     # ── Passe 2 : addition (VE), jamais rediluée ──
     if ve_actif and ve_kwh > 0:

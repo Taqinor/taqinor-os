@@ -120,9 +120,11 @@ backend/django_core/apps/ventes/quote_engine/pricing.py::calculate_savings_roi::
 backend/django_core/apps/ventes/quote_engine/bareme.py::_tranche::28414c7ffdff | Prix MAD/kWh de la tranche tarifaire ONEE dans le descripteur JSON-serialisable _tranche -- constante de bareme reproduite au client, arrondie a 6 decimales (precision du tarif officiel).
 
 # --- backend/django_core/apps/ventes/quote_engine/agricole/economics.py
-# QJR143 : premiere capture -- repartition mensuelle et payback carburant.
-backend/django_core/apps/ventes/quote_engine/agricole/economics.py::_monthly::15b30d2dc7c2 | Repartition mensuelle d'un total annuel au prorata de poids saisonniers (graphe agricole) -- affichage seul, la somme reste bornee par le total source.
-backend/django_core/apps/ventes/quote_engine/agricole/economics.py::compute._payback::fd6a3003c14c | Payback (annees) = investissement / economie annuelle -- garde deja None si economie <= 0 (jamais de division par zero ni de payback fictif).
+# QJR236 (decision fondateur DV1) : les DEUX entrees de ce module ont ete
+# retirees avec le fichier lui-meme -- le renderer agricole premium
+# multi-pages, injoignable depuis QJR32, a ete supprime. La garde les
+# signalait comme ORPHELINES (advisory) ; c'est nettoye ici, sans regenerer
+# le reste de la base (aucune autre empreinte ne bouge).
 
 # --- backend/django_core/apps/ventes/quote_engine/industriel/finance.py
 # QJR143 : module SCANNE (ajoute a TARGET_FILES) mais AUCUN site capture --

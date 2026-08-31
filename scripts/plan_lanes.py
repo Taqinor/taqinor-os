@@ -136,6 +136,10 @@ _TASK_LIST_RE = re.compile(
     r"^\s*- \[(?P<status>" + _STATUS_PAT + r")\]"
     r"(?:\s*\((?P<note>[^()]*)\))?"
     r"\s+\*{0,2}(?P<id>" + _TASK_ID_PAT + r")\*{0,2}"
+    # A parenthesised note may also sit AFTER the id (``- [x] NTEXT26 (déjà
+    # présent) — …``) — real shape in new_tasks_plan.md; without this the six
+    # such lines spam the malformed-task warning channel on every run.
+    r"(?:\s*\((?P<note_apres>[^()]*)\))?"
     r"(?:\s+\[(?P<inline_status>[^\[\]]*)\])?"
     r"\s+—\s+(?P<label>.*)$"
 )
@@ -686,6 +690,17 @@ def _section_lane(headers: dict[str, str]) -> str:
 # the checkbox stays ``[ ]`` (see _classify_gate).
 _INLINE_BLOCKED_RE = re.compile(r"@blocked\b", re.IGNORECASE)
 
+# A label that OPENS with a ``[BLOCKED: …]`` / ``[GATED: …]`` marker — written
+# AFTER the em dash, possibly bold (``— [BLOCKED: attend NTUX12 — …] **…**`` /
+# ``— **[GATED: vérifs fondateur …]** (a) …``, the real shapes of NTUX21 and
+# QXG6, both wrongly emitted buildable on 2026-08-31) — is the task's STATE,
+# not prose. Leading position ONLY: a task that merely QUOTES a marker
+# mid-text (VX198) must stay buildable. Same one-level nested-bracket
+# tolerance as ``_STATUS_PAT``.
+_LABEL_LEADING_GATE_RE = re.compile(
+    r"^\*{0,2}\[(?:BLOCKED|GATED)\b(?:[^\[\]]|\[[^\[\]]*\])*\]"
+)
+
 
 def _classify_gate(label: str) -> tuple[str, list[str]]:
     """Return ('buildable', [category labels]).
@@ -713,6 +728,10 @@ def _classify_gate(label: str) -> tuple[str, list[str]]:
     # to a worktree agent only to be returned all-blocked. Treat inline @blocked as
     # gated so it surfaces in the gated bucket with the rest.
     if _INLINE_BLOCKED_RE.search(label):
+        return ("gated", labels + ["BLOCKED"])
+    # Leading ``[BLOCKED: …]``/``[GATED: …]`` right after the em dash — same
+    # semantics as the checkbox/inline status, same bucket as ``@blocked``.
+    if _LABEL_LEADING_GATE_RE.match(label):
         return ("gated", labels + ["BLOCKED"])
     # GATED_KEYWORDS is intentionally empty -> never gated. Kept as a guard so a
     # future re-introduction of a gate keyword would still flow through here.

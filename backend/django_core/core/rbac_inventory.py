@@ -52,6 +52,7 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/contact",                     # formulaire de contact (park-able)
     "api/django/auth/signup-demande",         # N101b — demande d'inscription design-partner : parquée (TENANT_SIGNUP_ENABLED off → 404), throttlée + pot de miel, ne crée JAMAIS de compte (approbation fondateur en console)
     "api/django/reporting/calendar",          # flux ICS calendrier tokenisé
+    "api/django/reporting/rapports-partages",  # NTDATA39 — rendu public d'un rapport via LIEN SIGNÉ expirant (7 j), throttlé, token opaque non énumérable ; jamais la pièce jointe
     "api/django/rh/pointages/kiosque",        # guichet kiosque device-PIN throttlé
     "api/django/rh/promesses-embauche",       # promesse d'embauche tokenisée
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé

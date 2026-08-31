@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9576, operations: 17235, components: 5060}
+counts: {paths: 9602, operations: 17271, components: 5078}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2257,6 +2257,9 @@ operations:
 - get /api/django/core/dashboards/{id}/ -> django_core_dashboards_retrieve
 - patch /api/django/core/dashboards/{id}/ -> django_core_dashboards_partial_update
 - put /api/django/core/dashboards/{id}/ -> django_core_dashboards_update
+- get /api/django/core/dashboards/{id}/donnees/ -> django_core_dashboards_donnees_retrieve
+- get /api/django/core/data-explorer/drill/ -> django_core_data_explorer_drill_retrieve
+- post /api/django/core/data-explorer/drill/ -> django_core_data_explorer_drill_create
 - get /api/django/core/db-stats/ -> django_core_db_stats_retrieve
 - get /api/django/core/dsr-requests/ -> django_core_dsr_requests_list
 - post /api/django/core/dsr-requests/ -> django_core_dsr_requests_create
@@ -5472,6 +5475,7 @@ operations:
 - post /api/django/marketing/versions-formulaire-intake/{id}/publier/ -> django_marketing_versions_formulaire_intake_publier_create
 - post /api/django/marketing/webhooks/brevo/ -> django_marketing_webhooks_brevo_create
 - post /api/django/marketing/webhooks/sms-stop/ -> django_marketing_webhooks_sms_stop_create
+- get /api/django/migration/annuaire-partenaires-certifies/ -> django_migration_annuaire_partenaires_certifies_retrieve
 - get /api/django/migration/certification/{partenaire_id}/score/ -> django_migration_certification_score_retrieve
 - get /api/django/migration/deploiements-partenaire/ -> django_migration_deploiements_partenaire_list
 - post /api/django/migration/deploiements-partenaire/ -> django_migration_deploiements_partenaire_create
@@ -5493,6 +5497,16 @@ operations:
 - post /api/django/migration/lots-migration/{id}/reprendre/ -> django_migration_lots_migration_reprendre_create
 - post /api/django/migration/lots-migration/{id}/terminer/ -> django_migration_lots_migration_terminer_create
 - post /api/django/migration/lots-migration/{id}/valider-source/ -> django_migration_lots_migration_valider_source_create
+- get /api/django/migration/parcours-certification-partenaire/ -> django_migration_parcours_certification_partenaire_list
+- post /api/django/migration/parcours-certification-partenaire/ -> django_migration_parcours_certification_partenaire_create
+- post /api/django/migration/parcours-certification-partenaire/instancier/ -> django_migration_parcours_certification_partenaire_instancier_create
+- delete /api/django/migration/parcours-certification-partenaire/{id}/ -> django_migration_parcours_certification_partenaire_destroy
+- get /api/django/migration/parcours-certification-partenaire/{id}/ -> django_migration_parcours_certification_partenaire_retrieve
+- patch /api/django/migration/parcours-certification-partenaire/{id}/ -> django_migration_parcours_certification_partenaire_partial_update
+- put /api/django/migration/parcours-certification-partenaire/{id}/ -> django_migration_parcours_certification_partenaire_update
+- post /api/django/migration/parcours-certification-partenaire/{id}/cocher/ -> django_migration_parcours_certification_partenaire_cocher_create
+- post /api/django/migration/parcours-certification-partenaire/{id}/terminer/ -> django_migration_parcours_certification_partenaire_terminer_create
+- post /api/django/migration/parcours-certification-partenaire/{id}/valider-specialite/ -> django_migration_parcours_certification_partenaire_valider_specialite_create
 - get /api/django/migration/playbook-instances/ -> django_migration_playbook_instances_list
 - post /api/django/migration/playbook-instances/ -> django_migration_playbook_instances_create
 - post /api/django/migration/playbook-instances/instancier/ -> django_migration_playbook_instances_instancier_create
@@ -5688,6 +5702,7 @@ operations:
 - get /api/django/offlinesync/operations/ -> django_offlinesync_operations_list
 - post /api/django/offlinesync/operations/batch/ -> django_offlinesync_operations_batch_create
 - get /api/django/offlinesync/operations/{id}/ -> django_offlinesync_operations_retrieve
+- post /api/django/offlinesync/operations/{id}/resoudre/ -> django_offlinesync_operations_resoudre_create
 - get /api/django/onboarding/items-masques/ -> django_onboarding_items_masques_list
 - post /api/django/onboarding/items-masques/{id}/demasquer/ -> django_onboarding_items_masques_demasquer_create
 - post /api/django/onboarding/items-masques/{id}/masquer/ -> django_onboarding_items_masques_masquer_create
@@ -6732,6 +6747,8 @@ operations:
 - patch /api/django/reporting/dashboard-config/{id}/ -> django_reporting_dashboard_config_partial_update
 - put /api/django/reporting/dashboard-config/{id}/ -> django_reporting_dashboard_config_update
 - get /api/django/reporting/dashboard/ -> django_reporting_dashboard_retrieve
+- get /api/django/reporting/envois-rapports/ -> django_reporting_envois_rapports_list
+- get /api/django/reporting/envois-rapports/{id}/ -> django_reporting_envois_rapports_retrieve
 - get /api/django/reporting/geo/ -> django_reporting_geo_retrieve
 - get /api/django/reporting/insights/analytics/ -> django_reporting_insights_analytics_retrieve
 - get /api/django/reporting/insights/audit-log/ -> django_reporting_insights_audit_log_retrieve
@@ -6765,6 +6782,7 @@ operations:
 - put /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_update
 - post /api/django/reporting/rapport-definitions/{id}/executer/ -> django_reporting_rapport_definitions_executer_create
 - get /api/django/reporting/rapport-definitions/{id}/export/ -> django_reporting_rapport_definitions_export_retrieve
+- get /api/django/reporting/rapports-partages/{token}/ -> django_reporting_rapports_partages_retrieve
 - get /api/django/reporting/reports/field/ -> django_reporting_reports_field_retrieve
 - get /api/django/reporting/reports/kpi-federes/ -> django_reporting_reports_kpi_federes_retrieve
 - get /api/django/reporting/reports/sales/ -> django_reporting_reports_sales_retrieve
@@ -10912,6 +10930,9 @@ operations:
 - get /api/v1/core/dashboards/{id}/ -> v1_core_dashboards_retrieve
 - patch /api/v1/core/dashboards/{id}/ -> v1_core_dashboards_partial_update
 - put /api/v1/core/dashboards/{id}/ -> v1_core_dashboards_update
+- get /api/v1/core/dashboards/{id}/donnees/ -> v1_core_dashboards_donnees_retrieve
+- get /api/v1/core/data-explorer/drill/ -> v1_core_data_explorer_drill_retrieve
+- post /api/v1/core/data-explorer/drill/ -> v1_core_data_explorer_drill_create
 - get /api/v1/core/db-stats/ -> v1_core_db_stats_retrieve
 - get /api/v1/core/dsr-requests/ -> v1_core_dsr_requests_list
 - post /api/v1/core/dsr-requests/ -> v1_core_dsr_requests_create
@@ -14127,6 +14148,7 @@ operations:
 - post /api/v1/marketing/versions-formulaire-intake/{id}/publier/ -> v1_marketing_versions_formulaire_intake_publier_create
 - post /api/v1/marketing/webhooks/brevo/ -> v1_marketing_webhooks_brevo_create
 - post /api/v1/marketing/webhooks/sms-stop/ -> v1_marketing_webhooks_sms_stop_create
+- get /api/v1/migration/annuaire-partenaires-certifies/ -> v1_migration_annuaire_partenaires_certifies_retrieve
 - get /api/v1/migration/certification/{partenaire_id}/score/ -> v1_migration_certification_score_retrieve
 - get /api/v1/migration/deploiements-partenaire/ -> v1_migration_deploiements_partenaire_list
 - post /api/v1/migration/deploiements-partenaire/ -> v1_migration_deploiements_partenaire_create
@@ -14148,6 +14170,16 @@ operations:
 - post /api/v1/migration/lots-migration/{id}/reprendre/ -> v1_migration_lots_migration_reprendre_create
 - post /api/v1/migration/lots-migration/{id}/terminer/ -> v1_migration_lots_migration_terminer_create
 - post /api/v1/migration/lots-migration/{id}/valider-source/ -> v1_migration_lots_migration_valider_source_create
+- get /api/v1/migration/parcours-certification-partenaire/ -> v1_migration_parcours_certification_partenaire_list
+- post /api/v1/migration/parcours-certification-partenaire/ -> v1_migration_parcours_certification_partenaire_create
+- post /api/v1/migration/parcours-certification-partenaire/instancier/ -> v1_migration_parcours_certification_partenaire_instancier_create
+- delete /api/v1/migration/parcours-certification-partenaire/{id}/ -> v1_migration_parcours_certification_partenaire_destroy
+- get /api/v1/migration/parcours-certification-partenaire/{id}/ -> v1_migration_parcours_certification_partenaire_retrieve
+- patch /api/v1/migration/parcours-certification-partenaire/{id}/ -> v1_migration_parcours_certification_partenaire_partial_update
+- put /api/v1/migration/parcours-certification-partenaire/{id}/ -> v1_migration_parcours_certification_partenaire_update
+- post /api/v1/migration/parcours-certification-partenaire/{id}/cocher/ -> v1_migration_parcours_certification_partenaire_cocher_create
+- post /api/v1/migration/parcours-certification-partenaire/{id}/terminer/ -> v1_migration_parcours_certification_partenaire_terminer_create
+- post /api/v1/migration/parcours-certification-partenaire/{id}/valider-specialite/ -> v1_migration_parcours_certification_partenaire_valider_specialite_create
 - get /api/v1/migration/playbook-instances/ -> v1_migration_playbook_instances_list
 - post /api/v1/migration/playbook-instances/ -> v1_migration_playbook_instances_create
 - post /api/v1/migration/playbook-instances/instancier/ -> v1_migration_playbook_instances_instancier_create
@@ -14343,6 +14375,7 @@ operations:
 - get /api/v1/offlinesync/operations/ -> v1_offlinesync_operations_list
 - post /api/v1/offlinesync/operations/batch/ -> v1_offlinesync_operations_batch_create
 - get /api/v1/offlinesync/operations/{id}/ -> v1_offlinesync_operations_retrieve
+- post /api/v1/offlinesync/operations/{id}/resoudre/ -> v1_offlinesync_operations_resoudre_create
 - get /api/v1/onboarding/items-masques/ -> v1_onboarding_items_masques_list
 - post /api/v1/onboarding/items-masques/{id}/demasquer/ -> v1_onboarding_items_masques_demasquer_create
 - post /api/v1/onboarding/items-masques/{id}/masquer/ -> v1_onboarding_items_masques_masquer_create
@@ -15343,6 +15376,8 @@ operations:
 - patch /api/v1/reporting/dashboard-config/{id}/ -> v1_reporting_dashboard_config_partial_update
 - put /api/v1/reporting/dashboard-config/{id}/ -> v1_reporting_dashboard_config_update
 - get /api/v1/reporting/dashboard/ -> v1_reporting_dashboard_retrieve
+- get /api/v1/reporting/envois-rapports/ -> v1_reporting_envois_rapports_list
+- get /api/v1/reporting/envois-rapports/{id}/ -> v1_reporting_envois_rapports_retrieve
 - get /api/v1/reporting/geo/ -> v1_reporting_geo_retrieve
 - get /api/v1/reporting/insights/analytics/ -> v1_reporting_insights_analytics_retrieve
 - get /api/v1/reporting/insights/audit-log/ -> v1_reporting_insights_audit_log_retrieve
@@ -15376,6 +15411,7 @@ operations:
 - put /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_update
 - post /api/v1/reporting/rapport-definitions/{id}/executer/ -> v1_reporting_rapport_definitions_executer_create
 - get /api/v1/reporting/rapport-definitions/{id}/export/ -> v1_reporting_rapport_definitions_export_retrieve
+- get /api/v1/reporting/rapports-partages/{token}/ -> v1_reporting_rapports_partages_retrieve
 - get /api/v1/reporting/reports/field/ -> v1_reporting_reports_field_retrieve
 - get /api/v1/reporting/reports/kpi-federes/ -> v1_reporting_reports_kpi_federes_retrieve
 - get /api/v1/reporting/reports/sales/ -> v1_reporting_reports_sales_retrieve
@@ -17367,6 +17403,7 @@ components:
 - AnnotationDocumentRequest
 - AnnotationPorteeEnum
 - AnnotationRequest
+- AnnuairePartenaireCertifie
 - AnnuleParEnum
 - AnomalyEvent
 - AnomalyEventKindEnum
@@ -17651,6 +17688,7 @@ components:
 - CampagneStatutEnum
 - Canal
 - Canal26dEnum
+- Canal419Enum
 - CanalC7fEnum
 - CanalCf4Enum
 - CanalRequest
@@ -17738,6 +17776,7 @@ components:
 - ChecklistEtapeModeleRequest
 - ChecklistTemplate
 - ChecklistTemplateRequest
+- ChoixEnum
 - CibleFinanciere
 - CibleFinanciereRequest
 - CircuitTransport
@@ -18110,6 +18149,7 @@ components:
 - DependanceTacheRequest
 - DepenseCharges
 - DepenseChargesRequest
+- DeploiementHistorique
 - DeploiementPartenaire
 - DeploiementPartenaireRequest
 - DeploiementPartenaireStatutEnum
@@ -18211,6 +18251,9 @@ components:
 - DotationEpi
 - DotationEpiRequest
 - DotationEtalement
+- DrillCatalogueReponse
+- DrillReponse
+- DrillRequeteRequest
 - ECatalogue
 - ECatalogueRequest
 - EcheanceAO
@@ -18330,6 +18373,8 @@ components:
 - EnvironnementEnum
 - EnvoiCampagne
 - EnvoiCampagneStatutEnum
+- EnvoiRapport
+- EnvoiRapportStatutEnum
 - EpiCatalogue
 - EpiCatalogueRequest
 - EquipChauffeEauCreneauEnum
@@ -19118,6 +19163,7 @@ components:
 - OccupationEnum
 - OccupationJourEnum
 - OfflineOperation
+- OfflineOperationResolutionEnum
 - OfflineOperationStatutEnum
 - OffreFinancement
 - OffreFinancementRequest
@@ -19561,6 +19607,7 @@ components:
 - PaginatedEntretienRecrutementList
 - PaginatedEntretienSortieList
 - PaginatedEnvoiCampagneList
+- PaginatedEnvoiRapportList
 - PaginatedEpiCatalogueList
 - PaginatedEquipeCommercialeList
 - PaginatedEquipeList
@@ -19840,6 +19887,7 @@ components:
 - PaginatedParametresEducationList
 - PaginatedParametresLocationList
 - PaginatedParcelleList
+- PaginatedParcoursCertificationPartenaireList
 - PaginatedParrainageList
 - PaginatedPartageArticleKbList
 - PaginatedPartageDashboardList
@@ -20214,6 +20262,8 @@ components:
 - Parcelle
 - ParcelleRequest
 - ParcelleStatutEnum
+- ParcoursCertificationPartenaire
+- ParcoursCertificationPartenaireRequest
 - Parrainage
 - ParrainageRequest
 - ParrainageStatutEnum
@@ -20826,6 +20876,7 @@ components:
 - PatchedParametresTransportRequest
 - PatchedParametresTresorerieRequest
 - PatchedParcelleRequest
+- PatchedParcoursCertificationPartenaireRequest
 - PatchedParrainageRequest
 - PatchedPartageArticleKbRequest
 - PatchedPartageDashboardRequest
@@ -21641,7 +21692,8 @@ components:
 - ReserveReceptionRequest
 - Resiliation
 - ResiliationStatutEnum
-- ResolutionEnum
+- ResolutionConflit
+- ResolutionConflitRequest
 - RessourceProfil
 - RessourceProfilRequest
 - ResultatAO
@@ -21766,6 +21818,7 @@ components:
 - ScheduleEnum
 - ScheduledExport
 - ScheduledExportFormatEnum
+- ScheduledExportModeEnum
 - ScheduledExportRequest
 - ScheduledMessage
 - ScheduledMessageRequest
@@ -22280,6 +22333,7 @@ components:
 - VuePersonnaliseeRequest
 - WarrantyClaim
 - WarrantyClaimRequest
+- WarrantyClaimResolutionEnum
 - WarrantyClaimStatutEnum
 - Webhook
 - WebhookRequest

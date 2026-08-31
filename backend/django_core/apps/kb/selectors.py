@@ -20,6 +20,7 @@ from .models import (
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
+    KbParcours,
     KbParcoursArticle,
     KbParcoursAssignation,
     KbRechercheVide,
@@ -534,6 +535,20 @@ def retrieve_chunks(user, query, *, limit=5):
 
 # ── XKB22 — Parcours de lecture d'intégration ───────────────────────────────
 
+def parcours_par_id(parcours_id, company):
+    """NTMIG31 — parcours ACTIF d'une société par id, ou ``None``.
+
+    Point d'entrée LECTURE pour ``apps.migration`` (parcours de certification
+    partenaire) : scopé société (jamais un parcours d'un autre tenant), jamais
+    un import de ``apps.kb.models`` depuis là-bas.
+    """
+    if not parcours_id or company is None:
+        return None
+    return (KbParcours.objects
+            .filter(pk=parcours_id, company=company, actif=True)
+            .first())
+
+
 def articles_ordonnes_parcours(parcours):
     """XKB22 — Articles ORDONNÉS d'un parcours (QuerySet, scopé société)."""
     return (KbParcoursArticle.objects
@@ -851,3 +866,39 @@ def playbooks_qs(company):
             .filter(company=company,
                     type_article=KbArticle.TypeArticle.PLAYBOOK)
             .order_by('titre', 'id'))
+
+
+# ── NTMIG24 — playbooks véhiculés par un ConfigPackage (NTADM13/14) ─────────
+#
+# Point d'entrée LECTURE de ``apps.adminops`` (jamais un import de
+# ``apps.kb.models`` depuis là-bas) : le snapshot exportable d'un
+# ``ConfigPackage`` ajoute la clé optionnelle ``playbooks``, jamais un nouveau
+# format d'export.
+
+
+def playbooks_config_snapshot(company):
+    """Playbooks d'implémentation d'une société, sous forme EXPORTABLE.
+
+    Contenu STRUCTURE seul (titre/catégorie/tags/corps/phases) — jamais de
+    donnée métier/client, jamais un secret. Chaque entrée porte une ``cle``
+    d'identité STABLE pour le round-trip export→import : les ``tags`` de
+    l'article (qui portent le tag de graine ``seed:playbook:...`` pour un
+    playbook seedé, NTMIG23) s'ils sont renseignés, sinon un identifiant
+    dérivé du TITRE pour un playbook créé à la main — jamais l'id numérique,
+    qui ne survivrait pas à un import sur un tenant neuf.
+    """
+    if company is None:
+        return []
+    out = []
+    for article in playbooks_qs(company):
+        tags = article.tags or ''
+        cle = tags.strip() if tags.strip() else f'titre:{article.titre}'
+        out.append({
+            'cle': cle,
+            'titre': article.titre,
+            'categorie': article.categorie,
+            'tags': tags,
+            'corps': article.corps,
+            'contenu_structure': article.contenu_structure or [],
+        })
+    return out

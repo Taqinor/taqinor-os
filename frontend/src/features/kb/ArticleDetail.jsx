@@ -13,6 +13,7 @@ import FilterSelect from './FilterSelect'
 import ChatterWidget from '../../components/ChatterWidget'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import ItemsCollectionView from './ItemsCollectionView'
+import PlaybookPanel from './PlaybookPanel'
 import { KbMarkdownBody, extractHeadings } from './kbMarkdown'
 
 // XKB18 — langues supportées (mêmes clés que ``KbArticle.LANGUE_CHOICES``
@@ -646,8 +647,13 @@ export default function ArticleDetail({
     <ItemsCollectionView articleId={articleId} onSelect={(item) => onOpenArticle?.(item.id)} />
   )
 
+  // ── Onglet Playbook (NTMIG25) — uniquement pour un article de type playbook ──
+  const estPlaybook = article.type_article === 'playbook'
+  const playbookTab = estPlaybook ? <PlaybookPanel articleId={articleId} /> : null
+
   const tabs = [
     { value: 'contenu', label: 'Contenu', content: contenuTab },
+    ...(estPlaybook ? [{ value: 'playbook', label: 'Playbook', content: playbookTab }] : []),
     { value: 'pieces-jointes', label: 'Pièces jointes', content: piecesJointesTab },
     { value: 'sous-articles', label: 'Sous-articles', content: sousArticlesTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },

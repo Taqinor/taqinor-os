@@ -16,8 +16,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
-    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration,
-    RapportReconciliation)
+    DeploiementPartenaire, LotMigration, ParcoursCertificationPartenaire,
+    PlaybookInstance, ProjetMigration, RapportReconciliation)
 
 
 class _CreationSeulementMixin:
@@ -259,3 +259,90 @@ class ScoreCertificationSerializer(serializers.Serializer):
     proposition_differente = serializers.BooleanField(read_only=True)
     source_satisfaction = serializers.CharField(read_only=True)
     detail = serializers.JSONField(read_only=True)
+
+
+class DeploiementHistoriqueSerializer(serializers.Serializer):
+    """NTMIG29 — une ligne d'historique de déploiement, imbriquée dans
+    l'annuaire des partenaires certifiés. LECTURE SEULE."""
+
+    client_final = serializers.CharField(read_only=True)
+    statut = serializers.CharField(read_only=True)
+    date_go_live = serializers.DateField(read_only=True, allow_null=True)
+    note_satisfaction = serializers.IntegerField(
+        read_only=True, allow_null=True)
+
+
+class AnnuairePartenaireCertifieSerializer(serializers.Serializer):
+    """NTMIG29 — ligne de l'annuaire interne des partenaires certifiés.
+
+    Déclarée pour que la vue publie un schéma RÉEL (drf-spectacular). LECTURE
+    SEULE : cet écran ne modifie jamais une fiche partenaire — le niveau reste
+    un PATCH explicite sur ``crm/partenaires/<id>/``, distinct du portail
+    partenaire lui-même (owned NTPRT).
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    nom = serializers.CharField(read_only=True)
+    type_partenaire = serializers.CharField(read_only=True)
+    zone = serializers.CharField(read_only=True)
+    niveau_certification = serializers.CharField(read_only=True)
+    niveau_certification_display = serializers.CharField(read_only=True)
+    specialites = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    date_certification = serializers.DateField(
+        read_only=True, allow_null=True)
+    date_expiration_certification = serializers.DateField(
+        read_only=True, allow_null=True)
+    certification_expiree = serializers.BooleanField(read_only=True)
+    nb_deploiements_reussis = serializers.IntegerField(read_only=True)
+    score = serializers.IntegerField(read_only=True)
+    historique_deploiements = DeploiementHistoriqueSerializer(
+        many=True, read_only=True)
+
+
+class ParcoursCertificationPartenaireSerializer(serializers.ModelSerializer):
+    """NTMIG31 — parcours de certification (formation) d'un partenaire.
+
+    ``articles`` est un INSTANTANÉ posé côté serveur à l'instanciation (même
+    raison que ``PlaybookInstanceSerializer.etapes``) : le laisser modifiable
+    permettrait de réécrire le dénominateur de la progression après coup.
+    ``avancement`` ne se pose que par l'action ``cocher``. ``specialite`` et
+    ``proposition_validee`` ne se posent jamais par PATCH — la spécialité est
+    dérivée du parcours à l'instanciation, sa validation passe par l'action
+    dédiée ``valider-specialite`` (jamais un effet de bord automatique).
+    """
+
+    progression = serializers.SerializerMethodField()
+    nb_articles = serializers.SerializerMethodField()
+    nb_faits = serializers.SerializerMethodField()
+    # NTMIG31 — le parcours modèle est CHOISI à la création (via l'action
+    # ``instancier``) ; le rattacher après coup laisserait un instantané
+    # d'articles qui ne correspond plus au parcours cité.
+    parcours = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = ParcoursCertificationPartenaire
+        fields = [
+            'id', 'partenaire', 'parcours', 'parcours_nom', 'specialite',
+            'articles', 'avancement', 'statut', 'proposition_validee',
+            'valide_par', 'date_validation', 'progression', 'nb_articles',
+            'nb_faits', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'parcours', 'parcours_nom', 'specialite', 'articles',
+            'avancement', 'statut', 'proposition_validee', 'valide_par',
+            'date_validation', 'progression', 'nb_articles', 'nb_faits',
+            'created_at', 'updated_at',
+        ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_progression(self, obj):
+        return obj.progression
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_articles(self, obj):
+        return obj.nb_articles
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_faits(self, obj):
+        return obj.nb_faits

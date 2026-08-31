@@ -394,6 +394,61 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    Les lignes viennent d'un BORDEREAU (BOQ) chiffré par l'appel d'offres :
 #    une autre famille de documents, que le moteur solaire ne dimensionne
 #    jamais. Le pipeline résidentiel n'a rien à y dire.
+#
+# ── QJR243 (g) — LE RECENSEMENT N'ÉTAIT PAS EXHAUSTIF : QUATRE CHEMINS DE PLUS,
+#    ET DEUX CONTOURNEMENTS DE LA GARDE. Chacun reçoit ici son verdict ÉCRIT ;
+#    AUCUN n'est recâblé par cette tâche (« constater, pas corriger »).
+#
+# 7. ``domain/composition._completer_kit_residentiel`` — ADAPTATEUR DE FAIT,
+#    et c'est LE chemin secondaire qui COMPOSE un kit. Il n'a pas besoin de
+#    converger : il passe DÉJÀ par ``pipeline.composer`` (QJR81) — carte des
+#    marques, ordre de lignes, phase électrique et, depuis QJR221, la gamme du
+#    devis. Il écrit ensuite par ``creer_ligne``. Verdict : CONFORME, aucun
+#    travail.
+#
+# 8. ``domain/resynchronisation.reconcilier`` (trois créations : panneau,
+#    batterie, onduleur manquant) — HORS PIPELINE **par conception**. C'est le
+#    mode ``MODE_RECONCILIER`` : il ajuste CHIRURGICALEMENT un devis existant
+#    (prix négociés, ordre, groupes préservés) là où l'écrivain de lignes
+#    SUPPRIME et RECRÉE. Le faire converger vers ``ecrire_lignes`` détruirait
+#    exactement ce qu'il protège (cf. la note QJR220 dans ``pipeline``).
+#
+# 9. ``domain/creation.apply_preset_to_devis`` (QJ16) — HORS PIPELINE. Un
+#    PRESET est un instantané de lignes que le commercial a délibérément
+#    enregistré : recomposer trahirait le geste. Il honore déjà le jeu de
+#    champs complet et saute les produits non tarifés en le DISANT.
+#
+# 10. ``public_views`` (devis automatique depuis le tunnel public) — HORS
+#    PIPELINE pour la CRÉATION DE LIGNES : la composition lui est fournie
+#    toute faite ; il ne fait qu'écrire, par ``creer_ligne``, avec l'ordre
+#    explicite (PVORD).
+#
+# 11. ``management/commands/reparer_devis_deux_options`` — HORS PIPELINE.
+#    Commande de RÉPARATION d'historique, exécutée à la main par le fondateur :
+#    elle recrée la ligne manquante d'un devis déjà vendu, elle ne compose pas.
+#
+# ── LES DEUX CONTOURNEMENTS DE LA GARDE AST, NOMMÉS ─────────────────────────
+#
+# A. ``LigneDevisViewSet`` → ``LigneDevisSerializer`` (``ModelSerializer``,
+#    ``fields = '__all__'``). Le sérialiseur DRF appelle ``Model.objects
+#    .create(**validated_data)`` DANS DRF, pas dans ce dépôt : la garde AST de
+#    ``test_qjr_ecrivain_lignes`` ne peut structurellement pas le voir.
+#    VERDICT : ADAPTATEUR LÉGITIME, et il est SÛR — précisément parce que
+#    ``fields = '__all__'`` : il porte le jeu de champs du MODÈLE, donc il ne
+#    peut pas en oublier un (c'est le risque que ``CHAMPS_LIGNE`` couvre pour
+#    les appelants Python). Le faire passer par ``creer_ligne`` reviendrait à
+#    réécrire un ``ModelSerializer`` à la main pour un gain nul.
+#
+# B. ``apps/cpq/services.py`` — cinq ``LigneDevis.objects.create`` (offre
+#    groupée NTCPQ3, avenant, règle CPQ résolue…). VERDICT : HORS PIPELINE et
+#    HORS GOULOT, écriture cross-app ASSUMÉE (le module le documente en tête).
+#    ``creer_ligne`` vit dans ``apps.ventes.domain`` : l'appeler depuis ``cpq``
+#    serait un import de domaine à domaine, que la règle de frontière interdit.
+#    RISQUE RÉEL, ÉCRIT plutôt que tu : ces cinq sites nomment leurs champs à
+#    la main et n'héritent donc PAS d'un champ ajouté demain à
+#    ``CHAMPS_LIGNE`` (``variante``, ``quantite_manuelle``…). La parade
+#    correcte est une fonction de ``ventes/services.py`` que ``cpq`` appellerait
+#    — c'est une TÂCHE À OUVRIR, pas un recâblage de ce lot.
 
 #: QJR84 — le jeu de champs COMPLET d'une ligne de devis. ``produit`` et
 #: ``produit_id`` sont les DEUX façons de rattacher le catalogue (la seconde
@@ -413,8 +468,16 @@ CHAMPS_LIGNE = (
 
 
 def creer_ligne(devis, **champs):
-    """QJR84 — crée UNE ``LigneDevis``. Le seul endroit de ``apps/ventes`` où
-    une ligne de devis naît.
+    """QJR84 — crée UNE ``LigneDevis``. LE GOULOT PYTHON de ``apps/ventes``.
+
+    QJR243 (g) — CETTE PHRASE DISAIT « le seul endroit où une ligne de devis
+    naît », ET C'ÉTAIT FAUX SUR DEUX POINTS, tous deux désormais recensés avec
+    leur verdict juste au-dessus (§ « LES DEUX CONTOURNEMENTS ») : le
+    sérialiseur DRF de ``LigneDevisViewSet`` crée ses lignes DANS DRF (sûr — il
+    porte le jeu de champs du MODÈLE), et ``apps/cpq/services`` en crée cinq
+    par une écriture cross-app assumée. Le goulot reste vrai pour tout ce qui
+    s'écrit EN PYTHON dans cette app — ce qui est déjà la garantie qui compte,
+    et ce que la garde AST vérifie.
 
     Les champs NON fournis gardent le défaut du MODÈLE : un appelant qui
     n'écrivait pas ``variante`` hier obtient exactement la ligne d'hier. Ce
@@ -467,13 +530,22 @@ CHAMPS_CLONES = tuple(champ for champ in CHAMPS_LIGNE
                       if champ not in ('produit_id', 'lot_id'))
 
 
-def cloner_lignes(source, cible, *, prix_unitaire=None):
+def cloner_lignes(source, cible, *, prix_unitaire=None, remplacements=None):
     """QJR116 — recopie TOUTES les lignes de ``source`` sur ``cible``.
 
-    Le SEUL cloneur de lignes de l'app : les trois chemins de copie
-    (``dupliquer_devis``, ``creer_variante_gamme``, ``renouveler_devis``)
+    Le SEUL cloneur de lignes de l'app : les CINQ chemins de copie
+    (``dupliquer_devis``, ``creer_variante_gamme``, ``renouveler_devis``, et
+    depuis QJR224 les deux chemins de VUE ``/variante`` et ``/reviser``)
     passent par lui, donc un champ ne peut plus tomber sur un chemin et pas
-    sur les deux autres.
+    sur les autres.
+
+    ``remplacements`` — QJR224, appelable optionnel ``(ligne) -> dict`` de
+    champs à SUBSTITUER sur la copie. Il existe parce que ``/variante`` MET À
+    L'ÉCHELLE les quantités : sa règle d'échelle lui est propre (0,8 / 1,2 avec
+    son arrondi et son plancher), le JEU DE CHAMPS ne l'est pas. Les clés sont
+    validées contre :data:`CHAMPS_CLONES` — un champ mal orthographié lève,
+    il ne disparaît pas en silence. ``None`` (tous les appelants d'hier) ⇒
+    aucune substitution, copie byte-identique.
 
     ``prix_unitaire`` — appelable optionnel ``(ligne) -> prix``. Absent (les
     deux copies « à l'identique »), le prix de la ligne source est repris tel
@@ -510,6 +582,15 @@ def cloner_lignes(source, cible, *, prix_unitaire=None):
         champs['lot'] = jumeaux.get(ligne.lot_id)
         if prix_unitaire is not None:
             champs['prix_unitaire'] = prix_unitaire(ligne)
+        if remplacements is not None:
+            substitutions = remplacements(ligne) or {}
+            inconnus = sorted(set(substitutions) - set(CHAMPS_CLONES))
+            if inconnus:
+                raise ValueError(
+                    'Champ de clonage inconnu : %s. Le jeu cloné est déclaré '
+                    'dans CHAMPS_CLONES (apps/ventes/domain/lignes.py).'
+                    % ', '.join(inconnus))
+            champs.update(substitutions)
         creees.append(creer_ligne(cible, **champs))
     return creees
 
@@ -602,6 +683,19 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
 
     Aucune écriture quand le prix est DÉJÀ celui du barème : une ligne
     inchangée ne doit pas voir sa date de modification bouger.
+
+    QJR220 (31/08/2026) — TROIS APPELANTS, PLUS UN. Cette fonction était
+    correcte et n'avait qu'UN appelant dans tout le dépôt
+    (:func:`remplacer_lignes`, plus bas) alors que DEUX autres chemins changent
+    le compte de panneaux d'un devis EXISTANT et ne passaient pas par lui :
+
+    * ``MODE_RECONCILIER`` (``domain/resynchronisation.reconcilier``, les trois
+      sites qui écrivent ``dominante.quantite``) — une sync-layout 9 → 20
+      panneaux laissait la pose au barème de 9, l'incident que le fichier de
+      test de QJR83 nomme lui-même ;
+    * ``LigneDevisViewSet`` (ajout / modification / suppression d'UNE ligne).
+
+    Les deux l'appellent désormais, APRÈS toutes leurs écritures de lignes.
     """
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
@@ -634,7 +728,16 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
     return messages
 
 
-def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
+#: QJR204 — LE REFUS, EN FRANÇAIS, D'UN REMPLACEMENT PAR LE VIDE.
+MSG_REMPLACEMENT_VIDE = (
+    "Au moins une ligne est requise : un remplacement par une liste VIDE "
+    "effacerait tout le devis. Pour retirer une ligne, renvoyez les lignes "
+    "restantes ; pour abandonner le devis, supprimez-le ou révisez-le."
+)
+
+
+def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
+                     autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
     transaction par l'appelant). Produits bornés à la société de
     l'utilisateur OU au catalogue global (PV15, même portée que
@@ -662,11 +765,24 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None):
     écrites (``retarifer_forfaits_par_panneau``), en respectant ``prix_manuel``
     (D12). ``avertissements`` (optionnel) reçoit les messages FRANÇAIS des
     lignes qui ont REFUSÉ de suivre ; la fonction les rend aussi — elle ne
-    rendait rien jusqu'ici, aucun appelant ne régresse."""
+    rendait rien jusqu'ici, aucun appelant ne régresse.
+
+    QJR204 (31/08/2026) — UNE LISTE VIDE EST REFUSÉE, PAS EXÉCUTÉE. Cet
+    écrivain SUPPRIME puis recrée : appelé avec ``[]`` il effaçait toutes les
+    lignes d'un devis brouillon/envoyé et rendait 200, là où ``/atomic``
+    refusait déjà l'ensemble vide par un 400. Le balayage du dépôt (front
+    compris : ``ventesApi.replaceLignesDevis`` est l'unique appelant de
+    production et ``DevisGenerator`` n'a AUCUN geste « tout vider ») n'a trouvé
+    aucun flux légitime de vidage — il est donc refusé ici pour TOUS les
+    chemins d'écriture, ``ecrire_lignes(composition=None)`` compris. Un futur
+    flux de vidage devra le DÉCLARER (``autoriser_vidage=True``), jamais
+    l'obtenir par une liste vide."""
     from decimal import Decimal, InvalidOperation
     from django.db.models import Q
     from ..models import LigneDevis
     from apps.stock.models import Produit
+    if not lignes_in and not autoriser_vidage:
+        raise ValueError(MSG_REMPLACEMENT_VIDE)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     devis.lignes.all().delete()

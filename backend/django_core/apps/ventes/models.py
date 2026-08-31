@@ -438,10 +438,11 @@ class Devis(models.Model):
     def _totaux_argent(self):
         """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.
 
-        ``apps.ventes.domain.argent`` NOMME les vues monétaires (BRUT / NET /
-        PAR_OPTION / AFFICHAGE). QJR50 a branché ces propriétés sur
-        :attr:`Vue.BRUT` (le calcul d'hier, à l'octet) pour que la bascule ne
-        soit qu'un changement d'UN mot ; **QJR51 est ce mot**.
+        ``apps.ventes.domain.argent`` NOMME les vues monétaires. QJR50 a branché
+        ces propriétés sur la vue « BRUT » (le calcul d'hier, à l'octet) pour
+        que la bascule ne soit qu'un changement d'UN mot ; **QJR51 est ce
+        mot**. QJR242 a ensuite SUPPRIMÉ cette vue BRUT, devenue sans appelant :
+        la façade n'expose plus que NET et AFFICHAGE.
 
         DÉCISION FONDATEUR D2 (29/08/2026) — ``Devis.total_*`` LISENT LA VUE
         NET. Deux conséquences, toutes deux ASSUMÉES :

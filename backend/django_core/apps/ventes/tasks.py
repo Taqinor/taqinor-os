@@ -70,6 +70,12 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
     unaffected. pdf_options picks the simulator format (full premium 3 pages,
     one-page, monthly-chart / devis-final modifiers); the legacy fallback
     ignores it.
+
+    QJR201 (31/08/2026) — CE CHEMIN N'A PAS DE CHAÎNE MONNAIE À LUI : il appelle
+    ``generate_premium_devis_pdf``, donc ``build_quote_data``, donc le noyau —
+    et hérite sans recâblage de la règle QF9 rapatriée par QJR200. Ce chemin
+    ASYNCHRONE (et la variante « PDF joint à l'email ») n'avait jamais été
+    exercé ; ``tests/test_qjr201_chaine_aval_panier`` le fait désormais.
     """
     try:
         from django.conf import settings

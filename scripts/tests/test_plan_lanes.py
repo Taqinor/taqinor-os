@@ -788,5 +788,55 @@ class TaskLineGrammarTests(unittest.TestCase):
         )
 
 
+class MarqueurGateEnTeteDeLabelTests(unittest.TestCase):
+    """Un ``[BLOCKED: …]``/``[GATED: …]`` posé APRÈS le tiret cadratin est un
+    état de tâche (formes réelles de NTUX21 et QXG6, émises buildables à tort
+    le 2026-08-31 → une lane worktree entière a tourné pour rien) ; une tâche
+    qui CITE un marqueur au milieu de son texte (VX198) reste buildable."""
+
+    def _plan(self, *lignes) -> Path:
+        chemin = Path(tempfile.mkdtemp()) / "PLAN.md"
+        chemin.write_text("## BUILD QUEUE\n\n" + "\n".join(lignes) + "\n",
+                          encoding="utf-8")
+        self.addCleanup(lambda: chemin.unlink(missing_ok=True))
+        return chemin
+
+    def _gates(self, *lignes) -> dict:
+        return {t["id"]: t["gate"] for t in pl.parse_tasks(self._plan(*lignes))}
+
+    def test_blocked_apres_le_tiret_est_gated(self):
+        # Forme réelle NTUX21 : annotation nue après le tiret, avant le titre.
+        gates = self._gates(
+            "- [ ] NTUX901 — [BLOCKED: attend NTUX12 — le widget Favoris "
+            "n'existe pas côté frontend] **Réordonnancement** : glisser-"
+            "déposer des favoris. (@lane: apps/uxviews) (ROUTINE)")
+        self.assertEqual(gates, {"NTUX901": "gated"})
+
+    def test_gated_en_gras_apres_le_tiret_est_gated(self):
+        # Forme réelle QXG6 : marqueur en gras juste après le tiret.
+        gates = self._gates(
+            "- [ ] QXG901 — **[GATED: vérifs fondateur avant hard-coding]** "
+            "(a) tarifs MT ONEE exacts. (@lane: apps/ventes) (DECISION)")
+        self.assertEqual(gates, {"QXG901": "gated"})
+
+    def test_note_parenthesee_apres_l_id_parse_sans_avertissement(self):
+        # Forme réelle NTEXT26 : ``- [x] NTEXT26 (déjà présent) — …`` — la
+        # ligne doit parser (tâche cochée, donc absente du schedule) au lieu
+        # de spammer le canal « malformed task line ».
+        chemin = self._plan(
+            "- [x] NTEXT901 (déjà présent) — **Action custom** : détail. "
+            "(@lane: apps/customfields) (ROUTINE)")
+        self.assertEqual(pl.count_malformed(chemin), 0)
+        self.assertEqual(pl.parse_tasks(chemin), [])
+
+    def test_citation_d_un_marqueur_en_milieu_de_texte_reste_buildable(self):
+        # Forme VX198 : la tâche cite un marqueur dans son corps — vivante.
+        gates = self._gates(
+            "- [ ] VX901 — **Tâche vivante** : quand le cas se présente, la "
+            "tâche elle-même se marque [GATED si dev-dep à ajouter] puis "
+            "continue. (@lane: frontend/shell) (ROUTINE)")
+        self.assertEqual(gates, {"VX901": "buildable"})
+
+
 if __name__ == "__main__":
     unittest.main()

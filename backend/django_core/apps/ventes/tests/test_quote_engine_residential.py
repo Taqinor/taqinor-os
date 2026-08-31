@@ -1766,36 +1766,12 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
         self.assertNotIn("<&", html)
         self.assertNotIn('<& "orge"', html)
 
-    # ── agricole : ``etude`` en texte libre (le seul paquet à le faire) ─────
-    def test_agricole_crop_et_pompe_nom_sont_echappes(self):
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        d = self._piege(sample_data.build("agrumes"),
-                        crop=self.PIEGE, pompe_nom=self.PIEGE,
-                        region=self.PIEGE, irrigation_method=self.PIEGE)
-        html = render.build_html(renderer._augment(d))
-        self._sans_chevron_brut(html)
-        self.assertIn("&lt;&amp;", html)   # arrivé échappé, UNE fois
-
-    def test_agricole_le_schema_echappe_une_seule_fois(self):
-        """UNE SEULE VÉRITÉ — ``schematic.py`` s'échappait lui-même par-dessus
-        l'échappement du builder : « Blé & orge » serait sorti « Blé &amp;amp; »
-        (double échappement visible sur un devis parfaitement ordinaire)."""
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        d = self._piege(sample_data.build("agrumes"), crop="Blé & orge")
-        html = render.build_html(renderer._augment(d))
-        self.assertNotIn("&amp;amp;", html)
-        self.assertIn("&amp; orge", html)
-
-    def test_agricole_accepte_par_nom_est_echappe(self):
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        html = render.build_html(
-            renderer._augment(self._piege(sample_data.build("agrumes"))))
-        self.assertIn(self.DATE_ACC, html)          # le tampon EST rendu
-        self._sans_chevron_brut(html)
-        self.assertNotIn("&amp;lt;", html)
+    # QJR236 (décision fondateur DV1) — LES TROIS TESTS AGRICOLES DE CE BLOC
+    # ONT ÉTÉ RETIRÉS AVEC LEUR RENDERER. Ils rendaient le paquet agricole
+    # premium multi-pages (``agricole/render.py`` + ``renderer._augment``),
+    # supprimé parce qu'injoignable depuis QJR32. L'échappement lui-même reste
+    # couvert par les trois paquets vivants ci-dessous (industriel, commercial,
+    # résidentiel) et par le moteur legacy, qui rend le PDF agricole une-page.
 
     # ── industriel / commercial : le tampon de signature ────────────────────
     def test_industriel_accepte_par_nom_est_echappe_une_fois(self):
@@ -1852,10 +1828,9 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
         """Un nombre reste un NOMBRE : les gardes numériques du document
         (production, kWc, HMT) le comparent — les transformer en chaînes
         casserait la page Étude."""
-        from apps.ventes.quote_engine.agricole import sample_data
-        d = sample_data.build("agrumes")
-        d["etude"] = {**d["etude"], "hmt_m": 60, "pompe_kw": 5.5,
-                      "prod_mensuelle": [1040] * 12, "toiture": {"kwc": 7.1}}
+        d = {"etude": {"crop": "agrumes", "hmt_m": 60, "pompe_kw": 5.5,
+                       "prod_mensuelle": [1040] * 12,
+                       "toiture": {"kwc": 7.1}}}
         etude = self._echappe(d)["etude"]
         self.assertEqual(etude["hmt_m"], 60)
         self.assertEqual(etude["pompe_kw"], 5.5)
@@ -1864,12 +1839,158 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
 
     def test_la_source_n_est_jamais_mutee(self):
         """Le MÊME dict part en JSON à la proposition publique."""
-        from apps.ventes.quote_engine.agricole import sample_data
-        d = sample_data.build("agrumes")
-        d["etude"] = {**d["etude"], "crop": self.PIEGE}
-        d["accepte_par_nom"] = self.PIEGE
+        d = {"etude": {"crop": self.PIEGE, "region": "souss-massa"},
+             "accepte_par_nom": self.PIEGE}
         echappe = self._echappe(d)
         self.assertEqual(d["etude"]["crop"], self.PIEGE)
         self.assertEqual(d["accepte_par_nom"], self.PIEGE)
         self.assertNotEqual(echappe["etude"]["crop"], self.PIEGE)
         self.assertNotEqual(echappe["accepte_par_nom"], self.PIEGE)
+
+
+# ── QJR209 — LE PAQUET RÉSIDENTIEL LIT ``masquer_economies`` ─────────────────
+# Marqueurs HTML de la couche économique du document résidentiel : le −N % de
+# la page 1, la donut de couverture, le graphe avant/après, l'économie annuelle
+# des cartes d'option, la rentabilité et le gain net 25 ans de la page 2. Ils
+# apparaissent et disparaissent ENSEMBLE (doctrine Z2 : un bloc s'omet d'un
+# seul tenant, jamais un « 0 », jamais un demi-bloc). Même liste que la garde
+# Z2 de ``test_quote_engine_builder`` — un seul vocabulaire pour un seul bloc.
+MARQUEURS_COUCHE_ECO = (
+    '<div class="c1-bigcut">', '<img class="c1-donut"',
+    'Votre facture mois par mois', 'Économie estimée',
+    'Rentabilisé en', 'Rentabilité sur 25 ans', 'Gain net sur 25 ans',
+)
+
+# Sous-ensemble PAGE 1 : les cinq marqueurs qui ne dépendent PAS de la
+# pagination. Les deux derniers de la liste ci-dessus vivent sur la page 2, et
+# sa variante « page rentabilité dédiée » (devis chargé, 4 pages) ne porte ni
+# le titre ni la carte « Gain net » — un témoin qui les exigerait épinglerait
+# la pagination, pas l'omission. Sens de l'assertion : la PRÉSENCE se prouve
+# sur la page 1, l'ABSENCE se vérifie sur la liste entière.
+MARQUEURS_PAGE_1 = MARQUEURS_COUCHE_ECO[:5]
+
+# Clés publiées par ``renderer.synthese_economies`` : elles descendent toutes
+# du barème BASSE TENSION. Sur un dossier MT elles ne doivent même pas être
+# publiées dans le dict de rendu — pas seulement rester non imprimées.
+CLES_COUCHE_ECO = ('pct_cut', 'annual_before', 'annual_after', 'coverage_pct',
+                   'coverage_estimated', 'bills_before', 'bills_after',
+                   'eco_mensuelles', 'eco_mensuelles_total')
+
+# 12 factures mensuelles RÉELLES : sans elles, ``_augment`` masque déjà la
+# couche économique par le chemin M1 — le test ne prouverait alors rien.
+FACTURES_REELLES_12 = [1200, 1200, 1300, 1400, 1600, 1800,
+                       1900, 1900, 1700, 1500, 1300, 1200]
+
+# Devis résidentiel à DEUX options (réseau + hybride/batterie) : la forme que
+# le renderer résidentiel accepte. Jeu de lignes repris TEL QUEL du fixture
+# ``FULL_LINES`` de ``test_quote_engine_builder`` (le seul déjà prouvé
+# traversable par ``renderer._augment``).
+LIGNES_DEUX_OPTIONS = [
+    ('Onduleur réseau 10kW', '1', '11700'),
+    ('Onduleur hybride 5kW', '1', '24000'),
+    ('Panneau mono 550W', '14', '1100'),
+    ('Batterie 5 kWh', '1', '14000'),
+    ('Structures acier', '14', '375'),
+    ('Installation', '1', '4000'),
+]
+
+
+class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
+    """QJR209 (contre-visite du 30/08/2026) — UN DOSSIER MT NE PORTE JAMAIS UN
+    CHIFFRE BT, Y COMPRIS SUR LE DOCUMENT RÉSIDENTIEL.
+
+    ``builder`` lève ``masquer_economies`` sur un dossier raccordé en MOYENNE
+    TENSION dépourvu d'économies d'étude : les seules économies disponibles
+    sont alors celles de ``calculate_savings_roi``, calculées au barème BASSE
+    TENSION de l'ONEE. Les renderers industriel, commercial et legacy lisent
+    tous ce drapeau ; le paquet résidentiel, lui, ne connaissait que
+    ``masquer_synthese`` — dérivé de tout autre chose (absence d'ancrage réel
+    ou de factures réelles).
+
+    Le chemin est INERTE sur un devis né résidentiel, mais VIVANT dès qu'un
+    ``tension_raccordement`` MT reste collé dans ``etude_params`` après un
+    changement de marché : l'endpoint ``etude-params`` FUSIONNE au lieu de
+    remplacer, le devis redevient résidentiel — et son PDF imprimait des
+    économies BT sur un dossier MT.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _data(self, reference, **etude):
+        """Données de rendu d'un VRAI devis résidentiel à deux options, avec
+        ancrage réel (conso saisie + 12 factures réelles) : la couche
+        économique est donc calculable — seul le dossier MT doit la retirer."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        params = {**DEUX_OPTIONS, 'conso_annuelle': 12000,
+                  'distributeur': 'onee',
+                  'factures_mensuelles_reelles': list(FACTURES_REELLES_12),
+                  **etude}
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           LIGNES_DEUX_OPTIONS, reference=reference,
+                           etude_params=params)
+        return build_quote_data(devis, {'pdf_mode': 'full'})
+
+    @staticmethod
+    def _html(data):
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(data)
+        return d, render.build_html(d)
+
+    # ── témoin : le même devis en BASSE TENSION imprime bien sa couche ───────
+    def test_temoin_un_dossier_bt_imprime_sa_couche_economique(self):
+        """Sans ce témoin, l'omission ci-dessous ne prouverait rien : il
+        établit que CE devis, CE fixture, rendent bien le bloc économique."""
+        data = self._data('DEV-QJR209-BT', tension_raccordement='BT')
+        self.assertFalse(data['masquer_economies'])
+        d, html = self._html(data)
+        self.assertFalse(d['masquer_synthese'])
+        for marqueur in MARQUEURS_PAGE_1:
+            self.assertIn(marqueur, html, f'témoin BT : {marqueur} manquant')
+
+    # ── le rouge : dossier MT rendu par le paquet résidentiel ───────────────
+    def test_dossier_mt_le_renderer_residentiel_masque_la_couche(self):
+        data = self._data('DEV-QJR209-MT', tension_raccordement='MT')
+        # Le builder a bien levé le drapeau MT sur un devis RÉSIDENTIEL.
+        self.assertTrue(data['masquer_economies'])
+        # …et la valeur BT existe pourtant dans les données (c'est elle que le
+        # document imprimait) : l'omission n'est donc pas un effet de bord.
+        self.assertGreater(data['eco_s_ann'], 0)
+        from apps.ventes.quote_engine.residential import renderer
+        d = renderer._augment(data)
+        self.assertTrue(
+            d['masquer_synthese'],
+            "un dossier MT doit masquer la couche économique résidentielle")
+
+    def test_dossier_mt_aucun_marqueur_economique_dans_le_html(self):
+        """Le bloc part D'UN SEUL TENANT (doctrine Z2) : aucun des marqueurs,
+        et surtout aucun « 0 » à leur place."""
+        data = self._data('DEV-QJR209-MT-HTML', tension_raccordement='MT')
+        _, html = self._html(data)
+        for marqueur in MARQUEURS_COUCHE_ECO:
+            self.assertNotIn(marqueur, html,
+                             f'{marqueur} aurait dû être omis (dossier MT)')
+
+    def test_dossier_mt_aucune_cle_economique_n_est_publiee(self):
+        """Les clés de ``synthese_economies`` descendent du barème BT : sur un
+        dossier MT elles ne sont même pas publiées dans le dict de rendu (qui
+        part aussi, tel quel, à la proposition en ligne)."""
+        data = self._data('DEV-QJR209-MT-CLES', tension_raccordement='MT')
+        from apps.ventes.quote_engine.residential import renderer
+        d = renderer._augment(data)
+        for cle in CLES_COUCHE_ECO:
+            self.assertNotIn(cle, d, f'{cle} ne doit pas être publiée')
+
+    # ── un dossier MT AVEC économies d'étude reste rendu à l'identique ──────
+    def test_dossier_mt_avec_economies_detude_reste_rendu(self):
+        """Le drapeau ne se lève QUE faute d'économies d'étude : avec une étude
+        MT saisie, le chiffre servi EST celui de l'étude et le document garde
+        sa couche économique."""
+        data = self._data('DEV-QJR209-MT-ETUDE', tension_raccordement='MT',
+                          production_annuelle=11000, economies_annuelles=19000)
+        self.assertFalse(data['masquer_economies'])
+        d, html = self._html(data)
+        self.assertFalse(d['masquer_synthese'])
+        self.assertIn('<div class="c1-bigcut">', html)

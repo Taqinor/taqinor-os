@@ -641,7 +641,17 @@ class TestCompletionDuKit(TestCase):
         self.assertFalse(
             devis.lignes.filter(designation='Installation').exists())
         pose = devis.lignes.get(designation='Pose et mise en service')
-        self.assertEqual(pose.prix_unitaire, Decimal('7500.00'))
+        # Ce que ce test garde : la ligne rebaptisée N'EST PAS DUPLIQUÉE (elle
+        # est reconnue au classifieur, pas au libellé) — elle est TOUJOURS là,
+        # sous son nom d'origine.
+        # QJR220 (31/08/2026) — et elle est RECOTÉE comme n'importe quel
+        # forfait au panneau : le prix 7 500 tapé à la main n'était pas
+        # verrouillé (`prix_manuel` absent), donc la resynchronisation à 16
+        # panneaux le ramène au barème du stock — MÊME ancrage que
+        # `test_le_kit_manquant_est_ajoute_avec_les_bonnes_quantites`
+        # (2 000 + 250 × 16). Un prix vraiment souverain se pose avec
+        # `prix_manuel`, abstention D12.
+        self.assertEqual(pose.prix_unitaire, Decimal('6000.00'))
         self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU) - 1)
 
     # ── (b) Catalogue amputé : on saute ET on le DIT ────────────────────────

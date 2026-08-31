@@ -28,14 +28,25 @@ class OfflineOpError(Exception):
 
 # op_type → (module, handler)
 _HANDLERS = {}
+# NTMOB2 — op_type → resolveur(company, payload) -> objet cible | None.
+# FACULTATIF et séparé du registre principal : ``get()`` garde son contrat de
+# paire, et un op_type sans resolveur se comporte exactement comme sous NTMOB1
+# (aucune garde de version, aucun conflit possible).
+_RESOLVEURS = {}
 
 
-def register(op_type, module, handler):
+def register(op_type, module, handler, resolveur=None):
     """Enregistre (ou remplace) le handler d'un `op_type`.
 
     `module` doit être une valeur de ``OfflineOperation.Module`` — la validation
     est faite à l'enregistrement pour qu'un module inconnu explose au démarrage,
-    jamais au milieu d'un lot de synchro."""
+    jamais au milieu d'un lot de synchro.
+
+    `resolveur` (NTMOB2, facultatif) est la fonction qui retrouve
+    l'ENREGISTREMENT CIBLE de l'op — ``resolveur(company, payload)`` — pour que
+    le moteur puisse comparer sa version serveur à celle que le terminal avait
+    lue. Il ne doit RIEN écrire ; il peut renvoyer ``None`` (cible inconnue :
+    c'est le handler qui refusera, avec son propre message)."""
     from .models import OfflineOperation
 
     valides = {c for c, _ in OfflineOperation.Module.choices}
@@ -45,13 +56,24 @@ def register(op_type, module, handler):
             f'(attendus : {", ".join(sorted(valides))}).')
     if not callable(handler):
         raise ValueError(f'Handler non appelable pour l’op « {op_type} ».')
+    if resolveur is not None and not callable(resolveur):
+        raise ValueError(f'Resolveur non appelable pour l’op « {op_type} ».')
     _HANDLERS[op_type] = (module, handler)
+    if resolveur is None:
+        _RESOLVEURS.pop(op_type, None)
+    else:
+        _RESOLVEURS[op_type] = resolveur
     return handler
 
 
 def get(op_type):
     """Renvoie ``(module, handler)`` ou ``None`` si l'op_type est inconnu."""
     return _HANDLERS.get(op_type)
+
+
+def resolveur(op_type):
+    """NTMOB2 — resolveur de cible de cet op_type, ou ``None`` (pas de garde)."""
+    return _RESOLVEURS.get(op_type)
 
 
 def registered_op_types():

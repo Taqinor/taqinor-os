@@ -5,16 +5,17 @@ CE QUE CES TESTS TIENNENT.
 1. **La forme est celle du contrat PACT10** ``contract_samples/devis_totaux.json``
    — clés et ordre de dérivation, entrées ``tva_par_taux`` en ``{taux, base,
    montant}``.
-2. **``Vue.BRUT`` est le calcul d'HIER, conservé et NOMMÉ** : somme des lignes,
-   remise par ligne honorée, ``remise_globale`` IGNORÉE, et sur un devis
-   mono-taux la formule d'origine ``HT × taux`` SANS arrondi (là où le noyau
-   canonique quantifie au centime). C'est ce qui rendait QJR50 sans effet sur
-   les chiffres. **QJR51/D2 a ensuite basculé ``Devis.total_*`` sur
-   ``Vue.NET``** : BRUT n'est donc plus l'ancre du modèle — sur un devis remisé
-   ou mono-taux les deux DOIVENT diverger, et les tests pinnent chaque chaîne
-   sur sa propre valeur dérivée.
-3. **``Vue.NET`` / ``Vue.PAR_OPTION`` égalent ``option_totaux`` AU CENTIME** —
-   la façade NOMME, elle ne recalcule pas.
+2. **QJR242 — LA FAÇADE N'A PLUS QUE DEUX VUES : ``NET`` et ``AFFICHAGE``.**
+   ``Vue.BRUT`` et ``Vue.PAR_OPTION`` ont été SUPPRIMÉES : aucune n'avait
+   d'appelant de production, et ``PAR_OPTION`` était CASSÉE — avec des
+   ``lignes`` fournies elle jetait l'option nommée en silence et rendait les
+   totaux de tout le jeu, la seule chose qu'elle existait pour empêcher. La
+   question « totaux d'un panier d'option » se pose par
+   ``utils.options.option_totaux``, la chaîne que les documents empruntent.
+   Les tests qui pinnaient ces deux vues sont partis avec elles ; ceux qui
+   avaient besoin d'un TÉMOIN brut le dérivent désormais explicitement.
+3. **``Vue.NET`` égale ``option_totaux`` AU CENTIME** — la façade NOMME, elle
+   ne recalcule pas.
 4. **``ttc_affiche``** vaut ``ttc`` partout : aucune vue n'arrondit aujourd'hui.
 
 Lancer :
@@ -67,6 +68,16 @@ class _ArgentBase(TestCase):
             quantite=Decimal(str(quantite)), prix_unitaire=Decimal(str(prix)),
             remise=Decimal('0'), **extra)
 
+    def _ttc_brut(self, devis):
+        """QJR242 — LE TÉMOIN « brut », dérivé ICI depuis que ``Vue.BRUT`` a
+        été supprimée : somme de TOUTES les lignes, remise globale IGNORÉE,
+        aucun filtre d'option. Volontairement MONO-TAUX (les fixtures qui
+        l'utilisent le sont toutes) : ce n'est plus une vue du noyau, c'est un
+        repère de test, et il le dit."""
+        ht = sum((Decimal(str(li.total_ht)) for li in devis.lignes.all()),
+                 Decimal('0'))
+        return ht * (Decimal('1') + Decimal(str(devis.taux_tva)) / 100)
+
 
 class FormeDuContratTests(_ArgentBase):
     """PACT10 — la façade rend la forme committée, jamais une inventée."""
@@ -96,69 +107,22 @@ class FormeDuContratTests(_ArgentBase):
     def test_les_totaux_sont_geles(self):
         devis = self._devis('qjr49-gel')
         self._ligne(devis, 'Panneau 550 W', 10, 1000)
-        vue = totaux(devis, vue=Vue.BRUT)
+        vue = totaux(devis, vue=Vue.NET)
         with self.assertRaises(Exception):
             vue.ttc = Decimal('1')
 
+    def test_les_deux_vues_supprimees_ne_reviennent_pas(self):
+        """QJR242 — le noyau reste honnête à DEUX vues vivantes."""
+        self.assertEqual(sorted(v.name for v in Vue), ['AFFICHAGE', 'NET'])
+        self.assertFalse(hasattr(Vue, 'BRUT'))
+        self.assertFalse(hasattr(Vue, 'PAR_OPTION'))
 
-class VueBrutIdentiqueTests(_ArgentBase):
-    """``Vue.BRUT`` = le calcul d'HIER, conservé et NOMMÉ.
 
-    QJR51 / décision fondateur D2 (29/08/2026) — L'ANCRE A BOUGÉ. Cette classe
-    a été écrite pour QJR50, qui branchait ``Devis.total_*`` sur ``Vue.BRUT``
-    « au bit » ; QJR51 les a basculées sur ``Vue.NET`` (remise globale honorée,
-    option effective). Comparer BRUT à ``Devis.total_*`` ne prouve donc plus
-    l'identité de BRUT : sur un devis remisé, ou mono-taux, les deux DOIVENT
-    diverger. Les deux tests concernés pinnent désormais les DEUX chaînes,
-    chacune sur sa propre valeur dérivée — c'est plus fort que l'égalité
-    d'hier, pas plus faible.
-    """
-
-    def test_mono_taux_sans_remise(self):
-        """Mono-taux : BRUT applique la formule d'origine (HT × taux, AUCUN
-        arrondi), le noyau canonique quantifie au centime.
-
-        Cette divergence est DOCUMENTÉE dans ``argent._totaux_brut`` — elle est
-        la raison d'être de la vue BRUT (« passer par le noyau ferait bouger
-        des montants, ce que QJR50 interdit »). Dérivation : 9 × 1 166,67 +
-        14 000 = 24 500,03 HT ; TVA 20 % = **4 900,006** en BRUT, **4 900,01**
-        une fois quantifiée par la chaîne canonique que lit ``total_tva``.
-        """
-        devis = self._devis('qjr49-brut1')
-        self._ligne(devis, 'Panneau 550 W', 9, 1166.67)
-        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000)
-        devis = Devis.objects.get(pk=devis.pk)
-        vue = totaux(devis, vue=Vue.BRUT)
-        # Sans remise, le HT ne peut pas diverger : les deux chaînes partent
-        # de la même somme de lignes.
-        self.assertEqual(vue.ht_brut, Decimal('24500.03'))
-        self.assertEqual(vue.ht_brut, devis.total_ht)
-        # BRUT — la formule d'hier, non arrondie.
-        self.assertEqual(vue.tva, Decimal('4900.006'))
-        self.assertEqual(vue.ttc, Decimal('29400.036'))
-        # NET (ce que lit le modèle depuis QJR51) — quantifiée au centime.
-        self.assertEqual(devis.total_tva, Decimal('4900.01'))
-        self.assertEqual(devis.total_ttc, Decimal('29400.04'))
-        # …et l'écart reste STRICTEMENT sous le centime : c'est un arrondi,
-        # jamais deux arithmétiques qui partiraient l'une de l'autre.
-        self.assertLess(abs(devis.total_tva - vue.tva), Decimal('0.01'))
-
-    def test_la_remise_globale_est_ignoree_par_la_vue_brut(self):
-        """BRUT ignore ``remise_globale`` — et depuis QJR51 le modèle, lui, la
-        HONORE : 10 000 HT ; BRUT = 10 000 + 2 000 = **12 000** ; NET =
-        9 000 + 1 800 = **10 800,00**. C'est exactement le changement assumé
-        par la décision D2, pinné des deux côtés.
-        """
-        devis = self._devis('qjr49-brut2', remise=Decimal('10'))
-        self._ligne(devis, 'Panneau 550 W', 10, 1000)
-        devis = Devis.objects.get(pk=devis.pk)
-        vue = totaux(devis, vue=Vue.BRUT)
-        self.assertEqual(vue.remise, Decimal('0'))
-        self.assertEqual(vue.ht_net, vue.ht_brut)
-        self.assertEqual(vue.ttc, Decimal('12000'))
-        # Le modèle passe par Vue.NET : la remise est appliquée.
-        self.assertEqual(devis.total_ttc, Decimal('10800.00'))
-        self.assertEqual(totaux(devis, vue=Vue.NET).ttc, devis.total_ttc)
+class LesLignesComptees(_ArgentBase):
+    """Ce que la chaîne compte, et ce qu'elle exclut — repris de la classe
+    ``VueBrutIdentiqueTests`` supprimée avec ``Vue.BRUT`` (QJR242). Les
+    assertions de MONTANT n'ont pas bougé : elles portent désormais sur la vue
+    NET, qui est celle que ``Devis.total_*`` lit depuis D2."""
 
     def test_taux_mixtes(self):
         devis = self._devis('qjr49-brut3')
@@ -166,7 +130,7 @@ class VueBrutIdentiqueTests(_ArgentBase):
                     taux_tva=Decimal('20'))
         self._ligne(devis, 'Pose', 1, 8000, taux_tva=Decimal('10'))
         devis = Devis.objects.get(pk=devis.pk)
-        vue = totaux(devis, vue=Vue.BRUT)
+        vue = totaux(devis, vue=Vue.NET)
         self.assertEqual(vue.tva, devis.total_tva)
         self.assertEqual(vue.ttc, devis.total_ttc)
         self.assertEqual([e['taux'] for e in vue.tva_par_taux],
@@ -179,9 +143,9 @@ class VueBrutIdentiqueTests(_ArgentBase):
             devis=devis, designation='Équipements', type_ligne='section')
         self._ligne(devis, 'Extension garantie', 1, 5000, optionnelle=True)
         devis = Devis.objects.get(pk=devis.pk)
-        vue = totaux(devis, vue=Vue.BRUT)
+        vue = totaux(devis, vue=Vue.NET)
         self.assertEqual(vue.ht_brut, Decimal('10000'))
-        self.assertEqual(vue.ht_brut, devis.total_ht)
+        self.assertEqual(vue.ht_net, devis.total_ht)
 
 
 class VueNetEtParOptionTests(_ArgentBase):
@@ -210,7 +174,10 @@ class VueNetEtParOptionTests(_ArgentBase):
         self.assertEqual(vue.ht_net, Decimal('9000.00'))
         self.assertEqual(vue.ttc, Decimal('10800.00'))
 
-    def test_par_option_egale_option_totaux_de_la_meme_option(self):
+    def test_les_totaux_par_option_passent_par_option_totaux(self):
+        """QJR242 — ``Vue.PAR_OPTION`` supprimée : la question « totaux d'un
+        panier d'option » se pose à ``utils.options.option_totaux``, et les
+        DEUX options restent distinctes (jamais la somme)."""
         devis = self._devis('qjr49-opt', remise=Decimal('5'))
         self._ligne(devis, 'Panneau 550 W', 12, 1200, variante='sans')
         self._ligne(devis, 'Onduleur réseau 5 kW', 1, 9000, variante='sans')
@@ -218,12 +185,12 @@ class VueNetEtParOptionTests(_ArgentBase):
         self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
         self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
         devis = Devis.objects.get(pk=devis.pk)
-        for option in (SANS_BATTERIE, AVEC_BATTERIE):
-            with self.subTest(option=option):
-                attendu = option_totaux(devis, option)
-                vue = totaux(devis, vue=Vue.PAR_OPTION, option=option)
-                self.assertEqual(vue.ttc, attendu['ttc'])
-                self.assertEqual(vue.ht_net, attendu['ht'])
+        sans = option_totaux(devis, SANS_BATTERIE)
+        avec = option_totaux(devis, AVEC_BATTERIE)
+        self.assertLess(sans['ttc'], avec['ttc'])
+        self.assertLess(avec['ttc'], self._ttc_brut(devis))
+        # La vue NET du devis EST l'option effective (D9 : AVEC).
+        self.assertEqual(totaux(devis, vue=Vue.NET).ttc, avec['ttc'])
 
     def test_les_deux_options_ne_sont_jamais_additionnees(self):
         devis = self._devis('qjr49-somme')
@@ -233,8 +200,7 @@ class VueNetEtParOptionTests(_ArgentBase):
         self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
         devis = Devis.objects.get(pk=devis.pk)
         net = totaux(devis, vue=Vue.NET)
-        brut = totaux(devis, vue=Vue.BRUT)
-        self.assertLess(net.ht_net, brut.ht_brut)
+        self.assertLess(net.ttc, self._ttc_brut(devis))
         self.assertEqual(net.ttc, Decimal(str(option_totaux(devis)['ttc'])))
 
     def test_les_lignes_fournies_evitent_une_requete(self):
@@ -253,7 +219,7 @@ class TtcAfficheTests(_ArgentBase):
         devis = self._devis('qjr49-affiche', remise=Decimal('7'))
         self._ligne(devis, 'Panneau 550 W', 13, 1166.67)
         devis = Devis.objects.get(pk=devis.pk)
-        for vue in (Vue.BRUT, Vue.NET, Vue.PAR_OPTION, Vue.AFFICHAGE):
+        for vue in (Vue.NET, Vue.AFFICHAGE):
             with self.subTest(vue=vue):
                 calcule = totaux(devis, vue=vue)
                 self.assertEqual(calcule.ttc_affiche, calcule.ttc)
@@ -309,16 +275,9 @@ class DelegationDesProprietesTests(_ArgentBase):
         self.assertEqual(devis.total_ht, 0)
         self.assertEqual(devis.total_ttc, devis.total_tva)
 
-    def test_la_vue_brut_reutilise_un_prefetch(self):
-        """NPLUS1 — la vue BRUT lit ``lignes.all()`` sans ``select_related``,
-        donc RÉUTILISE le ``prefetch_related('lignes')`` de la liste des
-        devis. Épinglé ici parce qu'un ``select_related`` y ferait un N+1."""
-        devis = self._devis('qjr50-prefetch')
-        self._ligne(devis, 'Panneau 550 W', 10, 1000)
-        prefetche = Devis.objects.prefetch_related('lignes').get(pk=devis.pk)
-        with self.assertNumQueries(0):
-            self.assertEqual(totaux(prefetche, vue=Vue.BRUT).ttc,
-                             Decimal('12000'))
+    # QJR242 — ``test_la_vue_brut_reutilise_un_prefetch`` est parti avec
+    # ``Vue.BRUT``. La garde N+1 qu'il portait vit dans le test ci-dessous,
+    # sur la vue que ``Devis.total_ttc`` lit RÉELLEMENT depuis la décision D2.
 
     def test_la_vue_net_reutilise_aussi_un_prefetch(self):
         """NPLUS1 (29/08/2026) — MÊME GARDE POUR LA VUE NET, qui est celle que
@@ -356,9 +315,11 @@ class BasculeNetTests(_ArgentBase):
         self._ligne(devis, 'Panneau 550 W', 10, 1200)
         self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000)
         devis = Devis.objects.get(pk=devis.pk)
-        brut = totaux(devis, vue=Vue.BRUT)
-        self.assertEqual(devis.total_ttc, brut.ttc)
-        self.assertEqual(devis.total_ht, brut.ht_brut)
+        self.assertEqual(devis.total_ttc, self._ttc_brut(devis))
+        self.assertEqual(
+            devis.total_ht,
+            sum((Decimal(str(li.total_ht)) for li in devis.lignes.all()),
+                Decimal('0')))
 
     def test_la_tva_est_desormais_reconciliee_au_centime(self):
         """LE SEUL écart d'un devis SANS remise ni seconde option : la chaîne
@@ -380,7 +341,7 @@ class BasculeNetTests(_ArgentBase):
         self.assertEqual(devis.total_ht, Decimal('9000.00'))
         self.assertEqual(devis.total_ttc, Decimal('10800.00'))
         # Et il BAISSE par rapport au brut d'hier — c'est le changement assumé.
-        self.assertLess(devis.total_ttc, totaux(devis, vue=Vue.BRUT).ttc)
+        self.assertLess(devis.total_ttc, self._ttc_brut(devis))
 
     def test_le_total_du_devis_egale_la_chaine_de_ses_factures(self):
         """``option_totaux`` est ce que l'échéancier / la facture consomment :
@@ -401,11 +362,10 @@ class BasculeNetTests(_ArgentBase):
         self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
         self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
         devis = Devis.objects.get(pk=devis.pk)
-        somme_des_deux = totaux(devis, vue=Vue.BRUT).ttc
+        somme_des_deux = self._ttc_brut(devis)
         self.assertLess(devis.total_ttc, somme_des_deux)
         self.assertEqual(devis.total_ttc,
-                         totaux(devis, vue=Vue.PAR_OPTION,
-                                option=AVEC_BATTERIE).ttc)
+                         option_totaux(devis, AVEC_BATTERIE)['ttc'])
 
     def test_apres_acceptation_le_total_suit_l_option_acceptee(self):
         devis = self._devis('qjr51-acceptee')
@@ -416,8 +376,7 @@ class BasculeNetTests(_ArgentBase):
         Devis.objects.filter(pk=devis.pk).update(option_acceptee=SANS_BATTERIE)
         devis = Devis.objects.get(pk=devis.pk)
         self.assertEqual(devis.total_ttc,
-                         totaux(devis, vue=Vue.PAR_OPTION,
-                                option=SANS_BATTERIE).ttc)
+                         option_totaux(devis, SANS_BATTERIE)['ttc'])
 
     def test_le_taux_de_remise_cpq_n_applique_plus_deux_fois_la_remise(self):
         """QJR51 — retrait d'une COMPENSATION : ``cpq.taux_remise_global``

@@ -1,13 +1,19 @@
 # flake8: noqa
-"""TAQINOR quote engine — AGRICOLE (pompage solaire) renderer package.
+"""TAQINOR quote engine — AGRICOLE : le moteur AGRONOMIQUE, et lui seul.
 
-A premium multi-page proposal for agricultural solar water-pumping quotes,
-mirroring the architecture of the sibling ``residential`` package. Selected by
-``agricole.renderer.is_agricultural`` from the single quote engine
-(``apps/ventes/quote_engine``) for ``mode_installation == "agricole"`` in the
-full/premium format. The legacy one-page renderer still serves the agricole
-one-page format and is the automatic fall-back, so a client PDF is never broken.
+QJR236 (décision fondateur DV1 du 30/08/2026) — LE RENDERER PREMIUM
+MULTI-PAGES A ÉTÉ SUPPRIMÉ. Depuis que le dispatch lit le ``pdf_mode``
+NORMALISÉ (QJR32), il était INJOIGNABLE : ``build_quote_data`` dégrade PAR
+CONCEPTION toute demande agricole « full » en une page (le format à options n'a
+pas de sens sans onduleur), donc aucune entrée ne pouvait plus le sélectionner
+et ce format avait silencieusement cessé d'être livré. Le une-page sert seul
+depuis juin ; la résurrection reste possible par ``git``.
 
-Renders only — never changes a devis status (CLAUDE.md rule #4).
+CE QUI RESTE, ET QUI EST VIVANT : :mod:`agronomy` — le moteur agronomique v2
+(FAO-56, série mensuelle, ``ET0_MONTHLY``). Il n'a jamais appartenu au
+renderer : il est lu par ``apps/ventes/public_views.py`` (``peak_need_m3_day``)
+et sa table ``ET0_MONTHLY`` est citée par ``apps/crm/webhooks.py``.
+
+Le PDF agricole une-page est rendu par le moteur legacy
+(``quote_engine/generate_devis_premium.py``), inchangé.
 """
-from .renderer import is_agricultural, render_pdf_bytes, Unsupported  # noqa: F401

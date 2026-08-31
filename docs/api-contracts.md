@@ -671,7 +671,9 @@
 - frontend/src/api/notificationsApi.js :: unreadCount -> /api/django/notifications/notifications/unread-count
     actions:inconnu, infos:nombre, unread:inconnu
 - frontend/src/api/offlinesyncApi.js :: envoyerLot -> /api/django/offlinesync/operations/batch
-    applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
+    applied:inconnu, conflicts:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
+- frontend/src/api/offlinesyncApi.js :: resoudreConflit -> /api/django/offlinesync/operations/<>/resoudre
+    detail:texte, operation:inconnu, resultat:inconnu
 - frontend/src/api/paieApi.js :: affebdsRapprochement -> /api/django/paie/periodes/affebds-rapprochement
     en_trop:inconnu, manquants:inconnu, rapproches:inconnu
 - frontend/src/api/paieApi.js :: apercuBulletin -> /api/django/paie/periodes/<>/bulletin
@@ -1085,9 +1087,9 @@
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: appliquerPackage -> /api/django/adminops/config-packages/appliquer
-    custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+    custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
-    custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+    custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: backtest -> /api/django/adsengine/regles/<>/backtest
     label_fr:inconnu, proposals:inconnu, range:objet, reason:texte, summary:objet, supported:booleen, template_key:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: checklist -> /api/django/adsengine/creatifs/checklist
@@ -2944,12 +2946,19 @@
     event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, uxviews_favoris_obsoletes, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
     reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
 - frontend/src/api/offlinesyncApi.js :: getOperation -> /api/django/offlinesync/operations/<>  [OfflineOperationSerializer]
-    champs: client_op_id, created_at, date_creation, date_traitement, erreur, id, module, module_libelle, op_type, payload, resultat, statut, statut_libelle, updated_at
+    champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
     module ∈ {crm, installations, sav, stock, ventes}
+    resolution ∈ {fusion, mienne, serveur}
+    statut ∈ {appliquee, conflit, en_attente, rejetee}
+- frontend/src/api/offlinesyncApi.js :: listConflits -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
+    champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
+    module ∈ {crm, installations, sav, stock, ventes}
+    resolution ∈ {fusion, mienne, serveur}
     statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/offlinesyncApi.js :: listOperations -> /api/django/offlinesync/operations  [OfflineOperationSerializer]
-    champs: client_op_id, created_at, date_creation, date_traitement, erreur, id, module, module_libelle, op_type, payload, resultat, statut, statut_libelle, updated_at
+    champs: client_op_id, conflit, created_at, date_creation, date_resolution, date_traitement, erreur, id, module, module_libelle, op_type, payload, resolution, resolution_libelle, resultat, statut, statut_libelle, updated_at
     module ∈ {crm, installations, sav, stock, ventes}
+    resolution ∈ {fusion, mienne, serveur}
     statut ∈ {appliquee, conflit, en_attente, rejetee}
 - frontend/src/api/outillageApi.js :: createOutil -> /api/django/outillage/outils  [OutillageSerializer]
     champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
@@ -3110,8 +3119,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: createSavedReport -> /api/django/reporting/saved-reports  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: deleteClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3125,8 +3134,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: deleteSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: getClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3142,8 +3151,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: listSavedReports -> /api/django/reporting/saved-reports  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/reportingApi.js :: updateClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
     champs: cellules, created_at, id, liens, partage, titre, updated_at
@@ -3155,8 +3164,8 @@
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
     partage ∈ {prive, societe}
 - frontend/src/api/reportingApi.js :: updateSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
-    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
-    schedule ∈ {daily, none, weekly}
+    champs: canal, created_at, definition, destinataires_whatsapp, heure_envoi, id, jour_du_mois, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, monthly, none, weekly}
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/rhApi.js :: attribuerBadge -> /api/django/rh/attributions-badge  [AttributionBadgeSerializer]
     champs: attribue_par, attribue_par_nom, badge, badge_icone, badge_nom, beneficiaire, beneficiaire_nom, date_creation, id, message

@@ -406,3 +406,131 @@ class DeploiementPartenaire(TenantModel):
     def __str__(self):
         client = self.client_final or 'client non nommé'
         return f'{client} — {self.get_statut_display()}'
+
+
+class ParcoursCertificationPartenaire(TenantModel):
+    """NTMIG31 — un « parcours d'onboarding » kb (XKB22) instancié pour la
+    FORMATION CERTIFIANTE d'UN partenaire donné.
+
+    Réutilise le MÉCANISME du parcours kb (une séquence ordonnée d'articles,
+    ``kb.KbParcours``/``KbParcoursArticle``) comme CONTENU, mais jamais son
+    suivi interne (``KbParcoursAssignation``/``KbLecture``) : ce suivi est
+    nominatif pour un ``CustomUser`` interne, alors qu'un partenaire externe
+    s'authentifie par jeton (``Partenaire.token_acces``), sans compte
+    utilisateur. Cette instance porte donc sa PROPRE progression — même
+    esprit que ``PlaybookInstance`` (NTMIG22), qui instancie un playbook kb
+    sans réutiliser son moteur de version pour le suivi d'exécution.
+
+    ``articles`` est un INSTANTANÉ des articles ordonnés pris à
+    l'instanciation (via ``kb.selectors.articles_ordonnes_parcours`` — jamais
+    un import de ``kb.models``) : éditer le parcours modèle après coup ne doit
+    pas faire chuter (ni gonfler) la progression d'une formation déjà en
+    cours, exactement comme pour un playbook (NTMIG22).
+
+    À la clôture (``statut='termine'``), la spécialité associée
+    (``specialite``, dérivée du ``metier`` du parcours au moment de
+    l'instanciation SI elle appartient au référentiel fermé
+    ``crm.Partenaire.SPECIALITES_CLES``) est PROPOSÉE — jamais attribuée
+    automatiquement : ``proposition_validee`` ne passe à vrai que par l'action
+    explicite d'un admin, qui écrit alors la spécialité sur la fiche
+    partenaire via ``crm.services.ajouter_specialite_partenaire``.
+    """
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    # FK-CHAÎNE vers crm (jamais un import de ``apps.crm.models``).
+    partenaire = models.ForeignKey(
+        'crm.Partenaire',
+        # on_delete: composition — un parcours de certification n'existe que
+        # rattaché à son partenaire.
+        on_delete=models.CASCADE,
+        related_name='parcours_certification', verbose_name='Partenaire')
+    # FK-CHAÎNE vers kb (jamais un import de ``apps.kb.models``). SET_NULL :
+    # la progression SURVIT à la suppression du parcours modèle — même
+    # raison que ``PlaybookInstance.playbook_article``.
+    parcours = models.ForeignKey(
+        'kb.KbParcours', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Parcours (kb)')
+    parcours_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Nom du parcours',
+        help_text="Nom figé à l'instanciation (reste lisible si le parcours "
+                  'modèle est supprimé ou renommé).')
+    # Clé de ``crm.SPECIALITES_PARTENAIRE_CLES`` PROPOSÉE à la clôture, ou
+    # vide si le ``metier`` du parcours ne correspond à aucune spécialité
+    # connue (le parcours reste alors une simple formation, sans proposition).
+    specialite = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Spécialité proposée')
+    # Instantané des articles ordonnés : [{'article', 'titre', 'ordre'}, …].
+    articles = models.JSONField(
+        default=list, blank=True, verbose_name='Articles (instantané)')
+    # État lu par article : {'<id article>': True/False}. Clés étrangères à
+    # l'instantané ignorées au calcul (même garde que PlaybookInstance).
+    avancement = models.JSONField(default=dict, blank=True,
+                                  verbose_name='Avancement')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+    proposition_validee = models.BooleanField(
+        default=False, verbose_name='Proposition de spécialité validée')
+    # PROTECT (jamais SET_NULL) : qui a validé la proposition est une
+    # information d'audit — la vider en silence à la suppression d'un compte
+    # ferait perdre QUI a décidé (même garde que ``PlaybookInstance.
+    # responsable``).
+    valide_par = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='parcours_certification_valides',
+        verbose_name='Validé par')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'partenaire'],
+                         name='mig_parc_cert_soc_part_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='mig_parc_cert_soc_statut_idx'),
+        ]
+        verbose_name = 'Parcours de certification partenaire'
+        verbose_name_plural = 'Parcours de certification partenaire'
+
+    # ── Progression (même patron que PlaybookInstance) ──────────────────────
+
+    @property
+    def cles_articles(self):
+        """Ids des articles de l'instantané, en chaînes, DÉDOUBLONNÉS."""
+        vues, cles = set(), []
+        for article in self.articles or []:
+            if not isinstance(article, dict):
+                continue
+            cle = str(article.get('article') or '')
+            if not cle or cle in vues:
+                continue
+            vues.add(cle)
+            cles.append(cle)
+        return cles
+
+    @property
+    def nb_articles(self):
+        return len(self.cles_articles)
+
+    @property
+    def nb_faits(self):
+        avancement = self.avancement if isinstance(self.avancement, dict) else {}
+        return sum(1 for cle in self.cles_articles if bool(avancement.get(cle)))
+
+    @property
+    def progression(self):
+        total = self.nb_articles
+        if not total:
+            return 0
+        return int(self.nb_faits * 100 // total)
+
+    def __str__(self):
+        nom = self.parcours_nom or f'parcours {self.parcours_id}'
+        return f'{nom} — {self.partenaire_id} — {self.progression} %'

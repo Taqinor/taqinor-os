@@ -131,6 +131,85 @@ def jour_reference_par_defaut():
     return timezone.localdate()
 
 
+def _date_lisible(valeur):
+    """``valeur`` en ``date``, ou ``None`` si elle n'en est pas une.
+
+    Tolérant par conception : une surcharge illisible (texte libre, nombre,
+    objet) ne DÉCIDE rien — elle vaut une absence, jamais une date inventée.
+    """
+    from datetime import date, datetime
+
+    if isinstance(valeur, datetime):
+        # Un horodatage EN BASE est UTC-aware : on le ramène au fuseau local,
+        # la même convention que ``jour_reference_par_defaut``
+        # (``timezone.localdate()``) — sinon un devis créé après 23 h locales
+        # serait daté de la veille (ou du lendemain) selon le fuseau.
+        from django.utils import timezone
+        if timezone.is_aware(valeur):
+            return timezone.localdate(valeur)
+        return valeur.date()
+    if isinstance(valeur, date):
+        return valeur
+    if isinstance(valeur, str) and valeur.strip():
+        try:
+            return date.fromisoformat(valeur.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def jour_reference_du_devis(devis):
+    """QJR232 — LA DATE DE RÉFÉRENCE DE CE DEVIS. Une, stable, et lisible.
+
+    LE TROU QUE CECI BOUCHE, en trois symptômes du MÊME défaut :
+
+    * ``empreinte_entrees`` fait entrer ``jour_reference`` (à raison — QJR45 :
+      sans lui, le même devis rendait des économies différentes selon le
+      MOMENT du recalcul, sans que rien ne dise quelle date avait servi). Mais
+      la date valait « aujourd'hui » : le bloc le plus coûteux du devis était
+      donc invalidé UNE FOIS PAR JOUR CIVIL ET PAR DEVIS, alors que le module
+      promet « recalcule SI ET SEULEMENT SI une entrée a bougé ».
+    * ``etude.jour_reference`` est accepté et PERSISTÉ par le registre D12
+      (``domain/overrides``) et AUCUN chemin moteur ne le lisait : un vendeur
+      posait une date de référence et le dimensionnement continuait de
+      calculer sur l'horloge du jour, pendant que le code affirmait le
+      contraire.
+    * ``profils_comparatifs`` relisait la fiche à la main et OMETTAIT
+      ``jour_reference`` : le bloc persisté sous une empreinte qui épingle la
+      date du devis était en fait calculé sur une SECONDE lecture d'horloge.
+
+    L'ORDRE DE RÉSOLUTION, et il n'y en a qu'un :
+
+    1. la surcharge **déclarée** ``etude.jour_reference`` du registre D12 — le
+       vendeur DÉCLARE la date contre laquelle il veut voir calculer ;
+    2. sinon la **date du devis** (``date_creation``) : elle est PERSISTÉE dès
+       le premier calcul (c'est la création elle-même), elle ne bouge jamais,
+       et elle décrit la date à laquelle l'offre a été construite ;
+    3. sinon seulement — aucun devis, aucune date — « aujourd'hui »
+       (:func:`jour_reference_par_defaut`), le chemin LEAD, inchangé.
+
+    INTERDIT, ET C'EST LA RAISON DE CE DÉTOUR : retirer ``jour_reference`` de
+    l'empreinte. Ce serait recréer l'irreproductibilité Ramadan que QJR45 a
+    fermée. On stabilise la DATE, on ne dé-trace pas le calcul.
+
+    LECTURE PURE : rien n'est écrit (règle #4).
+    """
+    from apps.ventes.domain.overrides import effectif
+
+    try:
+        valeur, source = effectif(devis, 'etude.jour_reference', None)
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        valeur, source = None, 'auto'
+    if source != 'auto':
+        declaree = _date_lisible(valeur)
+        if declaree is not None:
+            return declaree
+    du_devis = _date_lisible(getattr(devis, 'date_creation', None))
+    if du_devis is not None:
+        return du_devis
+    return jour_reference_par_defaut()
+
+
 def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     """P2-A (25/08/2026), déplacé ici par QJR42 — LES ENTRÉES du moteur calibré
     pour CE devis, lues UNE SEULE FOIS et par UNE SEULE fonction.
@@ -161,9 +240,10 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     payer deux requêtes de plus à chaque sauvegarde de ligne.
 
     ``jour_reference`` — QJR45 : la date contre laquelle le moteur calcule
-    (fenêtre Ramadan). ``None`` ⇒ :func:`jour_reference_par_defaut`
-    (aujourd'hui), lu ICI et une seule fois. C'est le chemin surchargeable
-    ``etude.jour_reference`` du registre D12.
+    (fenêtre Ramadan). ``None`` ⇒ :func:`jour_reference_du_devis` (QJR232 : la
+    surcharge D12 ``etude.jour_reference``, sinon la DATE DU DEVIS — plus
+    l'horloge du jour, qui périmait l'empreinte une fois par jour civil), lu
+    ICI et une seule fois.
 
     Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
     ligne, ni total (règle #4).
@@ -174,7 +254,7 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     company = getattr(devis, 'company', None)
     if company is None:
         return None
-    jour = jour_reference or jour_reference_par_defaut()
+    jour = jour_reference or jour_reference_du_devis(devis)
 
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
     from apps.ventes.courbes_journalieres import (

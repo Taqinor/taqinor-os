@@ -14,6 +14,15 @@ Règles :
   * le TVA/HT de chaque tranche est le total devis × pourcentage, ce qui
     conserve le poids du split 10/20 ; le taux affiché est le taux mélangé.
 
+QJR201 (31/08/2026) — CE MODULE NE CALCULE AUCUN PANIER. Les trois lectures
+d'argent (``blended_tva_pct``, ``next_tranche``, ``solde_devis``) passent par
+``utils.options.option_totaux`` : elles héritent donc SANS RECÂBLAGE de la
+règle QF9 rapatriée dans le noyau par QJR200 (les accessoires Huawei orphelins
+ne sont plus facturés sur une option dont l'onduleur n'est pas Huawei).
+L'invariant « total imprimé == somme des tranches == total affiché » est
+épinglé par ``tests/test_qjr_solde_deux_options`` et
+``tests/test_qjr201_chaine_aval_panier``.
+
 QJR21 (29/08/2026) — ``pct_or_montant`` PORTE SON UNITÉ. Le champ s'appelle
 « pct OU montant » mais était TOUJOURS lu comme un pourcentage : une tranche
 saisie en dirhams (p. ex. 5000) produisait une facture de 5000 % du devis. Une

@@ -689,6 +689,24 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
     return body
 
 
+# ── QJR230 — CETTE FONCTION EST SOUS PARITÉ MACHINE ─────────────────────────
+#
+# `_map_payload_to_fields` (et `_extract_web_questionnaire`, qu'elle appelle)
+# est la moitié LECTURE d'un contrat dont la moitié ÉMISSION vit dans un autre
+# dépôt logique, un autre langage et une autre lane : le registre du tunnel
+# `apps/web/src/lib/tunnel/champs.ts` (69 descripteurs, `CHAMPS_PAR_CLE`).
+# Aucune source partagée n'appariait les deux — une clé pouvait survivre à
+# toute la chaîne web et se PERDRE SANS TRACE ici, sans qu'aucun test rougisse.
+#
+# Le porteur partagé est désormais `apps/crm/contract_samples/
+# tunnel_webhook_keys.json` (QJR229) : il donne, pour chacune des 69 clés, soit
+# le champ `crm.Lead` qui la reçoit, soit un REFUS ÉCRIT avec sa raison.
+# `scripts/check_lead_webhook_parite.py` (QJR230) lit CETTE fonction en AST et
+# rougit en nommant la clé dès que la parité rompt.
+#
+# CONSÉQUENCE PRATIQUE : ajouter/retirer ici la lecture d'une clé du registre
+# se déclare DANS LE CONTRAT, dans le même commit. Une clé délibérément
+# ignorée s'y écrit avec sa raison — jamais par omission.
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')

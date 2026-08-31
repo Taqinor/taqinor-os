@@ -118,6 +118,50 @@ def _avertir_verrouillee(avertissements, lignes, ce_qui_n_a_pas_ete_applique):
         % (noms, ce_qui_n_a_pas_ete_applique.capitalize()))
 
 
+def _ordre_suivant(devis):
+    """PVORD / QJR226 — le prochain ``ordre`` LIBRE du devis (``max + 1``).
+
+    LE DÉFAUT QUE CECI FERME. Les lignes PANNEAU et BATTERIE créées par la
+    resynchro l'étaient SANS ``ordre`` : elles prenaient donc le défaut modèle
+    ``0`` et, sous ``ordering = ['ordre', 'id']``, passaient DEVANT toute ligne
+    d'ordre ≥ 1 — typiquement en tête d'un devis écrit à l'écran, dont les
+    lignes sont numérotées 1..n. C'est le mode de défaillance PVORD que la
+    justification de l'écrivain unique nomme explicitement. Les créateurs
+    onduleur et kit calculaient déjà ``max(ordre) + 1`` : la règle est ici,
+    UNE fois, et les quatre l'appellent.
+
+    Passe par ``aggregate`` — donc par la BASE — plutôt que par
+    ``devis.lignes.all()`` : un appelant qui a préchargé la relation
+    (``prefetch_related``) verrait un cache PÉRIMÉ dès la première création, et
+    deux lignes créées d'affilée se retrouveraient au MÊME ordre.
+    """
+    from django.db.models import Max
+
+    valeur = devis.lignes.aggregate(_max=Max('ordre'))['_max']
+    return int(valeur or 0) + 1
+
+
+#: QJR219 / décision fondateur D12 — LE REFUS, NOMMÉ, DE PERMUTER UN ONDULEUR
+#: DONT LE PRIX A ÉTÉ TAPÉ PAR LE VENDEUR.
+#:
+#: COMPORTEMENT RETENU : L'ABSTENTION. ``_permuter_onduleur`` écrasait
+#: ``prix_unitaire`` avec le prix catalogue SANS consulter ``prix_manuel`` et
+#: SANS effacer le drapeau : le prix tapé disparaissait pendant que la ligne
+#: continuait d'affirmer qu'il avait été tapé — un état MENTEUR. Des deux
+#: comportements admissibles (s'abstenir en le disant, ou permuter ET effacer
+#: le drapeau dans la même écriture), on retient le premier, pour deux raisons
+#: déjà écrites dans ce fichier : (1) D12 — « le prix tapé par le commercial
+#: est souverain » (même abstention que ``lignes.retarifer_forfaits_par_panneau``)
+#: et (2) le bloc « DEUX onduleurs » juste au-dessus CONSERVE déjà, avec un
+#: avertissement, un onduleur intrus qui n'est pas au prix catalogue —
+#: permuter celui-ci en silence contredirait la règle voisine.
+MSG_PERMUTATION_PRIX_MANUEL = (
+    'Prix saisi à la main sur « %s » : l\'onduleur n\'a PAS été permuté vers '
+    '« %s » (le prix du vendeur fait foi, décision D12). Changez le produit à '
+    'la main si le scénario exige l\'autre famille d\'onduleur.'
+)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -391,7 +435,10 @@ def reconcilier(devis, intention):
                     verrou, produit=panneau, designation=panneau.nom,
                     quantite=Decimal(str(cible_panneaux)),
                     prix_unitaire=Decimal(panneau.prix_vente),
-                    remise=Decimal('0'))
+                    # QJR226 — la ligne SUIT l'existant (PVORD) : sans
+                    # ``ordre``, le défaut modèle 0 la faisait passer devant
+                    # toutes les lignes du devis.
+                    remise=Decimal('0'), ordre=_ordre_suivant(verrou))
                 lignes_modifiees += 1
                 # La ligne créée est COMMUNE (``variante=''`` par défaut) :
                 # elle sert donc les deux vues à l'identique.
@@ -702,7 +749,9 @@ def reconcilier(devis, intention):
                     verrou, produit=batterie, designation=batterie.nom,
                     quantite=Decimal('1'),
                     prix_unitaire=Decimal(batterie.prix_vente),
-                    remise=Decimal('0'))
+                    # QJR226 — même correction que la ligne panneau : la
+                    # batterie créée par la resynchro SUIT l'existant.
+                    remise=Decimal('0'), ordre=_ordre_suivant(verrou))
                 lignes_modifiees += 1
                 a_batterie = True
         elif not veut_batterie and a_batterie and not devis_deux_options:
@@ -777,6 +826,16 @@ def reconcilier(devis, intention):
             if remplacant is None:
                 avertissements.append(motif_absence)
                 return False
+            # QJR219 / D12 — ABSTENTION DITE sur un prix SAISI À LA MAIN. Sans
+            # cette garde, le prix tapé était écrasé par le prix catalogue et
+            # ``prix_manuel`` restait à True : la ligne affirmait un prix
+            # vendeur qui n'existait plus. Voir MSG_PERMUTATION_PRIX_MANUEL
+            # pour le choix entre les deux comportements admissibles.
+            if getattr(ligne, 'prix_manuel', False):
+                avertissements.append(MSG_PERMUTATION_PRIX_MANUEL % (
+                    ligne.designation or 'ligne sans désignation',
+                    remplacant.nom))
+                return False
             ligne.produit = remplacant
             ligne.designation = remplacant.nom
             ligne.prix_unitaire = Decimal(remplacant.prix_vente)
@@ -798,13 +857,13 @@ def reconcilier(devis, intention):
             if produit is None:
                 avertissements.append(motif_absence)
                 return None
-            ordre_max = max([int(li.ordre or 0)
-                             for li in verrou.lignes.all()] or [0])
+            # QJR226 — le calcul de l'ordre vit dans ``_ordre_suivant`` (une
+            # seule définition, partagée avec les créateurs panneau/batterie).
             return creer_ligne(
                 verrou, produit=produit, designation=produit.nom,
                 quantite=Decimal('1'),
                 prix_unitaire=Decimal(produit.prix_vente),
-                remise=Decimal('0'), ordre=ordre_max + 1)
+                remise=Decimal('0'), ordre=_ordre_suivant(verrou))
 
         if devis_deux_options:
             # Les deux familles sont légitimes : on COMPLÈTE ce qui manque, on
@@ -874,6 +933,26 @@ def reconcilier(devis, intention):
                 avec_batterie=True if devis_deux_options else a_batterie,
                 avertissements=avertissements)
 
+        # ── QJR220 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE RÉELLEMENT
+        # ÉCRIT ──
+        #
+        # ``retarifer_forfaits_par_panneau`` (QJR83) n'avait qu'UN appelant dans
+        # tout le dépôt : ``lignes.remplacer_lignes``. Or ``MODE_RECONCILIER``
+        # n'appelle JAMAIS ``ecrire_lignes`` — et c'est précisément LE mode qui
+        # change un compte de panneaux sur un devis EXISTANT (les trois sites
+        # ``dominante.quantite = …`` ci-dessus). Une sync-layout 9 → 20
+        # panneaux laissait donc la pose, les accessoires et le tableau au
+        # barème de 9 : de l'argent faux sur un document client (l'incident
+        # 9→20 que le fichier de test de QJR83 nomme lui-même).
+        #
+        # APPELÉE ICI, après TOUTES les écritures de lignes (quantités,
+        # permutations, complétion du kit) : le barème s'applique au compte
+        # RÉEL, jamais à celui que l'appelant croyait poser. Les abstentions
+        # D12 (prix_manuel, forfait commun divergent) sont préservées et DITES
+        # — elles rejoignent la même liste que les autres refus de resynchro,
+        # celle que l'écran affiche déjà.
+        retarifer_forfaits_par_panneau(verrou, avertissements=avertissements)
+
         # ── Étude : les clés géométriques + le scénario, jamais les champs
         # d'étude du générateur ──
         etude = dict(verrou.etude_params or {})
@@ -888,11 +967,23 @@ def reconcilier(devis, intention):
         # NON VENDUE, que ``Devis.save`` figeait ensuite dans ``prix_par_kwc``.
         # Les lignes sont déjà resynchronisées à ce point : le propriétaire lit
         # donc l'état RÉEL (registre de surcharges, sinon dérivation PVUNI).
-        _kwc_proprietaire = puissance_kwc_du_devis(verrou)
+        # QJR217 — l'AVERTISSEMENT R4-A remonte par la même liste que tous les
+        # autres refus de resynchro : l'écran l'affiche déjà (réponse
+        # ``sync-layout``), donc le désaccord « ligne verrouillée à N /
+        # taille.nb_panneaux = M » cesse d'être silencieux.
+        # QJR225 — LE REPLI SUR LE kWc DU CALEPINAGE A ÉTÉ RETIRÉ. Ce site
+        # écrivait encore ``etude['puissance_kwc'] = kwc`` (le kWc du LAYOUT)
+        # quand le propriétaire ne savait pas répondre : deux contradictions à
+        # la fois — la règle « écrivain unique » de QJR63
+        # (``domain.scenario.poser_puissance_kwc``, seul écrivain déclaré) et
+        # la préférence Z2 de ce module lui-même (OMETTRE une valeur inconnue
+        # plutôt que la fabriquer). Le calepinage modélise à watt constant :
+        # ce n'est pas le panneau vendu. Sans kWc lisible, la clé est
+        # ABSENTE — jamais un nombre de repli.
+        _kwc_proprietaire = puissance_kwc_du_devis(
+            verrou, avertissements=avertissements)
         if _kwc_proprietaire:
             etude['puissance_kwc'] = _kwc_proprietaire
-        elif kwc:
-            etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
@@ -1059,6 +1150,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
     _lignes_produit,
     creer_ligne,
+    retarifer_forfaits_par_panneau,
 )
 # QJR97 — le pipeline est importé EN BAS, comme tout pont de ce paquet. Il n'y
 # a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de

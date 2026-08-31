@@ -55,11 +55,18 @@ class ChampNonAutorise(Exception):
     """Champ/filtre hors de la liste blanche du dataset."""
 
 
-def register_dataset(name, label, fields, queryset_provider):
+def register_dataset(name, label, fields, queryset_provider,
+                     cache_partage=False):
     """Enregistre un dataset interrogeable (idempotent).
 
     ``fields`` = liste blanche de chemins de champs. ``queryset_provider`` =
     callable ``(company, user) -> QuerySet`` déjà scopé société.
+
+    NTDATA36 — ``cache_partage`` : par défaut FAUX, c.-à-d. qu'une entrée de
+    pré-agrégation (``core.bi_cache``) est propre à un utilisateur, parce qu'un
+    dataset peut masquer des champs selon ses droits. Un dataset dont le
+    résultat ne dépend QUE de la société peut le déclarer VRAI pour partager
+    l'entrée entre ses utilisateurs.
     """
     if not name or not callable(queryset_provider):
         raise ValueError('Dataset : nom + queryset_provider requis.')
@@ -67,6 +74,7 @@ def register_dataset(name, label, fields, queryset_provider):
         'label': label or name,
         'fields': list(fields or []),
         'provider': queryset_provider,
+        'cache_partage': bool(cache_partage),
     }
 
 

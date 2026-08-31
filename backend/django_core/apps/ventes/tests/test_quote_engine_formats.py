@@ -1554,30 +1554,38 @@ class TestQjr32DispatchModeNormalise(TestCase):
         self.devis.save(update_fields=['mode_installation'])
 
     def test_le_dispatch_suit_la_degradation_annoncee_par_le_builder(self):
-        from apps.ventes.quote_engine.agricole import renderer as agricole
-        from apps.ventes.quote_engine.builder import build_quote_data
+        """QJR236 — la dégradation reste, le renderer agricole n'existe plus.
+
+        Le builder DÉGRADE toujours la demande « full » d'un devis agricole
+        vers UNE page ; et depuis la décision DV1, AUCUNE entrée du registre ne
+        sert le marché agricole (le renderer premium multi-pages, injoignable
+        depuis QJR32, a été supprimé)."""
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, registre_renderers)
         data = build_quote_data(self.devis, {'pdf_mode': 'full'})
-        # le builder DÉGRADE : les données sont bâties pour UNE page…
         self.assertEqual(data['pdf_mode'], 'onepage')
-        # …et le prédicat, lu sur le mode RETENU, ne réclame plus le renderer
-        # premium multi-pages (il le faisait sur la demande brute).
-        self.assertFalse(
-            agricole.is_agricultural(self.devis,
-                                     {'pdf_mode': data['pdf_mode']}))
-        self.assertTrue(
-            agricole.is_agricultural(self.devis, {'pdf_mode': 'full'}))
+        self.assertNotIn('agricole',
+                         [m for m, _mod, _p in registre_renderers()])
+        for marche, _module, sert in registre_renderers():
+            with self.subTest(marche=marche):
+                self.assertFalse(sert(self.devis, {'pdf_mode': 'full'}))
+                self.assertFalse(
+                    sert(self.devis, {'pdf_mode': data['pdf_mode']}))
 
     @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
     @patch('apps.ventes.utils.pdf._upload_pdf')
-    def test_un_seul_renderer_est_choisi_et_il_rend_bien_le_pdf(self, up, _b):
+    def test_aucun_renderer_premium_et_le_pdf_sort_quand_meme(self, up, _b):
+        """Le repli vers le moteur legacy sert le document — et il est NOMMÉ
+        dans le journal (QJR235), jamais silencieux."""
         from apps.ventes.quote_engine import generate_premium_devis_pdf
-        from apps.ventes.quote_engine.agricole import renderer as agricole
-        with patch.object(agricole, 'render_pdf_bytes') as rendu_premium:
+        from apps.ventes.quote_engine import builder as B
+
+        with self.assertLogs(B.logger, level='INFO') as journal:
             generate_premium_devis_pdf(self.devis.id,
                                        pdf_options={'pdf_mode': 'full'})
-        rendu_premium.assert_not_called()
         up.assert_called_once()
         self.assertEqual(up.call_args[0][0][:4], b'%PDF')
+        self.assertIn('agricole', '\n'.join(journal.output))
 
     def test_le_compte_de_pages_est_celui_que_la_degradation_annonce(self):
         """Une page — exactement ce que le builder a construit."""

@@ -1,4 +1,4 @@
-"""QJR49 — L'ARGENT D'UN DEVIS : une façade, quatre VUES NOMMÉES.
+"""QJR49 — L'ARGENT D'UN DEVIS : une façade, deux VUES NOMMÉES.
 
 CE QUE CE MODULE EST. L'audit L3 du 29/08/2026 a trouvé SEPT chaînes monétaires
 qui recomposent chacune HT → remise → TVA → TTC à leur façon et rendent parfois
@@ -9,22 +9,29 @@ travail est de NOMMER les vues — pourquoi ce total-ci diffère de celui-là �
 que les six autres implémentations puissent être SUPPRIMÉES une par une, chacune
 remplacée par un appel qui DIT quelle vue elle voulait.
 
-LES QUATRE VUES, ET CE QUI LES SÉPARE.
+QJR242 (31/08/2026) — DEUX VUES ONT ÉTÉ SUPPRIMÉES, arbitrage « câbler ou
+supprimer » = SUPPRIMER.
 
-* :attr:`Vue.BRUT` — la somme de TOUTES les lignes comptées, remise de LIGNE
-  honorée, ``remise_globale`` IGNORÉE, et aucun filtre d'option. C'est,
-  MOT POUR MOT, ce que ``models.Devis.total_ht/total_tva/total_ttc`` rendent
-  aujourd'hui — y compris son arrondi mono-taux non quantifié
-  (``selectors.tva_buckets``). Elle existe pour que la bascule QJR51 soit un
-  changement d'UN mot, et pour rien d'autre : aucun document client ne devrait
-  la lire.
+* ``Vue.BRUT`` existait pour que la bascule QJR51 (``Devis.total_*`` du brut
+  vers le net) soit un changement d'UN mot. Ce mot a été changé le 29/08 ; la
+  vue n'a plus jamais eu d'appelant de production, et aucun document client
+  n'aurait dû la lire de toute façon.
+* ``Vue.PAR_OPTION`` était CASSÉE : ``totaux(vue=PAR_OPTION, option=X,
+  lignes=Y)`` jetait l'option nommée EN SILENCE et rendait les totaux de tout
+  le jeu de lignes fourni — exactement la seule chose qu'elle existait pour
+  empêcher. La question « totaux d'un panier d'option » est posée en plusieurs
+  endroits, et tous passent par ``utils.options.option_totaux`` : c'est LÀ
+  qu'elle vit, correctement, depuis toujours.
+
+Le noyau reste donc honnête à DEUX vues VIVANTES. Aucune valeur monétaire ne
+change : ``NET`` et ``AFFICHAGE`` sont intouchées.
+
+LES DEUX VUES, ET CE QUI LES SÉPARE.
+
 * :attr:`Vue.NET` — la chaîne CANONIQUE de CE devis : ``remise_globale``
   honorée ET l'option EFFECTIVE (``utils.options.option_effective``, décision
   fondateur D9) — jamais la somme des deux options. C'est le total que le
   document lui-même porte.
-* :attr:`Vue.PAR_OPTION` — la même chaîne pour une option NOMMÉE
-  (``option='sans_batterie'`` / ``'avec_batterie'``), celle qu'on veut quand on
-  compare A / B ou qu'on facture une option acceptée.
 * :attr:`Vue.AFFICHAGE` — la vue de ce qui est IMPRIMÉ. Elle porte le même
   argent que :attr:`Vue.NET` et se distingue par ``ttc_affiche``, le SEUL
   endroit du dépôt où un arrondi d'affichage a le droit d'exister. Aujourd'hui
@@ -53,9 +60,7 @@ from typing import Optional, Tuple
 class Vue(Enum):
     """Le CONTEXTE qui demande l'argent — voir la docstring du module."""
 
-    BRUT = 'brut'
     NET = 'net'
-    PAR_OPTION = 'par_option'
     AFFICHAGE = 'affichage'
 
 
@@ -133,31 +138,23 @@ def _entrees_tva(paniers):
     return tuple(entrees)
 
 
-def _totaux_brut(devis, lignes):
-    """:attr:`Vue.BRUT` — le comportement ACTUEL de ``Devis.total_*``, au bit.
-
-    Volontairement bâtie sur ``selectors.tva_buckets`` et NON sur
-    ``_canonical_totaux`` : les deux divergent sur un devis MONO-TAUX (le noyau
-    canonique quantifie la TVA au centime, ``tva_buckets`` applique la formule
-    d'origine HT × taux sans arrondi). Passer par le noyau ferait donc bouger
-    des montants — ce que QJR50 interdit explicitement.
-    """
-    from apps.ventes.selectors import ligne_compte_dans_totaux, tva_buckets
-
-    comptees = [li for li in lignes if ligne_compte_dans_totaux(li)]
-    ht_brut = sum((Decimal(str(li.total_ht)) for li in comptees), Decimal('0'))
-    paniers = tva_buckets(lignes, fallback_taux=devis.taux_tva)
-    tva = sum((panier['montant'] for panier in paniers), Decimal('0'))
-    ttc = ht_brut + tva
-    return Totaux(
-        ht_brut=ht_brut, remise=Decimal('0'), ht_net=ht_brut,
-        tva_par_taux=_entrees_tva(paniers), tva=tva,
-        ttc=ttc, ttc_affiche=ttc)
+# QJR242 — ``_totaux_brut`` A ÉTÉ SUPPRIMÉE avec ``Vue.BRUT`` : elle bâtissait
+# la chaîne d'AVANT la bascule QJR51 (``selectors.tva_buckets``, remise globale
+# ignorée, aucun filtre d'option) pour que cette bascule ne soit qu'un
+# changement d'UN mot. Le mot a été changé ; plus personne ne l'appelait.
 
 
 def _totaux_canoniques(devis, lignes, option):
     """La chaîne CANONIQUE — celle d'``utils.options.option_totaux``, au
-    centime, avec la remise globale et le filtre d'option."""
+    centime, avec la remise globale et le filtre d'option.
+
+    QJR200 — LE FILTRE D'OPTION PORTE AUSSI LA RÈGLE QF9 (accessoires Huawei
+    orphelins retirés du panier dont l'onduleur n'est pas Huawei) : elle est
+    déclarée UNE SEULE FOIS, dans ``utils.options.retirer_accessoires_huawei``,
+    et appliquée par ``filter_lines_for_option`` ci-dessous. Le noyau n'en
+    porte donc aucune copie — c'est ce qui garantit que le total imprimé et le
+    total du noyau décrivent le même panier.
+    """
     from apps.ventes.selectors import _canonical_totaux
     from apps.ventes.utils.options import (
         filter_lines_for_option, has_two_options,
@@ -187,12 +184,14 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     donnaient des réponses différentes sans que personne ne puisse dire
     laquelle était censée être laquelle.
 
-    ``option`` — ``utils.options.SANS_BATTERIE`` / ``AVEC_BATTERIE``. Requis
-    (au sens : c'est son seul intérêt) pour :attr:`Vue.PAR_OPTION` ; ``None``
-    sur :attr:`Vue.NET` / :attr:`Vue.AFFICHAGE` ⇒ l'option EFFECTIVE du devis
+    ``option`` — ``utils.options.SANS_BATTERIE`` / ``AVEC_BATTERIE``. ``None``
+    (le cas de tous les appelants) ⇒ l'option EFFECTIVE du devis
     (``option_effective``, décision fondateur D9 : l'option acceptée, sinon
-    celle du total affiché — jamais la somme des deux). Ignoré par
-    :attr:`Vue.BRUT`, qui n'a par définition aucun filtre.
+    celle du total affiché — jamais la somme des deux). QJR242 — pour les
+    totaux d'une option NOMMÉE, l'appel se fait à
+    ``utils.options.option_totaux`` : c'est la chaîne que les documents
+    empruntent, et la vue ``PAR_OPTION`` qui prétendait la doubler ici était
+    cassée (elle jetait l'option dès qu'on lui fournissait des lignes).
 
     ``lignes`` — lignes déjà chargées par l'appelant (aucune requête de plus).
     **QJR53 — DES LIGNES FOURNIES SONT LA POPULATION DE L'APPELANT** : aucun
@@ -211,12 +210,8 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     """
     if not isinstance(vue, Vue):
         raise TypeError(
-            'argent.totaux exige une Vue nommée (BRUT, NET, PAR_OPTION, '
-            'AFFICHAGE), reçu %r.' % (vue,))
-
-    if vue is Vue.BRUT:
-        return _totaux_brut(
-            devis, _lignes_du_devis(devis, lignes, avec_produit=False))
+            'argent.totaux exige une Vue nommée (NET, AFFICHAGE), reçu %r.'
+            % (vue,))
 
     if lignes is not None:
         return _totaux_canoniques(devis, list(lignes), option=None)
