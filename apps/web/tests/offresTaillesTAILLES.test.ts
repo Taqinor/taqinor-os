@@ -1334,7 +1334,9 @@ describe('LANE W — le héros et la légende « installation » suivent la cart
     // les items de tête, visibles au chargement, cela DÉMASQUE ; pour un nœud
     // rendu `hidden` par le serveur (la banque), cela le laisse masqué — un
     // « démasquer tout » aveugle aurait fait apparaître un bloc vide.
-    expect(SWAP).toContain('cache: el instanceof HTMLElement ? el.hidden : false');
+    // QJW17 a extrait la moisson de visibilité sur sa propre ligne (le mode
+    // `fragment` la partage) — même invariant, nouvelle forme.
+    expect(SWAP).toContain('const cache = el instanceof HTMLElement ? el.hidden : false;');
     expect(SWAP).toContain('if (el instanceof HTMLElement) el.hidden = orig.cache;');
     expect(SWAP).toContain('if (memoire.enveloppeCachee !== null) env.hidden = memoire.enveloppeCachee;');
   });
