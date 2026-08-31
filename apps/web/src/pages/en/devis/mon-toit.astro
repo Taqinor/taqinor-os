@@ -2015,6 +2015,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // which applies the field registry and calls `validateLead` itself.
   import { construireCorps } from '../../../lib/tunnel/corps';
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
+  import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
   // LANE T-WEB — anonymous device fingerprint (see lib/visite.ts): echoed
   // as-is on the lead to correlate with beacon visits. QJW5 — it was missing
@@ -4282,29 +4283,33 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    * emitted. The registry decides, once, for all three pages.
    */
   function lireEtatTunnel(): EtatTunnel {
-    const coche = (id: string) => ($(id) as HTMLInputElement | null)?.checked === true;
     return {
       ...etatVide(),
-      nomComplet: val('mt-name'),
-      telephone: val('mt-phone'),
-      email: val('mt-email'),
-      ville: val('mt-city'),
+      // QJW21 — THE « ONE FIELD ↔ ONE ID » READS COME FROM THE SHARED READER.
+      // This list lived identically in ALL THREE pages: three copies, hence
+      // three chances to forget one — exactly how the L-WEBT block and
+      // `appareilId` stayed missing from the EN and AR pages without a single
+      // red test. `lireChampsDomTunnel` reads THIS page's DOM; the parity guard
+      // runs it against EACH locale's DOM and compares the emitted bodies
+      // (tests/tunnelParite.test.ts).
+      //
+      // Everything is read UNCONDITIONALLY. The gates (checked box, chosen
+      // unit, active profile) live in the registry: a value read is not a value
+      // emitted. The registry decides once, for all three pages.
+      ...lireChampsDomTunnel(document),
+
+      // ——— THIS PAGE'S INTERNAL STATE — none of it is read from an identified
+      //     element: card groups, the map, session tokens, tracking, mode and
+      //     active locale, and the C&I bill whose id DEPENDS on the active panel. ———
       adresseCarte: addressEl?.value ?? '',
       adresseSecours: fallbackAddrEl?.value ?? '',
-      consentement: coche('mt-consent'),
-      // WJ51 — EXPLICIT contact preference (radio "WhatsApp only" vs "An
-      // advisor may call me"): the registry derives `whatsappOptIn` from it
-      // (so nothing breaks CRM/webhook side) AND `contactPreference` (`canal`).
-      appelAutorise: coche('mt-contact-phone'),
-      // WJ30 — the project type is forwarded to the webhook. WJ39 — this page
-      // has no FR/AR toggle (the /en/ URL already declares the locale) and
-      // `langue_preferee` only accepts fr/ar (lib/lead.ts LEAD_LANGS): the
-      // state carries '' and the registry OMITS the key — never a fabricated
-      // locale.
+      // WJ30 — the project type is forwarded to the webhook.
       mode,
+      // WJ39 — this page has no FR/AR toggle (the /en/ URL already declares
+      // the locale) and `langue_preferee` only accepts fr/ar (lib/lead.ts
+      // LEAD_LANGS): the state carries '' and the registry OMITS the key —
+      // never a fabricated locale.
       languePreferee: '',
-      factureHiverMad: num('mt-facture-hiver'),
-      trancheFacture: val('mt-bill'),
       // WJ122 — C&I consumption comes from the ACTIVE panel (commercial:
       // mt-cc-bill). The engine's MAD/kWh tariff travels with the value:
       // without it, the registry refuses to convert a kWh entry rather than
@@ -4312,8 +4317,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       factureProValeur: num(proBillId()),
       factureProUnite: proBillUnit(),
       tarifProMadKwh: lastProTarifMadKwh,
-      // WJ68 — professional mode: optional, additive, never blocking.
-      raisonSociale: val('mt-raison-sociale'),
       tension,
       activite: activity,
       categorieCommerciale: commercialCategory,
@@ -4321,44 +4324,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // estimatePro.
       equipes,
       typeSurface: surfaceType,
-      surfaceM2: num('mt-surface-m2'),
-      // QX — AGRICULTURAL sub-panel (pumping). The `mt-heures-pompage` slider
-      // ships with value="7" BEFORE any interaction: it is the registry that
-      // gates it on the agricultural mode, never this read.
+      // QX — AGRICULTURAL sub-panel: the water source and its unit are card
+      // groups, not identified fields.
       sourceEau: waterSource,
       uniteEau: waterUnit,
-      profondeurM: num('mt-profondeur'),
-      hmtM: num('mt-hmt'),
-      besoinEau: num('mt-water-need'),
-      heuresPompage: num('mt-heures-pompage'),
-      culture: val('mt-culture'),
       regionAgricole,
-      surfaceHa: num('mt-surface-ha'),
-      // `pompeActuelle` / `pompeCvActuelle` are removed from the funnel
-      // (founder cut 18/08): only the fuel SPEND feeds the calculated saving.
-      depenseCarburantMad: num('mt-fuel-spend'),
       // W353 — technical visit slot preference (optional, STATIC).
       creneauVisitePartie: visitWindowPart,
       creneauVisiteSemaine: visitWindowWeek,
-      // L-WEBT — "Refine my consumption profile" (optional, collapsible). Each
-      // kW/slot detail is read here WITHOUT condition; the registry gates it on
-      // its parent checkbox, for all three locales at once.
+      // L-WEBT — the day occupancy is a CARD GROUP whose state the page holds;
+      // the hidden `mt-occupation-jour` input only mirrors it.
       occupationJour,
-      equipChauffeEau: coche('mt-equip-chauffe-eau'),
-      equipChauffeEauKw: num('mt-equip-chauffe-eau-kw'),
-      equipChauffeEauCreneau: val('mt-equip-chauffe-eau-creneau'),
-      equipVoitureElectrique: coche('mt-equip-ve'),
-      equipVeKmSemaine: num('mt-equip-ve-km'),
-      equipVeChargeurKw: num('mt-equip-ve-kw'),
-      equipVeCreneau: val('mt-equip-ve-creneau'),
-      equipClim: coche('mt-equip-clim'),
-      equipClimPieces: num('mt-equip-clim-pieces'),
-      equipClimKw: num('mt-equip-clim-kw'),
-      equipClimCreneau: val('mt-equip-clim-creneau'),
-      equipPiscine: coche('mt-equip-piscine'),
-      equipPiscinePompeKw: num('mt-equip-piscine-kw'),
-      equipPiscineHeuresJour: num('mt-equip-piscine-heures'),
-      equipPiscineCreneau: val('mt-equip-piscine-creneau'),
       // WJ52 — short reference for the post-submission artefact (echoed as-is,
       // never a server uniqueness key — see lib/lead.ts).
       clientRef: getOrCreateClientRef(),
@@ -4378,9 +4354,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ4 — OPTIONAL pin and outline: we never BLOCK without them.
       repereToit: capturePin,
       contourToit: captureOutline,
-      // W317 — honeypot: empty for any human visitor (hidden off-screen
-      // field, never knowingly filled); rejected server-side if not empty.
-      honeypot: val('mt-hp'),
     };
   }
 

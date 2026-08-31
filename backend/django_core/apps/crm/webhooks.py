@@ -794,6 +794,66 @@ def _map_payload_to_fields(data: dict) -> dict:
     if gps_lng is not None:
         fields['gps_lng'] = gps_lng
 
+    # ── QJR246 — Champs enrichment du diagnostic enrichi (preview privé) ──
+    # `apps/web/src/lib/enrichment.ts` (cleanEnrichment) normalise 4 champs
+    # FACULTATIFS collectés par `DiagnosticFormEnriched.astro` (type
+    # d'alimentation, surface de toiture, orientation, kWc estimé) et, dès
+    # qu'au moins un est rempli, `preview-lead.ts` les pose dans un
+    # sous-objet `enrichment` du lead transmis (`record.enrichment`) — MÊME
+    # convention que `band`/`utm` ci-dessus (jamais top-level). Constaté à la
+    # lecture (31/08/2026) : c'est aujourd'hui la SEULE émission existante —
+    # elle vit sur les pages `preview/*.astro`, pas encore sur le formulaire
+    # public — la moitié qui promeut ces champs au formulaire live est
+    # QJW16, hors périmètre de ce mapping récepteur.
+    #
+    # Vocabulaire du site DISTINCT de celui du CRM (mono/tri ≠ monophase/
+    # triphase ; sud-est ≠ sud_est) : apparié explicitement ci-dessous,
+    # jamais un passthrough aveugle d'une valeur non reconnue vers une
+    # colonne à choix. Les 4 clés RÉUTILISENT chacune une colonne Lead
+    # existante (aucune n'a besoin de web_questionnaire) ; une colonne déjà
+    # posée par une autre source n'est jamais écrasée (mêmes gardes
+    # `not in fields` que bill_kwh/facture_hiver ci-dessus).
+    enrichment = data.get('enrichment')
+    if not isinstance(enrichment, dict):
+        enrichment = {}
+    if enrichment:
+        _SUPPLY_TO_RACCORDEMENT = {
+            'mono': Lead.Raccordement.MONOPHASE,
+            'tri': Lead.Raccordement.TRIPHASE,
+            'inconnu': Lead.Raccordement.INCONNU,
+        }
+        supply = _clean_choice(
+            enrichment.get('supplyType'), tuple(_SUPPLY_TO_RACCORDEMENT))
+        if supply is not None and 'raccordement' not in fields:
+            fields['raccordement'] = _SUPPLY_TO_RACCORDEMENT[supply]
+
+        roof_area = _clean_decimal(
+            enrichment.get('roofAreaM2'), lo=0, hi=100000)
+        if roof_area is not None and 'surface_toiture_m2' not in fields:
+            fields['surface_toiture_m2'] = roof_area
+
+        # 'nord' et 'inconnu' (site) n'ont pas de bucket dédié côté CRM —
+        # `Lead.Orientation` ne connaît que Sud/Sud-Est/Sud-Ouest/Est/Ouest/
+        # Autre. Rapprochés d'AUTRE, MÊME convention que `distributeur`
+        # 'inconnu' → `Distributeur.AUTRE` plus haut (jamais jeté).
+        _ORIENTATION_ALIASES = {
+            'sud': Lead.Orientation.SUD,
+            'sud-est': Lead.Orientation.SUD_EST,
+            'sud-ouest': Lead.Orientation.SUD_OUEST,
+            'est': Lead.Orientation.EST,
+            'ouest': Lead.Orientation.OUEST,
+            'nord': Lead.Orientation.AUTRE,
+            'inconnu': Lead.Orientation.AUTRE,
+        }
+        orient = _clean_choice(
+            enrichment.get('orientation'), tuple(_ORIENTATION_ALIASES))
+        if orient is not None and 'orientation' not in fields:
+            fields['orientation'] = _ORIENTATION_ALIASES[orient]
+
+        kwc = _clean_decimal(enrichment.get('estimatedKwc'), lo=0, hi=100000)
+        if kwc is not None and 'taille_souhaitee_kwc' not in fields:
+            fields['taille_souhaitee_kwc'] = kwc
+
     # ── QK1 — Ne plus JETER la qualification déjà captée par le site ──
     # Mode marché (Résidentiel/Industriel/Commercial/Agricole) → type_installation.
     market_mode = (data.get('marketMode') or data.get('market_mode')

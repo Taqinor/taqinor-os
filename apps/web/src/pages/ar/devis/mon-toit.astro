@@ -2033,6 +2033,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // applique le registre de champs et appelle `validateLead` lui-même.
   import { construireCorps } from '../../../lib/tunnel/corps';
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
+  import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
   // LANE T-WEB — empreinte d'appareil anonyme (voir lib/visite.ts) : échoée
   // telle quelle sur le lead pour corréler avec les visites de balise. QJW5 —
@@ -4089,78 +4090,55 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    * émise.
    */
   function lireEtatTunnel(): EtatTunnel {
-    const coche = (id: string) => ($(id) as HTMLInputElement | null)?.checked === true;
     return {
       ...etatVide(),
-      nomComplet: val('mt-name'),
-      telephone: val('mt-phone'),
-      email: val('mt-email'),
-      ville: val('mt-city'),
+      // QJW21 — LES CHAMPS « UN CHAMP ↔ UN ID » VIENNENT DU LECTEUR PARTAGÉ.
+      // Cette liste vivait à l'identique dans les TROIS pages : trois copies,
+      // donc trois occasions d'en oublier une — c'est exactement ainsi que le
+      // bloc L-WEBT et `appareilId` sont restés absents des pages EN et AR sans
+      // qu'aucun test ne rougisse. `lireChampsDomTunnel` lit le DOM de CETTE
+      // page ; la garde de parité la fait tourner sur le DOM de CHAQUE locale et
+      // compare les corps émis (tests/tunnelParite.test.ts).
+      //
+      // On lit TOUT, sans condition. Les gates (case cochée, unité choisie,
+      // profil actif) sont dans le registre : une valeur lue n'est pas une
+      // valeur émise. C'est le registre qui décide, une seule fois, pour les
+      // trois pages.
+      ...lireChampsDomTunnel(document),
+
+      // ——— L'ÉTAT INTERNE DE CETTE PAGE — rien de tout cela ne se lit sur un
+      //     élément identifié : groupes de cartes, carte, jetons de session,
+      //     tracking, mode et langue active, et la facture C&I dont l'id DÉPEND
+      //     du panneau actif. ———
       adresseCarte: addressEl?.value ?? '',
       adresseSecours: fallbackAddrEl?.value ?? '',
-      consentement: coche('mt-consent'),
-      // WJ51 — préférence de contact EXPLICITE : le registre en dérive
-      // `whatsappOptIn` (compat CRM/webhook) ET `contactPreference` (canal).
-      appelAutorise: coche('mt-contact-phone'),
-      // WJ30 — le type de projet et la langue AFFICHÉE partent au webhook
-      // (cette page bascule عربي/FR en direct).
+      // WJ30 — le type de projet et la langue active partent aussi au webhook.
       mode,
       languePreferee: currentLang,
-      factureHiverMad: num('mt-facture-hiver'),
-      trancheFacture: val('mt-bill'),
       // WJ122 — la conso C&I vient du panneau ACTIF (commercial : mt-cc-bill).
       // Le tarif MAD/kWh du moteur accompagne la valeur : sans lui, le registre
       // refuse de convertir une saisie en kWh plutôt que d'inventer un montant.
       factureProValeur: num(proBillId()),
       factureProUnite: proBillUnit(),
       tarifProMadKwh: lastProTarifMadKwh,
-      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant.
-      raisonSociale: val('mt-raison-sociale'),
       tension,
       activite: activity,
       categorieCommerciale: commercialCategory,
-      // WJ123 — mode INDUSTRIEL : les équipes plafonnent honnêtement
+      // WJ123 — mode INDUSTRIEL : les ÉQUIPES plafonnent honnêtement
       // l'autoconsommation dans estimatePro.
       equipes,
       typeSurface: surfaceType,
-      surfaceM2: num('mt-surface-m2'),
-      // QX — sous-panneau AGRICOLE (pompage). Le curseur `mt-heures-pompage`
-      // part avec value="7" AVANT toute interaction : c'est le registre qui le
-      // gate sur le mode agricole, jamais cette lecture.
+      // QX — sous-panneau AGRICOLE : la source d'eau et son unité sont des
+      // groupes de cartes, pas des champs identifiés.
       sourceEau: waterSource,
       uniteEau: waterUnit,
-      profondeurM: num('mt-profondeur'),
-      hmtM: num('mt-hmt'),
-      besoinEau: num('mt-water-need'),
-      heuresPompage: num('mt-heures-pompage'),
-      culture: val('mt-culture'),
       regionAgricole,
-      surfaceHa: num('mt-surface-ha'),
-      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
-      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
-      depenseCarburantMad: num('mt-fuel-spend'),
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       creneauVisitePartie: visitWindowPart,
       creneauVisiteSemaine: visitWindowWeek,
-      // L-WEBT — « Affiner mon profil de consommation » (facultatif, repliable).
-      // Chaque détail kW/créneau est lu SANS condition ici ; c'est le registre
-      // qui le gate sur sa case parente, pour les trois locales à la fois.
+      // L-WEBT — l'occupation du jour est un GROUPE DE CARTES dont la page tient
+      // l'état ; l'input caché `mt-occupation-jour` n'en est que le miroir.
       occupationJour,
-      equipChauffeEau: coche('mt-equip-chauffe-eau'),
-      equipChauffeEauKw: num('mt-equip-chauffe-eau-kw'),
-      equipChauffeEauCreneau: val('mt-equip-chauffe-eau-creneau'),
-      equipVoitureElectrique: coche('mt-equip-ve'),
-      equipVeKmSemaine: num('mt-equip-ve-km'),
-      equipVeChargeurKw: num('mt-equip-ve-kw'),
-      equipVeCreneau: val('mt-equip-ve-creneau'),
-      equipClim: coche('mt-equip-clim'),
-      equipClimPieces: num('mt-equip-clim-pieces'),
-      equipClimKw: num('mt-equip-clim-kw'),
-      equipClimCreneau: val('mt-equip-clim-creneau'),
-      equipPiscine: coche('mt-equip-piscine'),
-      equipPiscinePompeKw: num('mt-equip-piscine-kw'),
-      equipPiscineHeuresJour: num('mt-equip-piscine-heures'),
-      equipPiscineCreneau: val('mt-equip-piscine-creneau'),
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
@@ -4181,9 +4159,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ4 — repère et contour FACULTATIFS : on ne BLOQUE jamais sans eux.
       repereToit: capturePin,
       contourToit: captureOutline,
-      // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
-      // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
-      honeypot: val('mt-hp'),
     };
   }
 

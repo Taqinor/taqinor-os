@@ -8,10 +8,12 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
+  adsConsentFromBody,
   buildLeadRecord,
   crossSiteRejection,
   fireCapi,
   forwardLead,
+  isHoneypotTripped,
   isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
@@ -51,9 +53,22 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
   }
 
+  // QJW15 — GARDE HONEYPOT, enfin réelle sur le formulaire LIVE. Elle
+  // n'existait que sur /api/preview-lead et /api/capture-lead, et n'y attrapait
+  // rien : AUCUN des deux composants diagnostic ne rendait le champ
+  // `website_url` (QJW15 les corrige tous les deux). Même contrat que les deux
+  // autres endpoints : rejet EN SILENCE avec une réponse de succès factice —
+  // jamais un signal au bot sur ce qui l'a trahi.
+  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
+
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
   const lead = validation.lead;
+
+  // QJW14 — signal de consentement publicitaire transmis par le formulaire
+  // (`tq_consent`, ConsentBanner.astro). Il ne gate QUE le beacon Meta ; le
+  // lead lui-même part au CRM quoi qu'il arrive.
+  const adsConsent = adsConsentFromBody(body);
 
   const env = (cf.env ?? {}) as LeadEnv;
   const band = await runSimulation(lead, env, fetch);
@@ -73,8 +88,8 @@ export const POST: APIRoute = async ({ request }) => {
         JSON.stringify(redactLeadForLog(record)),
       );
     }
-    const capi = await fireCapi(record, env, fetch);
-    if (!capi.sent && record.qualified) {
+    const capi = await fireCapi(record, env, fetch, { adsConsent });
+    if (!capi.sent && record.qualified && capi.reason !== 'consent-denied') {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();

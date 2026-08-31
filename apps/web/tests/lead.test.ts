@@ -364,7 +364,11 @@ describe('runSimulation', () => {
   it('utilise le fallback local sans SIMULATOR_API_URL', async () => {
     const band = await runSimulation(makeLead(), {});
     expect(band.source).toBe('local');
-    expect(band.kwcLabel).toBe('5 à 9 kWc');
+    // QJW13 — le repli n'est plus une table à la main : ses bornes sont les
+    // sorties du moteur du site aux bornes de la tranche (« 1 500 – 3 000 MAD »),
+    // exactement ce que l'estimateur d'accueil répond pour ces montants.
+    // Parité structurelle prouvée par tests/leadBandParite.test.ts.
+    expect(band.kwcLabel).toBe('8 à 16 kWc');
   });
 
   it('proxifie vers SIMULATOR_API_URL quand configurée', async () => {

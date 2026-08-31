@@ -38,7 +38,19 @@ import type { Liaison, ModeCapture, NoeudsResolus, SpecNoeud, SpecNoeuds } from 
 
 /** L'état d'UN nœud au chargement : son contenu ET sa visibilité. */
 export interface OriginalNoeud {
+  /** `null` en capture `fragment` : c'est `enfants` qui porte alors l'état. */
   readonly contenu: string | null;
+  /**
+   * QJW17 — LES NŒUDS ENFANTS EUX-MÊMES (capture `fragment`), JAMAIS DES
+   * CLONES. Un bloc structuré (étiquette `data-i18n` + montant stylé) ne se
+   * moissonne pas en texte : l'aplatir puis le reposer par `textContent`
+   * détruit ses enfants — et avec eux le crochet de traduction, dont le
+   * triplet FR/EN/AR devenait alors lisible d'un seul tenant. On garde donc
+   * les nœuds RÉELS : les remettre en place les rend au document TELS QU'ILS
+   * ÉTAIENT, si bien que le sélecteur de langue, qui tient ces mêmes
+   * références, continue de les piloter.
+   */
+  readonly enfants?: readonly Node[];
   /** `hidden` tel que le serveur l'a rendu — restauré tel quel, jamais forcé. */
   readonly cache: boolean;
 }
@@ -82,17 +94,25 @@ function enveloppeDe(selecteur: string | undefined, racine: ParentNode): HTMLEle
 
 function moissonner(el: Element, spec: SpecNoeud): OriginalNoeud {
   const mode = modeDe(spec);
+  const cache = el instanceof HTMLElement ? el.hidden : false;
+  // `fragment` : on retient les nœuds enfants RÉELS (voir `OriginalNoeud`).
+  if (mode === 'fragment') return { contenu: null, enfants: Array.from(el.childNodes), cache };
   const contenu = mode === 'texte'
     ? el.textContent
     : mode === 'html'
       ? el.innerHTML
       : el.getAttribute(mode.attribut);
-  return { contenu, cache: el instanceof HTMLElement ? el.hidden : false };
+  return { contenu, cache };
 }
 
 function reposer(el: Element, spec: SpecNoeud, orig: OriginalNoeud): void {
   const mode = modeDe(spec);
-  if (mode === 'texte') el.textContent = orig.contenu;
+  if (mode === 'fragment') {
+    // Remettre les MÊMES nœuds : le document retrouve sa structure à l'octet,
+    // et les références que d'autres scripts tiennent sur ces enfants (le
+    // triplet de langue) restent des références VIVES.
+    if (orig.enfants) el.replaceChildren(...orig.enfants);
+  } else if (mode === 'texte') el.textContent = orig.contenu;
   else if (mode === 'html') el.innerHTML = orig.contenu ?? '';
   else if (orig.contenu !== null) el.setAttribute(mode.attribut, orig.contenu);
   else el.removeAttribute(mode.attribut);

@@ -8487,6 +8487,18 @@ const signConfig = ok
     /** `null` mis en cache = échec DÉJÀ constaté : on ne martèle pas le réseau. */
     const cacheDetail = new Map<string, TailleDetail | null>();
 
+    // QJW19 — LE JETON DE DEMANDE, ET POURQUOI L'ATTENTE EN A BESOIN.
+    // `marquerChargement(PROFONDS, false)` retire `aria-busy` de TOUTES les
+    // enveloppes de la table. Sans identité de requête, une réponse arrivée EN
+    // RETARD l'effaçait sur des chapitres qu'une demande PLUS RÉCENTE, encore
+    // en vol, venait légitimement de marquer occupés — et comme la sortie de
+    // chargement ne DÉMASQUE rien, ces chapitres restaient masqués : la
+    // technologie d'assistance annonçait une région stabilisée alors qu'elle
+    // était vide et toujours en chargement. Ce compteur donne son identité à
+    // chaque appel ; la peinture avait déjà sa garde anti-réponse-périmée,
+    // l'ANNONCE de fin d'attente a maintenant la sienne.
+    let jetonDemande = 0;
+
     /** Remet la page EXACTEMENT dans l'état de son chargement. */
     function restaurerDetail(): void {
       restaurer(PROFONDS, originauxProfonds);
@@ -8502,6 +8514,9 @@ const signConfig = ok
     }
 
     async function chargerDetail(): Promise<void> {
+      // L'identité de CET appel, prise AVANT toute attente : c'est elle qui
+      // dira, au retour, si cette demande est encore la demande courante.
+      const monJeton = ++jetonDemande;
       const surLeDefaut = cle === cleDefaut && variante === varianteDefaut;
       if (surLeDefaut || !estChargeable(cle) || !jetonTailles) {
         // « Recommandé » (ou une carte sans chemin de chargement) : la page
@@ -8512,6 +8527,11 @@ const signConfig = ok
       }
       const clef = cleCacheDetail(cle, variante);
       if (cacheDetail.has(clef)) {
+        // Ce raccourci n'appelle pas le réseau — mais il met FIN à l'attente
+        // qu'une demande précédente a pu annoncer : celle-ci est désormais
+        // périmée et n'y touchera plus, donc sans ce geste `aria-busy`
+        // resterait collé à « true » sur des chapitres déjà affichés.
+        marquerChargement(PROFONDS, false);
         appliquerDetail(cacheDetail.get(clef) ?? null);
         return;
       }
@@ -8532,6 +8552,12 @@ const signConfig = ok
         detail = null;
       }
       cacheDetail.set(demande, detail);
+      // UNE RÉPONSE EN RETARD NE DÉCLARE PAS « CHARGÉ » CE QUI EST ENCORE EN
+      // VOL. Si une demande plus récente est partie depuis, c'est ELLE qui
+      // porte l'attente et c'est elle qui la lèvera — à son retour, depuis le
+      // cache, ou par la restauration de « Recommandé ». Rien n'est perdu : le
+      // résultat de cet appel vient d'être mis en cache.
+      if (monJeton !== jetonDemande) return;
       marquerChargement(PROFONDS, false);
       // La sélection a pu changer PENDANT l'appel : on ne repeint que si la
       // réponse est encore celle de la carte affichée (sinon deux réponses
