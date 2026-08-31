@@ -40,7 +40,13 @@ export const SCENARIO_SANS = 'Sans batterie'
 export const SCENARIO_AVEC = 'Avec batterie'
 export const SCENARIOS_VALIDES = [SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC]
 
-/** Les quatre marchés canoniques (miroir de `autoQuote.LEAD_TYPE_TO_MODE`). */
+/** Les quatre marchés canoniques (miroir de `autoQuote.LEAD_TYPE_TO_MODE`).
+ * QJR231 — l'un des SIX sites qui énumèrent ces marchés indépendamment
+ * (réducteur, panneau de choix à l'écran, classifieur de création, deux
+ * modèles Django, sélecteur de photos du moteur PDF) ; le contrat partagé
+ * `apps/ventes/contract_samples/modes_marche.json` en fait foi et
+ * `scripts/check_modes_marche.py` compare les six sites à ce contrat — un
+ * marché ajouté ici sans être ajouté au contrat fait rougir la garde. */
 export const MODES = ['residentiel', 'industriel', 'commercial', 'agricole']
 
 /** Scénario par DÉFAUT d'un marché — ne s'applique qu'à un scénario intact. */
