@@ -1888,6 +1888,14 @@ MARQUEURS_COUCHE_ECO = (
     'Rentabilisé en', 'Rentabilité sur 25 ans', 'Gain net sur 25 ans',
 )
 
+# Sous-ensemble PAGE 1 : les cinq marqueurs qui ne dépendent PAS de la
+# pagination. Les deux derniers de la liste ci-dessus vivent sur la page 2, et
+# sa variante « page rentabilité dédiée » (devis chargé, 4 pages) ne porte ni
+# le titre ni la carte « Gain net » — un témoin qui les exigerait épinglerait
+# la pagination, pas l'omission. Sens de l'assertion : la PRÉSENCE se prouve
+# sur la page 1, l'ABSENCE se vérifie sur la liste entière.
+MARQUEURS_PAGE_1 = MARQUEURS_COUCHE_ECO[:5]
+
 # Clés publiées par ``renderer.synthese_economies`` : elles descendent toutes
 # du barème BASSE TENSION. Sur un dossier MT elles ne doivent même pas être
 # publiées dans le dict de rendu — pas seulement rester non imprimées.
@@ -1966,7 +1974,7 @@ class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
         self.assertFalse(data['masquer_economies'])
         d, html = self._html(data)
         self.assertFalse(d['masquer_synthese'])
-        for marqueur in MARQUEURS_COUCHE_ECO:
+        for marqueur in MARQUEURS_PAGE_1:
             self.assertIn(marqueur, html, f'témoin BT : {marqueur} manquant')
 
     # ── le rouge : dossier MT rendu par le paquet résidentiel ───────────────
