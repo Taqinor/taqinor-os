@@ -4,6 +4,14 @@
   "//3": "stay transpile-only (esbuild) and are exercised at RUNTIME by tests/estimator-runtime",
   "//4": "instead; Three's namespace types don't resolve cleanly under astro check, so checking",
   "//5": "them here would be noise, not signal. Unused-var lint is off (style, not a bug class).",
+  "//6": "QJW23 — src/**/*.astro was added so the SAME tsconfig also drives `astro check`",
+  "//7": "(run by scripts/check-astro-types.mjs, chained into `npm run check`): plain `tsc` cannot",
+  "//8": "parse the .astro extension and silently ignores this glob (verified), so it does not",
+  "//9": "affect this file's own `tsc -p tsconfig.check.json` step — only `astro check` acts on it.",
+  "//10": "This is how the typed contract between src/lib/tunnel/champs.ts and the pages that",
+  "//11": "consume it finally gets checked past src/lib's own boundary. Pre-existing .astro type",
+  "//12": "errors unrelated to that contract are frozen per (file, code) in",
+  "//13": "astro-check-frozen-errors.json, not fixed blind here.",
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
     "noEmit": true,
@@ -11,5 +19,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["src/lib/**/*.ts"]
+  "include": ["src/lib/**/*.ts", "src/**/*.astro"]
 }
