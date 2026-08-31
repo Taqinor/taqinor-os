@@ -26,7 +26,7 @@ import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../vente
 // QJR41 (audit L3 29/08/2026) — MÊME formule que la doctrine fondateur du
 // 18/08 (`autoQuote.js:146-152`, palier de 5 kWc, jamais retirée) : lue ici en
 // PURE LECTURE pour prévenir le commercial, jamais pour arrondir le champ lui-même.
-import { arrondirAuPasKwc } from '../../ventes/solar'
+import { noticePalierKwc } from '../../ventes/autoQuote'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
@@ -214,16 +214,20 @@ export default function DevisTab({
   const [kwcCible, setKwcCible] = useState('')
   // QJR41 (audit L3 29/08/2026, origine generator-frontend-13/R4-B2.14) — le
   // calage à 5 kWc du chemin auto EST la doctrine fondateur du 18/08
-  // (`autoQuote.js:146-152` : `arrondirAuPasKwc`, aucun devis auto ne sort une
+  // (`autoQuote.js` : `arrondirAuPasKwc`, aucun devis auto ne sort une
   // taille hors palier) — on ne la retire PAS. Le défaut réel : le champ
   // ci-dessous (commentaire EZ5 plus bas) ne rejette ni n'arrondit jamais la
   // saisie, mais rien ne disait au commercial qu'un 6,5 tapé deviendrait 5.
   // Notice PUREMENT informative — MÊME formule que celle qui dimensionne
   // réellement le devis auto, aucune règle d'arrondi nouvelle ni dupliquée
   // avec un comportement différent.
-  const kwcCibleNum = parseFloat(kwcCible)
-  const kwcPalierApplique = kwcCibleNum > 0 ? arrondirAuPasKwc(kwcCibleNum) : null
-  const kwcPalierDivergent = kwcPalierApplique != null && kwcPalierApplique !== kwcCibleNum
+  // QJR245 — même PRÉCÉDENCE que `createAutoQuote` (autoQuote.js) : la cible
+  // tapée pour CE devis prime, sinon `lead.taille_souhaitee_kwc` — sans cette
+  // seconde branche, un lead à 6,5 kWc était arrondi en silence dès que le
+  // commercial laissait ce champ vide (la seule saisie qu'il voit ici n'est
+  // alors pas celle que `createAutoQuote` arrondit réellement).
+  const kwcASaisir = parseFloat(kwcCible) > 0 ? kwcCible : state.server?.taille_souhaitee_kwc
+  const noticeKwc = noticePalierKwc(kwcASaisir)
   const [waBusy, setWaBusy] = useState(false)
 
   // L5 — les 3 actions « Page client / WhatsApp / Aperçu interne » ci-dessous.
@@ -574,15 +578,15 @@ export default function DevisTab({
               value={kwcCible}
               onChange={(e) => setKwcCible(e.target.value)}
             />
-            {/* QJR41 — notice PUREMENT informative (aucun changement de la
-                saisie ni de la règle d'arrondi, voir le commentaire ci-dessus) :
-                nomme le palier de 5 kWc que le devis auto appliquera réellement
-                (`autoQuote.js:146-152`, doctrine fondateur du 18/08). */}
-            {kwcPalierDivergent && (
+            {/* QJR41/QJR245 — notice PUREMENT informative (aucun changement de
+                la saisie ni de la règle d'arrondi, voir le commentaire
+                ci-dessus) : nomme le palier de 5 kWc que le devis auto
+                appliquera réellement. Texte ENTIER porté par
+                `autoQuote.js::noticePalierKwc` (une seule formulation,
+                MÊME texte que LeadDevisPanel.jsx — jamais recopié ici). */}
+            {noticeKwc && (
               <p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">
-                Palier appliqué : <strong>{kwcPalierApplique} kWc</strong>
-                {' '}(saisie {String(kwcCible).trim().replace('.', ',')} kWc) — le devis
-                automatique ne sort jamais hors palier de 5 kWc.
+                {noticeKwc}
               </p>
             )}
           </div>

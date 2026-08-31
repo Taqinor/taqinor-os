@@ -68,6 +68,11 @@ ALLOWLIST: dict[str, str] = {
         "U3-900/U3-MOTEUR : verrouille par lecture de SOURCE la suppression "
         "de estimerPanneaux et la souverainete de la taille explicite - "
         "meme contrainte node --test que autoQuote.ordre.test.mjs.",
+    "frontend/src/features/ventes/autoQuote.test.mjs":
+        "QJR245 - autoQuote.js importe ventesSlice/ventesApi (non importable "
+        "sous node --test) - noticePalierKwc est EXECUTEE (extraite du "
+        "fichier reel) ; seule la preuve de cablage LeadDevisPanel.jsx/"
+        "DevisTab.jsx (composants React non importables) lit leur SOURCE.",
     "frontend/src/features/ventes/solar.test.mjs":
         "Lecteur de MARKUP legitime (noValidate/step=\"any\" des 5 ecrans "
         "de saisie) - explicitement exclu par l'enonce de QJR239, pas une "

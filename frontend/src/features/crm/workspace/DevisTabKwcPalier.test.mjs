@@ -1,13 +1,16 @@
 // QJR41 (audit L3 29/08/2026, origine generator-frontend-13/R4-B2.14) — le
 // calage à 5 kWc du chemin auto est la doctrine fondateur du 18/08
-// (`autoQuote.js:146-152`, `arrondirAuPasKwc`) : aucun devis auto ne sort une
+// (`autoQuote.js`, `arrondirAuPasKwc`) : aucun devis auto ne sort une
 // taille hors palier de 5 kWc. Ce n'est PAS retiré ici. Le champ « Puissance
 // cible (kWc) » de cet onglet (commentaire EZ5, `DevisTab.jsx`) promet lui-même
 // « ce champ ne rejette ni n'arrondit jamais une saisie » — et RIEN dans
-// l'interface ne disait au commercial qu'un 6,5 tapé deviendrait 5. Ce
-// correctif ajoute UNIQUEMENT la notice ; aucun changement de la règle
-// d'arrondi (vérifié ci-dessous par un import RÉEL de `arrondirAuPasKwc`,
-// pas une formule recopiée).
+// l'interface ne disait au commercial qu'un 6,5 tapé deviendrait 5.
+//
+// QJR245 — la notice porte désormais sur la MÊME précédence que
+// `createAutoQuote` (cible tapée pour CE devis, SINON `lead.
+// taille_souhaitee_kwc`) et sa formulation vit UNE seule fois, dans
+// `autoQuote.js::noticePalierKwc` — DevisTab.jsx et LeadDevisPanel.jsx ne
+// font plus que l'appeler et rendre son résultat tel quel.
 //
 // DevisTab.jsx est du JSX/ESM non exécutable par `node --test` sans
 // node_modules pour son propre rendu React : la partie « source » de ce test
@@ -28,72 +31,64 @@ import { arrondirAuPasKwc } from '../../ventes/solar.js'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'DevisTab.jsx'), 'utf8')
 
-test('QJR41 — DevisTab.jsx importe la VRAIE arrondirAuPasKwc de solar.js (jamais une formule dupliquée)', () => {
-  assert.match(SRC, /import \{ arrondirAuPasKwc \} from '\.\.\/\.\.\/ventes\/solar'/,
-    'DevisTab.jsx doit lire le palier depuis la même source que autoQuote.js (solar.js), jamais un calcul propre')
+test('QJR245 — DevisTab.jsx importe noticePalierKwc de autoQuote.js (jamais une notice recopiée)', () => {
+  assert.match(SRC, /import \{ noticePalierKwc \} from '\.\.\/\.\.\/ventes\/autoQuote'/,
+    'DevisTab.jsx doit lire la notice depuis autoQuote.js, jamais une formule/texte propre')
+  // La règle d'arrondi n'est plus importée directement ici : elle vit derrière
+  // noticePalierKwc — un import direct de arrondirAuPasKwc serait une seconde porte.
+  assert.doesNotMatch(SRC, /import \{ arrondirAuPasKwc \} from/,
+    'arrondirAuPasKwc ne doit plus être importé directement par DevisTab.jsx')
 })
 
-test('QJR41 — le calage à 5 kWc (autoQuote.js:146-152) n\'est PAS retiré : le champ EZ5 « ne rejette ni n\'arrondit jamais une saisie » reste intact', () => {
+test('QJR41 — le champ EZ5 « ne rejette ni n\'arrondit jamais une saisie » reste intact', () => {
   assert.match(SRC, /ce champ ne rejette ni n'arrondit jamais une saisie/,
     'le commentaire EZ5 doit rester : le champ continue de ne rien arrondir lui-même')
   // `value={kwcCible}` doit rester la valeur BRUTE tapée par le commercial —
-  // jamais `kwcPalierApplique` (qui, lui, n'alimente que la notice).
+  // jamais une valeur arrondie.
   assert.match(SRC, /value=\{kwcCible\}\s*\n\s*onChange=\{\(e\) => setKwcCible\(e\.target\.value\)\}/,
     'le champ doit continuer à porter/écrire la saisie brute, sans arrondi')
 })
 
-test('QJR41 — une notice FR nomme le palier appliqué, visible seulement quand la saisie et le palier divergent', () => {
-  assert.match(SRC, /const kwcPalierApplique = kwcCibleNum > 0 \? arrondirAuPasKwc\(kwcCibleNum\) : null/,
-    'kwcPalierApplique doit être dérivé de kwcCible via arrondirAuPasKwc, jamais une constante')
-  assert.match(SRC, /const kwcPalierDivergent = kwcPalierApplique != null && kwcPalierApplique !== kwcCibleNum/,
-    'la notice doit être conditionnée à une VRAIE divergence saisie/palier')
-  assert.match(SRC, /\{kwcPalierDivergent && \(/,
-    'la notice doit être masquée quand la saisie est déjà sur un palier (ou vide)')
+test('QJR245 — la précédence de la notice suit EXACTEMENT celle de createAutoQuote (cible du devis, sinon taille_souhaitee_kwc du lead)', () => {
+  assert.match(
+    SRC,
+    /const kwcASaisir = parseFloat\(kwcCible\) > 0 \? kwcCible : state\.server\?\.taille_souhaitee_kwc/,
+    'AVANT QJR245 : seule kwcCible (la saisie de CET écran) alimentait la notice — ' +
+    'un lead à 6,5 kWc restait silencieux dès que le champ était laissé vide',
+  )
+  assert.match(SRC, /const noticeKwc = noticePalierKwc\(kwcASaisir\)/)
+})
+
+test('QJR245 — la notice est rendue TELLE QUELLE (texte unique de autoQuote.js), gardée par noticeKwc', () => {
   assert.match(SRC, /data-testid="lw-devis-kwc-palier"/,
     'la notice doit porter un data-testid stable')
-  assert.match(SRC, /Palier appliqué : <strong>\{kwcPalierApplique\} kWc<\/strong>/,
-    'la notice doit nommer explicitement le palier APPLIQUÉ')
+  assert.match(SRC, /\{noticeKwc && \(/,
+    'la notice doit être masquée quand noticePalierKwc rend null (saisie alignée ou vide)')
+  assert.match(
+    SRC,
+    /<p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">\s*\n\s*\{noticeKwc\}\s*\n\s*<\/p>/,
+    'le JSX doit rendre {noticeKwc} tel quel — aucun texte recopié ni assemblé ici',
+  )
 })
 
-test('QJR41 — rejoué avec la VRAIE arrondirAuPasKwc importée de solar.js : 6,5 → notice « Palier appliqué : 5 kWc »', () => {
-  // Reproduit EXACTEMENT la dérivation verrouillée par le 3ᵉ test ci-dessus,
-  // mais avec l'implémentation réelle importée (pas une copie).
-  const derive = (kwcCible) => {
-    const kwcCibleNum = parseFloat(kwcCible)
-    const kwcPalierApplique = kwcCibleNum > 0 ? arrondirAuPasKwc(kwcCibleNum) : null
-    const kwcPalierDivergent = kwcPalierApplique != null && kwcPalierApplique !== kwcCibleNum
-    return { kwcCibleNum, kwcPalierApplique, kwcPalierDivergent }
-  }
+test('QJR245 — rejoué avec la VRAIE arrondirAuPasKwc importée de solar.js : la précédence choisit la bonne valeur', () => {
+  // Reproduit la précédence verrouillée par le test ci-dessus, mais exécutée
+  // avec l'implémentation réelle importée (pas une copie).
+  const kwcASaisir = (kwcCible, tailleSouhaiteeLead) =>
+    (parseFloat(kwcCible) > 0 ? kwcCible : tailleSouhaiteeLead)
 
-  // Cas nommé par le « Done = » de QJR41 : saisir 6,5 → devis auto à 5 kWc,
-  // notice visible nommant le palier 5.
-  const cas65 = derive('6.5')
-  assert.equal(cas65.kwcPalierApplique, 5, 'le devis auto (autoQuote.js) sort bien à 5 kWc pour une saisie de 6,5')
-  assert.equal(cas65.kwcPalierDivergent, true, 'la notice doit être visible : 6,5 ≠ 5')
+  // Cas nommé par le Done= de QJR245 : cible vide, lead à 6,5 -> la notice
+  // doit porter sur 6,5 (AVANT QJR245 elle restait totalement silencieuse).
+  const saisiRetenue1 = kwcASaisir('', '6.5')
+  assert.equal(saisiRetenue1, '6.5')
+  assert.equal(arrondirAuPasKwc(parseFloat(saisiRetenue1)), 5)
 
-  // Saisie DÉJÀ sur un palier : aucune notice (comportement inchangé).
-  const cas5 = derive('5')
-  assert.equal(cas5.kwcPalierApplique, 5)
-  assert.equal(cas5.kwcPalierDivergent, false, 'aucune notice quand la saisie est déjà un palier exact')
+  // La cible tapée pour CE devis reste prioritaire sur le lead (EZ5, inchangé).
+  const saisiRetenue2 = kwcASaisir('8', '6.5')
+  assert.equal(saisiRetenue2, '8')
+  assert.equal(arrondirAuPasKwc(parseFloat(saisiRetenue2)), 10)
 
-  // Champ vide (mode historique — dimensionnement serveur/lead) : aucune notice.
-  const casVide = derive('')
-  assert.equal(casVide.kwcPalierApplique, null)
-  assert.equal(casVide.kwcPalierDivergent, false, 'champ vide = comportement historique inchangé, jamais de notice')
-
-  // Autre palier que 5 (12 → 10) : la notice généralise, pas un cas isolé.
-  const cas12 = derive('12')
-  assert.equal(cas12.kwcPalierApplique, 10)
-  assert.equal(cas12.kwcPalierDivergent, true)
-
-  // Saisie négative/0 : jamais de notice (même garde que arrondirAuPasKwc,
-  // qui ne rend jamais 0).
-  const casZero = derive('0')
-  assert.equal(casZero.kwcPalierApplique, null)
-  assert.equal(casZero.kwcPalierDivergent, false)
-})
-
-test('QJR41 — la notice affiche la saisie en notation FR (virgule), jamais le point brut du champ number', () => {
-  assert.match(SRC, /String\(kwcCible\)\.trim\(\)\.replace\('\.', ','\)/,
-    'la saisie affichée dans la notice doit convertir le point (input type=number) en virgule FR')
+  // Ni cible ni lead : rien à arrondir, aucune notice possible.
+  const saisiRetenue3 = kwcASaisir('', undefined)
+  assert.equal(saisiRetenue3, undefined)
 })
