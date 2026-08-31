@@ -317,6 +317,29 @@ class BuildDevisAutoServiceTest(TestCase):
         self.assertEqual(ctx.exception.field, 'ville')
         self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
 
+    def test_bouznika_est_dimensionnee_comme_rabat(self):
+        """L'INCIDENT DU 31/08/2026 — un lead à Bouznika (sans GPS) était
+        refusé « chantier non localisé » quand le même lead à Rabat passait.
+        Bouznika est désormais une ville de table PVGIS à part entière : le
+        devis automatique naît, sans réseau ni GPS."""
+        lead = self._lead(facture_hiver=Decimal('1800'), ville='Bouznika')
+        devis = build_devis_auto(lead=lead, user=self.user,
+                                 company=self.company)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertTrue(any('Panneau' in li.designation
+                            for li in devis.lignes.all()))
+
+    def test_ville_du_gazetier_est_dimensionnee_par_l_ancre(self):
+        """Fondateur 31/08/2026 — une ville marocaine HORS table mais au
+        gazetier GeoNames (Skhirat) n'est plus refusée : le moteur la sert
+        par l'ancre PVGIS la plus proche. Toute ville du Maroc passe."""
+        lead = self._lead(facture_hiver=Decimal('1800'), ville='Skhirat')
+        devis = build_devis_auto(lead=lead, user=self.user,
+                                 company=self.company)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertTrue(any('Panneau' in li.designation
+                            for li in devis.lignes.all()))
+
     def test_la_regle_des_900_dh_ne_dimensionne_plus_rien(self):
         """La branche « facture ÷ 900 × 8 » a QUITTÉ le code : la fonction de
         conversion ne connaît plus que les kWc."""

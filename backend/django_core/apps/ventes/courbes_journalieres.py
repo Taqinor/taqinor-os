@@ -874,11 +874,17 @@ def _coordonnees_du_chantier(lat, lon, ville):
         return lat, lon
     try:
         from apps.parametres.pvgis_profils import (
-            PRODUCTIBLE_MENSUEL_VILLE, cle_ville)
+            PRODUCTIBLE_MENSUEL_VILLE, _coordonnees_gazetier, cle_ville)
         cle = cle_ville(ville)
         if cle:
             entree = PRODUCTIBLE_MENSUEL_VILLE.get(cle) or {}
             return entree.get('lat'), entree.get('lon')
+        # Ville hors table mais au gazetier GeoNames (31/08/2026) : sa vraie
+        # position vaut toujours mieux que le repli Casablanca pour un coucher
+        # de soleil — même géographie que la résolution du productible.
+        coords = _coordonnees_gazetier(ville)
+        if coords is not None:
+            return coords
     except Exception:  # noqa: BLE001 — une ville illisible n'est pas une panne
         logger.warning('coordonnees ville indisponibles', exc_info=True)
     return None, None

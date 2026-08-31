@@ -133,10 +133,23 @@ class ProductionTests(_CourbesBase):
         self.assertEqual(hiver['forme'].index(max(hiver['forme'])), 12)
 
     def test_ville_inconnue_omet_la_production(self):
-        # Q6 — jamais de courbe devinée pour une ville hors table.
-        bloc = self._bloc(_data(client_city='Ifrane'), conso=CASA_CONSO)
+        # Jamais de courbe INVENTÉE pour une ville hors table ET hors
+        # gazetier (Tombouctou n'est pas au Maroc ; Ifrane, l'ancien
+        # fixture, est une ville de table depuis le 31/08/2026).
+        bloc = self._bloc(_data(client_city='Tombouctou'), conso=CASA_CONSO)
         self.assertNotIn('production', bloc)
         self.assertIn('consommation', bloc)
+
+    def test_ville_du_gazetier_sert_l_ancre_la_plus_proche(self):
+        # Fondateur 31/08/2026 — Skhirat (gazetier, hors table) sert la
+        # production de son ancre la plus proche (Bouznika), source nommée.
+        bloc = self._bloc(_data(client_city='Skhirat'), conso=CASA_CONSO)
+        self.assertIn('production', bloc)
+        hiver = bloc['production']['hiver']
+        self.assertTrue(
+            str(hiver['source_productible']).startswith(
+                'pvgis_ville_proche:bouznika'),
+            hiver['source_productible'])
 
     def test_puissance_inconnue_omet_la_production(self):
         bloc = self._bloc(_data(puissance_kwc=None), conso=CASA_CONSO)
@@ -452,7 +465,7 @@ class FormeConsommationServieTests(_CourbesBase):
 class OmissionTests(_CourbesBase):
     def test_rien_a_servir_renvoie_none(self):
         # Ville inconnue ET aucune facture → la page garde son affichage actuel.
-        self.assertIsNone(self._bloc(_data(client_city='Ifrane'), conso=[]))
+        self.assertIsNone(self._bloc(_data(client_city='Tombouctou'), conso=[]))
 
     def test_note_horaire_dit_le_cas_ramadan(self):
         bloc = self._bloc(conso=CASA_CONSO)
