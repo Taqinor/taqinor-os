@@ -70,8 +70,9 @@ export function billRangeFromExact(mad: number): BillRangeId | null {
 
 /**
  * Bande préliminaire kWc + ROI. Jamais un devis : une fourchette indicative.
- * Hypothèses : barème régie ONEE (tranche effective ≈ 1,41–1,62 MAD/kWh selon la
- * consommation, 2026 — TVA 20 %, base partagée avec l'estimateur),
+ * Hypothèses : barème régie ONEE (tranche effective ≈ 1,38–1,62 MAD/kWh selon la
+ * consommation, 2026 — TVA 20 %, tranche 311–510 = 1,381704 prouvée facture SRM
+ * — QJW12/D5 —, base partagée avec l'estimateur),
  * ~1 600 kWh/kWc/an au Maroc.
  *
  * QJW13 — CE N'EST PLUS LE REPLI DU FORMULAIRE DE CONVERSION. `runSimulation`
