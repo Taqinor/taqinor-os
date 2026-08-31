@@ -2,7 +2,9 @@
 
 Nouvelle table PUREMENT ADDITIVE : une ligne par tentative d'envoi
 (email/WhatsApp), réussie ou non, avec son motif d'échec. Aucun modèle
-existant n'est modifié.
+existant n'est modifié. Le modèle hérite du socle multi-tenant
+``core.models.TenantModel`` (ARC1/SCA4) — d'où ``created_at``/``updated_at``
+en plus de l'horodatage métier ``envoye_le``.
 
 CHAÎNE : enchaîne explicitement sur la migration NTDATA39, et ne dépend
 d'``authentication`` que par la migration qui CRÉE ``Company`` — d'autres
@@ -27,6 +29,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('canal', models.CharField(
                     choices=[('email', 'Email'), ('whatsapp', 'WhatsApp')],
                     default='email', max_length=10, verbose_name='Canal')),
@@ -59,6 +63,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Envoi de rapport',
                 'verbose_name_plural': 'Envois de rapport',
                 'ordering': ['-envoye_le', '-id'],
+                'abstract': False,
             },
         ),
         migrations.AddIndex(

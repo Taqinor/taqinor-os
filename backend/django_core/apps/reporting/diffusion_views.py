@@ -16,6 +16,8 @@ message. Armé, un message contenant le lien part vers chaque numéro configuré
 """
 from django.core import signing
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import (
     api_view,
@@ -116,6 +118,7 @@ class RapportPartageThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

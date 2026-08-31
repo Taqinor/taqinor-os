@@ -115,7 +115,7 @@ class SavedReport(models.Model):
         return self._split_destinataires(self.destinataires_whatsapp)
 
 
-class EnvoiRapport(models.Model):
+class EnvoiRapport(TenantModel):
     """NTDATA40 — journal de diffusion d'un rapport sauvegardé.
 
     UNE ligne par TENTATIVE d'envoi (email ou WhatsApp), réussie OU NON : sans
@@ -123,9 +123,12 @@ class EnvoiRapport(models.Model):
     sait pas qu'il n'a rien reçu, et l'admin n'a aucun motif à lire. Chaque
     échec porte donc son MOTIF en clair.
 
-    Multi-tenant : `company` est posée CÔTÉ SERVEUR depuis le rapport source,
-    jamais lue d'un corps de requête. Lecture seule côté API (c'est un
-    journal : il se consulte, il ne se corrige pas)."""
+    Multi-tenant par le socle ``core.TenantModel`` (ARC1/SCA4) : `company` est
+    posée CÔTÉ SERVEUR depuis le rapport source, jamais lue d'un corps de
+    requête. Elle est REDÉCLARÉE ici pour rester NULLABLE comme celle de
+    ``SavedReport`` — un rapport sans société doit quand même laisser une trace
+    d'échec, sinon le seul cas où le journal compte est celui où il manque.
+    Lecture seule côté API (un journal se consulte, il ne se corrige pas)."""
 
     class Canal(models.TextChoices):
         EMAIL = 'email', 'Email'
