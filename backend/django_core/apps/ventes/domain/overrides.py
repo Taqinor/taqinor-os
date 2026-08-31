@@ -82,6 +82,12 @@ CHAMPS_OVERRIDABLES = (
     'tarif.distributeur',
     'tarif.tranches',
     'tarif.charges_fixes_mad',
+    # QJR232 — CE CHEMIN EST ENFIN LU PAR LE MOTEUR. Il était accepté et
+    # persisté ici alors qu'AUCUN chemin moteur ne le consultait : un vendeur
+    # posait une date de référence et le dimensionnement continuait de
+    # calculer sur l'horloge du jour. Lecteur :
+    # ``domain.entrees.jour_reference_du_devis``, qui alimente
+    # ``entrees_depuis_devis`` ET ``profils_comparatifs``.
     'etude.jour_reference',
     'mode_installation',
     'structure',

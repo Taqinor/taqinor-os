@@ -125,6 +125,12 @@ def _lire_reco_quote(ctx):
     return ctx.quote_data().get('recommended')
 
 
+def _lire_jour_reference(ctx):
+    """QJR232 — LA date contre laquelle ce devis est dimensionné."""
+    from apps.ventes.domain.entrees import jour_reference_du_devis
+    return jour_reference_du_devis(ctx.recharger()).isoformat()
+
+
 def _lire_kwc_du_devis(ctx):
     from apps.ventes.domain.scenario import puissance_kwc_du_devis
     return puissance_kwc_du_devis(ctx.devis)
@@ -191,8 +197,11 @@ COUVERTURE = {
     'tarif.tranches': Couverture([{'jusqu_a': 100, 'prix': 0.9}],
                                  sans_lecteur=PAS_ENCORE_LU),
     'tarif.charges_fixes_mad': Couverture(42.5, sans_lecteur=PAS_ENCORE_LU),
+    # QJR232 — BRANCHÉ : le moteur lit enfin cette date
+    # (``domain.entrees.jour_reference_du_devis``, qui alimente
+    # ``entrees_depuis_devis`` ET ``profils_comparatifs``).
     'etude.jour_reference': Couverture('2026-03-15',
-                                       sans_lecteur=PAS_ENCORE_LU),
+                                       lecteur=_lire_jour_reference),
     'mode_installation': Couverture('industriel', sans_lecteur=PAS_ENCORE_LU),
     'structure': Couverture('beton', sans_lecteur=PAS_ENCORE_LU),
     'tension': Couverture('triphase', sans_lecteur=PAS_ENCORE_LU),
@@ -438,15 +447,18 @@ class TableDeCouvertureTests(TestCase):
                         couverture.sans_lecteur.strip(),
                         f'« {chemin} » n\'a ni lecteur aval ni raison écrite.')
 
-    def test_les_lecteurs_branches_sont_les_quatre_chemins_lus_a_ce_jour(self):
-        """Le CONSTAT épinglé : brancher un cinquième chemin fait rougir ici.
+    def test_les_lecteurs_branches_sont_les_chemins_lus_a_ce_jour(self):
+        """Le CONSTAT épinglé : brancher un chemin de plus fait rougir ici.
 
         C'est voulu — cette ligne est le rappel que la table doit gagner un
-        lecteur en même temps que le code en gagne un.
+        lecteur en même temps que le code en gagne un. QJR232 en a branché un
+        cinquième (``etude.jour_reference``) et cette liste l'a suivi, dans le
+        même commit.
         """
         branches = sorted(c for c, v in COUVERTURE.items()
                           if v.lecteur is not None)
-        self.assertEqual(branches, ['recommended_option', 'scenario',
+        self.assertEqual(branches, ['etude.jour_reference',
+                                    'recommended_option', 'scenario',
                                     'taille.kwc', 'taille.nb_panneaux'])
 
 
