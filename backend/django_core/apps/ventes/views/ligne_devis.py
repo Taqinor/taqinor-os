@@ -37,6 +37,29 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+def _retarifer_forfaits(devis):
+    """QJR220 — les FORFAITS AU PANNEAU suivent le compte réellement écrit.
+
+    ``retarifer_forfaits_par_panneau`` (QJR83) n'avait qu'UN appelant :
+    ``lignes.remplacer_lignes``. Ce viewset change pourtant lui aussi le
+    compte de panneaux d'un devis existant (ajouter, modifier ou retirer une
+    ligne panneau), et la pose / les accessoires / le tableau restaient au
+    barème de l'ANCIEN compte — de l'argent faux sur un document client.
+
+    Best-effort et sans avertissement remonté, exactement comme le
+    rafraîchissement des études juste à côté : une re-tarification ratée ne
+    doit jamais annuler l'écriture de ligne que l'utilisateur vient de faire.
+    Les abstentions D12 (``prix_manuel``, forfait commun divergent) sont
+    celles de la fonction elle-même — ce chemin n'en ajoute aucune.
+    """
+    from ..domain.lignes import retarifer_forfaits_par_panneau
+
+    try:
+        retarifer_forfaits_par_panneau(devis)
+    except Exception:  # noqa: BLE001 — best-effort, comme les études
+        pass
+
+
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
@@ -123,6 +146,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # continuait de décrire la composition d'avant. Best-effort, ne lève
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
         from ..services import rafraichir_etudes_du_devis
+        _retarifer_forfaits(serializer.instance.devis)
         rafraichir_etudes_du_devis(serializer.instance.devis)
 
     def perform_update(self, serializer):
@@ -132,6 +156,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
         from ..services import rafraichir_etudes_du_devis
+        _retarifer_forfaits(serializer.instance.devis)
         rafraichir_etudes_du_devis(serializer.instance.devis)
 
     def perform_destroy(self, instance):
@@ -141,4 +166,5 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
         from ..services import rafraichir_etudes_du_devis
+        _retarifer_forfaits(devis)
         rafraichir_etudes_du_devis(devis)

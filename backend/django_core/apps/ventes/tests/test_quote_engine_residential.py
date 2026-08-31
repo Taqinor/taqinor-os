@@ -1766,36 +1766,12 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
         self.assertNotIn("<&", html)
         self.assertNotIn('<& "orge"', html)
 
-    # ── agricole : ``etude`` en texte libre (le seul paquet à le faire) ─────
-    def test_agricole_crop_et_pompe_nom_sont_echappes(self):
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        d = self._piege(sample_data.build("agrumes"),
-                        crop=self.PIEGE, pompe_nom=self.PIEGE,
-                        region=self.PIEGE, irrigation_method=self.PIEGE)
-        html = render.build_html(renderer._augment(d))
-        self._sans_chevron_brut(html)
-        self.assertIn("&lt;&amp;", html)   # arrivé échappé, UNE fois
-
-    def test_agricole_le_schema_echappe_une_seule_fois(self):
-        """UNE SEULE VÉRITÉ — ``schematic.py`` s'échappait lui-même par-dessus
-        l'échappement du builder : « Blé & orge » serait sorti « Blé &amp;amp; »
-        (double échappement visible sur un devis parfaitement ordinaire)."""
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        d = self._piege(sample_data.build("agrumes"), crop="Blé & orge")
-        html = render.build_html(renderer._augment(d))
-        self.assertNotIn("&amp;amp;", html)
-        self.assertIn("&amp; orge", html)
-
-    def test_agricole_accepte_par_nom_est_echappe(self):
-        from apps.ventes.quote_engine.agricole import (
-            render, renderer, sample_data)
-        html = render.build_html(
-            renderer._augment(self._piege(sample_data.build("agrumes"))))
-        self.assertIn(self.DATE_ACC, html)          # le tampon EST rendu
-        self._sans_chevron_brut(html)
-        self.assertNotIn("&amp;lt;", html)
+    # QJR236 (décision fondateur DV1) — LES TROIS TESTS AGRICOLES DE CE BLOC
+    # ONT ÉTÉ RETIRÉS AVEC LEUR RENDERER. Ils rendaient le paquet agricole
+    # premium multi-pages (``agricole/render.py`` + ``renderer._augment``),
+    # supprimé parce qu'injoignable depuis QJR32. L'échappement lui-même reste
+    # couvert par les trois paquets vivants ci-dessous (industriel, commercial,
+    # résidentiel) et par le moteur legacy, qui rend le PDF agricole une-page.
 
     # ── industriel / commercial : le tampon de signature ────────────────────
     def test_industriel_accepte_par_nom_est_echappe_une_fois(self):
@@ -1852,10 +1828,9 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
         """Un nombre reste un NOMBRE : les gardes numériques du document
         (production, kWc, HMT) le comparent — les transformer en chaînes
         casserait la page Étude."""
-        from apps.ventes.quote_engine.agricole import sample_data
-        d = sample_data.build("agrumes")
-        d["etude"] = {**d["etude"], "hmt_m": 60, "pompe_kw": 5.5,
-                      "prod_mensuelle": [1040] * 12, "toiture": {"kwc": 7.1}}
+        d = {"etude": {"crop": "agrumes", "hmt_m": 60, "pompe_kw": 5.5,
+                       "prod_mensuelle": [1040] * 12,
+                       "toiture": {"kwc": 7.1}}}
         etude = self._echappe(d)["etude"]
         self.assertEqual(etude["hmt_m"], 60)
         self.assertEqual(etude["pompe_kw"], 5.5)
@@ -1864,10 +1839,8 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
 
     def test_la_source_n_est_jamais_mutee(self):
         """Le MÊME dict part en JSON à la proposition publique."""
-        from apps.ventes.quote_engine.agricole import sample_data
-        d = sample_data.build("agrumes")
-        d["etude"] = {**d["etude"], "crop": self.PIEGE}
-        d["accepte_par_nom"] = self.PIEGE
+        d = {"etude": {"crop": self.PIEGE, "region": "souss-massa"},
+             "accepte_par_nom": self.PIEGE}
         echappe = self._echappe(d)
         self.assertEqual(d["etude"]["crop"], self.PIEGE)
         self.assertEqual(d["accepte_par_nom"], self.PIEGE)

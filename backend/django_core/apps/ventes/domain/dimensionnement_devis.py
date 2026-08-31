@@ -20,6 +20,20 @@ RÈGLE #4 : ce module n'écrit RIEN (aucun statut, aucune ligne, aucun total,
 aucun PDF) — il LIT un devis et rend des nombres de VENTE, jamais un prix
 d'achat ni une marge.
 
+QJR237 (31/08/2026) — CE MODULE N'IMPORTE PLUS PAR LA FAÇADE. Il lisait HUIT de
+ses dépendances (13 noms) via ``apps.ventes.services`` — le motif exact que
+``domain/__init__.py`` interdit, parce qu'il a déjà cassé tout l'import backend
+une fois. C'était le SEUL violateur du paquet. Les 13 noms visent désormais les
+modules qui PORTENT leur corps (``domain.geometrie``, ``domain.catalogue``,
+``domain.composition``, ``domain.etudes``, ``domain.taille``) : remplacement
+MÉCANIQUE, aucun changement de comportement (``services`` n'était qu'un jeu
+d'alias vers ces mêmes objets). Les imports restent FONCTION-LOCAUX, comme
+avant — c'est ce qui rendait le défaut latent plutôt que fatal, et c'est aussi
+ce qui garde les cycles de ``domain/`` inoffensifs.
+
+Les ≥ 10 cycles d'import de ``domain/`` sont, eux, une TOLÉRANCE CONÇUE
+(``domain/__init__.py``, imports en bas de fichier) et ne sont PAS à corriger.
+
 POURQUOI L'IMPORT DES OUTILS PURS EST EN BAS DE CE FICHIER. Les deux moitiés
 se citent : celle-ci a besoin des outils du balayage (``_num``,
 ``_lire_composition``, ``_payback``…), et ``dimensionnement.py`` a besoin des
@@ -103,7 +117,7 @@ def plafond_toit_du_devis(devis):
     layout = getattr(devis, 'roof_layout', None)
     if not isinstance(layout, dict):
         return None
-    from apps.ventes.services import (
+    from apps.ventes.domain.geometrie import (
         _cible_panneaux_du_layout, extract_roof_config)
     try:
         toiture = extract_roof_config(layout) or {}
@@ -149,7 +163,7 @@ def contour_du_devis_lnglat(devis):
                 anneaux.append(anneau)
     if anneaux:
         return anneaux
-    from apps.ventes.services import contour_client_lnglat
+    from apps.ventes.domain.geometrie import contour_client_lnglat
     contour = contour_client_lnglat(getattr(devis, 'lead', None))
     return [contour] if contour else []
 
@@ -184,7 +198,7 @@ def plafond_physique_du_devis(devis):
         return memo[0]
     plafond = None
     try:
-        from apps.ventes.services import (
+        from apps.ventes.domain.geometrie import (
             _panneau_pour_calepinage, plafond_physique_du_contour)
         anneaux = contour_du_devis_lnglat(devis)
         if anneaux:
@@ -281,7 +295,7 @@ def _compter_modules_batterie(lignes_vue):
     tombe dans aucun des deux compteurs — jamais reclassé de force dans le
     voisin le plus proche : ``capacite_kwh`` continue, lui, à dire la vérité.
     """
-    from apps.ventes.services import _parse_kwh
+    from apps.ventes.domain.catalogue import _parse_kwh
     cinq = dix = 0
     for ligne in (lignes_vue or []):
         if ligne.get('role') != 'batterie':
@@ -312,7 +326,7 @@ def _compter_modules_batterie_generique(lignes_vue):
     rend ce nominal-là, quel qu'il soit — jamais restreint à 5/10.
     ``(0, None)`` si aucune ligne batterie lisible n'est présente — jamais
     un calibre inventé."""
-    from apps.ventes.services import _parse_kwh
+    from apps.ventes.domain.catalogue import _parse_kwh
     total = 0
     module_kwh = None
     for ligne in (lignes_vue or []):
@@ -414,7 +428,7 @@ def capacite_batterie_des_lignes(devis):
     ``None`` quand le devis ne porte AUCUNE ligne batterie : aucun palier n'est
     alors marqué ``retenu`` — jamais un marquage au hasard."""
     try:
-        from apps.ventes.services import _is_battery
+        from apps.ventes.domain.catalogue import _is_battery
 
         total = 0.0
         for ligne in _lignes_produit_du_devis(devis):
@@ -474,7 +488,7 @@ def module_batterie_du_devis(devis):
     encore) ⇒ l'appelant retombe sur le choix ÉCONOMIQUE normal du
     catalogue (comportement inchangé)."""
     try:
-        from apps.ventes.services import _is_battery, _parse_kwh
+        from apps.ventes.domain.catalogue import _is_battery, _parse_kwh
 
         capacites = {}  # calibre (kWh, ouvert par la 1re ligne) -> capacité
         for ligne in _lignes_produit_du_devis(devis):
@@ -607,14 +621,14 @@ def _echelle_paliers_batterie(devis):
         # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
         puissances_batterie_des_lignes,
     )
-    from apps.ventes.services import (
-        _AUTO_PANEL_WATT,
+    from apps.ventes.domain.catalogue import (
         carte_marques_composition,
         catalogue_de_la_societe,
-        composition_residentielle,
-        entrees_dimensionnement_du_devis,
         ordre_lignes_societe,
     )
+    from apps.ventes.domain.composition import composition_residentielle
+    from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
+    from apps.ventes.domain.taille import _AUTO_PANEL_WATT
 
     entrees = entrees_dimensionnement_du_devis(devis)
     conso = (entrees or {}).get('conso_kwh_mensuelles')

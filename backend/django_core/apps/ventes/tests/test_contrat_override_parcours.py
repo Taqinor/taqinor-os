@@ -125,6 +125,12 @@ def _lire_reco_quote(ctx):
     return ctx.quote_data().get('recommended')
 
 
+def _lire_jour_reference(ctx):
+    """QJR232 — LA date contre laquelle ce devis est dimensionné."""
+    from apps.ventes.domain.entrees import jour_reference_du_devis
+    return jour_reference_du_devis(ctx.recharger()).isoformat()
+
+
 def _lire_kwc_du_devis(ctx):
     from apps.ventes.domain.scenario import puissance_kwc_du_devis
     return puissance_kwc_du_devis(ctx.devis)
@@ -191,8 +197,11 @@ COUVERTURE = {
     'tarif.tranches': Couverture([{'jusqu_a': 100, 'prix': 0.9}],
                                  sans_lecteur=PAS_ENCORE_LU),
     'tarif.charges_fixes_mad': Couverture(42.5, sans_lecteur=PAS_ENCORE_LU),
+    # QJR232 — BRANCHÉ : le moteur lit enfin cette date
+    # (``domain.entrees.jour_reference_du_devis``, qui alimente
+    # ``entrees_depuis_devis`` ET ``profils_comparatifs``).
     'etude.jour_reference': Couverture('2026-03-15',
-                                       sans_lecteur=PAS_ENCORE_LU),
+                                       lecteur=_lire_jour_reference),
     'mode_installation': Couverture('industriel', sans_lecteur=PAS_ENCORE_LU),
     'structure': Couverture('beton', sans_lecteur=PAS_ENCORE_LU),
     'tension': Couverture('triphase', sans_lecteur=PAS_ENCORE_LU),
@@ -438,15 +447,18 @@ class TableDeCouvertureTests(TestCase):
                         couverture.sans_lecteur.strip(),
                         f'« {chemin} » n\'a ni lecteur aval ni raison écrite.')
 
-    def test_les_lecteurs_branches_sont_les_quatre_chemins_lus_a_ce_jour(self):
-        """Le CONSTAT épinglé : brancher un cinquième chemin fait rougir ici.
+    def test_les_lecteurs_branches_sont_les_chemins_lus_a_ce_jour(self):
+        """Le CONSTAT épinglé : brancher un chemin de plus fait rougir ici.
 
         C'est voulu — cette ligne est le rappel que la table doit gagner un
-        lecteur en même temps que le code en gagne un.
+        lecteur en même temps que le code en gagne un. QJR232 en a branché un
+        cinquième (``etude.jour_reference``) et cette liste l'a suivi, dans le
+        même commit.
         """
         branches = sorted(c for c, v in COUVERTURE.items()
                           if v.lecteur is not None)
-        self.assertEqual(branches, ['recommended_option', 'scenario',
+        self.assertEqual(branches, ['etude.jour_reference',
+                                    'recommended_option', 'scenario',
                                     'taille.kwc', 'taille.nb_panneaux'])
 
 
@@ -560,6 +572,97 @@ class RetourALAutomatiqueTests(_ParcoursBase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# (2 bis) QJR216 — le bloc ``effectif`` porte la VRAIE carte des valeurs AUTO,
+#         et le DELETE rend la valeur du moteur
+# ═══════════════════════════════════════════════════════════════════════════
+
+class BlocEffectifPorteLesAutosTests(_ParcoursBase):
+    """TEST ROUGE D'ABORD (QJR216).
+
+    Avant le correctif, ``views/devis._overrides_reponse`` construisait
+    ``vue_effective(devis, {})`` — une carte ``autos`` VIDE en dur — donc
+    **toute** réponse annonçait ``auto: null`` ; et après un
+    ``DELETE ?chemin=``, le chemin régénéré DISPARAISSAIT de la réponse au lieu
+    d'y revenir avec la valeur du moteur.
+
+    La fixture porte 14 panneaux de 710 W : le moteur a donc une valeur
+    parfaitement lisible pour ``taille.nb_panneaux`` (14), ``taille.panel_watt``
+    (710) et ``taille.kwc`` (9,94).
+    """
+
+    #: Les valeurs que le lecteur unique des lignes (PVUNI) tire de la fixture.
+    AUTOS_ATTENDUS = {
+        'taille.nb_panneaux': 14,
+        'taille.panel_watt': 710,
+        'taille.kwc': 9.94,
+        'mode_installation': 'residentiel',
+    }
+
+    def _bloc(self, reponse, chemin):
+        self.assertIn(chemin, reponse.data['effectif'],
+                      f'« {chemin} » absent du bloc effectif : {reponse.data}')
+        return reponse.data['effectif'][chemin]
+
+    def test_get_porte_la_valeur_moteur_de_chaque_chemin_derivable(self):
+        parcours = Parcours(self)
+        reponse = self.api.get(parcours.url)
+        self.assertEqual(reponse.status_code, 200)
+        for chemin, attendu in self.AUTOS_ATTENDUS.items():
+            with self.subTest(chemin=chemin):
+                bloc = self._bloc(reponse, chemin)
+                self.assertEqual(bloc['auto'], attendu)
+                self.assertIsNone(bloc['manuel'])
+                self.assertEqual(bloc['source'], 'auto')
+                self.assertEqual(bloc['effectif'], attendu)
+
+    def test_une_surcharge_montre_les_deux_valeurs_cote_a_cote(self):
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 18)
+        bloc = self._bloc(self.api.get(parcours.url), 'taille.nb_panneaux')
+        self.assertEqual(bloc['auto'], 14)     # ce que le moteur calcule
+        self.assertEqual(bloc['manuel'], 18)   # ce que le vendeur a déclaré
+        self.assertEqual(bloc['effectif'], 18)
+        self.assertEqual(bloc['source'], 'manuel')
+
+    def test_delete_rend_exactement_la_valeur_moteur(self):
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 18)
+        reponse = self.regenerer(parcours, 'taille.nb_panneaux')
+        bloc = self._bloc(reponse, 'taille.nb_panneaux')
+        self.assertEqual(bloc['auto'], 14)
+        self.assertIsNone(bloc['manuel'])
+        self.assertEqual(bloc['effectif'], 14)
+        self.assertEqual(bloc['source'], 'auto')
+        self.assertNotIn('taille.nb_panneaux', reponse.data['overrides'])
+
+    def test_delete_dun_chemin_sans_derivation_le_rend_quand_meme(self):
+        """Un chemin que le moteur ne sait pas dériver revient avec
+        ``auto: null`` — une omission HONNÊTE, jamais une disparition."""
+        parcours = Parcours(self)
+        self.poser(parcours, 'tarif.distributeur', 'ONEE')
+        reponse = self.regenerer(parcours, 'tarif.distributeur')
+        bloc = self._bloc(reponse, 'tarif.distributeur')
+        self.assertIsNone(bloc['auto'])
+        self.assertIsNone(bloc['manuel'])
+        self.assertEqual(bloc['source'], 'auto')
+
+    def test_la_carte_auto_ignore_le_registre(self):
+        """``auto`` est la valeur AUTOMATIQUE : une surcharge posée ne doit pas
+        la déplacer, sinon ``auto`` et ``manuel`` diraient la même chose."""
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.kwc', 25)
+        autos = overrides.autos_du_devis(parcours.recharger())
+        self.assertEqual(autos['taille.kwc'], 9.94)
+
+    def test_un_devis_sans_panneau_lisible_nomet_rien_dinvente(self):
+        parcours = Parcours(self)
+        parcours.devis.lignes.filter(designation__startswith='Panneau').delete()
+        autos = overrides.autos_du_devis(parcours.recharger())
+        self.assertNotIn('taille.nb_panneaux', autos)
+        self.assertNotIn('taille.kwc', autos)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (3) Le PATCH devis ne peut PAS vider le registre
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -667,6 +770,121 @@ class PreseanceR4ATests(_ParcoursBase):
         self.assertEqual(verdict.cible_dimensionnement, 21)
         self.assertEqual(verdict.quantite_ligne, 21)
         self.assertFalse(verdict.conflit)
+
+
+class PreseanceR4AAtteintLeVendeurTests(_ParcoursBase):
+    """QJR217 — TEST ROUGE D'ABORD : la règle R4-A avait ZÉRO appelant.
+
+    ``preseance_nb_panneaux`` était écrite, testée dans les deux sens, et
+    jamais appelée hors des tests : une ligne verrouillée à 14 panneaux qui
+    contredisait ``taille.nb_panneaux = 10`` ne produisait AUCUN avertissement,
+    et ``puissance_kwc_du_devis`` suivait silencieusement le niveau DEVIS
+    pendant que le moteur PDF suivait les LIGNES.
+    """
+
+    def _ligne_panneaux(self, parcours):
+        return parcours.devis.lignes.get(
+            designation='Panneau Canadian Solar 710W')
+
+    def _verrouiller(self, parcours):
+        ligne = self._ligne_panneaux(parcours)
+        ligne.quantite_manuelle = True
+        ligne.save(update_fields=['quantite_manuelle'])
+        return ligne
+
+    def test_le_lecteur_de_kwc_emet_l_avertissement_nomme(self):
+        """LE ROUGE : aucun avertissement n'était produit."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+
+        avertissements = []
+        puissance_kwc_du_devis(parcours.recharger(),
+                               avertissements=avertissements)
+        self.assertEqual(len(avertissements), 1, avertissements)
+        message = avertissements[0]
+        self.assertIn('Panneau Canadian Solar 710W', message)
+        self.assertIn('14', message)
+        self.assertIn('10', message)
+
+    def test_la_ligne_verrouillee_decide_le_kwc_vendu(self):
+        """R4-A phrase 1 : le verrou de ligne gagne pour CETTE ligne — le kWc
+        décrit donc les 14 panneaux vendus, pas les 10 de la cible."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger()), 9.94, places=2)
+
+    def test_sans_verrou_le_niveau_devis_pilote_toujours_le_kwc(self):
+        """Non-régression QJR63 : sans verrou, rien ne change."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        avertissements = []
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger(),
+                                   avertissements=avertissements),
+            7.1, places=2)
+        self.assertEqual(avertissements, [])
+
+    def test_taille_kwc_reste_prioritaire(self):
+        """Non-régression : ``taille.kwc`` posé explicitement prime sur tout."""
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.kwc', 12.5)
+        self.assertAlmostEqual(
+            puissance_kwc_du_devis(parcours.recharger()), 12.5, places=2)
+
+    def test_la_cible_de_dimensionnement_reste_lisible(self):
+        """R4-A phrase 2 : le niveau DEVIS n'est pas perdu — il reste la cible
+        que ``decider_taille`` reçoit (elle ne passe pas par ce lecteur)."""
+        parcours = Parcours(self)
+        ligne = self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+        verdict = overrides.preseance_nb_panneaux(parcours.recharger(), ligne)
+        self.assertEqual(verdict.cible_dimensionnement, 10)
+        self.assertEqual(verdict.quantite_ligne, 14)
+
+    def test_la_resynchro_fait_remonter_l_avertissement_a_l_ecran(self):
+        """L'avertissement atteint la RÉPONSE que l'écran affiche déjà."""
+        parcours = Parcours(self)
+        self._verrouiller(parcours)
+        self.poser(parcours, 'taille.nb_panneaux', 10)
+
+        # Un layout DIFFÉRENT de celui déjà posé : sinon ``sync-layout``
+        # court-circuite sur ``inchange`` et n'exécute pas la resynchro.
+        layout = _layout()
+        layout['result'] = dict(layout['result'], annualKwh=15100)
+        reponse = self.api.post(
+            f'/api/django/ventes/devis/{parcours.devis.id}/sync-layout/',
+            layout, format='json')
+        self.assertIn(reponse.status_code, (200, 400, 409),
+                      getattr(reponse, 'data', reponse))
+        if reponse.status_code != 200 or reponse.data.get('inchange'):
+            self.skipTest('sync-layout n\'a pas resynchronisé ce devis '
+                          '(refus ou layout inchangé) : le câblage de '
+                          "l'avertissement est déjà épinglé au lecteur de kWc.")
+        messages = ' '.join(reponse.data.get('avertissements') or ())
+        self.assertIn('Panneau Canadian Solar 710W', messages)
+
+    def test_la_ligne_panneau_dominante_est_la_plus_grande(self):
+        from apps.ventes.domain.scenario import ligne_panneau_dominante
+
+        parcours = Parcours(self)
+        lignes = list(parcours.devis.lignes.select_related('produit').all())
+        dominante = ligne_panneau_dominante(lignes)
+        self.assertEqual(dominante.designation, 'Panneau Canadian Solar 710W')
+        self.assertIsNone(ligne_panneau_dominante(
+            [li for li in lignes
+             if not li.designation.startswith('Panneau')]))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

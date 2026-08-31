@@ -61,7 +61,7 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 # écrivain et LE MÊME ordonnancement que les quatre autres origines de devis.
 # Les frontières de transaction n'ont pas bougé d'une ligne : les réponses des
 # endpoints sont inchangées à l'octet.
-from ..domain.lignes import creer_ligne  # noqa: F401
+from ..domain.lignes import cloner_lignes, creer_ligne  # noqa: F401
 from ..domain.pipeline import (  # noqa: F401
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
@@ -947,6 +947,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # QJR204 — ALIGNÉ SUR ``/atomic``, QUI REFUSE DÉJÀ L'ENSEMBLE VIDE.
+        # Cet endpoint SUPPRIME puis recrée : une liste VIDE effaçait toutes
+        # les lignes d'un devis brouillon/envoyé et répondait 200. Vérifié
+        # avant d'en faire un refus : aucun flux légitime de « tout vider »
+        # n'existe (``ventesApi.replaceLignesDevis`` est l'unique appelant de
+        # production et l'écran n'offre aucun geste de ce genre). L'écrivain
+        # unique du domaine porte la même garde, pour les chemins non-HTTP.
+        if not lignes_in:
+            from ..domain.lignes import MSG_REMPLACEMENT_VIDE
+            return Response({'detail': MSG_REMPLACEMENT_VIDE},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
@@ -1567,6 +1578,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         created = []
         from decimal import Decimal, ROUND_HALF_UP
+        # QJR202 — CE CHEMIN DE COPIE PASSE PAR LE MÊME FILTRE QUE LES TROIS
+        # AUTRES. Il recopiait ``etude_params`` VERBATIM sur des devis dont il
+        # venait de multiplier les quantités par 0,8 / 1,2 : la copie publiait
+        # donc la production, les économies et l'étude horaire d'une AUTRE
+        # taille d'installation, jusque dans le PDF client (classe CS4-CS6,
+        # fermée par QJR117 sur les trois chemins du domaine — celui-ci était
+        # resté dehors).
+        from ..domain.etudes import etude_params_pour_copie
+        from ..services import rafraichir_etudes_du_devis
 
         for scale in scales:
             variant_note = _label_for(scale)
@@ -1581,7 +1601,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     remise_globale=source.remise_globale,
                     note=(f'[Variante {_note}] ' + (source.note or '')).strip(),
                     mode_installation=source.mode_installation,
-                    etude_params=source.etude_params,
+                    etude_params=etude_params_pour_copie(source.etude_params),
                     prix_cible_kwc=source.prix_cible_kwc,
                     created_by=request.user,
                     # Groupe : version_parent = racine, version incrémentée,
@@ -1596,32 +1616,30 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             create_numbered(Devis, company, 'devis', _save)
             nd = holder['obj']
 
-            for ligne in source.lignes.all():
-                raw_qty = ligne.quantite * Decimal(str(scale))
-                qty = raw_qty.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                qty = max(qty, Decimal('0.01'))
-                creer_ligne(
-                    nd,
-                    produit=ligne.produit,
-                    designation=ligne.designation,
-                    quantite=qty,
-                    prix_unitaire=ligne.prix_unitaire,
-                    remise=ligne.remise,
-                    taux_tva=ligne.taux_tva,
-                    # QJR84 — une variante de TAILLE recopie le devis en
-                    # changeant SES QUANTITÉS, rien d'autre : l'ordre, l'option
-                    # servie, le groupe multi-villa et le caractère facultatif
-                    # se recopient donc tels quels (le prix aussi, il est déjà
-                    # recopié ci-dessus). ``quantite_manuelle`` NE se recopie
-                    # PAS : la quantité vient d'être mise à l'échelle, elle
-                    # n'est plus celle que le commercial avait tapée.
-                    type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-                    variante=ligne.variante,
-                    groupe_index=ligne.groupe_index,
-                    groupe_label=ligne.groupe_label,
-                    optionnelle=ligne.optionnelle,
-                    prix_manuel=ligne.prix_manuel,
-                )
+            # QJR224 — LA COPIE DES CHAMPS PASSE PAR LE CLONEUR UNIQUE.
+            # Cette boucle recopiait à la main SA liste de champs et divergeait
+            # déjà de ``CHAMPS_CLONES`` en oubliant ``lot`` : une variante d'un
+            # devis à lots perdait ses lots. L'ÉCHELLE, elle, reste propre à
+            # cette vue — c'est la seule chose que ce chemin a de particulier,
+            # et elle passe par ``remplacements``.
+            #
+            # QJR84 conservé mot pour mot : ``quantite_manuelle`` NE se recopie
+            # PAS — la quantité vient d'être mise à l'échelle, elle n'est plus
+            # celle que le commercial avait tapée.
+            def _echelle(ligne, _scale=scale):
+                brute = ligne.quantite * Decimal(str(_scale))
+                qty = brute.quantize(Decimal('0.01'),
+                                     rounding=ROUND_HALF_UP)
+                return {'quantite': max(qty, Decimal('0.01')),
+                        'quantite_manuelle': False}
+
+            cloner_lignes(source, nd, remplacements=_echelle)
+            # QJR202 — RAFRAÎCHISSEMENT FORCÉ, comme les trois chemins du
+            # domaine (``creation.py:223``, ``cycle_vie.py:1763``,
+            # ``gammes.py:209``) : les clés dérivées viennent d'être purgées,
+            # l'étude est recalculée pour la taille RÉELLE de la copie. Sans
+            # cet appel, la copie repartirait simplement SANS étude.
+            rafraichir_etudes_du_devis(nd, force=True)
             created.append(nd)
 
         return Response(
@@ -1812,23 +1830,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         create_numbered(Devis, company, 'devis', _save)
         nd = new_devis['obj']
-        for ligne in old.lignes.all():
-            creer_ligne(
-                nd, produit=ligne.produit, designation=ligne.designation,
-                quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
-                remise=ligne.remise, taux_tva=ligne.taux_tva,
-                # QJR84 — une RÉVISION repart du devis tel qu'il est : type de
-                # ligne, ordre, option servie, groupe multi-villa, caractère
-                # facultatif et marqueurs de saisie manuelle (D12) compris.
-                # Sans eux la révision perdait son découpage en options et son
-                # ordre d'affichage, et rouvrait à la réécriture les prix et
-                # quantités tapés par le commercial.
-                type_ligne=ligne.type_ligne, ordre=ligne.ordre,
-                variante=ligne.variante, groupe_index=ligne.groupe_index,
-                groupe_label=ligne.groupe_label,
-                optionnelle=ligne.optionnelle,
-                quantite_manuelle=ligne.quantite_manuelle,
-                prix_manuel=ligne.prix_manuel)
+        # QJR224 — LE CLONEUR UNIQUE, comme les trois chemins du domaine. Cette
+        # boucle recopiait à la main SA liste de champs et divergeait déjà de
+        # ``CHAMPS_CLONES`` en oubliant ``lot`` : une révision d'un devis à lots
+        # perdait ses lots. QJR84 est conservé intégralement — une RÉVISION
+        # repart du devis TEL QU'IL EST, marqueurs de saisie manuelle (D12)
+        # compris : c'est exactement ce que ``CHAMPS_CLONES`` recopie.
+        cloner_lignes(old, nd)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])
@@ -2547,20 +2555,28 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     # ── QJR58 — LE REGISTRE DE SURCHARGES (décision fondateur D12) ───────────
 
     @staticmethod
-    def _overrides_reponse(devis):
+    def _overrides_reponse(devis, chemins_regeneres=()):
         """La forme du contrat PACT10 ``contract_samples/devis_overrides.json``.
 
         ``effectif`` est DÉRIVÉ À CHAQUE LECTURE, jamais stocké : la carte des
-        valeurs ``auto`` est celle que le moteur rendrait AUJOURD'HUI. QJR58 ne
-        branche AUCUNE dérivation (elles arrivent avec leurs propriétaires —
-        QJR63 pour le kWc, QJR64 pour le scénario) : la carte est donc vide, et
-        chaque chemin SURCHARGÉ apparaît quand même avec ``auto: null``. Rien
-        n'est inventé pour remplir le bloc.
+        valeurs ``auto`` est celle que le moteur rend AUJOURD'HUI.
+
+        QJR216 — LA CARTE ``autos`` EST ENFIN ALIMENTÉE. Elle valait ``{}`` en
+        dur depuis QJR58, si bien que **toute** réponse annonçait ``auto:
+        null``, y compris sur les chemins dont le moteur a une valeur lisible :
+        le bloc promettait « valeur posée vs valeur moteur, côte à côte » et ne
+        portait que la première. Elle vient désormais de
+        ``domain.overrides.autos_du_devis`` — les chemins que le moteur ne sait
+        pas dériver restent OMIS, jamais remplis d'un défaut (règle Z2).
+
+        ``chemins_regeneres`` — les chemins qui viennent de repasser en
+        automatique (DELETE). Ils sont FORCÉS dans la carte pour que la réponse
+        les porte avec leur valeur moteur : sortis du registre, ils
+        disparaissaient purement et simplement de la réponse, alors que
+        l'endpoint promet « retour à l'automatique ».
 
         ``lignes`` est une carte ``{id: {...}}`` — JAMAIS une liste indexée par
         position (une ligne supprimée déplacerait la surcharge sur une autre).
-        Elle reste vide tant que ``LigneDevis.quantite_manuelle`` /
-        ``prix_manuel`` n'existent pas (QJR59).
         """
         from ..domain import overrides as registre_overrides
 
@@ -2573,9 +2589,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             }
             if any(marques.values()):
                 lignes[str(ligne.pk)] = marques
+        autos = registre_overrides.autos_du_devis(devis)
+        for chemin in chemins_regeneres:
+            autos.setdefault(chemin, None)
         return {
             'overrides': registre_overrides.registre_du_devis(devis),
-            'effectif': registre_overrides.vue_effective(devis, {}),
+            'effectif': registre_overrides.vue_effective(devis, autos),
             'lignes': lignes,
         }
 
@@ -2592,8 +2611,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
           ou une clé indexée par POSITION sont refusés en 400 avec un message
           FR qui NOMME le chemin — jamais un silence.
         * **DELETE ?chemin=<chemin>** — ``regenerer`` : SUPPRIME l'override de
-          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais par une
-          valeur calculée : reposer une valeur exige un nouveau PATCH explicite.
+          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais dans le
+          REGISTRE par une valeur calculée : reposer une valeur exige un
+          nouveau PATCH explicite. QJR216 — la RÉPONSE, elle, porte le chemin
+          régénéré avec la valeur que le moteur calcule : sans quoi « retour à
+          l'automatique » rendait un trou au lieu de la valeur promise.
 
         L'ÉCRITURE PASSE PAR UN ``UPDATE`` D'UNE SEULE COLONNE
         (``domain.overrides.ecrire_colonne``) : ni ``updated_at`` ni le gel
@@ -2620,7 +2642,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     status=status.HTTP_400_BAD_REQUEST)
             registre_overrides.ecrire_colonne(
                 devis, registre_overrides.regenerer(devis, chemin))
-            return Response(self._overrides_reponse(devis))
+            # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
+            # valeur du moteur (avant, il en disparaissait : « retour à
+            # l'automatique » se soldait par un trou).
+            return Response(
+                self._overrides_reponse(devis, chemins_regeneres=(chemin,)))
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

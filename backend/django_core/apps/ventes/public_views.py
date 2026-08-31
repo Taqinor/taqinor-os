@@ -1635,8 +1635,12 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
 # QJR104 — CES QUATRE GARDES SONT DÉSORMAIS DES APPELS, PLUS UNE RÈGLE.
 # La règle « un optimum ne se publie pas sans sa configuration » vit dans UN
 # seul endroit, ``apps.ventes.dimensionnement`` (le type ``Optimum`` +
-# ``ConfigInstallation`` + ``decrit`` / ``decrit_la_capacite`` /
-# ``publier_si_decrit``). Ce qui suit n'en est plus qu'une lecture nommée :
+# ``ConfigInstallation`` + ``decrit`` / ``publier_si_decrit``). QJR233 — les
+# quatre gardes appliquent maintenant la MÊME règle, ``decrit`` (panneaux ET
+# capacité) : la variante « capacité seule » de la garde de remplissage était
+# plus laxiste que celle du PDF sur le même concept, et laissait passer un
+# pourcentage calculé sur un autre champ PV. Ce qui suit n'en est qu'une
+# lecture nommée :
 # les fonctions gardent leur nom et leur signature (leurs tests QJR14 les
 # importent tels quels), leur CORPS ne réécrit plus la règle.
 
@@ -1681,28 +1685,31 @@ def _panneaux_vendus(devis):
     return _config_vendue(devis).panneaux
 
 
-def _meme_capacite_batterie(bloc, devis) -> bool:
-    """Le bloc moteur décrit-il la capacité batterie RÉELLEMENT vendue ?
-
-    ``False`` dès qu'un des deux côtés est illisible — en particulier quand le
-    devis ne vend AUCUNE batterie : il n'y a rien à décrire, donc rien à
-    publier."""
-    module = _dim()
-    return module.decrit_la_capacite(module.config_du_bloc(bloc),
-                                     _config_vendue(devis))
-
-
 def _remplissage_batterie_publiable(dimensionnement, devis) -> bool:
     """``batterie_regime.remplissage_moyen_pct`` décrit-il CE devis ?
 
     Il vient de ``recommandation_avec`` — la batterie que le moteur CONSEILLE.
-    Publiable seulement quand cette capacité est celle des lignes vendues :
-    ce chiffre décrit le RÉGIME du stockage, donc la règle de CAPACITÉ suffit
-    (et resserrer la règle changerait le comportement épinglé par QJR14)."""
+
+    QJR233 (31/08/2026) — LA GARDE PUBLIQUE EST ALIGNÉE SUR CELLE DU PDF.
+    Elle ne contrôlait que la CAPACITÉ batterie
+    (``dimensionnement.decrit_la_capacite``), alors que le taux publié est une
+    grandeur PAR NOMBRE DE PANNEAUX : une page client pouvait donc afficher un
+    pourcentage calculé sur un champ PV différent de celui qui est vendu —
+    exactement la classe de chiffre que QJR14 existe pour bloquer, et une
+    règle plus LAXISTE que celle que le PDF applique au même concept
+    (``generate_devis_premium._optimum_decrit_ce_devis`` : panneaux ET
+    capacité). Une seule formulation subsiste, ``dimensionnement.decrit``, et
+    elle est IMPORTÉE des deux côtés — jamais recopiée.
+
+    ``False`` dès qu'un des deux côtés est illisible (devis sans batterie,
+    compte de panneaux inconnu) : il n'y a rien à décrire, donc rien à
+    publier — la clé est OMISE, jamais un zéro."""
     if not isinstance(dimensionnement, dict):
         return False
-    return _meme_capacite_batterie(
-        dimensionnement.get('recommandation_avec'), devis)
+    module = _dim()
+    return module.decrit(
+        module.config_du_bloc(dimensionnement.get('recommandation_avec')),
+        _config_vendue(devis))
 
 
 def _residuel_falaise_publiable(dimensionnement, devis) -> bool:

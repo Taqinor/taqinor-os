@@ -386,30 +386,26 @@ _is_smart_meter = _sd.is_smart_meter
 _is_wifi_dongle = _sd.is_wifi_dongle
 
 
-def _quote_is_huawei(items) -> bool:
-    """QF9 — True quand l'onduleur du devis est Huawei.
+# QJR200 — ``_quote_is_huawei`` A ÉTÉ SUPPRIMÉ D'ICI. La règle QF9 (« un panier
+# dont l'onduleur n'est pas Huawei perd son Smart Meter et sa clé Wi-Fi ») vit
+# désormais UNE SEULE FOIS, dans le noyau monnaie
+# (``apps.ventes.utils.options.retirer_accessoires_huawei``), pour que le total
+# imprimé et le total du noyau décrivent le MÊME panier. Le moteur ne fournit
+# plus que ses lecteurs de champs (ses items sont des dicts) — voir
+# ``_drop_huawei_accessories`` plus bas.
 
-    Smart Meter + Clé Wifi (dongle) sont des accessoires Huawei propres à
-    l'onduleur Huawei : ils ne doivent JAMAIS figurer sur un devis dont
-    l'onduleur est d'une autre marque (ex. Deye). On lit la marque de l'onduleur
-    (réseau ou hybride) via sa désignation, sa marque et le nom du produit lié.
-    Sans onduleur identifiable → False (on n'affiche pas ces accessoires par
-    défaut). Comportement conservateur : le moindre onduleur non-Huawei suffit à
-    retirer les accessoires du document.
-    """
-    inverters = [it for it in items if _is_inverter(it.get("designation", ""))]
-    if not inverters:
-        return False
-    huawei_seen = False
-    for it in inverters:
-        blob = (f"{it.get('designation', '')} {it.get('marque', '')} "
-                f"{it.get('_produit_nom', '')}").lower()
-        if "huawei" in blob:
-            huawei_seen = True
-        else:
-            # Un onduleur non-Huawei dans le devis → pas d'accessoires Huawei.
-            return False
-    return huawei_seen
+
+def _item_classement(it) -> str:
+    """Texte de CLASSEMENT d'un item pour la règle QF9 — la désignation seule,
+    exactement ce que lisait ``_quote_is_huawei`` avant QJR200."""
+    return it.get("designation", "")
+
+
+def _item_marque(it) -> str:
+    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié —
+    les trois champs lus avant QJR200, mot pour mot."""
+    return (f"{it.get('designation', '')} {it.get('marque', '')} "
+            f"{it.get('_produit_nom', '')}")
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -994,13 +990,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # évalue Huawei PAR option (l'onduleur réseau de « sans » peut être Huawei
     # alors que l'onduleur hybride de « avec » est Deye) et on retire les lignes
     # Smart Meter / Wifi de l'option non-Huawei.
+    # QJR200 — LA RÈGLE VIENT DU NOYAU, elle n'est plus recopiée ici : le moteur
+    # ne fournit que les lecteurs de champs de ses items (dicts). Import
+    # fonction-local — ``utils.options`` importe ce module à son sommet.
     def _drop_huawei_accessories(paires):
-        rows = [it for _, it in paires]
-        if _quote_is_huawei(rows):
-            return paires
-        return [(li, it) for li, it in paires
-                if not _is_smart_meter(it.get("designation", ""))
-                and not _is_wifi_dongle(it.get("designation", ""))]
+        from apps.ventes.utils.options import retirer_accessoires_huawei
+        return retirer_accessoires_huawei(
+            paires,
+            classement=lambda p: _item_classement(p[1]),
+            marque=lambda p: _item_marque(p[1]))
 
     _sans_paires = _drop_huawei_accessories(_sans_paires)
     _avec_paires = _drop_huawei_accessories(_avec_paires)
@@ -1027,11 +1025,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                          f"{it.get('_produit_nom', '')}").lower()
             for it in inverters)
 
+    # QJR200 — « est un accessoire Huawei » est le prédicat du noyau (une seule
+    # définition) ; la RÈGLE de la liste libre, elle, reste celle de QJR124
+    # ci-dessus (``any`` et non ``all``) et n'est pas touchée.
+    from apps.ventes.utils.options import (
+        est_accessoire_huawei as _est_accessoire_huawei,
+    )
     _items_libres = list(items)
     if _aucun_onduleur_huawei(items):
         _items_libres = [it for it in items
-                         if not _is_smart_meter(it.get("designation", ""))
-                         and not _is_wifi_dongle(it.get("designation", ""))]
+                         if not _est_accessoire_huawei(_item_classement(it))]
     sans_items = [it for _, it in _sans_paires]
     avec_items = [it for _, it in _avec_paires]
     # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
@@ -3267,6 +3270,73 @@ def _filigrane_standard_texte(devis):
     return ' · '.join(morceaux)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# QJR235 — LE REGISTRE DES RENDERERS PREMIUM (marché → renderer)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# CE QU'IL REMPLACE. Le choix du renderer était QUATRE blocs ``if``
+# copiés-collés — même forme, même ``except``, même message à un mot près. Un
+# cinquième marché dont le bloc était oublié dégradait SILENCIEUSEMENT vers le
+# moteur legacy, sans le journal de repli nommé que le code promet pourtant
+# ailleurs (le ``except Unsupported`` agricole, lui, journalise bien — QJR17(d)).
+#
+# CE REGISTRE EST LA SEULE LISTE. Ajouter un marché = ajouter une ligne ici ;
+# en retirer un = retirer sa ligne. Aucun ``if is_*`` de dispatch ne subsiste
+# (un test le vérifie par grep sur ce module).
+#
+# L'ORDRE EST SIGNIFIANT et repris tel quel : industriel (QX45), puis
+# commercial (QX46), puis résidentiel — le premier dont le prédicat accepte le
+# devis rend le document. (L'entrée agricole a été supprimée par QJR236 /
+# décision DV1 : elle était injoignable depuis QJR32.)
+#
+# LES IMPORTS SONT PARESSEUX, comme avant : chaque paquet de renderer importe
+# des dépendances lourdes, et ce module est chargé au démarrage.
+
+def registre_renderers():
+    """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre.
+
+    QJR236 (décision fondateur DV1) — L'ENTRÉE ``agricole`` A ÉTÉ RETIRÉE avec
+    son renderer. Depuis QJR32 (le dispatch lit le ``pdf_mode`` NORMALISÉ) elle
+    était INJOIGNABLE : ``build_quote_data`` dégrade par conception toute
+    demande agricole « full » en une page. Le devis agricole passe donc par le
+    repli NOMMÉ ci-dessous (``_journaliser_repli``) vers le moteur legacy, qui
+    le sert seul depuis juin — et le document rendu est byte-identique.
+    """
+    from .commercial import renderer as commercial
+    from .industriel import renderer as industriel
+    from .residential import renderer as residential
+
+    return (
+        ('industriel', industriel, industriel.is_industrial),
+        ('commercial', commercial, commercial.is_commercial),
+        ('residentiel', residential, residential.is_residential),
+    )
+
+
+def _marche_du_devis(devis):
+    """Le marché de ce devis pour le JOURNAL — jamais un verdict de rendu."""
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    return mode or 'résidentiel (par défaut)'
+
+
+def _journaliser_repli(marche, raison, reference, *, niveau=None, trace=False):
+    """QJR17(d) / QJR235 — TOUT repli vers le moteur legacy est NOMMÉ.
+
+    Trois faits, toujours les mêmes : le MARCHÉ, la RAISON, le DEVIS. Sans
+    trace, une proposition premium se dégradait sans que personne ne le sache
+    (un champ manquant, un ``None``, et le devis sortait sur l'autre moteur en
+    silence).
+
+    ``niveau`` — ``logger.warning`` par défaut (un renderer qui REFUSE ou qui
+    LÈVE est anormal) ; l'absence d'entrée de registre passe en ``logger.info``
+    (le une-page et les formats hors périmètre y passent normalement), mais
+    elle est DITE.
+    """
+    (niveau or logger.warning)(
+        "Repli moteur legacy — marché « %s », devis %s : %s",
+        marche, reference, raison, exc_info=trace)
+
+
 def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     """Render the quote PDF for a Devis in the requested format and store it
     in MinIO. pdf_options (see DEFAULT_PDF_OPTIONS) selects the simulator
@@ -3348,94 +3418,37 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     _opts_dispatch = dict(pdf_options or {})
     _opts_dispatch['pdf_mode'] = (
         data.get('pdf_mode') or _opts_dispatch.get('pdf_mode') or 'full')
+    # QJR235 — LE CHOIX DU RENDERER EST UN REGISTRE, PLUS QUATRE ``if``.
     pdf_bytes = None
-    # Agricole premium multi-page proposal (full format). One-page agricole and
-    # every other mode/format stay on the legacy engine / residential renderer.
-    from .agricole import renderer as agricole
-    if agricole.is_agricultural(devis, _opts_dispatch):
+    _reference = getattr(devis, "reference", devis_id)
+    _servi_par = None
+    for _marche, _renderer, _sert in registre_renderers():
+        if pdf_bytes is not None:
+            break
+        if not _sert(devis, _opts_dispatch):
+            continue
+        _servi_par = _marche
         try:
-            pdf_bytes = agricole.render_pdf_bytes(data_rendu)
-        except agricole.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer agricole refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
+            pdf_bytes = _renderer.render_pdf_bytes(data_rendu)
+        except _renderer.Unsupported as _hors_perimetre:
+            _journaliser_repli(_marche, _hors_perimetre, _reference)
             pdf_bytes = None
         except Exception:
-            logger.warning(
-                "Agricole renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    # QX45 — renderer INDUSTRIEL (CFO) : full/premium seulement, intercepté APRÈS
-    # l'agricole et AVANT le repli legacy (qui reste l'off-switch / one-page).
-    from .industriel import renderer as industriel
-    if pdf_bytes is None and industriel.is_industrial(devis, _opts_dispatch):
-        try:
-            pdf_bytes = industriel.render_pdf_bytes(data_rendu)
-        except industriel.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer industriel refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Industriel renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    # QX46 — renderer COMMERCIAL (catégorie-aware) : full/premium seulement,
-    # intercepté AVANT le repli legacy (comme QX45).
-    from .commercial import renderer as commercial
-    if pdf_bytes is None and commercial.is_commercial(devis, _opts_dispatch):
-        try:
-            pdf_bytes = commercial.render_pdf_bytes(data_rendu)
-        except commercial.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer commercial refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Commercial renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
-            pdf_bytes = None
-    from .residential import renderer as residential
-    if pdf_bytes is None and residential.is_residential(devis, _opts_dispatch):
-        try:
-            pdf_bytes = residential.render_pdf_bytes(data_rendu)
-        except residential.Unsupported as _hors_perimetre:
-            # QJR17 (d) — REPLI NOMMÉ, JAMAIS SILENCIEUX. Ce chemin
-            # ramène le document sur le moteur legacy : sans trace, une
-            # proposition premium se dégradait sans que personne ne le
-            # sache (un champ manquant, un None, et le devis sortait sur
-            # l'autre moteur en silence).
-            logger.warning(
-                "Repli moteur legacy pour %s : le renderer residential refuse "
-                "ce devis (%s)",
-                getattr(devis, "reference", devis_id), _hors_perimetre)
-            pdf_bytes = None
-        except Exception:
-            logger.warning(
-                "Residential renderer failed for %s; using legacy engine",
-                getattr(devis, "reference", devis_id), exc_info=True)
+            _journaliser_repli(
+                _marche, "erreur inattendue du renderer", _reference,
+                trace=True)
             pdf_bytes = None
     if pdf_bytes is None:
+        if _servi_par is None:
+            # QJR235 — LE REPLI SILENCIEUX N'EXISTE PLUS. Un marché qu'AUCUNE
+            # entrée du registre ne sert (un cinquième marché dont on a oublié
+            # la ligne, un format hors périmètre des renderers premium)
+            # dégradait vers le moteur legacy sans une trace : le journal le
+            # NOMME désormais, comme le fait déjà le refus explicite.
+            _journaliser_repli(
+                _marche_du_devis(devis),
+                "aucune entrée du registre ne sert ce marché dans ce format",
+                _reference, niveau=logger.info)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
             tmp_path = tf.name
         try:

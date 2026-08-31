@@ -214,12 +214,19 @@ def _dimensionnement_variante(devis, occupation):
     # tableau qu'elle sert à comparer.
     from apps.ventes.etude_horaire import _reglages_tarifaires
     tranches, charges_fixes = _reglages_tarifaires(company)
+    # QJR232 — LA MÊME HORLOGE QUE L'ÉTUDE PRINCIPALE. Ce site est le seul
+    # appelant de ``recommander_taille`` à relire la fiche à la main, et il
+    # OMETTAIT ``jour_reference`` : le bloc persisté sous une empreinte qui
+    # épingle la date du devis était en fait calculé sur une SECONDE lecture
+    # d'horloge — deux dates pour le même devis, dont une invisible.
+    from apps.ventes.domain.entrees import jour_reference_du_devis
     return recommander_taille(
         company=company, conso_kwh_mensuelles=conso,
         ville=localisation.get('site_ville'),
         lat=localisation.get('gps_lat'), lon=localisation.get('gps_lng'),
         occupation=occupation, equipements=equipements_du_devis(devis),
         source_conso=source_conso,
+        jour_reference=jour_reference_du_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes)
 
 

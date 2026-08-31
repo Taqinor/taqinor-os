@@ -10,6 +10,13 @@ jusqu'à M4, chacune recomposait à sa façon. Ce module est l'endroit où les
         → ecrire_lignes → ecrire_etude_params → rafraichir_etudes
         → marge_snapshot + conception électrique
 
+CETTE FLÈCHE EST UN ORDRE, PAS UN TUYAU DE DONNÉES (QJR243 (b)). L'étape 2 ne
+CONSOMME pas la sortie de l'étape 1 : elle rend la cible déjà arrêtée par
+l'appelant, ou demande au dimensionneur horaire, qui relit la fiche par le MÊME
+adaptateur (``entrees_depuis_lead``). Le paramètre ``entrees`` que l'étape 2
+déclarait sans jamais le lire a donc été retiré ; la sortie de l'étape 1, elle,
+reste rendue par ``appliquer`` (clé ``entrees`` du compte rendu).
+
 QJR80 pose la TROISIÈME étape, ``composer``, et elle seule. Les autres étapes
 existent déjà, à leur place (``domain/entrees``, ``domain/taille``,
 ``domain/geometrie``, ``domain/lignes``, ``domain/etude_schema``,
@@ -451,8 +458,6 @@ class IntentionDevis:
     * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'`` ; vide ⇒
       ``'les_deux'`` (le défaut fondateur U2) ;
     * ``layout`` — le calepinage 3D, quand il y en a un ;
-    * ``overrides`` — le patch de surcharges déclarées (QJR58), appliqué par
-      ``domain/overrides`` — jamais réinventé ici ;
     * ``exact`` — la cible vient d'un NOMBRE TAPÉ, pas d'un toit : les deux
       options y sont portées à la hausse comme à la baisse (cf.
       ``sync_devis_from_layout(cible_exacte=...)``).
@@ -469,7 +474,19 @@ class IntentionDevis:
       Posée à la création, jamais recalculée ici ;
     * ``force_etudes`` — QJR94, ``force=True`` des quatre rafraîchisseurs :
       « recalcule même si l'empreinte concorde ». ``False`` (LE DÉFAUT) laisse
-      l'empreinte décider (QJR43/QJR44/QJR47).
+      l'empreinte décider (QJR43/QJR44/QJR47). QJR227 — il est transmis sur
+      TOUS les modes qui rafraîchissent, plus seulement ``MODE_RAFRAICHIR`` :
+      un appelant qui demandait des études forcées sur un compose/create
+      recevait les études EN CACHE, sans le savoir.
+
+    QJR227 — ``overrides`` A ÉTÉ SUPPRIMÉ DE CETTE INTENTION. Le champ était
+    déclaré et documenté « le patch de surcharges déclarées (QJR58), appliqué
+    par ``domain/overrides`` » et n'était POSÉ par personne ni LU par personne
+    (grep du dépôt). Le registre de surcharges se pose par son endpoint
+    (``PATCH /devis/<id>/overrides/`` → ``domain.overrides.fusionner`` +
+    ``ecrire_colonne``) et se LIT par ``domain.overrides.effectif`` là où il
+    compte ; le pipeline n'a jamais eu de rôle dedans. Arbitrage « câbler ou
+    supprimer » : SUPPRIMER — un champ qui ment coûte plus qu'il ne rapporte.
     """
 
     origine: str
@@ -482,7 +499,6 @@ class IntentionDevis:
     cible: object = None
     scenario: str = ''
     layout: object = None
-    overrides: object = None
     exact: bool = False
     taux_tva: Decimal = Decimal('20')
     remise_globale: Decimal = Decimal('0')
@@ -518,7 +534,7 @@ def resoudre_entrees(devis, intention):
     return None
 
 
-def decider_taille(intention, entrees):
+def decider_taille(intention):
     """Étape 2 — LE CHAMP PV.
 
     Le pipeline NE REDIMENSIONNE PAS de sa propre initiative : une cible déjà
@@ -527,6 +543,18 @@ def decider_taille(intention, entrees):
     le seul dimensionneur, ordre fondateur du 29/08/2026 (« ALL sizing should
     go through the new sizing tool ») — et son refus est NOMMÉ, jamais remplacé
     par un repli forfaitaire.
+
+    QJR243 (b) — LE PARAMÈTRE ``entrees`` A ÉTÉ RETIRÉ, ET LA DOCUMENTATION
+    CORRIGÉE AVEC LUI. Cette étape le DÉCLARAIT sans jamais le LIRE : la chaîne
+    « ``resoudre_entrees`` → ``decider_taille`` » ne transportait donc rien, et
+    le paramètre laissait croire l'inverse. Le dimensionneur horaire relit la
+    fiche lui-même (``taille._panneaux_dimensionnement_horaire`` →
+    ``entrees_depuis_lead``, MÊME adaptateur, mêmes valeurs) : c'est une
+    RELECTURE, pas une seconde vérité, et elle est nommée ici plutôt que
+    masquée par un argument décoratif.
+
+    L'ÉTAPE 1 N'EST PAS MORTE POUR AUTANT : son résultat est rendu par
+    ``appliquer`` (clé ``entrees`` du compte rendu), que ses appelants lisent.
     """
     if intention.cible is not None:
         return intention.cible
@@ -810,7 +838,7 @@ def appliquer(devis, intention):
     entrees = resoudre_entrees(devis, intention)
     journal.append('resoudre_entrees')
 
-    cible = decider_taille(intention, entrees)
+    cible = decider_taille(intention)
     journal.append('decider_taille')
 
     intention_compo = intention_de_composition(
@@ -840,7 +868,12 @@ def appliquer(devis, intention):
         ecrire_etude_params(verrou, intention, composition)
         journal.append('ecrire_etude_params')
 
-    rafraichir_etudes(verrou)
+    # QJR227 — ``force_etudes`` EST TRANSMIS ICI AUSSI. Il ne l'était que par
+    # la branche ``MODE_RAFRAICHIR`` : un appelant qui demandait des études
+    # FORCÉES sur un compose/create recevait silencieusement les études en
+    # cache (les empreintes QJR43/QJR44 court-circuitent), c'est-à-dire
+    # l'inverse exact de ce qu'il avait demandé.
+    rafraichir_etudes(verrou, force=intention.force_etudes)
     journal.append('rafraichir_etudes')
 
     finaliser(verrou, intention)
@@ -899,6 +932,14 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
         # ``resynchronisation`` importe ce module (son adaptateur appelle
         # ``appliquer``), et un import de haut de fichier des deux côtés ferait
         # lire un module à moitié construit.
+        #
+        # QJR220 — CE MODE N'APPELLE PAS ``ecrire_lignes``, ET C'EST VOULU : il
+        # ajuste CHIRURGICALEMENT des lignes existantes (prix négociés, ordre,
+        # groupes préservés), là où l'écrivain SUPPRIME et RECRÉE tout. La
+        # re-tarification des forfaits au panneau (QJR83), que ``ecrire_lignes``
+        # obtient gratuitement, est donc appelée par ``reconcilier`` lui-même,
+        # après TOUTES ses écritures de lignes — jamais en faisant passer ce
+        # mode par l'écrivain, ce qui détruirait ce qu'il protège.
         from apps.ventes.domain.resynchronisation import reconcilier
 
         resynchro = reconcilier(devis, intention)
@@ -956,12 +997,18 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     refresh_marge_snapshot,
 )
 from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402,F401
-from apps.ventes.domain.scenario import (  # noqa: E402,F401
-    SCENARIO_LES_DEUX,
-    _scenario_stocke,
+# QJR243 (a) — TROIS NOMS MORTS RETIRÉS D'ICI : ``SCENARIO_LES_DEUX``,
+# ``_scenario_stocke`` et ``sert_les_deux`` n'étaient utilisés NI par ce module
+# NI par personne à travers lui (grep : aucun ``from …pipeline import`` ne les
+# vise, ils ne sont pas dans ``__all__``). Le ``# noqa: F401`` global les
+# rendait invisibles à flake8 pour toujours — un pont mort qu'aucun linter ne
+# pouvait plus signaler. Les deux noms restants, eux, sont RÉELLEMENT lus par
+# ce module (``scenario_servable`` dans ``ecrire_etude_params``,
+# ``poser_puissance_kwc`` dans ``finaliser``) : ils n'ont donc plus besoin du
+# ``F401`` du tout — seul ``E402`` (import en bas de fichier) reste nécessaire.
+from apps.ventes.domain.scenario import (  # noqa: E402
     poser_puissance_kwc,
     scenario_servable,
-    sert_les_deux,
 )
 from apps.ventes.domain.taille import (  # noqa: E402,F401
     _AUTO_PANEL_WATT,
