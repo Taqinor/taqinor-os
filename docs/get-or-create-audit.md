@@ -5,9 +5,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | Fichier:ligne | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
 | `backend/django_core/apps/accessreview/sod.py:137` | get_or_create | SodRule.objects | company, permission_a, permission_b |
-| `backend/django_core/apps/adminops/config_package_service.py:105` | update_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/adminops/config_package_service.py:115` | update_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/adminops/config_package_service.py:125` | update_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/adminops/config_package_service.py:118` | update_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/adminops/config_package_service.py:128` | update_or_create | CustomFieldDef.objects | code, company, module |
+| `backend/django_core/apps/adminops/config_package_service.py:138` | update_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/adminops/views_annonces.py:149` | get_or_create | LectureAnnonce.objects | annonce, utilisateur |
 | `backend/django_core/apps/adsengine/brief.py:244` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/calendar.py:69` | get_or_create | CreativeCalendarEvent.objects | company, date_debut, tag |
