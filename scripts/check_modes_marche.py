@@ -25,7 +25,7 @@ d'autres ne fait rougir AUCUN test existant.
 
 CE QUE LA GARDE COMPARE
 ------------------------
-Le porteur partagé est le contrat committé `apps/ventes/contract_samples/
+Le porteur partagé est le contrat committé `apps/ventes/contracts/
 modes_marche.json` (QJR231, PACT10) — sa liste `modes` fait foi. Cette garde
 lit les SIX sites (AST pour les fichiers Python, une extraction ciblée par
 regex pour les deux fichiers JS/JSX — aucun des deux tableaux visés n'est
@@ -55,7 +55,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTRAT = (ROOT / "backend" / "django_core" / "apps" / "ventes"
-           / "contract_samples" / "modes_marche.json")
+           / "contracts" / "modes_marche.json")
 SIZING_REDUCER = (ROOT / "frontend" / "src" / "features" / "ventes"
                   / "quote" / "sizingReducer.js")
 DEVIS_GENERATOR = ROOT / "frontend" / "src" / "pages" / "ventes" / "DevisGenerator.jsx"

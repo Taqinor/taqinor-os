@@ -219,11 +219,26 @@ class DeuxPatchConcurrentsNePerdentPlusUnChemin(_FixtureBase, TransactionTestCas
             tb.start()
             self.assertTrue(
                 b_a_tente.wait(5), 'le thread B n’a jamais tenté le verrou')
-            # Laisse le temps au SELECT ... FOR UPDATE de B d'atteindre
-            # RÉELLEMENT PostgreSQL et de s'y bloquer AVANT de relâcher A —
-            # sans ce délai, un simple ordonnancement chanceux ne prouverait
+            # Attend que le SELECT ... FOR UPDATE de B soit RÉELLEMENT bloqué
+            # dans PostgreSQL AVANT de relâcher A — une attente de CONDITION
+            # observée dans pg_stat_activity (wait_event_type='Lock'), jamais
+            # un délai arbitraire : un ordonnancement chanceux ne prouverait
             # rien (le défaut d'origine est justement une course de timing).
-            time.sleep(0.3)
+
+            def _b_bloque_sur_le_verrou():
+                with connection.cursor() as curseur:
+                    curseur.execute(
+                        "SELECT count(*) FROM pg_stat_activity "
+                        "WHERE wait_event_type = 'Lock' "
+                        "AND query LIKE '%FOR UPDATE%'")
+                    return curseur.fetchone()[0] > 0
+            pacage = threading.Event()  # jamais signalé : pur régulateur de boucle
+            limite = time.monotonic() + 5
+            while not _b_bloque_sur_le_verrou():
+                self.assertLess(
+                    time.monotonic(), limite,
+                    'le SELECT FOR UPDATE de B ne s’est jamais bloqué en base')
+                pacage.wait(0.05)
 
             relacher.set()
             ta.join(10)

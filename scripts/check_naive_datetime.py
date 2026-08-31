@@ -61,7 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:917",
     "backend/django_core/apps/facturation/models.py:1101",
-    "backend/django_core/apps/ventes/models.py:1156",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2 : Devis.overrides + LigneDevis.quantite_manuelle/prix_manuel), même champ date-ancre relu
+    "backend/django_core/apps/ventes/models.py:1157",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
