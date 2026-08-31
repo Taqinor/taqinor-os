@@ -5,8 +5,10 @@
 // mensuelle, l'injection du surplus (82-21) et le raccordement BT/MT ; il
 // n'a ni catégorie commerciale ni pompage.
 //
-// Le panneau lit `cle` dans son module de stratégie (QJR89) et se retire
-// lui-même hors de son marché — le même patron que `DevisOffresTailles`.
+// QJR241 — le panneau se retire lui-même hors de son marché via `CLE`
+// (constante locale ; l'ex-module de stratégie `quote/marches/industriel.js`,
+// devenu du code mort — aucun autre export que `cle` n'avait de consommateur
+// de production — a été supprimé) — le même patron que `DevisOffresTailles`.
 // `modeInstallation` ne vaut jamais qu'une des quatre clés (le reducer refuse
 // toute autre valeur, `modeDepuisTypeInstallation`), donc exactement un
 // panneau rend, à la place exacte qu'occupait la carte d'origine.
@@ -24,9 +26,11 @@ import { Zap, BarChart3 } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { MONTHS_FR, TARIF_MT_ONEE, tarifMtDisponible } from '../../../features/ventes/solar'
 import { formatNumber } from '../../../lib/format'
-import { cle } from '../../../features/ventes/quote/marches/industriel'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
+// QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
+// industriel.js, module supprimé faute de consommateur de production).
+const CLE = 'industriel'
 
 export default function PanneauIndustriel({
   marche,
@@ -42,7 +46,7 @@ export default function PanneauIndustriel({
   tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
   tarifMtApplique,
 }) {
-  if (marche !== cle) return null
+  if (marche !== CLE) return null
   return (
     <Card>
       <GenCardHeader icon={Zap} title="Factures Électriques" />

@@ -5,8 +5,10 @@
 // CATÉGORIE (hôtel, bureau…) et ses questions par archétype, qui pilotent le
 // taux de charge diurne de son étude ; il n'a pas de pompage.
 //
-// Le panneau lit `cle` dans son module de stratégie (QJR89) et se retire
-// lui-même hors de son marché — le même patron que `DevisOffresTailles`.
+// QJR241 — le panneau se retire lui-même hors de son marché via `CLE`
+// (constante locale ; l'ex-module de stratégie `quote/marches/commercial.js`,
+// devenu du code mort — aucun autre export que `cle` n'avait de consommateur
+// de production — a été supprimé) — le même patron que `DevisOffresTailles`.
 // `modeInstallation` ne vaut jamais qu'une des quatre clés (le reducer refuse
 // toute autre valeur, `modeDepuisTypeInstallation`), donc exactement un
 // panneau rend, à la place exacte qu'occupait la carte d'origine.
@@ -27,9 +29,11 @@ import {
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
 } from '../../../features/ventes/solar'
 import { formatNumber } from '../../../lib/format'
-import { cle } from '../../../features/ventes/quote/marches/commercial'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
+// QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
+// commercial.js, module supprimé faute de consommateur de production).
+const CLE = 'commercial'
 
 export default function PanneauCommercial({
   marche,
@@ -48,7 +52,7 @@ export default function PanneauCommercial({
   categorieCommerciale, setCategorieCommerciale,
   commercialAnswers, setCommercialAnswer,
 }) {
-  if (marche !== cle) return null
+  if (marche !== CLE) return null
   return (
     <Card>
       <GenCardHeader icon={Zap} title="Factures Électriques" />

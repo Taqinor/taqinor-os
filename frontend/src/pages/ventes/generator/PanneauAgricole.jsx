@@ -5,8 +5,10 @@
 // il porte la pompe (CV, type, alimentation, HMT, débit, heures) et les
 // données guidées de l'exploitation. Ni onduleur ni batterie n'existent ici.
 //
-// Le panneau lit `cle` dans son module de stratégie (QJR89) et se retire
-// lui-même hors de son marché — le même patron que `DevisOffresTailles`.
+// QJR241 — le panneau se retire lui-même hors de son marché via `CLE`
+// (constante locale ; l'ex-module de stratégie `quote/marches/agricole.js`,
+// devenu du code mort — aucun autre export que `cle` n'avait de consommateur
+// de production — a été supprimé) — le même patron que `DevisOffresTailles`.
 // `modeInstallation` ne vaut jamais qu'une des quatre clés (le reducer refuse
 // toute autre valeur, `modeDepuisTypeInstallation`), donc exactement un
 // panneau rend, à la place exacte qu'occupait la carte d'origine.
@@ -23,9 +25,11 @@ import {
 import { Sprout } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
-import { cle } from '../../../features/ventes/quote/marches/agricole'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
+// QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/agricole.js,
+// module supprimé faute de consommateur de production).
+const CLE = 'agricole'
 
 export default function PanneauAgricole({
   marche,
@@ -42,7 +46,7 @@ export default function PanneauAgricole({
   farmHmtStatic, setFarmHmtStatic, farmHmtDrawdown, setFarmHmtDrawdown,
   farmWaterDemand, pumpM3Day,
 }) {
-  if (marche !== cle) return null
+  if (marche !== CLE) return null
   return (
     <Card>
       <GenCardHeader icon={Sprout} title="Pompage solaire" />
