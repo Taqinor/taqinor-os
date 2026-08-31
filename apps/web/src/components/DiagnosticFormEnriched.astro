@@ -163,6 +163,15 @@ const inputClass =
         </label>
       </fieldset>
 
+      <!-- QJW15 (c) — HONEYPOT anti-bot. `preview-lead.ts` appelait déjà
+           `isHoneypotTripped`, mais ce composant ne rendait AUCUN champ
+           `website_url` : la garde était un no-op. Masqué hors écran, hors
+           tabulation, sans autocomplétion : un humain ne le remplit jamais.
+           Rejeté en silence côté serveur — contrat webhook inchangé. -->
+      <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
+        <label>Ne pas remplir<input id="lf-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
+      </div>
+
       <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
       <input type="hidden" name="fbclid" />
       <input type="hidden" name="utm_source" />
@@ -245,6 +254,8 @@ const inputClass =
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
   import { nextStep, progressLabel, sunshineSignal, validateStep, type DiagnosticState } from '../lib/diagnostic';
+  // QJW15 (a) — les MÊMES générateurs de jetons que le tunnel /devis/mon-toit.
+  import { buildClientRef, buildIdempotencyKey } from '../lib/lead';
 
   const form = document.getElementById('lead-form') as HTMLFormElement | null;
   const success = document.getElementById('lf-success')!;
@@ -261,6 +272,50 @@ const inputClass =
   // W191 — spinner elements (null-safe)
   const spinnerEl = document.getElementById('lf-spinner') as HTMLElement | null;
   const submitLabelEl = document.getElementById('lf-submit-label') as HTMLElement | null;
+
+  // QJW15 (a) — JETONS DE DÉDOUBLONNAGE, persistés pour la session de saisie.
+  // `submitBtn.disabled` protège du double-clic, mais PAS d'une resoumission
+  // après rechargement de page : le CRM se retrouvait alors avec deux lignes et
+  // aucun signal pour les fusionner. Générés une seule fois puis relus en
+  // sessionStorage — un rechargement renvoie donc le MÊME couple, exactement
+  // comme le tunnel /devis/mon-toit.
+  function jetonPersistant(cle: string, generer: () => string): string {
+    try {
+      const existant = sessionStorage.getItem(cle);
+      if (existant) return existant;
+      const neuf = generer();
+      sessionStorage.setItem(cle, neuf);
+      return neuf;
+    } catch {
+      // Stockage indisponible (navigation privée) : un jeton non persistant
+      // vaut mieux que pas de jeton du tout — jamais bloquant.
+      return generer();
+    }
+  }
+
+  // QJW15 (b) — `input[aria-invalid="true"]` était du CSS MORT : le script ne
+  // posait jamais l'attribut, donc ni bordure d'erreur ni annonce au lecteur
+  // d'écran. Les clés d'erreur (client comme serveur) sont exactement les NAMES
+  // des champs — aucune table de correspondance à maintenir.
+  const CHAMPS_MARQUABLES = ['billRange', 'roofType', 'city', 'fullName', 'phone', 'consent'];
+  function marquerChamp(nom: string, invalide: boolean) {
+    const el = form?.elements.namedItem(nom);
+    if (!(el instanceof HTMLElement)) return;
+    if (invalide) el.setAttribute('aria-invalid', 'true');
+    else el.removeAttribute('aria-invalid');
+  }
+  function effacerMarques() {
+    for (const nom of CHAMPS_MARQUABLES) marquerChamp(nom, false);
+  }
+  // La marque tombe dès que le visiteur corrige le champ.
+  for (const evt of ['input', 'change'] as const) {
+    form?.addEventListener(evt, (e) => {
+      const cible = e.target;
+      if (cible instanceof HTMLElement && cible.hasAttribute('aria-invalid')) {
+        cible.removeAttribute('aria-invalid');
+      }
+    });
+  }
 
   // QJW14 — signal de consentement publicitaire posé par ConsentBanner.astro
   // (`tq_consent` ∈ {granted, denied}, absent tant que le visiteur n'a pas
@@ -353,8 +408,13 @@ const inputClass =
       if (!check.ok) {
         errEl.textContent = String(Object.values(check.errors)[0]);
         errEl.classList.remove('hidden');
+        // QJW15 (b) — le champ fautif est DÉSIGNÉ, pas seulement décrit en haut.
+        effacerMarques();
+        for (const nom of Object.keys(check.errors)) marquerChamp(nom, true);
+        (form?.elements.namedItem(Object.keys(check.errors)[0]) as HTMLElement | null)?.focus?.();
         return;
       }
+      effacerMarques();
       step = nextStep(step, s);
       renderStep(true);
     });
@@ -388,6 +448,7 @@ const inputClass =
     if (!phone.ok) {
       phoneErr.textContent = phone.error ?? 'Numéro invalide';
       phoneErr.classList.remove('hidden');
+      marquerChamp('phone', true); // QJW15 (b)
       return;
     }
 
@@ -417,6 +478,13 @@ const inputClass =
     // réponse, aucun champ n'est fabriqué et le serveur garde son comportement.
     const adsConsent = readAdsConsent();
     if (adsConsent) payload.adsConsent = adsConsent;
+    // QJW15 (a) — jetons de dédoublonnage (stables sur toute la session de
+    // saisie, donc identiques après un rechargement + resoumission).
+    payload.idempotencyKey = jetonPersistant('tq_diag_idempotency', buildIdempotencyKey);
+    payload.clientRef = jetonPersistant('tq_diag_client_ref', buildClientRef);
+    // QJW15 (c) — le honeypot part TEL QUEL (vide pour un humain) : c'est ce
+    // que `isHoneypotTripped` juge côté serveur.
+    payload.website_url = String(fd.get('website_url') ?? '');
 
     submitBtn.disabled = true;
     // W191 — show spinner + aria-busy; update label text without destroying innerHTML
@@ -436,6 +504,9 @@ const inputClass =
         const first = data?.errors ? String(Object.values(data.errors)[0]) : 'Une erreur est survenue. Réessayez.';
         errEl.textContent = first;
         errEl.classList.remove('hidden');
+        // QJW15 (b) — en mode « une page » (sans wizard), c'est la SEULE
+        // validation que voit le visiteur : le champ fautif doit être désigné.
+        if (data?.errors) for (const nom of Object.keys(data.errors)) marquerChamp(nom, true);
         return;
       }
       form.classList.add('hidden');
