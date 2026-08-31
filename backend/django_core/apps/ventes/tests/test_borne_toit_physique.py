@@ -128,10 +128,19 @@ class PlafondPhysiqueDuDevisTests(SimpleTestCase):
 
     def test_il_DELEGUE_la_formule_de_surface(self):
         # Aucune seconde formule d'aire ici : c'est
-        # ``services.plafond_physique_du_contour`` qui prononce le nombre.
-        with mock.patch('apps.ventes.services._panneau_pour_calepinage',
+        # ``domain.geometrie.plafond_physique_du_contour`` qui prononce le
+        # nombre.
+        #
+        # LES CIBLES DE PATCH VISENT LE MODULE QUI PORTE LE CORPS. QJR237
+        # (31/08/2026) a re-pointé les imports fonction-locaux de
+        # ``dimensionnement_devis`` depuis la façade ``apps.ventes.services``
+        # vers ``domain.geometrie`` : un patch posé sur la façade n'aurait plus
+        # rien intercepté (un re-export est une COPIE de référence), et deux
+        # tests de cette classe seraient passés au vert pour la mauvaise raison
+        # — ils attendent ``None``, ce que le code non patché rend aussi.
+        with mock.patch('apps.ventes.domain.geometrie._panneau_pour_calepinage',
                         return_value=(object(), None)), \
-                mock.patch('apps.ventes.services.plafond_physique_du_contour',
+                mock.patch('apps.ventes.domain.geometrie.plafond_physique_du_contour',
                            return_value=40) as borne:
             self.assertEqual(dim.plafond_physique_du_devis(self._devis()), 40)
         self.assertEqual(borne.call_count, 1)
@@ -139,9 +148,9 @@ class PlafondPhysiqueDuDevisTests(SimpleTestCase):
     def test_plusieurs_zones_se_SOMMENT(self):
         # Chaque zone est un morceau de toit réel : deux pans portent la somme
         # de leurs plafonds, jamais le plus grand des deux.
-        with mock.patch('apps.ventes.services._panneau_pour_calepinage',
+        with mock.patch('apps.ventes.domain.geometrie._panneau_pour_calepinage',
                         return_value=(object(), None)), \
-                mock.patch('apps.ventes.services.plafond_physique_du_contour',
+                mock.patch('apps.ventes.domain.geometrie.plafond_physique_du_contour',
                            return_value=40):
             self.assertEqual(dim.plafond_physique_du_devis(self._devis(2)), 80)
 
@@ -152,14 +161,14 @@ class PlafondPhysiqueDuDevisTests(SimpleTestCase):
     def test_un_panneau_sans_fiche_technique_ne_vaut_AUCUN_mur(self):
         # ``plafond_physique_du_contour`` rend ``None`` dès qu'une dimension
         # manque : un mur inventé serait pire que pas de mur.
-        with mock.patch('apps.ventes.services._panneau_pour_calepinage',
+        with mock.patch('apps.ventes.domain.geometrie._panneau_pour_calepinage',
                         return_value=(None, None)), \
-                mock.patch('apps.ventes.services.plafond_physique_du_contour',
+                mock.patch('apps.ventes.domain.geometrie.plafond_physique_du_contour',
                            return_value=None):
             self.assertIsNone(dim.plafond_physique_du_devis(self._devis()))
 
     def test_une_lecture_qui_LEVE_ne_vaut_aucun_mur(self):
-        with mock.patch('apps.ventes.services._panneau_pour_calepinage',
+        with mock.patch('apps.ventes.domain.geometrie._panneau_pour_calepinage',
                         side_effect=RuntimeError('catalogue indisponible')):
             self.assertIsNone(dim.plafond_physique_du_devis(self._devis()))
 
@@ -167,9 +176,9 @@ class PlafondPhysiqueDuDevisTests(SimpleTestCase):
         # L'endpoint public n'est pas caché : il interroge la borne une fois
         # par carte ET par variante. Une seule lecture catalogue, pas sept.
         devis = self._devis()
-        with mock.patch('apps.ventes.services._panneau_pour_calepinage',
+        with mock.patch('apps.ventes.domain.geometrie._panneau_pour_calepinage',
                         return_value=(object(), None)) as panneau, \
-                mock.patch('apps.ventes.services.plafond_physique_du_contour',
+                mock.patch('apps.ventes.domain.geometrie.plafond_physique_du_contour',
                            return_value=40):
             for _ in range(3):
                 self.assertEqual(dim.plafond_physique_du_devis(devis), 40)
