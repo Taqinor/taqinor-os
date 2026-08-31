@@ -11,7 +11,7 @@ import {
   sizingReducer, ETAT_INITIAL,
 } from './quote/sizingReducer.js'
 import {
-  DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
+  DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
@@ -86,23 +86,6 @@ test('factures par défaut : la série saisonnière du simulateur', () => {
   assert.deepEqual(DEFAULT_MONTHLY_BILLS,
     [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480])
   DEFAULT_MONTHLY_BILLS.forEach(v => assert.ok(CLEAN_INT(v)))
-})
-
-test('suggestion panneaux : 8 par tranche de 900 MAD hiver', () => {
-  assert.equal(estimerPanneaux(600), 0)
-  assert.equal(estimerPanneaux(900), 8)
-  assert.equal(estimerPanneaux(1900), 16)
-})
-
-test('D5 — ratio de dimensionnement éditable, défaut inchangé', () => {
-  // Sans argument : exactement le comportement historique (8 par tranche).
-  assert.equal(estimerPanneaux(1900), 16)
-  // Ratio personnalisé : 10 par tranche de 900 MAD.
-  assert.equal(estimerPanneaux(900, 10), 10)
-  assert.equal(estimerPanneaux(1900, 10), 20)
-  // Valeur invalide → repli sur 8 (jamais 0/NaN panneaux).
-  assert.equal(estimerPanneaux(900, 0), 8)
-  assert.equal(estimerPanneaux(900, undefined), 8)
 })
 
 test('formatMoney : toujours arrondi à l\'entier (jamais de partie fractionnaire)', () => {
