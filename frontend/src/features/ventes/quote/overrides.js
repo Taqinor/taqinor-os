@@ -17,7 +17,11 @@
 // contrat) : envoyer `{"taille.nb_panneaux": …}` ne touche AUCUN autre chemin
 // déjà posé.
 //
-// Module AJOUTÉ TESTÉ, IMPORTÉ PAR PERSONNE (vague M4).
+// QJR214 — `cheminsRefuses` est désormais IMPORTÉ par `frontend/src/api/
+// ventesApi.js` (client HTTP du registre, `poserOverrides`) pour refuser un
+// chemin hors liste blanche CÔTÉ ÉCRAN, avant tout appel réseau — la même
+// liste blanche, jamais une seconde copie. Le reste du module (sérialisation
+// depuis le reducer QJR87) reste AJOUTÉ TESTÉ, câblé à l'écran par QJR215.
 import { DRAPEAUX_TOUCHE, ETAT_INITIAL } from './sizingReducer.js'
 
 /**
