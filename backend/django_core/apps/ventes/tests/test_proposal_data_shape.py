@@ -35,6 +35,11 @@ Ce qui reste VERT, volontairement
 * Une clé dont le contrat ne montre QUE `null` dans ses trois exemples
   (`mode_kpis`, `multi_villa`…) : le contrat ne déclare alors aucune nature
   non nulle, il n'y a rien à comparer. Le test le dit plutôt que d'inventer.
+* Une clé de réponse d'ERREUR (`detail`, voir `CLES_REPONSES_ERREUR`) : depuis
+  QJR228 l'échantillon porte l'UNION de tout ce que la vue peut renvoyer, 404
+  et 403 compris, parce que `scripts/check_api_shapes.py` la compare à la vue
+  lue en AST. Ce comparateur-ci ne juge QUE le 200 : il ne l'exige pas et ne
+  la traite pas comme une additive servie à `null`.
 
 Lancer :
     docker compose exec django_core python manage.py test \
@@ -69,6 +74,18 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
 NB_CLES_BASE = 44
 NB_CLES_ADDITIVES = 17
+
+#: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
+#: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)
+#: a ajouté `detail` à `exemple` parce que `scripts/check_api_shapes.py` lit la
+#: vue en AST et compare DANS LES DEUX SENS : la forme serveur est l'UNION de
+#: tout ce que la vue peut renvoyer — jeton expiré/invalide et proposition
+#: indisponible répondent `{"detail": "…"}` en 404, OTP non vérifié en 403.
+#: Ici on compare une réponse **200** : ces clés ne sont donc ni de base
+#: (elles manqueraient toujours) ni additives (elles seraient « servies à
+#: `null` »). Elles restent DÉCLARÉES — servir `detail` sur un 200 ne doit pas
+#: rougir comme une clé inconnue, c'est une autre garde qui juge les erreurs.
+CLES_REPONSES_ERREUR = frozenset({'detail'})
 
 NUL = 'nul'
 
@@ -111,6 +128,10 @@ def charger_contrat(chemin=CONTRAT):
     * additives = les autres clés déclarées quelque part ;
     * natures   = par clé, l'ensemble des natures NON NULLES observées dans
       les exemples (vide = le contrat ne montre que `null` pour cette clé).
+
+    :data:`CLES_REPONSES_ERREUR` sort de base ET d'additives : ce sont des clés
+    de réponse d'ERREUR, que ce comparateur de charge utile 200 n'a pas à
+    exiger ni à interdire. Elles restent dans `natures`, donc déclarées.
     """
     data = json.loads(chemin.read_text(encoding='utf-8'))
     exemples = [data[nom] for nom in EXEMPLES]
@@ -128,7 +149,9 @@ def charger_contrat(chemin=CONTRAT):
                 if nat != NUL:
                     vues.add(nat)
         natures[cle] = vues
-    return base, union - base, natures
+    return (base - CLES_REPONSES_ERREUR,
+            union - base - CLES_REPONSES_ERREUR,
+            natures)
 
 
 def ecarts(payload, contrat):
