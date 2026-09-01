@@ -1829,8 +1829,28 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const inverterQty = (kw) =>
     (!kw || kw >= threshold) ? 1 : Math.max(1, Math.ceil(kwp / kw))
 
-  const reseau = pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
-  const hybride = pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
+  // OFFGRID — une composition hors réseau ne pose JAMAIS d'onduleur réseau ni
+  // hybride (troisième famille exclusive des deux autres) : ces deux picks
+  // restent `null` plutôt que de polluer `onduleursIncomplets` avec des
+  // onduleurs qu'on ne va de toute façon pas composer.
+  const reseau = offgrid ? null : pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
+  const hybride = offgrid ? null : pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
+  // OFFGRID — même sélection (plus petit modèle >= 80 % de la cible), MAIS
+  // jamais un produit SANS PRIX (règle fondateur « zéro chiffre inventé » —
+  // même patron que `_hasPrix`/`selectPompeByCurve` pour le pompage) : un
+  // onduleur hors réseau non tarifé au catalogue ne doit jamais se retrouver
+  // composé à 0 MAD sur un devis.
+  const offgridInv = offgrid
+    ? pickInverter(parMarque(
+        (byType.onduleur_offgrid ?? []).filter(p => (parseFloat(p.prix_vente) || 0) > 0),
+        'onduleur_offgrid'))
+    : null
+  if (offgrid && !offgridInv) {
+    const vide = []
+    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue.'
+    vide.onduleursIncomplets = onduleursIncomplets
+    return vide
+  }
 
   // Panneaux : wattage saisi (défaut 710 → Canadien Solar 710 du catalogue)
   // PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
@@ -1862,7 +1882,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // manque : un catalogue non renseigné se comporte exactement comme hier.
   // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
   // batterie écartée reste sélectionnable à la main.
-  const plageBatterie = plageBatterieOnduleur(hybride?.p)
+  // OFFGRID — la batterie s'accroche à l'onduleur HORS RÉSEAU retenu ci-dessus
+  // (même règle électrique, même donnée `specs_solaire.plage_batterie_v`),
+  // jamais à l'hybride qui est `null` dans cette branche.
+  const plageBatterie = plageBatterieOnduleur(offgrid ? offgridInv?.p : hybride?.p)
   // PVMRQ — la compatibilité ÉLECTRIQUE (plage de tension) reste calculée sur
   // le vivier COMPLET (elle alimente aussi `avertissementsBatterie` ci-dessous,
   // un motif distinct de « marque introuvable ») ; la marque épinglée ne
@@ -1925,6 +1948,20 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   ].filter(Boolean)
   candidatsBatterie.sort((a, b) => (a.prixTtc - b.prixTtc) || (a.n - b.n))
   const batterieRetenue = candidatsBatterie[0] ?? null
+  // OFFGRID — « un système hors réseau porte toujours sa batterie » (ordre
+  // fondateur) : sans candidate retenue — OU une candidate à prix TOTAL nul
+  // (aucune batterie du calibre gagnant n'est réellement tarifée : `prixTtc`
+  // vaut 0 puisqu'il dérive du prix unitaire) — on N'INVENTE PAS un kit sans
+  // stockage réel (contrairement au repli hybride ci-dessus, qui compose
+  // quand même avec un avertissement) : on arrête, motif FRANÇAIS clair,
+  // jamais un repli silencieux sur un onduleur hybride ni une ligne à 0 MAD.
+  if (offgrid && !(batterieRetenue?.prixTtc > 0)) {
+    const vide = []
+    vide.offgridErreur = 'Aucune batterie compatible tarifée au catalogue pour cet onduleur hors réseau.'
+    vide.onduleursIncomplets = onduleursIncomplets
+    vide.avertissementsBatterie = avertissementsBatterie
+    return vide
+  }
   const nb5 = batterieRetenue?.cap === 5 ? batterieRetenue.n : 0
   const nb10 = batterieRetenue?.cap === 10 ? batterieRetenue.n : 0
   // `bat5`/`bat10` restent les produits du vivier COMPATIBLE (comme avant ce
@@ -1981,7 +2018,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // manquer.
   const isHuawei = (p) => !!p && (
     _norm(p.marque).includes('huawei') || _norm(p.nom).includes('huawei'))
-  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p)
+  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p) || isHuawei(offgridInv?.p)
   const smQty = huaweiRetenu ? 1 : 0
   const wifiQty = huaweiRetenu ? 1 : 0
 
@@ -2025,9 +2062,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // `orderLinesByRolePreference` réordonne selon `ordreLignes`
   // (`ParametresGammes.ordre_lignes`) si fourni, sinon renvoie EXACTEMENT
   // cet ordre canonique — comportement historique inchangé.
+  // OFFGRID — UNE seule ligne onduleur (famille hors réseau), jamais réseau
+  // ni hybride sur cette composition (mirroir : task 2, « compose ONE option »).
+  const inverterRows = offgrid
+    ? [['onduleur_offgrid', row(offgridInv?.p ?? null, 'Onduleur hors réseau',
+        offgridInv ? Math.max(1, inverterQty(offgridInv.kw)) : 1)]]
+    : [
+        ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
+        ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+      ]
   const lignesTaguees = [
-    ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
-    ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+    ...inverterRows,
     ['smart_meter', row(first('smart_meter'), 'Smart Meter', smQty)],
     ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', wifiQty)],
     ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
