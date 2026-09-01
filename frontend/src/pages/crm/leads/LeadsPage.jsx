@@ -779,6 +779,8 @@ export default function LeadsPage() {
   // Hooks), jamais après un retour conditionnel.
   const viewProps = useMemo(() => ({
     leads: filtered,
+    // Ordre fondateur 2026-09-01 — tri global (FilterBar → kanban ET liste).
+    tri: filters.tri,
     onOpenLead,
     onChangeStage: changeStage,
     onAutoQuote,
@@ -793,9 +795,9 @@ export default function LeadsPage() {
     onInlineSave,
     onMarkPerdu,
   }), [
-    filtered, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance, refetch,
-    busyLeadId, users, reassign, visibleSelected, onToggleSelect, onToggleAll,
-    onInlineSave, onMarkPerdu,
+    filtered, filters.tri, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance,
+    refetch, busyLeadId, users, reassign, visibleSelected, onToggleSelect,
+    onToggleAll, onInlineSave, onMarkPerdu,
   ])
 
   // LB27 — squelette EN FORME dans le shell (blueprint I9) : au lieu de

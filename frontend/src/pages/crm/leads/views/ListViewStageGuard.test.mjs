@@ -24,7 +24,9 @@ const INLINE_EDIT_SRC = readFileSync(
 test('LB4 : ListView importe son prédicat de sens de stages.js (jamais un second garde recodé)', () => {
   const start = SRC.indexOf("from '../../../../features/crm/stages'")
   assert.ok(start > 0, 'import stages.js introuvable')
-  const importBlock = SRC.slice(Math.max(0, start - 300), start)
+  // Fenêtre élargie à 500 (2026-09-01) : l'import a gagné LEAD_SORTERS (tri
+  // global) et sa ligne de commentaire — l'invariant LB4 reste identique.
+  const importBlock = SRC.slice(Math.max(0, start - 500), start)
   assert.match(importBlock, /isStageMoveBackward/)
   // L'invariant du bug #8 : le SENS d'un mouvement ne se redérive jamais ici.
   // (`PIPELINE_STAGES.indexOf` reste légitime dans le comparateur de TRI de la

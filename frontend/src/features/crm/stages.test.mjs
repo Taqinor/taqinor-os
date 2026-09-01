@@ -17,7 +17,70 @@ import {
   funnelRank,
   isStageMoveAllowed,
   isStageMoveBackward,
+  LEAD_SORTERS,
+  TRI_OPTIONS,
+  sortLeads,
 } from './stages.js'
+
+// ── Ordre fondateur 2026-09-01 — tri des leads ──────────────────────────────
+// Défaut « recent » : le DERNIER lead arrivé en haut. Priorité et score
+// deviennent des OPTIONS (avant : priorité haute imposée en tête de colonne).
+const L = (id, date, priorite = 'normale', score = 0, stage = 'NEW') => ({
+  id, date_creation: date, priorite, score, stage,
+})
+
+test('tri par défaut « recent » : le dernier lead arrivé en haut, priorité IGNORÉE', () => {
+  const vieuxHaute = L(1, '2026-01-01T10:00:00Z', 'haute')
+  const recentNormale = L(2, '2026-08-30T10:00:00Z', 'normale')
+  const milieu = L(3, '2026-05-15T10:00:00Z', 'basse')
+  const tries = sortLeads([vieuxHaute, milieu, recentNormale], 'recent')
+  assert.deepEqual(tries.map((l) => l.id), [2, 3, 1])
+  // Clé inconnue / absente → repli « recent », jamais un ordre surprise.
+  assert.deepEqual(sortLeads([vieuxHaute, recentNormale], 'inconnu').map((l) => l.id), [2, 1])
+})
+
+test('tri « ancien » : inverse exact de « recent »', () => {
+  const a = L(1, '2026-01-01T10:00:00Z')
+  const b = L(2, '2026-08-30T10:00:00Z')
+  assert.deepEqual(sortLeads([a, b], 'ancien').map((l) => l.id), [1, 2])
+})
+
+test('tri « priorite » : haute d’abord puis récent (l’ancien ordre kanban, devenu une OPTION)', () => {
+  const hauteVieille = L(1, '2026-01-01T10:00:00Z', 'haute')
+  const normaleRecente = L(2, '2026-08-30T10:00:00Z', 'normale')
+  const hauteRecente = L(3, '2026-06-01T10:00:00Z', 'haute')
+  const tries = sortLeads([normaleRecente, hauteVieille, hauteRecente], 'priorite')
+  assert.deepEqual(tries.map((l) => l.id), [3, 1, 2])
+})
+
+test('tri « score » : chauds d’abord, récent à égalité', () => {
+  const froid = L(1, '2026-08-30T10:00:00Z', 'normale', 10)
+  const chaud = L(2, '2026-01-01T10:00:00Z', 'normale', 90)
+  const chaudRecent = L(3, '2026-08-01T10:00:00Z', 'normale', 90)
+  assert.deepEqual(
+    sortLeads([froid, chaud, chaudRecent], 'score').map((l) => l.id), [3, 2, 1])
+})
+
+test('groupLeadsByStage : défaut « recent » DANS chaque colonne ; « priorite » disponible', () => {
+  const leads = [
+    L(1, '2026-01-01T10:00:00Z', 'haute', 0, 'NEW'),
+    L(2, '2026-08-30T10:00:00Z', 'normale', 0, 'NEW'),
+  ]
+  const colNew = groupLeadsByStage(leads).find((c) => c.key === 'NEW')
+  assert.deepEqual(colNew.leads.map((l) => l.id), [2, 1])
+  const colNewPrio = groupLeadsByStage(leads, 'priorite').find((c) => c.key === 'NEW')
+  assert.deepEqual(colNewPrio.leads.map((l) => l.id), [1, 2])
+})
+
+test('« tri » est un ORDRE, pas un filtre : défaut « recent », ignoré par filterLeads, options complètes', () => {
+  assert.equal(EMPTY_FILTERS.tri, 'recent')
+  assert.deepEqual(TRI_OPTIONS.map((o) => o.value), ['recent', 'ancien', 'priorite', 'score'])
+  for (const { value } of TRI_OPTIONS) {
+    assert.ok(LEAD_SORTERS[value], `comparateur manquant pour ${value}`)
+  }
+  const leads = [L(1, '2026-01-01T10:00:00Z'), L(2, '2026-08-30T10:00:00Z')]
+  assert.equal(filterLeads(leads, { ...EMPTY_FILTERS, tri: 'ancien' }).length, 2)
+})
 
 test('les 6 étapes canoniques, dans l’ordre de l’entonnoir (STAGES.py)', () => {
   assert.deepEqual(PIPELINE_STAGES, [
@@ -56,8 +119,9 @@ test('groupLeadsByStage répartit, compte et totalise les devis par colonne', ()
   const cols = groupLeadsByStage(leads)
   const byKey = Object.fromEntries(cols.map((c) => [c.key, c]))
   assert.equal(byKey.NEW.count, 2)
-  // Priorité haute en premier dans la colonne.
-  assert.deepEqual(byKey.NEW.leads.map((l) => l.id), [2, 1])
+  // Ordre fondateur 2026-09-01 : DÉFAUT « recent » — le dernier lead arrivé
+  // en haut, la priorité ne force plus l'ordre (elle reste l'option 'priorite').
+  assert.deepEqual(byKey.NEW.leads.map((l) => l.id), [1, 2])
   assert.equal(byKey.NEW.totalDevis, 10000)
   // Seul le devis le plus récent du lead compte (le serializer trie déjà).
   assert.equal(byKey.SIGNED.totalDevis, 2500.5)
