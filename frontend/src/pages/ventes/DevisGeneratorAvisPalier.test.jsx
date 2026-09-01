@@ -145,6 +145,12 @@ describe('QJR308 — l’avis du palier 5 kWc s’affiche AU MOMENT où runAutoQ
     const kwcSaisi = 5
     expect(arrondirAuPasKwc(kwcSaisi)).toBe(kwcSaisi)
 
+    // `vi.clearAllMocks()` efface les APPELS, pas les implémentations : sans
+    // ceci, la promesse EN ATTENTE posée par le test précédent resterait la
+    // mock active et `devis-succes` n'arriverait jamais.
+    ventesApi.creerDevisAuto.mockImplementation(
+      () => Promise.resolve({ data: { id: 502, reference: 'DEV-2026-09-0502' } }))
+
     renderGenerator({
       leads: [{
         id: 43, nom: 'Alaoui', prenom: 'Salma',
