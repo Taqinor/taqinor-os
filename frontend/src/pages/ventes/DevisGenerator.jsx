@@ -23,7 +23,14 @@ import {
 // QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
-import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
+import {
+  createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE,
+  // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
+  // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
+  // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
+  // ce générateur).
+  noticePalierKwc,
+} from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
@@ -1716,6 +1723,12 @@ export default function DevisGenerator({
   // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
+    // QJR308 — MÊME précédence que `createAutoQuote` ci-dessous (aucune cible
+    // n'est transmise depuis ce point d'entrée, donc `lead.taille_souhaitee_kwc`
+    // est la valeur réellement snappée) : l'avis s'affiche AU MOMENT où le
+    // snap a lieu, avant l'appel réseau — pas seulement avant de naviguer ici.
+    const avisPalier = noticePalierKwc(lead?.taille_souhaitee_kwc)
+    setWarnings(prev => ({ ...prev, avisPalier }))
     try {
       // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
       // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
