@@ -364,6 +364,8 @@ class _LigneArgentPdf:
 
 _is_hybrid_inverter = _sd.is_hybrid_inverter
 _is_reseau_inverter = _sd.is_reseau_inverter
+# QJR-OFFGRID — la TROISIÈME famille d'onduleur (autonome / site isolé).
+_is_offgrid_inverter = _sd.is_offgrid_inverter
 
 
 # ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
