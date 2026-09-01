@@ -1862,7 +1862,16 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     : null
   if (offgrid && !offgridInv) {
     const vide = []
-    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue.'
+    // Incident fondateur 01/09 round 2 — le motif seul (« Aucun onduleur
+    // hors réseau… ») laissait le vendeur deviner POURQUOI un produit qu'il
+    // voit bien au catalogue (ex. « Deye off-Grid 6kw ») n'est pas trouvé :
+    // le plus souvent, ce produit n'a simplement AUCUN prix de vente renseigné
+    // (filtré ci-dessus AVANT ce message). Le rappel du contrat de nommage
+    // partagé avec le backend (OFFGRID_KEYWORDS) rend l'erreur actionnable.
+    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue. '
+      + 'Le NOM du produit doit contenir « off-grid », « off grid », '
+      + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
+      + 'avec un prix de vente.'
     vide.onduleursIncomplets = onduleursIncomplets
     return vide
   }
