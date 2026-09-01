@@ -750,6 +750,14 @@ def classer_produit(nom):
         return None
     if 'onduleur' in n and 'hybride' in n:
         return 'onduleur_hybride'
+    # QJR-OFFGRID — AVANT le réseau, et ce n'est pas un détail : « hors réseau »
+    # CONTIENT « réseau ». Sans ce rang, un onduleur autonome nommé en français
+    # était classé RÉSEAU (donc composable sur un client raccordé) et un
+    # « Off-Grid » anglais n'était classé nulle part (donc jamais composable).
+    # Le prédicat est celui de la table unique ``solar_design`` — il tolère les
+    # deux orthographes, accentuée et non.
+    if _sd.is_offgrid_inverter(nom or ''):
+        return 'onduleur_offgrid'
     if 'onduleur' in n and ('reseau' in n or 'injection' in n):
         return 'onduleur_reseau'
     if 'panneau' in n:

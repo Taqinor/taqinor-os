@@ -111,6 +111,9 @@ class IntentionComposition:
     * ``variante`` — QJR81, l'OPTION dont relèvent les lignes composées
       (``''`` = commune aux deux, ``'sans'`` / ``'avec'`` = propre à
       celle-là). ``''`` (LE DÉFAUT) ⇒ lignes communes, comportement inchangé.
+    * ``hors_reseau`` — QJR-OFFGRID, le site est ISOLÉ (aucun raccordement) :
+      onduleur AUTONOME + batterie obligatoire, forme mono-option. ``False``
+      (LE DÉFAUT) ⇒ composition et vérification strictement inchangées.
     """
 
     company: object
@@ -126,6 +129,7 @@ class IntentionComposition:
     dimensionnement_avec: object = None
     avertissements: object = None
     variante: str = ''
+    hors_reseau: bool = False
 
 
 def composer(intention):
@@ -151,6 +155,12 @@ def composer(intention):
     # exprimable.
     avec_batterie = scenario == COMPOSITION_AVEC
     deux_options = scenario == COMPOSITION_LES_DEUX
+    # QJR-OFFGRID — un site ISOLÉ n'a qu'UNE composition possible (autonome +
+    # stockage) : ni forme deux options, ni fusion L-2OPT, quel que soit le
+    # scénario demandé par ailleurs.
+    hors_reseau = bool(getattr(intention, 'hors_reseau', False))
+    if hors_reseau:
+        avec_batterie, deux_options = True, False
 
     avec = (intention.dimensionnement_avec
             if isinstance(intention.dimensionnement_avec, dict) else None)
@@ -193,6 +203,7 @@ def composer(intention):
             # absente ⇒ la règle historique kWc/5 décide seule.
             batterie_cible_kwh=(avec.get('batterie_kwh')
                                 if (avec_batterie and avec) else None),
+            hors_reseau=hors_reseau,
             **commun)
     return estampiller_variante(lignes, intention.variante)
 
@@ -266,6 +277,15 @@ MSG_SANS_ONDULEUR_RESEAU = (
 MSG_SANS_BATTERIE = (
     'Aucune batterie disponible (ou sans prix) dans le catalogue. '
     'Ajoutez une batterie tarifée avant de générer ce devis.')
+#: QJR-OFFGRID — le message du site ISOLÉ. Il NOMME la référence manquante :
+#: aucun repli sur un onduleur hybride n'est proposé ni fait, parce qu'un
+#: hybride n'est pas une version dégradée d'un autonome — c'est un autre
+#: produit, qu'un client sans raccordement ne peut pas exploiter (règle
+#: fondateur : jamais un composant substitué en silence).
+MSG_SANS_ONDULEUR_OFFGRID = (
+    'Aucun onduleur hors réseau (off-grid) disponible (ou sans prix) dans le '
+    'catalogue. Ajoutez un onduleur autonome tarifé avant de générer ce '
+    'devis — aucun onduleur hybride ne lui est substitué.')
 
 
 def message_batterie_incompatible(plage):
@@ -305,6 +325,25 @@ def verifier(intention):
 
     scenario = (intention.scenario or '').strip().lower()
     company = intention.company
+
+    # ── QJR-OFFGRID — LE SITE ISOLÉ A SA PROPRE LISTE D'EXIGENCES ───────────
+    # Elle REMPLACE celle des trois scénarios raccordés (aucun onduleur réseau
+    # ni hybride n'est attendu ici) : onduleur AUTONOME tarifé + batterie
+    # COMPATIBLE de cet onduleur-là. Les deux manques sont NOMMÉS séparément —
+    # le commercial doit savoir laquelle des deux références ajouter.
+    if bool(getattr(intention, 'hors_reseau', False)):
+        onduleur = _pick_product(company, _is_offgrid_inverter)
+        batterie = _pick_batterie(company, onduleur=onduleur)
+        if onduleur is None:
+            erreurs.append(MSG_SANS_ONDULEUR_OFFGRID)
+        if batterie is None:
+            plage = _plage_batterie_de_l_onduleur(onduleur)
+            if plage and plage[1] > 0:
+                erreurs.append(message_batterie_incompatible(plage))
+            else:
+                erreurs.append(MSG_SANS_BATTERIE)
+        return erreurs or None
+
     veut_reseau = scenario in (COMPOSITION_SANS, COMPOSITION_LES_DEUX)
     veut_stockage = scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX)
 
@@ -510,6 +549,10 @@ class IntentionDevis:
     composition: object = None
     etude_initiale: object = None
     force_etudes: bool = False
+    #: QJR-OFFGRID — site ISOLÉ (lead ``raccordement='aucun'`` ou demande
+    #: explicite) : onduleur autonome + batterie, mono-option. ``False`` (LE
+    #: DÉFAUT) ⇒ pipeline strictement inchangé.
+    hors_reseau: bool = False
 
 
 def _scenario_de(intention):
@@ -592,6 +635,8 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         gamme_nom_devis=intention.gamme_nom_devis,
         dimensionnement_avec=cible.dimensionnement_avec,
         avertissements=avertissements,
+        # QJR-OFFGRID — traduction PURE, comme tout le reste de cette fonction.
+        hors_reseau=bool(getattr(intention, 'hors_reseau', False)),
     )
 
 
@@ -971,6 +1016,7 @@ from apps.ventes.domain.bordereau import (  # noqa: E402,F401
 from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _is_battery,
     _is_hybrid_inverter,
+    _is_offgrid_inverter,
     _is_reseau_inverter,
     _pick_batterie,
     _pick_product,
