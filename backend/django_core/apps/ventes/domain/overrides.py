@@ -229,11 +229,26 @@ def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
     ``avertissements`` de ``domain.resynchronisation.reconcilier`` jusqu'à la
     réponse ``sync-layout`` que l'écran affiche déjà.
 
+    QJR304 (01/09/2026) — LES DEUX PHRASES SONT ENFIN VRAIES EN PRODUCTION.
+    QJR217 n'avait câblé que l'AVERTISSEMENT et la branche kWc : ``quantite_
+    ligne`` n'avait AUCUN consommateur de production (un grep hors tests sur
+    tout ``backend/django_core`` ne rendait que sa propre définition) et
+    ``pipeline.decider_taille`` ne lisait JAMAIS le ``taille.nb_panneaux`` du
+    registre. Les deux canaux sont désormais branchés, et ils restent
+    DISTINCTS — c'est exactement ce que cette table existe pour garantir :
+
+    * ``quantite_ligne`` → :func:`quantite_ligne_panneau`, consommée par
+      ``pipeline.ecrire_lignes`` (L'ÉCRIVAIN UNIQUE des lignes, donc le point
+      où la quantité devient FACTURÉE) ;
+    * ``cible_dimensionnement`` → :func:`cible_dimensionnement_du_devis`,
+      consommée par ``pipeline.decider_taille`` (étape 2, LE CHAMP PV).
+
+    Aucun des deux n'écrase l'autre : une ligne VERROUILLÉE garde sa quantité
+    pendant que le niveau devis continue d'alimenter le dimensionnement.
+
     LECTURE PURE : rien n'est écrit, ni sur le devis, ni sur la ligne.
     """
-    nb_devis_brut, source_devis = effectif(devis, 'taille.nb_panneaux', None)
-    cible = (_entier_ou_none(nb_devis_brut)
-             if source_devis != 'auto' else None)
+    cible = cible_dimensionnement_du_devis(devis)
 
     verrou = bool(getattr(ligne_dominante, 'quantite_manuelle', False))
     qte_ligne = _entier_ou_none(getattr(ligne_dominante, 'quantite', None))
@@ -255,6 +270,47 @@ def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
         if avertissements is not None:
             avertissements.append(message)
     return PreseanceQuantite(quantite, source, cible, conflit, message)
+
+
+def cible_dimensionnement_du_devis(devis):
+    """R4-A phrase 2 — LE ``taille.nb_panneaux`` DE NIVEAU DEVIS, ou ``None``.
+
+    C'est la CIBLE du dimensionnement, jamais la quantité d'une ligne : elle
+    alimente ``pipeline.decider_taille`` (QJR304) et elle reste renseignée même
+    quand une ligne verrouillée gagne pour sa propre quantité.
+
+    ``None`` quand le chemin n'est pas surchargé, ou quand la surcharge n'est
+    pas un entier lisible — zéro chiffre inventé : un override illisible vaut
+    une absence, jamais un nombre deviné. LECTURE PURE.
+    """
+    valeur, source = effectif(devis, 'taille.nb_panneaux', None)
+    return _entier_ou_none(valeur) if source != 'auto' else None
+
+
+def quantite_ligne_panneau(devis, lignes, *, avertissements=None):
+    """R4-A phrase 1 POUR LA PRODUCTION — ``(ligne dominante, quantité)``.
+
+    QJR304 — LE CONSOMMATEUR MANQUANT de ``PreseanceQuantite.quantite_ligne``.
+    ``pipeline.ecrire_lignes`` (l'écrivain unique des lignes, donc le point où
+    une quantité devient FACTURÉE) appelle cette fonction : la quantité de la
+    ligne panneau dominante est celle que la table de préséance TRANCHE, pas la
+    quantité brute que l'appelant portait.
+
+    La ligne dominante est choisie par ``domain.scenario.ligne_panneau_
+    dominante`` — LE lecteur unique (prédicat ``solar_design.is_panel``, plus
+    grand compte), jamais une seconde définition. ``(None, None)`` quand aucune
+    ligne panneau n'est lisible : on ne fabrique pas de quantité.
+
+    LECTURE PURE : c'est l'appelant qui écrit, s'il écrit.
+    """
+    from apps.ventes.domain.scenario import ligne_panneau_dominante
+
+    dominante = ligne_panneau_dominante(lignes or ())
+    if dominante is None:
+        return None, None
+    verdict = preseance_nb_panneaux(devis, dominante,
+                                    avertissements=avertissements)
+    return dominante, verdict.quantite_ligne
 
 
 def chemin_autorise(chemin):
