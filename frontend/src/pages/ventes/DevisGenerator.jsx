@@ -53,7 +53,7 @@ import {
   Button, Card, CardContent,
   // APX12 — le langage UNIQUE des KPI d'argent (le total du rail).
   Stat,
-  Input, Textarea, Label, Segmented,
+  Input, Textarea, Label, Segmented, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
@@ -2875,16 +2875,18 @@ export default function DevisGenerator({
     } else if (!accessoiresOnly) {
       // QX20 — un devis solaire DOIT contenir de l'équipement solaire cohérent
       // avec le marché. Résidentiel/industriel : ≥ 1 panneau ET ≥ 1 onduleur ;
-      // agricole : ≥ 1 pompe. Échappatoire DOCUMENTÉE : cocher « avenant /
-      // accessoires seuls » (accessoiresOnly) désactive la garde pour un devis
-      // d'accessoires/main-d'œuvre légitime (SAV, extension câblage…).
+      // agricole : ≥ 1 pompe. Échappatoire DOCUMENTÉE : cocher « Composition
+      // libre » (accessoiresOnly, relabellée — incident fondateur 01/09 round
+      // 2) désactive la garde pour un devis composé à la main (accessoires/
+      // main-d'œuvre seuls, ou toute composition hors calculateur), MÊME sur
+      // un devis « Hors réseau » — cette garde ne dépend jamais de `horsReseau`.
       const usable = usableLines()
       const has = (pred) => usable.some(l => pred(l.designation))
       if (modeInstallation === 'agricole') {
         if (!has(isPompe)) {
           e.lines = 'Un devis de pompage doit contenir au moins une pompe. '
             + 'Utilisez « Auto-remplir » ou ajoutez une pompe, ou cochez '
-            + '« avenant / accessoires seuls ».'
+            + '« Composition libre ».'
         }
       } else {
         const hasPanel = has(isPanel)
@@ -2900,7 +2902,7 @@ export default function DevisGenerator({
           ].filter(Boolean).join(' et ')
           e.lines = `Un devis solaire doit contenir au moins ${manque}. `
             + 'Utilisez « Auto-remplir » ou ajoutez ces lignes, ou cochez '
-            + '« avenant / accessoires seuls ».'
+            + '« Composition libre ».'
         }
       }
     }
@@ -3730,6 +3732,22 @@ export default function DevisGenerator({
                   Système hors réseau : option unique avec batterie.
                 </p>
               )}
+            </div>
+            {/* Incident fondateur 01/09 (round 2) — même échappatoire que la
+                case de LigneTable (même state `accessoiresOnly`, même clé de
+                persistance), reprise ICI en évidence à côté de Raccordement/
+                Scénario pour que le fondateur la trouve sans descendre
+                jusqu'à la table des lignes. Composer un devis à la main
+                fonctionne même sur « Hors réseau » (validate() n'exige plus
+                panneau/onduleur quand elle est active). */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-composition-libre">Composition</Label>
+              <label htmlFor="gen-composition-libre"
+                     className="flex h-10 items-center gap-2.5 text-sm text-foreground cursor-pointer">
+                <Switch id="gen-composition-libre" checked={accessoiresOnly}
+                        onCheckedChange={setAccessoiresOnly} />
+                Composition libre (aucun panneau/onduleur imposé)
+              </label>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-reco">Option Recommandée</Label>

@@ -161,11 +161,18 @@ export default function LigneTable({
         </details>
 
         {errorLines && <div className="px-4 py-2 text-xs text-destructive">{errorLines}</div>}
-        {/* QX20 — échappatoire documentée à la garde d'équipement solaire */}
+        {/* QX20 — échappatoire documentée à la garde d'équipement solaire.
+            Relibellée (incident fondateur 01/09 round 2) : ce même état
+            EST le mode « Composition libre » — le libellé d'origine
+            (« accessoires seuls ») la cachait comme un cas marginal alors
+            qu'elle est LA façon de composer un devis à la main, sans
+            imposer panneau/onduleur. Même state + même clé de persistance
+            (`accessoiresOnly`) pour ne pas casser les brouillons existants ;
+            reprise à l'identique en haut de l'écran (voir controls). */}
         <label className="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
           <input type="checkbox" checked={accessoiresOnly}
                  onChange={e => setAccessoiresOnly(e.target.checked)} />
-          Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
+          Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
         </label>
         <div className="lines-table-wrap">
           <table className="lines-table" ref={linesTableRef}>
