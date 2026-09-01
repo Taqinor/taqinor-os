@@ -177,6 +177,26 @@ def _a_mot_cle_offgrid(d: str) -> bool:
     return any(mot in d for mot in OFFGRID_KEYWORDS)
 
 
+#: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
+#: fondateur en prod s'appellent « Deye off-Grid 6kw » / « Deye off grid 6kw » :
+#: AUCUN mot « onduleur » dans le nom. Exiger « onduleur » ratait donc son
+#: propre catalogue — la composition refusait (« Aucun onduleur hors
+#: réseau… »), le groupe du sélecteur disparaissait. La machine doit s'adapter
+#: à SA façon de nommer, pas l'inverse : sans « onduleur » dans le nom, on
+#: accepte quand même — SAUF si un mot-clé d'une AUTRE famille de produit
+#: (batterie, câble, coffret…) est présent, pour ne jamais voler la
+#: classification d'un accessoire simplement parce qu'un revendeur a mis
+#: « off-grid » dans son propre nom marketing (« Kit solaire off-grid »,
+#: « Batterie off-grid 5kWh »). Accentué ET non accentué, comme ce module le
+#: fait déjà partout (il ne retire jamais les accents, seulement la casse).
+OFFGRID_AUTRE_FAMILLE_KEYWORDS = (
+    "batterie", "panneau", "panneaux", "module", "pompe", "variateur",
+    "structure", "cable", "câble", "coffret", "disjoncteur",
+    "differentiel", "différentiel", "parafoudre", "compteur",
+    "smart meter", "wifi", "kit", "chargeur",
+)
+
+
 def is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -188,10 +208,19 @@ def is_offgrid_inverter(designation: str) -> bool:
     PRÉCÉDENCE : « hybride » l'emporte. Un « Onduleur Hybride Off-Grid » est un
     HYBRIDE (il sait faire les deux) — le classer autonome le sortirait du
     panier « avec » que la règle hybride lui garantit déjà.
+
+    ROUND 2 : le mot « onduleur » n'est plus OBLIGATOIRE dans le nom — le
+    fondateur ne l'y met pas (« Deye off-Grid 6kw »). Sans lui, un mot-clé
+    hors-réseau suffit, À CONDITION qu'aucun mot-clé d'une AUTRE famille de
+    produit ne soit présent (sinon on volerait un panneau/une batterie/un
+    accessoire nommé « ... off-grid ... » par le revendeur).
     """
     d = (designation or "").lower()
-    return ("onduleur" in d and _a_mot_cle_offgrid(d)
-            and "hybride" not in d)
+    if not _a_mot_cle_offgrid(d) or "hybride" in d:
+        return False
+    if "onduleur" in d:
+        return True
+    return not any(mot in d for mot in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
 
 
 def is_reseau_inverter(designation: str) -> bool:
