@@ -1621,7 +1621,7 @@
     champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
-    raccordement ∈ {inconnu, monophase, triphase}
+    raccordement ∈ {aucun, inconnu, monophase, triphase}
     type_installation ∈ {agricole, commercial, industriel, residentiel}
     type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
 - frontend/src/api/crmApi.js :: deleteAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]
@@ -1672,7 +1672,7 @@
     champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
-    raccordement ∈ {inconnu, monophase, triphase}
+    raccordement ∈ {aucun, inconnu, monophase, triphase}
     type_installation ∈ {agricole, commercial, industriel, residentiel}
     type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
 - frontend/src/api/crmApi.js :: getSoumissionsLeadPartenaire -> /api/django/crm/soumissions-lead-partenaire  [SoumissionLeadPartenaireSerializer]
@@ -1691,7 +1691,7 @@
     champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
-    raccordement ∈ {inconnu, monophase, triphase}
+    raccordement ∈ {aucun, inconnu, monophase, triphase}
     type_installation ∈ {agricole, commercial, industriel, residentiel}
     type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
 - frontend/src/api/customFieldsApi.js :: deleteDef -> /api/django/custom-fields/definitions/<>  [CustomFieldDefSerializer]
