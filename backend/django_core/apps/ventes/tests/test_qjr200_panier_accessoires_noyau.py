@@ -136,7 +136,14 @@ class TestQJR200TotalImprimeEgaleNoyau(TestCase):
         self.assertEqual(avant['ttc'] - apres['ttc'], Decimal('3000.00'))
 
     def test_devis_mono_option_inchange(self):
-        """Aucun devis mono-option ne bouge d'un centime."""
+        """Aucun devis mono-option ne bouge d'un centime.
+
+        QJR300 — cette assertion n'épinglait QUE la moitié NOYAU : elle restait
+        vraie pendant que le DOCUMENT imprimait autre chose (le moteur retirait
+        l'accessoire inconditionnellement, donc aussi hors du cas deux-options).
+        L'assertion côté document est ajoutée ici : les deux moitiés décrivent
+        désormais le même panier et le même total.
+        """
         mono = make_devis(
             self.company, self.user, self.client_obj, [
                 ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
@@ -150,3 +157,13 @@ class TestQJR200TotalImprimeEgaleNoyau(TestCase):
         self.assertEqual(total['ht'], attendu)
         self.assertIn('Smart Meter',
                       [li.designation for li in option_lines(mono)])
+        # QJR300 — moitié DOCUMENT : même panier, même total.
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(mono)
+        self.assertIn('Smart Meter',
+                      [it['designation'] for it in data['all_items']])
+        self.assertLessEqual(
+            abs(Decimal(str(data['display_total']))
+                - Decimal(str(total['ttc']))),
+            Decimal('1'),
+            'le total imprimé du devis mono-option doit égaler celui du noyau')

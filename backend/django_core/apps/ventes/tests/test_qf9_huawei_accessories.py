@@ -77,15 +77,25 @@ class TestQF9BuilderFilter(TestCase):
 
     def test_deye_hybrid_option_drops_accessories(self):
         """An « Avec batterie » Deye hybrid option must not carry Smart Meter /
-        Wifi Dongle even if the lines include them."""
+        Wifi Dongle even if the lines include them.
+
+        QJR300 — la règle QF9 ne vaut QUE pour un document à DEUX options (son
+        intention d'origine : purger d'un panier les artefacts de l'AUTRE
+        option). La fixture DÉCLARE donc son alternative et porte les deux
+        familles d'onduleur ; sur un devis mono-option, l'accessoire saisi par
+        le vendeur est désormais imprimé ET facturé (cf.
+        ``test_qjr300_accessoire_mono_option``).
+        """
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur réseau Deye 5kW', '1', '12000'),
             ('Onduleur hybride Deye 5kW', '1', '24000'),
             ('Panneau mono 550W', '10', '1100'),
             ('Batterie Dyness 10 kWh', '1', '14000'),
             ('Smart Meter', '1', '1800'),
             ('Wifi Dongle', '1', '1200'),
-        ], 'DEV-QF9-DEYE', etude_params={'scenario': 'Avec batterie'})
+        ], 'DEV-QF9-DEYE',
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
         data = build_quote_data(devis)
         avec = [it['designation'].lower() for it in data['avec_items']]
         self.assertFalse(any('smart meter' in d for d in avec))
@@ -127,14 +137,18 @@ class TestQF9PdfRender(TestCase):
         return cap['html'], HTML(string=cap['html']).render()
 
     def test_deye_pdf_omits_smart_meter_and_wifi(self):
+        # QJR300 — deux options DÉCLARÉES : c'est le seul cas où QF9 retire
+        # l'accessoire (un devis mono-option l'imprime et le facture).
         devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur réseau Deye 5kW', '1', '12000'),
             ('Onduleur hybride Deye 5kW', '1', '24000'),
             ('Panneau mono 550W', '10', '1100'),
             ('Batterie Dyness 10 kWh', '1', '14000'),
             ('Smart Meter', '1', '1800'),
             ('Wifi Dongle', '1', '1200'),
             ('Installation', '1', '4000'),
-        ], 'DEV-QF9-DEYE-PDF', etude_params={'scenario': 'Avec batterie'})
+        ], 'DEV-QF9-DEYE-PDF',
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
         html, _ = self._render(devis)
         self.assertNotIn('Smart Meter', html)
         self.assertNotIn('Wifi Dongle', html)

@@ -109,11 +109,18 @@ def _lignes_du_devis(devis, lignes, *, avec_produit):
     donc aucun besoin du produit. L'appelant décide maintenant sur pièce
     (``totaux`` passe ``avec_produit=bool(option)``) : un devis à deux options
     paie la même requête qu'hier, un devis mono-option n'en paie plus aucune.
+
+    QJR302 (01/09/2026) — la branche ``avec_produit`` passe par le lecteur
+    UNIQUE ``utils.options.lignes_avec_produit`` : il sert le
+    ``_prefetched_objects_cache`` quand l'appelant a préfetché
+    ``lignes__produit`` (le tableau de bord le fait désormais) et retombe
+    MOT POUR MOT sur ``select_related`` sinon. Mêmes lignes, mêmes montants.
     """
     if lignes is not None:
         return list(lignes)
     if avec_produit:
-        return list(devis.lignes.select_related('produit').all())
+        from apps.ventes.utils.options import lignes_avec_produit
+        return lignes_avec_produit(devis)
     return list(devis.lignes.all())
 
 

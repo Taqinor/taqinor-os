@@ -167,7 +167,15 @@ def dashboard_quote_to_cash(request):
         Devis.objects.filter(company=company, statut='envoye')
         .filter(periode)
         .select_related('created_by')
-        .prefetch_related('lignes')
+        # QJR302 — ``lignes__produit`` et non ``lignes`` : la chaîne canonique
+        # a besoin du NOM DU PRODUIT dès qu'un devis a deux options (le
+        # prédicat ``deux_options_declarees`` puis le filtre d'option le
+        # lisent). Avec le seul ``lignes``, ces deux étapes rechaînaient un
+        # ``select_related('produit')`` — un queryset NEUF, qui ignore le cache
+        # du prefetch — donc jusqu'à 2 requêtes de plus PAR devis à deux
+        # options : le N+1 que SCA40 croyait fermé. Une jointure de plus, une
+        # seule fois, contre N requêtes.
+        .prefetch_related('lignes__produit')
     )
     valeur_pipeline = Decimal('0')
     pipeline_par_commercial = {}
