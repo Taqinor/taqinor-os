@@ -1021,9 +1021,24 @@ export const isHybridInverter = (d) => _norm(d).includes('onduleur') && _norm(d)
 // jamais composée, jamais reconnue en auto-remplissage.
 const OFFGRID_KEYWORDS = ['off-grid', 'off grid', 'offgrid', 'hors reseau', 'autonome']
 const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => n.includes(k))
+// Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue s'appellent
+// « Deye off-Grid 6kw », SANS le mot « onduleur » : le prédicat strict
+// ci-dessus (exigeant « onduleur ») les rendait invisibles (0 onduleur
+// off-grid détecté, auto-remplissage en échec permanent). Élargi SANS perdre
+// la précision : un nom off-grid qui ne dit pas « onduleur » n'est retenu que
+// s'il n'appartient à AUCUNE AUTRE FAMILLE de produit — sinon (« Batterie
+// off-grid », « Kit solaire off-grid », « Câble off-grid ») ce n'est
+// manifestement pas l'onduleur lui-même.
+const OTHER_FAMILY_KEYWORDS = [
+  'batterie', 'panneau', 'panneaux', 'module', 'pompe', 'variateur',
+  'structure', 'cable', 'coffret', 'disjoncteur', 'differentiel',
+  'parafoudre', 'compteur', 'smart meter', 'wifi', 'kit', 'chargeur',
+]
 export const isOffgridInverter = (d) => {
   const n = _norm(d)
-  return n.includes('onduleur') && _isOffgridDesignation(n) && !n.includes('hybride')
+  if (!_isOffgridDesignation(n) || n.includes('hybride')) return false
+  if (n.includes('onduleur')) return true
+  return !OTHER_FAMILY_KEYWORDS.some(k => n.includes(k))
 }
 export const isReseauInverter = (d) => {
   const n = _norm(d)
@@ -1847,7 +1862,16 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     : null
   if (offgrid && !offgridInv) {
     const vide = []
-    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue.'
+    // Incident fondateur 01/09 round 2 — le motif seul (« Aucun onduleur
+    // hors réseau… ») laissait le vendeur deviner POURQUOI un produit qu'il
+    // voit bien au catalogue (ex. « Deye off-Grid 6kw ») n'est pas trouvé :
+    // le plus souvent, ce produit n'a simplement AUCUN prix de vente renseigné
+    // (filtré ci-dessus AVANT ce message). Le rappel du contrat de nommage
+    // partagé avec le backend (OFFGRID_KEYWORDS) rend l'erreur actionnable.
+    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue. '
+      + 'Le NOM du produit doit contenir « off-grid », « off grid », '
+      + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
+      + 'avec un prix de vente.'
     vide.onduleursIncomplets = onduleursIncomplets
     return vide
   }
