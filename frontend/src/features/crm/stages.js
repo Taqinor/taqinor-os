@@ -170,20 +170,37 @@ export const latestDevisTotal = (lead) => {
 
 export const formatMAD = (n) => sharedFormatMAD(n, { decimals: 0 })
 
-// Tri dans une colonne : priorité haute d'abord, puis le plus récent.
+// Tri des leads — ordre fondateur 2026-09-01 : le DÉFAUT est « Plus récent »
+// (le dernier lead arrivé en haut) ; priorité et score deviennent des OPTIONS
+// de tri choisies par l'utilisateur (avant : priorité haute imposée en tête
+// de colonne kanban, même sur un lead ancien).
 const PRIO_ORDER = { haute: 0, normale: 1, basse: 2 }
-const sortColumn = (leads) =>
-  [...leads].sort(
-    (a, b) =>
-      (PRIO_ORDER[a.priorite] ?? 1) - (PRIO_ORDER[b.priorite] ?? 1) ||
-      new Date(b.date_creation ?? 0) - new Date(a.date_creation ?? 0),
-  )
+const byDateDesc = (a, b) =>
+  new Date(b.date_creation ?? 0) - new Date(a.date_creation ?? 0)
+export const LEAD_SORTERS = {
+  recent: byDateDesc,
+  ancien: (a, b) => -byDateDesc(a, b),
+  priorite: (a, b) =>
+    (PRIO_ORDER[a.priorite] ?? 1) - (PRIO_ORDER[b.priorite] ?? 1) ||
+    byDateDesc(a, b),
+  // Score serveur (scoring.py) — chauds d'abord, récents à égalité.
+  score: (a, b) => (b.score ?? 0) - (a.score ?? 0) || byDateDesc(a, b),
+}
+export const TRI_OPTIONS = [
+  { value: 'recent', label: 'Plus récent d’abord' },
+  { value: 'ancien', label: 'Plus ancien d’abord' },
+  { value: 'priorite', label: 'Priorité haute d’abord' },
+  { value: 'score', label: 'Score (chauds d’abord)' },
+]
+export const sortLeads = (leads, tri) =>
+  [...(leads ?? [])].sort(LEAD_SORTERS[tri] ?? LEAD_SORTERS.recent)
 
 // Regroupe les leads par étape — TOUJOURS les 6 colonnes, dans l'ordre de
 // l'entonnoir, même vides. Ajoute le compteur et le total devis par colonne.
-export function groupLeadsByStage(leads) {
+// `tri` : clé de LEAD_SORTERS (défaut « recent » — dernier lead en haut).
+export function groupLeadsByStage(leads, tri = 'recent') {
   return PIPELINE_STAGES.map((key) => {
-    const inStage = sortColumn((leads ?? []).filter((l) => l.stage === key))
+    const inStage = sortLeads((leads ?? []).filter((l) => l.stage === key), tri)
     return {
       key,
       label: STAGE_LABELS[key],
@@ -223,6 +240,10 @@ export const EMPTY_FILTERS = {
   // LB24 — tuile KPI « Chauds » (bandeau KPI = filtres, blueprint D5) :
   // filtre sur `score_label` (scoring.py, serializer) — '' | 'chaud'.
   score: '',
+  // Ordre fondateur 2026-09-01 — clé de TRI (LEAD_SORTERS), pas un filtre :
+  // filterLeads l'ignore ; portée par le même état pour hériter gratuitement
+  // de la persistance session + URL. Défaut : dernier lead arrivé en haut.
+  tri: 'recent',
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).

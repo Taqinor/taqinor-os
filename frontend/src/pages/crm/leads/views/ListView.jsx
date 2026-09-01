@@ -26,6 +26,8 @@ import {
   // totalDevis par étape) pour que les deux vues affichent toujours les
   // mêmes nombres.
   groupLeadsByStage,
+  // Ordre fondateur 2026-09-01 — tri global partagé kanban/liste.
+  LEAD_SORTERS,
 } from '../../../../features/crm/stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question qu'au board avant un recul.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
@@ -618,6 +620,8 @@ const ListRow = memo(function ListRow({
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
   selected = new Set(), onToggleSelect, onToggleAll, onInlineSave, onMarkPerdu,
+  // Ordre fondateur 2026-09-01 — tri global (FilterBar) ; défaut : récent.
+  tri = 'recent',
 }) {
   const dispatch = useDispatch()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
@@ -817,9 +821,10 @@ export default function ListView({
   const sorted = useMemo(() => {
     const arr = [...(leads ?? [])]
     if (!sort.key) {
-      return arr.sort(
-        (a, b) => new Date(b.date_creation ?? 0) - new Date(a.date_creation ?? 0),
-      )
+      // Ordre fondateur 2026-09-01 : sans colonne active, la liste suit le
+      // TRI global choisi dans FilterBar (défaut : dernier lead en haut) —
+      // même comparateur que le kanban (LEAD_SORTERS), jamais deux règles.
+      return arr.sort(LEAD_SORTERS[tri] ?? LEAD_SORTERS.recent)
     }
     const dir = sort.dir === 'desc' ? -1 : 1
     const cmp = SORTERS[sort.key]
@@ -832,7 +837,7 @@ export default function ListView({
       }
       return dir * cmp(a, b)
     })
-  }, [leads, sort])
+  }, [leads, sort, tri])
 
   /* APX9 — PLAFOND DE RENDU (même principe que le kanban, taille adaptée).
      -------------------------------------------------------------------------
@@ -850,7 +855,7 @@ export default function ListView({
   // ponctuelle d'un plafond d'affichage, jamais une cascade (la valeur posee
   // est une constante, elle ne peut pas re-declencher l'effet).
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setLimiteRendu(LIST_RENDER_CAP) }, [sort, listGroup, leads])
+  useEffect(() => { setLimiteRendu(LIST_RENDER_CAP) }, [sort, tri, listGroup, leads])
   const rendus = useMemo(() => sorted.slice(0, limiteRendu), [sorted, limiteRendu])
   const restants = Math.max(0, sorted.length - limiteRendu)
 

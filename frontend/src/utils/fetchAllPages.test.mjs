@@ -119,3 +119,48 @@ test('sans `count` mais avec `next` : suit next jusqu’au bout', async () => {
   const all = await fetchAllPages(noCountApi, { concurrency: 20 })
   assert.equal(all.length, 45)
 })
+
+// ── PERF-CRM (2026-09-01) — flux progressif `onPage` ────────────────────────
+// La 1re page doit être signalée DÈS son arrivée (premier rendu immédiat),
+// chaque page suivante à sa réception, et le retour final reste inchangé.
+test('onPage : la page 1 est signalée AVANT la fin, puis chaque page ; retour final inchangé', async () => {
+  const chunks = []
+  let resolved = false
+  const fetchPage = makeApi(250, 100)
+  const promise = fetchAllPages(fetchPage, {
+    concurrency: 2,
+    onPage: (results, meta) => {
+      chunks.push({ n: results.length, page: meta.page, first: meta.first, resolved })
+    },
+  }).then((all) => { resolved = true; return all })
+  const all = await promise
+  assert.equal(all.length, 250)
+  // 3 pages signalées, la première marquée `first`, AVANT la résolution finale.
+  assert.equal(chunks.length, 3)
+  assert.deepEqual(chunks[0], { n: 100, page: 1, first: true, resolved: false })
+  assert.ok(chunks.every((c) => c.resolved === false))
+  assert.equal(chunks.filter((c) => c.first).length, 1)
+  // Total signalé == total rendu (aucune page perdue ni doublée).
+  assert.equal(chunks.reduce((s, c) => s + c.n, 0), 250)
+})
+
+test('onPage : chemin SANS count (découverte via next) signale aussi chaque page', async () => {
+  const pages = [
+    { results: [{ id: 1 }], next: 'x' },
+    { results: [{ id: 2 }], next: 'x' },
+    { results: [{ id: 3 }], next: null },
+  ]
+  const chunks = []
+  const all = await fetchAllPages(async (p) => pages[p - 1], {
+    concurrency: 2,
+    onPage: (results, meta) => chunks.push([meta.page, results[0].id, meta.first]),
+  })
+  assert.equal(all.length, 3)
+  assert.deepEqual(chunks[0], [1, 1, true])
+  assert.equal(chunks.length, 3)
+})
+
+test('onPage absent : comportement byte-identique (aucune dépendance au callback)', async () => {
+  const all = await fetchAllPages(makeApi(120, 50), { concurrency: 3 })
+  assert.equal(all.length, 120)
+})

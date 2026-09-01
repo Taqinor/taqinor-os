@@ -13,9 +13,16 @@
 // atterrit (@coord QPERF1).
 //
 // `fetchPage(page)` doit renvoyer `{ results, count, next }` (forme DRF).
-export async function fetchAllPages(fetchPage, { concurrency = 20, maxPages = 200 } = {}) {
+// `onPage(results, { page, first })` (optionnel, PERF-CRM 2026-09-01) : appelé
+// dès qu'une page ARRIVE — l'appelant peut afficher la première page tout de
+// suite au lieu d'attendre la totalité (premier rendu « à la Odoo »). Le
+// retour final reste inchangé (tableau complet, ordre des pages).
+export async function fetchAllPages(
+  fetchPage, { concurrency = 20, maxPages = 200, onPage } = {},
+) {
   const first = await fetchPage(1)
   if (!first || !Array.isArray(first.results)) return first
+  onPage?.(first.results, { page: 1, first: true })
 
   const results = [...first.results]
   const pageSize = first.results.length
@@ -35,8 +42,11 @@ export async function fetchAllPages(fetchPage, { concurrency = 20, maxPages = 20
         batchPages.push(page)
       }
       const batch = await Promise.all(batchPages.map((p) => fetchPage(p)))
-      for (const data of batch) {
-        if (data?.results?.length) results.push(...data.results)
+      for (const [i, data] of batch.entries()) {
+        if (data?.results?.length) {
+          results.push(...data.results)
+          onPage?.(data.results, { page: batchPages[i], first: false })
+        }
         if (!data?.next) hasNext = false
       }
     }
@@ -51,8 +61,11 @@ export async function fetchAllPages(fetchPage, { concurrency = 20, maxPages = 20
     const batchPages = []
     for (let p = start; p < start + concurrency && p <= totalPages; p += 1) batchPages.push(p)
     const batch = await Promise.all(batchPages.map((p) => fetchPage(p)))
-    for (const data of batch) {
-      if (data?.results) results.push(...data.results)
+    for (const [i, data] of batch.entries()) {
+      if (data?.results) {
+        results.push(...data.results)
+        onPage?.(data.results, { page: batchPages[i], first: false })
+      }
     }
   }
 

@@ -107,8 +107,9 @@ test('APX9 : la liste borne aussi son rendu, avec son propre palier', () => {
   assert.match(LISTE, /const LIST_RENDER_CAP = 200/)
   assert.match(LISTE, /const rendus = useMemo\(\(\) => sorted\.slice\(0, limiteRendu\), \[sorted, limiteRendu\]\)/)
   assert.match(LISTE, /listGroup !== 'stage' && rendus\.map\(renderRow\)/)
-  // Un changement de tri/filtre/groupe repart du premier palier.
-  assert.match(LISTE, /useEffect\(\(\) => \{ setLimiteRendu\(LIST_RENDER_CAP\) \}, \[sort, listGroup, leads\]\)/)
+  // Un changement de tri/filtre/groupe repart du premier palier — `tri`
+  // (l'ordre global FilterBar, 2026-09-01) compte comme un changement de tri.
+  assert.match(LISTE, /useEffect\(\(\) => \{ setLimiteRendu\(LIST_RENDER_CAP\) \}, \[sort, tri, listGroup, leads\]\)/)
 })
 
 test('APX9 : « tout selectionner » ne coche jamais des lignes non montees', () => {
