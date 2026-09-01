@@ -64,14 +64,6 @@ _SKIPS = [
         r"^\s*pip install flake8 import-linter",
         "preflight installe deja flake8 + import-linter (une fois, en mode -q)",
     ),
-    (
-        r"^\s*sudo apt-get",
-        "librairies systeme WeasyPrint : deja dans l'image prod, et `sudo` n'y existe pas",
-    ),
-    (
-        r"^\s*pip install -r requirements\.txt\s*$",
-        "requirements.txt est deja installe dans l'image prod",
-    ),
 ]
 
 # Jobs whose steps preflight replays. `backend-lint` is now a thin aggregator
