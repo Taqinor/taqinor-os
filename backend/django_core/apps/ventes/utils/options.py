@@ -29,13 +29,37 @@ SANS_BATTERIE = 'sans_batterie'
 AVEC_BATTERIE = 'avec_batterie'
 
 
+# ── QJR301 — UNE SEULE CONVENTION DE TEXTE POUR CLASSER UNE LIGNE ───────────
+#
+# Il y en avait QUATRE, avec des divergences prouvées dans les DEUX sens :
+# le noyau lisait désignation + nom du produit (``_blob``), les paniers du PDF
+# la désignation SEULE (``builder._item_classement``), la répartition du PDF
+# une troisième variante (``builder._blob_item``), et le garde-fou legacy une
+# quatrième avec ses propres mots-clés en dur. Un mot-clé qui ne vit que dans
+# le NOM du produit était donc vu par le noyau et pas par les paniers PDF.
+#
+# LES DEUX FONCTIONS CI-DESSOUS SONT LA SEULE DÉFINITION. Les adaptateurs
+# (LigneDevis ORM ici, dicts d'items dans le moteur) les IMPORTENT ; ils ne les
+# recopient plus.
+
+def texte_classement(designation, produit_nom='') -> str:
+    """Le texte qui CLASSE une ligne (accessoire ? onduleur ? batterie ?) :
+    désignation + nom du produit lié — une désignation éditée à la main ne peut
+    pas casser silencieusement le découpage."""
+    return f"{designation or ''} {produit_nom or ''}"
+
+
+def texte_marque(designation, marque='', produit_nom='') -> str:
+    """Le texte qui porte la MARQUE d'une ligne : désignation + marque + nom du
+    produit lié — les trois champs que le moteur PDF lisait déjà."""
+    return f"{designation or ''} {marque or ''} {produit_nom or ''}"
+
+
 def _blob(ligne) -> str:
-    """Désignation + nom du produit lié — le moteur classe sur les deux pour
-    qu'une désignation éditée à la main ne casse pas le découpage."""
+    """Adaptateur ``LigneDevis`` de :func:`texte_classement`."""
     produit = getattr(ligne, 'produit', None)
-    nom = getattr(produit, 'nom', '') or ''
-    desig = getattr(ligne, 'designation', '') or ''
-    return f"{desig} {nom}"
+    return texte_classement(getattr(ligne, 'designation', ''),
+                            getattr(produit, 'nom', ''))
 
 
 #: L-2OPT — les deux variantes EXPLICITES de ``LigneDevis.variante`` ('' =
@@ -51,13 +75,11 @@ def _variante(ligne) -> str:
 
 
 def _blob_marque(ligne) -> str:
-    """Texte qui porte la MARQUE d'une ligne : désignation + marque + nom du
-    produit lié — les trois champs que le moteur PDF lisait déjà pour dire
-    « cet onduleur est un Huawei »."""
+    """Adaptateur ``LigneDevis`` de :func:`texte_marque`."""
     produit = getattr(ligne, 'produit', None)
-    return (f"{getattr(ligne, 'designation', '') or ''} "
-            f"{getattr(produit, 'marque', '') or ''} "
-            f"{getattr(produit, 'nom', '') or ''}")
+    return texte_marque(getattr(ligne, 'designation', ''),
+                        getattr(produit, 'marque', ''),
+                        getattr(produit, 'nom', ''))
 
 
 # ── QJR200 — LES ACCESSOIRES HUAWEI SONT UNE RÈGLE DU NOYAU, PAS DU RENDU ────

@@ -42,24 +42,28 @@ SMART_METER = {"designation": "Smart Meter", "marque": "", "quantite": 1,
                "taux_tva": 20.0}
 
 
-class TestGardeAnyPlutotQueAll(SimpleTestCase):
-    """Un accessoire n'est retiré que s'il est ORPHELIN."""
+class TestGardeSuitLaRegleDuNoyau(SimpleTestCase):
+    """QJR301 — le garde-fou legacy ne porte plus sa propre règle : il délègue
+    à ``utils.options.retirer_accessoires_huawei``. Le verdict d'un panier
+    mixte est donc celui du noyau (``all``, le plus conservateur), et plus le
+    ``any`` local — deux verdicts pour le même panier, c'était le défaut."""
 
     def test_liste_sans_onduleur_huawei_perd_l_accessoire(self):
         garde = moteur._guard_huawei_accessories([ONDULEUR_DEYE, SMART_METER])
         self.assertEqual([it["designation"] for it in garde],
                          ["Onduleur hybride Deye 5kW"])
 
-    def test_liste_a_deux_marques_garde_l_accessoire_de_huawei(self):
-        # ``all`` retirait le Smart Meter de l'onduleur Huawei RÉELLEMENT
-        # facturé dès qu'un second onduleur d'une autre marque figurait.
+    def test_liste_a_deux_marques_perd_l_accessoire(self):
         garde = moteur._guard_huawei_accessories(
             [ONDULEUR_HUAWEI, ONDULEUR_DEYE, SMART_METER])
-        self.assertIn("Smart Meter", [it["designation"] for it in garde])
+        self.assertNotIn("Smart Meter", [it["designation"] for it in garde])
 
-    def test_liste_sans_onduleur_est_rendue_telle_quelle(self):
+    def test_liste_sans_onduleur_perd_l_accessoire_orphelin(self):
+        # Règle du noyau : sans onduleur identifiable, l'accessoire est
+        # orphelin. Inatteignable par le rendu (une option ne se rend jamais
+        # sans onduleur), épinglé pour que les deux moitiés restent d'accord.
         garde = moteur._guard_huawei_accessories([SMART_METER])
-        self.assertEqual(len(garde), 1)
+        self.assertEqual(garde, [])
 
 
 class TestUnePageNeReFiltrePlus(SimpleTestCase):

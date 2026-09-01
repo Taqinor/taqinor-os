@@ -397,17 +397,28 @@ _is_wifi_dongle = _sd.is_wifi_dongle
 # ``_drop_huawei_accessories`` plus bas.
 
 
+# QJR301 — LES DEUX SEULS ADAPTATEURS D'ITEM (dicts) de la convention de texte
+# du noyau. Le texte lui-même est déclaré UNE fois, dans
+# ``apps.ventes.utils.options`` (``texte_classement`` / ``texte_marque``) ; il
+# n'y a plus de copie ici. Import fonction-local : ``utils.options`` importe ce
+# module à son sommet (cycle).
 def _item_classement(it) -> str:
-    """Texte de CLASSEMENT d'un item pour la règle QF9 — la désignation seule,
-    exactement ce que lisait ``_quote_is_huawei`` avant QJR200."""
-    return it.get("designation", "")
+    """Texte de CLASSEMENT d'un item — désignation + nom du produit lié.
+
+    QJR301 — c'était la désignation SEULE : un mot-clé qui ne vit que dans le
+    NOM du produit était vu par le noyau et PAS par les paniers du PDF, donc
+    les deux moitiés classaient la même ligne différemment.
+    """
+    from apps.ventes.utils.options import texte_classement
+    return texte_classement(it.get("designation", ""),
+                            it.get("_produit_nom", ""))
 
 
 def _item_marque(it) -> str:
-    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié —
-    les trois champs lus avant QJR200, mot pour mot."""
-    return (f"{it.get('designation', '')} {it.get('marque', '')} "
-            f"{it.get('_produit_nom', '')}")
+    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié."""
+    from apps.ventes.utils.options import texte_marque
+    return texte_marque(it.get("designation", ""), it.get("marque", ""),
+                        it.get("_produit_nom", ""))
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -543,14 +554,11 @@ def _variante_de_ligne(ligne) -> str:
     return valeur if valeur in ("sans", "avec") else ""
 
 
-def _blob_item(it) -> str:
-    """Texte classifiable d'un item : désignation ET nom du produit lié.
-
-    Une désignation éditée à la main ne peut pas casser silencieusement le
-    découpage — c'est le contrat historique, extrait ici en fonction de module
-    pour être partagé par la répartition et ses appelants.
-    """
-    return f"{it['designation']} {it.get('_produit_nom', '')}"
+# QJR301 — ``_blob_item`` était la TROISIÈME lecture du même texte : c'est le
+# MÊME que ``_item_classement`` (désignation + nom du produit lié). Il est
+# SUPPRIMÉ et remplacé par un alias, pour que la répartition des options et les
+# paniers QF9 classent une ligne à l'identique — plus jamais deux verdicts.
+_blob_item = _item_classement
 
 
 def _repartir_options(paires):

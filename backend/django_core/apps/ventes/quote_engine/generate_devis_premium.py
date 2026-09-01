@@ -76,29 +76,27 @@ def _guard_huawei_accessories(items):
     Il ne subsiste que sur les listes PAR OPTION, dont les totaux sont eux
     aussi calculés sur des listes filtrées.
 
-    QJR124 — la détection passe de ``all`` à ``any`` : sur une liste portant
-    DEUX marques d'onduleur (Huawei réseau + Deye hybride), ``all`` retirait le
-    Smart Meter de l'onduleur Huawei RÉELLEMENT facturé. Un accessoire n'est
-    retiré que s'il est ORPHELIN — aucun onduleur Huawei sur la liste.
+    QJR301 (01/09/2026) — CE GARDE-FOU NE PORTE PLUS SA PROPRE RÈGLE. Il en
+    portait une QUATRIÈME : sa liste de mots-clés en dur (« smart meter » /
+    « wifi » / « dongle »), sa propre détection d'onduleur (« onduleur » dans
+    la désignation SEULE) et un ``any`` là où le noyau exige ``all``. Un panier
+    mixte Huawei + Deye était donc jugé « Huawei » ici et « non-Huawei » par le
+    noyau (``_panier_sert_huawei`` rend False au PREMIER onduleur non-Huawei) :
+    deux verdicts pour le même panier, sur le même devis. Il DÉLÈGUE désormais
+    à la règle du noyau (``utils.options.retirer_accessoires_huawei``, la plus
+    conservatrice), avec les adaptateurs d'item du moteur — donc en lisant
+    aussi le NOM du produit lié, pas seulement la désignation. Les copies sont
+    SUPPRIMÉES (règle permanente 2).
+
+    QJR300 — il n'est armé que sur un document à DEUX options (cf. son unique
+    site d'appel) : hors de là, le noyau facture l'accessoire et le tableau
+    doit le montrer.
     """
-    rows = items or []
-    inverters = [it for it in rows
-                 if "onduleur" in (it.get("designation", "") or "").lower()]
-    if not inverters:
-        return list(rows)
-    is_huawei = any(
-        "huawei" in (f"{it.get('designation', '')} "
-                     f"{it.get('marque', '')}").lower()
-        for it in inverters)
-    if is_huawei:
-        return list(rows)
-    out = []
-    for it in rows:
-        d = (it.get("designation", "") or "").lower()
-        if "smart meter" in d or "wifi" in d or "dongle" in d:
-            continue
-        out.append(it)
-    return out
+    from apps.ventes.quote_engine.builder import _item_classement, _item_marque
+    from apps.ventes.utils.options import retirer_accessoires_huawei
+    return retirer_accessoires_huawei(
+        list(items or []),
+        classement=_item_classement, marque=_item_marque)
 
 # ── Inline SVG icons for Page 1 (WeasyPrint renders inline SVG perfectly) ────
 SVG_CHECK   = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
