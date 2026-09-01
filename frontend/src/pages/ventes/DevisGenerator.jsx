@@ -493,6 +493,14 @@ export default function DevisGenerator({
       const texte = Array.isArray(brut) ? brut[0] : brut
       if (typeof texte === 'string') return texte
     }
+    // QJR309 — un refus CLIENT-SIDE de la liste blanche (`ventesApi.
+    // poserOverrides`, AVANT tout réseau) est un TypeError NU, sans
+    // `.response` : il ne doit JAMAIS être maquillé en refus du serveur — son
+    // propre message nomme déjà le chemin fautif (voir `ventesApi.js`),
+    // rendu tel quel plutôt que remplacé par la phrase générique ci-dessous.
+    if (!err?.response && err instanceof TypeError && typeof err.message === 'string') {
+      return err.message
+    }
     return 'La surcharge a été refusée par le serveur.'
   }
 
