@@ -1021,9 +1021,24 @@ export const isHybridInverter = (d) => _norm(d).includes('onduleur') && _norm(d)
 // jamais composée, jamais reconnue en auto-remplissage.
 const OFFGRID_KEYWORDS = ['off-grid', 'off grid', 'offgrid', 'hors reseau', 'autonome']
 const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => n.includes(k))
+// Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue s'appellent
+// « Deye off-Grid 6kw », SANS le mot « onduleur » : le prédicat strict
+// ci-dessus (exigeant « onduleur ») les rendait invisibles (0 onduleur
+// off-grid détecté, auto-remplissage en échec permanent). Élargi SANS perdre
+// la précision : un nom off-grid qui ne dit pas « onduleur » n'est retenu que
+// s'il n'appartient à AUCUNE AUTRE FAMILLE de produit — sinon (« Batterie
+// off-grid », « Kit solaire off-grid », « Câble off-grid ») ce n'est
+// manifestement pas l'onduleur lui-même.
+const OTHER_FAMILY_KEYWORDS = [
+  'batterie', 'panneau', 'panneaux', 'module', 'pompe', 'variateur',
+  'structure', 'cable', 'coffret', 'disjoncteur', 'differentiel',
+  'parafoudre', 'compteur', 'smart meter', 'wifi', 'kit', 'chargeur',
+]
 export const isOffgridInverter = (d) => {
   const n = _norm(d)
-  return n.includes('onduleur') && _isOffgridDesignation(n) && !n.includes('hybride')
+  if (!_isOffgridDesignation(n) || n.includes('hybride')) return false
+  if (n.includes('onduleur')) return true
+  return !OTHER_FAMILY_KEYWORDS.some(k => n.includes(k))
 }
 export const isReseauInverter = (d) => {
   const n = _norm(d)
