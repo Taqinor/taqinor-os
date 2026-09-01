@@ -43,6 +43,16 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+// Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
+// AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
+// aucune option ne contient d'onduleur — génération du PDF à options refusée
+// (règle de sécurité). », apps/ventes/quote_engine/builder.py ligne ~1176) :
+// un devis « Composition libre » (accessoiresOnly) sans onduleur atterrissait
+// tout droit sur ce refus. Le devis liste porte déjà `d.lignes` (RoofViewer
+// les lit) — même prédicats que la garde de DevisGenerator.validate(), aucun
+// nouveau champ backend (`variantes_servables` n'existe pas côté ERP,
+// uniquement côté /proposal public).
+import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../features/ventes/solar'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -262,7 +272,7 @@ function engagementSummary(engagement) {
 // PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
 function DevisPdfDialog({
   pdfTarget, batchPdf, selectedIds,
-  pdfMode, setPdfMode, targetIsAgricole,
+  pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
   showMonthly, setShowMonthly,
   targetHasEtude, includeEtude, setIncludeEtude,
   devisFinal, setDevisFinal,
@@ -303,6 +313,17 @@ function DevisPdfDialog({
                 <span>Devis une page (liste produits uniquement, sans graphiques)</span>
               </label>
             </RadioGroup>
+            {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :
+                le format une page a été présélectionné parce qu'aucune ligne
+                de ce devis ne classe d'onduleur (devis « Composition libre »
+                ou accessoires/main-d'œuvre). Disparaît dès que l'utilisateur
+                choisit lui-même 'full' (règle : jamais un message qui ne
+                correspond plus au choix affiché). */}
+            {pdfModeAutoOnepage && pdfMode === 'onepage' && !batchPdf && (
+              <p className="text-xs text-muted-foreground">
+                Options non détectées — format une page présélectionné (aucun onduleur sur ce devis).
+              </p>
+            )}
           </div>
 
           {pdfMode === 'full' && !targetIsAgricole && (
@@ -1621,6 +1642,10 @@ export default function DevisList() {
   const [paymentMode, setPaymentMode] = useState('standard')
   const [customAcompte, setCustomAcompte] = useState('')
   const [includeEtude, setIncludeEtude] = useState(false)
+  // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
+  // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
+  // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
+  const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
 
   // ── Modale d'acceptation inline (nom / date / option) ──
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
@@ -1673,11 +1698,28 @@ export default function DevisList() {
   // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
   const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
 
+  // Incident fondateur 01/09 round 2 — un devis « Composition libre » (ou tout
+  // devis dont aucune ligne ne classe onduleur réseau/hybride/hors réseau)
+  // fait REFUSER pdf_mode 'full' par le moteur (règle dure builder.py,
+  // ~ligne 1176) : agricole/pompage est DÉJÀ dégradé sans erreur côté serveur
+  // (aucun onduleur n'y est jamais attendu), donc seul le cas non-agricole est
+  // concerné ici.
+  const devisSansOnduleurClasse = (d) =>
+    d?.mode_installation !== 'agricole'
+    && !(d?.lignes ?? []).some(l =>
+      isReseauInverter(l.designation) || isHybridInverter(l.designation)
+      || isOffgridInverter(l.designation))
+
   const openPdfModal = (d) => {
     setBatchPdf(false)
     setPdfTarget(d)
     // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    setPdfMode('full')
+    // Un devis sans onduleur classé (Composition libre) part directement sur
+    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
+    // seulement après avoir cliqué « Générer ».
+    const sansOnduleur = devisSansOnduleurClasse(d)
+    setPdfMode(sansOnduleur ? 'onepage' : 'full')
+    setPdfModeAutoOnepage(sansOnduleur)
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
@@ -1704,6 +1746,7 @@ export default function DevisList() {
     setBatchPdf(true)
     setPdfTarget(null)
     setPdfMode('full')
+    setPdfModeAutoOnepage(false)
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
@@ -2821,6 +2864,7 @@ export default function DevisList() {
         selectedIds={selectedIds}
         pdfMode={pdfMode}
         setPdfMode={setPdfMode}
+        pdfModeAutoOnepage={pdfModeAutoOnepage}
         targetIsAgricole={targetIsAgricole}
         showMonthly={showMonthly}
         setShowMonthly={setShowMonthly}

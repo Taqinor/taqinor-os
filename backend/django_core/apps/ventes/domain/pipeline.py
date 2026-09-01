@@ -282,10 +282,15 @@ MSG_SANS_BATTERIE = (
 #: hybride n'est pas une version dégradée d'un autonome — c'est un autre
 #: produit, qu'un client sans raccordement ne peut pas exploiter (règle
 #: fondateur : jamais un composant substitué en silence).
+#: ROUND 2 (01/09/2026) — le message est ACTIONNABLE : il dit COMMENT la
+#: reconnaissance marche (le NOM du produit, pas une catégorie à cocher),
+#: parce que le premier incident venait justement d'un nom qui ne matchait
+#: aucun mot-clé.
 MSG_SANS_ONDULEUR_OFFGRID = (
-    'Aucun onduleur hors réseau (off-grid) disponible (ou sans prix) dans le '
-    'catalogue. Ajoutez un onduleur autonome tarifé avant de générer ce '
-    'devis — aucun onduleur hybride ne lui est substitué.')
+    'Aucun onduleur hors réseau (off-grid) tarifé au catalogue. Le NOM du '
+    'produit doit contenir « off-grid », « off grid », « hors réseau » ou '
+    '« autonome » (ex. « Deye Off-Grid 6kW ») — et un prix de vente '
+    'renseigné. Aucun onduleur hybride ne lui est substitué.')
 
 
 def message_batterie_incompatible(plage):

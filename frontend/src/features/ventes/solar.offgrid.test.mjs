@@ -50,6 +50,33 @@ test('isOffgridInverter : off-grid/off grid/offgrid/hors réseau/autonome, jamai
   assert.equal(isOffgridInverter(undefined), false)
 })
 
+// Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue ne disent
+// JAMAIS « onduleur » (ex. « Deye off-Grid 6kw ») : le prédicat élargi les
+// reconnaît quand même, mais SEULEMENT si aucun mot-clé d'une autre famille
+// (batterie/panneau/module/pompe/variateur/structure/câble/coffret/
+// disjoncteur/différentiel/parafoudre/compteur/smart meter/wifi/kit/
+// chargeur) n'apparaît dans le nom — sinon ce n'est manifestement pas
+// l'onduleur lui-même.
+test('isOffgridInverter élargi : noms produit RÉELS sans le mot « onduleur »', () => {
+  assert.equal(isOffgridInverter('Deye off-Grid 6kw'), true)
+  assert.equal(isOffgridInverter('Deye Off-Grid 6kW'), true)
+  assert.equal(isOffgridInverter('Deye Autonome 5kW'), true)
+  // Autre famille explicite dans le nom : JAMAIS retenu comme onduleur, même
+  // avec un mot-clé off-grid.
+  assert.equal(isOffgridInverter('Batterie off-grid'), false)
+  assert.equal(isOffgridInverter('Kit solaire off-grid'), false)
+  assert.equal(isOffgridInverter('Cable off-grid'), false)
+  assert.equal(isOffgridInverter('Coffret off-grid'), false)
+  assert.equal(isOffgridInverter('Variateur off-grid'), false)
+  // Le mot « onduleur » prime TOUJOURS : présent, le nom est retenu même s'il
+  // porte aussi un mot d'une autre famille (comportement historique intact).
+  assert.equal(isOffgridInverter('Onduleur Off-Grid Deye 5kW Monophasé'), true)
+  // Précédence hybride inchangée sur le nom réel (sans « onduleur »).
+  assert.equal(isOffgridInverter('Deye Hybride Off-Grid 6kw'), false)
+  assert.equal(classifyProduct('Deye off-Grid 6kw'), 'onduleur_offgrid')
+  assert.equal(classifyProduct('Batterie off-grid'), 'batterie')
+})
+
 test('BUG CORRIGÉ — isReseauInverter n\'attrape plus « onduleur hors réseau »', () => {
   // « onduleur hors réseau » contient le sous-mot « réseau » : avant le
   // correctif, isReseauInverter(false positif) classait cette ligne au panier
@@ -175,9 +202,39 @@ test('offgrid : aucun onduleur hors réseau tarifé → erreur FRANÇAISE claire
     kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
   })
   assert.equal(rows.length, 0)
-  assert.equal(rows.offgridErreur, 'Aucun onduleur hors réseau avec prix au catalogue.')
+  // Incident fondateur 01/09 round 2 — le motif seul ne disait pas au vendeur
+  // POURQUOI un produit qu'il voit au catalogue (prix 0 ici) n'est pas trouvé :
+  // le message rappelle désormais le contrat de nommage ET l'exigence de prix.
+  assert.equal(rows.offgridErreur,
+    'Aucun onduleur hors réseau avec prix au catalogue. '
+    + 'Le NOM du produit doit contenir « off-grid », « off grid », '
+    + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
+    + 'avec un prix de vente.')
   // Preuve « jamais un repli silencieux sur l'hybride » : le tableau est VIDE,
   // pas une seule ligne hybride composée à la place.
+})
+
+// Incident fondateur 01/09 (round 2) — autoFillLines doit composer avec le
+// nom RÉEL du catalogue prod (« Deye off-Grid 6kw », sans « onduleur »), pas
+// seulement le nom de test historique (« Onduleur Off-Grid Deye … »).
+test('offgrid : autoFillLines choisit « Deye off-Grid 6kw » (nom produit réel, sans le mot « onduleur »)', () => {
+  const catalogueReel = [
+    P('Deye off-Grid 6kw', 18000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 17000),
+    P('Batterie Dyness 10 kWh', 30000),
+  ]
+  const rows = autoFillLines(catalogueReel, {
+    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
+  })
+  assert.ok(rows.length > 0)
+  const inv = rows.find(r => r.designation === 'Deye off-Grid 6kw')
+  assert.ok(inv, 'la ligne « Deye off-Grid 6kw » doit être composée')
+  // Seuil 7,952 kW, aucun modèle ≥ 6 kW seul disponible → 2 unités (comme le
+  // repli historique quand le plus gros modèle du catalogue est trop petit).
+  assert.equal(inv.quantite, 2)
+  assert.equal(inv.prix_unit_ttc, 18000)
+  assert.equal(rows.find(r => r.designation.toLowerCase().includes('hybride')), undefined)
 })
 
 test('offgrid : aucune batterie tarifée/compatible → erreur FRANÇAISE claire, jamais une composition sans stockage', () => {

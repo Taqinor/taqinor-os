@@ -122,6 +122,37 @@ def is_panneau(nom):
     return 'panneau' in (nom or '').lower()
 
 
+#: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
+#: fondateur en prod (« Deye off-Grid 6kw ») ne portent PAS le mot « onduleur »
+#: dans leur nom. Mêmes mots-clés que la table unique
+#: ``apps.ventes.solar_design.OFFGRID_KEYWORDS`` /
+#: ``OFFGRID_AUTRE_FAMILLE_KEYWORDS`` — DUPLIQUÉS ici plutôt qu'importés :
+#: ``apps.stock`` ne doit jamais dépendre d'``apps.ventes`` (frontière
+#: inter-app, CLAUDE.md). Si l'un des deux jeux bouge, recaler l'autre à la
+#: main.
+OFFGRID_KEYWORDS = ('off-grid', 'off grid', 'offgrid', 'hors reseau', 'hors réseau', 'autonome')
+OFFGRID_AUTRE_FAMILLE_KEYWORDS = (
+    'batterie', 'panneau', 'panneaux', 'module', 'pompe', 'variateur',
+    'structure', 'cable', 'câble', 'coffret', 'disjoncteur',
+    'differentiel', 'différentiel', 'parafoudre', 'compteur',
+    'smart meter', 'wifi', 'kit', 'chargeur',
+)
+
+
+def is_offgrid(nom):
+    """Onduleur autonome (site isolé) — même contrat que
+    ``apps.ventes.solar_design.is_offgrid_inverter`` : mot-clé hors-réseau,
+    pas hybride, et — si « onduleur » est absent du nom — aucun mot-clé
+    d'une AUTRE famille de produit (sinon on volerait un panneau/une
+    batterie/un accessoire nommé « ... off-grid ... » par un revendeur)."""
+    d = (nom or '').lower()
+    if not any(k in d for k in OFFGRID_KEYWORDS) or 'hybride' in d:
+        return False
+    if 'onduleur' in d:
+        return True
+    return not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
+
+
 def taux_tva_for(nom):
     return Decimal('10.00') if is_panneau(nom) else Decimal('20.00')
 
@@ -142,6 +173,9 @@ TAXONOMIE = [
     ('Panneaux photovoltaïques', 10),
     ('Onduleurs réseau', 20),
     ('Onduleurs hybrides', 30),
+    # QJR-OFFGRID ROUND 2 — troisième famille d'onduleur (site isolé),
+    # AJOUTÉE (ordre neuf, 35) : aucun ordre existant ne bouge.
+    ('Onduleurs hors réseau', 35),
     ('Batteries', 40),
     ('Structures & fixation', 50),
     ('Protection & accessoires', 60),
@@ -161,6 +195,14 @@ def classify_categorie(nom):
         return 'Panneaux photovoltaïques'
     if 'onduleur' in n and 'hybride' in n:
         return 'Onduleurs hybrides'
+    # QJR-OFFGRID ROUND 2 — AVANT le test « onduleur » générique juste en
+    # dessous : sinon « Deye off-Grid 6kw » (AUCUN mot « onduleur » dans le
+    # nom réel du fondateur) tombait tout en bas dans « Protection &
+    # accessoires » — exactement le bug qui a motivé ce correctif — et
+    # « Onduleur hors réseau X » (qui CONTIENT « onduleur ») aurait été
+    # happé par le test réseau juste en dessous.
+    if is_offgrid(nom):
+        return 'Onduleurs hors réseau'
     if 'onduleur' in n:
         return 'Onduleurs réseau'
     if 'afficheur' in n or 'variateur' in n or 'coffret complet' in n:
