@@ -9,7 +9,8 @@ Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
-import base64, html, io, json, re, subprocess, sys, tempfile, threading
+import base64, html, io, re, subprocess, sys, tempfile, threading
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -66,13 +67,26 @@ def _guard_huawei_accessories(items):
     (dongle) quand l'onduleur des lignes n'est pas Huawei. Le builder filtre
     déjà ces lignes en amont ; ce garde-fou empêche qu'une ligne obsolète glissée
     dans ``data`` réapparaisse dans le PDF. Huawei détecté sur la désignation +
-    la marque de l'onduleur des lignes fournies."""
+    la marque de l'onduleur des lignes fournies.
+
+    QJR124 — n'est PLUS appliqué au tableau une-page : ses lignes sont filtrées
+    en amont par le builder, en même temps que ``totaux_all``, de sorte que la
+    somme des lignes rendues et le Total TTC imprimé décrivent le même panier
+    (le re-filtrage au rendu retirait une ligne DÉJÀ comptée dans le total).
+    Il ne subsiste que sur les listes PAR OPTION, dont les totaux sont eux
+    aussi calculés sur des listes filtrées.
+
+    QJR124 — la détection passe de ``all`` à ``any`` : sur une liste portant
+    DEUX marques d'onduleur (Huawei réseau + Deye hybride), ``all`` retirait le
+    Smart Meter de l'onduleur Huawei RÉELLEMENT facturé. Un accessoire n'est
+    retiré que s'il est ORPHELIN — aucun onduleur Huawei sur la liste.
+    """
     rows = items or []
     inverters = [it for it in rows
                  if "onduleur" in (it.get("designation", "") or "").lower()]
     if not inverters:
         return list(rows)
-    is_huawei = all(
+    is_huawei = any(
         "huawei" in (f"{it.get('designation', '')} "
                      f"{it.get('marque', '')}").lower()
         for it in inverters)
@@ -336,6 +350,12 @@ FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
 CUMUL_A = [-TOTAL_AVEC + QUOTE_INPUT["eco_a_cumul"] * y for y in YEARS]
+# QJR125 — la série tracée est-elle le cashflow RÉEL du devis (dégradation,
+# rendement batterie, provision onduleur) ou le repli « économie plate » ? Le
+# repli est faux de +14,5 % / +36,6 % sur le gain final (M5) : on ne le TRACE
+# plus. Ces drapeaux sont posés par ``apply_quote_data``.
+CUMUL_S_REEL = False
+CUMUL_A_REEL = False
 
 SCENARIO    = "Les deux (Sans + Avec)"
 RECOMMENDED = "Avec batterie"
@@ -365,6 +385,17 @@ ONEPAGE_NOTE_BATTERIE = False
 # une page. Défaut None = aucune économie affichée sur le chemin autonome ;
 # le builder la pose TOUJOURS pour un vrai devis.
 ONEPAGE_BRANCHE = None
+# QJR13 — capacité batterie TOTALE des LIGNES du devis (``data
+# ['batterie_kwh_total']``, calculé par ``builder._battery_kwh_from_items`` sur
+# l'option AVEC). Défaut 0 = « aucune batterie connue » : un optimum du moteur
+# qui annonce du stockage ne peut alors PAS être prouvé conforme au devis, donc
+# il n'est pas publié (voir ``_optimum_decrit_ce_devis``).
+BATTERIE_KWH_TOTAL = 0.0
+# QRP1 — liens client-facing posés par le builder (``data['links']``). Le seul
+# consommé ici est ``signer`` : l'URL TOKENISÉE de la proposition en ligne
+# (ShareLink, ``utils.client_links.chemin_proposition``). Aucune URL n'est
+# forgée dans ce module ; dict vide ⇒ le format une page est byte-identique.
+LINKS = {}
 # M7 — date d'échéance RÉELLE du devis, format « JJ/MM/AAAA », ou "" quand elle
 # est indéterminable (les mentions de validité disparaissent alors).
 VALID_UNTIL = ""
@@ -598,21 +629,51 @@ DATE_ACCEPTATION = ""
 SAVINGS_METHOD = None
 
 
+def _sans_economies_publiees():
+    """QJR123 — LE document publie-t-il des économies ?
+
+    UNE seule définition, celle que ``build_html`` applique déjà aux deux
+    graphes (``_sans_economies``) et ``page1`` aux pastilles ROI : dossier
+    raccordé en MOYENNE TENSION (chiffres au barème BASSE tension, donc pas
+    les siens) ou puissance sans ancrage réel. Tout bloc qui PORTE un chiffre
+    d'économies — méthode, hypothèses — lit cette fonction.
+    """
+    return bool(MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
+
+
 def _savings_method_html():
     """QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
     chiffré compact). Rendu UNIQUEMENT quand data["savings_method"] est fourni.
     Aucune donnée fabriquée : le texte vient du builder (une seule source)."""
+    # QJR123 — MÊME GARDE QUE LES GRAPHES ET LES PASTILLES ROI. Ce bloc n'avait
+    # aucun garde : sur un dossier MOYENNE TENSION, les pages 1 et 2 omettent
+    # scrupuleusement les économies (les chiffres sont au barème BASSE tension)
+    # et la page 3 imprimait juste après « COMMENT NOUS CALCULONS VOS
+    # ÉCONOMIES » avec ce même tarif BT. Idem quand la puissance n'a aucun
+    # ancrage réel : la méthode décrit alors des économies non publiées.
+    if _sans_economies_publiees():
+        return ""
     sm = SAVINGS_METHOD
     if not isinstance(sm, dict) or not sm.get("ligne_methode"):
         return ""
     methode = _esc(sm.get("ligne_methode", ""))
     exemple = sm.get("exemple")
-    approx = " (approximatif)" if sm.get("approximatif") else ""
+    # QJR123 — la mention d'estimation s'affiche INDÉPENDAMMENT de l'exemple :
+    # le modèle « estimation » du builder pose ``approximatif=True`` mais
+    # ``exemple=None``, donc la mention n'apparaissait JAMAIS sur les devis
+    # qu'elle devait précisément qualifier.
+    approx = (" (approximatif)"
+              if (sm.get("approximatif") or SAVINGS_ESTIMATED) else "")
     ex_html = ""
     if exemple:
         ex_html = (
             f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
             f'{_esc(exemple)}{approx}</div>')
+    elif approx:
+        ex_html = (
+            f'<div style="margin-top:4px;font-size:7.5pt;color:{CG4};'
+            f'font-style:italic;">Économies estimées{approx} — '
+            f'à confirmer sur vos factures.</div>')
     return (
         f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
         f'border:1px solid {CG2};border-left:4px solid {CA};margin-bottom:5px;">'
@@ -633,6 +694,11 @@ def _hypotheses_html():
     économies (tarif, source barème, autoconsommation-first loi 82-21, base de
     production). Rendu UNIQUEMENT quand data["hypotheses"] est fourni. Le texte
     vient du builder (une seule source) ; aucun chiffre inventé ici."""
+    # QJR123 — même garde que le bloc « méthode » ci-dessus : ces hypothèses
+    # portent le tarif MAD/kWh et la production par kWc qui SERVENT les
+    # économies. Économies non publiées ⇒ hypothèses non publiées.
+    if _sans_economies_publiees():
+        return ""
     h = HYPOTHESES
     if not isinstance(h, dict):
         return ""
@@ -690,23 +756,34 @@ def _multi_villa_html():
     mv = MULTI_VILLA
     if not isinstance(mv, dict) or not mv.get("groupes"):
         return ""
+
+    # QJR126 — un montant MANQUANT ne s'écrit pas « 0 ». Les replis
+    # ``t.get("ht_net", 0)`` / ``fmt(gt.get("ttc", 0))`` imprimaient
+    # « Total général : 0 MAD » d'apparence factuelle si la clé manquait.
+    def _mont(source, cle, formateur):
+        valeur = source.get(cle)
+        return (formateur(valeur)
+                if isinstance(valeur, (int, float)) else "")
+
     rows = ""
     for g in mv["groupes"]:
         t = g.get("totaux") or {}
         rows += (
             f'<tr><td style="padding:3px 8px;color:{CG7};">{_esc(g.get("label", ""))}</td>'
             f'<td style="padding:3px 8px;text-align:right;color:{CG7};">'
-            f'{_fmt2(t.get("ht_net", 0))}</td>'
+            f'{_mont(t, "ht_net", _fmt2)}</td>'
             f'<td style="padding:3px 8px;text-align:right;font-weight:700;'
-            f'color:{CN};white-space:nowrap;">{fmt(t.get("ttc", 0))}</td></tr>')
+            f'color:{CN};white-space:nowrap;">{_mont(t, "ttc", fmt)}</td></tr>')
     gt = mv.get("grand_total") or {}
-    rows += (
-        f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
-        f'font-weight:800;">Total général</td>'
-        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
-        f'{_fmt2(gt.get("ht_net", 0))}</td>'
-        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
-        f'white-space:nowrap;">{fmt(gt.get("ttc", 0))}</td></tr>')
+    # Pas de total général chiffrable ⇒ pas de ligne « Total général ».
+    if isinstance(gt.get("ttc"), (int, float)):
+        rows += (
+            f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
+            f'font-weight:800;">Total général</td>'
+            f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
+            f'{_mont(gt, "ht_net", _fmt2)}</td>'
+            f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
+            f'white-space:nowrap;">{_mont(gt, "ttc", fmt)}</td></tr>')
     return (
         f'<div style="border:1px solid {CG2};border-radius:8px;overflow:hidden;'
         f'margin-bottom:5px;">'
@@ -853,8 +930,30 @@ def fnum(v):
         return str(v)
 
 def kwc_fr(v):
-    """Format kWc value with French decimal comma: 10,65"""
-    return f"{v:.2f}".replace(".", ",")
+    """QJR145 (a) — puissance à la française : 10,65 (jamais « 10.65 »).
+
+    Le formateur existait depuis l'origine SANS aucun site d'appel : les cinq
+    impressions de puissance du document sortaient le point décimal anglais.
+    Les décimales inutiles sont retirées (« 10 kWc », pas « 10,00 kWc »).
+    """
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return (f"{f:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
+
+
+def _kwc_mention(prefixe="&#160;", suffixe="&#160;kWc"):
+    """QJR145 (a) — « 10,65 kWc » prêt à imprimer, ou RIEN.
+
+    La case de confirmation de commande n'avait pas la garde
+    ``PUISSANCE_INCONNUE`` que ``page1`` et ``build_html`` appliquent déjà :
+    elle imprimait « Système photovoltaïque 0.0 kWc » sur un devis dont la
+    puissance n'a aucun ancrage réel.
+    """
+    if PUISSANCE_INCONNUE or not KWC:
+        return ""
+    return f"{prefixe}{kwc_fr(KWC)}{suffixe}"
 
 def b64(src):
     if isinstance(src, (str, Path)):
@@ -1001,44 +1100,11 @@ def footer_p3(extra_style=""):
             f'</div>'
             f'</div>')
 
-# ── Data loading ─────────────────────────────────────────────────────────────
-def load_equip(devis_id):
-    """Load Option 1 equipment from devis_history.json."""
-    f = BASE_DIR / "devis_history.json"
-    if not f.exists(): return [], []
-    try:
-        with open(f, "r", encoding="utf-8") as fh: h = json.load(fh)
-        e = h.get(str(devis_id), {})
-        sys.path.insert(0, str(BASE_DIR))
-        import pandas as pd
-        from utils import sanitize_df
-        def parse(recs):
-            if not recs: return []
-            df = pd.DataFrame(recs)
-            try: df = sanitize_df(df)
-            except Exception: pass
-            cols = df.columns.tolist()
-            def col(hints):
-                for h in hints:
-                    for c in cols:
-                        if h in c.lower(): return c
-                return None
-            dc = col(["d\u00e9signation","designation","signation","design"])
-            qc = col(["quantit\u00e9","quantit","qty","qt\u00e9"])
-            pc = col(["unit. ttc","unit.ttc","unit ttc","prix unit","unit_ttc","prix_unit"])
-            mc = col(["marque"])
-            out = []
-            for _, r in df.iterrows():
-                qty = float(r[qc]) if qc else 0
-                if qty <= 0: continue
-                out.append({"designation": str(r[dc]).strip() if dc else "",
-                             "marque":     str(r[mc]).strip() if mc else "",
-                             "quantite":   qty,
-                             "prix_unit_ttc": float(r[pc]) if pc else 0})
-            return out
-        return parse(e.get("df_sans", [])), parse(e.get("df_avec", []))
-    except Exception:
-        return [], []
+# ── Data loading ──────────────────────────────────────────────────────────────────────────
+# QJR145 (e) — ``load_equip`` SUPPRIMÉ : code mort (zéro site d'appel dans
+# tout le dépôt) qui lisait un ``devis_history.json`` d'archive via pandas et
+# fabriquait des lignes à ``prix_unit_ttc = 0`` quand la colonne de prix
+# manquait. Les données du document viennent du builder, et de lui seul.
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 def _style_ax(fig, ax):
@@ -1047,6 +1113,34 @@ def _style_ax(fig, ax):
     ax.spines["left"].set_color("#E5E7EB"); ax.spines["bottom"].set_color("#E5E7EB")
     ax.tick_params(colors=CG4, labelsize=8)
     ax.grid(axis="y", color="#F3F4F6", linewidth=0.8, zorder=0)
+
+def _roi_de_la_courbe(cumul):
+    """QJR125 — année du croisement à ZÉRO de la série TRACÉE (interpolée).
+
+    L'étoile « ROI ~N ans » était posée à l'abscisse de ``roi_s``/``roi_a``,
+    qui redevient un payback LINÉAIRE (``_ref_total / eco``) dès que l'étude
+    porte ses propres économies : le point d'équilibre ANNONCÉ ne coïncidait
+    alors pas avec celui DESSINÉ, sous un titre qui promet « Point de retour
+    sur investissement ». ``None`` quand la courbe ne croise jamais zéro —
+    l'étoile n'est alors pas posée.
+    """
+    for annee in range(1, len(cumul)):
+        if cumul[annee] >= 0:
+            precedent = cumul[annee - 1]
+            span = cumul[annee] - precedent
+            frac = (0 - precedent) / span if span else 0.0
+            return round((annee - 1) + frac, 1)
+    return None
+
+
+def _courbes_roi_tracables():
+    """QJR125 — les branches AFFICHÉES portent-elles toutes leur cumul réel ?"""
+    if SCENARIO != 'Avec batterie' and not CUMUL_S_REEL:
+        return False
+    if SCENARIO != 'Sans batterie' and not CUMUL_A_REEL:
+        return False
+    return True
+
 
 def make_chart_roi():
     # Ratio EXACTEMENT celui du cadre d'affichage (680×170 px = 4:1) et
@@ -1064,9 +1158,18 @@ def make_chart_roi():
     if _show_a:
         ax.fill_between(x, ya, 0, where=(ya >= 0), alpha=0.08, color=CA,  zorder=2)
         ax.plot(x, ya, color=CA,  linewidth=2.5, label="Avec batterie",  zorder=4, solid_capstyle="round")
+    # QJR125 — l'étoile sort du croisement à zéro de la courbe TRACÉE, plus du
+    # payback annoncé ailleurs : les deux pouvaient désigner deux années
+    # différentes sur la même image. Pas de croisement ⇒ pas d'étoile.
     _roi_pts = []
-    if _show_s: _roi_pts.append((ROI_S, CUMUL_S, CNM, f"ROI ~{ROI_S} ans"))
-    if _show_a: _roi_pts.append((ROI_A, CUMUL_A, CA,  f"ROI ~{ROI_A} ans"))
+    if _show_s:
+        _r = _roi_de_la_courbe(CUMUL_S)
+        if _r is not None:
+            _roi_pts.append((_r, CUMUL_S, CNM, f"ROI ~{_r} ans"))
+    if _show_a:
+        _r = _roi_de_la_courbe(CUMUL_A)
+        if _r is not None:
+            _roi_pts.append((_r, CUMUL_A, CA, f"ROI ~{_r} ans"))
     _y_offsets = [15, -25]  # Sans batterie above, Avec batterie below
     for i, (roi, cumul, color, lbl) in enumerate(_roi_pts):
         yr = int(roi); fr = roi - yr
@@ -1165,15 +1268,48 @@ def make_chart_monthly():
 
 # ── Equipment rows ────────────────────────────────────────────────────────────
 def _fmt2(v):
-    """Two-decimal French money formatting: 1\u202f166,67."""
-    return f"{v:,.2f}".replace(",", "\u202f").replace(".", ",")
+    """Montant au CENTIME \u00e0 la fran\u00e7aise : 1\u202f166,67.
+
+    QJR122 \u2014 l'arrondi est align\u00e9 sur la cha\u00eene canonique
+    (``selectors._canonical_totaux`` quantifie en ``ROUND_HALF_UP`` au
+    centime) : le formatage flottant de Python arrondit en mode BANQUIER,
+    de sorte que le M\u00caME devis pouvait afficher deux nombres diff\u00e9rents
+    entre le PDF et l'\u00e9ch\u00e9ancier / ``option_totaux``. On repasse par
+    ``Decimal(str(v))`` \u2014 la repr\u00e9sentation d\u00e9cimale courte, celle que la
+    cha\u00eene canonique aurait produite \u2014 avant de quantifier.
+    """
+    try:
+        d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return str(v)
+    return f"{d:,.2f}".replace(",", "\u202f").replace(".", ",")
+
+
+def _fmt2_mad(v):
+    """``_fmt2`` suffix\u00e9 \u00ab MAD \u00bb \u2014 le format des lignes de total."""
+    return _fmt2(v) + "\u00a0MAD"
 
 
 def _item_pu_ht(it):
-    """Per-line HT unit price (stored, or derived from the TTC)."""
+    """Per-line HT unit price (stored, or derived from the TTC).
+
+    QJR146 (e) — LE TAUX DE DÉRIVATION EST CELUI DE LA LIGNE. Le repli
+    divisait par le taux GLOBAL du devis (``TVA_PCT``) alors que la MÊME ligne
+    imprime son PROPRE taux dans la colonne d'à côté (``it['taux_tva']``,
+    réforme des taux par ligne) : sur un devis mixte 20 %/10 %, le P.U. HT
+    d'une ligne à 10 % sortait 8,3 % trop bas, sous un « 10% » affiché. Le
+    taux global reste le repli quand la ligne n'en porte pas.
+    """
     pu_ht = it.get("prix_unit_ht")
     if pu_ht is None:
-        pu_ht = it["prix_unit_ttc"] / (1 + TVA_PCT / 100)
+        taux = it.get("taux_tva")
+        if taux in (None, ""):
+            taux = TVA_PCT
+        try:
+            taux = float(taux)
+        except (TypeError, ValueError):
+            taux = float(TVA_PCT)
+        pu_ht = it["prix_unit_ttc"] / (1 + taux / 100)
     return float(pu_ht)
 
 
@@ -1227,7 +1363,11 @@ def _totals_block_rows(totaux, colspan):
         rate = buckets[0]["taux"] if buckets else TVA_PCT
         tva_pct = int(rate) if rate == int(rate) else rate
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva))
-    rows += row("Total TTC", fmt(ttc), navy=True)
+    # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
+    # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
+    # (52 655,42 + 10 531,08 s'imprimait « 63 186 MAD »), et c'est ce montant
+    # qui sert de base à l'échéancier de la page 3.
+    rows += row("Total TTC", _fmt2_mad(ttc), navy=True)
     return rows
 
 
@@ -1258,9 +1398,20 @@ def _garanties_du_devis():
     famille dont aucune ligne ne porte de garantie saisie est ABSENTE de la
     liste : les badges de la page signature affichaient « 10 / 12 / 30 ANS »
     en dur, quels que soient les produits réellement vendus.
+
+    QJR145 (d) — sur un document « Les deux (Sans + Avec) », les garanties
+    partaient de ``SANS_ITEMS`` seul : la BATTERIE, qui n'existe que dans
+    ``AVEC_ITEMS``, n'obtenait JAMAIS son badge alors que le document la vend.
+    Les deux paniers sont donc unis avant d'extraire les familles — c'est déjà
+    ce que fait ``residential.theme._composition_rows`` pour la même raison.
     """
-    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
-    rows = list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+    if SCENARIO == 'Avec batterie':
+        rows = list(AVEC_ITEMS or [])
+    elif SCENARIO == 'Sans batterie':
+        rows = list(SANS_ITEMS or [])
+    else:
+        rows = list(SANS_ITEMS or []) + list(AVEC_ITEMS or [])
+    rows = rows or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
 
     def _premier(pred, champ):
         for it in rows:
@@ -1292,6 +1443,57 @@ def _garanties_du_devis():
     return out
 
 
+def _lignes_option_rendue():
+    """Lignes de l'option effectivement présentée (même choix que M6)."""
+    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
+    return list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+
+
+def _marques_du_devis():
+    """QJR121 — marques RÉELLEMENT vendues, par famille.
+
+    Même principe que ``_garanties_du_devis`` : la page signature ne peut
+    affirmer que ce que les LIGNES du devis portent. La source est le champ
+    ``marque`` de la fiche produit (celui-là même qu'imprime le tableau de la
+    page 2) — jamais une marque devinée dans une désignation libre. Aucune
+    marque lisible ⇒ dict vide ⇒ la carte est OMISE.
+    """
+    familles = {"panneaux": [], "onduleurs": [], "batteries": []}
+    predicats = (
+        ("panneaux", lambda d: "panneau" in d or "module" in d),
+        ("onduleurs", lambda d: "onduleur" in d),
+        ("batteries", lambda d: "batterie" in d),
+    )
+    for it in _lignes_option_rendue():
+        des = (it.get("designation") or "").lower()
+        marque = (it.get("marque") or "").strip()
+        if not marque:
+            continue
+        for cle, pred in predicats:
+            if pred(des) and marque not in familles[cle]:
+                familles[cle].append(marque)
+                break
+    return {k: v for k, v in familles.items() if v}
+
+
+#: Mots des désignations qui ATTESTENT une supervision vendue (passerelle,
+#: compteur communicant, dongle…). Sans l'un d'eux, aucune application de
+#: monitoring n'est promise : un devis pompage n'en porte aucune.
+_MOTS_MONITORING = ("monitoring", "supervis", "dongle", "wifi", "wi-fi",
+                    "smart meter", "smartmeter", "datalogger", "data logger",
+                    "passerelle", "compteur communicant")
+
+
+def _monitoring_vendu():
+    """QJR121 — une ligne du devis porte-t-elle la supervision promise ?"""
+    for it in _lignes_option_rendue():
+        blob = "%s %s" % ((it.get("designation") or "").lower(),
+                          (it.get("_produit_nom") or "").lower())
+        if any(mot in blob for mot in _MOTS_MONITORING):
+            return True
+    return False
+
+
 def equip_rows(items, totaux, hi_bat=False):
     rows = ""
     for i, it in enumerate(items):
@@ -1314,9 +1516,15 @@ def equip_rows(items, totaux, hi_bat=False):
         bg = f"background:{CAL};" if is_bat else (f"background:{CG1};" if i % 2 == 1 else "")
         qty_s = int(qty) if qty == int(qty) else qty
         desc_html = _desc_lines_html(it, max_lines=2, font_pt=5)
+        # QJR146 (e) \u2014 LE TIRET NE MASQUE QUE L'ABSENCE DE PRIX, jamais un
+        # prix N\u00c9GATIF. ``pu_ht > 0`` renvoyait \u00ab \u2014 \u00bb sur une ligne \u00e0 montant
+        # n\u00e9gatif (une reprise, un geste commercial pass\u00e9 en ligne) alors que
+        # ce montant P\u00c8SE dans le sous-total imprim\u00e9 juste dessous : le client
+        # ne pouvait pas rapprocher les lignes du total. Seul un prix NUL
+        # continue de s'afficher en tiret.
         dash = "\u2014"
-        pu_ht_s = _fmt2(pu_ht) if pu_ht > 0 else dash
-        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht > 0 else dash
+        pu_ht_s = _fmt2(pu_ht) if pu_ht else dash
+        tot_ht_s = _fmt2(qty * pu_ht) if pu_ht else dash
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
@@ -1362,8 +1570,19 @@ body{{font-family:'DM Sans',sans-serif;font-size:9pt;color:{CG7};
 def page1():
     # Local formatters — use U+00A0 (NON-BREAKING SPACE) for reliable rendering in all fonts
     _s      = "\u00a0"
-    ts      = f"{int(TOTAL_SANS):,}".replace(",", _s) + "\u00a0MAD"
-    ta      = f"{int(TOTAL_AVEC):,}".replace(",", _s) + "\u00a0MAD"
+    # QJR53 (30/08/2026) \u2014 LE MEME ARRONDI QUE ``fmt``, SUR TOUTES LES PAGES.
+    # Ces deux cartes d'option de la page 1 TRONQUAIENT (``int(x)``) pendant
+    # que le bloc \u00ab Total TTC \u00bb de la page 2 ARRONDIT (``fmt`` fait
+    # ``int(round(x))``). Tant que le builder rendait un TTC deja arrondi au
+    # dirham, les deux expressions donnaient le meme entier et l'ecart etait
+    # invisible ; depuis que la donnee est au CENTIME, un total en ,5+ sort
+    # DIFFERENT d'une page a l'autre \u2014 51 232,80 s'imprimait \u00ab 51 232 \u00bb sur la
+    # carte et \u00ab 51 233 \u00bb dans le bloc de totaux, pour la MEME option, sur le
+    # document du client. Le format d'affichage reste le DIRHAM (convention
+    # maison de ``fmt``, et les tranches de paiement de ce document sont
+    # arrondies au millier) : seule la regle d'arrondi est alignee.
+    ts      = f"{int(round(TOTAL_SANS)):,}".replace(",", _s) + "\u00a0MAD"
+    ta      = f"{int(round(TOTAL_AVEC)):,}".replace(",", _s) + "\u00a0MAD"
     esa_mad = f"{int(ECO_S_ANN):,}".replace(",", _s) + "\u00a0MAD"
     eaa_mad = f"{int(ECO_A_ANN):,}".replace(",", _s) + "\u00a0MAD"
     pk      = f"{int(PROD_KWH):,}".replace(",", _s)
@@ -1440,8 +1659,11 @@ def page1():
              if _both and RECOMMENDED == 'Avec batterie' else '')
     # Price display — crossed-out original + discount badge + new price when discount active
     if DISCOUNT_PCT > 0:
-        _s_before = f"{int(TOTAL_SANS_BEFORE):,}".replace(",", _s) + "\u00a0MAD"
-        _a_before = f"{int(TOTAL_AVEC_BEFORE):,}".replace(",", _s) + "\u00a0MAD"
+        # QJR53 \u2014 meme alignement que ``ts``/``ta`` ci-dessus : le prix
+        # barre est le MEME montant, il ne peut pas suivre une autre regle
+        # d'arrondi que le total qu'il barre.
+        _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
+        _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
@@ -1541,12 +1763,14 @@ def page1():
         # rendue. Devis non divergent ⇒ HTML byte-identique.
         # La carte ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
         # du nombre (19 → 14 pt), et la ligne de légende reste sur UNE ligne.
-        _kpi_kwc = f'{KWC}&nbsp;kWc'
+        # QJR145 (a) — virgule française (le formateur ``kwc_fr`` existait sans
+        # aucun site d'appel : le document sortait « 10.65 kWc »).
+        _kpi_kwc = f'{kwc_fr(KWC)}&nbsp;kWc'
         _kpi_kwc_pt = '19pt'
         if (PANNEAUX_DIVERGENTS and _both and KWC_SANS > 0 and KWC_AVEC > 0
                 and NB_PAN_SANS > 0 and NB_PAN_AVEC > 0):
-            _kpi_kwc = (f'{KWC_SANS:g}&#160;&#183;&#160;{KWC_AVEC:g}'
-                        '&nbsp;kWc').replace(".", ",")
+            _kpi_kwc = (f'{kwc_fr(KWC_SANS)}&#160;&#183;&#160;'
+                        f'{kwc_fr(KWC_AVEC)}&nbsp;kWc')
             _kpi_kwc_pt = '14pt'
             _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
                          f'(sans &#183; avec)')
@@ -1602,12 +1826,23 @@ def page1():
     _h = HYPOTHESES if isinstance(HYPOTHESES, dict) else {}
     _prod_net = _h.get("productible_net_kwh_kwc")
     _prod_ville = (_h.get("productible_ville") or "").strip()
+    # QJR127 — la ville NOMMÉE est celle de la table PVGIS. Quand ce n'est pas
+    # la ville du client (Settat → Casablanca), la pastille le DIT au lieu de
+    # présenter une valeur de Casablanca comme « donnée PVGIS à Settat ».
+    _ville_est_ref = bool(_h.get("productible_ville_est_reference"))
+    _prod_suffixe = (
+        "(donn&#233;e PVGIS)" if _ville_est_ref
+        else "(donn&#233;e PVGIS &#8212; ville de r&#233;f&#233;rence "
+             "la plus proche)")
+    # La pastille courte garde son ``nowrap`` d'origine (rendu inchangé) ; la
+    # forme longue s'autorise un retour à la ligne plutôt que de déborder.
+    _prod_wrap = "white-space:nowrap;" if _ville_est_ref else ""
     _pill_productible = (
         '<span style="background:rgba(255,255,255,0.08);border:1px solid '
         'rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;'
-        'font-size:6.5pt;color:white;white-space:nowrap;">'
+        f'font-size:6.5pt;color:white;{_prod_wrap}">'
         f'{SVG_SUN}&#8776;&#160;{fnum(_prod_net)}&#160;kWh par kWc et par an '
-        f'&#224; {_esc(_prod_ville.title())} (donn&#233;e PVGIS)</span>'
+        f'&#224; {_esc(_prod_ville.title())} {_prod_suffixe}</span>'
     ) if (_prod_net and _prod_ville) else ""
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
@@ -1922,6 +2157,58 @@ def page3():
         "Garanties fabricant des produits install&#233;s, telles que "
         "d&#233;taill&#233;es sur leurs fiches techniques.")
 
+    # ── QJR121 — LA CARTE « ÉQUIPEMENTS » NOMME LES MARQUES DU DEVIS ────────
+    # Elle affirmait « Panneaux Canadian Solar, onduleurs Huawei & Deye —
+    # certifiés IEC » sur TOUT devis : contredit par le tableau de la page 2 dès
+    # que les lignes portent d'autres marques, et invérifiable pour la
+    # certification. La phrase se compose des marques RÉELLEMENT vendues (comme
+    # les garanties se composent des fiches produit) et s'OMET quand aucune
+    # marque n'est lisible.
+    _marques = _marques_du_devis()
+    _equip_card = ""
+    if _marques:
+        _bouts = []
+        if _marques.get("panneaux"):
+            _bouts.append("Panneaux %s" % " & ".join(_marques["panneaux"]))
+        if _marques.get("onduleurs"):
+            _bouts.append("onduleurs %s" % " & ".join(_marques["onduleurs"]))
+        if _marques.get("batteries"):
+            _bouts.append("batterie %s" % " & ".join(_marques["batteries"]))
+        _equip_txt = _esc(", ".join(_bouts))
+        _equip_card = f"""
+      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="{CA}" stroke="{CA}" stroke-width="1">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Équipements de votre installation</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_equip_txt} — avec la garantie fabricant de chaque produit.</div>
+        </div>
+      </div>
+"""
+
+    # QJR121 — l'« Application de monitoring 24/7 » n'est promise que si une
+    # LIGNE du devis la porte (passerelle, dongle, compteur communicant…).
+    # Aucune : la carte disparaît plutôt que de vendre un composant absent.
+    _monitoring_card = ""
+    if _monitoring_vendu():
+        _monitoring_card = f"""
+      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{CA}" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+            <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="3"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Suivi en temps réel</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">Supervision de la production, des économies et de l’état de votre installation, via le matériel de communication chiffré au devis.</div>
+        </div>
+      </div>
+"""
+
     # Q5 — sous-titres des « prochaines étapes » : délais des réglages
     # société, toujours suivis de « (indicatif) ». Réglage vidé ⇒
     # sous-titre VIDE : le document ne promet alors aucun délai. Ces
@@ -1968,7 +2255,7 @@ def page3():
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
-        f'Syst&#232;me photovolta&#239;que {KWC}&#160;kWc &#8212; '
+        f'Syst&#232;me photovolta&#239;que{_kwc_mention()} &#8212; '
         f'{"Sans batterie" if SCENARIO == "Sans batterie" else "Avec batterie"}</div>'
         f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
         f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
@@ -2000,15 +2287,21 @@ def page3():
         _acompte = max(0, min(_acompte, int(_pay_total) - _solde))
         _materiel = int(_pay_total - _acompte - _solde)
 
+        # QJR145 (c) — LES TROIS POURCENTAGES SOMMENT À 100. Arrondis
+        # indépendamment, ils affichaient 99 % ou 101 % et contredisaient la
+        # puce CGV juste au-dessus. Le reliquat va à la tranche « Matériel »,
+        # exactement comme le MONTANT (``_materiel`` est déjà le reste).
         _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
-        _pct_m = round(_materiel / _pay_total * 100) if _pay_total else 0
         _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
+        _pct_m = (100 - _pct_a - _pct_s) if _pay_total else 0
 
         def _pay_box(pct, montant, label):
+            # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
+            # imprimaient « 16 000 MAD MAD » (atteignable via ?devis_final).
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)} MAD</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)}</div>'
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2045,7 +2338,14 @@ def page3():
             # RIB bar
             f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
             f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
-            f'{ENT_RIB_LINE.format(cg7=CG7)}</div>'
+            # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
+            # ``ENT_RIB_LINE`` est RECONSTRUITE à l'ingestion avec la raison
+            # sociale, la banque et le RIB du tenant (échappés HTML, ce qui ne
+            # touche PAS les accolades) : une raison sociale portant « { » ou
+            # « } » faisait lever ``.format()`` (KeyError/ValueError) ICI, hors
+            # de tout try — le PDF entier échouait sur un caractère du nom de
+            # la société. ``str.replace`` ne lit aucun champ de format.
+            f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
             f'</div>'
             f'</div>'
         )
@@ -2064,9 +2364,9 @@ def page3():
   <!-- content wrapper: clipped so it never overlaps absolutely-positioned BPA + footer -->
   <div style="overflow:hidden;max-height:820px;">
 
-  <!-- WHY TAQINOR -->
+  <!-- QJR121 — POURQUOI NOUS : titre, marques et supervision dérivés du devis -->
   <div style="padding:6px 24px 4px;margin-bottom:5px;">
-    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir TAQINOR&#160;?</div>
+    <div class="serif" style="font-size:26px;color:{CN};margin-bottom:2px;">Pourquoi choisir {ENT_NOM_MARQUE}&#160;?</div>
     <div style="font-size:9pt;color:{CG4};font-style:italic;margin-bottom:5px;">Des experts engag\u00e9s pour votre transition \u00e9nerg\u00e9tique</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
 
@@ -2082,17 +2382,7 @@ def page3():
         </div>
       </div>
 
-      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="{CA}" stroke="{CA}" stroke-width="1">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
-        </div>
-        <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">\u00c9quipements premium certifi\u00e9s</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Panneaux Canadian Solar, onduleurs Huawei &amp; Deye \u2014 certifi\u00e9s IEC avec garantie fabricant compl\u00e8te.</div>
-        </div>
-      </div>
+      {_equip_card}
 
       <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
         <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -2106,18 +2396,7 @@ def page3():
         </div>
       </div>
 
-      <div style="background:white;border:1px solid {CG2};border-radius:10px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;">
-        <div style="width:34px;height:34px;border-radius:50%;background:{CAL};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{CA}" stroke-width="2">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-            <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="3"/>
-          </svg>
-        </div>
-        <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">Suivi en temps r\u00e9el</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">Application de monitoring 24/7 pour suivre production, \u00e9conomies et \u00e9tat de votre installation.</div>
-        </div>
-      </div>
+      {_monitoring_card}
 
     </div>
   </div>
@@ -2203,7 +2482,7 @@ def page3():
         <div style="font-size:7pt;color:{CG4};margin-top:{'2' if DEVIS_FINAL else '3'}px;font-style:italic;">{_doc_text("bpa_mention")}</div>
       </div>
       <div style="flex:1;border:1px solid {CG2};border-radius:8px;padding:{'6px 10px' if DEVIS_FINAL else '8px 12px'};min-height:{'50' if DEVIS_FINAL else '65'}px;background:white;">
-        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature TAQINOR</div>
+        <div style="font-size:8pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">Signature {ENT_NOM_MARQUE}</div>
         <div style="border-bottom:1px solid {CG2};min-height:{'10' if DEVIS_FINAL else '14'}px;margin-bottom:3px;"></div>
         <div style="font-size:{'8' if DEVIS_FINAL else '9'}pt;color:{CG4};margin-top:2px;">Repr\u00e9sentant&#160;: <span style="display:inline-block;min-width:80px;border-bottom:1px solid {CG2};">&nbsp;</span></div>
         <div style="border-bottom:1px solid {CG2};min-height:{'8' if DEVIS_FINAL else '12'}px;margin-top:3px;margin-bottom:3px;"></div>
@@ -2271,6 +2550,103 @@ def _bankable_pct(valeur):
         return ""
 
 
+#: QJR159 (b) — écart RELATIF toléré entre la puissance simulée et la puissance
+#: VENDUE. Même esprit que ``pricing._HORAIRE_TOLERANCE_KWC`` : 2 % absorbe les
+#: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
+#: panneau de plus pèse déjà bien davantage).
+TOLERANCE_KWC_SIMULATION = 0.02
+
+
+def _bankable_decrit_ce_champ(bank):
+    """QJR159 (b) — la simulation décrit-elle le champ PV RÉELLEMENT vendu ?
+
+    La preuve est la seule dont on dispose sans recalculer quoi que ce soit :
+    la somme des ``kwc`` des zones simulées doit égaler la puissance crête du
+    document. Tout ce qui n'est pas prouvé — puissance du devis inconnue,
+    zones absentes ou illisibles — rend ``False`` et le bloc est OMIS (jamais
+    un productible de repli).
+    """
+    if not isinstance(bank, dict):
+        return False
+    try:
+        kwc_devis = float(KWC or 0)
+    except (TypeError, ValueError):
+        return False
+    if kwc_devis <= 0 or PUISSANCE_INCONNUE:
+        return False
+    zones = bank.get("zones")
+    if not isinstance(zones, (list, tuple)) or not zones:
+        return False
+    total = 0.0
+    for zone in zones:
+        if not isinstance(zone, dict):
+            return False
+        try:
+            total += float(zone.get("kwc"))
+        except (TypeError, ValueError):
+            return False
+    if total <= 0:
+        return False
+    return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
+
+
+#: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
+#: \u00ab Production annuelle \u00bb imprim\u00e9e sur la M\u00caME page. C'est EXACTEMENT la
+#: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
+#: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
+#: l'entier de la carte, jamais les ~10 % que produisait le double derate.
+TOLERANCE_PRODUCTION_PAGE = 0.01
+
+
+def _bankable_concorde_avec_la_page(bank):
+    """QJR115 \u2014 la P50 bancable dit-elle la M\u00caME production que la carte ?
+
+    La page \u00c9tude imprime deux fois la production annuelle de la M\u00caME
+    installation : la carte \u00ab Production annuelle \u00bb (``ETUDE
+    ['production_annuelle']``, figure canonique du document \u2014 \u00e9tude saisie ou
+    calepinage recal\u00e9) et, juste en dessous, \u00ab Production P50 (m\u00e9diane) \u00bb du
+    bloc bancable (``etude_params['simulation']``, jou\u00e9 par ``apps.ventes.
+    etude``). QJR114 a fait converger les deux CHA\u00ceNES de calcul (plus de
+    double derate : la P50 vaut d\u00e9sormais ``productible \u00d7 PRODUCTION_DERATE``,
+    la formule m\u00eame de ``pricing``) \u2014 mais rien n'oblige les deux SOURCES \u00e0
+    d\u00e9crire le m\u00eame devis : le builder recopie ``simulation`` sans condition et
+    cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies, donc une \u00e9tude jou\u00e9e
+    avant un redimensionnement (ou une production saisie \u00e0 la main) remet deux
+    nombres contradictoires c\u00f4te \u00e0 c\u00f4te sur la feuille.
+
+    On ne r\u00e9concilie rien ici \u2014 le moteur de rendu ne calcule aucune
+    production : on PROUVE l'\u00e9galit\u00e9, et \u00e0 d\u00e9faut de preuve le bloc est OMIS
+    (r\u00e8gle fondateur : omettre plut\u00f4t que publier deux v\u00e9rit\u00e9s).
+
+    Rend ``True`` quand il n'y a rien \u00e0 contredire : page sans carte
+    \u00ab Production annuelle \u00bb, ou bloc bancable sans P50 (il ne publie alors que
+    la P90 \u2014 une autre grandeur, explicitement nomm\u00e9e \u2014 le ratio de performance
+    et la cascade). Rend ``False`` d\u00e8s qu'un des deux nombres est illisible :
+    l'\u00e9galit\u00e9 n'est pas prouv\u00e9e.
+    """
+    # ``ETUDE`` n'est écrite que par ``apply_quote_data`` : avant toute
+    # ingestion le nom n'existe PAS dans le module (les tests unitaires du
+    # bloc l'appellent dans cet état). Sans étude ingérée il n'y a pas de carte
+    # « Production annuelle », donc rien à contredire.
+    etude_page = globals().get("ETUDE")
+    prod_page = (etude_page.get("production_annuelle")
+                 if isinstance(etude_page, dict) else None)
+    if prod_page in (None, ""):
+        return True
+    pr = bank.get("pr") if isinstance(bank, dict) else None
+    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
+    if p50 in (None, ""):
+        return True
+    try:
+        prod_page = float(prod_page)
+        p50 = float(p50)
+    except (TypeError, ValueError):
+        return False
+    if prod_page <= 0:
+        return False
+    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+
+
 def _bankable_block_html(bank):
     """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
 
@@ -2281,8 +2657,27 @@ def _bankable_block_html(bank):
     figure (r\u00e8gle #4) \u2014 uniquement des grandeurs \u00e9nerg\u00e9tiques.
 
     Absent/illisible \u2192 '' : la page \u00c9tude reste EXACTEMENT celle d'aujourd'hui.
+
+    QJR159 (b) \u2014 CE BLOC PROUVE QU'IL D\u00c9CRIT LE CHAMP PV VENDU. Il \u00e9tait publi\u00e9
+    sans le moindre lien avec la composition : il n'acc\u00e9dait ni \u00e0 ``KWC`` ni \u00e0
+    ``NB_PAN``, le builder recopie ``etude_params['simulation']`` SANS
+    condition, et cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies \u2014 un
+    devis redimensionn\u00e9 APR\u00c8S l'\u00e9tude imprimait donc le productible d'un AUTRE
+    champ PV juste \u00e0 c\u00f4t\u00e9 de sa vraie \u00ab Puissance cr\u00eate \u00bb. La somme des kWc des
+    zones simul\u00e9es doit d\u00e9sormais \u00e9galer ``KWC`` (\u00e0 la tol\u00e9rance d'arrondi),
+    sinon le bloc est OMIS.
+
+    QJR115 \u2014 ET IL DIT LA M\u00caME PRODUCTION QUE LA CARTE JUSTE AU-DESSUS. D\u00e9crire
+    le bon champ PV ne suffit pas : la page publie d\u00e9j\u00e0 \u00ab Production annuelle \u00bb
+    depuis une AUTRE source. Le bloc n'est servi que si sa P50 co\u00efncide avec
+    elle (``_bankable_concorde_avec_la_page``) \u2014 sinon la feuille porterait
+    deux productions contradictoires pour une seule installation.
     """
     if not isinstance(bank, dict) or not bank:
+        return ""
+    if not _bankable_decrit_ce_champ(bank):
+        return ""
+    if not _bankable_concorde_avec_la_page(bank):
         return ""
     pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
 
@@ -2348,6 +2743,112 @@ def _bankable_block_html(bank):
         f'{ligne_html}{pertes_html}</div>')
 
 
+def _capacite_batterie_vendue():
+    """QJR13 — capacité batterie (kWh) de la configuration que CE document vend.
+
+    ``BATTERIE_KWH_TOTAL`` décrit l'option AVEC batterie. Quand le document ne
+    chiffre QUE la branche SANS (``ONEPAGE_BRANCHE == 'sans'`` — format une
+    page d'un devis sans alternative, scénario « Sans batterie »), la
+    configuration facturée ne porte aucune batterie : la capacité vendue est
+    alors 0, pas celle d'une option que ce document ne vend pas.
+    """
+    if ONEPAGE_BRANCHE == "sans":
+        return 0.0
+    return float(BATTERIE_KWH_TOTAL or 0.0)
+
+
+#: QJR104 — tolérance de comparaison des capacités batterie, en kWh. MÊME
+#: nombre que ``apps.ventes.dimensionnement.TOLERANCE_CAPACITE_KWH`` : un
+#: arrondi d'affichage n'est pas un écart de palier.
+TOLERANCE_CAPACITE_KWH = 0.05
+
+
+def _branche_nommee():
+    """QJR159 (c) — suffixe qui NOMME la branche décrite, ou ''.
+
+    ``_capacite_batterie_vendue`` suit ``ONEPAGE_BRANCHE``, que le builder fixe
+    à ``'avec'`` pour TOUT devis à deux options — y compris en
+    ``pdf_mode='full'``. La garde QJR13 prouve donc l'appartenance à l'option
+    AVEC sans jamais l'ÉCRIRE : sur un 3-pages qui présente les deux options,
+    le client qui choisit « sans batterie » lisait un résiduel qui n'est pas le
+    sien. On le dit dans le libellé.
+    """
+    if SCENARIO != "Les deux (Sans + Avec)":
+        return ""
+    if _capacite_batterie_vendue() <= 0:
+        return ""
+    return " &#8212; option avec batterie"
+
+
+def _branche_phrase():
+    """QJR159 (c) — la MÊME précision, en incise dans une phrase."""
+    return (" (option avec batterie)" if _branche_nommee() else "")
+
+
+def _config_identifiante(panneaux, batterie_kwh):
+    """QJR104 — la CONFIGURATION IDENTIFIANTE d'une installation, ou ``None``.
+
+    Deux nombres et deux seulement : le compte de panneaux et la capacité
+    batterie. ``None`` dès que l'un des deux n'est pas lisible — un booléen
+    est refusé explicitement (en Python ``int(True) == 1`` aurait fait passer
+    un drapeau pour un compte de panneaux).
+    """
+    if isinstance(panneaux, bool) or not isinstance(panneaux, (int, float)):
+        return None
+    if (isinstance(batterie_kwh, bool)
+            or not isinstance(batterie_kwh, (int, float))):
+        return None
+    return (int(panneaux), float(batterie_kwh))
+
+
+def _decrit(config_optimum, config_vendue):
+    """QJR104 — ``config_optimum`` décrit-elle bien l'installation VENDUE ?
+
+    LA MÊME RÈGLE, MOT POUR MOT, que
+    ``apps.ventes.dimensionnement.decrit`` : identité du compte de panneaux et
+    égalité des capacités batterie à :data:`TOLERANCE_CAPACITE_KWH` près.
+
+    POURQUOI UN JUMEAU, ET PAS UN IMPORT. Ce module est le moteur VENDORÉ : il
+    n'importe RIEN de ``apps`` (voir ses imports — ``base64``, ``matplotlib``,
+    et c'est tout) et il s'exécute aussi comme ``__main__``. Lui faire importer
+    ``apps.ventes.dimensionnement`` — qui cite ``apps.ventes.services`` — le
+    rendrait indémarrable hors Django. Le jumeau est donc assumé, et il est
+    ÉPINGLÉ : ``apps/ventes/tests/test_qjr_optimum_publie.py`` fait passer la
+    MÊME table de cas dans les deux implémentations et exige le MÊME verdict —
+    une divergence rougit au lieu de dormir dans un PDF client.
+    """
+    if config_optimum is None or config_vendue is None:
+        return False
+    if config_optimum[0] != config_vendue[0]:
+        return False
+    return abs(config_optimum[1] - config_vendue[1]) <= TOLERANCE_CAPACITE_KWH
+
+
+def _optimum_decrit_ce_devis(combinaison):
+    """QJR13 — ``combinaison`` (un optimum du moteur) décrit-elle CE devis ?
+
+    Un dict d'optimum de dimensionnement (``meilleure_falaise``) porte SA
+    configuration identifiante — ``panneaux``, ``kwc``, ``batterie_kwh`` : c'est
+    une combinaison champ + stockage que le BALAYAGE a trouvée, sans aucun
+    rapport garanti avec la taille et la batterie réellement vendues. Publier
+    ses chiffres comme ceux « de ce dimensionnement » décrit au client une
+    installation qu'il n'achète pas.
+
+    Règle (zéro chiffre inventé, QJR104) : on ne publie que si la configuration
+    de l'optimum ÉGALE la configuration vendue. Tout ce qui n'est pas prouvé —
+    contrat malformé, compte de panneaux du devis inconnu, capacité illisible —
+    rend ``False``, et l'appelant OMET la mention : jamais un chiffre de repli.
+    """
+    if not isinstance(combinaison, dict):
+        return False
+    if not NB_PAN:  # configuration vendue inconnue ⇒ rien à prouver, on omet
+        return False
+    return _decrit(
+        _config_identifiante(combinaison.get("panneaux"),
+                             combinaison.get("batterie_kwh")),
+        _config_identifiante(NB_PAN, _capacite_batterie_vendue()))
+
+
 def _falaise_context():
     """CJ2b-bis — falaise tarifaire + remplissage batterie, lus À PLAT depuis
     ``etude_params['dimensionnement']`` (contrat DIM2 :
@@ -2355,14 +2856,24 @@ def _falaise_context():
     ``POST /ventes/etude-horaire/preview/`` avec ``dimensionner: true`` — voir
     ``apps/ventes/contract_samples/etude_horaire.json``).
 
-    [HANDOFF backend] À la date de ce lot, AUCUN devis réel ne porte cette
-    clé : ``recommander_taille`` n'est appelé QUE par l'aperçu écran du
-    générateur (``etude_horaire_view._dimensionner``), jamais persisté sur
-    ``Devis.etude_params`` (``services.rafraichir_etude_horaire`` ne pose que
-    le bloc ``etude_horaire``, pas ``dimensionnement``). Cette fonction lit
-    défensivement le contrat au cas où un producteur backend viendrait à
-    poser ``etude_params['dimensionnement']`` — tant que cette clé est
-    absente, elle rend ``None`` et le PDF est BYTE-IDENTIQUE à avant ce lot.
+    QJR148 — CE BLOC EST LIVE. Cette docstring affirmait « à la date de ce
+    lot, AUCUN devis réel ne porte cette clé » : c'est FAUX depuis T5
+    (24/08/2026). ``services.rafraichir_dimensionnement_devis``
+    (``apps/ventes/domain/etudes.py``) pose ``etude_params['dimensionnement']``
+    sur les devis RÉSIDENTIELS, et ces chiffres atteignent de vrais clients.
+
+    Deux choses à savoir avant d'y toucher :
+
+    * le rafraîchisseur COURT-CIRCUITE quand l'empreinte des entrées concorde
+      (QJR43) : le bloc servi peut décrire un état plus ancien du devis que la
+      composition posée ;
+    * ``_optimum_decrit_ce_devis`` (QJR13) est le SEUL rempart entre ce bloc et
+      le document client : elle refuse de publier ``residuel_kwh_mois``,
+      ``tranche_apres`` et ``remplissage.moyen`` quand l'optimum ne décrit pas
+      la composition réellement vendue. Ne pas la relâcher, ne pas la
+      « simplifier ».
+
+    Clé absente ⇒ ``None`` ⇒ cette moitié de la page étude ne rend rien.
     Zero chiffre inventé : chaque valeur vient telle quelle du contrat, rien
     n'est recalculé ici (le moteur ne fait que RENDRE — règle #4).
     """
@@ -2377,7 +2888,13 @@ def _falaise_context():
         if isinstance(_ta, dict):
             tranche_actuelle = _ta.get("libelle")
     residuel = tranche_apres = remplissage_pct = None
-    if isinstance(meilleure, dict):
+    # QJR13 — les trois valeurs ci-dessous décrivent la combinaison
+    # ``meilleure_falaise`` du balayage, PAS le devis. Elles ne sont lues que
+    # si cette combinaison est exactement la configuration vendue ; sinon la
+    # carte et la phrase disparaissent (sur les DEUX formats, ce contexte étant
+    # la source unique du 3-pages et du une-page). ``tranche_actuelle``, elle,
+    # décrit la FACTURE ACTUELLE du client — vraie quel que soit le devis.
+    if _optimum_decrit_ce_devis(meilleure):
         residuel = meilleure.get("residuel_kwh_mois")
         _tap = meilleure.get("tranche_apres")
         if isinstance(_tap, dict):
@@ -2409,7 +2926,17 @@ def _part_glitch_pct():
     le moteur — jamais un chiffre inventé : la part de l'énergie perdue en
     pointe (``part_glitch_sans_kwh``) que la batterie rattrape
     (``part_glitch_batterie_kwh``).
+
+    QJR159 (a) — GARDE DE CONFIGURATION. Cette carte annonce le bénéfice d'un
+    STOCKAGE : elle ne testait que ``_sans > 0``, ni ``BATTERIE_KWH_TOTAL``, ni
+    ``_capacite_batterie_vendue()``, ni ``ONEPAGE_BRANCHE``. Sur un devis
+    résidentiel SANS stockage mais avec un équipement à impulsions (piscine,
+    clim), elle sortait « 0 % » et vendait le bénéfice d'un composant ABSENT du
+    devis. La fonction jumelle existe précisément pour ce contrôle : on
+    l'appelle.
     """
+    if _capacite_batterie_vendue() <= 0:
+        return None
     annuel = (ETUDE.get("etude_horaire") or {}).get("annuel")
     if not isinstance(annuel, dict):
         return None
@@ -2453,7 +2980,7 @@ def page_etude():
     # (jamais d'\u00ab Autoconsommation 100 % \u00bb fabriqu\u00e9e).
     has_conso = e.get("conso_annuelle") not in (None, "", 0)
     cards1 = (
-        card("Puissance cr\u00eate", f"{KWC}\u00a0kWc", accent=True)
+        card("Puissance cr\u00eate", f"{kwc_fr(KWC)}\u00a0kWc", accent=True)
         + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh")
         + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
         + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
@@ -2476,13 +3003,17 @@ def page_etude():
     # existants ne change de rendu).
     _falaise_ctx = _falaise_context()
     _glitch_pct = _part_glitch_pct()
+    # QJR159 (c) — la BRANCHE décrite est NOMMÉE : ces chiffres appartiennent à
+    # l'option AVEC batterie sur un document qui présente les deux.
+    _branche = _branche_nommee()
     falaise_cards = ""
     falaise_sentence = ""
     if _falaise_ctx or _glitch_pct is not None:
         _fcells = []
         if _falaise_ctx and _falaise_ctx.get("residuel_kwh_mois") is not None:
             _txt = f"{fnum(_falaise_ctx['residuel_kwh_mois'])} kWh/mois"
-            _fcells.append(card("Résiduel sous la marche", _txt, accent=True))
+            _fcells.append(card(f"Résiduel sous la marche{_branche}", _txt,
+                                accent=True))
         if _falaise_ctx and _falaise_ctx.get("tranche_actuelle"):
             _fcells.append(
                 card("Tranche actuelle", _esc(_falaise_ctx["tranche_actuelle"])))
@@ -2494,10 +3025,11 @@ def page_etude():
             _rpct = _falaise_ctx["remplissage_pct"]
             _rval = ("La batterie se remplit chaque jour" if _rpct >= 100
                       else f"{_rpct} %")
-            _fcells.append(card("Remplissage batterie (moyen)", _rval))
+            _fcells.append(
+                card(f"Remplissage batterie (moyen){_branche}", _rval))
         if _glitch_pct is not None:
             _fcells.append(card(
-                "Part des pointes rattrapée par la batterie",
+                f"Part des pointes rattrapée par la batterie{_branche}",
                 f"{_glitch_pct} %"))
         if _fcells:
             falaise_cards = (
@@ -2511,7 +3043,8 @@ def page_etude():
             falaise_sentence = (
                 f'<div style="margin-top:8px;font-size:7pt;color:{CG4};">'
                 f'Aujourd&rsquo;hui, votre facture se calcule sur la tranche '
-                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement '
+                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement'
+                f'{_branche_phrase()} '
                 f'fait atterrir votre consommation résiduelle à '
                 f'{fnum(_falaise_ctx["residuel_kwh_mois"])} kWh/mois{_sous}.'
                 f'</div>')
@@ -2589,8 +3122,13 @@ def page_annexe_technique():
                 f'text-align:{align};'
                 f'{"font-weight:700;" if bold else ""}">{texte}</td>')
 
+    # QJR163 (a) — LA TRONCATURE EST DÉCLARÉE. La nomenclature était
+    # coupée à 22 lignes sans mention ni marqueur : le lecteur croyait
+    # tenir la liste complète des composants.
+    _bom = [it for it in (design.get("bom") or []) if isinstance(it, dict)]
+    _bom_reste = max(0, len(_bom) - BOM_MAX_LIGNES)
     lignes = []
-    for item in (design.get("bom") or [])[:22]:
+    for item in _bom[:BOM_MAX_LIGNES]:
         if not isinstance(item, dict):
             continue
         quantite = item.get("quantite")
@@ -2602,6 +3140,13 @@ def page_annexe_technique():
             + _cell(f'<span style="color:{CG4};">'
                     f'{_esc(item.get("spec") or "")}</span>')
             + "</tr>")
+    if _bom_reste > 0:
+        lignes.append(
+            f'<tr><td colspan="3" style="padding:3px 6px;font-style:italic;'
+            f'font-size:6.5pt;color:{CG4};">&#8230; et {_bom_reste} autre'
+            f'{"s" if _bom_reste > 1 else ""} composant'
+            f'{"s" if _bom_reste > 1 else ""} &#8212; nomenclature '
+            f'compl&#232;te fournie avec le dossier technique.</td></tr>')
     bom_html = (
         f'<div style="background:{CG1};border:1px solid {CG2};border-radius:7px;'
         f'padding:8px 10px;">'
@@ -2673,8 +3218,15 @@ def build_html():
     # 25 ans » les traçait quand même. Idem quand la puissance n'a aucun
     # ancrage réel (M2) : sans kWc, le gain cumulé vaut zéro — on n'imprime pas
     # une courbe plate à zéro, on n'imprime rien.
-    _sans_economies = MASQUER_ECONOMIES or PUISSANCE_INCONNUE
-    img_roi = "" if _sans_economies else make_chart_roi()
+    # QJR123 — UNE seule définition, partagée avec les blocs « méthode » et
+    # « hypothèses » de la page 3 (qui n'en avaient aucune).
+    _sans_economies = _sans_economies_publiees()
+    # QJR125 — AUCUN graphe sans cashflow RÉEL. Le repli « économie plate »
+    # (droite) est faux de +14,5 % / +36,6 % sur le gain final (M5) et était
+    # tracé sans la moindre mention : on omet la carte, comme sous
+    # ``_sans_economies``.
+    img_roi = ("" if (_sans_economies or not _courbes_roi_tracables())
+               else make_chart_roi())
     img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
     annexe_html = (page_annexe_technique()
@@ -2692,24 +3244,159 @@ def build_html():
 </body></html>"""
 
 # ── ONE-PAGE MODE ─────────────────────────────────────────────────────────────
-def page_onepage(items):
-    """Single A4 page: header + summary strip + client block + HT product table + footer."""
+def _proposition_link():
+    """QRP1 — (href, forme courte) du lien TOKENISÉ de la proposition en ligne,
+    ou ('', '') quand le devis n'en porte pas.
+
+    Le lien vient EXCLUSIVEMENT de ``data['links']['signer']`` (builder QX6 :
+    ShareLink + ``utils.client_links.chemin_proposition``) : ce module ne forge
+    aucune URL et n'ajoute AUCUN paramètre de requête. Ce que l'URL contient :
+    le SLUG du nom du client dans le CHEMIN (PV84 — cosmétique, jamais vérifié
+    côté serveur) puis le jeton ; aucune adresse, aucune coordonnée GPS. La
+    forme AFFICHÉE, elle, est tronquée à « <hôte>/proposition » — ni le nom ni
+    le jeton ne s'impriment en clair. Le repli historique « <site>/signer/<réf> »
+    (jamais servi par le site) est exclu : sans vraie proposition en ligne, la
+    vignette s'omet plutôt que de porter un QR qui mène à un 404.
+    """
+    url = (LINKS.get("signer") or "").strip()
+    if "/proposition/" not in url:
+        return "", ""
+    # QJR162 (a) — EXIGER un schéma http(s) ET un hôte non vide. ``SITE_URL``
+    # n'est pas protégé contre la variable d'environnement PRÉSENTE MAIS VIDE
+    # (``PUBLIC_SITE_URL`` l'est, pas elle) : la base devenait '', le lien
+    # relatif, et « "https://" + url » imprimait un QR
+    # « https:///proposition/… » — MORT chez le client. La docstring promet
+    # d'omettre la vignette plutôt que de porter un QR qui mène à un 404 :
+    # on l'applique au lieu de fabriquer une URL.
+    if not re.match(r"^https?://", url, re.I):
+        return "", ""
+    court = url.split("://", 1)[1]
+    if not court.split("/", 1)[0].strip():
+        return "", ""
+    morceaux = court.split("/")
+    return url, ("/".join(morceaux[:2]) if len(morceaux) > 2 else court)
+
+
+#: QRP1/A4 — hauteur de la bande d'en-tête du format UNE PAGE, en millimètres.
+#: C'est la hauteur qu'y occupe le logo (80 px). Elle est désormais IMPOSÉE à
+#: la rangée (et non plus subie), pour deux raisons prouvées en revue :
+#:   · sans ``logo.png``, ``logo_html`` retombe sur un texte de 15 pt et la
+#:     bande se serait réglée sur la vignette QR — donc une hauteur DIFFÉRENTE
+#:     selon la présence d'un asset ;
+#:   · la zone de contenu de cette page est bornée (``overflow:hidden``), donc
+#:     un en-tête plus haut ROGNE SILENCIEUSEMENT le bas du document (le Total
+#:     TTC d'un devis dense) sans qu'aucune garde de pagination ne s'en
+#:     aperçoive — le PDF ferait toujours 1 page.
+#: Toute la vignette QR tient sous cette hauteur, par construction.
+ONEPAGE_HEADER_MM = 21.17
+
+#: QJR161 — borne BASSE de la zone de contenu du une-page, en px CSS, telle que
+#: le gabarit la pose (``bottom:72px``). Au-delà, ``overflow:hidden`` ROGNE
+#: silencieusement : c'est la ligne que le bloc de totaux ne doit jamais
+#: franchir. Constante partagée par le gabarit, la mesure et les tests.
+ONEPAGE_FOOTER_PX = 72
+
+#: QJR163 (a) — capacité de la nomenclature de l'annexe technique. Au-delà, les
+#: lignes ne tiennent plus sur la page : elles sont retirées ET DÉCLARÉES par
+#: une ligne finale (« … et N autres composants »), jamais coupées en silence.
+BOM_MAX_LIGNES = 22
+
+
+def _onepage_qr_uri(href):
+    """QRP1 — QR PNG data-URI de la proposition (correction M, sans logo
+    central : le même lien tient en bien moins de modules qu'en H, donc reste
+    scannable à 18 mm). A6 — ``border=4`` : la zone de silence par défaut (2
+    modules) est trop courte pour un QR posé sur un aplat NAVY ; 4 modules de
+    blanc, plus la platine blanche du gabarit, rendent la lecture fiable.
+    '' si la roue ``qrcode`` manque — la vignette s'omet alors et le document
+    reste identique à aujourd'hui."""
+    if not href:
+        return ""
+    try:
+        from .residential import theme as _rtheme
+        return _rtheme.qr_data_uri(href, logo=False, correction="M",
+                                   box_size=10, border=4)
+    except Exception:
+        return ""
+
+
+def _onepage_header_html():
+    """QRP1 — en-tête navy du format UNE PAGE.
+
+    Sans lien tokenisé (ou sans ``qrcode``), renvoie le balisage historique à
+    la hauteur imposée près — aucun contenu ne bouge. Avec le lien, la vignette
+    QR se pose entre le logo et la référence, dans une TABLE CSS
+    (RENDERING_NOTES §1 : le flex de WeasyPrint sous-estime la hauteur de flux
+    d'une rangée de cartes et ignore ``gap``).
+
+    A4 — la rangée porte une HAUTEUR EXPLICITE (``ONEPAGE_HEADER_MM``) sur la
+    cellule du logo : elle vaut donc exactement la même chose avec ou sans
+    ``logo.png``, et avec ou sans QR. La légende passe À GAUCHE du code (et non
+    dessous) : la pile tient ainsi sous la bande sans rétrécir le QR, qui garde
+    18 mm — la seule dimension qui décide de sa lisibilité.
+    """
+    href, court = _proposition_link()
+    qr = _onepage_qr_uri(href)
+    h = f"{ONEPAGE_HEADER_MM}mm"
+    ref_html = (
+        '<div style="text-align:right;">'
+        f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
+        f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
+        f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
+        f'margin-top:2px;">{DATE_STR}</div></div>')
+    if not qr:
+        return (
+            f'<div style="background:{CN};padding:14px 24px;display:table;'
+            'width:100%;table-layout:fixed;">'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;'
+            f'height:{h};">{logo_html("80px")}</div>'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;">'
+            f'{ref_html}</div></div>')
+    # A6 — platine BLANCHE derrière le code (aplat navy) et AUCUN arrondi sur
+    # l'image : un rayon rognait ~2 modules dans les coins, précisément là où
+    # vivent les trois motifs de repérage.
+    qr_cell = (
+        '<div style="display:table;margin:0 auto;">'
+        '<div style="display:table-cell;vertical-align:middle;'
+        'text-align:right;padding-right:3mm;">'
+        '<div style="color:rgba(255,255,255,0.80);font-size:6.2pt;'
+        'line-height:1.25;">Consultez votre<br>proposition interactive'
+        f'<br><span style="color:{CA};">{court}</span></div></div>'
+        '<div style="display:table-cell;vertical-align:middle;">'
+        '<div style="background:#FFFFFF;padding:0.7mm;display:inline-block;">'
+        f'<img src="{qr}" alt="QR — votre proposition en ligne" '
+        'style="height:18mm;width:18mm;display:block;"></div></div></div>')
+    return (
+        f'<div style="background:{CN};padding:14px 24px;display:table;'
+        'width:100%;table-layout:fixed;">'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;'
+        f'height:{h};">{logo_html("80px")}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:48%;">'
+        f'{qr_cell}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;">'
+        f'{ref_html}</div></div>')
+
+
+def page_onepage(items, tronquees=0):
+    """Single A4 page: header + summary strip + client block + HT product table + footer.
+
+    QJR161 — ``tronquees`` : nombre de lignes d'équipement RETIRÉES de la table
+    parce qu'elles ne tenaient pas dans la zone visible. Elles sont DÉCLARÉES
+    par une ligne finale ; les totaux, eux, restent ceux du devis ENTIER
+    (chaîne canonique du builder) — on n'a jamais retiré une ligne d'un total.
+    """
     # Totaux CANONIQUES du builder (chaîne HT → remise → TVA par taux → TTC,
     # calculée UNE fois) ; recalcul local uniquement en mode autonome.
-    if TOTAUX_ALL:
-        totaux = TOTAUX_ALL
-    else:
-        _ht = sum(
-            float(it.get("quantite", 0)) * _item_pu_ht(it)
-            for it in items
-            if float(it.get("quantite", 0)) > 0
-        )
-        _rem = _ht * DISCOUNT_PCT / 100 if DISCOUNT_PCT > 0 else 0.0
-        _net = _ht - _rem
-        _tva = _net * TVA_PCT / 100
-        totaux = {"ht_brut": _ht, "remise": _rem, "ht_net": _net,
-                  "tva": _tva, "tva_par_taux": [],
-                  "ttc": round(_net + _tva)}
+    # QJR162 (c) — le recalcul local portait le MÊME défaut que
+    # ``_fallback_totaux`` : un taux de TVA unique et ``tva_par_taux`` vide,
+    # alors que la colonne du tableau imprime le taux de CHAQUE ligne. Sans
+    # totaux canoniques, la page LÈVE plutôt que d'imprimer une chaîne qui
+    # n'additionne pas celle qu'elle affiche juste au-dessus.
+    if not TOTAUX_ALL:
+        raise ValueError(
+            "page_onepage: totaux canoniques manquants (totaux_all) — le "
+            "moteur ne fabrique pas de chaîne de totaux (QJR162).")
+    totaux = TOTAUX_ALL
     total_ht = totaux["ht_brut"]
     remise = totaux["remise"]
     net_ht = totaux["ht_net"]
@@ -2751,10 +3438,10 @@ def page_onepage(items):
                 (f"Eau / jour (sur {_fdec(_hrs)} h de pompage)",
                  f"&#8776; {fnum(_m3j)} m&#179;"))
         if KWC > 0:
-            _sum_cells.append(("Champ PV", f"{KWC} kWc"))
+            _sum_cells.append(("Champ PV", f"{kwc_fr(KWC)} kWc"))
     elif KWC > 0:
         _sum_cells = [
-            ("Puissance cr&#234;te", f"{KWC} kWc"),
+            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc"),
             ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an"),
         ]
         # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
@@ -2786,7 +3473,9 @@ def page_onepage(items):
         if _fctx_onepage and _fctx_onepage.get("residuel_kwh_mois") is not None:
             _rtxt = f"{fnum(_fctx_onepage['residuel_kwh_mois'])} kWh/mois"
             if _fctx_onepage.get("tranche_apres"):
-                _rtxt += f" ({_fctx_onepage['tranche_apres']})"
+                # QJR163 (b) — ÉCHAPPÉ comme sur la page étude : ce libellé
+                # vient du contrat de dimensionnement, pas d'une constante.
+                _rtxt += f" ({_esc(_fctx_onepage['tranche_apres'])})"
             _sum_cells.append(("R&#233;siduel vis&#233;", _rtxt))
     else:
         _sum_cells = []
@@ -2872,6 +3561,20 @@ def page_onepage(items):
         )
         row_idx += 1
 
+    # QJR161 — les lignes RETIRÉES faute de place sont DÉCLARÉES, jamais
+    # coupées en silence : le lecteur sait que la table n'est pas exhaustive et
+    # que le total, lui, porte bien TOUT le devis.
+    if tronquees > 0:
+        rows_html += (
+            f'<tr><td colspan="6" style="padding:{pad_px}px 10px;'
+            f'font-style:italic;font-size:7pt;color:{CG4};">'
+            f'&#8230; et {tronquees} autre'
+            f'{"s" if tronquees > 1 else ""} ligne'
+            f'{"s" if tronquees > 1 else ""} d&#8217;&#233;quipement '
+            f'&#8212; incluse'
+            f'{"s" if tronquees > 1 else ""} dans les totaux ci-dessous, '
+            f'd&#233;tail complet sur le devis multi-pages.</td></tr>')
+
     # ── Bloc totaux : Sous-total HT → Remise visible → Total HT → TVA → TTC ──
     def _tot_line(label, value, navy=False, neg=False):
         color = CGR if neg else (CN if not navy else CN)
@@ -2903,7 +3606,9 @@ def page_onepage(items):
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
         _tva_pct = int(_rate) if _rate == int(_rate) else _rate
         totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
-    totals_html += _tot_line("Total TTC", fmt(total), navy=True)
+    # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
+    # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
+    totals_html += _tot_line("Total TTC", _fmt2(total) + "&nbsp;MAD", navy=True)
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
@@ -2947,21 +3652,18 @@ def page_onepage(items):
     _onepage_note_autre = ("sans batterie" if ONEPAGE_BRANCHE == "avec"
                            else "avec batterie")
 
+    header_html = _onepage_header_html()
+
     return f"""
 <div class="page" style="position:relative;display:block;">
 
   <!-- CONTENT AREA: block flow, footer space reserved (WeasyPrint-robuste :
        pas de flex:1 ni de gap, qui rendaient le total par-dessus le footer) -->
-  <div style="position:absolute;top:0;left:0;right:0;bottom:72px;overflow:hidden;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:{ONEPAGE_FOOTER_PX}px;overflow:hidden;">
 
-  <!-- HEADER: navy -->
-  <div style="background:{CN};padding:14px 24px;display:flex;align-items:center;justify-content:space-between;">
-    {logo_html("80px")}
-    <div style="text-align:right;">
-      <div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;<span style="color:{CA};">N&#176;&#160;{REF}</span></div>
-      <div style="color:rgba(255,255,255,0.6);font-size:8pt;margin-top:2px;">{DATE_STR}</div>
-    </div>
-  </div>
+  <!-- HEADER: navy (QRP1 — variante avec vignette QR quand le devis porte un
+       lien de proposition tokenisé ; sinon rendu historique au bit près) -->
+  {header_html}
 
   <!-- CLIENT BLOCK -->
   <div style="background:{CG1};padding:12px 24px;border-bottom:1px solid {CG2};">
@@ -3045,15 +3747,77 @@ def page_onepage(items):
 """
 
 
-def build_html_onepage(items):
+def build_html_onepage(items, tronquees=0):
     """Minimal HTML shell for the one-page PDF."""
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
-<title>Devis TAQINOR N\u00b0 {REF}</title>
+<title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
 <style>{CSS}</style></head>
 <body style="background:#FFFFFF !important;">
-{page_onepage(items)}
+{page_onepage(items, tronquees)}
 </body></html>"""
+
+
+def _mesure_onepage(html):
+    """QJR161 \u2014 MESURE du bas du bloc de totaux et de la hauteur d'une ligne.
+
+    Rend ``(depassement_px, hauteur_ligne_px)`` : ``depassement_px`` est de
+    combien le bloc \u00ab Total TTC \u00bb franchit la ligne de rognage
+    (``ONEPAGE_FOOTER_PX``), ``0`` quand il tient. ``None`` quand la mesure est
+    IMPOSSIBLE (WeasyPrint absent, page non compos\u00e9e) : on ne devine alors
+    rien et le document reste celui d'aujourd'hui.
+
+    C'est une MESURE, pas une capacit\u00e9 devin\u00e9e : le gabarit n'a aucune borne
+    haute (``n_items > 12`` \u21d2 table compacte, et c'est tout) et la zone de
+    contenu est en ``overflow:hidden``, donc un devis dense faisait dispara\u00eetre
+    son propre Total TTC sans qu'aucun compteur de pages ne bouge.
+    """
+    try:
+        from weasyprint import HTML as _HTML
+    except Exception:  # noqa: BLE001 \u2014 pas de WeasyPrint : aucune mesure
+        return None
+    try:
+        pages = _HTML(string=_html_sans_base(html)).render().pages
+        if not pages:
+            return None
+        page = pages[0]
+        limite = page.height - ONEPAGE_FOOTER_PX
+        bas_totaux = None
+        hauteurs = []
+        for boite in _boites_texte_onepage(page):
+            texte = (getattr(boite, "text", "") or "")
+            if "Total TTC" in texte or "TOTAL TTC" in texte:
+                bas = boite.position_y + boite.height
+                bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
+            hauteurs.append(boite.height)
+        if bas_totaux is None:
+            return None
+        hauteur_ligne = 0.0
+        if hauteurs:
+            hauteurs.sort()
+            hauteur_ligne = hauteurs[len(hauteurs) // 2]
+        return (max(0.0, bas_totaux - limite), hauteur_ligne)
+    except Exception:  # noqa: BLE001 \u2014 un PDF ne casse jamais sur une mesure
+        return None
+
+
+def _html_sans_base(html):
+    """Le HTML tel quel \u2014 point d'extension si une base_url devient utile."""
+    return html
+
+
+def _boites_texte_onepage(page):
+    """Toutes les bo\u00eetes de texte compos\u00e9es d'une page WeasyPrint, \u00e0 plat."""
+    out = []
+
+    def _walk(box):
+        if getattr(box, "text", None):
+            out.append(box)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child)
+
+    _walk(page._page_box)
+    return out
 
 
 # ── Generate PDF ──────────────────────────────────────────────────────────────
@@ -3090,7 +3854,9 @@ def generate():
     Path(tmp).unlink(missing_ok=True)
 
     kb = out.stat().st_size // 1024
-    msg = (f"\n\u2705 Saved: {out.name} | Pages: 3 | {kb} KB\n")
+    # QJR163 (c) \u2014 le VRAI nombre de pages, pas un \u00ab 3 \u00bb cod\u00e9 : ``PAGES_TOTAL``
+    # est d\u00e9j\u00e0 calcul\u00e9 par ``apply_quote_data`` (3 + \u00e9tude + annexe).
+    msg = (f"\n\u2705 Saved: {out.name} | Pages: {PAGES_TOTAL} | {kb} KB\n")
     sys.stdout.buffer.write(msg.encode("utf-8", errors="replace"))
     sys.stdout.buffer.flush()
     return str(out)
@@ -3124,6 +3890,12 @@ def apply_quote_data(data: dict) -> None:
     dans le HTML EXACT qui part chez WeasyPrint. Le chemin PDF est inchangé :
     ``_render_premium_pdf`` appelle ces deux fonctions, dans le même ordre,
     sous le même verrou.
+
+    QJR163 (d) — SANS VERROU : cette fonction ÉCRIT les globales du module
+    (ERR17) et n'acquiert PAS ``_RENDER_LOCK`` — seul ``generate_premium_pdf``
+    le prend. Tout appelant en contexte CONCURRENT doit donc le prendre
+    lui-même (ou passer par ``generate_premium_pdf``), sous peine d'entrelacer
+    les données de deux devis dans un même document.
     """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
@@ -3140,6 +3912,7 @@ def apply_quote_data(data: dict) -> None:
     global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
+    global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -3226,24 +3999,67 @@ def apply_quote_data(data: dict) -> None:
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
-    def _fallback_totaux(rows):
-        ht_brut = round(sum(r["quantite"] * _item_pu_ht(r) for r in rows), 2)
-        remise = round(ht_brut * DISCOUNT_PCT / 100, 2) if DISCOUNT_PCT > 0 else 0.0
-        ht_net = round(ht_brut - remise, 2)
-        tva = round(ht_net * TVA_PCT / 100, 2)
-        return {"ht_brut": ht_brut, "remise": remise, "ht_net": ht_net,
-                "tva": tva, "ttc": round(ht_net + tva)}
-    TOTAUX_SANS = data.get("totaux_sans") or _fallback_totaux(data["sans_items"])
-    TOTAUX_AVEC = data.get("totaux_avec") or _fallback_totaux(data["avec_items"])
+    # ── QJR162 (c) — PAS DE CHAÎNE DE TOTAUX FABRIQUÉE ──────────────────────
+    # ``_fallback_totaux`` recalculait la chaîne avec un taux de TVA UNIQUE et
+    # SANS ``tva_par_taux`` : sur un devis à taux mixtes (réforme 10/20), la
+    # colonne affichait 10 % et 20 % par ligne pendant que le bloc n'imprimait
+    # qu'une ligne « TVA (20 %) ». Son ``or`` mordait de surcroît sur un dict
+    # VIDE. Les totaux canoniques sont calculés UNE fois par le builder : sans
+    # eux, le moteur LÈVE plutôt que de publier une chaîne inventée.
+    def _totaux_canoniques(cle):
+        valeur = data.get(cle)
+        if not isinstance(valeur, dict) or not valeur:
+            raise ValueError(
+                "generate_devis_premium: totaux canoniques manquants (%s) — "
+                "le moteur ne fabrique pas de chaîne de totaux (QJR162)."
+                % cle)
+        return valeur
+
+    TOTAUX_SANS = _totaux_canoniques("totaux_sans")
+    TOTAUX_AVEC = _totaux_canoniques("totaux_avec")
     TOTAUX_ALL = data.get("totaux_all") or None
+
+    # ── QJR146 (e) — UN SEUL TOTAL PAR OPTION, ET IL EST PROUVÉ ──────────────
+    # ``total_sans``/``total_avec`` (scalaires TTC des vignettes d'option) et
+    # ``totaux_sans``/``totaux_avec`` (la chaîne canonique Sous-total → TVA →
+    # Total TTC du tableau) étaient ingérés depuis QUATRE clés INDÉPENDANTES,
+    # sans le moindre invariant : une charge utile où elles divergent imprimait
+    # deux totaux différents pour la MÊME option, sur deux pages du même
+    # document. Le builder les DÉRIVE l'une de l'autre
+    # (``total_sans = totaux_sans['ttc']``) — on exige donc ici qu'elles
+    # coïncident, et on LÈVE plutôt que de choisir en silence (même doctrine
+    # que ``_totaux_canoniques`` ci-dessus, QJR162).
+    for _cle_scalaire, _valeur, _totaux in (
+            ("total_sans", TOTAL_SANS, TOTAUX_SANS),
+            ("total_avec", TOTAL_AVEC, TOTAUX_AVEC)):
+        try:
+            _ttc = float(_totaux.get("ttc"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "generate_devis_premium: totaux canoniques sans TTC lisible "
+                "(%s) — le moteur ne choisit pas entre deux totaux."
+                % _cle_scalaire)
+        if abs(_ttc - float(_valeur)) > 0.01:
+            raise ValueError(
+                "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
+                "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
+                "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
     PAY_A = int(_terms.get("acompte", 30))
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    LINKS = dict(data.get("links") or {})
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")
     ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
+    # QJR13 — capacité batterie RÉELLE des lignes (jamais un défaut) : sert
+    # UNIQUEMENT à prouver qu'un optimum du moteur décrit bien ce devis.
+    global BATTERIE_KWH_TOTAL
+    try:
+        BATTERIE_KWH_TOTAL = float(data.get("batterie_kwh_total") or 0)
+    except (TypeError, ValueError):
+        BATTERIE_KWH_TOTAL = 0.0
     # ── L-2OPT (chantier « deux optimiseurs », 24/08/2026) — LA PUISSANCE SUIT
     # LA BRANCHE FACTURÉE ────────────────────────────────────────────────────
     # Même doctrine que M4 pour l'économie annuelle : la page UNE chiffre UNE
@@ -3296,8 +4112,12 @@ def apply_quote_data(data: dict) -> None:
         for s in (data.get("lignes_structure") or [])
         if isinstance(s, dict)]
     OPTIONS_PROPOSEES = _esc_items(data.get("options_proposees") or [])
-    SANS_BULLETS = data.get("sans_bullets") or []
-    AVEC_BULLETS = data.get("avec_bullets") or []
+    # QJR30 — les puces d'option sont BÂTIES depuis des désignations de lignes
+    # (donc du texte contrôlé par l'utilisateur) et étaient rendues telles
+    # quelles en HTML : un « < » non apparié dans une désignation mangeait la
+    # carte d'option. Même échappement ERR37 que les items ci-dessous.
+    SANS_BULLETS = [_esc(b) for b in (data.get("sans_bullets") or [])]
+    AVEC_BULLETS = [_esc(b) for b in (data.get("avec_bullets") or [])]
     # D2/N60/N67/N59 — textes éditables du devis : fusion défaut + surcharges
     # société. Toute clé absente/None retombe sur le littéral historique, donc
     # un appel sans `doc_texts` (ou avec des surcharges vides) reste byte-identique.
@@ -3309,7 +4129,11 @@ def apply_quote_data(data: dict) -> None:
                 DOC_TEXTS[k] = v
     # N26 — métadonnées d'acceptation (posées côté serveur). Le tampon n'apparaît
     # que si les DEUX sont présents ; sinon byte-identique au devis d'aujourd'hui.
-    ACCEPTE_PAR_NOM = (data.get("accepte_par_nom") or "")
+    # QJR154 — ERR37 échappait le nom et l'adresse du client mais PAS celui-ci,
+    # qui est pourtant le seul texte du document écrit par une personne NON
+    # AUTHENTIFIÉE (le « nom » posté sur le portail public, repris par
+    # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
+    ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
@@ -3344,11 +4168,17 @@ def apply_quote_data(data: dict) -> None:
     # Le VRAI cumul est déjà dans les données (``cashflow_sans``/
     # ``cashflow_avec``, calculé par ``compute_cashflow_payback``) : on le trace
     # tel quel — la droite ne subsiste qu'en repli, si le cumul manque.
+    # QJR125 — le repli « droite plate » n'est plus TRACÉ : il n'est conservé
+    # que pour garder les listes bien formées (le graphe entier est omis quand
+    # le cumul réel manque, exactement comme sous ``_sans_economies``).
+    global CUMUL_S_REEL, CUMUL_A_REEL
     _cf_s = list(data.get("cashflow_sans") or [])
     _cf_a = list(data.get("cashflow_avec") or [])
-    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if len(_cf_s) >= 25
+    CUMUL_S_REEL = len(_cf_s) >= 25
+    CUMUL_A_REEL = len(_cf_a) >= 25
+    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if CUMUL_S_REEL
                else [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS])
-    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if len(_cf_a) >= 25
+    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if CUMUL_A_REEL
                else [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS])
 
 
@@ -3356,14 +4186,72 @@ def render_html_for(data: dict) -> str:
     """HTML EXACT que le moteur legacy envoie à WeasyPrint pour ``data``.
 
     Point d'entrée des tests « document rendu » : aucune dépendance PDF, même
-    ingestion et même sélection de gabarit que le chemin PDF. N'acquiert PAS
-    ``_RENDER_LOCK`` (``_render_premium_pdf`` le tient déjà autour de l'appel).
+    ingestion et même sélection de gabarit que le chemin PDF.
+
+    ── QJR163 (d) — CONCURRENCE : LIRE AVANT D'APPELER ─────────────────────
+    Cette fonction et ``apply_quote_data`` sont PUBLIQUES et n'acquièrent PAS
+    ``_RENDER_LOCK`` : seul ``generate_premium_pdf`` le prend. Or l'ingestion
+    ÉCRIT les globales du module (ERR17) et le rendu les relit — deux appels
+    CONCURRENTS à ``render_html_for`` (ou un appel pendant un
+    ``generate_premium_pdf``) peuvent donc entrelacer les données de deux
+    devis dans un même document.
+    Elles restent sans verrou À DESSEIN : ``_render_premium_pdf`` les appelle
+    DÉJÀ sous ``_RENDER_LOCK`` (un ``RLock`` réentrant le permettrait, mais
+    l'imbrication resterait à la charge de l'appelant) et toute la suite de
+    tests les appelle en séquence. **Tout nouvel appelant en contexte
+    concurrent doit prendre ``_RENDER_LOCK`` lui-même**, ou passer par
+    ``generate_premium_pdf``.
     """
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":
-        return build_html_onepage(
-            _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
+        # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
+        # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
+        # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
+        # QJR162 (b) — ACCÈS DUR. ``data.get("all_items", [])`` était un défaut
+        # SILENCIEUX à liste vide alors que le même appel exige
+        # ``data["sans_items"]`` en dur : une charge utile privée d'``all_items``
+        # mais porteuse de ``totaux_all`` produisait un tableau d'équipements
+        # VIDE sous un Total TTC complet.
+        return _onepage_html_qui_tient(_esc_items(data["all_items"]))
     return build_html()
+
+
+#: QJR161 — nombre maximum de passes de mesure. Chaque passe compose la page,
+#: donc on borne le coût ; la première correction est déjà dimensionnée par la
+#: mesure (dépassement ÷ hauteur de ligne).
+_ONEPAGE_PASSES = 3
+
+
+def _onepage_html_qui_tient(items):
+    """QJR161 — le une-page dont le bloc de totaux EST composé dans la zone
+    visible.
+
+    Le gabarit n'a AUCUNE borne haute (``n_items > 12`` ⇒ table compacte, et
+    rien au-delà) tandis que ``.page`` et la zone de contenu sont en
+    ``overflow:hidden`` : un devis dense faisait DISPARAÎTRE son propre Total
+    TTC, et le PDF faisait toujours 1 page — le module le dit lui-même. On
+    MESURE donc le rendu et, s'il déborde, on retire des lignes d'équipement
+    en le DÉCLARANT (les totaux restent ceux du devis entier). Sans WeasyPrint,
+    la mesure est impossible : le document reste EXACTEMENT celui d'aujourd'hui.
+    """
+    lignes = list(items or [])
+    tronquees = 0
+    html = build_html_onepage(lignes, tronquees)
+    for _ in range(_ONEPAGE_PASSES):
+        mesure = _mesure_onepage(html)
+        if mesure is None:
+            return html
+        depassement, hauteur_ligne = mesure
+        if depassement <= 0 or len(lignes) <= 1:
+            return html
+        a_retirer = 1
+        if hauteur_ligne > 0:
+            a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
+        a_retirer = min(a_retirer, len(lignes) - 1)
+        lignes = lignes[:-a_retirer]
+        tronquees += a_retirer
+        html = build_html_onepage(lignes, tronquees)
+    return html
 
 
 def _render_premium_pdf(data: dict, out_path) -> str:

@@ -149,6 +149,16 @@ class CreerAutoRelayedCallTest(TestCase):
                 quantite_stock=100)
         mk('Panneau Jinko 550W', f'PAN-{company.pk}', 1100)
         mk('Onduleur réseau Huawei 5kW Monophasé', f'ONDR-{company.pk}', 14000)
+        # QJR82 (30/08/2026) — l'étape `verifier` du pipeline refuse désormais,
+        # AVANT toute écriture, une composition « Les deux » sans onduleur
+        # hybride tarifé (le même refus FR que le chemin 3D). Le scénario par
+        # défaut de l'auto-devis compose les deux options : le catalogue de la
+        # fixture doit donc porter un hybride avec prix, comme un vrai
+        # catalogue — sans lui le 201 attendu ici devient un 422 légitime.
+        mk('Onduleur hybride Deye 5kW Monophasé', f'ONDH-{company.pk}', 16000)
+        # ... et une batterie tarifée, pour la même raison (le refus QJR82 se
+        # déroule composant par composant : hybride, puis batterie).
+        mk('Batterie Dyness 5.12 kWh', f'BAT-{company.pk}', 9500)
 
     def setUp(self):
         self.company = Company.objects.create(nom='AG45 Relay', slug='ag45-relay')

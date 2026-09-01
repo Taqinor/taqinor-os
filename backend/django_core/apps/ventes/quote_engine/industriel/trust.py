@@ -32,10 +32,25 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     invest = d.get("_invest_ttc") or 0
-    pt = d.get("payment_terms") or {"acompte": 50, "materiel": 40, "solde": 10}
-    a_pct = int(pt.get("acompte", 50))
-    m_pct = int(pt.get("materiel", 40))
-    s_pct = int(pt.get("solde", 10))
+    # ── QJR146 (f) — AUCUN BARÈME DE PAIEMENT RECONSTRUIT ICI ───────────────
+    # Le repli ``{"acompte": 50, "materiel": 40, "solde": 10}`` refabriquait
+    # localement un échéancier dont la source canonique est le RÉGLAGE SOCIÉTÉ
+    # (``utils/company_settings.payment_terms_for``, servi par le builder dans
+    # ``payment_terms``) : une société ayant réglé un autre découpage voyait
+    # cette page en annoncer un autre au client, avec des MONTANTS calculés
+    # dessus. Sans barème servi, le bloc des tranches est OMIS — on n'imprime
+    # pas des conditions de paiement que personne n'a décidées.
+    pt = d.get("payment_terms") or {}
+    _pcts = {}
+    for _cle in ("acompte", "materiel", "solde"):
+        try:
+            _pcts[_cle] = int(pt[_cle])
+        except (KeyError, TypeError, ValueError):
+            _pcts = {}
+            break
+    a_pct = _pcts.get("acompte")
+    m_pct = _pcts.get("materiel")
+    s_pct = _pcts.get("solde")
 
     def tranche(label, pct, sub):
         montant = round(invest * pct / 100)
@@ -51,13 +66,51 @@ def build(ctx):
         + tranche("Matériel", m_pct, "à la livraison des équipements sur site")
         + '<td class="i3-tgap"></td>'
         + tranche("Solde", s_pct, "à la mise en service & réception")
-    )
+    ) if _pcts else ""
+    # QJR146 (f) — le titre suit le bloc : pas de section « Tranches de
+    # paiement phasées » vide au-dessus d'un trou.
+    tranches_html = (
+        '<div class="i3-sec">Tranches de paiement phasées</div>'
+        f'<div class="i3-trrow">{tranches}</div>') if tranches else ""
+
+    # QJR118 — les DURÉES de garantie se dérivent de la composition réelle du
+    # devis (source unique ``residential.theme.warranties_for``), exactement
+    # comme le paquet résidentiel. Les trois cellules codées en dur disaient
+    # « 25 ans Performance » (la source dit 30 ans à 87,4 %), « 5-10 ans
+    # Onduleurs » (10 ans) et surtout « 10 ans Installation », soit CINQ FOIS
+    # l'engagement de pose réel (2 ans) — deux chiffres contradictoires dans
+    # le même document, ce que le commentaire QRES5 de la source interdit.
+    # Aucune durée traçable ⇒ la bande entière s'OMET (jamais un chiffre
+    # inventé, jamais un zéro d'apparence factuelle).
+    _warranties = [w for w in (theme.warranties_for(d) or [])
+                   if w and str(w[0]).strip()]
+    if _warranties:
+        _cells = "".join(
+            f'<div class="i3-warr-c">'
+            f'<div class="i3-warr-v">{theme._esc(str(n))} {theme._esc(str(u))}</div>'
+            f'<div class="i3-warr-l">{theme._esc(str(label))}</div></div>'
+            for n, u, label, _sub in _warranties)
+        warranties_html = f"""
+  <div class="i3-warr">
+    <div class="i3-blk-t">Garanties</div>
+    <div class="i3-warr-row" style="margin-top:8px;">
+      {_cells}
+      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
+    </div>
+  </div>
+"""
+    else:
+        warranties_html = ""
 
     # Signature — tampon d'acceptation posé à l'acceptation (sinon champ vierge).
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
-        sign_client = f'<div class="i3-sign-name">{theme._esc(accepte_nom)}</div><div class="i3-sign-date">Le {date_accept}</div>'
+        # QJR154 — UNE SEULE VÉRITÉ : ``builder.echapper_textes_client`` échappe
+        # désormais ``accepte_par_nom`` (le seul texte du document écrit par une
+        # personne NON authentifiée) pour les quatre renderers « maison ».
+        # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
+        sign_client = f'<div class="i3-sign-name">{accepte_nom}</div><div class="i3-sign-date">Le {date_accept}</div>'
     else:
         sign_client = '<div class="i3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
 
@@ -115,8 +168,7 @@ def build(ctx):
     html = f"""{css}
 <div class="i3-root">
   <div class="i3-kicker">Déploiement &amp; conditions</div>
-  <div class="i3-sec">Tranches de paiement phasées</div>
-  <div class="i3-trrow">{tranches}</div>
+  {tranches_html}
 
   <div class="i3-h2">Conformité &amp; valeur pour l'entreprise</div>
   <div class="i3-two">
@@ -132,15 +184,7 @@ def build(ctx):
     </div></div>
   </div>
 
-  <div class="i3-warr">
-    <div class="i3-blk-t">Garanties</div>
-    <div class="i3-warr-row" style="margin-top:8px;">
-      <div class="i3-warr-c"><div class="i3-warr-v">25 ans</div><div class="i3-warr-l">Performance panneaux</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">5-10 ans</div><div class="i3-warr-l">Onduleurs</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">10 ans</div><div class="i3-warr-l">Installation &amp; main-d'œuvre</div></div>
-      <div class="i3-warr-c"><div class="i3-warr-v">O&amp;M</div><div class="i3-warr-l">Maintenance &amp; supervision</div></div>
-    </div>
-  </div>
+  {warranties_html}
 
   <div class="i3-sign">
     <div class="i3-sign-c">

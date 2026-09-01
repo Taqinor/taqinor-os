@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BellRing, Plus } from 'lucide-react'
+import { BellRing, Plus, Calculator } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
 import {
   Card, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, toast,
@@ -29,6 +29,12 @@ import {
    bouton « Nouveau » + un dialogue de création par onglet — même patron que
    `ContratDetail.jsx` (Dialog + `errMsg`), aucune donnée interne (prix
    d'achat/marge) jamais demandée.
+
+   WIR252 — action « Calculer la pénalité » sur l'onglet SLA (PenaliteSlaDialog) :
+   `penaliteSla` est un POST DÉCLARATIF (CONTRAT27, `services.calculer_penalite_sla`)
+   — aucune écriture, aucun changement de statut, aucune facture — mentionné
+   explicitement dans le dialogue pour que ça ne se lise jamais comme une action
+   d'écriture malgré le verbe HTTP.
    ========================================================================== */
 
 const listData = (res) => (Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
@@ -67,6 +73,9 @@ export default function EcheancesPage() {
   // est globale à la société, aucun sélecteur nécessaire).
   const [contrats, setContrats] = useState([])
   const [dialog, setDialog] = useState(null) // 'regle' | 'jalon' | 'obligation' | 'sla'
+  // WIR252 — engagement SLA pour lequel la pénalité est en cours de calcul
+  // (déclaratif, aucune écriture — voir PenaliteSlaDialog).
+  const [penaliteFor, setPenaliteFor] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -245,6 +254,14 @@ export default function EcheancesPage() {
               { header: 'Taux cible', cell: (s) => (s.taux_cible != null ? `${s.taux_cible} %` : '—') },
               { header: 'Pénalité', cell: (s) => s.mode_penalite_display || s.mode_penalite },
               { header: 'Actif', cell: (s) => <Badge tone={s.actif ? 'success' : 'neutral'}>{s.actif ? 'Actif' : 'Inactif'}</Badge> },
+              {
+                header: '', align: 'right',
+                cell: (s) => (
+                  <Button variant="outline" size="sm" onClick={() => setPenaliteFor(s)}>
+                    <Calculator className="size-3.5" aria-hidden="true" /> Calculer la pénalité
+                  </Button>
+                ),
+              },
             ]}
           />
         </TabsContent>
@@ -295,6 +312,13 @@ export default function EcheancesPage() {
           contrats={contrats}
           onClose={() => setDialog(null)}
           onDone={() => onCreated('Engagement SLA créé.')}
+        />
+      )}
+      {/* CONTRAT27/WIR252 — calcul déclaratif de la pénalité SLA (aucune écriture). */}
+      {penaliteFor && (
+        <PenaliteSlaDialog
+          sla={penaliteFor}
+          onClose={() => setPenaliteFor(null)}
         />
       )}
     </div>
@@ -542,8 +566,8 @@ function ObligationDialog({ contrats, onClose, onDone }) {
 }
 
 // WIR74 — engagement SLA (CONTRAT27). `contrat` + `libelle` requis ; le
-// reste (taux/pénalité) a un défaut serveur — `penaliteSla` (calcul déclaratif
-// de la pénalité encourue) reste une action du détail contrat, hors scope ici.
+// reste (taux/pénalité) a un défaut serveur. WIR252 câble désormais
+// `penaliteSla` (calcul déclaratif) juste en dessous (PenaliteSlaDialog).
 function SlaDialog({ contrats, onClose, onDone }) {
   const [contrat, setContrat] = useState('')
   const [libelle, setLibelle] = useState('')
@@ -618,6 +642,94 @@ function SlaDialog({ contrats, onClose, onDone }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Création…' : "Créer l'engagement"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// CONTRAT27/WIR252 — calcule la pénalité encourue pour UN engagement SLA.
+// `taux_realise`/`montant_contrat` optionnels (défaut serveur sinon).
+// DÉCLARATIF : `penaliteSla` (POST) ne crée AUCUNE écriture, ne change AUCUN
+// statut, n'émet aucune facture — mentionné explicitement à l'écran pour ne
+// jamais se lire comme une action d'écriture malgré le verbe HTTP.
+function PenaliteSlaDialog({ sla, onClose }) {
+  const [tauxRealise, setTauxRealise] = useState('')
+  const [montantContrat, setMontantContrat] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [resultat, setResultat] = useState(null)
+  const [err, setErr] = useState(null)
+
+  const calculer = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setErr(null)
+    const data = {}
+    if (tauxRealise !== '') data.taux_realise = Number(tauxRealise)
+    if (montantContrat !== '') data.montant_contrat = Number(montantContrat)
+    try {
+      const r = await contratsApi.penaliteSla(sla.id, data)
+      setResultat(r.data)
+    } catch (e2) {
+      setResultat(null)
+      setErr(errMsg(e2, 'Calcul impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Calculer la pénalité — {sla.libelle}</DialogTitle></DialogHeader>
+        <p className="rounded-md border border-info/30 bg-info/5 p-2 text-xs text-muted-foreground">
+          Calcul déclaratif : rien n’est écrit, aucun statut ne change, aucune
+          facture n’est émise.
+        </p>
+        <form onSubmit={calculer} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pn-realise">Taux réalisé (%)</Label>
+              <Input id="pn-realise" type="number" step="any" value={tauxRealise}
+                onChange={(e) => setTauxRealise(e.target.value)} placeholder="Optionnel" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pn-montant">Montant du contrat</Label>
+              <Input id="pn-montant" type="number" step="any" value={montantContrat}
+                onChange={(e) => setMontantContrat(e.target.value)} placeholder="Optionnel" />
+            </div>
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          {resultat && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Pénalité</p>
+                <p className="font-display text-lg font-semibold tabular-nums">{resultat.penalite}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Respect du SLA</p>
+                {/* WIR252/Fable — `respecte` est TRI-ÉTAT (bool|null) : sans
+                    `taux_realise` (barème théorique), le serveur renvoie
+                    `null` (indéterminé) — jamais assimilé à un faux
+                    « Non respecté » inventé côté client. */}
+                <Badge tone={resultat.respecte == null ? 'neutral' : resultat.respecte ? 'success' : 'danger'}>
+                  {resultat.respecte == null ? '—' : resultat.respecte ? 'Respecté' : 'Non respecté'}
+                </Badge>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Taux cible</p>
+                <p className="tabular-nums">{resultat.taux_cible} %</p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Taux réalisé</p>
+                <p className="tabular-nums">
+                  {resultat.taux_realise != null ? `${resultat.taux_realise} %` : '—'}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+            <Button type="submit" disabled={busy}>{busy ? 'Calcul…' : 'Calculer'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

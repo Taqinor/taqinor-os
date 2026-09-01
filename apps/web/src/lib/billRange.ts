@@ -44,6 +44,17 @@ const BILL_RANGE_BOUNDS: Record<BillRangeId, { min: number; max: number }> = {
 };
 
 /**
+ * QJW13 — bornes numériques d'une tranche (MAD/mois), EXPOSÉES pour que le
+ * repli local du formulaire de conversion dérive sa fourchette kWc du MÊME
+ * moteur que l'estimateur d'accueil (`billEstimate.estimateFromBill`), au lieu
+ * d'une table maintenue à la main qui divergeait (cf. `engineEstimateBand`
+ * dans lib/lead.ts). Lecture seule : la table reste la source unique ci-dessus.
+ */
+export function billRangeBounds(id: BillRangeId): { min: number; max: number } {
+  return BILL_RANGE_BOUNDS[id];
+}
+
+/**
  * Tranche correspondant à un montant EXACT de facture (MAD/mois) : la plus
  * petite tranche dont les bornes contiennent le montant (valeur du select du
  * formulaire). null pour une entrée non chiffrable (NaN/≤ 0) — jamais deviné.
@@ -58,11 +69,23 @@ export function billRangeFromExact(mad: number): BillRangeId | null {
 }
 
 /**
- * Bande préliminaire kWc + ROI — fallback local quand SIMULATOR_API_URL
- * n'est pas configurée. Jamais un devis : une fourchette indicative.
- * Hypothèses : barème régie ONEE (tranche effective ≈ 1,41–1,62 MAD/kWh selon la
- * consommation, 2026 — TVA 20 %, base partagée avec l'estimateur),
+ * Bande préliminaire kWc + ROI. Jamais un devis : une fourchette indicative.
+ * Hypothèses : barème régie ONEE (tranche effective ≈ 1,38–1,62 MAD/kWh selon la
+ * consommation, 2026 — TVA 20 %, tranche 311–510 = 1,381704 prouvée facture SRM
+ * — QJW12/D5 —, base partagée avec l'estimateur),
  * ~1 600 kWh/kWc/an au Maroc.
+ *
+ * QJW13 — CE N'EST PLUS LE REPLI DU FORMULAIRE DE CONVERSION. `runSimulation`
+ * (lib/lead.ts) dérive désormais sa bande du moteur `estimateFromBill`
+ * (`engineEstimateBand`), donc le formulaire et l'estimateur d'accueil
+ * répondent le MÊME kWc pour la même facture. La table ci-dessous ne sert plus
+ * qu'aux TABLEAUX ÉDITORIAUX des pages segment (résidentiel/professionnel,
+ * fr/en/ar), où chaque tranche est publiée à côté d'une installation RÉELLE
+ * committée (« réf. 236 — 5,68 kWc ») et d'une fourchette d'investissement
+ * dérivée de ces mêmes bornes : ces pages annoncent la taille RÉELLEMENT
+ * installée par tranche (couverture partielle assumée), pas le dimensionnement
+ * « 110 % du besoin annuel » du moteur — les deux répondent donc à deux
+ * questions différentes et ne sont pas interchangeables.
  */
 export interface EstimateBand {
   kwcMin: number;

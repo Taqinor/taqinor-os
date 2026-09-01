@@ -814,6 +814,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <p class="mt-teaser-hook" id="mt-teaser-hook-pump" hidden>
               Solar can power your pumping as the sun moves.
             </p>
+            <!-- WJ127 — HONEST FALLBACK for the paths with NO estimate. The
+                 error/edge cards (`mt-estimate-toolarge`, `-toolarge-pro`, the
+                 agricultural callback) live INSIDE `#mt-doc`, which the WJ125
+                 gating hides: a visitor whose site is beyond the simulator's
+                 scale no longer saw the honest "at this scale, dedicated study"
+                 message — only the generic hook. Worse, a11y parity was
+                 INVERTED: `announceEstimate` told the screen reader the truth
+                 while the screen did not show it. These two fallback hooks say
+                 EXACTLY what the announcement says, and disclose no figure.
+                 This comment sits INSIDE the teaser block read by
+                 teaserGateWJ125.test.ts: it must itself carry no unit and no
+                 amount. -->
+            <p class="mt-teaser-hook" id="mt-teaser-hook-etude" hidden>
+              At this scale, your project calls for a dedicated study — an adviser will call you back.
+            </p>
+            <p class="mt-teaser-hook" id="mt-teaser-hook-rappel" hidden>
+              Your pumping is sized from your borehole — an adviser will call you back with a calculation that fits.
+            </p>
             <p class="mt-teaser-headline">
               Get your complete, personalised study
             </p>
@@ -1203,6 +1221,174 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false">Next week</button>
             </div>
           </fieldset>
+
+          <!-- L-WEBT — "Refine your consumption profile": OPTIONAL and
+               COLLAPSIBLE (native <details>, closed by default) — a visitor who
+               skips this section never sees the funnel grow longer.
+
+               QJW5 (web-tunnel-1) — this whole block was MISSING from the
+               English page. The nine L-WEBT answers and the four kW/slot
+               details were never collected from an English-speaking visitor:
+               not hidden, not degraded — simply never asked, while the French
+               page has asked them since 24/08/2026. Ported here VERBATIM (same
+               ids, same structure, same defaults) so the shared field registry
+               reads the same DOM in all three locales.
+
+               The three silhouettes come VERBATIM from the server
+               (backend/django_core/apps/ventes/courbes_journalieres.py
+               SILHOUETTES_OCCUPATION, mirrored in lib/dayProfiles.ts
+               OCCUPANCY_SHAPES — CJ2a, a test pins the two files to each
+               other): no weight is invented here, this component only DRAWS.
+               The equipment questions mirror the sales-call script already
+               approved by the founder on `crm.Lead` (each field's help_text,
+               apps/crm/models.py). Each ticked box reveals an EVEN MORE
+               optional kW/slot detail — never required, never pre-filled. -->
+          <details class="mt-1 cine-card border border-white/10 text-white">
+            <summary class="cursor-pointer select-none p-3 text-sm font-semibold">
+              Refine my consumption profile (optional)
+            </summary>
+            <div class="flex flex-col gap-4 border-t border-white/10 p-3">
+              <fieldset>
+                <legend class="text-sm text-lune-soft">Are you home during the day?</legend>
+                <div class="mt-2 border border-white/10 bg-white/5 p-2">
+                  <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
+                    preserveAspectRatio="none" role="img"
+                    aria-label="Hourly shape weights of the three occupancy profiles"></svg>
+                  <p class="mt-1 text-[11px] text-lune-faint">Vertical axis: shape weight (unitless)</p>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
+                    <span>Home</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
+                    <span>Away</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
+                    <span>Partly</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden>CHOSEN for this client</span>
+                  </button>
+                </div>
+                <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
+              </fieldset>
+
+              <fieldset class="flex flex-col gap-3">
+                <legend class="text-sm text-lune-soft">Appliances (optional — sharpens your study)</legend>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span>Electric water heater</span>
+                  </label>
+                  <!-- L-WEBT2 — EVEN MORE optional kW/slot detail: the engine's
+                       water-heater layer only exists if BOTH are filled in
+                       (apps/ventes/courbes_journalieres.py); one half alone
+                       produces nothing, and never an error. -->
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint">Water heater power (kW, optional)</label>
+                    <input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="e.g. 2.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint">When does it mostly heat? (optional)</label>
+                    <select id="mt-equip-chauffe-eau-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Morning</option>
+                      <option value="soir">Evening</option>
+                      <option value="nuit">Night</option>
+                      <option value="journee">All day</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-ve" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span>Electric vehicle (current or planned)</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint">Kilometres driven per week with this vehicle</label>
+                    <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — optional precision: real charger + real slot,
+                         when known, tighten the charging window served
+                         (otherwise the default 9pm-6am window). -->
+                    <label class="mt-2 block text-xs text-lune-faint">Charger power (kW, optional)</label>
+                    <input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="e.g. 7.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint">When do you mostly charge? (optional)</label>
+                    <select id="mt-equip-ve-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="nuit">Night</option>
+                      <option value="jour">Day</option>
+                      <option value="soir">Evening</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-clim" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span>Air conditioning</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint">Number of air-conditioned rooms/units</label>
+                    <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — real power (optional): replaces the estimate
+                         by room count when known. -->
+                    <label class="mt-2 block text-xs text-lune-faint">Actual total power (kW, optional)</label>
+                    <input id="mt-equip-clim-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="e.g. 2.8"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint">When does it mostly run? (optional)</label>
+                    <select id="mt-equip-clim-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Morning</option>
+                      <option value="apres_midi">Afternoon</option>
+                      <option value="soir">Evening</option>
+                      <option value="journee">All day</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-piscine" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span>Swimming pool</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint">Filtration pump power (kW)</label>
+                    <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — real duration/slot (optional): the duration
+                         replaces the 8h default, the slot moves the start time
+                         (10am by default) — independent, freely combined. -->
+                    <label class="mt-2 block text-xs text-lune-faint">Filtration hours per day (optional)</label>
+                    <input id="mt-equip-piscine-heures" type="number" min="0" max="24" step="any" inputmode="decimal"
+                      placeholder="e.g. 6"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint">When does it mostly run? (optional)</label>
+                    <select id="mt-equip-piscine-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Morning</option>
+                      <option value="apres_midi">Afternoon</option>
+                      <option value="soir">Evening</option>
+                      <option value="journee">All day</option>
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+          </details>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
             <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
@@ -1822,7 +2008,25 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { billRangeFromExact, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  // QJW5 — THE single lead-body builder, shared by the three locales
+  // (`src/lib/tunnel/`). This page no longer has a `buildBody()` of its own:
+  // it READS its DOM into a plain state and hands it to `construireCorps`,
+  // which applies the field registry and calls `validateLead` itself.
+  import { construireCorps } from '../../../lib/tunnel/corps';
+  import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
+  import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
+  import { ERREURS } from '../../../lib/tunnel/i18n';
+  // LANE T-WEB — anonymous device fingerprint (see lib/visite.ts): echoed
+  // as-is on the lead to correlate with beacon visits. QJW5 — it was missing
+  // from this page entirely (web-tunnel-1), so the anti-fraud signal was never
+  // collected from an English-speaking visitor.
+  import { appareilId } from '../../../lib/visite';
+  // L-WEBT — SERVER-side occupancy silhouettes (CJ2a): lib/dayProfiles.ts
+  // copies backend/django_core/apps/ventes/courbes_journalieres.py
+  // SILHOUETTES_OCCUPATION VERBATIM (cross-checked backend<->TS by a test).
+  // No weight is invented here.
+  import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -2069,10 +2273,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // QX — AGRICULTURAL sub-panel (step 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
+    // L-WEBT — appliances (optional, "Refine my consumption profile" section).
+    'mt-equip-ve-km', 'mt-equip-clim-pieces', 'mt-equip-piscine-kw',
+    // L-WEBT2 (24/08/2026) — even more optional kW/slot details.
+    'mt-equip-chauffe-eau-kw', 'mt-equip-chauffe-eau-creneau',
+    'mt-equip-ve-kw', 'mt-equip-ve-creneau',
+    'mt-equip-clim-kw', 'mt-equip-clim-creneau',
+    'mt-equip-piscine-heures', 'mt-equip-piscine-creneau',
   ];
   // 'mt-ete-differente', 'mt-battery-interest' and 'mt-weekend' removed from
   // the funnel (founder cut 18/08) — the sales rep fills them in the ERP.
-  const PERSISTED_CHECK_FIELDS = ['mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent'];
+  const PERSISTED_CHECK_FIELDS = [
+    'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent',
+    // L-WEBT — appliances (optional).
+    'mt-equip-chauffe-eau', 'mt-equip-ve', 'mt-equip-clim', 'mt-equip-piscine',
+  ];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
   function saveWizardState() {
     if (restoring) return;
@@ -2090,7 +2305,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
+        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
         capturePin, captureOutline,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2298,6 +2513,120 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
   wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK1/3 — "Are you home during the day?": three 24h silhouettes
+  // overlaid (founder-approved colours, reproduced identically) — home solid
+  // blue #2a78d6 (10 % fill), away dashed orange [6,3] #eb6834, partly dashed
+  // green [2,3] #1baf7a. The 24 weights per silhouette are the SERVER's
+  // (import above) — this block only DRAWS, it invents no figure.
+  //
+  // QJW5 — ported from the French page, where it has run since 24/08/2026.
+  // ════════════════════════════════════════════════════════════════════════
+  const OCC_COLORS: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
+    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
+    absence_jour: { stroke: '#eb6834', dash: '6,3' },
+    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
+  };
+  // Lead.occupation_jour (backend crm.Lead, apps/crm/models.py) does NOT use
+  // the same vocabulary as the display ids OCCUPANCY_IDS — this table is the
+  // ONLY translation between the two (see also
+  // apps/ventes/courbes_journalieres.py _OCCUPATION_JOUR_VERS_DRAPEAU on the
+  // server side, other direction).
+  const OCC_TO_LEAD_FIELD: Record<OccupancyId, 'present' | 'absent' | 'partiel'> = {
+    presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
+  };
+
+  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
+    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
+    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const line = `M${pts.join(' L')}`;
+    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area };
+  }
+
+  function renderOccupancyChart() {
+    const svg = $('mt-occ-chart');
+    if (!svg) return;
+    const W = 320;
+    const H = 140;
+    const PAD = 8;
+    let markup = '';
+    for (const id of OCCUPANCY_IDS) {
+      const shape = OCCUPANCY_SHAPES[id];
+      const { line, area } = occShapePaths(shape, W, H, PAD);
+      const c = OCC_COLORS[id];
+      if (c.fill) markup += `<path d="${area}" fill="${c.fill}" stroke="none"></path>`;
+      markup += `<path data-occ-line="${id}" d="${line}" fill="none" stroke="${c.stroke}" stroke-width="2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}></path>`;
+    }
+    svg.innerHTML = markup;
+  }
+  renderOccupancyChart();
+
+  let occupationJour = savedWizard?.sel?.occupationJour || '';
+  function syncOccupancySelection() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      const on = !!field && occupationJour === field;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('border-brass-400', on);
+      btn.classList.toggle('border-white/15', !on);
+      const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
+      if (badge) badge.hidden = !on;
+    });
+    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
+      const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
+      const on = !occupationJour || OCC_TO_LEAD_FIELD[id] === occupationJour;
+      p.style.opacity = on ? '1' : '0.25';
+      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === occupationJour ? '3' : '2');
+    });
+    const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
+    if (hidden) hidden.value = occupationJour;
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      if (!field) return;
+      occupationJour = occupationJour === field ? '' : field;
+      syncOccupancySelection();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncOccupancySelection();
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK3 — appliances (optional, never blocking): the checkbox reveals
+  // its detail ONLY when ticked (unticked box = question never asked, never a
+  // fabricated "No" — the shared registry `src/lib/tunnel/champs.ts` omits the
+  // whole key as long as the box is not ticked).
+  // ════════════════════════════════════════════════════════════════════════
+  const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
+    { checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' },
+    { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
+    { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
+    { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
+  ];
+  // Called again after the WJ61 rehydration (below): setting `.checked` by
+  // script does not fire `change`, so a restored ticked detail would stay
+  // hidden without this second pass.
+  function syncEquipDetails() {
+    for (const { checkId, detailId } of EQUIP_TOGGLES) {
+      const chk = $(checkId) as HTMLInputElement | null;
+      const detail = detailId ? $(detailId) : null;
+      const wrap = detail?.closest<HTMLElement>('[data-equip-detail]') || null;
+      if (wrap) wrap.hidden = !chk?.checked;
+    }
+  }
+  for (const { checkId } of EQUIP_TOGGLES) {
+    const chk = $(checkId) as HTMLInputElement | null;
+    chk?.addEventListener('change', () => { syncEquipDetails(); markDataEntered(); saveWizardState(); });
+  }
+  syncEquipDetails();
 
   // "Future loads planned" (.mt-future-load) and "Photo of your meter or
   // bill" (mt-meter-photo) are removed from the funnel (founder cut 18/08) —
@@ -2557,6 +2886,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ105 — a restored contact preference must re-sync the callback SLA
     // visibility (assigning `.checked` via script never fires `change`).
     syncCallbackSla();
+    // L-WEBT — same reason: a restored ticked appliance detail stays hidden
+    // without this second pass (`.checked` assigned by script fires no `change`).
+    syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     syncCityRequirement();
@@ -2829,7 +3161,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
    *  installation, cost of waiting, Print button), then reveals the locked
    *  teaser card (figure-free hook adapted to pumping vs roof). The CALCULATION
    *  is unchanged — only the public RENDER changes. */
-  function showEstimateTeaser(m: string) {
+  /** WJ127 — the three possible hooks. 'standard' = an estimate exists (roof or
+   *  pumping hook); 'etude' = no estimate because the project is beyond the
+   *  simulator's scale; 'rappel' = no estimate because the hydraulics are
+   *  missing. Both fallbacks say the SAME thing as `announceEstimate` on those
+   *  paths — sighted / screen-reader parity. */
+  type VarianteTeaser = 'standard' | 'etude' | 'rappel';
+  function showEstimateTeaser(m: string, variante: VarianteTeaser = 'standard') {
     docRendered = true;
     const doc = $('mt-doc');
     if (doc) doc.hidden = true;
@@ -2842,10 +3180,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const teaser = $('mt-teaser');
     if (teaser) teaser.hidden = false;
     const isAgri = m === 'agricole';
+    const etudeHook = $('mt-teaser-hook-etude');
+    if (etudeHook) etudeHook.hidden = variante !== 'etude';
+    const rappelHook = $('mt-teaser-hook-rappel');
+    if (rappelHook) rappelHook.hidden = variante !== 'rappel';
     const roofHook = $('mt-teaser-hook-roof');
-    if (roofHook) roofHook.hidden = isAgri;
+    if (roofHook) roofHook.hidden = isAgri || variante !== 'standard';
     const pumpHook = $('mt-teaser-hook-pump');
-    if (pumpHook) pumpHook.hidden = !isAgri;
+    if (pumpHook) pumpHook.hidden = !isAgri || variante !== 'standard';
   }
   // QX — MAD/kWh tariff of the last PRO estimate shown (engine assumptions):
   // used to derive a consistent billRange when consumption is in kWh.
@@ -3031,6 +3373,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ121 — cap of the active C&I mode (industrial and commercial share 1M MAD).
     if (proBillUnit() === 'mad' && proBill > maxBillFor(mode)) {
       if (toolargePro) toolargePro.hidden = false;
+      // WJ127 — `#mt-doc` (so this card) is hidden on the gated public journey:
+      // without this, an industrial visitor at 2,000,000 MAD only saw the
+      // generic hook, while the screen reader did receive the honest message
+      // below. The "dedicated study" hook restores parity, still with no figure.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       clearShown();
       fillDocChrome();
       updatePanels3dVisibility();
@@ -3055,6 +3402,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
         if (toolargePro) toolargePro.hidden = false;
+        // WJ127 — same honest fallback (see above).
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
         clearShown();
         fillDocChrome();
         updatePanels3dVisibility();
@@ -3342,8 +3691,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const ag = computeAgricoleEstimate();
       if (!ag) {
         // Missing hydraulics -> a warm card INSIDE the document (never a
-        // fabricated residential figure).
+        // fabricated residential figure). WJ127 — that document being hidden on
+        // the gated public journey, the teaser hook carries the SAME message as
+        // the announcement below: the sighted visitor reads what the screen
+        // reader hears, and no figure is disclosed.
         if (agricoleEl) agricoleEl.hidden = false;
+        if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'rappel');
         lastKwcLabel = '';
         lastSavingsLabel = '';
         lastKwc = null;
@@ -3375,6 +3728,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (note) note.hidden = true;
       if (unavail) unavail.hidden = true;
       if (toolarge) toolarge.hidden = false;
+      // WJ127 — `#mt-doc` (so this card) is hidden on the gated public journey:
+      // the teaser hook says the same thing, with no figure disclosed.
+      if (PUBLIC_ESTIMATE_GATED) showEstimateTeaser(mode, 'etude');
       setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'Please check the amount entered.');
       lastKwcLabel = '';
       lastSavingsLabel = '';
@@ -3428,6 +3784,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       ecoMadMonthHigh: est.savingsMonthlyHigh,
       paybackLabel: est.paybackLabel,
     };
+    // WJ129 (finding 6) — KNOWN SEMANTIC OFFSET, documented without changing
+    // behaviour: on the gated public path, "estimation/viewed" fires although
+    // NO figure is rendered on screen (only the teaser shows), and
+    // "contact/reached" fires at the SAME instant two lines below. In a funnel
+    // dashboard both steps appear crossed at once — read this conversion
+    // discontinuity as "estimate computed off-screen + immediate hand-off to
+    // contact", not as two distinct visitor actions.
     if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3864,37 +4227,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return true;
   }
 
-  // ——— QX : PROFESSIONAL billRange derived from the entered consumption —
-  // always consistent with what drove the estimate shown. In kWh, the
-  // implicit MAD = kWh × the engine's assumed tariff (the same figure as the
-  // document); "gt10000" stays factually true for any large account. ———
-  function resolveProBillRange(): string {
-    const v = num(proBillId());
-    if (v == null || v <= 0) return '';
-    let mad: number | null = null;
-    if (proBillUnit() === 'mad') mad = v;
-    else if (lastProTarifMadKwh != null && lastProTarifMadKwh > 0) mad = v * lastProTarifMadKwh;
-    if (mad == null || !(mad > 0)) return '';
-    const rid = billRangeFromExact(mad);
-    if (rid) return rid;
-    return mad > 10_000 ? 'gt10000' : '';
-  }
-  // ——— QX : roofType DERIVED for EVERY profile — validateLead (lib/lead.ts)
-  // still REQUIRES it for any mon-toit submission, but no screen asks the
-  // question anymore since the founder cut of 18/08 (the residential
-  // sub-panel's "roof type" cards are gone). We derive it from real answers
-  // when they exist — metal roof -> hangar/shed, flat roof (terrace) -> flat
-  // roof — and fall back to 'autre' otherwise, the HONEST bucket: never an
-  // invented precise roof for a visitor we never asked. The sales rep
-  // qualifies the real roof type in the ERP / at the technical site visit. ———
-  function resolveRoofType(): string {
-    if (isProMode(mode)) {
-      if (surfaceType === 'bac_acier') return 'hangar';
-      if (surfaceType === 'terrasse') return 'toit_plat';
-      return 'autre';
-    }
-    return 'autre';
-  }
+  // QJW5 — `resolveProBillRange()` (C&I bracket derived from the entered
+  // consumption) and `resolveRoofType()` (roof type derived, never asked since
+  // the founder cut of 18/08) have left this page: they are PAYLOAD
+  // DERIVATIONS, so they live with the rest of the body in the shared registry
+  // (`src/lib/tunnel/champs.ts` — `trancheFactureProfessionnelle` and the
+  // `typeToiture` descriptor). Copied into three pages they could drift; there
+  // is now exactly one of each.
   // ——— WJ52 : short client reference, generated ONCE in the browser ———
   // Stable across repeated submissions (e.g. a network failure then a retry):
   // generated on the first attempt, reused as-is afterwards — never silently
@@ -3930,173 +4269,104 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // rep now fills them in the ERP. COMMERCIAL_QUESTION_WEBHOOK_KEY stays in
   // lib/commercialCategories (the backend still uses it) — the funnel simply
   // no longer produces these keys.
-  /** Builds the lead body + returns client-side errors (mirrors validateLead). */
-  function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    // WJ51 — EXPLICIT contact preference (radio "WhatsApp only" vs "An
-    // advisor may call me"): `whatsappOptIn` stays derived so nothing breaks
-    // CRM/webhook side, `contactPreference` is forwarded in addition (maps to `canal`).
-    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
-      ? 'phone_ok'
-      : 'whatsapp_only';
-    const whatsappOptIn = contactPreference === 'whatsapp_only';
-    const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
-    const body: Record<string, unknown> = {
-      fullName: val('mt-name'),
-      phone: val('mt-phone'),
-      city: adresse,
-      // QX — billRange ALWAYS consistent with what drove the estimate shown:
-      // residential = the <select> (auto-derived from the exact amount,
-      // syncBillRangeFromExact); C&I (industrial/commercial) = derived from the entered
-      // consumption; agricultural = no longer required (lib/lead.ts, mode 'agricole').
-      billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
-      // QX — derived from the real answers for pro/agricultural (roof cards
-      // = residential sub-panel only); see resolveRoofType.
-      roofType: resolveRoofType(),
-      consent,
-      whatsappOptIn,
-      contactPreference,
-      email: val('mt-email') || undefined,
-      factureHiver: num('mt-facture-hiver'),
-      // `factureEte`/`eteDifferente` and `raccordement` (single/three-phase)
-      // are removed from the funnel (founder cut 18/08) — the sales rep
-      // fills them in the ERP; the keys are simply ABSENT from the body
-      // (lib/lead.ts still accepts them from other sources).
-      adresse,
-      // WJ30 — the project type is forwarded to the webhook. WJ39 — this
-      // page has no FR/AR toggle (the /en/ URL already declares the locale)
-      // and `langue_preferee` only accepts fr/ar (src/lib/lead.ts LEAD_LANGS): omitted.
+  /**
+   * QJW5 — THE DOM → STATE ADAPTER. This is all this page still does about the
+   * lead body: read ITS OWN fields into a plain object. The body itself —
+   * which keys go out, under what name, under what condition — and its
+   * pre-flight validation now live in `src/lib/tunnel/`, shared VERBATIM with
+   * the French and Arabic pages. The three locales can no longer drift: this
+   * page's body was missing the whole L-WEBT block and `appareilId` without
+   * anything ever signalling it.
+   *
+   * We read EVERYTHING, unconditionally. The gates (box ticked, unit chosen,
+   * active profile) live in the registry: a value read here is not a value
+   * emitted. The registry decides, once, for all three pages.
+   */
+  function lireEtatTunnel(): EtatTunnel {
+    return {
+      ...etatVide(),
+      // QJW21 — THE « ONE FIELD ↔ ONE ID » READS COME FROM THE SHARED READER.
+      // This list lived identically in ALL THREE pages: three copies, hence
+      // three chances to forget one — exactly how the L-WEBT block and
+      // `appareilId` stayed missing from the EN and AR pages without a single
+      // red test. `lireChampsDomTunnel` reads THIS page's DOM; the parity guard
+      // runs it against EACH locale's DOM and compares the emitted bodies
+      // (tests/tunnelParite.test.ts).
+      //
+      // Everything is read UNCONDITIONALLY. The gates (checked box, chosen
+      // unit, active profile) live in the registry: a value read is not a value
+      // emitted. The registry decides once, for all three pages.
+      ...lireChampsDomTunnel(document),
+
+      // ——— THIS PAGE'S INTERNAL STATE — none of it is read from an identified
+      //     element: card groups, the map, session tokens, tracking, mode and
+      //     active locale, and the C&I bill whose id DEPENDS on the active panel. ———
+      adresseCarte: addressEl?.value ?? '',
+      adresseSecours: fallbackAddrEl?.value ?? '',
+      // WJ30 — the project type is forwarded to the webhook.
       mode,
-      // `ombrage` RETIRÉ du tunnel (ordre fondateur 21/08) : la clé est
-      // désormais ABSENTE du corps — jamais une chaîne vide. Le contrat webhook
-      // est INCHANGÉ (lib/lead.ts la valide toujours comme facultative et
-      // l'accepte d'autres sources : c'est le commercial qui la renseigne dans
-      // l'ERP après la visite technique). Rien ne change non plus sur le fil :
-      // l'ancienne expression de cette clé produisait déjà `undefined` pour un
-      // visiteur sans réponse, et JSON.stringify omet les `undefined`.
-      // (L'expression elle-même est épinglée ABSENTE de ce fichier par
-      // tests/wj112RefineEstimate.test.ts, qui lit la source BRUTE — ne pas la
-      // réécrire ici, même en commentaire.)
-      // Removed from the funnel (founder cut 18/08) — the sales rep fills
-      // them in the ERP, their keys are simply ABSENT from the body
-      // (lib/lead.ts still accepts them from other sources, webhook contract
-      // intact): `distributeur`, `billKwh`, `roofAgeYears`, `futureLoads`,
-      // `batteryInterest`, `occupantType`, `projectTiming`, `hasMeterPhoto` —
-      // and `financingIntent`, removed before them for the same reason.
+      // WJ39 — this page has no FR/AR toggle (the /en/ URL already declares
+      // the locale) and `langue_preferee` only accepts fr/ar (lib/lead.ts
+      // LEAD_LANGS): the state carries '' and the registry OMITS the key —
+      // never a fabricated locale.
+      languePreferee: '',
+      // WJ122 — C&I consumption comes from the ACTIVE panel (commercial:
+      // mt-cc-bill). The engine's MAD/kWh tariff travels with the value:
+      // without it, the registry refuses to convert a kWh entry rather than
+      // invent an amount.
+      factureProValeur: num(proBillId()),
+      factureProUnite: proBillUnit(),
+      tarifProMadKwh: lastProTarifMadKwh,
+      tension,
+      activite: activity,
+      categorieCommerciale: commercialCategory,
+      // WJ123 — INDUSTRIAL mode: shifts honestly cap self-consumption in
+      // estimatePro.
+      equipes,
+      typeSurface: surfaceType,
+      // QX — AGRICULTURAL sub-panel: the water source and its unit are card
+      // groups, not identified fields.
+      sourceEau: waterSource,
+      uniteEau: waterUnit,
+      regionAgricole,
+      // W353 — technical visit slot preference (optional, STATIC).
+      creneauVisitePartie: visitWindowPart,
+      creneauVisiteSemaine: visitWindowWeek,
+      // L-WEBT — the day occupancy is a CARD GROUP whose state the page holds;
+      // the hidden `mt-occupation-jour` input only mirrors it.
+      occupationJour,
       // WJ52 — short reference for the post-submission artefact (echoed as-is,
       // never a server uniqueness key — see lib/lead.ts).
       clientRef: getOrCreateClientRef(),
       // DEDUPLICATION tokens (CRM + Meta CAPI): minted on first display, stable
       // for the whole entry session, so a resend (network failure, double-click,
-      // back button then re-submit) carries the SAME pair. lib/lead.ts already
-      // validated them — but the funnel never sent them: on the CAPI side
-      // `fireCapi` fell back to a timestamp-derived id, DIFFERENT on every
-      // resend, which deduplicates nothing.
+      // back button then re-submit) carries the SAME pair.
       idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
       eventId: getOrCreateDedupTokens().eventId,
-      // W353 — technical visit slot preference (optional, STATIC).
-      visitWindowPart: visitWindowPart || undefined,
-      visitWindowWeek: visitWindowWeek || undefined,
-      // WJ68 — professional mode: optional, additive, never blocking. Fields
-      // are still sent even if the mode changed since (validateLead accepts
-      // them independently of the mode — a visitor toggling
-      // residential->professional->residential loses nothing typed).
-      raisonSociale: val('mt-raison-sociale') || undefined,
-      // `facilityType` (facility type) and `siteCount` (how many sites) are
-      // removed from the funnel (founder cut 18/08): neither entered
-      // estimatePro — the sales rep fills them in the ERP.
-      // QX — PROFESSIONAL sub-panel. `tensionRaccordement` (bt/mt) is
-      // deliberately DISTINCT from the residential `raccordement` select
-      // (single/three-phase) — never both meanings in one field. Fields with
-      // a VISIBLE default (tension/activity) are only sent when a C&I
-      // (industrial/commercial) profile is active — never fabricated data for another profile.
-      tensionRaccordement: isProMode(mode) ? tension : undefined,
-      activityProfile: isProMode(mode) ? activity : undefined,
-      surfaceType: surfaceType || undefined,
-      surfaceM2: num('mt-surface-m2') ?? undefined,
-      // `puissanceKva` and `hasGenerator` (+ generator kVA / diesel spend
-      // below) are removed from the funnel (founder cut 18/08): estimatePro
-      // never reads them.
-      // WJ122 — C&I consumption comes from the active panel (commercial: mt-cc-bill).
-      proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
-      proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
-      // WJ122 — COMMERCIAL mode: category (webhook whitelist QX51; hotel ≠
-      // office at equal bill via the archetype day-share). The per-category
-      // answers are removed from the funnel (founder cut 18/08).
-      categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
-      // WJ123 — INDUSTRIAL v2: SHIFTS stay (they honestly cap self-consumption
-      // in estimatePro); `weekend`, `cosPhiConnu`, `groupeKva` and
-      // `dieselDhMois` are removed from the funnel (founder cut 18/08) — none
-      // of them entered the calculation.
-      //
-      // NO MORE GATE ON THE CURRENT MODE. These fields only went out if the
-      // profile active AT SUBMIT TIME matched: a visitor who described their
-      // industrial site and then switched back to "commercial" (or stepped back
-      // to check something) had those answers silently erased from the payload —
-      // even though they really gave them. One rule now, the same as
-      // `raisonSociale` above: ANY NON-EMPTY ANSWER GOES. An untouched INPUT
-      // stays `undefined`, and validateLead bounds and screens each key on its
-      // own, independently of the mode. ONE EXCEPTION, kept gated below:
-      // `heuresPompage` is an <input type="range" value="7">, its `.value`
-      // reads "7" BEFORE any interaction — ungating it would fabricate an
-      // answer nobody gave.
-      equipes: equipes || undefined,
-      // surface_toiture_m2 = roof surface in the strict sense (the backend
-      // distinguishes ground: webhooks.py:303-304) — only send it for a real roof;
-      // ombrière/terrain are described by their booleans, never a fake roof.
-      // The SURFACE-TYPE gate stays (that is semantics, not mode); only the
-      // current-mode gate goes away.
-      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: surfaceType === 'ombriere' ? true : undefined,
-      terrain: surfaceType === 'terrain' ? true : undefined,
-      // QX — AGRICULTURAL sub-panel (pumping).
-      waterSource: waterSource || undefined,
-      profondeurM: num('mt-profondeur') ?? undefined,
-      hmtM: num('mt-hmt') ?? undefined,
-      debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
-      besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      // The ONLY field that KEEPS its mode gate, deliberately: the others are
-      // inputs that start empty, this one is a slider shipped with value="7"
-      // (#mt-heures-pompage). Without the gate a residential or industrial lead
-      // would carry "7 h/day" nobody entered, and the CRM would show it as a
-      // visitor answer on a villa.
-      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
-      // `irrigation` is removed from the funnel (founder cut 18/08) — the
-      // water engine falls back to its default efficiency; the sales rep
-      // fills it in the ERP.
-      culture: val('mt-culture') || undefined,
-      // WJ124 — agronomy region (drives the FAO-56 water engine on the proposal).
-      regionAgricole: regionAgricole || undefined,
-      surfaceHa: num('mt-surface-ha') ?? undefined,
-      // `pompeActuelle` / `pompeCvActuelle` are removed from the funnel
-      // (founder cut 18/08): only the fuel SPEND feeds the calculated saving.
-      fuelSpendMad: num('mt-fuel-spend') ?? undefined,
+      // LANE T-WEB — anonymous device fingerprint, additive and never blocking:
+      // '' (storage unavailable) becomes an ABSENT key.
+      appareilId: appareilId(),
       // QX — EXACTLY the figures shown in the estimate document (the CRM
       // advisor sees what the client saw — never more).
-      estimateShown: estimateShown ?? undefined,
-      // W317 — honeypot: empty for any human visitor (hidden off-screen
-      // field, never knowingly filled); rejected server-side if not empty.
-      website_url: val('mt-hp'),
+      estimationAffichee: estimateShown,
+      // WJ116 — fbclid/UTM (referrals included) resumed from sessionStorage.
+      tracking: readTrackingParams(),
+      // WJ4 — OPTIONAL pin and outline: we never BLOCK without them.
+      repereToit: capturePin,
+      contourToit: captureOutline,
     };
-    // WJ116 — fbclid/UTM (referrals included): joined only if present.
-    Object.assign(body, readTrackingParams());
-    // WJ4 — OPTIONAL pin: joined if it exists, never BLOCKS without it.
-    if (capturePin) {
-      body.roofPoint = capturePin;
-      body.gpsLat = capturePin.lat;
-      body.gpsLng = capturePin.lng;
-    }
-    if (captureOutline.length >= 3) body.roofOutline = captureOutline;
-    const v = validateLead(body);
-    const errors: Record<string, string> = v.ok ? {} : { ...v.errors };
-    // WJ65 — validateLead (lib/lead.ts, out of this page's file scope) only
-    // requires a length >= 2: a name made only of emoji/symbols (e.g.
-    // "😀😀") used to pass silently. We require at least ONE letter (any
-    // alphabet — \p{L} covers Latin and Arabic) before submitting.
-    if (!errors.fullName && !/\p{L}/u.test(val('mt-name'))) {
-      errors.fullName = 'Full name required';
-    }
-    return { body, errors };
+  }
+
+  /**
+   * The lead body + the client-side errors. There is no `buildBody()` here any
+   * more — no function, no wrapper: the page calls the shared module directly,
+   * which applies the registry then lib/lead.ts's `validateLead`. Messages come
+   * from the English table (`src/lib/tunnel/i18n.ts`); `enMsg` below still
+   * translates whatever `validateLead` returns untranslated — the phone message
+   * in particular, which is circumstantial and has no static equivalent.
+   */
+  function corpsDuLead(): { body: Record<string, unknown>; errors: Record<string, string> } {
+    return construireCorps(lireEtatTunnel(), { messages: ERREURS.en });
   }
 
   // WJ39 — the shared validateLead() (src/lib/lead.ts, out of this page's
@@ -4207,7 +4477,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
-    const { body, errors } = buildBody();
+    const { body, errors } = corpsDuLead();
     if (Object.keys(errors).length > 0) {
       showInlineErrors(errors);
       if (errEl) {
@@ -4254,9 +4524,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // WJ5 — HONEST response per the qualifying threshold (`qualified` returned by the server).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
-          // WJ52 — display the reference generated in buildBody() (already
-          // included in the sent body — re-read here via getOrCreateClientRef()
-          // to stay the SAME value, never regenerated).
+          // WJ52 — display the reference generated when the state was read
+          // (already included in the sent body — re-read here via
+          // getOrCreateClientRef() to stay the SAME value, never regenerated).
           const refEl = $('mt-client-ref');
           if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;

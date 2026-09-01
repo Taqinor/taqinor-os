@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PackageCheck, Plus, ReceiptText, Tags, ArrowRight,
+import { PackageCheck, Plus, ReceiptText, Tags, ArrowRight, ScanLine,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import stockApi from '../../api/stockApi'
@@ -17,6 +17,9 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// WIR193 — réception scan-first (XSTK5) : le panneau existait, testé, monté
+// nulle part. Il s'ouvre ici sur un BCF envoyé et pas encore entièrement reçu.
+import ReceptionScanPanel from '../../features/magasin/scan/ReceptionScanPanel'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -406,6 +409,59 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
   )
 }
 
+/* WIR193 — « Réception au scan » (XSTK5). Le magasinier choisit le BCF à
+   réceptionner puis scanne : le panneau réutilise l'action serveur EXISTANTE
+   `recevoirBcf` et refuse tout code absent du bon (comportement déjà testé
+   dans ReceptionScanPanel.test.jsx). Aucun endpoint nouveau, aucun prix
+   d'achat affiché. */
+function ReceptionScanDialog({ bonsRecevables, onClose }) {
+  const [bonId, setBonId] = useState(
+    bonsRecevables.length === 1 ? String(bonsRecevables[0].id) : '',
+  )
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Réception au scan</DialogTitle>
+          <DialogDescription>
+            Choisissez le bon de commande à réceptionner, puis scannez les
+            articles. Un code absent du bon est refusé.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-1">
+          <label className="form-label" htmlFor="scan-bcf">Bon de commande fournisseur</label>
+          <select
+            id="scan-bcf"
+            className="form-control"
+            value={bonId}
+            onChange={(e) => setBonId(e.target.value)}
+          >
+            <option value="">— Choisir un bon —</option>
+            {bonsRecevables.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.reference ?? `BCF ${b.id}`}{b.fournisseur_nom ? ` — ${b.fournisseur_nom}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {bonId
+          ? <ReceptionScanPanel bonCommandeId={Number(bonId)} />
+          : (
+            <p className="text-sm text-muted-foreground">
+              Sélectionnez un bon pour ouvrir le scanner.
+            </p>
+          )}
+
+        <DialogFooter className="flex-wrap">
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function ReceptionsFournisseur() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -414,6 +470,8 @@ export default function ReceptionsFournisseur() {
   const [bons, setBons] = useState([])
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
+  // WIR193 — modale « Réception au scan » (XSTK5).
+  const [scanning, setScanning] = useState(false)
 
   const reload = () => {
     stockApi.getReceptionsFournisseur({ ordering: '-date_creation' })
@@ -472,12 +530,22 @@ export default function ReceptionsFournisseur() {
         title="Réceptions fournisseur"
         subtitle={`${items.length} réception(s)`}
         actions={(
-          <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
-                  title={bonsRecevables.length === 0
-                    ? 'Aucun bon de commande envoyé à réceptionner'
-                    : undefined}>
-            <Plus /> Nouvelle réception
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* WIR193 — entrée du flux scan-first (XSTK5). */}
+            <Button variant="outline" onClick={() => setScanning(true)}
+                    disabled={bonsRecevables.length === 0}
+                    title={bonsRecevables.length === 0
+                      ? 'Aucun bon de commande envoyé à réceptionner'
+                      : 'Réceptionner en scannant les articles'}>
+              <ScanLine /> Scan
+            </Button>
+            <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
+                    title={bonsRecevables.length === 0
+                      ? 'Aucun bon de commande envoyé à réceptionner'
+                      : undefined}>
+              <Plus /> Nouvelle réception
+            </Button>
+          </div>
         )}
       />
 
@@ -521,6 +589,10 @@ export default function ReceptionsFournisseur() {
         aria-label="Réceptions fournisseur"
       />
 
+      {scanning && (
+        <ReceptionScanDialog bonsRecevables={bonsRecevables}
+                             onClose={() => { setScanning(false); reload() }} />
+      )}
       {creating && (
         <NouvelleReception bonsRecevables={bonsRecevables}
                            onClose={() => setCreating(false)} onSaved={onSaved} />

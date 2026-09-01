@@ -274,8 +274,10 @@ function runDay(
  * Déterministe et pur.
  */
 export function simulateBattery(input: BatterySimInput): BatterySimResult {
-  const etaOneWay = clamp01(input.oneWayEfficiency ?? BATTERY_ONE_WAY_EFFICIENCY, 0.5, 1);
-  const dod = clamp01(input.depthOfDischarge ?? BATTERY_DEPTH_OF_DISCHARGE, 0.1, 1);
+  const etaOneWay = clamp01(
+    input.oneWayEfficiency ?? BATTERY_ONE_WAY_EFFICIENCY, 0.5, 1, BATTERY_ONE_WAY_EFFICIENCY);
+  const dod = clamp01(
+    input.depthOfDischarge ?? BATTERY_DEPTH_OF_DISCHARGE, 0.1, 1, BATTERY_DEPTH_OF_DISCHARGE);
   const essentialW = Number.isFinite(input.essentialLoadW) && (input.essentialLoadW ?? 0) > 0
     ? (input.essentialLoadW as number)
     : ESSENTIAL_LOAD_W;
@@ -314,8 +316,21 @@ export function simulateBattery(input: BatterySimInput): BatterySimResult {
   };
 }
 
-function clamp01(v: number, lo: number, hi: number): number {
-  if (!Number.isFinite(v)) return hi;
+/**
+ * WJ129 (finding 5, NIT) — borne `v` dans [lo, hi] ; sur entrée NON-FINIE
+ * (NaN — le `??` des deux appels de `simulateBattery` ne rattrape que
+ * null/undefined, jamais un NaN explicite), retombe sur `fallback` plutôt que
+ * sur `hi`. `hi` (1.0) est la borne la plus OPTIMISTE — rendement/DoD à
+ * 100 % : y retomber en silence ferait passer une entrée invalide pour la
+ * MEILLEURE batterie possible. `fallback` doit être la CONSTANTE PAR DÉFAUT
+ * documentée de l'appelant (`BATTERY_ONE_WAY_EFFICIENCY` /
+ * `BATTERY_DEPTH_OF_DISCHARGE`), jamais une valeur inventée ici. Aujourd'hui
+ * inatteignable des deux appelants actuels (`?? DEFAUT` écarte déjà
+ * null/undefined avant d'arriver ici) — corrigé en prévision d'un futur
+ * appelant qui transmettrait un NaN explicite.
+ */
+function clamp01(v: number, lo: number, hi: number, fallback: number): number {
+  if (!Number.isFinite(v)) return fallback;
   return Math.max(lo, Math.min(hi, v));
 }
 
@@ -340,18 +355,49 @@ export interface OfferBattery {
  */
 const BATTERY_KEYWORDS = /batter|dyness|deyness|\blfp\b|lithium|bat-dey/i;
 
+interface BatteryLineCandidate {
+  capacity: number | null;
+  qty: number;
+  designation: string;
+  /** prix_unit × quantité — proxy du POIDS économique de la ligne (jamais un chiffre inventé, lu du devis). */
+  montant: number;
+}
+
+/**
+ * WJ128 (finding 4, LOW) — départage DEUX lignes qui matchent toutes deux
+ * `BATTERY_KEYWORDS` (ex. le pack batterie ET une ligne accessoire « câble
+ * batterie ») : la ligne au plus gros MONTANT (prix_unit × quantité) l'emporte
+ * — un accessoire coûte structurellement moins que le pack — et, à montant
+ * égal (rare), celle qui porte une capacité kWh LISIBLE (donnée la plus sûre)
+ * l'emporte. Jamais « la première rencontrée dans le devis ».
+ */
+function pickBestBatteryLine(candidates: BatteryLineCandidate[]): BatteryLineCandidate {
+  let best = candidates[0];
+  for (let i = 1; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (c.montant > best.montant) { best = c; continue; }
+    if (c.montant === best.montant && c.capacity !== null && best.capacity === null) best = c;
+  }
+  return best;
+}
+
 /**
  * WJ120 — Détecte, dans les lignes d'une option (typiquement `avec_items`), la ligne
  * BATTERIE : capacité par unité (STRICTEMENT depuis les réfs catalogue Dyness
  * BAT-DEY-5 → 5 kWh / BAT-DEY-10 → 10 kWh, sinon un « N kWh » explicite dans la
  * désignation), et le nombre d'unités offertes (quantité). Aucune capacité inventée :
  * une ligne batterie sans capacité lisible renvoie `capacityKwhPerUnit: null` (la
- * page retombera alors sur l'unité de base catalogue). Renvoie la PREMIÈRE ligne
- * batterie rencontrée.
+ * page retombera alors sur l'unité de base catalogue).
+ * WJ128 (finding 4) — quand PLUSIEURS lignes matchent le mot-clé (le pack ET,
+ * par exemple, un câble/accessoire batterie listé avant lui), la ligne
+ * retenue n'est plus la première rencontrée mais la « meilleure » au sens de
+ * `pickBestBatteryLine` (voir ci-dessus) — sinon une ligne accessoire bon
+ * marché usurperait la capacité/quantité affichées.
  */
 export function resolveOfferBattery(items: ProposalItem[] | null | undefined): OfferBattery {
   const empty: OfferBattery = { present: false, capacityKwhPerUnit: null, units: 0, designation: '' };
   if (!Array.isArray(items)) return empty;
+  const candidates: BatteryLineCandidate[] = [];
   for (const it of items) {
     const desig = typeof it?.designation === 'string' ? it.designation : '';
     if (!desig || !BATTERY_KEYWORDS.test(desig)) continue;
@@ -368,9 +414,41 @@ export function resolveOfferBattery(items: ProposalItem[] | null | undefined): O
       }
     }
     const qty = Number.isFinite(it?.quantite) && it.quantite > 0 ? Math.trunc(it.quantite) : 1;
-    return { present: true, capacityKwhPerUnit: capacity, units: qty, designation: desig };
+    const prixUnit = Number.isFinite(it?.prix_unit_ttc) && it.prix_unit_ttc > 0
+      ? it.prix_unit_ttc
+      : (Number.isFinite(it?.prix_unit_ht) && it.prix_unit_ht > 0 ? it.prix_unit_ht : 0);
+    candidates.push({ capacity, qty, designation: desig, montant: prixUnit * qty });
   }
-  return empty;
+  if (candidates.length === 0) return empty;
+  const best = pickBestBatteryLine(candidates);
+  return { present: true, capacityKwhPerUnit: best.capacity, units: best.qty, designation: best.designation };
+}
+
+/**
+ * WJ128 (finding 3, LOW) — plafond du curseur « et avec N batteries ? » : ne
+ * doit JAMAIS être inférieur au nombre d'unités RÉELLEMENT offert par le
+ * devis (`offeredUnits`), sinon un devis en offrant plus que l'ancien plafond
+ * fixe (3) ne peut plus jamais atteindre son propre prix réel (n ===
+ * offeredUnits n'est jamais atteint par le curseur). Ordre de priorité :
+ *   1. `coverageMaxUnits` (le plafond SERVI par le moteur de couverture,
+ *      `couverture_batterie.nb_packs_max`) — LE PLAFOND SERVI FAIT LOI (ordre
+ *      fondateur 26/08/2026) : quand le moteur parle, on s'arrête où il
+ *      s'arrête, même si c'est un nombre différent de `offeredUnits`.
+ *   2. Sinon, le plus grand de `offeredUnits` et `storageRealMax` (plafond du
+ *      mini-balayage de stockage), avec un repli à 3 (comportement
+ *      historique) quand ni l'un ni l'autre n'est disponible.
+ */
+export function resolveBatterySimMaxUnits(
+  offeredUnits: number,
+  storageRealMax: number,
+  coverageMaxUnits: number | null,
+): number {
+  if (coverageMaxUnits !== null && Number.isFinite(coverageMaxUnits) && coverageMaxUnits > 0) {
+    return Math.trunc(coverageMaxUnits);
+  }
+  const offered = Number.isFinite(offeredUnits) && offeredUnits > 0 ? Math.trunc(offeredUnits) : 0;
+  const sweepMax = Number.isFinite(storageRealMax) && storageRealMax > 0 ? Math.trunc(storageRealMax) : 0;
+  return Math.max(offered, sweepMax || 3);
 }
 
 // ── Aire empilée « direct / batterie / réseau » (style SolarEdge) ─────────────

@@ -395,6 +395,10 @@ edges:
       ARC-noyau: 80
       SCA-kit-document: 80
 unmapped_ok:
+  # QJR — Reconstruction du parcours devis (Groupe QJR de PLAN2, audit L3 du
+  # 29/08/2026) : auto-ordonné par ses propres chaînes @after et son plan de
+  # merge M0→M6 (en-tête du groupe) ; aucun prérequis de vague plateforme.
+  - QJR
   # LB — Leads Board & Liste (refonte page pipeline, Groupe LB de PLAN2,
   # session 2026-07-19) : frontend pur, aucun prérequis de vague.
   - LB

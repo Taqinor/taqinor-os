@@ -43,6 +43,8 @@ vi.mock('../../api/kbApi', () => ({
     listLecturesObligatoires: vi.fn().mockResolvedValue({ data: [] }),
     createLectureObligatoire: vi.fn(),
     removeLectureObligatoire: vi.fn(),
+    // WIR250 — rapport de conformité de lecture (nominatif, Lu/Non lu).
+    rapportConformiteArticle: vi.fn().mockResolvedValue({ data: { article: 1, lus: [], non_lus: [] } }),
   },
 }))
 
@@ -58,6 +60,17 @@ vi.mock('../../api/recordsApi', () => ({
     getAttachments: vi.fn().mockResolvedValue({ data: [] }),
     uploadAttachment: vi.fn(),
     deleteAttachment: vi.fn(),
+  },
+}))
+
+// NTMIG25 — le panneau playbook (onglet conditionnel) appelle migrationApi ;
+// mocké ici pour que le montage de l'onglet ne tape jamais le réseau réel.
+vi.mock('../../api/migrationApi', () => ({
+  default: {
+    listPlaybookInstances: vi.fn().mockResolvedValue({ data: [] }),
+    instancierPlaybook: vi.fn(),
+    cocherEtapePlaybook: vi.fn(),
+    terminerPlaybookInstance: vi.fn(),
   },
 }))
 
@@ -105,6 +118,9 @@ function mockLoads(overrides = {}) {
   kbApi.listFavoris.mockResolvedValue({ data: [] })
   kbApi.retroliens.mockResolvedValue({ data: [] })
   kbApi.listLecturesObligatoires.mockResolvedValue({ data: overrides.lecturesObl || [] })
+  kbApi.rapportConformiteArticle.mockResolvedValue({
+    data: overrides.conformite || { article: 1, lus: [], non_lus: [] },
+  })
 }
 
 beforeEach(() => {
@@ -239,5 +255,60 @@ describe('ArticleDetail — emoji + couverture (ZGED10)', () => {
       'src', '/api/django/kb/articles/1/couverture-image/')
     await user.click(screen.getByRole('button', { name: /^Retirer$/i }))
     await waitFor(() => expect(kbApi.removeCouverture).toHaveBeenCalledWith(1))
+  })
+})
+
+describe('ArticleDetail — playbook interactif (NTMIG25)', () => {
+  it("affiche l'onglet Playbook pour un article de type playbook", async () => {
+    mockLoads({ type_article: 'playbook', phases: [] })
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(screen.getByRole('tab', { name: /^Playbook$/i })).toBeTruthy()
+  })
+
+  it("n'affiche pas l'onglet Playbook pour un article ordinaire", async () => {
+    mockLoads()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(screen.queryByRole('tab', { name: /^Playbook$/i })).toBeNull()
+  })
+})
+
+describe('ArticleDetail — WIR250 rapport de conformité de lecture', () => {
+  it('affiche les colonnes Lu/Non lu nominatives avec échéance (canEdit + lecture obligatoire assignée)', async () => {
+    mockLoads({
+      lecturesObl: [{ id: 4, role_cible: 'normal', echeance: null }],
+      conformite: {
+        article: 1,
+        lus: [{ utilisateur: 2, nom: 'Amine', echeance: '2026-09-01' }],
+        non_lus: [{ utilisateur: 3, nom: 'Sami', echeance: '2026-09-01' }],
+      },
+    })
+    const user = userEvent.setup()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Droits d’accès/i }))
+
+    await waitFor(() => expect(kbApi.rapportConformiteArticle).toHaveBeenCalledWith(1))
+    expect(await screen.findByText('Conformité de lecture')).toBeInTheDocument()
+    expect(screen.getByText('Amine')).toBeInTheDocument()
+    expect(screen.getByText('Sami')).toBeInTheDocument()
+    expect(screen.getAllByText('avant le 2026-09-01').length).toBe(2)
+  })
+
+  it('ne rend pas le rapport de conformité sans lecture obligatoire assignée', async () => {
+    mockLoads({ lecturesObl: [] })
+    const user = userEvent.setup()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Droits d’accès/i }))
+    expect(screen.queryByText('Conformité de lecture')).not.toBeInTheDocument()
+  })
+
+  it('n’appelle jamais rapport-conformite sans droit d’édition (lecteur simple)', async () => {
+    mockLoads()
+    render(wrap(<ArticleDetail articleId={1} canEdit={false} onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(kbApi.rapportConformiteArticle).not.toHaveBeenCalled()
   })
 })

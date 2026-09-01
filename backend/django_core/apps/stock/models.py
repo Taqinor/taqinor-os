@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 
 class Categorie(models.Model):
@@ -912,6 +913,28 @@ class Produit(models.Model):
                 condition=~models.Q(
                     code_barres__isnull=True) & ~models.Q(code_barres=''),
                 name='stock_produit_company_code_barres_uniq'),
+            # ── Course get_or_create(company, nom) — produits SANS SKU ───────
+            # ``apps.ventes.services`` crée à la volée des produits de SERVICE
+            # (« Frais refacturés ») identifiés par leur seul NOM, sans SKU :
+            # sans contrainte, deux requêtes concurrentes (webhook, tâche
+            # Celery) créaient DEUX fiches homonymes (course documentée de
+            # ``get_or_create``). La contrainte est volontairement CONDITIONNELLE
+            # — un UNIQUE nu sur (company, nom) serait FAUX ici :
+            #   * un produit ARCHIVÉ libère son nom pour l'article catalogue
+            #     (règle explicite du seeder : `nom__iexact` n'y filtre que les
+            #     produits ACTIFS ; les 6 coffrets placeholders archivés en
+            #     vivent) → ``is_archived=False`` ;
+            #   * deux SKU distincts peuvent porter le même nom (le catalogue
+            #     réel contient des quasi-jumeaux câble 6 mm²) — l'unicité des
+            #     produits SKUés est déjà assurée par ``unique_together
+            #     ('company', 'sku')`` → seuls les produits SANS SKU (NULL ou
+            #     vide) sont contraints ici.
+            # C'est donc exactement la surface de la course, et rien de plus.
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                condition=models.Q(is_archived=False) & (
+                    models.Q(sku__isnull=True) | models.Q(sku='')),
+                name='stock_produit_company_nom_sans_sku_uniq'),
         ]
 
     def __str__(self):
@@ -2088,6 +2111,48 @@ class FicheTechnique(models.Model):
     bat_max_decharge_kw = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Puissance de décharge maximale (kW), par pack.')
+    # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now keep
+    # it very high for 5kwh — maybe 200 ». Le PLAFOND fondateur du nombre de
+    # modules IDENTIQUES qu'un même banc peut empiler pour CE produit (une
+    # limite fabricant d'assemblage série/parallèle, jamais une limite
+    # inventée par le moteur). ``None`` = ILLIMITÉ (repli byte-identique à
+    # l'historique — aucun produit n'était borné avant ce champ). Une banque
+    # candidate qui exigerait plus de modules que cette limite est REJETÉE en
+    # sélection (``apps.ventes.services.composition_residentielle``), jamais
+    # tronquée à la limite (une banque tronquée n'atteindrait plus la cible).
+    # F3 (revue 26/08/2026) — LE CHAMP SIGNIFIE « limite ≥ 1, vide =
+    # illimité » : 0 n'est pas une limite, c'est une banque IMPOSSIBLE (toute
+    # candidate serait rejetée, y compris via un pin — un « avec batterie »
+    # muet). ``MinValueValidator(1)`` l'interdit à la saisie (formulaire ET
+    # API) plutôt que de le laisser produire un vivier vide silencieux.
+    bat_max_modules_par_banc = models.PositiveIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text='Nombre MAXIMUM de modules identiques dans un même banc '
+                  '(limite ≥ 1). Vide = illimité.')
+    # QJR137 (audit QJR79) — LE RENDEMENT ALLER-RETOUR, ENFIN SOURÇABLE.
+    #
+    # La CAPACITÉ était déjà lue sur la fiche (``bat_kwh_usable``, sinon
+    # ``bat_kwh_nominal × bat_dod_pct``) : la profondeur de décharge était donc
+    # SOURCÉE. Le rendement aller-retour, lui, restait un forfait de code
+    # (``quote_engine.pricing.BATTERY_ROUNDTRIP`` = 0,90) qu'aucun champ ne
+    # pouvait porter — alors qu'il borne ``restitue_kwh`` du simulateur, donc
+    # l'ÉCONOMIE « avec batterie » montrée au client. Les datasheets le
+    # publient (« Round-trip efficiency », « System efficiency ») ; ce champ est
+    # celui qui manquait pour le saisir.
+    #
+    # Vide = NON PUBLIÉ, jamais 0 : le moteur applique alors l'hypothèse de
+    # référence 0,90 et l'ÉCRIT dans les hypothèses affichées — la discipline
+    # déjà appliquée à la provision de remplacement onduleur. La borne haute
+    # est 100 % (un rendement > 100 % n'existe pas ; la borne basse ≥ 1 %
+    # écarte la saisie de 0 qui rendrait toute restitution nulle en silence).
+    bat_rendement_ar_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('1')),
+                    MaxValueValidator(Decimal('100'))],
+        help_text='Rendement aller-retour publié (%, « round-trip '
+                  'efficiency »). Vide = non publié : le moteur applique '
+                  'alors son hypothèse de référence et le dit.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     pdf = models.FileField(

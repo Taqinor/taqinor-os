@@ -169,7 +169,12 @@ class AucunEnvoiDepuisLaCollecteTests(TestCase):
         fautifs = []
         for chemin in sorted(MODULE_DIR.rglob('*.py')):
             relatif = chemin.relative_to(MODULE_DIR).as_posix()
-            if relatif.startswith(('migrations/', 'tests/')):
+            # ``portail/`` (VAO16) EST le client HTTP — il importe httpx par
+            # définition, mais ne CONNECTE jamais sans armement : ses gardes
+            # dédiées (``test_garde_fous`` : interrupteur désarmé par défaut,
+            # ``test_purete_portail`` : GardeReseau zéro socket en test) sont
+            # plus fortes que ce balayage d'imports.
+            if relatif.startswith(('migrations/', 'tests/', 'portail/')):
                 continue
             arbre = ast.parse(chemin.read_text(encoding='utf-8'))
             for noeud in ast.walk(arbre):

@@ -18,7 +18,7 @@ Run:
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
@@ -501,13 +501,27 @@ class TestPdfFormats(TestCase):
         return G.page_annexe_technique()
 
     # ── PV77 — étude bancable sur la page Étude (additif, sans page en plus) ──
-    _SIMULATION = {
+    # QJR159 (b) — CETTE FIXTURE EST ALIGNÉE SUR LE DEVIS. Le bloc bancable
+    # n'est publié que s'il DÉCRIT le champ PV vendu (somme des kWc de ses
+    # zones == puissance crête du document, à la tolérance d'arrondi). La
+    # forme brute ci-dessous portait 42,3 kWc sur un devis de 14 panneaux :
+    # elle prouvait donc le rendu d'un cas que la garde refuse désormais.
+    # ``_simulation()`` recopie la puissance RÉELLE lue du builder.
+    # QJR115 — ET SUR LA PRODUCTION DU DOCUMENT. La même page imprime déjà
+    # « Production annuelle » (``_ETUDE_INDUSTRIELLE``, 12 486 kWh) : une P50 de
+    # 71 800 kWh à neuf lignes de là, c'est DEUX productions pour une seule
+    # installation — le bloc est désormais OMIS dans ce cas (règle fondateur).
+    # La fixture décrit donc un document COHÉRENT : P50 = la production de la
+    # carte, P90/P75 dérivées à la même variabilité (0,06) qu'auparavant
+    # (12 486 × 0,918 ≈ 11 460 ; × 0,959 ≈ 11 970) et
+    # ``base_production_kwh`` = P50 ÷ 0,9302 (le derate canonique QJR114).
+    _SIMULATION_BRUTE = {
         'version': 1,
         'computed_at': '2026-08-14T10:00:00Z',
         'source': 'pvgis',
         'zones': [{'label': 'Pan Sud', 'lat': 33.57, 'lon': -7.59,
                    'tilt': 30, 'azimuth': 0, 'kwc': 42.3,
-                   'base_production_kwh': 71800,
+                   'base_production_kwh': 13423,
                    'shading_annual_loss_pct': 4.2}],
         'pr': {
             'performance_ratio': 0.812, 'total_loss_pct': 18.8,
@@ -515,7 +529,7 @@ class TestPdfFormats(TestCase):
                                'shading': 4.2, 'wiring': 2.0,
                                'inverter': 2.5, 'mismatch': 2.0,
                                'availability': 1.0},
-            'p50_kwh': 71800, 'p90_kwh': 58300, 'p75_kwh': 66400,
+            'p50_kwh': 12486, 'p90_kwh': 11460, 'p75_kwh': 11970,
             'annual_variability': 0.06, 'specific_yield_kwh_kwc': 1697,
         },
         'self_consumption': {'hours': 8760, 'self_consumption_rate': 0.41,
@@ -541,6 +555,120 @@ class TestPdfFormats(TestCase):
         'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
         'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
     }
+
+    # ── QJR161 — gardes de POSITION du format une-page ──────────────────────
+    @staticmethod
+    def _boites_texte(page):
+        """Toutes les boîtes de texte COMPOSÉES d'une page WeasyPrint."""
+        out = []
+
+        def _walk(box):
+            if getattr(box, 'text', None):
+                out.append(box)
+            for child in (getattr(box, 'children', None) or []):
+                _walk(child)
+
+        _walk(page._page_box)
+        return out
+
+    def _assert_bloc_totaux_visible(self, doc):
+        """Le bloc de totaux est-il composé DANS la zone visible ?
+
+        La zone de contenu du une-page est bornée à ``bottom:72px`` avec
+        ``overflow:hidden`` : tout ce qui la franchit DISPARAÎT du document
+        sans qu'aucun compteur de pages ne bouge. On vérifie donc la POSITION,
+        seule preuve que le client verra son Total TTC.
+        """
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        self.assertEqual(len(doc.pages), 1)
+        page = doc.pages[0]
+        limite = page.height - G.ONEPAGE_FOOTER_PX
+        boites = self._boites_texte(page)
+        for etiquette in ('Sous-total HT', 'Total TTC'):
+            cibles = [b for b in boites
+                      if etiquette.lower() in (b.text or '').lower()]
+            self.assertTrue(cibles, '« %s » introuvable dans la page composée'
+                            % etiquette)
+            for b in cibles:
+                self.assertLess(
+                    b.position_y + b.height, limite,
+                    '« %s » tombe sous la ligne de rognage : il serait '
+                    'INVISIBLE sur le document rendu' % etiquette)
+
+    def _assert_derniere_ligne_visible(self, doc, marqueur):
+        """La dernière ligne d'équipement rendue est-elle visible ?"""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        page = doc.pages[0]
+        limite = page.height - G.ONEPAGE_FOOTER_PX
+        lignes = [b for b in self._boites_texte(page)
+                  if marqueur in (b.text or '')]
+        self.assertTrue(lignes,
+                        'aucune ligne « %s » composée' % marqueur)
+        derniere = max(lignes, key=lambda b: b.position_y)
+        self.assertLess(
+            derniere.position_y + derniere.height, limite,
+            'la dernière ligne d’équipement tombe sous la ligne de rognage')
+
+    @tag('pdf')
+    def test_qjr161_une_page_dense_garde_ses_lignes_et_ses_totaux_VISIBLES(self):
+        """QJR161 — fixture DENSE (≥ 20 lignes) : la dernière ligne rendue ET
+        le bloc de totaux doivent être composés au-dessus de la ligne de
+        rognage. Sans cette garde, la densité adaptative n'a AUCUNE borne
+        haute et la page rogne silencieusement son propre Total TTC."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        lignes = [(f'D{i:02d} equipement dense', '2', '900') for i in range(24)]
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference='DEV-QJR161-DENSE')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        html = G.render_html_for(data)
+        doc = HTML(string=html).render()
+        self._assert_bloc_totaux_visible(doc)
+        self._assert_derniere_ligne_visible(doc, 'equipement dense')
+
+    @tag('pdf')
+    def test_qjr161_les_lignes_retirees_sont_declarees(self):
+        """Si la page ne peut pas tout montrer, elle le DIT — et ses totaux
+        restent ceux du devis ENTIER (aucune ligne retirée d'un total)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        lignes = [(f'E{i:02d} equipement tres dense', '2', '900')
+                  for i in range(60)]
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference='DEV-QJR161-XXL')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        html = G.render_html_for(data)
+        doc = HTML(string=html).render()
+        self._assert_bloc_totaux_visible(doc)
+        rendues = html.count('equipement tres dense')
+        if rendues < 60:
+            self.assertIn('autres lignes d&#8217;&#233;quipement', html)
+        # Le Total TTC reste celui du devis ENTIER, quoi qu'il arrive.
+        self.assertIn(G._fmt2(data['totaux_all']['ttc']), html)
+
+    def _simulation(self):
+        """QJR159 (b) — la simulation de test décrit LE champ PV de ce devis.
+
+        La puissance est LUE du builder (jamais recopiée à la main) : la
+        fixture suit donc automatiquement toute évolution des lignes de test,
+        et la garde ``_bankable_decrit_ce_champ`` est éprouvée sur son cas
+        NOMINAL (concordance) ici, et sur son cas de refus par le test QJR159
+        dédié.
+        """
+        if getattr(self, '_simulation_cache', None) is None:
+            from apps.ventes.quote_engine.builder import build_quote_data
+            base = type(self)._SIMULATION_BRUTE
+            kwc = float(build_quote_data(self.devis).get('puissance_kwc') or 0)
+            self.assertGreater(kwc, 0, 'fixture sans puissance lisible')
+            self._simulation_cache = {
+                **base, 'zones': [dict(base['zones'][0], kwc=kwc)]}
+        return self._simulation_cache
 
     def _devis_avec_etude(self, simulation=None):
         self.devis.mode_installation = 'industriel'
@@ -583,15 +711,15 @@ class TestPdfFormats(TestCase):
 
         self._devis_avec_etude()
         sans = build_quote_data(self.devis, {'include_etude': True})
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         avec = build_quote_data(self.devis, {'include_etude': True})
 
         self.assertEqual(set(avec) - set(sans), set())
         etude_avec = dict(avec['etude'])
-        self.assertEqual(etude_avec.pop('bankable'), self._SIMULATION)
+        self.assertEqual(etude_avec.pop('bankable'), self._simulation())
         # ``simulation`` est la clé BRUTE déjà portée par etude_params : elle
         # reste telle quelle, le bloc bancable s'AJOUTE à côté sans la toucher.
-        self.assertEqual(etude_avec.pop('simulation'), self._SIMULATION)
+        self.assertEqual(etude_avec.pop('simulation'), self._simulation())
         self.assertEqual(etude_avec, sans['etude'])
         # Le reste du dict (totaux, ROI, options…) est identique clé par clé.
         for clef in set(sans) - {'etude'}:
@@ -601,26 +729,35 @@ class TestPdfFormats(TestCase):
         """Le rendu ne peut jamais muter l'étude STOCKÉE sur le devis."""
         from apps.ventes.quote_engine.builder import build_quote_data
 
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         data = build_quote_data(self.devis, {'include_etude': True})
         data['etude']['bankable']['pr']['p50_kwh'] = 1
+        attendu = self._simulation()['pr']['p50_kwh']
         # En mémoire (une copie de surface aurait partagé le sous-dict 'pr')…
         self.assertEqual(
-            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], attendu)
         # … et en base.
         self.devis.refresh_from_db()
         self.assertEqual(
-            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], attendu)
 
     def test_pv77_la_page_etude_montre_p50_p90_et_la_cascade(self):
-        self._devis_avec_etude(self._SIMULATION)
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        self._devis_avec_etude(self._simulation())
         html, doc = self._render({'include_etude': True})
+        pr = self._simulation()['pr']
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('Étude bancable', html)
         self.assertIn('Production P50', html)
         self.assertIn('P90', html)
-        self.assertIn('71 800', html)      # P50 formaté à la française
-        self.assertIn('58 300', html)      # P90
+        # Formatés à la française, et LUS de la fixture : QJR115 — la P50
+        # imprimée est CELLE de la carte « Production annuelle » de la même
+        # page, sans quoi le bloc serait omis (deux vérités interdites).
+        self.assertIn(G.fnum(pr['p50_kwh']), html)
+        self.assertIn(G.fnum(pr['p90_kwh']), html)
+        self.assertEqual(pr['p50_kwh'],
+                         self._ETUDE_INDUSTRIELLE['production_annuelle'])
         self.assertIn('Cascade de pertes', html)
         for libelle in ('Température', 'Salissures', 'Ombrage', 'Câblage',
                         'Onduleur', 'Disponibilité'):
@@ -631,7 +768,7 @@ class TestPdfFormats(TestCase):
         """Le bloc vit DANS la page Étude : 4 pages avec, 4 pages sans."""
         self._devis_avec_etude()
         _, sans = self._render({'include_etude': True})
-        self._devis_avec_etude(self._SIMULATION)
+        self._devis_avec_etude(self._simulation())
         html, avec = self._render({'include_etude': True})
         self.assertEqual(len(sans.pages), len(avec.pages))
         self.assertEqual(len(avec.pages), 4)
@@ -654,7 +791,22 @@ class TestPdfFormats(TestCase):
         """Règle #4 — que des grandeurs énergétiques : ni VAN, ni TRI, ni prix."""
         from apps.ventes.quote_engine import generate_devis_premium as G
 
-        bloc = G._bankable_block_html(self._SIMULATION)
+        # QJR159 (b) — le bloc n'est rendu que s'il DÉCRIT le champ PV du
+        # document : on pose la puissance globale du moteur sur celle de la
+        # simulation (aucun rendu complet n'est nécessaire pour cette garde).
+        # QJR115 — et il ne l'est que s'il dit la MÊME production que la carte
+        # de la page : on pose donc AUSSI l'étude du document (sans quoi cette
+        # assertion dépendrait de l'état laissé par un test précédent).
+        sim = self._simulation()
+        _kwc, _inc = G.KWC, G.PUISSANCE_INCONNUE
+        _etude = getattr(G, 'ETUDE', None)
+        G.KWC, G.PUISSANCE_INCONNUE = sim['zones'][0]['kwc'], False
+        G.ETUDE = dict(self._ETUDE_INDUSTRIELLE)
+        try:
+            bloc = G._bankable_block_html(sim)
+        finally:
+            G.KWC, G.PUISSANCE_INCONNUE = _kwc, _inc
+            G.ETUDE = _etude
         self.assertTrue(bloc)
         for interdit in ('MAD', 'VAN', 'TRI', 'npv', 'irr', '412', '33 800',
                          'prix_achat', 'marge'):
@@ -683,8 +835,12 @@ class TestPdfFormats(TestCase):
             'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
             'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
         },
+        # QJR13 — cette combinaison DÉCRIT le devis de ce module : 14 panneaux
+        # 550 W (7,7 kWc) et « Batterie 5 kWh » dans ses lignes. Sans cette
+        # concordance, ses chiffres ne sont plus publiés (le PDF ne parle plus
+        # de « ce dimensionnement » à propos d'une combinaison non vendue).
         'meilleure_falaise': {
-            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 10.0,
+            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 5.0,
             'residuel_kwh_mois': 420.0,
             'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
             'remplissage': {
@@ -790,6 +946,70 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
         self.assertNotIn('R&#233;siduel vis&#233;', html)
+
+    # ── QJR13 — un optimum du moteur ne se publie que s'il DÉCRIT ce devis ──
+    # ``meilleure_falaise`` est une combinaison champ + stockage que le
+    # BALAYAGE a trouvée : le PDF l'imprimait comme « ce dimensionnement »
+    # quelle que soit la taille et la batterie réellement vendues.
+    def _dim_divergent(self, **remplace):
+        return {
+            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
+            'meilleure_falaise': {
+                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
+                **remplace,
+            },
+        }
+
+    def test_qjr13_falaise_concordante_reste_imprimee_sur_les_deux_formats(self):
+        """Combinaison = configuration vendue (14 panneaux, 5 kWh) ⇒ inchangé."""
+        self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Résiduel sous la marche', html)
+        self.assertIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dune_autre_batterie_disparait_des_deux_formats(self):
+        """Le devis vend 5 kWh, la combinaison en suppose 10 : rien n'est
+        publié — ni carte, ni phrase, ni cellule une page. Jamais un chiffre
+        de repli, la mention DISPARAÎT."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(batterie_kwh=10.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        for texte in ('Résiduel sous la marche', 'fait atterrir',
+                      'Remplissage batterie'):
+            self.assertNotIn(texte, html)
+        # La tranche ACTUELLE décrit la facture du client, pas une combinaison
+        # du balayage : elle reste vraie et reste imprimée.
+        self.assertIn('Tranche 6', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_falaise_dun_autre_champ_pv_disparait_des_deux_formats(self):
+        """Même règle sur le compte de panneaux (20 trouvés, 14 vendus)."""
+        self._devis_avec_falaise(
+            dimensionnement=self._dim_divergent(panneaux=20, kwc=11.0))
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
+        self.assertNotIn('fait atterrir', html)
+        html1, doc1 = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html1)
+
+    def test_qjr13_combinaison_sans_configuration_nest_pas_publiee(self):
+        """Contexte identifiant absent ⇒ inpublié : on ne peut pas prouver
+        qu'il décrit ce devis, donc on omet (zéro chiffre inventé)."""
+        dim = self._dim_divergent()
+        dim['meilleure_falaise'].pop('panneaux')
+        self._devis_avec_falaise(dimensionnement=dim)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
 
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
@@ -971,8 +1191,17 @@ class TestPdfFormats(TestCase):
         self.assertEqual(dt['nb_options'], 2)
         self.assertEqual(dt['total'], full['totaux_avec']['ttc'])
         self.assertEqual(dt['total'], one['totaux_all']['ttc'])
-        # le total de liste n'est JAMAIS la somme mensongère des deux options
-        self.assertLess(dt['total'], float(devis.total_ttc))
+        # Le total de liste n'est JAMAIS la somme mensongère des deux options.
+        # QJR51 / décision fondateur D2 (29/08/2026) — PRÉMISSE RENVERSÉE, et
+        # l'assertion se DURCIT. C'était un ``assertLess`` : ``Devis.total_ttc``
+        # valait alors cette somme mensongère, donc strictement supérieure.
+        # Depuis QJR51 la propriété lit ``Vue.NET`` et rend l'option EFFECTIVE
+        # (D9 → AVEC) : le modèle dit désormais EXACTEMENT ce que dit le
+        # document. Dérivation (option AVEC, remise 5 %) : 14×1 272,73 +
+        # 23 333,33 + 25 000 + 4 000 = 70 151,55 HT ; −5 % → 66 643,97 net ;
+        # TVA 10 % sur les panneaux (1 692,73) + 20 % sur le reste (9 943,33)
+        # = 11 636,06 ; TTC = **78 280,03** des deux côtés.
+        self.assertEqual(dt['total'], float(devis.total_ttc))
 
         # une page : OPTION AVEC SEULE — un une-page avec deux onduleurs DOIT
         # échouer ce test (règle de sécurité demandée)
@@ -1137,7 +1366,12 @@ class TestPdfFormats(TestCase):
         # vérifié visuellement sur un rendu réel)
         self.assertNotIn('Ligne 1 de description', html)
         self.assertNotIn('Garantie constructeur 10 ans', html)
-        self.assertIn('Sous-total HT', html)
+        # QJR161 — ASSERTION DE POSITION, plus une assertion de CHAÎNE.
+        # ``assertEqual(len(doc.pages), 1)`` est une TAUTOLOGIE sur un gabarit
+        # à une page (la zone de contenu est en ``overflow:hidden`` : ce qui
+        # dépasse est ROGNÉ, jamais reporté), et ``assertIn('Sous-total HT')``
+        # prouve la présence de la chaîne dans le HTML, pas sa VISIBILITÉ.
+        self._assert_bloc_totaux_visible(doc)
 
         # Cas confortable : 6 lignes → descriptions présentes
         devis2 = make_devis(self.company, self.user, self.client_obj,
@@ -1185,11 +1419,30 @@ class TestPdfFormats(TestCase):
         # partout (les pages diffèrent seulement par le type d'espace fine)
         import re
         html, doc = self._render()
-        digits = str(data['totaux_sans']['ttc'])
+        # QJR53/D2 (29/08/2026) — LA DONNÉE EST AU CENTIME, L'EN-TÊTE IMPRIMÉE
+        # RESTE AU DIRHAM. ``totaux_sans['ttc']`` était un ENTIER (l'ancien
+        # ``round(ttc_exact)`` du builder) et ``str()`` en donnait directement
+        # les chiffres à grouper ; c'est désormais un float au centime, dont
+        # ``str()`` porte un point décimal — le motif groupait alors « .03 »
+        # comme un paquet de milliers et ne trouvait plus RIEN (0 occurrence).
+        # Ce test lit le RENDU : il doit donc partir de la valeur telle que le
+        # formateur l'imprime — ``generate_devis_premium.fmt`` fait
+        # ``int(round(float(v)))`` puis groupe par milliers. On reprend son
+        # expression à l'identique, ce qui garantit l'accord.
+        digits = str(int(round(data['totaux_sans']['ttc'])))
         pattern = r'[\s   ]?'.join(
             [digits[max(0, len(digits) - 3 * (i + 1)):len(digits) - 3 * i]
              for i in range((len(digits) + 2) // 3 - 1, -1, -1)])
-        self.assertGreaterEqual(len(re.findall(pattern, html)), 2)
+        self.assertGreaterEqual(len(re.findall(pattern, html)), 1)
+        # QJR122 — LE BLOC DE TOTAUX IMPRIME LE MÊME NOMBRE, AU CENTIME.
+        # Le Total TTC passait par ``fmt`` (arrondi à l'unité) alors que les
+        # lignes au-dessus étaient au centime : la chaîne affichée
+        # n'additionnait pas. Il s'imprime désormais comme elles — la carte de
+        # la page 1 garde, elle, le format DIRHAM (convention ``fmt``, tranches
+        # arrondies au millier). Les deux décrivent le MÊME nombre canonique :
+        # on vérifie donc la présence des DEUX formes, pas deux fois la même.
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertIn(G._fmt2(data['totaux_sans']['ttc']), html)
 
     def test_tva_note_matches_applied_math(self):
         """Le texte TVA décrit exactement le taux appliqué — l'ancienne
@@ -1265,3 +1518,445 @@ class TestPdfFormats(TestCase):
         self.assertEqual(opts['payment_mode'], 'standard')
         self.assertIsNone(opts['custom_acompte'])
         self.assertNotIn('junk', opts)
+
+
+class TestQjr32DispatchModeNormalise(TestCase):
+    """QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ.
+
+    ``build_quote_data`` dégrade un devis agricole demandé en « full » vers le
+    format UNE PAGE (le format à options n'a pas de sens sans onduleur) et
+    publie le mode retenu dans ``data['pdf_mode']``. Les prédicats ``is_*``
+    lisaient encore la demande BRUTE : ils voyaient « full » et lançaient le
+    renderer agricole premium multi-pages sur des données bâties pour une
+    page — la dégradation annoncée par le builder était MORTE pour la
+    sélection du renderer.
+    """
+
+    LIGNES_POMPAGE = [
+        ('Pompe immergée 5,5 CV', '1', '18000'),
+        ('Variateur VEICHI 5,5 kW', '1', '9000'),
+        ('Panneau mono 550W', '12', '1100'),
+        ('Structures acier', '12', '375'),
+    ]
+    ETUDE_POMPAGE = {
+        'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+        'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.LIGNES_POMPAGE,
+            reference='DEV-QJR32-AGRI', etude_params=dict(self.ETUDE_POMPAGE))
+        self.devis.mode_installation = 'agricole'
+        self.devis.save(update_fields=['mode_installation'])
+
+    def test_le_dispatch_suit_la_degradation_annoncee_par_le_builder(self):
+        """QJR236 — la dégradation reste, le renderer agricole n'existe plus.
+
+        Le builder DÉGRADE toujours la demande « full » d'un devis agricole
+        vers UNE page ; et depuis la décision DV1, AUCUNE entrée du registre ne
+        sert le marché agricole (le renderer premium multi-pages, injoignable
+        depuis QJR32, a été supprimé)."""
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, registre_renderers)
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        self.assertEqual(data['pdf_mode'], 'onepage')
+        self.assertNotIn('agricole',
+                         [m for m, _mod, _p in registre_renderers()])
+        for marche, _module, sert in registre_renderers():
+            with self.subTest(marche=marche):
+                self.assertFalse(sert(self.devis, {'pdf_mode': 'full'}))
+                self.assertFalse(
+                    sert(self.devis, {'pdf_mode': data['pdf_mode']}))
+
+    @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    def test_aucun_renderer_premium_et_le_pdf_sort_quand_meme(self, up, _b):
+        """Le repli vers le moteur legacy sert le document — et il est NOMMÉ
+        dans le journal (QJR235), jamais silencieux."""
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        from apps.ventes.quote_engine import builder as B
+
+        with self.assertLogs(B.logger, level='INFO') as journal:
+            generate_premium_devis_pdf(self.devis.id,
+                                       pdf_options={'pdf_mode': 'full'})
+        up.assert_called_once()
+        self.assertEqual(up.call_args[0][0][:4], b'%PDF')
+        self.assertIn('agricole', '\n'.join(journal.output))
+
+    def test_le_compte_de_pages_est_celui_que_la_degradation_annonce(self):
+        """Une page — exactement ce que le builder a construit."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr32_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)
+
+
+class TestQjr53TotauxAuCentime(TestCase):
+    """QJR53 — ``builder._canonical_totaux`` a DISPARU au profit du noyau.
+
+    CE QUI ÉTAIT FAUX : le moteur portait une SECONDE implémentation en float
+    de la chaîne canonique, qui arrondissait le TTC au DIRHAM ENTIER alors que
+    toutes les autres lignes du même bloc de totaux — et toutes les factures
+    aval — sont au CENTIME. Le devis du client ne s'additionnait pas, et ses
+    trois factures de tranche ne sommaient pas au total imprimé.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, reference, remise='0'):
+        # Des prix qui NE tombent PAS sur un dirham rond : c'est là que
+        # l'arrondi au dirham se voyait.
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '13', '1166.67'),
+            ('Onduleur hybride Deye 8kW', '1', '14333.33'),
+            ('Structures acier', '13', '416.67'),
+        ], remise_globale=remise, reference=reference)
+
+    def test_le_ttc_imprime_est_au_centime(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-CENT', remise='7')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        for cle in ('totaux_sans', 'totaux_avec', 'totaux_all'):
+            with self.subTest(cle=cle):
+                totaux = data[cle]
+                self.assertAlmostEqual(
+                    totaux['ttc'],
+                    round(totaux['ht_net'] + totaux['tva'], 2), places=2)
+                # Plus jamais un TTC arrondi au dirham à côté d'un HT au
+                # centime : les deux clés portent la MÊME valeur exacte.
+                self.assertEqual(totaux['ttc'], totaux['ttc_exact'])
+
+    def test_le_bloc_de_totaux_s_additionne_pour_le_client(self):
+        """« HT net + TVA = TTC », vérifiable à la calculette sur le document."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-SOMME', remise='12.5')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertAlmostEqual(totaux['ht_net'],
+                               round(totaux['ht_brut'] - totaux['remise'], 2),
+                               places=2)
+        self.assertAlmostEqual(
+            totaux['tva'],
+            round(sum(b['montant'] for b in totaux['tva_par_taux']), 2),
+            places=2)
+        self.assertAlmostEqual(totaux['ttc'],
+                               round(totaux['ht_net'] + totaux['tva'], 2),
+                               places=2)
+
+    def test_la_somme_des_tranches_egale_le_total_imprime(self):
+        """L'échéancier est bâti sur la MÊME chaîne canonique : ses tranches
+        somment désormais au total imprimé, au centime."""
+        from decimal import Decimal as D
+
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.utils.options import option_totaux
+
+        devis = self._devis('DEV-QJR53-TRANCHE', remise='7')
+        devis.echeancier = [{'label': 'Acompte', 'pct_or_montant': 40},
+                            {'label': 'Livraison', 'pct_or_montant': 40},
+                            {'label': 'Solde', 'pct_or_montant': 20}]
+        devis.save(update_fields=['echeancier'])
+
+        total = D(str(option_totaux(devis)['ttc']))
+        tranches = [(total * D(str(e['pct_or_montant'])) / D('100')).quantize(
+            D('0.01')) for e in devis.echeancier]
+        # Le résidu de centime part sur la dernière tranche, comme partout.
+        tranches[-1] += total - sum(tranches)
+        self.assertEqual(sum(tranches), total)
+
+        imprime = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertAlmostEqual(float(total), imprime['ttc'], places=2)
+
+    def test_le_prix_barre_reste_arrondi_au_dirham(self):
+        """``ttc_avant`` n'est PAS un étage de la chaîne : c'est le prix BARRÉ,
+        un artefact d'affichage — il reste au dirham, comme le formateur."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis('DEV-QJR53-BARRE', remise='10')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        self.assertEqual(totaux['ttc_avant'], round(totaux['ttc_avant']))
+        self.assertGreater(totaux['ttc_avant'], totaux['ttc'])
+
+    def test_la_forme_des_paniers_tva_ne_bouge_pas(self):
+        """Les renderers et le bloc multi-villa lisent ``{taux, montant,
+        ht_net}`` et testent ``isinstance(..., (int, float))`` : un Decimal y
+        désactiverait silencieusement la mise à l'échelle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+        ], remise_globale='8', reference='DEV-QJR53-FORME')
+        totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
+        for cle in ('ht_brut', 'remise', 'ht_net', 'tva', 'ttc', 'ttc_exact',
+                    'ttc_avant'):
+            with self.subTest(cle=cle):
+                self.assertIsInstance(totaux[cle], (int, float))
+                self.assertNotIsInstance(totaux[cle], bool)
+        for panier in totaux['tva_par_taux']:
+            self.assertEqual(set(panier), {'taux', 'montant', 'ht_net'})
+            for valeur in panier.values():
+                self.assertIsInstance(valeur, float)
+
+    def _pages(self, devis, mode):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(devis, {'pdf_mode': mode})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr53_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return len(HTML(string=cap['html']).render().pages)
+
+    @tag('pdf')
+    def test_le_compte_de_pages_ne_bouge_pas(self):
+        """RÈGLE #4 — le rendu est en DEUX passes élastiques (mesure de mou
+        PyMuPDF puis re-rendu) : un chiffre plus large peut déplacer un saut de
+        page. Le passage au centime est donc éprouvé LÀ où il change quelque
+        chose : un devis REMISÉ (dont le TTC tombe entre deux dirhams) doit
+        occuper exactement le même nombre de pages qu'un devis sans remise, et
+        le une-page ne déborde jamais."""
+        sans_remise = self._devis('DEV-QJR53-P0', remise='0')
+        remise = self._devis('DEV-QJR53-P7', remise='7')
+        self.assertEqual(self._pages(remise, 'onepage'), 1)
+        self.assertEqual(self._pages(sans_remise, 'onepage'), 1)
+        self.assertEqual(self._pages(remise, 'full'),
+                         self._pages(sans_remise, 'full'))
+
+
+# ── QJR145 — lot de finition des PDF premium et industriel ───────────────────
+class QJR145FinitionsTests(SimpleTestCase):
+    """Sept constats vérifiés, sans conséquence monétaire, un seul commit.
+
+    (a) ``kwc_fr`` n'avait AUCUN site d'appel : les cinq impressions de
+        puissance sortaient le point décimal anglais, et la case de
+        confirmation de commande n'avait pas la garde ``PUISSANCE_INCONNUE``
+        (« Système photovoltaïque 0.0 kWc ») ;
+    (b) ``{fmt(montant)} MAD`` alors que ``fmt`` suffixe déjà « MAD » →
+        « 16 000 MAD MAD » sur les trois cases de paiement ;
+    (c) les trois pourcentages de l'échéancier, arrondis indépendamment,
+        sommaient à 99 ou 101 % ;
+    (d) sur « Les deux (Sans + Avec) », les garanties partaient de
+        ``SANS_ITEMS`` seul : jamais de badge « Batterie » ;
+    (e) ``load_equip`` — code mort qui fabriquait des lignes à prix 0 ;
+    (f) ``theme._esc`` n'échappait pas les guillemets (``alt="{brand}"``) ;
+    (g) ``com_prod`` / ``ind_prix_kwc`` — calculés, lus par aucun gabarit.
+    """
+
+    def _data(self, **surcharges):
+        # QJR162 — charge utile CANONIQUE (forme ``build_quote_data``) : le
+        # moteur LÈVE désormais quand les totaux canoniques manquent, il ne
+        # fabrique plus de chaîne de totaux à taux unique.
+        from apps.ventes.tests import _moteur_fixtures as F
+        d = F.donnees_legacy(pdf_mode='full')
+        for it in d['sans_items'] + d['avec_items']:
+            des = it['designation']
+            if 'Panneaux' in des:
+                it['garantie_mois'] = 144
+                it['garantie_production_mois'] = 360
+            elif 'Onduleur' in des or 'Batterie' in des:
+                it['garantie_mois'] = 120
+        d.update(surcharges)
+        return d
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        return G.render_html_for(self._data(**surcharges))
+
+    # (a) ------------------------------------------------------------------
+    def test_a_la_puissance_s_imprime_a_la_francaise(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        data = self._data()
+        html = G.render_html_for(data)
+        attendu = G.kwc_fr(data['puissance_kwc'])
+        self.assertIn(',', attendu, 'fixture sans décimale : test sans objet')
+        self.assertIn(f'{attendu}&nbsp;kWc', html)
+        # …et plus jamais le point décimal anglais sur une puissance.
+        self.assertNotIn(f"{data['puissance_kwc']}&nbsp;kWc", html)
+
+    def test_a_kwc_fr_supprime_les_decimales_inutiles(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertEqual(G.kwc_fr(10.65), '10,65')
+        self.assertEqual(G.kwc_fr(10), '10')
+        self.assertEqual(G.kwc_fr(10.5), '10,5')
+        self.assertEqual(G.kwc_fr('x'), 'x')
+
+    def test_a_la_confirmation_de_commande_omet_une_puissance_inconnue(self):
+        html = self._html(scenario='Sans batterie', devis_final=True,
+                          puissance_inconnue=True)
+        self.assertIn('Syst&#232;me photovolta&#239;que &#8212;', html)
+        self.assertNotIn('0.0&#160;kWc', html)
+        self.assertNotIn('0&#160;kWc', html)
+
+    # (b) et (c) -----------------------------------------------------------
+    def test_b_le_suffixe_mad_n_est_pas_double(self):
+        html = self._html(scenario='Sans batterie', devis_final=True)
+        self.assertNotIn('MAD MAD', html)
+        self.assertNotIn('MAD&#160;MAD', html)
+
+    def test_c_les_trois_pourcentages_somment_a_cent(self):
+        import re as _re
+        html = self._html(scenario='Sans batterie', devis_final=True)
+        pcts = [int(p) for p in
+                _re.findall(r'line-height:1\.0;">(\d+)%</div>', html)]
+        self.assertEqual(len(pcts), 3, pcts)
+        self.assertEqual(sum(pcts), 100, pcts)
+
+    # (d) ------------------------------------------------------------------
+    def test_d_le_badge_batterie_apparait_sur_un_document_a_deux_options(self):
+        import re as _re
+        html = self._html()
+        badges = _re.findall(r'margin-top:2px;">([^<]+)</div>', html)
+        self.assertIn('Batterie', badges)
+        self.assertIn('Onduleur', badges)
+
+    def test_d_un_document_sans_batterie_n_invente_pas_le_badge(self):
+        import re as _re
+        html = self._html(scenario='Sans batterie')
+        badges = _re.findall(r'margin-top:2px;">([^<]+)</div>', html)
+        self.assertNotIn('Batterie', badges)
+
+    # (e) ------------------------------------------------------------------
+    def test_e_load_equip_a_disparu(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        self.assertFalse(hasattr(G, 'load_equip'))
+
+    # (f) ------------------------------------------------------------------
+    def test_f_esc_echappe_les_guillemets(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme._esc('Soleil "Atlas" SARL'),
+                         'Soleil &quot;Atlas&quot; SARL')
+        self.assertEqual(theme._esc('A & B <x>'), 'A &amp; B &lt;x&gt;')
+        self.assertEqual(theme._esc(None), '')
+
+    def test_f_un_nom_sans_guillemet_est_rendu_a_l_identique(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme._esc('Taqinor SARL'), 'Taqinor SARL')
+
+    # (g) ------------------------------------------------------------------
+    def test_g_les_cles_mortes_ont_disparu(self):
+        from apps.ventes.quote_engine.commercial import (
+            renderer as c_renderer, sample_data as c_sample)
+        from apps.ventes.quote_engine.industriel import (
+            renderer as i_renderer, sample_data as i_sample)
+        self.assertNotIn('com_prod', c_renderer._augment(c_sample.build()))
+        self.assertNotIn('ind_prix_kwc', i_renderer._augment(i_sample.build()))
+
+
+# ── QJR163 — lot de finition page étude / annexe / une-page ──────────────────
+class QJR163FinitionsTests(SimpleTestCase):
+    """(a) la nomenclature de l'annexe technique était tronquée à 22 lignes
+    SANS mention ni marqueur ; (b) ``tranche_apres`` était interpolée sans
+    échappement dans le une-page alors que la page étude l'échappe ;
+    (c) le message de console du chemin ``__main__`` annonçait « Pages: 3 » en
+    dur alors que ``PAGES_TOTAL`` est déjà calculé ; (d) ``render_html_for`` et
+    ``apply_quote_data`` sont deux fonctions publiques SANS verrou."""
+
+    @staticmethod
+    def _design(n_composants):
+        return {
+            'chaines': [{'pan': 1, 'mppt': 1, 'nb_modules': 7,
+                         'vmp_froid_v': 268.0, 'voc_froid_v': 327.2,
+                         'vmp_chaud_v': 212.8, 'conforme': True}],
+            'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+            'bom': [{'designation': 'Composant %02d' % i, 'quantite': i + 1,
+                     'spec': 'spec %02d' % i} for i in range(n_composants)],
+        }
+
+    @staticmethod
+    def _annexe(design):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+        data = F.donnees_legacy(pdf_mode='full', electrical_design=design,
+                                include_annexe_technique=True)
+        G.apply_quote_data(data)
+        return G.page_annexe_technique()
+
+    # (a) ------------------------------------------------------------------
+    def test_a_une_nomenclature_courte_est_rendue_entiere(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(5))
+        self.assertIn('Composant 04', html)
+        self.assertNotIn('autres composants', html)
+        self.assertEqual(G.BOM_MAX_LIGNES, 22)
+
+    def test_a_une_nomenclature_longue_declare_sa_troncature(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(G.BOM_MAX_LIGNES + 8))
+        self.assertIn('Composant 00', html)
+        self.assertIn('Composant %02d' % (G.BOM_MAX_LIGNES - 1), html)
+        # …et le lecteur SAIT que la liste n'est pas complète.
+        self.assertIn('et 8 autres composants', html)
+        self.assertNotIn('Composant %02d' % (G.BOM_MAX_LIGNES + 7), html)
+
+    def test_a_un_seul_composant_de_trop_est_dit_au_singulier(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._annexe(self._design(G.BOM_MAX_LIGNES + 1))
+        self.assertIn('et 1 autre composant ', html)
+
+    # (b) ------------------------------------------------------------------
+    def test_b_la_tranche_est_echappee_sur_le_une_page(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+
+        piege = 'Tranche <script>alert("x")</script> & Cie'
+        data = F.donnees_legacy(pdf_mode='onepage')
+        dim = {
+            'falaise': {
+                'cible_kwh_mois': 500.0,
+                'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6'},
+            },
+            # La garde QJR13 refuse un optimum qui ne décrit pas le devis : on
+            # aligne la combinaison sur la composition RENDUE pour exercer le
+            # chemin d'échappement.
+            'meilleure_falaise': {
+                'panneaux': int(data['nb_panneaux']), 'kwc': 0,
+                'batterie_kwh': 0.0, 'residuel_kwh_mois': 420.0,
+                'tranche_apres': {'rang': 5, 'libelle': piege},
+            },
+        }
+        data['etude'] = dict(data.get('etude') or {}, dimensionnement=dim)
+        data['batterie_kwh_total'] = 0.0
+        data['onepage_branche'] = 'sans'
+        html = G.render_html_for(data)
+        self.assertNotIn('<script>alert', html)
+        self.assertIn('&lt;script&gt;', html)
+
+    # (c) ------------------------------------------------------------------
+    def test_c_le_message_console_lit_le_vrai_nombre_de_pages(self):
+        import inspect
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        src = inspect.getsource(G.generate)
+        self.assertNotIn('Pages: 3 ', src)
+        self.assertIn('Pages: {PAGES_TOTAL}', src)
+
+    # (d) ------------------------------------------------------------------
+    def test_d_l_absence_de_verrou_est_documentee(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        for fonction in (G.render_html_for, G.apply_quote_data):
+            doc = fonction.__doc__ or ''
+            with self.subTest(fonction=fonction.__name__):
+                self.assertIn('_RENDER_LOCK', doc)
+                self.assertIn('concurrent', doc.lower())

@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
+  TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
 } from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -13,26 +14,51 @@ import DevisTab, {
    WhatsApp multi-devis FR/Darija (état `wa` fourni par le parent — ici des
    props contrôlées, comme le fera réellement ContextRail). */
 
-const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.hoisted(() => ({
-  genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
-  createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
-  whatsappDevis: vi.fn(() => Promise.resolve({
-    data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
-  })),
-  // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
-  // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
-  // .../share-link/ : {token, path, token_interne, path_interne, niveau,
-  // otp_lecture} — contrat L-NIV + L-INTPREV, apps/ventes/views/devis.py).
-  shareLinkDevis: vi.fn(() => Promise.resolve({
-    data: {
-      token: 'tok-abc', path: '/proposition/karim/tok-abc',
-      token_interne: 'tok-int-xyz', path_interne: '/proposition/karim/tok-int-xyz',
-      niveau: 'standard', otp_lecture: false,
-    },
-  })),
+const {
+  genererFacture, createFromDevis, whatsappDevis, shareLinkDevis, getOffresTaillesDevis,
+  getProduits, CATALOGUE_SUBSTITUTIONS,
+} = vi.hoisted(() => {
+  // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
+  // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
+  // test.jsx : id/nom/marque/prix_vente > 0, seul filtre appliqué côté écran).
+  const CATALOGUE_SUBSTITUTIONS = [
+    { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
+  ]
+  return {
+    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
+    createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
+    whatsappDevis: vi.fn(() => Promise.resolve({
+      data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
+    })),
+    // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
+    // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
+    // .../share-link/ : {token, path, token_interne, path_interne, niveau,
+    // otp_lecture} — contrat L-NIV + L-INTPREV, apps/ventes/views/devis.py).
+    shareLinkDevis: vi.fn(() => Promise.resolve({
+      data: {
+        token: 'tok-abc', path: '/proposition/karim/tok-abc',
+        token_interne: 'tok-int-xyz', path_interne: '/proposition/karim/tok-int-xyz',
+        niveau: 'standard', otp_lecture: false,
+      },
+    })),
+    // LANE E (spec_3_options.md) — DevisOffresTailles.jsx (composant RÉUTILISÉ
+    // tel quel par « Modifier les options ») appelle ce même module ventesApi
+    // au montage : un stub minimal (« pas encore disponible ») suffit ici, ce
+    // composant a déjà ses propres tests dédiés (DevisOffresTailles.test.jsx).
+    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    // LANE E — SUBSTITUTIONS — catalogue société DRF (une page suffit ici :
+    // `fetchAllPages` s'arrête dès que `next` est nul).
+    getProduits: vi.fn(() => Promise.resolve({
+      data: { results: CATALOGUE_SUBSTITUTIONS, count: CATALOGUE_SUBSTITUTIONS.length, next: null },
+    })),
+    CATALOGUE_SUBSTITUTIONS,
+  }
+})
+vi.mock('../../../api/ventesApi', () => ({
+  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis },
 }))
-vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture, shareLinkDevis } }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
+vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
 // salle) pour ne pas polluer ces tests, déjà couverts par son propre test.
 vi.mock('../../../api/crmApi', () => ({
@@ -272,10 +298,19 @@ describe('LW22 — WhatsApp multi-devis', () => {
    les boutons copier/ouvrir/WhatsApp. Les tests L5/L-NIV ci-dessous ouvrent
    donc le dialogue avant d'agir, et le corps posté à share-link porte en plus
    `sections` (les 7 clés, toutes à true par défaut). */
-const TOUTES_SECTIONS = {
+// LANE E (spec_3_options.md) — `getSections` fusionne désormais les 7 clés
+// de sections ET les 2 clés de tailles (`taille_eco`/`taille_max`) dans le
+// MÊME objet posté au serveur (défaut = 3 options, donc les deux à `true`) ;
+// tous les tests ci-dessous qui postent « toutes les sections par défaut »
+// portent donc aussi ces deux clés (`TOUTES_SECTIONS`). `sectionsDepuisServeur`
+// reste une fonction pure qui ne connaît QUE les 7 clés historiques
+// (`SECTIONS_SEULES`) — les tailles ont leur propre fonction pure/tests plus
+// bas dans ce fichier.
+const SECTIONS_SEULES = {
   roof3d: true, sld: true, pdf: true, bankable: true,
   economies: true, jour_type: true, gammes: true,
 }
+const TOUTES_SECTIONS = { ...SECTIONS_SEULES, taille_eco: true, taille_max: true }
 const ouvrirEnvoi = (user) => user.click(
   screen.getByRole('button', { name: /Envoyer au client/ }),
 )
@@ -698,15 +733,301 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
   })
 
   it('sectionsDepuisServeur — trois états : absente = servie, false = retirée, true = servie', () => {
-    expect(sectionsDepuisServeur(undefined)).toEqual(TOUTES_SECTIONS)
-    expect(sectionsDepuisServeur({})).toEqual(TOUTES_SECTIONS)
+    expect(sectionsDepuisServeur(undefined)).toEqual(SECTIONS_SEULES)
+    expect(sectionsDepuisServeur({})).toEqual(SECTIONS_SEULES)
     expect(sectionsDepuisServeur({ pdf: false, roof3d: true }))
-      .toEqual({ ...TOUTES_SECTIONS, pdf: false })
+      .toEqual({ ...SECTIONS_SEULES, pdf: false })
   })
 
   it('les libellés des cases couvrent exactement la whitelist serveur', () => {
     expect(SECTIONS_ENVOI.map((s) => s.key)).toEqual([
       'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
     ])
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LANE E (spec_3_options.md, fondateur 28/08/2026) — dialogue « Envoyer au
+   client » : combien de tailles (Éco/Recommandé/Max) le client voit. Backend
+   contract (ShareLink.SECTIONS_CLES étendu, LANE B, déjà mergé sur la branche
+   d'accumulation) : `taille_eco`/`taille_max`, MÊME sémantique trois-états
+   que les 7 clés ci-dessus ; `recommande` n'a pas de clé (toujours servie).
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  const optionsRadiogroup = () => screen.getByRole(
+    'radiogroup', { name: /Nombre d'options présentées — page client de DEV-1/ },
+  )
+  const radio = (label) => within(optionsRadiogroup()).getByRole('radio', { name: label })
+  const eco = () => screen.getByRole('checkbox', { name: /^Taille Éco — page client de DEV-1/ })
+  const max = () => screen.getByRole('checkbox', { name: /^Taille Max — page client de DEV-1/ })
+  const recommande = () => screen.getByRole(
+    'checkbox', { name: /^Taille Recommandé — toujours servie — page client de DEV-1/ },
+  )
+
+  it('défaut = 3 options : curseur sur 3, Éco et Max cochées, Recommandé verrouillée cochée', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    expect(radio('3')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+    expect(max()).toBeChecked()
+    expect(recommande()).toBeChecked()
+    expect(recommande()).toBeDisabled()
+  })
+
+  it('Recommandé ne peut jamais être décochée (case désactivée)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(recommande())
+    expect(recommande()).toBeChecked()
+  })
+
+  it('curseur → cases : 1 décoche Éco ET Max, 2 ne garde que Max, 3 recoche les deux', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('1'))
+    expect(eco()).not.toBeChecked()
+    expect(max()).not.toBeChecked()
+
+    await user.click(radio('2'))
+    expect(eco()).not.toBeChecked()
+    expect(max()).toBeChecked()
+
+    await user.click(radio('3'))
+    expect(eco()).toBeChecked()
+    expect(max()).toBeChecked()
+  })
+
+  it('cases → curseur : décocher Max depuis 3 ramène le curseur sur 2 ; décocher Éco ensuite le ramène sur 1', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(max())
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+
+    await user.click(eco())
+    expect(radio('1')).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(eco())
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).toBeChecked()
+    expect(max()).not.toBeChecked()
+  })
+
+  it('POST porte sections.taille_eco/taille_max = false/false quand seule Recommandé est servie (1 option)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('1'))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
+    }))
+  })
+
+  it('POST porte sections.taille_eco = false quand 2 options servies (Recommandé + Max)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(radio('2'))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, taille_eco: false },
+    }))
+  })
+
+  it('POST porte les 2 tailles à true par défaut (3 options, aucune interaction)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
+  })
+
+  it('réouverture relit l’état RÉEL du dernier lien (2 options, Éco retirée) plutôt que le défaut', async () => {
+    const user = userEvent.setup()
+    const devisDejaEnvoye = {
+      ...devis1,
+      share_link: { niveau: 'standard', otp_lecture: false, sections: { taille_eco: false } },
+    }
+    renderTab({ state: leadState({ devis: [devisDejaEnvoye] }) })
+    await ouvrirEnvoi(user)
+    expect(radio('2')).toHaveAttribute('aria-checked', 'true')
+    expect(eco()).not.toBeChecked()
+    expect(max()).toBeChecked()
+  })
+
+  it('« Modifier les options… » ouvre l’écran vendeur existant DevisOffresTailles pour ce devis', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+    expect(screen.getByText(/Modifier les options — DEV-1/)).toBeInTheDocument()
+    await waitFor(() => expect(getOffresTaillesDevis).toHaveBeenCalledWith(1))
+  })
+
+  // LA BOÎTE DOIT ÊTRE LARGE, ET LA CLASSE SEULE NE LE PROUVE PAS.
+  // `lw-context-devis-edit-tailles` était POSÉE ici et DÉFINIE NULLE PART : la
+  // boîte retombait sur le `max-w-lg` du composant de base et écrasait ses trois
+  // cartes (incident fondateur, 29/08/2026, DEV-202608-0042). Un test qui ne
+  // vérifierait que l'attribut `class` serait passé au vert pendant tout le bug —
+  // c'est la DÉFINITION CSS qui manquait, donc c'est elle qu'on épingle.
+  it('la boîte « Modifier les options » porte une classe de largeur RÉELLEMENT définie', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+
+    const boite = screen.getByText(/Modifier les options — DEV-1/).closest('[role="dialog"]')
+    expect(boite).not.toBeNull()
+    expect(boite.className).toMatch(/lw-context-devis-edit-tailles/)
+
+    // `process.cwd()` est la racine `frontend/` sous vitest (`root` du config).
+    const css = readFileSync(
+      join(globalThis.process.cwd(), 'src', 'index.css'), 'utf8')
+    const regle = css.match(/\.lw-context-devis-edit-tailles\s*\{[^}]*\}/)
+    expect(regle, '.lw-context-devis-edit-tailles doit être DÉFINIE dans index.css').not.toBeNull()
+    expect(regle[0]).toMatch(/max-width/)
+  })
+})
+
+// LANE E — SUBSTITUTIONS (fondateur 29/08/2026) — « Modifier les options »
+// (DevisOffresTailles.jsx) ne propose de remplacer un équipement que si on lui
+// passe `produits` (sans lui, `produitsParRole([])` renvoie des listes vides
+// et aucun select de rôle ne rend — DevisOffresTailles.jsx:187-189). DevisTab
+// montait ce composant SANS `produits` : ce bloc verrouille le chargement
+// paresseux (à l'OUVERTURE du dialogue, pas au montage de l'onglet) + le cache
+// par session (aucun second aller-retour réseau à la réouverture) + le repli
+// gracieux sur échec (l'éditeur reste utilisable, juste sans substitutions).
+describe('LANE E — SUBSTITUTIONS : catalogue chargé paresseusement pour « Modifier les options »', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  // Un devis « éditable » avec un rôle 'panneau' substituable, de la forme
+  // du contrat offres_tailles.json (comme dans DevisOffresTailles.test.jsx).
+  const blocEditable = {
+    editable: true,
+    offres_tailles: {
+      avec_servable: false,
+      module_batterie_kwh: 5.0,
+      offres: [{
+        cle: 'recommande', titre: 'Recommandé', recommande: true, est_le_devis: true,
+        config: { nb_panneaux: 22, batterie_nb_modules: 0, batterie_module_kwh: 5.0 },
+        sans: {
+          nb_panneaux: 22, puissance_kwc: 12.1, prix_ttc: 108900.0,
+          economie_annuelle_mad: 13260.0, payback_annees: 8.21, couverture_pct: 61.0,
+          production_annuelle_kwh: 19140.0,
+          materiel: [{ role: 'panneau', famille: 'panneau', marque: 'Longi', modele: 'Panneau 550 W' }],
+          toit_ok: true,
+        },
+        avec: null,
+      }],
+    },
+  }
+
+  const ouvrirModifierOptions = async (user) => {
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+  }
+
+  it('ouvrir le dialogue charge le catalogue une fois et le sert à l’éditeur (un select de substitution rend)', async () => {
+    getOffresTaillesDevis.mockResolvedValueOnce({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+
+    const select = await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    expect(within(select).getByRole('option', { name: /Longi — Panneau Longi 610W/ })).toBeInTheDocument()
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+  })
+
+  it('fermer puis rouvrir le dialogue ne relance pas le chargement du catalogue', async () => {
+    getOffresTaillesDevis.mockResolvedValue({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+    await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+
+    // Ciblé DANS la boîte « Modifier les options » : le dialogue « Envoyer au
+    // client » reste ouvert derrière (dialogues imbriqués), donc un second
+    // bouton « Fermer » existe aussi sur celui-là — `screen.getByRole` seul
+    // trouverait les deux et échouerait sur une correspondance ambiguë.
+    const boiteOptions = screen.getByText(/Modifier les options — DEV-1/).closest('[role="dialog"]')
+    await user.click(within(boiteOptions).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.queryByText(/Modifier les options — DEV-1/)).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /Modifier les options…/ }))
+    await screen.findByTestId('offre-taille-recommande-equip-panneau')
+    expect(getProduits).toHaveBeenCalledTimes(1)
+  })
+
+  it('échec réseau du catalogue dégrade sans casser le dialogue — l’éditeur reste utilisable', async () => {
+    getProduits.mockRejectedValueOnce(new Error('réseau indisponible'))
+    getOffresTaillesDevis.mockResolvedValueOnce({ data: blocEditable })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirModifierOptions(user)
+
+    // Le dialogue et l'écran vendeur restent affichés (rien ne casse) ; sans
+    // catalogue, `produitsParRole([])` ne rend AUCUN select de rôle — c'est le
+    // comportement d'AVANT ce correctif, le repli attendu sur échec réseau.
+    expect(await screen.findByText(/Modifier les options — DEV-1/)).toBeInTheDocument()
+    await waitFor(() => expect(getProduits).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('offre-taille-recommande-equip-panneau')).not.toBeInTheDocument()
+  })
+})
+
+/* Fonctions pures — testables sans rendu (même patron que sectionsDepuisServeur). */
+describe('LANE E — logique pure du curseur 1/2/3 (co-localisée, testable sans DOM)', () => {
+  it('taillesDepuisServeur — trois états : absente = servie, false = retirée, true = servie', () => {
+    expect(taillesDepuisServeur(undefined)).toEqual({ taille_eco: true, taille_max: true })
+    expect(taillesDepuisServeur({})).toEqual({ taille_eco: true, taille_max: true })
+    expect(taillesDepuisServeur({ taille_eco: false })).toEqual({ taille_eco: false, taille_max: true })
+    expect(taillesDepuisServeur({ taille_eco: true, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: false })
+  })
+
+  it('optionsCountFromTailles : Recommandé compte toujours + les tailles cochées', () => {
+    expect(optionsCountFromTailles({ taille_eco: false, taille_max: false })).toBe(1)
+    expect(optionsCountFromTailles({ taille_eco: true, taille_max: false })).toBe(2)
+    expect(optionsCountFromTailles({ taille_eco: false, taille_max: true })).toBe(2)
+    expect(optionsCountFromTailles({ taille_eco: true, taille_max: true })).toBe(3)
+  })
+
+  it('taillesFromOptionsCount : 1 décoche tout, 3 coche tout, 2 préserve un choix unique sinon défaut Max', () => {
+    expect(taillesFromOptionsCount(1, { taille_eco: true, taille_max: true }))
+      .toEqual({ taille_eco: false, taille_max: false })
+    expect(taillesFromOptionsCount(3, { taille_eco: false, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: true })
+    // Depuis 1 (aucune cochée) → 2 : défaut Max (règle explicite du spec).
+    expect(taillesFromOptionsCount(2, { taille_eco: false, taille_max: false }))
+      .toEqual({ taille_eco: false, taille_max: true })
+    // Depuis 3 (les deux cochées) → 2 : même défaut Max.
+    expect(taillesFromOptionsCount(2, { taille_eco: true, taille_max: true }))
+      .toEqual({ taille_eco: false, taille_max: true })
+    // Un seul déjà coché → préservé tel quel.
+    expect(taillesFromOptionsCount(2, { taille_eco: true, taille_max: false }))
+      .toEqual({ taille_eco: true, taille_max: false })
+  })
+
+  it('les libellés des cases de tailles couvrent exactement les 2 clés serveur ajoutées', () => {
+    expect(TAILLES_ENVOI.map((t) => t.key)).toEqual(['taille_eco', 'taille_max'])
   })
 })

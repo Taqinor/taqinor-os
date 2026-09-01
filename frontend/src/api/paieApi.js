@@ -39,8 +39,12 @@ const paieApi = {
   journalVentile: (id) => api.post(`/paie/periodes/${id}/journal-ventile/`),
   etatIrAnnuel: (annee) =>
     api.get('/paie/periodes/etat-ir-annuel/', { params: { annee } }),
+  // WIR179 — XML EDI SIMPL-IR : le serveur renvoie un HttpResponse XML brut
+  // (jamais du JSON) ; responseType:'blob' est requis pour livrer un fichier
+  // .xml bien formé au lieu d'un .json corrompu.
   etatIrAnnuelXml: (annee) =>
-    api.get('/paie/periodes/etat-ir-annuel-xml/', { params: { annee } }),
+    api.get('/paie/periodes/etat-ir-annuel-xml/',
+      { params: { annee }, responseType: 'blob' }),
   runGratification: (id, data) =>
     api.post(`/paie/periodes/${id}/run-gratification/`, data),
   reporterElements: (id) =>

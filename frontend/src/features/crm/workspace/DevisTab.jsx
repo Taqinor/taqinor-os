@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send,
+  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3,
 } from 'lucide-react'
 import {
-  Button, Checkbox, Input, StatusPill,
+  Button, Checkbox, Input, StatusPill, Segmented,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
@@ -11,11 +11,22 @@ import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
 import installationsApi from '../../../api/installationsApi'
+import stockApi from '../../../api/stockApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
+// LANE E (fondateur 28/08/2026, spec_3_options.md) — réutilise TEL QUEL l'écran
+// vendeur existant des tailles Éco/Recommandé/Max (nb_panneaux, batterie,
+// équipements par taille) comme point d'entrée « Modifier les options » du
+// dialogue d'envoi — rien n'est réinventé.
+import DevisOffresTailles from '../../../pages/ventes/DevisOffresTailles'
 import { formatMAD, formatDate, normalizePhoneE164 } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 // L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
 import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../ventes/clientProposalLink'
+// QJR41 (audit L3 29/08/2026) — MÊME formule que la doctrine fondateur du
+// 18/08 (`autoQuote.js:146-152`, palier de 5 kWc, jamais retirée) : lue ici en
+// PURE LECTURE pour prévenir le commercial, jamais pour arrondir le champ lui-même.
+import { noticePalierKwc } from '../../ventes/autoQuote'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
@@ -114,6 +125,49 @@ export function sectionsDepuisServeur(sections) {
   )
 }
 
+// ── LANE E (fondateur 28/08/2026, spec_3_options.md) — 1/2/3 options servies.
+// Backend contract (ShareLink.SECTIONS_CLES étendu) : `taille_eco`/`taille_max`
+// sont deux clés supplémentaires, MÊME sémantique trois-états que les 7 clés
+// ci-dessus (absente/true → servie, false → retirée). `recommande` n'a AUCUNE
+// clé — c'est le devis, elle est toujours servie. On étend donc la MÊME
+// machinerie (`sections`) plutôt qu'un état parallèle : ces deux clés
+// voyagent dans le même objet `sections` posté à `shareLinkDevis`.
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que SECTIONS_ENVOI
+export const TAILLES_ENVOI = [
+  { key: 'taille_eco', label: 'Éco' },
+  { key: 'taille_max', label: 'Max' },
+]
+
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function taillesDepuisServeur(sections) {
+  const src = sections && typeof sections === 'object' ? sections : {}
+  return Object.fromEntries(
+    TAILLES_ENVOI.map(({ key }) => [key, src[key] !== false]),
+  )
+}
+
+// Nombre d'options présentées au client = Recommandé (toujours) + les tailles
+// encore cochées.
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function optionsCountFromTailles(tailles) {
+  return 1 + (tailles?.taille_eco ? 1 : 0) + (tailles?.taille_max ? 1 : 0)
+}
+
+// Le curseur 1/2/3 dérive les deux cases depuis un compte cible, en essayant
+// de PRÉSERVER le choix courant : 1 = les deux décochées ; 3 = les deux
+// cochées ; 2 = si une seule était déjà cochée on la garde telle quelle,
+// sinon (on arrivait de 1 ou de 3) le défaut est Max — un rétrécissement
+// depuis 3 tranche donc en faveur de Max, comme un agrandissement depuis 1.
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function taillesFromOptionsCount(count, tailles) {
+  if (count <= 1) return { taille_eco: false, taille_max: false }
+  if (count >= 3) return { taille_eco: true, taille_max: true }
+  const cur = tailles || {}
+  const nbCochees = (cur.taille_eco ? 1 : 0) + (cur.taille_max ? 1 : 0)
+  if (nbCochees === 1) return { taille_eco: !!cur.taille_eco, taille_max: !!cur.taille_max }
+  return { taille_eco: false, taille_max: true }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function waArmed(phone, selectedCount) {
   return !!normalizePhoneE164(phone) && selectedCount > 0
@@ -158,6 +212,22 @@ export default function DevisTab({
   // historique (taille souhaitée du lead, sinon facture d'hiver) : le trajet
   // à 1 clic du commercial est INCHANGÉ.
   const [kwcCible, setKwcCible] = useState('')
+  // QJR41 (audit L3 29/08/2026, origine generator-frontend-13/R4-B2.14) — le
+  // calage à 5 kWc du chemin auto EST la doctrine fondateur du 18/08
+  // (`autoQuote.js` : `arrondirAuPasKwc`, aucun devis auto ne sort une
+  // taille hors palier) — on ne la retire PAS. Le défaut réel : le champ
+  // ci-dessous (commentaire EZ5 plus bas) ne rejette ni n'arrondit jamais la
+  // saisie, mais rien ne disait au commercial qu'un 6,5 tapé deviendrait 5.
+  // Notice PUREMENT informative — MÊME formule que celle qui dimensionne
+  // réellement le devis auto, aucune règle d'arrondi nouvelle ni dupliquée
+  // avec un comportement différent.
+  // QJR245 — même PRÉCÉDENCE que `createAutoQuote` (autoQuote.js) : la cible
+  // tapée pour CE devis prime, sinon `lead.taille_souhaitee_kwc` — sans cette
+  // seconde branche, un lead à 6,5 kWc était arrondi en silence dès que le
+  // commercial laissait ce champ vide (la seule saisie qu'il voit ici n'est
+  // alors pas celle que `createAutoQuote` arrondit réellement).
+  const kwcASaisir = parseFloat(kwcCible) > 0 ? kwcCible : state.server?.taille_souhaitee_kwc
+  const noticeKwc = noticePalierKwc(kwcASaisir)
   const [waBusy, setWaBusy] = useState(false)
 
   // L5 — les 3 actions « Page client / WhatsApp / Aperçu interne » ci-dessous.
@@ -201,14 +271,65 @@ export default function DevisTab({
   // lien déjà envoyé montre ce que le client reçoit VRAIMENT aujourd'hui.
   const [envoiOuvert, setEnvoiOuvert] = useState(null) // id du devis | null
   const [sectionsSel, setSectionsSel] = useState({}) // id -> { clé: bool }
-  const getSections = (d) => (
+  // LANE E — mêmes 7 clés SECTIONS_ENVOI, lues/écrites indépendamment des 2
+  // clés de tailles ci-dessous (`getSections` les fusionne toutes les deux
+  // dans le SEUL objet posté au serveur).
+  const sectionsChoisies = (d) => (
     sectionsSel[d.id] ?? sectionsDepuisServeur(currentLinkMeta(d)?.sections)
   )
   const onSectionChange = (d, cle, valeur) => {
     setSectionsSel((cur) => ({
-      ...cur, [d.id]: { ...getSections(d), [cle]: !!valeur },
+      ...cur, [d.id]: { ...sectionsChoisies(d), [cle]: !!valeur },
     }))
   }
+
+  // LANE E (spec_3_options.md) — 1/2/3 options servies au client, MÊME motif
+  // que `sectionsSel` (choix local prime, sinon état réel du dernier lien).
+  const [taillesSel, setTaillesSel] = useState({}) // id -> { taille_eco, taille_max }
+  const [editTaillesOuvert, setEditTaillesOuvert] = useState(null) // id du devis | null
+
+  // LANE E — SUBSTITUTIONS (fondateur 29/08/2026) — « Modifier les options »
+  // (DevisOffresTailles.jsx) ne propose de remplacer un équipement que si on
+  // lui passe `produits` (le catalogue société) : sans lui, ses selects par
+  // rôle ne rendent RIEN (produitsParRole([]) → listes vides). DevisGenerator
+  // charge ce même catalogue AU MONTAGE (`fetchAllPages` + `stockApi.
+  // getProduits`, VX54 — la pagination DRF simple perd silencieusement les
+  // familles triées après la page 1 au-delà de 50 références), mais cet onglet
+  // reste chaud en permanence sur la fiche lead alors que ce dialogue est
+  // rare : on ne le charge qu'À L'OUVERTURE du dialogue, une seule fois par
+  // session d'écran (le ref empêche tout second aller-retour réseau à la
+  // réouverture, y compris pour un autre devis de la même fiche — même
+  // catalogue société pour tous). Un échec réseau dégrade SANS bloquer le
+  // dialogue : `produits` reste `null`, l'écran se comporte comme avant
+  // (éditeur sans substitutions).
+  const produitsFetchStarted = useRef(false)
+  const [produitsCatalogue, setProduitsCatalogue] = useState(null)
+  useEffect(() => {
+    if (editTaillesOuvert == null) return
+    if (produitsFetchStarted.current) return
+    produitsFetchStarted.current = true
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+      .then(setProduitsCatalogue)
+      .catch(() => { /* dégrade : éditeur sans substitutions, jamais un dialogue cassé */ })
+  }, [editTaillesOuvert])
+
+  const getTailles = (d) => (
+    taillesSel[d.id] ?? taillesDepuisServeur(currentLinkMeta(d)?.sections)
+  )
+  const onTailleToggle = (d, cle, valeur) => {
+    setTaillesSel((cur) => ({
+      ...cur, [d.id]: { ...getTailles(d), [cle]: !!valeur },
+    }))
+  }
+  const onOptionsCountChange = (d, count) => {
+    setTaillesSel((cur) => ({
+      ...cur, [d.id]: taillesFromOptionsCount(count, getTailles(d)),
+    }))
+  }
+  // Le corps posté au serveur : les 7 clés de sections + les 2 clés de
+  // tailles, dans le MÊME objet `sections` (whitelist serveur étendue,
+  // ShareLink.SECTIONS_CLES) — un seul appel réseau, jamais deux mécanismes.
+  const getSections = (d) => ({ ...sectionsChoisies(d), ...getTailles(d) })
 
   // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU
   // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
@@ -457,6 +578,17 @@ export default function DevisTab({
               value={kwcCible}
               onChange={(e) => setKwcCible(e.target.value)}
             />
+            {/* QJR41/QJR245 — notice PUREMENT informative (aucun changement de
+                la saisie ni de la règle d'arrondi, voir le commentaire
+                ci-dessus) : nomme le palier de 5 kWc que le devis auto
+                appliquera réellement. Texte ENTIER porté par
+                `autoQuote.js::noticePalierKwc` (une seule formulation,
+                MÊME texte que LeadDevisPanel.jsx — jamais recopié ici). */}
+            {noticeKwc && (
+              <p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">
+                {noticeKwc}
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -610,6 +742,52 @@ export default function DevisTab({
                       la page, jamais un montant du devis.
                     </p>
                   </div>
+                  {/* LANE E (spec_3_options.md, fondateur 28/08/2026) — combien
+                      de tailles (Éco/Recommandé/Max) le client voit sur sa
+                      page. Recommandé EST le devis : toujours servie, case
+                      verrouillée cochée. Le curseur segmenté et les 2 cases
+                      restent synchronisés dans les deux sens via `getTailles`/
+                      `onOptionsCountChange`/`onTailleToggle`. */}
+                  <div className="lw-context-devis-tailles">
+                    <p className="gen-hint">Options présentées au client :</p>
+                    <Segmented
+                      size="sm"
+                      aria-label={`Nombre d'options présentées — page client de ${d.reference}`}
+                      options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
+                      value={optionsCountFromTailles(getTailles(d))}
+                      onChange={(n) => onOptionsCountChange(d, n)}
+                    />
+                    <label className="lw-context-devis-taille-toggle">
+                      <Checkbox
+                        checked
+                        disabled
+                        aria-label={`Taille Recommandé — toujours servie — page client de ${d.reference}`}
+                      />
+                      Recommandé
+                    </label>
+                    <label className="lw-context-devis-taille-toggle">
+                      <Checkbox
+                        checked={getTailles(d).taille_eco}
+                        onCheckedChange={(v) => onTailleToggle(d, 'taille_eco', v)}
+                        aria-label={`Taille Éco — page client de ${d.reference}`}
+                      />
+                      Éco
+                    </label>
+                    <label className="lw-context-devis-taille-toggle">
+                      <Checkbox
+                        checked={getTailles(d).taille_max}
+                        onCheckedChange={(v) => onTailleToggle(d, 'taille_max', v)}
+                        aria-label={`Taille Max — page client de ${d.reference}`}
+                      />
+                      Max
+                    </label>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      onClick={() => setEditTaillesOuvert(d.id)}
+                    >
+                      <Layers3 size={14} aria-hidden="true" /> Modifier les options…
+                    </Button>
+                  </div>
                   <div className="lw-context-devis-links">
                     <Button
                       type="button" size="sm" variant="outline"
@@ -687,6 +865,36 @@ export default function DevisTab({
                     </button>
                   </p>
                   {actionMsg && <p className="gen-hint" role="status">{actionMsg}</p>}
+                </DialogContent>
+              </Dialog>
+              {/* LANE E — « Modifier les options » ouvre l'écran vendeur EXISTANT
+                  (DevisOffresTailles.jsx) pour ce devis, AVANT l'envoi : le
+                  commercial ajuste panneaux/batterie/équipements par taille,
+                  puis revient au dialogue d'envoi ci-dessus. Rien n'est
+                  réimplémenté — même composant que DevisGenerator.jsx.
+                  `modeInstallation` n'est pas exposé par `Lead.devis[]`
+                  (apps/crm/serializers.py::get_devis) : on force 'residentiel'
+                  pour toujours déclencher le chargement — un devis non
+                  résidentiel se voit alors via `block.editable === false` et
+                  son message serveur (`raison_non_editable`), jamais deviné
+                  côté écran. */}
+              <Dialog
+                open={editTaillesOuvert === d.id}
+                onOpenChange={(o) => setEditTaillesOuvert(o ? d.id : null)}
+              >
+                <DialogContent className="lw-context-devis-edit-tailles">
+                  <DialogHeader>
+                    <DialogTitle>Modifier les options — {d.reference}</DialogTitle>
+                    <DialogDescription>
+                      Ajustez panneaux, batterie et équipements de chaque
+                      taille avant d’envoyer la page au client.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DevisOffresTailles
+                    devisId={d.id}
+                    modeInstallation="residentiel"
+                    produits={produitsCatalogue}
+                  />
                 </DialogContent>
               </Dialog>
               {d.statut === 'accepte' && (

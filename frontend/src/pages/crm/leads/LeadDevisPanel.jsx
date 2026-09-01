@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import { createAutoQuote } from '../../../features/ventes/autoQuote'
+import { createAutoQuote, noticePalierKwc } from '../../../features/ventes/autoQuote'
 import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
@@ -72,6 +72,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [errorMsg, setErrorMsg] = useState(null)
   const [devisId, setDevisId] = useState(existingDevisId || null)
   const [devisRef, setDevisRef] = useState('')
+
+  // QJR245 — même précédence et même formulation que DevisTab.jsx : la cible
+  // reçue pour CE devis prime, sinon `lead.taille_souhaitee_kwc` — la MÊME
+  // valeur que `createAutoQuote` (ci-dessous) arrondira réellement.
+  const kwcASaisir = parseFloat(targetKwc) > 0 ? targetKwc : lead?.taille_souhaitee_kwc
+  const noticeKwc = noticePalierKwc(kwcASaisir)
 
   // Format d'aperçu PDF
   const [pdfMode, setPdfMode] = useState(mode === 'onepage' ? 'onepage' : 'full')
@@ -305,6 +311,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'creating' && (
             <div className="ldp-center">
               <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
+              {/* QJR245 — MÊME notice, MÊME texte (une seule définition,
+                  `autoQuote.js::noticePalierKwc`) que DevisTab.jsx : ce
+                  troisième point d'entrée de `createAutoQuote` restait
+                  silencieux sur l'arrondi au palier de 5 kWc. */}
+              {noticeKwc && (
+                <p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">
+                  {noticeKwc}
+                </p>
+              )}
             </div>
           )}
 

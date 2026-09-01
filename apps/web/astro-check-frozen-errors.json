@@ -1,0 +1,47 @@
+{
+  "//": "Plafond gele par (fichier, code TypeScript) pour `astro check` sur les scripts .astro (QJW23). `ceiling` = nombre MAXIMAL d'erreurs connues a ce jour pour cette paire ; un compte STRICTEMENT SUPERIEUR fait rougir scripts/check-astro-types.mjs (c'est le cas negatif du gate). Un compte egal ou INFERIEUR passe silencieusement — le plafond ne se resserre PAS tout seul quand une erreur est corrigee ; baissez-le ici a la main pour verrouiller le gain (cliquet vers le bas volontaire, jamais automatique). N'ajoutez une nouvelle entree QUE pour un defaut deja verifie/compris ici, jamais pour faire taire une erreur non lue.",
+  "generated": "2026-08-31 (QJW23, astro check 0.9.10 / astro 6.4.6, perimetre src/lib/**/*.ts + src/**/*.astro)",
+  "entries": [
+    {
+      "file": "src/components/Header.astro",
+      "code": 1002,
+      "ceiling": 1,
+      "reason": "Cascade de parsing (voir aussi 1005/1128/1382/17002/18004/2304/2322/2552/2657 du meme fichier) : un bloc <svg> inline de l'icone du menu mobile (~lignes 251-265) n'est pas modelisable proprement par le transpileur TSX d'Astro (attributs vus comme identifiants nus 'svg'/'width'/'stroke' hors de tout objet). Racine unique deja identifiee, pas un vrai defaut de type ni un lien avec champs.ts."
+    },
+    { "file": "src/components/Header.astro", "code": 1005, "ceiling": 9, "reason": "Meme cascade de parsing SVG que ts(1002) sur ce fichier (~lignes 251-265)." },
+    { "file": "src/components/Header.astro", "code": 1128, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) sur ce fichier." },
+    { "file": "src/components/Header.astro", "code": 1382, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) sur ce fichier (ligne 265, jeton '>' inattendu)." },
+    { "file": "src/components/Header.astro", "code": 17002, "ceiling": 4, "reason": "Meme cascade de parsing SVG que ts(1002) sur ce fichier (balises JSX non refermees en aval du bloc mal parse)." },
+    { "file": "src/components/Header.astro", "code": 18004, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) : un mot du bloc SVG est relu comme propriete raccourcie d'objet." },
+    { "file": "src/components/Header.astro", "code": 2304, "ceiling": 2, "reason": "Meme cascade de parsing SVG que ts(1002) : 'svg'/'width' relus comme identifiants introuvables." },
+    { "file": "src/components/Header.astro", "code": 2322, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) (ligne ~251, attribut de lien du menu deforme par le mauvais decoupage)." },
+    { "file": "src/components/Header.astro", "code": 2552, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) : 'header' relu comme identifiant introuvable (suggestion 'Header')." },
+    { "file": "src/components/Header.astro", "code": 2657, "ceiling": 1, "reason": "Meme cascade de parsing SVG que ts(1002) : le fragment JSX genere se retrouve avec plus d'un parent." },
+
+    { "file": "src/components/LanguageSwitcher.astro", "code": 7006, "ceiling": 3, "reason": "any implicites reels (pas un artefact de parsing) sur les parametres 'loc'/'i' des callbacks .map/.forEach du selecteur de langue. Correction triviale (typer les callbacks) mais hors perimetre de QJW23, qui gele l'existant plutot que de corriger a l'aveugle." },
+    { "file": "src/components/LanguageSwitcher.astro", "code": 7053, "ceiling": 6, "reason": "Indexation d'un Record<'fr'|'en'|'ar', string> par une cle non etroite (meme famille que ts(7006) sur ce fichier) : any implicite reel, correction triviale hors perimetre de QJW23." },
+
+    { "file": "src/pages/ar/batteries-stockage.astro", "code": 2322, "ceiling": 1, "reason": "Astro type l'attribut global HTML/SVG 'dir' comme absent de son interface SVGAttributes (limitation du typage fourni par Astro, pas un bug applicatif) ; meme famille que le ts(2322) 'dir' de src/pages/proposition/[...token].astro." },
+
+    { "file": "src/pages/blog/[...slug].astro", "code": 2339, "ceiling": 35, "reason": "Les entrees de la content collection 'blog' resolvent en type 'never' dans ce build local (getCollection/getStaticPaths sans schema de collection type explicitement) : chaque acces post.data.* (title/description/pubDate/tags/...) remonte comme propriete absente sur 'never'. Gap de typage pre-existant du systeme de blog, distinct du contrat champs.ts vise par QJW23." },
+    { "file": "src/pages/blog/[...slug].astro", "code": 7006, "ceiling": 8, "reason": "any implicites sur les callbacks de tri/filtrage de la liste d'articles (meme page), consequence du typage 'never' ci-dessus plutot qu'un defaut isole." },
+    { "file": "src/pages/blog/[...slug].astro", "code": 7031, "ceiling": 1, "reason": "Binding element 'data' implicitement any, meme racine (collection 'blog' non typee) que ts(2339) sur ce fichier." },
+    { "file": "src/pages/blog/[...slug].astro", "code": 7053, "ceiling": 1, "reason": "Indexation d'un Record de themes par une cle non etroite issue de la donnee 'never' de la collection ; meme famille que ts(2339) sur ce fichier." },
+
+    { "file": "src/pages/blog/index.astro", "code": 7006, "ceiling": 6, "reason": "any implicites sur les callbacks de tri/filtrage de la liste d'articles, meme racine (collection 'blog' non typee) que src/pages/blog/[...slug].astro." },
+    { "file": "src/pages/blog/index.astro", "code": 7031, "ceiling": 1, "reason": "Binding element 'data' implicitement any, meme racine que ci-dessus." },
+    { "file": "src/pages/blog/index.astro", "code": 7053, "ceiling": 1, "reason": "Indexation d'un Record de themes par une cle non etroite, meme racine que ci-dessus." },
+
+    { "file": "src/pages/proposition/[...token].astro", "code": 1002, "ceiling": 2, "reason": "Cascade de PARSING (pas de typage) causee par des guillemets francais/arabes « » a l'interieur d'attributs JSX multi-locale (data-fr/data-en/data-ar, ~lignes 5087-6102) : le compilateur TSX d'Astro perd le fil du texte. Meme famille de bug deja documentee (memoire 'apps/web content-gen gotchas' — guillemets/apostrophes francais dans .astro) ; pas un vrai defaut de type. Voir aussi 1005/1127/1128/1381/17002/18004/2657 du meme fichier." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 1005, "ceiling": 2, "reason": "Meme cascade de guillemets « » que ts(1002) sur ce fichier." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 1127, "ceiling": 2, "reason": "Meme cascade de guillemets « » que ts(1002) sur ce fichier (caractere invalide en sortie de texte JSX)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 1128, "ceiling": 3, "reason": "Meme cascade de guillemets « » que ts(1002) sur ce fichier." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 1381, "ceiling": 1, "reason": "Meme cascade de guillemets « » que ts(1002) sur ce fichier (accolade fermante inattendue)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 17002, "ceiling": 9, "reason": "Meme cascade de guillemets « » que ts(1002) : balises JSX non refermees en aval du texte mal decoupe (~lignes 5090-6580)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 18004, "ceiling": 2, "reason": "Meme cascade de guillemets « » que ts(1002) : des mots de phrase francaise ('Je', 'certifie') relus comme proprietes raccourcies d'objet (ligne 6103)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 2322, "ceiling": 3, "reason": "Melange de deux racines distinctes sur ce fichier : 1 occurrence = meme limitation SVGAttributes.'dir' que src/pages/ar/batteries-stockage.astro (ligne 4391) ; 2 occurrences = retombee typee de la cascade de guillemets ts(1002) (mots anglais/francais captes comme proprietes d'objet inexistantes, lignes 5086/6101)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 2367, "ceiling": 2, "reason": "Comparaison entre litteraux ('les_deux' vs 'avec'/'sans', lignes ~6231/6235) que TypeScript juge impossible dans cette branche deja retrecie — signal potentiellement reel (branche possiblement morte) mais analyse fonctionnelle hors perimetre de QJW23 (wiring du gate, pas audit logique)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 2657, "ceiling": 1, "reason": "Meme cascade de guillemets « » que ts(1002) : le <script> qui suit se retrouve avec plus d'un parent JSX (ligne ~6584)." },
+    { "file": "src/pages/proposition/[...token].astro", "code": 2741, "ceiling": 1, "reason": "L'objet EMPTY_DAILY_CURVE (ligne ~642) ne fournit pas la propriete 'hasBatteryLayer' desormais requise par l'interface DailyCurve — vrai gap de typage isole, correction ponctuelle laissee a une tache dediee (hors perimetre du wiring QJW23)." }
+  ]
+}

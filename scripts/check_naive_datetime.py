@@ -61,7 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:917",
     "backend/django_core/apps/facturation/models.py:1101",
-    "backend/django_core/apps/ventes/models.py:1032",  # NoteDebit.date_emission (PV41 décale +15) — remapped +192 (modèles CPQ NTCPQ11-24 ajoutés dans ventes/models.py), même champ date-ancre relu
+    "backend/django_core/apps/ventes/models.py:1157",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -96,7 +96,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # index insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
     # identique avant/après (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`, vérifié contre 1d6f4c29). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2332",  # CommissionPartenaire.paye_le
+    "backend/django_core/apps/crm/models.py:2402",  # CommissionPartenaire.paye_le (recale +8, Raccordement.AUCUN 01/09)
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

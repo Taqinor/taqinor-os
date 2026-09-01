@@ -176,6 +176,18 @@ premier — sinon un champ `segment_credit` local sert de repli additif.
 
 #### P1 — Limite de crédit & credit hold (sellability blocker order-to-cash)
 
+> **NOTE (WIR187, run plateforme du 2026-08-26) — la moitié « avertissement » de
+> NTCRD7 est REPRISE et livrée dans `docs/PLAN.md`.** L'action `accepter` d'un
+> devis renvoie désormais `credit_warning {mode, depassement, disponible}`,
+> calculé par `apps.credit.selectors.avertissement_credit` (lecture pure,
+> jamais un import de models cross-app) et figé par le contrat committé
+> `apps/credit/contract_samples/credit_warning.json`. Le REFUS dur, lui, était
+> déjà en place et reste inchangé (`ventes.services.verifier_credit_hold`,
+> XFAC28 — 403 + override responsable/admin), c'est pourquoi la reprise ne
+> touche pas au verdict. NTCRD8 (hook à la création du BC) reste ouvert
+> ci-dessous. Ces lignes ne sont ni cochées ni réécrites : elles appartiennent
+> à ce fichier de domaine.
+
 - [BLOCKED: hors périmètre] NTCRD7 — **Hook à l'acceptation devis** : dans `ventes/views/devis.py::accepter`, appel best-effort (jamais bloquant côté import : `try/except ImportError` si `apps.credit` absent) à `verifier_hold_credit` ; si `mode == 'blocage'` et `autorise == False`, refuse l'acceptation avec 409 + détail `disponible`/`depassement`, sauf si une dérogation approuvée existe (NTCRD9) ; en `avertissement`, laisse passer mais ajoute un flag `credit_warning` dans la réponse pour affichage frontend. Critère d'acceptation : test avec mode blocage + limite dépassée + aucune dérogation → 409 ; avec dérogation approuvée → 200. Files: backend/django_core/apps/credit/services.py, backend/django_core/apps/ventes/views/devis.py, tests. (AUTH) «model: opus»
 - [BLOCKED: hors périmètre] NTCRD8 — **Hook à la création BC** : même pattern que NTCRD7 sur le point de création de `BonCommande` (depuis devis accepté) — n'affecte que la CRÉATION du BC, jamais son exécution/livraison déjà en cours. Critère d'acceptation : test couvre blocage + dérogation, comportement inchangé quand `apps.credit` n'a aucune `LimiteCredit` pour le client. (@lane: backend/credit) (AUTH) «model: sonnet»
 

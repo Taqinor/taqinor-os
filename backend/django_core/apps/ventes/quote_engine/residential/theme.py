@@ -105,6 +105,88 @@ def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+def normaliser_lien(url: str) -> str:
+    """Normalise un lien nu (« taqinor.ma/... ») en href absolu ; '' → ''."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return "https://" + url
+
+
+def lien_affiche(url: str, segments: int = 2) -> str:
+    """Forme d'AFFICHAGE courte d'un lien : hôte + ``segments - 1`` segments de
+    chemin, sans schéma (« taqinor.ma/proposition »). La queue tokenisée reste
+    dans le href et dans le QR — l'imprimer déborderait de la vignette."""
+    url = (url or "").strip()
+    for pre in ("https://", "http://"):
+        if url.startswith(pre):
+            url = url[len(pre):]
+            break
+    parts = url.split("/")
+    return "/".join(parts[:segments]) if len(parts) > segments else url
+
+
+@functools.lru_cache(maxsize=64)
+def qr_data_uri(url: str, *, logo: bool = True, correction: str = "H",
+                box_size: int = 16, border: int = 2,
+                front=(26, 43, 74)) -> str:
+    """QR scannable rendu en PNG data-URI (aucun accès réseau au rendu).
+
+    IMPLÉMENTATION UNIQUE des QR du moteur résidentiel : ``trust`` (page
+    signature, gros QR à modules arrondis + logo central) ET ``cover`` (page 1,
+    vignette « proposition interactive ») passent par ici. Les défauts
+    reproduisent EXACTEMENT l'appel historique de la page 3, donc son rendu ne
+    bouge pas d'un octet.
+
+    ``correction='M'`` + ``logo=False`` servent la petite vignette de la
+    page 1 : sans logo central ni redondance H, le même lien tient en nettement
+    moins de modules, donc reste scannable à ~20 mm.
+
+    Dépendance ``qrcode`` (BSD, pur Python, déjà épinglée dans
+    ``requirements.txt``) importée DÉFENSIVEMENT : une roue manquante rend ''
+    et l'appelant retombe sur son lien textuel — jamais un PDF cassé.
+    """
+    target = normaliser_lien(url)
+    if not target:
+        return ""
+    try:
+        import io
+        import qrcode
+        from qrcode.image.styledpil import StyledPilImage
+        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+        from qrcode.image.styles.colormasks import SolidFillColorMask
+        niveaux = {
+            "L": qrcode.constants.ERROR_CORRECT_L,
+            "M": qrcode.constants.ERROR_CORRECT_M,
+            "Q": qrcode.constants.ERROR_CORRECT_Q,
+            "H": qrcode.constants.ERROR_CORRECT_H,
+        }
+        qr = qrcode.QRCode(
+            error_correction=niveaux.get(correction,
+                                         qrcode.constants.ERROR_CORRECT_H),
+            box_size=box_size, border=border)
+        qr.add_data(target)
+        qr.make(fit=True)
+        kw = dict(
+            image_factory=StyledPilImage,
+            module_drawer=RoundedModuleDrawer(),
+            color_mask=SolidFillColorMask(front_color=tuple(front),
+                                          back_color=(255, 255, 255)))
+        if logo:
+            chemin = _LIVE_ASSETS / "logo.png"
+            if chemin.exists():
+                kw["embeded_image_path"] = str(chemin)
+        img = qr.make_image(**kw)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        return "data:image/png;base64," + base64.b64encode(
+            buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
 @functools.lru_cache(maxsize=1)
 def font_face_css() -> str:
     # QX8 — @font-face (6 woff2 encodés en b64) figé, calculé une fois par
@@ -667,9 +749,16 @@ _DEFAULT_SITE = "taqinor.ma"
 
 
 def _esc(v) -> str:
-    """Échappe le minimum HTML pour une valeur d'identité insérée en texte."""
-    return (str(v or "").replace("&", "&amp;")
-            .replace("<", "&lt;").replace(">", "&gt;"))
+    """Échappe une valeur d'identité insérée dans le HTML — GUILLEMETS COMPRIS.
+
+    QJR145 (f) — l'échappement s'arrêtait à ``&``/``<``/``>`` alors que la même
+    valeur est insérée dans des ATTRIBUTS (``alt="{brand}"`` des couvertures
+    industrielle et commerciale) : une raison sociale portant un guillemet
+    droit cassait le balisage. ``html.escape(quote=True)`` couvre les deux
+    usages (texte ET attribut) et laisse le rendu inchangé sur toute valeur
+    sans guillemet.
+    """
+    return escape(str(v or ""), quote=True)
 
 
 def company_identity(data: dict) -> dict:

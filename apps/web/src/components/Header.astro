@@ -33,6 +33,33 @@
  *         no-op-safe component reading src/lib/testimonials.ts GOOGLE_RATING).
  *         Renders NOTHING until the founder supplies a real rating (WG5) —
  *         never a placeholder number.
+ * W378 — Desktop no-wrap fix (founder screenshot 26/08 : phone + "À propos"
+ *         wrapping to 2 lines). Root cause measured live (not guessed): the
+ *         header row's content (logo + full nav + language chips + phone +
+ *         CTA) needs ~1168px, but `max-w-6xl` caps the row's CONTENT box at
+ *         1120px on every viewport ≥1152px — the desktop row was over
+ *         budget on ordinary laptop widths, not just some rare in-between
+ *         size. Text wrapped at "À propos" and the phone number because
+ *         those are the ONLY two nav-row labels containing a space (every
+ *         other label is a single unbreakable word) — the overflow had
+ *         nowhere else to go. Fix, in order:
+ *          1. `whitespace-nowrap` on every nav label + the phone line so
+ *             text can never re-wrap (an overflow would be visible/loud
+ *             instead of silently mis-rendering).
+ *          2. Trim real width out of the row: tighter nav gap (28→24px),
+ *             a compact desktop-only language-chip size (was a 44px touch
+ *             target — appropriate for the mobile menu, oversized for a
+ *             mouse-driven desktop bar), tighter utility-cluster gap.
+ *          3. The full desktop row (nav+chips+phone+CTA) now switches on at
+ *             `xl` (1280px) instead of `lg` (1024px) — NOT a mobile change:
+ *             it hands the 1024–1280px range to the SAME already-working
+ *             hamburger menu a little earlier, so desktop nav only ever
+ *             renders once `max-w-6xl` has already capped the row at its
+ *             full 1120px budget (guaranteed once viewport ≥1152px) —
+ *             never the narrower, viewport-constrained budget it had at
+ *             exactly 1024px. The mobile panel itself (markup, behaviour,
+ *             the `variant="menu"` 44px language chips) is BYTE-IDENTICAL —
+ *             only the breakpoint that hands off to it moved.
  */
 import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
@@ -189,11 +216,12 @@ const ressourcesActive = isActive('/guides') ||
 // former Tailwind width-tween (`w-0` → `group-hover:w-full`) with the
 // crafted reveal. The class carries `position: relative` itself, so
 // `linkBase`/`linkBaseActive` no longer need to.
+// W378 — whitespace-nowrap: nav labels never re-wrap (see header note above).
 const linkBase =
-  'group/link text-sm font-medium text-lune-soft transition-colors hover:text-white link-underline';
+  'group/link whitespace-nowrap text-sm font-medium text-lune-soft transition-colors hover:text-white link-underline';
 // W151 — variante active : texte blanc + indicateur brass visible au repos.
 const linkBaseActive =
-  'group/link text-sm font-medium text-white link-underline-active';
+  'group/link whitespace-nowrap text-sm font-medium text-white link-underline-active';
 // Classes de révélation du panneau : survol, focus clavier OU classe .is-open (JS).
 const menuReveal =
   'invisible translate-y-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-[.is-open]:visible group-[.is-open]:translate-y-0 group-[.is-open]:opacity-100';
@@ -208,7 +236,7 @@ const itemClass =
   id="site-header"
   class="sticky top-0 z-50 border-b border-transparent bg-transparent transition-[background-color,border-color,backdrop-filter] duration-300 motion-reduce:transition-none"
 >
-  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4" id="header-inner">
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 xl:gap-3" id="header-inner">
     {/* W364 — nom de transition stable (view-transition-name) : le logo ne
         doit jamais cross-fader/morpher contre lui-même pendant une
         navigation qui porte par ailleurs un morph de photo (galerie →
@@ -217,7 +245,7 @@ const itemClass =
     <a href={L('/')} aria-label="TAQINOR — accueil" class="site-logo-vt">
       <Logo size={24} theme="dark" />
     </a>
-    <nav class="hidden items-center gap-7 lg:flex" aria-label={t('nav.primary')}>
+    <nav class="hidden items-center gap-6 xl:flex" aria-label={t('nav.primary')}>
       <!-- Solutions (déroulant) -->
       <div class="dropdown group relative" data-dropdown>
         <a
@@ -278,7 +306,7 @@ const itemClass =
               reste visible tant qu'aucun lien n'est survolé/focalisé — état de
               repos cohérent avec le lien "featured" mis en avant en premier. */}
           {Object.keys(solutionPreview).length > 0 && (
-            <div class="menu-preview ms-2 hidden w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] lg:block">
+            <div class="menu-preview ms-2 hidden w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] xl:block">
               {Object.entries(solutionPreview).map(([href, p], i) => (
                 <a
                   href={L(href)}
@@ -371,11 +399,11 @@ const itemClass =
         {...(isActive('/à-propos') ? { 'aria-current': 'page' } : {})}
       >{t('nav.about')}</a>
     </nav>
-    <div class="flex items-center gap-1.5 sm:gap-3">
+    <div class="flex items-center gap-1.5 sm:gap-3 xl:gap-2">
       <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
       <a
         href={`tel:${NAP.phone}`}
-        class="link-underline hidden items-center gap-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"
+        class="link-underline hidden items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}
@@ -399,12 +427,12 @@ const itemClass =
           collant). Desktop (lg+) STRICTEMENT inchangé. */}
       <a
         href={L(QUOTE_JOURNEY_PATH)}
-        class="glow hidden whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4 lg:inline-block"
+        class="glow hidden whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4 xl:inline-block"
       >{t('cta.primary')}</a>
       {/* W164 — Mobile menu toggle (hamburger icon) */}
       <button
         id="menu-toggle"
-        class="flex min-h-11 min-w-11 items-center justify-center border border-white/20 p-2 lg:hidden"
+        class="flex min-h-11 min-w-11 items-center justify-center border border-white/20 p-2 xl:hidden"
         aria-expanded="false"
         aria-controls="mobile-menu"
         aria-label={t('nav.openMenu')}
@@ -422,7 +450,7 @@ const itemClass =
       Reduced-motion: state switches without animate. */}
   <nav
     id="mobile-menu"
-    class="grid grid-rows-[0fr] overflow-hidden border-t border-white/10 bg-nuit transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none lg:hidden"
+    class="grid grid-rows-[0fr] overflow-hidden border-t border-white/10 bg-nuit transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none xl:hidden"
     aria-label={t('nav.mobile')}
     aria-hidden="true"
     inert

@@ -41,6 +41,10 @@ vi.mock('../../api/comptaApi', () => ({
     modelesEcriture: { ...res(), generer: vide },
     lignesModeleEcriture: res(),
     abonnementsEcriture: { ...res(), genererDues: vide },
+    // WIR254 — CloturePage.jsx importe désormais EtatsPage.jsx (EtatRender) ;
+    // le module-level `ETATS` d'EtatsPage déréférence `comptaApi.etats.*` à
+    // l'IMPORT (jamais appelé ici) — sans cette clé, l'import plante le fichier.
+    etats: {},
   },
 }))
 

@@ -25,6 +25,10 @@ import {
 const RACCORDEMENT = [
   { value: 'monophase', label: 'Monophasé' },
   { value: 'triphase', label: 'Triphasé' },
+  // OFFGRID — SiteProfile.raccordement réutilise crm.Lead.Raccordement.choices
+  // (backend/django_core/apps/crm/models.py) : le choix 'aucun' y est donc
+  // déjà valide côté serveur, jamais un envoi rejeté.
+  { value: 'aucun', label: 'Non raccordé (site isolé)' },
 ]
 const TYPE_INSTALLATION = [
   { value: 'residentiel', label: 'Résidentiel' },

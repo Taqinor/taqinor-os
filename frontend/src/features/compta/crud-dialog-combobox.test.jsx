@@ -25,6 +25,10 @@ beforeAll(() => {
 
 const empty = () => Promise.resolve({ data: [] })
 const res = () => ({ list: empty, get: empty, create: empty, update: empty, remove: empty })
+// WIR255 — EngagementsPage monte « Échéances sous N jours » sur
+// retenuesGarantie.echeances / cautionsBancaires.echeances (forme réelle :
+// { lignes: [...] }).
+const echeances = () => Promise.resolve({ data: { lignes: [] } })
 
 const notesFraisCreate = vi.fn().mockResolvedValue({ data: {} })
 const retenueCreate = vi.fn().mockResolvedValue({ data: {} })
@@ -40,8 +44,9 @@ vi.mock('../../api/comptaApi', () => ({
     retenuesGarantie: {
       ...res(),
       create: (p) => retenueCreate(p),
+      echeances,
     },
-    cautionsBancaires: res(),
+    cautionsBancaires: { ...res(), echeances },
     contratsAvancement: res(),
     travauxEnCours: res(),
     commissionPayoutRuns: res(),

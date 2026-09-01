@@ -577,6 +577,16 @@ REFUS = {
         ("Sanity check", "TEST")],
     "frontend/src/features/crm/CallLogPopover.jsx": [
         ("LeadActivity.OUTCOMES", "FORME")],
+    # QJR M4 (30/08/2026) — les trois promesses du lot front-purs/parité :
+    # les deux fichiers de test CITENT la notion pour la rendre vérifiable
+    # (motif TEST), et overrides.js s'adosse à un CONTRAT JSON (PACT10), pas
+    # à un champ choices= — son propre test d'exhaustivité fait la preuve.
+    "frontend/src/features/ventes/classifieurs.parite.test.mjs": [
+        ("miroir de solar.js", "TEST")],
+    "frontend/src/features/ventes/quote/overrides.js": [
+        ("contrat QJR1", "SANS_SOURCE")],
+    "frontend/src/features/ventes/quote/overrides.test.mjs": [
+        ("aligné sur le backend", "TEST")],
     "frontend/src/features/crm/crm-porte.test.jsx": [
         ("SECTION_LABELS", "TEST")],
     "frontend/src/features/crm/stages.js": [
@@ -596,7 +606,13 @@ REFUS = {
     "frontend/src/features/stock/labels.js": [
         ("Préfixes connus", "SANS_SOURCE")],
     "frontend/src/features/ventes/agronomy.js": [
-        ("Aligné sur solar.js", "MIROIR_JS")],
+        ("Aligné sur solar.js", "MIROIR_JS"),
+        # QJR166 (30/08) — les deux promesses du moteur unifié : KC_MID_DEFAUT
+        # est une constante scalaire (0.85), et peak_need_m3_day() décrit le
+        # COMPORTEMENT « pointe = max de la série mensuelle » — la parité réelle
+        # est épinglée par le test 3 cultures d'agronomy.test.mjs.
+        ("Seule constante", "SCALAIRE"),
+        ("peak_need_m3_day", "COMPORTEMENT")],
     "frontend/src/features/ventes/ConceptionElectrique.jsx": [
         # PV43 — DC_M_MINIMUM/DC_M_PAR_CHAINE : constantes scalaires de
         # préremplissage (la valeur AFFICHÉE vient du serveur), pas une liste.
@@ -625,6 +641,22 @@ REFUS = {
         ("Icône de chat", "MIROIR_JS")],
     "frontend/src/components/layout/Sidebar.odx6.test.jsx": [
         ("coquille redevient NEUTRE", "TEST")],
+    # WIR171 — le gating d'écran DÉCRIT la sémantique de la garde serveur
+    # (HasPermissionOrLegacy) : comportement, pas une liste de choix.
+    "frontend/src/components/layout/Sidebar.jsx": [
+        ("HasPermissionOrLegacy", "COMPORTEMENT")],
+    # WIR244 — les clés lundi..dimanche sont des NOMS DE CHAMPS booléens de
+    # CalendrierProjet, pas une liste de choix déclarable.
+    "frontend/src/features/gestion_projet/pages/PlanningPage.jsx": [
+        ("calendrier ouvré", "FORME")],
+    # WIR280 — le test décrit le COMPORTEMENT de l'action evaluer (400 FR sur
+    # formule illégale), pas une liste de choix ; fichier de test.
+    "frontend/src/features/compta/pages/EtatsPersonnalisesPage.test.jsx": [
+        ("formule illégale rend", "TEST")],
+    "frontend/src/router/moduleGating.wir171.test.mjs": [
+        ("MIROIR de la garde serveur", "TEST"),
+        ("CanViewAoRentabilite", "TEST"),
+        ("user.is_responsable", "TEST")],
     "frontend/src/lib/monitoring.test.mjs": [("Sentry frontend", "TEST")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],

@@ -1,7 +1,7 @@
 import { createElement, useMemo } from 'react'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
-  TrendingDown,
+  TrendingDown, PackageX,
 } from 'lucide-react'
 import {
   Badge, Checkbox, DataTable, EditableCell, Progress,
@@ -140,6 +140,8 @@ export function CatalogueTable({
   onReapprovisionner,
   onInlineSave,
   onDetail,
+  // WIR221/XSTK10 — mise au rebut (motif obligatoire).
+  onRebut,
   selected,
   onToggleSelect,
   // PV8 — Map(produit_id → FicheTechnique) chargée une seule fois par l'écran
@@ -405,7 +407,10 @@ export function CatalogueTable({
     if (onDetail) acts.push({ id: 'detail', label: 'Fiche produit (en commande, prévisionnel)', icon: PackageSearch, onClick: () => onDetail(p) })
     if (onHistorique) acts.push({ id: 'hist', label: 'Historique des mouvements', icon: History, onClick: () => onHistorique(p) })
     if (canWrite && onEdit) acts.push({ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => onEdit(p) })
-    if (canDelete && onDelete) acts.push({ id: 'del', label: 'Supprimer', icon: Trash2, destructive: true, separatorBefore: true, onClick: () => onDelete(p) })
+    // WIR221/XSTK10 — mise au rebut (motif obligatoire) : distincte de la
+    // suppression (icône dédiée), séparée du bloc édition.
+    if (canWrite && onRebut) acts.push({ id: 'rebut', label: 'Mettre au rebut', icon: PackageX, separatorBefore: true, onClick: () => onRebut(p) })
+    if (canDelete && onDelete) acts.push({ id: 'del', label: 'Supprimer', icon: Trash2, destructive: true, separatorBefore: !onRebut, onClick: () => onDelete(p) })
     return acts
   }
 

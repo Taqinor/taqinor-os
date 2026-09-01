@@ -14,6 +14,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — l'analyse des frais bancaires réutilise le rendu générique
+// d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    UX6 — Trésorerie & prévisionnel.
@@ -103,6 +106,48 @@ const COLUMNS = {
   ],
 }
 
+// WIR254 — NTFIN? / analyse_frais_bancaires : `etats/frais-bancaires`
+// (commissions/agios par compte de trésorerie sur une période) n'avait aucun
+// client ni écran.
+function FraisBancairesCard() {
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.etats.fraisBancaires({ debut: debut || undefined, fin: fin || undefined })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Analyse des frais bancaires indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">Frais bancaires (période)</h3>
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="fb-debut">Du</Label>
+          <Input id="fb-debut" type="date" value={debut} onChange={(e) => setDebut(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="fb-fin">Au</Label>
+          <Input id="fb-fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
+        </div>
+        <Button variant="outline" size="sm" onClick={charger}>Charger</Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Choisissez une période puis cliquez sur Charger." />
+      )}
+    </Card>
+  )
+}
+
 // Onglet lecture seule : position consolidée + prévisionnel roulant.
 function PositionPanel() {
   const [position, setPosition] = useState(null)
@@ -166,6 +211,13 @@ function PositionPanel() {
 
       <Card className="p-4 sm:p-5">
         <h3 className="mb-3 font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+        {/* WIR182 — NTTRE18 : bandeau d'alerte quand le solde projeté passe
+            sous zéro (`date_rupture_estimee`, apps/compta/selectors.py). */}
+        {previsionnel?.date_rupture_estimee && (
+          <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Rupture de trésorerie estimée le {formatDate(previsionnel.date_rupture_estimee)}.
+          </div>
+        )}
         {!semaines.length ? (
           <EmptyState title="Aucune donnée" description="Aucune ligne prévisionnelle." />
         ) : (
@@ -178,13 +230,23 @@ function PositionPanel() {
               { key: 'semaine', label: 'Semaine',
                 sortValue: (s) => s.date_debut || s.semaine || '',
                 cell: (s, i) => s.date_debut || s.semaine || `S${i + 1}` },
-              { key: 'solde_projete', label: 'Solde projeté', align: 'right', numeric: true,
-                sortValue: (s) => Number(s.solde_projete ?? s.solde ?? s.montant) || 0,
-                cell: (s) => formatMAD(s.solde_projete ?? s.solde ?? s.montant) },
+              { key: 'entrees', label: 'Entrées', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.entrees) || 0, cell: (s) => formatMAD(s.entrees) },
+              { key: 'sorties', label: 'Sorties', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.sorties) || 0, cell: (s) => formatMAD(s.sorties) },
+              { key: 'flux_net', label: 'Flux net', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.flux_net) || 0, cell: (s) => formatMAD(s.flux_net) },
+              // WIR182 — la SEULE clé réelle du serveur est `solde_fin`
+              // (apps/compta/selectors.py::previsionnel_tresorerie) ; l'écran
+              // lisait `solde_projete`, qui n'a jamais existé → « — » figé.
+              { key: 'solde_fin', label: 'Solde projeté', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.solde_fin) || 0, cell: (s) => formatMAD(s.solde_fin) },
             ]}
           />
         )}
       </Card>
+
+      <FraisBancairesCard />
     </div>
   )
 }

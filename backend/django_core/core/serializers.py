@@ -224,17 +224,22 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
     la dernière exécution est en lecture seule.
+
+    NTDATA30 : ``mode``/``champ_curseur`` sont configurables ;
+    ``dernier_curseur`` est posé par le RUNNER et reste en lecture seule (une
+    borne saisie à la main ferait sauter des lignes).
     """
     class Meta:
         model = ScheduledExport
         fields = [
             'id', 'titre', 'dataset', 'spec', 'format', 'destination', 'cron',
-            'actif', 'derniere_execution_le', 'dernier_statut',
+            'actif', 'mode', 'champ_curseur', 'dernier_curseur',
+            'derniere_execution_le', 'dernier_statut',
             'dernier_detail', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'derniere_execution_le', 'dernier_statut', 'dernier_detail',
-            'created_at', 'updated_at',
+            'id', 'dernier_curseur', 'derniere_execution_le', 'dernier_statut',
+            'dernier_detail', 'created_at', 'updated_at',
         ]
 
 

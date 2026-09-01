@@ -13,18 +13,35 @@ import { panneauxPourKwc } from '../../features/ventes/solar.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+// QJR101 — les champs de saisie du marché vivent maintenant dans les quatre
+// panneaux. La garde « rien n'est jamais rejeté » les lit AVEC l'écran : sinon
+// elle resterait verte en ne surveillant plus que les champs restés en haut.
+const SAISIES = [gen].concat(
+  ['Residentiel', 'Industriel', 'Commercial', 'Agricole'].map(m => readFileSync(
+    path.join(__dirname, 'generator', `Panneau${m}.jsx`), 'utf8')),
+)
 
+// QJR99 — `kwcCible` (comme les dix autres champs de dimensionnement) est
+// désormais porté par le reducer QJR87 : l'écran le LIT sous le même nom, et
+// la conversion bidirectionnelle vit dans la transition `SAISI`. Les épingles
+// suivent le champ et la conversion là où ils vivent ; aucune n'est relâchée.
 test('le champ « Puissance cible (kWc) » existe', () => {
   assert.match(gen, /data-testid="gen-kwc-cible"/)
   assert.match(gen, /Puissance cible \(kWc\)/)
-  assert.match(gen, /const \[kwcCible, setKwcCible\] = useState\(''\)/)
+  assert.match(gen, /nbPanneaux, kwcCible, panelW, scenario, modeInstallation, sizingInfo,/)
+  assert.match(gen, /useReducer\(sizingReducer, ETAT_INITIAL\)/)
 })
 
 test('la conversion est RÉUTILISÉE, jamais réécrite', () => {
-  assert.match(gen, /const n = panneauxPourKwc\(v, panelW\)/)
+  const REDUCER = readFileSync(
+    path.join(__dirname, '../../features/ventes/quote/sizingReducer.js'), 'utf8')
+  assert.match(REDUCER, /const n = panneauxPourKwc\(valeur, base\.panelW\)/)
+  assert.match(REDUCER, /import \{ panneauxPourKwc \} from '\.\.\/solar\.js'/)
   // Aucune formule kWc→panneaux recopiée à la main dans l'écran.
   const handlers = gen.slice(gen.indexOf('const onKwcCibleChange'), gen.indexOf('const showSans'))
   assert.doesNotMatch(handlers, /Math\.round\(\s*\w+\s*\*\s*1000\s*\//)
+  assert.doesNotMatch(handlers, /panneauxPourKwc\(/,
+    'la conversion ne doit plus être refaite dans les gestionnaires : elle vit dans le reducer')
   // U1 (fondateur 20/08/2026) — la conversion partagée est un PLAFOND : on ne
   // descend JAMAIS sous la puissance annoncée (« 8 panneaux par 5 kW »).
   // 3 kWc en panneaux de 550 W → 5,45 → 6 panneaux (5 ne feraient que 2,75 kWc).
@@ -36,12 +53,16 @@ test('la conversion est RÉUTILISÉE, jamais réécrite', () => {
 })
 
 test('les deux champs sont BIDIRECTIONNELS', () => {
-  assert.match(gen, /const onKwcCibleChange = \(v\) => \{/)
-  assert.match(gen, /const onNbPanneauxChange = \(v\) => \{/)
+  assert.match(gen, /const onKwcCibleChange = \(v\) =>/)
+  assert.match(gen, /const onNbPanneauxChange = \(v\) =>/)
+  const REDUCER = readFileSync(
+    path.join(__dirname, '../../features/ventes/quote/sizingReducer.js'), 'utf8')
   // Taper une cible remplit les panneaux…
-  assert.match(gen, /onKwcCibleChange[\s\S]{0,220}?setNbPanneaux\(String\(n\)\)/)
+  assert.match(gen, /onKwcCibleChange[\s\S]{0,220}?champ: 'kwcCible'/)
+  assert.match(REDUCER, /case 'kwcCible': \{[\s\S]{0,400}?nbPanneaux: String\(n\)/)
   // …et changer les panneaux remet la cible à jour.
-  assert.match(gen, /onNbPanneauxChange[\s\S]{0,320}?setKwcCible\(/)
+  assert.match(gen, /onNbPanneauxChange[\s\S]{0,220}?champ: 'nbPanneaux'/)
+  assert.match(REDUCER, /case 'nbPanneaux':[\s\S]{0,400}?kwcCible: kwcDepuisPanneaux\(valeur, base\.panelW\)/)
   // Le champ des panneaux passe bien par le nouveau handler.
   assert.match(gen, /id="gen-nbpanneaux"[\s\S]{0,220}?onChange=\{e => onNbPanneauxChange\(e\.target\.value\)\}/)
 })
@@ -56,5 +77,5 @@ test('la garde de saisie du générateur est intacte (rien n’est jamais rejet�
   // Le nouveau champ accepte n'importe quelle valeur tapée.
   assert.match(gen, /id="gen-kwc-cible" type="number" min="0" step="any"/)
   assert.match(gen, /<form id="gen-form"[\s\S]{0,200}?noValidate/)
-  assert.doesNotMatch(gen, /step="0\.\d+"/)
+  for (const src of SAISIES) assert.doesNotMatch(src, /step="0\.\d+"/)
 })

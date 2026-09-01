@@ -17,7 +17,6 @@ import {
   buildAcceptBodyRich,
   buildAcceptBody,
   CO2_KG_PER_KWH,
-  CO2_KG_PER_TREE_YEAR,
   SAVINGS_HORIZON_YEARS,
   TAQINOR_WHATSAPP,
   type ProposalResponse,
@@ -144,17 +143,27 @@ describe('WJ9 — économies cumulées + cadrage mensuel (depuis le backend)', (
 
 // ── WJ14 · Impact environnemental ────────────────────────────────────────────
 
-describe('WJ14 — CO₂ évité ≈ arbres (calculé depuis la production, jamais inventé)', () => {
-  it('calcule depuis prod_kwh avec les constantes affichées', () => {
+describe('WJ14 — CO₂ évité (calculé depuis la production, jamais inventé)', () => {
+  it('calcule depuis prod_kwh avec la constante affichée', () => {
     const impact = environmentalImpact(10000);
     expect(impact).not.toBeNull();
     // 10000 kWh × 0,81 kg = 8100 kg/an
     expect(impact!.co2KgPerYear).toBe(Math.round(10000 * CO2_KG_PER_KWH));
     expect(impact!.co2TonnesPerYear).toBe(8.1);
-    // 8100 / 22 ≈ 368 arbres
-    expect(impact!.trees).toBe(Math.round((10000 * CO2_KG_PER_KWH) / CO2_KG_PER_TREE_YEAR));
     expect(impact!.kgPerKwh).toBe(CO2_KG_PER_KWH);
-    expect(impact!.kgPerTreeYear).toBe(CO2_KG_PER_TREE_YEAR);
+  });
+
+  // RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — l'équivalent
+  // « arbres » (22 kg/arbre/an, sans source) est retiré de la BIBLIOTHÈQUE, pas
+  // seulement des gabarits : un chiffre invérifiable encore exporté finit
+  // toujours par revenir dans une page. Ce test épingle sa disparition, pour
+  // qu'un retour soit un ajout DÉLIBÉRÉ, adossé à une référence datée.
+  it('n’expose PLUS d’équivalent « arbres » — ni champ, ni constante', async () => {
+    const impact = environmentalImpact(10000)!;
+    expect(impact).not.toHaveProperty('trees');
+    expect(impact).not.toHaveProperty('kgPerTreeYear');
+    const lib = await import('../src/lib/proposition');
+    expect(lib).not.toHaveProperty('CO2_KG_PER_TREE_YEAR');
   });
 
   it('production absente/nulle → null (repli libellé côté page)', () => {

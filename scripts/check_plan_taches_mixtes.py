@@ -87,7 +87,10 @@ def fichiers_de_plan(racine: Path = None) -> list[Path]:
 _TACHE_RE = re.compile(
     r"^\s*[-*]\s*\[(?P<etat>[^\]]*)\]\s*(?P<id>[A-Z][A-Z0-9]*(?:[-/][A-Z0-9]+)*\d[\w/-]*)"
     r"(?P<label>.*)$")
-_FICHIER_RE = re.compile(r"[\w./-]+\.(?:py|jsx?|mjs|tsx?|css|html|txt|ya?ml|md)")
+# `json` AVANT `jsx?` : l'alternance sans frontière tronquait `x.json` en
+# `x.js` (chemin introuvable → faux ECHEC sur la première tâche cochée dont la
+# moitié backend est un .json — QJR231, 31/08).
+_FICHIER_RE = re.compile(r"[\w./-]+\.(?:py|json|jsx?|mjs|tsx?|css|html|txt|ya?ml|md)")
 
 
 def _fichiers_declares(label: str) -> list[str]:

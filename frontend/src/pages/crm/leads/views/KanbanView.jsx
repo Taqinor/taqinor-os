@@ -221,6 +221,9 @@ function StageColumn({ col, collapsed, onToggleCollapse, children }) {
 
 export default function KanbanView({
   leads,
+  // Ordre fondateur 2026-09-01 — clé de tri LEAD_SORTERS (défaut : dernier
+  // lead arrivé en haut), choisie dans FilterBar et portée par LeadsPage.
+  tri = 'recent',
   onOpenLead,
   onChangeStage,
   onAutoQuote,
@@ -317,7 +320,7 @@ export default function KanbanView({
     return () => el.removeEventListener('scrollend', onSettle)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable
   }, [pointerCoarse])
-  const columns = useMemo(() => groupLeadsByStage(leads), [leads])
+  const columns = useMemo(() => groupLeadsByStage(leads, tri), [leads, tri])
   const [activeLead, setActiveLead] = useState(null)
 
   // LB10 — repli de colonne PERSISTÉ (localStorage, features/kanban/

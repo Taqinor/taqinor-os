@@ -154,6 +154,16 @@ const inputClass =
         </label>
       </fieldset>
 
+      <!-- QJW15 (c) — HONEYPOT anti-bot. Le champ manquait à ce composant : la
+           garde `isHoneypotTripped` (lib/lead.ts) n'avait donc RIEN à attraper,
+           et /api/simulate ne l'appelait même pas. Masqué hors écran, hors
+           tabulation, sans autocomplétion : un humain ne le remplit jamais.
+           Rejeté en silence côté serveur — contrat webhook inchangé, ce champ
+           n'est jamais transmis au CRM. -->
+      <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
+        <label>Ne pas remplir<input id="lf-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
+      </div>
+
       <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
       <input type="hidden" name="fbclid" />
       <input type="hidden" name="utm_source" />
@@ -237,6 +247,8 @@ const inputClass =
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
   import { nextStep, sunshineSignal, validateStep, type DiagnosticState } from '../lib/diagnostic';
+  // QJW15 (a) — les MÊMES générateurs de jetons que le tunnel /devis/mon-toit.
+  import { buildClientRef, buildIdempotencyKey } from '../lib/lead';
 
   const form = document.getElementById('lead-form') as HTMLFormElement | null;
   const success = document.getElementById('lf-success')!;
@@ -274,6 +286,67 @@ const inputClass =
     billRange: I18N.errBill, roofType: I18N.errRoof, city: I18N.errCity,
     fullName: I18N.errName, phone: I18N.errPhone, consent: I18N.errConsent,
   };
+
+  // QJW15 (a) — JETONS DE DÉDOUBLONNAGE, persistés pour la session de saisie.
+  // `submitBtn.disabled` protège du double-clic, mais PAS d'une resoumission
+  // après rechargement de page : le CRM se retrouvait alors avec deux lignes et
+  // aucun signal pour les fusionner. Générés une seule fois puis relus en
+  // sessionStorage — un rechargement renvoie donc le MÊME couple, exactement
+  // comme le tunnel /devis/mon-toit. Jamais une clé d'unicité serveur : un
+  // simple signal de dédoublonnage, borné par les regex de validateOptionalFields.
+  function jetonPersistant(cle: string, generer: () => string): string {
+    try {
+      const existant = sessionStorage.getItem(cle);
+      if (existant) return existant;
+      const neuf = generer();
+      sessionStorage.setItem(cle, neuf);
+      return neuf;
+    } catch {
+      // Stockage indisponible (navigation privée) : un jeton non persistant
+      // vaut mieux que pas de jeton du tout — jamais bloquant.
+      return generer();
+    }
+  }
+
+  // QJW15 (b) — `input[aria-invalid="true"]` était du CSS MORT : le script ne
+  // posait jamais l'attribut, donc ni bordure d'erreur ni annonce au lecteur
+  // d'écran. Les clés d'erreur de `validateStep` (et celles du serveur) sont
+  // exactement les NAMES des champs : on retrouve le contrôle fautif sans table
+  // de correspondance à maintenir.
+  const CHAMPS_MARQUABLES = ['billRange', 'roofType', 'city', 'fullName', 'phone', 'consent'];
+  function marquerChamp(nom: string, invalide: boolean) {
+    const el = form?.elements.namedItem(nom);
+    if (!(el instanceof HTMLElement)) return;
+    if (invalide) el.setAttribute('aria-invalid', 'true');
+    else el.removeAttribute('aria-invalid');
+  }
+  function effacerMarques() {
+    for (const nom of CHAMPS_MARQUABLES) marquerChamp(nom, false);
+  }
+  // La marque tombe dès que le visiteur corrige le champ — jamais une bordure
+  // rouge qui reste après la correction.
+  for (const evt of ['input', 'change'] as const) {
+    form?.addEventListener(evt, (e) => {
+      const cible = e.target;
+      if (cible instanceof HTMLElement && cible.hasAttribute('aria-invalid')) {
+        cible.removeAttribute('aria-invalid');
+      }
+    });
+  }
+
+  // QJW14 — signal de consentement publicitaire posé par ConsentBanner.astro
+  // (`tq_consent` ∈ {granted, denied}, absent tant que le visiteur n'a pas
+  // répondu). Transmis TEL QUEL au serveur, qui ne gate que le beacon Meta
+  // CAPI : la capture du lead et son envoi au CRM ne dépendent JAMAIS de lui.
+  // Lecture défensive (mode privé, storage bloqué) → null = « pas de signal ».
+  function readAdsConsent(): 'granted' | 'denied' | null {
+    try {
+      const v = localStorage.getItem('tq_consent');
+      return v === 'granted' || v === 'denied' ? v : null;
+    } catch {
+      return null;
+    }
+  }
 
   // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
   const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
@@ -338,8 +411,13 @@ const inputClass =
       const [field, frMsg] = Object.entries(check.errors)[0];
       errEl.textContent = ERR_BY_FIELD[field] ?? String(frMsg);
       errEl.classList.remove('hidden');
+      // QJW15 (b) — le champ fautif est DÉSIGNÉ, pas seulement décrit en haut.
+      effacerMarques();
+      for (const nom of Object.keys(check.errors)) marquerChamp(nom, true);
+      (form?.elements.namedItem(field) as HTMLElement | null)?.focus?.();
       return;
     }
+    effacerMarques();
     step = nextStep(step, s);
     renderStep(true);
   });
@@ -369,6 +447,7 @@ const inputClass =
     if (!phone.ok) {
       phoneErr.textContent = I18N.errPhone;
       phoneErr.classList.remove('hidden');
+      marquerChamp('phone', true); // QJW15 (b)
       return;
     }
 
@@ -385,6 +464,17 @@ const inputClass =
       const v = String(fd.get(k) ?? '');
       if (v) payload[k] = v;
     }
+    // QJW14 — joint uniquement si le visiteur a RÉPONDU à la bannière ; sans
+    // réponse, aucun champ n'est fabriqué et le serveur garde son comportement.
+    const adsConsent = readAdsConsent();
+    if (adsConsent) payload.adsConsent = adsConsent;
+    // QJW15 (a) — jetons de dédoublonnage (stables sur toute la session de
+    // saisie, donc identiques après un rechargement + resoumission).
+    payload.idempotencyKey = jetonPersistant('tq_diag_idempotency', buildIdempotencyKey);
+    payload.clientRef = jetonPersistant('tq_diag_client_ref', buildClientRef);
+    // QJW15 (c) — le honeypot part TEL QUEL (vide pour un humain) : c'est ce
+    // que `isHoneypotTripped` juge côté serveur.
+    payload.website_url = String(fd.get('website_url') ?? '');
 
     submitBtn.disabled = true;
     // W191 — show spinner + aria-busy; update label text without destroying innerHTML
@@ -404,6 +494,9 @@ const inputClass =
         const first = data?.errors ? String(Object.values(data.errors)[0]) : I18N.errGeneric;
         errEl.textContent = first;
         errEl.classList.remove('hidden');
+        // QJW15 (b) — les erreurs du SERVEUR désignent aussi leur champ (mêmes
+        // noms que le formulaire : fullName, phone, city, roofType, billRange…).
+        if (data?.errors) for (const nom of Object.keys(data.errors)) marquerChamp(nom, true);
         return;
       }
       form.classList.add('hidden');

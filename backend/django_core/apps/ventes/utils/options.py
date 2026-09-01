@@ -21,7 +21,8 @@ from __future__ import annotations
 
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.builder import (
-    _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
+    _is_battery, _is_hybrid_inverter, _is_inverter, _is_reseau_inverter,
+    _is_smart_meter, _is_wifi_dongle,
 )
 
 SANS_BATTERIE = 'sans_batterie'
@@ -47,6 +48,74 @@ def _variante(ligne) -> str:
     """Variante déclarée d'une ligne, '' quand elle n'en porte pas (ligne
     commune, ligne historique, ou objet de test sans le champ)."""
     return getattr(ligne, 'variante', '') or ''
+
+
+def _blob_marque(ligne) -> str:
+    """Texte qui porte la MARQUE d'une ligne : désignation + marque + nom du
+    produit lié — les trois champs que le moteur PDF lisait déjà pour dire
+    « cet onduleur est un Huawei »."""
+    produit = getattr(ligne, 'produit', None)
+    return (f"{getattr(ligne, 'designation', '') or ''} "
+            f"{getattr(produit, 'marque', '') or ''} "
+            f"{getattr(produit, 'nom', '') or ''}")
+
+
+# ── QJR200 — LES ACCESSOIRES HUAWEI SONT UNE RÈGLE DU NOYAU, PAS DU RENDU ────
+#
+# QF9 (puis QJR124) avait posé la règle DANS ``quote_engine.builder`` : sur une
+# option dont l'onduleur n'est pas Huawei, le Smart Meter et la clé Wi-Fi sont
+# retirés EN AMONT, pour que le tableau et les totaux du PDF décrivent le même
+# panier. La chaîne monnaie, elle, n'avait AUCUNE règle équivalente : elle
+# continuait d'additionner l'accessoire. Sur le devis résidentiel COURANT
+# (option réseau Huawei + option hybride Deye), le total imprimé et le total du
+# noyau divergeaient donc de 3 000 MAD — deux prix pour la même vente.
+#
+# LA RÈGLE EST DÉCLARÉE ICI, UNE SEULE FOIS ; le moteur PDF l'IMPORTE (il ne la
+# recopie plus). Les paniers d'option du noyau l'appliquent, donc l'échéancier,
+# le solde, la pro-forma, la commission et ``Devis.total_ttc`` en héritent.
+
+
+def est_accessoire_huawei(texte: str) -> bool:
+    """True quand ``texte`` désigne un accessoire propre à l'onduleur Huawei
+    (Smart Meter ou clé Wi-Fi / dongle)."""
+    return bool(_is_smart_meter(texte) or _is_wifi_dongle(texte))
+
+
+def _panier_sert_huawei(rows, classement, marque) -> bool:
+    """QF9 — True quand l'onduleur du PANIER est Huawei.
+
+    Reprise EXACTE de l'ancien ``builder._quote_is_huawei`` : sans onduleur
+    identifiable → False (on n'affiche pas ces accessoires par défaut) ; le
+    moindre onduleur non-Huawei suffit à les retirer (conservateur).
+    """
+    onduleurs = [r for r in rows if _is_inverter(classement(r))]
+    if not onduleurs:
+        return False
+    huawei_vu = False
+    for r in onduleurs:
+        if 'huawei' in (marque(r) or '').lower():
+            huawei_vu = True
+        else:
+            # Un onduleur non-Huawei dans le panier → pas d'accessoires Huawei.
+            return False
+    return huawei_vu
+
+
+def retirer_accessoires_huawei(rows, classement=None, marque=None):
+    """``rows`` PRIVÉ de ses accessoires Huawei orphelins.
+
+    ``classement(row)`` rend le texte qui CLASSE la ligne (accessoire ?
+    onduleur ?) et ``marque(row)`` celui qui porte la marque. Par défaut on lit
+    une ``LigneDevis`` (``_blob`` / ``_blob_marque``) ; le moteur PDF fournit
+    ses propres lecteurs pour ses dicts d'items — les ADAPTATEURS diffèrent, la
+    RÈGLE est celle-ci et il n'y en a pas d'autre.
+    """
+    classement = classement or _blob
+    marque = marque or _blob_marque
+    rows = list(rows)
+    if _panier_sert_huawei(rows, classement, marque):
+        return rows
+    return [r for r in rows if not est_accessoire_huawei(classement(r))]
 
 
 def _garder_dans_sans(li) -> bool:
@@ -101,32 +170,70 @@ def filter_lines_for_option(lignes, option):
     canonique (``quote_engine.builder._repartir_options``, ligne 499-541 :
     la déclaration prime, point final). La ligne était alors facturée par le
     PDF mais absente de l'échéancier/nomenclature écran — divergence F14.
+
+    QJR200 (31/08/2026) — LE PANIER D'OPTION APPLIQUE LA RÈGLE QF9. Un panier
+    dont l'onduleur n'est pas Huawei perd ses accessoires Huawei orphelins
+    (Smart Meter, clé Wi-Fi), EXACTEMENT comme le panier du PDF : sans quoi le
+    total du noyau (échéancier, solde, pro-forma, commission, ``total_ttc``)
+    additionnait une ligne que le document n'imprime pas. La règle ne
+    s'applique qu'aux paniers NOMMÉS : une option inconnue ou vide rend toutes
+    les lignes, comportement historique inchangé (le devis mono-option, le
+    pompage et la liste libre ne bougent pas d'un centime).
     """
     if option == SANS_BATTERIE:
-        return [li for li in lignes if _garder_dans_sans(li)]
+        return retirer_accessoires_huawei(
+            [li for li in lignes if _garder_dans_sans(li)])
     if option == AVEC_BATTERIE:
-        return [li for li in lignes if _garder_dans_avec(li)]
+        return retirer_accessoires_huawei(
+            [li for li in lignes if _garder_dans_avec(li)])
     return list(lignes)
 
 
 def has_two_options(devis) -> bool:
-    """True si le devis comporte deux VRAIES options (réseau ET hybride+batterie)
-    — seul cas où l'option retenue change réellement le périmètre facturé."""
-    # L-2OPT — une ligne VARIANTÉE est à elle seule la preuve d'un devis à deux
-    # options : elle n'existe que parce que la composition a distingué les deux.
-    # Contrôlé AVANT le moteur (une requête, aucun rendu) et sans jamais lever :
-    # un devis à deux champs PV doit être filtré même si le PDF échoue.
-    try:
-        if devis is not None and devis.lignes.exclude(variante='').exists():
-            return True
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
-        pass
-    try:
-        from apps.ventes.quote_engine.builder import build_quote_data
-        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        return data.get('nb_options', 1) == 2
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser sur le PDF
-        return False
+    """ALIAS DÉPRÉCIÉ de :func:`deux_options_declarees` (QJR55).
+
+    Ce nom répondait à la MÊME question avec des règles DIFFÉRENTES : il
+    traversait ``build_quote_data`` (le moteur PDF complet) pour lire son
+    ``nb_options``. Lequel des deux prédicats s'exécutait décidait si la liste
+    montrait le total d'UNE option ou la somme sans signification des DEUX —
+    et il coûtait un rendu de document à chaque lecture d'argent.
+
+    Il n'y a plus qu'UNE règle, celle de :func:`deux_options_declarees`.
+    Conservé comme alias parce que plusieurs appelants l'importent par ce nom ;
+    à retirer quand ils auront migré.
+    """
+    return deux_options_declarees(devis)
+
+
+def option_effective(devis) -> str:
+    """QJR24 / D9 — L'OPTION QUE SUIT L'ARGENT D'UN DEVIS.
+
+    Décision fondateur D9 du 29/08/2026 :
+
+      * APRÈS acceptation → l'option acceptée (comportement A3, inchangé) ;
+      * AVANT acceptation → l'option du TOTAL AFFICHÉ, c'est-à-dire celle mise
+        en avant : l'option AVEC (``quote_engine.builder`` pose
+        ``display_total = totaux_avec['ttc']`` dès qu'il y a deux options —
+        LANE CHOIX-AVEC du 25/08, d'où la liste, le une-page et le PDF tirent
+        déjà le MÊME nombre).
+
+    PLUS JAMAIS la somme des deux paniers : jusqu'ici, un devis à deux options
+    non accepté renvoyait ``''`` ici, donc AUCUN filtre, donc un solde et un
+    échéancier construits sur l'addition des deux options — un montant qui
+    n'existe dans aucun document et que le client ne paiera jamais.
+
+    Un devis à option unique (ou pompage / liste libre) renvoie ``''`` : aucun
+    filtre, périmètre complet, comportement historique strictement inchangé.
+
+    COÛT — un devis NON accepté consulte le prédicat « deux options » (avant,
+    l'option vide le court-circuitait). QJR55 a ramené ce prédicat à UNE règle
+    LÉGÈRE (:func:`deux_options_declarees`, deux requêtes, aucun rendu) : la
+    lecture de l'argent d'un devis ne traverse plus le moteur PDF.
+    """
+    acceptee = getattr(devis, 'option_acceptee', '') or ''
+    if acceptee:
+        return acceptee
+    return AVEC_BATTERIE if has_two_options(devis) else ''
 
 
 def option_lines(devis, option=None):
@@ -134,9 +241,13 @@ def option_lines(devis, option=None):
 
     Ne filtre que pour un vrai devis à deux options ; sinon renvoie toutes les
     lignes (option unique, pompage, liste libre → périmètre complet inchangé).
+
+    QJR24/D9 — l'option par défaut est celle d'``option_effective`` (acceptée,
+    sinon celle du total affiché) : les LIGNES et l'ARGENT décrivent toujours
+    la même vente, jamais l'une les deux options et l'autre une seule.
     """
     if option is None:
-        option = getattr(devis, 'option_acceptee', '') or ''
+        option = option_effective(devis)
     # XSAL5/XSAL14 — la nomenclature aval ne contient QUE des lignes produit
     # effectives : on exclut les lignes de section/note (sans produit) et les
     # options non activées (``compte_dans_totaux``). Une option activée
@@ -184,9 +295,16 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     chaque appel refaisant sa propre requête lignes+produit sur des lignes qui
     ne bougent pas pendant l'acceptation. Paramètre ABSENT (tous les autres
     appelants) ⇒ la requête d'hier, résultat identique.
+
+    QJR24 (29/08/2026) — L'OPTION PAR DÉFAUT N'EST PLUS « aucune ». Un devis à
+    deux options NON accepté tombait ici sur ``option = ''`` : aucun filtre,
+    donc les totaux de l'ADDITION des deux options — c'est ce montant sans
+    signification qui alimentait le solde et l'échéancier affichés. La
+    résolution passe désormais par ``option_effective`` (décision fondateur
+    D9). Un devis accepté et un devis à option unique sont inchangés.
     """
     if option is None:
-        option = getattr(devis, 'option_acceptee', '') or ''
+        option = option_effective(devis)
     if lignes is None:
         lignes = list(devis.lignes.select_related('produit').all())
     else:
@@ -199,22 +317,63 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
 # ── Repli SANS MOTEUR — l'affichage de la liste (PVAB, fondateur 20/08) ──────
 
 def deux_options_declarees(devis) -> bool:
-    """Prédicat LÉGER « devis à deux options », sans le moteur PDF.
+    """QJR55 — LE prédicat « devis à deux options ». Il n'y en a plus qu'un.
 
     Miroir volontairement PRUDENT de la décision de ``build_quote_data``
     (PV86) : l'alternative doit être DÉCLARÉE (``etude_params['scenario']``)
     ET les lignes doivent réellement porter les deux familles — onduleur
     réseau d'un côté, onduleur hybride AVEC batterie de l'autre (Z1 : sans
-    batterie réelle, jamais deux options). Consommé UNIQUEMENT quand le
-    moteur lève : dans le doute il répond False et l'affichage retombe sur le
-    total stocké, comme avant.
+    batterie réelle, jamais deux options).
+
+    L-2OPT — UNE LIGNE VARIANTÉE COURT-CIRCUITE TOUT : elle n'existe que parce
+    que la composition a DÉJÀ distingué les deux options, et c'est une preuve
+    plus forte que la déclaration. Ce contrôle vivait dans ``has_two_options``
+    et est repris ici, sinon un devis à deux champs PV dont
+    ``etude_params['scenario']`` a été perdu (le trou que QJR66 referme côté
+    écran) redeviendrait « mono-option » et son argent redeviendrait la somme
+    des DEUX paniers.
+
+    NE TRAVERSE PLUS LE MOTEUR PDF. ``has_two_options`` rendait ce verdict en
+    construisant tout le document (``build_quote_data``) : lequel des deux
+    prédicats s'exécutait décidait si la liste montrait le total d'UNE option
+    ou la somme sans signification des deux, et chaque lecture d'argent d'un
+    devis mono-option payait un rendu complet (``models.Devis.total_ttc`` →
+    ``domain.argent`` → ``option_effective`` → ici).
+
+    Ne lève JAMAIS : dans le doute il répond False, et l'affichage retombe sur
+    le total complet — le comportement d'avant.
+
+    NPLUS1 (29/08/2026, QJR51) — LE SCAN DES VARIANTES SE FAIT EN PYTHON, PAS
+    EN SQL. Ce contrôle s'écrivait ``devis.lignes.exclude(variante='')
+    .exists()`` : chaîner ``exclude`` construit un nouveau queryset, donc une
+    requête NEUVE qui IGNORE le ``prefetch_related('devis__lignes')`` de
+    l'appelant — et comme ``Devis.total_ttc`` traverse ce prédicat depuis la
+    décision D2, la liste des leads repayait cette requête pour CHAQUE devis
+    (moitié de la régression « 23 (5 leads) → 33 (10 leads) »). ``.all()`` nu
+    est la seule forme que le gestionnaire de relation sert depuis
+    ``_prefetched_objects_cache``. Le verdict est IDENTIQUE au bit :
+    ``LigneDevis.variante`` est un ``CharField(blank=True, default='')`` NON
+    NULLABLE, donc « exclure la chaîne vide » et « une variante non vide en
+    Python » désignent exactement les mêmes lignes. Sans prefetch, c'est une
+    requête comme avant (un SELECT complet au lieu d'un ``EXISTS`` — les
+    lignes sont de toute façon relues juste après par l'appelant).
     """
+    try:
+        if devis is not None and any(
+                _variante(li) for li in devis.lignes.all()):
+            return True
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        pass
     scenario = (getattr(devis, 'etude_params', None) or {}).get('scenario')
     if scenario not in ('Sans batterie', 'Avec batterie',
                         'Les deux (Sans + Avec)'):
         return False
-    blobs = [_blob(li) for li in devis.lignes.select_related('produit').all()
-             if li.compte_dans_totaux]
+    try:
+        blobs = [_blob(li)
+                 for li in devis.lignes.select_related('produit').all()
+                 if li.compte_dans_totaux]
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        return False
     return (any(_is_reseau_inverter(b) for b in blobs)
             and any(_is_hybrid_inverter(b) for b in blobs)
             and any(_is_battery(b) for b in blobs))

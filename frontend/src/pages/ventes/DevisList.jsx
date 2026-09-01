@@ -43,6 +43,16 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+// Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
+// AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
+// aucune option ne contient d'onduleur — génération du PDF à options refusée
+// (règle de sécurité). », apps/ventes/quote_engine/builder.py ligne ~1176) :
+// un devis « Composition libre » (accessoiresOnly) sans onduleur atterrissait
+// tout droit sur ce refus. Le devis liste porte déjà `d.lignes` (RoofViewer
+// les lit) — même prédicats que la garde de DevisGenerator.validate(), aucun
+// nouveau champ backend (`variantes_servables` n'existe pas côté ERP,
+// uniquement côté /proposal public).
+import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../features/ventes/solar'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -72,6 +82,14 @@ import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// WIR188/NTCRD11 — bannière d'alerte crédit, alimentée par le
+// `credit_warning` que l'acceptation renvoie (WIR187). Elle ne rend RIEN
+// en mode « aucun » : aucun bruit quand il n'y a rien à dire.
+import CreditWarningBanner from '../../features/credit/CreditWarningBanner'
+// WIR189/NTCRD23 — pastille d'état crédit à côté du nom client (batch,
+// UN appel par page de liste). Le client API vit dans creditApi.
+import CreditBadge from '../../features/credit/CreditBadge'
+import creditApi from '../../api/creditApi'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
@@ -254,7 +272,7 @@ function engagementSummary(engagement) {
 // PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
 function DevisPdfDialog({
   pdfTarget, batchPdf, selectedIds,
-  pdfMode, setPdfMode, targetIsAgricole,
+  pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
   showMonthly, setShowMonthly,
   targetHasEtude, includeEtude, setIncludeEtude,
   devisFinal, setDevisFinal,
@@ -295,6 +313,17 @@ function DevisPdfDialog({
                 <span>Devis une page (liste produits uniquement, sans graphiques)</span>
               </label>
             </RadioGroup>
+            {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :
+                le format une page a été présélectionné parce qu'aucune ligne
+                de ce devis ne classe d'onduleur (devis « Composition libre »
+                ou accessoires/main-d'œuvre). Disparaît dès que l'utilisateur
+                choisit lui-même 'full' (règle : jamais un message qui ne
+                correspond plus au choix affiché). */}
+            {pdfModeAutoOnepage && pdfMode === 'onepage' && !batchPdf && (
+              <p className="text-xs text-muted-foreground">
+                Options non détectées — format une page présélectionné (aucun onduleur sur ce devis).
+              </p>
+            )}
           </div>
 
           {pdfMode === 'full' && !targetIsAgricole && (
@@ -364,12 +393,16 @@ function DevisPdfDialog({
 function DevisRow({ d, ctx }) {
   const {
     selectedIds, toggleSelected,
-    versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    versionsOpenId, roofOpenId, setRoofOpenId,
+    // WIR225 - comparaison des variantes servie par le serveur.
+    variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 - composeur de note manuelle sur le panneau Historique.
+    peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
@@ -491,8 +524,11 @@ function DevisRow({ d, ctx }) {
             <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
           )}
         </div>
+        {/* WIR225 — `a_variantes` entre AUSSI dans la garde de la zone de
+            métadonnées : sans lui, la racine d'un groupe de variantes n'avait
+            même pas de 2e ligne, donc pas d'entrée « Voir les versions ». */}
         {(d.superseded_by_ref
-          || d.version > 1 || d.version_parent_ref
+          || d.version > 1 || d.version_parent_ref || d.a_variantes
           || d.deja_consulte || engagementSummary(d.engagement)) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             {d.superseded_by_ref && (
@@ -501,8 +537,7 @@ function DevisRow({ d, ctx }) {
                 <button
                   type="button"
                   className="font-medium underline hover:no-underline"
-                  onClick={() => setVersionsOpenId(
-                    versionsOpenId === d.id ? null : d.id)}
+                  onClick={() => basculerVersions(d.id)}
                   title="Voir la version qui remplace ce devis"
                 >
                   {d.superseded_by_ref}
@@ -512,12 +547,17 @@ function DevisRow({ d, ctx }) {
             {d.superseded_by_ref
               && (d.version > 1 || d.version_parent_ref || d.deja_consulte
                 || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
-            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+            {/* WIR225 — `a_variantes` (serveur) décrit le côté RACINE : les
+                trois autres champs ne parlent que du côté ENFANT, si bien que
+                la racine d'un groupe perdait son entrée « Voir les versions »
+                au premier rechargement — la comparaison n'était atteignable
+                que juste après la création. */}
+            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref
+              || d.a_variantes) && (
               <button
                 type="button"
                 className="text-primary hover:underline"
-                onClick={() => setVersionsOpenId(
-                  versionsOpenId === d.id ? null : d.id)}
+                onClick={() => basculerVersions(d.id)}
               >
                 {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
               </button>
@@ -598,7 +638,13 @@ function DevisRow({ d, ctx }) {
       <td data-label="Client">
         {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
             plein + poids medium), il ressort du chrome désaturé environnant. */}
-        <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
+        <span className="inline-flex items-center gap-1.5">
+          {/* WIR189/NTCRD23 — pastille d'état crédit. La couleur vient du batch
+              chargé UNE fois pour la page (ctx.creditBadges) ; absente (403,
+              module crédit non autorisé, ou réponse vide) → rien du tout. */}
+          <CreditBadge couleur={ctx.creditBadges?.[d.client]} />
+          <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
+        </span>
         {d.lead && (
           <div className="mt-1">
             <button
@@ -1056,34 +1102,65 @@ function DevisRow({ d, ctx }) {
     {versionsOpenId === d.id && (
       <tr>
         <td colSpan={8} className="bg-muted/30">
+          {/* WIR225 — comparaison des variantes, servie par le SERVEUR
+              (`getVariantes`) : la chaîne reconstruite localement ignorait
+              toute variante absente de la page courante. */}
           <div className="px-3 py-2">
             <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Historique des versions
+              Comparaison des variantes
             </p>
-            {versionChain.length === 0 ? (
+            {variantesEtat.loading ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : variantesEtat.error ? (
               <p className="text-xs text-muted-foreground">
-                Aucune autre version trouvée parmi les devis chargés.
+                Comparaison indisponible pour le moment.
+              </p>
+            ) : variantesEtat.rows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Ce devis n’appartient à aucun groupe de variantes.
               </p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {versionChain.map(v => (
-                  <li key={v.id}
-                      className="flex flex-wrap items-center gap-2">
-                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
-                      v{v.version || 1}
-                    </Badge>
-                    <strong>{v.reference}</strong>
-                    <span className="text-xs text-muted-foreground">
-                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
-                      {v.date_creation
-                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
-                    </span>
-                    {v.id === d.id && (
-                      <span className="text-xs text-primary">(version affichée)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm"
+                       aria-label={`Comparaison des variantes de ${d.reference}`}>
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Référence</th>
+                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Libellé</th>
+                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total HT</th>
+                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variantesEtat.rows.map(v => (
+                      <tr key={v.id}
+                          data-source={v.id === d.id ? 'true' : undefined}
+                          className="border-b border-border/60 last:border-b-0">
+                        <td className="px-2 py-1">
+                          <strong>{v.reference}</strong>
+                          {v.id === d.id && (
+                            <span className="ml-2 text-xs text-primary">(source)</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1 text-muted-foreground">
+                          {/* Aucun libellé n'est INVENTÉ : le nom de gamme s'il
+                              existe, sinon le rang de version servi par le
+                              serveur. */}
+                          {v.etude_params?.gamme?.nom || `v${v.version || 1}`}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {v.total_ht != null ? formatMAD(v.total_ht) : '—'}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {(v.total_affiche ?? v.total_ttc) != null
+                            ? formatMAD(v.total_affiche ?? v.total_ttc)
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </td>
@@ -1130,6 +1207,35 @@ function DevisRow({ d, ctx }) {
                 ))}
               </ul>
             )}
+            {/* ── WIR274 — Composeur de note manuelle ──────────────────────
+                `noterDevis` n'était appelé que par l'auto-note de relance
+                WhatsApp (VX222, intacte) : personne ne pouvait écrire une
+                note à la main. Le fil est RECHARGÉ DU SERVEUR après l'envoi —
+                jamais un ajout optimiste local. */}
+            {peutNoter && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                <label htmlFor={`note-devis-${d.id}`} className="sr-only">
+                  Ajouter une note — {d.reference}
+                </label>
+                <Textarea
+                  id={`note-devis-${d.id}`}
+                  rows={2}
+                  placeholder="Ajouter une note au fil du devis…"
+                  value={noteBrouillon[d.id] ?? ''}
+                  onChange={(e) => ecrireNote(d.id, e.target.value)}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="button" size="sm"
+                    loading={noteBusyId === d.id}
+                    disabled={!(noteBrouillon[d.id] || '').trim()}
+                    onClick={() => publierNote(d.id)}
+                  >
+                    Ajouter la note
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -1146,6 +1252,7 @@ function DevisRow({ d, ctx }) {
             <DevisSuiviPartagePanel
               data={suiviCache[d.id]}
               loading={suiviLoadingId === d.id}
+              lectureClient={canSeeLectureClient ? lectureClientCache[d.id] : undefined}
             />
           </div>
         </td>
@@ -1253,6 +1360,11 @@ export default function DevisList() {
   // une ligne dont le lead lié est un lead Meta : gaté aux mêmes rôles que le
   // module Publicité (responsable/admin — module.config.jsx).
   const canSeePublicite = useIsAdminOrResponsable()
+  // ANALYT1 (audit item 64) — « Lecture par le client » (visites distinctes
+  // par section + alerte de friction) n'est chargée QUE pour ce rôle — même
+  // périmètre que la garde serveur (IsResponsableOrAdmin sur
+  // `lecture-client/`) : un rôle sans ce droit ne déclenche même pas l'appel.
+  const canSeeLectureClient = useIsAdminOrResponsable()
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -1266,6 +1378,22 @@ export default function DevisList() {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
+  // eux, quitter l'écran pendant une génération laissait la boucle vivante :
+  // elle continuait d'appeler l'API et de poser du state sur un composant
+  // démonté, indéfiniment. `clearTimeout` au démontage + garde en tête de
+  // boucle (une requête peut être en vol au moment du démontage).
+  const pollTimers = useRef({}) // id → handle de setTimeout
+  const pollAnnule = useRef(false)
+  useEffect(() => {
+    pollAnnule.current = false
+    const timers = pollTimers.current
+    return () => {
+      pollAnnule.current = true
+      Object.values(timers).forEach(clearTimeout)
+      pollTimers.current = {}
+    }
+  }, [])
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
@@ -1282,6 +1410,58 @@ export default function DevisList() {
     const v = searchParams.get('variantes')
     return v ? Number(v) : null
   })
+
+  /* ── WIR225 — Le panneau de comparaison est alimenté par le SERVEUR ───────
+     `GET /ventes/devis/<id>/variantes/` (QJ15) renvoie le groupe COMPLET de
+     variantes (même `version_parent`, actives) — il n'avait aucun appelant.
+     Le panneau se contentait de `versionChain`, une chaîne reconstruite
+     LOCALEMENT à partir des devis DÉJÀ CHARGÉS dans la liste : une variante
+     hors page (pagination, filtre de statut, recherche) en disparaissait
+     purement et simplement, et la promesse de comparaison n'était pas tenue.
+     On interroge donc le serveur, seul à connaître le groupe entier. */
+  const [variantesEtat, setVariantesEtat] = useState({
+    id: null, rows: [], loading: false, error: false,
+  })
+  const variantesRef = useRef(null)
+
+  const chargerVariantes = (id) => {
+    variantesRef.current = id
+    if (id == null) {
+      setVariantesEtat({ id: null, rows: [], loading: false, error: false })
+      return
+    }
+    setVariantesEtat({ id, rows: [], loading: true, error: false })
+    ventesApi.getVariantes(id)
+      .then((r) => {
+        if (variantesRef.current !== id) return
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
+        setVariantesEtat({ id, rows, loading: false, error: false })
+      })
+      .catch(() => {
+        if (variantesRef.current !== id) return
+        setVariantesEtat({ id, rows: [], loading: false, error: true })
+      })
+  }
+
+  // Bascule du panneau : un seul chemin, partagé par le bouton de ligne, le
+  // deep-link `?variantes=` et les deux créations (variantes / gamme).
+  const basculerVersions = (id) => {
+    const cible = versionsOpenId === id ? null : id
+    setVersionsOpenId(cible)
+    chargerVariantes(cible)
+  }
+
+  // Deep-link `?variantes=<id>` : charger le groupe au MONTAGE (l'état initial
+  // ci-dessus pose déjà l'id ; il ne déclenche aucun chargement à lui seul).
+  useEffect(() => {
+    if (versionsOpenId == null) return undefined
+    // Déféré d'un tick : un `setState` SYNCHRONE dans un effet déclenche des
+    // rendus en cascade (react-hooks/set-state-in-effect). Le timer est
+    // annulé au démontage — aucun chargement orphelin.
+    const tick = setTimeout(() => chargerVariantes(versionsOpenId), 0)
+    return () => clearTimeout(tick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── QG10 — Modale « Variantes » : confirmer / éditer le pourcentage avant
   //    de créer les 3 variantes (−p / standard / +p) puis router vers la
@@ -1311,20 +1491,57 @@ export default function DevisList() {
 
   // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
   // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
-  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
-  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  // `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  //
+  // WIR274 — le commentaire annonçait une migration vers `ChatterTimeline`
+  // « quand il atterrira » : il a atterri (VX23, `components/ChatterTimeline`),
+  // et cette note était donc périmée. La migration n'est PAS faite ici, et
+  // volontairement : ce composant attend la forme `crm.LeadActivity` (avec
+  // `kind`), que `DevisActivity` ne porte pas — le brancher tel quel rendrait
+  // TOUTE entrée comme une note manuelle. Le rendu ci-dessous distingue déjà
+  // note et changement de champ. Ce qui manquait vraiment, c'est le
+  // COMPOSEUR : `noterDevis` n'était appelé que par l'auto-note de relance
+  // WhatsApp (VX222) — personne ne pouvait écrire une note à la main.
   const [histoOpenId, setHistoOpenId] = useState(null)
   const [histoCache, setHistoCache] = useState({})   // id → entrées
   const [histoLoadingId, setHistoLoadingId] = useState(null)
+
+  // Recharge le fil DEPUIS LE SERVEUR (jamais un ajout optimiste local : la
+  // note doit être vue telle que le serveur l'a enregistrée, horodatage et
+  // auteur compris).
+  const rechargerHistorique = (id) => {
+    setHistoLoadingId(id)
+    return ventesApi.historiqueDevis(id)
+      .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+      .catch(() => setHistoCache(c => ({ ...c, [id]: c[id] ?? [] })))
+      .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+  }
+
   const toggleHistorique = (id) => {
     if (histoOpenId === id) { setHistoOpenId(null); return }
     setHistoOpenId(id)
-    if (histoCache[id] === undefined) {
-      setHistoLoadingId(id)
-      ventesApi.historiqueDevis(id)
-        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
-        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
-        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    if (histoCache[id] === undefined) rechargerHistorique(id)
+  }
+
+  // WIR274 — composeur de note manuelle. Réservé au palier responsable/admin,
+  // comme la garde serveur de l'action `noter`.
+  const peutNoter = ['admin', 'responsable'].includes(role)
+  const [noteBrouillon, setNoteBrouillon] = useState({}) // id → texte
+  const [noteBusyId, setNoteBusyId] = useState(null)
+  const ecrireNote = (id, texte) =>
+    setNoteBrouillon(b => ({ ...b, [id]: texte }))
+  const publierNote = async (id) => {
+    const texte = (noteBrouillon[id] || '').trim()
+    if (!texte) return
+    setNoteBusyId(id)
+    try {
+      await ventesApi.noterDevis(id, texte)
+      setNoteBrouillon(b => ({ ...b, [id]: '' }))
+      await rechargerHistorique(id)
+    } catch (err) {
+      toast.error(frenchError(err, "La note n'a pas pu être ajoutée."))
+    } finally {
+      setNoteBusyId(null)
     }
   }
 
@@ -1334,6 +1551,12 @@ export default function DevisList() {
   const [suiviOpenId, setSuiviOpenId] = useState(null)
   const [suiviCache, setSuiviCache] = useState({})   // id → {ouverture, relances}
   const [suiviLoadingId, setSuiviLoadingId] = useState(null)
+  // ANALYT1 (audit item 64) — même panneau, même patron de cache-au-premier-
+  // clic que suiviCache ci-dessus ; id → {sections, friction} (voir
+  // DevisSuiviPartagePanel). N'est chargé QUE pour un rôle responsable/admin
+  // (canSeeLectureClient) — un rôle sans ce droit n'émet même pas l'appel
+  // (qui recevrait de toute façon 403 côté serveur).
+  const [lectureClientCache, setLectureClientCache] = useState({})
   const toggleSuiviPartage = (id) => {
     if (suiviOpenId === id) { setSuiviOpenId(null); return }
     setSuiviOpenId(id)
@@ -1343,6 +1566,13 @@ export default function DevisList() {
         .then(res => setSuiviCache(c => ({ ...c, [id]: res.data || null })))
         .catch(() => setSuiviCache(c => ({ ...c, [id]: null })))
         .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
+    }
+    // ANALYT1 — appel SÉPARÉ, uniquement pour un rôle responsable/admin
+    // (jamais tenté sinon — la garde serveur le refuserait de toute façon).
+    if (canSeeLectureClient && lectureClientCache[id] === undefined) {
+      ventesApi.getLectureClientDevis(id)
+        .then(res => setLectureClientCache(c => ({ ...c, [id]: res.data || null })))
+        .catch(() => setLectureClientCache(c => ({ ...c, [id]: null })))
     }
   }
 
@@ -1412,6 +1642,10 @@ export default function DevisList() {
   const [paymentMode, setPaymentMode] = useState('standard')
   const [customAcompte, setCustomAcompte] = useState('')
   const [includeEtude, setIncludeEtude] = useState(false)
+  // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
+  // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
+  // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
+  const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
 
   // ── Modale d'acceptation inline (nom / date / option) ──
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
@@ -1419,6 +1653,10 @@ export default function DevisList() {
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // WIR188 — avertissement crédit renvoyé par l'acceptation (WIR187). Tant
+  // qu'il est posé, la modale RESTE OUVERTE : le vendeur doit l'avoir vu (et
+  // pouvoir demander une dérogation) avant que l'écran passe à la suite.
+  const [acceptCreditWarning, setAcceptCreditWarning] = useState(null)
   // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
   // porte pas les lignes du devis — jamais un chiffre inventé).
   const [dealCelebration, setDealCelebration] = useState(null)
@@ -1460,11 +1698,28 @@ export default function DevisList() {
   // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
   const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
 
+  // Incident fondateur 01/09 round 2 — un devis « Composition libre » (ou tout
+  // devis dont aucune ligne ne classe onduleur réseau/hybride/hors réseau)
+  // fait REFUSER pdf_mode 'full' par le moteur (règle dure builder.py,
+  // ~ligne 1176) : agricole/pompage est DÉJÀ dégradé sans erreur côté serveur
+  // (aucun onduleur n'y est jamais attendu), donc seul le cas non-agricole est
+  // concerné ici.
+  const devisSansOnduleurClasse = (d) =>
+    d?.mode_installation !== 'agricole'
+    && !(d?.lignes ?? []).some(l =>
+      isReseauInverter(l.designation) || isHybridInverter(l.designation)
+      || isOffgridInverter(l.designation))
+
   const openPdfModal = (d) => {
     setBatchPdf(false)
     setPdfTarget(d)
     // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    setPdfMode('full')
+    // Un devis sans onduleur classé (Composition libre) part directement sur
+    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
+    // seulement après avoir cliqué « Générer ».
+    const sansOnduleur = devisSansOnduleurClasse(d)
+    setPdfMode(sansOnduleur ? 'onepage' : 'full')
+    setPdfModeAutoOnepage(sansOnduleur)
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
@@ -1491,6 +1746,7 @@ export default function DevisList() {
     setBatchPdf(true)
     setPdfTarget(null)
     setPdfMode('full')
+    setPdfModeAutoOnepage(false)
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
@@ -1504,6 +1760,7 @@ export default function DevisList() {
     setAcceptDate(new Date().toISOString().slice(0, 10))
     setAcceptOption('sans_batterie')
     setAcceptBusy(false)
+    setAcceptCreditWarning(null)
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -1549,6 +1806,7 @@ export default function DevisList() {
       closeVarianteModal()
       // Route vers la comparaison : panneau versions du devis source ouvert.
       setVersionsOpenId(d.id)
+      chargerVariantes(d.id)
       setSearchParams({ variantes: String(d.id) }, { replace: true })
     } catch (err) {
       toast.error(frenchError(err, 'Création variantes impossible.'))
@@ -1586,6 +1844,7 @@ export default function DevisList() {
       toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
       closeGammeModal()
       setVersionsOpenId(d.id)
+      chargerVariantes(d.id)
       setSearchParams({ variantes: String(d.id) }, { replace: true })
     } catch (err) {
       toast.error(frenchError(err, 'Création de la gamme impossible.'))
@@ -1600,6 +1859,31 @@ export default function DevisList() {
     const thunk = dispatch(fetchDevis())
     return () => thunk?.abort?.()
   }, [dispatch])
+
+  // ── WIR189/NTCRD23 — pastilles d'état crédit ────────────────────────────
+  // UN SEUL appel batch pour toute la page (`getBadges(ids)`), jamais un appel
+  // par ligne : la clé est la liste TRIÉE et DÉDUPLIQUÉE des ids clients, donc
+  // un simple re-rendu (filtre, recherche, tri) ne relance rien.
+  // Dégradation SILENCIEUSE : 403 (le vendeur n'a pas le module crédit) ou
+  // réponse vide → aucune pastille, aucun toast, aucune trace d'erreur.
+  const [creditBadges, setCreditBadges] = useState({})
+  const clientIdsKey = useMemo(() => (
+    [...new Set(devis.map(d => d.client).filter(v => v != null))]
+      .sort((a, b) => Number(a) - Number(b))
+      .join(',')
+  ), [devis])
+  useEffect(() => {
+    if (!clientIdsKey) return undefined
+    let annule = false
+    creditApi.getBadges(clientIdsKey.split(','))
+      .then((res) => {
+        if (annule) return
+        const data = res?.data
+        setCreditBadges(data && typeof data === 'object' && !Array.isArray(data) ? data : {})
+      })
+      .catch(() => { if (!annule) setCreditBadges({}) })
+    return () => { annule = true }
+  }, [clientIdsKey])
 
   // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
   // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
@@ -1886,13 +2170,23 @@ export default function DevisList() {
     if (!d) return
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, {
+      const res = await ventesApi.accepterDevis(d.id, {
         nom: acceptNom,
         date: acceptDate,
         option: d.nb_options === 2 ? acceptOption : '',
       })
-      setAcceptTarget(null)
       dispatch(fetchDevis())
+      // WIR188 — la réponse porte l'état crédit du client (WIR187). Hors mode
+      // « aucun », la modale RESTE OUVERTE sur la bannière : le vendeur doit
+      // l'avoir vue, et peut demander une dérogation sans quitter l'écran.
+      // Le devis est DÉJÀ accepté (le refus dur, lui, aurait renvoyé un 403
+      // avant d'arriver ici) — la bannière informe, elle ne bloque pas.
+      const avertissement = res?.data?.credit_warning
+      if (avertissement && avertissement.mode && avertissement.mode !== 'aucun') {
+        setAcceptCreditWarning(avertissement)
+        return
+      }
+      setAcceptTarget(null)
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
       // (rare, lié au revenu). La carte de victoire remplace le toast plat
       // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
@@ -2035,22 +2329,44 @@ export default function DevisList() {
     try {
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
+      // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
+      // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
+      // condition restait vraie et le toast « toujours en cours » repartait
+      // TOUTES LES 10 s. Un booléen LOCAL à cette boucle le dit UNE fois.
+      let slowAnnonce = false
       // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
       // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
       // on continue simplement à interroger, plus espacé (10 s), et on affiche
       // « toujours en cours » au lieu d'abandonner silencieusement.
       const FAST_ATTEMPTS = 15
       const poll = async () => {
+        // WIR217 — plus AUCUN sondage après démontage de l'écran.
+        if (pollAnnule.current) return
         const slow = attempts >= FAST_ATTEMPTS
         attempts += 1
-        if (slow && !pdfSlowPoll[d.id]) {
+        if (slow && !slowAnnonce) {
+          slowAnnonce = true
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
             toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
         }
         try {
-          const res = await ventesApi.getDevisById(d.id)
+          // WIR217 — on lit l'ÉTAT du rendu (contrat
+          // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
+          // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
+          // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
+          const res = await ventesApi.etatPdfDevis(d.id)
+          if (res.data.statut === 'echec') {
+            // État TERMINAL : on arrête le sondage et on rend l'échec
+            // ACTIONNABLE (le message du serveur nomme la cause).
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            toast.error(
+              `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
+              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
+            )
+            return
+          }
           if (res.data.fichier_pdf) {
             dispatch(fetchDevis())
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
@@ -2080,11 +2396,11 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, slow ? 10000 : 2000)
+            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
           }
         } catch { /* ignore poll errors — la boucle continue */ }
       }
-      setTimeout(poll, 2000)
+      pollTimers.current[d.id] = setTimeout(poll, 2000)
       return true
     } catch (err) {
       // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
@@ -2228,32 +2544,9 @@ export default function DevisList() {
     [devis],
   )
 
-  // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
-  // ancien, puis ajoute la version courante et descend via superseded_by_ref.
-  // Triée par numéro de version croissant pour un affichage lisible.
-  const versionChain = useMemo(() => {
-    if (versionsOpenId == null) return []
-    const byRef = new Map(devis.map(d => [d.reference, d]))
-    const cur = devis.find(d => d.id === versionsOpenId)
-    if (!cur) return []
-    const seen = new Set()
-    const chain = []
-    // Remonter vers les versions plus anciennes.
-    let node = cur
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.version_parent_ref ? byRef.get(node.version_parent_ref) : null
-    }
-    // Descendre vers les versions plus récentes (remplaçantes).
-    node = cur.superseded_by_ref ? byRef.get(cur.superseded_by_ref) : null
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.superseded_by_ref ? byRef.get(node.superseded_by_ref) : null
-    }
-    return chain.sort((a, b) => (a.version || 1) - (b.version || 1))
-  }, [versionsOpenId, devis])
+  // WIR225 — la chaîne de révisions reconstruite LOCALEMENT (`versionChain`)
+  // a été retirée : elle ne voyait que les devis déjà chargés dans la page, et
+  // le panneau lit désormais le groupe complet servi par `getVariantes`.
 
   // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
   const summary = useMemo(() => {
@@ -2298,16 +2591,23 @@ export default function DevisList() {
 
   // ── ARC49 — Sac de contexte passé à chaque <DevisRow> (« lignes divisées »).
   // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
-  // aucune valeur n'est transformée. `versionChain` est mémoïsé plus haut sur
+  // aucune valeur n'est transformée. L'état des variantes est chargé sur
   // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
   const rowCtx = {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    // WIR225 - comparaison des variantes servie par le serveur.
+    variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 - composeur de note manuelle sur le panneau Historique.
+    peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
+    effStatutOf,
+    // WIR189 — { client_id: 'vert'|'orange'|'rouge' } chargé en UN batch.
+    creditBadges,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
@@ -2564,6 +2864,7 @@ export default function DevisList() {
         selectedIds={selectedIds}
         pdfMode={pdfMode}
         setPdfMode={setPdfMode}
+        pdfModeAutoOnepage={pdfModeAutoOnepage}
         targetIsAgricole={targetIsAgricole}
         showMonthly={showMonthly}
         setShowMonthly={setShowMonthly}
@@ -2587,7 +2888,24 @@ export default function DevisList() {
         open={!!acceptTarget}
         onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}
         title={`Accepter le devis — ${acceptTarget?.reference ?? ''}`}
-        footer={(
+        footer={acceptCreditWarning ? (
+          // WIR188 — après l'acceptation, la modale ne montre plus que la
+          // bannière : un seul bouton, qui clôt et enchaîne sur la célébration.
+          <Button onClick={() => {
+            const d = acceptTarget
+            setAcceptCreditWarning(null)
+            setAcceptTarget(null)
+            if (d) {
+              setDealCelebration({
+                reference: d.reference,
+                montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+                kwc: null,
+              })
+            }
+          }}>
+            J'ai compris
+          </Button>
+        ) : (
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
             <Button onClick={submitAccept} loading={acceptBusy}>
@@ -2596,6 +2914,14 @@ export default function DevisList() {
           </>
         )}
       >
+          {acceptCreditWarning ? (
+            <CreditWarningBanner
+              warning={acceptCreditWarning}
+              clientId={acceptTarget?.client}
+              montant={acceptTarget?.total_affiche ?? acceptTarget?.total_ttc}
+              devisId={acceptTarget?.id}
+            />
+          ) : (
           <div className="flex flex-col gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
@@ -2624,6 +2950,7 @@ export default function DevisList() {
               </div>
             )}
           </div>
+          )}
       </ResponsiveDialog>
 
       {/* APX14 — l'aperçu du PDF de proposition, INLINE. Même source

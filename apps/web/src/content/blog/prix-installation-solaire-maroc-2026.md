@@ -76,7 +76,7 @@ Si vous êtes une entreprise ou un investisseur, faites vérifier votre situatio
 
 Le payback le plus souvent cité par les installateurs marocains pour une installation résidentielle standard (sans batterie) est de **5 à 7 ans** — fourchette indicative 2026, cohérente avec plusieurs sources (solaropeak.com, ecovolt.ma, fnh.ma). Avec une batterie, comptez **1 à 3 ans de plus**.
 
-Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,405116 DH/kWh, ou au-delà de 510 kWh à 1,622856 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc).)
+Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,381704 DH/kWh, ou au-delà de 510 kWh à 1,622856 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc).)
 
 Pour aller plus loin sur les économies réelles par ville et les simulations de rentabilité, consultez notre article [Rentabilité solaire par ville au Maroc](/blog/rentabilite-solaire-par-ville-maroc).
 

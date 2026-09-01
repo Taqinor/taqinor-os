@@ -1,8 +1,46 @@
-import { FormField, Input } from '../../../../ui'
+import { useState } from 'react'
+import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
+import crmApi from '../../../../api/crmApi'
+import { toastPromise } from '../../../../ui/confirm'
 import useCanaux from '../../useCanaux'
 import { TYPE_INSTALLATION_LABELS, PRIORITE_LABELS } from '../../stages'
 import { getField, isSuggested } from '../draftCore'
+
+// Fondation relance (24/08/2026) — le plan de relance structuré
+// (crm.RelanceEtape, cadence société) existe côté serveur et alimente le
+// panneau « Relances du jour » du cockpit, mais RIEN ne l'initialise jamais
+// pour un lead donné : crmApi.initialiserRelance n'avait aucun appelant
+// (revue Fable finale). Bouton minimal, à l'endroit où le commercial règle
+// déjà « Relance le » — appel IDEMPOTENT (apps/crm/views.py
+// initialiser_relance : un second clic sur un lead déjà initialisé renvoie
+// le plan existant sans rien dupliquer), donc jamais destructif à rejouer.
+function InitRelanceButton({ leadId }) {
+  const [busy, setBusy] = useState(false)
+  if (leadId == null) return null
+  const declencher = async () => {
+    setBusy(true)
+    try {
+      await toastPromise(crmApi.initialiserRelance(leadId), {
+        loading: 'Initialisation du plan de relance…',
+        success: 'Plan de relance initialisé.',
+        error: 'Initialisation du plan de relance impossible.',
+      })
+    } catch {
+      // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button
+      type="button" size="sm" variant="outline" disabled={busy}
+      data-testid="lf-init-relance" onClick={declencher}
+    >
+      Initialiser le plan de relance
+    </Button>
+  )
+}
 
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
@@ -48,9 +86,16 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             <p className="mt-1 text-xs text-muted-foreground">Suggéré — modifiable</p>
           )}
         </div>
-        <FormField label="Relance le" htmlFor="lf-relance-date">
-          <Input id="lf-relance-date" type="date" value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)} />
-        </FormField>
+        <div className="form-group">
+          <FormField label="Relance le" htmlFor="lf-relance-date">
+            <Input id="lf-relance-date" type="date" value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)} />
+          </FormField>
+          {state.mode === 'edit' && (
+            <div className="mt-1.5">
+              <InitRelanceButton leadId={state.leadId} />
+            </div>
+          )}
+        </div>
       </div>
       <div className="form-row">
         {/* XSAL7 — pipeline pondéré pré-devis. */}

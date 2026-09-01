@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -32,6 +32,11 @@ vi.mock('../../../api/gedApi', () => ({
     envoyerLotSignature: vi.fn(() => Promise.resolve({
       data: { id: 9, libelle: 'Relance 2026', total: 2, nb_envoyes: 2, nb_vus: 0, nb_signes: 0, nb_refuses: 0, nb_erreurs: 0 },
     })),
+    // WIR204 — PDF signé final (blob) + prolongation d'échéance.
+    pdfSigneDemande: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF'], { type: 'application/pdf' }), headers: {},
+    })),
+    prolongerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -142,5 +147,57 @@ describe('XGED26/ZGED3 ApprobationPage — Tableau de bord & Analytique', () => 
     await userEvent.click(await screen.findByRole('tab', { name: /Analytique/i }))
     expect(await screen.findByText('2.5 j')).toBeInTheDocument()
     expect(screen.getByText('80%')).toBeInTheDocument()
+  })
+})
+
+describe('WIR204 ApprobationPage — PDF signé & prolongation d’échéance', () => {
+  it('télécharge le PDF signé d’une demande déjà signée (statut signe)', async () => {
+    gedApi.getDemandesSignature.mockResolvedValueOnce({ data: [
+      { id: 4, document: 8, document_nom: 'Contrat.pdf', statut: 'signe',
+        signataire_nom: 'Client X', signataire_email: 'x@y.com',
+        date_demande: '2026-07-01T09:00:00Z' },
+    ] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    const row = (await screen.findAllByText('Contrat.pdf')).map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Télécharger le PDF signé'))
+
+    await waitFor(() => expect(gedApi.pdfSigneDemande).toHaveBeenCalledWith(4))
+  })
+
+  it('n’affiche PAS le téléchargement pour une demande en_attente (statut requis : signe)', async () => {
+    gedApi.getDemandesSignature.mockResolvedValueOnce({ data: [
+      { id: 5, document: 8, document_nom: 'Devis.pdf', statut: 'en_attente',
+        signataire_nom: 'Client Y', signataire_email: 'y@z.com',
+        date_demande: '2026-07-01T09:00:00Z' },
+    ] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    const row = (await screen.findAllByText('Devis.pdf')).map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    expect(screen.queryByText('Télécharger le PDF signé')).not.toBeInTheDocument()
+    expect(await screen.findByText('Prolonger l’échéance')).toBeInTheDocument()
+  })
+
+  it('prolonge l’échéance d’une demande en_attente', async () => {
+    gedApi.getDemandesSignature.mockResolvedValueOnce({ data: [
+      { id: 5, document: 8, document_nom: 'Devis.pdf', statut: 'en_attente',
+        signataire_nom: 'Client Y', signataire_email: 'y@z.com',
+        date_demande: '2026-07-01T09:00:00Z' },
+    ] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    const row = (await screen.findAllByText('Devis.pdf')).map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Prolonger l’échéance'))
+
+    const dialog = await screen.findByRole('dialog')
+    const input = within(dialog).getByLabelText('Nouvelle échéance')
+    fireEvent.change(input, { target: { value: '2026-12-31T10:00' } })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Prolonger' }))
+
+    await waitFor(() => expect(gedApi.prolongerDemandeSignature).toHaveBeenCalledWith(
+      5, { expires_at: new Date('2026-12-31T10:00').toISOString() }))
   })
 })

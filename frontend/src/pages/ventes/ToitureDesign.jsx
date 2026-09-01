@@ -27,16 +27,21 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
+import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
+// L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
+// la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
+import ToitClientOverlay from '../../features/ventes/ToitClientOverlay'
+import { contourExploitable } from '../../features/crm/workspace/traceToit'
 import '../../styles/roofbuilder.css'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -85,16 +90,32 @@ function leadToBuilderPayload(lead) {
   }
 }
 
+// QJR40 (décision fondateur D8, 29/08/2026 ; jumelle backend = QJR25,
+// `electrical_service._option_choisie`) — sur un devis « Les deux »,
+// `contexte.cible_avec` (CTX3D, `selectors.contexte_conception_devis`) n'est
+// présente QUE quand l'option AVEC (onduleur hybride + batterie) est
+// réellement servable — MÊME critère que le schéma unifilaire. La cible 3D
+// DOIT alors cibler la MÊME option que le SLD : AVEC. Un devis mono-option
+// ne porte JAMAIS `cible_avec` : `cible` reste l'UNIQUE option vendue,
+// comportement strictement inchangé. Avant ce correctif, l'écran ne lisait
+// QUE `cible` (option SANS par construction de CTX3D) — exactement le bug
+// que la docstring de CTX3D dit corriger.
+function cibleActiveDuContexte(contexte) {
+  return contexte?.cible_avec ?? contexte?.cible ?? {}
+}
+
 // PV20 — MODE DEVIS. Le builder s'hydrate depuis un `DevisPayload` (PV19 :
 // `geometrie.roof_layout | roof_point | roof_outline` + `cible.panneaux |
 // panel_watt | scenario`). Le contexte serveur (contrat
 // `contract_samples/devis_design_context.json`) nomme le repère `pin` et le
 // contour `outline` : cette projection est le SEUL endroit qui les renomme —
-// l'écran ne devine ni ne complète aucune clé absente.
+// l'écran ne devine ni ne complète aucune clé absente. QJR40 : `cible` vient
+// de `cibleActiveDuContexte` — AVEC quand ce devis la sert, SANS/mono-option
+// sinon (voir le commentaire ci-dessus).
 function contexteToDevisPayload(contexte) {
   if (!contexte) return null
   const geo = contexte.geometrie ?? {}
-  const cible = contexte.cible ?? {}
+  const cible = cibleActiveDuContexte(contexte)
   const nom = (contexte.devis?.client_nom ?? '').trim()
   // PV23bis (fondateur 20/08) — téléphone + ville du client, au même titre
   // que `fullName` ci-dessus et que `leadToBuilderPayload` en mode lead : le
@@ -266,6 +287,21 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // L-MAP — bascule d'affichage du calque « Toit dessiné par le client »
+  // (rp9-chip, comme les autres bascules de l'écran). Défaut ON — le
+  // fondateur veut le voir SANS geste supplémentaire ; le bouton ne sert
+  // qu'à le masquer temporairement s'il gêne une lecture de la carte.
+  const [toitClientVisible, setToitClientVisible] = useState(true)
+  // O3 (revue adversariale 26/08) — `builderApi` est une REF : la poser
+  // n'entraîne aucun re-rendu, donc un effet qui ne dépend que de
+  // `toitClientVisible` peut s'exécuter AVANT que le builder soit prêt (clic
+  // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
+  // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
+  const [builderReady, setBuilderReady] = useState(false)
+  // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
+  // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
+  // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
+  const [contourMessage, setContourMessage] = useState('')
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -301,6 +337,39 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (cancelled) return
       setLead(leadData)
 
+      // WIR227/QJ25 — le contour OSM du bâtiment épinglé (roof-footprint,
+      // Overpass) n'était jamais consommé par l'atelier : la carte démarrait
+      // TOUJOURS sans contour, même quand le lead porte déjà une épingle.
+      // Best-effort, jamais bloquant — un échec réseau laisse le tracé manuel
+      // intact, exactement comme le repli existant. Ne s'applique QUE si le
+      // lead n'a pas déjà de contour (tracé manuel déjà posé = jamais écrasé).
+      if (!leadData.roof_outline && pinDepuisLead(leadData)) {
+        try {
+          const fp = await crmApi.getRoofFootprint(leadId)
+          const polygon = fp?.data?.polygon
+          if (Array.isArray(polygon) && polygon.length >= 3) {
+            // Fable review — le serveur (roof_detect.py) renvoie des points
+            // `{lat, lng}` ; le contrat de l'atelier (roofPro11/prefill.ts
+            // hydrateFromLead) exige des PAIRES `[lat, lng]` et rejette
+            // silencieusement (Array.isArray(p)) tout sommet qui n'en est
+            // pas — sans cette conversion, TOUS les sommets OSM étaient
+            // éliminés et la carte ne bootait que sur le pin. Conversion
+            // faite ICI, jamais dans apps/web (non touché).
+            const paires = polygon
+              .map((p) => [Number(p?.lat), Number(p?.lng)])
+              .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng))
+            if (paires.length >= 3) {
+              leadData = { ...leadData, roof_outline: paires }
+            }
+          } else if (fp?.data?.message) {
+            setContourMessage(fp.data.message)
+          }
+        } catch {
+          /* repli silencieux : tracé manuel toujours disponible */
+        }
+      }
+      if (cancelled) return
+
       // Clé carte (même origine, session cookie) — sans elle, pas de carte.
       let maptilerKey = ''
       let mapboxToken
@@ -329,7 +398,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken,
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
-        onApiReady: (a) => { builderApi.current = a },
+        // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
+        // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
+        // par le MÊME `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : un contour que l'écran refuse déjà (hors
+        // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
+        // polygone orphelin sans bascule pour le masquer.
+        referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -399,8 +475,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteToDevisPayload(ctx) },
+        // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, du
+        // layout courant), géo-référencé sur la carte (calque passif). MÊME
+        // garde `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : voir le commentaire jumeau dans `boot()`.
+        referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
+          ? ctx.geometrie.contour_client : null,
         bankable,
-        onApiReady: (a) => { builderApi.current = a },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -465,7 +547,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteAoVersPayload(ctx) },
-        onApiReady: (a) => { builderApi.current = a },
+        // Mode AO — pas de source de contour client (une affaire n'a pas de
+        // dessin du tunnel public) : `referenceContour` reste absent, comme
+        // avant. `onApiReady` pose quand même `builderReady` par cohérence
+        // avec les deux autres modes (aucun toggle n'existe ici de toute
+        // façon, donc aucun effet observable).
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       const reference = ctx?.affaire?.reference ?? ''
       setStatus(
@@ -480,6 +567,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
     else boot()
     return () => { cancelled = true }
   }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
+
+  // L-MAP — la bascule (rp9-chip) pilote le calque GÉO-RÉFÉRENCÉ du builder,
+  // pas seulement la légende React. O3 (revue adversariale 26/08) — sans
+  // `builderReady` dans les dépendances, un clic PENDANT le boot (builder pas
+  // encore prêt) était un no-op DÉFINITIF : `toitClientVisible` ne change
+  // plus tant qu'on ne reclique pas, donc l'état voulu ne se rattrapait
+  // jamais quand `builderApi.current` finissait par exister. `builderReady`
+  // (état, pas ref) déclenche un re-rendu à l'arrivée de l'API et rejoue la
+  // valeur COURANTE de `toitClientVisible` à ce moment-là.
+  useEffect(() => {
+    builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
+  }, [toitClientVisible, builderReady])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -581,7 +680,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
     // lignes/câbles/structures du devis ; annuler = AUCUN appel réseau. Cible/posé
     // égaux (le cas courant) → aucun dialogue, comportement inchangé.
     const panneauxPoses = Number(layout?.result?.panels) || 0
-    const panneauxDevis = Number(contexte?.cible?.panneaux) || 0
+    // QJR40 — MÊME cible que celle booté dans le builder (cibleActiveDuContexte :
+    // AVEC quand ce devis la sert, sinon `cible`). Comparer contre `contexte.cible`
+    // seul recréerait ici la divergence SANS/AVEC que ce correctif supprime côté
+    // boot : un devis « Les deux » déclencherait alors ce dialogue à CHAQUE
+    // enregistrement, même sans aucun écart réel.
+    const panneauxDevis = Number(cibleActiveDuContexte(contexte).panneaux) || 0
     if (panneauxPoses !== panneauxDevis) {
       const ok = await confirm({
         title: 'Le calepinage diverge du devis',
@@ -787,6 +891,56 @@ export default function ToitureDesign({ mode = 'lead' }) {
     'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
   const chipClass = 'rp9-chip'
 
+  // L-MAP (fondateur 26/08/2026) — le contour BRUT du client, tel quel
+  // ([lat, lng] × n, la forme de `Lead.roof_outline`) : en mode lead, le lead
+  // fraîchement chargé le porte directement ; en mode devis, le contexte
+  // agrégé le porte SÉPARÉMENT de `geometrie.outline` (qui peut déjà être le
+  // contour COURANT du calepinage, une fois édité — voir
+  // `contexte_conception_devis`, apps/ventes/selectors.py). Mode AO : aucune
+  // source (les affaires ne portent pas de dessin du tunnel public) — le
+  // calque reste absent, comportement inchangé.
+  const contourClientBrut = estDevis
+    ? (contexte?.geometrie?.contour_client ?? null)
+    : (!estAo ? (lead?.roof_outline ?? null) : null)
+  const toitClientPresent = useMemo(
+    () => contourExploitable(contourClientBrut), [contourClientBrut])
+
+  // AP-F2 (fondateur 26/08/2026) — note « calepinage automatique » : visible quand
+  // les panneaux à l'écran viennent d'un SEMIS AUTOMATIQUE depuis le tracé client
+  // (roofPro11 applyHydration / applyDevisHydration, repli lead-like), jamais d'un
+  // calepinage enregistré par un commercial — celui-ci reste libre de VÉRIFIER avant
+  // d'envoyer. Mode lead : dès qu'un contour exploitable existe — MÊME garde que la
+  // bascule L-MAP (`toitClientPresent`), jamais un second prédicat. Mode devis :
+  // seulement si le devis n'a JAMAIS reçu de design enregistré (`roof_layout` sans
+  // zones — sinon un commercial a déjà calepiné et rien ne doit le recouvrir) ET
+  // qu'un contour exploitable existe (`contour_client`, sinon `outline` — même repli
+  // que le serveur quand `roof_layout` est absent, apps/ventes/selectors.py). Mode
+  // AO : jamais affichée (hors périmètre — une affaire n'a pas de tunnel public).
+  // AP2 — un devis créé AUTOMATIQUEMENT à l'arrivée du lead porte désormais la zone
+  // du client DANS son layout (apps/ventes/services.zone_toit_depuis_contour), donc
+  // `zones` n'est plus vide alors que PERSONNE n'a validé ce calepinage : le serveur
+  // l'estampille `_origine_calepinage: 'contour_client'`. Ce marqueur disparaît dès
+  // que le commercial enregistre sa conception (`sync-layout` REMPLACE le layout par
+  // la sérialisation du builder, qui ne l'émet jamais) — c'est exactement le moment
+  // où la note doit s'éteindre.
+  const layoutPoseAutomatiquement =
+    contexte?.geometrie?.roof_layout?._origine_calepinage === 'contour_client'
+  const devisRoofLayoutSansZones = !(contexte?.geometrie?.roof_layout?.zones?.length > 0)
+  const contourClientOuOutlinePourNote = contourExploitable(contexte?.geometrie?.contour_client)
+    ? contexte?.geometrie?.contour_client
+    : contexte?.geometrie?.outline
+  const calepinageAutomatiqueVisible = estDevis
+    ? (layoutPoseAutomatiquement
+      || (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote)))
+    : (!estAo && toitClientPresent)
+  // Le bouton « Recommencer » relit `opts.referenceContour`, c'est-à-dire le contour
+  // CLIENT et lui seul : il n'est proposé que si ce contour-là existe encore. Sans ce
+  // garde-fou la branche `layoutPoseAutomatiquement` pourrait afficher un bouton
+  // inerte (layout estampillé, mais tracé du lead effacé depuis).
+  const recommencerDisponible = estDevis
+    ? contourExploitable(contexte?.geometrie?.contour_client)
+    : (!estAo && toitClientPresent)
+
   // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
   // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
@@ -880,6 +1034,24 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </p>
         )}
 
+        {/* WIR227/QJ25 — le contour OSM n'a rien renvoyé pour cette épingle
+            (message SERVEUR, jamais rédigé ici) : le tracé manuel reste
+            disponible, un bouton relance simplement une nouvelle tentative
+            (l'atelier n'a pas d'API pour injecter un contour a posteriori —
+            même patron de rechargement que `window.__taqinorRoofBooted`). */}
+        {!estDevis && !estAo && contourMessage && (
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-lune-faint/70" data-testid="pv-contour-osm-absent">
+            <p>{contourMessage}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="underline"
+            >
+              Relancer la détection du contour
+            </button>
+          </div>
+        )}
+
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
         )}
@@ -939,6 +1111,33 @@ export default function ToitureDesign({ mode = 'lead' }) {
         </div>
         )}
 
+        {/* AP-F2 (fondateur 26/08/2026) — note explicite quand les panneaux à
+            l'écran viennent d'un SEMIS AUTOMATIQUE depuis le tracé client, jamais
+            d'un calepinage enregistré par un commercial (voir calepinageAutomatiqueVisible
+            ci-dessus). Le bouton reseme la zone active depuis CE MÊME contour et relance
+            l'optimiseur (roof-tool-pro11.ts recommencerDepuisTraceClient) — n'est rendu
+            que si un contour exploitable existe (la condition de la note l'implique déjà). */}
+        {calepinageAutomatiqueVisible && (
+          <div
+            className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-brass-400/40 p-4"
+            data-testid="rp9-calepinage-auto-note"
+          >
+            <p className="text-sm text-lune-soft" role="status">
+              Calepinage automatique depuis le tracé client — à vérifier
+            </p>
+            {recommencerDisponible && (
+              <button
+                type="button"
+                className={chipClass}
+                onClick={() => builderApi.current?.recommencerDepuisTraceClient?.()}
+                data-testid="rp9-recommencer-trace-client"
+              >
+                Recommencer depuis le tracé client
+              </button>
+            )}
+          </div>
+        )}
+
         {/* BUILDER — DOM complet (mêmes ids que la preview pro-11). */}
         <div className="cine-card mt-6 overflow-hidden">
           <form id="rp9-search" className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
@@ -954,11 +1153,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <button type="submit" className="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950">Localiser</button>
           </form>
 
-          <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
-            role="application" aria-label="Carte 3D pour dessiner le toit">
-            <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
-              <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
+          {/* L-MAP — enveloppe ADDITIVE autour de `#rp9-map` (jamais un enfant :
+              le builder ne cherche que ses propres id, un parent ne lui change
+              rien). `ToitClientOverlay` y flotte en calque de référence
+              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`. */}
+          <div className="rp9-map-wrap">
+            <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
+              role="application" aria-label="Carte 3D pour dessiner le toit">
+              <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
+                <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
+              </div>
             </div>
+            <ToitClientOverlay contour={contourClientBrut} visible={toitClientVisible} />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -966,6 +1172,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
             <button type="button" id="rp9-add-area" disabled className={chipClass}>+ Ajouter une zone</button>
+            {/* L-MAP — bascule du calque de référence, seulement quand un
+                contour client existe (rien à basculer sinon). */}
+            {toitClientPresent && (
+              <button
+                type="button"
+                className={chipClass}
+                aria-pressed={toitClientVisible}
+                onClick={() => setToitClientVisible((v) => !v)}
+                data-testid="rp9-toit-client-toggle"
+              >
+                {toitClientVisible ? 'Toit dessiné : affiché' : 'Toit dessiné : masqué'}
+              </button>
+            )}
             <p className="ml-auto text-sm text-lune-faint"><span>Surface&nbsp;: </span><span id="rp9-area-value" className="text-white">—</span></p>
           </div>
 

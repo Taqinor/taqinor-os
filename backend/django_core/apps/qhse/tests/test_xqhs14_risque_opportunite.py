@@ -215,3 +215,69 @@ class RisqueOpportuniteApiTests(TestCase):
         url = f'/api/django/qhse/risques-opportunites/{ro.id}/lier-capa/'
         resp = auth_client(self.user).post(url, {'capa': capa_autre.id})
         self.assertEqual(resp.status_code, 404)
+
+
+class PartieInteresseeApiTests(TestCase):
+    """WIR277 — CRUD REST scopé société (ISO 4.2), jusqu'ici inexistant."""
+
+    PARTIES_URL = '/api/django/qhse/parties-interessees/'
+
+    def setUp(self):
+        self.company = make_company('co-xqhs277-partie-api', 'CoXqhs277PartieApi')
+        self.user = User.objects.create_user(
+            username='resp-xqhs277-partie-api', password='x',
+            company=self.company, role_legacy='responsable')
+
+    def test_create_pose_company(self):
+        resp = auth_client(self.user).post(self.PARTIES_URL, {
+            'partie': 'Client', 'attentes': 'Qualité et délais',
+            'pertinence': PartieInteressee.Pertinence.FORTE,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        partie = PartieInteressee.objects.get(id=resp.data['id'])
+        self.assertEqual(partie.company_id, self.company.id)
+
+    def test_isolation_inter_societes(self):
+        autre = make_company('co-xqhs277-partie-api-x', 'Autre')
+        PartieInteressee.objects.create(company=autre, partie='Fournisseur')
+        data = rows(auth_client(self.user).get(self.PARTIES_URL))
+        self.assertEqual(len(data), 0)
+
+
+class ContexteOrganisationApiTests(TestCase):
+    """WIR277 — SINGLETON par société (ISO 4.1), pattern
+    ``cpq.ParametresCPQViewSet`` : ``GET/PATCH …/courant/`` crée la ligne à la
+    volée, jamais deux lignes par société."""
+
+    COURANT_URL = '/api/django/qhse/contexte-organisation/courant/'
+
+    def setUp(self):
+        self.company = make_company('co-xqhs277-contexte-api', 'CoXqhs277ContexteApi')
+        self.user = User.objects.create_user(
+            username='resp-xqhs277-contexte-api', password='x',
+            company=self.company, role_legacy='responsable')
+        self.api = auth_client(self.user)
+
+    def test_get_cree_la_ligne_a_la_volee(self):
+        resp = self.api.get(self.COURANT_URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            ContexteOrganisation.objects.filter(company=self.company).count(), 1)
+
+    def test_patch_met_a_jour_sans_dupliquer(self):
+        self.api.get(self.COURANT_URL)
+        resp = self.api.patch(self.COURANT_URL, {
+            'swot': 'Forces : équipe qualifiée.',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['swot'], 'Forces : équipe qualifiée.')
+        self.assertEqual(
+            ContexteOrganisation.objects.filter(company=self.company).count(), 1)
+
+    def test_isolation_societe(self):
+        autre = make_company('co-xqhs277-contexte-api-x', 'Autre')
+        ContexteOrganisation.objects.create(
+            company=autre, swot='Contexte hors société')
+        resp = self.api.get(self.COURANT_URL)
+        self.assertNotEqual(
+            resp.data['swot'], 'Contexte hors société')

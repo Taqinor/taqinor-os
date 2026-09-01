@@ -744,6 +744,22 @@ def render_whatsapp_template(template, *, prenom='', ville=''):
         '{prenom}', prenom or '').replace('{ville}', ville or '')
 
 
+def whatsapp_bsp_actif():
+    """NTDATA39 — vrai UNIQUEMENT si le canal WhatsApp BSP est réellement ARMÉ.
+
+    Point d'entrée de service pour les autres apps (elles n'importent jamais
+    ``notifications.whatsapp_bsp`` directement) : sans
+    ``WHATSAPP_BSP_ENABLED=1`` + les trois credentials Meta, le provider retenu
+    est ``ManualWaMeProvider`` (lien wa.me, AUCUN appel réseau) et cette
+    fonction renvoie ``False`` — un appelant gated doit alors rester en no-op
+    au lieu de croire qu'il a envoyé quelque chose. Ne lève jamais."""
+    from .whatsapp_bsp import BspProvider, get_whatsapp_provider
+    try:
+        return isinstance(get_whatsapp_provider(), BspProvider)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
 def send_whatsapp_campaign_message(company, *, recipient, body, campagne_id=None,
                                    template=None):
     """XMKT10 — envoie (ou prépare) UN message WhatsApp de campagne et le
@@ -862,7 +878,10 @@ def publish_annonce(annonce, *, now=None):
         return annonce
     now = now or timezone.now()
     recipients = annonce_recipients(annonce)
-    link = '/annonces/' + str(annonce.pk)
+    # WIR177 — route REELLE de l'ecran destinataire : `/annonces` avec le
+    # motif `?annonce=<pk>` que la page lit pour deplier l'annonce visee.
+    # `/annonces/<pk>` n'a JAMAIS existe cote routeur (404 garanti).
+    link = '/annonces?annonce=' + str(annonce.pk)
     for user in recipients:
         try:
             notify(
@@ -971,7 +990,8 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
             destinataires = list(annonce_recipients(annonce))
             lu_ids = set(AnnonceLecture.objects.filter(
                 annonce=annonce).values_list('utilisateur_id', flat=True))
-            link = '/annonces/' + str(annonce.pk)
+            # WIR177 — meme route reelle que la publication ci-dessus.
+            link = '/annonces?annonce=' + str(annonce.pk)
             for user in destinataires:
                 if user.pk in lu_ids:
                     continue  # déjà lu → aucune relance.
@@ -1097,7 +1117,7 @@ def sweep_approval_reminders(company, *, today=None):
                 count += _sweep_one_pending_approval(
                     company, approval, approver=approver,
                     requester=approval.requested_by,
-                    link=f'/automation/approvals/{approval.pk}',
+                    link='/approbations?source=automation',
                     description=approval.description or 'Une action',
                     relance_days=relance_days, escalade_days=escalade_days,
                     today=today)
@@ -1123,7 +1143,7 @@ def sweep_approval_reminders(company, *, today=None):
                 count += _sweep_one_pending_approval(
                     company, demande, approver=approver,
                     requester=demande.demandeur,
-                    link=f'/compta/approbations/{demande.pk}',
+                    link='/comptabilite/approbations-config',
                     description=f'La demande {label}',
                     relance_days=relance_days, escalade_days=escalade_days,
                     today=today)

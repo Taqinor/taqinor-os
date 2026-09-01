@@ -215,15 +215,13 @@ export function estimerMois(hiver, ete) {
   return interpolerFactures(hiver, ete).map(v => Math.round(v))
 }
 
-// 8 panneaux par tranche de 900 MAD de facture hiver. Le ratio est éditable
-// (Paramètres → Avancé) ; sans argument il garde le défaut historique (8).
-// NB : depuis la règle fondateur du 18/08 le dimensionnement passe par les kWc
-// (`estimerKwcDepuisFacture` ci-dessous) ; cette fonction reste pour les appels
-// historiques et les paramétrages explicites en nombre de panneaux.
-export function estimerPanneaux(factureHiver, perTranche = 8) {
-  const n = Number(perTranche)
-  return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
-}
+// QJR238 (30/08/2026) — `estimerPanneaux` (règle des 900 MAD, retirée comme
+// source de dimensionnement par l'ordre fondateur du 29/08/2026) a été
+// SUPPRIMÉE : elle n'avait plus aucun consommateur de production (grep
+// vérifié) et ses seuls tests étaient des épinglages des nombres que le
+// fondateur a explicitement retirés. `KWC_STEP`/`MAD_PAR_PALIER` ci-dessous
+// SONT CONSERVÉS : ils alimentent toujours la doctrine de paliers réelle
+// (`estimerKwcDepuisFacture`/`optimalKwcByPayback`).
 
 // ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum sous
 //    HORIZON FIXE 25/08) ────────────────────────────────────────────────────
@@ -731,12 +729,24 @@ function trancheTable(pairs, selectif) {
 // ONEE_TRANCHES (miroir exact). Prochaine hausse de TVA : refaire HT × nouveau
 // taux sur les six bases HT documentées là-bas — jamais repartir d'un TTC
 // déjà taxé. ÉDITABLE PAR SOCIÉTÉ : Paramètres → Tarification & ROI.
+//
+// DÉCISION FONDATEUR D5 (29/08/2026) — TRANCHE 5 RECALÉE SUR LA FACTURE. La
+// tranche 311-510 vaut 1,381704 et NON l'extrapolation « HT constant » : la
+// facture SRM Casablanca-Settat n° 643769639 du 08/05/2026 (359 kWh × 1,15142
+// HT = 496,03 TTC) donne 1,15142 × 1,20 = 1,381704, et la facture du
+// 20/01/2026 corrobore (T5 2025 = 1,3817 TTC). Au passage TVA 18 → 20 %, c'est
+// le TTC qui est resté CONSTANT et le HT qui a baissé — l'inverse de ce que le
+// repo supposait. Une FACTURE RÉELLE supplante toujours une extrapolation ; les
+// cinq autres tranches, sans facture 2026, gardent leur valeur dérivée.
+// La valeur de référence vit côté serveur dans
+// apps/ventes/quote_engine/bareme.py (barème étalonné sur trois factures).
 export const ONEE_TRANCHES = trancheTable([
   [100, 0.916272],   // progressif   0-100          — HT 0,76356 × TVA 20% (2026)
   [150, 1.091388],   // progressif 101-150          — HT 0,90949 × TVA 20% (2026)
   [200, 1.091388],   // sélectif 151-200 (eff. 210) — idem
   [300, 1.187388],   // sélectif 201-300 (eff. 310) — HT 0,98949 × TVA 20% (2026)
-  [500, 1.405116],   // sélectif 301-500 (eff. 510) — HT 1,17093 × TVA 20% (2026)
+  [500, 1.381704],   // sélectif 301-500 (eff. 510) — PROUVÉ FACTURE (D5) :
+                     // 1,15142 HT × TVA 20% ; voir la note ci-dessus
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
 // Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles
@@ -884,10 +894,99 @@ export function consoAnnuelleDepuisFactures(factures, utility) {
   return total > 0 ? Math.round(total) : 0
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// QJR168 — LE BARÈME COMPLET : UNE FACTURE N'EST PAS QUE DE L'ÉNERGIE
+// ════════════════════════════════════════════════════════════════════════════
+// Jumeau JS de apps/ventes/quote_engine/bareme.py, le module étalonné sur TROIS
+// FACTURES RÉELLES du fondateur (SRM Casablanca-Settat, BT domestique) et qui
+// reproduit la facture du 08/05/2026 à 0,01 MAD près. Le serveur tarife les
+// deux factures du modèle « deux factures » par `bareme.facture_mad` depuis
+// QJR157 ; l'écran, lui, était resté sur l'énergie seule — le même client
+// lisait donc deux « factures actuelles » différentes selon qu'il regardait
+// l'écran (24 343 MAD/an) ou le PDF (26 022 MAD/an). QJR168 referme l'écart en
+// portant ici le MÊME modèle, pas en ajustant un chiffre.
+//
+// CHAQUE NOMBRE VIENT DE bareme.py — aucun n'est estimé :
+//   · location du compteur     18,28 MAD HT/mois (montant identique sur les
+//     trois factures) ; entretien du branchement 15,00 MAD HT/mois (idem) ;
+//     TVA 20 % sur les deux en 2026 → 39,936 MAD TTC/mois, soit 479,23 MAD/an ;
+//   · TPPAN (art. 16 du dahir n° 1-96-77, BO 4391 bis) : empilement PROGRESSIF
+//     0,10 / 0,15 / 0,20, bornes 100 et 200 kWh proratisées aux jours de la
+//     période, plafond 100 MAD/mois, exonération ≤ 50 kWh/mois. Le barème 1996
+//     produit directement un montant TTC — prouvé par la facture du 08/05/2026
+//     (100 × 0,10 + 100 × 0,15 + 159 × 0,20 = 56,80, la ligne exacte).
+// MILLÉSIME : 2026, celui d'ONEE_TRANCHES. Le serveur en gère plusieurs (2025
+// avait trois taux de TVA différents sur une même facture) ; l'écran ne tarife
+// que la grille qu'il affiche.
+//
+// CE QUI S'ANNULE, CE QUI NE S'ANNULE PAS : les deux lignes fixes sont dues
+// avec ou sans solaire — elles disparaissent donc de l'ÉCONOMIE (le client
+// garde son abonnement ; les lui compter serait un mensonge) mais elles pèsent
+// sur les deux FACTURES affichées. La TPPAN, elle, suit le kWh : elle baisse
+// avec la consommation et fait partie de l'économie réelle.
+const CHARGE_LOCATION_COMPTEUR_HT = 18.28
+const CHARGE_ENTRETIEN_BRANCHEMENT_HT = 15.00
+const TVA_LIGNES_FIXES = 0.20            // millésime 2026 (location ET entretien)
+const TPPAN_TRANCHES = [[100, 0.10], [200, 0.15], [null, 0.20]]
+const TPPAN_JOURS_REFERENCE = 30
+const TPPAN_PLAFOND_MAD_MOIS = 100
+const TPPAN_EXONERATION_KWH_MOIS = 50
+
+// Total TTC des DEUX lignes fixes d'un mois : 18,28 × 1,20 + 15,00 × 1,20
+// = 39,936 MAD. (bareme.charges_fixes_ttc, millésime 2026.)
+export function chargesFixesTtc() {
+  return CHARGE_LOCATION_COMPTEUR_HT * (1 + TVA_LIGNES_FIXES)
+    + CHARGE_ENTRETIEN_BRANCHEMENT_HT * (1 + TVA_LIGNES_FIXES)
+}
+
+// TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
+// Jumeau de bareme.tppan_mad : empilement progressif sur la TOTALITÉ de la
+// consommation, bornes proratisées, plafonné. Monotone non décroissante.
+export function tppanMad(kwhMensuel, jours = TPPAN_JOURS_REFERENCE) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  if (kwh <= 0 || kwh <= TPPAN_EXONERATION_KWH_MOIS) return 0
+  let ratio = (parseFloat(jours) || TPPAN_JOURS_REFERENCE) / TPPAN_JOURS_REFERENCE
+  if (!(ratio > 0)) ratio = 1
+  let total = 0
+  let restant = kwh
+  let borneBasse = 0
+  for (const [plafond, prix] of TPPAN_TRANCHES) {
+    if (plafond == null) { total += restant * prix; break }
+    const borneHaute = plafond * ratio
+    const tranche = Math.min(restant, Math.max(0, borneHaute - borneBasse))
+    total += tranche * prix
+    restant -= tranche
+    borneBasse = borneHaute
+    if (restant <= 0) break
+  }
+  return Math.min(total, TPPAN_PLAFOND_MAD_MOIS)
+}
+
+// kWh/mois → facture mensuelle TTC DÉTAILLÉE (MAD), composante par composante,
+// dans l'ordre de la vraie facture. Jumeau de bareme.facture_mad. Une
+// consommation nulle ne doit RIEN en énergie ni en TPPAN, mais les lignes
+// fixes restent dues : c'est la réalité d'un abonnement.
+export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  const energie = kwh > 0 ? monthlyBillFromKwh(kwh, tranches) : 0
+  const fixes = chargesFixesTtc()
+  const taxe = tppanMad(kwh, jours)
+  return {
+    energieMad: energie,
+    locationEntretienMad: fixes,
+    tppanMad: taxe,
+    totalMad: energie + fixes + taxe,
+  }
+}
+
 // QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
-// valorisée par tranche (self-consumption-first, loi 82-21). Miroir
+// valorisée par tranche (self-consumption-first, loi 82-21). Jumeau de
 // two_bills_savings. Retourne null quand une vraie donnée manque (l'appelant
 // dégrade alors vers l'estimation, jamais un chiffre inventé).
+// QJR168 — les deux factures passent par `factureMad` (lignes fixes + TPPAN),
+// comme le serveur depuis QJR157 : le mois reste l'unité de tarification (le
+// seuil des marches est MENSUEL), on ne divise jamais l'année après avoir
+// tarifé. Mois MOYEN, comme le repli serveur sans répartition mensuelle.
 export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
   const { table } = resolveTranches(utility, tranchesOverride)
   if (!table) return null
@@ -895,10 +994,11 @@ export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio,
   const prod = parseFloat(productionKwh) || 0
   const ratio = parseFloat(autoconsoRatio) || 0
   if (conso <= 0 || prod <= 0 || ratio <= 0) return null
-  const factureSans = Math.round(monthlyBillFromKwh(conso / 12, table) * 12)
+  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table).totalMad * 12
+  const factureSans = Math.round(factureAnnuelle(conso))
   const autoconsoKwh = Math.min(prod * ratio, conso)
   const residuel = Math.max(0, conso - autoconsoKwh)
-  const factureAvec = Math.round(monthlyBillFromKwh(residuel / 12, table) * 12)
+  const factureAvec = Math.round(factureAnnuelle(residuel))
   return {
     factureSans, factureAvec,
     economie: Math.max(0, factureSans - factureAvec),
@@ -912,16 +1012,75 @@ const _norm = (s) =>
 
 export const isBattery = (d) => _norm(d).includes('batterie')
 export const isHybridInverter = (d) => _norm(d).includes('onduleur') && _norm(d).includes('hybride')
+// OFFGRID (fondateur, ajout produit onduleur hors réseau) — MÊME CONTRAT que
+// le backend (apps/ventes/services.py côté serveur) : mot pour mot les mêmes
+// mots-clés, jamais un seul divergent. « Onduleur hors réseau » contient le
+// sous-mot « reseau » : sans l'exclusion NOT hybride ci-dessous et la garde
+// symétrique dans `isReseauInverter`, cette désignation était classée
+// (à tort) comme onduleur RÉSEAU — la ligne partait au panier « sans »,
+// jamais composée, jamais reconnue en auto-remplissage.
+const OFFGRID_KEYWORDS = ['off-grid', 'off grid', 'offgrid', 'hors reseau', 'autonome']
+const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => n.includes(k))
+// Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue s'appellent
+// « Deye off-Grid 6kw », SANS le mot « onduleur » : le prédicat strict
+// ci-dessus (exigeant « onduleur ») les rendait invisibles (0 onduleur
+// off-grid détecté, auto-remplissage en échec permanent). Élargi SANS perdre
+// la précision : un nom off-grid qui ne dit pas « onduleur » n'est retenu que
+// s'il n'appartient à AUCUNE AUTRE FAMILLE de produit — sinon (« Batterie
+// off-grid », « Kit solaire off-grid », « Câble off-grid ») ce n'est
+// manifestement pas l'onduleur lui-même.
+const OTHER_FAMILY_KEYWORDS = [
+  'batterie', 'panneau', 'panneaux', 'module', 'pompe', 'variateur',
+  'structure', 'cable', 'coffret', 'disjoncteur', 'differentiel',
+  'parafoudre', 'compteur', 'smart meter', 'wifi', 'kit', 'chargeur',
+]
+export const isOffgridInverter = (d) => {
+  const n = _norm(d)
+  if (!_isOffgridDesignation(n) || n.includes('hybride')) return false
+  if (n.includes('onduleur')) return true
+  return !OTHER_FAMILY_KEYWORDS.some(k => n.includes(k))
+}
 export const isReseauInverter = (d) => {
   const n = _norm(d)
   return n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
+    && !_isOffgridDesignation(n)
 }
 // Q1 (fondateur 20/08/2026) — TOUT onduleur, hybride/réseau/non classé (ex.
 // micro-onduleur) : miroir exact de builder.py `_is_inverter` (« onduleur »
 // suffit). Sert à repérer la ligne dont le prix réel provisionne le
 // remplacement à l'année 12 — jamais un forfait sur l'investissement.
 export const isAnyInverter = (d) => _norm(d).includes('onduleur')
-export const isPanel = (d) => _norm(d).includes('panneau')
+
+// ── QJR92a (29/08/2026) — DÉTECTION PANNEAU ÉLARGIE CÔTÉ ÉCRAN ──────────────
+// Le seul mot « panneau » rejetait les désignations que les vendeurs écrivent
+// vraiment (« Module PV 550 W », « Canadian Solar TOPHiKu7 710 Wc ») : l'écran
+// comptait alors 0 panneau et REFUSAIT l'enregistrement d'un devis dont la
+// seule ligne panneau s'appelle ainsi, pendant que le PDF la classait
+// correctement. La table de référence est la fixture de contrat
+// `apps/ventes/contract_samples/classification_lignes.json` (QJR2), et le test
+// de parité QJR91 fait tourner ces prédicats sur chacun de ses cas.
+// Les marques ne suffisent JAMAIS seules : Canadian Solar, Huawei et consorts
+// vendent aussi des onduleurs — il faut un watt lisible en plus.
+const PANEL_MODULE_QUALIFIERS = ['pv', 'photovolta', 'solaire', 'solar']
+const PANEL_BRANDS = [
+  'canadian solar', 'canadien solar', 'jinko', 'longi', 'trina',
+  'ja solar', 'risen', 'sunpower', 'qcells', 'q cells', 'astronergy',
+  'znshine',
+]
+export const isPanel = (d, produitNom = '') => {
+  const blob = _norm(`${d ?? ''} ${produitNom ?? ''}`)
+  if (blob.includes('panneau')) return true
+  // Exclusions d'abord : un onduleur / une batterie / un accessoire n'est
+  // jamais un panneau, quelle que soit la marque écrite dessus.
+  if (blob.includes('onduleur') || blob.includes('batterie')
+      || blob.includes('smart meter') || blob.includes('wifi')
+      || blob.includes('dongle')) return false
+  if (blob.includes('module')
+      && PANEL_MODULE_QUALIFIERS.some(q => blob.includes(q))) return true
+  // Marque de panneau ET puissance lisible : sans watt, une marque seule reste
+  // ambiguë — on préfère l'omission à un faux positif.
+  return PANEL_BRANDS.some(b => blob.includes(b)) && WATT_RE.test(blob)
+}
 
 // F14 (26/08/2026) — panier « sans »/« avec » d'UNE ligne, MIROIR EXACT du
 // moteur PDF canonique (quote_engine/builder.py `_repartir_options`,
@@ -938,6 +1097,7 @@ export function appartientAuPanierSans(l) {
   if (v === 'avec') return false
   if (v === 'sans') return true
   return !isBattery(l?.designation) && !isHybridInverter(l?.designation)
+    && !isOffgridInverter(l?.designation)
 }
 export function appartientAuPanierAvec(l) {
   const v = l?.variante
@@ -1144,6 +1304,10 @@ export function classifyProduct(nom) {
   const n = _norm(nom)
   if (!n) return null
   if (n.includes('onduleur') && n.includes('hybride')) return 'onduleur_hybride'
+  // Hors réseau (site isolé) — AVANT le test réseau/injection ci-dessous :
+  // « onduleur hors réseau » contient le sous-mot « réseau », il faut donc le
+  // détourner vers cette famille avant que le test suivant ne le happe.
+  if (isOffgridInverter(n)) return 'onduleur_offgrid'
   // mêmes mots-clés que le moteur PDF : un onduleur sans « réseau/injection »
   // (ex. micro-onduleur) n'est pas classé et reste sélectionnable à la main
   if (n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))) {
@@ -1308,7 +1472,7 @@ function _memeLigne(a, b) {
 function _roleVariante(l) {
   if (!l) return null
   const d = l.designation
-  if (isBattery(d) || isHybridInverter(d)) return 'avec'
+  if (isBattery(d) || isHybridInverter(d) || isOffgridInverter(d)) return 'avec'
   if (isReseauInverter(d)) return 'sans'
   return ''
 }
@@ -1398,6 +1562,7 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
 export const PRODUCT_CATEGORIES = [
   ['onduleur_reseau', 'Onduleur Injection'],
   ['onduleur_hybride', 'Onduleur Hybride'],
+  ['onduleur_offgrid', 'Onduleurs hors réseau'],
   ['panneau', 'Panneaux'],
   ['batterie', 'Batterie'],
   ['structure_acier', 'Structures acier'],
@@ -1610,7 +1775,13 @@ export function defaultProductLines(produits, ordreLignes) {
 // enregistrées).
 // `mpptPaires` (PVCBL, 19/08) — nombre de paires de câble DC (voir
 // `metreCableDcParPaires`) ; absent = repli fondateur à 1 paire.
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires }) {
+// OFFGRID — composition hors réseau (site isolé), UNE SEULE option (panneaux
+// + onduleur hors réseau + batterie), jamais fusionnée avec réseau/hybride :
+// `offgrid: true` réutilise TOUT le pipeline de `autoFillLines` (structures,
+// câblage, accessoires, sélection batterie) en substituant seulement la
+// famille d'onduleur retenue — `offgrid` absent/faux reste BYTE-IDENTIQUE au
+// comportement historique (aucune branche ci-dessous ne s'active).
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires, offgrid }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
   // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
@@ -1673,8 +1844,37 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const inverterQty = (kw) =>
     (!kw || kw >= threshold) ? 1 : Math.max(1, Math.ceil(kwp / kw))
 
-  const reseau = pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
-  const hybride = pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
+  // OFFGRID — une composition hors réseau ne pose JAMAIS d'onduleur réseau ni
+  // hybride (troisième famille exclusive des deux autres) : ces deux picks
+  // restent `null` plutôt que de polluer `onduleursIncomplets` avec des
+  // onduleurs qu'on ne va de toute façon pas composer.
+  const reseau = offgrid ? null : pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
+  const hybride = offgrid ? null : pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
+  // OFFGRID — même sélection (plus petit modèle >= 80 % de la cible), MAIS
+  // jamais un produit SANS PRIX (règle fondateur « zéro chiffre inventé » —
+  // même patron que `_hasPrix`/`selectPompeByCurve` pour le pompage) : un
+  // onduleur hors réseau non tarifé au catalogue ne doit jamais se retrouver
+  // composé à 0 MAD sur un devis.
+  const offgridInv = offgrid
+    ? pickInverter(parMarque(
+        (byType.onduleur_offgrid ?? []).filter(p => (parseFloat(p.prix_vente) || 0) > 0),
+        'onduleur_offgrid'))
+    : null
+  if (offgrid && !offgridInv) {
+    const vide = []
+    // Incident fondateur 01/09 round 2 — le motif seul (« Aucun onduleur
+    // hors réseau… ») laissait le vendeur deviner POURQUOI un produit qu'il
+    // voit bien au catalogue (ex. « Deye off-Grid 6kw ») n'est pas trouvé :
+    // le plus souvent, ce produit n'a simplement AUCUN prix de vente renseigné
+    // (filtré ci-dessus AVANT ce message). Le rappel du contrat de nommage
+    // partagé avec le backend (OFFGRID_KEYWORDS) rend l'erreur actionnable.
+    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue. '
+      + 'Le NOM du produit doit contenir « off-grid », « off grid », '
+      + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
+      + 'avec un prix de vente.'
+    vide.onduleursIncomplets = onduleursIncomplets
+    return vide
+  }
 
   // Panneaux : wattage saisi (défaut 710 → Canadien Solar 710 du catalogue)
   // PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
@@ -1697,8 +1897,6 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // nommé « Deyness » (base non migrée, saisie manuelle) reste reconnu, sans
   // quoi le vivier retomberait sur TOUTES les batteries du catalogue.
   const target = Math.max(5, Math.round(kwp / 5) * 5)
-  let nb10 = Math.floor(target / 10)
-  let nb5 = (target % 10) >= 5 ? 1 : 0
   // PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le garde par mot-clé
   // PVG4 ; miroir EXACT de `_batterie_compatible` côté backend
   // apps/ventes/services.py). Une batterie n'entre au vivier que si sa TENSION
@@ -1708,7 +1906,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // manque : un catalogue non renseigné se comporte exactement comme hier.
   // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
   // batterie écartée reste sélectionnable à la main.
-  const plageBatterie = plageBatterieOnduleur(hybride?.p)
+  // OFFGRID — la batterie s'accroche à l'onduleur HORS RÉSEAU retenu ci-dessus
+  // (même règle électrique, même donnée `specs_solaire.plage_batterie_v`),
+  // jamais à l'hybride qui est `null` dans cette branche.
+  const plageBatterie = plageBatterieOnduleur(offgrid ? offgridInv?.p : hybride?.p)
   // PVMRQ — la compatibilité ÉLECTRIQUE (plage de tension) reste calculée sur
   // le vivier COMPLET (elle alimente aussi `avertissementsBatterie` ci-dessous,
   // un motif distinct de « marque introuvable ») ; la marque épinglée ne
@@ -1736,12 +1937,74 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
       + `la composition part SANS batterie. Ajoutez une batterie compatible `
       + `au catalogue, ou changez d'onduleur.`)
   }
+  // BATHOMO (fondateur 26/08/2026, F4 — revue adversariale) — MIROIR EXACT de
+  // `composition_residentielle` (apps/ventes/services.py) : l'ancien calcul
+  // (`nb10 = floor(cible/10)` + `nb5 = 1` si le reste ≥ 5) composait une
+  // banque MÉLANGÉE 5+10 kWh en parallèle — électriquement interdit, le MÊME
+  // incident qui a fait retirer le Dyness 10 kWh du stock de production côté
+  // serveur. Cet écran étant l'« Auto-remplir » de secours au premier échec
+  // du dry-run serveur (jamais un devis existant qu'on re-dénomme — pas de
+  // pin ici, seulement une NOUVELLE sélection), la RÈGLE ÉCONOMIQUE
+  // s'applique directement, comme le repli économique serveur :
+  //   1. EN STOCK SEULEMENT (`quantite_stock` — un module à 0 en stock n'est
+  //      composable ni serveur ni écran) ;
+  //   2. UNE candidate homogène par calibre : le plus petit N de modules
+  //      IDENTIQUES qui ATTEINT OU DÉPASSE la cible (jamais un manque) ;
+  //   3. plafonnée par `specs_solaire.max_modules_par_banc` (le plafond
+  //      fondateur — REJETÉE si dépassée, jamais tronquée) ;
+  //   4. le prix TTC TOTAL le plus bas gagne, égalité tranchée par le moins
+  //      de modules — jamais une préférence de calibre fixe.
+  const enStock = (p) => (Number(p?.quantite_stock) || 0) > 0
+  const batPoolStock = batPool.filter(x => enStock(x.p))
+  const bat5Stock = batPoolStock.find(x => x.cap === 5)
+  const bat10Stock = batPoolStock.find(x => x.cap === 10)
+  const candidatBatterie = (cap, entry) => {
+    if (!entry) return null
+    const n = Math.max(1, Math.ceil(target / cap - 1e-9))
+    const plafond = Number(entry.p?.specs_solaire?.max_modules_par_banc)
+    if (Number.isFinite(plafond) && plafond > 0 && n > plafond) return null
+    const puTtc = ttcFromHt(entry.p.prix_vente, tauxTvaOf(entry.p))
+    return { cap, n, prixTtc: puTtc * n, entry }
+  }
+  const candidatsBatterie = [
+    candidatBatterie(5, bat5Stock),
+    candidatBatterie(10, bat10Stock),
+  ].filter(Boolean)
+  candidatsBatterie.sort((a, b) => (a.prixTtc - b.prixTtc) || (a.n - b.n))
+  const batterieRetenue = candidatsBatterie[0] ?? null
+  // OFFGRID — « un système hors réseau porte toujours sa batterie » (ordre
+  // fondateur) : sans candidate retenue — OU une candidate à prix TOTAL nul
+  // (aucune batterie du calibre gagnant n'est réellement tarifée : `prixTtc`
+  // vaut 0 puisqu'il dérive du prix unitaire) — on N'INVENTE PAS un kit sans
+  // stockage réel (contrairement au repli hybride ci-dessus, qui compose
+  // quand même avec un avertissement) : on arrête, motif FRANÇAIS clair,
+  // jamais un repli silencieux sur un onduleur hybride ni une ligne à 0 MAD.
+  if (offgrid && !(batterieRetenue?.prixTtc > 0)) {
+    const vide = []
+    vide.offgridErreur = 'Aucune batterie compatible tarifée au catalogue pour cet onduleur hors réseau.'
+    vide.onduleursIncomplets = onduleursIncomplets
+    vide.avertissementsBatterie = avertissementsBatterie
+    return vide
+  }
+  const nb5 = batterieRetenue?.cap === 5 ? batterieRetenue.n : 0
+  const nb10 = batterieRetenue?.cap === 10 ? batterieRetenue.n : 0
+  // `bat5`/`bat10` restent les produits du vivier COMPATIBLE (comme avant ce
+  // correctif) — jamais restreints au seul calibre RETENU : la ligne du
+  // calibre perdant reste une VRAIE ligne produit à quantité 0 (le tableau
+  // éditable de l'écran doit pouvoir la faire remonter à la main), jamais un
+  // placeholder générique.
   const bat5 = batPool.find(x => x.cap === 5)
   const bat10 = batPool.find(x => x.cap === 10)
-  if (!bat10 && bat5 && nb10 > 0) {
-    // pas de module 10 kWh au catalogue → tout en modules 5 kWh
-    nb5 = Math.max(1, Math.round(target / 5))
-    nb10 = 0
+  // F3/F5 — un vivier compatible NON VIDE qui n'aboutit quand même à AUCUNE
+  // candidate (rupture de stock des deux calibres, ou plafond qui rejette la
+  // seule candidate possible) reste HONNÊTE : même canal d'avertissement,
+  // jamais un hybride sans batterie composé en silence.
+  if (batPool.length && !batterieRetenue) {
+    avertissementsBatterie.push(
+      `Batterie(s) compatibles indisponibles pour la cible visée (rupture `
+      + `de stock, ou plafond de modules par banc dépassé) : la composition `
+      + `part SANS batterie. Réapprovisionnez, augmentez le plafond, ou `
+      + `choisissez un autre module.`)
   }
 
   // Structures : type choisi par radio, 1 par panneau (prix catalogue).
@@ -1779,7 +2042,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // manquer.
   const isHuawei = (p) => !!p && (
     _norm(p.marque).includes('huawei') || _norm(p.nom).includes('huawei'))
-  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p)
+  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p) || isHuawei(offgridInv?.p)
   const smQty = huaweiRetenu ? 1 : 0
   const wifiQty = huaweiRetenu ? 1 : 0
 
@@ -1823,9 +2086,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // `orderLinesByRolePreference` réordonne selon `ordreLignes`
   // (`ParametresGammes.ordre_lignes`) si fourni, sinon renvoie EXACTEMENT
   // cet ordre canonique — comportement historique inchangé.
+  // OFFGRID — UNE seule ligne onduleur (famille hors réseau), jamais réseau
+  // ni hybride sur cette composition (mirroir : task 2, « compose ONE option »).
+  const inverterRows = offgrid
+    ? [['onduleur_offgrid', row(offgridInv?.p ?? null, 'Onduleur hors réseau',
+        offgridInv ? Math.max(1, inverterQty(offgridInv.kw)) : 1)]]
+    : [
+        ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
+        ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+      ]
   const lignesTaguees = [
-    ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
-    ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+    ...inverterRows,
     ['smart_meter', row(first('smart_meter'), 'Smart Meter', smQty)],
     ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', wifiQty)],
     ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
@@ -2496,6 +2767,11 @@ export function selectPompeByCurve(produits, { hmt, debit, typePompe, alim }) {
 
 // Variateur VEICHI : le plus petit dont kW ≥ kW pompe, tension assortie
 // (mono 220 V / tri 380 V). L'afficheur (sans kW) n'est jamais candidat.
+// QJR130(a) — repli JAMAIS silencieux : si des VEICHI compatibles existent
+// mais qu'AUCUN n'atteint la puissance requise, on ne sélectionne RIEN
+// (`insuffisant: true`) au lieu du plus gros disponible sous-dimensionné —
+// le commentaire ci-dessus promet « le plus petit dont kW ≥ kW pompe », pas
+// « le plus gros qu'on a sous la main ».
 export function selectVariateurVeichi(produits, kw, alim) {
   const want = alim === 'mono' ? 220 : 380
   const volts = (p) => {
@@ -2510,7 +2786,8 @@ export function selectVariateurVeichi(produits, kw, alim) {
       && x.kw > 0 && x.v === want && _hasPrix(x.p))
     .sort((a, b) => a.kw - b.kw
       || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
-  return cands.find(x => x.kw >= kw)?.p ?? cands[cands.length - 1]?.p ?? null
+  const fit = cands.find(x => x.kw >= kw)
+  return { vfd: fit?.p ?? null, insuffisant: !fit && cands.length > 0 }
 }
 
 export function findAfficheurVariateur(produits) {
@@ -2592,7 +2869,13 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
   const wantTri = alim === 'tri'
   const wantSurface = typePompe === 'surface'
 
+  // QJR130(c) — repli JAMAIS silencieux : si des pompes du bon type existent
+  // mais qu'AUCUNE n'atteint le CV demandé, on ne sélectionne RIEN
+  // (`pumpInsuffisant`) au lieu de la plus grande disponible — qui pouvait
+  // être PLUS PETITE que le CV saisi (le champ PV affiché à l'écran restait
+  // alors calculé sur un CV que la pompe facturée ne délivrait pas).
   let pump = null
+  let pumpInsuffisant = false
   if (sel.pump) {
     pump = { p: sel.pump }
   } else if (!sel.sansPrix.length) {
@@ -2602,24 +2885,32 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
       .filter(x => _isPompe(x.n) && !_isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
       .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
       .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
-    pump = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
+    const fit = pumps.find(x => x.cv === cvNum && x.tri === wantTri)
       ?? pumps.find(x => x.cv === cvNum)
       ?? pumps.find(x => x.cv >= cvNum)
-      ?? pumps[pumps.length - 1] ?? null
+      ?? null
+    pump = fit ? { p: fit.p } : null
+    if (!pump && pumps.length > 0) pumpInsuffisant = true
   }
   // sel.sansPrix non vide → seules des pompes sans prix conviennent :
   // on n'en chiffre AUCUNE (l'écran l'explique), le reste du système est rempli.
 
-  // Variateur : VEICHI par kW + tension d'abord, anciens coffrets par CV sinon
-  let vfdP = selectVariateurVeichi(produits, sel.kw, alim)
+  // Variateur : VEICHI par kW + tension d'abord, anciens coffrets par CV sinon.
+  // QJR130(a)(b) — même garde sur les deux chemins : jamais le plus gros
+  // disponible sous-dimensionné, `vfdInsuffisant` porte l'avertissement.
+  const vfdSel = selectVariateurVeichi(produits, sel.kw, alim)
+  let vfdP = vfdSel.vfd
+  let vfdInsuffisant = vfdSel.insuffisant
   if (!vfdP) {
     const vfds = produits
       .map(p => ({ p, n: _norm(p.nom), cv: parseFloat(p.pompe_cv) || null, tri: parsePhaseIsTri(p.nom) }))
       .filter(x => _isVfdPompage(x.n) && x.cv != null && _hasPrix(x.p))
       .sort((a, b) => a.cv - b.cv || a.p.id - b.p.id)
+    if (vfds.length > 0) vfdInsuffisant = true
     vfdP = (vfds.find(x => x.cv >= cvNum && x.tri === wantTri)
       ?? vfds.find(x => x.cv >= cvNum)
-      ?? vfds[vfds.length - 1] ?? null)?.p ?? null
+      ?? null)?.p ?? null
+    if (vfdP) vfdInsuffisant = false
   }
   const afficheur = vfdP && /veichi/i.test(vfdP.nom) ? findAfficheurVariateur(produits) : null
 
@@ -2643,16 +2934,23 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
     if (!byType[t]) byType[t] = []
     byType[t].push(p)
   }
+  // QJR131 — `_hasPrix` couvre désormais AUSSI panneaux/structures/socles/
+  // câble/installation/transport (avant : réservé pompe/variateur/afficheur).
+  // Un candidat sans prix n'est plus jamais choisi — repli sur un
+  // `placeholder()` (aucun `produit`, jamais enregistré) plutôt qu'une ligne
+  // avec un VRAI id produit et `prix_unit_ttc: 0` (article gratuit).
   const panels = (byType.panneau ?? [])
     .map(p => ({ p, w: parseWatt(p.nom) }))
-    .filter(x => x.w === 710)
-  const panel = panels[0]?.p ?? (byType.panneau ?? [])[0] ?? null
+    .filter(x => x.w === 710 && _hasPrix(x.p))
+  const panel = panels[0]?.p
+    ?? (byType.panneau ?? []).find(_hasPrix)
+    ?? null
 
-  const structures = byType.structure ?? []
+  const structures = (byType.structure ?? []).filter(_hasPrix)
   const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
   const struct = structures.find(p => _norm(p.nom).includes(wanted)) ?? structures[0] ?? null
 
-  const cable = produits.find(p => _isCableMetre(_norm(p.nom))) ?? null
+  const cable = produits.find(p => _isCableMetre(_norm(p.nom)) && _hasPrix(p)) ?? null
   const distM = parseFloat(distance) || 0
 
   const line = (p, designation, quantite) => ({
@@ -2664,17 +2962,60 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
   })
 
   const rows = []
-  if (pump?.p) rows.push(line(pump.p, 'Pompe solaire', 1))
-  if (vfdP) rows.push(line(vfdP, 'Variateur solaire', 1))
+  if (pump?.p) {
+    rows.push(line(pump.p, 'Pompe solaire', 1))
+  } else if (pumpInsuffisant) {
+    // QJR130(c) — avertissement VISIBLE : ligne sans produit (jamais
+    // enregistrée, même patron que les placeholders du reste du fichier)
+    // plutôt qu'un repli muet sur une pompe plus petite que le CV saisi.
+    rows.push(line(null,
+      `Pompe solaire — AUCUNE pompe assez puissante pour ${cvNum} CV en stock `
+      + '(sélectionnez-en une manuellement)', 1))
+  }
+  if (vfdP) {
+    rows.push(line(vfdP, 'Variateur solaire', 1))
+  } else if (vfdInsuffisant) {
+    rows.push(line(null,
+      `Variateur solaire — AUCUN variateur assez puissant pour ${sel.kw} kW `
+      + 'en stock (sélectionnez-en un manuellement)', 1))
+  }
   if (afficheur) rows.push(line(afficheur, 'Afficheur variateur', 1))
   rows.push(
     line(panel, 'Panneaux', dims.nbPanneaux),
     line(struct, 'Structures', dims.nbPanneaux),
   )
-  if ((byType.socle ?? []).length) rows.push(line(byType.socle[0], 'Socles', dims.nbPanneaux * 2))
-  if (cable && distM > 0) rows.push(line(cable, 'Câble solaire (m)', distM))
-  if ((byType.installation ?? []).length) rows.push(line(byType.installation[0], 'Installation', 1))
-  if ((byType.transport ?? []).length) rows.push(line(byType.transport[0], 'Transport', 1))
+  // QJR131 — un rôle présent au catalogue mais SANS aucun candidat pricé
+  // retombe sur `placeholder()` (jamais la ligne réelle du premier candidat,
+  // pricé ou non, comme avant ce correctif).
+  const socles = byType.socle ?? []
+  if (socles.length) {
+    const socle = socles.find(_hasPrix) ?? null
+    rows.push(socle
+      ? line(socle, 'Socles', dims.nbPanneaux * 2)
+      : placeholder('Socles', dims.nbPanneaux * 2))
+  }
+  if (distM > 0) {
+    const cableCands = produits.filter(p => _isCableMetre(_norm(p.nom)))
+    if (cableCands.length) {
+      rows.push(cable
+        ? line(cable, 'Câble solaire (m)', distM)
+        : placeholder('Câble solaire (m)', distM))
+    }
+  }
+  const installations = byType.installation ?? []
+  if (installations.length) {
+    const installation = installations.find(_hasPrix) ?? null
+    rows.push(installation
+      ? line(installation, 'Installation', 1)
+      : placeholder('Installation', 1))
+  }
+  const transports = byType.transport ?? []
+  if (transports.length) {
+    const transport = transports.find(_hasPrix) ?? null
+    rows.push(transport
+      ? line(transport, 'Transport', 1)
+      : placeholder('Transport', 1))
+  }
   return rows
 }
 

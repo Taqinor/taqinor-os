@@ -23,7 +23,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
-import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../../lib/proposition';
+import { CO2_KG_PER_KWH } from '../../lib/proposition';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -49,8 +49,10 @@ const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
 const co2TonnesTotal = Math.round((co2KgTotal / 1000) * 10) / 10;
 const co2TonnesLabel = co2TonnesTotal.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-const treesEquivalent = Math.round(co2KgTotal / CO2_KG_PER_TREE_YEAR);
-const treesLabel = treesEquivalent.toLocaleString('en-US');
+// « CHECKED FACTS » RULE (founder, 2026-08-26) — the "trees" equivalence is
+// REMOVED from all client rendering: the 22 kg of CO2 absorbed per tree per year
+// was an order of magnitude with no source. Only the measured tonnage remains,
+// and it now says that its emission factor is still awaiting its reference.
 
 const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
 const batteryKwhTotal = battersInstalls.reduce((sum, r) => {
@@ -106,8 +108,8 @@ const jsonLd = {
             commissioning, in {villesUniques.join(', ')}.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="t CO2" label="CO2 avoided (cumulative)">
-            Calculated at {CO2_KG_PER_KWH} kg CO2/kWh, the Moroccan grid emission factor already
-            used in our quoted studies.
+            Calculated at {CO2_KG_PER_KWH} kg CO2/kWh, the Moroccan grid emission factor
+            used in our quoted studies — source to be specified.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Cumulative storage">
             Battery capacity installed across {battersInstalls.length} of the projects.
@@ -117,10 +119,11 @@ const jsonLd = {
           <p>
             CO2 avoided = cumulative measured production × {CO2_KG_PER_KWH} kg/kWh (the average
             emission factor of the Moroccan electricity grid, a heavily carbon-based mix — the same
-            constant shown on every Taqinor quoted study). Tree equivalent: a mature tree absorbs
-            roughly {' '}{CO2_KG_PER_TREE_YEAR} kg of CO2 a year, so this works out to roughly{' '}
-            <strong>{treesLabel} trees</strong> over a year. No figure here is rounded up,
-            extrapolated, or estimated beyond the production actually measured.
+            constant shown on every Taqinor quoted study). <strong>Source to be specified</strong>:
+            we will publish the dated reference for this factor as soon as we have settled on it.
+            No figure here is rounded up, extrapolated, or estimated beyond the production actually
+            measured, and we do not convert this CO2 into any equivalent (trees, journeys) that we
+            could not source.
           </p>
         </Callout>
       </div>

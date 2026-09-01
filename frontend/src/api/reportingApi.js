@@ -165,6 +165,13 @@ const reportingApi = {
     api.delete(`/reporting/rapport-definitions/${id}/`),
   executerRapportDefinition: (id) =>
     api.post(`/reporting/rapport-definitions/${id}/executer/`),
+  // WIR253/NTEXT11 — export fichier (csv|xlsx) de la définition rejouée.
+  // xlsx peut renvoyer 503 si openpyxl est indisponible sur le serveur —
+  // l'appelant lit le detail via un blob d'erreur (`messageErreurBlob`).
+  exportRapportDefinition: (id, format) =>
+    api.get(`/reporting/rapport-definitions/${id}/export/`, {
+      params: { format }, responseType: 'blob',
+    }),
 
   // WIR22 — contrôle d'intégrité inter-documents (YSERV13) : anomalies
   // détectées AUJOURD'HUI, sans attendre la notification Beat hebdomadaire

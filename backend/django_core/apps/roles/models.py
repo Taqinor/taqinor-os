@@ -192,6 +192,71 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
+    # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
+    # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE
+    # écriture — même totalement hors RH (``crm_creer`` suffisait). Un
+    # Commercial obtenait donc le CRUD complet des dossiers employés, des
+    # sanctions et des visites médicales. Deux codes DISJOINTS :
+    #   * ``rh_voir``  — lecture du module RH (GET/HEAD/OPTIONS) ;
+    #   * ``rh_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions custom).
+    # Distribution (même logique que ``paie_voir``/``paie_gerer``, XPAI7) :
+    # les deux codes vont aux rôles qui avaient DÉJÀ un mandat RH — Directeur
+    # et Administrateur (héritage d'ALL_PERMISSIONS), l'administration
+    # DÉLÉGUÉE « Admin RH » (NTADM20) dont c'est le domaine, et le
+    # « Responsable » (accès historique complet, cf. RESPONSABLE_PERMISSIONS).
+    # Ils ne sont mappés sur AUCUN rôle Commercial/Technicien/Viewer : ceux-là
+    # n'obtenaient l'accès RH que par EFFET DE BORD d'une écriture ailleurs
+    # (``crm_creer`` suffisait à satisfaire ``IsResponsableOrAdmin``) — c'est
+    # exactement le trou que WIR172 ferme. Les comptes HÉRITÉS sans rôle fin
+    # gardent leur accès historique (repli ``_user_has_or_legacy``).
+    # La rémunération (``salaires_voir``) et les bulletins restent gardés par
+    # leurs propres codes — inchangés.
+    'rh_voir',
+    'rh_gerer',
+    # ── WIR173 — FP&A (apps/fpa). Les 4 codes existaient DÉJÀ côté
+    # ``apps/fpa/permissions.py`` (NTFPA26) mais n'étaient enregistrés NULLE
+    # PART : ils n'étaient donc pas assignables depuis l'UI de gestion des
+    # rôles, et les 14 viewsets FP&A (cycles, export XLSX, scénarios,
+    # projection de masse salariale) n'avaient AUCUNE garde — tout utilisateur
+    # authentifié de la société les lisait ET les écrivait.
+    #   * ``fpa_saisir``         — saisir le budget de SON département ;
+    #   * ``fpa_valider``        — valider/rejeter un budget soumis ;
+    #   * ``fpa_consulter_tout`` — voir TOUS les départements (lecture élargie,
+    #     n'écrit jamais) ;
+    #   * ``fpa_administrer``    — administration complète FP&A : SEULE
+    #     permission acceptée sur les actions de gouvernance d'un cycle
+    #     (ouvrir-saisie / clore / dupliquer / export).
+    # Comme ``ao_*`` (AOF2) et ``rh_*`` (WIR172), aucun de ces codes n'est mappé
+    # sur un rôle Responsable/Commercial/Technicien/Utilisateur/Viewer : la
+    # planification budgétaire reste à la direction (Directeur/Administrateur
+    # par héritage d'ALL_PERMISSIONS). Les comptes HÉRITÉS sans rôle fin gardent
+    # leur accès historique (repli légacy de ``FpaScopedPermission``).
+    'fpa_saisir',
+    'fpa_valider',
+    'fpa_consulter_tout',
+    'fpa_administrer',
+    # ── WIR174 — GED (apps/ged). Le caviardage définitif, la rétention légale
+    # (legal hold) et les politiques de rétention n'étaient gardés que par
+    # ``IsResponsableOrAdmin`` — c'est-à-dire par tout porteur d'UNE écriture,
+    # même totalement hors GED. Trois codes, deux paliers :
+    #   * ``ged_voir``  — lecture du module (déclaratif : la LECTURE GED reste
+    #     ouverte à tout rôle interne via ``IsAnyRole``, contrat GED37 que
+    #     WIR174 ne referme PAS ; ce code sert le gating d'écran/nav et un
+    #     éventuel resserrement futur, il n'ouvre rien de plus) ;
+    #   * ``ged_gerer`` — écriture documentaire courante (créer/éditer/
+    #     supprimer un document, opérations de lot…). Mappé LARGEMENT, sur tous
+    #     les rôles qui écrivaient déjà : la GED est un outil transverse, aucun
+    #     accès n'est retiré.
+    #   * ``ged_gouvernance`` — les trois pouvoirs de GOUVERNANCE documentaire :
+    #     poser/lever un legal hold, caviarder définitivement, écrire une
+    #     politique de rétention. DIRECTION SEULE : mappé sur AUCUN rôle
+    #     ci-dessous (seuls Directeur/Administrateur le portent, par héritage
+    #     d'ALL_PERMISSIONS) et ÉLEVÉ (cf. ELEVATED_PERMISSIONS) — un
+    #     Responsable ne peut donc pas se l'octroyer.
+    'ged_voir',
+    'ged_gerer',
+    'ged_gouvernance',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -283,6 +348,43 @@ ALL_PERMISSIONS = [
     'scm_sop_voir',
     'scm_sop_animer',
     'scm_fournisseurs_classement_voir',
+    # ── WIR169 — codes DÉCLARÉS par des viewsets mais ABSENTS du catalogue.
+    # Bug de câblage, pas de politique : ces six codes sont posés en
+    # ``read_permission``/``write_permission`` sur de vrais viewsets, mais
+    # n'ont jamais été enregistrés ici. Conséquence mécanique : les presets
+    # ``DIRECTEUR_PERMISSIONS``/``ADMIN_PERMISSIONS`` (dérivés d'ALL_PERMISSIONS)
+    # ne les contenaient pas, ``has_erp_permission`` renvoyait False pour TOUT
+    # compte portant un rôle fin — Directeur inclus — et les modules
+    # répondaient 403 à tout le monde (seuls les comptes HÉRITÉS sans rôle fin
+    # passaient, par le repli ``core.permissions._user_has_or_legacy``). Les
+    # enregistrer ne RETIRE rien et n'ouvre rien de neuf : cela rend enfin
+    # atteignable ce que les viewsets annoncent déjà. Un test générique
+    # (``apps/roles/tests_wir169_catalogue_declare.py``) interdit la récidive.
+    #   * ``btp_voir``/``btp_gerer`` — vertical BTP/EPC (apps/btp_chantier,
+    #     Groupe NTCON) : réserves, RFI, visas, journal, avenants, DGD,
+    #     diffusion de plans. Distribution calquée sur le tiering DÉJÀ déclaré
+    #     par ``frontend/src/features/btp_chantier/module.config.jsx`` (réserves
+    #     + journal au palier « normal », le reste au palier responsable) :
+    #     lecture au Technicien et au Technicien responsable, écriture au
+    #     Technicien responsable et au Responsable — c'est du travail de
+    #     chantier, jamais un droit commercial.
+    #   * ``assurances_voir``/``assurances_gerer`` — registre des assurances et
+    #     sinistres d'entreprise (apps/assurances, NTASS29). Donnée de
+    #     GOUVERNANCE (polices, primes, sinistres, attestations) : direction
+    #     (héritage d'ALL_PERMISSIONS) + le rôle légacy « Responsable », rien
+    #     de plus — aucun rôle Commercial/Technicien/Viewer ne la porte.
+    #   * ``douane_responsable`` (apps/douane) et ``transport_responsable``
+    #     (apps/transport) — réglages engageants de leur module, dont la
+    #     docstring dit explicitement « réservé à un porteur de rôle
+    #     responsable » : mappés sur le seul rôle « Responsable » (+ direction
+    #     par héritage). Ils ne se terminent pas par ``_voir`` : ce sont bien
+    #     des codes d'ÉCRITURE au sens de ``CustomUser._role_grants_write``.
+    'btp_voir',
+    'btp_gerer',
+    'assurances_voir',
+    'assurances_gerer',
+    'douane_responsable',
+    'transport_responsable',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -314,6 +416,10 @@ ELEVATED_PERMISSIONS = frozenset({
     'ao_rentabilite_voir',
     # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
     'cpq_marge_voir',
+    # WIR174 — gouvernance documentaire (legal hold, caviardage définitif,
+    # politiques de rétention) : « direction seule » n'est tenable que si un
+    # non-administrateur ne peut pas s'octroyer le code lui-même.
+    'ged_gouvernance',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -363,6 +469,19 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR172 — comportement historique préservé, MÊME logique que
+    # ``paie_voir``/``paie_gerer`` ci-dessus (XPAI7) : le Responsable avait
+    # l'accès complet au module RH via le grossier ``IsResponsableOrAdmin``.
+    # Couper les dossiers employés tout en lui laissant la PAIE (donnée plus
+    # sensible encore) serait incohérent. Le resserrement visé par WIR172
+    # porte sur Commercial/Technicien/Viewer — des rôles qui n'ont jamais eu
+    # de mandat RH et n'obtenaient l'accès que par effet de bord d'une
+    # écriture ailleurs (``crm_creer`` suffisait).
+    'rh_voir', 'rh_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique via l'ancien IsResponsableOrAdmin). PAS ged_gouvernance
+    # (legal hold / caviardage / rétention) — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
@@ -379,6 +498,13 @@ RESPONSABLE_PERMISSIONS = [
     'scm_previsions_voir', 'scm_previsions_editer',
     'scm_politiques_stock_editer', 'scm_sop_voir',
     'scm_fournisseurs_classement_voir',
+    # WIR169 — le rôle légacy « Responsable » est le porteur historique de tout
+    # module gardé « responsable ou admin » : il reçoit les quatre codes
+    # BTP/assurances et les deux réglages douane/transport, dont les viewsets
+    # annoncent explicitement ce palier.
+    'btp_voir', 'btp_gerer',
+    'assurances_voir', 'assurances_gerer',
+    'douane_responsable', 'transport_responsable',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -442,6 +568,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
@@ -474,6 +603,9 @@ COMMERCIAL_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
@@ -502,11 +634,18 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
     # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
     'adsengine_flightplan_manage',
+    # WIR169 — vertical BTP/EPC : le chantier est son métier. Lecture ET
+    # écriture (palier « responsable » du module.config BTP). Les assurances
+    # restent hors de sa portée (gouvernance).
+    'btp_voir', 'btp_gerer',
     SCOPE_SUBTREE,
 ]
 
@@ -525,8 +664,15 @@ TECHNICIEN_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
+    # WIR169 — vertical BTP/EPC en LECTURE : le module.config BTP expose déjà
+    # les réserves et le journal de chantier au palier « normal ». Jamais
+    # ``btp_gerer`` pour ce rôle (RFI/visas/avenants/DGD restent responsable+).
+    'btp_voir',
     SCOPE_TEAM,
 ]
 
@@ -544,6 +690,8 @@ VIEWER_PERMISSIONS = [
     'contrat_voir',
     'litige_voir',
     'kb_voir',
+    # WIR174 — GED en lecture seule (jamais _gerer pour ce rôle).
+    'ged_voir',
     # ENG — accès en lecture seule (pas de gestion ni approbation).
     'adsengine_view',
     SCOPE_TEAM,
@@ -574,10 +722,23 @@ ADMIN_RH_PERMISSIONS = [
     'users_voir', 'users_gerer',
     'paie_voir', 'paie_gerer',
     'salaires_voir',
+    # WIR172 — le domaine RH lui-même (dossiers employés, sanctions, visites
+    # médicales…) : sans ces deux codes l'Admin RH perdrait l'accès qu'il a
+    # aujourd'hui via l'ancien gate grossier ``IsResponsableOrAdmin``.
+    'rh_voir', 'rh_gerer',
     'reporting_voir',
     'kb_voir',
     'projet_voir',
     'qhse_voir',
+    # WIR174 — écriture documentaire COURANTE préservée : l'Admin RH portait
+    # déjà ``users_gerer``/``paie_gerer``, donc ``is_responsable`` — il passait
+    # l'ancien ``IsResponsableOrAdmin`` de la GED et écrivait les documents
+    # (contrats, attestations, pièces du dossier employé). Sans ces deux codes,
+    # WIR174 lui RETIRAIT cet accès, ce que son propre invariant interdit.
+    # PAS ``ged_gouvernance`` (legal hold / caviardage / rétention) : direction
+    # seule, et ce code est ÉLEVÉ — un admin délégué ne peut ni le porter ni
+    # l'octroyer.
+    'ged_voir', 'ged_gerer',
 ]
 
 # Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
@@ -593,6 +754,11 @@ ADMIN_VENTES_PERMISSIONS = [
     'users_voir',
     'reporting_voir', 'reporting_export',
     'kb_voir',
+    # WIR174 — même raison que l'Admin RH ci-dessus : ``crm_creer``/
+    # ``ventes_creer``… le rendaient ``is_responsable``, donc il ÉCRIVAIT déjà
+    # dans la GED (devis signés, pièces client). Accès courant préservé, sans
+    # ``ged_gouvernance``.
+    'ged_voir', 'ged_gerer',
 ]
 
 ROLE_ADMIN_RH = 'Admin RH'

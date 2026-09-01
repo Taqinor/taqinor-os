@@ -9,6 +9,7 @@ import { formatNumber } from '../../lib/format'
 import CrmInsightsPanel from './leads/CrmInsightsPanel'
 import DormantAccountsWidget from './DormantAccountsWidget'
 import PortfolioWidget from './dashboard/PortfolioWidget'
+import RelancesDuJourWidget from './RelancesDuJourWidget'
 import TerritoryCoverageWidget from './TerritoryCoverageWidget'
 
 /* ============================================================================
@@ -93,6 +94,7 @@ export default function CrmCockpit() {
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <RelancesDuJourWidget />
         <DormantAccountsWidget />
         <PortfolioWidget />
         <TerritoryCoverageWidget />

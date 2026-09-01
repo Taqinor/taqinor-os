@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { Database, DatabaseZap } from 'lucide-react'
+import { Database, DatabaseZap, ShieldCheck } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -16,6 +16,7 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
 const MigrationProjetsList = lazy(() => import('./MigrationProjetsList'))
 const MigrationWizard = lazy(() => import('./MigrationWizard'))
+const PartenairesCertifiesPage = lazy(() => import('./PartenairesCertifiesPage'))
 
 const config = {
   key: 'migration',
@@ -35,6 +36,15 @@ const config = {
         icon: <Database size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['admin'],
       },
+      {
+        // NTMIG29 — annuaire interne des partenaires certifiés. Sous
+        // /admin/* (pas /migration/*) : c'est l'espace « Administration »
+        // que ce fondateur consulte, distinct du portail partenaire (NTPRT).
+        to: '/admin/partenaires-certifies',
+        label: 'Partenaires certifiés',
+        icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['admin'],
+      },
     ],
   },
   titles: [
@@ -42,6 +52,7 @@ const config = {
     // titre de la liste.
     ['/migration/projet', 'Assistant de migration'],
     ['/migration', 'Migration ERP'],
+    ['/admin/partenaires-certifies', 'Partenaires certifiés'],
   ],
   sectionLabels: { migration: 'Migration' },
   routes: [
@@ -49,6 +60,11 @@ const config = {
     {
       path: '/migration/projet/:id',
       component: MigrationWizard,
+      roles: ['admin'],
+    },
+    {
+      path: '/admin/partenaires-certifies',
+      component: PartenairesCertifiesPage,
       roles: ['admin'],
     },
   ],

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -68,6 +68,10 @@ vi.mock('../../../api/gedApi', () => ({
     deleteTamponSociete: vi.fn(() => Promise.resolve({ data: {} })),
     getVersions: vi.fn(() => Promise.resolve({ data: [{ id: 55, version: 1 }] })),
     createAnnotation: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    // XGED16/WIR249 — export du PDF annoté (blob), après apposition réussie.
+    exportPdfAnnote: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF'], { type: 'application/pdf' }), headers: {},
+    })),
   },
 }))
 
@@ -209,5 +213,32 @@ describe('WIR164 ChecklistPage', () => {
       })
       expect(toast.success).toHaveBeenCalledWith('Tampon apposé.')
     })
+  })
+
+  // XGED16/WIR249 — le bouton d'export du PDF annoté n'apparaît qu'APRÈS une
+  // apposition réussie (le dialogue reste ouvert pour l'exporter).
+  it('WIR249 — exporte le PDF annoté après avoir apposé un tampon', async () => {
+    gedApi.getDocumentsList.mockResolvedValueOnce({
+      data: [{ id: 4, nom: 'Bail.pdf' }],
+    })
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Apposer un tampon/i })[0])
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click((await screen.findAllByText('Bail.pdf'))[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
+    await userEvent.click((await screen.findAllByText('Payé'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Tampon apposé.'))
+
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: /Télécharger le PDF annoté/i }))
+
+    await waitFor(() => expect(gedApi.exportPdfAnnote).toHaveBeenCalledWith(55))
+
+    // Ferme le dialogue via « Terminé » (plus « Apposer »/« Annuler »).
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Terminé' }))
   })
 })

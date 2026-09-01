@@ -680,6 +680,18 @@ def conception_3d_du_lead(lead):
 # DC12 — profil site/énergie réutilisable par client ─────────────────────────
 
 # Champs du profil que le générateur peut pré-remplir (source unique).
+#
+# QJR107 / DÉCISION FONDATEUR D7 (29/08/2026) — `orientation`,
+# `inclinaison_deg` et `ombrage` (+ `ombrage_notes`) NE SONT PAS DU CODE MORT.
+# Une passe de nettoyage les prend facilement pour tels : AUCUN calcul du
+# moteur ne les lit — ni le dimensionnement, ni l'étude horaire, ni le PDF.
+# C'est VOULU et c'est TRANCHÉ : ils sont CRM-SEULEMENT (score du lead +
+# complétude du questionnaire d'appel), et ils ne seront JAMAIS branchés au
+# calcul tant que le fondateur n'aura pas fourni les COEFFICIENTS réels
+# (perte par orientation, par inclinaison, par ombrage). Les brancher sans
+# ces coefficients reviendrait à inventer un facteur de perte — c'est-à-dire
+# à inventer un chiffre montré au client, ce que la règle fondateur interdit
+# sans exception. NE PAS LES SUPPRIMER, NE PAS LES CÂBLER : les laisser ici.
 SITE_PROFILE_FIELDS = (
     'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
     'tranche_onee', 'raccordement', 'regularisation_8221', 'type_installation',
@@ -984,6 +996,145 @@ LEAD_PROVENANCE_FIELDS = (
 )
 
 
+# ── QJR234 — LA GARDE : plus une seule omission SILENCIEUSE ──────────────────
+#
+# LE DÉFAUT. ``LEAD_PROVENANCE_FIELDS`` est une liste écrite à la main. Une
+# valeur énergie/toiture ajoutée au modèle ``crm.Lead`` et oubliée ici sort de
+# la bannière « valeurs du lead modifiées depuis » SANS QUE RIEN NE LE DISE :
+# le commercial ne verra jamais que cette valeur a bougé depuis la capture. Ni
+# test ni garde ne signalaient l'omission.
+#
+# LA RÈGLE. Tout champ concret de ``crm.Lead`` dont le NOM porte un marqueur
+# énergie/toiture ci-dessous doit être, au choix : dans
+# ``LEAD_PROVENANCE_FIELDS``, ou dans ``LEAD_PROVENANCE_EXCLUSIONS`` AVEC SA
+# RAISON. Jamais par omission. Les marqueurs sont volontairement larges : un
+# faux positif se règle en écrivant une ligne d'exclusion (trente secondes),
+# un faux négatif se paye en chiffres périmés montrés à un client.
+_LEAD_PROVENANCE_MARQUEURS = (
+    'facture', 'ete_differente', 'conso_', 'kwh', 'bill_', 'tranche_onee',
+    'raccordement', 'regularisation_', 'equip_', 'occupation_jour', 'pompe_',
+    'toiture', 'roof_', 'orientation', 'inclinaison', 'ombrage', 'gps_',
+    'nb_etages', 'structure_pref', 'kwc', 'batterie', 'distributeur',
+)
+
+# Les raisons, mutualisées par famille : une seule phrase à relire, et un champ
+# ajouté à une famille reste malgré tout un ROUGE tant qu'il n'est pas nommé
+# ci-dessous (l'exclusion est par CHAMP, jamais par préfixe).
+_RAISON_LU_EN_DIRECT = (
+    "lu EN DIRECT sur le lead au moment du rendu, jamais recopié dans "
+    "`Devis.etude_params` : une valeur qui n'a pas de copie ne peut pas "
+    "diverger de sa copie. L'ajouter ferait clignoter la bannière sur un "
+    "champ que le devis n'a jamais repris."
+)
+_RAISON_PROFIL_APPEL = (
+    "profil d'équipements du script d'appel (L-BACK / L-WEBT2) : le devis ne "
+    "le RECOPIE pas — il est lu sur le lead quand l'étude en a besoin. "
+    "À déclarer le jour où l'écran générateur le re-saisit."
+)
+_RAISON_POMPAGE = (
+    "questionnaire de pompage agricole : hors du bloc énergie/toiture "
+    "RÉSIDENTIEL que le devis recopie (les valeurs de "
+    "`LEAD_PROVENANCE_FIELDS`). À déclarer le jour où l'écran agricole "
+    "re-saisit ces valeurs depuis le lead."
+)
+_RAISON_QUALIFICATION = (
+    "donnée de QUALIFICATION du lead (ce que le prospect a déclaré au "
+    "premier contact), pas une valeur d'étude re-saisie dans le devis : elle "
+    "vit sa vie côté CRM et n'a pas de copie dans `etude_params`."
+)
+_RAISON_TRANCHE = (
+    "valeur RE-DÉRIVÉE par l'étude à chaque rendu depuis la facture et la "
+    "consommation (elles, sont estampillées) : l'estampiller en plus ferait "
+    "signaler deux fois la même dérive."
+)
+
+LEAD_PROVENANCE_EXCLUSIONS = dict(
+    [(champ, _RAISON_PROFIL_APPEL) for champ in (
+        'equip_piscine', 'equip_piscine_pompe_kw', 'equip_piscine_heures_jour',
+        'equip_piscine_creneau', 'equip_voiture_electrique',
+        'equip_ve_km_semaine', 'equip_ve_chargeur_kw', 'equip_ve_creneau',
+        'equip_clim', 'equip_clim_pieces', 'equip_clim_kw',
+        'equip_clim_creneau', 'equip_chauffe_eau_electrique',
+        'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+    )]
+    + [(champ, _RAISON_POMPAGE) for champ in (
+        'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    )]
+    + [(champ, _RAISON_QUALIFICATION) for champ in (
+        'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
+        'raccordement', 'batterie_souhaitee', 'taille_souhaitee_kwc',
+        'structure_pref', 'nb_etages', 'regularisation_8221',
+    )]
+    + [
+        ('occupation_jour', _RAISON_LU_EN_DIRECT),
+        ('roof_point', _RAISON_LU_EN_DIRECT),
+        ('roof_outline', _RAISON_LU_EN_DIRECT),
+        ('ombrage', _RAISON_LU_EN_DIRECT),
+        ('ombrage_notes',
+         "note de terrain en TEXTE LIBRE : aucun chiffre d'étude n'en "
+         "dérive, il n'y a rien à comparer."),
+        ('conso_mensuelle_kwh', _RAISON_TRANCHE),
+        ('tranche_onee', _RAISON_TRANCHE),
+    ]
+)
+
+
+def _lead_champs_concrets():
+    """Les noms des champs CONCRETS de ``crm.Lead`` (sans les relations inverses)."""
+    from .models import Lead
+    return [f.name for f in Lead._meta.get_fields()
+            if getattr(f, 'concrete', False)]
+
+
+def lead_provenance_champs_energie_toit(champs=None):
+    """Les champs de ``crm.Lead`` que les marqueurs désignent énergie/toiture."""
+    noms = _lead_champs_concrets() if champs is None else list(champs)
+    return [nom for nom in noms
+            if any(marqueur in nom for marqueur in _LEAD_PROVENANCE_MARQUEURS)]
+
+
+def lead_provenance_omissions(champs=None):
+    """QJR234 — [(champ, motif FR)] : tout ce qui rompt la règle ci-dessus.
+
+    ``champs`` (facultatif) remplace la lecture du modèle : c'est ce qui permet
+    de PROUVER la garde en simulant l'ajout d'un champ énergie au lead, sans
+    migration et sans base de données. Liste vide = rien à signaler.
+    """
+    noms = _lead_champs_concrets() if champs is None else list(champs)
+    connus = set(noms)
+    energie_toit = lead_provenance_champs_energie_toit(noms)
+    constats = []
+    for champ in energie_toit:
+        if champ in LEAD_PROVENANCE_FIELDS:
+            continue
+        raison = LEAD_PROVENANCE_EXCLUSIONS.get(champ)
+        if raison:
+            continue
+        constats.append((
+            champ,
+            f"« {champ} » est un champ énergie/toiture de `crm.Lead` que "
+            "`LEAD_PROVENANCE_FIELDS` ne déclare PAS : s'il change après la "
+            "capture, la bannière « valeurs du lead modifiées depuis » ne le "
+            "dira jamais. L'ajouter à `LEAD_PROVENANCE_FIELDS`, ou l'inscrire "
+            "dans `LEAD_PROVENANCE_EXCLUSIONS` AVEC SA RAISON — jamais par "
+            "omission."))
+    for champ in LEAD_PROVENANCE_FIELDS:
+        if champ not in connus:
+            constats.append((
+                champ,
+                f"« {champ} » est déclaré dans `LEAD_PROVENANCE_FIELDS` mais "
+                "n'existe plus sur `crm.Lead` : l'estampille porterait un "
+                "champ fantôme (toujours None des deux côtés, donc une dérive "
+                "invisible)."))
+    for champ in LEAD_PROVENANCE_EXCLUSIONS:
+        if champ not in connus:
+            constats.append((
+                champ,
+                f"« {champ} » est exclu de la provenance alors qu'il n'existe "
+                "plus sur `crm.Lead` : exclusion périmée, à retirer."))
+    return constats
+
+
 def _lead_provenance_valeurs(lead):
     """Snapshot {champ: valeur} des valeurs énergie/toiture d'un lead.
 
@@ -1255,19 +1406,24 @@ def occupation_jour_pour_devis(devis):
     return valeur if valeur in ('present', 'absent', 'partiel') else None
 
 
-def equipements_pour_devis(devis):
-    """L4 (21/08/2026) — équipements électriques du lead d'un devis, ou ``{}``.
+def equipements_pour_lead(lead):
+    """QJR9 — équipements électriques d'un LEAD, ou ``{}`` (lead absent).
 
-    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
-    ``apps.crm.models``) : ``apps/ventes/courbes_journalieres.py`` compose ses
-    couches d'équipement à partir de ce dict. Valeurs BRUTES du lead — script
-    d'appel du commercial (piscine/VE/clim/chauffe-eau), DISTINCT de
-    ``futures_charges`` (case du questionnaire web, sans paramètre). Chaque
-    valeur est ``None`` quand la question n'a pas été posée ou que le lead
-    n'existe pas : aucune valeur n'est devinée ici, l'appelant décide de son
-    propre repli (généralement : omettre la couche).
+    Point d'entrée cross-app LECTURE SEULE, jumeau de
+    :func:`equipements_pour_devis` pour les chemins qui n'ont PAS encore de
+    devis persisté (devis automatique, tunnel) : jusqu'ici ces chemins
+    recomposaient la couche équipement à la main sur SIX clés, et les huit
+    grandeurs L-BACK/L-BACK2 (chauffe-eau kW/créneau, chargeur VE kW/créneau,
+    clim kW/créneau, piscine heures/créneau) plus ``chauffe_eau_electrique``
+    n'atteignaient jamais le moteur. Il n'y a donc plus qu'UNE liste de champs
+    lue, ici, pour les deux chemins.
+
+    Valeurs BRUTES du lead — script d'appel du commercial (piscine/VE/clim/
+    chauffe-eau), DISTINCT de ``futures_charges`` (case du questionnaire web,
+    sans paramètre). Chaque valeur est ``None`` quand la question n'a pas été
+    posée : aucune valeur n'est devinée ici, l'appelant décide de son propre
+    repli (généralement : omettre la couche).
     """
-    lead = getattr(devis, 'lead', None)
     if lead is None:
         return {}
     return {
@@ -1292,6 +1448,21 @@ def equipements_pour_devis(devis):
         'clim_creneau': lead.equip_clim_creneau,
         'piscine_creneau': lead.equip_piscine_creneau,
     }
+
+
+def equipements_pour_devis(devis):
+    """L4 (21/08/2026) — équipements électriques du lead d'un devis, ou ``{}``.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
+    ``apps.crm.models``) : ``apps/ventes/courbes_journalieres.py`` compose ses
+    couches d'équipement à partir de ce dict.
+
+    QJR9 — sortie INCHANGÉE : simple application de
+    :func:`equipements_pour_lead` au lead du devis, pour que le chemin « devis
+    persisté » et le chemin « lead seul » (devis automatique / tunnel) lisent
+    exactement les mêmes champs.
+    """
+    return equipements_pour_lead(getattr(devis, 'lead', None))
 
 
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
@@ -1586,6 +1757,48 @@ def relances_du_jour(company, user, scope='today', today=None):
     else:  # today
         qs = qs.filter(relance_date=today)
     return qs.order_by('relance_date', 'nom')
+
+
+# ── RELANCE FOUNDATION — file des étapes de cadence de relance dues ─────────
+
+def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None):
+    """RELANCE FOUNDATION — étapes de relance (``RelanceEtape``) DUES, pour le
+    panneau « Relances du jour ».
+
+    Distinct de ``relances_du_jour`` ci-dessus (leads via ``relance_date``,
+    granularité lead) : ici la granularité est l'ÉTAPE de plan structuré
+    (canal + statut propres). ``scope`` = ``overdue`` (en retard, strictement
+    avant aujourd'hui) / ``today`` (échéance aujourd'hui, défaut) / ``all``
+    (aujourd'hui + en retard, l'union affichée par le panneau). Seules les
+    étapes ``a_faire`` sont candidates — jamais une étape déjà traitée. La
+    portée de visibilité de l'utilisateur est respectée (``scope_queryset``
+    via le lead) ; ``owner`` filtre en plus sur le responsable du lead.
+    """
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead, RelanceEtape
+
+    today = today or timezone.localdate()
+    qs = RelanceEtape.objects.filter(
+        company=company, statut=RelanceEtape.Statut.A_FAIRE,
+        lead__is_archived=False,
+    ).select_related('lead', 'lead__owner')
+    if scope == 'overdue':
+        qs = qs.filter(due_date__lt=today)
+    elif scope == 'all':
+        qs = qs.filter(due_date__lte=today)
+    else:  # today
+        qs = qs.filter(due_date=today)
+
+    # Portée de visibilité : mêmes leads que scope_queryset(..., ['owner'])
+    # appliqué à Lead, traduit ici en filtre sur `lead_id`.
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+
+    if owner:
+        qs = qs.filter(lead__owner_id=owner)
+    return qs.order_by('due_date', 'ordre')
 
 
 def leads_chauds_non_contactes(company, user, seuil_score=None):
@@ -2576,6 +2789,57 @@ def partenaires_certifies_qs(company, *, niveau_min=None, specialite=None,
     if zone:
         qs = qs.filter(zone__iexact=zone)
     return qs.order_by('-rang_niveau', 'nom')
+
+
+def specialites_partenaire_cles():
+    """NTMIG31 — clés du référentiel FERMÉ des spécialités partenaire.
+
+    Simple accès en lecture à la liste de clés déclarée par le modèle
+    (``Partenaire.SPECIALITES_CLES``) — jamais un import de
+    ``apps.crm.models`` depuis une autre app pour cette seule constante.
+    """
+    from .models import Partenaire
+
+    return Partenaire.SPECIALITES_CLES
+
+
+def certifications_expirantes(company, within_days=60):
+    """NTMIG30 — partenaires dont la couche certification EXPIRE bientôt.
+
+    Réutilise le PATTERN d'échéances RH (FG175/YHIRE8) — jamais son code : la
+    fiche est ``crm.Partenaire``, une famille distincte de
+    ``rh.selectors.certifications_expirantes`` (habilitations employés).
+    Ne retient que les fiches avec un niveau de certification POSÉ (jamais
+    ``aucun`` — rien à alerter pour un partenaire non certifié) ET une
+    échéance renseignée tombant au plus tard dans ``within_days`` jours
+    (aujourd'hui + ``within_days`` inclus), PAS ENCORE échue (une certification
+    déjà expirée est visible directement sur l'annuaire NTMIG29 — cette alerte
+    est un rappel PRÉVENTIF, pas un état). Toujours scopé société ; triée par
+    échéance la plus proche.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Partenaire
+
+    if company is None:
+        return Partenaire.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 60
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    return (Partenaire.objects
+            .filter(company=company,
+                    date_expiration_certification__isnull=False,
+                    date_expiration_certification__gte=today,
+                    date_expiration_certification__lte=limite)
+            .exclude(niveau_certification=Partenaire.NiveauCertification.AUCUN)
+            .order_by('date_expiration_certification', 'id'))
 
 
 def _as_date(value):

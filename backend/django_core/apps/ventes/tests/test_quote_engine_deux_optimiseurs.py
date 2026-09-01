@@ -355,6 +355,62 @@ class TestDeuxOptimiseursEconomiesParOption(_DevisVariantesMixin, TestCase):
         self.assertEqual(self.temoin['prod_kwh_sans'], self.temoin['prod_kwh'])
 
 
+class TestQjr28ModeleDeclareParColonne(_DevisVariantesMixin, TestCase):
+    """QJR28 — DEUX COLONNES, DEUX MOTEURS : LE DOCUMENT LE DIT.
+
+    Le bloc d'étude horaire porte LA puissance pour laquelle il a été calculé
+    et ``pricing`` le refuse (garde de fraîcheur) dès qu'une option ne fait
+    plus cette puissance. Sur un devis divergent, la colonne « Sans batterie »
+    retombait donc EN SILENCE sur le forfait « estimation » pendant que le
+    document continuait de déclarer ``savings_model='horaire'`` et
+    ``savings_estimated=False`` pour tout le tableau.
+    """
+
+    #: le bloc horaire décrit l'option AVEC : 26 × 710 W = 18,46 kWc.
+    KWC_AVEC = 18.46
+    #: la colonne SANS fait 22 × 710 W = 15,62 kWc — hors tolérance (2 %).
+
+    def test_le_modele_declare_est_celui_employe_par_chaque_colonne(self):
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        data = self._build(self._devis(
+            self.DIVERGENT, 'DEV-QJR28-DIV',
+            self._etude_params(etude_horaire=bloc_horaire(self.KWC_AVEC))))
+        # TÉMOIN mécanique : le MÊME champ PV « sans » (22 panneaux), sans
+        # aucun bloc horaire — donc chiffré par le moteur de repli.
+        temoin = self._build(self._devis_egal_22('DEV-QJR28-T'))
+
+        self.assertTrue(data['panneaux_divergents'])
+        # l'option AVEC est celle que le bloc décrit : modèle horaire, déclaré
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertEqual(data['savings_estimated_avec'],
+                         data['savings_estimated'])
+        # la colonne SANS a bien été chiffrée par l'AUTRE moteur — preuve
+        # mécanique : ses économies sont, au dirham près, celles du témoin.
+        self.assertEqual(data['eco_s_ann'], temoin['eco_s_ann'])
+        self.assertNotEqual(data['savings_model_sans'], 'horaire')
+        self.assertEqual(data['savings_model_sans'], temoin['savings_model'])
+        self.assertEqual(data['savings_estimated_sans'],
+                         temoin['savings_estimated'])
+
+    def test_un_devis_non_divergent_declare_un_seul_modele(self):
+        """Tout l'existant : une seule dérivation ⇒ les trois clés portent la
+        même valeur (aucune colonne chiffrée par un autre moteur)."""
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        # LEGACY = 14 × 710 W = 9,94 kWc, la puissance du bloc.
+        data = self._build(self._devis(
+            self.LEGACY, 'DEV-QJR28-LEG',
+            self._etude_params(etude_horaire=bloc_horaire(9.94))))
+        self.assertFalse(data['panneaux_divergents'])
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertEqual(data['savings_model_sans'], 'horaire')
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertEqual(data['savings_estimated_sans'],
+                         data['savings_estimated'])
+        self.assertEqual(data['savings_estimated_avec'],
+                         data['savings_estimated'])
+
+
 @tag('pdf')  # rendu page 2 via WeasyPrint — lourd → palier release-verify
 class TestDeuxOptimiseursPage2(_DevisVariantesMixin, TestCase):
     """Page 2 du document résidentiel : deltas, bandeau, tableau comparatif."""
@@ -620,17 +676,33 @@ class TestUnePageProductionDeSaBranche(SimpleTestCase):
         m = re.search(r">([\d   ]+) kWh/an<", html[i:i + 400])
         return re.sub(r"[^\d]", "", m.group(1)) if m else None
 
+    # QJR145 (a) — LA PUISSANCE S'IMPRIME À LA FRANÇAISE : « 5,68 kWc », plus
+    # jamais « 5.68 kWc ». Le formateur ``kwc_fr`` existait depuis l'origine
+    # SANS aucun site d'appel ; QJR145 l'a branché sur les cinq impressions de
+    # puissance du document, qui sortaient jusque-là le point décimal anglais.
+    # Ces attentes suivent donc le rendu RÉEL (vérifié : la branche « sans » ne
+    # rend qu'une seule chaîne kWc, « 5,68 kWc » ; la branche « avec »,
+    # « 6,39 kWc »). 8 × 710 W = 5,68 kWc et 9 × 710 W = 6,39 kWc : ce sont des
+    # PUISSANCES posées en dur dans ``BRANCHES``, jamais dérivées d'un
+    # productible — le recalage QJR158 (d) du repli ne les touche pas.
+    KWC_SANS = "5,68 kWc"      # 8 panneaux × 710 W
+    KWC_AVEC = "6,39 kWc"      # 9 panneaux × 710 W
+
     def test_la_branche_sans_affiche_la_production_de_ses_8_panneaux(self):
         html = F.html_onepage(onepage_branche="sans", **self.BRANCHES)
         self.assertEqual(self._prod(html), "8065")
         # …et la puissance de la même branche (garde L-2OPT, déjà en place).
-        self.assertIn("5.68 kWc", html)
-        self.assertNotIn("6.39 kWc", html)
+        # Le NÉGATIF doit porter la MÊME forme que le positif : avec l'ancien
+        # « 6.39 kWc » il serait devenu vrai par accident (cette chaîne n'est
+        # plus jamais rendue) et cesserait de garder quoi que ce soit.
+        self.assertIn(self.KWC_SANS, html)
+        self.assertNotIn(self.KWC_AVEC, html)
 
     def test_la_branche_avec_affiche_la_production_de_ses_9_panneaux(self):
         html = F.html_onepage(onepage_branche="avec", **self.BRANCHES)
         self.assertEqual(self._prod(html), "9070")
-        self.assertIn("6.39 kWc", html)
+        self.assertIn(self.KWC_AVEC, html)
+        self.assertNotIn(self.KWC_SANS, html)
 
     def test_sans_divergence_la_une_page_ne_recale_rien(self):
         d = F.donnees_legacy()
@@ -709,3 +781,304 @@ class TestVignetteProductionDeuxValeurs(SimpleTestCase):
         self.assertIn('<div class="c1-kpi-l">Production estimée</div>', html)
         self.assertIn('<span class="p2-spec-l">kWh / an produits</span>', html)
         self.assertNotIn('sans · avec', html)
+
+
+# ── L-2OPTPDF (ORDRE FONDATEUR, 28/08/2026) — LA PAGE ÉQUIPEMENT NE SE ────────
+# DÉDOUBLE PLUS. Sur un devis à deux options dont les nombres de panneaux
+# divergent (DEV-202608-0040 : 15 sans / 14 avec), ``_split_items`` sortait
+# panneaux + structures + socles du tableau commun et les REPOSAIT dans LES DEUX
+# cartes « Spécifique à l'option N » : trois rôles écrits deux fois, une page 2
+# gonflée, et un devis rendu sur 4 pages au lieu de 3.
+#
+# Chaque rôle divergent tient désormais sur UNE ligne à deux valeurs
+# (« 15 · 14 »), et le tableau comparatif se lit sur deux colonnes : le devis
+# divergent retrouve sa pagination normale.
+#
+# Fixtures PURES (aucune BD, aucun WeasyPrint) : on compte les ``<div
+# class="page">`` du HTML EXACT qui part au rendu — une ``.page`` = une page A4
+# composée par WeasyPrint (cf. ``render.build_html``).
+def _items_divergents(nb_sans=15, nb_avec=14):
+    """Composition réelle d'un devis divergent : panneaux, structures et socles
+    changent de quantité d'une option à l'autre ; l'onduleur et la batterie
+    n'existent que d'un côté."""
+    pan = {"designation": "Panneau Canadien Solar 710W",
+           "marque": "Canadian Solar", "prix_unit_ht": 1273.0, "taux_tva": 10}
+    stru = {"designation": "Structure de fixation aluminium", "marque": "",
+            "prix_unit_ht": 250.0, "taux_tva": 20}
+    socle = {"designation": "Socle béton", "marque": "",
+             "prix_unit_ht": 60.0, "taux_tva": 20}
+    tab = {"designation": "Tableau De Protection AC/DC", "marque": "",
+           "quantite": 1, "prix_unit_ht": 1250.0, "taux_tva": 20}
+    inst = {"designation": "Installation", "marque": "", "quantite": 1,
+            "prix_unit_ht": 4000.0, "taux_tva": 20}
+    ond_r = {"designation": "Onduleur réseau Huawei 10kW Triphasé",
+             "marque": "Huawei", "quantite": 1, "prix_unit_ht": 14000.0,
+             "taux_tva": 20}
+    ond_h = {"designation": "Onduleur hybride Deye 10kW Triphasé",
+             "marque": "Deye", "quantite": 1, "prix_unit_ht": 19000.0,
+             "taux_tva": 20}
+    bat = {"designation": "Batterie Dyness 10 kWh", "marque": "Dyness",
+           "quantite": 1, "prix_unit_ht": 22000.0, "taux_tva": 20}
+    sans = [dict(pan, quantite=nb_sans), ond_r, tab,
+            dict(stru, quantite=nb_sans), dict(socle, quantite=nb_sans * 2),
+            inst]
+    avec = [dict(pan, quantite=nb_avec), ond_h, bat, tab,
+            dict(stru, quantite=nb_avec), dict(socle, quantite=nb_avec * 2),
+            inst]
+    return sans, avec
+
+
+def _surcharges_divergentes(nb_sans=15, nb_avec=14):
+    sans, avec = _items_divergents(nb_sans, nb_avec)
+    return {
+        "sans_items": sans, "avec_items": avec,
+        "panneaux_divergents": True,
+        "nb_panneaux_sans": nb_sans, "nb_panneaux_avec": nb_avec,
+        "nb_panneaux": nb_avec,
+        "puissance_kwc_sans": round(nb_sans * 0.71, 2),
+        "puissance_kwc_avec": round(nb_avec * 0.71, 2),
+        "puissance_kwc": round(nb_avec * 0.71, 2),
+        "watt_par_panneau_sans": 710, "watt_par_panneau_avec": 710,
+        "batterie_kwh_total": 10,
+    }
+
+
+def _surcharges_egales(nb=15):
+    """Le TÉMOIN : la même composition, quantités IDENTIQUES des deux côtés."""
+    s = _surcharges_divergentes(nb, nb)
+    s["panneaux_divergents"] = False
+    return s
+
+
+class TestLignesDivergentesDeuxValeurs(SimpleTestCase):
+    """L-2OPTPDF (a) — UN RÔLE DIVERGENT = UNE LIGNE, DEUX VALEURS."""
+
+    def setUp(self):
+        self.html = F.html_residentiel(**_surcharges_divergentes())
+
+    def _cartes(self):
+        cartes = re.findall(r'<div class="p2-dbody">.*?</ul>', self.html, re.S)
+        self.assertEqual(len(cartes), 2)
+        return cartes
+
+    def test_le_panneau_ne_s_ecrit_qu_une_fois(self):
+        """Le cœur de l'incident : la désignation apparaissait dans les DEUX
+        cartes d'option. Elle vit maintenant dans le tableau, une seule fois."""
+        for carte in self._cartes():
+            self.assertNotIn('Panneau Canadien Solar 710W', carte)
+            self.assertNotIn('Structure de fixation aluminium', carte)
+            self.assertNotIn('Socle béton', carte)
+
+    def test_la_ligne_porte_les_deux_quantites_et_les_deux_totaux(self):
+        lignes = re.findall(r'<tr class="p2-tr-2v">.*?</tr>', self.html, re.S)
+        self.assertEqual(len(lignes), 3)      # panneaux, structures, socles
+        panneau = next(x for x in lignes if 'Panneau Canadien' in x)
+        # Qté « 15 · 14 » …
+        self.assertIn('<span class="p2-vs">15</span>', panneau)
+        self.assertIn('<span class="p2-va">14</span>', panneau)
+        # … P.U. unique (le prix ne change pas d'une option à l'autre) …
+        from apps.ventes.quote_engine.residential.theme import fmt
+        self.assertIn(f'<td class="p2-r">{fmt(1273.0)}</td>', panneau)
+        # … et les DEUX totaux HT (15 × 1 273 et 14 × 1 273).
+        self.assertIn(f'<span class="p2-vs">{fmt(15 * 1273.0)}</span>',
+                      panneau)
+        self.assertIn(f'<span class="p2-va">{fmt(14 * 1273.0)}</span>',
+                      panneau)
+        # La chaîne par ligne reste complète : TVA comprise.
+        self.assertIn('>10%<', panneau)
+
+    def test_les_deux_colonnes_sont_nommees(self):
+        """Deux nombres côte à côte ne se devinent pas : la légende du tableau
+        dit lequel est « sans » et lequel est « avec »."""
+        self.assertIn('deux valeurs&nbsp;: <b>sans</b> &middot; '
+                      '<b>avec</b> batterie', self.html)
+        self.assertIn('Équipement des deux options', self.html)
+
+    def test_le_vraiment_specifique_reste_dans_sa_carte(self):
+        """Ce qui n'existe QUE d'un côté ne se compare pas : onduleur réseau
+        contre onduleur hybride + batterie restent par option."""
+        sans, avec = self._cartes()
+        self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
+        self.assertNotIn('Batterie Dyness 10 kWh', sans)
+        self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
+        self.assertIn('Batterie Dyness 10 kWh', avec)
+
+
+class TestPaginationDevisDivergent(SimpleTestCase):
+    """L-2OPTPDF (b) — LE DEVIS DIVERGENT GARDE SES 3 PAGES.
+
+    Le format 'full' résidentiel vaut 3 pages (couverture + installation +
+    signature). Un devis divergent en faisait 4 : ses trois rôles dupliqués
+    plus le tableau comparatif ne tenaient plus dans le budget de la page
+    installation, qui se scindait en page équipement + page rentabilité.
+    """
+
+    def _pages(self, **surcharges):
+        return F.html_residentiel(**surcharges).count('<div class="page">')
+
+    def test_le_devis_divergent_tient_en_trois_pages(self):
+        self.assertEqual(self._pages(**_surcharges_divergentes()), 3)
+
+    def test_le_devis_a_quantites_egales_tient_toujours_en_trois_pages(self):
+        """Non-régression : le témoin (même composition, 15 · 15) n'a jamais
+        débordé et ne déborde toujours pas."""
+        self.assertEqual(self._pages(**_surcharges_egales()), 3)
+
+    def test_le_comparatif_de_synthese_est_intact(self):
+        """La page reste compacte SANS rien retirer au comparatif : il se lit
+        sur deux colonnes, chaque moitié gardant ses en-têtes."""
+        html = F.html_residentiel(**_surcharges_divergentes())
+        self.assertEqual(html.count('<div class="p2-cmp-grid">'), 1)
+        self.assertEqual(html.count('<table class="p2-cmp">'), 2)
+        self.assertEqual(html.count('<th>Sans batterie</th>'), 2)
+        self.assertEqual(html.count('<th>Avec batterie</th>'), 2)
+        for libelle in ('Panneaux', 'Puissance', 'Batteries', 'Prix TTC'):
+            self.assertIn(f'<td class="p2-cmp-k">{libelle}</td>', html)
+
+
+class TestNonDivergentInchangeAuBitPres(SimpleTestCase):
+    """L-2OPTPDF (c) — QUANTITÉS ÉGALES ⇒ EXACTEMENT LE RENDU D'HIER.
+
+    Aucune ligne appariée, aucune légende, aucun comparatif : le corps de la
+    page 2 d'un devis non divergent ne bouge pas d'un octet (seule la feuille
+    de style gagne des règles qui ne s'appliquent à rien ici).
+    """
+
+    def test_aucune_ligne_a_deux_valeurs(self):
+        for surcharges in ({}, _surcharges_egales()):
+            html = F.html_residentiel(**surcharges)
+            # La BALISE, pas la classe seule : les deux vivent aussi dans la
+            # feuille de style, qui part sur toutes les pages.
+            self.assertNotIn('<tr class="p2-tr-2v">', html)
+            self.assertNotIn('<span class="p2-lbl-leg">', html)
+            self.assertNotIn('<div class="p2-cmp-grid">', html)
+            self.assertIn('Équipement commun aux deux options', html)
+            self.assertNotIn('Équipement des deux options', html)
+
+    def test_le_tableau_commun_garde_toutes_ses_lignes(self):
+        """Quantités égales ⇒ panneaux, structures et socles restent COMMUNS
+        (une seule quantité, l'historique)."""
+        html = F.html_residentiel(**_surcharges_egales())
+        for designation in ('Structure de fixation aluminium', 'Socle béton'):
+            self.assertEqual(html.count(designation), 1)
+
+    def test_le_corps_de_la_page_2_est_celui_de_l_ancien_decoupage(self):
+        """Témoin mécanique : la même page rendue en neutralisant
+        l'appariement — les deux HTML doivent être identiques."""
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer,
+        )
+        data = renderer._augment(F.donnees_residentiel(**_surcharges_egales()))
+        ctx = render.build_ctx(data)
+        neuf = "".join(options.build_pages(ctx))
+        with patch.object(options, '_pair_divergents',
+                          lambda s, a: ([], s, a)):
+            ancien = "".join(options.build_pages(ctx))
+        self.assertEqual(neuf, ancien)
+
+
+class TestQjr210ModeleDeclareParCarte(_DevisVariantesMixin, TestCase):
+    """QJR210 (contre-visite du 30/08/2026) — LA MOITIÉ *RENDU* DE QJR28.
+
+    QJR28 a bâti la moitié DONNÉES : sur un devis divergent, ``builder``
+    enregistre le modèle d'économies EFFECTIF de chaque colonne
+    (``savings_model_sans`` / ``savings_model_avec``) parce que la garde de
+    fraîcheur de ``pricing`` fait retomber sur le forfait la colonne dont la
+    puissance ne correspond plus au bloc horaire. Personne ne LISAIT ces clés :
+    la page 1 étiquetait les DEUX cartes avec le modèle du DOCUMENT, et la
+    ligne « Économies … / an » du comparatif de page 2 déclarait un mot unique
+    pour deux colonnes chiffrées par deux moteurs.
+
+    Rendu seulement : ``builder`` n'est pas touché (aucune donnée nouvelle —
+    ces quatre clés sont publiées depuis QJR28).
+
+    Classe volontairement NON taguée ``pdf`` : elle ne rend que du HTML (comme
+    ``TestPageUnQrProposition``), donc elle garde le comportement dans le
+    palier de CI courant plutôt que dans le seul palier release-verify.
+    """
+
+    #: le bloc horaire décrit l'option AVEC : 26 × 710 W = 18,46 kWc ; la
+    #: colonne SANS fait 22 × 710 W = 15,62 kWc — hors tolérance, donc chiffrée
+    #: par l'autre moteur.
+    KWC_AVEC = 18.46
+
+    def _data_divergent_horaire(self, reference):
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        return self._build(self._devis(
+            self.DIVERGENT, reference,
+            self._etude_params(etude_horaire=bloc_horaire(self.KWC_AVEC))))
+
+    def _cover(self, data):
+        from apps.ventes.quote_engine.residential import (
+            cover, render, renderer)
+        return cover.build(render.build_ctx(renderer._augment(data)))
+
+    def _page2(self, data):
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer)
+        ctx = render.build_ctx(renderer._augment(data))
+        return "".join(options.build_pages(ctx))
+
+    @staticmethod
+    def _libelles_cartes(html):
+        """Le libellé de chaque carte d'option, DANS L'ORDRE DU DOCUMENT
+        (Option 1 « Sans batterie », puis Option 2 « Avec batterie »)."""
+        return re.findall(r'<div class="c1-opt-eco">(.*?) ≈', html)
+
+    # ── page 1 : une carte, un modèle ───────────────────────────────────────
+    def test_chaque_carte_porte_le_modele_de_son_option(self):
+        data = self._data_divergent_horaire('DEV-QJR210-DIV')
+        # Préalable (déjà épinglé par QJR28) : les deux colonnes ONT été
+        # chiffrées par deux moteurs différents.
+        self.assertEqual(data['savings_model_avec'], 'horaire')
+        self.assertNotEqual(data['savings_model_sans'], 'horaire')
+
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(len(libelles), 2, libelles)
+        self.assertNotEqual(
+            libelles[0], libelles[1],
+            "les deux cartes portaient le modèle du DOCUMENT")
+        self.assertEqual(libelles, ['Économie estimée', 'Économie calculée'])
+
+    def test_un_devis_a_un_seul_moteur_garde_le_meme_mot_des_deux_cotes(self):
+        """Non-régression : quand les deux colonnes sont chiffrées par le même
+        moteur (tout l'existant), les deux cartes portent le même mot."""
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        # LEGACY = 14 × 710 W = 9,94 kWc, exactement la puissance du bloc.
+        data = self._build(self._devis(
+            self.LEGACY, 'DEV-QJR210-LEG',
+            self._etude_params(etude_horaire=bloc_horaire(9.94))))
+        self.assertEqual(data['savings_model_sans'],
+                         data['savings_model_avec'])
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(libelles, ['Économie calculée', 'Économie calculée'])
+
+    def test_sans_les_cles_l_etiquette_est_omise_jamais_devinee(self):
+        """Dict d'appelant antérieur à QJR28 : le modèle de chaque colonne est
+        inconnu — le mot disparaît, l'économie reste. Jamais le modèle du
+        document réattribué à une carte qui ne l'a peut-être pas."""
+        data = self._data_divergent_horaire('DEV-QJR210-NOKEY')
+        self.assertEqual(data['savings_model'], 'horaire')   # le document, lui
+        data.pop('savings_model_sans')
+        data.pop('savings_model_avec')
+        libelles = self._libelles_cartes(self._cover(data))
+        self.assertEqual(libelles, ['Économie', 'Économie'])
+
+    # ── page 2 : la ligne « Économies … / an » du comparatif ────────────────
+    def test_le_comparatif_n_impose_pas_un_mot_a_deux_moteurs(self):
+        data = self._data_divergent_horaire('DEV-QJR210-CMP')
+        html = self._page2(data)
+        self.assertIn('Économies / an', html)
+        self.assertNotIn('Économies estimées / an', html)
+        self.assertNotIn('Économies calculées / an', html)
+
+    def test_le_comparatif_garde_son_mot_quand_les_deux_colonnes_concordent(self):
+        """Le devis divergent SANS bloc horaire : un seul moteur pour les deux
+        colonnes ⇒ le libellé garde son qualificatif (rendu d'aujourd'hui).
+        Le mot attendu est LU dans les données, jamais recopié à la main."""
+        data = self._build(self._devis_divergent('DEV-QJR210-CMP2'))
+        self.assertEqual(data['savings_model_sans'],
+                         data['savings_model_avec'])
+        attendu = (' calculées' if data['savings_model_sans'] == 'horaire'
+                   else ' estimées')
+        self.assertIn(f'Économies{attendu} / an', self._page2(data))

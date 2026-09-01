@@ -57,10 +57,12 @@ test('VX55 : fetchLeads/fetchClients transmettent le signal du thunk à chaque p
   const fetchLeadsBody = CRM_SLICE_SRC.slice(
     CRM_SLICE_SRC.indexOf("export const fetchLeads"),
     CRM_SLICE_SRC.indexOf("export const createLead"))
-  // VX163 — fetchLeads est enrobé par createCancellableThunk : signal destructuré
-  // du 2e arg (params, { signal }) plutôt que { rejectWithValue, signal }.
-  assert.match(fetchLeadsBody, /createCancellableThunk\('crm\/fetchLeads', \(params, \{ signal \}\)/)
-  assert.match(fetchLeadsBody, /crmApi\.getLeads\(\{ \.\.\.\(params \?\? \{\}\), page \}, \{ signal \}\)/)
+  // VX163 — fetchLeads est enrobé par createCancellableThunk. PERF-CRM
+  // (2026-09-01) : le thunk garde le thunkAPI ENTIER (dispatch du flux
+  // progressif) — le signal est transmis à chaque page via thunkAPI.signal,
+  // le CONTRAT VX55 (annulation par page) est inchangé.
+  assert.match(fetchLeadsBody, /createCancellableThunk\('crm\/fetchLeads', \(params, thunkAPI\)/)
+  assert.match(fetchLeadsBody, /\{ signal: thunkAPI\.signal \}/)
 })
 
 test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {

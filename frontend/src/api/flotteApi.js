@@ -60,14 +60,28 @@ const flotteApi = {
   ceder: (id, data) => api.post(`/flotte/vehicules/${id}/ceder/`, data),
 
   // ── Conducteurs & mobilité ──
-  conducteurs: crud('conducteurs'),
+  conducteurs: {
+    ...crud('conducteurs'),
+    // WIR236 — réconciliation « divergences permis flotte↔RH » (YHIRE11) :
+    // lecture seule, jamais appelée côté front jusqu'ici.
+    divergencesPermis: () => api.get('/flotte/conducteurs/divergences-permis/'),
+  },
   affectations: {
     ...crud('affectations'),
     // XFLT22 — réaffectation conducteur en masse.
     masse: (data) => api.post('/flotte/affectations/masse/', data),
   },
   reservations: crud('reservations'),
-  demandesVehicule: crud('demandes-vehicule'),
+  // WIR200 — décision (responsable/admin) sur une demande du pool : approuver
+  // pose `vehicule_attribue` (id, optionnel) + `motif_decision` (optionnel) ;
+  // refuser pose `motif_decision` (motif du refus).
+  demandesVehicule: {
+    ...crud('demandes-vehicule'),
+    approuver: (id, data) =>
+      api.post(`/flotte/demandes-vehicule/${id}/approuver/`, data),
+    refuser: (id, motif) =>
+      api.post(`/flotte/demandes-vehicule/${id}/refuser/`, { motif_decision: motif }),
+  },
   etatsDesLieux: {
     ...crud('etats-des-lieux'),
     // XFLT17 — e-signature (loi 53-05, nom saisi + horodatage serveur).
@@ -131,17 +145,32 @@ const flotteApi = {
     ocr: (formData) => api.post('/flotte/pleins/ocr/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+    // WIR236/XFLT8 — synthèse mensuelle TVA carburant récupérable/non
+    // déductible (?debut=&fin=, facultatifs), jamais appelée côté front.
+    syntheseTva: (params) => api.get('/flotte/pleins/synthese-tva/', { params }),
   },
   cartes: {
     ...crud('cartes'),
     // FLOTTE14/WIR6 — pleins suspects (km incohérent / fraude / plafond dépassé).
     anomalies: (params) => api.get('/flotte/cartes/anomalies/', { params }),
+    // WIR236/XFLT6 — import CSV du relevé d'une carte (carburant/Jawaz) et
+    // rapprochement (fichier au champ `fichier`, multipart), jamais appelé
+    // côté front.
+    importerReleve: (id, formData) =>
+      api.post(`/flotte/cartes/${id}/importer-releve/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
   },
   sinistres: crud('sinistres'),
   infractions: crud('infractions'),
   relevesTelematiques: crud('releves-telematiques'),
   trajetsTelematiques: crud('trajets-telematiques'),
-  trajetsChantier: crud('trajets-chantier'),
+  trajetsChantier: {
+    ...crud('trajets-chantier'),
+    // WIR236/FLOTTE29 — journal kilométrique AGRÉGÉ ventilé par chantier
+    // (distinct de la liste brute ci-dessus), jamais appelé côté front.
+    journal: (params) => api.get('/flotte/trajets-chantier/journal/', { params }),
+  },
   // XFLT24 — zones de géofencing + évaluation des relevés télématiques.
   zonesGeographiques: {
     ...crud('zones-geographiques'),

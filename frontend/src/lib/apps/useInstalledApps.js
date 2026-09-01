@@ -27,7 +27,8 @@
 // Ce fichier lit `role`/`permissions` UNE fois via `useSelector` — exactement
 // ce que ces deux hooks font en interne — puis rejoue leur règle en JS pur
 // sur la liste des modules, à l'identique de `Sidebar.jsx`/`BottomTabBar.jsx`
-// (`it.roles.includes(role) && (!it.perm || permissions.includes(it.perm))`).
+// (WIR171 — cette règle vit maintenant dans `router/moduleGating.js`,
+// `estAutoriseEntree`, seule et unique implémentation).
 //
 // JAMAIS un 2ᵉ registre (contrainte Groupe ODY) : TOUTE surface qui liste des
 // apps — `AppLauncher.jsx`, `PinnedApps.jsx`, et plus tard `HomeMenu`
@@ -37,14 +38,19 @@
 import { useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import { moduleConfigs } from '../../router/moduleRoutes'
-import { selectModulesDesactives, isModuleDisabled } from '../../router/moduleGating'
+import {
+  selectModulesDesactives, isModuleDisabled, estAutoriseEntree,
+} from '../../router/moduleGating'
 
 const EMPTY_PERMISSIONS = []
 
 // isItemVisible — même règle que Sidebar.jsx/BottomTabBar.jsx (gating d'un
 // item de nav par palier + permission ERP fine optionnelle).
+// WIR171 — la règle vit dans `router/moduleGating.js` (source UNIQUE, partagée
+// avec `roleLoader`) : une entrée déclarant `permRepliPalier` suit la
+// sémantique serveur `HasPermissionOrLegacy`.
 function isItemVisible(item, role, permissions) {
-  return !!item?.roles?.includes(role) && (!item.perm || permissions.includes(item.perm))
+  return estAutoriseEntree(item, role, permissions)
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

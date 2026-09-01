@@ -7,6 +7,7 @@ from .models import (
     RemiseEncaissement, LigneRemiseEncaissement,
     MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
     AvenantDevis, ParametresGammes,  # PVMRQ
+    PlanCommission,  # WIR281/XSAL6
 )
 
 
@@ -67,6 +68,18 @@ def _fallback_taux_tva(company, designation):
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
+    """La ligne d'un devis, telle que l'écran la lit et l'écrit.
+
+    QJR59 / décision fondateur D12 — ``quantite_manuelle`` et ``prix_manuel``
+    voyagent des DEUX côtés (``fields = '__all__'``) : une quantité ou un prix
+    TAPÉS par le commercial sont des ENTRÉES commerciales PERSISTANTES, elles
+    doivent revenir dans la lecture pour que l'écran les repose à
+    l'enregistrement (sans quoi le premier rafraîchissement tarifaire ou la
+    première resynchro les écraserait). Elles ne portent AUCUNE valeur : ce
+    sont des marqueurs — le prix et la quantité restent, eux, dans leurs
+    propres colonnes.
+    """
+
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -127,7 +140,73 @@ class LigneDevisSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class DevisSerializer(serializers.ModelSerializer):
+class EcheancierTrancheSerializer(serializers.Serializer):
+    """QJR21 — contrat de saisie d'UNE tranche d'échéancier (``Devis.echeancier``).
+
+    Sérialiseur DÉDIÉ : le champ est un JSONField, donc rien ne validait sa
+    forme. ``pct_or_montant`` porte désormais son unité :
+
+      * ``unite`` (ou ``type``) = « pct » → pourcentage, ≤ 100 ;
+      * ``unite`` (ou ``type``) = « montant » → montant TTC en dirhams ;
+      * rien de déclaré → pourcentage, mais SEULEMENT jusqu'à 100 (au-delà la
+        valeur est ambiguë et refusée — c'est le correctif QJR21).
+
+    ``type`` garde sa signification historique de NATURE de la tranche
+    ('acompte' / 'intermediaire' / 'solde') : seule une valeur d'unité y est
+    lue comme une déclaration d'unité.
+    """
+    libelle = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    type = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    unite = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    # JSONField (et non FloatField) : la valeur brute doit atteindre
+    # ``normaliser_tranche``, seule source de la règle ET des messages FR.
+    pct_or_montant = serializers.JSONField(required=False)
+
+    def validate(self, attrs):
+        from .utils.echeancier import EcheancierInvalide, normaliser_tranche
+        try:
+            normaliser_tranche(dict(attrs), self.context.get('index', 0))
+        except EcheancierInvalide as exc:
+            raise serializers.ValidationError(str(exc))
+        return attrs
+
+
+class EcheancierValidationMixin:
+    """QJR21 — refuse en 400 un échéancier dont une valeur est ambiguë.
+
+    Monté sur les DEUX sérialiseurs Devis (lecture et écriture) : le champ
+    ``echeancier`` est un JSONField accepté tel quel depuis le corps de la
+    requête, une saisie en dirhams y passait donc sans aucun contrôle.
+    """
+
+    def validate_echeancier(self, value):
+        if value is None or value == '' or value == []:
+            return value
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "L'échéancier doit être une liste de tranches "
+                "[{libelle, type, pct_or_montant}].")
+        for index, entree in enumerate(value):
+            if not isinstance(entree, dict):
+                raise serializers.ValidationError(
+                    f"Tranche n°{index + 1} : chaque tranche doit être un "
+                    "objet {libelle, type, pct_or_montant}.")
+            tranche = EcheancierTrancheSerializer(
+                data=entree, context={'index': index})
+            if not tranche.is_valid():
+                # Message PLAT sous la clé « echeancier » : l'écran affiche la
+                # phrase telle quelle, sans dépiler un non_field_errors imbriqué.
+                raise serializers.ValidationError(
+                    [str(m) for msgs in tranche.errors.values()
+                     for m in (msgs if isinstance(msgs, (list, tuple))
+                               else [msgs])])
+        return value
+
+
+class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -155,6 +234,31 @@ class DevisSerializer(serializers.ModelSerializer):
     # client). Comme marge_snapshot, la CLÉ elle-même est retirée du payload
     # pour tout rendu non authentifié (voir to_representation).
     marge_sous_seuil = serializers.SerializerMethodField()
+
+    # DC11 / QJR106 — LE CANAL DE LA BANNIÈRE « valeurs du lead modifiées
+    # depuis ». Le devis porte une ESTAMPILLE de provenance
+    # (``etude_params['provenance']``, posée par ``pipeline.appliquer``) ; ce
+    # champ rend la liste des champs du lead qui ONT BOUGÉ depuis cette
+    # capture, telle que ``apps.crm`` la calcule — jamais une comparaison
+    # réinventée ici. Liste VIDE = rien n'a bougé ; ``None`` = pas d'estampille
+    # (ou rendu en liste, voir ci-dessous), donc rien à dire.
+    lead_valeurs_modifiees = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.CharField(), allow_null=True))
+    def get_lead_valeurs_modifiees(self, obj):
+        # NTCPQ21 — MÊME MOTIF que ``configuration`` : la détection coûte une
+        # lecture du lead PAR DEVIS. Elle n'a de sens que sur le DÉTAIL (c'est
+        # le GET que l'écran générateur fait en rouvrant un brouillon avec
+        # ``?edit=``) ; en LISTE (``self.parent`` est le ListSerializer) on ne
+        # la calcule pas, pour ne pas transformer une page de devis en N+1.
+        if self.parent is not None:
+            return None
+        stamp = (obj.etude_params or {}).get('provenance')
+        if not isinstance(stamp, dict):
+            return None
+        from apps.crm.selectors import lead_values_changed_since
+        return lead_values_changed_since(stamp, company=obj.company)
 
     def get_marge_sous_seuil(self, obj):
         from apps.cpq.selectors import devis_marge_sous_seuil
@@ -211,12 +315,27 @@ class DevisSerializer(serializers.ModelSerializer):
     # Référence du devis parent (version précédente) — pour reconstituer la
     # chaîne de révisions dans l'UI (panneau historique des versions).
     version_parent_ref = serializers.SerializerMethodField()
+    # WIR225 — ce devis EST-IL la RACINE d'un groupe de variantes ? Les trois
+    # champs ci-dessus ne décrivent que le côté ENFANT (`version > 1`,
+    # `version_parent_ref`, `superseded_by_ref`) : sur la racine ils sont tous
+    # vides, si bien que l'écran n'avait AUCUN moyen de savoir qu'un groupe
+    # existe — son entrée « Voir les versions » disparaissait au premier
+    # rechargement. `DevisViewSet.get_queryset` annote `a_variantes_annote`
+    # (un seul `Exists` pour toute la page) ; le repli ci-dessous ne sert
+    # qu'aux appels hors liste (une requête, sur un objet unique).
+    a_variantes = serializers.SerializerMethodField()
 
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
 
     def get_version_parent_ref(self, obj):
         return obj.version_parent.reference if obj.version_parent_id else None
+
+    def get_a_variantes(self, obj) -> bool:
+        annote = getattr(obj, 'a_variantes_annote', None)
+        if annote is not None:
+            return bool(annote)
+        return obj.versions_enfants.filter(is_active=True).exists()
 
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired
@@ -551,17 +670,92 @@ class AvenantDevisSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class DevisWriteSerializer(serializers.ModelSerializer):
+class DevisWriteSerializer(EcheancierValidationMixin,
+                           serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
     Le client devient optionnel À LA CRÉATION quand un lead est fourni : il est
     alors résolu côté serveur depuis le lead (apps.crm.services), jamais déduit
     côté navigateur. La vue garantit qu'au moins l'un des deux est présent et
     que lead/client appartiennent à la société de l'utilisateur.
+
+    QJR21 — ``echeancier`` passe par ``EcheancierValidationMixin`` : c'est LE
+    chemin d'écriture du champ (``DevisViewSet.get_serializer_class``).
+
+    QJR67 (audit L3 du 29/08/2026) — ``exclude`` → ``fields`` EXPLICITES.
+    ``exclude = ['reference', 'fichier_pdf']`` faisait de CHAQUE autre colonne
+    du modèle une surface d'écriture ouverte, y compris SIX JSONField BRUTS
+    sans forme ni provenance : ``etude_params``, ``roof_layout``,
+    ``layout_hash``, ``offres_tailles_config``, ``marge_snapshot`` et
+    ``overrides``. Le navigateur pouvait donc poster n'importe quel chiffre
+    CLIENT-FACING (``puissance_kwc``, ``production_annuelle``,
+    ``economies_annuelles``, ``scenario``, ``etude_horaire``…) DIRECTEMENT dans
+    les entrées du PDF et de la page proposition — en contournant toute la
+    garde « zéro chiffre inventé » que les sérialiseurs dédiés appliquent. Ces
+    six champs passent en LECTURE SEULE : chacun a son chemin d'écriture nommé
+    et gardé — ``PATCH /devis/<id>/etude-params/`` (fusion validée par
+    ``domain.etude_schema``), ``POST /devis/<id>/layout/`` (qui pose aussi
+    ``layout_hash``), ``PATCH /devis/<id>/offres-tailles/config/``
+    (``OffreTailleConfigSerializer``), ``services.refresh_marge_snapshot``
+    (interne, jamais client), et ``PATCH /devis/<id>/overrides/``.
+
+    ``overrides`` (colonne QJR58, décision fondateur D12) EST le sixième —
+    ajouté par ARBITRAGE ORCHESTRATEUR du 29/08/2026, même classe et même
+    vague que les cinq autres. Laissé ouvert, il contournait exactement la
+    garde qui fait sa valeur : ``OverridesSerializer.to_internal_value`` refuse
+    en 400 tout ``CHAMPS_DERIVES`` et tout chemin inconnu, et un PATCH y
+    FUSIONNE au lieu de remplacer. Un corps de devis brut n'aurait respecté ni
+    l'un ni l'autre — et ce registre alimente des nombres client-facing.
+
+    ``echeancier`` RESTE ÉCRIVABLE ICI, délibérément : ce n'est PAS un champ
+    brut. C'est le chemin d'écriture prévu du champ (le vendeur édite
+    l'échéancier depuis la fiche devis) et il est VALIDÉ par
+    ``EcheancierValidationMixin`` (QJR21) — forme imposée
+    ``[{libelle, type, pct_or_montant}]``, valeur ambiguë refusée en 400
+    français. Le passer en lecture seule le rendrait silencieusement
+    inécrivable (DRF ignore un champ read-only sans rien dire) et supprimerait
+    du même coup son 400 — cf. ``tests/test_qjr_echeancier_validation.py``,
+    classe ``ApiEcheancier``.
+
+    La liste ci-dessous est la surface d'écriture d'AVANT, mot pour mot, moins
+    ``reference``/``fichier_pdf`` : un champ de modèle ajouté demain n'y entre
+    plus tout seul — il faut l'y écrire, en connaissance de cause
+    (``tests/test_qjr_serializer_surface.py`` fait rougir l'oubli).
     """
     class Meta:
         model = Devis
-        exclude = ['reference', 'fichier_pdf']
+        fields = [
+            'id',
+            # Identité commerciale + statut du document.
+            'statut', 'date_creation', 'date_validite', 'taux_tva',
+            'remise_globale', 'note',
+            # Cycle de vie envoi / acceptation / refus.
+            'date_envoi', 'date_acceptation', 'accepte_par_nom', 'date_refus',
+            'motif_refus', 'option_acceptee',
+            # Marché + étude. ``etude_params`` est en LECTURE SEULE (voir la
+            # docstring) ; ``echeancier`` reste écrivable, VALIDÉ par le mixin.
+            'mode_installation', 'etude_params', 'echeancier',
+            'acompte_pct', 'acompte_montant',
+            # Prix cible + prix/kWc gelé (SCA47).
+            'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
+            # Versionnage / cycle de vie technique.
+            'version', 'is_active', 'custom_data', 'devise', 'taux_change',
+            # Calepinage 3D + rendus. ``roof_layout`` et ``layout_hash`` sont
+            # posés par ``POST /devis/<id>/layout/``, jamais par ce corps.
+            'roof_layout', 'roof_image', 'layout_hash', 'pdf_render_meta',
+            'electrical_design', 'electrical_design_hash',
+            # Marge interne (staff-only, figée côté serveur).
+            'marge_snapshot',
+            'updated_at',
+            # Variantes / renouvellements / clauses.
+            'variante_tier', 'numero_renouvellement', 'clauses_appliquees',
+            # Tailles Éco/Recommandé/Max + registre de surcharges D12.
+            'offres_tailles_config', 'overrides',
+            # Relations.
+            'company', 'client', 'lead', 'created_by', 'remise_approuvee_par',
+            'version_parent', 'superseded_by', 'updated_by', 'variante_de',
+            'devis_origine', 'entite',
+        ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
         # accepté du corps de requête.
@@ -570,7 +764,14 @@ class DevisWriteSerializer(serializers.ModelSerializer):
                             # NTCPQ11/13 — posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
-                            'variante_de', 'variante_tier']
+                            'variante_de', 'variante_tier',
+                            # QJR67 — les SIX JSONField BRUTS : chacun a son
+                            # endpoint dédié et gardé (voir la docstring).
+                            # ``echeancier`` n'en fait PAS partie : il est
+                            # validé, pas brut.
+                            'etude_params', 'roof_layout', 'layout_hash',
+                            'offres_tailles_config', 'marge_snapshot',
+                            'overrides']
         extra_kwargs = {'client': {'required': False}}
 
 
@@ -1195,3 +1396,297 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TAILLES (ordre fondateur, 26/08/2026) — l'ÉDITION des trois tailles
+# ════════════════════════════════════════════════════════════════════════════
+
+class OffreTailleConfigSerializer(serializers.Serializer):
+    """La CONFIGURATION d'UNE taille — et rien d'autre.
+
+    LE POINT CENTRAL : ce sérialiseur n'accepte QUE des ENTRÉES (le champ PV,
+    la banque en modules du devis, les produits substitués). Tout nombre
+    DÉRIVÉ — prix TTC, économie, payback, couverture, kWc, production, cumul
+    25 ans — est REFUSÉ en 400, jamais ignoré en silence.
+
+    POURQUOI UN REFUS BRUYANT. Ignorer un champ dérivé le ferait disparaître
+    sans que personne ne l'apprenne : le vendeur croirait avoir fixé un prix,
+    l'écran afficherait autre chose, et la confiance dans les chiffres de la
+    page mourrait là. Le refus rend la règle « zéro chiffre inventé »
+    STRUCTURELLE plutôt que déclarative — il n'existe aucun chemin par lequel
+    un prix tapé à la main puisse entrer dans le stockage, donc aucun par
+    lequel il puisse ressortir sur une page client.
+    """
+
+    nb_panneaux = serializers.IntegerField(min_value=1, max_value=500,
+                                           required=False)
+    batterie_nb_modules = serializers.IntegerField(min_value=0, max_value=100,
+                                                   required=False)
+    equipements = serializers.DictField(child=serializers.IntegerField(),
+                                        required=False)
+
+    def to_internal_value(self, data):
+        """LE REFUS SE FAIT ICI, ET C'EST LA SEULE PLACE QUI MARCHE.
+
+        ``self.initial_data`` n'existe QUE lorsqu'un sérialiseur est construit
+        avec ``data=…``. Imbriqué comme CHAMP d'un parent (le cas de
+        production : ``OffreTailleEcritureSerializer.config``), DRF instancie
+        ce sérialiseur à la déclaration de la classe et appelle
+        ``run_validation(data)`` sans jamais poser ``initial_data`` — le lire
+        depuis ``validate()`` levait donc un ``AttributeError``, soit un 500
+        sur CHAQUE PATCH, légitime ou non. Mes tests unitaires passaient parce
+        qu'ils construisaient le sérialiseur avec ``data=`` : un chemin que la
+        production ne prend jamais.
+
+        ``to_internal_value`` reçoit le dict BRUT dans les DEUX chemins — c'est
+        donc ici, et pas dans ``validate()``, que la comparaison au dictionnaire
+        d'origine est possible.
+
+        ET SURTOUT PAS ``getattr(self, 'initial_data', {})`` : ce pansement
+        rendrait la garde SILENCIEUSEMENT inopérante en production (DRF écarte
+        les clés inconnues, donc ``prix_ttc`` passerait en 200 « ignoré ») —
+        exactement ce que la docstring de cette classe interdit. Une garde qui
+        ne garde plus rien est pire que pas de garde : elle rassure.
+        """
+        from .offres_tailles import CHAMPS_CONFIG, CHAMPS_DERIVES
+
+        if isinstance(data, dict):
+            derives = sorted(set(data) & set(CHAMPS_DERIVES))
+            if derives:
+                raise serializers.ValidationError({
+                    champ: (
+                        'Champ calculé par le moteur : il ne peut pas être '
+                        'saisi. Modifiez la configuration (panneaux, '
+                        'batterie, matériel) et le moteur le recalculera.'
+                    ) for champ in derives})
+            inconnus = sorted(set(data) - set(CHAMPS_CONFIG))
+            if inconnus:
+                raise serializers.ValidationError({
+                    champ: "Champ inconnu dans la configuration d'une taille."
+                    for champ in inconnus})
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                'Configuration vide : rien à enregistrer.')
+        return attrs
+
+    def validate_batterie_nb_modules(self, value):
+        """Zéro module n'exprime PAS « sans batterie » — la variante le fait.
+
+        Une taille sert DEUX variantes : ``sans`` (aucune batterie, par
+        construction) et ``avec``. Demander « avec batterie, zéro module » est
+        une contradiction : la carte ``avec`` disparaîtrait sans que personne
+        ne sache pourquoi. On le DIT au lieu de composer un kit vide.
+        """
+        if value == 0:
+            raise serializers.ValidationError(
+                'Zéro module n\'exprime pas « sans batterie » : la variante '
+                '« sans » de cette taille s\'en charge déjà. Indiquez au moins '
+                'un module, ou laissez le moteur dimensionner la banque.')
+        return value
+
+    def validate_equipements(self, value):
+        """Les substitutions produit — rôle connu, société, ET PRIX RÉEL.
+
+        La garde multi-société se tient ICI, une seule fois : un identifiant
+        d'une autre société est refusé en 400 (jamais silencieusement ignoré,
+        ce qui aurait laissé croire à une substitution appliquée). C'est aussi
+        pourquoi la dérivation, en aval, ne re-vérifie pas la société — une
+        garde recopiée finit par diverger de son original.
+
+        LE PRIX EST UNE GARDE À PART ENTIÈRE, ET LE CATALOGUE LA REND
+        NÉCESSAIRE : les 11 pompes OSP 30-series y sont DÉLIBÉRÉMENT sans prix
+        (« prix à renseigner » tant que le fondateur ne les a pas chiffrées),
+        et d'autres articles peuvent l'être. Substituer un produit à 0 MAD
+        ferait tomber le prix de la carte — une batterie GRATUITE affichée à
+        un client. C'est exactement la discipline « jamais un produit sans
+        prix » que l'auto-remplissage applique déjà côté composition.
+        """
+        from apps.stock.models import Produit
+        from .models import ROLES_AUTO_COMPOSITION
+
+        company = self.context.get('company')
+        if company is None:
+            raise serializers.ValidationError(
+                'Société indéterminée : substitution refusée.')
+        erreurs = {}
+        for role, produit_id in (value or {}).items():
+            if role not in ROLES_AUTO_COMPOSITION:
+                erreurs[role] = 'Rôle de composition inconnu.'
+                continue
+            produit = Produit.objects.filter(
+                pk=produit_id, company=company).first()
+            if produit is None:
+                erreurs[role] = 'Produit introuvable dans votre catalogue.'
+                continue
+            if not (produit.prix_vente or 0) > 0:
+                erreurs[role] = (
+                    'Ce produit n\'a pas encore de prix de vente : il ne peut '
+                    'pas chiffrer une taille (elle s\'afficherait gratuite '
+                    'chez le client). Renseignez son prix au catalogue.')
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value
+
+
+class OffreTailleEcritureSerializer(serializers.Serializer):
+    """Le corps d'un PATCH de configuration : QUELLE taille, et sa config."""
+
+    cle = serializers.CharField()
+    config = OffreTailleConfigSerializer()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
+
+
+class OffreTailleRegenerationSerializer(serializers.Serializer):
+    """Le corps d'une régénération : QUELLE taille redériver, elle SEULE."""
+
+    cle = serializers.CharField()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
+
+
+class PlanCommissionSerializer(serializers.ModelSerializer):
+    """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
+    de la societe quand ``owner`` est nul).
+
+    GARDE MARGE : aucun montant de marge ni prix d'achat n'est expose ici.
+    ``base`` n'est qu'une ETIQUETTE de mode (``ca_devis_signe`` /
+    ``marge_interne`` / ``par_kwc``), ``taux_pct`` un pourcentage de regle et
+    ``montant_par_kwc`` un bareme - jamais un CA, jamais une marge calculee.
+    L'endpoint entier reste gate ``prix_achat_voir`` (cf. la vue).
+
+    ``company`` n'apparait PAS dans les champs : elle est TOUJOURS posee cote
+    serveur (``perform_create``/``perform_update``), jamais lue du corps.
+    Contrat partage : ``apps/ventes/contract_samples/plan_commission.json``."""
+    owner_nom = serializers.CharField(
+        source='owner.username', read_only=True, default=None)
+    base_display = serializers.CharField(
+        source='get_base_display', read_only=True, default=None)
+
+    class Meta:
+        model = PlanCommission
+        fields = [
+            'id', 'owner', 'owner_nom', 'base', 'base_display',
+            'taux_pct', 'montant_par_kwc', 'paliers', 'actif', 'created_at',
+        ]
+        read_only_fields = ['id', 'owner_nom', 'base_display', 'created_at']
+
+    def validate_paliers(self, value):
+        """Les paliers d'acceleration sont une LISTE d'objets
+        ``{seuil_atteinte_pct, taux}`` - un JSON libre rendrait
+        ``PlanCommission.taux_effectif`` imprevisible au moment du calcul."""
+        if value in (None, ''):
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les paliers doivent etre une liste.')
+        for palier in value:
+            if not isinstance(palier, dict):
+                raise serializers.ValidationError(
+                    'Chaque palier doit etre un objet '
+                    '{seuil_atteinte_pct, taux}.')
+            if 'seuil_atteinte_pct' not in palier or 'taux' not in palier:
+                raise serializers.ValidationError(
+                    'Chaque palier exige `seuil_atteinte_pct` et `taux`.')
+            for cle in ('seuil_atteinte_pct', 'taux'):
+                try:
+                    float(palier[cle])
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError(
+                        '`%s` doit etre un nombre.' % cle)
+        return value
+
+    def validate(self, attrs):
+        """Le bareme doit correspondre a la base choisie : un plan ``par_kwc``
+        sans ``montant_par_kwc`` (ou un plan au pourcentage sans ``taux_pct``)
+        produirait une commission nulle silencieuse."""
+        def _valeur(cle):
+            if cle in attrs:
+                return attrs[cle]
+            return getattr(self.instance, cle, None)
+
+        base = _valeur('base')
+        if base == PlanCommission.Base.PAR_KWC:
+            if _valeur('montant_par_kwc') is None:
+                raise serializers.ValidationError({
+                    'montant_par_kwc':
+                        'Requis pour un plan « MAD par kWc installe ».'})
+        elif base in (PlanCommission.Base.CA_DEVIS_SIGNE,
+                      PlanCommission.Base.MARGE_INTERNE):
+            if _valeur('taux_pct') is None:
+                raise serializers.ValidationError({
+                    'taux_pct': 'Requis pour un plan au pourcentage.'})
+        return attrs
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# QJR57 — LE REGISTRE DE SURCHARGES D'UN DEVIS (décision fondateur D12)
+# ════════════════════════════════════════════════════════════════════════════
+
+class OverridesSerializer(serializers.Serializer):
+    """PATCH ``/ventes/devis/<id>/overrides/`` — la seule porte d'écriture.
+
+    LE CORPS est une carte ``{chemin: valeur}`` ou ``{chemin: {valeur,
+    origine?}}``, **FUSIONNÉE** dans le registre existant : envoyer
+    ``{"taille.nb_panneaux": {"valeur": 14}}`` ne touche AUCUN autre chemin
+    déjà posé. Jamais un remplacement intégral, jamais une clé indexée par la
+    POSITION d'une ligne.
+
+    LE REFUS SE FAIT DANS ``to_internal_value``, ET C'EST LA SEULE PLACE QUI
+    MARCHE — même raison qu'``OffreTailleConfigSerializer`` juste au-dessus :
+    imbriqué comme CHAMP d'un parent, DRF n'expose pas ``initial_data``, et il
+    ÉCARTE les clés inconnues. Une garde posée dans ``validate()`` serait donc
+    SILENCIEUSEMENT inopérante en production — un champ DÉRIVÉ passerait en
+    200 « ignoré », le vendeur croirait avoir fixé une valeur et l'écran en
+    afficherait une autre. Une garde qui ne garde plus rien est pire que pas de
+    garde : elle rassure.
+
+    Les RÈGLES elles-mêmes vivent avec la liste blanche qu'elles appliquent
+    (``apps.ventes.domain.overrides``) : ce sérialiseur ne fait que les
+    traduire en 400 avec un message FR qui NOMME le chemin refusé.
+    """
+
+    def to_internal_value(self, data):
+        """LES REFUS SONT DES DICTS, JAMAIS DES CHAÎNES NUES.
+
+        ``ValidationError('texte')`` range son détail dans une LISTE. Un
+        ``Serializer`` racine, lui, rend ``.errors`` via ``ReturnDict(detail)``
+        — et ``dict(['texte'])`` explose en ``ValueError: dictionary update
+        sequence element #0 has length 38; 2 is required``. Le refus légitime
+        devenait donc un 500 illisible au lieu du 400 FR attendu (deux tests
+        QJR en ERROR, CI M2). Chaque refus nomme donc SA clé : le chemin fautif
+        quand on le connaît (patron d'``OffreTailleConfigSerializer``), sinon
+        ``NON_FIELD_ERRORS_KEY``. Les messages FR sont inchangés.
+        """
+        from rest_framework.settings import api_settings
+
+        from .domain.overrides import erreurs_de_chemins, normaliser_patch
+
+        non_field = api_settings.NON_FIELD_ERRORS_KEY
+        if not isinstance(data, dict):
+            raise serializers.ValidationError({non_field: [
+                'Corps invalide : un objet {chemin: valeur} est attendu.']})
+        if not data:
+            raise serializers.ValidationError({non_field: [
+                'Aucune surcharge à poser : corps vide.']})
+        erreurs = erreurs_de_chemins(data)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        try:
+            return normaliser_patch(data)
+        except ValueError as exc:
+            raise serializers.ValidationError({non_field: [str(exc)]})

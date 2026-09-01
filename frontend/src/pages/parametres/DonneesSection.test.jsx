@@ -18,6 +18,9 @@ vi.mock('../../api/stockApi', () => ({
     annulerInventaireSession: vi.fn(),
     getKits: vi.fn(),
     exploserKit: vi.fn(),
+    // WIR268/XMFG18 — duplication (facteur d'échelle) + révisions.
+    dupliquerKit: vi.fn(),
+    getKitRevisions: vi.fn(),
     getFichesTechniques: vi.fn(),
     createFicheTechnique: vi.fn(),
     updateFicheTechnique: vi.fn(),
@@ -107,6 +110,59 @@ describe('WR5 — explosion de kit', () => {
     fireEvent.click(btn)
     // Sans kit choisi → message d'erreur.
     expect(await screen.findByText(/Choisissez un kit/)).toBeVisible()
+  })
+})
+
+describe('WIR268/XMFG18 — duplication de kit (facteur d\'échelle) + révisions', () => {
+  const choisirKit = async () => {
+    await waitFor(() => { expect(stockApi.getKits).toHaveBeenCalled() })
+    // La page « Données » monte plusieurs Select simultanément (kit, produit,
+    // type de fiche, remplacement de composant) : on cible celui du kit par
+    // son nom accessible (`aria-label="Kit"` sur le déclencheur).
+    await userEvent.click(screen.getByRole('combobox', { name: 'Kit' }))
+    await userEvent.click(await screen.findByRole('option', { name: /Kit résidentiel/ }))
+  }
+
+  it('duplique le kit avec un facteur d\'échelle ×1.67 (quantités mises à l\'échelle côté serveur)', async () => {
+    stockApi.dupliquerKit.mockResolvedValue({ data: { id: 6, nom: 'Kit résidentiel (copie)' } })
+    renderSection()
+    await choisirKit()
+
+    await userEvent.type(screen.getByLabelText(/Facteur d'échelle/), '1.67')
+    await userEvent.click(screen.getByRole('button', { name: 'Dupliquer' }))
+
+    await waitFor(() => expect(stockApi.dupliquerKit).toHaveBeenCalledWith('5', 1.67))
+    expect(await screen.findByText(/Kit résidentiel \(copie\)/)).toBeInTheDocument()
+  })
+
+  it('duplique sans facteur (défaut serveur) quand le champ est laissé vide', async () => {
+    stockApi.dupliquerKit.mockResolvedValue({ data: { id: 7, nom: 'Kit résidentiel (copie)' } })
+    renderSection()
+    await choisirKit()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dupliquer' }))
+    await waitFor(() => expect(stockApi.dupliquerKit).toHaveBeenCalledWith('5', undefined))
+  })
+
+  it('« Historique des révisions » liste les révisions du kit', async () => {
+    stockApi.getKitRevisions.mockResolvedValue({
+      data: [{ id: 1, numero: 2, user_nom: 'Reda Kasri', date_creation: '2026-07-10T09:00:00Z' }],
+    })
+    renderSection()
+    await choisirKit()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Historique des révisions' }))
+    await waitFor(() => expect(stockApi.getKitRevisions).toHaveBeenCalledWith('5'))
+    expect(await screen.findByText('Reda Kasri')).toBeInTheDocument()
+  })
+
+  it('un kit sans révision affiche un état vide honnête', async () => {
+    stockApi.getKitRevisions.mockResolvedValue({ data: [] })
+    renderSection()
+    await choisirKit()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Historique des révisions' }))
+    expect(await screen.findByText(/aucune révision enregistrée/)).toBeInTheDocument()
   })
 })
 

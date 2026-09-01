@@ -24,6 +24,10 @@ const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
 const DG = read('DevisGenerator.jsx')
 const ROW = read('DevisLineRow.jsx')
+// QJR100 — la table (thead + lines.map + le cablage de DevisLineRow) est
+// extraite dans generator/LigneTable.jsx ; `moveLine` (la mutation d'ordre)
+// reste dans l'ecran. Les epingles suivent chaque moitie chez elle.
+const LT = read('generator/LigneTable.jsx')
 
 test('DevisGenerator : moveLine mute l\'ordre du tableau lines (splice, jamais un id backend)', () => {
   assert.match(DG, /const moveLine = useCallback\(\(key, delta\) => setLines\(ls => \{/)
@@ -31,19 +35,22 @@ test('DevisGenerator : moveLine mute l\'ordre du tableau lines (splice, jamais u
   assert.match(DG, /copy\.splice\(target, 0, item\)/)
 })
 
-test('DevisGenerator : lines.map reçoit l\'index de rendu pour canMoveUp/canMoveDown', () => {
-  assert.match(DG, /lines\.map\(\(l, i\) => \(/)
-  assert.match(DG, /canMoveUp=\{i > 0\}/)
-  assert.match(DG, /canMoveDown=\{i < lines\.length - 1\}/)
+test('LigneTable : lines.map reçoit l\'index de rendu pour canMoveUp/canMoveDown', () => {
+  assert.match(LT, /lines\.map\(\(l, i\) => \(/)
+  assert.match(LT, /canMoveUp=\{i > 0\}/)
+  assert.match(LT, /canMoveDown=\{i < lines\.length - 1\}/)
+  assert.match(DG, /lines=\{lines\}/, "l'écran doit passer les lignes à LigneTable")
 })
 
-test('DevisGenerator : DevisLineRow reçoit onMoveUp/onMoveDown', () => {
+test('DevisGenerator : LigneTable (et donc DevisLineRow) reçoit onMoveUp/onMoveDown', () => {
   assert.match(DG, /onMoveUp=\{moveLineUp\}/)
   assert.match(DG, /onMoveDown=\{moveLineDown\}/)
+  assert.match(LT, /onMoveUp=\{onMoveUp\}/)
+  assert.match(LT, /onMoveDown=\{onMoveDown\}/)
 })
 
-test('DevisGenerator : la table porte une colonne Ordre (thead)', () => {
-  assert.match(DG, /<th className="col-ordre"/)
+test('LigneTable : la table porte une colonne Ordre (thead)', () => {
+  assert.match(LT, /<th className="col-ordre"/)
 })
 
 test('DevisLineRow : les props canMoveUp/canMoveDown/onMoveUp/onMoveDown sont déclarées', () => {

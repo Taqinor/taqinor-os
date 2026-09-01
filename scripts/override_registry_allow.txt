@@ -1,0 +1,93 @@
+# Base de reference de scripts/check_override_registry.py (QJR6).
+#
+# FORMAT : une cle par ligne, puis une colonne de raison humaine separee par
+# `|` (patron de scripts/money_rounding_allow.txt). Les lignes vides et celles
+# commencant par `#` sont ignorees.
+#
+#   <chemin>::<qualname englobant>::<famille>::<cible> | raison
+#
+# La cle est une IDENTITE DE CONTENU, jamais un numero de ligne : inserer du
+# code en amont ne perime pas la base. Renommer la fonction englobante ou
+# changer la cible change la cle -- c'est voulu, ce sont les deux evenements
+# qu'un humain doit relire.
+#
+# La garde est ADVISORY (v1) : le registre unique `Devis.overrides` (QJR58)
+# n'existe pas encore, les sites ci-dessous sont l'existant releve au moment de
+# la capture. Un site NOUVEAU fait echouer backend-lint, le temps qu'un humain
+# ecrive sa raison ici -- ou, mieux, passe l'ecriture par
+# apps/ventes/domain/overrides.py / lignes.py (les modules sanctionnes).
+#
+# Les chemins gardes viennent du contrat QJR1
+# (apps/ventes/contract_samples/devis_overrides.json), jamais de ce fichier.
+#
+# Regenerer apres une revue :
+#   python scripts/check_override_registry.py --regenerate
+
+# --- backend/django_core/apps/ventes/offres_tailles.py
+backend/django_core/apps/ventes/offres_tailles.py::_porter_modules_batterie::ligne::dominante.quantite | Existant 29/08/2026 : porte le nombre de modules batterie sur la plus grosse ligne batterie du devis. Migrera vers domain/lignes.py (QJR59 pose quantite_manuelle).
+backend/django_core/apps/ventes/offres_tailles.py::_substituer_sur_le_devis::ligne::ligne.prix_unitaire | Existant 29/08/2026 : substitution de produit (gamme) -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+
+# --- apps/ventes/domain/ (ex-services.py)
+#
+# 30/08/2026 (QJR95) : LES DEUX CLES `build_devis_from_layout::etude_params::
+# scenario` SONT RETIREES -- elles n'ont pas ete re-clees, le site a DISPARU.
+# La bascule 3/5 de M5 a fait de `build_devis_from_layout` un adaptateur : le
+# scenario est desormais ecrit par l'ECRIVAIN UNIQUE d'`etude_params`
+# (`domain/etude_schema.ecrire`, via `pipeline.ecrire_etude_params`), donc plus
+# par une ecriture par indice. Une entree morte n'est pas neutre : elle
+# PRE-AUTORISE en silence un futur `etude_params['scenario'] = ...` insere dans
+# cette fonction -- exactement ce que cette garde existe pour faire relire.
+#
+# 29/08/2026 (QJR76) : ces cles (SEPT a l'origine, CINQ depuis QJR95 ci-dessus)
+# ont ete RE-CLEES, pas re-capturees. La
+# vague M3 a vide `services.py`, devenu une pure facade : `build_devis_from_layout`
+# est parti dans `domain/creation.py`, `sync_devis_from_layout` dans
+# `domain/resynchronisation.py`, `resynchroniser_devis_pour_produit` dans
+# `domain/catalogue_events.py`. Aucun corps n'a change : le qualname et la cible
+# de chaque cle sont RIGOUREUSEMENT identiques a l'avant, seul le segment
+# <chemin> bouge -- c'est la preuve, dans la cle elle-meme, qu'aucune ecriture
+# n'a ete ajoutee ni deplacee hors de sa fonction.
+#
+# 30/08/2026 (QJR97) : les QUATRE cles `sync_devis_from_layout*` ci-dessous ont ete
+# RE-CLEES en `reconcilier*`, pas re-capturees. La bascule 5/5a a fait de
+# `sync_devis_from_layout` un ADAPTATEUR (elle demande le mode << reconcilier >> au
+# pipeline) et le geste chirurgical est devenu l'etape `reconcilier`, DANS LE MEME
+# FICHIER : seul le qualname bouge. Cible, fichier et expression sont inchanges --
+# c'est la preuve, dans la cle elle-meme, qu'aucune ecriture n'a ete ajoutee.
+#
+# `sync_devis_from_layout` N'A PAS ETE POSEE DANS `domain/lignes.py`, contrairement
+# a ce qu'annoncaient les raisons ci-dessous : `lignes.py` est un module SANCTIONNE,
+# donc EXEMPTE de ce scan. L'y poser aujourd'hui aurait fait DISPARAITRE quatre
+# sites de la garde sans qu'aucun n'ait ete converti au registre. Cette convergence
+# est une BASCULE (QJR84), pas un deplacement.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::ligne::dominante.quantite#1 | Existant 29/08/2026 : resynchro deux options -- l'ecart de panneaux va sur la plus grosse ligne de l'option. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::ligne::dominante.quantite#2 | Existant 29/08/2026 : meme resynchro, branche mono-option. Meme migration que #1.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier._resynchroniser_quantite::ligne::dominante.quantite | Existant 29/08/2026 : resynchro d'une famille non-panneau (onduleur, batterie) sur la ligne dominante. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier._permuter_onduleur::ligne::ligne.prix_unitaire | Existant 29/08/2026 : permutation d'onduleur -- le prix suit le catalogue du remplacant. Migrera vers domain/lignes.py.
+backend/django_core/apps/ventes/domain/catalogue_events.py::resynchroniser_devis_pour_produit::ligne::ligne.prix_unitaire | Existant 29/08/2026 : le prix ne suit le catalogue que si la ligne etait AU PRIX CATALOGUE sans remise (un prix negocie reste intouchable). Migrera vers domain/lignes.py.
+
+# --- FAMILLE (C) : remplacement en bloc de `etude_params` (QJR105, 30/08/2026)
+#
+# LES SIX SITES CI-DESSOUS SONT L'EXISTANT AU MOMENT DE LA CAPTURE, et tous les
+# six suivent DEJA le geste sur : ils COPIENT le bloc courant
+# (`dict(devis.etude_params or {})`), changent UNE cle, puis reaffectent -- donc
+# aucune cle n'est perdue aujourd'hui. Ce que cette garde empeche, c'est le
+# SEPTIEME : celui qui reconstruira le bloc de zero et fera disparaitre en
+# silence tout ce qu'il ne reconstruit pas (le bug ferme par QJR62). Chacun
+# migrera vers `apps/ventes/domain/etude_schema.ecrire` (fusion cle a cle,
+# proprietaire declare), ce qui le fera disparaitre de cette base.
+#
+# Aucune de ces six lignes n'ecrit un chemin du REGISTRE (familles A/B) : elles
+# posent `origine`, `attribution`, `simulation`, `scenario` (deja via
+# `fusionner`) ou un snapshot de preset. Elles sont ici pour la SEULE
+# famille (C).
+#
+# ATTENTION : `--regenerate` REECRIT ce fichier et ne conserve que les raisons
+# par cle -- les blocs de commentaire libres comme celui-ci sont PERDUS. Pour
+# ajouter une entree relue, l'ecrire a la main (ce qui a ete fait ici).
+backend/django_core/apps/ventes/domain/bordereau.py::_reouvrir_devis_depuis_bordereau::etude_params_bloc::devis.etude_params | Existant 30/08/2026 : copie du bloc + pose de la seule cle `origine` a la reouverture d'un devis depuis un bordereau. Migrera vers etude_schema.ecrire.
+backend/django_core/apps/ventes/domain/creation.py::apply_preset_to_devis::etude_params_bloc::devis.etude_params | Existant 30/08/2026 : pose du snapshot d'un preset a la CREATION, et SEULEMENT quand le devis n'a encore aucun etude_params (`and not devis.etude_params`) -- il n'y a donc jamais de cle a ecraser. Migrera vers etude_schema.ecrire.
+backend/django_core/apps/ventes/domain/cycle_vie.py::_persist_attribution::etude_params_bloc::devis.etude_params | Existant 30/08/2026 : QJ9 -- copie du bloc + pose de la seule cle `attribution` (donnees de campagne du lead). Migrera vers etude_schema.ecrire.
+backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::etude_params_bloc::verrou.etude_params | Existant 30/08/2026 : la valeur affectee vient DEJA de `etude_schema.fusionner(..., proprietaire=CALEPINAGE, **_modifiees)` -- fusion cle a cle, pas une reconstruction ; seule l'affectation elle-meme reste a deplacer dans `ecrire`.
+backend/django_core/apps/ventes/management/commands/reparer_devis_deux_options.py::Command._reparer::etude_params_bloc::verrou.etude_params | Existant 30/08/2026 : commande de reparation ponctuelle -- copie du bloc + pose de la seule cle `scenario`. Migrera vers etude_schema.ecrire.
+backend/django_core/apps/ventes/tasks.py::ranger_simulation::etude_params_bloc::devis.etude_params | Existant 30/08/2026 : tache Celery -- copie du bloc + pose de la seule cle `simulation` (resultat de la simulation bancable). Migrera vers etude_schema.ecrire.

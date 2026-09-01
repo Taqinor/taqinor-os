@@ -44,6 +44,35 @@ def _period_filter(request):
     return Q(date_creation__date__range=[start_d.isoformat(), end_d.isoformat()])
 
 
+def _ttc_affiche(devis):
+    """QJR203 — LE TTC de ce devis, par la chaîne canonique. Rien d'autre.
+
+    C'est la MÊME porte que `Devis.total_ttc` et que le `total_affiche` de la
+    liste : `domain.argent.totaux(Vue.AFFICHAGE)` applique la remise globale,
+    exclut les lignes qui ne comptent pas dans les totaux
+    (`ligne_compte_dans_totaux`), suit l'option EFFECTIVE d'un devis à deux
+    options (D9 — jamais la somme des deux paniers) et rend la TVA par taux
+    réel, jamais 20 % en dur. Le tableau de bord ne recompose donc plus sa
+    propre arithmétique : la couche reporting PORTE la chaîne monétaire.
+    """
+    from .domain.argent import Vue, totaux
+    return totaux(devis, vue=Vue.AFFICHAGE).ttc_affiche
+
+
+def _cle_commercial(devis):
+    """(username, prénom, nom) du créateur — la clé de regroupement.
+
+    Reprend MOT POUR MOT le repli de la version groupée qu'elle remplace : un
+    devis sans créateur se regroupe sous « ? ».
+    """
+    auteur = devis.created_by
+    if auteur is None:
+        return ('?', '', '')
+    return (auteur.username or '?',
+            (auteur.first_name or '').strip(),
+            (auteur.last_name or '').strip())
+
+
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def dashboard_quote_to_cash(request):
@@ -106,23 +135,50 @@ def dashboard_quote_to_cash(request):
         expires=Count('id', filter=Q(statut='expire')),
     )
 
-    # Valeur pipeline = TTC estimé des devis envoyés (non encore décidés).
-    # On utilise les totaux calculés par les propriétés du modèle ; pour éviter
-    # N+1 on fait une requête SQL agrégée approximative (SUM lignes non remisées).
-    from django.db.models import ExpressionWrapper, F, FloatField
-    from apps.ventes.models import LigneDevis
-    pipeline_qs = LigneDevis.objects.filter(
-        devis__company=company,
-        devis__statut='envoye',
-    ).annotate(
-        ht_ligne=ExpressionWrapper(
-            F('quantite') * F('prix_unitaire') * (1 - F('remise') / 100),
-            output_field=FloatField()))
-    pipeline_ht = pipeline_qs.aggregate(s=Sum('ht_ligne'))['s'] or 0
-    # TVA moyenne ~ taux global du devis n'est pas facilement agrégeable par SQL ;
-    # on applique 20 % comme estimation côté dashboard (pas de précision comptable
-    # requise ici — l'exact est sur le devis lui-même).
-    valeur_pipeline = round(pipeline_ht * 1.20, 2)
+    # ── Pipeline : UN SEUL LOT, LA CHAÎNE CANONIQUE (QJR203 / décision DV2) ──
+    #
+    # CE QUI ÉTAIT FAUX. Les deux montants « valeur pipeline » (global et par
+    # commercial) étaient une somme SQL de lignes
+    # (`quantite × prix_unitaire × (1 − remise/100)`) suivie d'une TVA 20 %
+    # CODÉE EN DUR. Cette expression :
+    #   * ignorait `Devis.remise_globale` (le devis remisé était sur-évalué) ;
+    #   * ignorait `ligne_compte_dans_totaux` (lignes optionnelles non
+    #     activées, sections et notes comptées quand même) ;
+    #   * additionnait LES DEUX OPTIONS d'un devis à deux options — un montant
+    #     qui n'existe dans aucun document et que le client ne paiera jamais ;
+    #   * appliquait 20 % à un devis à 10 % (ou à taux mixtes).
+    # Et `par_commercial` n'appliquait même pas `periode` : le sélecteur de
+    # période changeait les compteurs, jamais les montants.
+    #
+    # CE QUI EST FAIT. Les devis du pipeline sont lus en UN LOT BORNÉ (une
+    # requête + le prefetch de leurs lignes), et chaque TTC passe par
+    # `domain.argent.totaux(Vue.AFFICHAGE)` — LA chaîne canonique, la même que
+    # `Devis.total_ttc` et que le `total_affiche` de la liste : remise globale,
+    # `ligne_compte_dans_totaux` et option effective (D9) honorés. Le tableau
+    # de bord affiche donc, au centime, ce que la liste affiche.
+    #
+    # LE N+1 QUE SCA40 PROTÈGE RESTE FERMÉ : il n'y a plus UNE REQUÊTE PAR
+    # COMMERCIAL (le défaut d'origine) ni une agrégation par devis — un lot,
+    # puis de l'arithmétique Python. Un devis à DEUX options paie le même
+    # prédicat partagé (`deux_options_declarees`) que la liste paie déjà pour
+    # la même ligne ; un devis mono-option, l'écrasante majorité, ne paie rien
+    # de plus (ses lignes viennent du prefetch).
+    devis_pipeline = list(
+        Devis.objects.filter(company=company, statut='envoye')
+        .filter(periode)
+        .select_related('created_by')
+        .prefetch_related('lignes')
+    )
+    valeur_pipeline = Decimal('0')
+    pipeline_par_commercial = {}
+    for devis_ouvert in devis_pipeline:
+        ttc = _ttc_affiche(devis_ouvert)
+        valeur_pipeline += ttc
+        cle = _cle_commercial(devis_ouvert)
+        ligne_comm = pipeline_par_commercial.setdefault(
+            cle, {'devis_actifs': 0, 'valeur': Decimal('0')})
+        ligne_comm['devis_actifs'] += 1
+        ligne_comm['valeur'] += ttc
 
     # ── Factures ─────────────────────────────────────────────────────────────
     # On filtre sur date_emission et date_creation (les deux peuvent exister).
@@ -194,38 +250,28 @@ def dashboard_quote_to_cash(request):
     cycle_moyen = round(sum(cycle_list) / len(cycle_list), 1) if cycle_list else None
 
     # ── Par commercial ────────────────────────────────────────────────────────
-    # SCA40 — UNE seule requête groupée (values().annotate()) au lieu d'un
-    # aggregate() LigneDevis par commercial dans une boucle Python (N+1 non
-    # borné, croissait avec l'équipe). Le décompte de devis (`devis_actifs`)
-    # DOIT rester distinct : joindre `lignes` fan-out une ligne par ligne de
-    # devis, donc Count('id', distinct=True) préserve le décompte d'origine
-    # (un devis sans ligne compte toujours pour 1, sa somme de lignes valant 0
-    # via le LEFT JOIN). La somme HT ligne réutilise l'expression EXACTE du
-    # bloc pipeline global ci-dessus. Sortie JSON strictement identique.
-    par_commercial_raw = (
-        Devis.objects.filter(company=company, statut='envoye')
-        .values('created_by__username', 'created_by__first_name',
-                'created_by__last_name')
-        .annotate(
-            devis_actifs=Count('id', distinct=True),
-            pipeline_ht=Sum(ExpressionWrapper(
-                F('lignes__quantite') * F('lignes__prix_unitaire')
-                * (1 - F('lignes__remise') / 100),
-                output_field=FloatField())),
-        )
-    )
+    # SCA40 — le défaut d'origine était un `aggregate()` LigneDevis PAR
+    # COMMERCIAL dans une boucle Python (N+1 non borné, croissait avec
+    # l'équipe). Il reste fermé : ce bloc ne fait plus AUCUNE requête — il
+    # relit le lot déjà chargé plus haut. `devis_actifs` compte les DEVIS (un
+    # devis sans ligne compte pour 1, valeur nulle), exactement comme le
+    # `Count('id', distinct=True)` qu'il remplace.
+    #
+    # QJR203 / DV2 — deux corrections de FOND par rapport à la version
+    # groupée : le montant est celui de la chaîne canonique (plus une somme de
+    # lignes × 1,20), et `periode` s'applique enfin ici aussi — ce bloc lisait
+    # `Devis.objects.filter(company=..., statut='envoye')` SANS période, si
+    # bien que le sélecteur de période bougeait les compteurs mais pas les
+    # montants.
     par_commercial = []
-    for row in par_commercial_raw:
-        uname = row['created_by__username'] or '?'
-        fname = (row['created_by__first_name'] or '').strip()
-        lname = (row['created_by__last_name'] or '').strip()
+    for (uname, fname, lname), agg in pipeline_par_commercial.items():
         display = f'{fname} {lname}'.strip() or uname
-        p_ht = row['pipeline_ht'] or 0
         par_commercial.append({
             'commercial': display,
-            'devis_actifs': row['devis_actifs'],
-            'valeur_pipeline': str(round(p_ht * 1.20, 2)),
+            'devis_actifs': agg['devis_actifs'],
+            'valeur_pipeline': str(round(float(agg['valeur']), 2)),
         })
+    par_commercial.sort(key=lambda ligne: ligne['commercial'])
 
     return Response({
         'devis': {
@@ -235,7 +281,7 @@ def dashboard_quote_to_cash(request):
             'refuses': agg_devis['refuses'],
             'expires': agg_devis['expires'],
             'taux_acceptation_pct': _pct(n_acceptes, n_envoyes),
-            'valeur_pipeline': str(round(valeur_pipeline, 2)),
+            'valeur_pipeline': str(round(float(valeur_pipeline), 2)),
         },
         'factures': {
             'total': agg_fac['total'],

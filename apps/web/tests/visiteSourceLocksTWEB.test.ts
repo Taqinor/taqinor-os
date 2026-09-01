@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { etatVide } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -119,7 +121,20 @@ describe('devis/mon-toit.astro (FR) — appareil_id additif au payload lead du t
 
   it("importe appareilId et le joint au corps du lead, jamais bloquant", () => {
     expect(src).toContain("import { appareilId } from '../../lib/visite';");
-    expect(src).toContain('appareilId: appareilId() || undefined,');
+    // QJW5 — la page LIT l'empreinte dans son état ; c'est le registre partagé
+    // qui décide de l'émettre (et l'OMET quand le stockage est indisponible).
+    expect(src).toContain('appareilId: appareilId(),');
+  });
+
+  it("le corps du lead porte l'empreinte quand elle existe, et RIEN sinon", () => {
+    const corps = (appareil: string) =>
+      construireCorps(
+        { ...etatVide(), appareilId: appareil },
+        { messages: { nomComplet: 'Nom complet requis' } },
+      ).body;
+    expect(corps('abc123').appareilId).toBe('abc123');
+    // Stockage indisponible → '' → clé ABSENTE, jamais une chaîne vide envoyée.
+    expect(corps('')).not.toHaveProperty('appareilId');
   });
 });
 

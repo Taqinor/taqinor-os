@@ -157,7 +157,13 @@ class AucuneUrlEnDurTests(SimpleTestCase):
     def _fichiers_du_module(self):
         for chemin in sorted(MODULE_DIR.rglob('*.py')):
             relatif = chemin.relative_to(MODULE_DIR).as_posix()
-            if relatif.startswith(('migrations/', 'tests/')):
+            # ``portail/`` (VAO15-20) a ses propres gardes, PLUS strictes :
+            # ``test_purete_portail`` (AST + GardeReseau, zéro socket) et
+            # ``test_garde_fous`` (désarmé par défaut). Son client documente
+            # son User-Agent honnête (une URL de contact Taqinor, pas une URL
+            # de portail) — la table ``SourceVeille`` reste la seule source
+            # des URL de COLLECTE.
+            if relatif.startswith(('migrations/', 'tests/', 'portail/')):
                 continue
             if relatif in FICHIERS_AUTORISES_URL:
                 continue

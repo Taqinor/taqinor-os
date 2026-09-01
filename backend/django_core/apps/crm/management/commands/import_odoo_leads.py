@@ -68,6 +68,25 @@ _ODOO_STAGE_TO_KEY = {
     'relance': 'FOLLOW_UP', 'follow up': 'FOLLOW_UP', 'negociation': 'FOLLOW_UP',
     'won': 'SIGNED', 'gagne': 'SIGNED', 'signe': 'SIGNED', 'signed': 'SIGNED',
     'cold': 'COLD', 'froid': 'COLD', 'perdu': 'COLD', 'lost': 'COLD',
+    # Étapes RÉELLES du pipeline Odoo du fondateur (relevées le
+    # 2026-09-01 ; mapping 18→6 validé par le fondateur le même jour).
+    # Clés sous forme _norm() puis underscores→espaces, comme _map_stage.
+    '2eme appel+ message whatsapp': 'CONTACTED',
+    'dernier appel+note odoo': 'CONTACTED',
+    'lead qualified': 'CONTACTED',
+    'waiting for consumption bills': 'CONTACTED',
+    'prilimanary quote sent': 'QUOTE_SENT',
+    'final quote sent': 'QUOTE_SENT',
+    'quote discussed': 'FOLLOW_UP',
+    'site visite scheduled': 'FOLLOW_UP',
+    'negotiation / objection': 'FOLLOW_UP',
+    'verbal agreement': 'FOLLOW_UP',
+    'derniere chance': 'FOLLOW_UP',
+    'no answer to post quote call': 'FOLLOW_UP',
+    'contract signed + deposit': 'SIGNED',
+    'cold lead': 'COLD',
+    'not convinced no quote': 'COLD',
+    'devis cold': 'COLD',
 }
 
 # Champs du Lead recopiés depuis l'export quand la fiche existante les a vides

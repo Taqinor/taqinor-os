@@ -4,14 +4,19 @@ ORDRE FONDATEUR (CJ2) : « this calculus might be the base of deciding which
 installation for each client, instead of my 900dh/month rule — do complete work
 to decide which size is the best for each monthly consumption ».
 
-CE QUI EST REMPLACÉ. La règle historique vit dans
-``services._residential_panel_count`` (services.py:3700-3714) : ``facture_hiver
-// 900 × 8 panneaux``. Elle ne regarde ni la saison, ni la forme de
-consommation, ni le barème, ni le prix du kit — un client « présent en
-journée » et un client « absent en journée » avec la même facture recevaient la
-même installation, alors que leur autoconsommation réelle diffère du simple au
-double. Cette règle N'EST PAS SUPPRIMÉE : elle reste le repli honnête quand
-aucun profil n'existe (voir :func:`recommander_taille`).
+CE QUI EST REMPLACÉ. La règle historique vivait dans
+``services._residential_panel_count`` : ``facture_hiver // 900 × 8 panneaux``.
+Elle ne regardait ni la saison, ni la forme de consommation, ni le barème, ni
+le prix du kit — un client « présent en journée » et un client « absent en
+journée » avec la même facture recevaient la même installation, alors que leur
+autoconsommation réelle diffère du simple au double.
+
+ELLE EST SUPPRIMÉE (ordre fondateur du 29/08/2026 : « all sizing should go
+through the new sizing tool, and i said ALL sizing »). Il n'y a plus de repli :
+``_residential_panel_count`` ne fait plus que convertir une puissance DEMANDÉE
+en panneaux, et quand ce module ne peut pas dimensionner, le devis automatique
+est REFUSÉ en nommant la donnée manquante (``services._refus_dimensionnement``)
+plutôt que dimensionné par une autre règle.
 
 CE QUI LA REMPLACE. On BALAIE les tailles candidates et, pour chacune, on
 mesure vraiment :
@@ -133,7 +138,21 @@ MAX_PANNEAUX_BALAYAGE = 120
 #: composition catalogue et douze simulations journalières, le tout SYNCHRONEMENT
 #: dans un aperçu. Un balayage tronqué par ce plafond le DIT (``stockage_tronque``
 #: + avertissement) : jamais un silence.
-MAX_PALIERS_STOCKAGE = 12
+#: BATHOMO (fondateur 26/08/2026) — 12 → 16, même marge que
+#: ``MAX_PALIERS_ECHELLE`` (« up to 30 or 40 kWh using 5 kWh batteries, no
+#: problem ») : au pas de 5 kWh, l'univers de candidates couvre désormais
+#: jusqu'à 85 kWh au lieu de 65, avant même de considérer le plafond du toit
+#: ou la règle « batteries toujours pleines ».
+#: TODO (revue adversariale 26/08/2026, F4 cheap optional — NON MESURÉ,
+#: infra de profilage indisponible dans cette session) : 12 → 16 fait sonder
+#: JUSQU'À 17 cibles (``MAX_PALIERS_STOCKAGE + 1``) sur l'endpoint public
+#: NON CACHÉ (chaque cible = une composition catalogue + 12 simulations
+#: journalières) — mesurer le coût réel de cette bascule sur ``/proposal``
+#: (ou l'endpoint payload public équivalent) et, si le +30 % annoncé se
+#: confirme, ajouter un plafond dédié/plus bas SPÉCIFIQUE au chemin public
+#: non caché (``MAX_SONDES_ECHELLE`` reste le garde-fou général) plutôt que
+#: de revenir sur la marge ``MAX_PALIERS_ECHELLE`` (F1 — « up to 30-40 kWh »).
+MAX_PALIERS_STOCKAGE = 16
 
 #: DIM2 — GARDE-FOU de l'extension « chasse à la falaise » : au-delà de la
 #: parité production/consommation, le balayage peut continuer pour voir si une
@@ -186,6 +205,369 @@ def _num(valeur, defaut=0.0):
         return float(valeur)
     except (TypeError, ValueError):
         return float(defaut)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QJR104 — UN OPTIMUM DU MOTEUR NE SE PUBLIE PAS SANS SA CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# LE PATRON QUI A PRODUIT LES PIRES DÉFAUTS CLIENT-FACING. Le moteur rend des
+# blocs d'OPTIMUM : ``meilleure_falaise`` (la combinaison champ + stockage qui
+# franchit la marche du barème), ``recommandation_avec`` (la batterie
+# conseillée), et chaque LIGNE de balayage (dont le ``residuel_kwh_mois`` /
+# ``tranche_apres`` décrivent son meilleur palier AVEC batterie, pas la
+# recommandation SANS batterie que la même ligne décrit par ailleurs). Chacun
+# porte SA configuration identifiante — panneaux, kWc, capacité batterie — et
+# chaque consommateur la DÉPOUILLAIT pour publier le nombre nu comme celui du
+# client. Rien, dans le code, ne distinguait « un nombre à propos de CE devis »
+# d'« un nombre à propos d'une configuration que le moteur a seulement
+# considérée » : QJR13 (le résiduel de falaise dans le PDF) et QJR14 (le taux
+# de remplissage dans la charge utile publique) ont été deux corrections du
+# MÊME défaut, écrites deux fois, à deux endroits, dans deux vocabulaires.
+#
+# CE QUE CE BLOC POSE : le TYPE qui manquait. Un :class:`Optimum` est un
+# nombre INSÉPARABLE de la configuration qu'il décrit, et
+# :func:`publier_si_decrit` est la SEULE porte par laquelle ce nombre devient
+# publiable — elle rend ``None`` (donc « OMETTRE », jamais un repli) dès que la
+# configuration ne décrit pas le devis vendu.
+#
+# LES SHAPES NE CHANGENT PAS. Les producteurs continuent de rendre les MÊMES
+# dicts (contrat PACT10 ``contract_samples/etude_horaire.json``, lu par la page
+# Astro et par le moteur PDF) : ce bloc ajoute la LECTURE TYPÉE de ces dicts
+# (:func:`optimum_du_bloc`), il ne réécrit aucune charge utile.
+
+#: Tolérance de comparaison des capacités batterie, en kWh. LA MÊME que le
+#: marquage « retenu » des paliers (``echelle_paliers_batterie``) et que la
+#: garde du moteur PDF, pour que l'écran, le PDF et la charge utile publique
+#: tranchent IDENTIQUEMENT — un écart d'affichage n'est pas un écart de palier.
+TOLERANCE_CAPACITE_KWH = 0.05
+
+
+class ConfigInstallation:
+    """La configuration IDENTIFIANTE d'une installation — gelée.
+
+    Trois nombres, et seulement ceux qui IDENTIFIENT : le compte de panneaux
+    et la capacité batterie (le kWc est PORTÉ pour la lisibilité mais ne
+    départage rien — il est dérivé de panneaux × wattage, donc redondant avec
+    le premier et sujet aux arrondis d'affichage).
+
+    GELÉE (``__slots__`` + ``__setattr__`` refusé) parce que le bug qu'elle
+    ferme est précisément une MUTATION de contexte : un consommateur qui
+    « corrigeait » la config d'un optimum pour la faire coïncider avec le devis
+    republierait exactement le nombre faux.
+    """
+
+    __slots__ = ('panneaux', 'batterie_kwh', 'kwc')
+
+    def __init__(self, panneaux=None, batterie_kwh=None, kwc=None):
+        object.__setattr__(self, 'panneaux', panneaux)
+        object.__setattr__(self, 'batterie_kwh', batterie_kwh)
+        object.__setattr__(self, 'kwc', kwc)
+
+    def __setattr__(self, nom, valeur):
+        raise AttributeError(
+            'ConfigInstallation est gelée : une configuration d\'optimum ne '
+            'se corrige pas pour la faire coïncider avec le devis.')
+
+    def __eq__(self, autre):
+        return (isinstance(autre, ConfigInstallation)
+                and self.panneaux == autre.panneaux
+                and self.batterie_kwh == autre.batterie_kwh
+                and self.kwc == autre.kwc)
+
+    def __hash__(self):
+        return hash((self.panneaux, self.batterie_kwh, self.kwc))
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return ('ConfigInstallation(panneaux=%r, batterie_kwh=%r, kwc=%r)'
+                % (self.panneaux, self.batterie_kwh, self.kwc))
+
+    @property
+    def panneaux_lisibles(self):
+        """Le compte de panneaux est-il un entier exploitable ?"""
+        return isinstance(self.panneaux, int)
+
+    @property
+    def capacite_lisible(self):
+        """La capacité batterie est-elle un nombre exploitable ?
+
+        ``None`` ici veut dire « aucune batterie » ou « illisible » — les deux
+        se traitent pareil : il n'y a rien à décrire, donc rien à publier.
+        """
+        return isinstance(self.batterie_kwh, float)
+
+    @property
+    def identifiable(self):
+        """Les DEUX nombres qui départagent sont-ils lisibles ?
+
+        Un optimum dont la configuration n'est pas identifiable n'est jamais
+        publiable : « on ne sait pas ce que ce nombre décrit » se traite comme
+        « il ne décrit pas ce devis » (règle fondateur zéro chiffre inventé).
+        """
+        return self.panneaux_lisibles and self.capacite_lisible
+
+
+class Optimum:
+    """Un nombre du moteur, INSÉPARABLE de la configuration qu'il décrit.
+
+    ``valeur`` peut être n'importe quoi de publiable (un kWh/mois, un libellé
+    de tranche, un pourcentage) ; ``config`` dit DE QUELLE installation il
+    parle. Gelé pour la même raison que :class:`ConfigInstallation`.
+
+    Un ``Optimum`` ne se lit JAMAIS par ``.valeur`` sur un chemin
+    client-facing : il se lit par :func:`publier_si_decrit`, qui est la seule
+    porte. ``.valeur`` reste accessible pour les chemins INTERNES (tableau
+    d'aperçu vendeur, journal), où le nombre est légitimement celui d'une
+    combinaison explorée.
+    """
+
+    __slots__ = ('valeur', 'config')
+
+    def __init__(self, valeur, config):
+        object.__setattr__(self, 'valeur', valeur)
+        object.__setattr__(self, 'config',
+                           config if isinstance(config, ConfigInstallation)
+                           else ConfigInstallation())
+
+    def __setattr__(self, nom, valeur):
+        raise AttributeError(
+            'Optimum est gelé : ni sa valeur ni sa configuration ne se '
+            'réécrivent — c\'est ce qui empêche de republier le nombre d\'une '
+            'autre installation.')
+
+    def __eq__(self, autre):
+        return (isinstance(autre, Optimum) and self.valeur == autre.valeur
+                and self.config == autre.config)
+
+    def __hash__(self):
+        return hash((repr(self.valeur), self.config))
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return 'Optimum(valeur=%r, config=%r)' % (self.valeur, self.config)
+
+
+def _entier_publiable(valeur):
+    """La valeur en ``int``, ou ``None`` si ce n'en est pas un.
+
+    ``True``/``False`` sont REFUSÉS explicitement : en Python un booléen EST
+    un entier, et ``int(True) == 1`` aurait fait passer un drapeau pour un
+    compte de panneaux.
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    try:
+        return int(round(float(valeur)))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _flottant_publiable(valeur):
+    """La valeur en ``float``, ou ``None`` si ce n'en est pas un."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    try:
+        return float(valeur)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def config_du_bloc(bloc):
+    """La :class:`ConfigInstallation` que DÉCRIT un bloc du moteur.
+
+    ``bloc`` est un dict rendu par le moteur — ``meilleure_falaise``,
+    ``recommandation_avec``, ou une LIGNE du tableau de balayage : les trois
+    portent les mêmes clés identifiantes (``panneaux``, ``kwc``,
+    ``batterie_kwh``). Un bloc absent, malformé ou aux clés illisibles rend une
+    config NON identifiable — jamais une config partiellement inventée.
+    """
+    if not isinstance(bloc, dict):
+        return ConfigInstallation()
+    return ConfigInstallation(
+        panneaux=_entier_publiable(bloc.get('panneaux')),
+        batterie_kwh=_flottant_publiable(bloc.get('batterie_kwh')),
+        kwc=_flottant_publiable(bloc.get('kwc')))
+
+
+def optimum_du_bloc(bloc, clef):
+    """L':class:`Optimum` porté par ``bloc[clef]`` — valeur ET configuration.
+
+    C'est l'ACCESSEUR TYPÉ des producteurs : ``meilleure_falaise``,
+    ``recommandation_avec`` et les lignes de balayage rendent toujours leurs
+    dicts (les contrats PACT10 en dépendent), et c'est ici qu'on les LIT comme
+    ce qu'ils sont — un nombre plus sa configuration.
+
+    ``clef`` accepte un chemin pointé (``'remplissage.moyen'``) : les
+    producteurs imbriquent certains optima d'un cran.
+    """
+    valeur = bloc if isinstance(bloc, dict) else None
+    for part in str(clef).split('.'):
+        if not isinstance(valeur, dict):
+            return Optimum(None, config_du_bloc(bloc))
+        valeur = valeur.get(part)
+    return Optimum(valeur, config_du_bloc(bloc))
+
+
+def optimum_de_ligne(ligne, clef='residuel_kwh_mois'):
+    """L'optimum porté par UNE LIGNE du tableau de balayage.
+
+    LE PIÈGE QUE CE NOM FERME. Une ligne de balayage décrit DEUX choses à la
+    fois : la variante SANS batterie de cette taille (``residuel_sans_kwh_mois``,
+    ``tranche_apres_sans``) et son MEILLEUR PALIER AVEC batterie
+    (``residuel_kwh_mois``, ``tranche_apres`` — voir ``_ligne_avec_palier``).
+    Les deux clés NON suffixées décrivent donc la variante AVEC, dont la
+    configuration inclut ``batterie_kwh`` : les publier comme « le résiduel de
+    ce devis » sur un devis sans batterie republierait le nombre d'une AUTRE
+    installation. Passer par ici rend cette configuration inséparable du
+    nombre.
+    """
+    return optimum_du_bloc(ligne, clef)
+
+
+def optima_publiables(dimensionnement):
+    """Les optima CLIENT-FACING d'un bloc ``etude_params['dimensionnement']``.
+
+    Les TROIS nombres que le parcours publie effectivement au client, chacun
+    rendu avec la configuration qu'il décrit — c'est-à-dire prêts pour
+    :func:`publier_si_decrit`, jamais pour une lecture directe de ``.valeur`` :
+
+    * ``residuel_falaise`` / ``tranche_apres_falaise`` — de ``meilleure_falaise``
+      (la combinaison champ + stockage que le balayage a TROUVÉE) ;
+    * ``remplissage_recommandation`` — de ``recommandation_avec`` (la batterie
+      que le moteur CONSEILLE), la fraction moyenne de remplissage.
+
+    Un bloc absent ou malformé rend trois optima non identifiables — donc trois
+    refus de publier, jamais une erreur.
+    """
+    bloc = dimensionnement if isinstance(dimensionnement, dict) else {}
+    falaise = bloc.get('meilleure_falaise')
+    return {
+        'residuel_falaise': optimum_du_bloc(falaise, 'residuel_kwh_mois'),
+        'tranche_apres_falaise': optimum_du_bloc(falaise,
+                                                 'tranche_apres.libelle'),
+        'remplissage_recommandation': optimum_du_bloc(
+            bloc.get('recommandation_avec'), 'remplissage.moyen'),
+    }
+
+
+def decrit_la_capacite(config_optimum, config_vendue):
+    """Les DEUX configurations parlent-elles de la MÊME capacité batterie ?
+
+    La moitié « stockage » de :func:`decrit` — un COMPOSANT, plus une règle de
+    publication à elle seule.
+
+    QJR233 (31/08/2026) — ELLE N'EST PLUS UNE RÈGLE DE PUBLICATION. Le taux de
+    remplissage batterie de la charge utile publique s'en contentait (décision
+    QJR14) alors que ce taux est une grandeur PAR NOMBRE DE PANNEAUX : une page
+    client pouvait publier un pourcentage calculé sur un champ PV différent de
+    celui qui est vendu, et la garde du PDF sur le MÊME concept était déjà plus
+    stricte. Tous les consommateurs passent désormais par :func:`decrit`.
+
+    ``False`` dès qu'un côté est illisible, notamment quand le devis ne vend
+    AUCUNE batterie : il n'y a rien à décrire, donc rien à publier.
+    """
+    if not (isinstance(config_optimum, ConfigInstallation)
+            and isinstance(config_vendue, ConfigInstallation)):
+        return False
+    if not (config_optimum.capacite_lisible and config_vendue.capacite_lisible):
+        return False
+    return (abs(config_optimum.batterie_kwh - config_vendue.batterie_kwh)
+            <= TOLERANCE_CAPACITE_KWH)
+
+
+def decrit(config_optimum, config_vendue):
+    """``config_optimum`` décrit-elle bien l'installation VENDUE ?
+
+    LA RÈGLE COMPLÈTE, écrite UNE fois pour tous les consommateurs (QJR13 côté
+    PDF, QJR14 côté charge utile publique) : identité du compte de panneaux ET
+    :func:`decrit_la_capacite`.
+
+    LA BORNE, ET LE FAIT QU'ELLE ÉTAIT ÉCRITE DEUX FOIS. Le moteur PDF
+    comparait à ``<= 0,05`` et la charge utile publique à ``< 0,05`` : deux
+    écritures d'une même règle, divergentes sur l'unique valeur exactement
+    égale à la tolérance. La règle unifiée retient ``<=`` (la formulation du
+    PDF, la plus indulgente) — aucune assertion existante ne porte sur cette
+    borne exacte, et une capacité tombant au flottant près sur 0,05 d'écart
+    n'est pas un écart de palier. C'est précisément le genre de divergence que
+    ce type existe pour rendre impossible.
+
+    Ce qui n'est pas PROUVÉ n'est pas publié.
+    """
+    if not (isinstance(config_optimum, ConfigInstallation)
+            and isinstance(config_vendue, ConfigInstallation)):
+        return False
+    if not (config_optimum.panneaux_lisibles
+            and config_vendue.panneaux_lisibles):
+        return False
+    if config_optimum.panneaux != config_vendue.panneaux:
+        return False
+    return decrit_la_capacite(config_optimum, config_vendue)
+
+
+def config_vendue_du_devis(devis):
+    """La :class:`ConfigInstallation` que le devis VEND RÉELLEMENT.
+
+    Deux lectures, toutes deux la SOURCE UNIQUE de leur nombre — jamais une
+    seconde dérivation :
+
+    * les panneaux, par ``quote_engine.builder.panneaux_et_watt_lu`` sur les
+      lignes produit non optionnelles (la lecture PVUNI, celle du moteur de
+      devis et de ``profils_comparatifs``) ;
+    * la capacité batterie, par
+      ``domain.dimensionnement_devis.capacite_batterie_des_lignes``.
+
+    Ne lève JAMAIS : une garde qui casse la page publique serait pire que le
+    chiffre qu'elle protège. Un côté illisible rend une config non
+    identifiable, donc un refus de publier.
+    """
+    panneaux = batterie = None
+    try:
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, _watt = panneaux_et_watt_lu(lignes)
+        panneaux = _entier_publiable(nb_panneaux)
+        if panneaux is not None and panneaux <= 0:
+            panneaux = None
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning('QJR104 : panneaux vendus illisibles (devis %s)',
+                       getattr(devis, 'pk', None), exc_info=True)
+    try:
+        # ``capacite_batterie_des_lignes`` est RÉ-EXPORTÉ par ce module (bloc
+        # de bas de fichier, QJR77) : on l'appelle par ce nom, sans le
+        # ré-importer localement — un second import masquerait le ré-export.
+        batterie = _flottant_publiable(capacite_batterie_des_lignes(devis))
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+        logger.warning('QJR104 : capacité batterie vendue illisible '
+                       '(devis %s)', getattr(devis, 'pk', None),
+                       exc_info=True)
+    return ConfigInstallation(panneaux=panneaux, batterie_kwh=batterie)
+
+
+def publier_si_decrit(optimum, devis, regle=None):
+    """LA SEULE PORTE — la valeur de l'optimum, ou ``None`` s'il ne décrit
+    pas CE devis.
+
+    ``None`` veut dire OMETTRE : la carte disparaît, la clé de charge utile
+    est ABSENTE. Jamais zéro, jamais un repli forfaitaire (règle fondateur
+    « zéro chiffre inventé »).
+
+    ``regle`` est la règle d'identité à appliquer — :func:`decrit` par défaut
+    (panneaux ET capacité). QJR233 : PLUS AUCUN appelant n'en passe une autre.
+    Le taux de remplissage batterie, seul à s'être contenté de
+    :func:`decrit_la_capacite` (décision QJR14), est aligné sur la règle
+    complète — il décrit un régime PAR NOMBRE DE PANNEAUX. Le paramètre reste
+    un ARGUMENT NOMMÉ et non un mode caché : si une règle plus souple devait
+    revenir un jour, le choix se lirait sur le site d'appel.
+    """
+    if not isinstance(optimum, Optimum) or optimum.valeur is None:
+        return None
+    if not (regle or decrit)(optimum.config, config_vendue_du_devis(devis)):
+        return None
+    return optimum.valeur
 
 
 def bornes_candidates(*, conso_annuelle_kwh, productible_annuel_kwh_kwc,
@@ -568,14 +950,23 @@ def _remplissage_rendu(palier_energie):
     }
 
 
-def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
+def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
+                    charges_fixes_mad, ville=None, lat=None,
                     lon=None, occupation=None, equipements=None, phase=None,
                     taux_tva=Decimal('20'), gamme_nom_devis=None,
                     structure_type='acier', min_panneaux=None,
-                    max_panneaux=None, tranches=None,
-                    charges_fixes_mad=None, source_conso=None,
-                    cible_falaise_kwh_mois=None):
+                    max_panneaux=None, source_conso=None,
+                    cible_falaise_kwh_mois=None, jour_reference=None):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
+
+    ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
+    portaient un défaut ``None`` (grille nationale) que TOUS les appelants
+    laissaient jouer, pendant qu'``etude_horaire_pour_devis`` et
+    ``quote_engine/builder`` appliquaient la surcharge de la société : le
+    dimensionnement et le devis valorisaient le MÊME kWh sur deux barèmes, et
+    le choix était invisible au site d'appel puisque les kwargs étaient OMIS
+    plutôt que refusés. Passer explicitement ``tranches=None,
+    charges_fixes_mad=None`` reste possible — c'est alors un choix ÉCRIT.
 
     Pour chaque taille (granularité = UN panneau du catalogue) :
 
@@ -654,6 +1045,11 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         'lat': lat, 'lon': lon, 'occupation': occupation,
         'equipements': equipements, 'tranches': tranches,
         'charges_fixes_mad': charges_fixes_mad,
+        # QJR45 — LA DATE EST UNE ENTRÉE, PAS L'HORLOGE. Le même jour de
+        # référence sert l'étude SANS batterie et le mini-balayage du
+        # stockage : deux dates différentes dans un même tableau feraient
+        # comparer deux Ramadans.
+        'jour_reference': jour_reference,
     }
 
     def _composer(panneaux, kwc, avec_batterie, cible_kwh, journal):
@@ -828,7 +1224,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         compositions = []
         vues = {}
         # L-DECH — LES BORNES DE PUISSANCE, PALIER PAR PALIER. Chaque cible est
-        # une composition DIFFÉRENTE (15 kWh = un 10 + un 5, 20 kWh = deux 10) :
+        # une composition DIFFÉRENTE (15 kWh = trois modules de 5 — une banque
+        # est toujours HOMOGÈNE, fondateur 26/08/2026 ; 20 kWh = deux 10) :
         # la décharge disponible s'additionne avec les packs, et le port
         # batterie de l'onduleur la re-borne. Lues par la MÊME fonction que
         # l'étude complète (``puissances_batterie_des_lignes``) sur les lignes
@@ -1029,6 +1426,52 @@ def _arrondi(valeur, decimales=2):
     return None if valeur is None else round(valeur, decimales)
 
 
+def tailles_eligibles(tableau):
+    """Les lignes du tableau qu'une recommandation a le DROIT de retenir.
+
+    Une taille n'est éligible que si l'option de BASE (sans batterie) est
+    composable, chiffrable ET électriquement saine. Un verdict bloquant sur la
+    variante batterie n'écarte PAS la taille — il retire seulement l'option
+    batterie (``batterie_disponible``), ce que le tableau montre.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) pour que
+    :mod:`apps.ventes.offres_tailles` lise la MÊME éligibilité que
+    l'optimiseur, au lieu d'en recopier une seconde qui divergerait au premier
+    critère ajouté.
+    """
+    return [
+        ligne for ligne in (tableau or [])
+        if ligne.get('composable')
+        and ligne.get('payback_sans_annees') is not None
+        and not ligne.get('verdicts_bloquants_sans')
+    ]
+
+
+def point_depart_meilleur_payback(eligibles):
+    """LE POINT DE DÉPART de la doctrine : la taille au MEILLEUR PAYBACK.
+
+    À égalité (écart < :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas
+    connu au centième d'année), la meilleure couverture de consommation, puis
+    le plus grand champ. Renvoie ``(ligne | None, meilleur_payback, a_egalite)``
+    — le tuple dont :func:`choisir_recommandation` a besoin pour motiver son
+    choix, et dont :mod:`apps.ventes.offres_tailles` n'utilise que la ligne.
+
+    EXTRAIT de :func:`choisir_recommandation` (TAILLES, 26/08/2026) — c'est
+    exactement l'offre « Éco » de la page client (« l'entrée de gamme sensée »).
+    L'extraire plutôt que la recopier garantit qu'Éco et le départ de la
+    recommandation ne peuvent JAMAIS désigner deux tailles différentes.
+    """
+    if not eligibles:
+        return None, None, []
+    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
+    a_egalite = [
+        x for x in eligibles
+        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
+    ]
+    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    return depart, meilleur_payback, a_egalite
+
+
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
@@ -1062,16 +1505,9 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     if critere not in CRITERES:
         critere = CRITERE_DEFAUT
 
-    # Une taille n'est éligible que si l'option de BASE (sans batterie) est
-    # composable, chiffrable ET électriquement saine. Un verdict bloquant sur
-    # la variante batterie n'écarte PAS la taille — il retire seulement
-    # l'option batterie (``batterie_disponible``), ce que le tableau montre.
-    eligibles = [
-        ligne for ligne in (tableau or [])
-        if ligne.get('composable')
-        and ligne.get('payback_sans_annees') is not None
-        and not ligne.get('verdicts_bloquants_sans')
-    ]
+    # Éligibilité : voir :func:`tailles_eligibles` (extraite le 26/08/2026 pour
+    # que ``offres_tailles`` lise la MÊME règle, jamais une seconde copie).
+    eligibles = tailles_eligibles(tableau)
     if not eligibles:
         return None, (
             'aucune taille recommandable : le catalogue ne compose aucune '
@@ -1095,12 +1531,11 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
         )
 
     # ── 1. LE POINT DE DÉPART : la taille au meilleur payback ────────────────
-    meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
-    a_egalite = [
-        x for x in eligibles
-        if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
-    ]
-    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+    # Extrait en :func:`point_depart_meilleur_payback` (26/08/2026) : c'est
+    # AUSSI l'offre « Éco » de la page client, et les deux ne doivent jamais
+    # pouvoir désigner deux tailles différentes.
+    depart, meilleur_payback, a_egalite = point_depart_meilleur_payback(
+        eligibles)
 
     # ── 2. LA MONTÉE : doctrine du 25/08/2026 ────────────────────────────────
     # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
@@ -1474,16 +1909,21 @@ def chercher_falaise(tableau, cible_kwh_mois):
     return None
 
 
-def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
-                       **kwargs):
+def recommander_taille(*, company, conso_kwh_mensuelles, tranches,
+                       charges_fixes_mad, critere=CRITERE_DEFAUT, **kwargs):
     """Balaye puis recommande : ``{tableau, recommandation, motivation, critere}``.
 
-    C'est LE point d'entrée du successeur de la règle « 900 DH/mois ». Quand
-    aucune taille n'est recommandable (catalogue incomplet, ou profil trop
+    ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46) — voir
+    :func:`balayer_tailles`. Le barème vient de l'identité tarifaire portée par
+    ``apps.ventes.domain.entrees.EntreesMoteur``, donc de la MÊME lecture que
+    celle du moteur de devis.
+
+    C'est LE point d'entrée du dimensionnement — celui qui a REMPLACÉ la règle
+    « 900 DH/mois », désormais supprimée. Quand aucune taille n'est
+    recommandable (catalogue incomplet, localisation non résolue, profil trop
     pauvre pour que le moteur calcule), ``recommandation`` vaut ``None`` et
-    ``motivation`` dit pourquoi — l'appelant retombe alors sur
-    ``services._residential_panel_count`` (la règle historique), ÉTIQUETÉE
-    comme repli, jamais présentée comme un calcul.
+    ``motivation`` dit pourquoi : l'appelant ne retombe sur AUCUNE autre règle,
+    il refuse le devis en nommant la donnée manquante.
 
     DIM2 (fondateur 24/08/2026) — trois clés s'ajoutent, toutes ADDITIVES :
 
@@ -1503,11 +1943,12 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
     conso_annuelle = sum(_num(v) for v in (conso_kwh_mensuelles or ()))
     falaise = bareme.falaise_sous_kwh_mensuel(
         conso_annuelle / 12.0 if conso_annuelle > 0 else 0,
-        tranches=kwargs.get('tranches'))
+        tranches=tranches)
     cible_falaise = (falaise or {}).get('cible_kwh_mois')
 
     tableau = balayer_tailles(
         company=company, conso_kwh_mensuelles=conso_kwh_mensuelles,
+        tranches=tranches, charges_fixes_mad=charges_fixes_mad,
         cible_falaise_kwh_mois=cible_falaise, **kwargs)
     recommandation, motivation = choisir_recommandation(tableau, critere)
     recommandation_avec, motivation_avec = choisir_recommandation_avec(tableau)
@@ -1542,507 +1983,41 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# L'ÉCHELLE DE PALIERS BATTERIE (ordre fondateur, 25/08/2026)
+# LA COUCHE LIÉE AU DEVIS — DÉPLACÉE (QJR77), RÉ-EXPORTÉE ICI
 # ════════════════════════════════════════════════════════════════════════════
 #
-# VERBATIM : « more than just 2 batteries in the web page battery option ; extra
-# batteries might add extra panels with extra cost, that is still fine ».
+# Tout ce qui LIT un ``Devis`` (ses lignes, son ``roof_layout``, sa remise) et
+# ce qui MUTE l'instance qu'on lui passe vit désormais dans
+# ``apps/ventes/domain/dimensionnement_devis.py``. Ce fichier-ci ne garde que
+# le BALAYAGE PUR : des nombres, aucune base de données.
 #
-# CE QUI CHANGE PAR RAPPORT À DIM2. Le mini-balayage de ``balayer_tailles``
-# répond à « à CHAMP DONNÉ, que change une batterie de plus ? » — et la règle
-# « batteries toujours pleines » y REJETTE tout palier qu'un champ trop petit
-# ne saurait charger. La question du fondateur est l'INVERSE : « et si je veux
-# CETTE banque de batteries, que faut-il ? ». La même règle ne rejette donc
-# plus le palier : elle TIRE LES PANNEAUX NÉCESSAIRES. Des batteries en plus
-# amènent des panneaux en plus, qui coûtent plus — « that is still fine ».
-
-#: Nombre de paliers montrés AU-DELÀ du palier retenu. Ce n'est pas une règle
-#: métier : c'est la LONGUEUR RAISONNABLE d'un choix à l'écran. La liste
-#: s'arrête de toute façon d'elle-même au plafond du toit ou dès qu'un palier
-#: ne se remplit plus, souvent bien avant.
-MAX_PALIERS_ECHELLE = 8
-
-#: GARDE-FOU DE CALCUL : nombre maximal de tailles de champ réellement sondées.
-#: Chaque sonde coûte une composition catalogue par palier PLUS douze
-#: simulations journalières ; la recherche du champ minimal est DICHOTOMIQUE
-#: (≈ log₂ du plafond, mutualisée entre paliers puisqu'ils montent ensemble),
-#: si bien que ce plafond n'est jamais atteint sur un profil réel — il est là
-#: pour qu'un catalogue pathologique ne puisse pas faire boucler un aperçu.
-MAX_SONDES_ECHELLE = 24
-
-
-def plafond_toit_du_devis(devis):
-    """Le nombre de panneaux PHYSIQUEMENT POSABLES d'après le calepinage 3D.
-
-    LU par la MÊME fonction que la resynchronisation
-    (``services._cible_panneaux_du_layout`` sur ``Devis.roof_layout``) : deux
-    lectures du toit finiraient par diverger, et l'échelle proposerait alors
-    des paliers que le calepinage refuse.
-
-    ``None`` quand le devis ne porte aucun calepinage — l'échelle n'est alors
-    bornée que par ses garde-fous de calcul, jamais par une surface inventée.
-    """
-    layout = getattr(devis, 'roof_layout', None)
-    if not isinstance(layout, dict):
-        return None
-    from apps.ventes.services import (
-        _cible_panneaux_du_layout, extract_roof_config)
-    try:
-        toiture = extract_roof_config(layout) or {}
-    except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond
-        toiture = {}
-    try:
-        cible = int(_cible_panneaux_du_layout(layout, toiture) or 0)
-    except Exception:  # noqa: BLE001
-        return None
-    return cible if cible > 0 else None
-
-
-def _compter_modules_batterie(lignes_vue):
-    """``(nb de modules 5 kWh, nb de modules 10 kWh)`` LUS sur la composition.
-
-    Le kWh est celui du NOM du produit — c'est-à-dire le NOMINAL imprimé sur
-    l'étiquette, la grandeur avec laquelle le fondateur et le client comptent
-    (« deux batteries de 10 »), là où ``capacite_kwh`` porte la capacité UTILE
-    fichée. Les deux coexistent volontairement : l'une se compte, l'autre se
-    calcule.
-
-    Un module d'une AUTRE taille (le jour où le catalogue en référence un) ne
-    tombe dans aucun des deux compteurs — jamais reclassé de force dans le
-    voisin le plus proche : ``capacite_kwh`` continue, lui, à dire la vérité.
-    """
-    from apps.ventes.services import _parse_kwh
-    cinq = dix = 0
-    for ligne in (lignes_vue or []):
-        if ligne.get('role') != 'batterie':
-            continue
-        nominal = _num(_parse_kwh(ligne.get('designation') or ''))
-        quantite = int(_num(ligne.get('quantite')))
-        if quantite <= 0:
-            continue
-        if abs(nominal - 5.0) < 1.0:
-            cinq += quantite
-        elif abs(nominal - 10.0) < 1.0:
-            dix += quantite
-    return cinq, dix
-
-
-def _lignes_produit_du_devis(devis):
-    """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
-
-    Les intertitres de section et les notes (``XSAL14``) ne portent ni prix ni
-    quantité : ils ne comptent dans aucun total, donc dans aucune lecture de
-    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes)."""
-    try:
-        lignes = list(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
-        return []
-    return [ligne for ligne in lignes
-            if getattr(ligne, 'est_ligne_produit', True)
-            and ligne.quantite is not None
-            and ligne.prix_unitaire is not None]
-
-
-def facteur_remise_du_devis(devis) -> float:
-    """Le facteur multiplicatif de remise RÉELLEMENT appliqué par ce devis.
-
-    POURQUOI CE FACTEUR EXISTE. Les paliers de l'échelle sont chiffrés sur une
-    composition CATALOGUE (prix publics bruts), alors que la carte de la page
-    publique affiche le TTC du DEVIS — remise comprise. Sans ce facteur, la
-    pilule « retenue » et la carte annonçaient deux prix différents pour le
-    MÊME kit, et l'écart entre deux pilules d'un devis remisé était faux.
-
-    LA MÊME SOURCE QUE LE MOTEUR DE RENDU. ``quote_engine.builder`` chiffre une
-    ligne à ``prix_unitaire × (1 − remise_ligne/100)`` puis applique
-    ``Devis.remise_globale`` au sous-total HT : ce facteur est exactement le
-    rapport ``HT net / HT brut`` de cette chaîne, lu sur les lignes RÉELLES.
-
-    PORTÉE : les lignes que l'option AVEC BATTERIE facture — les lignes
-    communes (``variante = ''``) et les lignes ``'avec'``, jamais les lignes
-    réservées à l'option SANS batterie (L-2OPT). Sur un devis mono-option,
-    toutes les lignes sont communes : la portée est le devis entier.
-
-    APPROXIMATION ASSUMÉE ET UNIQUE : quand les lignes portent des remises
-    UNITAIRES DIFFÉRENTES, un seul facteur ne peut pas les représenter toutes —
-    c'est alors la remise MOYENNE (pondérée par le montant) qui est appliquée à
-    chaque palier. Le cas courant (aucune remise de ligne, une remise globale)
-    est rendu au centime près. Vaut ``1.0`` (aucune remise) dès que rien n'est
-    lisible : jamais un rabais inventé sur un devis qui n'en porte pas.
-    """
-    try:
-        lignes = [ligne for ligne in _lignes_produit_du_devis(devis)
-                  if (getattr(ligne, 'variante', '') or '') != 'sans']
-        brut = sum(_num(ligne.quantite) * _num(ligne.prix_unitaire)
-                   for ligne in lignes)
-        if brut <= 0:
-            return 1.0
-        apres_lignes = sum(
-            _num(ligne.quantite) * _num(ligne.prix_unitaire)
-            * (1.0 - _num(getattr(ligne, 'remise', 0)) / 100.0)
-            for ligne in lignes)
-        globale = _num(getattr(devis, 'remise_globale', 0))
-        facteur = (apres_lignes / brut) * (1.0 - globale / 100.0)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
-        logger.warning('facteur de remise illisible sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return 1.0
-    # Un facteur nul, négatif ou non fini (NaN compris — toute comparaison
-    # avec NaN est fausse) ne décrit aucune remise réelle : on rend le prix
-    # catalogue plutôt qu'un prix fabriqué.
-    if not 0 < facteur < math.inf:
-        return 1.0
-    return facteur
-
-
-def capacite_batterie_des_lignes(devis):
-    """La capacité batterie des LIGNES RÉELLES de ce devis, ou ``None``.
-
-    C'EST LA CAPACITÉ QUE LE CLIENT ACHÈTE, pas celle que le moteur aurait
-    conseillée. Le générateur pose les lignes sur un champ arrondi
-    (``autoFillLines`` cible ``round(kwc/5)×5``), si bien que l'optimum du
-    moteur et les lignes vendues peuvent désigner deux capacités différentes :
-    marquer « Retenu pour ce devis » d'après le moteur affichait alors le prix
-    d'une AUTRE capacité que celle du devis.
-
-    Mesurée avec la MÊME grandeur que les paliers de l'échelle
-    (:func:`capacite_utile_batterie` — fiche technique d'abord, nom ensuite),
-    sans quoi la comparaison opposerait des utiles à des nominaux.
-
-    ``None`` quand le devis ne porte AUCUNE ligne batterie : aucun palier n'est
-    alors marqué ``retenu`` — jamais un marquage au hasard."""
-    try:
-        from apps.ventes.services import _is_battery
-
-        total = 0.0
-        for ligne in _lignes_produit_du_devis(devis):
-            designation = getattr(ligne, 'designation', '') or ''
-            if not _is_battery(designation):
-                continue
-            quantite = _num(ligne.quantite)
-            if quantite <= 0:
-                continue
-            total += _num(capacite_utile_batterie(
-                getattr(ligne, 'produit', None), designation)) * quantite
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
-        logger.warning('capacité batterie des lignes illisible sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return None
-    return round(total, 2) if total > 0 else None
-
-
-def echelle_paliers_batterie(devis):
-    """L'ÉCHELLE des paliers de batterie proposables sur CE devis résidentiel.
-
-    CONTRAT (PACT10 — écrit AVANT les deux moitiés qui le consomment). Renvoie
-    une LISTE de dicts, capacité croissante, chacun portant EXACTEMENT :
-
-    * ``capacite_kwh`` — capacité UTILE réellement livrée par la composition
-      catalogue de ce palier (fiche technique, jamais l'étiquette) ;
-    * ``nb_batteries_5`` / ``nb_batteries_10`` — combien de modules 5 kWh et
-      10 kWh la composition contient, tels qu'on les COMPTE ;
-    * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
-    * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
-    * ``prix_ttc`` — prix de VENTE TTC de la composition complète, **REMISE DU
-      DEVIS APPLIQUÉE** (:func:`facteur_remise_du_devis`, la même chaîne que
-      ``quote_engine.builder``) : les paliers se comparent alors entre eux ET
-      avec le prix affiché sur la carte du devis, jamais un mélange de bases.
-      Règle #4 : jamais un prix d'achat, jamais une marge ;
-    * ``economies_annuelles`` — MAD/an du moteur horaire sur ce couple
-      champ × stockage (une remise change le prix, jamais l'énergie) ;
-    * ``payback_annees`` — ``prix_ttc / economies_annuelles``, ou ``None``
-      quand l'économie n'est pas chiffrable (jamais un zéro fabriqué) ;
-    * ``remplissage_ok`` — la batterie se remplit-elle TOUS LES JOURS ?
-    * ``retenu`` — ce palier est-il celui des LIGNES BATTERIE RÉELLES de ce
-      devis (:func:`capacite_batterie_des_lignes`) ? Aucune correspondance
-      exacte ⇒ AUCUN palier retenu, jamais un marquage approché.
-
-    LA RÈGLE FONDATEUR EST RETOURNÉE, PAS ABANDONNÉE. DIM2 demande « à champ
-    donné, quel stockage se remplit ? » et REFUSE les paliers trop gros. Ici la
-    question est « pour CETTE banque, que faut-il ? » : la même règle
-    (« batteries toujours pleines », 24/08/2026) ne rejette plus le palier, elle
-    TIRE LE CHAMP — ``nb_panneaux`` est le PLUS PETIT champ dont le surplus
-    quotidien du mois le plus faible charge la banque entièrement. C'est
-    exactement ce que le fondateur a autorisé le 25/08 : « extra batteries might
-    add extra panels with extra cost, that is still fine ».
-
-    LE CHAMP EST BORNÉ, ET CHAQUE BORNE EST JUSTIFIÉE : le PLAFOND DU TOIT quand
-    le devis porte un calepinage (:func:`plafond_toit_du_devis` — on ne propose
-    pas des panneaux qui ne tiennent pas), sinon :data:`FACTEUR_MAX_FALAISE` ×
-    la taille de parité de CE client, plafonnée par
-    :data:`MAX_PANNEAUX_BALAYAGE`.
-
-    ``remplissage_ok=False`` n'apparaît QUE sur le premier palier que même le
-    champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)
-    pour que la limite se LISE, puis l'échelle s'arrête.
-
-    LES ENTRÉES SONT CELLES DU TABLEAU DÉJÀ RANGÉ SUR LE DEVIS
-    (``services.entrees_dimensionnement_du_devis``, et les mêmes réglages par
-    défaut que ``rafraichir_dimensionnement_devis``) : sans cela l'échelle
-    désignerait un palier « retenu » calculé sur d'autres hypothèses que celles
-    qui l'ont retenu.
-
-    LISTE VIDE quand rien n'est dérivable — devis non résidentiel, sans société,
-    sans profil de consommation, localisation non résolue, catalogue sans
-    batterie. Jamais un chiffre inventé pour remplir l'écran. Ne lève JAMAIS et
-    n'écrit RIEN (aucun statut, aucune ligne, aucun total — règle #4).
-    """
-    try:
-        return _echelle_paliers_batterie(devis)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
-        logger.warning('échelle de paliers batterie indisponible sur %s',
-                       getattr(devis, 'reference', '?'), exc_info=True)
-        return []
-
-
-def _echelle_paliers_batterie(devis):
-    """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
-    from apps.parametres.pvgis_profils import productible_mensuel
-    from apps.ventes.etude_horaire import (
-        balayer_stockage_horaire,
-        # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
-        puissances_batterie_des_lignes,
-    )
-    from apps.ventes.services import (
-        _AUTO_PANEL_WATT,
-        carte_marques_composition,
-        catalogue_de_la_societe,
-        composition_residentielle,
-        entrees_dimensionnement_du_devis,
-        ordre_lignes_societe,
-    )
-
-    entrees = entrees_dimensionnement_du_devis(devis)
-    conso = (entrees or {}).get('conso_kwh_mensuelles')
-    if not conso:
-        return []
-    conso_annuelle = sum(_num(v) for v in conso)
-    if conso_annuelle <= 0:
-        return []
-
-    mensuel = productible_mensuel(ville=entrees['ville'], lat=entrees['lat'],
-                                  lon=entrees['lon'])
-    if not mensuel:
-        return []
-    productibles, _source = mensuel
-    productible_annuel = sum(_num(v) for v in productibles)
-    if productible_annuel <= 0:
-        return []
-
-    company = entrees['company']
-    catalogue = catalogue_de_la_societe(company)
-    marques = carte_marques_composition(company, None)
-    ordre = ordre_lignes_societe(company)
-    # MÊMES réglages par défaut que ``rafraichir_dimensionnement_devis`` : la
-    # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
-    # (``_lire_composition``) et ce taux-ci n'étant que le repli.
-    taux_tva = Decimal('20')
-
-    def composer(panneaux, kwc, cible, journal):
-        """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
-        exception : un palier impossible ne fait pas tomber l'échelle."""
-        try:
-            return composition_residentielle(
-                catalogue, kwc=kwc, panel_watt=panel_watt,
-                nb_panneaux=panneaux, avec_batterie=True,
-                structure_type='acier', taux_tva=taux_tva,
-                avertissements=journal, deux_options=False, marques=marques,
-                ordre_lignes=ordre, batterie_cible_kwh=cible)
-        except Exception:  # noqa: BLE001
-            logger.warning('composition impossible à %s panneaux / %s kWh',
-                           panneaux, cible, exc_info=True)
-            return None
-
-    # Le wattage du panneau RÉELLEMENT retenu par le catalogue — lu, pas
-    # supposé (même sonde que ``balayer_tailles``).
-    sonde_avert = []
-    sonde = composition_residentielle(
-        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
-        nb_panneaux=1, avec_batterie=False, structure_type='acier',
-        taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
-        marques=marques, ordre_lignes=ordre)
-    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
-    if panel_watt <= 0:
-        return []
-
-    # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
-    panneaux_parite = max(1, int(math.ceil(
-        (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
-    max_champ = min(MAX_PANNEAUX_BALAYAGE,
-                    int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
-    plafond_toit = plafond_toit_du_devis(devis)
-    if plafond_toit:
-        max_champ = min(max_champ, int(plafond_toit))
-    max_champ = max(1, max_champ)
-
-    # ── L'ÉCHELLE DES CAPACITÉS, DÉRIVÉE DU CATALOGUE ────────────────────────
-    kwc_max = max_champ * panel_watt / 1000.0
-    vivier_journal = []
-    sonde_batterie = composer(max_champ, kwc_max, None, vivier_journal)
-    if sonde_batterie is None:
-        return []
-    cibles = paliers_stockage_candidats(
-        list(getattr(sonde_batterie, 'capacites_batterie_vivier', ()) or ()),
-        maximum=MAX_PALIERS_STOCKAGE)
-    if not cibles:
-        return []
-
-    etude_kwargs = {
-        'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
-        'lat': entrees['lat'], 'lon': entrees['lon'],
-        'occupation': entrees['occupation'],
-        'equipements': entrees['equipements'],
-    }
-
-    sondes = {}
-
-    def sonder(panneaux):
-        """Ce que CE champ sait faire de CHAQUE cible de l'échelle — mémoïsé.
-
-        Un seul parcours des douze jours types sert toutes les capacités
-        (``balayer_stockage_horaire``), et les bornes de puissance sont lues
-        composition par composition : 15 kWh (un 10 + un 5) et 20 kWh (deux 10)
-        n'ont ni le même prix ni la même puissance de décharge.
-        """
-        if panneaux in sondes:
-            return sondes[panneaux]
-        if len(sondes) >= MAX_SONDES_ECHELLE:
-            return None
-        kwc = panneaux * panel_watt / 1000.0
-        vues, bornes, reels = {}, {}, {}
-        for cible in cibles:
-            journal = []
-            lignes = composer(panneaux, kwc, cible, journal)
-            if lignes is None:
-                continue
-            vue = _lire_composition(lignes, taux_tva)
-            capacite = round(_num(vue.get('batterie_kwh')), 3)
-            if capacite <= 0:
-                continue
-            reels[cible] = capacite
-            vues[cible] = vue
-            puissances = puissances_batterie_des_lignes(
-                lignes, roles=getattr(lignes, 'roles', None))
-            bornes[capacite] = {
-                'decharge_kw': puissances['packs_decharge_kw'],
-                'decharge_onduleur_kw': puissances['ond_decharge_kw'],
-                'charge_kw': puissances['charge_kw'],
-            }
-        if not reels:
-            sondes[panneaux] = None
-            return None
-        energie = balayer_stockage_horaire(
-            kwc=kwc, capacites_kwh=sorted(set(reels.values())),
-            puissances_par_capacite=bornes, **etude_kwargs)
-        if energie is None:
-            sondes[panneaux] = None
-            return None
-        par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}
-        par_cible = {}
-        for cible, capacite in reels.items():
-            palier = par_capacite.get(round(capacite, 2))
-            if palier is None:
-                continue
-            par_cible[cible] = {'capacite_kwh': capacite,
-                                'vue': vues[cible], 'palier': palier}
-        sondes[panneaux] = {'panneaux': panneaux, 'par_cible': par_cible}
-        return sondes[panneaux]
-
-    def remplit(panneaux, cible):
-        """Ce champ charge-t-il CETTE banque tous les jours ? ``None`` = pas de
-        réponse (palier non composable à cette taille)."""
-        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
-        if entree is None:
-            return None
-        return bool(entree['palier']['se_remplit_tous_les_jours'])
-
-    def champ_minimal(cible, depart):
-        """Le PLUS PETIT champ qui remplit cette banque, ou ``None``.
-
-        DICHOTOMIE — légitime parce que le surplus quotidien du mois le plus
-        faible (LE plafond de remplissage) CROÎT avec la taille du champ : la
-        production monte, l'autoconsommation directe est bornée par la
-        consommation, donc ce qui reste pour charger ne peut que grandir. On
-        vérifie d'abord le champ MAXIMAL : s'il ne remplit pas, aucun ne
-        remplira, et c'est la réponse.
-        """
-        if remplit(max_champ, cible) is not True:
-            return None
-        bas, haut = max(1, int(depart)), max_champ
-        while bas < haut:
-            milieu = (bas + haut) // 2
-            if remplit(milieu, cible) is True:
-                haut = milieu
-            else:
-                bas = milieu + 1
-        return haut
-
-    # La capacité RÉELLEMENT vendue par ce devis (jamais l'optimum du moteur :
-    # les lignes sont posées sur un champ arrondi et les deux divergent) et la
-    # remise que ce devis applique — lues UNE fois, hors de la boucle.
-    capacite_retenue = capacite_batterie_des_lignes(devis)
-    facteur_remise = facteur_remise_du_devis(devis)
-
-    def rendu(entree, panneaux, remplissage_ok):
-        """Un palier de l'échelle, au format EXACT du contrat."""
-        vue, palier = entree['vue'], entree['palier']
-        capacite = round(_num(entree['capacite_kwh']), 2)
-        # MÊME base de prix que la carte du devis : la composition catalogue
-        # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
-        # pilules d'un devis remisé était faux (bases mélangées).
-        cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
-        economie = round(_num(palier['economie_mad']), 2)
-        cinq, dix = _compter_modules_batterie(vue.get('lignes'))
-        return {
-            'capacite_kwh': capacite,
-            'nb_batteries_5': cinq,
-            'nb_batteries_10': dix,
-            'nb_panneaux': int(panneaux),
-            'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
-            'prix_ttc': cout,
-            'economies_annuelles': economie,
-            'payback_annees': _arrondi(_payback(cout, economie)),
-            'remplissage_ok': bool(remplissage_ok),
-            'retenu': bool(capacite_retenue is not None
-                           and abs(capacite - _num(capacite_retenue)) < 0.05),
-        }
-
-    echelle = []
-    capacites_vues = set()
-    depart = 1
-    apres_retenu = 0
-    for cible in cibles:
-        panneaux = champ_minimal(cible, depart)
-        if panneaux is None:
-            # MÊME LE CHAMP MAXIMAL NE REMPLIT PAS. On montre ce palier-là avec
-            # son champ et son prix — la limite se lit —, puis on s'arrête : les
-            # capacités au-dessus ne se rempliront pas davantage.
-            entree = ((sonder(max_champ) or {}).get('par_cible')
-                      or {}).get(cible)
-            if entree is not None:
-                palier = rendu(entree, max_champ, False)
-                if palier['capacite_kwh'] not in capacites_vues:
-                    capacites_vues.add(palier['capacite_kwh'])
-                    echelle.append(palier)
-            break
-        depart = panneaux
-        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
-        if entree is None:
-            break
-        palier = rendu(entree, panneaux, True)
-        if palier['capacite_kwh'] in capacites_vues:
-            # Deux cibles nominales servies par la MÊME banque réelle : un seul
-            # palier à l'écran, jamais deux lignes identiques.
-            continue
-        capacites_vues.add(palier['capacite_kwh'])
-        echelle.append(palier)
-        if palier['retenu']:
-            apres_retenu = 0
-        elif any(p['retenu'] for p in echelle):
-            apres_retenu += 1
-            if apres_retenu >= MAX_PALIERS_ECHELLE:
-                break
-        elif len(echelle) >= MAX_PALIERS_ECHELLE + 1:
-            # Aucun palier retenu (le moteur n'a désigné aucun optimum avec) :
-            # l'écran reste tout de même borné.
-            break
-    return echelle
+# CES RÉ-EXPORTS SONT UN CONTRAT, PAS UNE COMMODITÉ. Balayage AST de tout
+# ``backend/django_core`` : HUIT fichiers importent ces noms depuis
+# ``apps.ventes.dimensionnement`` — deux modules de production
+# (``offres_tailles``, ``public_views``) et six suites de tests — dont les
+# PRIVÉS ``_compter_modules_batterie`` et ``_lignes_produit_du_devis``.
+# flake8 ne signale JAMAIS la disparition d'un nom importé par un AUTRE
+# module : c'est le pin de surface
+# ``apps/ventes/tests/test_qjr_dimensionnement_surface.py`` qui la voit.
+#
+# EN BAS À DESSEIN : les deux moitiés se citent, et cette position (après
+# toutes les définitions, des deux côtés) rend le cycle inoffensif quel que
+# soit le module chargé le premier. Ne pas le remonter.
+from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
+    MAX_PALIERS_ECHELLE,
+    MAX_SONDES_ECHELLE,
+    _MEMO_PLAFOND_PHYSIQUE,
+    _compter_modules_batterie,
+    _compter_modules_batterie_generique,
+    _echelle_paliers_batterie,
+    _lignes_produit_du_devis,
+    capacite_batterie_des_lignes,
+    contenance_toit_du_devis,
+    contour_du_devis_lnglat,
+    echelle_paliers_batterie,
+    facteur_remise_du_devis,
+    module_batterie_du_devis,
+    plafond_physique_du_devis,
+    plafond_toit_du_devis,
+    plus_grande_contenance,
+)

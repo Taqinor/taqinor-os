@@ -37,6 +37,7 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     Rubrique,
+    RubriqueEmploye,
     TrancheIR,
     TypeEntreePonctuelle,
 )
@@ -1851,6 +1852,124 @@ def appliquer_remboursement_frais(profil, periode):
     return marquees
 
 
+# ── WIR243 — RubriqueEmploye branchée au moteur de calcul ──────────────────
+
+def rubriques_employe_actives(profil, periode):
+    """RubriqueEmploye ACTIVES d'un profil pour une période (PAIE9/WIR243).
+
+    Une rubrique récurrente rattachée (prime de transport, indemnité de
+    panier…) est retenue si ``actif`` est vrai ET que sa fenêtre
+    ``date_debut``/``date_fin`` (facultative de chaque côté) COUVRE au moins
+    un jour du mois de la période — même convention que
+    ``_bornes_periode``/``heures_supp_pour_paie``.
+
+    EXCLUT explicitement le code catalogue ``ANCIENNETE`` : la prime
+    d'ancienneté est déjà recalculée pour CHAQUE profil par
+    ``calculer_prime_anciennete`` (formule sur l'ancienneté réelle, pas une
+    surcharge manuelle) — une ``RubriqueEmploye`` de ce code existe
+    seulement comme repère de catalogue sur une ``StructurePaie``
+    (``appliquer_structure_a_profil``) et ne doit JAMAIS être re-sommée ici,
+    sous peine de compter la prime deux fois.
+    """
+    date_debut_periode, date_fin_periode = _bornes_periode(periode)
+    qs = (
+        RubriqueEmploye.objects
+        .filter(profil=profil, actif=True)
+        .exclude(rubrique__code='ANCIENNETE')
+        .select_related('rubrique'))
+    actives = []
+    for re_ in qs:
+        if re_.date_debut and re_.date_debut > date_fin_periode:
+            continue
+        if re_.date_fin and re_.date_fin < date_debut_periode:
+            continue
+        actives.append(re_)
+    return actives
+
+
+# WIR243 (Fable review, taux assiette honesty) — bases d'assiette du
+# catalogue (``Rubrique.base``) qui ne sont PAS encore connues au stade où
+# ``montant_rubrique_employe`` s'exécute dans ``calculer_bulletin`` : brut,
+# brut imposable, net imposable et l'assiette plafonnée CNSS se calculent
+# TOUS *après* l'intégration des RubriqueEmploye (cf. plus bas dans
+# ``calculer_bulletin``). Un taux CATALOGUE (jamais une surcharge posée à la
+# main sur la RubriqueEmploye, qui reste volontairement sur le salaire de
+# base — voir ``assiette_taux_catalogue_non_calculable``) prétendant
+# s'appliquer à l'une de ces assiettes ne peut donc être honoré : mieux vaut
+# refuser bruyamment (au rattachement ET au calcul) que sous-payer en
+# silence sur le salaire de base sans le dire.
+BASES_ASSIETTE_ENGINE_INCALCULABLES = frozenset({
+    Rubrique.BASE_BRUT,
+    Rubrique.BASE_BRUT_IMPOSABLE,
+    Rubrique.BASE_NET_IMPOSABLE,
+    Rubrique.BASE_PLAFONNEE_CNSS,
+})
+
+
+def assiette_taux_catalogue_non_calculable(rubrique):
+    """Vrai si le TAUX CATALOGUE de ``rubrique`` (celui qui serait utilisé
+    par ``montant_rubrique_employe`` faute de toute surcharge montant/taux
+    sur la RubriqueEmploye) porte sur une assiette déclarée
+    (``rubrique.base``) qui n'est pas calculable à ce stade du moteur —
+    brut/brut_imposable/net_imposable/assiette plafonnée CNSS n'existent pas
+    encore quand les RubriqueEmploye sont intégrées. Toujours FAUX si un
+    ``montant_fixe`` catalogue existe (le taux ne sera alors jamais
+    consulté) ou si l'assiette est ``autre`` (saisie manuelle — elle ne
+    prétend représenter aucune quantité du moteur, donc rien à honorer).
+    """
+    if rubrique.montant_fixe is not None:
+        return False
+    if rubrique.taux is None:
+        return False
+    return rubrique.base in BASES_ASSIETTE_ENGINE_INCALCULABLES
+
+
+def montant_rubrique_employe(rubrique_employe, salaire_base):
+    """Montant mensuel effectif d'une ``RubriqueEmploye`` (PAIE9/WIR243).
+
+    Ordre de priorité (la première valeur renseignée gagne) :
+
+    1. ``rubrique_employe.montant`` — surcharge montant fixe explicite ;
+    2. ``rubrique_employe.taux`` — surcharge taux %, TAUX APPLIQUÉ AU
+       SALAIRE DE BASE (PRORATA) du mois (même assiette que la prime
+       d'ancienneté) — une décision délibérée : la RubriqueEmploye ne
+       connaît QUE le salaire de base à ce stade, jamais l'assiette
+       déclarée par la rubrique catalogue (``rubrique.base``) ;
+    3. ``rubrique.montant_fixe`` — défaut catalogue ;
+    4. ``rubrique.taux`` — défaut catalogue, MÊME ASSIETTE qu'au point 2
+       (salaire de base) — SAUF si ``rubrique.base`` déclare une assiette
+       non calculable à ce stade (brut/brut_imposable/net_imposable/
+       plafonnée CNSS) : ``ValueError`` bruyante plutôt qu'un sous-paiement
+       silencieux (``assiette_taux_catalogue_non_calculable`` — garde
+       moteur, mirroir du refus posé au rattachement par
+       ``RubriqueEmployeSerializer.validate``, pour un enregistrement créé
+       hors API, ex. Django admin) ;
+    5. sinon 0 (rubrique catalogue à saisie manuelle, sans aucune surcharge
+       ni défaut — rien à ajouter automatiquement ce mois-ci).
+
+    Renvoie un ``Decimal`` arrondi au centime.
+    """
+    if rubrique_employe.montant is not None:
+        return _q(rubrique_employe.montant)
+    taux = rubrique_employe.taux
+    if taux is None:
+        rubrique = rubrique_employe.rubrique
+        if rubrique.montant_fixe is not None:
+            return _q(rubrique.montant_fixe)
+        if assiette_taux_catalogue_non_calculable(rubrique):
+            raise ValueError(
+                f'Rubrique « {rubrique.code} » : le taux catalogue '
+                f'({rubrique.taux}%) déclare une assiette '
+                f'« {rubrique.get_base_display()} » qui n\'est pas encore '
+                'calculable à ce stade de la paie (rien ne serait honnête '
+                'à appliquer). Fixez un montant (surcharge) sur cette '
+                'rubrique récurrente, ou un montant_fixe au catalogue.')
+        taux = rubrique.taux
+    if taux is not None:
+        return _q(Decimal(salaire_base) * Decimal(taux) / Decimal('100'))
+    return Decimal('0.00')
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1987,6 +2106,40 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             lignes.append({
                 'code': el.rubrique.code if el.rubrique_id else el.type,
                 'libelle': el.libelle or el.get_type_display(),
+                'type': Rubrique.TYPE_GAIN, 'montant': _q(montant),
+            })
+
+    # WIR243 — Rubriques récurrentes rattachées au profil (PAIE9 : prime de
+    # transport, indemnité de panier…), dans leur fenêtre de dates. Un GAIN
+    # rejoint le brut comme tout élément variable (part imposable/exonérée
+    # répartie par ``repartir_avantage``, comme les gains ci-dessus) ; une
+    # RETENUE ne touche JAMAIS le brut/les bases — déduite du net à payer,
+    # comme les avances/saisies (cf. plus bas). Une COTISATION (CNSS/AMO/CIMR
+    # sont TOUTES au catalogue avec ce type, cf. RUBRIQUES_DEFAUT/STANDARD —
+    # chacune est DÉJÀ calculée séparément, part salariale ET patronale, plus
+    # haut dans cette fonction) est ignorée ici : le rattachement d'une
+    # rubrique COTISATION est REFUSÉ dès le rattachement/la sauvegarde
+    # (``RubriqueEmployeSerializer.validate``, WIR243) — cette branche n'est
+    # donc atteinte que par un enregistrement légataire (créé hors API,
+    # ex. Django admin) et reste un no-op défensif, jamais un double comptage.
+    for rubrique_employe in rubriques_employe_actives(profil, periode):
+        rubrique = rubrique_employe.rubrique
+        montant = montant_rubrique_employe(rubrique_employe, salaire_base)
+        if montant == 0:
+            continue
+        if rubrique.type == Rubrique.TYPE_RETENUE:
+            retenues_variables += montant
+            lignes.append({
+                'code': rubrique.code, 'libelle': rubrique.libelle,
+                'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
+            })
+        elif rubrique.type == Rubrique.TYPE_GAIN:
+            gains_variables += montant
+            _, part_imposable = repartir_avantage(rubrique, montant)
+            if part_imposable > 0:
+                gains_imposables += part_imposable
+            lignes.append({
+                'code': rubrique.code, 'libelle': rubrique.libelle,
                 'type': Rubrique.TYPE_GAIN, 'montant': _q(montant),
             })
 

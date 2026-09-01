@@ -7,6 +7,9 @@ import stockApi from '../../api/stockApi'
 import {
   SESSION_COMPTAGE_STATUTS, CLASSE_ABC, grouperLignesParEcart, progressionComptage,
 } from './logistique'
+// WIR193 — panneau scan-first XSTK5 (construit et testé, jamais monté) : il
+// vit désormais dans l'onglet « Scan » du détail de session.
+import ComptageScanPanel from '../magasin/scan/ComptageScanPanel'
 
 /* ============================================================================
    XSTK2 — Comptages cycliques (`/logistique/comptages`, FG324).
@@ -123,6 +126,9 @@ function SessionDetail({ session, onChanged }) {
   const [produitAAjouter, setProduitAAjouter] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // WIR193 — 'saisie' (historique) | 'scan' (XSTK5). Même session, deux
+  // gestes ; le panneau scan n'est monté que sur son onglet.
+  const [vue, setVue] = useState('saisie')
 
   useEffect(() => {
     let alive = true
@@ -186,6 +192,29 @@ function SessionDetail({ session, onChanged }) {
         </span>
       </div>
 
+      {/* WIR193 — bascule Saisie ↔ Scan (XSTK5). Un SKU scanné mais absent de
+          la session est REFUSÉ par le panneau (comportement déjà testé). */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Mode de comptage">
+        <Button
+          size="sm"
+          variant={vue === 'saisie' ? 'default' : 'outline'}
+          onClick={() => setVue('saisie')}
+          aria-pressed={vue === 'saisie'}
+        >
+          Saisie
+        </Button>
+        <Button
+          size="sm"
+          variant={vue === 'scan' ? 'default' : 'outline'}
+          onClick={() => setVue('scan')}
+          aria-pressed={vue === 'scan'}
+        >
+          Scan
+        </Button>
+      </div>
+
+      {vue === 'scan' && <ComptageScanPanel sessionId={session.id} />}
+
       <div className="flex flex-wrap items-center gap-2">
         {session.statut === 'planifie' && (
           <Button size="sm" disabled={busy} onClick={demarrer}>Démarrer la session</Button>
@@ -197,45 +226,49 @@ function SessionDetail({ session, onChanged }) {
         )}
       </div>
 
-      {enCours && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="form-control w-auto min-w-[220px]"
-            value={produitAAjouter}
-            onChange={(e) => setProduitAAjouter(e.target.value)}
-          >
-            <option value="">— Ajouter un SKU à compter —</option>
-            {produits.map((p) => (
-              <option key={p.id} value={p.id}>{p.nom || p.sku}</option>
-            ))}
-          </select>
-          <Button size="sm" variant="outline" disabled={busy || !produitAAjouter} onClick={ajouterLigne}>
-            Ajouter
-          </Button>
-        </div>
-      )}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {vue === 'saisie' && (
+        <>
+          {enCours && (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="form-control w-auto min-w-[220px]"
+                value={produitAAjouter}
+                onChange={(e) => setProduitAAjouter(e.target.value)}
+              >
+                <option value="">— Ajouter un SKU à compter —</option>
+                {produits.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nom || p.sku}</option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" disabled={busy || !produitAAjouter} onClick={ajouterLigne}>
+                Ajouter
+              </Button>
+            </div>
+          )}
+          {error && <p className="form-error" role="alert">{error}</p>}
 
-      {ecarts.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-sm font-semibold text-destructive">Écarts constatés</h4>
-          <LigneTable lignes={ecarts} enCours={enCours} onSaisir={saisirCompte} showEcart />
-        </section>
-      )}
-      {nonComptees.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-sm font-semibold">À compter</h4>
-          <LigneTable lignes={nonComptees} enCours={enCours} onSaisir={saisirCompte} />
-        </section>
-      )}
-      {conformes.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-sm font-semibold text-success">Conformes</h4>
-          <LigneTable lignes={conformes} enCours={enCours} onSaisir={saisirCompte} />
-        </section>
-      )}
-      {session.lignes?.length === 0 && (
-        <p className="text-sm text-muted-foreground">Aucun SKU dans cette session pour l’instant.</p>
+          {ecarts.length > 0 && (
+            <section>
+              <h4 className="mb-2 text-sm font-semibold text-destructive">Écarts constatés</h4>
+              <LigneTable lignes={ecarts} enCours={enCours} onSaisir={saisirCompte} showEcart />
+            </section>
+          )}
+          {nonComptees.length > 0 && (
+            <section>
+              <h4 className="mb-2 text-sm font-semibold">À compter</h4>
+              <LigneTable lignes={nonComptees} enCours={enCours} onSaisir={saisirCompte} />
+            </section>
+          )}
+          {conformes.length > 0 && (
+            <section>
+              <h4 className="mb-2 text-sm font-semibold text-success">Conformes</h4>
+              <LigneTable lignes={conformes} enCours={enCours} onSaisir={saisirCompte} />
+            </section>
+          )}
+          {session.lignes?.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun SKU dans cette session pour l’instant.</p>
+          )}
+        </>
       )}
     </div>
   )

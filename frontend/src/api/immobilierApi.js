@@ -50,6 +50,13 @@ const immobilierApi = {
     relancer: (id, data) =>
       api.post(`/immobilier/echeances-loyer/${id}/relancer/`, data),
   },
+  // WIR263 — historique d'escalade des relances de loyer. LECTURE SEULE côté
+  // API (`RelanceLoyerViewSet.http_method_names = ['get','head','options']`) :
+  // une relance naît TOUJOURS de `echeancesLoyer.relancer(id)`. Le filtre par
+  // échéance existe déjà côté serveur (`get_queryset` lit `?echeance_loyer=`),
+  // donc `list({ echeance_loyer: <id> })` suffit — aucun filterset à ajouter.
+  // Forme de la réponse : contrat committé
+  // `apps/immobilier/contract_samples/relances_loyer_par_echeance.json`.
   relancesLoyer: crud('relances-loyer'),
   budgetsCharges: {
     ...crud('budgets-charges'),

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* WIR120 — section « Avancé » du contrat de maintenance : facturation_active +
@@ -29,9 +31,18 @@ import { Component as ContratsMaintenance } from './ContratsMaintenance.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+// WIR231 — l'écran garde l'onglet Rentabilité derrière `prix_achat_voir`
+// (useHasPermission → useSelector) : il lui faut donc un store redux.
+function makeStore(permissions = []) {
+  return configureStore({
+    reducer: { auth: (state = { role_nom: 'Responsable', permissions }) => state },
+  })
+}
 function renderPage() {
   return render(
-    <MemoryRouter><ThemeProvider><ContratsMaintenance /></ThemeProvider></MemoryRouter>,
+    <Provider store={makeStore()}>
+      <MemoryRouter><ThemeProvider><ContratsMaintenance /></ThemeProvider></MemoryRouter>
+    </Provider>,
   )
 }
 

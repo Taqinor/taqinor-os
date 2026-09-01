@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { Flag } from 'lucide-react'
+import { Flag, Plus, X } from 'lucide-react'
 import { formatDate } from '../../lib/format'
-import { EmptyState } from '../../ui'
+import { EmptyState, Button, IconButton } from '../../ui'
 import { timelineBounds, barGeometry, markerGeometry, parseDate } from './gantt'
+import { TYPES_DEPENDANCE } from './constants'
 
 /* ============================================================================
    UX39 — Gantt CSS/SVG léger (aucune bibliothèque Gantt).
@@ -85,12 +86,91 @@ function DraggableBar({ tache, geo, bg, min, max, onReprogrammer, disabled }) {
   )
 }
 
+// WIR244 — mini-formulaire d'ajout de dépendance (visible uniquement quand le
+// parent fournit `onCreerDependance` — presentational comme `onReprogrammer`).
+function AjouterDependance({ taches, onCreerDependance }) {
+  const [predecesseur, setPredecesseur] = useState('')
+  const [successeur, setSuccesseur] = useState('')
+  const [type, setType] = useState('fs')
+  const [lag, setLag] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    if (!predecesseur || !successeur || predecesseur === successeur || busy) return
+    setBusy(true)
+    try {
+      await onCreerDependance({
+        predecesseur: Number(predecesseur),
+        successeur: Number(successeur),
+        type_dependance: type,
+        lag: lag === '' ? 0 : Number(lag),
+      })
+      setPredecesseur('')
+      setSuccesseur('')
+      setLag('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <select
+        className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        aria-label="Tâche prédécesseur"
+        value={predecesseur}
+        onChange={(e) => setPredecesseur(e.target.value)}
+      >
+        <option value="">Prédécesseur…</option>
+        {taches.map((t) => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+      </select>
+      <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
+      <select
+        className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        aria-label="Tâche successeur"
+        value={successeur}
+        onChange={(e) => setSuccesseur(e.target.value)}
+      >
+        <option value="">Successeur…</option>
+        {taches.map((t) => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+      </select>
+      <select
+        className="h-8 rounded-md border border-input bg-background px-2 text-xs uppercase"
+        aria-label="Type de dépendance"
+        value={type}
+        onChange={(e) => setType(e.target.value)}
+      >
+        {TYPES_DEPENDANCE.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <input
+        type="number"
+        className="h-8 w-16 rounded-md border border-input bg-background px-2 text-xs"
+        aria-label="Décalage (jours)"
+        placeholder="lag"
+        value={lag}
+        onChange={(e) => setLag(e.target.value)}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy || !predecesseur || !successeur || predecesseur === successeur}
+        onClick={submit}
+      >
+        <Plus className="size-3.5" aria-hidden="true" /> Ajouter
+      </Button>
+    </div>
+  )
+}
+
 export function GanttChart({
   taches = [],
   jalons = [],
   dependances = [],
   baseline = [],
   onReprogrammer,
+  onCreerDependance,
+  onSupprimerDependance,
   busyTacheId,
 }) {
   const bounds = useMemo(() => {
@@ -198,19 +278,34 @@ export function GanttChart({
         </div>
       )}
 
-      {/* Légende des dépendances (connecteurs évités pour la lisibilité) */}
-      {dependances.length > 0 && (
+      {/* Légende des dépendances (connecteurs évités pour la lisibilité) —
+          WIR244 : création/suppression câblées quand le parent fournit les
+          callbacks (PlanningPage → createDependance/deleteDependance). */}
+      {(dependances.length > 0 || (onCreerDependance && taches.length >= 2)) && (
         <div className="mt-2 border-t border-border pt-2">
           <p className="mb-1 text-xs font-medium text-muted-foreground">Dépendances</p>
-          <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            {dependances.map((d) => (
-              <li key={d.id}>
-                #{d.predecesseur} → #{d.successeur}
-                <span className="ml-1 uppercase">({d.type_dependance})</span>
-                {d.lag ? <span className="ml-1">lag {d.lag} j</span> : null}
-              </li>
-            ))}
-          </ul>
+          {dependances.length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+              {dependances.map((d) => (
+                <li key={d.id} className="flex items-center gap-1">
+                  <span>
+                    #{d.predecesseur} → #{d.successeur}
+                    <span className="ml-1 uppercase">({d.type_dependance})</span>
+                    {d.lag ? <span className="ml-1">lag {d.lag} j</span> : null}
+                  </span>
+                  {onSupprimerDependance && (
+                    <IconButton size="sm" variant="ghost" label="Supprimer la dépendance"
+                                onClick={() => onSupprimerDependance(d)}>
+                      <X className="size-3" aria-hidden="true" />
+                    </IconButton>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {onCreerDependance && taches.length >= 2 && (
+            <AjouterDependance taches={taches} onCreerDependance={onCreerDependance} />
+          )}
         </div>
       )}
     </div>

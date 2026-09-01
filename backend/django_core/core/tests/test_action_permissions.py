@@ -98,7 +98,9 @@ UNGUARDED_ACTION_BASELINE = {
     # baseline de compta doit donc DÉCROÎTRE d'autant, sinon il laisse 2 crans
     # de mou où une nouvelle @action non gardée passerait sans être vue.
     # Remaining 113 = dette restante, follow-up possible.
-    "compta": 113,
+    # WIR175 (2026-08-26) a gardé create/update/destroy/extourner des écritures
+    # via get_permissions -> le réel est descendu à 111 ; le cliquet suit.
+    "compta": 111,
     "contrats": 56,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
@@ -110,7 +112,17 @@ UNGUARDED_ACTION_BASELINE = {
     # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain
     # ultérieur, YRBAC3).
-    "fpa": 16,
+    # WIR173 — 16 → 12 : les 14 viewsets FP&A passent sur une base gardée
+    # (``_FpaBaseViewSet``/``FpaScopedPermission`` : lecture ⇒ un code
+    # ``fpa_*``, écriture ⇒ ``fpa_saisir``/``fpa_valider``/``fpa_administrer``)
+    # et les QUATRE actions de gouvernance d'un cycle (``ouvrir-saisie``,
+    # ``clore``, ``export``, ``dupliquer``) déclarent en plus
+    # ``permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)]`` — le scanner
+    # les crédite donc, d'où -4. Les 12 restantes sont gardées au niveau CLASSE
+    # par cette même base (dette COARSE apparente, pas un trou) ; leur coller un
+    # ``permission_classes=`` identique au défaut de classe ferait taire le
+    # scanner sans rien resserrer — règle du dépôt (cf. ``ao``/``marketing``).
+    "fpa": 12,
     # NTUX13 — ``ModeleProjetViewSet.dupliquer`` (70 → 71) : duplication d'un
     # modèle de projet, gardée EXACTEMENT comme sa sœur ``instancier`` du même
     # viewset — ``_GestionProjetBaseViewSet`` (WriteScopedPermissionMixin,
@@ -160,14 +172,22 @@ UNGUARDED_ACTION_BASELINE = {
     # `_QhseBaseViewSet` (WriteScopedPermissionMixin, `write_permission='qhse_gerer'`
     # gate les actions custom) ; le scanner statique ne crédite pas le mixin
     # d'où +3 en dette apparente (65 → 68), pas un vrai trou de garde.
-    "qhse": 68,
+    # WIR275/277 (2026-08-26) : +16 @action (BSD/recyclage/exercices, rappels,
+    # audits, réunions→CAPA, objectifs, diffuser/ajouter-lecteurs/marquer-lu…)
+    # sur le MÊME patron _QhseBaseViewSet — gardées au niveau CLASSE
+    # (write_permission='qhse_gerer'), revue Fable + tests 403/404 par action ;
+    # même dette APPARENTE de scanner, pas un trou réel (68 → 84).
+    "qhse": 84,
     "rh": 103,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).
     "roles": 0,
     "stock": 3,
-    "ventes": 1,
+    # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
+    # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
+    # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).
+    "ventes": 2,
 }
 
 

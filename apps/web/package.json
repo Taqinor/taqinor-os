@@ -13,7 +13,7 @@
     "test": "vitest run",
     "generate-og": "node scripts/generate-og.mjs",
     "generate-types": "wrangler types",
-    "check": "tsc -p tsconfig.check.json"
+    "check": "tsc -p tsconfig.check.json && node scripts/check-astro-types.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.7.0",
@@ -29,6 +29,7 @@
     "vite": "^7"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "chrome-launcher": "^1.2.1",
     "ffmpeg-static": "^5.3.0",
     "heic-decode": "^2.1.0",

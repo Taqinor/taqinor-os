@@ -6,10 +6,15 @@ la même clé est un no-op). ``GET /offlinesync/operations/`` expose le journal
 (lecture seule) : ce qui attend, ce qui a été appliqué, ce qui a été refusé et
 pourquoi — aucune opération ne disparaît en silence (VX119).
 
+``POST /offlinesync/operations/<id>/resoudre/`` (NTMOB2) est la SEULE écriture
+du journal : elle exécute l'arbitrage humain d'un conflit (garder ma version /
+celle du serveur / fusionner). Rien n'est jamais écrasé en silence.
+
 Multi-tenant : la société vient de ``request.user.company``, JAMAIS du corps ;
 un champ « company » envoyé par le navigateur est ignoré.
 """
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -19,7 +24,8 @@ from . import services
 from rest_framework.generics import GenericAPIView
 
 from .models import OfflineOperation
-from .serializers import OfflineOperationSerializer
+from .serializers import (
+    OfflineOperationSerializer, ResolutionConflitSerializer)
 
 
 class OfflineSyncBatchView(GenericAPIView):
@@ -69,3 +75,32 @@ class OfflineOperationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         if module:
             qs = qs.filter(module=module)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='resoudre',
+            permission_classes=[IsResponsableOrAdmin],
+            serializer_class=ResolutionConflitSerializer)
+    def resoudre(self, request, pk=None):
+        """NTMOB2 — arbitrage EXPLICITE d'un conflit de synchronisation.
+
+        Corps : ``{"choix": "mienne"|"serveur"|"fusion", "payload": {…}}``
+        (``payload`` uniquement — et obligatoirement — pour une fusion).
+
+        Le journal reste en lecture seule : c'est la SEULE écriture, elle ne
+        fait qu'exécuter une décision humaine, et l'objet est repris par
+        ``get_object()`` — donc borné à la société de l'appelant."""
+        operation = self.get_object()
+        entree = ResolutionConflitSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        try:
+            resultat = services.resoudre_conflit(
+                request.user.company, request.user, operation,
+                entree.validated_data['choix'],
+                entree.validated_data.get('payload'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        operation.refresh_from_db()
+        return Response(
+            {'resultat': resultat,
+             'operation': OfflineOperationSerializer(operation).data},
+            status=status.HTTP_200_OK)

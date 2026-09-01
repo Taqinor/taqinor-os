@@ -38,8 +38,14 @@ from django.db import models
 #   0–100   = 0.916272
 #   101–150 = 1.091388  (et 151–210 = 1.091388 aussi)
 #   211–310 = 1.187388
-#   311–510 = 1.405116
+#   311–510 = 1.381704  ← CORRIGÉ (décision fondateur D5, 29/08/2026)
 #   >510    = 1.622856
+# CORRECTION T5 (D5) : 1.381704 et non 1.405116. La tranche 311–510 est la
+# SEULE couverte par une facture réelle 2026 (SRM Casablanca-Settat
+# n° 643769639 du 08/05/2026 : 359 kWh × 1,15142 HT = 496,03 TTC ⇒ 1,15142 ×
+# 1,20 = 1.381704). Elle réfute l'extrapolation « HT constant » qui donnait
+# 1.405116 : au passage TVA 18 → 20 %, c'est le TTC qui est resté constant.
+# Les cinq autres valeurs restent extrapolées faute de facture.
 # Le service de calcul applique le MODÈLE (progressif ≤150 / sélectif >150 avec
 # tolérance 10 kWh décalant les bornes opératoires à 210/310/510). Le barème ici
 # n'est que la liste des paliers + prix ; la logique vit dans ``tariff.py``.
@@ -60,7 +66,7 @@ DEFAULT_RESIDENTIAL_TIERS = [
     {"max_kwh": 150, "prix_kwh_ttc": "1.091388"},
     {"max_kwh": 210, "prix_kwh_ttc": "1.091388"},
     {"max_kwh": 310, "prix_kwh_ttc": "1.187388"},
-    {"max_kwh": 510, "prix_kwh_ttc": "1.405116"},
+    {"max_kwh": 510, "prix_kwh_ttc": "1.381704"},  # D5 — prouvé facture
     {"max_kwh": None, "prix_kwh_ttc": "1.622856"},  # None = palier supérieur ouvert
 ]
 

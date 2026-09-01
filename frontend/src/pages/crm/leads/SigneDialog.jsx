@@ -17,6 +17,9 @@ import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 // toast plat + celebrateDealSigned() appelés directement d'ici ; le burst
 // CSS-only reste posé, mais DEPUIS <DealSignedCelebration> lui-même.
 import DealSignedCelebration from '../../../ui/DealSignedCelebration'
+// WIR188/NTCRD11 — bannière d'alerte crédit, alimentée par le `credit_warning`
+// que l'acceptation renvoie (WIR187). Elle ne rend RIEN en mode « aucun ».
+import CreditWarningBanner from '../../../features/credit/CreditWarningBanner'
 import { formatMAD } from '../../../lib/format'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
@@ -143,6 +146,13 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   // VX155 — carte de victoire affichée après acceptation (null = pas encore
   // signé) ; { reference, montantTtc, kwc } réels, jamais un chiffre inventé.
   const [celebration, setCelebration] = useState(null)
+  // WIR188 — avertissement crédit renvoyé par l'acceptation (WIR187). Tant
+  // qu'il est posé, la carte de victoire ATTEND : le vendeur voit d'abord
+  // l'état crédit du client, et peut demander une dérogation sans quitter le
+  // dialogue. Le devis est déjà accepté (un refus dur aurait renvoyé un 403
+  // avant d'arriver ici) — la bannière informe, elle ne bloque pas.
+  const [creditWarning, setCreditWarning] = useState(null)
+  const [celebrationEnAttente, setCelebrationEnAttente] = useState(null)
 
   // Le dialogue est monté à neuf par lead (clé signeLead) → un seul fetch.
   useEffect(() => {
@@ -225,7 +235,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     setBusy(true)
     setError(null)
     try {
-      await ventesApi.accepterDevis(selected.id, { nom, date, option })
+      const res = await ventesApi.accepterDevis(selected.id, { nom, date, option })
       // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
       // accepté (rare, lié au revenu). La carte de victoire (montant + kWc
       // réels, CO₂ dérivé) remplace le toast plat ; onConfirmed() n'est
@@ -234,11 +244,19 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
       const chosenDetail = detailAll?.[chosenKey]
       const montantTtc = chosenDetail?.ttc
         ?? (parseFloat(selected.total_affiche ?? selected.total_ttc) || 0)
-      setCelebration({
+      const victoire = {
         reference: selected.reference,
         montantTtc,
         kwc: chosenDetail?.kwc ?? null,
-      })
+      }
+      const avertissement = res?.data?.credit_warning
+      if (avertissement && avertissement.mode && avertissement.mode !== 'aucun') {
+        setCreditWarning(avertissement)
+        setCelebrationEnAttente(victoire)
+        setBusy(false)
+        return
+      }
+      setCelebration(victoire)
     } catch (err) {
       setError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
@@ -251,6 +269,42 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   // VX155 — après acceptation, la carte de victoire remplace le dialogue ;
   // onConfirmed() (qui ferme SigneDialog côté appelant) n'est appelé qu'à la
   // fermeture de la carte — jamais avant que le vendeur l'ait vue.
+  // WIR188 — l'avertissement crédit passe AVANT la carte de victoire : le
+  // vendeur voit l'état crédit du client (et peut demander une dérogation)
+  // avant de fermer. Rien à afficher en mode « aucun » : la bannière rend
+  // `null` et ce bloc n'est même pas atteint.
+  if (creditWarning) {
+    return (
+      <ResponsiveDialog open onOpenChange={() => {}} className="sd-modal sm:max-w-lg" showClose={false}>
+        <div className="modal-header">
+          <h3 className="modal-title">Devis accepté — état crédit du client</h3>
+        </div>
+        <div className="modal-body">
+          <CreditWarningBanner
+            warning={creditWarning}
+            // Le devis sérialisé porte l'id client (FK) : source la plus
+            // sûre ; le lead ne sert que de repli.
+            clientId={selected?.client ?? lead.client ?? null}
+            montant={celebrationEnAttente?.montantTtc}
+            devisId={selected?.id ?? null}
+          />
+        </div>
+        <div className="modal-footer">
+          <Button
+            type="button"
+            onClick={() => {
+              setCreditWarning(null)
+              setCelebration(celebrationEnAttente)
+              setCelebrationEnAttente(null)
+            }}
+          >
+            J&apos;ai compris
+          </Button>
+        </div>
+      </ResponsiveDialog>
+    )
+  }
+
   if (celebration) {
     return (
       <DealSignedCelebration

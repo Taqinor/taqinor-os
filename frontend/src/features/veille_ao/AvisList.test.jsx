@@ -24,6 +24,11 @@ vi.mock('../../api/veilleAoApi', () => ({
   default: {
     avis: { list: mocks.list, create: mocks.create },
     sante: mocks.sante,
+    // WIR269 — SanteVeille appelle aussi l'attribution : bouchon neutre ici,
+    // son comportement est couvert par SanteVeille.test.jsx.
+    attribution: vi.fn().mockResolvedValue({
+      data: { depuis: null, par_source: [], par_informateur: [], total: null },
+    }),
   },
 }))
 

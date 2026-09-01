@@ -8,6 +8,53 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+# ── WIR217 — état d'un job « PDF de devis », patron EXPORT_JOB (SCA41) ──────
+# La génération d'un PDF de devis pouvait échouer DÉFINITIVEMENT (au-delà des
+# 3 retries) sans laisser la moindre trace lisible : le front sondait alors
+# `fichier_pdf` indéfiniment, et l'utilisateur n'apprenait jamais qu'il n'y
+# aurait pas de PDF. On consigne donc l'échec TERMINAL en cache, sur le MÊME
+# motif que les jobs d'export (état + société, clé opaque, TTL 24 h) — la vue
+# de lecture vérifie la société AVANT de répondre (jamais d'inter-tenant).
+PDF_JOB_CACHE_PREFIX = 'ventes:pdf_devis_job:'
+PDF_JOB_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def pdf_job_cache_key(devis_id):
+    return f'{PDF_JOB_CACHE_PREFIX}{devis_id}'
+
+
+def _societe_du_devis(devis_id):
+    """Société propriétaire du devis (ou ``None``) — sans charger l'objet."""
+    from .models import Devis
+    return (Devis.objects.filter(pk=devis_id)
+            .values_list('company_id', flat=True).first())
+
+
+def consigner_echec_pdf_devis(devis_id, erreur):
+    """WIR217 — consigne l'échec DÉFINITIF de la génération d'un PDF de devis.
+
+    Appelée UNIQUEMENT quand les retries sont épuisés : un échec transitoire
+    (le worker va réessayer) ne doit pas afficher « échec » à l'écran.
+    """
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    cache.set(pdf_job_cache_key(devis_id), {
+        'company_id': _societe_du_devis(devis_id),
+        'devis_id': devis_id,
+        'status': 'error',
+        'error': str(erreur),
+        'at': timezone.now().isoformat(),
+    }, PDF_JOB_CACHE_TTL)
+
+
+def oublier_echec_pdf_devis(devis_id):
+    """Efface un échec consigné — un rendu RÉUSSI purge l'état précédent, sinon
+    un « Réessayer » qui aboutit laisserait l'écran en échec pour 24 h."""
+    from django.core.cache import cache
+    cache.delete(pdf_job_cache_key(devis_id))
+
+
 @shared_task(
     bind=True,
     name='ventes.generate_devis_pdf',
@@ -23,6 +70,12 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
     unaffected. pdf_options picks the simulator format (full premium 3 pages,
     one-page, monthly-chart / devis-final modifiers); the legacy fallback
     ignores it.
+
+    QJR201 (31/08/2026) — CE CHEMIN N'A PAS DE CHAÎNE MONNAIE À LUI : il appelle
+    ``generate_premium_devis_pdf``, donc ``build_quote_data``, donc le noyau —
+    et hérite sans recâblage de la règle QF9 rapatriée par QJR200. Ce chemin
+    ASYNCHRONE (et la variante « PDF joint à l'email ») n'avait jamais été
+    exercé ; ``tests/test_qjr201_chaine_aval_panier`` le fait désormais.
     """
     try:
         from django.conf import settings
@@ -40,6 +93,7 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             if cached is not None:
                 logger.info('task_generate_devis_pdf SKIP (déjà rendu): %s',
                             cached)
+                oublier_echec_pdf_devis(devis_id)
                 return cached
             from .quote_engine import generate_premium_devis_pdf
             key = generate_premium_devis_pdf(devis_id, pdf_options)
@@ -48,9 +102,17 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             from .utils.pdf import generate_devis_pdf
             key = generate_devis_pdf(devis_id)
         logger.info('task_generate_devis_pdf OK: %s', key)
+        # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
+        # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
+        oublier_echec_pdf_devis(devis_id)
         return key
     except Exception as exc:
         logger.error('task_generate_devis_pdf failed devis_id=%s: %s', devis_id, exc)
+        # WIR217 — n'annoncer l'échec que lorsqu'il est DÉFINITIF : tant qu'un
+        # retry reste, la génération est encore « en cours » pour l'utilisateur.
+        if self.request.retries >= (self.max_retries or 0):
+            consigner_echec_pdf_devis(devis_id, exc)
+            raise
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
@@ -297,14 +359,33 @@ def zones_etude_du_devis(devis):
     La géométrie vient de ``roof_layout['_pans_geometry']`` (QJ21) — la seule
     source qui connaisse l'orientation RÉELLE de chaque pan ; le point GPS vient
     du LEAD (``gps_lat``/``gps_lng``), à défaut du repère posé dans l'outil 3D
-    (``roof_layout['pin']``). L'azimut est déjà dans la convention PVGIS
-    (0 = Sud) des deux côtés : aucune conversion ici, donc aucune occasion de
-    retourner un toit.
+    (``roof_layout['pin']``).
+
+    ── F3 : LE REPÈRE D'AZIMUT, ET POURQUOI IL Y A UNE CONVERSION ICI ────────
+    Cette fonction affirmait « l'azimut est déjà dans la convention PVGIS
+    (0 = Sud) des deux côtés : aucune conversion ici ». C'ÉTAIT FAUX, et cher :
+    ``_pans_geometry['azimut_deg']`` est produit par
+    ``services.extract_roof_config`` à partir du ``facingAzimuthDeg`` du
+    builder, c'est-à-dire l'azimut BOUSSOLE (180 = Sud). Passé tel quel à
+    PVGIS, qui lit du 0 = Sud, un toit plein SUD était simulé plein NORD — et
+    ce productible-là part au client (page publique et PDF de proposition).
+    Le seul test qui aurait pu le voir écrivait son fixture à la main dans le
+    repère PVGIS en l'appelant « Pan Sud », ce qui masquait exactement le bug.
+
+    On convertit donc À LA LECTURE, avec la règle du builder lui-même
+    (``roofPro11/prodWindow.ts`` : « jambe sud : aspect = azimut − 180 »).
+    Depuis F3, ``azimut_deg`` ne publie plus qu'un seul repère — la boussole —
+    quelle que soit la clé source du layout, donc cette conversion est
+    inconditionnelle et sans ambiguïté. Azimut absent (devis automatique : rien
+    n'a été mesuré) → ``None``, et PVGIS retombe sur le défaut déclaré par la
+    société, jamais sur une orientation inventée.
 
     Rend ``[]`` quand le devis n'a aucun pan exploitable — l'appelant refuse
     alors la simulation plutôt que de lancer une étude vide. Ne lève jamais :
     un pan illisible est ignoré, pas fatal.
     """
+    from .services import _azimut_boussole_vers_aspect
+
     layout = getattr(devis, 'roof_layout', None)
     if not isinstance(layout, dict):
         return []
@@ -338,7 +419,8 @@ def zones_etude_du_devis(devis):
             'lat': _f(lat),
             'lon': _f(lon),
             'tilt': _f(pan.get('inclinaison_deg')),
-            'azimuth': _f(pan.get('azimut_deg')),
+            # BOUSSOLE (stocké) → PVGIS (attendu). Voir F3 dans la docstring.
+            'azimuth': _azimut_boussole_vers_aspect(pan.get('azimut_deg')),
             'kwc': kwc,
         })
     return zones
@@ -529,3 +611,37 @@ def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token)
         logger.error('task_build_async_export failed company=%s layout=%s: %s',
                      company_id, layout, exc)
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+
+
+# ── AUTO-PIPELINE (ordre fondateur 26/08/2026) ──────────────────────────────
+# « si le client dessine son toit dans le tunnel, une fois que le lead arrive
+# dans notre ERP ça crée automatiquement le devis automatique. »
+#
+# POURQUOI UNE TÂCHE, ET PAS UN APPEL DIRECT DANS LE WEBHOOK : le webhook du
+# site est une surface PUBLIQUE, son temps de réponse est un engagement envers
+# le Worker Cloudflare qui l'appelle. Le dimensionnement + la composition +
+# l'étude horaire se comptent en SECONDES : les jouer dans la requête ferait
+# payer au visiteur (et au Worker) le prix d'un travail qui ne l'intéresse pas.
+# Le webhook se contente donc de mettre en file et rend la main.
+#
+# AUCUN RETRY : le service est idempotent par construction (un lead, un devis
+# — garde d'existence + dedup en base), mais un echec ici n'est pas une perte
+# de donnee : le lead est enregistre, complet, et le commercial garde le
+# chemin manuel. Reessayer en boucle une composition qui echoue (catalogue
+# incomplet, marque epinglee absente) ne ferait que bruler des workers.
+
+@shared_task(name='ventes.devis_automatique_depuis_lead')
+def task_devis_automatique_depuis_lead(lead_id, company_id):
+    """Cree le devis brouillon d'un lead du tunnel, cale sur son trace de toit.
+
+    Toute la decision (reglage de societe, idempotence, portes de donnee) vit
+    dans ``services.creer_devis_automatique_depuis_lead`` : cette enveloppe ne
+    fait que la sortir de la requete HTTP.
+    """
+    from .services import creer_devis_automatique_depuis_lead
+
+    devis = creer_devis_automatique_depuis_lead(
+        lead_id=lead_id, company_id=company_id)
+    if devis is None:
+        return None
+    return devis.pk

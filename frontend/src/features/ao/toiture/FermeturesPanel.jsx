@@ -6,9 +6,13 @@
    (`closure`) du solveur : |mesurée − somme| ≤ tolérance ⇒ OK, sinon ÉCART.
 
    Deux sorties, jamais trois :
-     • COMPENSER AU PRORATA (spread) — chaque segment est multiplié par
-       mesurée / somme. L'écran montre l'AVANT/APRÈS avant d'appliquer : on ne
-       réécrit pas un relevé dans le dos de celui qui l'a fait.
+     • COMPENSER AU PRORATA (spread) — la répartition est DEMANDÉE AU SERVEUR
+       (`ChaineCotesViewSet.compensation`, WIR205) et rendue telle quelle.
+       L'écran ne refait PLUS le produit en croix : deux arrondis concurrents
+       (ici et dans `services.proposer_compensation_prorata`) finissaient par
+       montrer un « après » qui n'était pas celui qu'on enregistrait. L'aperçu
+       AVANT/APRÈS reste obligatoire avant d'appliquer : on ne réécrit pas un
+       relevé dans le dos de celui qui l'a fait.
      • ACCEPTER L'ÉCART — avec un motif ÉCRIT, obligatoire, persisté et visible
        ensuite en permanence sur la chaîne.
 
@@ -33,19 +37,6 @@ function fermeture(chaine) {
   return { somme, mesuree, tolerance, residu, residuPct, statut }
 }
 
-/* Compensation au prorata : chaque segment absorbe l'écart en proportion de sa
-   propre longueur. Une somme nulle n'est pas compensable (division par zéro) —
-   on le dit plutôt que de fabriquer des NaN. */
-function prorata(chaine) {
-  const { somme, mesuree } = fermeture(chaine)
-  if (somme === 0) return null
-  const k = mesuree / somme
-  return (chaine.segments || []).map((s) => ({
-    ...s,
-    valeur: Math.round(nombre(s.valeur) * k * 1000) / 1000,
-  }))
-}
-
 /* Une chaîne est ARBITRÉE si elle referme dans sa tolérance, ou si l'écart a été
    explicitement accepté avec un motif écrit. Rien d'autre ne compte. */
 function estArbitree(chaine) {
@@ -54,9 +45,25 @@ function estArbitree(chaine) {
   return Boolean(a && a.type === 'accepte' && String(a.motif || '').trim().length > 0)
 }
 
-export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }) {
-  const [apercu, setApercu] = useState(null) // { idChaine, avant, apres }
+const MSG_SANS_SERVEUR =
+  'Compensation indisponible : cet écran n’a aucun moyen de la DEMANDER au '
+  + 'serveur. Rien n’est proposé — un prorata calculé ici ne serait pas celui '
+  + 'qui serait enregistré.'
+
+const MSG_RIEN_A_REPARTIR =
+  'Le serveur ne propose aucune répartition pour cette chaîne (résidu nul, ou '
+  + 'somme des segments nulle). Rien n’a été modifié.'
+
+export default function FermeturesPanel({
+  chaines = [], onChaines, onCalepiner, onCompenser,
+}) {
+  // `apercu` porte la RÉPONSE SERVEUR telle quelle :
+  // { idChaine, residuM, segments: [{index, libelle, valeur_m,
+  //   valeur_proposee_m, delta_m}] }
+  const [apercu, setApercu] = useState(null)
   const [motifs, setMotifs] = useState({})
+  const [erreur, setErreur] = useState(null)
+  const [enCours, setEnCours] = useState(null)
 
   const lignes = useMemo(
     () => chaines.map((c) => ({ chaine: c, ...fermeture(c), arbitree: estArbitree(c) })),
@@ -66,23 +73,59 @@ export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }
   const bloquantes = lignes.filter((l) => !l.arbitree)
   const peutCalepiner = bloquantes.length === 0
 
+  /* La proposition vient du SERVEUR — jamais d'un produit en croix local. Le
+     parent (`ToituresPage`) fournit `onCompenser` : il appelle
+     `aoApi.chaines.compensation(id)` et lève une erreur NOMMÉE quand la chaîne
+     n'existe pas encore côté serveur (rien à compenser tant qu'elle n'est pas
+     enregistrée). */
   const preparerProrata = useCallback(
-    (chaine) => {
-      const apres = prorata(chaine)
-      if (!apres) return
-      setApercu({ idChaine: chaine.id, avant: chaine.segments, apres })
+    async (chaine) => {
+      setErreur(null)
+      setApercu(null)
+      if (typeof onCompenser !== 'function') {
+        setErreur(MSG_SANS_SERVEUR)
+        return
+      }
+      setEnCours(chaine.id)
+      try {
+        const proposition = await onCompenser(chaine)
+        const segments = proposition?.segments ?? []
+        if (!segments.length) {
+          setErreur(MSG_RIEN_A_REPARTIR)
+          return
+        }
+        setApercu({
+          idChaine: chaine.id,
+          residuM: proposition.residu_m,
+          segments,
+        })
+      } catch (e) {
+        setErreur(e?.message || 'Compensation refusée par le serveur.')
+      } finally {
+        setEnCours(null)
+      }
     },
-    [],
+    [onCompenser],
   )
 
+  /* Applique la proposition SERVEUR aux segments locaux, PAR INDEX (c'est la
+     clé que le serveur renvoie ; un appariement par libellé casserait sur deux
+     segments homonymes). Les segments non cités par la proposition — ceux dont
+     la valeur est absente côté serveur — ne sont pas touchés. */
   const appliquerProrata = useCallback(() => {
     if (!apercu) return
+    const parIndex = new Map(apercu.segments.map((s) => [s.index, s]))
     onChaines?.(
       chaines.map((c) =>
         c.id === apercu.idChaine
           ? {
               ...c,
-              segments: apercu.apres,
+              segments: (c.segments || []).map((s, i) => {
+                const propose = parIndex.get(i)
+                return propose
+                  ? { ...s, valeur: nombre(propose.valeur_proposee_m) }
+                  : s
+              }),
               arbitrage: { type: 'compense', horodatage: new Date().toISOString() },
             }
           : c,
@@ -112,6 +155,12 @@ export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }
   return (
     <section className="ao-fermetures" data-ao-fermetures>
       <h3>Fermetures</h3>
+
+      {erreur && (
+        <p role="alert" className="ao-fermeture-erreur" data-ao-fermeture-erreur>
+          {erreur}
+        </p>
+      )}
 
       <table className="data-table ao-fermetures-table">
         <caption>Une ligne par chaîne : somme, cote mesurée, résidu, tolérance, statut</caption>
@@ -152,6 +201,7 @@ export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }
             <button
               type="button"
               onClick={() => preparerProrata(chaine)}
+              disabled={enCours === chaine.id}
               data-ao-fermeture-prorata={chaine.id}
             >
               Compenser au prorata — {chaine.nom}
@@ -160,7 +210,10 @@ export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }
             {apercu?.idChaine === chaine.id && (
               <div className="ao-fermeture-apercu" data-ao-fermeture-apercu>
                 <table className="data-table">
-                  <caption>Avant / après compensation</caption>
+                  <caption>
+                    Avant / après compensation — répartition proposée par le
+                    serveur (résidu {nombre(apercu.residuM).toFixed(3)} m)
+                  </caption>
                   <thead>
                     <tr>
                       <th scope="col">Segment</th>
@@ -169,11 +222,11 @@ export default function FermeturesPanel({ chaines = [], onChaines, onCalepiner }
                     </tr>
                   </thead>
                   <tbody>
-                    {apercu.apres.map((s, i) => (
-                      <tr key={s.id}>
+                    {apercu.segments.map((s) => (
+                      <tr key={s.index}>
                         <th scope="row">{s.libelle}</th>
-                        <td>{nombre(apercu.avant[i]?.valeur).toFixed(3)}</td>
-                        <td>{nombre(s.valeur).toFixed(3)}</td>
+                        <td>{nombre(s.valeur_m).toFixed(3)}</td>
+                        <td>{nombre(s.valeur_proposee_m).toFixed(3)}</td>
                       </tr>
                     ))}
                   </tbody>

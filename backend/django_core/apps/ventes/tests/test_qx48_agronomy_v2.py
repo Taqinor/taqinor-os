@@ -56,7 +56,10 @@ class TestCitedValues(SimpleTestCase):
         self.assertLessEqual(r['peak_m3_ha_day'], 100)
 
     def test_dattier_cited_per_tree(self):
-        self.assertEqual(a.date_palm_cited_per_tree(), 51)
+        # QJR155 (e) — l'assertion lit la table CITÉE directement : le raccourci
+        # ``date_palm_cited_per_tree()`` n'avait AUCUN appelant de production
+        # (seulement ce test) et a été retiré. La valeur, elle, reste épinglée.
+        self.assertEqual(a.CROP_CITED['dattier']['m3_per_tree_year'], 51)
         self.assertIn('2026-07-16', a.CROP_CITED['dattier']['source'])
         self.assertEqual(a.CROP_CITED['dattier']['trees_per_ha'], 100)
 

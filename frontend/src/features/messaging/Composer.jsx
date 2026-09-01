@@ -22,6 +22,8 @@ import { activeMention, insertMention, filterMembers, extractMentions } from './
 import { applyShortcut } from './richText'
 import SlashCommandPicker from './SlashCommandPicker'
 import SlashProposalCard from './SlashProposalCard'
+import ShareRecord from './ShareRecord'
+import VoiceRecorder from './VoiceRecorder'
 import { activeSlashCommand, filterSlashCommands, resolveSlashSubmit, buildAideText } from './slashCommands'
 
 /* S16 — Composer : zone de saisie auto-dimensionnée, autocomplétion @mention
@@ -605,6 +607,37 @@ export default function Composer({
         >
           <BarChart3 size={18} aria-hidden="true" />
         </Button>
+
+        {/* WIR259 / S19 — partager un lead / devis / chantier. Le composant
+            existait depuis S19 mais n'était monté NULLE PART : la carte
+            cliquable rendue par MessageBubble n'avait donc aucun producteur.
+            Le message renvoyé par le serveur est fusionné dans le store par le
+            reducer d'envoi (même chemin qu'un envoi normal — aucun nouveau
+            thunk, `messagingSlice.js` reste hors périmètre). */}
+        <ShareRecord
+          conversationId={activeId}
+          disabled={!!editing}
+          onShared={(msg) => {
+            if (!msg) return
+            dispatch(sendMessage.fulfilled(
+              msg, `share-${msg.id ?? Date.now()}`, {}))
+          }}
+        />
+
+        {/* WIR259 / S17 — note vocale. DÉGRADATION PROPRE : le composant se
+            rend `null` quand le navigateur ne sait pas enregistrer
+            (MediaRecorder/getUserMedia absents), et un micro REFUSÉ retombe
+            sur un toast « Microphone indisponible » sans jamais casser le
+            composer — le reste de la barre d'actions continue de fonctionner. */}
+        <VoiceRecorder
+          conversationId={activeId}
+          disabled={!!editing}
+          onSent={(msg) => {
+            if (!msg) return
+            dispatch(sendMessage.fulfilled(
+              msg, `voice-${msg.id ?? Date.now()}`, {}))
+          }}
+        />
 
         <div className="relative flex-1">
           <textarea

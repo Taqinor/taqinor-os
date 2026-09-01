@@ -336,9 +336,15 @@ class TestGeneratorQuoteFlow(TestCase):
             ('BAT-DEY-10', '1', None),          # 30 000 TTC
             ('STR-ACIER', '14', None),          # 500 TTC
             ('SOC-BET', '28', None),            # 80 TTC
-            ('ACC-CAT', '1', '1666.67'),        # formule : 2 blocs x 1000 TTC
-            ('TAB-PROT', '1', '2500.00'),       # formule : 2 blocs x 1500 TTC
-            ('INST-CAT', '1', '6000.00'),       # formule : 3 x 2400 TTC
+            # L-FORFAIT (ordre fondateur du 24/08/2026) — ces trois lignes se
+            # cotent AU PANNEAU, plus « au bloc ». Les prix ci-dessous sont le
+            # barème du stock (`seed_catalogue.BAREMES_FORFAIT`) pour 14
+            # panneaux, c'est-à-dire EXACTEMENT ce que l'écran envoie (miroir
+            # TTC dans `solar.js` : accessoires 62,5/panneau, tableau
+            # 243,75/panneau, installation 2 400 + 300/panneau) :
+            ('ACC-CAT', '1', '729.17'),         # 52,0833 x 14 —   875,00 TTC
+            ('TAB-PROT', '1', '2843.75'),       # 203,125 x 14 — 3 412,50 TTC
+            ('INST-CAT', '1', '5500.00'),       # 2000 + 250 x 14 — 6 600 TTC
             ('TRANS-CAT', '1', None),           # 1 000 TTC
         ]
 
@@ -391,8 +397,15 @@ class TestGeneratorQuoteFlow(TestCase):
         self.assertNotIn('Wifi Dongle', avec)
         # Option totals match the simulator for the same inputs (±1 MAD rounding).
         # total_avec = ancien 103 040 − Smart Meter (1 800) − Wifi (1 200) Huawei.
-        self.assertAlmostEqual(data['total_sans'], 65040, delta=1)
-        self.assertAlmostEqual(data['total_avec'], 100040, delta=1)
+        # L-FORFAIT (24/08/2026) : les trois forfaits au panneau valent 1 093,75
+        # HT de MOINS qu'au barème « au bloc » d'avant, sur les DEUX options (ce
+        # sont des lignes communes) — d'où 65 040 → 63 728 et 100 040 → 98 728.
+        # QJR220 (31/08/2026) a rendu la divergence VISIBLE : le viewset de
+        # lignes re-tarife désormais ces forfaits comme le faisaient déjà l'écran
+        # et la composition, donc un prix « au bloc » posté ici ne survivait plus
+        # à l'enregistrement.
+        self.assertAlmostEqual(data['total_sans'], 63727.71, delta=1)
+        self.assertAlmostEqual(data['total_avec'], 98727.72, delta=1)
 
         cap = {}
         orig = G._render_pdf_weasyprint

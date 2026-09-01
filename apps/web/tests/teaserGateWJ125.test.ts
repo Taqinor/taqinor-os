@@ -21,6 +21,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
+import { construireCorps } from '../src/lib/tunnel/corps';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
@@ -119,8 +121,10 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
     // estimateShown est reconstruit dans les 3 moteurs (résidentiel objet + pro/agri `s`).
     expect(src).toContain('estimateShown = {');
     expect((src.match(/estimateShown = s;/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    // …et parvient au webhook CRM inchangé (contrat capture-lead).
-    expect(src).toContain('estimateShown: estimateShown ?? undefined,');
+    // La page le verse à son état ; c'est le module partagé qui l'émet sous la
+    // clé `estimateShown` (comportement épinglé dans le describe suivant, hors
+    // de cette boucle par locale — QJW5).
+    expect(src).toContain('estimateShown');
     expect(src).toContain('kwcLabel: lastKwcLabel || undefined,');
     expect(src).toContain('savingsLabel: lastSavingsLabel || undefined,');
   });
@@ -159,5 +163,22 @@ describe('WJ125 — le message aria-live gaté ne divulgue aucun chiffre (parit�
     expect(m).not.toBeNull();
     if (!m) return;
     expect(m[1]).not.toMatch(FIGURE_LEAK);
+  });
+});
+
+// QJW5 — le corps du lead vient du module partagé : « le commercial voit ce que
+// le client a vu » se vérifie une fois, sur le comportement.
+describe('WJ125 — estimateShown parvient bien au webhook CRM', () => {
+  const corps = (etat: Partial<EtatTunnel>) =>
+    construireCorps({ ...etatVide(), ...etat }, { messages: { nomComplet: 'Nom complet requis' } })
+      .body;
+
+  it("les chiffres affichés partent tels quels", () => {
+    const vus = { kwc: 6.4, nbPanneaux: 9 };
+    expect(corps({ estimationAffichee: vus }).estimateShown).toEqual(vus);
+  });
+
+  it("aucune estimation calculée = clé ABSENTE, jamais un objet vide fabriqué", () => {
+    expect(corps({ estimationAffichee: null })).not.toHaveProperty('estimateShown');
   });
 });

@@ -158,16 +158,86 @@ def _send_report_email(report, content, title):
         return False
 
 
+def journaliser_envoi(report, canal, destinataires, statut, erreur=''):
+    """NTDATA40 — trace UNE tentative de diffusion (réussie ou non).
+
+    ``company`` est reprise DU RAPPORT (côté serveur, jamais d'un corps de
+    requête). Best-effort : un journal qui échoue ne doit jamais empêcher — ni
+    faire croire à — un envoi ; il est simplement logué."""
+    from .models import EnvoiRapport
+    try:
+        return EnvoiRapport.objects.create(
+            company=report.company,
+            saved_report=report,
+            canal=canal,
+            destinataires=', '.join(destinataires or []),
+            statut=statut,
+            erreur=(erreur or '')[:2000],
+        )
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('journaliser_envoi: écriture impossible (rapport %s)',
+                       getattr(report, 'pk', None), exc_info=True)
+        return None
+
+
 def _due_schedules(now):
     """Cadences dues à l'instant `now` (Casablanca).
 
     La tâche est planifiée chaque jour (06:00) et le lundi (06:00). Pour rester
     robuste quelle que soit l'horloge réelle d'invocation, on considère « daily »
-    toujours dû, et « weekly » dû uniquement le lundi (weekday() == 0)."""
+    toujours dû, « weekly » dû uniquement le lundi (weekday() == 0), et
+    « monthly » (NTDATA38) dû les jours du mois pouvant porter un envoi."""
     due = {'daily'}
     if now.weekday() == 0:  # lundi
         due.add('weekly')
+    due.add('monthly')  # affiné par rapport dans `_rapport_est_du`.
     return due
+
+
+def _heure_ok(report, now):
+    """Fenêtre horaire du rapport (NTDATA38).
+
+    `heure_envoi` NULL = comportement HISTORIQUE : aucune contrainte d'heure,
+    le rapport part au passage du planificateur. Renseignée, l'envoi n'a lieu
+    que lorsque l'heure locale correspond."""
+    heure = getattr(report, 'heure_envoi', None)
+    return heure is None or now.hour == int(heure)
+
+
+def _deja_envoye_ce_mois(report, now):
+    """Anti-doublon de la cadence mensuelle : un mois = un envoi.
+
+    Le jour d'envoi peut voir le planificateur passer plusieurs fois ;
+    `last_sent_at` (déjà horodaté à chaque envoi réussi) suffit à ne pas
+    renvoyer le même rapport mensuel deux fois."""
+    dernier = getattr(report, 'last_sent_at', None)
+    if dernier is None:
+        return False
+    try:
+        local = dernier.astimezone(now.tzinfo) if now.tzinfo else dernier
+    except (ValueError, TypeError):  # pragma: no cover - défensif
+        local = dernier
+    return (local.year, local.month) == (now.year, now.month)
+
+
+def _rapport_est_du(report, now):
+    """Vrai si CE rapport doit partir à l'instant `now` (Casablanca).
+
+    Affine la sélection grossière par cadence : fenêtre horaire (`heure_envoi`)
+    et, pour le mensuel, jour du mois + anti-doublon. Les cadences historiques
+    (`daily`/`weekly`) restent INCHANGÉES tant qu'aucune heure n'est posée."""
+    cadence = report.schedule
+    if cadence == 'none':
+        return False
+    if cadence == 'weekly' and now.weekday() != 0:
+        return False
+    if cadence == 'monthly':
+        jour = getattr(report, 'jour_du_mois', 1) or 1
+        if now.day != int(jour):
+            return False
+        if _deja_envoye_ce_mois(report, now):
+            return False
+    return _heure_ok(report, now)
 
 
 @shared_task(name='reporting.email_saved_reports')
@@ -191,15 +261,54 @@ def email_saved_reports():
 
     for report in reports:
         try:
-            if not report.recipient_list():
+            # NTDATA38 — fenêtre fine (heure d'envoi, jour du mois, anti-doublon
+            # mensuel) par-dessus la sélection grossière par cadence.
+            if not _rapport_est_du(report, now):
+                continue
+            # NTDATA39 — canal WhatsApp : un LIEN tokenisé, jamais la pièce
+            # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.
+            if getattr(report, 'canal', 'email') == 'whatsapp':
+                from .diffusion_views import diffuser_whatsapp
+                envoyes, detail = diffuser_whatsapp(report)
+                numeros = report.whatsapp_list()
+                if envoyes:
+                    report.last_sent_at = now
+                    report.save(update_fields=['last_sent_at'])
+                    sent += 1
+                    journaliser_envoi(report, 'whatsapp', numeros, 'envoye')
+                elif not numeros:
+                    journaliser_envoi(report, 'whatsapp', numeros,
+                                      'sans_destinataire', detail)
+                else:
+                    journaliser_envoi(report, 'whatsapp', numeros,
+                                      'non_configure', detail)
+                continue
+            destinataires = report.recipient_list()
+            if not destinataires:
+                journaliser_envoi(report, 'email', destinataires,
+                                  'sans_destinataire',
+                                  'Aucune adresse destinataire configurée.')
+                continue
+            if not _is_email_configured():
+                journaliser_envoi(report, 'email', destinataires,
+                                  'non_configure',
+                                  "Email non configuré (aucune clé d'envoi) — "
+                                  'aucun message envoyé.')
                 continue
             content, title = render_report_xlsx(report)
             if content is None:
+                journaliser_envoi(report, 'email', destinataires, 'echec',
+                                  'Rendu du rapport impossible (format ou '
+                                  'données indisponibles).')
                 continue
             if _send_report_email(report, content, title):
                 report.last_sent_at = now
                 report.save(update_fields=['last_sent_at'])
                 sent += 1
+                journaliser_envoi(report, 'email', destinataires, 'envoye')
+            else:
+                journaliser_envoi(report, 'email', destinataires, 'echec',
+                                  "Envoi refusé par le backend email.")
         except Exception:  # pragma: no cover - défensif par rapport
             logger.warning('email_saved_reports: échec sur le rapport %s',
                            getattr(report, 'pk', None), exc_info=True)

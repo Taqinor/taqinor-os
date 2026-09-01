@@ -1638,6 +1638,41 @@ describe('runtime W97 §6 — un obstacle couvrant fait chuter la pose (dégagem
     // message honnête « non viable » (W74) au lieu d'un faux « 0 panneau gagnant ».
     expect(txt('rp9-reco-why')).toMatch(/non viable/i);
   });
+
+  // AP-F2/#6 — « Recommencer depuis le tracé client » reposait le contour du
+  // client mais LAISSAIT les obstacles dessinés sur le tracé précédent. Ils
+  // restaient à leurs coordonnées d'avant — donc possiblement hors du nouveau
+  // toit — et continuaient à creuser des trous dans un calepinage qu'ils ne
+  // concernaient plus. Test de bout en bout par l'effet OBSERVABLE : un
+  // obstacle couvrant met la pose à zéro ; après la reprise, elle remonte.
+  it('« Recommencer depuis le tracé client » efface les obstacles du tracé précédent', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    const contourClient = squareCorners(16).map(([lng, lat]) => ({ lat, lng }));
+    init({
+      maptilerKey: 'test', reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      referenceContour: contourClient,
+      onApiReady: (a) => { api = a; },
+    });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const map = fakeMaps[0];
+    const avant = intOf('rp9-reco-panels');
+    expect(avant).toBeGreaterThan(0);
+
+    // Un obstacle qui recouvre tout le toit : la pose tombe à zéro.
+    (document.getElementById('rp9-obstacle') as HTMLButtonElement).click();
+    map.fire('mousedown', { lngLat: { lng: -7.6215, lat: 33.5885 }, point: { x: 50, y: 350 } });
+    map.fire('mousemove', { lngLat: { lng: -7.6185, lat: 33.5915 }, point: { x: 350, y: 50 } });
+    map.fire('mouseup', { lngLat: { lng: -7.6185, lat: 33.5915 }, point: { x: 350, y: 50 } });
+    expect(intOf('rp9-reco-panels')).toBe(0);
+
+    // Reprise depuis le tracé CLIENT : sans l'effacement des obstacles, la pose
+    // resterait à zéro — c'est exactement ce que cette assertion attrape.
+    expect(api!.recommencerDepuisTraceClient()).toBe(true);
+    expect(intOf('rp9-reco-panels')).toBeGreaterThan(0);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════

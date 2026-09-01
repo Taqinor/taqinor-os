@@ -10,6 +10,21 @@
  * répondu. Additif uniquement : ne change ni le webhook de lead, ni les
  * champs fbclid/UTM eux-mêmes, ni le seuil 1000 MAD.
  *
+ * QJW14 — CE QUE « REFUSER » BLOQUE EXACTEMENT (décision tranchée, documentée
+ * ici pour que le fondateur puisse l'inverser d'un mot) :
+ *  - « Refuser » (`denied`) bloque, EN PLUS des deux gates historiques, le
+ *    beacon Meta CAPI : jusqu'ici téléphone, ville et e-mail HACHÉS partaient
+ *    chez Meta même après un refus explicite (cf. `fireCapi` / le bloc QJW14
+ *    de src/lib/lead.ts). Les formulaires transmettent désormais ce signal au
+ *    serveur sous le champ `adsConsent`.
+ *  - PAS ENCORE RÉPONDU (flag absent) : comportement INCHANGÉ, le beacon part.
+ *    Le CAPI est alors attaché à un acte EXPLICITE du prospect (il remplit un
+ *    formulaire de devis et coche le consentement de traitement), pas à de la
+ *    navigation anonyme. Pour basculer ce cas du côté bloquant, une seule ligne
+ *    change dans `fireCapi` (`adsConsent !== 'granted'`).
+ *  - La phrase affichée ci-dessous (« sans impact sur votre demande de devis »)
+ *    reste VRAIE : la capture du lead et son envoi au CRM ne sont jamais gatés.
+ *
  * Léger, discutable (Accepter/Refuser), trilingue (même mécanisme de repli
  * FR que le reste du site : petite table `STR` locale, `getLocaleFromPath`).
  * Disparaît dès qu'un choix est fait (pas de ré-affichage tant que le flag

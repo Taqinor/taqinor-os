@@ -1,0 +1,62 @@
+{
+  "endpoint": "GET /api/django/ventes/plans-commission/resoudre/",
+  "pourquoi": "WIR281 (XSAL6) — le modèle `ventes.PlanCommission` et le résolveur `ventes.selectors.resoudre_plan_commission` existaient depuis XSAL6, mais AUCUNE route REST ne les exposait : un plan de commission ne pouvait être créé que par l'admin Django, donc le reporting commercial retombait toujours sur `CompanyProfile.commission_mode`. Ce contrat est le porteur partagé du lot WIR281 (backend) / WIR282 (écran Paramètres) — PACT10 : la moitié front lit CE fichier, jamais une forme inventée.",
+  "notes": {
+    "routes_crud": "Le CRUD vit sur les mêmes routes : GET|POST /api/django/ventes/plans-commission/ et GET|PATCH|DELETE /api/django/ventes/plans-commission/{id}/. Sa forme est celle de `PlanCommissionSerializer` — reproduite ici sous `exemple_objet_plan` (plan dédié à un commercial) et `exemple_objet_plan_defaut_societe` (owner nul). `exemple` porte l'agrégat `resoudre/`, le seul dont la forme n'est pas dérivable d'un sérialiseur.",
+    "societe": "`company` est TOUJOURS posée côté serveur (`perform_create`/`perform_update`) et n'apparaît PAS dans le payload : elle n'est ni lue du corps, ni renvoyée. Le queryset est scopé à la société du demandeur.",
+    "gating": "GARDE MARGE — l'endpoint entier est gaté `HasPermissionOrLegacy('prix_achat_voir')` (rôle fin → permission `prix_achat_voir` ; compte hérité sans rôle fin → responsable/admin, comportement historique). Un plan de commission peut porter la base `marge_interne` : le sujet appartient au même palier de confidentialité que les prix d'achat.",
+    "aucun_montant_sensible": "Le payload ne contient NI prix d'achat NI montant de marge : `base` n'est qu'une ÉTIQUETTE de mode (`ca_devis_signe` | `marge_interne` | `par_kwc`), `taux_pct` un pourcentage de règle et `montant_par_kwc` un barème MAD/kWc. Aucun calcul de commission, aucun CA, aucune marge n'est servi par ces routes.",
+    "owner": "`owner` nul = plan PAR DÉFAUT de la société (fallback). Un plan dédié à un commercial PRIME sur le plan par défaut — la priorité n'est jamais réimplémentée ici : `resoudre` appelle `ventes.selectors.resoudre_plan_commission`, l'unique source de vérité, celle que `reporting/insights` utilise déjà.",
+    "filtres": "`?owner=<id>` filtre sur le commercial (`?owner=` vide = les plans PAR DÉFAUT, `owner__isnull=True`) ; `?actif=true|false` filtre l'activation. Désactiver un plan (`actif=false`) le rend invisible au résolveur SANS le supprimer : le reporting retombe alors sur le plan par défaut puis sur `commission_mode` — non-régression du calcul historique.",
+    "paliers": "`paliers` est un JSON optionnel d'accélération : une liste `[{seuil_atteinte_pct, taux}]` adossée à l'atteinte d'objectif (lue via `crm.selectors` par l'appelant, jamais ici). `null` ou `[]` = aucun palier, le taux de base s'applique.",
+    "resoudre": "`source` dit D'OÙ vient le plan servi : `plan_dedie` (plan actif de ce commercial), `plan_defaut_societe` (plan actif `owner=null`), ou `mode_societe` — dans ce dernier cas `plan` vaut `null` et l'appelant retombe sur `CompanyProfile.commission_mode` (comportement historique inchangé). `owner` est l'id demandé, ou `null` si le paramètre est omis."
+  },
+  "exemple": {
+    "owner": 12,
+    "source": "plan_dedie",
+    "plan": {
+      "id": 4,
+      "owner": 12,
+      "owner_nom": "sami",
+      "base": "ca_devis_signe",
+      "base_display": "CA des devis signés",
+      "taux_pct": "3.50",
+      "montant_par_kwc": null,
+      "paliers": [{"seuil_atteinte_pct": 100, "taux": 5}],
+      "actif": true,
+      "created_at": "2026-08-26T09:12:00Z"
+    }
+  },
+  "exemple_resoudre_sans_plan": {
+    "owner": 12,
+    "source": "mode_societe",
+    "plan": null
+  },
+  "exemple_objet_plan": {
+    "id": 4,
+    "owner": 12,
+    "owner_nom": "sami",
+    "base": "ca_devis_signe",
+    "base_display": "CA des devis signés",
+    "taux_pct": "3.50",
+    "montant_par_kwc": null,
+    "paliers": [
+      {"seuil_atteinte_pct": 100, "taux": 5},
+      {"seuil_atteinte_pct": 120, "taux": 7}
+    ],
+    "actif": true,
+    "created_at": "2026-08-26T09:12:00Z"
+  },
+  "exemple_objet_plan_defaut_societe": {
+    "id": 1,
+    "owner": null,
+    "owner_nom": null,
+    "base": "par_kwc",
+    "base_display": "MAD par kWc installé",
+    "taux_pct": null,
+    "montant_par_kwc": "250.00",
+    "paliers": null,
+    "actif": true,
+    "created_at": "2026-08-01T08:00:00Z"
+  }
+}

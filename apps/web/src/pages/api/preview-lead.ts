@@ -18,6 +18,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
+  adsConsentFromBody,
   buildLeadRecord,
   crossSiteRejection,
   fireCapi,
@@ -70,6 +71,10 @@ export const POST: APIRoute = async ({ request }) => {
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
   const lead = validation.lead;
 
+  // QJW14 — même gate que /api/simulate (miroir strict) : le beacon Meta seul
+  // respecte le refus explicite, jamais la capture du lead.
+  const adsConsent = adsConsentFromBody(body);
+
   const env = (cf.env ?? {}) as LeadEnv;
   const band = await runSimulation(lead, env, fetch);
   const page = request.headers.get('referer');
@@ -93,8 +98,8 @@ export const POST: APIRoute = async ({ request }) => {
     }
     // CAPI inchangé : l'événement publicitaire ne porte jamais les champs
     // facultatifs (signal propre, identique à la production).
-    const capi = await fireCapi(baseRecord, env, fetch);
-    if (!capi.sent && baseRecord.qualified) {
+    const capi = await fireCapi(baseRecord, env, fetch, { adsConsent });
+    if (!capi.sent && baseRecord.qualified && capi.reason !== 'consent-denied') {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();

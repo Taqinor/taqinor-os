@@ -1,0 +1,77 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/taille/<cle>/?variante=sans|avec",
+  "pourquoi": "OPTIONS CHARGEABLES (ordre fondateur, 29/08/2026) — « i want the 3 options to be LOADABLE in the webpage if client clicks on one of them ». Jusqu'ici, cliquer une carte de taille ne synchronisait que les CHIFFRES DE TÊTE de la page (prix TTC, économie, kWc, panneaux, production) en RECOPIANT le texte déjà rendu par la carte : les chapitres PROFONDS — économies mois par mois, couverture, banque batterie, cumul 25 ans — continuaient d'afficher les nombres du DEVIS OFFICIEL sous une carte qui n'est pas lui. Ce contrat sert le DÉTAIL d'UNE taille, pour qu'un clic charge la page ENTIÈRE de cette option-là.",
+  "notes": {
+    "recommande_n_a_pas_d_endpoint": "`cle` ne vaut QUE `eco` ou `max`. « Recommandé » EST le devis : son détail est DÉJÀ la page servie au chargement, et la page le restaure depuis ses originaux mis en cache (mécanisme existant). Lui donner un endpoint aurait recréé le risque « 21 contre 22 » : deux chemins de calcul pour la même carte, deux arrondis, deux chiffres. `cle=recommande` répond donc 404 générique, comme une taille inconnue.",
+    "derivation": "AUCUN second moteur. Le bloc `carte` est LE MÊME OBJET que `offres_tailles.offres[].sans|avec` (contrat `offres_tailles.json`) — dérivé par `apps.ventes.offres_tailles.deriver`, filtré par les mêmes règles de section, et servi ici tel quel pour que la page n'ait qu'UNE source par nombre. Les deux ajouts profonds (`economies_mensuelles`, `cashflow`) sortent du MÊME passage moteur que la carte : `_carte_moteur` appelle `calculer_etude_horaire` UNE fois pour les deux variantes et `compute_cashflow_payback` avec les DEUX arguments de discipline de `pricing.calculate_savings_roi` (`inverter_replace_cost` = le prix TTC réel de SA ligne onduleur ; `battery_share` = la part réellement stockée). Ce sont les séries qui alimentaient déjà `economie_annuelle_mad` et `economies_cumulees_25_ans_mad` de la carte — on les publie, on ne les recalcule pas.",
+    "economies_mensuelles": "Les douze `economie_sans_mad` / `economie_avec_mad` du bloc `mois` de l'étude horaire de CETTE taille, dans la variante demandée — la même grandeur que le bloc `economies_mensuelles` du payload, à la même échelle de temps, arrondie de la même façon (`round`). La série est servie SEULE (`valeurs`) : le détail porte UNE variante, là où le payload en porte deux. `note`/`estimation`/`modele` ne sont PAS resservis : ils décrivent la SOURCE DE CONSOMMATION du dossier (facture, relevé…), identique pour les trois tailles — la page garde les siens, jamais deux formulations concurrentes de la même phrase. Clé OMISE si l'étude ne rend pas douze mois (règle « année complète ou rien » de `calculer_etude_horaire`).",
+    "cashflow": "`cumulative` est la série cumulée que la page trace déjà pour le devis (`quote.cashflow_sans`/`cashflow_avec`), calculée ICI pour cette taille avec les mêmes arguments. `payback_annees` reste sur la carte (jamais deux paybacks). `escalade_tarifaire_pct` vaut 0 — projection à tarif PLAT, exactement comme `offres_tailles` : le drapeau existe pour que la page imprime « aucune hausse tarifaire supposée » AU-DESSUS du chiffre. Clé OMISE quand le moteur ne rend pas de série (taille sans prix ou sans économie).",
+    "batterie": "Aucune clé propre : la banque de cette taille vit DANS `carte.batterie` (forme `offres_tailles` : `nb_modules`, `module_kwh`, `capacite_utile_kwh`, `remplissage_ok`), servie uniquement en `variante=avec` et uniquement quand une banque est réellement composée. Aucune « autonomie en heures » — le moteur n'en calcule aucune (voir `offres_tailles.json`).",
+    "omission": "TOUT champ est facultatif, exactement comme les cartes : sans donnée réelle, il est OMIS — jamais un zéro, jamais un forfait. Un détail peut donc être plus pauvre qu'un autre ; c'est la vérité de cette taille-là.",
+    "gating": "L'endpoint ne décide RIEN de neuf. Il dérive le bloc `offres_tailles` PUBLIC (mêmes gardes : résidentiel, case de section « Économies », cases `taille_eco`/`taille_max` du dialogue d'envoi, seuil de deux tailles servies) et REFUSE en 404 générique toute `cle` qui n'y figure pas. Une taille non envoyée à CE client est donc inatteignable par URL directe — la même réponse qu'un jeton inconnu, sans fuite sur la raison.",
+    "niveau": "Servi IDENTIQUE aux deux niveaux de partage (`standard` / `confiance`), et c'est un CONSTAT, pas un oubli : ce contrat ne porte que des natures de nombres DÉJÀ publiques aux deux niveaux sur cette page (tailles, prix TTC, économies, payback, couverture, production, banque en modules) — jamais un calibre, jamais une quantité de nomenclature, jamais une marge ni un prix d'achat (règle #4). La dégradation anticopie du niveau standard porte sur les LIGNES du devis et la conception électrique ; aucune des deux ne traverse ce contrat, donc aucun helper de dégradation n'a de prise à exercer ici. Un test compare les deux niveaux et exige l'égalité.",
+    "lecture_pure": "Aucune écriture : ni ligne, ni total, ni statut, ni `offres_tailles_config`, ni horodatage de vue (l'endpoint ne pose PAS de trace d'ouverture — la page en a déjà posé une au chargement ; un clic de carte n'est pas une seconde consultation). Best-effort : toute exception est journalisée et répond 404 générique — un détail indisponible ne fait jamais tomber la page, qui retombe sur la synchronisation des seuls chiffres de tête.",
+    "cout": "L'appel REFAIT le passage moteur de cette taille (composition + étude horaire) ; il n'existe AUCUN cache mémoire partagé entre requêtes dans ce repo pour ce genre de dérivation. Le résultat est donc mémoïsé dans le CACHE DJANGO (`django.core.cache`, l'idiome déjà employé par `public_views`) sous une clé portant le lien, la taille, la variante et l'empreinte de la configuration stockée — invalidée dès que le vendeur ajuste ou régénère la taille. La page, elle, met en cache par `taille+variante` après le premier chargement : une bascule de variante déjà vue ne rappelle pas le réseau."
+  },
+  "exemple": {
+    "cle": "eco",
+    "titre": "Éco",
+    "variante": "sans",
+    "est_le_devis": false,
+    "carte": {
+      "nb_panneaux": 14,
+      "puissance_kwc": 7.7,
+      "prix_ttc": 71400.0,
+      "prix_par_kwc_ttc": 9273.0,
+      "economie_annuelle_mad": 9840.0,
+      "payback_annees": 7.26,
+      "couverture_pct": 48.2,
+      "taux_autoconsommation_pct": 71.4,
+      "production_annuelle_kwh": 12180.0,
+      "economies_cumulees_25_ans_mad": 231400.0,
+      "familles": ["onduleur", "panneau"],
+      "toit_ok": true
+    },
+    "economies_mensuelles": {
+      "valeurs": [640, 690, 810, 870, 930, 980, 1010, 990, 900, 800, 690, 630],
+      "total": 9940,
+      "devise": "MAD"
+    },
+    "cashflow": {
+      "cumulative": [-61560, -51720, -41880, -32040, -22200],
+      "horizon_annees": 25,
+      "escalade_tarifaire_pct": 0
+    }
+  },
+  "exemple_avec_batterie": {
+    "cle": "max",
+    "titre": "Max",
+    "variante": "avec",
+    "est_le_devis": false,
+    "carte": {
+      "nb_panneaux": 34,
+      "puissance_kwc": 18.7,
+      "prix_ttc": 227600.0,
+      "economie_annuelle_mad": 23040.0,
+      "payback_annees": 9.88,
+      "couverture_pct": 93.1,
+      "production_annuelle_kwh": 29580.0,
+      "economies_cumulees_25_ans_mad": 541800.0,
+      "batterie": {
+        "nb_modules": 6,
+        "module_kwh": 5.0,
+        "capacite_utile_kwh": 27.0,
+        "remplissage_ok": true
+      },
+      "familles": ["batterie", "onduleur", "panneau"]
+    },
+    "economies_mensuelles": {
+      "valeurs": [1560, 1680, 1930, 2050, 2180, 2280, 2340, 2300, 2100, 1880, 1650, 1540],
+      "total": 23490,
+      "devise": "MAD"
+    }
+  },
+  "exemple_404": {
+    "commentaire": "404 `{\"detail\": \"<message de lien expiré>\"}` — MÊME corps que tout autre refus public — dans TOUS ces cas, sans distinction : jeton inconnu/expiré, devis non résidentiel, `cle=recommande`, `cle` inconnue, taille non ENVOYÉE à ce client (cases `taille_eco`/`taille_max`), case de section « Économies » décochée, variante `avec` sur un devis qui ne sert pas l'option batterie, ou dérivation impossible. La page traite indistinctement tout échec : elle garde la synchronisation des chiffres de tête et propose de réessayer."
+  }
+}

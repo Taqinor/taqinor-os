@@ -4,6 +4,7 @@ Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; la non-conformité enregistre aussi son signaleur
 (``signale_par``) côté serveur.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 
 from django.shortcuts import get_object_or_404
@@ -23,27 +24,29 @@ from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident,
-    AspectEnvironnemental, Audit,
-    BilanCarbone, BordereauSuiviDechet, CauseIncident,
-    CodeDefaut,
+    ActionCorrectivePreventive, AnalyseIncident, AnalyseNcr,
+    AspectEnvironnemental, Audit, AuditCertification, AuditPlanifie,
+    BilanCarbone, BordereauSuiviDechet, CampagneRappel, CauseIncident,
+    Certification, ClauseNorme, CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
-    ControleReception,
-    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
-    EtapeDeclarationAt,
+    ContexteOrganisation, ControleReception,
+    CritereAudit, Dechet, DeclarationCnss, DecisionReunion,
+    DemandeChangement, Derogation, DiffusionProcedure,
+    ElementRappel, EtapeDeclarationAt,
     EvaluationRisque, ExerciceUrgence, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LienSignalementPublic, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    ObservationSecurite,
+    ObjectifQhse, ObservationSecurite,
+    PartieInteressee,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
-    PlanInspectionModele, PlanUrgence,
+    PlanInspectionModele, PlanUrgence, ProgrammeAudit,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    RevueObjectif, RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
 )
@@ -52,15 +55,17 @@ from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AnalyseNcrSerializer,
     AspectEnvironnementalSerializer,
-    AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
-    CauseIncidentSerializer,
-    CodeDefautSerializer,
+    AuditSerializer, AuditCertificationSerializer, AuditPlanifieSerializer,
+    BilanCarboneSerializer, BordereauSuiviDechetSerializer,
+    CampagneRappelSerializer, CauseIncidentSerializer,
+    CertificationQhseSerializer, ClauseNormeSerializer, CodeDefautSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
-    ControleReceptionSerializer,
+    ContexteOrganisationSerializer, ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
-    DemandeChangementSerializer,
-    DerogationSerializer, EtapeDeclarationAtSerializer,
+    DecisionReunionSerializer, DemandeChangementSerializer,
+    DerogationSerializer, DiffusionProcedureSerializer,
+    ElementRappelSerializer, EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, ExerciceUrgenceSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
@@ -70,17 +75,18 @@ from .serializers import (
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
-    ObservationSecuriteSerializer,
+    ObjectifQhseSerializer, ObservationSecuriteSerializer,
+    PartieInteresseeSerializer,
     PermisTravailSerializer, PlanControleReceptionSerializer,
     PlanInspectionChantierSerializer,
-    PlanInspectionModeleSerializer, PlanUrgenceSerializer,
+    PlanInspectionModeleSerializer, PlanUrgenceSerializer, ProgrammeAuditSerializer,
     PointControleModeleSerializer, PointControleReceptionSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
     ReleveConsommationSerializer, ReleveControleSerializer,
     ReleveCourbeIVSerializer,
-    ReponseCritereSerializer, RetourClientQualiteSerializer,
-    RevueVeilleReglementaireSerializer,
+    ReponseCritereSerializer, RetourClientQualiteSerializer, ReunionQhseSerializer,
+    RevueObjectifSerializer, RevueVeilleReglementaireSerializer,
     RisqueOpportuniteCapaSerializer, RisqueOpportuniteSerializer,
     SecouristeSerializer, SignalementPublicSerializer,
     VeilleReglementaireSerializer,
@@ -104,29 +110,35 @@ from .selectors import (
     taux_conformite_premier_passage, taux_defaillance_par_produit,
 )
 from .services import (
-    activer_procedure, calculer_score_audit, calculer_score_notation,
-    cloturer_incident, cloturer_ncr, compteurs_observations_securite,
+    accuser_lecture,
+    activer_procedure, ajouter_lecteurs, calculer_score_audit,
+    calculer_score_notation,
+    cloturer_incident, cloturer_ncr, cloturer_reunion_qhse,
+    compteurs_observations_securite,
     conclure_revue_veille,
+    creer_capa_depuis_decision,
     creer_capa_mise_en_oeuvre_moc,
     creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
     creer_ncr_depuis_ticket,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     demandes_changement_a_reverser,
+    diffuser_procedure,
     enregistrer_analyse_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
     creer_signalement_public, generer_qr_signalement,
     incidents_notification_en_retard, initialiser_prochaine_revue,
-    instancier_plan_chantier,
+    instancier_audit_planifie, instancier_plan_chantier,
     lectures_en_attente,
-    lever_ncr_audit, lever_ncr_inspection,
+    lever_ncr_audit, lever_ncr_audit_certification, lever_ncr_inspection,
     lier_capa_risque_opportunite, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
     relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
     relancer_exercices_urgence,
     relancer_notifications_environnement,
+    rendre_analyse_ncr_pdf,
     resolve_lien_signalement_public,
     risques_opportunites_revue_due,
     statuer_controle_reception,
@@ -917,6 +929,30 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
         qs = lectures_en_attente(request.user).filter(
             company=request.user.company)
         return Response(AccuseLectureSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def diffuser(self, request, pk=None):
+        """WIR277 (XQHS15) — diffuse cette version à une population
+        d'utilisateurs (``diffuser_procedure`` — service existant, jusqu'ici
+        sans appelant).
+
+        Corps ``{"user_ids": [...]}`` — la population est VALIDÉE côté
+        serveur (jamais un id hors société) ; 400 si aucun destinataire
+        valide."""
+        from django.contrib.auth import get_user_model
+
+        procedure = self.get_object()
+        user_ids = request.data.get('user_ids') or []
+        users = list(get_user_model().objects.filter(
+            id__in=user_ids, company=request.user.company))
+        if not users:
+            return Response(
+                {'detail': 'Aucun destinataire valide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        diffusion = diffuser_procedure(procedure, users)
+        return Response(
+            DiffusionProcedureSerializer(diffusion).data,
+            status=status.HTTP_201_CREATED)
 
 
 class RetourClientQualiteViewSet(_QhseBaseViewSet):
@@ -3090,20 +3126,476 @@ class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
         return Response(self.get_serializer(scar).data)
 
 
-# ── WIR115 — SCAFFOLDING DIFFÉRÉ (note explicite) ────────────────────────────
-# Les modèles QHSE ci-dessous (services testés, aucune exposition REST) sont
-# volontairement laissés SANS API dans ce lot : la priorité WIR115 était
-# CheckinSecurite (une tâche beat d'escalade tournait contre une table sans
-# écran) et DemandeActionFournisseur (SCAR) — tous deux exposés ci-dessus.
-# AnalyseNcr est exposée (PACT182, action ``analyse/`` de
-# NonConformiteViewSet — jamais un CRUD direct, un seul enregistrement par NCR).
-# RisqueOpportunite est exposée (PACT183, RisqueOpportuniteViewSet complet +
-# actions ``revues-dues``/``lier-capa``) ; RisqueOpportuniteCapa reste SANS
-# CRUD propre (créée uniquement via ``lier-capa/``, jamais un POST direct).
-# Les suivants restent en scaffolding différé (à exposer par un lot ultérieur,
-# un viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
-# jamais être re-listés comme « backend sombre non traité » :
-#   CampagneRappel, Certification, AuditCertification,
-#   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse,
-#   RisqueOpportuniteCapa, PartieInteressee, ContexteOrganisation,
-#   DiffusionProcedure.
+# ── WIR115/WIR275/WIR277 — scaffolding différé, note à jour ─────────────────
+# CheckinSecurite/DemandeActionFournisseur (WIR115), AnalyseNcr (PACT182,
+# action ``analyse/`` de NonConformiteViewSet — jamais un CRUD direct, un
+# seul enregistrement par NCR) et RisqueOpportunite (PACT183) sont exposés
+# ci-dessus. RisqueOpportuniteCapa reste SANS CRUD propre par CONCEPTION
+# (créée uniquement via ``lier-capa/``, jamais un POST direct — inchangé).
+# WIR275 expose les 10 modèles ISO restants (CampagneRappel/ElementRappel,
+# Certification/AuditCertification, ProgrammeAudit/AuditPlanifie/ClauseNorme,
+# ReunionQhse/DecisionReunion, ObjectifQhse/RevueObjectif) + la route PDF
+# ``non-conformites/<id>/analyse/pdf/``. WIR277 expose le contexte SMQ ISO
+# 4.1/4.2 (PartieInteressee, ContexteOrganisation en singleton) et la
+# diffusion des procédures (DiffusionProcedure en LECTURE SEULE — créée
+# uniquement via l'action ``diffuser/`` de ProcedureQualiteViewSet).
+# PLUS AUCUN modèle QHSE ISO n'est en scaffolding différé après ce lot.
+
+# ── WIR275 (XQHS7) — PDF interne de l'analyse 5-Pourquoi/8D d'une NCR ──────
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+def analyse_ncr_pdf(request, pk):
+    """WIR275 — PDF INTERNE (5-Pourquoi/8D) d'une NCR, scopé société.
+
+    ``rendre_analyse_ncr_pdf`` (services.py) existait déjà, sans aucune route
+    pour l'appeler. 404 si la NCR ou son ``AnalyseNcr`` n'existe pas / n'
+    appartient pas à la société de l'utilisateur. JAMAIS ``/proposal`` —
+    aucun prix (règle CLAUDE.md #4)."""
+    from django.http import HttpResponse
+
+    ncr = NonConformite.objects.filter(
+        pk=pk, company=request.user.company).first()
+    if ncr is None:
+        return Response(
+            {'detail': 'Non-conformité introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    analyse = AnalyseNcr.objects.filter(non_conformite=ncr).first()
+    if analyse is None:
+        return Response(
+            {'detail': 'Aucune analyse enregistrée pour cette NCR.'},
+            status=status.HTTP_404_NOT_FOUND)
+    pdf_bytes = rendre_analyse_ncr_pdf(analyse)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="analyse-ncr-{ncr.pk}.pdf"')
+    return response
+
+
+# ── WIR275 (XQHS5) — campagnes de rappel produit ────────────────────────────
+class CampagneRappelViewSet(_QhseBaseViewSet):
+    """Campagnes de rappel/containment sur un défaut fournisseur (produit-lot,
+    WIR275/XQHS5). ``company``/``produit``/``responsable`` scopés société.
+    Filtre optionnel ``?statut=``."""
+    queryset = CampagneRappel.objects.select_related('produit').all()
+    serializer_class = CampagneRappelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'gravite', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def peupler(self, request, pk=None):
+        """Peuple les ``ElementRappel`` depuis le parc réel (idempotent —
+        ``peupler_campagne_rappel`` n'avait aucun appelant REST)."""
+        from .services import peupler_campagne_rappel
+
+        campagne = self.get_object()
+        crees = peupler_campagne_rappel(campagne)
+        return Response({
+            'crees': len(crees),
+            'campagne': self.get_serializer(campagne).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def notifier(self, request, pk=None):
+        """Notifie le responsable pour chaque élément ``a_notifier``
+        (``notifier_elements_rappel``)."""
+        from .services import notifier_elements_rappel
+
+        campagne = self.get_object()
+        notifies = notifier_elements_rappel(campagne)
+        return Response({
+            'notifies': len(notifies),
+            'campagne': self.get_serializer(campagne).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture la campagne après vérification d'efficacité
+        (``cloturer_campagne_rappel`` — 400 si des éléments restent non
+        traités). Corps ``{"date_verification_efficacite": "AAAA-MM-JJ"}``."""
+        from .services import cloturer_campagne_rappel
+
+        campagne = self.get_object()
+        try:
+            cloturer_campagne_rappel(
+                campagne,
+                request.data.get('date_verification_efficacite'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(campagne).data)
+
+
+class ElementRappelViewSet(_QhseBaseViewSet):
+    """Équipements concernés par une ``CampagneRappel`` (WIR275/XQHS5).
+    Rattachement au parc/chantier par références LÂCHES (peuplées depuis
+    ``sav.selectors`` par l'appelant — jamais un import de modèle ici).
+    Filtre optionnel ``?campagne=``."""
+    queryset = ElementRappel.objects.select_related('campagne').all()
+    serializer_class = ElementRappelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne = self.request.query_params.get('campagne')
+        if campagne not in (None, ''):
+            qs = qs.filter(campagne_id=campagne)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='planifier-remplacement')
+    def planifier_remplacement(self, request, pk=None):
+        """Planifie l'intervention SAV de remplacement
+        (``planifier_remplacement_element_rappel`` — jamais un import de
+        ``apps.crm.models``, le client est résolu via ``crm.selectors``).
+        Corps ``{"client_id": <int>}`` requis."""
+        from apps.crm.selectors import get_company_client
+
+        from .services import planifier_remplacement_element_rappel
+
+        element = self.get_object()
+        client = get_company_client(
+            request.user.company, request.data.get('client_id'))
+        if client is None:
+            return Response(
+                {'detail': 'Client introuvable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        planifier_remplacement_element_rappel(
+            element, client=client, created_by=request.user)
+        return Response(self.get_serializer(element).data)
+
+
+# ── WIR275 (XQHS9) — registre des certifications + audits externes ─────────
+class CertificationViewSet(_QhseBaseViewSet):
+    """Certificats ISO/NM détenus par l'entreprise (WIR275/XQHS9). Filtre
+    optionnel ``?statut=``."""
+    queryset = Certification.objects.all()
+    serializer_class = CertificationQhseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_expiration', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class AuditCertificationViewSet(_QhseBaseViewSet):
+    """Audits d'un organisme certificateur sur une ``Certification``
+    (WIR275/XQHS9). Filtre optionnel ``?certification=``.
+
+    ``POST …/<id>/lever-ncr/`` lève une NCR pour un constat majeur (idempotent
+    — ``lever_ncr_audit_certification`` n'avait aucun appelant)."""
+    queryset = AuditCertification.objects.select_related('certification').all()
+    serializer_class = AuditCertificationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_audit', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        certification = self.request.query_params.get('certification')
+        if certification not in (None, ''):
+            qs = qs.filter(certification_id=certification)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='lever-ncr')
+    def lever_ncr(self, request, pk=None):
+        """Lève une NCR pour un constat majeur (``lever_ncr_audit_certification``
+        — idempotent : n'agit que si ``constat_majeur=True`` et ne recrée
+        rien si ``ncr_id`` est déjà posé). ``ncr_id`` reflète le résultat."""
+        audit_certif = self.get_object()
+        lever_ncr_audit_certification(audit_certif, signale_par=request.user)
+        return Response(self.get_serializer(audit_certif).data)
+
+
+# ── WIR275 (XQHS10) — programme d'audit interne annuel ──────────────────────
+class ProgrammeAuditViewSet(_QhseBaseViewSet):
+    """Programme d'audit interne annuel (WIR275/XQHS10). Filtre optionnel
+    ``?annee=``."""
+    queryset = ProgrammeAudit.objects.all()
+    serializer_class = ProgrammeAuditSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'annee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        return qs
+
+
+class AuditPlanifieViewSet(_QhseBaseViewSet):
+    """Audits planifiés au sein d'un ``ProgrammeAudit`` (WIR275/XQHS10).
+    Filtre optionnel ``?programme=``.
+
+    ``POST …/<id>/instancier/`` matérialise l'``Audit`` réel
+    (``instancier_audit_planifie`` — idempotent, n'avait aucun appelant)."""
+    queryset = AuditPlanifie.objects.select_related(
+        'programme', 'grille').all()
+    serializer_class = AuditPlanifieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_cible', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        programme = self.request.query_params.get('programme')
+        if programme not in (None, ''):
+            qs = qs.filter(programme_id=programme)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def instancier(self, request, pk=None):
+        audit_planifie = self.get_object()
+        instancier_audit_planifie(audit_planifie)
+        return Response(self.get_serializer(audit_planifie).data)
+
+
+# ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ───────────────
+class ClauseNormeViewSet(_QhseBaseViewSet):
+    """Clauses d'un référentiel ISO (9001/14001/45001/NM), seedable
+    (WIR275/XQHS11). Filtre optionnel ``?referentiel=``."""
+    queryset = ClauseNorme.objects.all()
+    serializer_class = ClauseNormeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'intitule']
+    ordering_fields = ['id', 'referentiel', 'numero']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        referentiel = self.request.query_params.get('referentiel')
+        if referentiel not in (None, ''):
+            qs = qs.filter(referentiel=referentiel)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='heatmap-constats')
+    def heatmap_constats(self, request):
+        """Heatmap des non-conformités d'audit par clause ISO
+        (``constats_par_clause`` — n'avait aucun appelant). Filtre optionnel
+        ``?referentiel=``."""
+        from .selectors import constats_par_clause
+
+        data = constats_par_clause(
+            request.user.company,
+            referentiel=request.query_params.get('referentiel'))
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='readiness-multi-referentiel')
+    def readiness_multi_referentiel_action(self, request):
+        """Readiness étendu par référentiel (``readiness_multi_referentiel``
+        — n'avait aucun appelant)."""
+        from .selectors import readiness_multi_referentiel
+
+        return Response(readiness_multi_referentiel(request.user.company))
+
+
+# ── WIR275 (XQHS12) — revue de direction + comité d'hygiène et sécurité ────
+class ReunionQhseViewSet(_QhseBaseViewSet):
+    """Réunions QHSE structurées : revue de direction/CSH/HSE
+    (WIR275/XQHS12). Filtre optionnel ``?type_reunion=``.
+
+    ``POST …/<id>/cloturer/`` clôture la réunion (``cloturer_reunion_qhse`` —
+    exige la checklist ISO 9.3 complète pour une revue de direction, 400
+    sinon)."""
+    queryset = ReunionQhse.objects.all()
+    serializer_class = ReunionQhseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_reunion', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_reunion = self.request.query_params.get('type_reunion')
+        if type_reunion not in (None, ''):
+            qs = qs.filter(type_reunion=type_reunion)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        reunion = self.get_object()
+        try:
+            cloturer_reunion_qhse(reunion)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reunion).data)
+
+
+class DecisionReunionViewSet(_QhseBaseViewSet):
+    """Décisions prises en ``ReunionQhse`` (WIR275/XQHS12). Filtre optionnel
+    ``?reunion=``.
+
+    ``POST …/<id>/creer-capa/`` fait « spawner » une CAPA liée
+    (``creer_capa_depuis_decision`` — idempotent, n'avait aucun appelant).
+    Corps optionnel : ``description``/``responsable``/``echeance``."""
+    queryset = DecisionReunion.objects.select_related('reunion').all()
+    serializer_class = DecisionReunionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reunion = self.request.query_params.get('reunion')
+        if reunion not in (None, ''):
+            qs = qs.filter(reunion_id=reunion)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        decision = self.get_object()
+        responsable = None
+        responsable_id = request.data.get('responsable')
+        if responsable_id:
+            from django.contrib.auth import get_user_model
+            responsable = get_user_model().objects.filter(
+                id=responsable_id, company=request.user.company).first()
+        capa = creer_capa_depuis_decision(
+            decision,
+            description=request.data.get('description'),
+            responsable=responsable,
+            echeance=request.data.get('echeance'),
+        )
+        return Response(ActionCorrectivePreventiveSerializer(capa).data)
+
+
+# ── WIR275 (XQHS13) — objectifs & cibles QHSE/ESG (ISO 6.2) ────────────────
+class ObjectifQhseViewSet(_QhseBaseViewSet):
+    """Objectifs chiffrés QHSE/ESG avec baseline/cible/échéance
+    (WIR275/XQHS13, ISO 6.2). Filtre optionnel ``?domaine=``."""
+    queryset = ObjectifQhse.objects.all()
+    serializer_class = ObjectifQhseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        domaine = self.request.query_params.get('domaine')
+        if domaine not in (None, ''):
+            qs = qs.filter(domaine=domaine)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='revues-dues')
+    def revues_dues(self, request):
+        """Objectifs dont la revue périodique est due
+        (``objectifs_revue_due`` — n'avait aucun appelant)."""
+        from .selectors import objectifs_revue_due
+
+        qs = objectifs_revue_due(request.user.company)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'])
+    def trajectoire(self, request, pk=None):
+        """Trajectoire baseline→cible vs réel (``trajectoire_objectif`` —
+        n'avait aucun appelant)."""
+        from .selectors import trajectoire_objectif
+
+        objectif = self.get_object()
+        return Response(trajectoire_objectif(objectif))
+
+
+class RevueObjectifViewSet(_QhseBaseViewSet):
+    """Revues périodiques d'un ``ObjectifQhse`` (WIR275/XQHS13). ``atteint``
+    dérivé côté serveur au ``save()`` du modèle — jamais bloquant, jamais reçu
+    en écriture. Filtre optionnel ``?objectif=``."""
+    queryset = RevueObjectif.objects.select_related('objectif').all()
+    serializer_class = RevueObjectifSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_revue', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        objectif = self.request.query_params.get('objectif')
+        if objectif not in (None, ''):
+            qs = qs.filter(objectif_id=objectif)
+        return qs
+
+
+# ── WIR277 (XQHS15) — contexte SMQ ISO 4.1/4.2 ──────────────────────────────
+class PartieInteresseeViewSet(_QhseBaseViewSet):
+    """Parties intéressées pertinentes pour le SMQ (WIR277, ISO 4.2). Filtre
+    optionnel ``?pertinence=``."""
+    queryset = PartieInteressee.objects.all()
+    serializer_class = PartieInteresseeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'pertinence', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        pertinence = self.request.query_params.get('pertinence')
+        if pertinence not in (None, ''):
+            qs = qs.filter(pertinence=pertinence)
+        return qs
+
+
+class ContexteOrganisationViewSet(_QhseBaseViewSet):
+    """Contexte/enjeux de l'organisation (WIR277, ISO 4.1), SINGLETON par
+    société (pattern ``cpq.ParametresCPQViewSet``). ``GET/PUT/PATCH
+    …/courant/`` lit/modifie la ligne unique de la société (créée à la
+    volée) ; ``company`` posée côté serveur."""
+    queryset = ContexteOrganisation.objects.all()
+    serializer_class = ContexteOrganisationSerializer
+
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='courant')
+    def courant(self, request):
+        contexte, _ = ContexteOrganisation.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'GET':
+            return Response(self.get_serializer(contexte).data)
+        serializer = self.get_serializer(
+            contexte, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class DiffusionProcedureViewSet(
+        TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Diffusions de procédures qualité (WIR277, XQHS15) — LECTURE SEULE :
+    une diffusion se crée exclusivement via l'action ``diffuser/`` de
+    ``ProcedureQualiteViewSet``. Filtre optionnel ``?procedure=``.
+
+    ``POST …/<id>/ajouter-lecteurs/`` (corps ``{"user_ids": [...]}``, validés
+    même-société) ajoute des lecteurs à une diffusion existante
+    (``ajouter_lecteurs`` — service jusqu'ici sans appelant).
+    ``POST …/<id>/marquer-lu/`` accuse lecture pour l'UTILISATEUR COURANT
+    UNIQUEMENT — jamais un tiers."""
+    permission_classes = [ScopedPermission]
+    queryset = DiffusionProcedure.objects.select_related('procedure').all()
+    serializer_class = DiffusionProcedureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_diffusion']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        procedure = self.request.query_params.get('procedure')
+        if procedure not in (None, ''):
+            qs = qs.filter(procedure_id=procedure)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='ajouter-lecteurs')
+    def ajouter_lecteurs_action(self, request, pk=None):
+        from django.contrib.auth import get_user_model
+
+        diffusion = self.get_object()
+        user_ids = request.data.get('user_ids') or []
+        users = list(get_user_model().objects.filter(
+            id__in=user_ids, company=request.user.company))
+        if not users:
+            return Response(
+                {'detail': 'Aucun destinataire valide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ajouter_lecteurs(diffusion, users)
+        return Response(self.get_serializer(diffusion).data)
+
+    @action(detail=True, methods=['post'], url_path='marquer-lu')
+    def marquer_lu(self, request, pk=None):
+        diffusion = self.get_object()
+        accuse = accuser_lecture(diffusion, request.user)
+        return Response(AccuseLectureSerializer(accuse).data)

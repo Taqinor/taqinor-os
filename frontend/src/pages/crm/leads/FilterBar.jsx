@@ -5,6 +5,7 @@ import {
   PRIORITE_LABELS,
   STAGE_LABELS,
   PIPELINE_STAGES,
+  TRI_OPTIONS,
   TYPE_INSTALLATION_LABELS,
   tagList,
 } from '../../../features/crm/stages'
@@ -120,9 +121,10 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   // Mobile : la recherche est une icône qui déplie l'input pleine largeur
   // (patron Odoo SearchBarToggler) — jamais une ligne permanente.
   const [searchOpen, setSearchOpen] = useState(false)
-  // Nombre de filtres actifs (hors recherche libre) — pastille sur le bouton.
+  // Nombre de filtres actifs (hors recherche libre ET hors `tri` — un ordre
+  // d'affichage n'est pas un filtre, il ne cache aucun lead) — pastille.
   const activeCount = Object.keys(EMPTY_FILTERS)
-    .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
+    .filter((k) => k !== 'q' && k !== 'tri' && filters[k] !== EMPTY_FILTERS[k]).length
 
   const facets = buildLeadFacets(filters, canalOptions)
 
@@ -183,6 +185,20 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
           {mobile && facets.length > 0 && (
             <div className="fb-panel-facets">{facetChips}</div>
           )}
+
+      {/* Ordre fondateur 2026-09-01 — TRI de l'écran (kanban ET liste) :
+          défaut « Plus récent d'abord » (le dernier lead arrivé en haut) ;
+          priorité/score deviennent des choix, plus jamais un ordre imposé. */}
+      <Select value={filters.tri ?? 'recent'} onValueChange={(v) => setKey('tri')(v)}>
+        <SelectTrigger className="fb-select" aria-label="Trier les leads">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {TRI_OPTIONS.map(({ value, label }) => (
+            <SelectItem key={value} value={value}>{label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par étape">

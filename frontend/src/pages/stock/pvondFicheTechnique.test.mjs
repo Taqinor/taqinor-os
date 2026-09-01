@@ -325,12 +325,25 @@ test('champsFichePourType(panneau) garde puissance, électrique complet et dimen
   })
 })
 
-test('champsFichePourType(batterie) garde capacité/tension/DoD', () => {
+test('champsFichePourType(batterie) garde capacité/tension/DoD/max-modules', () => {
   assert.deepEqual(
     champsFichePourType('batterie', {
       bat_kwh_nominal: '5.12', bat_kwh_usable: '4.6', bat_v_nominal: '51.2', bat_dod_pct: '90',
+      bat_max_modules_par_banc: '200',
     }),
-    { bat_kwh_nominal: 5.12, bat_kwh_usable: 4.6, bat_v_nominal: 51.2, bat_dod_pct: 90 })
+    { bat_kwh_nominal: 5.12, bat_kwh_usable: 4.6, bat_v_nominal: 51.2, bat_dod_pct: 90,
+      bat_max_modules_par_banc: 200 })
+})
+
+// BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now keep it
+// very high for 5kwh — maybe 200 ». Vide = illimité (jamais 0, jamais un
+// défaut inventé) : ce test épingle le repli ``null`` que
+// ``composition_residentielle`` lit comme « aucun plafond ».
+test('champsFichePourType(batterie) : max-modules vide → null (illimité)', () => {
+  assert.equal(
+    champsFichePourType('batterie', { bat_max_modules_par_banc: '' })
+      .bat_max_modules_par_banc,
+    null)
 })
 
 test('champsFichePourType(structure) : type sans bloc FicheTechnique → objet vide', () => {

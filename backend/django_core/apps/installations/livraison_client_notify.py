@@ -25,9 +25,12 @@ def _nom_complet(client):
 
 
 def _livraison_lien(livraison, request=None):
-    """Lien indicatif vers la section Livraisons du portail (pas de token
-    dédié ici — le portail est déjà authentifié côté client, FG228)."""
-    path = f'/portail/livraisons/{livraison.id}'
+    """WIR216 — lien vers la section « Mes livraisons » du portail client
+    (`/portail/client/livraisons`, FG228). `/portail/livraisons/<id>` n'a
+    jamais existé côté front (404 systématique) : le portail est déjà
+    authentifié côté client, la LISTE (scopée serveur à CE client) est la
+    cible réelle — jamais un id de livraison fabriqué dans l'URL."""
+    path = '/portail/client/livraisons'
     if request is not None:
         return request.build_absolute_uri(path)
     return path

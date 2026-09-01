@@ -263,6 +263,45 @@ class TestApiDossier(TestCase):
         self.assertTrue(r.data['complet'])
         self.assertEqual(r.data['raisons_de_non_depot'], [])
 
+    def test_wir206_le_dossier_publie_ses_transitions_atteignables(self):
+        """WIR206 — l'écran ne recopie PAS le graphe d'états.
+
+        Sans ce champ, la barre de statut n'avait que deux options : ne rien
+        proposer (le dossier n'atteignait jamais ``pret_a_deposer``, sa porte
+        restait invisible) ou recopier ``DossierAO.TRANSITIONS`` côté écran —
+        une seconde table qui aurait dérivé de celle-ci.
+        """
+        dossier = services.creer_dossier_ao(self.company, self.ao)
+        r = self.api.get(f'{URL}{dossier.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        # Depuis « montage » : en constitution ou clos, et RIEN d'autre.
+        self.assertEqual(
+            [t['valeur'] for t in r.data['transitions']],
+            ['en_constitution', 'clos'])
+        self.assertEqual(
+            [t['libelle'] for t in r.data['transitions']],
+            ['En constitution', 'Clos'])
+
+        services.changer_statut_dossier(
+            dossier, DossierAO.Statut.EN_CONSTITUTION)
+        services.changer_statut_dossier(dossier, DossierAO.Statut.CONTROLE)
+        r2 = self.api.get(f'{URL}{dossier.id}/')
+        valeurs = [t['valeur'] for t in r2.data['transitions']]
+        self.assertIn('pret_a_deposer', valeurs)
+        # « déposé » n'est PAS atteignable depuis « contrôle » : la porte passe
+        # obligatoirement par « prêt à déposer ».
+        self.assertNotIn('depose', valeurs)
+
+    def test_wir206_les_transitions_derivent_de_la_table_declarative(self):
+        """Zéro liste parallèle : le champ EST la table du modèle."""
+        dossier = services.creer_dossier_ao(self.company, self.ao)
+        for statut in DossierAO.Statut.values:
+            DossierAO.objects.filter(pk=dossier.pk).update(statut=statut)
+            r = self.api.get(f'{URL}{dossier.pk}/')
+            self.assertEqual(
+                {t['valeur'] for t in r.data['transitions']},
+                set(DossierAO.TRANSITIONS[statut]), statut)
+
     def test_isolation_multi_societe(self):
         autre = Company.objects.create(nom='AOF115 X', slug='aof115-x')
         ao = AppelOffre.objects.create(

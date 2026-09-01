@@ -184,17 +184,25 @@ test('catalogue vide : repli sur le besoin arrondi au palier, jamais un chiffre 
 // Paliers RE-MESURÉS avec la consommation réelle (17 870 kWh/an dérivée des
 // 12 factures ci-dessus au barème ONEE — jamais un chiffre posé) :
 //   kwc  total TTC  éco/an   payback  paybackMarginal
-//    5     41 730    6 947    6,1
-//   10     64 394   13 027    5,0
-//   15     85 058   20 433    4,2     ← meilleur payback (choix PUR)
-//   20    111 721   26 435    4,3     4,44  ≤ H(10) → ADMIS
-//   25    130 385   29 000    4,5     7,28  ≤ H(10) → ADMIS ← taille retenue
-//   30    156 049   29 000    5,4     —     l'économie SATURE (Δéco = 0)
-//   35    209 713   29 000    7,3           → pas marginal jamais remboursé
-//   40    228 376   29 000    8,0           → REFUSÉ, l'ascension s'arrête
-// L'économie plafonne à 29 000 MAD/an dès 25 kWc : au-delà, on vend des
+//    5     41 730    6 948    6,1
+//   10     64 394   13 028    5,0
+//   15     85 058   20 737    4,1     ← meilleur payback (choix PUR ; à
+//                                       égalité avec 20, le plus PETIT gagne)
+//   20    111 721   27 343    4,1     4,04  ≤ H(10) → ADMIS
+//   25    130 385   30 201    4,4     6,53  ≤ H(10) → ADMIS ← taille retenue
+//   30    156 049   30 201    5,2     —     l'économie SATURE (Δéco = 0)
+//   35    209 713   30 201    7,0           → pas marginal jamais remboursé
+//   40    228 376   30 201    7,7           → REFUSÉ, l'ascension s'arrête
+// L'économie plafonne à 30 201 MAD/an dès 25 kWc : au-delà, on vend des
 // panneaux qui produisent ce que le client ne consomme pas. L'ascension
 // s'arrête donc D'ELLE-MÊME à 25 kWc — BIEN AVANT le plafond de 40.
+//
+// RECALAGE QJR168 (30/08/2026) — les économies de ce tableau montent parce
+// que `twoBillsSavings` tarife désormais la facture COMPLÈTE (les deux lignes
+// fixes s'annulent, mais la TPPAN suit le kWh et compte donc dans l'économie),
+// jumeau de bareme.py côté serveur. La taille retenue (25 kWc) et le meilleur
+// payback (15 kWc) ne bougent pas ; seuls les MONTANTS et les deux pas
+// marginaux (4,44 → 4,04 et 7,28 → 6,53) sont re-mesurés.
 const besoinAscension = 40
 // Consommation réelle du client, dérivée de SES factures par le barème (QF1)
 // — exactement ce que les deux appelants réels passent désormais.
@@ -265,7 +273,7 @@ test('DOCTRINE HORIZON FIXE 25/08 (a) — un pas ascendant admissible fait grimp
   assert.equal(eco(40), eco(25))
 
   // Garantie mathématique du commentaire de doctrine : ici meilleur_payback
-  // (4,2) ≤ H (10), donc le payback GLOBAL du palier retenu ne dépasse
+  // (4,1) ≤ H (10), donc le payback GLOBAL du palier retenu ne dépasse
   // jamais H — cas (1) de la preuve.
   const retenu = res.paliers.find(p => p.kwc === res.kwcOptimal)
   assert.ok(retenu.payback <= HORIZON_MARGINAL_PV + 1e-9,
@@ -313,10 +321,10 @@ test('GARDE DÉPART-HORS-HORIZON (miroir backend `depart_dans_horizon`) — un d
 
 test('DOCTRINE HORIZON FIXE 25/08 (b) — un pas marginal AU-DELÀ de l\'horizon est refusé, l\'ascension s\'arrête net (cas construit)', () => {
   // Dans CE catalogue/ces factures, aucun pas marginal naturel ne dépasse
-  // l'horizon par défaut (10 ans — les deux pas admis mesurent 4,44 et 7,28
+  // l'horizon par défaut (10 ans — les deux pas admis mesurent 4,04 et 6,53
   // ans). On CONSTRUIT donc le cas de refus avec l'override réservé aux
   // tests, en choisissant un horizon plus étroit que le second pas mesuré
-  // (5 < 7,28) — le pas 15→20 (4,44 ans), lui, reste admissible.
+  // (5 < 6,53) — le pas 15→20 (4,04 ans), lui, reste admissible.
   const res = optimalKwcByPayback({ ...scenarioAscension, horizonMarginal: 5 })
   const palier20 = res.paliers.find(p => p.kwc === 20)
   const palier25 = res.paliers.find(p => p.kwc === 25)
@@ -333,18 +341,35 @@ test('DOCTRINE HORIZON FIXE 25/08 (b) — un pas marginal AU-DELÀ de l\'horizon
   assert.ok(res.kwcOptimal < 25)
 })
 
-test('DOCTRINE HORIZON FIXE 25/08 (c) — horizonMarginal = meilleur_payback reproduit EXACTEMENT l\'ancien choix relatif-zéro', () => {
+test('DOCTRINE HORIZON FIXE 25/08 (c) — horizonMarginal = meilleur_payback rejoue EXACTEMENT l\'ancienne tolérance relative-zéro', () => {
   const resDefaut = optimalKwcByPayback(scenarioAscension)
   const ancien = ancienChoixPurPayback(resDefaut.paliers)
   // Overrider l'horizon par le meilleur payback DU DOSSIER (dynamique, comme
-  // l'ancienne tolérance relative à 0 % le faisait implicitement) : aucun pas
-  // marginal ne peut alors passer sous ce seuil sans être au moins aussi bon
-  // que le meilleur payback lui-même — même sélection que la règle 18/08.
+  // l'ancienne tolérance relative à 0 % le faisait implicitement) : un pas
+  // marginal n'est admis que s'il est au moins aussi bon que le meilleur
+  // payback lui-même — c'est le critère exact de la règle 18/08.
   const resRelatifZero = optimalKwcByPayback({
     ...scenarioAscension, horizonMarginal: ancien.payback,
   })
-  assert.equal(resRelatifZero.kwcOptimal, ancien.kwc)
-  assert.equal(resRelatifZero.kwcOptimal, 15, 'horizon = meilleur payback → même palier que la règle 18/08')
+  // RECALAGE QJR168 (30/08/2026) — CE QUE CE TEST CROYAIT ÊTRE UNE ÉGALITÉ
+  // N'EN ÉTAIT PAS UNE. Il attendait `resRelatifZero.kwcOptimal === ancien.kwc`
+  // (15 kWc), ce qui n'a jamais été un théorème : la tolérance relative-zéro
+  // ADMET les pas dont le payback marginal égale ou bat le meilleur payback,
+  // donc elle peut légitimement grimper au-dessus du choix PUR payback. Avec
+  // les paliers d'avant (pas 15→20 = 4,44 > meilleur payback 4,2) aucun pas ne
+  // passait et les deux règles coïncidaient PAR HASARD. Le barème complet fait
+  // monter les économies, donc baisser les pas marginaux, et la coïncidence
+  // tombe — dérivation sur les paliers re-mesurés en tête de fichier :
+  //   meilleur payback  = 4,1 (palier 15 ; 20 est à égalité, le PLUS PETIT gagne)
+  //   pas 15→20 = (111 721,25 − 85 057,50)/(27 343 − 20 737) = 4,04  ≤ 4,1 → ADMIS
+  //   pas 20→25 = (130 385,00 − 111 721,25)/(30 201 − 27 343) = 6,53  > 4,1 → REFUSÉ
+  // ⇒ relatif-zéro s'arrête à 20 kWc, le choix PUR payback reste 15 kWc.
+  assert.equal(ancien.kwc, 15, 'le palier au meilleur payback reste 15 kWc')
+  assert.equal(resRelatifZero.kwcOptimal, 20,
+    'relatif-zéro admet le pas 15→20 (4,04 ≤ 4,1) puis refuse 20→25 (6,53 > 4,1)')
+  // Le critère est bien PLUS STRICT que l'horizon fixe : il ne peut jamais
+  // retenir une taille plus grande que celui-ci (4,1 ≤ H = 10 ans).
+  assert.ok(resRelatifZero.kwcOptimal <= resDefaut.kwcOptimal)
   // Et l'horizon fixe par défaut (10 ans) diverge bien de ce cas relatif-zéro
   // sur ce même scénario — la doctrine ne dégénère pas silencieusement.
   assert.notEqual(resDefaut.kwcOptimal, resRelatifZero.kwcOptimal)

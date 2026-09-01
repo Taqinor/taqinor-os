@@ -229,9 +229,13 @@ class TestFluxPublicsMemeGating(_Base):
     @patch('apps.ventes.public_views.download_pdf', return_value=b'%PDF-fake')
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',
            return_value='k')
-    def _opts_servies(self, url, niveau, mock_gen, mock_dl):
-        """Les options RÉELLEMENT passées au moteur par la vue publique."""
-        link = self._link(niveau)
+    def _opts_servies(self, url, niveau, mock_gen, mock_dl, *, link=None):
+        """Les options RÉELLEMENT passées au moteur par la vue publique.
+
+        ``link`` permet de servir les DEUX flux derrière le MÊME jeton —
+        indispensable depuis QRP1/A5, où les options portent ``share_token``
+        (voir ``test_public_document_standard_degrade_comme_proposal_pdf``)."""
+        link = link or self._link(niveau)
         resp = DjangoClient().get(reverse(url, args=[link.token]))
         self.assertEqual(resp.status_code, 200)
         return mock_gen.call_args[0][1]
@@ -242,11 +246,23 @@ class TestFluxPublicsMemeGating(_Base):
     def test_public_document_standard_degrade_comme_proposal_pdf(self):
         """La fuite historique : ``public_document`` ne lisait même pas
         ``link.niveau``. Les deux flux servent le MÊME document au MÊME
-        client — ils doivent dégrader à l'identique."""
-        a = self._opts_servies(self.URL_DOCUMENT, ShareLink.NIVEAU_STANDARD)
-        b = self._opts_servies(self.URL_PROPOSAL, ShareLink.NIVEAU_STANDARD)
+        client — ils doivent dégrader à l'identique.
+
+        QRP1/A5 (27/08/2026) — les options portent désormais ``share_token``
+        (« le QR du PDF suit le lien qui le sert »). Comparer deux appels qui
+        fabriquaient chacun LEUR ShareLink comparait donc deux UUID différents
+        et ne pouvait plus jamais être égal. On sert les deux flux derrière UN
+        SEUL lien : c'est la vraie question posée (« le MÊME document au MÊME
+        client »), et c'est plus fort qu'avant puisque le jeton servi est
+        maintenant lui aussi épinglé, sur les DEUX flux."""
+        lien = self._link(ShareLink.NIVEAU_STANDARD)
+        a = self._opts_servies(self.URL_DOCUMENT, ShareLink.NIVEAU_STANDARD,
+                               link=lien)
+        b = self._opts_servies(self.URL_PROPOSAL, ShareLink.NIVEAU_STANDARD,
+                               link=lien)
         self.assertTrue(a.get('kit_agrege'))
         self.assertTrue(a.get('watermark'))
+        self.assertEqual(a.get('share_token'), lien.token)
         self.assertEqual(a, b)
 
     def test_confiance_ne_degrade_aucun_des_deux_flux(self):

@@ -38,6 +38,10 @@ vi.mock('../../../api/comptaApi', () => ({
     immobilisationsEnCours: { list: mocks.encours, mettreEnService: mocks.mettreEnService },
     immobilisations: { list: mocks.immobilisations },
     centresCout: { list: vi.fn().mockResolvedValue({ data: [] }) },
+    // WIR254 — cette page importe désormais EtatsPage.jsx (EtatRender) ; le
+    // module-level `ETATS` d'EtatsPage déréférence `comptaApi.etats.*` à
+    // l'IMPORT (jamais appelé ici) — sans cette clé, l'import plante le fichier.
+    etats: {},
   },
 }))
 

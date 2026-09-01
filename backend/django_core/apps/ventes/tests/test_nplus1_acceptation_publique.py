@@ -139,7 +139,7 @@ class AcceptationNPlus1Tests(TestCase):
         signal, et il n'est pas ce que ce chantier change.
         """
         link = ShareLink.for_devis(devis)
-        with patch('apps.ventes.services._store_signed_pdf'):
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             with CaptureQueriesContext(connection) as ctx:
                 resp = self.api.post(
                     f'/api/django/public/proposal/{link.token}/accept/',
@@ -190,8 +190,8 @@ class AcceptationNPlus1Tests(TestCase):
         def _capture(*, devis, user, lignes=None):
             captures['devis'] = devis
 
-        with patch('apps.ventes.services._store_signed_pdf'), \
-                patch('apps.ventes.services._send_acceptance_emails',
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'), \
+                patch('apps.ventes.domain.cycle_vie._send_acceptance_emails',
                       side_effect=_capture):
             resp, _lignes_sql = self._post_accept(self._devis())
         self.assertEqual(resp.status_code, 200, resp.data)

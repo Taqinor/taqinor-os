@@ -285,3 +285,45 @@ class BalayageStockagePubliqueTests(SimpleTestCase):
         self.assertEqual(set(bloc['paliers'][0].keys()),
                          {'nb_packs', 'capacite_kwh', 'cout_ttc',
                           'remplissage_moyen_pct', 'payback_annees', 'economie_mad'})
+
+
+class SansClesInternesTests(SimpleTestCase):
+    """La plomberie interne (clés ``_*``) ne franchit pas la frontière publique.
+
+    INCIDENT (CI du 29/08/2026) : le balayage anti-fuite de
+    ``test_cj2b_economies_publiques`` a trouvé ``quote._company_id`` dans la
+    charge utile de la page publique. Le builder pose cette clé pour son propre
+    usage, et ``payload['quote']`` republiait ``data`` TEL QUEL — un
+    identifiant de cloisonnement multi-société servi à qui possède un jeton.
+    Le retrait est GÉNÉRIQUE (tout préfixe ``_``) pour qu'une prochaine clé de
+    plomberie parte d'elle-même, sans qu'il faille penser à l'inscrire.
+    """
+
+    def test_les_cles_soulignees_sont_retirees_a_toute_profondeur(self):
+        from apps.ventes.public_views import _sans_cles_internes
+        propre = _sans_cles_internes({
+            'ref': 'DEV-1',
+            '_company_id': 1176,
+            'all_items': [{'designation': 'Panneau', '_produit_nom': 'JA'}],
+            'totaux_sans': {'ttc': 42000.0, '_marge_interne': 9.0},
+        })
+        self.assertEqual(propre, {
+            'ref': 'DEV-1',
+            'all_items': [{'designation': 'Panneau'}],
+            'totaux_sans': {'ttc': 42000.0},
+        })
+
+    def test_la_source_n_est_JAMAIS_mutee(self):
+        """Le retrait se fait à la PUBLICATION : ``data`` reste intact pour les
+        classifications de ``public_views`` qui lisent encore
+        ``_produit_nom`` en amont."""
+        from apps.ventes.public_views import _sans_cles_internes
+        source = {'_company_id': 7, 'items': [{'_produit_nom': 'X'}]}
+        _sans_cles_internes(source)
+        self.assertEqual(source, {'_company_id': 7,
+                                  'items': [{'_produit_nom': 'X'}]})
+
+    def test_les_scalaires_et_les_listes_traversent_inchanges(self):
+        from apps.ventes.public_views import _sans_cles_internes
+        self.assertEqual(_sans_cles_internes([1, 'a', None]), [1, 'a', None])
+        self.assertEqual(_sans_cles_internes(3.5), 3.5)

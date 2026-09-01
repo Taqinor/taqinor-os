@@ -4,6 +4,11 @@ import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+// WIR182 / PACT10 / PACT13 — le prévisionnel trésorerie N'INVENTE plus sa
+// charge utile : elle vient de l'exemple committé que le backend affirme
+// (apps/compta/contract_samples/previsionnel_tresorerie.json).
+import { reponseContrat } from '../../test/fixtures/contractSamples'
+import comptaApi from '../../api/comptaApi'
 
 /* Tests du module Comptabilité — round 2 (XACC/ZACC) :
    wiring des nouveaux écrans NotesDeFraisPage / EffetsPage / EngagementsPage
@@ -45,7 +50,10 @@ vi.mock('../../api/comptaApi', () => {
       etats: {
         balance: empty, grandLivre: empty, cpc: empty, bilan: empty, esg: empty, etic: empty,
         positionTresorerie: () => Promise.resolve({ data: { comptes: [], total: 0 } }),
-        previsionnelTresorerie: () => Promise.resolve({ data: { semaines: [] } }),
+        // WIR182 — `vi.fn(...)` (pas une flèche nue) : une factory `vi.mock`
+        // est HISSÉE au-dessus des imports, elle ne peut pas lire
+        // `reponseContrat` ici ; le test dédié l'arme via `mockResolvedValue`.
+        previsionnelTresorerie: vi.fn(() => Promise.resolve({ data: { semaines: [] } })),
         balanceAgeeFournisseurs: empty,
         releveFournisseur: empty,
         tableauFlux: empty,
@@ -110,13 +118,13 @@ vi.mock('../../api/comptaApi', () => {
   }
 })
 
-function mount(ui) {
+function mount(ui, { route = '/' } = {}) {
   const store = configureStore({
     reducer: { auth: () => ({ role: 'admin', role_nom: null }) },
   })
   return render(
     <Provider store={store}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>
         <ThemeProvider>{ui}</ThemeProvider>
       </MemoryRouter>
     </Provider>,
@@ -197,5 +205,31 @@ describe('TresoreriePage — onglet Position & projection (FG122/FG126)', () => 
       expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
     })
     expect(screen.getByText('Position & projection')).toBeInTheDocument()
+  }, 30000)
+})
+
+describe('TresoreriePage — prévisionnel roulant 13 semaines (WIR182)', () => {
+  it('lit `solde_fin` (jamais `solde_projete`, qui n’a jamais existé côté serveur)', async () => {
+    // PACT10/PACT13 — charge utile RÉELLE (apps/compta/contract_samples/
+    // previsionnel_tresorerie.json), pas un `{semaines:[]}` inventé : sans ça
+    // le bug (clé fantôme → « — » figé) ne serait jamais exercé par ce test.
+    comptaApi.etats.previsionnelTresorerie.mockResolvedValue(
+      reponseContrat('compta', 'previsionnel_tresorerie'))
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=position' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    // La semaine de l'exemple porte solde_fin:4000, entrees:4000, sorties:0,
+    // flux_net:4000 — les 3 colonnes égales à 4000 doivent TOUTES s'afficher
+    // (avant WIR182, `solde_projete` était absent → colonne à « — » pour toujours).
+    await waitFor(() => {
+      expect(screen.getAllByText('4 000,00 MAD').length).toBeGreaterThan(0)
+    })
+    expect(screen.getByText('0,00 MAD')).toBeInTheDocument()
+    // L'exemple committé a `date_rupture_estimee: null` : pas de bandeau d'alerte.
+    expect(screen.queryByText(/Rupture de trésorerie estimée/)).not.toBeInTheDocument()
   }, 30000)
 })

@@ -46,9 +46,22 @@ def _augment(data: dict) -> dict:
     if not any((it.get("quantite") or 0) > 0 for it in items):
         raise Unsupported("commercial quote has no priced lines")
 
+    # ── QJR146 (g) — LA CHAÎNE DE TOTAUX EST EXIGÉE, PAS REPLIÉE SUR ZÉRO ───
+    # ``equip.py`` lisait ``totaux_all`` clé par clé avec un repli à 0 : une
+    # charge utile privée de ce bloc imprimait « Sous-total HT 0 · Remise 0 ·
+    # TVA 0 » sous un Total TTC réel (repris de ``_invest_ttc``) — une chaîne
+    # de totaux fausse, en bas d'un tableau d'équipements juste. Même doctrine
+    # que le moteur legacy (QJR162) : sans totaux canoniques, ce renderer
+    # REFUSE le devis, et le dispatch retombe sur le moteur legacy en le
+    # DISANT (repli journalisé), au lieu de publier des zéros.
+    _totaux = data.get("totaux_all")
+    if not isinstance(_totaux, dict) or not _totaux:
+        raise Unsupported("commercial quote has no canonical totals "
+                          "(totaux_all)")
+
     invest = _num(data.get("display_total")) or 0.0
     if invest <= 0:
-        invest = _num((data.get("totaux_all") or {}).get("ttc")) or 0.0
+        invest = _num(_totaux.get("ttc")) or 0.0
     if invest <= 0:
         raise Unsupported("commercial quote has no investment total")
 
@@ -65,7 +78,8 @@ def _augment(data: dict) -> dict:
 
     d["com_category"] = (etude.get("categorie_commerciale") or "").strip().lower() or None
     d["com_kwc"] = _num(etude.get("kwc")) or _num(d.get("puissance_kwc"))
-    d["com_prod"] = _num(etude.get("production_annuelle")) or _num(d.get("prod_kwh"))
+    # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
+    # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["com_autoconso"] = _num(etude.get("taux_autoconso"))
     d["com_couverture"] = _num(etude.get("taux_couverture"))
@@ -75,14 +89,22 @@ def _augment(data: dict) -> dict:
     masque = bool(d.get("masquer_economies"))
     d["com_masquer_economies"] = masque
     d["com_mt_mention"] = d.get("tarif_mt_mention") or ""
+    # QJR119 — voir ``industriel/renderer.py`` : ``None`` traverse jusqu'au
+    # gabarit, qui omet la carte, au lieu d'être écrasé en un « 0 MAD » qui se
+    # lit comme un chiffre mesuré.
     eco = _num(etude.get("economies_annuelles"))
     if eco is None and not masque:
         eco = _num(d.get("eco_s_ann"))
-    d["com_economies"] = round(eco) if eco else 0
+    d["com_economies"] = round(eco) if eco else None
     pb = _num(etude.get("payback"))
     if pb is None and not masque:
         pb = _num(d.get("roi_s"))
-    d["com_payback"] = pb
+    # QJR145 (g) — ``com_payback`` est CONSERVÉ bien qu'aucun gabarit ne
+    # l'imprime : sa nullité EST le contrat vérifié des gardes QXMT/QJR119
+    # (« aucun repli sur le chiffre basse tension », « jamais un 0 »), épinglé
+    # par test_quote_engine_builder et test_qjr119_zero_fabrique. Le retirer
+    # supprimerait la garde, pas du code mort.
+    d["com_payback"] = pb if pb else None
 
     d["site_url"] = d.get("site_url") or "taqinor.ma"
     return d

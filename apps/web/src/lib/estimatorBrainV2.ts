@@ -105,12 +105,21 @@ export interface TariffGrid {
  * là-bas — jamais repartir d'un TTC déjà taxé.
  *  - ≤ 150 kWh/mois → PROGRESSIF : 0–100 = 0,916272 ; 101–150 = 1,091388.
  *  - > 150 kWh/mois → SÉLECTIF (toute la conso au tarif de sa tranche) :
- *    151–210 = 1,091388 ; 211–310 = 1,187388 ; 311–510 = 1,405116 ;
+ *    151–210 = 1,091388 ; 211–310 = 1,187388 ; 311–510 = 1,381704 ;
  *    > 510 = 1,622856.
  * Les bornes nominales 200/300/500 + la tolérance de 10 kWh donnent les bornes
  * EFFECTIVES 210/310/510 (un client n'entre dans la tranche supérieure qu'à +10 kWh).
  * Remplace l'ancienne grille trop haute (201–300=1,18 ; 301–500=1,45 ; >500=1,66 —
  * 1,66 était le tarif FORCE-MOTRICE, pas le domestique).
+ *
+ * QJW12 — DÉCISION FONDATEUR D5 (29/08/2026) : la tranche 311–510 kWh passe de
+ * 1,405116 à 1,381704 MAD/kWh TTC. Le 1,405116 venait de l'hypothèse « HT
+ * constant » au passage de TVA 18 → 20 % ; la facture SRM n° 643769639 du
+ * 08/05/2026 (359 kWh, énergie 1,15142 HT × 1,20 = 1,381704 TTC) montre que
+ * c'est le TTC qui est resté constant et le HT qui a baissé. Les cinq autres
+ * prix ne bougent PAS : aucune facture 2026 ne les couvre, et on ne corrige
+ * jamais un chiffre sans preuve. Valeur de référence, alignée avec tout l'ERP :
+ * apps/ventes/quote_engine/bareme.py, TRANCHES_2026 (T5).
  */
 export const REGIE_TARIFF: TariffGrid = {
   progressive: [
@@ -120,7 +129,7 @@ export const REGIE_TARIFF: TariffGrid = {
   selective: [
     { upToKwh: 200, rate: 1.091388 }, // effectif 151–210
     { upToKwh: 300, rate: 1.187388 }, // effectif 211–310
-    { upToKwh: 500, rate: 1.405116 }, // effectif 311–510
+    { upToKwh: 500, rate: 1.381704 }, // effectif 311–510 (prouvé facture SRM 08/05/2026)
     { upToKwh: Infinity, rate: 1.622856 }, // > 510
   ],
   selectiveThresholdKwh: 150,

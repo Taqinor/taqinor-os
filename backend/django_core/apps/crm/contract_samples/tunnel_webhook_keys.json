@@ -1,0 +1,671 @@
+{
+  "endpoint": "POST /api/capture-lead",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR229 (PACT10, contre-visite du 30/08/2026) — LE PORTEUR PARTAGE DE LA CORRESPONDANCE SITE -> CRM. Le registre du tunnel (`apps/web/src/lib/tunnel/champs.ts`, 69 descripteurs, `CHAMPS_PAR_CLE`) decide des noms de cles emis dans le corps envoye a `/api/capture-lead` ; la lecture vit 350 lignes plus loin, dans une autre langue et un autre depot logique (`apps/crm/webhooks.py::_map_payload_to_fields`, aide de `_extract_web_questionnaire`). AUCUNE source partagee n'appariait les deux : une cle pouvait survivre a toute la chaine web et se perdre SANS TRACE a l'arrivee — l'incident PACT10 du 03/08/2026 rejoue sur la surface la plus visible du parcours. Ce fichier EST cette source partagee. Il ne cable rien et ne corrige rien (regle « une tache = corrige OU deplace OU cree ») : il pose la table, seule, pour que la garde QJR230 et une future tache QJW n'inventent pas deux contrats.",
+  "notes": {
+    "endpoint": "`POST /api/capture-lead` est le proxy Astro du site — la cible que `champs.ts` NOMME lui-meme (« le nom EXACT de la cle emise dans le corps envoye a /api/capture-lead »). Aucune vue Django ne sert ce chemin : `scripts/check_api_shapes.py` ne compare donc rien ici, exactement comme pour `apps/ventes/contract_samples/ligne_fiche_mapping.json`. La garde de conformite de CE fichier est `scripts/check_lead_webhook_parite.py` (QJR230). La route Django qui recoit ensuite le corps relaye par le proxy est `POST /api/django/crm/webhooks/website-leads/` (`apps/crm/webhooks.py::website_lead_webhook`).",
+    "forme_serveur": "`partielle` (vocabulaire de `scripts/check_api_shapes.py`, QJR228) : `exemple` decrit ici un CORPS DE REQUETE, pas la reponse de l'endpoint. Il ne doit jamais etre confronte a la forme renvoyee par une vue.",
+    "regeneration": "Les 69 cles sont DERIVEES du registre, jamais recopiees a la main. Commande de verification/regeneration, executable sur l'hote, sans base ni docker, depuis la racine du depot (le \\x27 tient lieu d'apostrophe : aucun echappement de shell) :\n    python -c \"import re,pathlib;print(re.findall(r'webhookKey: \\x27(\\w+)\\x27', pathlib.Path('apps/web/src/lib/tunnel/champs.ts').read_text(encoding='utf-8')))\"\nLa liste rendue (69 entrees) doit egaler, DANS L'ORDRE, les cles de `cles` ci-dessous. Un `webhookKey` ajoute au registre sans etre ajoute ici se voit donc immediatement ; la garde `scripts/check_lead_webhook_parite.py` (QJR230) verifie l'autre moitie — que `_map_payload_to_fields` traite bien chaque cle de cette table.",
+    "destinations": "Quatre destinations, et une seule par cle. `colonne_lead` : la valeur atterrit dans la colonne `crm.Lead` nommee par `champ_lead`. `web_questionnaire` : elle atterrit dans le blob JSON `Lead.web_questionnaire`, sous la cle `cle_blob` (snake_case aligne sur le vocabulaire `etude_params` du generateur). `vue` : la vue du webhook la lit, mais aucune colonne ne la porte. `refus` : le CRM ne la lit PAS, et c'est ecrit — jamais par omission.",
+    "style_tolerant": "Tout ce mapping est TOLERANT par conception : une valeur invalide, hors bornes ou hors liste est ignoree en silence, jamais une erreur, jamais un defaut invente (regle « zero chiffre invente »). Une cle absente ne touche donc jamais le champ correspondant.",
+    "hors_registre": "Le corps reellement envoye porte AUSSI des cles qui ne viennent PAS de ce registre et sortent donc du perimetre de ce contrat : `consentTimestamp`, `qualified`, `band`, `page`, `submittedAt` (posees par `buildLeadRecord`, `apps/web/src/lib/lead.ts`) et les alias historiques que le webhook tolere encore (`phoneE164`, `marketMode`, `billKwh`, `occupantType`, `projectTiming`, `financingIntent`, `ombrage`, `batteryInterest`…). Les ajouter ici ferait mentir le compte de 69 : ce fichier documente LE REGISTRE DU TUNNEL, pas la totalite du corps.",
+    "argent": "Aucune cle de cette table ne porte un prix d'achat ni une marge : ce sont des reponses de visiteur (factures, surfaces, equipements), jamais des chiffres internes (regle #4)."
+  },
+  "exemple": {
+    "fullName": "Amine Benali",
+    "phone": "+212612345678",
+    "city": "Casablanca",
+    "billRange": "1500_3000",
+    "roofType": "terrasse",
+    "consent": true,
+    "whatsappOptIn": false,
+    "contactPreference": "phone_ok",
+    "email": "amine@example.ma",
+    "factureHiver": 1450,
+    "adresse": "12 rue des Palmiers, Ain Diab",
+    "mode": "residentiel",
+    "langue_preferee": "fr",
+    "clientRef": "TQ-4F2A",
+    "idempotencyKey": "3f1c8b90-1d4e-4a11-9a77-2c0f5e7b1234",
+    "eventId": "8c2d1a44-77be-4e0a-b3f2-91ab0d5c6789",
+    "appareilId": "b7d1e2f3-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+    "visitWindowPart": "matin",
+    "visitWindowWeek": "semaine",
+    "raisonSociale": "Fromagerie Atlas SARL",
+    "tensionRaccordement": "bt",
+    "activityProfile": "day_evening",
+    "surfaceType": "bac_acier",
+    "surfaceM2": 1200,
+    "proMonthlyKwh": 4200,
+    "proMonthlyMad": 6800,
+    "categorieCommerciale": "hotel",
+    "equipes": "2x8",
+    "surfaceToitureM2": 850,
+    "ombriere": false,
+    "terrain": false,
+    "waterSource": "forage",
+    "profondeurM": 45,
+    "hmtM": 60,
+    "debitM3h": 12,
+    "besoinM3j": 80,
+    "heuresPompage": 7,
+    "culture": "agrumes",
+    "regionAgricole": "souss",
+    "surfaceHa": 14,
+    "fuelSpendMad": 5200,
+    "estimateShown": {
+      "kwc": 8.5,
+      "payback_ans": 5.2
+    },
+    "occupation_jour": "personne",
+    "equip_chauffe_eau_electrique": true,
+    "equip_voiture_electrique": false,
+    "equip_ve_km_semaine": 250,
+    "equip_clim": true,
+    "equip_clim_pieces": 3,
+    "equip_piscine": false,
+    "equip_piscine_pompe_kw": 1.1,
+    "equip_chauffe_eau_kw": 2.4,
+    "equip_chauffe_eau_creneau": "nuit",
+    "equip_ve_chargeur_kw": 7.4,
+    "equip_ve_creneau": "nuit",
+    "equip_clim_kw": 3.5,
+    "equip_clim_creneau": "apres_midi",
+    "equip_piscine_heures_jour": 6,
+    "equip_piscine_creneau": "journee",
+    "website_url": "",
+    "fbclid": "IwAR2x9k...",
+    "utm_source": "exemple_source",
+    "utm_medium": "exemple_medium",
+    "utm_campaign": "exemple_campaign",
+    "utm_content": "exemple_content",
+    "utm_term": "exemple_term",
+    "roofPoint": {
+      "lat": 33.5731,
+      "lng": -7.5898
+    },
+    "gpsLat": 33.5731,
+    "gpsLng": -7.5898,
+    "roofOutline": [
+      {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      {
+        "lat": 33.5733,
+        "lng": -7.5896
+      }
+    ]
+  },
+  "cles": {
+    "fullName": {
+      "cle_registre": "nomComplet",
+      "groupe": "G_IDENTITE",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "nom",
+      "note": "tronque a 255 ; vide -> repli 'Lead site web'"
+    },
+    "phone": {
+      "cle_registre": "telephone",
+      "groupe": "G_IDENTITE",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "telephone",
+      "note": "`phoneE164` prime sur `phone` quand le site l'envoie"
+    },
+    "city": {
+      "cle_registre": "ville",
+      "groupe": "G_IDENTITE",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "ville",
+      "note": "tronque a 120"
+    },
+    "billRange": {
+      "cle_registre": "trancheFacture",
+      "groupe": "G_FACTURE",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "bill_range_bucket",
+      "note": "whiteliste sur Lead.BillRangeBucket.values, sinon null"
+    },
+    "roofType": {
+      "cle_registre": "typeToiture",
+      "groupe": "G_FACTURE",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "roof_type",
+      "note": "tronque a 30"
+    },
+    "consent": {
+      "cle_registre": "consentement",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "refus",
+      "champ_lead": null,
+      "note": "REFUS ASSUME : le webhook ne lit JAMAIS `consent`. La preuve de consentement qu'il conserve est `Lead.consent_timestamp`, alimentee par `consentTimestamp` — une cle posee par `buildLeadRecord` (apps/web/src/lib/lead.ts), PAS par ce registre. Le booleen `consent` est un gate de soumission cote site ; le CRM garde l'horodatage, pas le booleen."
+    },
+    "whatsappOptIn": {
+      "cle_registre": "whatsappSeulement",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "whatsapp_opt_in",
+      "note": "recopie aussi le telephone dans Lead.whatsapp quand il vaut true"
+    },
+    "contactPreference": {
+      "cle_registre": "preferenceContact",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "contact_preference",
+      "note": "horodate en plus Lead.contact_preference_set_at (SLA rappel QX15)"
+    },
+    "email": {
+      "cle_registre": "email",
+      "groupe": "G_CONSENTEMENT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "email",
+      "note": "tronque a 254"
+    },
+    "factureHiver": {
+      "cle_registre": "factureHiver",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "facture_hiver",
+      "note": "prime sur `proMonthlyMad`"
+    },
+    "adresse": {
+      "cle_registre": "adresse",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "adresse",
+      "note": "alias tolere : `address`"
+    },
+    "mode": {
+      "cle_registre": "mode",
+      "groupe": "G_CONSENTEMENT",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "type_installation",
+      "note": "lu en dernier recours apres marketMode/market_mode ; passe par _MARKET_MODE_ALIASES, une valeur inconnue ne pose rien"
+    },
+    "langue_preferee": {
+      "cle_registre": "languePreferee",
+      "groupe": "G_CONSENTEMENT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "langue_preferee",
+      "note": "alias toleres : langue/language/lang"
+    },
+    "clientRef": {
+      "cle_registre": "clientRef",
+      "groupe": "G_SESSION",
+      "requis": true,
+      "destination": "colonne_lead",
+      "champ_lead": "client_ref",
+      "note": "reference PROVISOIRE tiree par le navigateur : WREF2 la REMPLACE par la reference serveur (assign_client_ref) ; elle reste tracee dans WebsiteLeadPayload.payload"
+    },
+    "idempotencyKey": {
+      "cle_registre": "idempotencyKey",
+      "groupe": "G_SESSION",
+      "requis": true,
+      "destination": "vue",
+      "champ_lead": null,
+      "note": "REFUS DE COLONNE, LECTURE PAR LA VUE : jeton de dedoublonnage lu par `website_lead_webhook` (garde concurrente QW10, puis identifiant d'evenement Meta CAPI). Il ne decrit pas le lead, il protege son unicite — aucune colonne Lead ne doit le porter."
+    },
+    "eventId": {
+      "cle_registre": "eventId",
+      "groupe": "G_SESSION",
+      "requis": true,
+      "destination": "refus",
+      "champ_lead": null,
+      "note": "REFUS ASSUME : le site l'emet pour apparier le pixel Meta et la conversion serveur, mais `apps/crm` ne le lit NULLE PART (c'est `idempotencyKey` qui sert d'`event_id` cote CAPI, webhooks.py). Rien ne doit le persister tant qu'aucun besoin CRM ne le justifie."
+    },
+    "appareilId": {
+      "cle_registre": "appareilId",
+      "groupe": "G_SESSION",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "appareil_id",
+      "note": "alias toleres : appareil_id/deviceId/device_id ; relie la fiche aux visites anonymes (contrat visite_externe.json)"
+    },
+    "visitWindowPart": {
+      "cle_registre": "creneauVisitePartie",
+      "groupe": "G_SESSION",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "visit_window_part",
+      "note": "whiteliste sur Lead.VisitWindowPart.values"
+    },
+    "visitWindowWeek": {
+      "cle_registre": "creneauVisiteSemaine",
+      "groupe": "G_SESSION",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "visit_window_week",
+      "note": "whiteliste sur Lead.VisitWindowWeek.values"
+    },
+    "raisonSociale": {
+      "cle_registre": "raisonSociale",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "societe",
+      "note": "consigne fondateur : REUTILISE `societe`, jamais une colonne `raison_sociale` dediee"
+    },
+    "tensionRaccordement": {
+      "cle_registre": "tensionRaccordement",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "tension_raccordement",
+      "note": "bt/mt (basse/moyenne tension) — a ne pas confondre avec Lead.raccordement (monophase/triphase)"
+    },
+    "activityProfile": {
+      "cle_registre": "profilActivite",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "activity_profile",
+      "note": "day / day_evening / continuous"
+    },
+    "surfaceType": {
+      "cle_registre": "typeSurface",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "surface_type",
+      "note": "inclut ombriere/terrain : ce n'est PAS Lead.type_toiture"
+    },
+    "surfaceM2": {
+      "cle_registre": "surfaceM2",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "surface_m2",
+      "note": "borne haute 1 000 000"
+    },
+    "proMonthlyKwh": {
+      "cle_registre": "proMensuelKwh",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "bill_kwh",
+      "note": "SEULEMENT si `billKwh` n'a rien pose ; sinon la reponse reste visible dans web_questionnaire.pro_monthly_kwh"
+    },
+    "proMonthlyMad": {
+      "cle_registre": "proMensuelMad",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "facture_hiver",
+      "note": "SEULEMENT si `factureHiver` n'a rien pose ; sinon la reponse reste dans web_questionnaire.pro_monthly_mad"
+    },
+    "categorieCommerciale": {
+      "cle_registre": "categorieCommerciale",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "categorie_commerciale",
+      "note": "10 valeurs fermees (hotel…autre) — QJR107 a REFUSE la suppression de ce bloc, premisse falsifiee"
+    },
+    "equipes": {
+      "cle_registre": "equipes",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "equipes",
+      "note": "1x8 / 2x8 / 3x8 / continu"
+    },
+    "surfaceToitureM2": {
+      "cle_registre": "surfaceToitureM2",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "surface_toiture_m2",
+      "note": "reste dans le blob : aucune colonne Lead ne la recoit"
+    },
+    "ombriere": {
+      "cle_registre": "ombriere",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "ombriere",
+      "note": "booleen strict"
+    },
+    "terrain": {
+      "cle_registre": "terrain",
+      "groupe": "G_PRO",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "terrain",
+      "note": "booleen strict"
+    },
+    "waterSource": {
+      "cle_registre": "sourceEau",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "water_source",
+      "note": "puits / forage / bassin / riviere"
+    },
+    "profondeurM": {
+      "cle_registre": "profondeurM",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "profondeur_m",
+      "note": "borne haute 2 000"
+    },
+    "hmtM": {
+      "cle_registre": "hmtM",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "pompe_hmt_m",
+      "note": "extrait du questionnaire vers la colonne dediee"
+    },
+    "debitM3h": {
+      "cle_registre": "debitM3h",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "pompe_debit_m3h",
+      "note": "extrait du questionnaire vers la colonne dediee"
+    },
+    "besoinM3j": {
+      "cle_registre": "besoinM3j",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "besoin_m3j",
+      "note": "borne haute 1 000 000"
+    },
+    "heuresPompage": {
+      "cle_registre": "heuresPompage",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "heures_pompage",
+      "note": "borne haute 24"
+    },
+    "culture": {
+      "cle_registre": "culture",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "culture",
+      "note": "texte libre tronque a 120"
+    },
+    "regionAgricole": {
+      "cle_registre": "regionAgricole",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "region_agricole",
+      "note": "whiteliste sur _REGIONS_AGRICOLES"
+    },
+    "surfaceHa": {
+      "cle_registre": "surfaceHa",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "surface_ha",
+      "note": "borne haute 1 000 000"
+    },
+    "fuelSpendMad": {
+      "cle_registre": "depenseCarburantMad",
+      "groupe": "G_AGRICOLE",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "fuel_spend_mad",
+      "note": "depense carburant/mois"
+    },
+    "estimateShown": {
+      "cle_registre": "estimationAffichee",
+      "groupe": "G_ESTIMATION",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "web_estimate",
+      "note": "nettoye par _clean_estimate_shown : ce que le visiteur a REELLEMENT vu a l'ecran"
+    },
+    "occupation_jour": {
+      "cle_registre": "occupationJour",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "occupation_jour",
+      "note": "whiteliste sur Lead.OccupationJour.values"
+    },
+    "equip_chauffe_eau_electrique": {
+      "cle_registre": "equipChauffeEau",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_chauffe_eau_electrique",
+      "note": "booleen strict"
+    },
+    "equip_voiture_electrique": {
+      "cle_registre": "equipVoitureElectrique",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_voiture_electrique",
+      "note": "booleen strict"
+    },
+    "equip_ve_km_semaine": {
+      "cle_registre": "equipVeKmSemaine",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_ve_km_semaine",
+      "note": "entier, borne haute 100 000"
+    },
+    "equip_clim": {
+      "cle_registre": "equipClim",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_clim",
+      "note": "booleen strict"
+    },
+    "equip_clim_pieces": {
+      "cle_registre": "equipClimPieces",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_clim_pieces",
+      "note": "entier, borne haute 1 000"
+    },
+    "equip_piscine": {
+      "cle_registre": "equipPiscine",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_piscine",
+      "note": "booleen strict"
+    },
+    "equip_piscine_pompe_kw": {
+      "cle_registre": "equipPiscinePompeKw",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_piscine_pompe_kw",
+      "note": "borne haute 1 000 kW"
+    },
+    "equip_chauffe_eau_kw": {
+      "cle_registre": "equipChauffeEauKw",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_chauffe_eau_kw",
+      "note": "borne haute 1 000 kW"
+    },
+    "equip_chauffe_eau_creneau": {
+      "cle_registre": "equipChauffeEauCreneau",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_chauffe_eau_creneau",
+      "note": "whiteliste sur Lead.CreneauChauffeEau.values"
+    },
+    "equip_ve_chargeur_kw": {
+      "cle_registre": "equipVeChargeurKw",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_ve_chargeur_kw",
+      "note": "borne haute 1 000 kW"
+    },
+    "equip_ve_creneau": {
+      "cle_registre": "equipVeCreneau",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_ve_creneau",
+      "note": "whiteliste sur Lead.CreneauVe.values"
+    },
+    "equip_clim_kw": {
+      "cle_registre": "equipClimKw",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_clim_kw",
+      "note": "borne haute 1 000 kW"
+    },
+    "equip_clim_creneau": {
+      "cle_registre": "equipClimCreneau",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_clim_creneau",
+      "note": "whiteliste sur Lead.CreneauClim.values"
+    },
+    "equip_piscine_heures_jour": {
+      "cle_registre": "equipPiscineHeuresJour",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_piscine_heures_jour",
+      "note": "borne haute 24"
+    },
+    "equip_piscine_creneau": {
+      "cle_registre": "equipPiscineCreneau",
+      "groupe": "G_LWEBT",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "equip_piscine_creneau",
+      "note": "whiteliste sur Lead.CreneauPiscine.values"
+    },
+    "website_url": {
+      "cle_registre": "honeypot",
+      "groupe": "G_ANTISPAM",
+      "requis": true,
+      "destination": "refus",
+      "champ_lead": null,
+      "note": "REFUS ASSUME ET DEFINITIF : honeypot anti-robot. Il est TOUJOURS emis (son absence serait elle-meme un signal exploitable) et vaut '' pour tout visiteur humain. Une soumission non vide est rejetee en amont ; aucune valeur ne doit JAMAIS atteindre une colonne du CRM."
+    },
+    "fbclid": {
+      "cle_registre": "fbclid",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "fbclid",
+      "note": "tronque a 500"
+    },
+    "utm_source": {
+      "cle_registre": "utm_source",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "utm_source",
+      "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
+    },
+    "utm_medium": {
+      "cle_registre": "utm_medium",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "utm_medium",
+      "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
+    },
+    "utm_campaign": {
+      "cle_registre": "utm_campaign",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "utm_campaign",
+      "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
+    },
+    "utm_content": {
+      "cle_registre": "utm_content",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "utm_content",
+      "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
+    },
+    "utm_term": {
+      "cle_registre": "utm_term",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "utm_term",
+      "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
+    },
+    "roofPoint": {
+      "cle_registre": "repereToit",
+      "groupe": "G_CARTE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "roof_point",
+      "note": "nettoye par _clean_roof_point : lat/lng numeriques bornes, tout le reste ignore sans erreur"
+    },
+    "gpsLat": {
+      "cle_registre": "gpsLat",
+      "groupe": "G_CARTE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "gps_lat",
+      "note": "borne [-90, 90]"
+    },
+    "gpsLng": {
+      "cle_registre": "gpsLng",
+      "groupe": "G_CARTE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "gps_lng",
+      "note": "borne [-180, 180]"
+    },
+    "roofOutline": {
+      "cle_registre": "contourToit",
+      "groupe": "G_CARTE",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "roof_outline",
+      "note": "polygone facultatif, nettoye par _clean_roof_outline"
+    }
+  }
+}

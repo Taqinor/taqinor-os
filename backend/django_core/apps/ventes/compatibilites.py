@@ -610,6 +610,25 @@ def compatibilites_du_produit(produit, company):
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Ce que la COMPOSITION doit savoir dire
 # ═══════════════════════════════════════════════════════════════════════════
+#: QJR-OFFGRID (fondateur 01/09/2026) — la valeur de
+#: ``crm.Lead.Raccordement.AUCUN``. Écrite ICI en littéral, JAMAIS importée de
+#: ``crm.models`` : la frontière inter-apps passe par ``selectors``/``services``
+#: (CLAUDE.md), et ce module est déjà le traducteur du vocabulaire de
+#: raccordement pour tout ``ventes``.
+RACCORDEMENT_AUCUN = 'aucun'
+
+
+def est_site_isole(valeur):
+    """Le raccordement déclaré dit-il « site isolé » (AUCUN raccordement) ?
+
+    ``normaliser_phase`` rend déjà ``None`` sur cette valeur — elle est donc
+    INERTE pour le filtre mono/tri, exactement comme « inconnu ». Ce prédicat
+    est l'autre moitié : ce que « aucun » VEUT dire pour la composition (hors
+    réseau) et pour rien d'autre.
+    """
+    return str(valeur or '').strip().lower() == RACCORDEMENT_AUCUN
+
+
 def normaliser_phase(valeur):
     """``'monophase'`` / ``'triphase'`` / ``None`` depuis un raccordement lead.
 

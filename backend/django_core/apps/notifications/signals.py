@@ -72,7 +72,10 @@ def lead_post_save(sender, instance, created, **kwargs):
             event_type=EventType.LEAD_ASSIGNED,
             title='Nouveau lead assigné',
             body=(instance.nom or '') + (f' — {ville}' if ville else ''),
-            link=f'/leads/{instance.pk}',
+            # WIR176 — `/leads/<pk>` n'existe pas côté front ; LeadsPage
+            # consomme `?lead=<pk>` (même format que `_lead_id_from_link`
+            # dans sweeps.py, à préserver).
+            link=f'/crm/leads?lead={instance.pk}',
             reason='assigne_a_vous',  # VX212(a)
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -158,7 +161,9 @@ def facture_payee_receiver(sender, instance, company, **kwargs):
             title='Facture intégralement réglée',
             body=(f'La facture {instance.reference} est intégralement '
                   'réglée.'),
-            link=f'/factures/{instance.pk}',
+            # WIR176 — `/factures/<pk>` n'existe pas côté front ; FactureList
+            # consomme `?facture=<pk>` (même patron que QX12/`/ventes/devis`).
+            link=f'/ventes/factures?facture={instance.pk}',
             company=company,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -187,7 +192,10 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
             'Bon de commande créé',
             body=(f'Le bon de commande {instance.reference} a été créé — '
                   'matériel à préparer.'),
-            link=f'/bons-commande/{instance.pk}',
+            # WIR176 — `/bons-commande/<pk>` n'existe pas côté front (route
+            # réelle : `/ventes/bons-commande`, sans deep-link par id — la
+            # liste reste le seul écran cible, jamais un id fabriqué).
+            link='/ventes/bons-commande',
             company=company,
             reason=reason,
         )
@@ -208,7 +216,9 @@ def ticket_resolu_receiver(sender, ticket, company, user, ancien_statut,
             technicien, company, EventType.SAV_TICKET_RESOLU,
             'Ticket SAV résolu',
             body=f'Le ticket {ticket.reference} est passé à Résolu.',
-            link=f'/sav/tickets/{ticket.pk}',
+            # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
+            # TicketsPage (`/sav`) consomme `?id=<pk>`.
+            link=f'/sav?id={ticket.pk}',
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception(
@@ -230,7 +240,9 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
                 'Équipement SAV remplacé',
                 body=(f'Équipement {numero} remplacé (ticket '
                       f'{getattr(ticket, "reference", ticket.pk)}).'),
-                link=f'/sav/tickets/{ticket.pk}',
+                # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
+                # TicketsPage (`/sav`) consomme `?id=<pk>`.
+                link=f'/sav?id={ticket.pk}',
                 company=company,
             )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -254,7 +266,9 @@ def projet_status_change_receiver(sender, projet, company, user,
             'Statut de projet modifié',
             body=(f'Le projet {projet.nom} est passé de {ancien_statut} à '
                   f'{nouveau_statut}.'),
-            link=f'/gestion-projet/projets/{projet.pk}',
+            # WIR176 — `/gestion-projet/projets/<pk>` n'existe pas côté
+            # front ; la route réelle est `/projets/:id`.
+            link=f'/projets/{projet.pk}',
             company=company,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -284,7 +298,9 @@ def sav_ticket_post_save(sender, instance, created, **kwargs):
             + (f'({client_nom}) ' if client_nom else '')
             + f'a été ouvert (priorité : {instance.get_priorite_display()}).'
         )
-        link = f'/sav/tickets/{instance.pk}'
+        # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ; TicketsPage
+        # (`/sav`) consomme `?id=<pk>`.
+        link = f'/sav?id={instance.pk}'
         # `_notify_user_or_managers` retombe déjà sur les managers si
         # `technicien` est None — un seul appel couvre les deux cas.
         _notify_user_or_managers(
@@ -313,7 +329,11 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
     try:
         from .sweeps import _managers
         company = instance.company
-        link = f'/automation/approvals/{instance.pk}'
+        # WIR176 — `/automation/approvals/<pk>` n'existe pas côté front (aucun
+        # module `automation` déposé) ; `automation` est une des 5 sources
+        # réelles de l'agrégateur XKB1 (`reporting/approbations.py`) — la
+        # boîte unique `/approbations` filtrée par sa source.
+        link = '/approbations?source=automation'
         if created:
             title = "Approbation demandée"
             body = instance.description or 'Une action attend votre approbation.'
@@ -360,7 +380,12 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
     try:
         from .sweeps import _managers
         company = instance.company
-        link = f'/compta/approbations/{instance.pk}'
+        # WIR176 — `/compta/approbations/<pk>` n'existe pas côté front (le
+        # préfixe réel est `/comptabilite/…`) ; `DemandeApprobationConfig`
+        # n'est PAS une des 5 sources de l'agrégateur XKB1 — son propre
+        # écran est `/comptabilite/approbations-config` (pas de deep-link
+        # par id, jamais un paramètre fabriqué).
+        link = '/comptabilite/approbations-config'
         label = instance.devis_reference or instance.devis_id or ''
         if created:
             title = "Approbation demandée"
@@ -421,7 +446,11 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
         from .sweeps import _managers
         old = getattr(instance, _OLD_DA_STATUT_ATTR, None)
         company = instance.company
-        link = f'/installations/demandes-achat/{instance.pk}'
+        # WIR176 — `/installations/demandes-achat/<pk>` n'existe pas côté
+        # front ; `installations` est une des 5 sources réelles de
+        # l'agrégateur XKB1 — la boîte unique `/approbations` filtrée par sa
+        # source.
+        link = '/approbations?source=installations'
 
         if instance.statut == DemandeAchat.Statut.SOUMISE and old != instance.statut:
             title = 'Réquisition à approuver'
@@ -490,7 +519,11 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
         from .sweeps import _managers, _notify_user_or_managers
         company = instance.company
         doc_label = getattr(instance.document, 'nom', None) or instance.document_id
-        link = f'/ged/documents/{instance.document_id}'
+        # WIR176 — `/ged/documents/<pk>` n'existe pas côté front (aucune
+        # route détail document) ; `ged` est une des 5 sources réelles de
+        # l'agrégateur XKB1 — la boîte unique `/approbations` filtrée par sa
+        # source.
+        link = '/approbations?source=ged'
 
         if created:
             title = 'Approbation demandée'

@@ -83,10 +83,12 @@ from apps.parametres.pvgis_profils import (
     vers_heure_locale,
 )
 from apps.ventes.courbes_journalieres import (
+    COUCHES_REDISTRIBUTION,
     contexte_ramadan_du_mois,
     equipements_du_devis,
     forme_consommation_detaillee,
     occupation_du_devis,
+    renormalisation_redistribution,
 )
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
@@ -192,18 +194,34 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
     kwh = []
     for mad in serie_mad:
         resultat = _inverser(mad)
-        kwh.append(resultat['kwh_mensuel'])
+        valeur = resultat['kwh_mensuel']
+        # QJR142 (e) — l'inversion rend ``None`` quand le montant sort de la
+        # plage inversable (elle rendait ≈ 1 024 000 kWh/mois sans drapeau).
+        # Un mois non inversable rend la SÉRIE inexploitable : on omet tout
+        # plutôt que de mélanger un trou et onze vrais mois.
+        if valeur is None:
+            return None, {}
+        kwh.append(valeur)
 
     if not any(v > 0 for v in kwh):
         return None, {}
 
     exemple = next(iter(cache.values()))
-    return kwh, {
+    detail = {
         'methode': 'inversion_bareme_tranches',
         'charges_fixes_mad': round(exemple['location_entretien_mad'], 2),
         'charges_fixes_source': exemple['charges_fixes_source'],
         'millesime': millesime,
     }
+    # QJR141 — LA RÉSERVE VOYAGE AVEC LE CHIFFRE. Le seuil d'exonération TPPAN
+    # n'est pas départagé par les factures disponibles : ``tppan_source`` dit
+    # laquelle des deux lectures a servi et pourquoi. ``bareme`` le rendait,
+    # l'inversion le jetait — la seule chaîne portant cette réserve n'atteignait
+    # ni écran ni PDF. Clé ADDITIVE et seulement quand la TPPAN s'applique :
+    # sans TPPAN, la chaîne est vide et le bloc garde sa forme d'avant.
+    if exemple.get('tppan_source'):
+        detail['tppan_source'] = exemple['tppan_source']
+    return kwh, detail
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -276,13 +294,22 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
     « restitué ≤ 0,90 × chargé » épinglé par les tests reste vrai par
     construction.
 
-    Retourne ``{restitue_kwh, charge_kwh, capacite_utilisee_kwh}``.
-    Capacité nulle/absente ⇒ tout à zéro (aucune énergie inventée).
+    Retourne ``{restitue_kwh, charge_kwh, capacite_utilisee_kwh,
+    restitue_24h, charge_24h}``. Capacité nulle/absente ⇒ tout à zéro (aucune
+    énergie inventée).
+
+    ``restitue_24h``/``charge_24h`` (COUVBAT, 26/08/2026) sont la VENTILATION
+    HORAIRE du cycle d'équilibre qui vient d'être calculé — les mêmes kWh, à
+    l'heure près, jamais un second calcul. Elles existent pour qu'une page
+    puisse DESSINER « couvert par la batterie » heure par heure sans rejouer un
+    moteur approché côté navigateur ; leurs sommes valent exactement
+    ``restitue_kwh``/``charge_kwh``.
     """
     capacite = _num(capacite_kwh_utile)
     if capacite <= 0:
         return {'restitue_kwh': 0.0, 'charge_kwh': 0.0,
-                'capacite_utilisee_kwh': 0.0}
+                'capacite_utilisee_kwh': 0.0,
+                'restitue_24h': [0.0] * 24, 'charge_24h': [0.0] * 24}
 
     rendement = _num(rendement, BATTERY_ROUNDTRIP)
     if rendement <= 0:
@@ -297,6 +324,8 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
         pic_soc = soc
         charge_total = 0.0
         restitue_total = 0.0
+        restitue_h = [0.0] * 24
+        charge_h = [0.0] * 24
         for heure in range(min(len(conso_24h), len(prod_24h))):
             conso = max(0.0, _num(conso_24h[heure]))
             prod = max(0.0, _num(prod_24h[heure]))
@@ -307,6 +336,8 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
                 if charge > 0:
                     soc += charge
                     charge_total += charge
+                    if heure < 24:
+                        charge_h[heure] += charge
                     pic_soc = max(pic_soc, soc)
             elif conso > prod:
                 besoin = conso - prod
@@ -315,7 +346,9 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
                 if restitue > 0:
                     soc -= restitue / rendement
                     restitue_total += restitue
-        return charge_total, restitue_total, pic_soc, soc
+                    if heure < 24:
+                        restitue_h[heure] += restitue
+        return charge_total, restitue_total, pic_soc, soc, restitue_h, charge_h
 
     # Convergence vers l'équilibre périodique : l'état de fin de journée
     # devient l'état de départ du cycle suivant. Borné par la capacité et
@@ -323,8 +356,14 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
     # à 8 pour ne jamais boucler sur un profil dégénéré).
     soc_depart = 0.0
     charge_total = restitue_total = pic_soc = 0.0
+    # Deux listes DISTINCTES : `a = b = [...]` les ferait pointer sur la MÊME,
+    # et le jour où une seule des deux serait modifiée en place, l'autre
+    # bougerait avec elle sans que rien ne le signale.
+    restitue_h = [0.0] * 24
+    charge_h = [0.0] * 24
     for _ in range(8):
-        charge_total, restitue_total, pic_soc, soc_fin = _cycle(soc_depart)
+        (charge_total, restitue_total, pic_soc, soc_fin,
+         restitue_h, charge_h) = _cycle(soc_depart)
         if abs(soc_fin - soc_depart) <= 1e-6:
             break
         soc_depart = soc_fin
@@ -333,13 +372,42 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
     # 0,90 × ce qui a été CHARGÉ pendant ce même cycle (conservation, l'état
     # de départ égalant l'état d'arrivée). On borne explicitement pour que
     # l'invariant épinglé reste vrai même hors convergence parfaite.
-    restitue_total = min(restitue_total, rendement * charge_total)
+    restitue_borne = min(restitue_total, rendement * charge_total)
+    restitue_h = _mettre_a_l_echelle(restitue_h, restitue_total, restitue_borne)
 
     return {
-        'restitue_kwh': restitue_total,
+        'restitue_kwh': restitue_borne,
         'charge_kwh': charge_total,
         'capacite_utilisee_kwh': pic_soc,
+        'restitue_24h': restitue_h,
+        'charge_24h': charge_h,
     }
+
+
+def _mettre_a_l_echelle(serie, total_brut, total_borne):
+    """COUVBAT — remet une ventilation horaire au niveau du total PUBLIÉ.
+
+    Quand la borne de conservation (``restitué ≤ rendement × chargé``) rabote
+    le total, la ventilation horaire doit suivre AU PRORATA : sinon la somme
+    des barres dessinées dépasserait le nombre affiché sous le graphique, et
+    la page se contredirait elle-même. Ne fabrique aucune énergie — c'est la
+    MÊME énergie, simplement ramenée au total que le moteur publie.
+
+    LE CAS ZÉRO EST LE PLUS DANGEREUX, et il était FAUX (revue du 26/08/2026,
+    prouvé : ``([2, 3], 5, 0)`` rendait ``[2, 3]``). Un total publié NUL veut
+    dire « cette batterie ne restitue rien » : la ventilation doit donc être
+    NULLE elle aussi. La rendre inchangée dessinait des barres d'énergie
+    pendant que le compteur annuel affichait zéro — exactement l'énergie
+    inventée que cette fonction existe pour empêcher.
+    """
+    brut = _num(total_brut)
+    borne = _num(total_borne)
+    if borne <= 0:
+        return [0.0] * len(serie)
+    if brut <= 0 or abs(brut - borne) <= 1e-12:
+        return list(serie)
+    facteur = borne / brut
+    return [v * facteur for v in serie]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -814,7 +882,8 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
     capacite = _num(capacite_kwh_utile)
     if capacite <= 0 or not pas:
         return {'restitue_kwh': 0.0, 'charge_kwh': 0.0,
-                'capacite_utilisee_kwh': 0.0}
+                'capacite_utilisee_kwh': 0.0,
+                'restitue_24h': [0.0] * 24, 'charge_24h': [0.0] * 24}
 
     rendement = _num(rendement, BATTERY_ROUNDTRIP)
     if rendement <= 0:
@@ -829,10 +898,17 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
         pic_soc = soc
         charge_total = 0.0
         restitue_total = 0.0
+        # COUVBAT — les pas fins sont REGROUPÉS par heure : la page dessine des
+        # heures, le moteur calcule des cinq-minutes. Le regroupement est une
+        # somme, pas un second modèle.
+        restitue_h = [0.0] * 24
+        charge_h = [0.0] * 24
         for etape in pas:
             conso = max(0.0, _num(etape['conso_kwh']))
             prod = max(0.0, _num(etape['prod_kwh']))
             duree_h = _num(etape['duree_h'])
+            heure = etape.get('heure')
+            heure = heure if isinstance(heure, int) and 0 <= heure < 24 else None
             if prod > conso:
                 charge = min(prod - conso, capacite - soc)
                 if borne_charge > 0:
@@ -840,6 +916,8 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
                 if charge > 0:
                     soc += charge
                     charge_total += charge
+                    if heure is not None:
+                        charge_h[heure] += charge
                     pic_soc = max(pic_soc, soc)
             elif conso > prod:
                 besoin = conso - prod
@@ -859,22 +937,33 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
                 if restitue > 0:
                     soc -= restitue / rendement
                     restitue_total += restitue
-        return charge_total, restitue_total, pic_soc, soc
+                    if heure is not None:
+                        restitue_h[heure] += restitue
+        return charge_total, restitue_total, pic_soc, soc, restitue_h, charge_h
 
     soc_depart = 0.0
     charge_total = restitue_total = pic_soc = 0.0
+    # Deux listes DISTINCTES : `a = b = [...]` les ferait pointer sur la MÊME,
+    # et le jour où une seule des deux serait modifiée en place, l'autre
+    # bougerait avec elle sans que rien ne le signale.
+    restitue_h = [0.0] * 24
+    charge_h = [0.0] * 24
     for _ in range(8):
-        charge_total, restitue_total, pic_soc, soc_fin = _cycle(soc_depart)
+        (charge_total, restitue_total, pic_soc, soc_fin,
+         restitue_h, charge_h) = _cycle(soc_depart)
         if abs(soc_fin - soc_depart) <= 1e-6:
             break
         soc_depart = soc_fin
 
-    restitue_total = min(restitue_total, rendement * charge_total)
+    restitue_borne = min(restitue_total, rendement * charge_total)
+    restitue_h = _mettre_a_l_echelle(restitue_h, restitue_total, restitue_borne)
 
     return {
-        'restitue_kwh': restitue_total,
+        'restitue_kwh': restitue_borne,
         'charge_kwh': charge_total,
         'capacite_utilisee_kwh': pic_soc,
+        'restitue_24h': restitue_h,
+        'charge_24h': charge_h,
     }
 
 
@@ -1005,8 +1094,9 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     couche d'équipement n'est active (rien à décomposer — la page garde alors
     son affichage actuel, un seul total sans détail).
 
-    LA RÈGLE : les couches de REDISTRIBUTION (piscine, clim, chauffe_eau —
-    voir ``courbes_journalieres._equipements``) sont DÉJÀ dans la facture :
+    LA RÈGLE : les couches de REDISTRIBUTION
+    (``courbes_journalieres.COUCHES_REDISTRIBUTION`` — piscine, clim,
+    chauffe_eau) sont DÉJÀ dans la facture :
     leur « ajout » mensuel est donc RETIRÉ du ``base_mensuelle`` pour ne
     jamais compter deux fois la même énergie — la ligne « ajout » n'est qu'un
     ÉCLAIRAGE de ce que la facture contient déjà. Le véhicule électrique
@@ -1017,10 +1107,34 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
     ``conso_kwh_mensuelles`` pour les mois sans VE, et l'excède seulement de
     la charge VE de ce mois.
 
-    L'énergie mensuelle d'une couche de redistribution = puissance déclarée
-    (kW) × nombre d'heures de sa fenêtre × nombre de jours du mois, UNIQUEMENT
-    dans les mois de sa saison active (``PISCINE_SAISONS``/``CLIM_SAISONS`` =
-    été seulement ; le chauffe-eau L-BACK n'a pas de restriction saisonnière).
+    QJR16 (29/08/2026) — L'ÉNERGIE PUBLIÉE EST CELLE QUE LE MOTEUR PLACE.
+    L'énergie BRUTE d'une couche de redistribution est ``kW × heures de sa
+    fenêtre × jours du mois``, UNIQUEMENT dans les mois de sa saison active
+    (``PISCINE_SAISONS``/``CLIM_SAISONS`` = été seulement ; le chauffe-eau
+    L-BACK n'a pas de restriction saisonnière) — mais ce n'est PAS ce que la
+    forme 24 h place. :func:`courbes_journalieres.forme_consommation_detaillee`
+    pose les bosses PUIS RENORMALISE la journée au niveau facture : la couche
+    y pèse ``brute × facteur``. Publier la brute faisait dépasser
+    ``totale_mensuelle`` au-dessus de la consommation réelle du client dès que
+    les équipements déclarés pesaient lourd — l'écrêtage ``max(0, …)`` de la
+    base masquait le dépassement au lieu de l'empêcher, en contradiction avec
+    la garantie ci-dessus. Le MÊME facteur est donc appliqué ici, et l'écrêtage
+    devenu inatteignable est remplacé par un avertissement NOMMÉ (journalisé).
+
+    QJR207 (31/08/2026) — « LE MÊME FACTEUR » EST DÉSORMAIS LE MÊME CODE.
+    QJR16 en avait posé une SECONDE écriture, ``conso ÷ (conso + brutes)``, qui
+    oubliait ce que le composeur fait d'abord : retirer l'énergie du véhicule
+    électrique du niveau (``base = conso − VE``) puisqu'elle est rajoutée APRÈS
+    la renormalisation, sans être rediluée. Dès qu'une couche VE coexistait
+    avec une couche de redistribution, les deux facteurs divergeaient et le kWh
+    par couche publié au client dépassait celui réellement placé dans la
+    journée (mesuré : +19,17 kWh en juillet sur 600 kWh/mois + clim 1,4 kW + VE
+    4 kWh/jour). La copie est supprimée :
+    :func:`courbes_journalieres.renormalisation_redistribution` est l'unique
+    définition, importée ici. Le contrat de sortie est INCHANGÉ (le total reste
+    la facture + la seule charge VE) — seule la frontière entre ``base`` et
+    ``ajouts`` bouge, vers ce que le moteur place vraiment.
+
     Ne lève jamais.
     """
     if not conso_kwh_mensuelles or len(conso_kwh_mensuelles) != 12:
@@ -1035,8 +1149,14 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
         numero = index + 1
         saison = saison_du_mois(numero)
         jours = JOURS_PAR_MOIS[index]
+        conso_mois = base[index]
 
-        for cle in ('piscine', 'clim', 'chauffe_eau'):
+        # QJR15 — MÊME liste que le composeur de forme : ce qui est publié ici
+        # comme un ajout mensuel est exactement ce que la forme 24 h place.
+        # QJR16 — en DEUX temps : les énergies BRUTES d'abord, puis le facteur
+        # de renormalisation du composeur, appliqué à toutes.
+        brutes = {}
+        for cle in COUCHES_REDISTRIBUTION:
             couche = couches.get(cle)
             if not couche or couche.get('mode') != 'redistribution':
                 continue
@@ -1047,18 +1167,54 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 continue
             if saisons and saison not in saisons:
                 continue
-            kwh_mois = round(kw * len(heures) * jours, 2)
-            ajouts.setdefault(cle, [0.0] * 12)
-            ajouts[cle][index] = kwh_mois
-            base[index] = max(0.0, base[index] - kwh_mois)
+            brutes[cle] = kw * len(heures) * jours
 
+        # QJR207 — LA CHARGE VE DU MOIS, LUE AVANT LE FACTEUR. Le composeur de
+        # forme retire cette énergie du niveau AVANT de renormaliser (elle est
+        # rajoutée telle quelle en passe 2, jamais rediluée) : la publication
+        # doit donc la retirer aussi, sinon elle annonce par couche plus de kWh
+        # que le moteur n'en place. Même porte que la passe 2 ci-dessous, d'où
+        # la valeur réutilisée plus bas — jamais une seconde dérivation.
+        ve_mois = 0.0
         ve = couches.get('ve')
         if ve and ve.get('mode') == 'addition':
-            kwh_jour = _num(ve.get('kwh_jour'))
-            saisons = ve.get('saisons')
-            if kwh_jour > 0 and (not saisons or saison in saisons):
-                ajouts.setdefault('ve', [0.0] * 12)
-                ajouts['ve'][index] = round(kwh_jour * jours, 2)
+            ve_kwh_jour = _num(ve.get('kwh_jour'))
+            ve_saisons = ve.get('saisons')
+            if ve_kwh_jour > 0 and (not ve_saisons or saison in ve_saisons):
+                ve_mois = ve_kwh_jour * jours
+
+        # LE FACTEUR — celui du composeur de forme, IMPORTÉ et non recopié
+        # (``courbes_journalieres.renormalisation_redistribution``), lu à
+        # l'échelle du mois : le rapport est invariant d'échelle, donc les
+        # énergies mensuelles y donnent le facteur de la journée. Sans bosse
+        # (ou sans base), il vaut 1,0 et le calcul retrouve son chemin d'avant,
+        # à l'octet.
+        brute_totale = sum(brutes.values())
+        _base_mois, facteur = renormalisation_redistribution(
+            conso_mois, ve_mois, brute_totale)
+
+        for cle, brute in brutes.items():
+            kwh_mois = round(brute * facteur, 2)
+            ajouts.setdefault(cle, [0.0] * 12)
+            ajouts[cle][index] = kwh_mois
+            base[index] -= kwh_mois
+
+        if base[index] < 0:
+            # HORS DÉGÉNÉRESCENCE, inatteignable : la renormalisation garantit
+            # ``Σ ajouts ≤ base ≤ conso``. Le seul cas restant est celui où la
+            # charge VE déclarée dépasse à elle seule la facture — le composeur
+            # de forme sort alors lui aussi de la facture (base nulle, bosses
+            # non renormalisées). On le DIT au lieu de l'écrêter en silence.
+            logger.warning(
+                'estimation_conso_mensuelle: base négative après '
+                'renormalisation (mois %d, conso %.2f kWh, ajouts %.2f kWh) — '
+                'décomposition et composeur de forme ont divergé',
+                numero, conso_mois, conso_mois - base[index])
+            base[index] = 0.0
+
+        if ve_mois > 0:
+            ajouts.setdefault('ve', [0.0] * 12)
+            ajouts['ve'][index] = round(ve_mois, 2)
 
     if not ajouts:
         return None
@@ -1080,7 +1236,8 @@ JOURS_TYPES_PUBLICS_MOIS = (1, 4, 7, 11)
 
 
 def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
-                        lon=None, occupation=None, equipements=None):
+                        lon=None, occupation=None, equipements=None,
+                        jour_reference=None):
     """T4 (24/08/2026) — les 4 mois « jour type » du payload public
     ``jours_types`` (contrat ``apps/web/src/lib/proposition.ts
     ProposalResponse.jours_types``) : ``{"1"|"4"|"7"|"11": {prod_kw[24],
@@ -1098,6 +1255,14 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     des quatre mois publics manque (saison sans forme PVGIS) — discipline
     « tout ou rien » côté page (``proposalJoursTypes``) : jamais un jeu
     partiel. Ne lève jamais.
+
+    ``jour_reference`` — QJR164/QJR45 : la DATE contre laquelle le moteur
+    calcule (fenêtre Ramadan). Ce jeu part au CLIENT (payload public
+    ``jours_types``) : sans elle, il retombait sur l'horloge du serveur au
+    moment du rendu, donc un même devis pouvait servir deux jours types
+    différents selon l'heure d'affichage — le pipeline pose la date, on la
+    transmet. ``None`` ⇒ repli d'horloge posé au fond, dans
+    :func:`jours_types_annee` et nulle part ailleurs.
     """
     try:
         from .solar_design import hourly_self_consumption
@@ -1105,7 +1270,8 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         jours_types, _avertissements, _sources = jours_types_annee(
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
             ville=ville, lat=lat, lon=lon,
-            occupation=occupation, equipements=equipements)
+            occupation=occupation, equipements=equipements,
+            jour_reference=jour_reference)
         if not jours_types:
             return None
         par_mois = {j['mois']: j for j in jours_types}
@@ -1134,6 +1300,341 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         return out
     except Exception:  # noqa: BLE001 — un jeu jour-type ne casse jamais la page
         logger.warning('jours_types_publics indisponible', exc_info=True)
+        return None
+
+
+#: COUVBAT (26/08/2026) — plafond DUR du nombre de crans « N batteries »
+#: ventilés heure par heure dans le payload public. Ce n'est PAS un avis sur ce
+#: qui est vendable (c'est ``se_remplit_tous_les_jours``, et le balayage de
+#: stockage, qui le disent) : c'est une borne de COÛT — chaque cran rejoue les
+#: douze jours types.
+#: O1 (revue adversariale Fable, 26/08/2026) — 12 → 16, ALIGNÉ sur
+#: ``dimensionnement.MAX_PALIERS_ECHELLE``/``MAX_PALIERS_STOCKAGE`` (déjà
+#: bumpés à 16 pour « monter à 30-40 kWh avec des modules de 5 kWh, pas de
+#: problème » = 6 à 8 modules). Un plafond de COUVERTURE plus bas que celui
+#: de l'échelle/du balayage listerait un palier PRICÉ que le curseur ne
+#: pourrait jamais atteindre — la page afficherait un prix sans pouvoir en
+#: montrer la couverture.
+COUVERTURE_PACKS_PLAFOND = 16
+
+
+def _pas_fins_ventilables(pas_fins):
+    """COUVBAT — CHAQUE pas fin porte-t-il l'heure à laquelle il appartient ?
+
+    Toute la ventilation horaire (bande « direct » comme bande « batterie »)
+    range les pas de cinq minutes dans l'heure que dit leur clé ``heure``. Un
+    pas sans cette clé serait compté dans les TOTAUX mais dans AUCUNE barre :
+    la bande batterie sortirait silencieusement trop courte, et comme la page
+    déduit le réseau par différence, l'écart serait attribué au RÉSEAU — on
+    dirait au client qu'il importe une énergie qu'il n'importe pas.
+
+    ``pas_fins_du_jour`` pose toujours cette clé ; ce garde-fou vise le jour où
+    une autre chronologie arriverait par un autre chemin. Discipline Z2 : on
+    OMET le bloc entier plutôt que de dessiner une répartition fausse.
+    """
+    return all(
+        isinstance(etape.get('heure'), int) and 0 <= etape['heure'] < 24
+        for etape in (pas_fins or ()))
+
+
+def _direct_horaire_du_jour(jour_type):
+    """COUVBAT — les 24 kWh d'autoconsommation DIRECTE d'un jour type.
+
+    ``Σ min(consommation, production)``, la MÊME intégrale que
+    :func:`solar_design.hourly_self_consumption` (pas horaire) et que
+    :func:`recouvrement_pas_fins` (pas fin) — simplement gardée heure par
+    heure au lieu d'être sommée tout de suite. Quand la chronologie fine
+    existe, c'est ELLE qui est lue : sinon la barre dessinée raconterait un
+    lissage que le moteur a précisément corrigé.
+    """
+    conso_24h = jour_type.get('conso_24h') or []
+    prod_24h = jour_type.get('prod_24h') or []
+    direct_h = [0.0] * 24
+    pas_fins = jour_type.get('pas_fins')
+    if pas_fins:
+        for etape in pas_fins:
+            heure = etape.get('heure')
+            if not isinstance(heure, int) or not 0 <= heure < 24:
+                continue
+            direct_h[heure] += min(_num(etape['conso_kwh']),
+                                   _num(etape['prod_kwh']))
+        return direct_h
+    for heure in range(min(len(conso_24h), len(prod_24h), 24)):
+        direct_h[heure] = min(max(0.0, _num(conso_24h[heure])),
+                              max(0.0, _num(prod_24h[heure])))
+    return direct_h
+
+
+def _deficit_du_jour(jour_type):
+    """COUVBAT — le déficit journalier (kWh non couverts par le solaire direct).
+
+    MÊME formule que :func:`balayer_stockage_horaire` (qui en tire son
+    ``plafond_deficit_kwh``) : la chronologie fine quand elle existe, l'heure
+    sinon. Deux formules différentes donneraient deux « autonomies complètes »
+    contradictoires sur la même page.
+    """
+    pas_fins = jour_type.get('pas_fins')
+    if pas_fins:
+        return sum(max(0.0, _num(p['conso_kwh']) - _num(p['prod_kwh']))
+                   for p in pas_fins)
+    conso_24h = jour_type.get('conso_24h') or []
+    prod_24h = jour_type.get('prod_24h') or []
+    return sum(max(0.0, _num(conso_24h[h]) - _num(prod_24h[h]))
+               for h in range(min(len(conso_24h), len(prod_24h))))
+
+
+def _bornes_pour_packs(puissances_par_pack, nb_packs):
+    """COUVBAT — les trois bornes de puissance d'une banque de ``nb_packs``.
+
+    MÊME arithmétique que :func:`puissances_batterie_des_lignes` (« Σ valeur de
+    fiche × quantité », puis « le plus petit des goulots PROUVÉS ») appliquée à
+    une banque hypothétique : la puissance des PACKS suit le nombre de packs,
+    celle du PORT BATTERIE de l'onduleur ne bouge pas (c'est le même onduleur).
+    Une fiche muette reste muette — ``None``, jamais une puissance supposée :
+    le moteur retombe alors sur sa règle conservatrice, exactement comme
+    aujourd'hui.
+    """
+    par_pack = puissances_par_pack or {}
+    packs_dech = _num(par_pack.get('pack_decharge_kw')) * nb_packs or None
+    packs_charge = _num(par_pack.get('pack_charge_kw')) * nb_packs or None
+    ond_dech = _num(par_pack.get('ond_decharge_kw')) or None
+    ond_charge = _num(par_pack.get('ond_charge_kw')) or None
+    charges_prouvees = [v for v in (packs_charge, ond_charge) if v]
+    borne_charge = min(charges_prouvees) if charges_prouvees else None
+    return packs_dech, ond_dech, borne_charge
+
+
+def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
+                                 capacite_utile_pack_kwh, nb_packs_max,
+                                 nb_packs_plancher=0,
+                                 ville=None, lat=None, lon=None,
+                                 occupation=None, equipements=None,
+                                 puissances_par_pack=None,
+                                 jour_reference=None):
+    """COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
+    DOIT MONTRER : la part de la consommation du client réellement COUVERTE
+    (solaire direct + batterie) pour chaque N, heure par heure ET sur l'année,
+    plus le nombre de batteries qui couvrirait TOUTE la journée et TOUTE la
+    nuit.
+
+    Contrat public : ``apps/ventes/contract_samples/couverture_batterie.json``
+    (clé ``couverture_batterie`` du payload ``proposal_data``).
+
+    POURQUOI CE CALCUL EST ICI ET PAS DANS LE NAVIGATEUR. La page savait déjà
+    dessiner trois bandes « direct / batterie / réseau », mais à partir d'une
+    SILHOUETTE générique remise à l'échelle du kWh journalier — un second
+    moteur, plus grossier, qui pouvait contredire l'étude. Ici, chaque N rejoue
+    les MÊMES douze jours types (:func:`jours_types_annee`, source unique) et
+    le MÊME simulateur de batterie que l'étude complète et le balayage du
+    stockage (chronologie fine quand elle existe, heure sinon). Le navigateur
+    n'a plus qu'à LIRE.
+
+    L'AUTONOMIE COMPLÈTE, ET SON HONNÊTETÉ. La capacité qui couvrirait tout le
+    jour type le plus gourmand vaut ``déficit maximal ÷ rendement`` — c'est
+    EXACTEMENT le ``plafond_deficit_kwh`` du balayage (au-delà, un kWh de plus
+    ne peut RIEN restituer de plus). Cette capacité peut DÉPASSER la plus
+    grosse banque que ce toit remplit chaque jour
+    (``plafond_remplissage_kwh`` = surplus quotidien du mois le plus faible,
+    la règle fondateur « la batterie doit se remplir tous les jours ») : le
+    bloc le DIT (``se_remplit_tous_les_jours: false`` +
+    ``nb_packs_remplissables``) au lieu de cacher le chiffre ou de le vendre.
+
+    ``None`` (jamais un chiffre inventé) quand l'année n'est pas complète,
+    quand la capacité utile d'un pack n'est pas connue, ou sur toute erreur —
+    la page garde alors EXACTEMENT son affichage d'avant. Ne lève jamais.
+
+    ``jour_reference`` — QJR164/QJR45 : même transmission que les trois autres
+    appelants de :func:`jours_types_annee`. Ce bloc part au CLIENT (payload
+    ``couverture_batterie``) ; il doit donc rejouer les jours types du MÊME
+    jour que l'étude complète et le balayage, pas ceux de l'horloge du serveur
+    au moment du rendu. ``None`` ⇒ repli d'horloge posé au fond, dans
+    :func:`jours_types_annee` et nulle part ailleurs.
+    """
+    try:
+        capacite_pack = _num(capacite_utile_pack_kwh)
+        if capacite_pack <= 0:
+            return None
+        try:
+            n_max = int(nb_packs_max)
+        except (TypeError, ValueError):
+            return None
+        try:
+            plancher = max(0, int(nb_packs_plancher))
+        except (TypeError, ValueError):
+            plancher = 0
+        # LE PLAFOND DE COÛT NE DOIT JAMAIS RENDRE LE DEVIS INATTEIGNABLE
+        # (revue du 26/08/2026). Un devis qui porterait plus de packs que le
+        # plafond verrait SA PROPRE configuration tomber hors du curseur : la
+        # page servirait alors des crans sans couverture, qui repartiraient en
+        # silence vers le simulateur approché. Le nombre de packs RÉELLEMENT
+        # au devis est donc un PLANCHER, jamais raboté.
+        n_max = max(0, min(n_max, COUVERTURE_PACKS_PLAFOND), plancher)
+
+        jours_types, _avertissements, _sources = jours_types_annee(
+            kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
+            ville=ville, lat=lat, lon=lon,
+            occupation=occupation, equipements=equipements,
+            jour_reference=jour_reference)
+        if not jours_types or len(jours_types) != 12:
+            return None
+
+        # ── Passe 1 : ce qui ne dépend PAS du nombre de batteries ──
+        prepares = []
+        surplus_min = None
+        surplus_min_mois = None
+        deficit_max = 0.0
+        deficit_max_mois = None
+        conso_annuelle = 0.0
+        for jour in jours_types:
+            # Une chronologie fine non ventilable rendrait TOUTES les bandes
+            # de ce bloc fausses (voir _pas_fins_ventilables) : on omet le
+            # bloc entier, la page retombe sur son affichage d'avant.
+            if not _pas_fins_ventilables(jour.get('pas_fins')):
+                return None
+            direct_h = _direct_horaire_du_jour(jour)
+            direct_jour = sum(direct_h)
+            surplus_jour = max(0.0, _num(jour['prod_jour_kwh']) - direct_jour)
+            deficit_jour = _deficit_du_jour(jour)
+            if surplus_min is None or surplus_jour < surplus_min:
+                surplus_min = surplus_jour
+                surplus_min_mois = jour['mois']
+            if deficit_jour > deficit_max:
+                deficit_max = deficit_jour
+                deficit_max_mois = jour['mois']
+            conso_annuelle += _num(jour['conso_mois_kwh'])
+            prepares.append((jour, direct_h, direct_jour))
+        if conso_annuelle <= 0:
+            return None
+
+        plafond_remplissage = max(0.0, surplus_min or 0.0)
+        plafond_remplissage_publie = round(plafond_remplissage, 2)
+
+        # ── L'AUTONOMIE COMPLÈTE, calculée AVANT les crans ──
+        # Elle FIXE la portée du curseur : le fondateur veut pouvoir explorer
+        # jusqu'à l'autonomie complète (« monter à 30-40 kWh avec des modules
+        # de 5 kWh, pas de problème »). Un repère qu'on ne peut pas atteindre
+        # avec le curseur ne se compare à rien.
+        capacite_requise = (deficit_max / BATTERY_ROUNDTRIP
+                            if BATTERY_ROUNDTRIP > 0 else deficit_max)
+        nb_packs_autonomie = int(math.ceil(
+            capacite_requise / capacite_pack)) if capacite_requise > 0 else 0
+        n_max = max(n_max, min(nb_packs_autonomie, COUVERTURE_PACKS_PLAFOND),
+                    plancher)
+
+        def _palier(nb_packs):
+            """Un cran du curseur : l'année ET les quatre jours types publics."""
+            capacite = nb_packs * capacite_pack
+            borne_dech, borne_dech_ond, borne_charge = _bornes_pour_packs(
+                puissances_par_pack, nb_packs)
+            direct_annuel = 0.0
+            batterie_annuel = 0.0
+            jours_publics = {}
+            for jour, direct_h, direct_jour in prepares:
+                jours = jour['jours']
+                conso_24h = jour['conso_24h']
+                pas_fins = jour.get('pas_fins')
+                if capacite > 0:
+                    if pas_fins:
+                        sim = simuler_batterie_pas_fins(
+                            pas_fins, capacite,
+                            puissance_decharge_kw=borne_dech,
+                            puissance_decharge_onduleur_kw=borne_dech_ond,
+                            puissance_charge_kw=borne_charge)
+                    else:
+                        sim = simuler_batterie_jour(
+                            conso_24h, jour['prod_24h'], capacite,
+                            puissance_charge_kw=borne_charge)
+                else:
+                    sim = {'restitue_kwh': 0.0, 'restitue_24h': [0.0] * 24}
+                restitue = _num(sim['restitue_kwh'])
+                # MÊME BORNE QUE LE BALAYAGE (``balayer_stockage_horaire``) :
+                # l'autoconsommation d'un jour ne dépasse ni la consommation ni
+                # la production de ce jour. Ceinture, jamais contraignante en
+                # pratique — mais deux formules divergentes finiraient par
+                # afficher deux couvertures différentes du même client.
+                auto_jour = min(direct_jour + restitue,
+                                _num(jour['conso_jour_kwh']),
+                                _num(jour['prod_jour_kwh']))
+                restitue_effectif = max(0.0, auto_jour - direct_jour)
+                restitue_h = _mettre_a_l_echelle(
+                    sim['restitue_24h'], restitue, restitue_effectif)
+                direct_annuel += direct_jour * jours
+                batterie_annuel += restitue_effectif * jours
+                if jour['mois'] in JOURS_TYPES_PUBLICS_MOIS:
+                    reseau_h = []
+                    for heure in range(24):
+                        conso_h = (max(0.0, _num(conso_24h[heure]))
+                                   if heure < len(conso_24h) else 0.0)
+                        reste = conso_h - direct_h[heure] - restitue_h[heure]
+                        reseau_h.append(max(0.0, reste))
+                    # LE TAUX DE CE JOUR-LÀ, SERVI (revue du 26/08/2026). La
+                    # page affiche le graphe d'UN jour type et, juste à côté,
+                    # un taux de couverture : si l'un parle du jour et l'autre
+                    # de l'année, la ligne se contredit elle-même. Le taux
+                    # ANNUEL reste servi à part (``couverture_pct`` du cran) —
+                    # il n'habille que le repère d'autonomie, qui le nomme.
+                    conso_jour = _num(jour['conso_jour_kwh'])
+                    jours_publics[str(jour['mois'])] = {
+                        'direct_kwh': [round(v, 3) for v in direct_h],
+                        'batterie_kwh': [round(v, 3) for v in restitue_h],
+                        'reseau_kwh': [round(v, 3) for v in reseau_h],
+                        'couverture_pct': (
+                            round(100.0 * (direct_jour + restitue_effectif)
+                                  / conso_jour, 1) if conso_jour > 0 else 0.0),
+                    }
+            couvert = direct_annuel + batterie_annuel
+            return {
+                'nb_packs': nb_packs,
+                'capacite_kwh': round(capacite, 2),
+                'couverture_pct': round(
+                    100.0 * couvert / conso_annuelle, 1),
+                'direct_annuel_kwh': round(direct_annuel, 2),
+                'batterie_annuel_kwh': round(batterie_annuel, 2),
+                'reseau_annuel_kwh': round(
+                    max(0.0, conso_annuelle - couvert), 2),
+                'se_remplit_tous_les_jours': bool(
+                    round(capacite, 2) <= plafond_remplissage_publie),
+                'jours_types': jours_publics,
+            }
+
+        pas = [_palier(n) for n in range(n_max + 1)]
+
+        capacite_autonomie = nb_packs_autonomie * capacite_pack
+        deja_calcule = next(
+            (p for p in pas if p['nb_packs'] == nb_packs_autonomie), None)
+        if deja_calcule is None and nb_packs_autonomie > 0:
+            # Le cran d'autonomie dépasse le plafond DUR des crans servis : on
+            # le calcule quand même — pouvoir DIRE « 14 batteries ≈ 99 % de
+            # votre consommation » vaut un parcours de plus. Sa ventilation
+            # horaire, elle, n'est pas servie (rien ne la dessinerait).
+            deja_calcule = _palier(nb_packs_autonomie)
+        autonomie = {
+            'nb_packs': nb_packs_autonomie,
+            'capacite_kwh': round(capacite_autonomie, 2),
+            'deficit_jour_max_kwh': round(deficit_max, 2),
+            'mois': deficit_max_mois,
+            'se_remplit_tous_les_jours': bool(
+                round(capacite_autonomie, 2) <= plafond_remplissage_publie),
+            'nb_packs_remplissables': int(
+                plafond_remplissage_publie // capacite_pack),
+            'capacite_remplissable_max_kwh': plafond_remplissage_publie,
+            'mois_remplissage_min': surplus_min_mois,
+            'couverture_pct': (deja_calcule['couverture_pct']
+                               if deja_calcule else None),
+            'dans_le_curseur': bool(nb_packs_autonomie <= n_max),
+        }
+
+        return {
+            'capacite_utile_pack_kwh': round(capacite_pack, 3),
+            'rendement': BATTERY_ROUNDTRIP,
+            'conso_annuelle_kwh': round(conso_annuelle, 2),
+            'mois_jours_types': list(JOURS_TYPES_PUBLICS_MOIS),
+            'nb_packs_max': n_max,
+            'pas': pas,
+            'autonomie_complete': autonomie,
+        }
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne casse pas la page
+        logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
 
 
@@ -1312,9 +1813,12 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            batterie_puissance_decharge_kw=None,
                            batterie_puissance_decharge_onduleur_kw=None,
                            batterie_puissance_charge_kw=None,
+                           batterie_rendement=None,
+                           batterie_rendement_source=None,
                            tranches=None, charges_fixes_mad=None,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
-                           source_conso=None, detail_conso=None):
+                           source_conso=None, detail_conso=None,
+                           jour_reference=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
 
     Paramètres
@@ -1349,6 +1853,16 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         remplissage, à l'heure comme à cinq minutes (« un surplus de 8 kW ne
         charge pas plus vite que le port ne l'admet »). Elle ne borne JAMAIS
         la décharge : s'en servir ainsi serait une équivalence inventée.
+    batterie_rendement : QJR137 — rendement aller-retour (fraction ∈ ]0, 1])
+        LU sur la fiche des batteries de ce devis
+        (``rendement_batterie_des_lignes``). ``None`` / hors bornes ⇒
+        hypothèse de référence ``pricing.BATTERY_ROUNDTRIP`` (0,90). C'est le
+        nombre qui borne ``restitue_kwh``, donc l'économie « avec batterie »
+        montrée au client : il ne peut plus venir d'un forfait muet.
+    batterie_rendement_source : d'où vient la valeur ci-dessus. Sortie dans le
+        bloc (``rendement_batterie_source``) UNIQUEMENT quand elle est prouvée
+        — sur le repli, l'hypothèse est dite là où elle l'était déjà, dans
+        ``pricing.cashflow_assumptions``, et la forme du bloc ne bouge pas.
     tranches / charges_fixes_mad / tppan / millesime : passés tels quels au
         barème. ``charges_fixes_mad`` remplace en bloc les deux lignes fixes
         (location du compteur + entretien du branchement) quand la société a
@@ -1370,7 +1884,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     jours_types, avertissements, sources = jours_types_annee(
         kwc=puissance, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
-        occupation=occupation, equipements=equipements)
+        occupation=occupation, equipements=equipements,
+        jour_reference=jour_reference)
     if jours_types is None:
         return None
     source_prod = sources.get('production')
@@ -1381,6 +1896,18 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     decharge_kw = _num(batterie_puissance_decharge_kw)
     decharge_ond_kw = _num(batterie_puissance_decharge_onduleur_kw)
     charge_kw = _num(batterie_puissance_charge_kw)
+
+    # QJR137 — LE RENDEMENT ALLER-RETOUR VIENT DE LA FICHE QUAND ELLE LE
+    # PUBLIE. Sans valeur prouvée, on applique l'hypothèse de référence
+    # ``pricing.BATTERY_ROUNDTRIP`` et on la DÉCLARE (``rendement_source``
+    # voyage jusqu'aux hypothèses affichées) — jamais un forfait muet sur un
+    # nombre qui borne l'économie « avec batterie » montrée au client.
+    rendement = _num(batterie_rendement)
+    if not 0 < rendement <= 1:
+        rendement = BATTERY_ROUNDTRIP
+        rendement_source = RENDEMENT_SOURCE_HYPOTHESE
+    else:
+        rendement_source = batterie_rendement_source or RENDEMENT_SOURCE_FICHE
 
     mois_sortie = []
     saisons_cumul = {saison: _bloc_vide() for saison in SAISONS}
@@ -1410,7 +1937,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
 
         # ── Variante batterie : le surplus du jour sert le déficit du soir ──
         batterie_horaire = simuler_batterie_jour(
-            conso_24h, prod_24h, capacite,
+            conso_24h, prod_24h, capacite, rendement=rendement,
             puissance_charge_kw=charge_kw or None)
         auto_avec_horaire = min(
             auto_jour_horaire + batterie_horaire['restitue_kwh'],
@@ -1425,7 +1952,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                 pas_fins, capacite,
                 puissance_decharge_kw=decharge_kw or None,
                 puissance_decharge_onduleur_kw=decharge_ond_kw or None,
-                puissance_charge_kw=charge_kw or None)
+                puissance_charge_kw=charge_kw or None,
+                rendement=rendement)
         else:
             auto_jour_sans = auto_jour_horaire
             batterie = batterie_horaire
@@ -1542,6 +2070,19 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         'avertissements': avertissements,
     }
 
+    # ── QJR137 : le rendement aller-retour PROUVÉ, et seulement s'il l'est ──
+    # MÊME DISCIPLINE QUE L-GLITCH ci-dessous : aucune fiche batterie ne
+    # publiant son rendement, la sortie ne gagne PAS une clé — tout le parc de
+    # devis déjà calculé garde sa forme à l'octet (contrat
+    # ``CLES_RACINE_HISTORIQUES``), et l'hypothèse de référence 0,90 est dite
+    # là où elle l'était déjà : dans ``pricing.cashflow_assumptions``. Quand une
+    # fiche la publie, en revanche, la valeur RÉELLEMENT appliquée et sa
+    # provenance voyagent — le nombre qui borne l'économie « avec batterie » ne
+    # peut pas être meilleur que le forfait sans que le document le dise.
+    if rendement_source != RENDEMENT_SOURCE_HYPOTHESE:
+        resultat['rendement_batterie'] = round(rendement, 4)
+        resultat['rendement_batterie_source'] = rendement_source
+
     # ── L-GLITCH : des champs ADDITIFS, et SEULEMENT quand ils ont un sens ──
     # AUCUN équipement concentrable déclaré ⇒ pas une seule clé de plus, pas un
     # centième de différence : la sortie est celle d'avant cette couche, pour
@@ -1623,7 +2164,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              batterie_puissance_decharge_kw=None,
                              puissances_par_capacite=None,
                              tranches=None, charges_fixes_mad=None,
-                             tppan=True, millesime=bareme.MILLESIME_COURANT):
+                             tppan=True, millesime=bareme.MILLESIME_COURANT,
+                             jour_reference=None):
     """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
 
     UN SEUL parcours des douze jours types (:func:`jours_types_annee`) sert
@@ -1654,8 +2196,13 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
     L-DECH — LES BORNES DE PUISSANCE SONT PAR CAPACITÉ, ET C'EST ESSENTIEL.
     Chaque palier est une composition DIFFÉRENTE : 10 kWh, c'est un pack de
-    10 ; 15 kWh, c'est un 10 + un 5 ; 20 kWh, deux 10. La décharge disponible
-    n'est donc PAS la même d'un palier à l'autre — elle s'additionne avec les
+    10 ; 15 kWh, c'est TROIS packs de 5 ; 20 kWh, deux packs de 10. Une BANQUE
+    EST TOUJOURS HOMOGÈNE (fondateur 26/08/2026 — mélanger des calibres dans
+    une même banque est électriquement interdit ; c'est ce mélange, composé
+    côté serveur, qui a fait retirer le Dyness 10 kWh du stock de production :
+    ``composition_residentielle`` ne compose plus jamais qu'UN SEUL calibre
+    par palier, cf. ``apps.ventes.services``). La décharge disponible n'est
+    donc PAS la même d'un palier à l'autre — elle s'additionne avec les
     packs (fondateur : « avec deux batteries c'est 100 A par batterie »).
     ``puissances_par_capacite`` porte, pour chaque capacité,
     ``{decharge_kw, decharge_onduleur_kw, charge_kw}`` tels que
@@ -1671,7 +2218,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
     jours_types, _avertissements, _sources = jours_types_annee(
         kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
-        occupation=occupation, equipements=equipements)
+        occupation=occupation, equipements=equipements,
+        jour_reference=jour_reference)
     if not jours_types or len(jours_types) != 12:
         return None
 
@@ -1894,15 +2442,46 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
     return None, 'absente', {}
 
 
-def capacite_batterie_du_devis(devis):
-    """Capacité UTILE totale (kWh) réellement chiffrée sur un devis, ou ``None``.
+def ligne_dans_option(ligne, option):
+    """QJR140 — la ligne appartient-elle à CETTE option du devis ?
+
+    ``LigneDevis.variante`` porte l'appartenance EXPLICITEMENT : ``''`` =
+    commune aux deux options (le défaut, et la valeur de toute ligne d'un devis
+    mono-option), ``'sans'`` / ``'avec'`` = propre à cette option-là. Une ligne
+    commune compte dans les deux ; une ligne variantée ne compte que dans la
+    sienne. ``option=None`` ⇒ aucune sélection (toutes les lignes).
+    """
+    if option is None:
+        return True
+    return (getattr(ligne, 'variante', '') or '') in ('', option)
+
+
+def capacite_batterie_du_devis(devis, option='avec'):
+    """Capacité UTILE (kWh) réellement chiffrée sur UNE option, ou ``None``.
 
     Somme les lignes classées ``batterie`` par ``services.classer_produit`` (le
     MÊME classifieur que la composition — jamais une seconde règle de
     reconnaissance) en lisant la capacité utile de chaque fiche
     (``dimensionnement.capacite_utile_batterie``).
 
-    ``None`` (et non 0,0) quand le devis ne porte aucune batterie : le moteur
+    QJR140 (audit QJR79) — LA SOMME EST PRISE PAR OPTION, PLUS SUR LE DEVIS
+    ENTIER. Cette fonction additionnait TOUTE ligne classée batterie sans
+    distinguer l'option qui la porte, alors que le découpage existe en amont
+    (``builder._repartir_options`` / ``_battery_kwh_from_items(avec_items…)``).
+    Sur un devis à plusieurs paliers de stockage, elle additionnait donc des
+    capacités qui ne coexistent dans AUCUNE option vendue — un chiffre qui ne
+    décrit rien de ce que le client peut acheter.
+
+    ``option`` vaut ``'avec'`` par DÉFAUT : c'est l'option qui porte le
+    stockage, et le seul contexte où une capacité batterie a un sens. Sur un
+    devis mono-option, toutes les lignes valent ``variante=''`` (communes) —
+    le résultat est donc byte-identique à l'historique pour tout le parc
+    existant ; seuls les devis à deux options RÉELLEMENT variantés changent, et
+    c'est précisément le cas que le défaut corrige. ``option=None`` rend
+    explicitement la somme BRUTE de toutes les lignes (comportement d'avant,
+    pour un appelant qui le veut sciemment).
+
+    ``None`` (et non 0,0) quand l'option ne porte aucune batterie : le moteur
     distingue ainsi « pas de stockage » de « stockage de capacité nulle ».
     """
     try:
@@ -1910,6 +2489,8 @@ def capacite_batterie_du_devis(devis):
         from apps.ventes.services import classer_produit
         total = 0.0
         for ligne in devis.lignes.all():
+            if not ligne_dans_option(ligne, option):
+                continue
             designation = getattr(ligne, 'designation', '') or ''
             if classer_produit(designation) != 'batterie':
                 continue
@@ -1920,6 +2501,91 @@ def capacite_batterie_du_devis(devis):
         return total if total > 0 else None
     except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de stockage
         logger.warning('capacité batterie illisible', exc_info=True)
+        return None
+
+
+def banque_batterie_du_devis(devis, option='avec'):
+    """COUVBAT — la BANQUE de batteries d'UNE option de ce devis, pack par pack.
+
+    Renvoie ``{nb_packs, capacite_utile_totale_kwh, capacite_utile_pack_kwh,
+    pack_decharge_kw, pack_charge_kw, ond_decharge_kw, ond_charge_kw}``, ou
+    ``None`` quand cette option ne porte AUCUNE ligne batterie (« pas de
+    stockage » — jamais un pack de capacité nulle).
+
+    QJR167 (frère non corrigé de QJR140/``capacite_batterie_du_devis``, signalé
+    au fold du 30/08) — LA SOMME EST PRISE PAR OPTION, PLUS SUR LE DEVIS ENTIER.
+    Cette fonction additionnait TOUTE ligne classée batterie de
+    ``devis.lignes.all()`` sans distinguer l'option qui la porte (même bug que
+    QJR140, même découpage amont : ``builder._repartir_options``). Sur un devis
+    à deux paliers de stockage variantés, elle additionnait donc des capacités
+    qui ne coexistent dans AUCUNE option vendue — une banque vendue nulle part,
+    qui alimentait pourtant la surface CLIENT du curseur « N batteries »
+    (``_couverture_batterie_publique``). Même filtre que QJR140
+    (:func:`ligne_dans_option`), même défaut ``'avec'`` (l'option qui porte le
+    stockage), même garantie mono-option byte-identique (lignes communes
+    ``variante=''`` comptent dans les deux options — le parc existant est
+    inchangé) et même repli ``option=None`` pour un appelant qui veut
+    sciemment la somme brute.
+
+    LA CAPACITÉ EST UTILE, PAS NOMINALE (règle CAPUTIL) : chaque ligne est lue
+    par ``dimensionnement.capacite_utile_batterie`` (fiche ``kwh_usable``,
+    sinon ``kwh_nominal × dod_pct``, et seulement en dernier recours le kWh du
+    NOM) — jamais un « 5 kWh » codé en dur, qui ne serait qu'un module du
+    catalogue du jour. ``capacite_utile_pack_kwh`` est la capacité utile
+    MOYENNE d'un pack de CETTE option (total ÷ quantité), c'est-à-dire le
+    module que le curseur « N batteries » ajoute réellement.
+
+    Les quatre puissances sont celles de :func:`puissance_batterie_du_devis`
+    (elle-même non filtrée par option — hors du périmètre de ce constat, voir
+    NOTE ci-dessous), RAMENÉES AU PACK pour les packs (Σ fiches ÷ quantité —
+    l'inverse exact du « Σ valeur de fiche × quantité » qui les a construites)
+    et laissées telles quelles pour le port batterie de l'onduleur (le même
+    onduleur sert toute la banque). ``None`` partout où la fiche ne publie
+    rien : le moteur retombe alors sur sa règle conservatrice. Ne lève jamais.
+    """
+    try:
+        from apps.ventes.dimensionnement import capacite_utile_batterie
+        from apps.ventes.services import classer_produit
+        nb_packs = 0.0
+        capacite_totale = 0.0
+        for ligne in devis.lignes.all():
+            if not ligne_dans_option(ligne, option):
+                continue
+            designation = getattr(ligne, 'designation', '') or ''
+            if classer_produit(designation) != 'batterie':
+                continue
+            quantite = float(getattr(ligne, 'quantite', 0) or 0)
+            if quantite <= 0:
+                continue
+            nb_packs += quantite
+            kwh = capacite_utile_batterie(
+                getattr(ligne, 'produit', None), designation)
+            if kwh:
+                capacite_totale += float(kwh) * quantite
+        packs = int(round(nb_packs))
+        if packs <= 0 or capacite_totale <= 0:
+            return None
+        puissances = puissance_batterie_du_devis(devis) or {}
+
+        def _par_pack(cle):
+            valeur = puissances.get(cle)
+            if not valeur:
+                return None
+            return float(valeur) / packs
+
+        return {
+            'nb_packs': packs,
+            'capacite_utile_totale_kwh': capacite_totale,
+            'capacite_utile_pack_kwh': capacite_totale / packs,
+            'pack_decharge_kw': _par_pack('packs_decharge_kw'),
+            'pack_charge_kw': _par_pack('packs_charge_kw'),
+            'ond_decharge_kw': (float(puissances['ond_decharge_kw'])
+                                if puissances.get('ond_decharge_kw') else None),
+            'ond_charge_kw': (float(puissances['ond_charge_kw'])
+                              if puissances.get('ond_charge_kw') else None),
+        }
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de banque
+        logger.warning('banque batterie illisible', exc_info=True)
         return None
 
 
@@ -2065,6 +2731,77 @@ def _source_borne(packs, port, source_packs, source_port):
     return source_packs if packs else source_port
 
 
+#: QJR137 — étiquette de source quand AUCUNE fiche batterie ne publie son
+#: rendement aller-retour : le moteur applique l'hypothèse de référence
+#: ``pricing.BATTERY_ROUNDTRIP`` et le DIT (chaîne lue par les hypothèses
+#: affichées, jamais un silence).
+RENDEMENT_SOURCE_HYPOTHESE = 'hypothese:pricing.BATTERY_ROUNDTRIP'
+RENDEMENT_SOURCE_FICHE = 'fiche:bat_rendement_ar_pct'
+
+
+def rendement_batterie_des_lignes(lignes, roles=None):
+    """QJR137 — le rendement aller-retour PUBLIÉ des batteries d'une composition.
+
+    La CAPACITÉ d'une banque est lue sur les fiches depuis PV5 ; le RENDEMENT
+    ALLER-RETOUR, lui, restait un forfait de code (0,90) qu'aucun champ ne
+    pouvait porter — alors qu'il borne ``restitue_kwh``, donc l'économie « avec
+    batterie » montrée au client. ``bat_rendement_ar_pct`` (QJR137) le porte
+    désormais ; cette fonction le lit par le sélecteur de ``stock`` (jamais
+    ``stock.models``), comme les puissances juste au-dessus.
+
+    RÈGLE DE COMBINAISON — PROUVÉE OU RIEN. Un rendement ne s'invente ni ne se
+    moyenne : deux packs de rendements différents forment une banque dont le
+    rendement réel dépend de la répartition des flux, que rien ne publie. On
+    retient donc le MINIMUM des valeurs publiées (borne conservatrice, du même
+    esprit que le ``min()`` des deux goulots de puissance), et il faut que
+    TOUTES les lignes batterie en publient une : une seule fiche muette rend le
+    rendement de la banque non prouvé, donc ``None``.
+
+    Renvoie ``{rendement, source}`` — ``rendement`` valant ``None`` quand rien
+    n'est prouvé, et ``source`` disant alors que l'hypothèse de référence
+    s'applique. Ne lève jamais.
+    """
+    resultat = {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+    try:
+        from apps.ventes.services import classer_produit
+        roles = list(roles or ())
+        publies = []
+        lignes_batterie = 0
+        for index, ligne in enumerate(lignes or ()):
+            if index < len(roles):
+                role = roles[index]
+            else:
+                role = classer_produit(getattr(ligne, 'designation', '') or '')
+            if role != 'batterie':
+                continue
+            quantite = float(getattr(ligne, 'quantite', 0) or 0)
+            if quantite <= 0:
+                continue
+            lignes_batterie += 1
+            produit = getattr(ligne, 'produit', None)
+            if produit is None:
+                continue
+            pct = _puissance_fiche(produit, 'rendement_ar_pct')
+            if pct and 0 < pct <= 100:
+                publies.append(pct / 100.0)
+        if lignes_batterie and len(publies) == lignes_batterie:
+            resultat['rendement'] = min(publies)
+            resultat['source'] = RENDEMENT_SOURCE_FICHE
+    except Exception:  # noqa: BLE001 — fiche illisible ⇒ hypothèse déclarée
+        logger.warning('rendement batterie illisible', exc_info=True)
+        return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+    return resultat
+
+
+def rendement_batterie_du_devis(devis):
+    """:func:`rendement_batterie_des_lignes` sur les lignes d'un devis."""
+    try:
+        return rendement_batterie_des_lignes(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ hypothèse déclarée
+        logger.warning('lignes du devis illisibles', exc_info=True)
+        return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
+
+
 def puissance_batterie_du_devis(devis):
     """:func:`puissances_batterie_des_lignes` sur les lignes d'un devis."""
     try:
@@ -2120,7 +2857,8 @@ def _reglages_tarifaires(company):
 
 
 def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
-                             data=None, occupation=None):
+                             data=None, occupation=None,
+                             jour_reference=None):
     """Bloc ``etude_horaire`` d'un devis RÉSIDENTIEL, ou ``None``.
 
     Lit tout ce dont le moteur a besoin sur le devis et son lead — toujours par
@@ -2138,19 +2876,26 @@ def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
     résolu par ``occupation_du_devis``. Sans ce paramètre, comportement
     byte-identique à avant.
 
+    ``jour_reference`` — QJR45 (29/08/2026) : la DATE contre laquelle le moteur
+    calcule (fenêtre Ramadan). ``None`` ⇒ ``timezone.localdate()`` posé au fond
+    par :func:`jours_types_annee`, comportement d'avant. La frontière du
+    pipeline (``apps.ventes.domain.entrees``) la pose explicitement pour que la
+    date UTILISÉE soit tracée dans l'empreinte des entrées.
+
     Ne lève JAMAIS : un calcul d'étude n'empêche pas d'enregistrer un devis.
     """
     try:
         return _etude_horaire_pour_devis(
             devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
-            data=data or {}, occupation=occupation)
+            data=data or {}, occupation=occupation,
+            jour_reference=jour_reference)
     except Exception:  # noqa: BLE001 — l'étude ne casse jamais un devis
         logger.warning('etude_horaire indisponible', exc_info=True)
         return None
 
 
 def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
-                              occupation=None):
+                              occupation=None, jour_reference=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
 
@@ -2205,11 +2950,17 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # LA BATTERIE VIENT DU DEVIS RÉEL. Sans cela, un devis « deux options »
     # sortirait avec « avec batterie » économisant EXACTEMENT autant que
     # « sans » — donc plus cher pour rien sur la proposition client.
+    # QJR140 — les DEUX premiers chemins sont inchangés à l'octet (une capacité
+    # explicite, puis celle que ``data`` porte, déjà issue de la SEULE option
+    # AVEC en amont). Le troisième, le repli sur les lignes, lit désormais la
+    # capacité de l'option AVEC et non la somme de tout le devis : sur un devis
+    # à plusieurs paliers de stockage, cette somme décrivait une banque qui
+    # n'existe dans AUCUNE option vendue.
     capacite = batterie_kwh_utile
     if capacite is None:
         capacite = data.get('batterie_kwh_total')
     if capacite is None:
-        capacite = capacite_batterie_du_devis(devis)
+        capacite = capacite_batterie_du_devis(devis, option='avec')
 
     # L-GLITCH + L-DECH — les puissances PUBLIÉES du chemin batterie, lues sur
     # les fiches du devis. Elles ne décident rien d'autre que ceci : la batterie
@@ -2220,6 +2971,13 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # l'autre.
     puissances = puissance_batterie_du_devis(devis)
 
+    # QJR137 — le RENDEMENT ALLER-RETOUR des batteries de ce devis, lu sur
+    # leurs fiches quand elles le publient. Aucune fiche muette n'est comblée :
+    # sans valeur prouvée, le moteur applique l'hypothèse de référence et la
+    # DÉCLARE (``rendement_batterie_source``), au lieu de faire passer un
+    # forfait pour une caractéristique du produit vendu.
+    rendement_bat = rendement_batterie_du_devis(devis)
+
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,
         ville=ville, lat=lat, lon=lon,
@@ -2228,8 +2986,11 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         batterie_puissance_decharge_kw=puissances['packs_decharge_kw'],
         batterie_puissance_decharge_onduleur_kw=puissances['ond_decharge_kw'],
         batterie_puissance_charge_kw=puissances['charge_kw'],
+        batterie_rendement=rendement_bat['rendement'],
+        batterie_rendement_source=rendement_bat['source'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
-        source_conso=source_conso, detail_conso=detail_conso)
+        source_conso=source_conso, detail_conso=detail_conso,
+        jour_reference=jour_reference)
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
     return resultat

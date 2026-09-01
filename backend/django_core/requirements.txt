@@ -62,6 +62,15 @@ qrcode==7.4.2
 # HTTP client
 httpx==0.28.1
 
+# VAO17 — NOUVELLE DÉPENDANCE (à signaler au fondateur) : analyse HTML du
+# portail des marchés publics (apps/veille_ao/portail/parser.py). Licence MIT,
+# gratuite, pure Python, aucun service tiers, aucun appel réseau — elle ne fait
+# que lire du texte. Constat qui la motive : AUCUN parseur HTML n'était installé
+# (ni beautifulsoup4, ni lxml, ni feedparser) ; seul httpx l'était. On reste sur
+# l'analyseur `html.parser` de la bibliothèque standard : pas de lxml, donc
+# aucune dépendance binaire à compiler en production.
+beautifulsoup4==4.14.2
+
 # Server
 gunicorn==22.0.0
 

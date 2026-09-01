@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Plus } from 'lucide-react'
+import { CreditCard, Plus, Download, Upload } from 'lucide-react'
 import api from '../../api/axios'
 import contratsApi from '../../api/contratsApi'
 import {
   Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea,
+  Label, Input, Textarea, Checkbox,
 } from '../../ui'
+import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import SimpleTable from './SimpleTable'
 
 /* ============================================================================
@@ -58,7 +59,8 @@ export default function AbonnementsPage() {
   const [plansRecurrents, setPlansRecurrents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [dialog, setDialog] = useState(null) // 'plan' | 'addon' | 'ligne' | 'palier' | 'compteur'
+  const [dialog, setDialog] = useState(null) // 'plan' | 'addon' | 'ligne' | 'palier' | 'compteur' | 'import-csv'
+  const [exporting, setExporting] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -89,6 +91,20 @@ export default function AbonnementsPage() {
   const nomPlan = (id) => plans.find((p) => p.id === id)?.nom || `Plan #${id}`
   const nomAddon = (id) => addons.find((a) => a.id === id)?.nom || `Add-on #${id}`
 
+  // NTSUB21 — export .xlsx du catalogue (plans/add-ons/paliers) via le
+  // wrapper dédié `contratsApi.exportCatalogueAbonnement` (blob, jamais un
+  // wrapper JSON générique). `downloadBlobInGesture` appelé SYNCHRONE, avant
+  // tout `await` (patron iOS/PWA déjà en place ailleurs dans l'ERP).
+  const exportCatalogue = () => {
+    const pending = downloadBlobInGesture()
+    setExporting(true)
+    contratsApi.exportCatalogueAbonnement()
+      .then((res) => pending.deliver(
+        res.data, filenameFromResponse(res, 'catalogue-abonnement.xlsx')))
+      .catch((err) => toast.error(errMsg(err, 'Export impossible.')))
+      .finally(() => setExporting(false))
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -96,6 +112,9 @@ export default function AbonnementsPage() {
           <CreditCard className="size-5 text-muted-foreground" aria-hidden="true" />
           <h1 className="font-display text-xl font-semibold tracking-tight">Abonnements</h1>
         </div>
+        <Button size="sm" variant="outline" onClick={exportCatalogue} disabled={exporting}>
+          <Download className="size-4" aria-hidden="true" /> Exporter (.xlsx)
+        </Button>
       </div>
 
       {/* L'echec de chargement etait CAPTURE mais jamais rendu : le catalogue
@@ -189,7 +208,10 @@ export default function AbonnementsPage() {
         </TabsContent>
 
         <TabsContent value="compteurs">
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setDialog('import-csv')}>
+              <Upload /> Importer (CSV)
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setDialog('compteur')}><Plus /> Nouveau relevé</Button>
           </div>
           <SimpleTable
@@ -239,6 +261,12 @@ export default function AbonnementsPage() {
         <CompteurDialog
           onClose={() => setDialog(null)}
           onDone={() => onCreated('Relevé de compteur enregistré.')}
+        />
+      )}
+      {dialog === 'import-csv' && (
+        <ImportCompteursDialog
+          onClose={() => setDialog(null)}
+          onDone={() => onCreated('Import terminé.')}
         />
       )}
     </div>
@@ -697,6 +725,147 @@ function CompteurDialog({ onClose, onDone }) {
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer le relevé'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── NTSUB31 — Dialogue en DEUX temps : import CSV de compteurs d'usage ─────
+// Étape Aperçu (`apercu:true`) : rejoue le rapprochement SANS RIEN ÉCRIRE et
+// liste conflits/refusés/erreurs. Étape Confirmation EXPLICITE, avec une
+// case « écraser » séparée : sans elle, un relevé déjà saisi n'est jamais
+// remplacé (repart dans `refuses`) — jamais un écrasement de masse
+// silencieux. `ecraser` n'est envoyé QUE si la case est cochée.
+function ImportCompteursDialog({ onClose, onDone }) {
+  const [csvText, setCsvText] = useState('')
+  const [fileName, setFileName] = useState('')
+  const [ecraser, setEcraser] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [rapport, setRapport] = useState(null) // dernier rapport reçu (aperçu ou final)
+  const [previewed, setPreviewed] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const onFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    const text = await file.text()
+    setCsvText(text)
+    setPreviewed(false)
+    setRapport(null)
+  }
+
+  const runApercu = async () => {
+    if (!csvText.trim()) { setErr('Choisissez un fichier CSV.'); return }
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await contratsApi.importerCompteursUsageCsv({
+        contenu: csvText, apercu: true,
+      })
+      setRapport(res.data)
+      setPreviewed(true)
+    } catch (e2) {
+      setErr(errMsg(e2, 'Aperçu impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  const runConfirm = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      const data = { contenu: csvText, apercu: false }
+      // WIR251 — l'indicateur n'est envoyé QUE si la case est cochée (jamais
+      // `ecraser: false` explicite ni une valeur par défaut inventée).
+      if (ecraser) data.ecraser = true
+      const res = await contratsApi.importerCompteursUsageCsv(data)
+      setRapport(res.data)
+      toast.success(
+        `${res.data.inserees} inséré(s), ${res.data.mises_a_jour} mis à jour.`)
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Import impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Importer des compteurs d’usage (CSV)</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cu-csv">Fichier CSV</Label>
+            <input id="cu-csv" type="file" accept=".csv,text/csv" onChange={onFileChange} />
+            {fileName && <p className="text-xs text-muted-foreground">{fileName}</p>}
+          </div>
+          {rapport && (
+            <div className="rounded-md border border-border p-2 text-xs">
+              {rapport.apercu ? (
+                <p className="mb-1 font-medium">Aperçu — rien n’a été écrit.</p>
+              ) : (
+                <p className="mb-1 font-medium">
+                  {rapport.inserees} inséré(s), {rapport.mises_a_jour} mis à jour,
+                  {' '}{rapport.ecrasements} écrasement(s).
+                </p>
+              )}
+              {rapport.conflits?.length > 0 && (
+                <div className="mb-1">
+                  <p className="font-medium">
+                    {rapport.conflits.length} conflit(s) (nécessitent « Écraser ») :
+                  </p>
+                  <ul className="flex flex-col gap-0.5">
+                    {rapport.conflits.map((c) => (
+                      <li key={c.ligne}>Ligne {c.ligne} — cible #{c.cible_id}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {rapport.refuses?.length > 0 && (
+                <div className="mb-1">
+                  <p className="font-medium">
+                    {rapport.refuses.length} refusé(s) (déjà saisi, non écrasé) :
+                  </p>
+                  <ul className="flex flex-col gap-0.5">
+                    {rapport.refuses.map((r) => (
+                      <li key={r.ligne}>Ligne {r.ligne} — cible #{r.cible_id}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {rapport.erreurs?.length > 0 && (
+                <div>
+                  <p className="font-medium text-destructive">
+                    {rapport.erreurs.length} erreur(s) :
+                  </p>
+                  <ul className="flex flex-col gap-0.5 text-destructive">
+                    {rapport.erreurs.map((e) => (
+                      <li key={e.ligne}>Ligne {e.ligne} — {e.erreur}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {previewed && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={ecraser} onCheckedChange={setEcraser} />
+              Écraser les valeurs déjà saisies (relevés existants)
+            </label>
+          )}
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          {!previewed ? (
+            <Button onClick={runApercu} disabled={!csvText.trim() || busy}>
+              {busy ? 'Aperçu…' : 'Aperçu'}
+            </Button>
+          ) : (
+            <Button onClick={runConfirm} disabled={busy}>
+              {busy ? 'Import…' : 'Confirmer l’import'}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

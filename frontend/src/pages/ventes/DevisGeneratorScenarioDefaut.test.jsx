@@ -35,6 +35,14 @@ vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
+    // TAILLES (fondateur 26/08/2026) — DevisOffresTailles (monté sous
+    // DevisGenerator, résidentiel par défaut avant même la résolution du
+    // devis serveur) interroge ce endpoint au montage (best-effort) ; sans
+    // mock l'effet lève sur `undefined(...)`.
+    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    // QJR214/215 — le panneau Surcharges charge le registre au montage en
+    // édition ; sans mock l'effet lève sur `undefined(...)` et la page meurt.
+    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 

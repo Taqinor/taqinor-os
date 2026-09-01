@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, within, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 /* ZMFG3 — vue calendrier des tickets SAV (préventifs générés + correctifs
    planifiés) sur TicketsPage. savApi mocké : on vérifie le regroupement par
@@ -13,10 +14,22 @@ vi.mock('../../api/savApi', () => ({
   },
 }))
 
+// WIR178 — le sélecteur Client (Combobox, recherche /crm/clients/search/)
+// de CalendarQuickCreateDialog appelle crmApi.searchClients.
+const { searchClients } = vi.hoisted(() => ({ searchClients: vi.fn() }))
+vi.mock('../../api/crmApi', () => ({
+  default: { searchClients: (...args) => searchClients(...args) },
+}))
+
 import savApi from '../../api/savApi'
 import { TicketCalendarView } from './TicketsPage.jsx'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 
+beforeEach(() => {
+  searchClients.mockResolvedValue({
+    data: { results: [{ id: 12, nom: 'Client Calendrier Test', source: 'client' }] },
+  })
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('groupTicketsByDate (ZMFG3 — regroupement pur)', () => {
@@ -94,5 +107,50 @@ describe('TicketCalendarView (ZMFG3 — rendu + scoping)', () => {
     // que `handleDragEnd` utilise (mêmes id/date qu'un vrai drop produirait).
     await savApi.replanifierTicket(1, '2026-07-20')
     expect(savApi.replanifierTicket).toHaveBeenCalledWith(1, '2026-07-20')
+  })
+})
+
+// WIR178 — la création rapide depuis le « + » du calendrier envoyait un
+// payload SANS client (400 garanti, `Ticket.client` est un FK non nullable
+// côté serveur). Le sélecteur Client est désormais obligatoire.
+describe('CalendarQuickCreateDialog (WIR178 — client obligatoire)', () => {
+  const today = new Date()
+  const todayIso = today.toISOString().slice(0, 10)
+  const tickets = [
+    { id: 1, date_tournee: todayIso, reference: 'SAV-DATE', statut: 'planifie', client_nom: 'Client A' },
+  ]
+
+  const ouvrirQuickCreate = async (user) => {
+    const cell = screen.getByText('SAV-DATE').closest('.group')
+    await user.click(within(cell).getByRole('button', { name: 'Créer un ticket ce jour' }))
+    expect(await screen.findByText(/Nouveau ticket —/)).toBeInTheDocument()
+  }
+
+  it('bloque la création tant qu\'aucun client n\'est sélectionné', async () => {
+    const user = userEvent.setup()
+    render(<TicketCalendarView tickets={tickets} onSelect={() => {}} onReload={() => {}} />)
+    await ouvrirQuickCreate(user)
+
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    expect(await screen.findByText('Le client est requis.')).toBeInTheDocument()
+    expect(savApi.createTicket).not.toHaveBeenCalled()
+  })
+
+  it('crée le ticket avec le client sélectionné dans le corps réel puis le replanifie', async () => {
+    const user = userEvent.setup()
+    render(<TicketCalendarView tickets={tickets} onSelect={() => {}} onReload={() => {}} />)
+    await ouvrirQuickCreate(user)
+
+    await user.click(screen.getByRole('combobox', { name: 'Client' }))
+    await user.type(screen.getByPlaceholderText('Nom ou ICE…'), 'Client Calendrier')
+    await user.click(await screen.findByText('Client Calendrier Test'))
+
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(savApi.createTicket).toHaveBeenCalledWith(expect.objectContaining({
+      client: 12,
+    })))
+    await waitFor(() => expect(savApi.replanifierTicket).toHaveBeenCalledWith(99, todayIso))
   })
 })

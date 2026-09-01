@@ -92,3 +92,19 @@ test('getOmReportPdf → GET /om-report/ avec format=pdf + blob', () => {
 test('emailOmReport → POST /monitoring/configs/<id>/email-om-report/', () => {
   assert.match(src, /emailOmReport:[\s\S]*?api\.post\(`\/monitoring\/configs\/\$\{configId\}\/email-om-report\/`/)
 })
+
+// ── WIR237 — abonnements de supervision : reprise + orphelin retiré ─────────
+
+test('reactiverAbonnement → POST /monitoring/abonnements-monitoring/<id>/reactiver/', () => {
+  assert.match(
+    src,
+    /reactiverAbonnement:[\s\S]*?api\.post\(`\/monitoring\/abonnements-monitoring\/\$\{id\}\/reactiver\/`/,
+  )
+})
+
+test('le wrapper orphelin renouvelerAbonnement a bien été retiré', () => {
+  // Aucun appelant : il donnait un 2e chemin qui avance l'échéance SANS
+  // facturer, désormais trompeur puisque `facturer` enchaîne le
+  // renouvellement. L'endpoint `renouveler/` reste, réservé au service/beat.
+  assert.doesNotMatch(src, /renouvelerAbonnement\s*:/)
+})

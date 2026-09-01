@@ -42,6 +42,17 @@ from django.test import SimpleTestCase, TestCase
 from apps.crm.models import Client, Lead
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import dimensionnement, services
+# QJR76 — `build_devis_auto` vit dans `domain/creation` et y LIT
+# `_panneaux_dimensionnement_horaire` (importé au niveau module depuis
+# `domain/taille`). Un `patch` ne double que l'espace de noms qu'il vise :
+# la doublure du moteur se pose donc sur le LECTEUR, pas sur la façade.
+from apps.ventes.domain import creation as domain_creation
+# QJR77 — même règle pour le moteur de paliers : `echelle_paliers_batterie`
+# et le mur physique vivent dans `domain/dimensionnement_devis` et s'y
+# appellent entre eux. `apps.ventes.dimensionnement` ne fait que les
+# ré-exporter par un import de niveau module — un cliché, qu'un patch ne
+# traverse pas.
+from apps.ventes.domain import dimensionnement_devis
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, option_lines,
@@ -278,10 +289,13 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
                     'batterie_kwh': 10.0}
 
     def _auto(self, *, scenario, optimum_avec, email):
-        with patch.object(services, 'profil_reel_existe', return_value=True), \
-                patch.object(services, '_panneaux_dimensionnement_horaire',
-                             return_value=(8, 550, 'moteur_horaire',
-                                           optimum_avec)):
+        # Depuis le 29/08/2026, AUCUN prédicat ne garde plus l'entrée du moteur
+        # (« ALL sizing should go through the new sizing tool ») : tout lead y
+        # passe, donc seul le moteur est simulé ici. Le prédicat historique
+        # ``profil_reel_existe`` a été SUPPRIMÉ par QJR107 (30/08/2026).
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
+                          return_value=(8, 550, 'moteur_horaire',
+                                        optimum_avec)):
             return services.build_devis_auto(
                 lead=self._lead(email=email), user=self.user,
                 company=self.company, scenario=scenario)
@@ -348,10 +362,9 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
         """
         lead = self._lead(email='pompage@example.com',
                           type_installation='agricole')
-        with patch.object(services, 'profil_reel_existe', return_value=True), \
-                patch.object(services, '_panneaux_dimensionnement_horaire',
-                             return_value=(8, 550, 'moteur_horaire',
-                                           self.OPTIMUM_AVEC)):
+        with patch.object(domain_creation, '_panneaux_dimensionnement_horaire',
+                          return_value=(8, 550, 'moteur_horaire',
+                                        self.OPTIMUM_AVEC)):
             with self.assertRaises(services.AutoDevisError):
                 services.build_devis_auto(
                     lead=lead, user=self.user, company=self.company,
@@ -919,9 +932,12 @@ class LaDoctrineDOptimum(SimpleTestCase):
 # 7. L'ÉCHELLE DE PALIERS BATTERIE
 # ═══════════════════════════════════════════════════════════════════════════
 #: Le CONTRAT, mot pour mot (PACT10) : la lane qui sert cette échelle à l'écran
-#: code contre CES clés, ni plus ni moins.
+#: code contre CES clés, ni plus ni moins. A1 (revue adversariale Fable,
+#: 26/08/2026, AJOUT ADDITIF) — ``nb_modules``/``module_kwh`` généralisent
+#: ``nb_batteries_5``/``10`` à tout calibre (16 kWh Deye BOS-B-Pack16 compris).
 CLES_PALIER_ECHELLE = {
-    'capacite_kwh', 'nb_batteries_5', 'nb_batteries_10', 'nb_panneaux',
+    'capacite_kwh', 'nb_batteries_5', 'nb_batteries_10',
+    'nb_modules', 'module_kwh', 'nb_panneaux',
     'puissance_kwc', 'prix_ttc', 'economies_annuelles', 'payback_annees',
     'remplissage_ok', 'retenu',
 }
@@ -993,6 +1009,15 @@ class LEchelleDePaliersBatterie(_Base):
             self.assertIsInstance(palier['nb_batteries_10'], int)
             self.assertIsInstance(palier['remplissage_ok'], bool)
             self.assertIsInstance(palier['retenu'], bool)
+            # A1 — nb_modules/module_kwh généralisent nb_batteries_5/10 à
+            # tout calibre ; sur ce fixture (5/10 kWh seulement), nb_modules
+            # égale la somme des deux anciennes clés.
+            self.assertIsInstance(palier['nb_modules'], int)
+            self.assertGreater(palier['nb_modules'], 0, palier)
+            self.assertEqual(
+                palier['nb_modules'],
+                palier['nb_batteries_5'] + palier['nb_batteries_10'], palier)
+            self.assertIn(palier['module_kwh'], (5.0, 10.0), palier)
             # Règle #4 : aucun prix d'achat, aucune marge ne fuit ici.
             self.assertNotIn('prix_achat', palier)
             self.assertNotIn('marge', palier)
@@ -1033,10 +1058,209 @@ class LEchelleDePaliersBatterie(_Base):
         for palier in retenus:
             self.assertAlmostEqual(palier['capacite_kwh'], vendue, places=1)
 
+    def test_bathomo_devis_a_5_kwh_echelle_denominee_en_5_kwh_seulement(self):
+        """BATHOMO (fondateur 26/08/2026) — « if the quote has 5 kWh
+        batteries the web page should only show 5 kWh batteries ». Ce devis
+        vend une ligne 5 kWh ; le catalogue de cette classe porte AUSSI le
+        10 kWh (en stock) — sans le pin, certains rangs choisiraient le
+        10 kWh (économie/tie-break). Avec le pin, TOUS les rangs restent en
+        modules 5 kWh, jusqu'à ce que le champ (ou le toit) arrête
+        l'échelle."""
+        devis = self._devis_residentiel(email='pin5-ech@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+
+        self.assertEqual(dimensionnement.module_batterie_du_devis(devis), 5.0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang de l\'échelle a basculé vers le 10 kWh alors que '
+                'ce devis vend du 5 kWh : %s' % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
+    def test_bathomo_10_kwh_a_stock_zero_jamais_laddere(self):
+        """BATHOMO — LE bug réel : ``BAT-DEY-10`` à 0 en stock (aucune ligne
+        vendue sur ce devis, donc aucun pin) ne doit JAMAIS apparaître dans
+        l'échelle — même garde que la composition (``_batterie_en_stock``),
+        héritée automatiquement puisque le balayage compose CHAQUE rang par
+        ``composition_residentielle``."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        devis = self._devis_residentiel(email='stock0-ech@example.com')
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang propose du 10 kWh alors que son stock est à 0 : %s'
+                % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
+    def test_f1_ladder_module_du_devis_survit_a_son_propre_stock_a_zero(self):
+        """F1 (revue adversariale 26/08/2026) — un devis qui vend DÉJÀ du
+        5 kWh voit son 5 kWh tomber à 0 en stock : l'échelle reste
+        DÉNOMMÉE EN 5 kWh (le pin bypasse le stock), jamais repeinte en
+        10 kWh — un module que ce devis ne vend PAS."""
+        devis = self._devis_residentiel(email='f1-pin-stock0@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+        Produit.objects.filter(pk=self.produits['BAT5'].pk).update(
+            quantite_stock=0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le pin devait garder la '
+                                 'page vivante malgré le stock à 0')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang a basculé vers le 10 kWh alors que ce devis vend '
+                'du 5 kWh (même hors stock) : %s' % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
+    def test_f1_ladder_reste_vivante_les_deux_calibres_a_zero_en_stock(self):
+        """F1 — SCÉNARIO EXACT DE L'INCIDENT : un devis vend du 5 kWh, et les
+        DEUX calibres du catalogue tombent à 0 en stock (un fournisseur en
+        rupture des deux côtés) — l'échelle ne meurt PAS silencieusement sur
+        ce devis pourtant déjà vendu."""
+        devis = self._devis_residentiel(email='f1-pin-both0@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+        Produit.objects.filter(
+            pk__in=[self.produits['BAT5'].pk, self.produits['BAT10'].pk],
+        ).update(quantite_stock=0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(
+            echelle,
+            "l'échelle est morte alors que le devis vend déjà une batterie "
+            '— exactement le bug que F1 corrige')
+        for palier in echelle:
+            self.assertEqual(palier['nb_batteries_10'], 0, palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
+    def test_f6_module_du_devis_generalise_a_un_calibre_hors_5_10(self):
+        """F6 (revue adversariale 26/08/2026) — un devis qui vend le VRAI
+        Deye BOS-B-Pack16 (16 kWh, présent dans les gammes) doit garder son
+        pin lui aussi : un whitelist figé sur 5/10 le perdait
+        SILENCIEUSEMENT, retombant sur un re-choix catalogue — la MÊME
+        violation que F1."""
+        bat16 = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            sku='BAT16-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        devis = self._devis_residentiel(email='f6-16kwh@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16,
+            designation='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+
+    def test_a1_pin_sans_correspondance_omet_l_echelle_jamais_un_repli(self):
+        """A1 (revue adversariale Fable, 26/08/2026) — le 16 kWh du test F6
+        ci-dessus n'a AUCUNE fiche technique (aucune tension mesurée) : sous
+        un onduleur qui DÉCLARE une plage (40-60 V, cf. ``_Base``), il
+        n'entre PAS dans le vivier compatible — « honest absence beats a
+        wrong pairing » : l'échelle entière est OMISE (``[]``), jamais
+        repeinte en 5/10 kWh (un calibre que ce devis ne vend pas)."""
+        bat16_sans_fiche = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            sku='BAT16NOFICHE-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        devis = self._devis_residentiel(email='a1-pin-sans-match@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16_sans_fiche,
+            designation='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+        self.assertEqual(
+            dimensionnement.echelle_paliers_batterie(devis), [],
+            "l'échelle n'est pas vide : elle a dû repeindre le devis dans "
+            'un autre calibre que le 16 kWh vendu')
+
+    def test_a1_pin_16_kwh_compatible_denomme_l_echelle_en_16_kwh(self):
+        """A1 — un calibre 16 kWh COMPATIBLE (tension mesurée dans la plage
+        déclarée) doit, lui, dénommer TOUTE l'échelle — jamais un rang qui
+        bascule vers 5/10 kWh au passage d'une cible qui ne tombe pas
+        exactement sur un multiple de 16."""
+        # Les Dyness 5/10 kWh du catalogue de cette classe sont ELLES AUSSI
+        # compatibles (même onduleur) : sans les écarter, la préférence de
+        # marque ``dyness_compat or batteries_compat`` les retiendrait à la
+        # place du Deye 16 kWh — ce test veut prouver le calibre 16 kWh
+        # PRÉCISÉMENT, pas la préférence de marque (couverte ailleurs).
+        FicheTechnique.objects.filter(
+            produit__in=[self.produits['BAT5'], self.produits['BAT10']],
+        ).update(bat_v_nominal=Decimal('1000.0'))
+        bat16_compatible = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pack16 — 16 kWh',
+            sku='BAT16OK-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=bat16_compatible,
+            type_fiche='batterie',
+            bat_kwh_nominal=Decimal('16.00'), bat_kwh_usable=Decimal('14.40'),
+            bat_dod_pct=Decimal('90.0'), bat_v_nominal=Decimal('51.2'),
+            bat_max_charge_kw=Decimal('6.00'))
+        devis = self._devis_residentiel(email='a1-pin-16-ok@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16_compatible,
+            designation='Batterie Deye BOS-B Pack16 — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(palier['module_kwh'], 16.0, palier)
+            self.assertGreater(palier['nb_modules'], 0, palier)
+            # 16 kWh n'est NI 5 NI 10 : les anciennes clés restent correctes
+            # mais MUETTES (généralisation additive, jamais un mensonge).
+            self.assertEqual(palier['nb_batteries_5'], 0, palier)
+            self.assertEqual(palier['nb_batteries_10'], 0, palier)
+            self.assertAlmostEqual(
+                palier['capacite_kwh'], palier['nb_modules'] * 14.40,
+                places=1, msg=palier)
+
+    def test_f6_filtre_variante_sans_exclut_les_lignes_option_sans(self):
+        """F6 — même filtre que ``facteur_remise_du_devis`` : une ligne
+        marquée ``variante='sans'`` (L-2OPT, l'option qui ne vend jamais de
+        batterie) n'entre pas dans la lecture, même si elle portait — par
+        accident de données — une désignation batterie."""
+        devis = self._devis_residentiel(email='f6-variante-sans@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'),
+            variante='sans')
+        self.assertIsNone(dimensionnement.module_batterie_du_devis(devis))
+
     def test_le_plafond_du_toit_borne_chaque_palier(self):
-        """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
-        des panneaux qui ne tiennent pas, et un toit plus petit ne peut que
-        RESTREINDRE la liste — jamais l'allonger."""
+        """La CONTENANCE MESURÉE est un plafond physique : l'échelle ne propose
+        jamais des panneaux qui ne tiennent pas, et un toit plus petit ne peut
+        que RESTREINDRE la liste — jamais l'allonger.
+
+        RÉ-ANCRÉ LE 28/08/2026 (MAX RÉEL, ordre fondateur) : la borne était
+        exercée via un layout à COMPTE DÉCLARÉ seul (``result.panels`` sans un
+        panneau sérialisé). Ce compte-là n'est plus une borne de toit — c'est
+        la cible vendue, et la prendre pour un plafond effondrait la carte Max
+        de tout devis automatique. La borne qui reste est la contenance
+        MESURÉE ; le second bloc épingle justement qu'un compte déclaré seul ne
+        borne PLUS rien.
+        """
         sans_toit = self._devis_residentiel(email='sanstoit@example.com')
         libre = dimensionnement.echelle_paliers_batterie(sans_toit)
 
@@ -1048,7 +1272,9 @@ class LEchelleDePaliersBatterie(_Base):
                                     'kwc': round(plafond * 550 / 1000.0, 3)}})
         self.assertEqual(dimensionnement.plafond_toit_du_devis(avec_toit),
                          plafond)
-        borne = dimensionnement.echelle_paliers_batterie(avec_toit)
+        with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
+                   return_value=plafond):
+            borne = dimensionnement.echelle_paliers_batterie(avec_toit)
 
         for palier in borne:
             self.assertLessEqual(
@@ -1060,6 +1286,190 @@ class LEchelleDePaliersBatterie(_Base):
             'le plafond du toit a ALLONGÉ l\'échelle : %s vs %s'
             % ([p['capacite_kwh'] for p in borne],
                [p['capacite_kwh'] for p in libre]))
+
+        # LE COMPTE DÉCLARÉ SEUL NE BORNE PLUS RIEN (28/08/2026) : sans mesure
+        # ni mur physique, ce devis se comporte comme un devis SANS layout.
+        with patch.object(dimensionnement_devis, 'plafond_physique_du_devis',
+                          return_value=None):
+            declare = dimensionnement.echelle_paliers_batterie(avec_toit)
+        self.assertEqual(
+            [p['nb_panneaux'] for p in declare],
+            [p['nb_panneaux'] for p in libre],
+            'le compte déclaré (%d) a borné l\'échelle alors que rien n\'est '
+            'mesurable — la conflation dessin/contenance est revenue' % plafond)
+
+    # ── LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (26/08/2026) ───────
+    #
+    # MÊME CONFLATION QUE LA CARTE « MAX », MÊME CORRECTION. ``max_champ``
+    # bornait le champ que ``champ_minimal`` a le droit de tirer pour REMPLIR
+    # une banque, et il le bornait au nombre de panneaux DESSINÉS. Sur un devis
+    # calepiné, un palier que le toit peut nourrir se retrouvait donc grisé
+    # « ne se remplit pas » — et l'échelle S'ARRÊTAIT là, escamotant toutes les
+    # capacités supérieures.
+
+    @staticmethod
+    def _layout_extensible(dessines=18, colonnes=6):
+        """Un calepinage RÉEL : ``dessines`` panneaux posés sur un grand toit.
+
+        Mêmes conventions que ``test_calepinage_options.toit`` (azimut 0, pas
+        2,4 m × 1,2 m, contour 24 m × 16 m) : la géométrie en tient BEAUCOUP
+        plus que ce qui est dessiné — c'est tout l'objet de ces tests.
+        """
+        import math
+        olng, olat = -7.58, 33.57
+        deg2m = math.pi / 180 * 6378137.0
+        coslat = math.cos(olat * math.pi / 180)
+
+        def lnglat(x, y):
+            return [olng + x / (deg2m * coslat), olat + y / deg2m]
+
+        panneaux = [{'cx': round(-(-6.0 + c * 2.4), 3),
+                     'cy': round(-2.0 + r * 1.2, 3)}
+                    for r in range(dessines // colonnes)
+                    for c in range(colonnes)]
+        return {
+            'scenario': 'reseau', 'panelWatt': 550,
+            'zones': [{
+                'id': 'z1', 'label': 'Pan Sud',
+                'vertices': [lnglat(-12, -8), lnglat(12, -8),
+                             lnglat(12, 8), lnglat(-12, 8)],
+                'obstacles': [], 'roofType': 'flat', 'pitchDeg': 0,
+                'facingAzimuthDeg': 0,
+                'geometry': {'azimuthDeg': 0, 'tiltDeg': 15,
+                             'origin': [olng, olat],
+                             'count': len(panneaux), 'panels': panneaux},
+            }],
+            'result': {'panels': len(panneaux),
+                       'kwc': round(len(panneaux) * 550 / 1000.0, 3)},
+        }
+
+    def test_la_borne_de_champ_est_la_CONTENANCE_pas_le_dessin(self):
+        """Le devis dessine 18 panneaux ; le toit en tient 78. C'est 78 qui
+        borne le champ que l'échelle peut tirer pour remplir une banque."""
+        devis = self._devis_residentiel(
+            email='contenance@example.com',
+            roof_layout=self._layout_extensible())
+        # Les DEUX lectures du toit, et elles disent des choses différentes :
+        # c'est précisément la confusion qui a causé le bug.
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis), 18,
+                         'le DESSIN doit rester ce qu\'il est (resync)')
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis), 78,
+                         'la CONTENANCE mesurée sur le polygone réel')
+
+    def test_un_palier_que_le_TOIT_peut_nourrir_n_est_plus_grise(self):
+        """LE BUG, ET SA CORRECTION, SUR LA VRAIE ÉCHELLE.
+
+        On dérive DEUX fois la même échelle sur le MÊME devis : une fois avec
+        la contenance mesurée (le comportement corrigé), une fois en neutralisant
+        la mesure — ce qui fait retomber la borne sur le DESSIN, exactement
+        l'ancien comportement. Les deux doivent DIVERGER : un champ tiré au-delà
+        des panneaux DESSINÉS, et une échelle qui ne se fait plus tronquer.
+        """
+        # POURQUOI 12 PANNEAUX DESSINÉS, ET PAS 18 — LA DÉRIVATION, MESURÉE.
+        # ``max_champ`` est le MINIMUM de trois bornes : ``MAX_PANNEAUX_BALAYAGE``
+        # (120), la FALAISE (``ceil(parité × FACTEUR_MAX_FALAISE)``) et le toit.
+        # Une première version dessinait 18 panneaux et les deux ancrages
+        # rendaient LA MÊME échelle — la garde de régime ci-dessous l'a dit :
+        # « [8, 11, 13, 15, 18, 18] == [8, 11, 13, 15, 18, 18] ». La raison est
+        # arithmétique : sans borne de toit cette échelle plafonne à 18, donc
+        # la falaise vaut 18 pour ce profil (parité = 9 panneaux, × 2,0). Un
+        # dessin à 18 égalait la falaise : la borne de toit n'était JAMAIS
+        # active, et le test ne pouvait rien prouver.
+        # À 12 dessinés, les trois bornes se séparent enfin :
+        #   ancre DESSIN     → max_champ = min(120, 18, 12) = 12  (tronque)
+        #   ancre CONTENANCE → max_champ = min(120, 18, 76) = 18  (ne tronque pas)
+        # Les paliers qui réclament 13, 15 puis 18 panneaux sont donc hors de
+        # portée de l'ancien ancrage et à portée du nouveau — exactement le
+        # régime que ce test doit exercer.
+        devis = self._devis_residentiel(
+            email='paliercontenance@example.com',
+            roof_layout=self._layout_extensible(dessines=12))
+        dessines, contenance = 12, 76
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis),
+                         dessines)
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis),
+                         contenance)
+        echelle_contenance = dimensionnement.echelle_paliers_batterie(devis)
+        # L'ANCRE DE RÉFÉRENCE (28/08/2026) : l'ancien ancrage « dessin » a
+        # DISPARU par construction — sans mesure, la borne retombe désormais
+        # sur le MUR PHYSIQUE du tracé, jamais sur le compte dessiné. Pour
+        # continuer d'exercer le régime « une borne basse tronque, la mesure
+        # libère », on rejoue donc l'échelle avec un mur ARTIFICIELLEMENT bas,
+        # égal au dessin d'hier (12) : mêmes nombres, même divergence, et la
+        # garde de régime ci-dessous garde exactement son pouvoir d'alerte.
+        with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
+                   return_value=None), \
+                patch.object(dimensionnement_devis,
+                             'plafond_physique_du_devis',
+                             return_value=dessines):
+            echelle_dessin = dimensionnement.echelle_paliers_batterie(devis)
+
+        # Les deux échelles doivent EXISTER : une liste vide ferait lever les
+        # ``max()`` plus bas et masquerait le vrai signal derrière une
+        # ValueError.
+        self.assertTrue(echelle_contenance,
+                        'échelle vide : le test ne prouverait rien')
+        self.assertTrue(echelle_dessin,
+                        'échelle de référence vide : rien à comparer')
+        champs_contenance = [p['nb_panneaux'] for p in echelle_contenance]
+        champs_dessin = [p['nb_panneaux'] for p in echelle_dessin]
+
+        # LE RÉGIME EST POSÉ, PAS ESPÉRÉ — et cette garde a DÉJÀ payé : c'est
+        # elle qui a signalé que le premier fixture (18 dessinés = la falaise)
+        # ne prouvait rien. Si la falaise de ce profil redescendait au niveau
+        # du dessin, les deux échelles se confondraient de nouveau et le test
+        # doit ROUGIR pour le dire, jamais passer en silence.
+        self.assertNotEqual(
+            champs_contenance, champs_dessin,
+            'le fixture n\'exerce plus le régime : les deux ancrages donnent '
+            'la même échelle (%s). La borne de toit n\'est active que si le '
+            'DESSIN (%s) est sous la falaise du profil — redescendre le '
+            'nombre de panneaux dessinés, ou prendre un profil qui en '
+            'réclame davantage.' % (champs_contenance, dessines))
+
+        # 1. L'ANCIEN ANCRAGE PLAFONNE AU DESSIN — c'est ce qu'il faisait, et
+        #    c'est ce qui grisait des paliers que le toit peut nourrir.
+        self.assertLessEqual(max(champs_dessin), dessines)
+        # 2. LA GARDE CENTRALE : le champ est désormais TIRÉ AU-DELÀ du dessin.
+        #    Cette ligne rougit le jour où la borne retombe sur le dessin.
+        self.assertGreater(max(champs_contenance), dessines)
+        # 3. Sans jamais dépasser ce que le toit tient réellement.
+        self.assertLessEqual(max(champs_contenance), contenance)
+        # 4. L'échelle n'est plus tronquée : elle propose au moins autant de
+        #    paliers qu'avec l'ancienne borne.
+        self.assertGreaterEqual(len(echelle_contenance), len(echelle_dessin))
+        # 5. Aucun palier ne ment sur le toit.
+        for palier in echelle_contenance:
+            self.assertLessEqual(palier['nb_panneaux'], contenance)
+
+    def test_un_toit_SATURE_laisse_l_echelle_inchangee(self):
+        """CONVERGENCE HONNÊTE : quand le dessin occupe déjà toute la
+        contenance, la borne ne bouge pas d'un panneau."""
+        # Contour serré autour de la pose : aucun emplacement de plus ne passe
+        # le test de contenance (cf. test_calepinage_options).
+        layout = self._layout_extensible()
+        import math
+        olng, olat = -7.58, 33.57
+        deg2m = math.pi / 180 * 6378137.0
+        coslat = math.cos(olat * math.pi / 180)
+
+        def lnglat(x, y):
+            return [olng + x / (deg2m * coslat), olat + y / deg2m]
+
+        layout['zones'][0]['vertices'] = [lnglat(-8.0, -2.6), lnglat(8.0, -2.6),
+                                          lnglat(8.0, 2.6), lnglat(-8.0, 2.6)]
+        devis = self._devis_residentiel(email='sature@example.com',
+                                        roof_layout=layout)
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis), 18)
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis), 18)
+        for palier in dimensionnement.echelle_paliers_batterie(devis):
+            self.assertLessEqual(palier['nb_panneaux'], 18)
+
+    def test_sans_calepinage_aucune_borne_de_toit(self):
+        """Repli EXACT sur le comportement d'avant : pas de layout ⇒ pas de
+        plafond de toit du tout, seulement les garde-fous de calcul."""
+        devis = self._devis_residentiel(email='sansplan@example.com')
+        self.assertIsNone(dimensionnement.contenance_toit_du_devis(devis))
 
     def test_le_profil_absent_reclame_moins_de_panneaux_pour_la_meme_banque(
             self):
@@ -1123,7 +1533,7 @@ class LEchelleDePaliersBatterie(_Base):
     def test_le_moteur_en_panne_rend_une_liste_vide_sans_lever(self):
         """Un aperçu ne casse jamais un écran (et n'écrit rien)."""
         devis = self._devis_residentiel(email='panne-ech@example.com')
-        with patch('apps.ventes.dimensionnement._echelle_paliers_batterie',
-                   side_effect=RuntimeError('moteur en panne')):
+        with patch.object(dimensionnement_devis, '_echelle_paliers_batterie',
+                          side_effect=RuntimeError('moteur en panne')):
             self.assertEqual(
                 dimensionnement.echelle_paliers_batterie(devis), [])

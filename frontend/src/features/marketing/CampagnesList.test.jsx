@@ -27,7 +27,15 @@ vi.mock('../../api/marketingApi', () => ({
       const data = res?.data
       return Array.isArray(data) ? data : (data?.results || [])
     },
-    campagnes: { list: mocks.campagnesList, create: mocks.campagnesCreate },
+    campagnes: {
+      list: mocks.campagnesList, create: mocks.campagnesCreate,
+      // WIR258 — sonde IA appelée au montage de CampagneForm.
+      genererIaDisponible: () => Promise.resolve({ data: { configured: false } }),
+      genererIa: () => Promise.resolve({ data: { ok: false } }),
+      // WIR257 — reporting (jamais appelé tant que l'onglet reste fermé).
+      reporting: () => Promise.resolve({ data: [] }),
+      reportingExportXlsx: () => Promise.resolve({ data: new Blob() }),
+    },
     listes: { list: mocks.listesList },
     blocsContenu: { list: mocks.blocsList },
     heatmapEngagement: mocks.heatmap,

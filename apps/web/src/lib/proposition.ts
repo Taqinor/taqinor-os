@@ -443,6 +443,32 @@ export interface ProposalResponse {
     surplus_kwh?: unknown;
   }> | null;
   /**
+   * COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
+   * DOIT MONTRER : pour chaque cran, la part de la consommation du client
+   * réellement COUVERTE (solaire direct + batterie), heure par heure sur les
+   * quatre jours types publics ET sur l'année ; plus le nombre de batteries
+   * d'une AUTONOMIE COMPLÈTE (jour + nuit).
+   *
+   * CONTRAT PARTAGÉ (PACT10) :
+   * `backend/django_core/apps/ventes/contract_samples/couverture_batterie.json`
+   * — c'est CE fichier que les deux moitiés lisent, pas cette interface.
+   *
+   * La page N'EN CALCULE AUCUN CHIFFRE : elle LIT. Ces courbes viennent du
+   * moteur horaire (mêmes douze jours types et même simulateur de batterie que
+   * l'étude complète), là où la page rejouait avant un moteur approché sur une
+   * silhouette générique. Clé absente ⇒ la page retombe EXACTEMENT sur son
+   * comportement d'avant (simulateur client `lib/batterySim`).
+   */
+  couverture_batterie?: {
+    capacite_utile_pack_kwh?: unknown;
+    rendement?: unknown;
+    conso_annuelle_kwh?: unknown;
+    mois_jours_types?: unknown;
+    nb_packs_max?: unknown;
+    pas?: unknown;
+    autonomie_complete?: unknown;
+  } | null;
+  /**
    * L-PCMP (fondateur, 24/08/2026) — les TROIS silhouettes d'occupation
    * calculées par le moteur sur les MÊMES factures réelles du client, plus
    * l'installation OPTIMALE que le balayage retient pour chacune.
@@ -996,6 +1022,19 @@ export function acceptEndpoint(apiBase: string, token: string): string {
 export function proposalEndpoint(apiBase: string, token: string): string {
   const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/`;
+}
+
+/**
+ * ANALYT1 (audit item 64) — URL backend du beacon d'engagement par section
+ * (XSAL16, `apps/ventes/public_views.py proposal_engagement`), endpoint
+ * PUBLIC monté sous `public/` (jamais `ventes/`, contrairement à
+ * `proposalEndpoint`/`acceptEndpoint` ci-dessus). Utilisée SEULEMENT côté
+ * serveur, par le proxy `pages/api/proposition-engagement.ts` — même
+ * discipline que `acceptEndpoint`.
+ */
+export function engagementEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/public/proposal/${encodeURIComponent(token)}/engagement/`;
 }
 
 /**
@@ -1675,18 +1714,35 @@ export const SAVINGS_HORIZON_YEARS = 25;
 export const BILL_INFLATION_RATE = 0;
 
 /**
- * WJ14 — Facteur d'émission du réseau électrique marocain (ONEE), en kg de CO₂
- * évité par kWh solaire autoconsommé. Le mix marocain reste fortement carboné
- * (charbon majoritaire) ; 0,81 kg CO₂/kWh est l'ordre de grandeur publié pour le
- * facteur d'émission moyen du réseau. Constante AFFICHÉE à l'écran.
+ * WJ14 — Facteur d'émission du réseau électrique marocain, en kg de CO₂ évité
+ * par kWh solaire autoconsommé.
+ *
+ * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — le commentaire d'origine
+ * annonçait « l'ordre de grandeur PUBLIÉ » sans citer AUCUNE publication : une
+ * source revendiquée mais introuvable est pire qu'une source manquante. Tant que
+ * le fondateur n'a pas fourni la référence DATÉE, tout rendu client de ce
+ * facteur doit être accompagné de « source à préciser » — ce que fait désormais
+ * la page proposition. La VALEUR est inchangée (aucun chiffre n'a bougé) ; c'est
+ * la PROVENANCE affichée qui devient honnête.
  */
 export const CO2_KG_PER_KWH = 0.81;
 
 /**
- * WJ14 — Équivalent « arbres » : un arbre mûr absorbe ≈ 22 kg de CO₂ par an
- * (ordre de grandeur communément retenu). Constante AFFICHÉE à l'écran.
+ * WJ14 — ÉQUIVALENT « ARBRES » : SUPPRIMÉ.
+ *
+ * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026). La constante valait 22 kg
+ * de CO₂ absorbés par un arbre mûr et par an — un ordre de grandeur que personne
+ * ici ne peut sourcer. Elle alimentait un équivalent affiché sur la proposition
+ * client, sur le PDF, et sur les trois variantes de `/impact-taqinor`.
+ *
+ * Elle n'est pas simplement retirée des GABARITS : elle est retirée de la
+ * BIBLIOTHÈQUE, avec le champ `trees` d'`environmentalImpact`. Un chiffre
+ * invérifiable qui reste exporté finit toujours par revenir dans une page ; en
+ * supprimant la source, un retour devient un ajout DÉLIBÉRÉ — qui exigera la
+ * référence datée que le fondateur n'a pas encore fournie.
+ *
+ * Ne pas ré-introduire sans cette source.
  */
-export const CO2_KG_PER_TREE_YEAR = 22;
 
 /**
  * WJ10 — Taux annuel INDICATIF d'un éco-prêt vert au Maroc (TAEG approximatif).
@@ -2081,29 +2137,31 @@ export function economiesInterdisentBatterie(
   return !!eco && eco.avec === null;
 }
 
-// ── WJ14 · Impact environnemental humain (CO₂ ≈ arbres) ──────────────────────
+// ── WJ14 · Impact environnemental — LA TONNE ANNUELLE, ET RIEN D'AUTRE ───────
+// RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) : l'équivalent « arbres »
+// a quitté cette interface EN MÊME TEMPS que sa constante. Un champ `trees`
+// encore servi par la bibliothèque serait un chiffre invérifiable à un `import`
+// de distance de la prochaine page — on supprime la SOURCE, pas seulement
+// l'affichage.
 
 export interface EnvironmentalImpact {
   /** kg de CO₂ évités par an (production × facteur réseau). */
   co2KgPerYear: number;
   /** Tonnes de CO₂ évitées par an (arrondi 1 décimale). */
   co2TonnesPerYear: number;
-  /** Équivalent en arbres « plantés » (absorption annuelle). */
-  trees: number;
-  /** Constantes affichées pour la transparence. */
+  /** Constante affichée pour la transparence — sa SOURCE reste à préciser, et
+   *  toute page qui rend ce chiffre doit le dire (cf. `CO2_KG_PER_KWH`). */
   kgPerKwh: number;
-  kgPerTreeYear: number;
 }
 
 /**
  * WJ14 — Calcule l'impact environnemental À PARTIR de la production annuelle
  * backend (`prod_kwh`). Renvoie `null` si la production est absente/nulle (aucun
- * chiffre inventé). Les constantes sont retournées pour être affichées à côté.
+ * chiffre inventé). La constante est retournée pour être affichée à côté.
  */
 export function environmentalImpact(
   prodKwh: number | null | undefined,
   kgPerKwh: number = CO2_KG_PER_KWH,
-  kgPerTreeYear: number = CO2_KG_PER_TREE_YEAR,
 ): EnvironmentalImpact | null {
   const prod = typeof prodKwh === 'number' && Number.isFinite(prodKwh) && prodKwh > 0 ? prodKwh : null;
   if (prod === null) return null;
@@ -2111,9 +2169,7 @@ export function environmentalImpact(
   return {
     co2KgPerYear: Math.round(co2KgPerYear),
     co2TonnesPerYear: Math.round((co2KgPerYear / 1000) * 10) / 10,
-    trees: Math.round(co2KgPerYear / kgPerTreeYear),
     kgPerKwh,
-    kgPerTreeYear,
   };
 }
 
@@ -4250,6 +4306,157 @@ export function proposalJoursTypes(
 }
 
 
+// ── COUVBAT — LA COUVERTURE DE LA CONSOMMATION, CRAN PAR CRAN ──────────────
+// Ordre fondateur du 26/08/2026 : « en déplaçant le curseur, montrer ce que la
+// batterie choisie COUVRE de ma consommation, jour ET nuit ». Rien n'est
+// calculé ici : ces fonctions LISENT et VALIDENT le bloc `couverture_batterie`
+// servi par le moteur horaire. Une entrée illisible est IGNORÉE, jamais
+// complétée par une estimation locale (règle « zéro chiffre inventé »).
+
+/** Les trois bandes horaires d'un jour type, telles que le moteur les sert. */
+export interface BatteryCoverageHours {
+  /** 24 kWh couverts par le solaire DIRECT (min(conso, prod) de l'heure). */
+  direct: number[];
+  /** 24 kWh couverts par la BATTERIE (ce qu'elle restitue à cette heure). */
+  battery: number[];
+  /** 24 kWh importés du RÉSEAU (le reste). */
+  grid: number[];
+  /**
+   * % de la consommation DE CE JOUR-LÀ couverte (direct + batterie), servi par
+   * le moteur. Distinct du taux ANNUEL du cran : la ligne de chiffres qui
+   * entoure le graphe parle du jour AFFICHÉ, jamais de l'année — sinon deux
+   * grandeurs différentes voisineraient sans le dire.
+   */
+  couverturePct: number;
+}
+
+/** Un cran du curseur : son année et ses quatre jours types. */
+export interface BatteryCoverageStep {
+  nbPacks: number;
+  capaciteKwh: number;
+  /** % de la consommation ANNUELLE couverte (direct + batterie). */
+  couverturePct: number;
+  directAnnuelKwh: number;
+  batterieAnnuelKwh: number;
+  reseauAnnuelKwh: number;
+  /** `false` ⇒ ce toit ne remplirait pas cette banque tous les jours. */
+  seRemplitTousLesJours: boolean;
+  /** Indexé par mois (« 1 »/« 4 »/« 7 »/« 11 »). */
+  joursTypes: Record<string, BatteryCoverageHours>;
+}
+
+/** Le repère « autonomie complète » : jour + nuit, et son honnêteté. */
+export interface BatteryFullAutonomy {
+  nbPacks: number;
+  capaciteKwh: number;
+  /** `false` ⇒ à afficher HORS de la plage recommandée, jamais comme offre. */
+  seRemplitTousLesJours: boolean;
+  /** Le plus grand nombre de packs que ce toit remplit CHAQUE jour. */
+  nbPacksRemplissables: number;
+  capaciteRemplissableMaxKwh: number;
+  /** % de consommation couverte à ce nombre de packs (`null` si non servi). */
+  couverturePct: number | null;
+  /** Le curseur atteint-il ce cran ? */
+  dansLeCurseur: boolean;
+  /** Mois du jour type le plus gourmand (celui qui dicte le repère). */
+  mois: number | null;
+}
+
+export interface BatteryCoverageInfo {
+  /** Capacité UTILE d'un pack DU DEVIS (règle CAPUTIL) — jamais un catalogue. */
+  capaciteUtilePackKwh: number;
+  consoAnnuelleKwh: number | null;
+  nbPacksMax: number;
+  pas: BatteryCoverageStep[];
+  autonomie: BatteryFullAutonomy | null;
+}
+
+function coverageHours(raw: unknown): BatteryCoverageHours | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (!isValidHourly24(r.direct_kwh) || !isValidHourly24(r.batterie_kwh)
+      || !isValidHourly24(r.reseau_kwh)) return null;
+  // Le taux du jour est SERVI : sans lui, la page n'aurait plus de source
+  // unique pour la ligne de chiffres qui entoure le graphe — on écarte le mois
+  // plutôt que de le calculer soi-même.
+  const couverturePct = finiteOrNull(r.couverture_pct);
+  if (couverturePct === null) return null;
+  return {
+    direct: r.direct_kwh, battery: r.batterie_kwh, grid: r.reseau_kwh,
+    couverturePct,
+  };
+}
+
+/**
+ * `null` quand `couverture_batterie` est absent, illisible, ou qu'aucun cran
+ * exploitable n'en sort — la page garde alors EXACTEMENT son affichage d'avant
+ * (simulateur client), jamais un bloc à moitié rempli.
+ */
+export function batteryCoverageInfo(
+  p: Pick<ProposalResponse, 'couverture_batterie'>,
+): BatteryCoverageInfo | null {
+  const b = p.couverture_batterie;
+  if (!b || typeof b !== 'object') return null;
+  const packKwh = finiteOrNull(b.capacite_utile_pack_kwh);
+  if (packKwh === null || packKwh <= 0) return null;
+  const pas: BatteryCoverageStep[] = [];
+  for (const raw of (Array.isArray(b.pas) ? b.pas : []) as unknown[]) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const nbPacks = finiteOrNull(r.nb_packs);
+    const capaciteKwh = finiteOrNull(r.capacite_kwh);
+    const couverturePct = finiteOrNull(r.couverture_pct);
+    if (nbPacks === null || capaciteKwh === null || couverturePct === null) continue;
+    const joursTypes: Record<string, BatteryCoverageHours> = {};
+    const src = (r.jours_types ?? {}) as Record<string, unknown>;
+    for (const mois of Object.keys(src)) {
+      const heures = coverageHours(src[mois]);
+      if (heures) joursTypes[mois] = heures;
+    }
+    pas.push({
+      nbPacks: Math.trunc(nbPacks),
+      capaciteKwh,
+      couverturePct,
+      directAnnuelKwh: finiteOrNull(r.direct_annuel_kwh) ?? 0,
+      batterieAnnuelKwh: finiteOrNull(r.batterie_annuel_kwh) ?? 0,
+      reseauAnnuelKwh: finiteOrNull(r.reseau_annuel_kwh) ?? 0,
+      seRemplitTousLesJours: r.se_remplit_tous_les_jours !== false,
+      joursTypes,
+    });
+  }
+  if (pas.length === 0) return null;
+  pas.sort((a, c) => a.nbPacks - c.nbPacks);
+
+  let autonomie: BatteryFullAutonomy | null = null;
+  const a = (b.autonomie_complete ?? null) as Record<string, unknown> | null;
+  if (a && typeof a === 'object') {
+    const nbPacks = finiteOrNull(a.nb_packs);
+    const capaciteKwh = finiteOrNull(a.capacite_kwh);
+    if (nbPacks !== null && nbPacks > 0 && capaciteKwh !== null) {
+      autonomie = {
+        nbPacks: Math.trunc(nbPacks),
+        capaciteKwh,
+        seRemplitTousLesJours: a.se_remplit_tous_les_jours === true,
+        nbPacksRemplissables: Math.max(
+          0, Math.trunc(finiteOrNull(a.nb_packs_remplissables) ?? 0)),
+        capaciteRemplissableMaxKwh: finiteOrNull(a.capacite_remplissable_max_kwh) ?? 0,
+        couverturePct: finiteOrNull(a.couverture_pct),
+        dansLeCurseur: a.dans_le_curseur === true,
+        mois: finiteOrNull(a.mois),
+      };
+    }
+  }
+  return {
+    capaciteUtilePackKwh: packKwh,
+    consoAnnuelleKwh: finiteOrNull(b.conso_annuelle_kwh),
+    nbPacksMax: Math.trunc(
+      finiteOrNull(b.nb_packs_max) ?? pas[pas.length - 1].nbPacks),
+    pas,
+    autonomie,
+  };
+}
+
+
 // ── L-PCMP — les trois silhouettes d'occupation, PRÊTES À AFFICHER ──────────
 // Aucune économie n'est calculée ici : cette fonction ne fait que LIRE et
 // VALIDER les blocs déjà calculés par le moteur (règle « zéro chiffre
@@ -4344,5 +4551,214 @@ export function occupancyScenarios(
     avecBatterie: b.avec_batterie === true,
     note: nonEmptyStringOrNull(b.note),
     scenarios,
+  };
+}
+
+// ── QJW11 — LE LECTEUR TYPÉ DU CONTRAT `proposal_data` ──────────────────────
+//
+// LE TROU QU'IL BOUCHE. `ProposalResponse`, plus haut, est une DÉCLARATION : la
+// page `.astro` fait `await res.json() as ProposalResponse` puis lit la charge
+// utile en dictionnaire libre. Une interface TypeScript n'existe pas à
+// l'exécution — donc un renommage de clé côté backend ne provoque AUCUNE
+// erreur : les champs deviennent silencieusement `undefined` et la page
+// s'affiche vide. C'est la moitié CLIENTE du contrat PACT10 que le groupe QJR
+// livre côté serveur, et elle manquait.
+//
+// LA FORME EST CELLE DE `lib/tailleDetail.ts` (`tailleDetail()`), délibérément :
+// des lecteurs minuscules qui VALIDENT et NOMMENT, jamais qui calculent. Aucune
+// valeur n'est fabriquée — un bloc absent reste `null`, et c'est à l'affichage
+// de l'omettre (règle fondateur « zéro chiffre inventé »).
+//
+// CE QU'IL COUVRE : L'ÉPINE DORSALE du payload — identité du devis, état,
+// totaux, séries mensuelles et grandeurs de facture que la page rend en tête.
+// Les blocs riches qui ont DÉJÀ leur propre lecteur typé dans ce module
+// (gammes, courbes journalières, tranche tarifaire, profils comparatifs,
+// dimensionnement…) ne sont pas redoublés ici : ils sont déjà lus, une fois, là
+// où ils vivent — deux lecteurs pour une même clé, ce serait le « 21 contre
+// 22 » sous une autre forme.
+
+/** Les totaux d'une option, lus et nommés. Chaque champ manque INDÉPENDAMMENT. */
+export interface ProposalTotauxLus {
+  htBrut: number | null;
+  remise: number | null;
+  htNet: number | null;
+  tva: number | null;
+  ttc: number | null;
+}
+
+/** Le sous-objet `quote`, réduit à ce que la page lit au niveau du devis. */
+export interface ProposalQuoteLu {
+  ref: string | null;
+  date: string | null;
+  clientName: string | null;
+  modeInstallation: string | null;
+  puissanceKwc: number | null;
+  nbPanneaux: number | null;
+  nbOptions: number | null;
+  displayTotal: number | null;
+  /** `null` quand le serveur ne se prononce pas — jamais un `false` fabriqué. */
+  sansOk: boolean | null;
+  avecOk: boolean | null;
+  scenario: string | null;
+  totauxSans: ProposalTotauxLus | null;
+  totauxAvec: ProposalTotauxLus | null;
+}
+
+/** `option_totals` : les totaux agrégés au niveau racine du payload. */
+export interface ProposalOptionTotalsLus {
+  sansBatterie: ProposalTotauxLus | null;
+  avecBatterie: ProposalTotauxLus | null;
+  displayTotal: number | null;
+  nbOptions: number | null;
+}
+
+/** L'épine dorsale du contrat `proposal_data`, validée à l'EXÉCUTION. */
+export interface Proposal {
+  /**
+   * Le niveau de partage. Défaut `'standard'` — le plus RESTRICTIF : si la clé
+   * disparaît, la page dégrade vers MOINS d'informations, jamais vers plus.
+   */
+  niveau: 'standard' | 'confiance';
+  /** Aperçu interne (le commercial relit sa proposition) — défaut `false`. */
+  apercuInterne: boolean;
+  reference: string;
+  date: string | null;
+  clientName: string | null;
+  statut: string | null;
+  modeInstallation: string | null;
+  categorieCommerciale: string | null;
+  roofImageUrl: string | null;
+  layoutStale: boolean | null;
+  layoutNbPanneaux: number | null;
+  sldSvg: string | null;
+  quote: ProposalQuoteLu | null;
+  optionTotals: ProposalOptionTotalsLus | null;
+  variantesServables: VarianteServable[];
+  accepted: boolean;
+  acceptedParNom: string | null;
+  dateAcceptation: string | null;
+  /** DOUZE OU RIEN : une série de onze mois se lirait comme une année. */
+  productionMensuelle: number[] | null;
+  consommationMensuelle: number[] | null;
+  savingsModel: string | null;
+  factureSansSolaire: number | null;
+  factureAvecSolaireSans: number | null;
+  factureAvecSolaireAvec: number | null;
+  pctCut: number | null;
+  annualBefore: number | null;
+  annualAfter: number | null;
+  coveragePct: number | null;
+  coverageEstimated: boolean | null;
+}
+
+function objetLu(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function booleenOuNull(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
+/** Douze nombres finis, ou `null`. Jamais onze, jamais un trou comblé par 0. */
+function douzeMoisOuNull(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== 12) return null;
+  const propres: number[] = [];
+  for (const x of v) {
+    const n = finiteOrNull(x);
+    if (n === null) return null;
+    propres.push(n);
+  }
+  return propres;
+}
+
+function lireTotaux(brut: unknown): ProposalTotauxLus | null {
+  const t = objetLu(brut);
+  if (!t) return null;
+  return {
+    htBrut: finiteOrNull(t.ht_brut),
+    remise: finiteOrNull(t.remise),
+    htNet: finiteOrNull(t.ht_net),
+    tva: finiteOrNull(t.tva),
+    ttc: finiteOrNull(t.ttc),
+  };
+}
+
+function lireQuote(brut: unknown): ProposalQuoteLu | null {
+  const q = objetLu(brut);
+  if (!q) return null;
+  return {
+    ref: nonEmptyStringOrNull(q.ref),
+    date: nonEmptyStringOrNull(q.date),
+    clientName: nonEmptyStringOrNull(q.client_name),
+    modeInstallation: nonEmptyStringOrNull(q.mode_installation),
+    puissanceKwc: finiteOrNull(q.puissance_kwc),
+    nbPanneaux: finiteOrNull(q.nb_panneaux),
+    nbOptions: finiteOrNull(q.nb_options),
+    displayTotal: finiteOrNull(q.display_total),
+    sansOk: booleenOuNull(q.sans_ok),
+    avecOk: booleenOuNull(q.avec_ok),
+    scenario: nonEmptyStringOrNull(q.scenario),
+    totauxSans: lireTotaux(q.totaux_sans),
+    totauxAvec: lireTotaux(q.totaux_avec),
+  };
+}
+
+function lireOptionTotals(brut: unknown): ProposalOptionTotalsLus | null {
+  const o = objetLu(brut);
+  if (!o) return null;
+  return {
+    sansBatterie: lireTotaux(o.sans_batterie),
+    avecBatterie: lireTotaux(o.avec_batterie),
+    displayTotal: finiteOrNull(o.display_total),
+    nbOptions: finiteOrNull(o.nb_options),
+  };
+}
+
+/**
+ * Lit la charge utile de `GET /api/django/public/proposal/<token>/data/`, ou
+ * `null` si ce n'en est PAS une.
+ *
+ * `reference` est le SEUL champ requis : sans lui, ce n'est pas une
+ * proposition, et rendre la page serait rendre un cadre vide sous un en-tête
+ * anonyme. Tout le reste manque INDÉPENDAMMENT et reste `null` — l'omission est
+ * héritée du serveur, jamais comblée.
+ */
+export function lireProposal(payload: unknown): Proposal | null {
+  const p = objetLu(payload);
+  if (!p) return null;
+  const reference = nonEmptyStringOrNull(p.reference);
+  if (reference === null) return null;
+  return {
+    niveau: p.niveau === 'confiance' ? 'confiance' : 'standard',
+    apercuInterne: p.apercu_interne === true,
+    reference,
+    date: nonEmptyStringOrNull(p.date),
+    clientName: nonEmptyStringOrNull(p.client_name),
+    statut: nonEmptyStringOrNull(p.statut),
+    modeInstallation: nonEmptyStringOrNull(p.mode_installation),
+    categorieCommerciale: nonEmptyStringOrNull(p.categorie_commerciale),
+    roofImageUrl: nonEmptyStringOrNull(p.roof_image_url),
+    layoutStale: booleenOuNull(p.layout_stale),
+    layoutNbPanneaux: finiteOrNull(p.layout_nb_panneaux),
+    sldSvg: nonEmptyStringOrNull(p.sld_svg),
+    quote: lireQuote(p.quote),
+    optionTotals: lireOptionTotals(p.option_totals),
+    variantesServables: Array.isArray(p.variantes_servables)
+      ? p.variantes_servables.filter((v): v is VarianteServable => v === 'sans' || v === 'avec')
+      : [],
+    accepted: p.accepted === true,
+    acceptedParNom: nonEmptyStringOrNull(p.accepte_par_nom),
+    dateAcceptation: nonEmptyStringOrNull(p.date_acceptation),
+    productionMensuelle: douzeMoisOuNull(p.monthly_production),
+    consommationMensuelle: douzeMoisOuNull(p.monthly_consumption),
+    savingsModel: nonEmptyStringOrNull(p.savings_model),
+    factureSansSolaire: finiteOrNull(p.facture_sans_solaire),
+    factureAvecSolaireSans: finiteOrNull(p.facture_avec_solaire_s),
+    factureAvecSolaireAvec: finiteOrNull(p.facture_avec_solaire_a),
+    pctCut: finiteOrNull(p.pct_cut),
+    annualBefore: finiteOrNull(p.annual_before),
+    annualAfter: finiteOrNull(p.annual_after),
+    coveragePct: finiteOrNull(p.coverage_pct),
+    coverageEstimated: booleenOuNull(p.coverage_estimated),
   };
 }

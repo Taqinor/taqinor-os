@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   arms: vi.fn(),
   armStats: vi.fn(),
   allDecisions: vi.fn(),
+  // WIR209 — clôture d'expérience + lecture de l'étude A/B native Meta.
+  conclude: vi.fn(),
+  syncAdStudy: vi.fn(),
+  permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -26,8 +30,17 @@ vi.mock('./adsengineApi', () => ({
       list: mocks.list, get: mocks.get, decisionLog: mocks.decisionLog,
       mde: mocks.mde, arms: mocks.arms, armStats: mocks.armStats,
       allDecisions: mocks.allDecisions,
+      conclude: mocks.conclude, syncAdStudy: mocks.syncAdStudy,
     },
   },
+}))
+
+// WIR209 — conclure/sync-ad-study sont gated `adsengine_manage` côté backend ;
+// accès complet par défaut, restreint dans le test dédié.
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false, has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import ExperimentsScreen from './ExperimentsScreen'
@@ -106,6 +119,11 @@ const ALL_DECISIONS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.permissions = ['adsengine_view', 'adsengine_manage']
+  // WIR209 — formes RÉELLES : `conclure` renvoie {node, decision_log,
+  // validated} ; `sync-ad-study` renvoie un DecisionLogSerializer complet.
+  mocks.conclude.mockResolvedValue({ data: { node: 12, decision_log: 55, validated: true } })
+  mocks.syncAdStudy.mockResolvedValue({ data: DECISIONS[0] })
   mocks.list.mockResolvedValue({ data: [{ id: 3, name: 'Test créatif toiture' }] })
   mocks.get.mockResolvedValue({ data: EXP })
   mocks.decisionLog.mockResolvedValue({ data: DECISIONS })
@@ -277,5 +295,80 @@ describe('ExperimentsScreen (ENG39/PACT110)', () => {
     fireEvent.click(screen.getByTestId('ae-mde-compute'))
     await waitFor(() => expect(mocks.mde).toHaveBeenCalledWith(
       expect.objectContaining({ volume: '600' })))
+  })
+})
+
+/* ==========================================================================
+   WIR209 — Clôture d'expérience (verdict HUMAIN explicite) + lecture de
+   l'étude A/B native Meta. Avant : `experiences/<id>/conclure/` et
+   `.../sync-ad-study/` n'avaient AUCUN appelant — une expérience ne pouvait
+   jamais être close et les résultats de l'étude native n'étaient jamais lus.
+   ========================================================================== */
+describe('ExperimentsScreen — WIR209 clôture + étude native', () => {
+  it('« Hypothèse validée » poste {validated: true} et recharge le journal de décision', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, { validated: true }))
+    expect(await screen.findByTestId('ae-exp-closure-msg')).toHaveTextContent('VALIDÉE')
+    // Le DecisionLog affiché est relu après la clôture (1 au montage + 1 après).
+    await waitFor(() => expect(mocks.decisionLog).toHaveBeenCalledTimes(2))
+  })
+
+  it('« Hypothèse invalidée » poste {validated: false} (verdict explicite, jamais implicite)', async () => {
+    mocks.conclude.mockResolvedValue({ data: { node: 12, decision_log: 56, validated: false } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-invalidated'))
+    await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, { validated: false }))
+    expect(await screen.findByTestId('ae-exp-closure-msg')).toHaveTextContent('INVALIDÉE')
+  })
+
+  it('node: null (200) — le message serveur est relayé, jamais un faux succès', async () => {
+    mocks.conclude.mockResolvedValue({ data: {
+      node: null,
+      detail: "Aucun nœud d'hypothèse rattaché à cette expérience — verdict enregistré nulle part.",
+    } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    expect(await screen.findByTestId('ae-exp-closure-msg'))
+      .toHaveTextContent(/verdict enregistré nulle part/)
+  })
+
+  it('« Lire l\'étude Meta » poste sync-ad-study et rend la phrase FR du DecisionLog', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-sync-study'))
+    await waitFor(() => expect(mocks.syncAdStudy).toHaveBeenCalledWith(3))
+    expect(await screen.findByTestId('ae-exp-closure-msg'))
+      .toHaveTextContent(/Bras le plus probable/)
+  })
+
+  it('404 (aucune étude native liée) : message FR du serveur', async () => {
+    mocks.syncAdStudy.mockRejectedValue(Object.assign(new Error('404'), {
+      response: { status: 404, data: {
+        detail: 'Aucune étude native (meta_study_id) liée à cette expérience.' } },
+    }))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-sync-study'))
+    expect(await screen.findByTestId('ae-exp-closure-msg'))
+      .toHaveTextContent(/Aucune étude native/)
+  })
+
+  it('400 (aucune connexion Meta active) : message FR distinct', async () => {
+    mocks.syncAdStudy.mockRejectedValue(Object.assign(new Error('400'), {
+      response: { status: 400, data: { detail: 'Aucune connexion Meta active.' } },
+    }))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-sync-study'))
+    expect(await screen.findByTestId('ae-exp-closure-msg'))
+      .toHaveTextContent('Aucune connexion Meta active.')
+  })
+
+  it('sans adsengine_manage : les trois contrôles sont grisés (permission backend respectée)', async () => {
+    mocks.permissions = ['adsengine_view']
+    renderScreen()
+    expect(await screen.findByTestId('ae-exp-conclude-validated')).toBeDisabled()
+    expect(screen.getByTestId('ae-exp-conclude-invalidated')).toBeDisabled()
+    expect(screen.getByTestId('ae-exp-sync-study')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('ae-exp-conclude-validated'))
+    expect(mocks.conclude).not.toHaveBeenCalled()
   })
 })

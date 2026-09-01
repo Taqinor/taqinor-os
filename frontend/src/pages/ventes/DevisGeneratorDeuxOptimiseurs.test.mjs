@@ -1,214 +1,269 @@
 // L-2OPT (fondateur 24/08/2026) — « deux optimiseurs indépendants ». Un devis
 // résidentiel « Les deux (Sans + Avec) » compose SANS et AVEC séparément
 // (chacun son propre kWc payback-optimal) puis fusionne les deux tableaux de
-// lignes en une seule table taguée `variante`. DevisGenerator.jsx est du
-// JSX/ESM non exécutable par `node --test` sans node_modules (React, Redux
-// dispatch réel) : ce test lit donc le SOURCE, même patron que
-// DevisGeneratorOrdreLignes.test.mjs / DevisGeneratorNbPanneauxTouched.test.mjs.
+// lignes en une seule table taguée `variante`.
+//
+// QJR108 — CE FICHIER A CESSÉ DE LIRE LE SOURCE. Il épinglait par expression
+// régulière trois fichiers (`DevisGenerator.jsx`, `solar.js`,
+// `DevisLineRow.jsx`) : la mise en page d'un `if`, la présence littérale de
+// `return kwp`, l'ordre de deux `indexOf`. Le sélecteur qu'il visait —
+// `deuxValeursDim` / `paireDimensionnement` — vivait en haut de l'écran, NON
+// exporté (react-refresh), donc littéralement intestable ; il vit désormais
+// dans le module pur `features/ventes/quote/paireDimensionnement.js`
+// (déplacement seul, pas une ligne de logique changée) et est ici EXÉCUTÉ.
+// Les règles de panier / totaux / capacité batterie sont, elles, déjà pures
+// dans `solar.js` : elles sont appelées, plus décrites.
+//
+// CE QUI RESTE HORS DE PORTÉE D'UN TEST PUR (pas revendiqué ici) : le badge de
+// variante rendu par `DevisLineRow` et le surlignage de la ligne
+// `recommandation_avec` dans le tableau de dimensionnement — deux rendus
+// React, donc du domaine des specs RTL.
 //
 // Run : node --test src/pages/ventes/DevisGeneratorDeuxOptimiseurs.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import {
+  deuxValeursDim, paireDimensionnement, valeurMoteurDim, RIEN_A_CHIFFRER,
+} from '../../features/ventes/quote/paireDimensionnement.js'
+import { estFait } from '../../features/ventes/quote/valeur.js'
+import {
+  sizingReducer, ETAT_INITIAL, SCENARIO_LES_DEUX, SCENARIO_AVEC, SCENARIO_SANS,
+} from '../../features/ventes/quote/sizingReducer.js'
+import {
+  appartientAuPanierSans, appartientAuPanierAvec, optionTotalsTTC,
+  batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
+} from '../../features/ventes/solar.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
-const SOLAR = readFileSync(join(HERE, '../../features/ventes/solar.js'), 'utf8')
-const LINE_ROW = readFileSync(join(HERE, 'DevisLineRow.jsx'), 'utf8')
+const SRV_SANS = { panneaux: 12, kwc: 8.52 }
+const SRV_AVEC = { panneaux: 16, kwc: 11.36 }
+const dim = (d) => ({ dimensionnement: d })
 
-// Extrait le contenu d'un bloc `{ ... }` en comptant les accolades (fiable
-// même avec des accolades imbriquées) — même utilitaire que
-// DevisGeneratorNbPanneauxTouched.test.mjs.
-function extractBracedBlock(src, openBraceIdx) {
-  assert.equal(src[openBraceIdx], '{', 'index ne pointe pas sur une accolade ouvrante')
-  let depth = 0
-  for (let i = openBraceIdx; i < src.length; i++) {
-    if (src[i] === '{') depth++
-    else if (src[i] === '}') {
-      depth--
-      if (depth === 0) return { body: src.slice(openBraceIdx + 1, i), endIdx: i }
-    }
+// ── LE SÉLECTEUR `deuxValeursDim` ───────────────────────────────────────────
+
+test('les DEUX recommandations du moteur donnent la paire complète', () => {
+  const paire = deuxValeursDim('residentiel',
+    dim({ recommandation: SRV_SANS, recommandation_avec: SRV_AVEC }))
+  assert.deepEqual(paire.sans, { nbPanneaux: 12, kwc: 8.52 })
+  assert.deepEqual(paire.avec, { nbPanneaux: 16, kwc: 11.36 })
+})
+
+test('une seule branche chiffrée sort SEULE — « sans » d’abord, comme la cascade historique', () => {
+  const seulSans = deuxValeursDim('residentiel', dim({ recommandation: SRV_SANS }))
+  assert.deepEqual(seulSans.sans, { nbPanneaux: 12, kwc: 8.52 })
+  assert.equal(seulSans.avec, null)
+  const seulAvec = deuxValeursDim('residentiel', dim({ recommandation_avec: SRV_AVEC }))
+  assert.equal(seulAvec.sans, null)
+  assert.deepEqual(seulAvec.avec, { nbPanneaux: 16, kwc: 11.36 })
+})
+
+test('F3 — hors résidentiel il n’y a PAS de seconde option : jamais un chiffre « avec » fabriqué', () => {
+  for (const marche of ['industriel', 'commercial', 'agricole']) {
+    const paire = deuxValeursDim(marche,
+      dim({ recommandation: SRV_SANS, recommandation_avec: SRV_AVEC }))
+    assert.deepEqual(paire, { sans: null, avec: null }, `marché ${marche}`)
   }
-  throw new Error('accolade fermante introuvable')
-}
-
-test('DevisGenerator : fusionnerVariantes est importé de solar.js', () => {
-  assert.match(DG, /fusionnerVariantes,?\s*\n/)
-  assert.match(DG, /\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/)
 })
 
-test('computeAutoSizing : calcule les DEUX optima (sans + avec), le SANS reste au niveau plat (contrat NbPanneauxTouched)', () => {
-  const needle = 'const computeAutoSizing = useCallback((hiverVal, eteVal) => {'
-  const start = DG.indexOf(needle)
-  assert.ok(start > -1, 'computeAutoSizing introuvable')
-  const { body } = extractBracedBlock(DG, start + needle.length - 1)
-  // Le premier balayage (SANS) est inchangé.
-  assert.match(body, /const opt = optimalKwcByPayback\(\{/)
-  // Le second balayage (AVEC) existe, avec avecBatterie: true — jamais utilisé
-  // avant L-2OPT.
-  assert.match(body, /const optAvec = optimalKwcByPayback\(\{/)
-  assert.match(body, /avecBatterie:\s*true,/)
-  // Le résultat plat reste le SANS (spread `sansPart`) — contrat gardé par
-  // DevisGeneratorNbPanneauxTouched.test.mjs (`sizing.nbPanneaux`).
-  assert.match(body, /result = \{ \.\.\.sansPart, avec: avecPart \}/)
-  // Jamais de chiffre inventé : sans optimum AVEC exploitable, repli sur le SANS.
-  assert.match(body, /avecPart = \(optAvec\.nbPanneaux > 0\) \? \{ besoinKwc, \.\.\.optAvec \} : sansPart/)
+test('aucune réponse du moteur : la paire est VIDE, jamais un défaut inventé (règle #4)', () => {
+  assert.deepEqual(deuxValeursDim('residentiel', null), { sans: null, avec: null })
+  assert.deepEqual(deuxValeursDim('residentiel', {}), { sans: null, avec: null })
+  assert.deepEqual(deuxValeursDim('residentiel', dim({})), { sans: null, avec: null })
 })
 
-test('resolveKwcAvec : respecte nbPanneauxTouched, priorise le serveur (recommandation_avec), replie sur le local puis kwc_sans', () => {
-  const needle = 'const resolveKwcAvec = () => {'
-  const start = DG.indexOf(needle)
-  assert.ok(start > -1, 'resolveKwcAvec introuvable')
-  const { body } = extractBracedBlock(DG, start + needle.length - 1)
-  // 1. touché → kwc_sans pour les deux branches (aucune divergence recomposée
-  //    par-dessus un choix déjà fait par l'utilisateur).
-  assert.match(body, /if \(nbPanneauxTouched\.current\) return kwp/)
-  // 2. le moteur horaire serveur (source de vérité) prime dès qu'il a répondu.
-  assert.match(body, /etudeHoraireDonnees\?\.dimensionnement\?\.recommandation_avec/)
-  // 3. repli local (même balayage payback que computeAutoSizing, objectif avec).
-  assert.match(body, /computeAutoSizing\(fHiver, fEte\)/)
-  assert.match(body, /sizing\?\.avec\?\.kwcOptimal/)
-  // 4. repli ultime : kwc_sans (jamais un chiffre inventé).
-  const lastReturn = body.lastIndexOf('return kwp')
-  assert.ok(lastReturn > -1)
+test('une recommandation à ZÉRO panneau n’est pas une recommandation', () => {
+  const paire = deuxValeursDim('residentiel',
+    dim({ recommandation: { panneaux: 0, kwc: 0 }, recommandation_avec: SRV_AVEC }))
+  assert.equal(paire.sans, null, 'zéro panneau ne doit jamais s’afficher comme une taille')
+  assert.deepEqual(paire.avec, { nbPanneaux: 16, kwc: 11.36 })
 })
 
-// U3COMPOSE (26/08/2026) — l'ancien corps de `handleAutoFill` a été extrait
-// TEL QUEL dans `composeLocalement()` : c'est lui qui compose le chemin
-// agricole/industriel/commercial ET le repli résidentiel quand le dry-run
-// serveur est indisponible. Les épingles L-2OPT ci-dessous le suivent donc là
-// où le comportement vit désormais — elles cassent toujours si ce
-// comportement disparaît.
-const COMPOSE_LOCALEMENT = 'const composeLocalement = () => {'
-const HANDLE_AUTOFILL = 'const handleAutoFill = async () => {'
-
-function corpsDe(needle, quoi) {
-  const start = DG.indexOf(needle)
-  assert.ok(start > -1, `${quoi} introuvable`)
-  return extractBracedBlock(DG, start + needle.length - 1).body
-}
-
-// Options passées au PREMIER appel `autoFillLines(produits, { … })` d'un corps
-// (la composition SANS) — bornées à cet appel, jamais à la fenêtre entière :
-// une option perdue ici casse le test même si `composeAvec` la porte encore.
-function premieresOptionsAutoFill(corps) {
-  const needle = 'autoFillLines(produits, {'
-  const i = corps.indexOf(needle)
-  assert.ok(i > -1, 'appel autoFillLines introuvable')
-  return extractBracedBlock(corps, i + needle.length - 1).body
-}
-
-test('composeLocalement : la PREMIÈRE composition (SANS) reste EXACTEMENT celle d\'avant L-2OPT', () => {
-  const options = premieresOptionsAutoFill(corpsDe(COMPOSE_LOCALEMENT, 'composeLocalement'))
-  // Contrat partagé avec DevisGeneratorOrdreLignes.test.mjs.
-  assert.match(options, /marques:\s*marquesActives,/)
-  assert.match(options, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
+test('QJR102 — la SOURCE est unique : le sélecteur ne lit QUE le moteur (aucun balayage local n’y entre)', () => {
+  // La branche locale supprimée par QJR102 se manifestait par une paire
+  // MIXTE : un côté serveur, l'autre local. Le sélecteur ne prend qu'un seul
+  // argument de données — il ne PEUT plus mélanger deux méthodes de calcul.
+  assert.equal(deuxValeursDim.length, 2,
+    'le sélecteur ne reçoit que le marché et la réponse du MOTEUR')
+  const paire = deuxValeursDim('residentiel', {
+    dimensionnement: { recommandation: SRV_SANS },
+    // Un balayage local présent dans la charge utile n'a aucune influence.
+    sizingInfo: { nbPanneaux: 99, kwcOptimal: 70 },
+  })
+  assert.equal(paire.avec, null, 'aucun repli local ne doit remplir la branche AVEC')
 })
 
-test('mono « Avec batterie » compose l\'optimum AVEC SEUL, sans fusion (repli local ET dry-run serveur)', () => {
-  // 1. Repli local (ex-corps de handleAutoFill) : inchangé.
-  const local = corpsDe(COMPOSE_LOCALEMENT, 'composeLocalement')
-  assert.match(local, /scenario === SCENARIO_LES_DEUX \|\| scenario === SCENARIO_AVEC/)
-  assert.match(local, /const kwpAvec = resolveKwcAvec\(\)/)
-  assert.match(local, /if \(scenario === SCENARIO_AVEC\) \{\s*\n\s*\/\/ mono avec : compose l'optimum AVEC seul, aucune fusion\.\s*\n\s*generated = composeAvec\(\)/)
-  // 2. Chemin dry-run serveur (U3COMPOSE) : même règle. Le serveur fusionne
-  //    DEUX champs dès qu'il reçoit `dimensionnement_avec` — un mono « Avec »
-  //    doit donc envoyer le kWc AVEC comme puissance UNIQUE, jamais
-  //    `dimensionnement_avec`.
-  const serveur = corpsDe(HANDLE_AUTOFILL, 'handleAutoFill')
-  assert.match(serveur, /const kwpAvec = resolveKwcAvec\(\)/)
-  assert.match(
-    serveur,
-    /if \(scenario === SCENARIO_AVEC\) \{[\s\S]{0,700}?body\.kwc = kwpAvec\s*\n\s*\} else \{\s*\n\s*body\.dimensionnement_avec = buildDimensionnementAvec\(kwpAvec\)/,
-    'le mono « Avec » doit composer sur kwpAvec seul (pas de dimensionnement_avec, qui déclencherait la fusion serveur)')
+test('la valeur signée porte un MOTIF d’absence, jamais un chiffre de remplacement', () => {
+  const rien = valeurMoteurDim(null)
+  assert.equal(estFait(rien), false)
+  assert.equal(rien.motif, RIEN_A_CHIFFRER)
+  assert.equal(estFait(valeurMoteurDim(SRV_SANS)), true)
 })
 
-test('« Les deux » fusionne (fusionnerVariantes) et déduplique les avertissements des DEUX compositions', () => {
-  const local = corpsDe(COMPOSE_LOCALEMENT, 'composeLocalement')
-  assert.match(local, /generated = fusionnerVariantes\(lignesSans, lignesAvec\)/)
-  assert.match(local, /generated\.onduleursIncomplets = dedupeParCle\(/)
-  assert.match(local, /generated\.marquesManquantes = dedupeParCle\(/)
-  // Chemin serveur : la fusion à deux champs est demandée par
-  // `dimensionnement_avec` (le serveur compose alors les deux variantes).
-  const serveur = corpsDe(HANDLE_AUTOFILL, 'handleAutoFill')
-  assert.match(serveur, /body\.dimensionnement_avec = buildDimensionnementAvec\(kwpAvec\)/)
+test('une recommandation AVEC à zéro panneau n’efface pas la branche SANS chiffrée', () => {
+  const paire = deuxValeursDim('residentiel',
+    dim({ recommandation: SRV_SANS, recommandation_avec: { panneaux: 0, kwc: 0 } }))
+  assert.deepEqual(paire.sans, { nbPanneaux: 12, kwc: 8.52 })
+  assert.equal(paire.avec, null)
 })
 
-test('handleAutoFill : industriel\\/commercial\\/agricole restent AVANT toute logique L-2OPT (zéro changement)', () => {
-  const corps = corpsDe(HANDLE_AUTOFILL, 'handleAutoFill')
-  const idxAgricole = corps.indexOf("if (modeInstallation === 'agricole')")
-  const idxL2opt = corps.indexOf("modeInstallation === 'residentiel'")
-  assert.ok(idxAgricole > -1 && idxL2opt > -1)
-  assert.ok(idxAgricole < idxL2opt, 'le branchement agricole doit précéder (et donc `return` avant) toute logique L-2OPT')
-  // Industriel/commercial : AUCUN dry-run serveur — ils tombent sur la
-  // composition locale, en sortie de fonction, après le `return` résidentiel.
-  const idxReplique = corps.lastIndexOf('composeLocalement()')
-  assert.ok(idxReplique > idxL2opt, 'industriel/commercial doivent finir sur composeLocalement()')
+test('un compte de panneaux servi en TEXTE est lu comme un nombre (le serveur sérialise parfois en chaîne)', () => {
+  const paire = deuxValeursDim('residentiel',
+    dim({ recommandation: { panneaux: '12', kwc: '8.52' } }))
+  assert.equal(paire.sans.nbPanneaux, '12', 'la valeur est reportée TELLE QUELLE, jamais reformatée')
+  assert.notEqual(paire.sans, null)
 })
 
-test('withKeys\\/emptyLine\\/structureLine portent toutes `variante` (défaut \'\' — commun, comportement historique)', () => {
-  assert.match(DG, /variante: r\.variante \?\? '',\s*\n\}\)\)/)
-  const emptyIdx = DG.indexOf('const emptyLine = () => ({')
-  assert.ok(emptyIdx > -1)
-  const { body: emptyBody } = extractBracedBlock(DG, DG.indexOf('({', emptyIdx) + 1)
-  assert.match(emptyBody, /variante: '',/)
+test('paireDimensionnement est PURE : deux appels sur les mêmes entrées donnent le même résultat', () => {
+  const a = paireDimensionnement(SRV_SANS, SRV_AVEC)
+  const b = paireDimensionnement(SRV_SANS, SRV_AVEC)
+  assert.deepEqual(a, b)
+  assert.notEqual(a, b, 'chaque appel rend un objet neuf — aucun état partagé')
 })
 
-test('persisterDevis : chaque ligne produit envoie `variante` au serveur', () => {
-  assert.match(DG, /variante: l\.variante \|\| '',/)
+// ── LE REDUCER : LE SCÉNARIO QUI COMMANDE LES DEUX OPTIMISEURS ──────────────
+
+test('résidentiel : « Les deux » est le défaut fondateur (24/08) — c’est lui qui déclenche L-2OPT', () => {
+  assert.equal(ETAT_INITIAL.scenario, SCENARIO_LES_DEUX)
+  assert.equal(ETAT_INITIAL.modeInstallation, 'residentiel')
 })
 
-test('DevisLineRow : badge de variante posé UNIQUEMENT quand `variante` est \'sans\'\\/\'avec\' (aucun bruit sur le cas commun)', () => {
-  assert.match(LINE_ROW, /l\.variante === 'sans'/)
-  assert.match(LINE_ROW, /l\.variante === 'avec'/)
-  assert.match(LINE_ROW, /Option sans batterie/)
-  assert.match(LINE_ROW, /Option avec batterie/)
-})
-
-test('tableau de dimensionnement : la ligne recommandation_avec est surlignée DISTINCTEMENT de la ligne recommandation (sans)', () => {
-  assert.match(DG, /const estRecommandeeAvec = etudeHoraireDonnees\?\.dimensionnement\s*\n\s*\?\.recommandation_avec\?\.panneaux === ligne\.panneaux/)
-})
-
-test('solar.js : fusionnerVariantes est exporté (pure, testable sous node --test)', () => {
-  assert.match(SOLAR, /export function fusionnerVariantes\(lignesSans, lignesAvec\)/)
-})
-
-test('solar.js : optionTotalsTTC\\/batteryKwhFromLines\\/computeROI filtrent `variante` — jamais de régression sur les lignes legacy', () => {
-  // F14 (26/08/2026) — le filtre par variante a été FACTORISÉ dans les deux
-  // prédicats `appartientAuPanierSans/Avec` (miroir exact de builder.py
-  // `_repartir_options`) : une ligne DÉCLARÉE tranche seule, une ligne SANS
-  // `variante` retombe sur les mots-clés — le comportement legacy, mot pour
-  // mot. L'épingle suit la factorisation ; elle casse toujours si l'un des
-  // deux étages disparaît.
-  // Portée = la fonction visée SEULE (de sa déclaration au prochain `export`
-  // de premier niveau) : une assertion ne peut pas être satisfaite par une
-  // autre fonction du fichier.
-  const bloc = (needle, quoi) => {
-    const i = SOLAR.indexOf(needle)
-    assert.ok(i > -1, `${quoi} introuvable`)
-    const fin = SOLAR.indexOf('\nexport ', i + needle.length)
-    return SOLAR.slice(i, fin > -1 ? fin : SOLAR.length)
+test('industriel / commercial retombent sur « Sans batterie » : le double optimum n’y est pas servable', () => {
+  for (const marche of ['industriel', 'commercial']) {
+    const etat = sizingReducer(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: marche })
+    assert.equal(etat.scenario, SCENARIO_SANS, `marché ${marche}`)
   }
-  const panierSans = bloc('export function appartientAuPanierSans(l) {', 'appartientAuPanierSans')
-  assert.match(panierSans, /if \(v === 'avec'\) return false/)
-  assert.match(panierSans, /if \(v === 'sans'\) return true/)
-  // Repli mot-clé pour une ligne SANS variante : comportement historique.
-  assert.match(panierSans, /return !isBattery\(l\?\.designation\) && !isHybridInverter\(l\?\.designation\)/)
-  const panierAvec = bloc('export function appartientAuPanierAvec(l) {', 'appartientAuPanierAvec')
-  assert.match(panierAvec, /if \(v === 'sans'\) return false/)
-  assert.match(panierAvec, /if \(v === 'avec'\) return true/)
-  assert.match(panierAvec, /return !isReseauInverter\(l\?\.designation\)/)
-  // Les DEUX consommateurs des paniers les utilisent RÉELLEMENT.
-  const totaux = bloc('export function optionTotalsTTC(lines, discountPct) {', 'optionTotalsTTC')
-  assert.match(totaux, /\.filter\(appartientAuPanierSans\)/)
-  assert.match(totaux, /\.filter\(appartientAuPanierAvec\)/)
-  const roi = bloc('export function computeROI({', 'computeROI')
-  assert.match(roi, /const linesSans = lines\.filter\(l => appartientAuPanierSans\(l\)\)/)
-  assert.match(roi, /const linesAvec = lines\.filter\(l => appartientAuPanierAvec\(l\)\)/)
-  // batteryKwhFromLines / batteryCapaciteInconnue : une ligne taguée 'sans' ne
-  // compte JAMAIS dans une capacité batterie.
-  assert.match(SOLAR, /if \(l\.variante === 'sans'\) return sum/)
-  assert.match(SOLAR, /isBattery\(l\.designation\) && l\.variante !== 'sans'/)
+})
+
+test('agricole ne TOUCHE PAS le scénario (ni batterie ni onduleur en pompage)', () => {
+  const etat = sizingReducer(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: 'agricole' })
+  assert.equal(etat.modeInstallation, 'agricole')
+  assert.equal(etat.scenario, SCENARIO_LES_DEUX, 'le scénario reste celui d’avant, non redéfini')
+})
+
+test('un scénario CHOISI par le commercial survit à un changement de marché', () => {
+  const etat = [
+    { type: 'SAISI', champ: 'scenario', valeur: SCENARIO_AVEC },
+    { type: 'MARCHE_CHANGE', mode: 'industriel' },
+  ].reduce(sizingReducer, ETAT_INITIAL)
+  assert.equal(etat.scenario, SCENARIO_AVEC, 'le défaut du marché ne doit pas jeter un choix explicite')
+  assert.equal(etat.touche.scenario, true)
+})
+
+test('la réouverture d’un brouillon « Les deux » ferme le drapeau scénario (l’enregistrement suivant ne l’écrase plus)', () => {
+  const etat = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'industriel', panneaux: 20, scenario: SCENARIO_LES_DEUX },
+  })
+  assert.equal(etat.scenario, SCENARIO_LES_DEUX)
+  assert.equal(etat.touche.scenario, true)
+  assert.equal(etat.nbPanneaux, '20')
+})
+
+test('« Appliquer cette taille » d’une ligne du tableau pose CETTE ligne et relance la composition', () => {
+  // Le tableau de dimensionnement affiche les deux recommandations (sans /
+  // avec) : choisir une ligne doit poser SA taille, fermer l'attente moteur et
+  // relancer la composition — même si le compte retombe sur le même nombre.
+  const etat = sizingReducer(ETAT_INITIAL, {
+    type: 'TAILLE_APPLIQUEE',
+    ligne: { panneaux: 16, kwc: 11.36, panel_watt: 710 },
+  })
+  assert.equal(etat.nbPanneaux, '16')
+  assert.equal(etat.kwcCible, '11.36')
+  assert.equal(etat.panelW, '710')
+  assert.equal(etat.touche.nbPanneaux, true, 'un choix explicite EST une saisie')
+  assert.equal(etat.attenteMoteur, false)
+  assert.equal(etat.compositionSeq, ETAT_INITIAL.compositionSeq + 1,
+    'la composition doit repartir même si le compte n’a pas bougé')
+})
+
+test('une ligne SANS panneaux ne s’applique pas (jamais une taille vide posée par un clic)', () => {
+  const etat = sizingReducer(ETAT_INITIAL, { type: 'TAILLE_APPLIQUEE', ligne: {} })
+  assert.equal(etat, ETAT_INITIAL)
+})
+
+// ── LES DEUX PANIERS : CE QUE `variante` CHANGE RÉELLEMENT ──────────────────
+// F14 (26/08/2026) — une ligne DÉCLARÉE tranche SEULE (miroir exact de
+// `builder.py _repartir_options`) ; une ligne SANS `variante` retombe sur les
+// mots-clés, mot pour mot comme avant L-2OPT.
+
+const PANNEAU = { designation: 'Panneau JA Solar 710W', quantite: '12',
+                  prix_unit_ttc: '1000', taux_tva: '20' }
+const BATTERIE = { designation: 'Batterie Deye 16 kWh', quantite: '1',
+                   prix_unit_ttc: '30000', taux_tva: '20' }
+const HYBRIDE = { designation: 'Onduleur hybride Deye SG05LP3', quantite: '1',
+                  prix_unit_ttc: '15000', taux_tva: '20' }
+const RESEAU = { designation: 'Onduleur réseau injection', quantite: '1',
+                 prix_unit_ttc: '9000', taux_tva: '20' }
+
+test('sans `variante`, les paniers se décident aux MOTS-CLÉS — comportement legacy intact', () => {
+  assert.equal(appartientAuPanierSans(PANNEAU), true)
+  assert.equal(appartientAuPanierSans(BATTERIE), false)
+  assert.equal(appartientAuPanierSans(HYBRIDE), false)
+  assert.equal(appartientAuPanierSans(RESEAU), true)
+  assert.equal(appartientAuPanierAvec(RESEAU), false)
+  assert.equal(appartientAuPanierAvec(BATTERIE), true)
+  assert.equal(appartientAuPanierAvec(HYBRIDE), true)
+})
+
+test('une ligne DÉCLARÉE tranche seule — la déclaration prime sur les mots-clés', () => {
+  // Le cas exact que F14 a corrigé : une batterie taguée 'sans' était encore
+  // retirée du panier « sans » par un second filtre mot-clé, alors que le PDF
+  // la facturait dans ce panier — écran et PDF divergeaient.
+  assert.equal(appartientAuPanierSans({ ...BATTERIE, variante: 'sans' }), true)
+  assert.equal(appartientAuPanierAvec({ ...BATTERIE, variante: 'sans' }), false)
+  assert.equal(appartientAuPanierAvec({ ...RESEAU, variante: 'avec' }), true)
+  assert.equal(appartientAuPanierSans({ ...RESEAU, variante: 'avec' }), false)
+})
+
+test('une ligne commune (`variante: \'\'`) compte dans les DEUX paniers', () => {
+  const commun = { ...PANNEAU, variante: '' }
+  assert.equal(appartientAuPanierSans(commun), true)
+  assert.equal(appartientAuPanierAvec(commun), true)
+})
+
+test('les totaux par option appliquent les paniers — deux compositions divergentes ne se mélangent pas', () => {
+  const lignes = [
+    { ...PANNEAU, quantite: '12', variante: 'sans' },
+    { ...PANNEAU, quantite: '16', variante: 'avec' },
+    { ...RESEAU, variante: 'sans' },
+    { ...HYBRIDE, variante: 'avec' },
+    { ...BATTERIE, variante: 'avec' },
+  ]
+  const t = optionTotalsTTC(lignes, 0)
+  assert.equal(t.totalSansBrut, 12 * 1000 + 9000)
+  assert.equal(t.totalAvecBrut, 16 * 1000 + 15000 + 30000)
+  assert.notEqual(t.totalSansBrut, t.totalAvecBrut,
+    'deux optimiseurs indépendants doivent donner deux totaux différents')
+})
+
+test('la remise globale s’applique aux DEUX options, chacune sur SON total', () => {
+  const lignes = [{ ...PANNEAU, quantite: '10', variante: '' }]
+  const t = optionTotalsTTC(lignes, 10)
+  assert.equal(t.totalSansBrut, 10000)
+  assert.equal(t.totalSans, 9000)
+  assert.equal(t.totalAvec, 9000)
+})
+
+test('une ligne batterie taguée « sans » ne compte JAMAIS dans une capacité batterie', () => {
+  assert.equal(batteryKwhFromLines([{ ...BATTERIE, variante: 'avec' }]), 16)
+  assert.equal(batteryKwhFromLines([{ ...BATTERIE, variante: 'sans' }]), 0,
+    'une quantité issue de la composition SANS n’a aucun sens en capacité')
+  assert.equal(batteryCapaciteInconnue([
+    { designation: 'Batterie sans kWh lisible', quantite: '1', variante: 'sans' },
+  ]), false, 'une ligne exclue ne doit pas non plus déclencher l’avertissement')
+})
+
+test('BAT5DEF — une batterie sans kWh lisible compte 0 et le DIT (jamais un défaut de 5 kWh)', () => {
+  const lignes = [{ designation: 'Batterie Pylontech', quantite: '2', variante: 'avec' }]
+  assert.equal(batteryKwhFromLines(lignes), 0)
+  assert.equal(batteryCapaciteInconnue(lignes), true)
+})
+
+test('le compte de panneaux est PROPRE à chaque option — sinon l’écran chiffre une économie avec le kWc de l’autre', () => {
+  const lignes = [
+    { ...PANNEAU, quantite: '12', variante: 'sans' },
+    { ...PANNEAU, quantite: '16', variante: 'avec' },
+    { ...PANNEAU, quantite: '2', variante: '' },
+  ]
+  assert.equal(comptePanneauxOption(lignes, 'sans'), 14, 'commun + sans')
+  assert.equal(comptePanneauxOption(lignes, 'avec'), 18, 'commun + avec')
 })

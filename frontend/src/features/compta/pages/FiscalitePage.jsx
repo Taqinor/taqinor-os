@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Download, FileText, Send, Bell, GitCompare } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, Label, EmptyState, toast } from '../../../ui'
+import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
+import { messageErreurBlob } from '../../../utils/pdfBlob'
 import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
@@ -136,6 +137,9 @@ const EXPORTS = [
     hint: 'Récapitulatif des honoraires versés à des tiers non-salariés sur la période.' },
   { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true,
     hint: 'Base de calcul de l’Impôt sur les Sociétés (IS) à partir du résultat fiscal de l’exercice.' },
+  // WIR180 — SIMPL-IS : télédéclaration DGI (XML) de l'IS d'un exercice.
+  { key: 'exportSimplIs', label: 'SIMPL-IS (XML DGI)', fn: comptaApi.etats.exportSimplIs, base: 'simpl-is', ext: 'xml', needsExercice: true,
+    hint: 'Télédéclaration DGI de l’Impôt sur les Sociétés au format SIMPL-IS (XML), prête à déposer.' },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -229,6 +233,12 @@ export default function FiscalitePage() {
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
   const [exercices, setExercices] = useState([])
+  // WIR181 — bordereau de versement RAS (bloc période) + attestation annuelle
+  // (sélecteur prestataire/année), tous deux dans l'onglet Retenues à la source.
+  const [rasDateDebut, setRasDateDebut] = useState('')
+  const [rasDateFin, setRasDateFin] = useState('')
+  const [rasTiers, setRasTiers] = useState('')
+  const [rasAnnee, setRasAnnee] = useState('')
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
@@ -237,6 +247,19 @@ export default function FiscalitePage() {
   useEffect(() => {
     comptaApi.exercices.list().then((res) => setExercices(unwrap(res))).catch(() => {})
   }, [])
+
+  // WIR181 — options du sélecteur prestataire, dérivées des RAS déjà chargées
+  // (aucun endpoint tiers dédié : `tiers_id`/`tiers_nom` sont déjà sur chaque ligne).
+  const rasTiersOptions = useMemo(() => {
+    if (tab !== 'retenuesSource') return []
+    const seen = new Map()
+    for (const r of list.rows || []) {
+      if (r.tiers_id != null && !seen.has(r.tiers_id)) {
+        seen.set(r.tiers_id, r.tiers_nom || `#${r.tiers_id}`)
+      }
+    }
+    return [...seen.entries()].map(([id, nom]) => ({ id, nom }))
+  }, [tab, list.rows])
 
   const download = async (fn, filename, okMsg) => {
     try {
@@ -247,6 +270,43 @@ export default function FiscalitePage() {
     } catch {
       toast.error('Téléchargement indisponible.')
     }
+  }
+
+  // WIR181 — variante RAS : ces 3 exports (bordereau/attestation/attestation
+  // annuelle) peuvent renvoyer un 400 (paramètres) ou un 503 (WeasyPrint
+  // indisponible) — `messageErreurBlob` relit le Blob d'erreur pour afficher
+  // le vrai `detail` serveur au lieu d'un message générique.
+  const downloadRas = async (fn, filename) => {
+    try {
+      const res = await fn()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, filename)
+    } catch (err) {
+      toast.error(await messageErreurBlob(err, { fallback: 'Téléchargement indisponible.' }))
+    }
+  }
+
+  const downloadBordereauRas = () => {
+    const societe = store.getState().parametres?.profile?.nom
+    return downloadRas(
+      () => comptaApi.retenuesSource.bordereau({
+        date_debut: rasDateDebut || undefined,
+        date_fin: rasDateFin || undefined,
+        export: 'csv',
+      }),
+      stampedFilename('bordereau-versement-ras', 'csv', societe),
+    )
+  }
+
+  const downloadAttestationAnnuelle = () => {
+    if (!rasTiers || !rasAnnee) {
+      toast.error('Sélectionnez un prestataire et une année.')
+      return undefined
+    }
+    return downloadRas(
+      () => comptaApi.retenuesSource.attestationAnnuelle({ tiers: rasTiers, annee: rasAnnee }),
+      `attestation_ras_annuelle_${rasTiers}_${rasAnnee}.pdf`,
+    )
   }
 
   const act = async (fn, okMsg) => {
@@ -271,6 +331,11 @@ export default function FiscalitePage() {
           onClick: () => download(
             () => comptaApi.declarationsTva.export(row.id),
             `declaration_tva_${row.reference || row.id}.csv`) },
+        // WIR180 — SIMPL-TVA : télédéclaration DGI (XML) de la déclaration.
+        { id: 'simpl-tva', label: 'SIMPL-TVA (XML)', icon: Send,
+          onClick: () => download(
+            () => comptaApi.declarationsTva.exportSimpl(row.id),
+            `simpl_tva_${row.reference || row.id}.xml`) },
         // VX231(d) — vérifier une déclaration TVA contre le Grand-livre sans
         // renoter deux chiffres à la main : ouvre le GL pré-filtré sur la MÊME
         // période (date_debut/date_fin de la déclaration).
@@ -287,10 +352,19 @@ export default function FiscalitePage() {
         { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
       ]
     }
-    if (tab === 'retenuesSource' && row.statut !== 'versee') {
+    if (tab === 'retenuesSource') {
       return [
-        { id: 'verser', label: 'Marquer versée', icon: Send,
-          onClick: () => act(() => comptaApi.retenuesSource.verser(row.id), 'Retenue marquée versée.') },
+        // WIR181 — « Marquer versée » n'apparaît que tant que la retenue ne
+        // l'est pas déjà (sans régression du comportement précédent) ;
+        // l'attestation par pièce reste disponible dans tous les cas.
+        ...(row.statut !== 'versee' ? [{
+          id: 'verser', label: 'Marquer versée', icon: Send,
+          onClick: () => act(() => comptaApi.retenuesSource.verser(row.id), 'Retenue marquée versée.'),
+        }] : []),
+        { id: 'attestation', label: 'Attestation (PDF)', icon: FileText,
+          onClick: () => downloadRas(
+            () => comptaApi.retenuesSource.attestation(row.id),
+            `attestation_ras_${row.reference || row.id}.pdf`) },
         { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
       ]
     }
@@ -366,6 +440,65 @@ export default function FiscalitePage() {
           emptyTitle="Aucun élément"
           emptyDescription="Rien à afficher pour cet onglet."
         />
+      )}
+
+      {/* WIR181 — bordereau de versement RAS (période) + attestation annuelle
+          (prestataire/année) : les 2 exports « globaux » de l'onglet RAS,
+          l'attestation par pièce restant une action de ligne ci-dessus. */}
+      {tab === 'retenuesSource' && (
+        <Card className="mt-4 p-4 sm:p-5">
+          <h3 className="mb-3 font-display text-base font-semibold">Bordereau & attestations RAS</h3>
+          <div className="flex flex-col gap-4">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Bordereau de versement — période
+              </h4>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="ras-debut">Du</Label>
+                  <Input id="ras-debut" type="date" value={rasDateDebut}
+                    onChange={(e) => setRasDateDebut(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="ras-fin">Au</Label>
+                  <Input id="ras-fin" type="date" value={rasDateFin}
+                    onChange={(e) => setRasDateFin(e.target.value)} />
+                </div>
+                <Button variant="outline" size="sm" onClick={downloadBordereauRas}>
+                  <Download className="size-4" /> Bordereau de versement (CSV)
+                </Button>
+              </div>
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Attestation annuelle — prestataire
+              </h4>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1 sm:max-w-xs">
+                  <Label htmlFor="ras-tiers">Prestataire</Label>
+                  <select
+                    id="ras-tiers"
+                    className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+                    value={rasTiers} onChange={(e) => setRasTiers(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {rasTiersOptions.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nom}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="ras-annee">Année</Label>
+                  <Input id="ras-annee" type="number" className="w-24" value={rasAnnee}
+                    onChange={(e) => setRasAnnee(e.target.value)} />
+                </div>
+                <Button variant="outline" size="sm" onClick={downloadAttestationAnnuelle}>
+                  <Download className="size-4" /> Attestation annuelle (PDF)
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Bloc exports fichiers / télédéclarations (blob download). */}

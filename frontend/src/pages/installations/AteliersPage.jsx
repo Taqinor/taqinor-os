@@ -11,6 +11,7 @@ import {
 import installationsApi from '../../api/installationsApi'
 import {
   Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input, Textarea,
+  Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DataTable, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -46,6 +47,20 @@ const DISPO_LABEL = {
   partiel: 'Partiel',
   manquant: 'Manquant',
 }
+
+// WIR248/XMFG11 — motifs de rebut (miroir EXACT de
+// `stock.MouvementStock.MotifRebut`). Le motif est OBLIGATOIRE : un rebut sans
+// raison n'est pas traçable.
+const MOTIFS_REBUT = [
+  { value: 'casse', label: 'Casse' },
+  { value: 'defaut', label: 'Défaut' },
+  { value: 'erreur', label: 'Erreur' },
+  { value: 'obsolete', label: 'Obsolète' },
+  { value: 'perime', label: 'Périmé' },
+  { value: 'vol', label: 'Vol' },
+  { value: 'autre', label: 'Autre' },
+]
+const MOTIF_LABEL = Object.fromEntries(MOTIFS_REBUT.map((m) => [m.value, m.label]))
 
 function statutPill(statut) {
   return (
@@ -223,9 +238,20 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
   const [dispo, setDispo] = useState([])
   const [controles, setControles] = useState([])
   const [historique, setHistorique] = useState([])
+  // WIR247 — gamme d'exécution (XMFG14) et lignes de composant (XMFG6) :
+  // construites côté serveur, jamais appelées côté client.
+  const [etapes, setEtapes] = useState([])
+  const [lignes, setLignes] = useState([])
+  // WIR247 — nomenclature indentée du kit (XMFG5). Chargée À LA DEMANDE : ce
+  // n'est pas une donnée de la fiche, c'est une consultation.
+  const [structure, setStructure] = useState(null)
+  const [structureBusy, setStructureBusy] = useState(false)
+  const [nouvelleLigne, setNouvelleLigne] = useState({ designation: '', quantite: '' })
   const [busy, setBusy] = useState(false)
   const [terminerOpen, setTerminerOpen] = useState(false)
   const [annulerOpen, setAnnulerOpen] = useState(false)
+  // WIR248 — déclaration d'un rebut de production sur CET ordre.
+  const [rebutOpen, setRebutOpen] = useState(false)
   const [note, setNote] = useState('')
 
   // Chargements read-only isolés dans une fonction pure (pas de setState
@@ -239,6 +265,12 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
       .catch(() => {})
     installationsApi.getHistoriqueAssemblage(ordre.id)
       .then((r) => setHistorique(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+    installationsApi.getEtapesAssemblage(ordre.id)
+      .then((r) => setEtapes(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+    installationsApi.getLignesAssemblage(ordre.id)
+      .then((r) => setLignes(r.data?.results ?? (Array.isArray(r.data) ? r.data : [])))
       .catch(() => {})
   }
   useEffect(() => { load() }, [ordre.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -271,7 +303,89 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
       .catch(() => toast.error('Contrôle non enregistré.'))
   }
 
-  const dispoLignes = dispo.length ? dispo : (ordre.lignes ?? [])
+  // ── WIR247 — gamme d'exécution (XMFG14) ──────────────────────────────────
+  const cocherEtape = (etape, fait, dureeReelle) => {
+    setBusy(true)
+    installationsApi
+      .cocherEtapeAssemblage(ordre.id, etape.etape_modele, {
+        fait,
+        duree_reelle_min: dureeReelle === '' || dureeReelle == null
+          ? null : dureeReelle,
+      })
+      .then((r) => setEtapes((prev) => prev.map(
+        (e) => (e.etape_modele === etape.etape_modele ? r.data : e))))
+      .catch(() => toast.error('Étape non enregistrée.'))
+      .finally(() => setBusy(false))
+  }
+
+  // ── WIR247 — lignes de composant (XMFG6), éditables tant que PLANIFIÉ ────
+  // Le serveur verrouille dès `en_cours` : l'écran fait DISPARAÎTRE l'édition
+  // au même moment plutôt que d'offrir un bouton qui échouera.
+  const lignesEditables = canWrite && ordre.statut === 'planifie'
+
+  const modifierLigne = (ligne, quantite) => {
+    setBusy(true)
+    installationsApi.updateLigneAssemblage(ligne.id, { quantite })
+      .then((r) => setLignes((prev) => prev.map(
+        (l) => (l.id === ligne.id ? r.data : l))))
+      .catch(() => toast.error('Ligne non modifiée.'))
+      .finally(() => setBusy(false))
+  }
+
+  const supprimerLigne = (ligne) => {
+    setBusy(true)
+    installationsApi.deleteLigneAssemblage(ligne.id)
+      .then(() => setLignes((prev) => prev.filter((l) => l.id !== ligne.id)))
+      .catch(() => toast.error('Ligne non supprimée.'))
+      .finally(() => setBusy(false))
+  }
+
+  const ajouterLigne = () => {
+    const designation = nouvelleLigne.designation.trim()
+    if (!designation) return
+    setBusy(true)
+    installationsApi.createLigneAssemblage({
+      ordre: ordre.id,
+      designation,
+      quantite: nouvelleLigne.quantite === '' ? 1 : nouvelleLigne.quantite,
+    })
+      .then((r) => {
+        setLignes((prev) => [...prev, r.data])
+        setNouvelleLigne({ designation: '', quantite: '' })
+      })
+      .catch(() => toast.error('Ligne non ajoutée.'))
+      .finally(() => setBusy(false))
+  }
+
+  // ── WIR247 — nomenclature indentée du kit (XMFG5) ────────────────────────
+  // Consultation à la demande. Aucun coût ni marge n'est rendu ici : le
+  // serveur en sert pour les rôles autorisés, l'atelier n'en affiche AUCUN.
+  const ouvrirNomenclature = () => {
+    if (structure) { setStructure(null); return }
+    if (!ordre.kit) return
+    setStructureBusy(true)
+    installationsApi.getKitStructure(ordre.kit)
+      .then((r) => setStructure(r.data ?? null))
+      .catch(() => toast.error('Nomenclature indisponible.'))
+      .finally(() => setStructureBusy(false))
+  }
+
+  // Les lignes PERSONNALISÉES (XMFG6) priment ; sinon la disponibilité
+  // calculée, sinon les lignes portées par l'ordre.
+  const dispoLignes = useMemo(
+    () => (dispo.length ? dispo : (ordre.lignes ?? [])), [dispo, ordre.lignes])
+
+  // WIR248 — produits rebutables : ceux DE CET ORDRE (jamais un catalogue
+  // complet — un rebut d'atelier porte sur un composant de l'ordre).
+  const produitsRebutables = useMemo(() => {
+    const vus = new Map()
+    for (const l of [...lignes, ...dispoLignes]) {
+      const pid = l.produit ?? l.produit_id
+      if (!pid || vus.has(pid)) continue
+      vus.set(pid, { id: pid, nom: l.produit_nom ?? l.designation ?? `Produit ${pid}` })
+    }
+    return [...vus.values()]
+  }, [lignes, dispoLignes])
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -313,6 +427,133 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
               </ul>
             )}
           </section>
+
+          {/* WIR247/XMFG6 — lignes de composant PERSONNALISABLES : éditables
+              tant que l'ordre est PLANIFIÉ, verrouillées dès qu'il démarre
+              (l'édition disparaît, elle n'échoue pas). */}
+          {lignesEditables && (
+            <section data-testid="atelier-lignes-editables">
+              <h3 className="mb-1.5 text-sm font-semibold">Lignes de composant</h3>
+              <ul className="flex flex-col gap-1.5 text-sm">
+                {lignes.map((l) => (
+                  <li key={l.id} className="flex items-center gap-2">
+                    <span className="flex-1 truncate">
+                      {l.produit_nom ?? l.designation ?? '—'}
+                    </span>
+                    <Input
+                      className="w-24"
+                      type="number"
+                      step="any"
+                      defaultValue={l.quantite ?? ''}
+                      disabled={busy}
+                      aria-label={`Quantité pour ${l.produit_nom ?? l.designation ?? l.id}`}
+                      onBlur={(e) => {
+                        if (String(e.target.value) !== String(l.quantite)) {
+                          modifierLigne(l, e.target.value)
+                        }
+                      }}
+                    />
+                    <Button type="button" size="sm" variant="outline"
+                            disabled={busy} onClick={() => supprimerLigne(l)}>
+                      Retirer
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Input
+                  className="min-w-[12rem] flex-1"
+                  placeholder="Composant à ajouter"
+                  value={nouvelleLigne.designation}
+                  onChange={(e) => setNouvelleLigne(
+                    (p) => ({ ...p, designation: e.target.value }))}
+                  aria-label="Composant à ajouter"
+                />
+                <Input
+                  className="w-24"
+                  type="number"
+                  step="any"
+                  placeholder="Qté"
+                  value={nouvelleLigne.quantite}
+                  onChange={(e) => setNouvelleLigne(
+                    (p) => ({ ...p, quantite: e.target.value }))}
+                  aria-label="Quantité de la ligne à ajouter"
+                />
+                <Button type="button" size="sm" variant="outline"
+                        disabled={busy || !nouvelleLigne.designation.trim()}
+                        onClick={ajouterLigne}>
+                  Ajouter la ligne
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {/* WIR247/XMFG14 — gamme d'exécution : étapes cochables + durée
+              réelle. Le serveur instancie la gamme depuis le kit ; liste vide
+              = kit sans gamme, la section ne s'affiche pas. */}
+          {etapes.length > 0 && (
+            <section data-testid="atelier-gamme">
+              <h3 className="mb-1.5 text-sm font-semibold">Gamme d’exécution</h3>
+              <ul className="flex flex-col gap-1.5 text-sm">
+                {etapes.map((e) => (
+                  <li key={e.etape_modele ?? e.id} className="flex flex-wrap items-center gap-2">
+                    <Checkbox
+                      checked={Boolean(e.fait)}
+                      disabled={busy || !canWrite}
+                      onCheckedChange={(v) => cocherEtape(e, Boolean(v), e.duree_reelle_min)}
+                      aria-label={`Étape faite : ${e.libelle ?? e.etape_modele}`}
+                    />
+                    <span className="flex-1 truncate">{e.libelle ?? '—'}</span>
+                    {e.duree_attendue_min != null && (
+                      <span className="text-xs text-muted-foreground">
+                        prévu {e.duree_attendue_min} min
+                      </span>
+                    )}
+                    <Input
+                      className="w-24"
+                      type="number"
+                      step="any"
+                      defaultValue={e.duree_reelle_min ?? ''}
+                      disabled={busy || !canWrite}
+                      placeholder="Réel (min)"
+                      aria-label={`Durée réelle de ${e.libelle ?? e.etape_modele}`}
+                      onBlur={(ev) => {
+                        if (String(ev.target.value) !== String(e.duree_reelle_min ?? '')) {
+                          cocherEtape(e, Boolean(e.fait), ev.target.value)
+                        }
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* WIR247/XMFG5 — nomenclature indentée du kit, à la demande.
+              AUCUN coût ni marge n'est affiché (atelier = quantités). */}
+          {ordre.kit && (
+            <section>
+              <Button type="button" size="sm" variant="outline"
+                      disabled={structureBusy} onClick={ouvrirNomenclature}>
+                {structureBusy ? <Spinner /> : <FileText />} Nomenclature
+              </Button>
+              {structure && (
+                <ul className="mt-2 flex flex-col gap-1 text-sm"
+                    data-testid="atelier-nomenclature">
+                  {(structure.composants ?? []).map((c, i) => (
+                    <li key={c.produit_id ?? c.composant_kit_id ?? i}
+                        style={{ paddingLeft: `${(c.niveau ?? 0) * 12}px` }}
+                        className="flex items-center justify-between gap-2">
+                      <span className="truncate">{c.designation ?? c.sku ?? '—'}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        ×{c.quantite ?? '—'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           {/* XMFG13 — gate qualité : checklist QC. */}
           {controles.length > 0 && (
@@ -414,6 +655,14 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
               <CheckCircle2 /> Clôturer
             </Button>
           )}
+          {/* WIR248/XMFG11 — rebut de production (motif obligatoire). */}
+          {canWrite && produitsRebutables.length > 0
+            && ordre.statut !== 'annule' && (
+            <Button type="button" size="sm" variant="outline"
+                    onClick={() => setRebutOpen(true)} disabled={busy}>
+              <XCircle /> Déclarer un rebut
+            </Button>
+          )}
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             Fermer
           </Button>
@@ -432,6 +681,14 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
             ordre={ordre}
             onClose={() => setAnnulerOpen(false)}
             onDone={(data) => { setAnnulerOpen(false); onChanged(data) }}
+          />
+        )}
+        {rebutOpen && (
+          <DeclarerRebutDialog
+            ordre={ordre}
+            produits={produitsRebutables}
+            onClose={() => setRebutOpen(false)}
+            onDeclared={() => load()}
           />
         )}
       </DialogContent>
@@ -546,9 +803,192 @@ function AnnulerAssemblageDialog({ ordre, onClose, onDone }) {
   )
 }
 
+// ── WIR248/XMFG11 — déclaration d'un rebut de production ────────────────────
+// Le MOTIF est obligatoire : sans lui rien n'est envoyé (le serveur le refuse
+// aussi — la garde est des DEUX côtés). Quantités uniquement, aucun coût.
+function DeclarerRebutDialog({ ordre, produits, onClose, onDeclared }) {
+  const [produit, setProduit] = useState(
+    produits.length === 1 ? String(produits[0].id) : '')
+  const [quantite, setQuantite] = useState('')
+  const [motif, setMotif] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const complet = Boolean(produit) && quantite !== '' && Boolean(motif)
+
+  const submit = () => {
+    if (!complet) {
+      setError('Produit, quantité et motif sont obligatoires.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    installationsApi.declarerRebutAssemblage(ordre.id, {
+      produit: Number(produit), quantite, motif, note,
+    })
+      .then((r) => {
+        toast.success('Rebut déclaré — stock mouvementé.')
+        onDeclared?.(r.data)
+        onClose()
+      })
+      .catch((err) => setError(
+        err?.response?.data?.detail
+        ?? err?.response?.data?.quantite
+        ?? err?.response?.data?.produit
+        ?? 'Rebut non enregistré.'))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Déclarer un rebut</DialogTitle>
+          <DialogDescription>
+            Sortie de stock typée REBUT rattachée à {ordre.reference}. Le motif
+            est obligatoire — un rebut sans raison n’est pas traçable.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reb-produit">Produit</Label>
+            <select id="reb-produit" className="form-control" value={produit}
+                    onChange={(e) => setProduit(e.target.value)}>
+              <option value="">— Choisir un produit —</option>
+              {produits.map((p) => (
+                <option key={p.id} value={p.id}>{p.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reb-quantite">Quantité rebutée</Label>
+            <Input id="reb-quantite" type="number" step="any" value={quantite}
+                   onChange={(e) => setQuantite(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reb-motif">Motif</Label>
+            <select id="reb-motif" className="form-control" value={motif}
+                    onChange={(e) => setMotif(e.target.value)}>
+              <option value="">— Choisir un motif —</option>
+              {MOTIFS_REBUT.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reb-note">Note (facultatif)</Label>
+            <Textarea id="reb-note" rows={2} value={note}
+                      onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Annuler
+          </Button>
+          <Button type="button" variant="destructive" onClick={submit}
+                  disabled={busy || !complet}>
+            {busy ? <Spinner /> : <XCircle />} Déclarer le rebut
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── WIR248/XMFG11 — mini-rapport rebuts agrégé, filtrable par période ───────
+function RapportRebutsPanel() {
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+  const [lignes, setLignes] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const charger = (dateDebut, dateFin) => {
+    setBusy(true)
+    setErreur(null)
+    const params = {}
+    if (dateDebut) params.date_debut = dateDebut
+    if (dateFin) params.date_fin = dateFin
+    installationsApi.getRapportRebuts(params)
+      .then((r) => setLignes(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setErreur('Rapport indisponible.'))
+      .finally(() => setBusy(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { charger('', '') }, [])
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="atelier-rapport-rebuts">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reb-debut">Du</Label>
+          <Input id="reb-debut" type="date" value={debut}
+                 onChange={(e) => setDebut(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reb-fin">Au</Label>
+          <Input id="reb-fin" type="date" value={fin}
+                 onChange={(e) => setFin(e.target.value)} />
+        </div>
+        <Button type="button" size="sm" variant="outline" disabled={busy}
+                onClick={() => charger(debut, fin)}>
+          {busy ? <Spinner /> : <RefreshCw />} Filtrer
+        </Button>
+      </div>
+
+      {erreur && <p className="text-sm text-destructive" role="alert">{erreur}</p>}
+
+      {!erreur && lignes.length === 0 ? (
+        <EmptyState
+          title="Aucun rebut sur la période"
+          description="Les rebuts déclarés depuis un ordre apparaissent ici."
+          icon={FileText}
+          className="my-4"
+        />
+      ) : (
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {lignes.map((l) => (
+            <li key={l.produit_id} className="flex flex-wrap items-center gap-2">
+              <span className="flex-1 truncate">{l.produit_nom ?? '—'}</span>
+              <span className="tabular-nums font-medium">{l.quantite_totale}</span>
+              <span className="text-xs text-muted-foreground">
+                {Object.entries(l.motifs ?? {})
+                  .map(([m, q]) => `${MOTIF_LABEL[m] ?? m} : ${q}`)
+                  .join(' · ')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── Détail d'un ordre de démontage ──────────────────────────────────────────
 function DemontageDetail({ ordre, canWrite, onClose, onChanged }) {
   const [busy, setBusy] = useState(false)
+  // WIR247/XMFG12 — la quantité RÉCUPÉRÉE se saisit ligne à ligne AVANT la
+  // clôture (c'est elle qui est restockée) : l'écran l'affichait en lecture
+  // seule et `updateLigneDemontage` n'avait aucun appelant.
+  const [lignes, setLignes] = useState(ordre.lignes ?? [])
+  const [prevOrdre, setPrevOrdre] = useState(ordre)
+  if (prevOrdre !== ordre) {
+    setPrevOrdre(ordre)
+    setLignes(ordre.lignes ?? [])
+  }
+  const lignesEditables = canWrite && ordre.statut === 'planifie'
+
+  const modifierRecuperee = (ligne, valeur) => {
+    setBusy(true)
+    installationsApi.updateLigneDemontage(ligne.id, { quantite_recuperee: valeur })
+      .then((r) => setLignes((prev) => prev.map(
+        (l) => (l.id === ligne.id ? r.data : l))))
+      .catch(() => toast.error('Quantité non enregistrée.'))
+      .finally(() => setBusy(false))
+  }
 
   const terminer = () => {
     setBusy(true)
@@ -572,16 +1012,35 @@ function DemontageDetail({ ordre, canWrite, onClose, onChanged }) {
 
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Composants récupérés</h3>
-          {(ordre.lignes ?? []).length === 0 ? (
+          {lignes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune ligne.</p>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm">
-              {ordre.lignes.map((l) => (
+            <ul className="flex flex-col gap-1.5 text-sm">
+              {lignes.map((l) => (
                 <li key={l.id} className="flex items-center justify-between gap-2">
-                  <span>{l.produit_nom ?? l.designation ?? '—'}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {l.quantite_recuperee ?? l.quantite_attendue ?? '—'} récupéré(s)
+                  <span className="flex-1 truncate">{l.produit_nom ?? l.designation ?? '—'}</span>
+                  <span className="text-xs text-muted-foreground">
+                    attendu {l.quantite_attendue ?? '—'}
                   </span>
+                  {lignesEditables ? (
+                    <Input
+                      className="w-24"
+                      type="number"
+                      step="any"
+                      defaultValue={l.quantite_recuperee ?? ''}
+                      disabled={busy}
+                      aria-label={`Quantité récupérée pour ${l.produit_nom ?? l.designation ?? l.id}`}
+                      onBlur={(e) => {
+                        if (String(e.target.value) !== String(l.quantite_recuperee ?? '')) {
+                          modifierRecuperee(l, e.target.value)
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span className="tabular-nums text-muted-foreground">
+                      {l.quantite_recuperee ?? l.quantite_attendue ?? '—'} récupéré(s)
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -701,8 +1160,11 @@ export default function AteliersPage() {
           options={[
             { value: 'assemblage', label: 'Assemblage' },
             { value: 'demontage', label: 'Démontage' },
+            // WIR248/XMFG11 — mini-rapport des rebuts déclarés.
+            { value: 'rebuts', label: 'Rebuts' },
           ]}
         />
+        {mode !== 'rebuts' && (
         <Select value={statutFilter || '__all__'}
                 onValueChange={(v) => setStatutFilter(v === '__all__' ? '' : v)}>
           <SelectTrigger className="w-auto min-w-[10rem]" aria-label="Filtrer par statut">
@@ -717,9 +1179,12 @@ export default function AteliersPage() {
               ))}
           </SelectContent>
         </Select>
+        )}
       </div>
 
-      {error ? (
+      {mode === 'rebuts' ? (
+        <RapportRebutsPanel />
+      ) : error ? (
         <EmptyState
           title="Erreur de chargement"
           description={error}

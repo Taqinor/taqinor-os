@@ -5,7 +5,7 @@
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
 import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
-import { type SerializeMeta, type DevisPayload } from './prefill';
+import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -51,6 +51,22 @@ export interface InitOptions {
   // navigateur ne parle qu'à la page hôte, la page hôte parle à l'API ». Absent/null
   // → fenêtre de production STRICTEMENT INCHANGÉE (comportement historique, golden).
   bankable?: BankableProduction | null;
+  // L-MAP (fondateur 26/08/2026) — contour ORIGINAL du client, `[lat, lng]`
+  // OU `{lat, lng}` × n (les DEUX formes réelles de `Lead.roof_outline` — la
+  // revue adversariale du 26/08 a prouvé qu'ignorer la forme objet fait
+  // échouer l'affichage EN SILENCE pour ces leads), pour un calque
+  // GÉO-RÉFÉRENCÉ passif et NON ÉDITABLE sur la carte (voir
+  // `referenceContourRing` dans `prefill.ts`, MÊME bornage lat/lng que
+  // `normaliserContour` côté ERP) — distinct de `hydrate.lead.roof_outline`/
+  // `hydrate.devis.geometrie.roof_outline`, qui SÈMENT la zone active
+  // éditable et peuvent diverger du dessin d'origine après une édition.
+  // L'appelant (ToitureDesign.jsx) ne transmet cette clé QUE si son propre
+  // `contourExploitable` (MÊME predicat) l'accepte déjà — jamais un contour
+  // que la bascule/légende hôte refuse. Le tunnel public (`captureBoot.ts`,
+  // jamais cette option) et la preview (`preview/toiture-3d-pro-11.astro`)
+  // ne la passent jamais : absente → calque vide, boot octet pour octet
+  // inchangé.
+  referenceContour?: RawContourPoint[] | null;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -73,14 +89,30 @@ export interface RoofToolApi {
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
+  /** L-MAP — bascule d'affichage du calque de référence géo-référencé
+   *  (`opts.referenceContour`). Sans effet si aucun contour n'a été fourni
+   *  au boot (le calque reste vide dans les deux cas). */
+  setReferenceContourVisible: (visible: boolean) => void;
+  /** AP-F2 (fondateur 26/08/2026) — reseme la zone active DEPUIS le contour
+   *  ORIGINAL du client (`opts.referenceContour`, MÊME source que le calque
+   *  de référence) et relance l'optimiseur, pour que le commercial puisse
+   *  annuler ses retouches et repartir du tracé client. Renvoie `false` sans
+   *  RIEN changer si aucun contour exploitable n'a été fourni au boot
+   *  (`referenceContourRing` renvoie `null`) — jamais un contour deviné. */
+  recommencerDepuisTraceClient: () => boolean;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET
  *  /api/django/crm/leads/<id>/). Tous les champs optionnels : un champ absent
- *  ne sème rien. `roof_point` = pin {lat,lng}, `roof_outline` = [[lat,lng],…]. */
+ *  ne sème rien. `roof_point` = pin {lat,lng}, `roof_outline` = les points du
+ *  contour, dans une des DEUX formes RÉELLES de `Lead.roof_outline` :
+ *  `[lat, lng]` (le webhook) ou `{lat, lng}` (import/saisie manuelle) — AP-F1
+ *  (fondateur 26/08/2026) : élargi de `Array<[number, number]>` pour que
+ *  `hydrateFromLead` accepte exactement ce que `referenceContourRing` accepte
+ *  déjà (UN SEUL validateur de contour, voir prefill.ts). */
 export interface LeadPayload {
   roof_point?: { lat: number; lng: number } | null;
-  roof_outline?: Array<[number, number]> | null;
+  roof_outline?: Array<RawContourPoint> | null;
   bill_kwh?: number | null;
   fullName?: string;
   phone?: string;

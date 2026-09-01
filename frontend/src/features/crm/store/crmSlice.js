@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, createAction } from '@reduxjs/toolkit'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
@@ -63,17 +63,34 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
 // `meta.aborted === true`) + dé-duplication en vol PAR JEU DE PARAMÈTRES (deux
 // montages simultanés avec les MÊMES filtres partagent la même pagination ;
 // des filtres différents restent des requêtes distinctes).
-export const fetchLeads = createCancellableThunk('crm/fetchLeads', (params, { signal }) =>
+// PERF-CRM (2026-09-01, mesuré à 930 leads en prod) — flux PROGRESSIF :
+// chaque page dispatche `leadsChunkReceived` dès son arrivée, la PREMIÈRE
+// page s'affiche donc tout de suite (« à la Odoo ») au lieu d'attendre la
+// totalité. `page_size=200` (le plafond serveur StandardPagination) ramène
+// 19 requêtes de 50 à 5 requêtes de 200, et `concurrency: 3` cesse d'assommer
+// les 2 vCPU de prod avec ~19 sérialisations simultanées (l'ancien réglage
+// `concurrency: 20` datait d'un pipeline à ~100 leads).
+export const leadsChunkReceived = createAction('crm/leadsChunkReceived')
+
+export const fetchLeads = createCancellableThunk('crm/fetchLeads', (params, thunkAPI) =>
   dedupeInFlight(`crm/fetchLeads:${JSON.stringify(params ?? {})}`, () =>
     // Le kanban doit voir TOUS les leads : on suit la pagination DRF
-    // (PAGE_SIZE 100) jusqu'au bout au lieu de s'arrêter à la première page.
-    // VX54 — était un `while` SÉRIEL (un aller-retour réseau par page, gel de
-    // plusieurs secondes à 250-500 ms de RTT) ; désormais parallèle borné.
+    // jusqu'au bout au lieu de s'arrêter à la première page (VX54).
     // VX55 — `signal` transmis à chaque page : `thunk.abort()` annule les
     // requêtes en vol (démontage LeadsPage / changement de filtre serveur).
     fetchAllPages(
-      (page) => crmApi.getLeads({ ...(params ?? {}), page }, { signal }).then((r) => r.data),
-      { concurrency: 20 },
+      (page) => crmApi.getLeads(
+        { ...(params ?? {}), page, page_size: 200 },
+        { signal: thunkAPI.signal },
+      ).then((r) => r.data),
+      {
+        concurrency: 3,
+        onPage: (results, { first }) => thunkAPI.dispatch(
+          leadsChunkReceived({
+            requestId: thunkAPI.requestId, results, first,
+          }),
+        ),
+      },
     ),
   ),
 )
@@ -204,6 +221,24 @@ const crmSlice = createSlice({
         state.leadsLoading = true
         state.error = null
         state.fetchLeadsRequestId = action.meta.requestId
+      })
+      // PERF-CRM — une page arrive (flux progressif) : la PREMIÈRE remplace
+      // et lève le squelette, les suivantes s'ajoutent (dédup par id). Même
+      // garde anti-obsolescence LB7 que le fulfilled ; le fulfilled final
+      // repose ensuite le tableau COMPLET dans l'ordre des pages.
+      .addCase(leadsChunkReceived, (state, action) => {
+        const { requestId, results, first } = action.payload ?? {}
+        if (requestId !== state.fetchLeadsRequestId) return
+        if (!Array.isArray(results)) return
+        if (first) {
+          state.leadsLoading = false
+          state.leads = results
+          return
+        }
+        const dejaLa = new Set(state.leads.map((l) => l.id))
+        for (const lead of results) {
+          if (!dejaLa.has(lead.id)) state.leads.push(lead)
+        }
       })
       .addCase(fetchLeads.fulfilled, (state, action) => {
         state.leadsLoading = false

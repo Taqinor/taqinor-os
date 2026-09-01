@@ -1362,6 +1362,18 @@ class DocQaRagTests(GedBase):
         self.assertFalse(resp.data['enabled'])
         self.assertEqual(resp.data['results'], [])
 
+    def test_docqa_lecture_seule_role_autorise(self):
+        """Régression WIR249/Fable : un rôle LECTURE SEULE (non-responsable)
+        qui peut déjà `recherche`/`semantique` doit AUSSI pouvoir interroger
+        `docqa` (200, pas 403) — c'est une action de lecture (IsAnyRole), le
+        sélecteur applique déjà l'ACL coffre-fort par utilisateur."""
+        viewer = make_user(self.co_a, 'ged-docqa-viewer-a', role='normal')
+        api = auth(viewer)
+        resp = api.get('/api/django/ged/documents/docqa/?q=onduleur')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['enabled'])
+        self.assertEqual(resp.data['results'], [])
+
     # — Avec un provider simulé (clé présente) —
     def _fake_embed(self, text):
         # Vecteur 1024 orienté par la présence d'un mot-clé (déterministe).

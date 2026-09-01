@@ -217,8 +217,20 @@ def _augment(data: dict) -> dict:
     #     et il n'existe plus de proxy pour la fabriquer.
     # Reste le refus historique : un devis qui PORTE des factures réelles mais
     # dont la synthèse reste incalculable est malformé → hors périmètre.
-    masquer_synthese = synth is None and (
-        ancrage_reel_absent(data) or not data.get("factures_reelles"))
+    # QJR209 (contre-visite du 30/08/2026) — TROISIÈME chemin d'omission, celui
+    # que le paquet résidentiel ne lisait pas : ``masquer_economies``.
+    # ``builder`` le lève sur un dossier MOYENNE TENSION dépourvu d'économies
+    # d'étude (les seules disponibles sont alors calculées au barème BASSE
+    # TENSION). Les renderers industriel, commercial et legacy le lisent tous ;
+    # le résidentiel ne connaissait que ``masquer_synthese``. Inerte sur un
+    # devis né résidentiel — mais VIVANT dès qu'un ``tension_raccordement='mt'``
+    # reste collé dans ``etude_params`` après un changement de marché
+    # (l'endpoint ``etude-params`` FUSIONNE au lieu de remplacer) : le document
+    # restait rendu par ce paquet et imprimait des économies BT sur un dossier
+    # MT. Un seul drapeau gouverne désormais la couche économique résidentielle.
+    masquer_synthese = bool(data.get("masquer_economies")) or (
+        synth is None and (
+            ancrage_reel_absent(data) or not data.get("factures_reelles")))
     if synth is None and not masquer_synthese:
         raise Unsupported("no bill baseline")
 
@@ -253,7 +265,12 @@ def _augment(data: dict) -> dict:
     d.update({
         # Z2 — ``synth`` peut être None (aucun ancrage réel) : la couche
         # économique est alors omise EN BLOC, pas remplacée par des zéros.
-        **(synth or {}),
+        # QJR209 — le bloc s'omet D'UN SEUL TENANT quelle que soit la raison :
+        # sur un dossier MT, ``synth`` est calculable (le devis porte bien ses
+        # 12 factures) mais il descend du barème BT — ses clés ne sont donc PAS
+        # publiées non plus. Chemin historique inchangé au bit près : quand
+        # ``masquer_synthese`` venait de Z2/M1, ``synth`` valait déjà None.
+        **({} if masquer_synthese else (synth or {})),
         # Z2 — drapeau UNIQUE lu par les trois gabarits (cover/options) et
         # par charts.build_all : la couche économique est rendue, ou omise.
         "masquer_synthese": masquer_synthese,

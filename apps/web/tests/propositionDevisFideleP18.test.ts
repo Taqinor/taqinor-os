@@ -184,9 +184,22 @@ describe('P18 — la page gate la phrase de garantie ET les badges', () => {
     expect(CODE).toContain("...(equipPresence.onduleur ? ['onduleur' as const] : [])");
   });
 
+  // (26/08/2026) CE TEST A ÉTÉ INVERSÉ PAR ERREUR, PUIS RÉTABLI. Une lane avait
+  // retiré la ligne de pose en croyant sa durée « non arrêtée par le
+  // fondateur » : c'était faux. L'en-tête de `lib/warranty.ts` la tranche
+  // explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 : POSE /
+  // main-d'œuvre Taqinor : 2 ans ») et `fiches.ts` la publie déjà. Le test
+  // reprend donc son rôle d'origine : épingler la PRÉSENCE de l'engagement.
   it('la garantie de POSE Taqinor reste inconditionnelle (c’est notre engagement)', () => {
     expect(CODE).toContain('INSTALL_WARRANTY_YEARS');
     expect(CODE).toContain('de pose Taqinor');
+  });
+
+  it('la durée de pose vient de la SOURCE UNIQUE, jamais d’un littéral', async () => {
+    const warranty = await import('../src/lib/warranty');
+    expect(warranty.INSTALL_WARRANTY_YEARS).toBe(2);
+    // La page n'écrit nulle part « 2 ans » de pose en dur : elle dérive.
+    expect(CODE).not.toContain('2 ans de pose');
   });
 });
 
@@ -384,8 +397,16 @@ describe('P18 — la page n’a aucun modèle d’économies à elle', () => {
   it('la donut résidentielle n’existe que sur une couverture servie', () => {
     expect(CODE).toContain("const showCouvertureDonut = installMode === 'residentiel' && !!couverture");
     // L'anneau ne fait que DESSINER : une longueur d'arc, pas un pourcentage.
-    expect(CODE).toContain('const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0');
+    // OPTIONS CHARGEABLES (29/08/2026) — cette longueur d'arc a QUITTÉ la page
+    // pour `lib/tailleDetail.ts` (`dasharrayDonut`), sans changer de formule :
+    // il en fallait UNE SEULE dès lors que l'îlot doit redessiner l'anneau
+    // quand le client charge une autre taille. Ce que ce test protège est
+    // intact — la page DESSINE un pourcentage SERVI, elle ne le calcule pas.
+    expect(CODE).toContain("import { dasharrayDonut } from '../../lib/tailleDetail'");
+    expect(CODE).toContain('const donutDasharray = dasharrayDonut(couverture ? couverture.pct : null, DONUT_R)');
     expect(CODE).toContain('stroke-dasharray');
+    // Et la page ne réintroduit AUCUNE arithmétique de pourcentage à elle.
+    expect(CODE).not.toMatch(/couverture\.pct\s*\)\s*\/\s*100/);
   });
 
   it('aucun barème / tarif kWh / taux d’autoconsommation n’est codé dans la page', () => {

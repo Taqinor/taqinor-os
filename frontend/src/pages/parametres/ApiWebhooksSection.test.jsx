@@ -24,7 +24,11 @@ describe('ApiWebhooksSection — onglet Nouveautés (WIR158)', () => {
 
   it('affiche les dernières entrées du changelog public', async () => {
     render(<ApiWebhooksSection />)
-    expect(await screen.findByText('Nouveau tableau de bord')).toBeInTheDocument()
+    // `findBy*` attend 1 s par défaut : l'écran enchaîne 5 chargements mockés
+    // avant de rendre l'onglet Nouveautés et dépasse ce délai dès que la suite
+    // tourne en parallèle (rouge reproductible sur `vitest run src/pages/parametres`).
+    expect(await screen.findByText('Nouveau tableau de bord', {}, { timeout: 5000 }))
+      .toBeInTheDocument()
     expect(screen.getByText('Correction export')).toBeInTheDocument()
     expect(screen.getByText('Nouveauté')).toBeInTheDocument()
     expect(screen.getByText('Correctif')).toBeInTheDocument()

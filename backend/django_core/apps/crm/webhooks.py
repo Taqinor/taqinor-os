@@ -429,6 +429,21 @@ def _extract_web_questionnaire(data):
     # ── QX51 — Mode COMMERCIAL (catégorie + réponses par catégorie) ──
     # Clés snake_case alignées sur COMMERCIAL_CATEGORY_QUESTIONS (générateur) et
     # etude_params. Bornées, choix fermés ; byte-identique sans ces champs.
+    #
+    # QJR107 (30/08/2026) — SUPPRESSION REFUSÉE, PREMISSE FALSIFIÉE. La tâche
+    # QJR107 demandait de retirer ce bloc et le bloc INDUSTRIEL v2 ci-dessous
+    # (~90 lignes) au motif que « le tunnel ne les envoie plus depuis le
+    # 18/08 ». Le grep d'appelants exigé par la tâche PROUVE le contraire :
+    # `apps/web/src/lib/lead.ts` valide et transmet `categorieCommerciale`,
+    # `chambresFroides`, `surfaceVenteM2`, `cuissonNocturne`,
+    # `saisonnaliteRecolte`, `cosPhiConnu`, `dieselDhMois`… ;
+    # `apps/web/src/lib/commercialCategories.ts` fait le mappage snake→camel ;
+    # `apps/web/src/lib/tunnel/champs.ts` + `tunnel/i18n.ts` et les trois pages
+    # `devis/mon-toit.astro` (fr/en/ar) posent les questions. Aucun commentaire
+    # de CE fichier n'affirme d'ailleurs que le tunnel aurait cessé d'envoyer
+    # ces clés. Supprimer ce bloc ferait donc TOMBER SILENCIEUSEMENT des
+    # réponses client réelles dans le blob `web_questionnaire` — le contraire
+    # d'un nettoyage. NE PAS SUPPRIMER sans une preuve côté `apps/web`.
     _choice('categorieCommerciale', 'categorie_commerciale',
             ('hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole',
              'hammam', 'boulangerie', 'froid', 'autre'))
@@ -674,6 +689,24 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
     return body
 
 
+# ── QJR230 — CETTE FONCTION EST SOUS PARITÉ MACHINE ─────────────────────────
+#
+# `_map_payload_to_fields` (et `_extract_web_questionnaire`, qu'elle appelle)
+# est la moitié LECTURE d'un contrat dont la moitié ÉMISSION vit dans un autre
+# dépôt logique, un autre langage et une autre lane : le registre du tunnel
+# `apps/web/src/lib/tunnel/champs.ts` (69 descripteurs, `CHAMPS_PAR_CLE`).
+# Aucune source partagée n'appariait les deux — une clé pouvait survivre à
+# toute la chaîne web et se PERDRE SANS TRACE ici, sans qu'aucun test rougisse.
+#
+# Le porteur partagé est désormais `apps/crm/contract_samples/
+# tunnel_webhook_keys.json` (QJR229) : il donne, pour chacune des 69 clés, soit
+# le champ `crm.Lead` qui la reçoit, soit un REFUS ÉCRIT avec sa raison.
+# `scripts/check_lead_webhook_parite.py` (QJR230) lit CETTE fonction en AST et
+# rougit en nommant la clé dès que la parité rompt.
+#
+# CONSÉQUENCE PRATIQUE : ajouter/retirer ici la lecture d'une clé du registre
+# se déclare DANS LE CONTRAT, dans le même commit. Une clé délibérément
+# ignorée s'y écrit avec sa raison — jamais par omission.
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -760,6 +793,66 @@ def _map_payload_to_fields(data: dict) -> dict:
         data.get('gpsLng', data.get('gps_lng')), lo=-180, hi=180)
     if gps_lng is not None:
         fields['gps_lng'] = gps_lng
+
+    # ── QJR246 — Champs enrichment du diagnostic enrichi (preview privé) ──
+    # `apps/web/src/lib/enrichment.ts` (cleanEnrichment) normalise 4 champs
+    # FACULTATIFS collectés par `DiagnosticFormEnriched.astro` (type
+    # d'alimentation, surface de toiture, orientation, kWc estimé) et, dès
+    # qu'au moins un est rempli, `preview-lead.ts` les pose dans un
+    # sous-objet `enrichment` du lead transmis (`record.enrichment`) — MÊME
+    # convention que `band`/`utm` ci-dessus (jamais top-level). Constaté à la
+    # lecture (31/08/2026) : c'est aujourd'hui la SEULE émission existante —
+    # elle vit sur les pages `preview/*.astro`, pas encore sur le formulaire
+    # public — la moitié qui promeut ces champs au formulaire live est
+    # QJW16, hors périmètre de ce mapping récepteur.
+    #
+    # Vocabulaire du site DISTINCT de celui du CRM (mono/tri ≠ monophase/
+    # triphase ; sud-est ≠ sud_est) : apparié explicitement ci-dessous,
+    # jamais un passthrough aveugle d'une valeur non reconnue vers une
+    # colonne à choix. Les 4 clés RÉUTILISENT chacune une colonne Lead
+    # existante (aucune n'a besoin de web_questionnaire) ; une colonne déjà
+    # posée par une autre source n'est jamais écrasée (mêmes gardes
+    # `not in fields` que bill_kwh/facture_hiver ci-dessus).
+    enrichment = data.get('enrichment')
+    if not isinstance(enrichment, dict):
+        enrichment = {}
+    if enrichment:
+        _SUPPLY_TO_RACCORDEMENT = {
+            'mono': Lead.Raccordement.MONOPHASE,
+            'tri': Lead.Raccordement.TRIPHASE,
+            'inconnu': Lead.Raccordement.INCONNU,
+        }
+        supply = _clean_choice(
+            enrichment.get('supplyType'), tuple(_SUPPLY_TO_RACCORDEMENT))
+        if supply is not None and 'raccordement' not in fields:
+            fields['raccordement'] = _SUPPLY_TO_RACCORDEMENT[supply]
+
+        roof_area = _clean_decimal(
+            enrichment.get('roofAreaM2'), lo=0, hi=100000)
+        if roof_area is not None and 'surface_toiture_m2' not in fields:
+            fields['surface_toiture_m2'] = roof_area
+
+        # 'nord' et 'inconnu' (site) n'ont pas de bucket dédié côté CRM —
+        # `Lead.Orientation` ne connaît que Sud/Sud-Est/Sud-Ouest/Est/Ouest/
+        # Autre. Rapprochés d'AUTRE, MÊME convention que `distributeur`
+        # 'inconnu' → `Distributeur.AUTRE` plus haut (jamais jeté).
+        _ORIENTATION_ALIASES = {
+            'sud': Lead.Orientation.SUD,
+            'sud-est': Lead.Orientation.SUD_EST,
+            'sud-ouest': Lead.Orientation.SUD_OUEST,
+            'est': Lead.Orientation.EST,
+            'ouest': Lead.Orientation.OUEST,
+            'nord': Lead.Orientation.AUTRE,
+            'inconnu': Lead.Orientation.AUTRE,
+        }
+        orient = _clean_choice(
+            enrichment.get('orientation'), tuple(_ORIENTATION_ALIASES))
+        if orient is not None and 'orientation' not in fields:
+            fields['orientation'] = _ORIENTATION_ALIASES[orient]
+
+        kwc = _clean_decimal(enrichment.get('estimatedKwc'), lo=0, hi=100000)
+        if kwc is not None and 'taille_souhaitee_kwc' not in fields:
+            fields['taille_souhaitee_kwc'] = kwc
 
     # ── QK1 — Ne plus JETER la qualification déjà captée par le site ──
     # Mode marché (Résidentiel/Industriel/Commercial/Agricole) → type_installation.
@@ -1862,6 +1955,34 @@ def website_lead_webhook(request):
         # (le jour où son transfert n'est plus en arrière-plan) l'afficher au
         # client à la place du code provisoire. Peut être ``null`` : émetteur
         # sans nom exploitable, ou attribution en échec (best-effort ci-dessus).
+        # ── AUTO-PIPELINE (ordre fondateur 26/08/2026) ────────────────────
+        # « si le client dessine son toit dans le tunnel, une fois que le lead
+        # arrive dans notre ERP ça crée automatiquement le devis automatique,
+        # et l'outil de calepinage dessine les panneaux tout seul — le
+        # commercial ne fait que VÉRIFIER. »
+        #
+        # UNIQUEMENT sur un lead RÉELLEMENT NOUVEAU (`created`) : la fenêtre
+        # anti-rejeu de 60 s complète une fiche existante et ne doit pas
+        # produire un second devis. Combiné aux trois couches de dédup déjà en
+        # place au-dessus (dédup DUR `dedupe_event`, garde cache QW10, fenêtre
+        # téléphone) et à la garde d'idempotence du service lui-même (un lead,
+        # un devis), un webhook re-livré ne crée JAMAIS deux devis.
+        #
+        # Lecture cross-app par le `services.py` de la cible (règle CLAUDE.md) :
+        # crm ne connaît de `ventes` que cette seule fonction. Elle MET EN FILE
+        # et rend la main tout de suite — le webhook ne paie jamais le prix de
+        # la composition. Best-effort de bout en bout : le lead est déjà
+        # enregistré, rien ici ne peut le remettre en cause.
+        if created:
+            try:
+                from apps.ventes.services import (
+                    planifier_devis_automatique_pour_lead)
+                planifier_devis_automatique_pour_lead(lead.pk, company.pk)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning(
+                    'website_lead_webhook: mise en file du devis automatique '
+                    'échouée (lead #%s)', lead.pk, exc_info=True)
+
         body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk,
                 'client_ref': lead.client_ref}
         body.update(extra)

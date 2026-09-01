@@ -119,6 +119,14 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // WIR208 — APPLIQUER une action DÉJÀ APPROUVÉE
+    // (`EngineActionViewSet.apply`, views.py:1530 → `services.apply_action`).
+    // Aucun autre chemin n'atteint Meta : le backend refuse tout statut ≠
+    // `approuvee` (409 `ActionNotApproved`, le client Meta n'est jamais
+    // construit) et repasse l'action `echouee` sur un échec Meta (502).
+    // Ce wrapper n'active JAMAIS de campagne : il applique la décision humaine
+    // déjà prise, à travers le seul point d'entrée serveur existant.
+    apply: (id) => api.post(`/adsengine/actions/${id}/apply/`),
     // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
     // via le producteur backend (résolution + validation) ; les kinds simples
     // passent par `create` ({kind, reason_fr, payload}). Tout finit en
@@ -141,6 +149,14 @@ const adsengineApi = {
   creatives: {
     ...resource('creatifs'),
     upload: (formData) => api.post('/adsengine/creatifs/upload/', formData),
+    // WIR170 — check-list policy DU SERVEUR (`CreativeAssetViewSet.checklist`,
+    // views.py:850 → `policy.build_checklist`) : renvoie
+    // `{forbidden: [{key,label}], allowed: [...]}`. Les clés viennent de la
+    // `CreativePolicy` de la société — l'écran ne doit JAMAIS en inventer.
+    checklist: () => api.get('/adsengine/creatifs/checklist/'),
+    // WIR170 — le serveur lit `confirmed_keys` (views.py:864), pas
+    // `rules_checked`/`passed` : l'appelant DOIT poster cette clé, sinon
+    // `record_policy_check` reçoit une liste vide et `passed` reste faux.
     policyCheck: (id, payload) =>
       api.post(`/adsengine/creatifs/${id}/policy-check/`, payload),
     generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
@@ -183,6 +199,19 @@ const adsengineApi = {
     // reste est signalé à l'écran comme tronqué, jamais escamoté.
     allDecisions: (params) => api.get('/adsengine/decisions/',
       { params: { page_size: SERVER_MAX_PAGE_SIZE, ...params } }),
+    // WIR209 — CLÔTURE HUMAINE d'une expérience avec verdict
+    // (`ExperimentViewSet.conclure`, views.py:910). Corps OBLIGATOIRE
+    // `{validated: true|false}` (booléen strict, sinon 400 FR) : l'opérateur
+    // décide, la machine enregistre. Réponse `{node, decision_log, validated}` ;
+    // `node: null` (200) = aucune hypothèse rattachée, verdict non déplacé.
+    conclude: (id, payload) =>
+      api.post(`/adsengine/experiences/${id}/conclure/`, payload),
+    // WIR209 — LECTURE SEULE des résultats de l'étude A/B native Meta liée
+    // (`ExperimentViewSet.sync_ad_study`) : journalise un `DecisionLog` et le
+    // renvoie (`DecisionLogSerializer`). 404 sans `meta_study_id`, 400 sans
+    // connexion Meta active, 502 si Meta échoue. Rien n'est écrit chez Meta.
+    syncAdStudy: (id) =>
+      api.post(`/adsengine/experiences/${id}/sync-ad-study/`),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
@@ -228,11 +257,33 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/regles/', { params }),
     create: (payload) => api.post('/adsengine/regles/', payload),
     update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
+    // WIR272/PUB91 — « Qu'aurait fait cette règle sur votre dernier trimestre ? »
+    // `RulePolicyViewSet.backtest` (views.py:1037, detail=True → exige une
+    // instance `RulePolicy` EXISTANTE) rejoue la règle jour par jour sur les
+    // snapshots RÉELS. LECTURE SEULE (`adsengine_view`) : aucune `EngineAction`
+    // n'est créée. `?jours=` borne la fenêtre (défaut serveur 90, plafond 180).
+    // Réponse : `{supported, reason, template_key, label_fr, range:{debut,fin},
+    // proposals:[{date,target_type,target_meta_id,action_kind,condition_fr,
+    // computed}], summary:{days,would_propose,distinct_targets,action_kind}}`.
+    backtest: (id, jours) =>
+      api.get(`/adsengine/regles/${id}/backtest/`, { params: { jours } }),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
   anomalies: {
     list: (params) => api.get('/adsengine/anomalies/', { params }),
+    // WIR209/PUB90 — vote HUMAIN sur une anomalie
+    // (`AnomalyEventViewSet.feedback`) : `{vote: 'useful'|'false_positive'}`
+    // (toute autre valeur → 400 FR). Acteur + horodatage posés côté serveur ;
+    // idempotent (re-voter remplace). Renvoie l'anomalie sérialisée.
+    feedback: (id, payload) =>
+      api.post(`/adsengine/anomalies/${id}/feedback/`, payload),
+    // WIR209/PUB90 — précision + état de throttle PAR DÉTECTEUR
+    // (`AnomalyEventViewSet.detectors`, url_path `detecteurs`) : renvoie
+    // `{detecteurs: [{detector,total,labelled,useful,false_positive,precision,
+    // throttled,throttle_factor}]}`. Un détecteur sans anomalie est ABSENT —
+    // jamais fabriqué.
+    detectors: () => api.get('/adsengine/anomalies/detecteurs/'),
   },
 
   // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──

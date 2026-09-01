@@ -21,9 +21,11 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import services
 from .serializers import ScoreCertificationSerializer
 from .models import (
-    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration)
+    DeploiementPartenaire, LotMigration, ParcoursCertificationPartenaire,
+    PlaybookInstance, ProjetMigration)
 from .serializers import (
-    DeploiementPartenaireSerializer, LotMigrationSerializer,
+    AnnuairePartenaireCertifieSerializer, DeploiementPartenaireSerializer,
+    LotMigrationSerializer, ParcoursCertificationPartenaireSerializer,
     PlaybookInstanceSerializer, ProjetMigrationSerializer,
     RapportReconciliationSerializer)
 
@@ -556,3 +558,160 @@ class ScoreCertificationView(GenericAPIView):
                 {'detail': 'Partenaire introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(calculer_score_certification(partenaire))
+
+
+class AnnuairePartenairesCertifiesView(GenericAPIView):
+    """NTMIG29 — annuaire interne des partenaires certifiés.
+
+    Distinct du portail partenaire lui-même (owned NTPRT) : réservé à
+    l'équipe interne (Administrateur/Directeur), filtrable par
+    niveau/spécialité/zone, affiche le score PROPOSÉ (NTMIG27) et l'historique
+    des déploiements (NTMIG28). LECTURE SEULE — jamais une écriture sur la
+    fiche partenaire (qui reste un PATCH explicite sur ``crm/partenaires/``).
+    """
+
+    permission_classes = [IsDirecteurOuAdmin]
+    serializer_class = AnnuairePartenaireCertifieSerializer
+
+    def get_queryset(self):
+        """Partenaires filtrés, toujours scopés à la société de l'appelant.
+
+        Passe par ``crm.selectors`` (lecture seule) — jamais un import des
+        modèles d'une autre app métier.
+        """
+        from apps.crm import selectors as crm_selectors
+
+        params = self.request.query_params
+        return crm_selectors.partenaires_certifies_qs(
+            self.request.user.company,
+            niveau_min=params.get('niveau_min') or None,
+            specialite=params.get('specialite') or None,
+            zone=params.get('zone') or None)
+
+    def get(self, request):
+        from .certification import calculer_score_certification
+
+        rows = []
+        for partenaire in self.get_queryset():
+            score_info = calculer_score_certification(partenaire)
+            historique = list(
+                DeploiementPartenaire.objects
+                .filter(company=request.user.company, partenaire=partenaire)
+                .order_by('-date_go_live', '-created_at')
+                .values('client_final', 'statut', 'date_go_live',
+                        'note_satisfaction')[:10])
+            rows.append({
+                'id': partenaire.pk,
+                'nom': partenaire.nom,
+                'type_partenaire': partenaire.type_partenaire,
+                'zone': partenaire.zone,
+                'niveau_certification': partenaire.niveau_certification,
+                'niveau_certification_display':
+                    partenaire.get_niveau_certification_display(),
+                'specialites': partenaire.specialites or [],
+                'date_certification': partenaire.date_certification,
+                'date_expiration_certification':
+                    partenaire.date_expiration_certification,
+                'certification_expiree': partenaire.certification_expiree,
+                'nb_deploiements_reussis': partenaire.nb_deploiements_reussis,
+                'score': score_info['score'],
+                'historique_deploiements': historique,
+            })
+        serializer = self.get_serializer(rows, many=True)
+        return Response(serializer.data)
+
+
+class ParcoursCertificationPartenaireViewSet(CompanyScopedModelViewSet):
+    """NTMIG31 — programme de formation partenaire (parcours + badge).
+
+    La création passe par l'action ``instancier`` (elle a besoin du parcours
+    kb source pour figer l'instantané d'articles) ; un POST direct sur la
+    liste est refusé, même esprit que ``PlaybookInstanceViewSet``.
+    """
+
+    queryset = ParcoursCertificationPartenaire.objects.select_related(
+        'partenaire', 'valide_par').all()
+    serializer_class = ParcoursCertificationPartenaireSerializer
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        partenaire = self.request.query_params.get('partenaire')
+        if partenaire:
+            qs = qs.filter(partenaire_id=partenaire)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError({'detail': (
+            'Utilisez POST parcours-certification-partenaire/instancier/ '
+            'avec le parcours et le partenaire : une instance sans articles '
+            'ne serait pas cochable.')})
+
+    @action(detail=False, methods=['post'], url_path='instancier', permission_classes=[IsDirecteurOuAdmin])
+    def instancier(self, request):
+        """Instancie un parcours kb pour la certification d'un partenaire.
+
+        Le parcours est résolu par ``kb.selectors`` (scopé société) ; le
+        partenaire par le queryset scopé société — un id d'une autre société
+        est introuvable pour l'un comme pour l'autre.
+        """
+        from apps.crm import selectors as crm_selectors
+        from apps.kb import selectors as kb_selectors
+
+        parcours = kb_selectors.parcours_par_id(
+            request.data.get('parcours'), request.user.company)
+        if parcours is None:
+            raise ValidationError({'parcours': (
+                'Parcours introuvable pour cette société.')})
+
+        partenaire = crm_selectors.partenaire_pour_certification(
+            request.user.company, request.data.get('partenaire'))
+        if partenaire is None:
+            raise ValidationError({'partenaire': 'Partenaire introuvable.'})
+
+        try:
+            instance = services.instancier_parcours_certification(
+                parcours, company=request.user.company,
+                partenaire=partenaire)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(
+            ParcoursCertificationPartenaireSerializer(instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='cocher', permission_classes=[IsDirecteurOuAdmin])
+    def cocher(self, request, pk=None):
+        """Coche (``fait`` absent ou vrai) ou décoche un article lu."""
+        instance = self.get_object()
+        fait = request.data.get('fait', True)
+        if isinstance(fait, str):
+            fait = fait.lower() not in ('false', '0', 'non', '')
+        try:
+            services.cocher_article_parcours(
+                instance, request.data.get('article'), fait=bool(fait))
+        except services.ArticleInconnu as exc:
+            raise ValidationError({'article': str(exc)})
+        return Response(ParcoursCertificationPartenaireSerializer(instance).data)
+
+    @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
+    def terminer(self, request, pk=None):
+        """Clôture le parcours — 400 + articles restants si incomplet."""
+        instance = self.get_object()
+        try:
+            services.terminer_parcours_certification(instance)
+        except services.ReconcileBloque as exc:
+            return Response(
+                {'detail': str(exc), 'articles_restants': exc.ecarts},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(ParcoursCertificationPartenaireSerializer(instance).data)
+
+    @action(detail=True, methods=['post'], url_path='valider-specialite', permission_classes=[IsDirecteurOuAdmin])
+    def valider_specialite(self, request, pk=None):
+        """Valide (action admin EXPLICITE) la spécialité proposée par un
+        parcours terminé, et l'ajoute à la fiche partenaire."""
+        instance = self.get_object()
+        try:
+            services.valider_proposition_specialite(instance, request.user)
+        except services.PropositionImpossible as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(ParcoursCertificationPartenaireSerializer(instance).data)

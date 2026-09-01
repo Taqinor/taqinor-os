@@ -90,6 +90,17 @@ vi.mock('../../api/educationApi', () => ({
     incidents: {
       list: () => Promise.resolve({ data: [] }),
     },
+    // WIR212 — Périodes & bulletins (NTEDU17).
+    periodes: {
+      list: () => Promise.resolve({ data: [{ id: 1, libelle: 'Trimestre 1', ordre: 1 }] }),
+      create: () => Promise.resolve({ data: { id: 2 } }),
+    },
+    bulletins: {
+      list: () => Promise.resolve({ data: [] }),
+      create: () => Promise.resolve({ data: { id: 1 } }),
+      update: () => Promise.resolve({ data: {} }),
+      publier: () => Promise.resolve({ data: {} }),
+    },
   },
 }))
 
@@ -102,6 +113,7 @@ const PATHS = [
   '/education/echeancier',
   '/education/presences',
   '/education/notes',
+  '/education/bulletins',
   '/education/emploi-du-temps',
   '/education/cantine',
   '/education/discipline',
@@ -127,7 +139,8 @@ function renderRoute(path) {
 
 describe('education — module.config (WIR143)', () => {
   // NTEDU36 — 10e route/entrée de nav ajoutée (Import CSV élèves).
-  it('déclare les 10 routes ET les 10 entrées de nav ÉDUCATION, gatées', () => {
+  // WIR212 — 11e route/entrée de nav ajoutée (Périodes & bulletins).
+  it('déclare les routes ET entrées de nav ÉDUCATION de PATHS, gatées', () => {
     expect(config.key).toBe('education')
     expect(config.nav.label).toBe('ÉDUCATION')
     for (const p of PATHS) {
@@ -180,6 +193,14 @@ describe('education — module.config (WIR143)', () => {
   it('monte Notes via /education/notes', async () => {
     renderRoute('/education/notes')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
+
+  it('monte Périodes & bulletins via /education/bulletins (WIR212)', async () => {
+    renderRoute('/education/bulletins')
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Périodes & bulletins' })).toBeTruthy(), { timeout: 25000 })
+    // « Trimestre 1 » apparaît à la fois dans la liste des périodes et comme
+    // option du sélecteur « Période » : au moins une occurrence suffit ici.
+    await waitFor(() => expect(screen.getAllByText('Trimestre 1').length).toBeGreaterThan(0), { timeout: 25000 })
   }, 30000)
 
   it('monte Emploi du temps via /education/emploi-du-temps', async () => {

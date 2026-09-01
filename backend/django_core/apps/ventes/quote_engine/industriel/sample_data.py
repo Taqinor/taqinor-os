@@ -9,6 +9,24 @@ without a database.
 from __future__ import annotations
 
 
+#: Prix TTC de la ligne onduleur de la fixture (2 × 62 000 HT à 20 %) — c'est
+#: ce montant que ``pricing`` provisionne pour le remplacement de l'année 12.
+_ONDULEUR_TTC = 2 * 62000.0 * 1.20
+
+
+def _cashflow(invest, economie_an1):
+    """Série canonique — MÊME fonction que le builder, jamais une saisie."""
+    from ..pricing import compute_cashflow_payback
+    return compute_cashflow_payback(invest, economie_an1,
+                                    inverter_replace_cost=_ONDULEUR_TTC)
+
+
+def _hypotheses():
+    """Hypothèses DÉCLARÉES du même modèle (dégradation, provision…)."""
+    from ..pricing import cashflow_assumptions
+    return cashflow_assumptions(inverter_replace_cost=_ONDULEUR_TTC)
+
+
 def build() -> dict:
     bills = [42000, 39000, 45000, 51000, 58000, 66000,
              71000, 69000, 60000, 52000, 44000, 41000]
@@ -48,6 +66,13 @@ def build() -> dict:
             "taux_autoconso": 88.0, "taux_couverture": 67.7,
             "economies_annuelles": 420000, "payback": 3.1, "prix_kwc": 7000,
         },
+        # QJR120 — la page 2 lit le cashflow CANONIQUE servi par le builder
+        # (``pricing.compute_cashflow_payback``), plus une droite plate locale.
+        # La fixture le produit par la MÊME fonction, avec l'investissement et
+        # l'économie annuelle qu'elle déclare — aucun chiffre saisi à la main.
+        "total_sans": 1750000,
+        "cashflow_sans": _cashflow(1750000, 420000)["cumulative"],
+        "cashflow_assumptions": _hypotheses(),
         "entreprise": {},
         "site_url": "taqinor.ma",
         "accepte_par_nom": "",

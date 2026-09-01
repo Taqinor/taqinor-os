@@ -17,6 +17,7 @@ Run:
 
 import re
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, tag
 
@@ -87,6 +88,45 @@ class TestBuildQuoteData(TestCase):
         self.assertIsNone(data['puissance_kwc'])
         self.assertTrue(data['puissance_inconnue'])
 
+    # ── QJR17 — le PDF n'imprime plus « None W » et compte le panneau d'une
+    # SEULE façon. Quatre défauts d'une même famille (audit L3 du 29/08).
+    def test_qjr17_puce_option_sans_watt_lisible_nimprime_jamais_none(self):
+        """(a) La puce de la carte d'option imprimait « 12 panneaux None W »
+        sur le chemin EXACT où la puissance unitaire est illisible (M3). Même
+        doctrine que la vignette legacy : « 12 panneaux » tout court."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau photovoltaïque monocristallin', '12', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QJR17-A')
+        data = build_quote_data(devis)
+        self.assertIsNone(data['watt_par_panneau'])
+        puces = data['sans_bullets'] + data['avec_bullets']
+        self.assertIn('12 panneaux', puces)
+        for puce in puces:
+            self.assertNotIn('None', puce)
+
+    def test_qjr17_la_puce_compte_le_panneau_comme_le_total_du_document(self):
+        """(b) Le total comptait la ligne comme panneau (désignation ET nom du
+        produit lié) pendant que la puce ne lisait que la désignation : le même
+        document annonçait 14 panneaux et n'en listait aucun."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 550W', '14', '1100'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QJR17-B')
+        # désignation éditée à la main : seul le NOM DU PRODUIT lié dit encore
+        # que c'est un panneau (le cas que le total lisait déjà).
+        ligne = devis.lignes.get(designation='Panneau Canadien Solar 550W')
+        ligne.designation = 'Réf. CS7L-550MS'
+        ligne.save(update_fields=['designation'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['nb_panneaux'], 14)
+        self.assertTrue(
+            any(p.startswith('14 panneaux') for p in data['sans_bullets']),
+            f"la puce doit compter les 14 panneaux du total : "
+            f"{data['sans_bullets']}")
+
     def test_le_repli_catalogue_survit_pour_le_seul_kpi_interne(self):
         """M3 — ``puissance_panneaux_lignes`` garde son repli documenté : il
         sert au KPI INTERNE « conçu vs vendu » (reports.py), qui n'imprime
@@ -151,6 +191,41 @@ class TestBuildQuoteData(TestCase):
                             for it in data['sans_items']), 2)
         self.assertAlmostEqual(data['totaux_sans']['ht_brut'], attendu, places=2)
 
+    @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+    @patch('apps.ventes.utils.pdf._upload_pdf')
+    def test_qjr17_le_repli_sur_le_moteur_legacy_est_bruyant(self, _up, _bucket):
+        """(d) Le renderer résidentiel refuse un devis hors périmètre et le
+        document repart sur le moteur legacy. Ce repli était SILENCIEUX : un
+        champ manquant dégradait la proposition premium sans qu'aucune trace
+        ne le dise. Il porte désormais un avertissement NOMMÉ."""
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        from apps.ventes.quote_engine.residential import renderer as residential
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000'),
+        ], reference='DEV-QJR17-D', etude_params=DEUX_OPTIONS)
+        with patch.object(residential, 'render_pdf_bytes',
+                          side_effect=residential.Unsupported(
+                              'missing quote field: puissance_kwc')):
+            with self.assertLogs('apps.ventes.quote_engine.builder',
+                                 level='WARNING') as journal:
+                generate_premium_devis_pdf(devis.id)
+        trace = '\n'.join(journal.output)
+        self.assertIn('Repli moteur legacy', trace)
+        # QJR235 (31/08/2026) — le repli nomme désormais le MARCHÉ tel que le
+        # registre des renderers l'appelle (« residentiel », comme
+        # « industriel » et « commercial »), et non plus le nom du module
+        # Python (« residential »). Le fait épinglé est le même : la trace dit
+        # QUI a refusé.
+        self.assertIn('residentiel', trace)
+        self.assertIn('DEV-QJR17-D', trace)
+        self.assertIn('missing quote field: puissance_kwc', trace)
+        # le PDF sort quand même (le repli reste un repli, pas une panne)
+        _up.assert_called_once()
+        self.assertEqual(_up.call_args[0][0][:4], b'%PDF')
+
     def test_hybrid_without_battery_still_renders_a_pdf(self):
         """Z1 — la règle dure « une option ne se rend jamais sans onduleur » ne
         doit PAS refuser un devis dont le seul onduleur est hybride : il porte
@@ -162,6 +237,92 @@ class TestBuildQuoteData(TestCase):
         ], reference='DEV-QE-HYBNOBAT')
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         self.assertEqual(data['nb_options'], 1)
+
+    # ── QJR18 — le productible imprimé décrit la production imprimée ───────
+    _LIGNES_770 = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+    ]
+
+    def _productible_imprime(self, data):
+        """Le nombre RÉELLEMENT écrit dans « ≈ N kWh par kWc et par an »."""
+        lignes = [h for h in data['hypotheses']['items']
+                  if 'kWh par kWc' in h]
+        self.assertEqual(len(lignes), 1, data['hypotheses']['items'])
+        chiffre = lignes[0].split('≈')[1].split('kWh')[0]
+        return int(re.sub(r'[^0-9]', '', chiffre))
+
+    def test_qjr18_le_productible_imprime_egale_production_sur_kwc_horaire(self):
+        """Sur le chemin ÉTUDE HORAIRE, ``roi['productible']`` est DÉJÀ net :
+        la ligne lui réappliquait les 20 % de pertes et annonçait ~7 % de
+        moins que la production annuelle imprimée sur la MÊME page."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        attendu = round(data['prod_kwh'] / data['puissance_kwc'])
+        self.assertEqual(self._productible_imprime(data), attendu)
+        # la pastille PVGIS de la ville annonce EXACTEMENT le même nombre
+        _pvgis = data['hypotheses']['productible_net_kwh_kwc']
+        if _pvgis is not None:
+            self.assertEqual(_pvgis, attendu)
+
+    def test_qjr18_le_chemin_ordinaire_garde_la_meme_egalite(self):
+        """Non-régression : hors étude horaire, la ligne disait déjà la
+        production nette — l'égalité doit rester vraie à l'arrondi près."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR18-N', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        self.assertNotEqual(data['savings_model'], 'horaire')
+        self.assertEqual(
+            self._productible_imprime(data),
+            round(data['prod_kwh'] / data['puissance_kwc']))
+
+    # ── QJR27 — la méthode annoncée est la méthode employée ────────────────
+    def test_qjr27_le_modele_horaire_ne_se_presente_plus_en_estimation(self):
+        """Faute de branche, le modèle horaire tombait dans le repli
+        « estimation » : le bloc annonçait une approximation et réclamait une
+        facture DÉJÀ fournie, pendant que la couverture du même PDF affichait
+        « calculée »."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-H',
+            etude_params={**DEUX_OPTIONS, 'etude_horaire': bloc_horaire(7.70)})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'horaire')
+        self.assertFalse(sm['approximatif'])
+        self.assertNotIn('Estimation', sm['ligne_methode'])
+        self.assertNotIn('Fournissez une facture', sm['ligne_methode'])
+        self.assertIn('heure par heure', sm['ligne_methode'])
+        # le devis PORTE les deux factures : l'exemple chiffré les reprend
+        self.assertIsNotNone(sm['exemple'])
+        self.assertEqual(sm['economie'],
+                         sm['facture_actuelle'] - sm['facture_avec_solaire'])
+
+    def test_qjr27_le_modele_forfaitaire_redemande_toujours_une_facture(self):
+        """L'autre moitié de la règle : sans aucune donnée réelle, le bloc
+        reste une estimation ASSUMÉE et demande la facture qui manque."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self._LIGNES_770,
+            reference='DEV-QJR27-F', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        sm = data['savings_method']
+        self.assertEqual(sm['model'], 'estimation')
+        self.assertTrue(sm['approximatif'])
+        self.assertIn('Fournissez une facture', sm['ligne_methode'])
 
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
@@ -298,7 +459,9 @@ class TestDossierMoyenneTension(TestCase):
         self.assertGreater(data['eco_s_ann'], 0)   # la valeur BT EXISTE…
         augmentee = industriel._augment(data)
         self.assertTrue(augmentee['ind_masquer_economies'])
-        self.assertEqual(augmentee['ind_economies'], 0)   # …et n'est PAS reprise
+        # QJR119 — l'absence est désormais ``None`` (et non plus « 0 »), pour
+        # que le gabarit OMETTE la carte au lieu d'imprimer « 0 MAD ».
+        self.assertIsNone(augmentee['ind_economies'])   # …et n'est PAS reprise
         self.assertIsNone(augmentee['ind_payback'])
 
     def test_le_renderer_commercial_n_herite_plus_du_chiffre_BT(self):
@@ -307,7 +470,8 @@ class TestDossierMoyenneTension(TestCase):
         data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0006')
         augmentee = commercial._augment(data)
         self.assertTrue(augmentee['com_masquer_economies'])
-        self.assertEqual(augmentee['com_economies'], 0)
+        # QJR119 — idem côté commercial : ``None`` ⇒ carte omise.
+        self.assertIsNone(augmentee['com_economies'])
         self.assertIsNone(augmentee['com_payback'])
 
     def test_la_page_CFO_remplace_les_chiffres_par_le_motif(self):
@@ -675,7 +839,16 @@ class TestQuoteNumbersHonestyPack(TestCase):
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertIsNone(data['conso_annuelle_kwh'])
-        self.assertFalse(data['savings_estimated'])
+        # QJR156 (audit QJR79) — SANS CONSOMMATION, LE PRIX EST UNE ESTIMATION,
+        # ET LE DIT. Ce cas a une grille RÉELLE (onee) mais aucune conso pour la
+        # pondérer : ``_weighted_kwh_price(0.0, table)`` rend alors, par
+        # construction, le tarif LE PLUS BAS de la grille (tranche 0-100), qui
+        # n'est pas le prix moyen de CE client. Le drapeau se lève donc AUSSI
+        # sur ``savings_estimated`` (il ne se levait avant que faute de table),
+        # et le PDF cesse d'imprimer « Tarif électricité retenu : 0,92 MAD/kWh »
+        # sans le mot « estimation ». C'est le sens même de ce test — il
+        # l'épinglait déjà sur ``coverage_estimated``, désormais sur les deux.
+        self.assertTrue(data['savings_estimated'])
         d = renderer._augment(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertTrue(d['coverage_estimated'])
@@ -972,7 +1145,9 @@ class TestSavingsMath(TestCase):
             autoconso_sans=0.60,
             autoconso_avec=0.85,
         )
-        prod = roi["prod_kwh"]   # 5 kWc × 1240 × 0,86 (QRES54, pertes 14 %)
+        # 5 kWc × productible de repli × PRODUCTION_DERATE (QRES54 ; QJR158 (d)
+        # — ce repli est celui du dépôt, plus un second chiffre local).
+        prod = roi["prod_kwh"]
         # Option 1 savings = production × autoconso_sans × tarif
         self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 1.75))
         # Option 2 savings = production × autoconso_avec × tarif
@@ -1055,7 +1230,17 @@ class TestSavingsMath(TestCase):
         self.assertAlmostEqual(roi["tarif_kwh"], 2.50, places=4)
         self.assertFalse(roi["savings_estimated"])
         prod = roi["prod_kwh"]
-        self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 2.50))
+        # LE PLAFOND CONSOMMATION FAIT PARTIE DU MODÈLE (ordre fondateur 18/08) :
+        # on ne valorise jamais plus de kWh que le client n'en consomme. La
+        # formule d'origine (prod × 0,60 × tarif) l'ignorait ; elle passait
+        # seulement parce que la production était alors trop petite pour que le
+        # plafond morde. Le recalage QJR158 (d) du repli de productible
+        # (1240 → 1651) l'a fait mordre : 5 kWc → 7 679 kWh/an, dont 60 % =
+        # 4 607 kWh > 3 600 kWh consommés. L'économie vaut donc 3 600 × 2,50 =
+        # 9 000 MAD, et non 11 518. On épingle la règle, pas le nombre : ainsi
+        # l'attente reste vraie des deux côtés du plafond.
+        autoconso = min(prod * 0.60, 3600)
+        self.assertEqual(roi["eco_s_ann"], round(autoconso * 2.50))
 
     def test_roi_computed_from_totals(self):
         """QX39 — le payback n'est plus un ratio année-1 (total / éco annuelle)
@@ -1208,7 +1393,7 @@ class TestNoInventedNumberGuard(TestCase):
             {"max_kwh": 150, "prix_kwh_ttc": "1.091388"},
             {"max_kwh": 210, "prix_kwh_ttc": "1.091388"},
             {"max_kwh": 310, "prix_kwh_ttc": "1.187388"},
-            {"max_kwh": 510, "prix_kwh_ttc": "1.405116"},
+            {"max_kwh": 510, "prix_kwh_ttc": "1.381704"},
             {"max_kwh": None, "prix_kwh_ttc": "9.000000"},
         ]
         ts.save()

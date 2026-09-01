@@ -70,6 +70,19 @@ CATALOGUE = [
     # doublon), que la migration de renommage soit passée ou non.
     # Prix fondateur 25/08/2026 : 17 000 → 14 000 TTC (migration stock 0131
     # recale les bases existantes, gardée par l'ancienne valeur).
+    # BATHOMO (fondateur 26/08/2026, RECALÉ) — le fondateur n'a PAS archivé le
+    # Dyness 10 kWh : il a mis sa QUANTITÉ DE STOCK à 0 via un mouvement de
+    # stock (le vrai bug était que RIEN ne consultait le stock au chiffrage —
+    # corrigé côté composition, cf. ``services.composition_residentielle`` /
+    # ``_batterie_en_stock``, jamais ici). Le seeder n'a donc RIEN de
+    # spécifique à faire pour ce SKU : une base qui le porte déjà est
+    # retrouvée par SKU et SAUTÉE comme toute autre ligne (prix/quantité
+    # jamais touchés) ; une société NEUVE le seed comme tout le catalogue,
+    # stock normal inclus — quand le fondateur réapprovisionne sa quantité
+    # réelle, la composition recommence à le proposer AUTOMATIQUEMENT, sans
+    # redéploiement ni intervention côté catalogue. (Un run antérieur avait
+    # ARCHIVÉ ce SKU par erreur — RETIRÉ par ce même correctif, le seeder ne
+    # force plus jamais son statut.)
     ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 14000, 13000, 500, 5),
     ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
@@ -109,6 +122,37 @@ def is_panneau(nom):
     return 'panneau' in (nom or '').lower()
 
 
+#: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
+#: fondateur en prod (« Deye off-Grid 6kw ») ne portent PAS le mot « onduleur »
+#: dans leur nom. Mêmes mots-clés que la table unique
+#: ``apps.ventes.solar_design.OFFGRID_KEYWORDS`` /
+#: ``OFFGRID_AUTRE_FAMILLE_KEYWORDS`` — DUPLIQUÉS ici plutôt qu'importés :
+#: ``apps.stock`` ne doit jamais dépendre d'``apps.ventes`` (frontière
+#: inter-app, CLAUDE.md). Si l'un des deux jeux bouge, recaler l'autre à la
+#: main.
+OFFGRID_KEYWORDS = ('off-grid', 'off grid', 'offgrid', 'hors reseau', 'hors réseau', 'autonome')
+OFFGRID_AUTRE_FAMILLE_KEYWORDS = (
+    'batterie', 'panneau', 'panneaux', 'module', 'pompe', 'variateur',
+    'structure', 'cable', 'câble', 'coffret', 'disjoncteur',
+    'differentiel', 'différentiel', 'parafoudre', 'compteur',
+    'smart meter', 'wifi', 'kit', 'chargeur',
+)
+
+
+def is_offgrid(nom):
+    """Onduleur autonome (site isolé) — même contrat que
+    ``apps.ventes.solar_design.is_offgrid_inverter`` : mot-clé hors-réseau,
+    pas hybride, et — si « onduleur » est absent du nom — aucun mot-clé
+    d'une AUTRE famille de produit (sinon on volerait un panneau/une
+    batterie/un accessoire nommé « ... off-grid ... » par un revendeur)."""
+    d = (nom or '').lower()
+    if not any(k in d for k in OFFGRID_KEYWORDS) or 'hybride' in d:
+        return False
+    if 'onduleur' in d:
+        return True
+    return not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
+
+
 def taux_tva_for(nom):
     return Decimal('10.00') if is_panneau(nom) else Decimal('20.00')
 
@@ -129,6 +173,9 @@ TAXONOMIE = [
     ('Panneaux photovoltaïques', 10),
     ('Onduleurs réseau', 20),
     ('Onduleurs hybrides', 30),
+    # QJR-OFFGRID ROUND 2 — troisième famille d'onduleur (site isolé),
+    # AJOUTÉE (ordre neuf, 35) : aucun ordre existant ne bouge.
+    ('Onduleurs hors réseau', 35),
     ('Batteries', 40),
     ('Structures & fixation', 50),
     ('Protection & accessoires', 60),
@@ -148,6 +195,14 @@ def classify_categorie(nom):
         return 'Panneaux photovoltaïques'
     if 'onduleur' in n and 'hybride' in n:
         return 'Onduleurs hybrides'
+    # QJR-OFFGRID ROUND 2 — AVANT le test « onduleur » générique juste en
+    # dessous : sinon « Deye off-Grid 6kw » (AUCUN mot « onduleur » dans le
+    # nom réel du fondateur) tombait tout en bas dans « Protection &
+    # accessoires » — exactement le bug qui a motivé ce correctif — et
+    # « Onduleur hors réseau X » (qui CONTIENT « onduleur ») aurait été
+    # happé par le test réseau juste en dessous.
+    if is_offgrid(nom):
+        return 'Onduleurs hors réseau'
     if 'onduleur' in n:
         return 'Onduleurs réseau'
     if 'afficheur' in n or 'variateur' in n or 'coffret complet' in n:
@@ -242,6 +297,22 @@ ARTEFACTS_ONDULEUR_SKUS = [
     # tension (OND-H-DEY-15T/20T = SG05LP3). Archivés, jamais supprimés.
     'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
 ]
+
+# BATHOMO (fondateur 26/08/2026, RECALÉ) — Dyness 10 kWh : PAS d'archivage
+# forcé. Un premier passage avait traité ce SKU comme les ARTEFACTS ci-dessus
+# (archivage forcé en fin de run), sur l'hypothèse que le fondateur l'avait
+# retiré du catalogue. FAIT CORRIGÉ : il a mis sa QUANTITÉ DE STOCK à 0 (un
+# mouvement de stock, pas un archivage) — « when it comes back, use it for
+# bigger installations » : quand il réapprovisionne, le module doit redevenir
+# utilisable AUTOMATIQUEMENT, sans repasser par le seeder. Un archivage forcé
+# ici romprait exactement cette promesse (un produit archivé ne redevient
+# jamais actif tout seul). La garde qui EXCLUT ce module tant que son stock
+# est à 0 vit désormais côté composition (``apps.ventes.services.
+# composition_residentielle`` / ``_batterie_en_stock`` — la racine du mélange
+# 5+10 kWh électriquement interdit qui a motivé ce retrait est corrigée là,
+# banques toujours homogènes) — JAMAIS ici, où seul l'idiome ARTEFACTS/
+# PLACEHOLDER (archivage définitif, produits qui ne reviendront jamais) reste
+# légitime.
 
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
 # Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
@@ -1256,6 +1327,11 @@ FICHES_TECHNIQUES = {
         # un pic de quinze secondes ne borne pas une rafale de trente minutes,
         # c'est le CONTINU qui fait foi ici.
         'bat_max_decharge_kw': Decimal('5.12'),
+        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
+        # keep it very high for 5kwh — maybe 200 » : valeur EXPLICITEMENT
+        # fondateur, pas une limite fabricant sourcée. Migration stock 0132
+        # recale les bases existantes (comble seulement si vide).
+        'bat_max_modules_par_banc': 200,
     },
     'BAT-DEY-10': {
         'type_fiche': 'batterie',
@@ -1649,9 +1725,15 @@ class Command(BaseCommand):
         # PVOND (2026-08-18) — MÊME patron pour les deux ARTEFACTS onduleur
         # Huawei mono 10/12 kW (``ARTEFACTS_ONDULEUR_SKUS``) : archivés, donc
         # hors catalogue de composition, jamais supprimés.
+        # BATHOMO (2026-08-26, RECALÉ) — le Dyness 10 kWh (``BAT-DEY-10``)
+        # N'EST PLUS dans cette liste : ce n'est PAS un artefact qui ne
+        # reviendra jamais (le fondateur l'a seulement mis à 0 en stock, un
+        # mouvement, pas un archivage — « when it comes back, use it for
+        # bigger installations »). Sa garde d'exclusion vit côté composition
+        # (stock-gating batterie, ``apps.ventes.services``), jamais ici.
         archived_count = Produit.objects.filter(
             company=company,
-            sku__in=PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS,
+            sku__in=(PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS),
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs

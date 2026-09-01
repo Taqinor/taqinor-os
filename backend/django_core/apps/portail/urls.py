@@ -28,6 +28,7 @@ from .views import (
 from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
+    MesLivraisonsPortailViewSet,
 )
 from .views_externes import (
     candidature_fournisseur,
@@ -57,6 +58,10 @@ router.register(r'mes-devis', MesDevisPortailViewSet,
                 basename='portail-mes-devis')
 router.register(r'mes-factures', MesFacturesPortailViewSet,
                 basename='portail-mes-factures')
+# WIR216 — « Mes livraisons » : lien mort expédié à chaque transition de
+# livraison (FG228/XSTK22), la section portail n'existait pas.
+router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
+                basename='portail-mes-livraisons')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

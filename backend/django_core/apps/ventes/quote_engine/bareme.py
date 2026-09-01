@@ -37,25 +37,34 @@ CE QUE LES FACTURES TRANCHENT (des questions qui traînaient « à confirmer »)
 * Le timbre de 0,25 % est bien un FRAIS DE MODE DE PAIEMENT (espèces) et non
   une composante du kWh : exclu du calcul, comme prévu.
 
-CE QUE LES FACTURES CORRIGENT (voir :data:`DIVERGENCES_PRICING`) : la tranche 5
-2026 vaut 1,381704 TTC, PAS 1,405116. Le repo avait extrapolé le passage de TVA
-18 → 20 % « à HT constant » ; la facture A montre que c'est le TTC qui est resté
-constant (le HT a été ABAISSÉ de 1,17094 à 1,15142). Deux factures le prouvent
-sur la tranche 5 (A en 2026, C en 2025 : même TTC 1,3817).
+CE QUE LES FACTURES ONT CORRIGÉ (voir :data:`DIVERGENCES_PRICING`) : la
+tranche 5 2026 vaut 1,381704 TTC. Le repo avait extrapolé le passage de TVA
+18 → 20 % « à HT constant » et affichait 1,405116 (valeur HISTORIQUE, plus
+nulle part dans l'ERP depuis D5) ; la facture A montre que c'est le TTC qui est
+resté constant (le HT a été ABAISSÉ de 1,17094 à 1,15142). Deux factures le
+prouvent sur la tranche 5 (A en 2026, C en 2025 : même TTC 1,3817).
 
 PAS DE TROISIÈME IMPLÉMENTATION DU BARÈME. Ce module réutilise la mécanique
 progressif/sélectif de ``pricing._monthly_bill_from_kwh`` et son type
-``TrancheTable``. Il n'y touche pas : ``pricing.ONEE_TRANCHES`` reste
-INCHANGÉE, donc ``test_tariff_drift_lock`` reste vert et AUCUN devis existant
-ne change de chiffre. Les corrections prouvées vivent ici, dans le moteur
-CJ2a, et sont listées pour que le fondateur décide de les propager.
+``TrancheTable``.
+
+PROPAGATION DE LA CORRECTION T5 — DÉCISION FONDATEUR D5 (29/08/2026). La
+tranche 5 a longtemps vécu en plusieurs exemplaires : ce module portait SEUL la
+valeur prouvée (1,381704) pendant que ``pricing.ONEE_TRANCHES`` et
+``parametres.DEFAULT_RESIDENTIAL_TIERS`` gardaient l'extrapolation (1,405116) —
+un même document pouvait donc valoriser le kWh de deux façons selon le modèle
+d'économies qui gagnait. Le fondateur a tranché : TOUT LE PÉRIMÈTRE ERP
+S'ALIGNE SUR LA VALEUR DE CE MODULE. ``pricing.ONEE_TRANCHES``,
+``DEFAULT_RESIDENTIAL_TIERS`` et le miroir JS ``solar.js`` portent désormais
+1,381704 ; ``test_tariff_drift_lock`` a été recalé sur la valeur corrigée. La
+valeur de RÉFÉRENCE ci-dessous (TRANCHES_2026) n'a PAS bougé — c'est le reste
+du dépôt qui l'a rejointe.
 
 Fonctions PURES : aucun I/O, aucun ORM, aucun Django (comme ``pricing.py``).
 """
 from __future__ import annotations
 
 from .pricing import (
-    ONEE_TRANCHES,
     TrancheTable,
     _monthly_bill_from_kwh,
     _resolve_tranches,
@@ -114,8 +123,9 @@ TRANCHES_2026 = TrancheTable(
         (150, 1.091388),    # extrapolé (repo, HT constant) — non prouvé 2026
         (200, 1.091388),    # extrapolé (repo, HT constant) — non prouvé 2026
         (300, 1.187388),    # extrapolé (repo, HT constant) — non prouvé 2026
-        (500, 1.381704),    # PROUVÉ facture A : 1,15142 HT × 1,20 — CORRIGE
-                            # le 1,405116 du repo (TTC constant, pas HT).
+        (500, 1.381704),    # PROUVÉ facture A : 1,15142 HT × 1,20. Valeur de
+                            # RÉFÉRENCE : depuis D5 (29/08/2026) tout l'ERP
+                            # l'a rejointe (elle-même n'a jamais bougé).
         (None, 1.622856),   # CONFLIT — voir DIVERGENCES_PRICING
     ],
     selective_threshold=150,
@@ -125,19 +135,25 @@ TRANCHES_2026 = TrancheTable(
 #: Ce que le moteur CJ2a calcule DIFFÉREMMENT de ``pricing.ONEE_TRANCHES``, et
 #: pourquoi. Rendu tel quel dans le bloc d'étude pour que l'écart soit VISIBLE
 #: et non enfoui. Un test épingle cette liste : elle ne peut pas dériver en
-#: silence, et le jour où le fondateur propage la correction dans
-#: ``pricing.py``, il faudra la mettre à jour EXPRÈS.
+#: silence. Le jour où le fondateur propage une correction dans ``pricing.py``,
+#: l'entrée passe de ``corrigé`` (écart actif) à ``propagé`` (écart résorbé) —
+#: EXPRÈS, jamais en silence : c'est ce qui vient d'arriver à T5 (D5, 29/08).
 DIVERGENCES_PRICING = (
     {
         'tranche': '311-510 kWh (T5), millésime 2026',
         'valeur_moteur': 1.381704,
-        'valeur_pricing': 1.405116,
-        'statut': 'corrigé',
+        'valeur_pricing': 1.381704,
+        'statut': 'propagé',
         'preuve': "facture SRM n° 643769639 du 08/05/2026 : 359 kWh × "
                   "1,15142 HT = 413,36 HT / 496,03 TTC. Corroboré par la "
                   "facture du 20/01/2026 (T5 2025 = 1,3817 TTC) : le TTC est "
                   "resté CONSTANT au passage TVA 18 → 20 %, le HT a baissé. "
-                  "Le repo avait supposé l'inverse (HT constant).",
+                  "Le repo avait supposé l'inverse (HT constant) et affichait "
+                  "1,405116. DÉCISION FONDATEUR D5 (29/08/2026) : tout le "
+                  "périmètre ERP (pricing.ONEE_TRANCHES, "
+                  "parametres.DEFAULT_RESIDENTIAL_TIERS, le miroir JS "
+                  "solar.js) est aligné sur 1,381704 — l'écart est RÉSORBÉ, "
+                  "il n'y a plus qu'une seule valeur T5 côté ERP.",
     },
     {
         'tranche': '> 510 kWh (T6), millésime 2026',
@@ -231,22 +247,47 @@ TPPAN_PLAFOND_MAD_MOIS = 100.0
 
 #: Seuil d'exonération (kWh/mois). DEUX sources officielles se contredisent :
 #: le texte de 1996 dit ≤ 50 kWh, la page actuelle de Lydec dit ≤ 200 kWh
-#: (relèvement rapporté « depuis 2012 », texte modificatif non localisé). Les
-#: trois factures du fondateur sont TOUTES au-dessus de 200 kWh : elles ne
-#: départagent pas. On retient Lydec (source de régie la plus récente) en
-#: PARAMÈTRE, jamais en dur.
+#: (relèvement rapporté « depuis 2012 », texte modificatif JAMAIS localisé).
+#: Les trois factures du fondateur sont TOUTES au-dessus de 200 kWh : elles ne
+#: départagent pas. Le seuil reste un PARAMÈTRE, jamais un chiffre en dur.
 #:
-#: RÉSERVE HONNÊTE : à 200 kWh ce seuil crée une marche de 35 MAD (0 juste en
-#: dessous, 35 juste au-dessus), ce qui est inhabituel pour une taxe ; le seuil
-#: de 1996 (50 kWh) en produirait une bien plus douce. Une seule facture de
-#: petit consommateur (< 200 kWh/mois) trancherait — à demander.
-TPPAN_EXONERATION_KWH_MOIS = 200.0
+#: QJR141 (audit QJR79, 30/08/2026) — 200 → 50, LE SEUIL PROUVÉ ET PRUDENT.
+#: Le choix n'était pas neutre : il est ASYMÉTRIQUE. La facture AVANT solaire
+#: est presque toujours > 200 kWh (le seuil n'y change rien), tandis que la
+#: facture APRÈS solaire retombe souvent ENTRE 50 et 200 — exactement la plage
+#: où le seuil décide. Retenir 200 mettait donc la TPPAN à zéro sur la seule
+#: facture des deux où elle pesait, et GONFLAIT l'économie vendue (ordre de
+#: grandeur dérivé à la main : +199 à +298 MAD/an). Trois raisons de trancher
+#: à 50 :
+#:   1. C'est le seuil du TEXTE LÉGAL (art. 16, dahir 1-96-77) — le MÊME texte
+#:      dont ce module tire déjà les tranches et le plafond, et dont le calcul
+#:      est vérifié AU CENTIME sur la facture SRM du 08/05/2026. Le relèvement
+#:      à 200 n'est rapporté que par une page de régie dont le texte
+#:      modificatif n'a jamais pu être produit : il n'est pas PROUVÉ.
+#:   2. À 200 kWh, ce seuil crée une marche de 25,00 MAD (0 juste en dessous,
+#:      100 × 0,10 + 100 × 0,15 juste au-dessus) — invraisemblable pour une taxe
+#:      conçue en tranches progressives. À 50 kWh la marche vaut 5,00 MAD
+#:      (50 × 0,10), cohérente avec la première tranche. (L'ancienne note de ce
+#:      bloc écrivait « 35 MAD » : le chiffre ne se dérivait pas de
+#:      :data:`TPPAN_TRANCHES` — il est recalculé ici, et épinglé par un test.)
+#:   3. Entre deux lectures non départagées, la maison retient TOUJOURS celle
+#:      qui MINORE l'économie annoncée, jamais celle qui la majore.
+#: Une seule facture de petit consommateur (< 200 kWh/mois) trancherait pour
+#: de bon — à demander. En attendant, la réserve VOYAGE avec le chiffre
+#: (:data:`TPPAN_SOURCE`, propagé jusqu'au bloc de consommation estimée).
+#: DÉCISION FONDATEUR 30/08/2026 (menu de décisions, Q3) : GARDER 50 —
+#: confirmé tel quel, jusqu'au jour où une vraie facture < 200 kWh/mois
+#: tranche définitivement. La question est CLOSE ; ne pas la re-poser.
+TPPAN_EXONERATION_KWH_MOIS = 50.0
 
 TPPAN_SOURCE = (
     'art. 16 dahir 1-96-77 (BO 4391 bis, relayé HACA) ; barème progressif, '
     'bornes proratisées aux jours et montant TTC VÉRIFIÉS sur la facture SRM '
     'du 08/05/2026 (56,80 MAD à 359 kWh sur 30 jours) ; seuil d\'exonération '
-    '(200 kWh, source Lydec) non départagé par les factures disponibles'
+    'retenu à 50 kWh/mois (celui du texte de 1996) — une page de régie annonce '
+    '200 kWh sans texte modificatif localisable, et aucune facture disponible '
+    'ne départage : on retient la lecture prouvée, qui est aussi celle qui '
+    'MINORE l\'économie annoncée'
 )
 
 
@@ -256,6 +297,47 @@ def _num(valeur, defaut=0.0):
         return float(valeur)
     except (TypeError, ValueError):
         return float(defaut)
+
+
+def _num_strict(valeur, quoi):
+    """QJR142 — flottant qui REFUSE l'illisible, au lieu de rendre 0,0.
+
+    ``_num`` est le bon outil pour une grandeur dont 0 est un repli SENSÉ. Sur
+    une grandeur MONÉTAIRE de contrôle (un plafond, une charge fixe), 0 n'est
+    pas un repli : c'est une valeur qui change le résultat dans le sens du
+    client — un plafond illisible ANNULE la taxe, une charge fixe illisible
+    fabrique de la consommation. On lève plutôt que de publier ce nombre
+    plausible.
+    """
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        raise ValueError(
+            '%s illisible (%r) : une grandeur monétaire ne retombe pas sur 0'
+            % (quoi, valeur))
+
+
+def _millesime_valide(millesime):
+    """QJR142 — le millésime DEMANDÉ existe, ou on refuse de facturer.
+
+    ``MILLESIMES.get(millesime) or ONEE_TRANCHES`` faisait tomber un millésime
+    inconnu sur la grille 2026 — tranches ET taux de TVA — pendant que la
+    sortie réémettait le millésime DEMANDÉ : la seule raison d'être du
+    paramètre (« reproduire une facture 2025 que le client présente ») était
+    mise en échec, en silence. Le ``or`` avalait en outre une table VIDE.
+    """
+    table = MILLESIMES.get(millesime)
+    if not table:
+        raise ValueError(
+            'millésime %r inconnu du barème : aucune grille ne le décrit '
+            '(millésimes disponibles : %s) — on refuse de le facturer avec '
+            'la grille d\'une autre année'
+            % (millesime, ', '.join(str(m) for m in sorted(MILLESIMES))))
+    if millesime not in TVA_PAR_MILLESIME:
+        raise ValueError(
+            'millésime %r sans taux de TVA relevé : on refuse de le facturer '
+            'avec les taux d\'une autre année' % (millesime,))
+    return table
 
 
 def tppan_mad(kwh_mensuel, *, jours=TPPAN_JOURS_REFERENCE,
@@ -295,7 +377,16 @@ def tppan_mad(kwh_mensuel, *, jours=TPPAN_JOURS_REFERENCE,
         if restant <= 0:
             break
     if plafond_mad is not None:
-        total = min(total, _num(plafond_mad))
+        # QJR142 (f) — UN PLAFOND ILLISIBLE ANNULAIT LA TAXE. ``_num`` rendant
+        # 0,0 sur une valeur illisible, ``min(total, 0.0)`` mettait la TPPAN à
+        # zéro : un défaut de 0 sur un PLAFOND inverse le sens de la garde. On
+        # lève plutôt que de publier une facture amputée.
+        borne = _num_strict(plafond_mad, 'plafond TPPAN')
+        if borne < 0:
+            raise ValueError(
+                'plafond TPPAN négatif (%r) : un plafond ne borne pas vers le '
+                'bas' % (plafond_mad,))
+        total = min(total, borne)
     return total
 
 
@@ -311,8 +402,13 @@ def charges_fixes_ttc(millesime=MILLESIME_COURANT):
     donnerait un montant faux.
 
     2026 : 18,28 × 1,20 + 15,00 × 1,20 = 39,94 MAD/mois.
+
+    QJR142 (a) — un millésime inconnu ne retombe PLUS sur les taux 2026 :
+    ``_millesime_valide`` lève. Facturer 2024 avec la TVA de 2026 tout en
+    annonçant « 2024 » n'est pas une approximation, c'est un faux.
     """
-    taux = TVA_PAR_MILLESIME.get(millesime, TVA_PAR_MILLESIME[MILLESIME_COURANT])
+    _millesime_valide(millesime)
+    taux = TVA_PAR_MILLESIME[millesime]
     return (CHARGE_LOCATION_COMPTEUR_HT * (1.0 + taux['location'])
             + CHARGE_ENTRETIEN_BRANCHEMENT_HT * (1.0 + taux['entretien']))
 
@@ -321,14 +417,19 @@ def _tranches_effectives(tranches=None, millesime=MILLESIME_COURANT):
     """Table de tranches à employer — surcharge société, sinon millésime.
 
     Ne construit AUCUNE nouvelle grille : soit la surcharge société déjà
-    résolue par l'appelant, soit le barème du millésime demandé, soit — dernier
-    recours — ``pricing.ONEE_TRANCHES``.
+    résolue par l'appelant, soit le barème du millésime DEMANDÉ.
+
+    QJR142 (a) — plus de repli muet. ``MILLESIMES.get(millesime) or
+    ONEE_TRANCHES`` faisait facturer un millésime inconnu avec la grille 2026
+    pendant que la sortie réémettait le millésime demandé ; le ``or`` avalait
+    en prime une table VIDE. On lève désormais (voir
+    :func:`_millesime_valide`).
     """
     if tranches is not None:
         table, _ = _resolve_tranches(None, tranches)
         if table is not None:
             return table
-    return MILLESIMES.get(millesime) or ONEE_TRANCHES
+    return _millesime_valide(millesime)
 
 
 def facture_mad(kwh_mensuel, *, jours=TPPAN_JOURS_REFERENCE,
@@ -364,8 +465,21 @@ def facture_mad(kwh_mensuel, *, jours=TPPAN_JOURS_REFERENCE,
         fixes = charges_fixes_ttc(millesime)
         source_fixes = CHARGES_FIXES_SOURCE
     else:
-        fixes = max(0.0, _num(charges_fixes_mad))
-        source_fixes = 'réglage société'
+        # QJR142 (d) — UNE CHARGE FIXE ILLISIBLE FABRIQUAIT DE LA
+        # CONSOMMATION. ``max(0.0, _num(...))`` rendait 0,0 sur une valeur
+        # illisible OU négative, et la source annonçait quand même « réglage
+        # société » : à l'inversion, les ~39,94 MAD de lignes fixes étaient
+        # alors attribués à l'ÉNERGIE, soit ~29 kWh/mois fantômes. On lève.
+        # Un ZÉRO EXPLICITE reste légitime (une société peut n'avoir aucune
+        # ligne fixe) mais il le DIT, au lieu de se confondre avec l'illisible.
+        fixes = _num_strict(charges_fixes_mad, 'charges fixes (réglage société)')
+        if fixes < 0:
+            raise ValueError(
+                'charges fixes négatives (%r) : une ligne de facture ne se '
+                'soustrait pas' % (charges_fixes_mad,))
+        source_fixes = ('réglage société' if fixes > 0 else
+                        'réglage société : aucune charge fixe déclarée '
+                        '(0,00 MAD/mois)')
 
     return {
         'energie_mad': energie,
@@ -381,6 +495,12 @@ def facture_mad(kwh_mensuel, *, jours=TPPAN_JOURS_REFERENCE,
 # ════════════════════════════════════════════════════════════════════════════
 # 4. INVERSION : MAD → kWh
 # ════════════════════════════════════════════════════════════════════════════
+
+#: QJR142 — borne haute de la dichotomie (kWh/mois). Au-delà, le montant
+#: présenté ne décrit aucune consommation de ce barème : l'inversion le DIT
+#: (``kwh_mensuel = None``) au lieu de rendre la borne elle-même.
+_PLAFOND_DICHOTOMIE_KWH = 1e6
+
 
 def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
                            millesime=MILLESIME_COURANT, tranches=None,
@@ -405,9 +525,18 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
     Même règle que ``pricing._kwh_from_bill_bisect`` et que son miroir JS.
 
     Retourne ``{kwh_mensuel, energie_mad, location_entretien_mad, tppan_mad,
-    charges_fixes_source}``. ``total_mad`` ≤ 0 ⇒ 0 kWh (jamais un chiffre
-    fabriqué). Un montant qui ne couvre même pas les charges fixes rend 0 kWh :
-    aucune consommation ne peut produire une facture aussi basse.
+    charges_fixes_source, tppan_source}``. ``total_mad`` ≤ 0 ⇒ 0 kWh (jamais un
+    chiffre fabriqué). Un montant qui ne couvre même pas les charges fixes rend
+    0 kWh : aucune consommation ne peut produire une facture aussi basse.
+
+    QJR142 (e) — ``kwh_mensuel`` vaut ``None`` quand le montant sort de la
+    plage inversable (au-delà de :data:`_PLAFOND_DICHOTOMIE_KWH`) : la
+    recherche rendait jusqu'ici ≈ 1 024 000 kWh/mois sans aucun drapeau.
+
+    QJR141 — ``tppan_source`` est RENDU ici. Il l'était par :func:`facture_mad`
+    et cette fonction le JETAIT, alors que c'est la seule chaîne qui porte la
+    réserve sur le seuil d'exonération (deux sources officielles, une seule
+    prouvée) : l'honnêteté du chiffre n'atteignait ni écran ni PDF.
     """
     montant = _num(total_mad)
 
@@ -424,6 +553,7 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
             'location_entretien_mad': detail['location_entretien_mad'],
             'tppan_mad': detail['tppan_mad'],
             'charges_fixes_source': detail['charges_fixes_source'],
+            'tppan_source': detail['tppan_source'],
         }
 
     if montant <= 0:
@@ -435,8 +565,16 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
 
     bas = 0.0
     haut = 1000.0
-    while _detail(haut)['total_mad'] < montant and haut < 1e6:
+    while _detail(haut)['total_mad'] < montant and haut < _PLAFOND_DICHOTOMIE_KWH:
         haut *= 2
+    # QJR142 (e) — LA DICHOTOMIE N'ABANDONNE PLUS EN SILENCE. Quand la borne
+    # haute est atteinte sans que la facture rattrape le montant, la recherche
+    # rendait ≈ 1 024 000 kWh/mois SANS AUCUN DRAPEAU — un nombre parfaitement
+    # formé et parfaitement faux. On rend ``kwh_mensuel = None`` : « ce montant
+    # ne correspond à aucune consommation de ce barème », que l'appelant peut
+    # omettre plutôt que publier.
+    if _detail(haut)['total_mad'] < montant:
+        return _sortie(None, _detail(haut))
     for _ in range(60):
         milieu = (bas + haut) / 2
         if _detail(milieu)['total_mad'] < montant:
@@ -573,6 +711,15 @@ def tranche_du_kwh_mensuel(kwh_mensuel, *, millesime=MILLESIME_COURANT,
             if kwh <= haute:
                 return _tranche(rang, basse, haute, prix, 'progressif')
             basse = haute
+        # QJR142 (b) — PLUS DE CHUTE DANS LA BOUCLE SÉLECTIVE. Quand le seuil
+        # sélectif dépasse le dernier plafond progressif (saisie parfaitement
+        # possible : ``TariffSettings.selective_threshold_kwh`` est éditable),
+        # aucune bande progressive ne contenait ``kwh`` et l'exécution
+        # continuait dans la boucle sélective avec ``basse = seuil`` — donc une
+        # tranche dont la borne BASSE est SUPÉRIEURE à la consommation du
+        # client, et un ``libelle`` client-facing qui le dit. Aucune tranche ne
+        # décrit cette consommation : on rend ``None``, la colonne s'omet.
+        return None
     basse = float(seuil)
     for decalage, (plafond, prix) in enumerate(sel, start=1):
         haute = None if plafond is None else float(plafond) + tol
@@ -599,13 +746,23 @@ def falaise_sous_kwh_mensuel(kwh_mensuel, *, millesime=MILLESIME_COURANT,
     fait tomber la facture dans la tranche basse À COUP SÛR ; viser 510 en
     dépendrait. On promet moins que ce qu'on obtiendra, jamais l'inverse.
 
+    QJR142 (c) — IL N'Y A DE MARCHE QU'EN ZONE SÉLECTIVE. En zone PROGRESSIVE,
+    descendre sous une borne ne re-tarife RIEN : seuls les kWh au-delà de la
+    borne changent de prix, et la facture varie continûment. Cette fonction
+    nommait pourtant une « marche » là aussi, contre sa propre docstring — un
+    objectif vendu au client (« descendez sous X ») qui ne lui ferait gagner
+    aucune re-tarification. On rend désormais ``None`` hors régime sélectif.
+
     Renvoie ``{cible_kwh_mois, tranche_actuelle, tranche_visee}``, ou ``None``
     quand le client est déjà dans la tranche la plus basse (aucune marche à
-    franchir) ou quand la consommation est nulle.
+    franchir), quand il est en zone progressive (aucune marche n'existe), ou
+    quand la consommation est nulle.
     """
     actuelle = tranche_du_kwh_mensuel(kwh_mensuel, millesime=millesime,
                                       tranches=tranches)
     if actuelle is None or actuelle['rang'] <= 1:
+        return None
+    if actuelle.get('regime') != 'selectif':
         return None
     table = _tranches_effectives(tranches, millesime)
     paires = list(table)

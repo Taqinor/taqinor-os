@@ -62,7 +62,7 @@ def build(ctx):
     accroche = meta["accroche"]
 
     kwc = _kwc_str(d.get("com_kwc"))
-    economies = d.get("com_economies") or 0
+    economies = d.get("com_economies")
     autoconso = d.get("com_autoconso")
     couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
@@ -81,7 +81,9 @@ def build(ctx):
                             "Couverture conso"))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
-    if not d.get("com_masquer_economies"):
+    # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
+    # testait que le cas MT et laissait imprimer « 0 MAD — Économies / an ».
+    if not d.get("com_masquer_economies") and economies is not None:
         cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
 

@@ -5,8 +5,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+// QJR109 — le garde-fou « le lead ne réinitialise pas le marché choisi » est
+// désormais EXÉCUTÉ sur le reducer pur, au lieu d'être cherché dans le source.
 import {
-  DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
+  sizingReducer, ETAT_INITIAL,
+} from './quote/sizingReducer.js'
+import {
+  DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
@@ -25,7 +30,11 @@ import {
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0
-const P = (nom, ttc) => ({ id: ++_id, nom, prix_vente: ht(ttc) })
+// BATHOMO/F4 (fondateur 26/08/2026) — `quantite_stock` par défaut à 500,
+// même convention que le catalogue seedé (`seed_catalogue.py`) : le stock-
+// gating batterie n'exclut QUE ce qu'un test met explicitement à 0, jamais
+// les fixtures existantes qui ne parlaient pas encore de stock.
+const P = (nom, ttc, qty = 500) => ({ id: ++_id, nom, prix_vente: ht(ttc), quantite_stock: qty })
 const SEEDED = [
   P('Onduleur réseau Huawei 5kW Monophasé', 14000),
   P('Onduleur réseau Huawei 10kW Monophasé', 18000),
@@ -77,23 +86,6 @@ test('factures par défaut : la série saisonnière du simulateur', () => {
   assert.deepEqual(DEFAULT_MONTHLY_BILLS,
     [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480])
   DEFAULT_MONTHLY_BILLS.forEach(v => assert.ok(CLEAN_INT(v)))
-})
-
-test('suggestion panneaux : 8 par tranche de 900 MAD hiver', () => {
-  assert.equal(estimerPanneaux(600), 0)
-  assert.equal(estimerPanneaux(900), 8)
-  assert.equal(estimerPanneaux(1900), 16)
-})
-
-test('D5 — ratio de dimensionnement éditable, défaut inchangé', () => {
-  // Sans argument : exactement le comportement historique (8 par tranche).
-  assert.equal(estimerPanneaux(1900), 16)
-  // Ratio personnalisé : 10 par tranche de 900 MAD.
-  assert.equal(estimerPanneaux(900, 10), 10)
-  assert.equal(estimerPanneaux(1900, 10), 20)
-  // Valeur invalide → repli sur 8 (jamais 0/NaN panneaux).
-  assert.equal(estimerPanneaux(900, 0), 8)
-  assert.equal(estimerPanneaux(900, undefined), 8)
 })
 
 test('formatMoney : toujours arrondi à l\'entier (jamais de partie fractionnaire)', () => {
@@ -175,36 +167,93 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
   assert.equal(by('Autres').items[0].nom, 'Échafaudage roulant')
 })
 
+// QJR109 — CETTE GARDE-CI RESTE UNE LECTURE DU SOURCE, ET C'EST DÉLIBÉRÉ.
+// Elle porte sur des ATTRIBUTS DOM (`noValidate` du formulaire, `step="any"`
+// sur chaque champ nombre) : c'est une règle FONDATEUR (« l'écran ne doit
+// JAMAIS snapper ni rejeter un nombre tapé ») dont la seule autre expression
+// possible est un rendu React (spec RTL). La convertir en pur est IMPOSSIBLE ;
+// la retirer DESSERRERAIT la garde. Elle reste donc telle quelle, nommée pour
+// que la prochaine passe ne la prenne pas pour un oubli.
+// QJR101 — les champs nombres du marché ont suivi les quatre panneaux
+// (`generator/Panneau*.jsx`). La garde les SUIT au lieu de rester verte en ne
+// regardant plus qu'une fraction de l'écran : sans ce recalage elle passait de
+// 20 champs surveillés à 3. Un cinquième panneau de marché rejoint cette liste.
+// QJR244 — la carte « Factures Électriques » (factures hiver/été, grille des
+// 12 mois, bloc facture réelle du client) a quitté les trois panneaux réseau
+// pour un composant partagé unique (`CarteFacturesElectriques.jsx`) : ses
+// champs nombre ne sont plus lus TROIS FOIS (une fois par panneau copié-collé)
+// mais UNE seule fois — la garde ajoute ce fichier, sinon elle retomberait
+// silencieusement de 34 à ~4 champs surveillés.
+const SURFACES_SAISIE = [
+  '../../pages/ventes/DevisGenerator.jsx',
+  '../../pages/ventes/generator/PanneauResidentiel.jsx',
+  '../../pages/ventes/generator/PanneauIndustriel.jsx',
+  '../../pages/ventes/generator/PanneauCommercial.jsx',
+  '../../pages/ventes/generator/PanneauAgricole.jsx',
+  '../../pages/ventes/generator/CarteFacturesElectriques.jsx',
+]
+
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
-  const jsx = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
-    'utf-8',
-  )
-  assert.ok(jsx.includes('noValidate'),
+  const ici = dirname(fileURLToPath(import.meta.url))
+  const lire = (rel) => readFileSync(join(ici, rel), 'utf-8')
+  assert.ok(lire(SURFACES_SAISIE[0]).includes('noValidate'),
     'le formulaire doit être noValidate (aucun rejet navigateur)')
-  for (const bad of ['step="100"', 'step="10"', 'step="1"', 'step="0.01"']) {
-    assert.ok(!jsx.includes(bad), `contrainte de saisie restrictive trouvée : ${bad}`)
+  let champsNombre = 0
+  for (const rel of SURFACES_SAISIE) {
+    const jsx = lire(rel)
+    for (const bad of ['step="100"', 'step="10"', 'step="1"', 'step="0.01"']) {
+      assert.ok(!jsx.includes(bad), `contrainte de saisie restrictive dans ${rel} : ${bad}`)
+    }
+    // Seul le curseur (type="range") garde un pas ; aucun champ nombre n'en a.
+    const numberSteps = jsx.split('type="number"').slice(1)
+      .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
+    numberSteps.forEach(s => assert.equal(s, 'any', `${rel} : champ nombre sans step="any"`))
+    champsNombre += numberSteps.length
   }
-  // Seul le curseur (type="range") garde un pas ; aucun champ nombre n'en a.
-  const numberSteps = jsx.split('type="number"').slice(1)
-    .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
-  numberSteps.forEach(s => assert.equal(s, 'any'))
+  // Cliquet : 26 champs nombres mesurés sur les SIX surfaces (recalé par
+  // QJR244, qui a fait passer le socle des factures — hiver/été + grille des
+  // 12 mois (une seule expression `.map()` en SOURCE, jamais comptée 12 fois)
+  // + facture réelle, 4 occurrences en source — de « recopié dans les trois
+  // panneaux réseau » (compté 3 fois, 12 occurrences) à « un seul composant
+  // partagé » (compté 1 fois, 4 occurrences) : 34 − 12 + 4 = 26. Un champ qui
+  // migrerait vers un fichier absent de la liste ci-dessus ferait tomber ce
+  // compte au lieu de sortir de la garde en silence.
+  assert.ok(champsNombre >= 26,
+    `seulement ${champsNombre} champs nombres sous garde (26 attendus)`)
 })
 
+// QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne
+// `!sizing.touche.mode` à moins de 120 caractères de `LEAD_TYPE_TO_MODE` dans
+// `DevisGenerator.jsx` : une épingle qui rougit sur un reformatage et reste
+// verte si le garde-fou est déplacé dans une branche morte. Depuis QJR87/QJR99
+// le garde-fou est un ÉTAT du reducer PUR — il est ici EXÉCUTÉ.
 test('garde-fou : choisir un lead ne réinitialise JAMAIS le mode choisi', () => {
-  const jsx = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../pages/ventes/DevisGenerator.jsx'),
-    'utf-8',
-  )
-  // Le pré-réglage du mode depuis le lead doit être conditionné au fait que
-  // l'utilisateur n'a PAS déjà touché le mode (modeTouched).
-  assert.ok(/!modeTouched\.current[\s\S]{0,120}LEAD_TYPE_TO_MODE/.test(jsx),
-    'applyLead doit vérifier modeTouched avant de changer le mode')
-  assert.ok(jsx.includes('modeTouched.current = true'),
-    'le sélecteur de mode doit marquer le choix utilisateur')
-  // Et l'échec de création ne montre jamais de JSON brut
-  assert.ok(!jsx.includes('JSON.stringify(err)'),
-    'plus de JSON brut affiché à l\'utilisateur en cas d\'échec')
+  // Le commercial a choisi son marché à la main…
+  const choisi = sizingReducer(ETAT_INITIAL,
+    { type: 'MARCHE_CHANGE', mode: 'industriel' })
+  assert.equal(choisi.modeInstallation, 'industriel')
+  assert.equal(choisi.touche.mode, true,
+    'un choix UTILISATEUR doit marquer le drapeau')
+
+  // …puis il sélectionne un lead d'un AUTRE marché : le choix tient.
+  const apresLead = sizingReducer(choisi, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'residentiel' } })
+  assert.equal(apresLead.modeInstallation, 'industriel',
+    'le lead ne doit pas réinitialiser le marché déjà choisi')
+
+  // Sans choix préalable, le lead pose bien le marché (le garde-fou ne gèle
+  // pas l'écran) — et ne marque PAS le drapeau : ce n'est pas un choix.
+  const vierge = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'agricole' } })
+  assert.equal(vierge.modeInstallation, 'agricole')
+  assert.equal(vierge.touche.mode, false)
+
+  // Un `type_installation` inconnu ne change rien (jamais un marché inventé).
+  assert.equal(
+    sizingReducer(ETAT_INITIAL,
+      { type: 'LEAD_APPLIQUE', lead: { type_installation: 'sous-marin' } })
+      .modeInstallation,
+    'residentiel')
 })
 
 test('ROI : production GHI × kWc × 0.8', () => {
@@ -317,12 +366,20 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
   assert.equal(totals.totalAvecBrut, 101727.5)
 })
 
-test('auto-fill 24 panneaux × 710 W : batterie composée 10+5, structures alu', () => {
+test('auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu', () => {
+  // BATHOMO/F4 (fondateur 26/08/2026) — l'ancien calcul mélangeait 1×10 + 1×5
+  // (électriquement interdit, l'incident qui a fait retirer le Dyness 10 kWh
+  // du stock). Sur ce fixture (5 kWh = 17 000 TTC → 3 400/kWh ; 10 kWh =
+  // 30 000 TTC → 3 000/kWh), le 10 kWh est moins cher AU kWh, mais 15 kWh
+  // exigerait un 2×10 kWh EN SURPLUS (20 kWh, 60 000 TTC) contre un 3×5 kWh
+  // EXACT (51 000 TTC) : le moins cher au TOTAL gagne, jamais une préférence
+  // de calibre fixe — c'est le 5 kWh, homogène, jamais mélangé.
   const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
   const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'aluminium' })
   const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Dyness 10').quantite, 1)
-  assert.equal(by('Dyness 5').quantite, 1)
+  assert.equal(by('Dyness 10').quantite, 0)
+  assert.equal(by('Dyness 5').quantite, 3)
+  assert.equal(by('Dyness 5').prix_unit_ttc, 17000)
   assert.equal(by('aluminium').quantite, 24)
   assert.equal(by('aluminium').prix_unit_ttc, 850)
   assert.equal(by('acier').quantite, 0)
@@ -363,12 +420,14 @@ test('auto-fill : un catalogue encore écrit « Deyness » alimente le même viv
   const iGenerique = ancien.findIndex(p => p.nom.includes('Batterie Lithium'))
   ancien.unshift(...ancien.splice(iGenerique, 1))
 
-  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh (1 × 10 + 1 × 5)
+  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène (jamais 1×10 + 1×5 mélangé,
+  // même raison économique que le test « batterie homogène » ci-dessus).
+  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
   const rows = autoFillLines(ancien, { kwp, panelW: 710, structureType: 'acier' })
   const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Deyness 10').quantite, 1)
+  assert.equal(by('Deyness 10').quantite, 0)
   assert.equal(by('Deyness 10').prix_unit_ttc, 30000)
-  assert.equal(by('Deyness 5').quantite, 1)
+  assert.equal(by('Deyness 5').quantite, 3)
   assert.equal(by('Deyness 5').prix_unit_ttc, 17000)
   // Aucune batterie générique ne s'est glissée à la place de la marque.
   assert.ok(rows.every(r => !r.designation.includes('Lithium')))
@@ -400,18 +459,106 @@ test('auto-fill : batterie « haute tension » jamais auto-choisie même moins c
   assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
 })
 
-test('auto-fill : les batteries 5/10 kWh restent choisies comme avant malgré une HV au catalogue', () => {
+test('auto-fill : les batteries 5/10 kWh restent choisies (homogène) malgré une HV au catalogue', () => {
   const avecHV = [...SEEDED, P('Batterie Dyness haute tension 16 kWh', 100)]
 
+  // BATHOMO/F4 — cible 15 kWh → 3×5 kWh homogène, même raison économique.
   const rows24 = autoFillLines(avecHV, { kwp: 24 * 710 / 1000, panelW: 710, structureType: 'aluminium' })
   const by24 = (frag) => rows24.find(r => r.designation.includes(frag))
-  assert.equal(by24('Dyness 10').quantite, 1)
-  assert.equal(by24('Dyness 5').quantite, 1)
+  assert.equal(by24('Dyness 10').quantite, 0)
+  assert.equal(by24('Dyness 5').quantite, 3)
 
   const rows5 = autoFillLines(avecHV, { kwp: 5 * 710 / 1000, panelW: 710, structureType: 'acier' })
   const by5 = (frag) => rows5.find(r => r.designation.includes(frag))
   assert.equal(by5('Dyness 5').quantite, 1)
   assert.equal(by5('Dyness 10').quantite, 0)
+})
+
+// ── BATHOMO/F4 (fondateur 26/08/2026, revue adversariale) — MIROIR EXACT du
+// moteur serveur (apps/ventes/services.py::composition_residentielle) :
+// homogène par calibre, EN STOCK seulement, prix TTC total le plus bas,
+// plafond de modules respecté. Mêmes cas que
+// apps/ventes/tests/test_bathomo_banque_homogene.py côté backend.
+test('F4 — prix RÉELS fondateur : 2×5 kWh (28 000 TTC) bat 1×10 kWh (30 000 TTC) pour une cible de 10 kWh', () => {
+  // « 2×5=28 000 beats 1×10=30 000 for a 10 kWh target » (fondateur,
+  // 26/08/2026) : catalogue de production, 5 kWh = 14 000 TTC (2 800/kWh),
+  // 10 kWh = 30 000 TTC (3 000/kWh) — le 5 kWh est moins cher au kWh.
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  const kwp = 14 * 710 / 1000 // 9.94 → cible batterie 10 kWh
+  const rows = autoFillLines(catalogue, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 5').quantite, 2)
+  assert.equal(by('Dyness 10').quantite, 0)
+})
+
+test('F4 — jusqu\'à 40 kWh (8 packs de 5 kWh) le 5 kWh reste économique, jamais mélangé', () => {
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  for (const cibleKwh of [15, 20, 25, 30, 35, 40]) {
+    const kwp = cibleKwh // panelW=1000W → kwp == cible arrondie au multiple de 5
+    const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
+    const by = (frag) => rows.find(r => r.designation.includes(frag))
+    assert.equal(by('Dyness 10').quantite, 0, `cible ${cibleKwh} kWh`)
+    assert.equal(by('Dyness 5').quantite * 5, cibleKwh, `cible ${cibleKwh} kWh`)
+  }
+})
+
+test('F4 — un calibre à 0 en stock est EXCLU du choix économique', () => {
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    P('Batterie Dyness 5 kWh', 14000),
+    P('Batterie Dyness 10 kWh', 30000, /* qty */ 0), // rupture de stock
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  // Cible 20 kWh : sans la garde de stock, le 10 kWh (moins cher au kWh à ce
+  // prix) gagnerait l'arbitrage économique — la garde de stock l'exclut.
+  const kwp = 20
+  const rows = autoFillLines(catalogue, { kwp, panelW: 1000, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 10').quantite, 0)
+  assert.equal(by('Dyness 5').quantite, 4)
+})
+
+test('F4 — max_modules_par_banc (specs_solaire) rejette une candidate qui le dépasse, jamais un mélange', () => {
+  const bat5 = P('Batterie Dyness 5 kWh', 14000)
+  bat5.specs_solaire = { famille: 'batterie', max_modules_par_banc: 2 }
+  const catalogue = [
+    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+    P('Onduleur hybride Deye 5kW Monophasé', 17000),
+    P('Panneau Canadien Solar 710W', 1400),
+    bat5,
+    P('Batterie Dyness 10 kWh', 30000),
+    P('Structures acier', 500), P('Socles', 80),
+    P('Accessoires', 2000), P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800), P('Transport', 1000),
+  ]
+  // 20 kWh exigerait 4×5 (au-dessus du plafond 2) : REJETÉ — seul le 10 kWh
+  // (2×10, sans plafond) reste, jamais une banque tronquée à 2×5=10 kWh.
+  const rows = autoFillLines(catalogue, { kwp: 20, panelW: 1000, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 5').quantite, 0)
+  assert.equal(by('Dyness 10').quantite, 2)
 })
 
 // ── PVOND — garde batterie PILOTÉ PAR LA DONNÉE + verrou de complétude ──────
@@ -819,13 +966,63 @@ test('pompes sans prix : jamais chiffrées — signalées à la place', () => {
 
 test('variateur VEICHI : plus petit kW suffisant, tension assortie, jamais l\'afficheur', () => {
   const v = selectVariateurVeichi(VEICHI_FIXTURE, 7.5, 'tri')
-  assert.equal(v.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+  assert.equal(v.vfd.nom, 'VARIATEUR VEICHI SI23 7.5KW 380V')
+  assert.equal(v.insuffisant, false)
   // pompe mono 1.1 kW → 220 V, le moins cher des 2.2 kW (SI22)
   const v220 = selectVariateurVeichi(VEICHI_FIXTURE, 1.1, 'mono')
-  assert.equal(v220.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
+  assert.equal(v220.vfd.nom, 'VARIATEUR VEICHI SI22 2.2KW 220V')
   // l'afficheur (sans kW) n'est jamais candidat
-  assert.ok(!/afficheur/i.test(v.nom) && !/afficheur/i.test(v220.nom))
+  assert.ok(!/afficheur/i.test(v.vfd.nom) && !/afficheur/i.test(v220.vfd.nom))
   assert.equal(findAfficheurVariateur(VEICHI_FIXTURE).id, 901)
+})
+
+// ── QJR130 — jamais de repli silencieux sur un matériel sous-dimensionné ──────
+test('QJR130(a) : variateur VEICHI trop puissant demandé → RIEN sélectionné, insuffisant=true', () => {
+  // Le plus gros VEICHI tri du fixture est 11 kW ; on demande 50 kW.
+  const v = selectVariateurVeichi(VEICHI_FIXTURE, 50, 'tri')
+  assert.equal(v.vfd, null)
+  assert.equal(v.insuffisant, true)
+  // Aucun candidat du tout (mono demandé alors que le fixture n'a que du tri
+  // à cette puissance) → insuffisant reste false (rien à sur-dimensionner).
+  const none = selectVariateurVeichi([], 5, 'tri')
+  assert.equal(none.vfd, null)
+  assert.equal(none.insuffisant, false)
+})
+
+test('QJR130(a)(b) : auto-fill pompage — variateur trop puissant demandé → avertissement visible, pas de repli', () => {
+  // Pompe OSP 30/8 (7.5 kW) mais AUCUN variateur (VEICHI ni coffret) du
+  // fixture n'atteint 7.5 kW : le plus gros VEICHI tri disponible ici est
+  // limité à 5.5 kW.
+  const SMALL_VEICHI = VEICHI_FIXTURE.filter(p => !/7\.5KW|11KW/.test(p.nom))
+  const produits = [ospPump()].concat(SMALL_VEICHI, SEEDED)
+  const rows = autoFillPompage(produits, {
+    cv: '', alim: 'tri', typePompe: 'immergee', distance: '40',
+    structureType: 'acier', hmt: '60', debit: '30', heures: '7',
+  })
+  // aucune ligne « Variateur solaire » avec un variateur RÉEL sous-dimensionné
+  assert.ok(!rows.some(r => /VEICHI/i.test(r.designation)))
+  const warn = rows.find(r => r.designation.includes('Variateur solaire'))
+  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
+  assert.equal(warn.produit, '')                // jamais un produit réel
+  assert.equal(warn.prix_unit_ttc, 0)
+  assert.ok(/AUCUN variateur assez puissant/i.test(warn.designation))
+})
+
+test('QJR130(c) : auto-fill pompage — aucune pompe au CV demandé → avertissement visible, pas de repli', () => {
+  // Retire la pompe 7.5 CV du fixture : la plus grande immergée triphasée
+  // disponible reste 5.5 CV, plus PETITE que le CV demandé (7.5).
+  const SMALL_PUMPS = POMPAGE_FIXTURE.filter(p => !p.nom.includes('7.5 CV Triphasé'))
+  const rows = autoFillPompage(SMALL_PUMPS.concat(SEEDED), {
+    cv: '7.5', alim: 'tri', typePompe: 'immergee',
+    distance: '10', structureType: 'acier',
+  })
+  // jamais la pompe 5.5 CV (plus petite que le CV saisi) silencieusement facturée
+  assert.ok(!rows.some(r => /5\.5 CV/i.test(r.designation)))
+  const warn = rows.find(r => r.designation.includes('Pompe solaire'))
+  assert.ok(warn, 'une ligne d\'avertissement doit apparaître')
+  assert.equal(warn.produit, '')
+  assert.equal(warn.prix_unit_ttc, 0)
+  assert.ok(/AUCUNE pompe assez puissante/i.test(warn.designation))
 })
 
 test('m³/jour = débit à la HMT × heures de pompage (défaut 7 h)', () => {
@@ -857,6 +1054,65 @@ test('auto-fill courbe complet : pompe OSP + VEICHI assorti + afficheur, sans on
   assert.equal(Number(aff.quantite), 1)      // afficheur par défaut (supprimable)
   assert.ok(!names.some(n => /onduleur/i.test(n)))
   assert.ok(!names.some(n => /batterie/i.test(n)))
+})
+
+// ── QJR131 — `_hasPrix` couvre AUSSI panneaux/structures/socles/câble/
+// installation/transport (avant : réservé pompe/variateur/afficheur) : un
+// candidat sans prix n'est plus jamais chiffré, repli sur un placeholder
+// (aucun `produit`, jamais un article gratuit à id réel) ─────────────────────
+const POMPAGE_ARGS = {
+  cv: '5.5', alim: 'tri', typePompe: 'immergee', distance: '35', structureType: 'acier',
+}
+const zeroed = (produits, matches) => produits.map(p =>
+  matches.some(m => p.nom.includes(m)) ? { ...p, prix_vente: '0.00' } : p)
+
+test('QJR131 : Panneaux sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Panneau'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Panneaux')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Structures sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Structures'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Structures')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Socles sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Socles'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Socles')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Câble sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Câble'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS)
+    .find(r => r.designation === 'Câble solaire (m)')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Installation sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Installation'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Installation')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
+})
+
+test('QJR131 : Transport sans prix → placeholder, jamais un produit gratuit', () => {
+  const produits = zeroed(POMPAGE_FIXTURE.concat(SEEDED), ['Transport'])
+  const row = autoFillPompage(produits, POMPAGE_ARGS).find(r => r.designation === 'Transport')
+  assert.ok(row)
+  assert.equal(row.produit, '')
+  assert.equal(row.prix_unit_ttc, 0)
 })
 
 // ══ Réforme TVA 2024–2026 : 10 % panneaux PV, 20 % le reste ═════════════════
@@ -955,7 +1211,7 @@ test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
   // 850 MAD/mois tombe dans un TROU du barème : la bande 301-500 plafonne à
-  // 510 × 1,405116 = 716,60916 MAD et la bande supérieure démarre au-dessus de
+  // 510 × 1,381704 = 704,66904 MAD et la bande supérieure démarre au-dessus de
   // 511 × 1,622856 = 829,279416 MAD… mais 850 MAD EST atteignable au-dessus de
   // 510 : 850 / 1,622856 = 523,7998… kWh (> 510, donc bien dans sa bande) →
   // arrondi 523,8.
@@ -992,17 +1248,25 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
   assert.equal(r.estimation, true)
 })
 
+// QJR168 — les factures ci-dessous portent le barème COMPLET (énergie + les
+// deux lignes fixes + TPPAN), jumeau de bareme.facture_mad : 39,936 MAD TTC de
+// location/entretien par mois (479,23/an) et une TPPAN empilée 0,10/0,15/0,20,
+// bornes 100/200 kWh, plafonnée à 100 MAD/mois, nulle sous 50 kWh/mois.
 test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.60, sans batterie)', () => {
   // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
   //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,622856 = 973,7136
-  //                                            MAD/mois × 12 = 11 684,5632 → 11 685
+  //                                            MAD/mois × 12 = 11 684,5632
+  //     TPPAN  10 + 15 + 400 × 0,20 = 105 → PLAFOND 100 MAD/mois × 12 = 1 200
+  //     fixes  479,23 → facture 11 684,5632 + 479,232 + 1 200 = 13 363,80 → 13 364
   //   autoconsommé 6 000 × 0,60 = 3 600 kWh (≤ conso) → résiduel 3 600 kWh/an
   //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,187388 =
-  //                                            356,2164 × 12 = 4 274,5968 → 4 275
-  //   économie 11 685 − 4 275 = 7 410 MAD/an
+  //                                            356,2164 × 12 = 4 274,5968
+  //     TPPAN  10 + 15 + 100 × 0,20 = 45 MAD/mois × 12 = 540
+  //     fixes  479,23 → facture 4 274,5968 + 479,232 + 540 = 5 293,83 → 5 294
+  //   économie 13 364 − 5 294 = 8 070 MAD/an
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11685, factureAvec: 4275, economie: 7410, autoconsoKwh: 3600,
+    factureSans: 13364, factureAvec: 5294, economie: 8070, autoconsoKwh: 3600,
   })
 })
 
@@ -1010,13 +1274,16 @@ test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, av
   // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
   //   autoconsommé 6 000 × 0,85 = 5 100 kWh → résiduel 2 100 kWh/an
   //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,091388 =
-  //                                            190,9929 × 12 = 2 291,9148 → 2 292
-  //   économie 11 685 − 2 292 = 9 393 MAD/an
+  //                                            190,9929 × 12 = 2 291,9148
+  //     TPPAN  10 + 75 × 0,15 = 21,25 MAD/mois × 12 = 255
+  //     fixes  479,23 → facture 2 291,9148 + 479,232 + 255 = 3 026,15 → 3 026
+  //   économie 13 364 − 3 026 = 10 338 MAD/an
   // En redescendant sous 510 PUIS sous 310, le client ne fait pas qu'effacer
-  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388).
+  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388), et sa
+  // TPPAN dégringole avec lui (les lignes fixes, elles, s'annulent).
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11685, factureAvec: 2292, economie: 9393, autoconsoKwh: 5100,
+    factureSans: 13364, factureAvec: 3026, economie: 10338, autoconsoKwh: 5100,
   })
 })
 
@@ -1026,10 +1293,21 @@ test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, av
 // fichiers portent les MÊMES entrées et les MÊMES attendus, tous DÉRIVÉS À LA
 // MAIN de la grille officielle (jamais copiés d'une sortie de code).
 //
+// ÉCART TEMPORAIRE ASSUMÉ ET DATÉ (QJR26, 29/08/2026) : la correction T5
+// ci-dessous est portée sur les DEUX branches ERP (ce fichier + le jumeau
+// Python), PAS sur la branche site — apps/web/** est une tâche séparée (QJW).
+// Tant qu'elle n'a pas atterri, savingsTranchesFondateur.test.ts reste sur
+// l'ancienne valeur. Le verrou à trois branches se referme avec QJW.
+//
 // Grille (TTC, 2026 — TVA 20 %) : progressif 0-100 = 0,916272 ·
 // 101-150 = 1,091388 ; sélectif (toute la conso au tarif de sa tranche,
 // tolérance 10 kWh) : 151-210 = 1,091388 · 211-310 = 1,187388 ·
-// 311-510 = 1,405116 · > 510 = 1,622856.
+// 311-510 = 1,381704 · > 510 = 1,622856.
+//
+// DÉCISION FONDATEUR D5 (29/08/2026) — T5 RECALÉE SUR LA FACTURE : 311-510
+// vaut 1,381704 (facture SRM n° 643769639 du 08/05/2026 : 359 kWh × 1,15142 HT
+// = 496,03 TTC ⇒ 1,15142 × 1,20), et non l'extrapolation « HT constant ». TOUS
+// les attendus T5 ci-dessous ont été RE-DÉRIVÉS À LA MAIN de 1,381704.
 const BAREME_FIXTURE = [
   [100, 91.6272],      // progressif : 100 × 0,916272
   [150, 146.1966],     // progressif : 91,6272 + 50 × 1,091388 (= 54,5694)
@@ -1037,11 +1315,11 @@ const BAREME_FIXTURE = [
   [210, 229.19148],    // haut de bande (tolérance) : 210 × 1,091388
   [211, 250.538868],   // bande suivante, TOUTE la conso : 211 × 1,187388
   [310, 368.09028],    // 310 × 1,187388
-  [311, 436.991076],   // 311 × 1,405116
-  [499, 701.152884],   // 499 × 1,405116
-  [500, 702.558],      // 500 × 1,405116 — le seuil « 500 » du fondateur
-  [501, 703.963116],   // 501 × 1,405116 (encore dans sa bande : borne effective 510)
-  [510, 716.60916],    // 510 × 1,405116
+  [311, 429.709944],   // 311 × 1,381704
+  [499, 689.470296],   // 499 × 1,381704
+  [500, 690.852],      // 500 × 1,381704 — le seuil « 500 » du fondateur
+  [501, 692.233704],   // 501 × 1,381704 (encore dans sa bande : borne effective 510)
+  [510, 704.66904],    // 510 × 1,381704
   [511, 829.279416],   // 511 × 1,622856 — la marche du haut de grille
   [700, 1135.9992],    // 700 × 1,622856
 ]
@@ -1055,9 +1333,11 @@ test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à l
   for (let i = 1; i < BAREME_FIXTURE.length; i++) {
     assert.ok(BAREME_FIXTURE[i][1] > BAREME_FIXTURE[i - 1][1])
   }
-  // 511 kWh coûte 112,670256 MAD de plus que 510 kWh pour UN kWh de plus :
-  // c'est la marche sélective (829,279416 − 716,60916), pas une erreur d'arrondi.
-  assert.ok(Math.abs((829.279416 - 716.60916) - 112.670256) < 1e-9)
+  // 511 kWh coûte 124,610376 MAD de plus que 510 kWh pour UN kWh de plus :
+  // c'est la marche sélective (829,279416 − 704,66904), pas une erreur d'arrondi.
+  // La marche a GRANDI avec la correction D5 : son bas est descendu à 1,381704
+  // alors que son haut (1,622856) n'a pas bougé.
+  assert.ok(Math.abs((829.279416 - 704.66904) - 124.610376) < 1e-9)
 })
 
 test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-retour)', () => {

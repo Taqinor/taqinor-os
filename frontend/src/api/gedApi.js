@@ -57,11 +57,40 @@ const gedApi = {
     })
   },
 
+  // GED31/WIR249 — Numérisation par LOT (scan-to-DMS) : N fichiers en un
+  // appel, un Document + version 1 PAR fichier (pas d'assemblage, contrairement
+  // à `assemblerPhotos`). `files` : tableau de `File`. Renvoie
+  // `{documents, erreurs}` — un fichier au format refusé n'interrompt pas le lot.
+  scanLot: ({ folder, files }) => {
+    const fd = new FormData()
+    fd.append('folder', folder)
+    files.forEach((f) => fd.append('files', f))
+    return api.post('/ged/documents/scan-lot/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // GED32/WIR249 — Import en MASSE depuis un CSV de métadonnées (+ ZIP
+  // optionnel des binaires, apparié par la colonne `fichier`). Renvoie
+  // `{crees, documents, erreurs}` — une ligne en erreur n'interrompt pas l'import.
+  importerEnMasse: ({ folder, csv, zip }) => {
+    const fd = new FormData()
+    fd.append('folder', folder)
+    fd.append('csv', csv)
+    if (zip) fd.append('zip', zip)
+    return api.post('/ged/documents/import-masse/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   // ── GED13 — Recherche & filtres avancés ──
   // Recherche plein-texte Postgres (GED11) : `params` = { q }.
   searchDocuments: (params) => api.get('/ged/documents/recherche/', { params }),
   // Recherche sémantique (GED12, dégrade en plein-texte sans clé) : { q }.
   semanticSearch: (params) => api.get('/ged/documents/semantique/', { params }),
+  // FG352/XKB20/WIR249 — DocQA : fragments GED + KB les plus proches d'une
+  // question (RAG, KEY-GATED — `enabled:false` + `results:[]` sans clé
+  // d'embedding, jamais une erreur). `params` : { q, k? }.
+  docqa: (params) => api.get('/ged/documents/docqa/', { params }),
   // Taxonomie de tags (GED9) pour le filtre par tag.
   getTags: (params) => api.get('/ged/tags/', { params }),
 
@@ -97,6 +126,12 @@ const gedApi = {
   // séparée, l'original n'est jamais modifié). `data` : { version,
   // type_annotation:'tampon'|'note', page?, x?, y?, contenu }.
   createAnnotation: (data) => api.post('/ged/annotations/', data),
+  // XGED16/WIR249 — Exporte un PDF ANNOTÉ APLATI (nouveau fichier séparé,
+  // l'original n'est jamais modifié) : `versionId` = la version tamponnée.
+  // Sans PyMuPDF installé côté serveur : 400 explicite (jamais un 500).
+  exportPdfAnnote: (versionId) =>
+    api.get('/ged/annotations/export-annote/',
+      { params: { version: versionId }, responseType: 'blob' }),
 
   // ══════════════════════════════════════════════════════════════════════
   // UX45 — Approbation & signature électronique.
@@ -138,6 +173,15 @@ const gedApi = {
   // Enregistre la complétion d'une signature (webhook/manuel). `data` : { provider_ref? }.
   marquerSigne: (id, data) =>
     api.post(`/ged/demandes-signature/${id}/marquer-signe/`, data ?? {}),
+  // XGED3/PACT185 — Télécharge le PDF final signé (champs aplatis), UNIQUEMENT
+  // pour une demande déjà `signe` (sinon 409 — message serveur affiché tel
+  // quel, jamais un défaut inventé côté client).
+  pdfSigneDemande: (id) =>
+    api.get(`/ged/demandes-signature/${id}/pdf-signe/`, { responseType: 'blob' }),
+  // ZGED14 — Prolonge l'échéance d'une demande `en_attente` (versant émetteur
+  // des relances). `data` : { expires_at: '<iso>' }.
+  prolongerDemandeSignature: (id, data) =>
+    api.post(`/ged/demandes-signature/${id}/prolonger/`, data),
 
   // ══════════════════════════════════════════════════════════════════════
   // UX46 — Rétention, archivage légal & partage.
@@ -159,6 +203,18 @@ const gedApi = {
     api.get('/ged/archivages-legaux/', { params }),
   // Archive légalement un document. `data` : { document, motif?, retain_until? }.
   createArchivageLegal: (data) => api.post('/ged/archivages-legaux/', data),
+  // XGED6/WIR249 — Dossier de PREUVE JSON d'un archivage légal (hash au
+  // dépôt, contrôles d'intégrité successifs, horodatages loi 43-20) +
+  // déclenchement d'un contrôle d'intégrité immédiat (hors sweep planifié).
+  // NON CONSOMMÉS PAR UN ÉCRAN dans cette tâche : ces deux routes vivent
+  // conceptuellement dans la gestion de l'archivage légal (onglet dédié de
+  // `RetentionPage.jsx`, hors périmètre fichiers de WIR249) — wrappers prêts
+  // pour ce futur câblage, jamais appelés depuis GedNavigator/NumeriserPage/
+  // ChecklistPage.
+  dossierPreuveArchivage: (archivageId) =>
+    api.get(`/ged/archivages-legaux/${archivageId}/dossier-preuve/`),
+  verifierIntegriteArchives: () =>
+    api.post('/ged/archivages-legaux/verifier-integrite/'),
 
   // GED24 — Legal holds (gel anti-suppression). `params` : { document, actif }.
   getLegalHolds: (params) => api.get('/ged/legal-holds/', { params }),
@@ -312,6 +368,10 @@ const gedApi = {
   // deux versions d'un même document.
   comparerVersions: (documentId, v1, v2) =>
     api.get(`/ged/documents/${documentId}/comparer/`, { params: { v1, v2 } }),
+  // GED15 — Restaure le document à une version antérieure (non destructif :
+  // crée une NOUVELLE version copiée depuis `versionId`, historique préservé).
+  restaurerVersionDocument: (documentId, versionId) =>
+    api.post(`/ged/documents/${documentId}/restaurer/`, { version: versionId }),
 
   // ══════════════════════════════════════════════════════════════════════
   // GED26 — Corbeille (soft-delete réversible + purge définitive).
@@ -326,11 +386,52 @@ const gedApi = {
   // GED16 — Check-out / check-in (verrou d'extraction).
   checkOutDocument: (id) => api.post(`/ged/documents/${id}/check-out/`),
   checkInDocument: (id) => api.post(`/ged/documents/${id}/check-in/`),
+  // ZGED9/WIR249 — Verrou d'AVERTISSEMENT léger (« en cours d'édition »),
+  // DISTINCT du check-out GED16 : n'empêche jamais la lecture, affiche un
+  // bandeau à tous. `data` : { motif? }. 409 si déjà posé par un autre.
+  verrouillerDocument: (id, data) =>
+    api.post(`/ged/documents/${id}/verrouiller/`, data ?? {}),
+  deverrouillerDocument: (id) =>
+    api.post(`/ged/documents/${id}/deverrouiller/`),
+  // GED33/WIR249 — OCR ce document (pièce CIN/facture/BL) → métadonnées
+  // typées fusionnées ADDITIVEMENT dans `custom_data` (jamais d'écrasement).
+  // `data` : { type_piece? }. Renvoie { document, metadonnees, ocr_enabled }.
+  ocrPiece: (id, data) => api.post(`/ged/documents/${id}/ocr-piece/`, data ?? {}),
+  // GED17/WIR249 — Fait avancer le document dans son cycle de vie documentaire
+  // LOCAL à la GED (brouillon→revue→approuvé→archivé→obsolète), SÉPARÉ du
+  // funnel STAGES.py. `statut` : la cible ; 400 si transition non autorisée.
+  cycleVieDocument: (id, statut) =>
+    api.post(`/ged/documents/${id}/cycle-vie/`, { statut }),
+  // XGED30/WIR249 — Éditeur Office embarqué (Collabora/OnlyOffice), KEY-GATED
+  // (`GED_OFFICE_URL`) : 400 explicite sans URL configurée. Pose le check-out
+  // (GED16) et renvoie { editor_url, document_id }.
+  officeOuvrir: (id) => api.post(`/ged/documents/${id}/office-ouvrir/`),
+  // XGED30 — Callback de sauvegarde de l'éditeur Office : crée une NOUVELLE
+  // version depuis le contenu édité. `file` : Blob/File. NON consommé par un
+  // écran ERP aujourd'hui (le round-trip postMessage d'un éditeur embarqué
+  // réel — Collabora/OnlyOffice iframe — sort du périmètre de cette tâche) ;
+  // le wrapper existe pour une future intégration de l'éditeur embarqué.
+  officeSauvegarder: (id, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post(`/ged/documents/${id}/office-sauvegarder/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // XGED14 — Opérations en lot sur une multi-sélection de documents.
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
+  // JAMAIS `telecharger_zip` par ce wrapper (réponse JSON) : voir
+  // `telechargerZipLot` dédié ci-dessous (réponse blob binaire).
   operationsLot: (data) => api.post('/ged/documents/operations-lot/', data),
+  // XGED14 — wrapper DÉDIÉ pour `telecharger_zip` : SEULE variante de
+  // operations-lot qui renvoie un ZIP binaire (jamais via `operationsLot`
+  // générique, qui n'attend jamais de blob). `documentIds` : [<id>,...].
+  telechargerZipLot: (documentIds) =>
+    api.post('/ged/documents/operations-lot/',
+      { documents: documentIds, operation: 'telecharger_zip' },
+      { responseType: 'blob' }),
 
   // ══════════════════════════════════════════════════════════════════════
   // WIR70 — surfaces GED déjà exposées mais sans consommateur frontend.

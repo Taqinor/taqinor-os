@@ -558,14 +558,52 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     return _html_to_pdf(html)
 
 
+def _proforma_option(devis):
+    """QJR19 — l'option dont le pro-forma imprime l'argent.
+
+    MÊME règle que la chaîne canonique (``quote_engine.builder`` : deux vraies
+    options ⇒ l'option AVEC batterie, jamais la somme des deux ; l'option
+    ACCEPTÉE quand le client a tranché ; mono-option / pompage / liste libre ⇒
+    toutes les lignes). Rendre la somme des deux paniers imprimait un montant
+    qui n'existe dans AUCUN document.
+    """
+    from apps.ventes.utils.options import AVEC_BATTERIE, has_two_options
+
+    option = getattr(devis, 'option_acceptee', '') or ''
+    if option:
+        return option
+    return AVEC_BATTERIE if has_two_options(devis) else ''
+
+
 def generate_proforma_pdf(devis, reference):
     """XFAC10 — facture pro-forma NON comptabilisée (layout facture legacy,
     variante filigranée). Rendu à la volée, non stocké — ne touche jamais le
     moteur devis premium (RULE #4 : /proposal reste le seul chemin PDF
-    client-facing pour un DEVIS ; ceci est un rendu FACTURE, pas un devis)."""
+    client-facing pour un DEVIS ; ceci est un rendu FACTURE, pas un devis).
+
+    QJR19 (décision fondateur D1 du 29/08/2026 — l'endpoint est CONSERVÉ) :
+    l'argent de ce document n'est plus une SECONDE arithmétique. Il imprimait
+    ``Devis.total_ht``/``total_ttc``, qui ignorent ``remise_globale`` et
+    SOMMENT les deux options ; le gabarit plantait sur une ligne section/note
+    (XSAL14) et se trompait de total sur une ligne optionnelle non activée
+    (XSAL5). Lignes et totaux viennent désormais de la chaîne canonique
+    (``utils.options.option_lines``/``option_totaux``, qui filtrent
+    ``compte_dans_totaux`` et honorent la remise globale) — la même que le PDF
+    client, au centime. Le jour où la façade ``argent.totaux(vue=…)`` (QJR49)
+    remplacera ``option_totaux``, la substitution est mécanique : ce module ne
+    calcule RIEN lui-même.
+    """
+    from apps.ventes.utils.options import option_lines, option_totaux
+
+    option = _proforma_option(devis)
+    lignes = option_lines(devis, option)
+    totaux = option_totaux(devis, option, lignes=lignes)
+
     context = _company_context(company=devis.company)
     context['devis'] = devis
     context['reference'] = reference
+    context['lignes'] = lignes
+    context['totaux'] = totaux
     html = _render_html('proforma.html', context)
     return _html_to_pdf(html)
 

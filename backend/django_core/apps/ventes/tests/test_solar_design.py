@@ -504,9 +504,11 @@ class EvChargerSizingTest(SimpleTestCase):
 
     def test_pv_surplus_from_kwc(self):
         # Sans production fournie, déduite de kWc × productible / 365.
+        # QJR146 (h) — le productible est DONNE par l'appelant : la fonction
+        # n'arme plus le forfait 1700 en silence.
         res = sd.ev_charger_sizing(
             borne_kw=7.4, pv_kwc=5.0, pv_surplus_kwh=10.0,
-            energy_per_session_kwh=8.0)
+            energy_per_session_kwh=8.0, productible_kwh_kwc_year=1700.0)
         prod = res["pv_impact"]["pv_daily_production_kwh"]
         # 5 kWc × 1700 / 365 ≈ 23.3 kWh/jour.
         self.assertAlmostEqual(prod, 23.29, places=1)
@@ -565,9 +567,10 @@ class BatteryStorageSizingTest(SimpleTestCase):
 
     def test_autoconso_surplus_from_kwc(self):
         # Sans production fournie, déduite de kWc × productible / 365.
+        # QJR146 (h) — productible EXPLICITE (plus de forfait 1700 arme).
         res = sd.battery_storage_sizing(
             mode="autoconso", pv_kwc=6.0, pv_self_consumption_kwh=10.0,
-            night_load_kwh=100.0)
+            night_load_kwh=100.0, productible_kwh_kwc_year=1700.0)
         prod = res["autoconso"]["pv_daily_production_kwh"]
         # 6 kWc × 1700 / 365 ≈ 27.95 kWh/jour.
         self.assertAlmostEqual(prod, 27.95, places=1)
@@ -885,13 +888,26 @@ class HourlySelfConsumptionTest(SimpleTestCase):
         # autoconso = min = [0, 0, 3, 0] = 3.
         self.assertEqual(res["self_consumed_kwh"], 3.0)
 
-    def test_mismatched_lengths_aligned_to_shorter(self):
+    def test_mismatched_lengths_refusees(self):
+        """QJR146 (h) — deux courbes NON VIDES de longueurs différentes ne
+        décrivent pas la même période : elles étaient TRONQUÉES sur la plus
+        courte (une charge de 288 points contre 24 h de production sortait des
+        totaux « annuels » calculés sur un jour, avec un avertissement que rien
+        n'imprime). Elles lèvent désormais."""
+        with self.assertRaises(ValueError) as ctx:
+            sd.hourly_self_consumption(
+                load_curve=[1, 1, 1, 1, 1],
+                production_curve=[2, 2])
+        self.assertIn("longueurs différentes", str(ctx.exception))
+
+    def test_serie_vide_n_est_pas_une_divergence(self):
+        """Rien de connu d'un côté ⇒ 0 h et des zéros, jamais une exception
+        ni 24 zéros qui tronqueraient l'autre série."""
         res = sd.hourly_self_consumption(
-            load_curve=[1, 1, 1, 1, 1],
-            production_curve=[2, 2])
-        self.assertEqual(res["hours"], 2)
-        self.assertTrue(any("longueurs différentes" in w
-                            for w in res["warnings"]))
+            load_curve=[1.0] * 288, production_curve=[])
+        self.assertEqual(res["hours"], 0)
+        self.assertEqual(res["total_production_kwh"], 0.0)
+        self.assertEqual(res["self_consumed_kwh"], 0.0)
 
     def test_8760_annual_curve(self):
         # Une courbe annuelle 8760 h fonctionne comme un profil 24 h.
@@ -2158,3 +2174,109 @@ class SpecsProduitBridgeTest(TestCase):
             [self.ond_fiche], n_panels=17, panel_w=550, hybrid=False,
             inverter_window={"n_mppt": 3})
         self.assertEqual(res["string_design"]["n_mppt"], 3)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QJR78 — UNE SEULE TABLE DE CLASSIFICATION PRODUIT DANS TOUT LE BACKEND
+# ═══════════════════════════════════════════════════════════════════════════
+class TableUniqueDeClassificationTest(SimpleTestCase):
+    """Les TROIS lecteurs backend lisent la MÊME table, celle de ce module.
+
+    POURQUOI CE TEST EXISTE. Les commentaires du code citent un incident de
+    PRODUCTION réel (DEV-202608-0024) causé par un module qui avait brièvement
+    divergé des classifieurs partagés. Le patron s'était reformé : le
+    19/08/2026, la détection panneau a été élargie DANS ``quote_engine/builder``
+    seulement (module + qualifiant PV, marque + wattage, exclusions), pendant
+    que ``solar_design`` et l'ex-``services.py`` (aujourd'hui
+    ``domain/catalogue``) restaient à « panneau / panneaux ». Un devis dont la
+    ligne panneau s'appelle « Module PV 550 W » était donc rejeté à
+    l'enregistrement comme n'ayant AUCUN panneau, alors que son PDF la comptait.
+
+    Deux garanties ici, et la seconde compte autant que la première :
+    l'IDENTITÉ des fonctions (les alias pointent le MÊME objet, donc aucune
+    copie ne peut re-diverger en silence) et le VERDICT sur les désignations
+    réelles.
+    """
+
+    #: Désignations que les vendeurs écrivent vraiment, et le verdict attendu.
+    CAS_PANNEAU = (
+        'Module PV 550 W',
+        'Panneau solaire 710 Wc',
+        'Canadian Solar TOPHiKu7 710 Wc',
+        'Module photovoltaïque 600 Wc',
+    )
+    CAS_NON_PANNEAU = (
+        'Onduleur hybride Deye SG05LP3 5 kW',
+        'Batterie 16 kWh',
+        'Smart Meter DTSU666',
+        'Clé Wifi (dongle)',
+        # Marque de panneau SANS wattage lisible : ambigu, donc refusé (ces
+        # marques vendent aussi des onduleurs). Omettre vaut mieux qu'inventer.
+        'Canadian Solar accessoire de montage',
+    )
+
+    def _lecteurs(self):
+        """Les trois lecteurs BACKEND, dans l'ordre du parcours devis."""
+        from apps.ventes.domain import catalogue
+        from apps.ventes.quote_engine import builder
+        return {
+            'solar_design': sd.is_panel,
+            'domain/catalogue (écran, composition)': catalogue._is_panel,
+            'quote_engine/builder (PDF)': builder._is_panel,
+        }
+
+    def test_les_trois_lecteurs_sont_la_MEME_fonction(self):
+        """Pas « la même règle » : le même OBJET. Une copie peut diverger."""
+        for nom, fonction in self._lecteurs().items():
+            with self.subTest(lecteur=nom):
+                self.assertIs(
+                    fonction, sd.is_panel,
+                    "%s ne pointe plus la table de solar_design : une seconde "
+                    "copie a été réintroduite, et c'est exactement ce qui a "
+                    "produit l'incident DEV-202608-0024." % nom)
+
+    def test_module_pv_550_w_est_un_panneau_pour_les_trois(self):
+        for nom, fonction in self._lecteurs().items():
+            for designation in self.CAS_PANNEAU:
+                with self.subTest(lecteur=nom, designation=designation):
+                    self.assertTrue(
+                        fonction(designation),
+                        "%s ne classe pas « %s » comme panneau." % (
+                            nom, designation))
+
+    def test_ce_qui_nest_pas_un_panneau_le_reste_pour_les_trois(self):
+        for nom, fonction in self._lecteurs().items():
+            for designation in self.CAS_NON_PANNEAU:
+                with self.subTest(lecteur=nom, designation=designation):
+                    self.assertFalse(
+                        fonction(designation),
+                        "%s classe « %s » comme panneau — un élargissement de "
+                        "la table ne doit jamais avaler un onduleur, une "
+                        "batterie ou un accessoire." % (nom, designation))
+
+    def test_batterie_et_onduleurs_partagent_aussi_la_table(self):
+        """Les trois autres classifieurs suivent la même règle d'identité."""
+        from apps.ventes.domain import catalogue
+        from apps.ventes.quote_engine import builder
+        for nom, gauche, droite in (
+                ('_is_battery (catalogue)', catalogue._is_battery, sd.is_battery),
+                ('_is_battery (builder)', builder._is_battery, sd.is_battery),
+                ('_is_hybrid_inverter (catalogue)',
+                 catalogue._is_hybrid_inverter, sd.is_hybrid_inverter),
+                ('_is_hybrid_inverter (builder)',
+                 builder._is_hybrid_inverter, sd.is_hybrid_inverter),
+                ('_is_reseau_inverter (catalogue)',
+                 catalogue._is_reseau_inverter, sd.is_reseau_inverter),
+                ('_is_reseau_inverter (builder)',
+                 builder._is_reseau_inverter, sd.is_reseau_inverter)):
+            with self.subTest(alias=nom):
+                self.assertIs(gauche, droite,
+                              "%s ne pointe plus la table de solar_design." % nom)
+
+    def test_la_facade_services_expose_la_meme_table(self):
+        """Le quatrième chemin de lecture : le ré-export de `services.py`."""
+        from apps.ventes import services
+        self.assertIs(services._is_panel, sd.is_panel)
+        self.assertIs(services._is_battery, sd.is_battery)
+        self.assertIs(services._is_hybrid_inverter, sd.is_hybrid_inverter)
+        self.assertIs(services._is_reseau_inverter, sd.is_reseau_inverter)

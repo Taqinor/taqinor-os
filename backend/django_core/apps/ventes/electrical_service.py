@@ -196,8 +196,8 @@ def _quantite_ligne(ligne):
         return 0.0
 
 
-def _lignes_option_choisie(devis):
-    """Les lignes d'UNE SEULE option — celle que la conception électrique lit.
+def _option_choisie(devis):
+    """``(lignes, variante)`` de l'UNIQUE option que la conception lit.
 
     LANE CHOIX-AVEC (fondateur, 25/08/2026) : « pour toute question où l'on
     est obligé de choisir une seule config et ne peut pas montrer les deux,
@@ -217,10 +217,8 @@ def _lignes_option_choisie(devis):
     batterie Dyness 15,4 kWh accrochée dessus — un montage qui n'existe dans
     AUCUN document commercial.
 
-    Même découpage par mots-clés que ``quote_engine.builder._repartir_options``
-    (``LigneDevis.variante`` n'existe pas encore sur ce modèle — ``getattr``
-    avec défaut ``''`` le lira automatiquement le jour où une autre lane
-    l'ajoute, sans changer une ligne de ce code) : une ligne batterie ou
+    Même découpage par mots-clés que ``quote_engine.builder._repartir_options``,
+    et ``LigneDevis.variante`` quand la ligne la porte : une ligne batterie ou
     onduleur hybride n'entre jamais dans le panier SANS, une ligne onduleur
     réseau n'entre jamais dans le panier AVEC ; les lignes neutres (panneaux,
     structure, câblage…) entrent dans LES DEUX paniers.
@@ -234,8 +232,20 @@ def _lignes_option_choisie(devis):
     Un devis mono-option (un seul onduleur, éventuellement une batterie) ne
     change JAMAIS de comportement : son unique équipement retombe dans un
     seul panier servable, identique octet pour octet à avant ce correctif.
+
+    QJR25 (décision fondateur D8, 29/08/2026) — LA VARIANTE RETENUE EST RENDUE
+    AVEC LES LIGNES. Elle n'était jusqu'ici connue que de cette fonction, si
+    bien que ``groupes_du_devis`` — le seul lecteur du COMPTE DE PANNEAUX —
+    n'en savait rien et retombait sur la vue SANS de ``cible_depuis_lignes``
+    pendant que l'onduleur et la batterie, eux, venaient de l'option AVEC : le
+    schéma unifilaire décrivait alors un système moitié SANS moitié AVEC, que
+    personne n'a jamais vendu. La variante DESCEND désormais explicitement
+    jusqu'au compte de modules. Le repli neutre (cas 3) rend ``'avec'`` :
+    convention « Les deux » mono-config = AVEC partout — sur un devis
+    mono-option les deux vues portent de toute façon les mêmes lignes.
     """
     from apps.ventes import solar_design as sd
+    from apps.ventes.services import VARIANTE_AVEC, VARIANTE_SANS
 
     toutes = _lignes_du_devis(devis)
     sans, avec = [], []
@@ -263,10 +273,15 @@ def _lignes_option_choisie(devis):
     sans_servable = _presente(sans, sd.is_reseau_inverter)
 
     if avec_servable:
-        return avec
+        return avec, VARIANTE_AVEC
     if sans_servable:
-        return sans
-    return toutes
+        return sans, VARIANTE_SANS
+    return toutes, VARIANTE_AVEC
+
+
+def _lignes_option_choisie(devis):
+    """Les lignes SEULES de l'option retenue — voir :func:`_option_choisie`."""
+    return _option_choisie(devis)[0]
 
 
 def _produit_de_famille(devis, predicat):
@@ -448,7 +463,7 @@ def spec_onduleur_du_devis(devis):
     return onduleur, phases
 
 
-def groupes_du_devis(devis):
+def groupes_du_devis(devis, variante=None):
     """``GroupePan`` du calepinage — un par PAN, sinon UN groupe pour la cible.
 
     Les pans viennent de ``roof_layout['_pans_geometry']`` (QJ21) : c'est la
@@ -456,7 +471,22 @@ def groupes_du_devis(devis):
     orientations ne partagent jamais une entrée MPPT (le moteur le refuse).
     Sans calepinage, on retombe sur un unique groupe portant le nombre de
     panneaux lu dans les LIGNES du devis (PV16) — le devis fait foi.
+
+    QJR25 (décision fondateur D8, 29/08/2026) — ``variante`` DIT DE QUELLE
+    OPTION EST CE COMPTE. Elle valait implicitement ``'sans'`` (le défaut de
+    ``cible_depuis_lignes``) alors que l'onduleur et la batterie du même schéma
+    venaient de l'option AVEC : sur un devis « Les deux » aux optimums
+    divergents, la planche portait les panneaux de l'option 1 sous l'onduleur
+    hybride et la batterie de l'option 2 — un système qui n'a jamais été vendu.
+    ``None`` (le défaut) applique la convention mono-config du fondateur :
+    AVEC partout. ``construire_entree`` passe, lui, la variante RÉELLEMENT
+    retenue par :func:`_option_choisie`, pour que panneaux, onduleur et
+    batterie décrivent tous les trois la MÊME option.
+
+    Sur un devis NON varianté — tous ceux d'hier — les deux vues portent les
+    mêmes lignes : le compte est identique, quelle que soit la variante.
     """
+    from apps.ventes.services import VARIANTE_AVEC
     from core.electrique.types import GroupePan
 
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
@@ -479,7 +509,8 @@ def groupes_du_devis(devis):
         return tuple(groupes)
 
     from apps.ventes.services import cible_depuis_lignes
-    cible = cible_depuis_lignes(devis) or {}
+    cible = cible_depuis_lignes(
+        devis, variante or VARIANTE_AVEC) or {}
     panneaux = _entier(cible.get("panneaux"), 0)
     if panneaux <= 0:
         return ()
@@ -632,6 +663,13 @@ def construire_entree(devis, overrides=None):
     chaînes du devis, seulement d'un éventuel override explicite. C'est
     ``core.electrique.cables`` qui compte les PAIRES (une par MPPT réellement
     utilisée) pour le métrage total du bordereau, pas ce module.
+
+    QJR25 (décision fondateur D8, 29/08/2026) — UNE SEULE OPTION, DE BOUT EN
+    BOUT. La variante retenue par :func:`_option_choisie` (AVEC quand elle est
+    servable, sinon SANS, sinon AVEC par convention mono-config) descend
+    EXPLICITEMENT jusqu'à ``groupes_du_devis`` : le compte de modules décrit
+    désormais la même option que l'onduleur et que la batterie. Il retombait
+    auparavant sur la vue SANS par le défaut de ``cible_depuis_lignes``.
     """
     import dataclasses
 
@@ -642,9 +680,10 @@ def construire_entree(devis, overrides=None):
     reglages = {clef: valeur for clef, valeur in (overrides or {}).items()
                 if clef in OVERRIDES_CONNUS}
 
+    variante = _option_choisie(devis)[1]
     module = spec_module_du_devis(devis)
     onduleur, phases_fiche = spec_onduleur_du_devis(devis)
-    groupes = groupes_du_devis(devis)
+    groupes = groupes_du_devis(devis, variante)
 
     phases = _entier(reglages.get("phases"), phases_fiche)
     phases = 3 if phases == 3 else 1

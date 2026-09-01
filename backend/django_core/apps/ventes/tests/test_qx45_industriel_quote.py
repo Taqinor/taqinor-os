@@ -58,8 +58,13 @@ class TestIndustrielContent(SimpleTestCase):
         self.assertIn("pointe", self.html.lower())
 
     def test_injection_omitted_without_data(self):
-        # sans injection calculée (QX50), aucune ligne d'injection inventée
-        self.assertNotIn("surplus injecté", self.html)
+        # sans injection calculée (QX50), aucune ligne d'injection inventée.
+        # QJR120 — la SONDE est la ligne elle-même (``i2-inj``) et son montant,
+        # plus la chaîne « surplus injecté » : le bloc « Nos hypothèses » du
+        # modèle de cashflow emploie légitimement ces mots pour DIRE que le
+        # surplus n'est PAS rémunéré (loi 82-21).
+        self.assertNotIn('class="i2-inj"', self.html)
+        self.assertNotIn("MAD/an</b> — surplus injecté", self.html)
 
     def test_rule4_no_buy_price_or_margin(self):
         # RULE #4 / prix_achat jamais client-facing

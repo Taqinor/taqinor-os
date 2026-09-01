@@ -13,6 +13,8 @@ Run:
         apps.ventes.tests.test_quote_engine_residential -v 2
 """
 
+import re
+
 from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
@@ -61,11 +63,14 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('Casablanca', html)
 
     def test_tangible_monthly_and_impact_framing_present(self):
-        """Cover carries the per-month framing and the derived CO₂ impact line."""
+        """Cover carries the per-month framing and the derived CO₂ impact line.
+
+        CO2SRC (2026-08-26) — la bande porte la tonne ANNUELLE et RIEN d'autre :
+        l'équivalence en arbres (22 kg/arbre/an, non sourcée) en est retirée."""
         html, _ = self._html_and_doc()
         self.assertIn('MAD/mois', html)
-        self.assertIn('CO', html)        # CO₂ impact strip
-        self.assertIn('arbres', html)
+        self.assertIn('tonnes de CO<sub>2</sub></b>', html)
+        self.assertNotIn('arbres', html)
 
     def test_equipment_lines_deep_link_to_fiche_pages(self):
         """Panels/inverters/battery/meter/dongle link to their /produits/<slug>
@@ -625,6 +630,86 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         self.assertNotIn('taqinor.ma/signer/', html)
 
     @tag('pdf')
+    def test_page_un_porte_le_meme_lien_tokenise_que_la_page_signature(self):
+        """QRP1 — la vignette QR de la PAGE 1 encode EXACTEMENT le lien de
+        ``links['signer']`` (ShareLink tokenisé), sans aucun paramètre ajouté :
+        ni nom, ni adresse, ni GPS en query."""
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.models import ShareLink
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        signer = (data.get('links') or {}).get('signer', '')
+        html = render.build_html(renderer._augment(data))
+        link = ShareLink.for_devis(devis)
+        self.assertIn('class="c1-qr-cell"', html)
+        self.assertIn(f'<a href="{signer}">', html)
+        self.assertIn(link.token, signer)
+        # forme courte affichée sous le QR — la queue tokenisée reste dans
+        # le href, jamais imprimée dans la vignette de 34 mm.
+        self.assertIn('>taqinor.ma/proposition</a>', html)
+        # aucun paramètre de requête n'a été greffé sur le lien du QR
+        self.assertNotIn('?', signer)
+
+    def test_la_charge_utile_publique_ne_porte_pas_l_affiche(self):
+        """A8 — ``build_quote_data`` alimente AUSSI la charge utile JSON de la
+        proposition publique. Sans le drapeau de rendu, la clé ``roof_render``
+        n'existe pas et AUCUN octet n'est lu depuis MinIO : la page n'emporte
+        pas jusqu'à 8 Mo de base64 qu'elle ne lit même pas, et ne déclenche pas
+        un GET synchrone à chaque affichage."""
+        from unittest import mock
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        devis.roof_image = f'roofs/{devis.company_id}/{devis.reference}.png'
+        devis.save(update_fields=['roof_image'])
+        cible = 'apps.ventes.utils.pdf.download_roof_image'
+        with mock.patch(cible) as dl:
+            data = build_quote_data(devis)
+        self.assertNotIn('roof_render', data)
+        dl.assert_not_called()
+        # …et la clé MinIO, elle, reste publiée (elle ne coûte rien).
+        self.assertEqual(data['roof_image_key'], devis.roof_image)
+        # Le chemin de RENDU, lui, la demande explicitement.
+        with mock.patch(cible, return_value=b'\x89PNG\r\n\x1a\n x') as dl:
+            data = build_quote_data(devis, {'_embed_roof_render': True})
+        self.assertTrue(data['roof_render'].startswith('data:image/png'))
+        dl.assert_called_once()
+
+    def test_le_qr_suit_le_lien_qui_sert_le_pdf_pas_le_plus_lointain(self):
+        """QRP1/A5 — ANTICOPIE. ``ShareLink.for_devis`` rend le lien à
+        l'EXPIRATION LA PLUS LOINTAINE, sans regarder son niveau : un PDF rendu
+        au niveau STANDARD pouvait donc porter un QR vers la page CONFIANCE —
+        la dégradation du document annulée par son propre code-barres. Quand
+        l'appelant passe le jeton du lien qui SERT le document, c'est celui-là
+        qui est imprimé ; sinon, repli historique."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        # Le lien de CONFIANCE expire le plus tard → c'est celui que
+        # ``for_devis`` choisirait.
+        confiance = ShareLink.objects.create(
+            company=devis.company, devis=devis,
+            expires_at=timezone.now() + timedelta(days=90))
+        standard = ShareLink.objects.create(
+            company=devis.company, devis=devis,
+            expires_at=timezone.now() + timedelta(days=2))
+        self.assertEqual(ShareLink.for_devis(devis).token, confiance.token)
+
+        servi = build_quote_data(devis, {'share_token': standard.token})
+        self.assertIn(standard.token, servi['links']['signer'])
+        self.assertNotIn(confiance.token, servi['links']['signer'])
+
+        # Sans jeton (rendu interne ERP/Celery) → comportement historique.
+        interne = build_quote_data(devis)
+        self.assertIn(confiance.token, interne['links']['signer'])
+
+        # Jeton inconnu, ou d'un AUTRE devis → jamais cru sur parole.
+        bidon = build_quote_data(devis, {'share_token': 'z' * 40})
+        self.assertIn(confiance.token, bidon['links']['signer'])
+
+    @tag('pdf')
     def test_footer_page_total_matches_real_pages(self):
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.quote_engine.builder import build_quote_data
@@ -924,3 +1009,988 @@ class TestEtudeFooterBranding(TestCase):
             'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
             'telephone': '+212 6 61 85 04 10', 'site_web': 'www.taqinor.ma'})
         self.assertIn('contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma', etude)
+
+
+class TestPageUnQrProposition(SimpleTestCase):
+    """QRP1 — vignette « proposition interactive » (lien tokenisé + QR) sur la
+    PAGE 1. Rendu HTML pur (aucune BD, aucun WeasyPrint) : la vignette n'existe
+    QUE pour un devis qui porte une VRAIE proposition en ligne, et elle
+    n'agrandit pas la page (elle occupe la place déjà vide à droite du graphe
+    des factures — la garde des trois pages ci-dessus le verrouille)."""
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = sample_data.build()
+        d.update(surcharges)
+        return render.build_html(renderer._augment(d))
+
+    def test_vignette_rendue_pour_un_lien_tokenise(self):
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        html = self._html()
+        self.assertIn('class="c1-qr-cell"', html)
+        self.assertIn('Consultez votre', html)
+        self.assertIn('proposition interactive', html)
+        self.assertIn('data:image/png', html)
+
+    def test_aucune_vignette_sans_proposition_en_ligne(self):
+        """Repli historique « <site>/signer/<réf> » (jamais servi par le site)
+        ⇒ AUCUN QR : un code qui mène à un 404 ne s'imprime pas."""
+        html = self._html(links={'signer': 'taqinor.ma/signer/DEV-RES-DEMO'})
+        self.assertNotIn('class="c1-qr-cell"', html)
+        self.assertNotIn('proposition interactive', html)
+
+    def test_aucune_vignette_sans_lien_du_tout(self):
+        html = self._html(links={})
+        self.assertNotIn('class="c1-qr-cell"', html)
+
+    def test_bande_autonome_quand_la_carte_facture_n_existe_pas(self):
+        """O4 — document SANS couche économique (Z2 : aucune donnée réelle
+        d'ancrage) : il n'y a pas de carte « facture mois par mois » pour
+        loger la vignette, qui devient alors une bande fine sous le bandeau
+        environnemental — là où la page a de la place de reste."""
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        # savings_estimated + ni factures réelles ni conso saisie
+        # ⇒ renderer.ancrage_reel_absent ⇒ couche économique omise.
+        html = self._html(savings_estimated=True, factures_reelles=False,
+                          factures_mensuelles=None, conso_annuelle_kwh=None)
+        self.assertIn('class="c1-qrbox"', html)
+        self.assertNotIn('class="c1-qr-cell"', html)   # pas de carte facture
+        self.assertIn('Consultez votre proposition interactive', html)
+
+
+class TestQjr31TauxTvaParColonne(SimpleTestCase):
+    """QJR31 — ``_row_pair`` imprimait UN seul taux pour une ligne à deux
+    valeurs : celui de la colonne SANS, y compris quand les deux variantes
+    portent des taux différents (10 % panneaux / 20 % le reste). La chaîne
+    des totaux, elle, était déjà juste — c'est l'affichage par ligne qui
+    mentait."""
+
+    @staticmethod
+    def _item(desig, q, pu, taux):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _ligne(self, taux_sans, taux_avec):
+        from apps.ventes.quote_engine.residential import options, theme
+        paire = (self._item('Panneau Canadien Solar 710W', 16, 1272.73,
+                            taux_sans),
+                 self._item('Panneau Canadien Solar 710W', 20, 1272.73,
+                            taux_avec))
+        return options._row_pair(paire, theme.fmt)
+
+    @staticmethod
+    def _cellule_tva(html):
+        m = re.search(r'<td class="p2-c p2-tva">(.*?)</td>', html)
+        assert m, html
+        return m.group(1)
+
+    def test_deux_taux_differents_sont_tous_les_deux_imprimes(self):
+        cellule = self._cellule_tva(self._ligne(10, 20))
+        self.assertIn('10%', cellule)
+        self.assertIn('20%', cellule)
+
+    def test_un_taux_unique_reste_ecrit_une_seule_fois(self):
+        """Non-régression : deux variantes au même taux ⇒ cellule inchangée."""
+        self.assertEqual(self._cellule_tva(self._ligne(20, 20)), '20%')
+
+    def test_les_totaux_de_la_ligne_ne_bougent_pas(self):
+        """La chaîne P.U. → Total HT par colonne est intacte au centime."""
+        from apps.ventes.quote_engine.residential import theme
+        html = self._ligne(10, 20)
+        self.assertIn(theme.fmt(1272.73 * 16), html)
+        self.assertIn(theme.fmt(1272.73 * 20), html)
+
+
+class TestQjr30EchappementTextesClient(SimpleTestCase):
+    """QJR30 — les renderers « maison » recevaient les textes client BRUTS.
+
+    L'échappement ERR37 n'existait que dans le moteur legacy : le résidentiel,
+    l'industriel et le commercial émettaient désignations, marques, NOM et
+    ADRESSE du client directement dans le HTML du PDF, et les puces d'option
+    n'étaient échappées dans AUCUN des deux moteurs. Le puits est WeasyPrint
+    côté serveur : le risque est la CORRUPTION du document (un « < » non
+    apparié mange une page), pas du XSS.
+    """
+
+    NOM_PIEGE = 'dupont <&> "fils"'
+    DESIG_PIEGE = 'Installation <toit> & "pose"'
+
+    def _donnees_piegees(self):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = d['client_full'] = self.NOM_PIEGE
+        d['client_addr'] = '12 rue <Test> & Cie'
+        for _cle in ('sans_items', 'avec_items'):
+            d[_cle] = [{**it, 'designation': self.DESIG_PIEGE} if i == 0 else it
+                       for i, it in enumerate(d[_cle])]
+        d['sans_bullets'] = ['16 panneaux <710> W & co'] + d['sans_bullets'][1:]
+        return echapper_textes_client(d)
+
+    def test_aucun_chevron_client_brut_dans_le_html_rendu(self):
+        from apps.ventes.quote_engine.residential import render, renderer
+        html = render.build_html(renderer._augment(self._donnees_piegees()))
+        for brut in ('<toit>', '<Test>', '<&>', '<710>'):
+            self.assertNotIn(brut, html, f'{brut} atteint le HTML tel quel')
+        self.assertIn('&lt;toit&gt; &amp; &quot;pose&quot;', html)
+        self.assertIn('12 rue &lt;Test&gt; &amp; Cie', html)
+
+    def test_l_echappement_ne_touche_que_les_caracteres_dangereux(self):
+        """Un devis normal traverse l'échappement au bit près — c'est ce qui
+        rend la garde posable au point de rendu sans rien changer d'autre."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        d = sample_data.build()
+        avant = render.build_html(renderer._augment(d))
+        apres = render.build_html(
+            renderer._augment(echapper_textes_client(sample_data.build())))
+        self.assertEqual(avant, apres)
+
+    def test_le_dict_public_n_est_jamais_echappe(self):
+        """La MÊME structure part en JSON à la proposition publique : des
+        entités HTML s'y afficheraient telles quelles au client. L'échappement
+        est donc posé au rendu, jamais dans ``build_quote_data``."""
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build()
+        d['client_name'] = self.NOM_PIEGE
+        echappe = echapper_textes_client(d)
+        self.assertEqual(d['client_name'], self.NOM_PIEGE)   # source intacte
+        self.assertNotEqual(echappe['client_name'], self.NOM_PIEGE)
+
+
+class TestQjr29PrixDansLIdentiteDeLigne(SimpleTestCase):
+    """QJR29 — ``_split_items`` fusionnait deux lignes de PRIX différents.
+
+    L'appartenance au tableau « équipement commun » se jugeait sur la
+    désignation et la quantité SEULEMENT : une ligne facturée à deux prix
+    d'une option à l'autre était imprimée UNE fois, au prix du côté SANS,
+    pendant que le total de l'option 2 se calculait avec le prix AVEC.
+    """
+
+    @staticmethod
+    def _item(desig, q, pu, taux=20.0):
+        return {"designation": desig, "marque": "", "description": "",
+                "garantie": "", "quantite": float(q),
+                "prix_unit_ht": float(pu),
+                "prix_unit_ttc": round(float(pu) * (1 + taux / 100), 2),
+                "taux_tva": float(taux)}
+
+    def _jeu_divergent(self):
+        """Même désignation, MÊME quantité, deux prix : 400 sans / 450 avec."""
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 450)]
+        return sans, avec
+
+    def test_deux_prix_differents_ne_sont_plus_une_seule_ligne(self):
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual([it['designation'] for it in shared],
+                         ['Installation'])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_sans], [400.0])
+        self.assertEqual([it['prix_unit_ht'] for it in delta_avec], [450.0])
+
+    def test_la_somme_des_lignes_imprimees_egale_le_total_de_chaque_option(self):
+        """LE TEST DE LA MISSION : ce que la page 2 imprime pour une option
+        s'additionne EXACTEMENT au total de cette option."""
+        from apps.ventes.quote_engine.residential.options import (
+            _pair_divergents, _split_items,
+        )
+        sans, avec = self._jeu_divergent()
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        paires, seul_sans, seul_avec = _pair_divergents(delta_sans, delta_avec)
+
+        def _somme(rows):
+            return round(sum(it['prix_unit_ht'] * it['quantite']
+                             for it in rows), 2)
+
+        imprime_sans = _somme(shared + [s for s, _ in paires] + seul_sans)
+        imprime_avec = _somme(shared + [a for _, a in paires] + seul_avec)
+        self.assertEqual(imprime_sans, _somme(sans))
+        self.assertEqual(imprime_avec, _somme(avec))
+        # et les deux prix sont bien tous les deux imprimés (ligne appariée)
+        self.assertEqual(len(paires), 1)
+        self.assertEqual(paires[0][0]['prix_unit_ht'], 400.0)
+        self.assertEqual(paires[0][1]['prix_unit_ht'], 450.0)
+
+    def test_des_lignes_strictement_identiques_restent_communes(self):
+        """Non-régression : même désignation, même quantité, MÊME prix ⇒
+        tableau commun, exactement comme avant."""
+        from apps.ventes.quote_engine.residential.options import _split_items
+        sans = [self._item('Installation', 1, 6000),
+                self._item('Structures acier', 16, 400)]
+        avec = [dict(it) for it in sans]
+        shared, delta_sans, delta_avec = _split_items(sans, avec)
+        self.assertEqual(len(shared), 2)
+        self.assertEqual(delta_sans, [])
+        self.assertEqual(delta_avec, [])
+
+
+class TestQjr17PuissanceUnitaireIllisible(SimpleTestCase):
+    """QJR17 (c)/(d) — une puissance unitaire ILLISIBLE (``None`` depuis M3,
+    qui a supprimé le défaut catalogue 710 W) ne s'imprime pas et ne tue plus
+    le renderer : la vignette de la page 1 écrivait « × None W », et la bande
+    de la page 2 formatait ``None`` sans garde (``f'{None:g}'`` → TypeError),
+    ce qui renvoyait tout le document sur le moteur legacy."""
+
+    def _donnees(self, **surcharges):
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        d = renderer._augment(sample_data.build())
+        # Posé APRÈS ``_augment`` : celui-ci refuse justement ce devis (c'est
+        # le repli que QJR17 rend bruyant côté builder) — on exerce ici les
+        # GABARITS, qui doivent rendre le document sans inventer un watt.
+        d.update(surcharges)
+        return d
+
+    def _page2(self, **surcharges):
+        from apps.ventes.quote_engine.residential import options, render
+        return options.build(render.build_ctx(self._donnees(**surcharges)))
+
+    def test_la_page_1_ecrit_n_panneaux_sans_watt_invente(self):
+        from apps.ventes.quote_engine.residential import render
+        html = render.build_html(self._donnees(watt_par_panneau=None))
+        self.assertNotIn('None', html)
+        self.assertIn('panneaux', html)
+
+    def test_la_page_2_omet_la_vignette_plutot_que_de_planter(self):
+        html = self._page2(puissance_kwc=None, watt_par_panneau=None)
+        self.assertNotIn('None', html)
+        self.assertNotIn('kWc installés', html)   # vignette OMISE, pas à zéro
+        self.assertIn('kWh / an produits', html)  # les autres restent
+        self.assertIn('panneaux', html)           # le COMPTE reste vrai
+
+    def test_un_devis_normal_est_inchange(self):
+        html = self._page2()
+        self.assertIn('kWc installés', html)
+        self.assertNotIn('None', html)
+
+
+class TestCalepinageSurLaPageDetail(SimpleTestCase):
+    """CALEPDF — l'affiche de calepinage rendue par le calepineur (la MÊME que
+    la page proposition sert au client via ``roof_image_url``) est embarquée en
+    data-URI À CÔTÉ de la photo de toiture, jamais à sa place.
+
+    ANTICOPIE : c'est l'IMAGE, jamais les coordonnées machine — le blob
+    ``Devis.roof_layout`` ne traverse pas le moteur."""
+
+    _POSTER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = sample_data.build()
+        d.update(surcharges)
+        return render.build_html(renderer._augment(d))
+
+    def test_les_deux_visuels_coexistent(self):
+        """A1 — la photo reste DANS la bande (dont la largeur ne bouge pas) et
+        le calepinage descend dans la rangée de visuels."""
+        html = self._html(roof_render=self._POSTER)
+        self.assertTrue('Votre toiture</div>' in html)
+        self.assertTrue('Votre calepinage</div>' in html)
+        # la photo du client est CONSERVÉE (jamais remplacée)
+        self.assertTrue('class="p2-roof-photo"' in html)
+        self.assertTrue('class="p2-vis-plan"' in html)
+        # …et la colonne visuelle de la bande garde sa largeur historique
+        self.assertTrue('class="p2-roof">' in html)
+        self.assertTrue('p2-roof-duo' not in html)
+
+    def test_calepinage_seul_remplace_le_schema_illustratif(self):
+        """Sans photo, le calepinage prend la place du schéma illustratif DANS
+        la bande — et ne se répète pas dans la rangée."""
+        html = self._html(roof_photo='', roof_render=self._POSTER)
+        self.assertTrue('class="p2-roof-plan"' in html)
+        self.assertTrue('class="p2-vis-plan"' not in html)
+        self.assertTrue("Schéma de l'installation" not in html)
+
+    def test_sans_calepinage_rendu_historique(self):
+        html = self._html()
+        self.assertTrue('class="p2-roof-plan"' not in html)
+        self.assertTrue('Votre calepinage' not in html)
+        self.assertTrue('class="p2-roof-photo"' in html)
+
+    def test_aucune_coordonnee_machine_dans_le_document(self):
+        """Le PDF porte l'IMAGE, pas la géométrie : aucune clé du blob
+        ``roof_layout`` (sommets, obstacles, pose) ne doit s'y trouver."""
+        html = self._html(roof_render=self._POSTER, roof_layout={
+            'zones': [{'id': 'z1', 'vertices': [[0, 0], [9, 0], [9, 6]],
+                       'obstacles': [{'x': 2, 'y': 2}],
+                       'geometry': {'rows': [{'panels': 4}]}}],
+            '_pans_geometry': [{'label': 'Pan Sud', 'azimut_deg': 180}]})
+        for fuite in ('vertices', 'obstacles', '_pans_geometry',
+                      'azimut_deg', 'Pan Sud'):
+            self.assertTrue(fuite not in html, fuite)
+
+
+class TestRoofRenderDataUri(SimpleTestCase):
+    """CALEPDF — le builder lit l'affiche depuis MinIO (jamais une URL suivie
+    au rendu) et dégrade proprement : rien ne casse un PDF."""
+
+    class _Devis:
+        pk = 1
+
+        def __init__(self, key):
+            self.roof_image = key
+
+    def _uri(self, key, octets=b'\x89PNG\r\n\x1a\n data', boom=False):
+        from unittest import mock
+        from apps.ventes.quote_engine import builder
+        cible = 'apps.ventes.utils.pdf.download_roof_image'
+        effet = (mock.Mock(side_effect=OSError('minio down')) if boom
+                 else mock.Mock(return_value=octets))
+        with mock.patch(cible, effet):
+            return builder._roof_render_data_uri(self._Devis(key))
+
+    def test_png_embarque_en_data_uri(self):
+        uri = self._uri('roofs/1/DEV-1.png')
+        self.assertTrue(uri.startswith('data:image/png;base64,'))
+
+    def test_jpeg_reconnu_par_son_extension(self):
+        uri = self._uri('roofs/1/DEV-1.jpg')
+        self.assertTrue(uri.startswith('data:image/jpeg;base64,'))
+
+    def test_sans_cle_aucun_acces(self):
+        from apps.ventes.quote_engine import builder
+        self.assertEqual(
+            builder._roof_render_data_uri(self._Devis('')), '')
+        self.assertEqual(
+            builder._roof_render_data_uri(self._Devis(None)), '')
+
+    def test_minio_indisponible_ne_casse_pas_le_pdf(self):
+        self.assertEqual(self._uri('roofs/1/DEV-1.png', boom=True), '')
+
+    def test_image_trop_lourde_ignoree(self):
+        self.assertEqual(
+            self._uri('roofs/1/DEV-1.png', octets=b'x' * (6 * 1024 * 1024 + 1)),
+            '')
+
+    def test_les_flux_pdf_publics_passent_le_jeton_du_lien_servi(self):
+        """A5 (câblage) — ``_opts_pdf_public`` est la SOURCE UNIQUE des options
+        des deux flux PDF publics (``proposal_pdf`` et ``public_document``) :
+        c'est là que le filigrane anticopie est posé, donc c'est là que le jeton
+        du lien servi doit l'être aussi — les deux flux ne peuvent pas diverger.
+
+        Sans DB : ``_niveau_lien`` et la lecture du jeton sont tous deux en
+        ``getattr`` défensif, un lien factice suffit."""
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public_views import _opts_pdf_public
+
+        class _Lien:
+            def __init__(self, token, niveau):
+                self.token = token
+                self.niveau = niveau
+
+        standard = _opts_pdf_public(
+            _Lien('TOKENstandard1234', ShareLink.NIVEAU_STANDARD))
+        self.assertEqual(standard['share_token'], 'TOKENstandard1234')
+        # …et la dégradation anticopie reste posée sur le MÊME appel.
+        self.assertTrue(standard['watermark'])
+        self.assertTrue(standard['kit_agrege'])
+
+        confiance = _opts_pdf_public(
+            _Lien('TOKENconfiance999', ShareLink.NIVEAU_CONFIANCE))
+        self.assertEqual(confiance['share_token'], 'TOKENconfiance999')
+        self.assertFalse(confiance.get('watermark'))
+
+        # Lien sans jeton lisible → aucune clé posée, repli moteur historique.
+        self.assertIsNone(
+            _opts_pdf_public(_Lien('', ShareLink.NIVEAU_CONFIANCE))
+            ['share_token'])
+
+    def test_le_drapeau_de_rendu_n_est_pas_whiteliste(self):
+        """A8 — ``_embed_roof_render`` est un drapeau SERVEUR (comme
+        ``watermark``) : ``clean_pdf_options`` ne le laisse pas passer, donc un
+        corps client ne peut pas déclencher la lecture MinIO."""
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        self.assertNotIn('_embed_roof_render',
+                         clean_pdf_options({'_embed_roof_render': True}))
+
+    def test_un_jeton_de_partage_bricole_est_ignore(self):
+        """A5 — la liste blanche n'accepte QUE la forme d'un jeton ; la vraie
+        validation (appartenance au devis) se fait ensuite en base."""
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        for mauvais in ('', 'court', '../../etc/passwd', 'a b c', None, 42,
+                        'x' * 200):
+            self.assertIsNone(
+                clean_pdf_options({'share_token': mauvais})['share_token'],
+                repr(mauvais))
+        self.assertEqual(
+            clean_pdf_options({'share_token': 'AbCd-1234_efgh'})['share_token'],
+            'AbCd-1234_efgh')
+
+
+class TestProductionMensuellePageDetail(SimpleTestCase):
+    """PRODMOIS — bande « production mois par mois » de la page détail.
+
+    Ce qui est vérifié : la série DESSINÉE est EXACTEMENT celle que la
+    proposition en ligne sert (``public_views._monthly_production``), elle
+    somme au productible ANNUEL du devis (aucun total fabriqué), et la bande
+    s'omet dès qu'il n'y a plus la place ou plus de production."""
+
+    def test_serie_identique_a_celle_de_la_proposition_en_ligne(self):
+        from apps.ventes.public_views import _monthly_production
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for annuel in (8065, 70568, 1, 123456):
+            self.assertEqual(production_mensuelle(annuel),
+                             _monthly_production({'prod_kwh': annuel}),
+                             f'divergence sur {annuel} kWh/an')
+
+    def test_la_serie_somme_au_productible_annuel_reel(self):
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for annuel in (8065, 70568, 12000):
+            serie = production_mensuelle(annuel)
+            self.assertEqual(len(serie), 12)
+            # distribution d'un total RÉEL : la somme le reproduit (± arrondis)
+            self.assertLessEqual(abs(sum(serie) - annuel), 6)
+
+    def test_aucune_serie_sans_production_annuelle(self):
+        from apps.ventes.quote_engine.productible import production_mensuelle
+        for vide in (None, 0, -5, '', 'abc'):
+            self.assertEqual(production_mensuelle(vide), [])
+
+    def test_graphe_omis_quand_la_serie_manque(self):
+        from apps.ventes.quote_engine.residential import charts
+        self.assertEqual(charts.production_mensuelle([]), '')
+        self.assertEqual(charts.production_mensuelle([0] * 12), '')
+        self.assertEqual(charts.production_mensuelle([100] * 11), '')
+
+    def test_bande_rendue_sur_un_devis_qui_a_la_place(self):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        html = render.build_html(renderer._augment(sample_data.build('deux')))
+        self.assertTrue('class="p2-vis-prod"' in html)
+
+    def test_bande_omise_sur_un_devis_charge(self):
+        """Budget de pagination épuisé (devis dense) ⇒ rangée OMISE — jamais
+        une 4ᵉ page pour la loger."""
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        for variante in ('plus5', 'plus10'):
+            html = render.build_html(
+                renderer._augment(sample_data.build(variante)))
+            self.assertTrue('class="p2-visuels"' not in html, variante)
+
+
+def _boites_texte(page):
+    """Toutes les boîtes de texte d'une page WeasyPrint, à plat.
+
+    Sert aux gardes structurelles ci-dessous : pas de PyMuPDF, pas d'écriture
+    de fichier — juste l'arbre de boîtes que le moteur vient de composer.
+    """
+    out = []
+
+    def _walk(box):
+        if getattr(box, "text", None):
+            out.append(box)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child)
+
+    _walk(page._page_box)
+    return out
+
+
+class TestPaginationPireCas(SimpleTestCase):
+    """QRP1/PRODMOIS/CALEPDF — GARDE DE PAGINATION DU PIRE CAS, non étiquetée.
+
+    Les gardes de pagination existantes portent ``@tag('pdf')`` et CI les
+    EXCLUT (``--exclude-tag=pdf``) : elles ne protègent donc rien pendant un
+    run normal. Celle-ci est délibérément SANS étiquette, et elle rend le
+    document dans la configuration la plus lourde que cette lane ait rendue
+    possible — celle qu'aucune fixture ne portait :
+
+      · affiche de calepinage présente (rangée de visuels) ;
+      · champs PV DIVERGENTS, donc la bande porte « kWh / an produits
+        (sans · avec) », l'étiquette longue que PDFPROD interdit de faire
+        passer à la ligne ;
+      · bande « production mois par mois » présente ;
+      · vignette QR sur la page 1.
+
+    C'est exactement la combinaison où une bande élargie aurait débordé.
+    """
+
+    #: Affiche factice, format LARGE (comme un vrai rendu de calepinage).
+    POSTER = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf'
+              'FcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+
+    #: Pagination documentée des fixtures (mise en page NON divergente), avec
+    #: le calepinage ET la bande production présents. Un devis à champs PV
+    #: divergents peut légitimement gagner une page — c'est le découpage
+    #: L-2OPT (quantités différentes ⇒ lignes en delta), antérieur à cette
+    #: lane ; le test relatif ci-dessous couvre ce cas-là.
+    PAGES_ATTENDUES = {"deux": 3, "sans": 3, "long": 3,
+                       "plus5": 3, "plus10": 4}
+
+    def _donnees(self, variante, divergent=True, plan=True):
+        from apps.ventes.quote_engine.residential import sample_data
+        d = sample_data.build(variante)
+        if plan:
+            d["roof_render"] = self.POSTER
+        if divergent and d.get("deux_options", True):
+            # Deux optimiseurs : champs PV différents ⇒ étiquettes « sans ·
+            # avec » sur la puissance, les panneaux ET la production.
+            _nb = d["nb_panneaux"]
+            d.update({
+                "panneaux_divergents": True,
+                "nb_panneaux_sans": _nb, "nb_panneaux_avec": _nb + 4,
+                "puissance_kwc_sans": d["puissance_kwc"],
+                "puissance_kwc_avec": round(d["puissance_kwc"] * 1.18, 2),
+                "watt_par_panneau_sans": d["watt_par_panneau"],
+                "watt_par_panneau_avec": d["watt_par_panneau"],
+                "prod_kwh_sans": d["prod_kwh"],
+                "prod_kwh_avec": round(d["prod_kwh"] * 1.18),
+            })
+        return d
+
+    def _rendu(self, variante, **kw):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(self._donnees(variante, **kw))
+        html = render.build_html(d)
+        return html, HTML(string=html).render()
+
+    def test_pagination_documentee_tenue_avec_calepinage_et_production(self):
+        """Mise en page normale : les nombres de pages documentés tiennent
+        AVEC l'affiche de calepinage, la bande production et la vignette QR."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        for variante, attendu in self.PAGES_ATTENDUES.items():
+            _, doc = self._rendu(variante, divergent=False)
+            self.assertEqual(
+                len(doc.pages), attendu,
+                f"{variante} (calepinage + production + QR) : "
+                f"{len(doc.pages)} pages au lieu de {attendu}")
+
+    def test_le_pire_cas_n_ajoute_jamais_une_page(self):
+        """LA garde de cette lane, en RELATIF : sur CHAQUE fixture et dans les
+        DEUX mises en page (normale et champs PV divergents — l'étiquette
+        longue de PDFPROD), ajouter l'affiche de calepinage et la bande
+        production ne doit pas coûter une page.
+
+        Le relatif est délibéré : un devis divergent peut légitimement gagner
+        une page par le découpage L-2OPT (quantités différentes ⇒ lignes en
+        delta), antérieur à cette lane. Ce qui doit rester vrai, c'est que NOS
+        artefacts n'en ajoutent aucune, dans aucune des deux mises en page."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        from apps.ventes.quote_engine.residential import sample_data
+        for variante in sample_data.keys():
+            for divergent in (False, True):
+                _, sans = self._rendu(variante, divergent=divergent,
+                                      plan=False)
+                _, avec = self._rendu(variante, divergent=divergent,
+                                      plan=True)
+                self.assertEqual(
+                    len(avec.pages), len(sans.pages),
+                    f"{variante} (divergent={divergent}) : le calepinage a "
+                    f"fait passer le document de {len(sans.pages)} à "
+                    f"{len(avec.pages)} pages")
+
+    def test_l_etiquette_production_divergente_ne_passe_pas_a_la_ligne(self):
+        """PDFPROD — la bande annonce « kWh / an produits (sans · avec) » sur
+        UNE ligne. C'est cette contrainte que l'élargissement de la colonne
+        visuelle (32 → 64 mm) cassait ; la rangée de visuels la préserve."""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        _, doc = self._rendu("deux")
+        page2 = doc.pages[1]
+        morceaux = [b.text.strip() for b in _boites_texte(page2)]
+        self.assertIn("kWh / an produits (sans · avec)", morceaux,
+                      "l'étiquette a été coupée en plusieurs lignes — la "
+                      "colonne des vignettes techniques est passée sous son "
+                      "plancher de 36 mm")
+
+    def test_le_calepinage_ne_touche_pas_la_bande(self):
+        """A1 — le calepinage ne coûte RIEN à la bande : les trois vignettes
+        techniques restent exactement où elles étaient, à la même largeur de
+        colonne. (Le coût du calepinage est la rangée de visuels du dessous,
+        elle-même budgétée dans la pagination.)"""
+        try:
+            import weasyprint  # noqa: F401
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+
+        def _vignettes(plan):
+            _, doc = self._rendu("deux", divergent=True, plan=plan)
+            return [(b.text.strip(), round(b.position_x, 1),
+                     round(b.position_y, 1))
+                    for b in _boites_texte(doc.pages[1])
+                    if "kWh / an produits" in b.text
+                    or "panneaux (sans" in b.text
+                    or "kWc installés" in b.text]
+
+        sans_plan = _vignettes(False)
+        self.assertTrue(sans_plan, "vignettes techniques introuvables")
+        self.assertEqual(sans_plan, _vignettes(True))
+
+
+class TestOnepageQrProposition(SimpleTestCase):
+    """QRP1 — même vignette sur le format UNE PAGE (moteur legacy) : elle vit
+    dans l'en-tête navy, dont la hauteur est fixée par le logo (80 px), donc
+    elle ne coûte pas un millimètre à la densité adaptative de la page."""
+
+    def _html(self, **surcharges):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return F.html_onepage(**surcharges)
+
+    def test_entete_porte_le_qr_pour_un_lien_tokenise(self):
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        html = self._html()
+        self.assertTrue('proposition interactive' in html)
+        self.assertTrue('taqinor.ma/proposition' in html)
+        self.assertTrue('QR — votre proposition en ligne' in html)
+
+    def test_entete_historique_sans_proposition_en_ligne(self):
+        html = self._html(links={'signer': 'taqinor.ma/signer/DEV-RES-DEMO'})
+        self.assertTrue('proposition interactive' not in html)
+        self.assertTrue('QR — votre proposition en ligne' not in html)
+
+    def test_l_entete_a_une_hauteur_EXPLICITE_dans_les_deux_cas(self):
+        """A4 — la zone de contenu de cette page est bornée
+        (``overflow:hidden``) : un en-tête plus haut ROGNERAIT silencieusement
+        le bas du document (le Total TTC d'un devis dense) sans qu'aucune garde
+        de pagination ne s'en aperçoive — le PDF ferait toujours 1 page. La
+        hauteur de la bande est donc IMPOSÉE, identique avec ou sans QR, et
+        indépendante de la présence de ``logo.png``."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        attendu = f'height:{G.ONEPAGE_HEADER_MM}mm'
+        self.assertIn(attendu, self._html())
+        self.assertIn(attendu, self._html(
+            links={'signer': 'taqinor.ma/signer/X'}))
+
+    def test_le_qr_tient_sous_la_bande_d_entete(self):
+        """A4 — la pile QR (code + platine blanche) doit rester sous la
+        hauteur de bande, sinon elle la pousse et rogne le bas de page."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        html = self._html()
+        self.assertIn('height:18mm;width:18mm', html)
+        # 18 mm de code + 2 × 0,7 mm de platine = 19,4 mm < la bande.
+        self.assertLess(18 + 2 * 0.7, G.ONEPAGE_HEADER_MM)
+        # A6 — aucun arrondi sur l'image du code (il rognerait les motifs de
+        # repérage des coins) ; platine BLANCHE derrière l'aplat navy.
+        _pile = html.split('QR — votre proposition en ligne', 1)[1][:200]
+        self.assertNotIn('border-radius', _pile)
+        self.assertIn('background:#FFFFFF;padding:0.7mm', html)
+
+    def test_le_total_ttc_reste_au_dessus_de_la_ligne_de_rognage(self):
+        """A4 — garde STRUCTURELLE du pire cas : sur le devis le plus dense,
+        le bloc « Total TTC » doit se composer AU-DESSUS de la borne basse de
+        la zone de contenu (``bottom:72px``). En dessous, il disparaîtrait du
+        document sans qu'aucun compteur de pages ne bouge."""
+        try:
+            from weasyprint import HTML
+        except Exception:
+            self.skipTest("weasyprint indisponible dans cet environnement")
+        from apps.ventes.tests import _moteur_fixtures as F
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        html = G.render_html_for(
+            F.donnees_legacy('plus10', pdf_mode='onepage'))
+        doc = HTML(string=html).render()
+        self.assertEqual(len(doc.pages), 1)
+        page = doc.pages[0]
+        # borne basse de la zone de contenu : 72 px sous le bas de la page.
+        limite = page.height - 72
+        totaux = [b for b in _boites_texte(page)
+                  if 'Total TTC' in b.text or 'TOTAL TTC' in b.text]
+        self.assertTrue(totaux, "bloc « Total TTC » introuvable")
+        for b in totaux:
+            self.assertLess(
+                b.position_y + b.height, limite,
+                "le Total TTC tombe sous la ligne de rognage de la page une "
+                "— il serait invisible sur le document rendu")
+
+
+class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
+    """QJR154 — la liste blanche couvre le dict ``etude`` et ``accepte_par_nom``.
+
+    Deux trous, même famille que QJR30 :
+
+    * ``data['etude']`` est ``dict(devis.etude_params or {})`` — un ``JSONField``
+      LIBRE accepté du corps de requête — et il n'était pas dans la liste
+      blanche. Deux paquets impriment ses textes bruts :
+      ``agricole/study.py`` (``crop``, ``region``, ``pompe_nom``,
+      ``irrigation_method``) et ``commercial/categories.py`` (``four``).
+    * ``accepte_par_nom`` est écrit par ``services.accept_devis`` depuis le
+      ``nom`` posté sur le PORTAIL PUBLIC, donc par une personne NON
+      AUTHENTIFIÉE, et ``agricole/economics_page`` l'injecte via
+      ``theme.titlecase_name``, qui n'échappe rien (le moteur legacy ne
+      l'échappait pas non plus à son ingestion ERR37).
+
+    Le puits est WeasyPrint côté serveur : le risque est la CORRUPTION du
+    document, pas du XSS. Et l'échappement doit avoir lieu UNE SEULE FOIS —
+    ``schematic.py`` et les deux pages de confiance s'échappaient AUSSI
+    eux-mêmes, ce qui aurait imprimé « &amp;amp; » sur « Blé & orge ».
+    """
+
+    #: « < » NON APPARIÉ (celui qui mange une page) + « & » + guillemet.
+    PIEGE = 'Blé <& "orge"'
+    DATE_ACC = "12/08/2026"
+
+    @staticmethod
+    def _echappe(d):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        return echapper_textes_client(d)
+
+    def _piege(self, d, **etude):
+        d = dict(d)
+        d["accepte_par_nom"] = self.PIEGE
+        d["date_acceptation"] = self.DATE_ACC
+        d["etude"] = {**(d.get("etude") or {}), **etude}
+        return self._echappe(d)
+
+    def _sans_chevron_brut(self, html):
+        """Le « < » du piège n'atteint jamais le balisage."""
+        self.assertNotIn("<&", html)
+        self.assertNotIn('<& "orge"', html)
+
+    # QJR236 (décision fondateur DV1) — LES TROIS TESTS AGRICOLES DE CE BLOC
+    # ONT ÉTÉ RETIRÉS AVEC LEUR RENDERER. Ils rendaient le paquet agricole
+    # premium multi-pages (``agricole/render.py`` + ``renderer._augment``),
+    # supprimé parce qu'injoignable depuis QJR32. L'échappement lui-même reste
+    # couvert par les trois paquets vivants ci-dessous (industriel, commercial,
+    # résidentiel) et par le moteur legacy, qui rend le PDF agricole une-page.
+
+    # ── industriel / commercial : le tampon de signature ────────────────────
+    def test_industriel_accepte_par_nom_est_echappe_une_fois(self):
+        from apps.ventes.quote_engine.industriel import (
+            render, renderer, sample_data)
+        html = render.build_html(
+            renderer._augment(self._piege(sample_data.build())))
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    def test_commercial_accepte_par_nom_et_four_sont_echappes(self):
+        from apps.ventes.quote_engine.commercial import (
+            render, renderer, sample_data)
+        html = render.build_html(renderer._augment(
+            self._piege(sample_data.build("boulangerie"), four=self.PIEGE)))
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    # ── résidentiel : non-régression ────────────────────────────────────────
+    def test_residentiel_ne_publie_rien_de_brut(self):
+        """Le paquet résidentiel n'imprime PAS le tampon d'acceptation (vérifié
+        en rendant le document avec le piège posé) : il ne doit donc rien
+        laisser passer non plus."""
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        html = render.build_html(
+            renderer._augment(self._piege(sample_data.build())))
+        self._sans_chevron_brut(html)
+
+    # ── le legacy garde son propre échappement (il reçoit les données brutes) ─
+    def test_le_legacy_echappe_le_nom_d_acceptation_a_l_ingestion(self):
+        """ERR37 échappait le nom et l'adresse du client, PAS celui-ci."""
+        from ._moteur_fixtures import html_legacy
+        html = html_legacy("deux", accepte_par_nom=self.PIEGE,
+                           date_acceptation=self.DATE_ACC)
+        self.assertIn(self.DATE_ACC, html)
+        self._sans_chevron_brut(html)
+        self.assertNotIn("&amp;lt;", html)
+
+    # ── la garde ne change rien à un devis normal ───────────────────────────
+    def test_une_etude_sans_caractere_dangereux_traverse_au_bit_pres(self):
+        """``html.escape`` ne touche que ``&<>"'`` : une étude ordinaire — et
+        en particulier les SLUGS qui servent de clés (culture, région, méthode
+        d'irrigation, type de pompe) — ressort identique, donc les recherches
+        du moteur agronomique continuent d'aboutir."""
+        etude = {"crop": "agrumes", "region": "souss-massa",
+                 "irrigation_method": "goutte", "type_pompe": "immergee",
+                 "alim": "tri", "source": "forage", "hmt_m": 60}
+        self.assertEqual(self._echappe({"etude": dict(etude)})["etude"], etude)
+
+    def test_les_valeurs_non_texte_de_l_etude_sont_intactes(self):
+        """Un nombre reste un NOMBRE : les gardes numériques du document
+        (production, kWc, HMT) le comparent — les transformer en chaînes
+        casserait la page Étude."""
+        d = {"etude": {"crop": "agrumes", "hmt_m": 60, "pompe_kw": 5.5,
+                       "prod_mensuelle": [1040] * 12,
+                       "toiture": {"kwc": 7.1}}}
+        etude = self._echappe(d)["etude"]
+        self.assertEqual(etude["hmt_m"], 60)
+        self.assertEqual(etude["pompe_kw"], 5.5)
+        self.assertEqual(etude["prod_mensuelle"], [1040] * 12)
+        self.assertEqual(etude["toiture"], {"kwc": 7.1})
+
+    def test_la_source_n_est_jamais_mutee(self):
+        """Le MÊME dict part en JSON à la proposition publique."""
+        d = {"etude": {"crop": self.PIEGE, "region": "souss-massa"},
+             "accepte_par_nom": self.PIEGE}
+        echappe = self._echappe(d)
+        self.assertEqual(d["etude"]["crop"], self.PIEGE)
+        self.assertEqual(d["accepte_par_nom"], self.PIEGE)
+        self.assertNotEqual(echappe["etude"]["crop"], self.PIEGE)
+        self.assertNotEqual(echappe["accepte_par_nom"], self.PIEGE)
+
+
+# ── QJR209 — LE PAQUET RÉSIDENTIEL LIT ``masquer_economies`` ─────────────────
+# Marqueurs HTML de la couche économique du document résidentiel : le −N % de
+# la page 1, la donut de couverture, le graphe avant/après, l'économie annuelle
+# des cartes d'option, la rentabilité et le gain net 25 ans de la page 2. Ils
+# apparaissent et disparaissent ENSEMBLE (doctrine Z2 : un bloc s'omet d'un
+# seul tenant, jamais un « 0 », jamais un demi-bloc). Même liste que la garde
+# Z2 de ``test_quote_engine_builder`` — un seul vocabulaire pour un seul bloc.
+MARQUEURS_COUCHE_ECO = (
+    '<div class="c1-bigcut">', '<img class="c1-donut"',
+    'Votre facture mois par mois', 'Économie estimée',
+    'Rentabilisé en', 'Rentabilité sur 25 ans', 'Gain net sur 25 ans',
+)
+
+# Sous-ensemble PAGE 1 : les cinq marqueurs qui ne dépendent PAS de la
+# pagination. Les deux derniers de la liste ci-dessus vivent sur la page 2, et
+# sa variante « page rentabilité dédiée » (devis chargé, 4 pages) ne porte ni
+# le titre ni la carte « Gain net » — un témoin qui les exigerait épinglerait
+# la pagination, pas l'omission. Sens de l'assertion : la PRÉSENCE se prouve
+# sur la page 1, l'ABSENCE se vérifie sur la liste entière.
+MARQUEURS_PAGE_1 = MARQUEURS_COUCHE_ECO[:5]
+
+# Clés publiées par ``renderer.synthese_economies`` : elles descendent toutes
+# du barème BASSE TENSION. Sur un dossier MT elles ne doivent même pas être
+# publiées dans le dict de rendu — pas seulement rester non imprimées.
+CLES_COUCHE_ECO = ('pct_cut', 'annual_before', 'annual_after', 'coverage_pct',
+                   'coverage_estimated', 'bills_before', 'bills_after',
+                   'eco_mensuelles', 'eco_mensuelles_total')
+
+# 12 factures mensuelles RÉELLES : sans elles, ``_augment`` masque déjà la
+# couche économique par le chemin M1 — le test ne prouverait alors rien.
+FACTURES_REELLES_12 = [1200, 1200, 1300, 1400, 1600, 1800,
+                       1900, 1900, 1700, 1500, 1300, 1200]
+
+# Devis résidentiel à DEUX options (réseau + hybride/batterie) : la forme que
+# le renderer résidentiel accepte. Jeu de lignes repris TEL QUEL du fixture
+# ``FULL_LINES`` de ``test_quote_engine_builder`` (le seul déjà prouvé
+# traversable par ``renderer._augment``).
+LIGNES_DEUX_OPTIONS = [
+    ('Onduleur réseau 10kW', '1', '11700'),
+    ('Onduleur hybride 5kW', '1', '24000'),
+    ('Panneau mono 550W', '14', '1100'),
+    ('Batterie 5 kWh', '1', '14000'),
+    ('Structures acier', '14', '375'),
+    ('Installation', '1', '4000'),
+]
+
+
+class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
+    """QJR209 (contre-visite du 30/08/2026) — UN DOSSIER MT NE PORTE JAMAIS UN
+    CHIFFRE BT, Y COMPRIS SUR LE DOCUMENT RÉSIDENTIEL.
+
+    ``builder`` lève ``masquer_economies`` sur un dossier raccordé en MOYENNE
+    TENSION dépourvu d'économies d'étude : les seules économies disponibles
+    sont alors celles de ``calculate_savings_roi``, calculées au barème BASSE
+    TENSION de l'ONEE. Les renderers industriel, commercial et legacy lisent
+    tous ce drapeau ; le paquet résidentiel, lui, ne connaissait que
+    ``masquer_synthese`` — dérivé de tout autre chose (absence d'ancrage réel
+    ou de factures réelles).
+
+    Le chemin est INERTE sur un devis né résidentiel, mais VIVANT dès qu'un
+    ``tension_raccordement`` MT reste collé dans ``etude_params`` après un
+    changement de marché : l'endpoint ``etude-params`` FUSIONNE au lieu de
+    remplacer, le devis redevient résidentiel — et son PDF imprimait des
+    économies BT sur un dossier MT.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _data(self, reference, **etude):
+        """Données de rendu d'un VRAI devis résidentiel à deux options, avec
+        ancrage réel (conso saisie + 12 factures réelles) : la couche
+        économique est donc calculable — seul le dossier MT doit la retirer."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        params = {**DEUX_OPTIONS, 'conso_annuelle': 12000,
+                  'distributeur': 'onee',
+                  'factures_mensuelles_reelles': list(FACTURES_REELLES_12),
+                  **etude}
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           LIGNES_DEUX_OPTIONS, reference=reference,
+                           etude_params=params)
+        return build_quote_data(devis, {'pdf_mode': 'full'})
+
+    @staticmethod
+    def _html(data):
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(data)
+        return d, render.build_html(d)
+
+    # ── témoin : le même devis en BASSE TENSION imprime bien sa couche ───────
+    def test_temoin_un_dossier_bt_imprime_sa_couche_economique(self):
+        """Sans ce témoin, l'omission ci-dessous ne prouverait rien : il
+        établit que CE devis, CE fixture, rendent bien le bloc économique."""
+        data = self._data('DEV-QJR209-BT', tension_raccordement='BT')
+        self.assertFalse(data['masquer_economies'])
+        d, html = self._html(data)
+        self.assertFalse(d['masquer_synthese'])
+        for marqueur in MARQUEURS_PAGE_1:
+            self.assertIn(marqueur, html, f'témoin BT : {marqueur} manquant')
+
+    # ── le rouge : dossier MT rendu par le paquet résidentiel ───────────────
+    def test_dossier_mt_le_renderer_residentiel_masque_la_couche(self):
+        data = self._data('DEV-QJR209-MT', tension_raccordement='MT')
+        # Le builder a bien levé le drapeau MT sur un devis RÉSIDENTIEL.
+        self.assertTrue(data['masquer_economies'])
+        # …et la valeur BT existe pourtant dans les données (c'est elle que le
+        # document imprimait) : l'omission n'est donc pas un effet de bord.
+        self.assertGreater(data['eco_s_ann'], 0)
+        from apps.ventes.quote_engine.residential import renderer
+        d = renderer._augment(data)
+        self.assertTrue(
+            d['masquer_synthese'],
+            "un dossier MT doit masquer la couche économique résidentielle")
+
+    def test_dossier_mt_aucun_marqueur_economique_dans_le_html(self):
+        """Le bloc part D'UN SEUL TENANT (doctrine Z2) : aucun des marqueurs,
+        et surtout aucun « 0 » à leur place."""
+        data = self._data('DEV-QJR209-MT-HTML', tension_raccordement='MT')
+        _, html = self._html(data)
+        for marqueur in MARQUEURS_COUCHE_ECO:
+            self.assertNotIn(marqueur, html,
+                             f'{marqueur} aurait dû être omis (dossier MT)')
+
+    def test_dossier_mt_aucune_cle_economique_n_est_publiee(self):
+        """Les clés de ``synthese_economies`` descendent du barème BT : sur un
+        dossier MT elles ne sont même pas publiées dans le dict de rendu (qui
+        part aussi, tel quel, à la proposition en ligne)."""
+        data = self._data('DEV-QJR209-MT-CLES', tension_raccordement='MT')
+        from apps.ventes.quote_engine.residential import renderer
+        d = renderer._augment(data)
+        for cle in CLES_COUCHE_ECO:
+            self.assertNotIn(cle, d, f'{cle} ne doit pas être publiée')
+
+    # ── un dossier MT AVEC économies d'étude reste rendu à l'identique ──────
+    def test_dossier_mt_avec_economies_detude_reste_rendu(self):
+        """Le drapeau ne se lève QUE faute d'économies d'étude : avec une étude
+        MT saisie, le chiffre servi EST celui de l'étude et le document garde
+        sa couche économique."""
+        data = self._data('DEV-QJR209-MT-ETUDE', tension_raccordement='MT',
+                          production_annuelle=11000, economies_annuelles=19000)
+        self.assertFalse(data['masquer_economies'])
+        d, html = self._html(data)
+        self.assertFalse(d['masquer_synthese'])
+        self.assertIn('<div class="c1-bigcut">', html)

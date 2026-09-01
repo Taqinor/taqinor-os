@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import api from '../../api/axios'
+import adminopsApi from '../../api/adminopsApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 /**
- * SCA22 — Console fondateur des tenants (superuser uniquement, SANS billing).
+ * SCA22 — Console fondateur des tenants (superuser uniquement).
  *
  * Écran français minimal : liste des sociétés + compteurs d'usage simples
  * (utilisateurs / devis / factures), changement de statut (actif / suspendu /
  * fermeture) et note libre `plan_flag`. La sécurité est portée par le SERVEUR
  * (endpoints staff-only : un non-staff reçoit 403) — cet écran ne fait
  * qu'afficher ce que l'API autorise.
+ *
+ * WIR267/N100(e) — bloc « Facturation de licence » : le registre backend
+ * existait déjà (superuser only) sans AUCUN écran — ni liste, ni pointage
+ * « payée », ni export CSV hors curl. Toujours SANS passerelle de paiement :
+ * « payée » reste un pointage manuel du fondateur.
  */
+const FACTURATION_STATUTS = [
+  { value: '', label: 'Tous statuts' },
+  { value: 'brouillon', label: 'Brouillon' },
+  { value: 'emise', label: 'Émise' },
+  { value: 'payee', label: 'Payée' },
+]
 const STATUTS = [
   { value: 'actif', label: 'Actif' },
   { value: 'suspendu', label: 'Suspendu' },
@@ -29,6 +42,12 @@ export default function TenantsConsole() {
   const [nouveauTenant, setNouveauTenant] = useState(null)
   // N101(b) — file d'approbation des demandes d'inscription self-service.
   const [demandes, setDemandes] = useState([])
+  // WIR267 — registre « Facturation de licence ».
+  const [facturesLicence, setFacturesLicence] = useState([])
+  const [totalDuTtc, setTotalDuTtc] = useState(0)
+  const [statutFiltre, setStatutFiltre] = useState('')
+  const [erreurFacturation, setErreurFacturation] = useState('')
+  const [exportEnCours, setExportEnCours] = useState(false)
 
   // NB : fetch en chaîne de promesses (pas de setState synchrone dans l'effet,
   // règle react-hooks) — l'état « chargement » démarre à true et n'est éteint
@@ -59,8 +78,55 @@ export default function TenantsConsole() {
       .catch(() => setDemandes([]))
   ), [])
 
+  // WIR267 — best-effort, comme la file d'inscription : la console reste
+  // utilisable même si le registre de facturation échoue à charger.
+  const chargerFacturation = useCallback(() => (
+    adminopsApi.listFacturationLicences(
+      statutFiltre ? { statut: statutFiltre } : undefined,
+    )
+      .then(({ data }) => {
+        setFacturesLicence(data?.results ?? [])
+        setTotalDuTtc(data?.total_du_ttc ?? 0)
+        setErreurFacturation('')
+      })
+      .catch(() => {
+        setFacturesLicence([])
+        setErreurFacturation('Registre de facturation indisponible.')
+      })
+  ), [statutFiltre])
+
   useEffect(() => { charger() }, [charger])
   useEffect(() => { chargerDemandes() }, [chargerDemandes])
+  useEffect(() => { chargerFacturation() }, [chargerFacturation])
+
+  const marquerFacturePayee = async (facture) => {
+    try {
+      await adminopsApi.marquerFactureLicencePayee(facture.id)
+      await chargerFacturation()
+    } catch (e) {
+      setErreurFacturation(
+        e?.response?.data?.detail
+        || `Échec du pointage « payée » pour ${facture.reference || `#${facture.id}`}.`,
+      )
+    }
+  }
+
+  const exporterCsv = async () => {
+    // downloadBlobInGesture() DOIT être appelé en tout début de handler,
+    // avant le premier `await` (iOS/PWA standalone — voir utils/downloadBlob).
+    const pending = downloadBlobInGesture()
+    setExportEnCours(true)
+    try {
+      const res = await adminopsApi.exporterFacturationLicencesCsv(
+        statutFiltre ? { statut: statutFiltre } : undefined,
+      )
+      pending.deliver(new Blob([res.data]), 'facturation-licences.csv')
+    } catch {
+      setErreurFacturation('Export CSV indisponible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
 
   const deciderDemande = async (demande, action) => {
     try {
@@ -300,6 +366,71 @@ export default function TenantsConsole() {
           </tbody>
         </table>
       </div>
+
+      {/* WIR267/N100(e) — registre fondateur de facturation de licence :
+          liste + total dû filtrable, pointage manuel « payée », export CSV. */}
+      <section data-testid="facturation-licence-section">
+        <h3>Facturation de licence</h3>
+        {erreurFacturation && (
+          <div role="alert" className="text-danger">{erreurFacturation}</div>
+        )}
+        <div>
+          <label htmlFor="facturation-statut">Statut</label>
+          <select
+            id="facturation-statut"
+            value={statutFiltre}
+            onChange={(e) => setStatutFiltre(e.target.value)}
+          >
+            {FACTURATION_STATUTS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <button type="button" onClick={exporterCsv} disabled={exportEnCours}>
+            Exporter CSV
+          </button>
+        </div>
+        <p data-testid="facturation-total-du">
+          Total dû TTC : <strong>{totalDuTtc} MAD</strong>
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" data-testid="facturation-licence-table">
+            <thead>
+              <tr>
+                <th>Référence</th>
+                <th>Société</th>
+                <th>Période</th>
+                <th>Plan</th>
+                <th>Montant TTC</th>
+                <th>Statut</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {facturesLicence.map((f) => (
+                <tr key={f.id}>
+                  <td>{f.reference || '—'}</td>
+                  <td>{f.societe_nom || '—'}</td>
+                  <td>{f.periode || '—'}</td>
+                  <td>{f.plan_code || '—'}</td>
+                  <td>{f.montant_ttc} MAD</td>
+                  <td>{f.statut_libelle || f.statut}</td>
+                  <td>
+                    {f.statut !== 'payee' && (
+                      <button
+                        type="button"
+                        onClick={() => marquerFacturePayee(f)}
+                        aria-label={`Marquer payée la facture ${f.reference || `#${f.id}`}`}
+                      >
+                        Marquer payée
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   )
 }

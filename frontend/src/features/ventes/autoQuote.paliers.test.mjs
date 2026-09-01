@@ -15,6 +15,26 @@
 // (panelW=710, dayUsagePct résidentiel), pour prouver que le résultat
 // respecte la règle des paliers — sans dupliquer la formule elle-même
 // (elle vit uniquement dans solar.js, testée par solar.dimensionnement.test.mjs).
+//
+// QJR109 — VÉRIFICATION FAITE, PRÉMISSE INFIRMÉE. La tâche demandait de
+// « retirer le préambule readFileSync : ces tests testent DÉJÀ des modules
+// purs, il suffit de les importer et de les appeler ». C'est vrai de la
+// MAJORITÉ de ce fichier — qui importe et appelle déjà `solar.js` — mais FAUX
+// des deux dernières épingles, et le fait a été mesuré, pas supposé :
+//
+//     node -e "import('./src/features/ventes/autoQuote.js')"
+//     → Cannot find module …/features/ventes/store/ventesSlice
+//
+// `autoQuote.js` n'est PAS chargeable sous `node --test` (imports sans
+// extension résolus par Vite, puis `import.meta.env` via le client axios).
+// Les deux épingles qui LISENT son source — « la garde lève AVANT createDevis »
+// (sinon un devis vide est persisté) et « le message est CELUI du bandeau de
+// DevisGenerator » (verrou de dérive inter-fichiers) — n'ont donc aucune autre
+// expression possible aujourd'hui. Les retirer ne les convertirait pas : cela
+// SUPPRIMERAIT deux gardes. Elles restent, et sont nommées ici pour que la
+// prochaine passe ne les prenne pas pour un oubli. Leur vraie conversion
+// suppose d'extraire la garde de `createAutoQuote` dans un module pur — un
+// chantier à part, pas une conversion de test.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -74,11 +94,17 @@ test('devis auto sans taille explicite : la taille retenue est un palier de 5 kW
   assert.ok(res.nbPanneaux > 0)
 })
 
-test('devis auto sous le seuil de 900 MAD : aucun palier chiffrable, on retombe sur le repli historique', () => {
+// U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
+// tool ») — sous le seuil, createAutoQuote n'invente PLUS de taille locale
+// (`estimerPanneaux`/panneaux-900MAD, supprimé) : `panels` reste à 0 et,
+// pour un lead résidentiel, `target_kwc` n'est même plus envoyé — c'est le
+// moteur horaire SERVEUR (`build_devis_auto`) qui dimensionne, ou refuse en
+// nommant la donnée manquante. Voir autoQuote.Panneaux900.test.mjs.
+test('devis auto sous le seuil de 900 MAD : aucun palier chiffrable localement (le serveur dimensionne)', () => {
   const hiver = 500 // < 900 MAD → besoin 0
   assert.equal(estimerKwcDepuisFacture(hiver), 0)
   const res = sizeFromBillLikeAutoQuote(hiver)
-  assert.equal(res, null, 'sous le seuil, createAutoQuote garde estimerPanneaux (comportement historique)')
+  assert.equal(res, null, 'sous le seuil, aucun palier local — plus de repli estimerPanneaux (U3-900)')
 })
 
 test('devis auto AVEC taille explicite (cible ou lead) : toujours ramenée au palier de 5 kWc le plus proche', () => {

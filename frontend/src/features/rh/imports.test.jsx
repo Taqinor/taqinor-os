@@ -36,8 +36,12 @@ describe('RH — résolution des imports de tous les écrans', () => {
     const portail = config.routes.find((r) => r.path === '/rh/portail')
     expect(portail).toBeTruthy()
     expect(portail.roles).toBeUndefined()
-    // Les écrans back-office sont gatés Responsable/Admin.
+    // WIR171/WIR172 — back-office gaté par la permission `rh_voir` avec repli
+    // palier (sémantique serveur OrLegacy) ; 'normal' inclus pour les rôles
+    // fins servis 200 par le serveur.
     const cockpit = config.routes.find((r) => r.path === '/rh')
-    expect(cockpit.roles).toEqual(['responsable', 'admin'])
+    expect(cockpit.roles).toEqual(['normal', 'responsable', 'admin'])
+    expect(cockpit.perm).toBe('rh_voir')
+    expect(cockpit.permRepliPalier).toBe(true)
   })
 })

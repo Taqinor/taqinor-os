@@ -316,6 +316,52 @@ class Devis(models.Model):
                   'figé au moment de l\'envoi. Jamais recalculé ensuite.',
     )
 
+    # ── TAILLES (ordre fondateur, 26/08/2026) — les TROIS tailles explorables ──
+    # Éco / Recommandé / Max : la CONFIGURATION que le vendeur a éventuellement
+    # ajustée pour chaque taille, et RIEN d'autre. Les nombres DÉRIVÉS (prix
+    # TTC, économie, payback, couverture, kWc…) ne sont JAMAIS stockés ici : le
+    # moteur les réestampille à chaque lecture depuis cette configuration, ce
+    # qui rend physiquement impossible un prix tapé à la main
+    # (règle « zéro chiffre inventé »).
+    #
+    # NULL / {} = aucune taille ajustée : la dérivation moteur fournit les trois
+    # par défaut et le comportement est STRICTEMENT identique à avant ce champ.
+    # Forme : {'eco'|'recommande'|'max': {'config': {'nb_panneaux': int,
+    # 'batterie_nb_modules': int, 'equipements': {role: produit_id}},
+    # 'ajuste': bool, 'modifie_le': iso8601, 'modifie_par': user_id}}.
+    # Contrat partagé : apps/ventes/contract_samples/offres_tailles.json.
+    #
+    # DISTINCT de ``variante_de``/``variante_tier`` (NTCPQ16 — une variante de
+    # GAMME est un devis brouillon complet) et du couple sans/avec batterie :
+    # une taille n'est qu'une EXPLORATION, elle ne crée aucun devis, ne touche
+    # aucune ligne et ne change aucun statut (règle #4).
+    offres_tailles_config = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tailles explorables (configuration ajustée)',
+        help_text='Configuration par taille (eco/recommande/max) ajustée par '
+                  'le vendeur. Les nombres dérivés ne sont jamais stockés : '
+                  'le moteur les recalcule depuis cette configuration.',
+    )
+
+    # QJR58 / décision fondateur D12 (29/08/2026) — LE REGISTRE UNIQUE des
+    # surcharges du vendeur, par CHEMIN :
+    # ``{chemin: {valeur, pose_le, pose_par, origine}}``. Il remplace les
+    # QUATRE mécanismes incompatibles que l'audit L3 a trouvés (dont
+    # ``saisie_manuelle``, noms à plat sans provenance).
+    # ENTRÉES SEULES : la liste blanche vit dans
+    # ``apps.ventes.domain.overrides`` et un champ DÉRIVÉ y est refusé en 400 —
+    # aucun nombre calculé par le moteur ne peut donc entrer ici, ni en
+    # ressortir sur une page client. NULL = aucun chemin surchargé, comportement
+    # strictement identique à avant (aucun backfill).
+    overrides = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Surcharges du vendeur (par chemin)',
+        help_text="Registre des surcharges du vendeur, par CHEMIN "
+                  "({valeur, pose_le, pose_par, origine}). Entrées seules : "
+                  "aucun nombre calculé par le moteur n'y entre jamais. Liste "
+                  "blanche : décision fondateur D12 du 29/08/2026.",
+    )
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — le comportement reste
@@ -359,7 +405,16 @@ class Devis(models.Model):
         fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
         une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
         qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
-        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF)."""
+        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF).
+
+        QJR52 / décision fondateur D2 — LE GEL LIT DÉSORMAIS LE NET. Il lit
+        ``self.total_ttc``, qui honore ``remise_globale`` depuis QJR51 : un
+        devis remisé n'est plus figé à jamais sur un prix par kWc gonflé.
+        Comme le champ est write-once, les devis DÉJÀ gelés au brut sont
+        corrigés par la data-migration ``0106_qjr52_prix_par_kwc_net``
+        (réversible), qui re-dérive la valeur des lignes et de la remise —
+        correction d'un nombre stocké faux, jamais invention d'un nombre.
+        """
         from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
         super().save(*args, **kwargs)
         if self.prix_par_kwc is not None:
@@ -380,12 +435,50 @@ class Devis(models.Model):
         type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
         self.prix_par_kwc = prix
 
+    def _totaux_argent(self):
+        """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.
+
+        ``apps.ventes.domain.argent`` NOMME les vues monétaires. QJR50 a branché
+        ces propriétés sur la vue « BRUT » (le calcul d'hier, à l'octet) pour
+        que la bascule ne soit qu'un changement d'UN mot ; **QJR51 est ce
+        mot**. QJR242 a ensuite SUPPRIMÉ cette vue BRUT, devenue sans appelant :
+        la façade n'expose plus que NET et AFFICHAGE.
+
+        DÉCISION FONDATEUR D2 (29/08/2026) — ``Devis.total_*`` LISENT LA VUE
+        NET. Deux conséquences, toutes deux ASSUMÉES :
+
+        1. ``remise_globale`` est HONORÉE. Le devis et la facture qu'il
+           engendre cessent de se contredire (la facture passe déjà par la
+           chaîne canonique, remise comprise).
+        2. Un devis à DEUX options ne rend plus la SOMME des deux paniers —
+           un montant qui n'apparaît dans AUCUN document et que le client ne
+           paiera jamais — mais le total de l'option EFFECTIVE (décision D9 :
+           l'option acceptée, sinon celle du total affiché).
+
+        CE QUI BAISSE, ET C'ÉTAIT FAUX : le reporting, le Kanban et le CA d'un
+        devis remisé ou à deux options. Le Kanban, qui affiche ``total_ttc``,
+        cesse par là même de montrer un prix différent de la liste (qui lit
+        déjà ``total_affiche``, la même chaîne canonique).
+
+        COÛT, DIT HONNÊTEMENT : la vue NET résout l'option effective, donc
+        consulte le prédicat « deux options ». Depuis QJR55 il n'y en a plus
+        qu'UN, LÉGER (``utils.options.deux_options_declarees`` : deux requêtes,
+        aucun rendu) — lire l'argent d'un devis ne traverse plus le moteur PDF.
+
+        L'import est FONCTION-LOCAL, comme celui de ``tva_buckets`` avant lui :
+        il s'exécute à l'appel, jamais au chargement du module, donc il ne peut
+        pas réintroduire le cycle modèle→modèle que le contrat import-linter
+        interdit.
+        """
+        from .domain.argent import Vue, totaux
+        return totaux(self, vue=Vue.NET)
+
     @property
     def total_ht(self):
         # XSAL5/XSAL14 — les lignes optionnelles non activées et les lignes de
         # section/note (sans prix) sont exclues du total (``compte_dans_totaux``).
-        return sum(ligne.total_ht for ligne in self.lignes.all()
-                   if ligne.compte_dans_totaux)
+        # QJR51/D2 — HT **NET** : remise globale honorée, option effective.
+        return self._totaux_argent().ht_net
 
     @property
     def total_tva(self):
@@ -394,8 +487,7 @@ class Devis(models.Model):
         # s'accordent au centime sur un devis à taux mixtes (10/20). Mono-taux
         # (anciens devis : toutes lignes NULL → un seul panier) → formule
         # d'origine HT×taux, rendu strictement inchangé.
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+        return self._totaux_argent().tva
 
     @property
     def tva_par_taux(self):
@@ -406,15 +498,22 @@ class Devis(models.Model):
         historiques strictement identiques) ; taux mixtes → un panier par taux,
         chaque TVA arrondie au centime, dont la somme est le total TVA.
 
-        DC23 — délègue au selector unique ``tva_buckets`` (une seule logique de
-        bucket partagée par Devis/Facture/Avoir + exports DGI/FEC).
+        DC23 — la logique de bucket reste celle du selector unique
+        ``tva_buckets`` (partagée par Devis/Facture/Avoir + exports DGI/FEC) ;
+        QJR50 y accède par la façade ``domain.argent``.
+
+        LA FORME RENDUE NE BOUGE PAS : la façade porte ``base`` (le mot du
+        contrat PACT10 ``devis_totaux.json``), les consommateurs historiques de
+        cette propriété — UBL, PDF facture, exports — lisent ``base_ht``. On
+        retraduit donc ici, plutôt que de renommer une clé lue ailleurs.
         """
-        from .selectors import tva_buckets
-        return tva_buckets(self.lignes.all(), fallback_taux=self.taux_tva)
+        return [{'taux': entree['taux'], 'base_ht': entree['base'],
+                 'montant': entree['montant']}
+                for entree in self._totaux_argent().tva_par_taux]
 
     @property
     def total_ttc(self):
-        return self.total_ht + self.total_tva
+        return self._totaux_argent().ttc
 
     @property
     def approbation_remise_en_attente(self):
@@ -530,6 +629,32 @@ class LigneDevis(models.Model):
         help_text="Option à laquelle la ligne appartient : vide = commune aux "
                   "deux options (défaut), « sans » ou « avec » = propre à "
                   "cette option-là.")
+
+    # ── QJR59 / décision fondateur D12 — CE QUE LE COMMERCIAL A TAPÉ ─────────
+    # Une ligne ne portait AUCUN marqueur de saisie manuelle : la resynchro
+    # réécrivait librement les QUANTITÉS (panneaux, mètres de câble, structures)
+    # pendant que le PRIX tapé sur la MÊME ligne était sacré — deux entrées
+    # commerciales, deux traitements opposés. D12 tranche : le commercial garde
+    # la main TOTALE sur les prix ET les quantités, et ces choix sont
+    # PERSISTANTS (ils survivent à ``?edit=`` et à la resynchro).
+    #
+    # ``default=False`` et AUCUN backfill : toutes les lignes existantes valent
+    # False sur les deux, donc rien ne change sur les données actuelles — c'est
+    # ``services._est_au_prix_catalogue`` qui continue de décider pour elles
+    # (le repli RESTE : le supprimer traiterait rétroactivement des milliers de
+    # prix négociés comme des prix catalogue).
+    quantite_manuelle = models.BooleanField(
+        default=False,
+        verbose_name='Quantité saisie à la main',
+        help_text="La quantité de cette ligne a été TAPÉE par le commercial : "
+                  "la resynchro du calepinage ne la réécrit plus (décision "
+                  "fondateur D12).")
+    prix_manuel = models.BooleanField(
+        default=False,
+        verbose_name='Prix saisi à la main',
+        help_text="Le prix unitaire de cette ligne a été TAPÉ par le "
+                  "commercial : aucun rafraîchissement tarifaire ne l'écrase "
+                  "(décision fondateur D12).")
 
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
@@ -1359,6 +1484,17 @@ class ShareLink(models.Model):
     # "etude": {...}, ...}. Alimenté par des beacons POST côté proposition web
     # (WEB_PLAN WJ — moitié web hors périmètre ERP). Vide/absent = comportement
     # QJ1 inchangé (aucun affichage supplémentaire).
+    #
+    # ANALYT1 (audit item 64, 26/08/2026) — chaque section peut AUSSI porter
+    # ``visits`` (nombre de VISITES DISTINCTES où la section a été vue, dérivé
+    # de ``visit_ids`` — une liste bornée d'identifiants de page-load envoyés
+    # par le beacon, jamais un identifiant personnel) : {"tailles":
+    # {"seconds": 40, "hits": 3, "visits": 2, "visit_ids": [...]}, ...}.
+    # ``visits``/``visit_ids`` sont STRICTEMENT internes (jamais exposés par
+    # ``engagement_summary``/le champ ``engagement`` du serializer, qui garde
+    # sa forme d'origine seconds/hits) — seule l'action ERP
+    # ``DevisViewSet.lecture_client`` (IsResponsableOrAdmin) les lit, via
+    # ``ShareLink.visites_par_section``/``friction_alert``.
     engagement = models.JSONField(null=True, blank=True)
     # Horodatage du premier engagement PROFOND (seuil dépassé sur au moins une
     # section) — sert à ne loguer QU'UNE FOIS la note chatter « a commencé à
@@ -1369,6 +1505,18 @@ class ShareLink(models.Model):
     # ex. ["not_opened_24h", "opened_not_signed_48h", "reopened_3x"]. Additif/
     # nullable → aucun lien existant n'en porte (comportement inchangé).
     engagement_triggers_fired = models.JSONField(null=True, blank=True)
+    # ── ANALYT1 (audit item 64) — signal de FRICTION : le client RELIT la
+    # MÊME section sur plusieurs visites distinctes (doctrine Proposify : les
+    # propositions perdantes sont re-consultées ~3.5× contre ~2.5× pour les
+    # gagnantes — une relecture répétée d'une section vaut un appel du
+    # commercial, jamais un chiffre montré au client). Posé UNE SEULE fois par
+    # lien (même idiome que ``deep_engagement_logged_at`` ci-dessus) —
+    # additif/nullable, aucun lien existant n'en porte.
+    friction_alert_logged_at = models.DateTimeField(null=True, blank=True)
+    # Section qui a déclenché l'alerte (whitelist ``_ENGAGEMENT_SECTIONS`` côté
+    # ``public_views.py``) — purement informatif pour la surface commerciale.
+    friction_alert_section = models.CharField(
+        max_length=32, null=True, blank=True)
 
     # ── L-NIV (fondateur 24/08/2026) — NIVEAU d'affichage de la proposition
     # publique. Deux niveaux, RÉVOCABLES sans régénérer le jeton : « standard »
@@ -1410,9 +1558,24 @@ class ShareLink(models.Model):
     # champ est purement additif.
     #
     # Clés supportées (whitelist unique — voir SECTIONS_CLES ci-dessous) :
-    # roof3d, sld, pdf, bankable, economies, jour_type, gammes.
+    # roof3d, sld, pdf, bankable, economies, jour_type, gammes,
+    # taille_eco, taille_max.
+    #
+    # ── ENVOI 1/2/3 OPTIONS (ordre fondateur, 28/08/2026) — ``taille_eco`` et
+    # ``taille_max`` disent COMBIEN de tailles le client voit sur sa page
+    # (``offres_tailles``). MÊME sémantique à trois états que les autres :
+    # absentes ⇒ servies (tout lien déjà envoyé garde ses trois cartes).
+    # « Recommandé » N'A PAS de clé et n'en aura jamais : c'est LE devis —
+    # celui que le client signe, la seule carte autorisée à ouvrir la
+    # signature. La retirer n'aurait aucun sens et laisserait une page sans
+    # offre. Les deux à ``False`` ⇒ une seule taille servie ⇒ la section
+    # « Explorer d'autres tailles » disparaît (la page d'avant ce chantier).
+    #
+    # AUCUNE MIGRATION : ``sections`` est un JSONField et la validation de
+    # l'action ``share-link`` lit CETTE whitelist — elle suit donc d'elle-même.
     SECTIONS_CLES = (
         'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
+        'taille_eco', 'taille_max',
     )
     sections = models.JSONField(
         default=dict, blank=True,
@@ -1496,6 +1659,34 @@ class ShareLink(models.Model):
                 'hits': int(v.get('hits', 0) or 0),
             }
             for section, v in data.items()
+        }
+
+    @property
+    def visites_par_section(self):
+        """ANALYT1 (audit item 64) — même agrégat que ``engagement_summary``,
+        PLUS ``visits`` (nombre de visites DISTINCTES, dérivé de
+        ``visit_ids``) : surface RÉSERVÉE à ``DevisViewSet.lecture_client``
+        (IsResponsableOrAdmin), jamais au serializer devis grand public — les
+        identifiants de visite bruts ne sortent jamais d'ici."""
+        data = self.engagement or {}
+        return {
+            section: {
+                'seconds': int(v.get('seconds', 0) or 0),
+                'hits': int(v.get('hits', 0) or 0),
+                'visits': int(v.get('visits', 0) or 0),
+            }
+            for section, v in data.items()
+        }
+
+    @property
+    def friction_alert(self):
+        """ANALYT1 — résumé de l'alerte de relecture (``None`` tant qu'aucune
+        section n'a franchi le seuil de visites distinctes)."""
+        if not self.friction_alert_logged_at:
+            return None
+        return {
+            'section': self.friction_alert_section,
+            'declenche_le': self.friction_alert_logged_at.isoformat(),
         }
 
     @classmethod
@@ -1696,46 +1887,192 @@ class DevisSignature(models.Model):
     def __str__(self):
         return f'Signature {self.devis_id} — {self.signataire_nom}'
 
-    @staticmethod
-    def compute_content_hash(devis, lignes=None):
-        """SHA-256 du payload canonique du devis (sans aucune donnée interne).
+    # ── QJR144 / ES12 — L'EMPREINTE COUVRE CE QUI DÉTERMINE LE PRIX ─────────
+    #
+    # CE QUI MANQUAIT (audit du 30/08/2026, vérifié en code). Le payload
+    # portait ``reference|client|created|tva(global)|remise|lignes(designation:
+    # quantite:prix_unitaire:remise)`` et ne couvrait :
+    #
+    #   · NI le ``taux_tva`` PAR LIGNE (``LigneDevis.taux_tva``, consommé par
+    #     ``taux_tva_effectif`` et ``tva_par_taux``) — passer une ligne de 20 %
+    #     à 10 % change le TTC payé par le client SANS changer l'empreinte ;
+    #   · NI ``optionnelle``, qui décide de l'ENTRÉE d'une ligne dans les
+    #     totaux (``LigneDevis.compte_dans_totaux``) ;
+    #   · NI ``option_acceptee``, qui détermine ce qui sera FACTURÉ
+    #     (``utils/echeancier`` : « on facture UNIQUEMENT les lignes de
+    #     l'option retenue »).
+    #
+    # ATTÉNUATION VÉRIFIÉE, ET PRÉSERVÉE : l'édition post-acceptation est déjà
+    # refusée (``views/devis.py``, ``views/ligne_devis.py``). C'était donc une
+    # lacune de VALEUR PROBANTE, pas une brèche ouverte — et c'est pourquoi ce
+    # lot étend le sceau et lui donne un vérificateur, sans rien verrouiller de
+    # plus.
+    #
+    # LES SIGNATURES DÉJÀ POSÉES RESTENT VALIDES. Le payload est VERSIONNÉ :
+    # v1 est celui d'origine, octet pour octet ; v2 y ajoute les trois données
+    # manquantes. Les nouvelles empreintes sont calculées en v2 ; la
+    # vérification essaie v2 PUIS v1, si bien qu'une signature d'hier se
+    # vérifie encore — avec la portée qui était la sienne, et pas davantage.
 
-        Le hash couvre : référence, client (nom/email), date_creation,
-        lignes (designation/qte/pu_ht/remise), taux_tva, remise_globale.
-        JAMAIS prix_achat ni marge. Déterministe et reproductible.
+    #: Payload d'origine (QJ10). Ne JAMAIS le modifier : des empreintes déjà
+    #: scellées en dépendent.
+    CONTENT_HASH_V1 = 1
+    #: QJR144 — v1 + ``taux_tva``/``optionnelle`` par ligne + ``option_acceptee``.
+    CONTENT_HASH_V2 = 2
+    #: La version dont sont scellées les NOUVELLES signatures.
+    CONTENT_HASH_VERSION = CONTENT_HASH_V2
+
+    @staticmethod
+    def _norme_decimale(valeur):
+        """Le texte CANONIQUE d'un montant du payload — INDÉPENDANT DE LA VOIE
+        DE LECTURE.
+
+        LE DÉFAUT QUE CECI CORRIGE (constat du 30/08/2026). Le payload
+        interpolait les montants tels quels (``f"tva={devis.taux_tva}"``), donc
+        il rendait le *repr Python* de la valeur portée par l'instance — et ce
+        repr DIFFÈRE selon d'où vient l'instance :
+
+          · instance FRAÎCHE (``Devis.objects.create(taux_tva=Decimal('20'))``,
+            la voie de la POSE) → ``tva=20``, et ``remise=0`` car le défaut du
+            champ est l'*entier* ``0`` ;
+          · instance RELUE de la base (``signature.devis``, la voie de la
+            VÉRIFICATION) → ``tva=20.00|remise=0.00``, la colonne étant un
+            ``numeric(5,2)``.
+
+        Deux chaînes différentes ⇒ deux SHA-256 différents : le sceau ne
+        pouvait PAS se reproduire, et ``verifier_contenu`` rendait ``False``
+        pour un contenu pourtant strictement inchangé. Le sceau existait depuis
+        QJ10, mais personne ne le relisait : la lacune n'est apparue qu'en lui
+        donnant un vérificateur.
+
+        POURQUOI CE CHOIX PRÉSERVE LES SIGNATURES DÉJÀ POSÉES. La forme
+        canonique retenue est celle de la BASE (quantifiée aux 2 décimales de
+        la colonne), et non celle de l'instance fraîche. Or toute empreinte
+        jamais PERSISTÉE l'a été à partir de valeurs de cette forme-là (le
+        chemin d'acceptation lit le devis d'un queryset ; un devis créé par
+        sérialiseur DRF porte déjà des décimaux quantifiés). Quantifier est
+        donc un NO-OP sur ces valeurs : les empreintes v1 en base se
+        reproduisent à l'octet. Seule change la forme fraîche — celle qui, par
+        construction, ne pouvait jamais se re-vérifier.
+
+        ``None`` reste ``None`` (colonnes nullables : ``quantite``,
+        ``prix_unitaire``, ``taux_tva`` de ligne) — une valeur absente est déjà
+        stable des deux côtés, et la rendre autrement casserait un v1 existant.
+        """
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        if valeur is None:
+            return 'None'
+        try:
+            return str(Decimal(str(valeur)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, TypeError, ValueError):
+            return str(valeur)
+
+    @classmethod
+    def _lignes_pour_empreinte(cls, devis, lignes=None):
+        """Les lignes du devis, normalisées et TRIÉES PAR ``id``.
 
         NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
-        l'appelant (chemin d'acceptation, qui les a en main). Elles sont
-        retriées par ``id`` : le payload — donc le hash — est le MÊME qu'avec
-        la requête, sans quoi une signature ne se vérifierait plus. Paramètre
-        absent (tout autre appelant) ⇒ la requête d'hier.
+        l'appelant (chemin d'acceptation, qui les a en main) : aucune requête
+        alors, et le payload est le MÊME qu'avec la requête.
         """
+        if lignes is None:
+            return list(devis.lignes.order_by('id').values(
+                'designation', 'quantite', 'prix_unitaire', 'remise',
+                'taux_tva', 'optionnelle'))
+        return [
+            {'designation': lg.designation, 'quantite': lg.quantite,
+             'prix_unitaire': lg.prix_unitaire, 'remise': lg.remise,
+             'taux_tva': lg.taux_tva, 'optionnelle': lg.optionnelle}
+            for lg in sorted(lignes, key=lambda li: li.id)
+        ]
+
+    @classmethod
+    def _payload_content_hash(cls, devis, lignes=None, *, version=None):
+        """Le payload canonique, dans la VERSION demandée (jamais du hash)."""
+        version = version or cls.CONTENT_HASH_VERSION
         client = getattr(devis, 'client', None)
         client_str = ''
         if client is not None:
             client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
-        if lignes is None:
-            lignes = list(devis.lignes.order_by('id').values(
-                'designation', 'quantite', 'prix_unitaire', 'remise'))
+        lignes = cls._lignes_pour_empreinte(devis, lignes)
+        # Tous les montants passent par ``_norme_decimale`` : le payload doit
+        # être le MÊME que le devis vienne d'être créé en mémoire ou d'être
+        # relu de la base, sans quoi le sceau ne se reproduit jamais.
+        nb = cls._norme_decimale
+        if version >= cls.CONTENT_HASH_V2:
+            lignes_str = '|'.join(
+                f"{lg['designation']}:{nb(lg['quantite'])}"
+                f":{nb(lg['prix_unitaire'])}"
+                f":{nb(lg['remise'])}:{nb(lg['taux_tva'])}"
+                f":{int(bool(lg['optionnelle']))}"
+                for lg in lignes
+            )
         else:
-            lignes = [
-                {'designation': lg.designation, 'quantite': lg.quantite,
-                 'prix_unitaire': lg.prix_unitaire, 'remise': lg.remise}
-                for lg in sorted(lignes, key=lambda li: li.id)
-            ]
-        lignes_str = '|'.join(
-            f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
-            for lg in lignes
-        )
+            lignes_str = '|'.join(
+                f"{lg['designation']}:{nb(lg['quantite'])}"
+                f":{nb(lg['prix_unitaire'])}:{nb(lg['remise'])}"
+                for lg in lignes
+            )
         payload = (
             f"ref={devis.reference}|"
             f"client={client_str}|"
             f"created={devis.date_creation}|"
-            f"tva={devis.taux_tva}|"
-            f"remise={devis.remise_globale}|"
+            f"tva={nb(devis.taux_tva)}|"
+            f"remise={nb(devis.remise_globale)}|"
             f"lignes={lignes_str}"
         )
+        if version >= cls.CONTENT_HASH_V2:
+            # Préfixe de version ET option retenue : deux payloads de versions
+            # différentes ne peuvent pas produire la même chaîne.
+            payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
+                       f"option={getattr(devis, 'option_acceptee', '') or ''}")
+        return payload
+
+    @classmethod
+    def compute_content_hash(cls, devis, lignes=None, *, version=None):
+        """SHA-256 du payload canonique du devis (sans aucune donnée interne).
+
+        Le hash couvre : référence, client (nom/email), date_creation,
+        ``taux_tva`` global, ``remise_globale``, les lignes
+        (designation/qte/pu_ht/remise **+ taux_tva de ligne + optionnelle**) et
+        l'**option acceptée**. JAMAIS prix_achat ni marge. Déterministe et
+        reproductible.
+
+        ``version`` — ``None`` (le défaut, et tous les appelants de production)
+        scelle dans la version COURANTE. La vérification (:meth:`verifier_
+        contenu`) est le seul appelant qui demande explicitement ``v1``, pour
+        pouvoir relire une empreinte d'hier.
+        """
+        payload = cls._payload_content_hash(devis, lignes, version=version)
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+    def verifier_contenu(self, lignes=None):
+        """QJR144 — l'empreinte scellée décrit-elle ENCORE ce devis ?
+
+        Le sceau existait mais AUCUN code ne savait le vérifier : il était
+        écrit une fois et relu seulement par des tests. Voici le vérificateur.
+
+        Rend ``(intacte, version)`` :
+
+        * ``(True, 2)`` — le contenu courant reproduit l'empreinte, sceau
+          étendu (taux de TVA par ligne, lignes optionnelles, option retenue) ;
+        * ``(True, 1)`` — il la reproduit dans le payload D'ORIGINE : la
+          signature est authentique, mais son sceau ne couvrait pas encore les
+          trois données ci-dessus. L'appelant qui a besoin de le SAVOIR lit la
+          version ;
+        * ``(False, None)`` — le contenu a changé depuis la signature ;
+        * ``(None, None)`` — aucune empreinte scellée (signatures très
+          anciennes) : « on ne sait pas » n'est pas « falsifié ».
+        """
+        scelle = (self.content_hash or '').strip()
+        if not scelle:
+            return None, None
+        for version in (self.CONTENT_HASH_V2, self.CONTENT_HASH_V1):
+            if self.compute_content_hash(
+                    self.devis, lignes=lignes, version=version) == scelle:
+                return True, version
+        return False, None
 
 
 # ── QJ16 — Reusable quote presets ────────────────────────────────────────────
@@ -1852,6 +2189,12 @@ class DevisNudgeLog(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: purge tenant. QJR144 a décalé ce fichier de +94 lignes
+        # (méthodes d'empreinte dans ``DevisSignature``), donc l'entrée
+        # `file:line` de `scripts/on_delete_allowlist.txt` ne matchait plus.
+        # Le commentaire INLINE est le patron IMMUNISÉ aux décalages (celui que
+        # porte déjà la FK ``devis`` juste en dessous) : la politique n'a pas
+        # changé d'un octet, elle est simplement justifiée là où elle vit.
         on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='devis_nudge_logs',

@@ -77,6 +77,13 @@ _OCCUPATION_JOUR_VERS_DRAPEAU = {
     'partiel': OCCUPATION_PARTIELLE,
 }
 
+# QJR10 / décision fondateur D4 (29/08/2026) — le défaut RÉSIDENTIEL, un seul
+# couple (drapeau, source) pour tous les chemins qui n'ont pas la réponse du
+# client. C'est l'observation de terrain du fondateur (clientèle majoritairement
+# présente en journée), pas une statistique : la source le DIT, pour que la page
+# puisse l'étiqueter honnêtement.
+DEFAUT_RESIDENTIEL = (OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur')
+
 
 def _nombre(valeur):
     """Flottant strictement positif, ou ``None``."""
@@ -140,6 +147,41 @@ def _options_reelles(data, batterie_kwh):
     return []
 
 
+def occupation_depuis_reponse(reponse, defaut=None):
+    """QJR10 — LE traducteur unique de ``crm.Lead.occupation_jour``.
+
+    ``reponse`` est la valeur BRUTE du script d'appel (``present`` / ``absent``
+    / ``partiel``). Rend ``(drapeau, source)`` quand la question a une réponse
+    lisible, sinon ``defaut`` tel quel (``None`` par défaut : « pas de
+    réponse », à l'appelant de dire ce qu'il en fait).
+
+    Avant QJR10 cette traduction existait DEUX fois — ici et dans un dict
+    ``drapeaux`` local de ``services._panneaux_dimensionnement_horaire``, dont
+    le silence retombait sur la silhouette de repli PARTIELLE alors que l'écran
+    retombait sur le défaut fondateur PRÉSENCE : le même lead était dimensionné
+    sur deux formes de journée différentes selon le chemin emprunté.
+    """
+    if reponse in _OCCUPATION_JOUR_VERS_DRAPEAU:
+        return (_OCCUPATION_JOUR_VERS_DRAPEAU[reponse],
+                'lead_occupation_jour:%s' % reponse)
+    return defaut
+
+
+def occupation_du_lead(lead):
+    """QJR10 — ``(drapeau, source)`` d'occupation lisible sur un LEAD SEUL.
+
+    Façade des chemins qui n'ont pas encore de devis persisté (devis
+    automatique, tunnel) : réponse RÉELLE du lead d'abord, sinon le défaut
+    fondateur résidentiel :data:`DEFAUT_RESIDENTIEL` — **décision fondateur D4
+    du 29/08/2026 : PRÉSENCE partout**, le repli PARTIELLE de l'ancien chemin
+    auto disparaît. Ces chemins sont résidentiels par construction
+    (``services.build_devis_auto`` refuse tout autre marché), le défaut
+    résidentiel est donc le bon.
+    """
+    return occupation_depuis_reponse(
+        getattr(lead, 'occupation_jour', None), DEFAUT_RESIDENTIEL)
+
+
 def _occupation(devis, data):
     """(drapeau, source) — le client est-il chez lui en journée ?
 
@@ -166,13 +208,14 @@ def _occupation(devis, data):
     résidentiels quand le lead le porte ET qu'``occupation_jour`` est absent.
     Sinon, hors résidentiel, le défaut reste ``absence_jour``.
     """
-    lead_occ = _occupation_jour_lead(devis)
-    if lead_occ in _OCCUPATION_JOUR_VERS_DRAPEAU:
-        return _OCCUPATION_JOUR_VERS_DRAPEAU[lead_occ], 'lead_occupation_jour:%s' % lead_occ
+    # QJR10 — MÊME traducteur que le chemin lead seul (aucun dict local).
+    reponse = occupation_depuis_reponse(_occupation_jour_lead(devis))
+    if reponse is not None:
+        return reponse
 
     mode = str(data.get('mode_installation') or '').strip().lower()
     if mode == 'residentiel':
-        return OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur'
+        return DEFAUT_RESIDENTIEL
 
     try:
         from apps.crm.selectors import profil_activite_pour_devis
@@ -346,6 +389,17 @@ CLIM_CRENEAUX = {
 # Heures de DÉPART par créneau piscine — la LONGUEUR de la fenêtre reste
 # pilotée par equip_piscine_heures_jour (ou le défaut 8h, PISCINE_HEURES) ;
 # le créneau ne déplace que le départ, jamais la durée.
+#: QJR15 (29/08/2026) — LES COUCHES DE REDISTRIBUTION, UNE SEULE LISTE.
+#: Ces couches décrivent une consommation DÉJÀ contenue dans la facture : elles
+#: déforment la journée sans en changer le total. Elles doivent être les MÊMES
+#: partout — dans le composeur de forme (:func:`forme_consommation_detaillee`)
+#: et dans la décomposition mensuelle publiée
+#: (``etude_horaire.estimation_conso_mensuelle``). Avant QJR15 le chauffe-eau
+#: était publié comme un ajout mensuel en kWh mais IGNORÉ par le composeur : la
+#: répartition montrée au client et la forme sur laquelle ses économies étaient
+#: calculées décrivaient deux clients différents.
+COUCHES_REDISTRIBUTION = ('piscine', 'clim', 'chauffe_eau')
+
 PISCINE_CRENEAUX_DEPART = {
     'matin': 6,
     'apres_midi': 12,
@@ -820,11 +874,17 @@ def _coordonnees_du_chantier(lat, lon, ville):
         return lat, lon
     try:
         from apps.parametres.pvgis_profils import (
-            PRODUCTIBLE_MENSUEL_VILLE, cle_ville)
+            PRODUCTIBLE_MENSUEL_VILLE, _coordonnees_gazetier, cle_ville)
         cle = cle_ville(ville)
         if cle:
             entree = PRODUCTIBLE_MENSUEL_VILLE.get(cle) or {}
             return entree.get('lat'), entree.get('lon')
+        # Ville hors table mais au gazetier GeoNames (31/08/2026) : sa vraie
+        # position vaut toujours mieux que le repli Casablanca pour un coucher
+        # de soleil — même géographie que la résolution du productible.
+        coords = _coordonnees_gazetier(ville)
+        if coords is not None:
+            return coords
     except Exception:  # noqa: BLE001 — une ville illisible n'est pas une panne
         logger.warning('coordonnees ville indisponibles', exc_info=True)
     return None, None
@@ -868,6 +928,51 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
         ramadan=ramadan)[0]
 
 
+def renormalisation_redistribution(niveau_kwh, ve_kwh, brute_totale_kwh):
+    """``(base, facteur)`` — LE contrat de renormalisation des couches de
+    REDISTRIBUTION, écrit ICI et nulle part ailleurs.
+
+    ``base`` est le niveau que la journée (ou le mois) doit retrouver une fois
+    les bosses posées : le niveau facture MOINS l'énergie du véhicule
+    électrique, seule couche d'ADDITION — charge FUTURE ajoutée APRÈS la
+    renormalisation et jamais rediluée (voir
+    :func:`forme_consommation_detaillee`). ``facteur`` ramène ``base + bosses``
+    à ``base`` : une couche de redistribution pèse donc EXACTEMENT
+    ``brute × facteur`` dans ce qui est servi. Sans bosse (ou sans base), il
+    vaut 1,0 — le chemin historique, qui ne renormalisait pas.
+
+    Les trois grandeurs sont homogènes : trois énergies du même pas de temps.
+    Le rapport est invariant d'échelle (multiplier les trois par le nombre de
+    jours du mois donne le même facteur), ce qui permet au calcul MENSUEL de
+    :func:`apps.ventes.etude_horaire.estimation_conso_mensuelle` de lire le
+    facteur de la JOURNÉE sans le réécrire.
+
+    QJR207 (31/08/2026) — POURQUOI UNE FONCTION. Ce rapport existait en DEUX
+    copies : celle-ci et celle de la publication client, qui avait omis de
+    retirer l'énergie VE du niveau. Dès qu'un véhicule électrique coexistait
+    avec une piscine/clim/chauffe-eau, la copie publiait plus de kWh par couche
+    que ce module n'en place réellement dans la journée (mesuré : +19,17 kWh en
+    juillet sur un profil 600 kWh/mois + clim 1,4 kW + VE 4 kWh/jour). Une
+    seule écriture, importée par les deux appelants.
+    """
+    try:
+        niveau = float(niveau_kwh)
+    except (TypeError, ValueError):
+        niveau = 0.0
+    try:
+        ve = float(ve_kwh)
+    except (TypeError, ValueError):
+        ve = 0.0
+    try:
+        brute = float(brute_totale_kwh)
+    except (TypeError, ValueError):
+        brute = 0.0
+    base = max(0.0, niveau - max(0.0, ve))
+    if base > 0 and brute > 0:
+        return base, base / (base + brute)
+    return base, 1.0
+
+
 def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
                                  equipements=None, ramadan=None):
     """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
@@ -876,7 +981,8 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     applique EXACTEMENT la règle L4 déjà tenue côté page
     (``proposalCurve.equipmentAdjustedConsumptionKwhShape``), en DEUX PASSES :
 
-    1. **REDISTRIBUTION** (piscine, climatisation) — chaque couche ajoute sa
+    1. **REDISTRIBUTION** (:data:`COUCHES_REDISTRIBUTION` — piscine,
+       climatisation, chauffe-eau) — chaque couche ajoute sa
        puissance RÉELLE (``kw``, saisie par le commercial) sur ses heures
        sourcées, puis l'ensemble est renormalisé pour que la somme retombe
        EXACTEMENT sur le niveau facture (VE exclu) : ces heures grossissent, le
@@ -900,7 +1006,11 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     donc à UN seul propriétaire : ce module. Le VE en est absent
     volontairement — sa couche porte une ÉNERGIE (kWh/jour) et aucune puissance
     de chargeur n'est collectée, donc rien à concentrer (voir
-    ``etude_horaire.PROFILS_RAFALE``).
+    ``etude_horaire.PROFILS_RAFALE``). Le chauffe-eau, lui, EST rendu depuis
+    QJR15 : le moteur le laisse plat (``PROFILS_RAFALE['chauffe_eau']`` est
+    ``actif: False`` — un chauffe-eau ne cycle pas comme un compresseur), mais
+    sa part de l'heure est désormais NOMMÉE au lieu d'être noyée dans le
+    résiduel.
     """
     try:
         total = float(kwh_jour)
@@ -924,14 +1034,11 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         and (not ve.get('saisons') or saison is None
              or saison in ve['saisons']))
     ve_kwh = float(ve['kwh_jour']) if ve_actif else 0.0
-    base_total = max(0.0, total - ve_kwh)
 
-    sortie = [part * base_total for part in forme]
-
-    # ── Passe 1 : redistribution (piscine / clim) ──
+    # ── Passe 1 : redistribution (piscine / clim / chauffe-eau) ──
     bosse = [0.0] * 24
     actives = {}
-    for cle in ('piscine', 'clim'):
+    for cle in COUCHES_REDISTRIBUTION:
         couche = couches.get(cle)
         if not couche or couche.get('mode') != 'redistribution':
             continue
@@ -949,15 +1056,15 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         if heures_couche:
             actives[cle] = {'kw': kw, 'heures': heures_couche,
                             'source': couche.get('source')}
-    # ``facteur`` reste à 1,0 tant qu'aucune bosse n'est posée — exactement le
-    # chemin historique, qui ne renormalisait pas dans ce cas.
-    facteur = 1.0
+    # LE NIVEAU ET LE FACTEUR — une seule écriture, partagée avec la
+    # publication client (:func:`renormalisation_redistribution`). ``facteur``
+    # reste à 1,0 tant qu'aucune bosse n'est posée — exactement le chemin
+    # historique, qui ne renormalisait pas dans ce cas.
+    base_total, facteur = renormalisation_redistribution(
+        total, ve_kwh, sum(bosse))
+    sortie = [part * base_total for part in forme]
     if any(bosse):
-        sortie = [v + bosse[h] for h, v in enumerate(sortie)]
-        somme = sum(sortie)
-        if somme > 0 and base_total > 0:
-            facteur = base_total / somme
-            sortie = [v * facteur for v in sortie]
+        sortie = [(v + bosse[h]) * facteur for h, v in enumerate(sortie)]
 
     # ── Passe 2 : addition (VE), jamais rediluée ──
     if ve_actif and ve_kwh > 0:

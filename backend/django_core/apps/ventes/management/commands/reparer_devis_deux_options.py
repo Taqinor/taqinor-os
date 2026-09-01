@@ -225,7 +225,8 @@ class Command(BaseCommand):
 
         from django.db import transaction
 
-        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.models import Devis
+        from apps.ventes.domain.lignes import creer_ligne
         from apps.ventes.services import (SCENARIO_AVEC_BATTERIE,
                                           SCENARIO_LES_DEUX)
 
@@ -244,8 +245,8 @@ class Command(BaseCommand):
                 return False
             ordre = max([int(ligne.ordre or 0)
                          for ligne in verrou.lignes.all()] or [0])
-            LigneDevis.objects.create(
-                devis=verrou, produit=produit, designation=produit.nom,
+            creer_ligne(
+                verrou, produit=produit, designation=produit.nom,
                 quantite=Decimal('1'),
                 # Aucun chiffre inventé : le PRIX CATALOGUE du produit choisi,
                 # sans remise — exactement ce que la composition aurait posé.

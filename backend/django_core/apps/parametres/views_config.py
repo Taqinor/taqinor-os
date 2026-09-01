@@ -36,7 +36,7 @@ PROFILE_CONFIG_FIELDS = [
     'delai_visite_technique', 'delai_installation',
     'doc_prefixes', 'doc_numbering',
     'tva_standard', 'tva_panneaux', 'onee_tarif_kwh', 'productible_kwh_kwc',
-    'rendement_global', 'panneaux_par_900mad', 'prix_cible_kwc_defaut',
+    'rendement_global', 'prix_cible_kwc_defaut',
     'remise_max_pct', 'discount_approval_threshold',
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',

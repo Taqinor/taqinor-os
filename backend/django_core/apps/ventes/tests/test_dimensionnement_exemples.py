@@ -174,11 +174,17 @@ class ExemplesFondateurTest(TestCase):
             ete_differente=cas.ete_differente)
         self.assertIsNotNone(
             conso, '%s : aucune consommation déduite de la facture' % cas.libelle)
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        tranches, charges_fixes = _reglages_tarifaires(self.company)
         resultat = recommander_taille(
             company=self.company, conso_kwh_mensuelles=conso, ville=VILLE,
             occupation=cas.occupation,
             equipements=composer_equipements(cas.equipements),
-            phase=cas.phase, taux_tva=Decimal('20'), source_conso=source)
+            phase=cas.phase, taux_tva=Decimal('20'), source_conso=source,
+            # QJR46 — le barème est EXIGÉ (plus de repli silencieux sur la
+            # grille nationale) : c'est celui de la SOCIÉTÉ, la même lecture
+            # que le moteur de devis.
+            tranches=tranches, charges_fixes_mad=charges_fixes)
         return conso, source, detail, resultat
 
     # ── Rapport imprimé ──────────────────────────────────────────────────
@@ -991,13 +997,16 @@ class ExemplesFondateurTest(TestCase):
         cas = next(c for c in PALIERS if c.hiver == 2500)
         conso, source, _detail = profil_depuis_factures(
             facture_hiver_mad=cas.hiver)
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        tranches, charges_fixes = _reglages_tarifaires(self.company)
         rendus = {}
         for critere in ('meilleur_payback', 'meilleure_couverture',
                         'economie_max'):
             resultat = recommander_taille(
                 company=self.company, conso_kwh_mensuelles=conso, ville=VILLE,
                 occupation=cas.occupation, phase=cas.phase, critere=critere,
-                taux_tva=Decimal('20'), source_conso=source)
+                taux_tva=Decimal('20'), source_conso=source,
+                tranches=tranches, charges_fixes_mad=charges_fixes)
             self.assertEqual(resultat['critere'], critere)
             rendus[critere] = resultat['recommandation']
 
@@ -1105,3 +1114,131 @@ class ExemplesFondateurTest(TestCase):
         print('%s    >>> un port de 3,3 kW coute %.2f kWh face a 2 packs'
               % (TAG, deux_packs['restitue_kwh']
                  - port_etroit['restitue_kwh']))
+
+
+class BaremeExigeTests(TestCase):
+    """QJR46 — la fin de la divergence SILENCIEUSE de barème.
+
+    Tous les appels à ``recommander_taille`` OMETTAIENT ``tranches`` /
+    ``charges_fixes_mad`` : les deux retombaient sur ``None``, c'est-à-dire la
+    grille nationale — pendant qu'``etude_horaire_pour_devis`` et
+    ``quote_engine/builder`` appliquaient la surcharge de la SOCIÉTÉ. Le même
+    kWh était donc valorisé sur deux barèmes, et le site d'appel ne montrait
+    rien puisque les kwargs étaient OMIS plutôt que REFUSÉS.
+    """
+
+    #: Un barème de société VOLONTAIREMENT distinct de la grille nationale
+    #: (valeurs arbitraires de TEST, jamais un tarif publié : ce test ne
+    #: mesure pas un prix, il mesure QUELLE table atteint le moteur).
+    TIERS_SOCIETE = [
+        {'max_kwh': 100, 'prix_kwh_ttc': '2.0000'},
+        {'max_kwh': 210, 'prix_kwh_ttc': '2.2000'},
+        {'max_kwh': None, 'prix_kwh_ttc': '2.5000'},
+    ]
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company, _ = Company.objects.get_or_create(
+            slug='qjr46-bareme-co', defaults={'nom': 'QJR46 Barème'})
+        call_command('seed_catalogue', company_slug=cls.company.slug,
+                     stdout=StringIO())
+        from apps.parametres.models_tariff import TariffSettings
+        reglages = TariffSettings.get(company=cls.company)
+        reglages.residential_tiers = cls.TIERS_SOCIETE
+        reglages.redevance_compteur_mad_mois = 42
+        reglages.save()
+
+    def _conso(self):
+        conso, _source, _detail = profil_depuis_factures(
+            facture_hiver_mad=2500)
+        return conso
+
+    # ── le refus ────────────────────────────────────────────────────────────
+
+    def test_recommander_taille_sans_bareme_leve(self):
+        with self.assertRaises(TypeError):
+            recommander_taille(company=self.company,
+                               conso_kwh_mensuelles=self._conso())
+
+    def test_balayer_tailles_sans_bareme_leve(self):
+        from apps.ventes.dimensionnement import balayer_tailles
+        with self.assertRaises(TypeError):
+            balayer_tailles(company=self.company,
+                            conso_kwh_mensuelles=self._conso())
+
+    # ── la MÊME table partout ───────────────────────────────────────────────
+
+    def test_les_entrees_portent_le_bareme_de_la_societe(self):
+        """L'identité tarifaire d'``EntreesMoteur`` EST celle que le moteur de
+        devis lit (``etude_horaire._reglages_tarifaires``), jamais une
+        seconde lecture."""
+        from apps.crm.models import Client, Lead
+        from apps.ventes.domain.entrees import (
+            entrees_depuis_devis, entrees_depuis_lead)
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        from apps.ventes.models import Devis
+
+        attendues, charges = _reglages_tarifaires(self.company)
+        self.assertIsNotNone(attendues)
+        self.assertEqual(charges, 42.0)
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='qjr46',
+            telephone='+212600000000', ville=VILLE,
+            facture_hiver=2500, ete_differente=False)
+        client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client qjr46', defaults={})[0]
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJR46-01',
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={})
+
+        for entrees in (entrees_depuis_devis(devis),
+                        entrees_depuis_lead(lead, self.company)):
+            self.assertEqual(list(entrees.tranches), list(attendues))
+            self.assertEqual(entrees.tranches.selective_threshold,
+                             attendues.selective_threshold)
+            self.assertEqual(entrees.charges_fixes_mad, 42.0)
+
+    def test_l_echelle_de_paliers_batterie_recoit_le_meme_bareme(self):
+        """R4-B2.23 — le CINQUIÈME appelant : ses économies par barreau
+        atteignent la charge utile PUBLIQUE et étaient calculées sur la grille
+        nationale."""
+        from unittest import mock
+
+        from apps.crm.models import Client, Lead
+        from apps.ventes import etude_horaire as module_eh
+        from apps.ventes.dimensionnement import echelle_paliers_batterie
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        from apps.ventes.models import Devis
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='qjr46e',
+            telephone='+212600000000', ville=VILLE,
+            facture_hiver=2500, ete_differente=False)
+        client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client qjr46e', defaults={})[0]
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJR46-02',
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={})
+
+        vus = []
+        # ``_echelle_paliers_batterie`` importe la fonction DANS son corps :
+        # c'est donc le module SOURCE qu'il faut espionner.
+        vrai = module_eh.balayer_stockage_horaire
+
+        def espion(*args, **kwargs):
+            vus.append(kwargs.get('tranches'))
+            return vrai(*args, **kwargs)
+
+        with mock.patch.object(module_eh, 'balayer_stockage_horaire', espion):
+            echelle_paliers_batterie(devis)
+
+        attendues, _charges = _reglages_tarifaires(self.company)
+        if not vus:
+            self.skipTest("catalogue sans batterie : l'échelle ne sonde rien")
+        for table in vus:
+            self.assertEqual(list(table or []), list(attendues))

@@ -54,6 +54,18 @@ class LectureTests(unittest.TestCase):
         self.assertTrue(lus[0][3])
         self.assertEqual(sorted(lus[0][4]), ["backend", "frontend"])
 
+    def test_un_chemin_json_est_lu_entier_jamais_tronque_en_js(self):
+        # Régression 31/08 (QJR231) : `jsx?` avalait le préfixe `.js` de
+        # `.json` → la garde cherchait `modes_marche.js`, introuvable.
+        plan = self._plan("- [x] X9 — contrat + reducer. "
+                          "Files: `apps/ventes/contracts/modes_marche.json`, "
+                          "`frontend/src/features/ventes/quote/sizingReducer.js`.")
+        lus = mixtes.taches_mixtes(plan)
+        self.assertEqual(len(lus), 1)
+        fichiers = [f for cote in lus[0][4].values() for f in cote]
+        self.assertIn("apps/ventes/contracts/modes_marche.json", fichiers,
+                      f"chemin .json tronqué : {fichiers}")
+
     def test_le_raccourci_apps_compte_comme_backend(self):
         plan = self._plan("- [ ] X3 — . Files: `apps/ao/selectors.py`, "
                           "`frontend/src/features/ao/E.jsx`.")

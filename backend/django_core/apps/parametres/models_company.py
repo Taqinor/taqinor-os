@@ -174,8 +174,11 @@ class CompanyProfile(models.Model):
     # Rendement global (productible appliqué à la production) — défaut 0.8.
     rendement_global = models.DecimalField(
         max_digits=4, decimal_places=3, default=Decimal('0.8'))
-    # Auto-remplir : nombre de panneaux par tranche de 900 MAD (facture hiver).
-    panneaux_par_900mad = models.PositiveSmallIntegerField(default=8)
+    # U3-900 (fondateur 29/08/2026) — l'ancien réglage `panneaux_par_900mad`
+    # (panneaux par tranche de 900 MAD de facture hiver) alimentait
+    # `estimerPanneaux`, retirée le même jour du dimensionnement résidentiel
+    # (voir frontend/src/features/ventes/solar.js) : le champ ne servait plus
+    # à rien et a été supprimé (migration 00xx_remove_panneaux_par_900mad).
     # Prix cible /kWc par défaut (pré-remplit le générateur). NULL/vide = aucun
     # (comportement actuel : pas de prix cible pré-réglé).
     prix_cible_kwc_defaut = models.DecimalField(
@@ -279,6 +282,19 @@ class CompanyProfile(models.Model):
         help_text='Délai maximum (en heures) avant première prise de contact '
                   'sur un nouveau lead. 0 = SLA désactivé.'
     )
+    # AUTO-PIPELINE (ordre fondateur 26/08/2026) — « une fois que le lead
+    # arrive dans notre ERP ça crée automatiquement le devis automatique ».
+    # ACTIF par défaut : c'est le flux demandé. Le réglage existe pour qu'une
+    # société puisse le couper sans toucher au code — pas pour retarder la
+    # demande. Le devis créé est TOUJOURS un brouillon, jamais envoyé : il
+    # attend la vérification du commercial.
+    devis_auto_depuis_tunnel = models.BooleanField(
+        default=True,
+        verbose_name='Devis automatique depuis le tunnel',
+        help_text='Crée automatiquement un devis BROUILLON (à vérifier) dès '
+                  'qu\'un lead du site web arrive avec assez de données '
+                  'réelles pour être dimensionné. Décochez pour revenir à la '
+                  'création manuelle.')
 
     # ── FG22 — Politique de mot de passe & verrouillage de compte ──
     # Tous ADDITIFS et désactivés par défaut → comportement de connexion/

@@ -2824,6 +2824,37 @@ textarea.form-control {
 /* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
 .gen-page { max-width: 1100px; }
 
+/* FOUNDER 26/08/2026 — « la table [Lignes de Produits] n'est pas montrée
+   d'un coup, il faut défiler à gauche/droite, alors qu'elle n'utilise
+   qu'une partie de l'écran. Agrandis et retire le défilement. » Règle
+   append-only : NOUVELLE règle plutôt qu'une modification de `.gen-page`
+   ci-dessus, plus spécifique que l'ordre de cascade seul ne suffirait pas à
+   garantir sans risquer de repasser AU-DESSUS de l'override mobile
+   (`.gen-page { max-width: 100% }`, media ≤768px un peu plus haut dans ce
+   fichier) — bornée à `min-width: 769px` pour ne JAMAIS toucher au mobile,
+   qui garde son comportement existant (page pleine largeur, table empilée
+   en cartes sous 768px, cf. plus bas). 1100px ne laissait que ~812-940px
+   utiles à `.lines-table` (désignation/produit/villa/qté/prix/tva/total/
+   option/ordre/suppr.) une fois `.gen-page` et le padding de carte
+   déduits — assez pour forcer `.lines-table-wrap { overflow-x: auto }` à
+   défiler sur un moniteur large où il restait pourtant beaucoup de place à
+   droite. `.gen-page` n'est utilisée QUE par cet écran (jamais une classe
+   partagée) : l'élargir ne touche aucune autre page. Les autres sections de
+   l'écran (grilles Tailwind `sm:grid-cols-*`/`lg:grid-cols-*`, graphique
+   recharts en `width="100%"`) sont toutes responsives et absorbent la
+   largeur en plus sans rien casser — d'où élargir la page entière plutôt
+   qu'un « breakout » CSS isolé de la seule carte Lignes de Produits (la
+   sidebar a une largeur DYNAMIQUE — dépliée/repliée, `.sidebar`/
+   `.sidebar--collapsed` — un breakout en `100vw` calculerait faux dans un
+   des deux états). `.lines-table` reste en `table-layout: auto` (inchangé) :
+   les colonnes numériques gardent leur largeur fixe (`.col-num`, déjà
+   compactes et alignées à droite) et Désignation/Produit — les deux seules
+   colonnes SANS largeur fixe — absorbent naturellement tout l'espace
+   supplémentaire, sans toucher au balisage. */
+@media (min-width: 769px) {
+  .gen-page { max-width: 1440px; }
+}
+
 /* VX138(d) — bandeau d'actions sticky au scroll SUR TOUS LES PALIERS
    (auparavant sticky uniquement sous la media query mobile) ; le contenu
    spécifique mobile (marge de sécurité iOS, boutons pleine largeur) reste
@@ -7052,6 +7083,30 @@ textarea.form-control {
 
 .lw-dup-dialog {
   max-width: 40rem;
+}
+
+/* ── « Modifier les options » — LA BOÎTE DOIT TENIR SES TROIS CARTES ──────────
+ *
+ * Cette classe était POSÉE sur le `DialogContent` (DevisTab.jsx) mais DÉFINIE
+ * NULLE PART : la boîte retombait donc sur le `max-w-lg` (32 rem) du composant
+ * de base, et trois cartes d'ajustement — chacune avec son champ panneaux, sa
+ * banque batterie et ses deux boutons pas-à-pas — s'écrasaient dans une demi-
+ * largeur d'écran. C'est exactement ce que le fondateur voyait : cartes à
+ * l'étroit, pas-à-pas rognés, valeurs coupées.
+ *
+ * Le `max-height` et le défilement interne viennent DÉJÀ du composant de base
+ * (`max-h-[calc(100dvh-2rem)] overflow-y-auto`) : on n'en pose pas un second
+ * qui divergerait. Seule la LARGEUR manquait.
+ *
+ * La grille des cartes est re-déclarée en `auto-fit` : ses classes Tailwind
+ * (`sm:grid-cols-2 lg:grid-cols-3`) réagissent au VIEWPORT, pas au conteneur —
+ * dans une boîte modale, elles ne décrivent donc pas la place réellement
+ * disponible. `auto-fit` la lit, elle. */
+.lw-context-devis-edit-tailles {
+  max-width: min(96vw, 1160px);
+}
+.lw-context-devis-edit-tailles [data-testid='offres-tailles-cartes'] {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
 }
 .lw-dup-table {
   width: 100%;

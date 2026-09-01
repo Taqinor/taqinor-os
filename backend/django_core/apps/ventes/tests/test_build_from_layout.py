@@ -106,14 +106,32 @@ class TestBuildFromLayout(TestCase):
         self.assertGreater(panel.prix_unitaire, 0)
         self.assertEqual(panel.designation, 'Panneau Pricey 550W')
 
-    def test_all_priceless_skips_line(self):
+    def test_all_priceless_is_refused_before_any_write(self):
+        """QJR95 — CE TEST A CHANGÉ DE VERDICT, DÉLIBÉRÉMENT.
+
+        Il attendait un devis à ZÉRO LIGNE : un document né vide, sans un mot
+        pour dire pourquoi, qu'un commercial pouvait envoyer tel quel. Depuis
+        que ce chemin passe par ``pipeline.appliquer``, la pré-vérification
+        (QJR82) tourne AVANT toute écriture et REFUSE en nommant la donnée
+        manquante — le même message français que le calepinage prononçait déjà
+        dans sa vue.
+
+        Refuser vaut mieux que créer puis effacer : un devis effacé rendrait sa
+        référence au compteur, et le numéro suivant la reprendrait."""
+        from apps.ventes.domain.pipeline import MSG_SANS_ONDULEUR_RESEAU
+        from apps.ventes.domain.taille import AutoDevisError
+
         Produit.objects.all().update(prix_vente=0)
         layout = {'scenario': 'reseau',
                   'result': {'panels': 8, 'kwc': 4.4}}
-        devis = build_devis_from_layout(
-            layout=layout, user=self.user, company=self.company,
-            lead=self._lead())
-        self.assertEqual(devis.lignes.count(), 0)
+        with self.assertRaises(AutoDevisError) as leve:
+            build_devis_from_layout(
+                layout=layout, user=self.user, company=self.company,
+                lead=self._lead())
+        self.assertIn(MSG_SANS_ONDULEUR_RESEAU, str(leve.exception))
+        from apps.ventes.models import Devis
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), 0)
 
     def test_client_resolved_from_lead_no_duplicate(self):
         lead = self._lead()
@@ -159,13 +177,19 @@ class TestFG248RoofBridge(TestCase):
 
     def test_extract_roof_config_pure(self):
         from apps.ventes.services import extract_roof_config
+        # ``facingAzimuthDeg`` est l'AZIMUT BOUSSOLE du builder : 180 = Sud,
+        # 90 = Est (le builder convertit lui-même en aspect PVGIS par −180,
+        # cf. roofPro11/prodWindow.ts). Ce fixture disait 0 pour « Sud » —
+        # la convention PVGIS, pas celle du champ : il décrivait donc un pan
+        # plein NORD tout en l'appelant « Pan Sud », et la fonction rendait
+        # « Sud » par la même erreur de repère. Corrigé des DEUX côtés.
         layout = {
             'areas': [
                 {'label': 'Pan Sud', 'roofType': 'pitched', 'pitchDeg': 30,
-                 'facingAzimuthDeg': 0,
+                 'facingAzimuthDeg': 180,
                  'result': {'count': 12, 'kwc': 6.6, 'areaM2': 24.0}},
                 {'label': 'Pan Est', 'roofType': 'pitched', 'pitchDeg': 25,
-                 'facingAzimuthDeg': -90,
+                 'facingAzimuthDeg': 90,
                  'result': {'count': 4, 'kwc': 2.2, 'areaM2': 9.0}},
             ],
         }
@@ -176,10 +200,31 @@ class TestFG248RoofBridge(TestCase):
         self.assertAlmostEqual(cfg['kwc'], 8.8, places=2)
         # Orientation principale = pan le plus puissant (Sud).
         self.assertEqual(cfg['orientation_principale'], 'Sud')
-        self.assertEqual(cfg['azimut_deg'], 0)
+        # `azimut_deg` reste la valeur BRUTE du layout (aucun consommateur
+        # ne change de repère) : seul le LIBELLÉ est converti.
+        self.assertEqual(cfg['azimut_deg'], 180)
         self.assertEqual(cfg['inclinaison_deg'], 30)
         self.assertEqual(len(cfg['pans']), 2)
         self.assertEqual(cfg['pans'][1]['orientation'], 'Est')
+
+    def test_un_pan_plein_sud_ne_se_dit_jamais_nord(self):
+        """Régression AP5 — un pan `facingAzimuthDeg: 180` (le défaut du
+        builder, plein Sud) ressortait « Nord » : l'annexe « paramètres du
+        site » de la proposition CLIENT publiait `orientation_deg: 180` juste
+        à côté de `orientation: 'Nord'`. Deux affirmations contradictoires,
+        dont une fausse, sous les yeux du client."""
+        from apps.ventes.services import extract_roof_config
+        cfg = extract_roof_config({'areas': [
+            {'label': 'Toit', 'roofType': 'flat', 'pitchDeg': 22,
+             'facingAzimuthDeg': 180,
+             'result': {'count': 10, 'kwc': 5.5, 'areaM2': 20.0}}]})
+        self.assertEqual(cfg['orientation_principale'], 'Sud')
+        # La clé `aspect` (convention PVGIS, 0 = Sud) reste lue TELLE QUELLE.
+        cfg_pvgis = extract_roof_config({'areas': [
+            {'label': 'Toit', 'roofType': 'flat', 'pitchDeg': 22,
+             'aspect': 0,
+             'result': {'count': 10, 'kwc': 5.5, 'areaM2': 20.0}}]})
+        self.assertEqual(cfg_pvgis['orientation_principale'], 'Sud')
 
     def test_extract_empty_layout_is_empty(self):
         from apps.ventes.services import extract_roof_config
@@ -193,8 +238,9 @@ class TestFG248RoofBridge(TestCase):
             'scenario': 'reseau',
             'result': {'panels': 12, 'kwc': 6.6, 'annualKwh': 10800},
             'areas': [
+                # 180 = Sud dans la convention BOUSSOLE du champ (cf. AP5).
                 {'label': 'Toiture', 'roofType': 'pitched', 'pitchDeg': 20,
-                 'facingAzimuthDeg': 0,
+                 'facingAzimuthDeg': 180,
                  'result': {'count': 12, 'kwc': 6.6, 'areaM2': 24.0}},
             ],
         }

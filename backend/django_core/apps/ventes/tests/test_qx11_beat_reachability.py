@@ -16,6 +16,13 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[3]
 # Tâches délibérément DÉCLENCHÉES À LA DEMANDE (jamais périodiques) OU
 # planifiées par une autre tâche/lane — chacune justifiée.
 ON_DEMAND_ALLOWLIST = {
+    # AUTO-PIPELINE (26/08/2026) — devis automatique depuis un lead du tunnel :
+    # déclenché à l'ARRIVÉE DU WEBHOOK (``apply_async`` dans
+    # ``crm/webhooks.py`` via ``ventes.services.planifier_devis_automatique_
+    # pour_lead``, uniquement sur ``created=True`` ; idempotent 4 couches,
+    # opt-in société ``devis_auto_depuis_tunnel``) — jamais périodique : un
+    # devis auto n'existe que parce qu'un client vient de dessiner son toit.
+    'ventes.devis_automatique_depuis_lead',
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',

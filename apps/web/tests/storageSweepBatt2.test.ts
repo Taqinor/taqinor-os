@@ -111,11 +111,25 @@ describe('storageSweepInfo — mini-balayage de stockage, client-safe', () => {
 });
 
 describe('[...token].astro — le plafond du curseur batterie suit le balayage RÉEL', () => {
-  it('BATTERY_SIM_MAX_UNITS retombe sur storageSweep (refusé/dernier palier retenu, sinon 3)', () => {
+  it('BATTERY_SIM_MAX_UNITS suit le plafond COUVERTURE servi en priorité, repli sur storageSweep (refusé/dernier palier retenu, sinon 3)', () => {
+    // Revue 26/08 — « le plafond servi fait loi » : quand `batteryCoverage`
+    // (couverture_batterie.nb_packs_max, autonomie ET packs du devis inclus)
+    // est servi, il l'emporte SEUL — le MAX avec les plafonds historiques
+    // ouvrait des crans sans données servies, silencieusement approchés.
+    // Clé non servie ⇒ repli inchangé sur le mini-balayage/historique.
+    //
+    // WJ128 (finding 3, 29/08) — cette même priorité vit désormais dans
+    // `resolveBatterySimMaxUnits` (lib/batterySim.ts, testée en isolation dans
+    // batterySimWJ120.test.ts : couverture d'abord, sinon max(offeredUnits,
+    // storageRealMax || 3)) — extraite pour corriger un plafond fixe (3) qui
+    // empêchait une offre > 3 unités d'atteindre son propre prix réel. Cette
+    // pince ne vérifie plus l'expression inline mais le CÂBLAGE : la page
+    // délègue au lieu de réimplémenter l'arithmétique.
     expect(CODE).toContain(
       'const storageRealMax = Math.max(storageSweep?.refuse?.nbPacks ?? 0, storageMaxRetenu ?? 0);',
     );
-    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = Math.max(offeredUnits, storageRealMax || 3);');
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = resolveBatterySimMaxUnits(');
+    expect(CODE).toContain('offeredUnits, storageRealMax, batteryCoverage?.nbPacksMax ?? null');
   });
 
   it('la config client relit les paliers réels (prix TTC) et le premier refusé (jamais un nouveau calcul)', () => {
@@ -130,9 +144,16 @@ describe('[...token].astro — le plafond du curseur batterie suit le balayage R
 });
 
 describe('[...token].astro — message de sur-stockage, dérivé des données réelles', () => {
-  it('le bloc ne s’affiche que quand N atteint le premier palier REFUSÉ par le moteur', () => {
+  it('le bloc s’affiche quand N atteint le premier palier REFUSÉ du balayage, ÉLARGI (COUVBAT) à tout cran couverture non remplissable', () => {
+    // COUVBAT (26/08/2026) — le curseur monte désormais jusqu'à l'autonomie
+    // complète : le premier palier refusé du balayage n'est plus le SEUL
+    // cran au-delà de ce que le toit remplit. Le message vaut donc pour TOUT
+    // cran dont le moteur dit `se_remplit_tous_les_jours: false` — la
+    // condition originale (refus du balayage) reste, élargie en OR, jamais
+    // remplacée.
     expect(CODE).toContain('id="battery-sim-overstorage"');
-    expect(CODE).toContain('const hit = !!refuse && refuse.n === n;');
+    expect(CODE).toContain('const hit = (!!refuse && refuse.n === n)');
+    expect(CODE).toContain('|| (cfg.couverture ? (!cran || !cran.remplit) : false);');
     expect(CODE).toContain('el.hidden = !hit;');
   });
 

@@ -18,11 +18,20 @@ test('DEFAULT_TIERS porte les six valeurs 2026 (TVA 20 %, ancre fondateur > 500 
   assert.match(SRC, /prix_kwh_ttc: '0\.916272'/)
   assert.match(SRC, /prix_kwh_ttc: '1\.091388'/)
   assert.match(SRC, /prix_kwh_ttc: '1\.187388'/)
-  assert.match(SRC, /prix_kwh_ttc: '1\.405116'/)
+  // DÉCISION FONDATEUR D5 (29/08/2026) — tranche 311-510 PROUVÉE par la facture
+  // SRM du 08/05/2026 : 1,15142 HT × 1,20 = 1,381704 (et non l'extrapolation
+  // « HT constant » qui donnait 1,405116). La grille backend
+  // DEFAULT_RESIDENTIAL_TIERS (models_tariff.py) porte la même correction (QJR26/D5).
+  assert.match(SRC, /prix_kwh_ttc: '1\.381704'/)
   // Ancre fondateur (19/08/2026, facture réelle) : tranche > 500 kWh.
   assert.match(SRC, /prix_kwh_ttc: '1\.622856'/)
-  // Plus aucune trace des anciennes valeurs (TVA 2025, 18 %).
-  assert.doesNotMatch(SRC, /0\.9010|1\.0732|1\.1676|1\.3817|1\.5958/)
+  // Plus aucune trace des anciennes valeurs (TVA 2025, 18 %) NI de
+  // l'extrapolation T5 réfutée. Les alternatives sont ANCRÉES sur la valeur
+  // COMPLÈTE entre quotes : sans cela « 1.3817 » (T5 2025) matcherait le
+  // préfixe de « 1.381704 » (T5 2026, correcte) et le garde crierait au loup.
+  assert.doesNotMatch(
+    SRC,
+    /prix_kwh_ttc: '(?:0\.9010|1\.0732|1\.1676|1\.3817|1\.5958|1\.405116)'/)
 })
 
 test('les prix de palier restent des champs libres (step="any", jamais snap/reject)', () => {

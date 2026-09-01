@@ -213,9 +213,15 @@ export interface SerializedZone {
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
    *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
   obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
-  roofType: 'flat' | 'pitched';
-  pitchDeg: number;
-  facingAzimuthDeg: number;
+  /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
+   *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
+   *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
+   *  site » de la proposition client). Les DEUX lecteurs — `deserializeLayout` (ERP)
+   *  et `buildViewerFullPlan` (visionneuse publique) — appliquent alors les MÊMES
+   *  valeurs de zone vierge que `newAreaRecord()`. */
+  roofType?: 'flat' | 'pitched';
+  pitchDeg?: number;
+  facingAzimuthDeg?: number;
   facingManual: boolean;
   neededPanels: number;
   neededAuto: boolean;
@@ -509,9 +515,17 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
     })),
-    roofType: z.roofType,
-    pitchDeg: z.pitchDeg,
-    facingAzimuthDeg: z.facingAzimuthDeg,
+    // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
+    // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
+    // écrit dans le layout descend jusqu'à l'annexe « paramètres du site » de la
+    // proposition CLIENT (voir apps/ventes/services.zone_toit_depuis_contour). L'écran,
+    // lui, a besoin d'une valeur pour calculer : il applique donc SES propres valeurs
+    // de zone vierge — les MÊMES que `newAreaRecord()` dans roof-tool-pro11.ts — là où
+    // elles sont visiblement modifiables. Un layout sérialisé par le builder porte
+    // TOUJOURS les trois clés, donc ce repli ne change rien pour un dossier enregistré.
+    roofType: z.roofType ?? 'flat',
+    pitchDeg: z.pitchDeg ?? 22,
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
@@ -660,13 +674,19 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
 } {
   const empty = { vertices: [] as LngLat[], center: null as LngLat | null, contact: {} };
   if (!lead) return empty;
-  let vertices: LngLat[] = [];
+  // AP-F1 (fondateur 26/08/2026) — UN SEUL validateur de contour : avant ce correctif,
+  // cette fonction ré-implémentait son propre filtre et n'acceptait QUE la forme
+  // `[lat, lng]`, alors que `referenceContourRing` (plus bas dans ce fichier) accepte
+  // déjà les DEUX formes RÉELLES de `Lead.roof_outline` (`[lat, lng]` du webhook ET
+  // `{lat, lng}` de l'import/saisie manuelle), avec le MÊME bornage. La divergence
+  // faisait qu'un contour `{lat, lng}` se dessinait comme calque passif de référence
+  // (referenceContourRing l'acceptait) mais ne semait AUCUNE zone éditable — les
+  // panneaux n'apparaissaient jamais tant que le commercial ne retraçait pas le toit
+  // à la main. Sortie IDENTIQUE à avant pour la forme tuple (même conversion
+  // [lat,lng] → [lng,lat], même règle ≥ 3 sommets valides, même bornage).
+  const ring = referenceContourRing(lead.roof_outline);
+  const vertices: LngLat[] = ring ?? [];
   let center: LngLat | null = null;
-  if (Array.isArray(lead.roof_outline) && lead.roof_outline.length >= 3) {
-    vertices = lead.roof_outline
-      .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
-      .map(([lat, lng]) => [lng, lat] as LngLat);
-  }
   const pt = lead.roof_point;
   if (pt && Number.isFinite(pt.lat) && Number.isFinite(pt.lng)) {
     center = [pt.lng, pt.lat];
@@ -678,4 +698,55 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   if (typeof lead.phone === 'string' && lead.phone.trim()) contact.phone = lead.phone.trim();
   if (typeof lead.city === 'string' && lead.city.trim()) contact.city = lead.city.trim();
   return { vertices, center, contact };
+}
+
+/** Un point du contour brut, TEL QUE rencontré en base : `[lat, lng]` (le
+ *  webhook) ou `{lat, lng}` (import/saisie manuelle) — les DEUX formes que
+ *  `Lead.roof_outline` porte réellement. */
+export type RawContourPoint = [number, number] | { lat: number; lng: number };
+
+/** Borne lat/lng STRICTE — MÊME predicat que `borne()` de traceToit.js (côté
+ *  ERP, frontend/src/features/crm/workspace/traceToit.js) : dupliqué ici
+ *  (les deux packages ne partagent aucun module — apps/web et frontend/ sont
+ *  deux builds distincts) mais avec la MÊME formule, jamais une version plus
+ *  permissive qui accepterait ce que l'ERP refuse. Toute divergence future
+ *  entre les deux doit se lire comme un bug, pas une variation voulue. */
+function coordonneeValide(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90
+    && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+}
+
+/**
+ * L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+ * layouter ») — le contour ORIGINAL dessiné par le client, en `[lng, lat]` ×
+ * n, prêt pour un calque GÉO-RÉFÉRENCÉ passif (`roof-tool-pro11.ts`, source
+ * `rp9-ref-contour`). MÊME validation que `normaliserContour` (traceToit.js,
+ * ERP) — les DEUX formes de points (`[lat, lng]` ET `{lat, lng}`) et le MÊME
+ * bornage lat ∈ [-90, 90] / lng ∈ [-180, 180], jamais une version plus
+ * permissive : un contour que l'écran hôte refuse (légende/bascule absentes)
+ * ne doit JAMAIS dessiner un polygone orphelin, sans bascule pour le masquer,
+ * sur la carte. Usage différent de `hydrateFromLead`/`vertices` ci-dessus
+ * (qui SÈMENT la zone active éditable) : celui-ci reste une trace PERMANENTE
+ * et NON ÉDITABLE, distincte du calepinage courant même après une édition.
+ * `null` sans contour exploitable (< 3 sommets valides) — jamais un tableau
+ * vide qui dessinerait un polygone dégénéré, jamais un contour deviné.
+ */
+export function referenceContourRing(brut: RawContourPoint[] | null | undefined): LngLat[] | null {
+  if (!Array.isArray(brut)) return null;
+  const ring: LngLat[] = [];
+  for (const p of brut) {
+    let lat: number;
+    let lng: number;
+    if (Array.isArray(p) && p.length >= 2) {
+      lat = Number(p[0]);
+      lng = Number(p[1]);
+    } else if (p && typeof p === 'object') {
+      lat = Number((p as { lat?: unknown }).lat);
+      lng = Number((p as { lng?: unknown }).lng);
+    } else {
+      continue;
+    }
+    if (coordonneeValide(lat, lng)) ring.push([lng, lat]);
+  }
+  return ring.length >= 3 ? ring : null;
 }

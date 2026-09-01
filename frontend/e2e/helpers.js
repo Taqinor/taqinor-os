@@ -74,7 +74,7 @@ const leadModal = (page) => page.locator('[role="dialog"]').filter({ has: page.l
 
 // Create a lead through the modal. Returns its display name (its nom).
 // `facture` (winter bill, MAD) makes the lead "devis-ready" for residential.
-export async function createLead(page, { nom, facture } = {}) {
+export async function createLead(page, { nom, facture, ville = 'Casablanca' } = {}) {
   const name = nom || uniq('Lead E2E')
   await boutonNouveauLead(page).click()
   const modal = leadModal(page)
@@ -85,6 +85,15 @@ export async function createLead(page, { nom, facture } = {}) {
   await modal.locator('#lf-nom').fill(name)
   if (facture != null) {
     await modal.getByPlaceholder('ex: 650').fill(String(facture))
+  }
+  // Ville par défaut (29/08/2026) : le dimensionnement passe TOUT ENTIER par
+  // le moteur horaire, qui exige un ancrage de productible — un lead sans
+  // ville ni GPS est désormais REFUSÉ par le devis auto (comportement voulu).
+  // Les leads réels du tunnel portent toujours ville/GPS ; les fixtures e2e
+  // suivent (même règle que les fixtures backend, leçon #86 : ancrer la
+  // ville). Passer `ville: null` pour créer volontairement un lead sans ville.
+  if (ville) {
+    await modal.locator('#lf-ville').fill(ville)
   }
   await modal.getByRole('button', { name: 'Créer le lead' }).click()
   await expect(leadModal(page)).toHaveCount(0)

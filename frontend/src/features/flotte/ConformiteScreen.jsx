@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Label, Switch } from '../../ui'
 import { EcheanceCenter, ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatMAD } from '../../lib/format'
 import { ConformiteStatutPill } from './statusPills'
 import { ECHEANCE_TYPES, alertesToEcheanceItems } from './flotte'
 import useFlotteResource from './useFlotteResource'
@@ -136,6 +136,59 @@ function BaremesTab() {
   )
 }
 
+// WIR236 — Contrats véhicule (XFLT1) : ni écran ni bascule « Expirants 30 j »
+// (`GET /contrats-vehicule/expirants/?within=`, jamais appelé côté front).
+function ContratsVehiculeTab() {
+  const [expirants30j, setExpirants30j] = useState(false)
+  const { data, loading, error } = useFlotteResource(
+    (params) => (expirants30j
+      ? flotteApi.contratsVehicule.expirants({ within: 30 })
+      : flotteApi.contratsVehicule.list(params)),
+    {},
+    [expirants30j],
+  )
+  const columns = useMemo(() => [
+    { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'type_contrat', header: 'Type', width: 140, accessor: (r) => r.type_contrat_display || r.type_contrat, cell: (v) => v || '—' },
+    { id: 'fournisseur', header: 'Bailleur/loueur', width: 160, accessor: (r) => r.fournisseur_label || r.fournisseur, cell: (v) => v || '—' },
+    { id: 'date_debut', header: 'Début', width: 120, accessor: (r) => r.date_debut, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'date_fin', header: 'Fin', width: 120, accessor: (r) => r.date_fin, cell: (v) => (v ? formatDate(v) : '—') },
+    {
+      id: 'montant_recurrent', header: 'Montant récurrent', align: 'right', width: 150,
+      accessor: (r) => Number(r.montant_recurrent ?? 0),
+      cell: (v, r) => (v ? `${formatMAD(v)} / ${r.periodicite_display || r.periodicite}` : '—'),
+    },
+    { id: 'statut', header: 'Statut', width: 110, accessor: (r) => r.statut_calcule || r.statut, cell: (v) => v || '—' },
+  ], [])
+
+  const filters = (
+    <div className="flex items-center gap-2">
+      <Switch
+        id="contrats-expirants-30j" checked={expirants30j}
+        onCheckedChange={setExpirants30j}
+      />
+      <Label htmlFor="contrats-expirants-30j">Expirants ≤ 30 j</Label>
+    </div>
+  )
+
+  return (
+    <ListShell
+      title="Contrats véhicule"
+      subtitle="Leasing / LLD / location / entretien."
+      filters={filters}
+      columns={columns}
+      rows={data}
+      loading={loading}
+      error={error}
+      exportName="contrats-vehicule"
+      emptyTitle="Aucun contrat"
+      emptyDescription={expirants30j
+        ? 'Aucun contrat expirant dans les 30 prochains jours.'
+        : 'Aucun contrat véhicule enregistré.'}
+    />
+  )
+}
+
 export default function ConformiteScreen() {
   return (
     <div className="page flex flex-col gap-4">
@@ -147,12 +200,14 @@ export default function ConformiteScreen() {
           <TabsTrigger value="assurances">Assurances</TabsTrigger>
           <TabsTrigger value="visites">Visites techniques</TabsTrigger>
           <TabsTrigger value="cartes">Cartes grises</TabsTrigger>
+          <TabsTrigger value="contrats">Contrats véhicule</TabsTrigger>
           <TabsTrigger value="baremes">Barème TSAV</TabsTrigger>
         </TabsList>
         <TabsContent value="echeances"><EcheancesReglementairesTab /></TabsContent>
         <TabsContent value="assurances"><AssurancesTab /></TabsContent>
         <TabsContent value="visites"><VisitesTab /></TabsContent>
         <TabsContent value="cartes"><CartesGrisesTab /></TabsContent>
+        <TabsContent value="contrats"><ContratsVehiculeTab /></TabsContent>
         <TabsContent value="baremes"><BaremesTab /></TabsContent>
       </Tabs>
     </div>

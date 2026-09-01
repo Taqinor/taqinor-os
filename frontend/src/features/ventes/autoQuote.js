@@ -11,7 +11,7 @@ import { createDevis, addLigneDevis } from './store/ventesSlice'
 // résidentielles. Voir la branche `mode === 'residentiel'` plus bas.
 import ventesApi from '../../api/ventesApi'
 import {
-  estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
+  estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
@@ -71,6 +71,34 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 })
 
 /**
+ * QJR245 — NOTICE PALIER, PORTÉE PAR LA FONCTION QUI ARRONDIT : UNE SEULE
+ * FORMULATION (le texte FR complet, pas seulement le calcul), réutilisée par
+ * les écrans qui déclenchent `createAutoQuote` — `DevisTab.jsx` et
+ * `LeadDevisPanel.jsx` — au lieu que chacun recopie sa propre phrase. Rend le
+ * texte lui-même (pas des morceaux à assembler) pour qu'un grep sur ce
+ * fichier retrouve l'UNIQUE définition — chaque écran se contente de
+ * `{noticeKwc}`, jamais une seconde phrase qui pourrait diverger en mot.
+ *
+ * Applique EXACTEMENT la même précédence et le même arrondi que la branche
+ * `mode !== 'agricole'` de `createAutoQuote` ci-dessous (cible explicite du
+ * devis, sinon `lead.taille_souhaitee_kwc`, `arrondirAuPasKwc`) : le kWc que
+ * cette fonction dit « arrondi » est TOUJOURS celui que `createAutoQuote`
+ * appliquera réellement.
+ *
+ * Rend `null` quand rien ne diverge (aucune notice à montrer) — jamais un
+ * palier deviné sur une valeur illisible ou nulle.
+ */
+export function noticePalierKwc(kwcSaisi) {
+  const num = parseFloat(kwcSaisi)
+  if (!(num > 0)) return null
+  const palier = arrondirAuPasKwc(num)
+  if (palier === num) return null
+  const saisieAffichee = String(kwcSaisi).trim().replace('.', ',')
+  return `Palier appliqué : ${palier} kWc (saisie ${saisieAffichee} kWc) — le devis `
+    + 'automatique ne sort jamais hors palier de 5 kWc.'
+}
+
+/**
  * Crée un devis auto-dimensionné depuis un lead. Retourne l'id du devis créé.
  * Lève { detail } si le lead n'a pas les données requises (mêmes règles que la
  * garde serveur POST /devis-auto/).
@@ -106,7 +134,10 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
-  const perTranche = (Number(quoteLogic?.panneauxParTranche) > 0) ? Number(quoteLogic.panneauxParTranche) : 8
+  // U3-900 — la règle des 900 DH/mois (ex-`panneauxParTranche`) a été
+  // supprimée (fondateur 29/08/2026) : le réglage qui l'alimentait
+  // (`panneaux_par_900mad`) a lui-même été retiré du modèle et de l'écran
+  // Paramètres → Avancé — plus aucun consommateur.
   // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
   // fourni, sinon le défaut marché historique — comme le générateur manuel.
   const heuresPompage = (Number(pumpHours) > 0) ? Number(pumpHours) : HEURES_POMPAGE_DEFAUT
@@ -151,10 +182,29 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const cibleKwc = parseFloat(targetKwc) || 0
     const explicitKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
     const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
-    let panels
+    let panels = 0
     if (tailleKwc > 0) {
       panels = panneauxPourKwc(tailleKwc, 710)
-    } else {
+    } else if (mode !== 'residentiel') {
+      // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new
+      // sizing tool ») — LE BALAYAGE LOCAL PAR PALIERS N'EST PLUS LA SOURCE DE
+      // DIMENSIONNEMENT DU RÉSIDENTIEL. C'était le dernier contournement : au
+      // -dessus du seuil de facture, cet écran chiffrait lui-même les paliers
+      // de 5 kWc (`optimalKwcByPayback`) et expédiait le résultat en
+      // `target_kwc` SOUVERAIN — ces devis-là ne touchaient jamais le moteur
+      // horaire (PVGIS × consommation réelle heure par heure), donc deux
+      // méthodes de dimensionnement coexistaient selon le montant de la
+      // facture. Désormais, en résidentiel, `panels` reste à 0 : `target_kwc`
+      // est OMIS plus bas et c'est `build_devis_auto` (moteur horaire) qui
+      // dimensionne — ou refuse en NOMMANT la donnée manquante.
+      // Une taille EXPLICITE (cible tapée pour ce devis, ou `taille_souhaitee_kwc`
+      // du lead) reste SOUVERAINE : elle est traitée par la branche ci-dessus,
+      // avant celle-ci, et part telle quelle. Seule la valeur AUTO-CALCULÉE
+      // cesse d'être expédiée.
+      // Industriel/commercial gardent ce balayage : aucun moteur serveur ne
+      // les dimensionne (`build_devis_auto` ne gère que le résidentiel), et
+      // sans lui ils n'auraient plus AUCUNE taille (voir le refus explicite
+      // plus bas).
       const besoinKwc = estimerKwcDepuisFacture(hiver)
       if (besoinKwc > 0) {
         const eteVal = (lead.ete_differente && lead.facture_ete)
@@ -182,12 +232,22 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
             facturesBalayage, distributeurBalayage),
           utility: distributeurBalayage,
         })
-        panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : (estimerPanneaux(hiver, perTranche) || 8)
-      } else {
-        panels = estimerPanneaux(hiver, perTranche) || 8
+        // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`
+        // (panneaux/900 MAD, supprimé du backend le même jour). `panels`
+        // reste à 0 quand l'optimiseur local n'a rien retenu : sur ces
+        // marchés (industriel/commercial) c'est un refus EXPLICITE plus bas,
+        // jamais une taille devinée sur une règle qui n'existe plus.
+        panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : 0
       }
+      // besoinKwc <= 0 (facture sous le seuil du balayage local) : `panels`
+      // reste à 0, MÊME raison — voir la note ci-dessus.
     }
-    const kwpAuto = panels * 710 / 1000
+    // U3-900 — un `panels` nul n'est PAS une composition « à 0 panneau » : en
+    // résidentiel il veut dire « le serveur dimensionne » (target_kwc omis
+    // plus bas) ; pour les autres marchés (aucun moteur serveur pour eux),
+    // c'est un vrai refus explicite plus bas — jamais un devis vide créé en
+    // silence.
+    const kwpAuto = panels > 0 ? panels * 710 / 1000 : 0
 
     // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
     // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -238,10 +298,16 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         reponse = await ventesApi.creerDevisAuto({
           lead: lead.id,
           remise_globale: discountStr || '0',
-          // La puissance retenue par le dimensionnement ci-dessus. Le serveur
-          // en redérive le MÊME nombre de panneaux (plafond tolérant au
-          // flottant, verrouillé des deux côtés par un test d'aller-retour).
-          target_kwc: kwpAuto,
+          // U3-MOTEUR — `kwpAuto` ne peut plus venir ici que d'une taille
+          // EXPLICITEMENT choisie par un humain (cible tapée pour ce devis, ou
+          // `taille_souhaitee_kwc` du lead) : elle reste souveraine et le
+          // serveur en redérive le MÊME nombre de panneaux (plafond tolérant
+          // au flottant, verrouillé des deux côtés par un test d'aller-retour).
+          // Sans taille explicite, `kwpAuto` vaut 0 et `target_kwc` est OMIS :
+          // c'est le moteur horaire de `build_devis_auto` qui dimensionne (et
+          // refuse en nommant la donnée manquante) — plus AUCUNE puissance
+          // auto-calculée côté écran n'est expédiée.
+          ...(kwpAuto > 0 ? { target_kwc: kwpAuto } : {}),
           ...(Object.keys(etudeExtra).length ? { etude_params: etudeExtra } : {}),
         })
       } catch (err) {
@@ -258,6 +324,20 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
       }
       return id
+    }
+
+    // U3-900 (fondateur 29/08/2026) — industriel/commercial n'ont AUCUN
+    // moteur serveur pour se dimensionner eux-mêmes ici (celui de
+    // `build_devis_auto` ne gère que le résidentiel) : sans `estimerPanneaux`
+    // pour deviner une taille (supprimé), un `panels` toujours nul créerait
+    // silencieusement un devis SANS panneau. On refuse explicitement à la
+    // place — même idiome que la garde agricole plus haut — plutôt que de
+    // laisser passer un devis vide.
+    if ((mode === 'industriel' || mode === 'commercial') && panels <= 0) {
+      throw {
+        detail: 'Devis auto impossible : renseignez sur le lead une facture '
+          + "d'électricité exploitable (ou la taille souhaitée en kWc), puis réessayez.",
+      }
     }
 
     rows = autoFillLines(produits, {
