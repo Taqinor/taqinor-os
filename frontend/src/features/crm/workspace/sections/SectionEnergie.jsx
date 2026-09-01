@@ -2,7 +2,13 @@ import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
 
-const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
+// OFFGRID (ajout produit onduleur hors réseau, backend crm.Lead.Raccordement.
+// AUCUN = 'aucun') — site jamais raccordé au réseau ONEE : dérive le devis en
+// composition hors réseau (voir DevisGenerator.jsx, contrôle « Raccordement »).
+const RACCORDEMENTS = {
+  monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas',
+  aucun: 'Non raccordé (site isolé)',
+}
 
 // L-FRONT lot 4 (contrat L-BACK, 24/08) — créneaux horaires par équipement.
 // source-choix: crm.Lead.equip_chauffe_eau_creneau
