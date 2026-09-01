@@ -315,6 +315,14 @@ class Lead(SoftDeleteModel):
         # Additif (toiture-3D intake) : le prospect ne connaît pas toujours son
         # type de raccordement — choix tolérant qui ne fausse pas l'existant.
         INCONNU = 'inconnu', 'Je ne sais pas'
+        # QJR-OFFGRID (fondateur 01/09/2026) — SITE ISOLÉ : il n'y a AUCUN
+        # raccordement ONEE à déclarer. Deux conséquences, et deux seulement :
+        # le filtre de phase reste INERTE (``compatibilites.normaliser_phase``
+        # rend ``None`` sur toute valeur autre que mono/tri — comme
+        # « inconnu »), et la composition part en mode HORS RÉSEAU (onduleur
+        # autonome + batterie obligatoire) au lieu de coter un onduleur
+        # réseau que ce client ne pourra jamais raccorder.
+        AUCUN = 'aucun', 'Non raccordé (site isolé)'
 
     class TypeToiture(models.TextChoices):
         TERRASSE_BETON = 'terrasse_beton', 'Terrasse béton'
