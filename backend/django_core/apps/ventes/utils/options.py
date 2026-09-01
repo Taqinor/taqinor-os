@@ -68,6 +68,33 @@ VARIANTE_SANS = 'sans'
 VARIANTE_AVEC = 'avec'
 
 
+def lignes_avec_produit(devis):
+    """QJR302 — LES LIGNES DU DEVIS **AVEC** LEUR PRODUIT, SANS REFAIRE LA
+    REQUÊTE QUAND L'APPELANT L'A DÉJÀ FAITE.
+
+    ``devis.lignes.select_related('produit').all()`` construit un queryset NEUF :
+    il IGNORE le ``_prefetched_objects_cache`` de l'appelant (l'invariant Django
+    que ce dépôt documente déjà, cf. ``domain.argent._lignes_du_devis``). Chaque
+    devis à deux options d'une liste repayait donc jusqu'à DEUX requêtes — une
+    pour le prédicat « deux options », une pour les totaux — qui grandissent
+    avec le nombre de devis : un N+1 que le test de budget ne pouvait pas voir
+    (ses fixtures étaient toutes mono-option).
+
+    Ici : quand l'appelant a préfetché ``lignes__produit`` (donc quand chaque
+    ligne porte DÉJÀ son produit en cache, ou n'en a pas), on sert le cache —
+    ZÉRO requête. Sinon on retombe MOT POUR MOT sur la requête d'hier. Aucun
+    montant ne change : ce sont les mêmes objets, dans le même ordre.
+    """
+    cache = getattr(devis, '_prefetched_objects_cache', None) or {}
+    if 'lignes' in cache:
+        lignes = list(devis.lignes.all())
+        if all(li.produit_id is None
+               or 'produit' in li._state.fields_cache
+               for li in lignes):
+            return lignes
+    return list(devis.lignes.select_related('produit').all())
+
+
 def _variante(ligne) -> str:
     """Variante déclarée d'une ligne, '' quand elle n'en porte pas (ligne
     commune, ligne historique, ou objet de test sans le champ)."""
@@ -285,7 +312,7 @@ def option_lines(devis, option=None):
     # effectives : on exclut les lignes de section/note (sans produit) et les
     # options non activées (``compte_dans_totaux``). Une option activée
     # (optionnelle=False) est une ligne produit normale → incluse.
-    lignes = [li for li in devis.lignes.select_related('produit').all()
+    lignes = [li for li in lignes_avec_produit(devis)
               if li.compte_dans_totaux]
     if not option or not has_two_options(devis):
         return lignes
@@ -339,7 +366,7 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     if option is None:
         option = option_effective(devis)
     if lignes is None:
-        lignes = list(devis.lignes.select_related('produit').all())
+        lignes = lignes_avec_produit(devis)
     else:
         lignes = list(lignes)
     if option and has_two_options(devis):
@@ -403,7 +430,7 @@ def deux_options_declarees(devis) -> bool:
         return False
     try:
         blobs = [_blob(li)
-                 for li in devis.lignes.select_related('produit').all()
+                 for li in lignes_avec_produit(devis)
                  if li.compte_dans_totaux]
     except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
         return False
@@ -434,7 +461,7 @@ def totaux_affichage_repli(devis) -> dict:
     """
     if not deux_options_declarees(devis):
         return {'total': float(devis.total_ttc), 'nb_options': 1}
-    lignes = list(devis.lignes.select_related('produit').all())
+    lignes = lignes_avec_produit(devis)
     sans = _totaux_canoniques(
         devis, filter_lines_for_option(lignes, SANS_BATTERIE))
     avec = _totaux_canoniques(
