@@ -90,6 +90,23 @@ test('les gardes de saisie du générateur restent intactes (noValidate, jamais 
   assert.doesNotMatch(gen, /step="0\.\d+"/)
 })
 
+// ── Incident fondateur 01/09 round 2 — « Composition libre » en évidence ────
+// L'échappatoire accessoiresOnly était étiquetée « accessoires seuls » et
+// enfouie dans LigneTable : ce bloc verrouille sa reprise en haut de l'écran
+// (même state, même clé de brouillon), à côté de Raccordement/Scénario.
+test('« Composition libre » : Switch en évidence à côté de Raccordement/Scénario, même state accessoiresOnly', () => {
+  assert.match(gen, /Switch,/) // importé depuis '../../ui'
+  assert.match(gen,
+    /<Switch id="gen-composition-libre" checked=\{accessoiresOnly\}\s*\n\s*onCheckedChange=\{setAccessoiresOnly\} \/>/)
+  assert.match(gen, /Composition libre \(aucun panneau\/onduleur imposé\)/)
+})
+
+test('validate() : les hints d\'échappatoire citent « Composition libre » (libellé aligné, jamais l\'ancien texte)', () => {
+  const hints = gen.match(/ou cochez '[\s\S]{0,40}?« Composition libre »\.'/g) ?? []
+  assert.equal(hints.length, 2, 'les DEUX hints (pompage + panneau/onduleur) doivent citer « Composition libre »')
+  assert.doesNotMatch(gen, /avenant \/ accessoires seuls/)
+})
+
 // ── MODE_OPTIONS / sizingReducer MODES : contrat gardé, jamais une valeur ────
 // hors réseau n'y a été ajoutée (ce n'est PAS un marché, c'est un raccordement).
 test('MODE_OPTIONS reste à 4 valeurs — hors réseau n\'y ajoute JAMAIS de marché', () => {
