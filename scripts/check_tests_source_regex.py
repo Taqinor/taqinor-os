@@ -126,6 +126,11 @@ ALLOWLIST: dict[str, str] = {
         "QJR218 - DevisGenerator.jsx non importable pur sous node --test - "
         "verifie le round-trip quantite_manuelle (enregistrement + ?edit=), "
         "meme patron que prix_manuel, par lecture de SOURCE.",
+    "frontend/src/pages/ventes/DevisGeneratorOffgrid.test.mjs":
+        "OFFGRID - DevisGenerator.jsx (~5000 lignes, wiring API/Redux/Radix) "
+        "non importable pur sous node --test - verifie le controle "
+        "Raccordement/hors reseau par lecture de SOURCE, meme contrainte que "
+        "les autres verrous DevisGenerator*.",
 }
 
 
