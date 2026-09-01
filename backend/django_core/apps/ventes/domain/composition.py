@@ -294,7 +294,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               deux_options=False, marques=None,
                               ordre_lignes=None, mppt_paires=1, phase=None,
                               batterie_cible_kwh=None,
-                              batterie_module_kwh=None):
+                              batterie_module_kwh=None,
+                              hors_reseau=False):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -384,6 +385,18 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     même choix « au plus proche » — jamais une banque vide du seul fait d'un
     calibre non stocké.
 
+    ``hors_reseau`` (QJR-OFFGRID, fondateur 01/09/2026) — le site est ISOLÉ :
+    aucun raccordement ONEE, donc AUCUN onduleur réseau ni hybride ne peut
+    être vendu. La composition passe alors sur la TROISIÈME famille
+    d'onduleur — ``onduleur_offgrid``, même règle des 80 % que les deux
+    autres — et le stockage devient OBLIGATOIRE (sans batterie, un site isolé
+    n'a pas d'électricité la nuit). Forme MONO-OPTION de type « avec » : le
+    drapeau ``deux_options`` est sans objet et il est ignoré. **Aucun repli sur
+    un hybride** : sans onduleur autonome tarifé au catalogue, la ligne
+    onduleur est ABSENTE et l'appelant refuse (``pipeline.verifier``) — jamais
+    un composant substitué en silence (règle fondateur des chiffres vérifiés).
+    ``False`` (LE DÉFAUT) ⇒ composition byte-identique à l'historique.
+
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
     a dû composer AUTREMENT que demandé — aujourd'hui le seul cas est un vivier
@@ -398,6 +411,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     if kwp <= 0:
         return []
     watt = float(panel_watt or 0) or 550.0
+
+    # QJR-OFFGRID — un site ISOLÉ n'a qu'UNE composition possible : onduleur
+    # autonome + stockage. La forme deux options (réseau / hybride) n'a alors
+    # aucun sens et le drapeau batterie n'est plus une question.
+    hors_reseau = bool(hors_reseau)
+    if hors_reseau:
+        deux_options = False
+        avec_batterie = True
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
     # pour toutes : aucune branche ne peut ensuite coter un produit non tarifé.
@@ -522,21 +543,37 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             return 1
         return max(1, int(math.ceil(kwp / kw)))
 
-    onduleur_reseau, kw_reseau = choisir_onduleur('onduleur_reseau')
-    onduleur_hybride, kw_hybride = choisir_onduleur('onduleur_hybride')
-    onduleur = onduleur_hybride if avec_batterie else onduleur_reseau
-    kw_onduleur = kw_hybride if avec_batterie else kw_reseau
+    if hors_reseau:
+        # QJR-OFFGRID — les deux familles RACCORDÉES ne sont même pas
+        # explorées : rien ne pourrait les vendre ici, et les explorer
+        # ferait prononcer des avertissements de raccordement sur des
+        # onduleurs qui ne partent pas au devis.
+        onduleur_reseau = onduleur_hybride = None
+        kw_reseau = kw_hybride = None
+        onduleur, kw_onduleur = choisir_onduleur('onduleur_offgrid')
+    else:
+        onduleur_reseau, kw_reseau = choisir_onduleur('onduleur_reseau')
+        onduleur_hybride, kw_hybride = choisir_onduleur('onduleur_hybride')
+        onduleur = onduleur_hybride if avec_batterie else onduleur_reseau
+        kw_onduleur = kw_hybride if avec_batterie else kw_reseau
+    # L'onduleur qui PORTE le stockage : l'hybride sur un site raccordé,
+    # l'autonome sur un site isolé. C'est lui qui dicte la plage batterie.
+    onduleur_stockage = onduleur if hors_reseau else onduleur_hybride
 
     # PVCOMPAT — le raccordement n'a pas pu être tenu SUR UN ONDULEUR VENDU :
     # on le dit UNE fois. Un repli sur une catégorie qui ne part pas au devis
     # (l'hybride d'un devis « sans batterie », par exemple) ne concerne
     # personne et reste muet.
     _categories_vendues = (
-        ('onduleur_reseau', 'onduleur_hybride') if deux_options
-        else (('onduleur_hybride',) if avec_batterie
-              else ('onduleur_reseau',)))
-    _onduleurs_par_categorie = {'onduleur_reseau': onduleur_reseau,
-                                'onduleur_hybride': onduleur_hybride}
+        ('onduleur_offgrid',) if hors_reseau
+        else (('onduleur_reseau', 'onduleur_hybride') if deux_options
+              else (('onduleur_hybride',) if avec_batterie
+                    else ('onduleur_reseau',))))
+    _onduleurs_par_categorie = {
+        'onduleur_reseau': onduleur_reseau,
+        'onduleur_hybride': onduleur_hybride,
+        'onduleur_offgrid': onduleur if hors_reseau else None,
+    }
     if phase_client and any(
             replis_phase.get(categorie)
             and _onduleurs_par_categorie.get(categorie) is not None
@@ -644,8 +681,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # U2 — la batterie pend TOUJOURS à l'onduleur HYBRIDE : en forme deux
     # options, c'est lui qui décide de la plage, jamais l'onduleur réseau de
     # l'option « sans ».
+    # QJR-OFFGRID — sur un site isolé, c'est l'onduleur AUTONOME qui porte le
+    # stockage (``onduleur_stockage``), jamais l'hybride (absent ici).
     _plage_bat = _plage_batterie_de_l_onduleur(
-        onduleur_hybride if veut_batterie else onduleur)
+        onduleur_stockage if veut_batterie else onduleur)
     # PVMRQ — la compatibilité ÉLECTRIQUE se calcule sur le vivier COMPLET
     # (c'est elle qui alimente l'avertissement « vivier vide », un motif
     # DISTINCT de « marque introuvable ») ; la marque ne restreint qu'ENSUITE.
@@ -937,8 +976,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         ajouter('onduleur_hybride', onduleur_hybride,
                 quantite_onduleur(kw_hybride))
     else:
-        role_ond = ('onduleur_hybride' if avec_batterie
-                    else 'onduleur_reseau')
+        role_ond = ('onduleur_offgrid' if hors_reseau
+                    else ('onduleur_hybride' if avec_batterie
+                          else 'onduleur_reseau'))
         ajouter(role_ond, onduleur, quantite_onduleur(kw_onduleur))
     ajouter('smart_meter', premier('smart_meter'), 1 if huawei else 0)
     ajouter('wifi_dongle', premier('wifi_dongle'), 1 if huawei else 0)

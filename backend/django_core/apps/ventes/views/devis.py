@@ -1087,6 +1087,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         structure = request.data.get('structure_type') or 'acier'
+        # QJR-OFFGRID — drapeau ADDITIF et optionnel : le site est ISOLÉ
+        # (onduleur autonome + batterie, option unique). Absent ⇒ dry-run
+        # strictement inchangé. Cet endpoint n'a AUCUN lead en portée (il est
+        # piloté par les nombres tapés à l'écran) : le repli « raccordement du
+        # lead = aucun » vit là où le lead existe, dans ``build_devis_auto``.
+        _brut_hors_reseau = request.data.get('hors_reseau')
+        hors_reseau = (str(_brut_hors_reseau).strip().lower()
+                       in ('1', 'true', 'oui', 'yes')
+                       if _brut_hors_reseau is not None else False)
         try:
             resultat = composer_devis_residentiel(
                 company=company,
@@ -1098,6 +1107,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 taux_tva=taux_tva,
                 mppt_paires=int(mppt_paires),
                 dimensionnement_avec=dimensionnement_avec,
+                hors_reseau=hors_reseau,
             )
         except AutoDevisError as exc:
             return Response(

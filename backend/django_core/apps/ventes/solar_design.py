@@ -157,19 +157,55 @@ def is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
 
+#: QJR-OFFGRID (incident fondateur 01/09/2026) — LES MOTS D'UN ONDULEUR
+#: AUTONOME (site isolé, aucun raccordement ONEE). Le piège est FRANÇAIS :
+#: « hors réseau » CONTIENT « réseau », si bien qu'un onduleur off-grid nommé
+#: en français tombait dans le panier RÉSEAU (une option « sans batterie »
+#: FANTÔME, que le devis ne peut pas livrer) tandis qu'un « Off-Grid » anglais
+#: ne tombait NULLE PART (aucune option servable → PDF refusé, panneaux et
+#: options disparus de la page client). Les deux orthographes accentuées et
+#: non accentuées sont listées, comme le fait déjà ``is_reseau_inverter``.
+OFFGRID_KEYWORDS = (
+    "off-grid", "off grid", "offgrid",
+    "hors reseau", "hors réseau",
+    "autonome",
+)
+
+
+def _a_mot_cle_offgrid(d: str) -> bool:
+    """Le texte (DÉJÀ minusculé) porte-t-il un mot-clé hors-réseau ?"""
+    return any(mot in d for mot in OFFGRID_KEYWORDS)
+
+
 def is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
 
 
+def is_offgrid_inverter(designation: str) -> bool:
+    """Onduleur AUTONOME — ni réseau, ni hybride.
+
+    PRÉCÉDENCE : « hybride » l'emporte. Un « Onduleur Hybride Off-Grid » est un
+    HYBRIDE (il sait faire les deux) — le classer autonome le sortirait du
+    panier « avec » que la règle hybride lui garantit déjà.
+    """
+    d = (designation or "").lower()
+    return ("onduleur" in d and _a_mot_cle_offgrid(d)
+            and "hybride" not in d)
+
+
 def is_reseau_inverter(designation: str) -> bool:
     d = (designation or "").lower()
-    return "onduleur" in d and (
-        "réseau" in d or "reseau" in d or "injection" in d)
+    return ("onduleur" in d
+            and ("réseau" in d or "reseau" in d or "injection" in d)
+            # QJR-OFFGRID — « hors réseau » n'est PAS « réseau ».
+            and not _a_mot_cle_offgrid(d))
 
 
 def is_any_inverter(designation: str) -> bool:
-    return is_hybrid_inverter(designation) or is_reseau_inverter(designation)
+    return (is_hybrid_inverter(designation)
+            or is_reseau_inverter(designation)
+            or is_offgrid_inverter(designation))
 
 
 def is_inverter(designation: str) -> bool:

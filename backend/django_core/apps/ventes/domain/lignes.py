@@ -133,16 +133,20 @@ def option_avec_servable(devis):
     """Ce devis peut-il RÉELLEMENT livrer l'option « Avec batterie » ?
 
     MÊME critère que partout ailleurs dans le domaine — le moteur PDF
-    (``quote_engine/builder.py`` : ``avec_ok = has_hybride and has_batterie``,
-    d'où descendent ``variantes_servables`` et ``dimensionnement_options``) et
-    le scénario stocké à la création (``_a_batterie and _a_hybride``) : l'option
-    « avec » exige un onduleur HYBRIDE ET une BATTERIE. Lu sur le sous-ensemble
-    de lignes qui compose CETTE option, jamais sur le panier mélangé.
+    (``quote_engine/builder.py`` : ``avec_ok = (has_hybride or has_offgrid)
+    and has_batterie``, d'où descendent ``variantes_servables`` et
+    ``dimensionnement_options``) et le scénario stocké à la création
+    (``_a_batterie and _a_hybride``) : l'option « avec » exige un onduleur
+    HYBRIDE **ou** AUTONOME (QJR-OFFGRID — un système de site isolé ne sert
+    jamais que cette option-là) ET une BATTERIE. Lu sur le sous-ensemble de
+    lignes qui compose CETTE option, jamais sur le panier mélangé.
 
     LECTURE PURE : n'écrit rien, ne lève pas sur un devis sans lignes.
     """
     lignes = lignes_de_variante(_lignes_produit(devis), VARIANTE_AVEC)
-    return (any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+    return ((any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+             or any(_classe_ligne(li, _is_offgrid_inverter)
+                    for li in lignes))
             and any(_classe_ligne(li, _is_battery) for li in lignes))
 
 
@@ -869,6 +873,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
 from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _is_battery,
     _is_hybrid_inverter,
+    _is_offgrid_inverter,
     _is_panel,
     _parse_watt,
     porte_bareme_par_panneau,
