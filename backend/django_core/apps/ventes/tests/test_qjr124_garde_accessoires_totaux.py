@@ -8,10 +8,14 @@ COMPLÈTE — car le filtrage QF9 ne s'applique qu'à ``sans_items``/``avec_item
 Le client lisait alors un « Total TTC » incluant un accessoire absent du
 tableau.
 
-Le filtrage est désormais fait EN AMONT (builder), avant le calcul des totaux ;
-le re-filtrage au rendu du une-page est supprimé. Et la détection Huawei du
-garde-fou passe de ``all`` à ``any`` : une liste portant deux marques
-d'onduleur garde le Smart Meter de l'onduleur Huawei réellement facturé.
+Le re-filtrage au rendu du une-page est supprimé, et l'invariant qui reste est
+celui-ci : **le total imprimé est la somme des lignes imprimées**.
+
+QJR300 (01/09/2026) — la liste libre n'est PLUS filtrée du tout en amont : le
+noyau monnaie ne retire l'accessoire que dans le cas DEUX-OPTIONS, et un
+document qui retire une ligne que l'échéancier facture rouvre « deux prix pour
+la même vente ». Les assertions de ce module portent donc sur l'ACCORD
+tableau ↔ total, plus sur la disparition de la ligne.
 
 Run :
     docker compose exec django_core python manage.py test \
@@ -93,14 +97,19 @@ class TestBuilderFiltreAvantLesTotaux(TestCase):
                            reference, etude_params=etude_params)
         return build_quote_data(devis, {"pdf_mode": "onepage"})
 
-    def test_accessoire_orphelin_retire_des_lignes_ET_du_total(self):
+    def test_accessoire_orphelin_reste_dans_les_lignes_ET_dans_le_total(self):
+        """QJR300 — la liste libre N'EST PLUS filtrée : le noyau monnaie ne la
+        filtre pas non plus, et un document qui retire une ligne que
+        l'échéancier facture rouvre « deux prix pour la même vente ». Ce que ce
+        test garde de QJR124 : le TABLEAU et le TOTAL décrivent le MÊME panier.
+        """
         data = self._data(
             [("Onduleur hybride Deye 5kW", 1, "20000"),
              ("Smart Meter", 1, "1500"),
              ("Panneau Canadian Solar 580W", 10, "1000")],
             "DEV-QJR124-A")
         designations = [it["designation"] for it in data["all_items"]]
-        self.assertNotIn("Smart Meter", designations)
+        self.assertIn("Smart Meter", designations)
         somme = sum(Decimal(str(it["quantite"])) * Decimal(str(it["prix_unit_ttc"]))
                     for it in data["all_items"])
         self.assertAlmostEqual(float(somme), float(data["totaux_all"]["ttc"]),
@@ -116,7 +125,10 @@ class TestBuilderFiltreAvantLesTotaux(TestCase):
              ("Panneau Canadian Solar 580W", 10, "1000")],
             "DEV-QJR124-B")
         html = moteur.render_html_for(data)
-        self.assertNotIn("Smart Meter", html)
+        # QJR300 — la ligne est SERVIE (plus de filtrage de la liste libre) ;
+        # l'invariant QJR124 tenu ici reste « le total imprimé == Σ des lignes
+        # imprimées ».
+        self.assertIn("Smart Meter", html)
         ttc = re.search(
             r'>Total TTC</span>'
             r'<span style="display:inline-block;min-width:110px;[^"]*">'

@@ -179,6 +179,17 @@ def filter_lines_for_option(lignes, option):
     s'applique qu'aux paniers NOMMÉS : une option inconnue ou vide rend toutes
     les lignes, comportement historique inchangé (le devis mono-option, le
     pompage et la liste libre ne bougent pas d'un centime).
+
+    QJR300 (01/09/2026) — CETTE PORTÉE EST LA RÈGLE, ET LE DOCUMENT S'Y ALIGNE.
+    Le moteur PDF retirait l'accessoire INCONDITIONNELLEMENT (paniers d'option
+    ET liste libre), donc AUSSI sur les devis où ce noyau ne le retire pas :
+    sur un devis mono-option à onduleur non-Huawei portant un Smart Meter, le
+    total imprimé / affiché / public tombait SOUS le total qui pilote
+    l'échéancier, le solde, la commission et ``Devis.total_ttc`` — deux prix
+    pour la même vente. Direction tranchée (D12 « les lignes du vendeur sont
+    souveraines » + zéro-chiffre-inventé) : ``quote_engine.builder`` n'applique
+    plus QF9 que dans le cas DEUX-OPTIONS, comme ici. Une ligne accessoire d'un
+    devis mono-option ou d'une liste libre est donc IMPRIMÉE **et** FACTURÉE.
     """
     if option == SANS_BATTERIE:
         return retirer_accessoires_huawei(

@@ -4150,8 +4150,17 @@ def apply_quote_data(data: dict) -> None:
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.
     # QF9 — garde-fou marque (défense en profondeur, après le filtrage builder).
-    SANS_ITEMS   = _guard_huawei_accessories(_esc_items(data["sans_items"]))
-    AVEC_ITEMS   = _guard_huawei_accessories(_esc_items(data["avec_items"]))
+    # QJR300 — IL NE S'ARME QUE SUR UN DOCUMENT À DEUX OPTIONS, comme la règle
+    # qu'il double : sur un document mono-option (ou une liste libre), le noyau
+    # monnaie facture l'accessoire, donc le retirer du tableau ferait imprimer
+    # un tableau qui ne somme plus au total imprimé — la divergence même que ce
+    # garde-fou existe pour empêcher.
+    _qf9_actif = data.get("nb_options") == 2
+    SANS_ITEMS   = _esc_items(data["sans_items"])
+    AVEC_ITEMS   = _esc_items(data["avec_items"])
+    if _qf9_actif:
+        SANS_ITEMS = _guard_huawei_accessories(SANS_ITEMS)
+        AVEC_ITEMS = _guard_huawei_accessories(AVEC_ITEMS)
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     # M1 — `data["factures_mensuelles"]` vaut None quand le client n'a pas
