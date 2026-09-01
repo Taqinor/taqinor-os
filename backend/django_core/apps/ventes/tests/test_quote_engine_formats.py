@@ -15,6 +15,8 @@ Run:
         apps.ventes.tests.test_quote_engine_formats -v 2
 """
 
+import hashlib
+from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -1602,6 +1604,127 @@ class TestQjr32DispatchModeNormalise(TestCase):
         finally:
             G._render_pdf_weasyprint = orig
         self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)
+
+
+class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
+    """QJR307 — LA PREUVE D'OCTETS DU ONE-PAGE AGRICOLE, ENFIN ÉCRITE.
+
+    QJR236 a supprimé le renderer agricole premium multi-pages ; son ``Done =``
+    exigeait de prouver que le format UNE PAGE agricole reste « byte-identique
+    (empreinte SHA-256 avant/après) ». Seul le test de DÉGRADATION existait
+    (``TestQjr32DispatchModeNormalise`` ci-dessus) — aucun artefact exécuté ne
+    portait l'empreinte elle-même.
+
+    Ce test rend le HTML depuis une fixture GELÉE (mêmes lignes, mêmes dates,
+    même option, même jeton de lien) et compare son SHA-256 à une empreinte
+    ÉPINGLÉE. Toute source de non-déterminisme est neutralisée DANS la fixture
+    (jamais contournée par une comparaison partielle) :
+
+    · ``date_creation``/``date_validite`` posés en dur via un ``.update()``
+      (contourne ``auto_now_add``) — sinon la date du jour d'exécution change
+      la chaîne « Validité » et l'en-tête à chaque run.
+    · Référence, société et client passés explicitement (jamais un défaut
+      auto-numéroté qui dérive avec l'ordre des tests).
+    · Le ``ShareLink`` du QR/lien de proposition (page 1) est PRÉ-CRÉÉ avec un
+      jeton fixe — ``ShareLink.for_devis`` réutilise un lien encore valide, il
+      n'en mint un nouveau (``secrets.token_urlsafe``, aléatoire) que faute
+      d'un lien existant.
+
+    Hash pris sur le HTML CAPTURÉ juste avant l'appel WeasyPrint (même limite
+    déterministe que ``test_le_compte_de_pages_est_celui_que_la_degradation_
+    annonce`` ci-dessus) — pas sur les octets PDF finaux, dont l'encodage bas
+    niveau (WeasyPrint/cairo) n'est pas garanti stable d'une machine à l'autre.
+    """
+
+    LIGNES_POMPAGE_GELEES = [
+        ('Pompe immergée 5,5 CV', '1', '18000'),
+        ('Variateur VEICHI 5,5 kW', '1', '9000'),
+        ('Panneau mono 550W', '12', '1100'),
+        ('Structures acier', '12', '375'),
+    ]
+    ETUDE_POMPAGE_GELEE = {
+        'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
+        'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
+    }
+
+    # Dates figées — jamais ``timezone.now()``/``date.today()`` : la même
+    # empreinte doit sortir un 1er septembre ou un 1er mars.
+    _DATE_CREATION_GELEE = datetime(2026, 1, 15, 9, 0, 0, tzinfo=dt_timezone.utc)
+    _DATE_VALIDITE_GELEE = date(2026, 2, 14)
+    # Loin dans le futur : reste « encore valide » (> timezone.now()) quel que
+    # soit le jour d'exécution du test, sans jamais lire l'horloge.
+    _SHARE_LINK_EXPIRES_GELE = datetime(2099, 1, 1, tzinfo=dt_timezone.utc)
+    _SHARE_LINK_TOKEN_GELE = 'qjr307-jeton-fixe-preuve-octets-onepage-agricole'
+
+    def setUp(self):
+        self.company = make_company(
+            slug='qjr307-fixture', nom='TAQINOR Fixture QJR307')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj,
+            self.LIGNES_POMPAGE_GELEES,
+            reference='DEV-QJR307-AGRI-FIXTURE',
+            etude_params=dict(self.ETUDE_POMPAGE_GELEE))
+        self.devis.mode_installation = 'agricole'
+        self.devis.save(update_fields=['mode_installation'])
+
+        # Gèle date_creation/date_validite — .update() contourne auto_now_add.
+        from apps.ventes.models import Devis, ShareLink
+        Devis.objects.filter(pk=self.devis.pk).update(
+            date_creation=self._DATE_CREATION_GELEE,
+            date_validite=self._DATE_VALIDITE_GELEE)
+        self.devis.refresh_from_db()
+
+        # Gèle le ShareLink : ShareLink.for_devis réutilise ce lien encore
+        # valide au lieu d'en minter un nouveau (jeton aléatoire) à chaque run.
+        ShareLink.objects.create(
+            company=self.company, devis=self.devis,
+            token=self._SHARE_LINK_TOKEN_GELE,
+            expires_at=self._SHARE_LINK_EXPIRES_GELE)
+
+    def _render_html_gele(self):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qjr307_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html'], HTML
+
+    def test_empreinte_sha256_du_onepage_agricole_est_epinglee(self):
+        """VERT au premier coup — une preuve, pas une correction. Rouge dès
+        qu'une seule ligne du rendu agricole change (vérifié à la main avant
+        d'épingler l'empreinte définitive ci-dessous)."""
+        html, HTML = self._render_html_gele()
+
+        # Sanity : c'est bien le format UNE PAGE (dégradation QJR236/QJR32).
+        self.assertEqual(len(HTML(string=html).render().pages), 1)
+
+        empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
+
+        # PLACEHOLDER — À ÉPINGLER PAR L'ORCHESTRATEUR AU FOLD (agent sans
+        # docker/WeasyPrint dans ce worktree, ne peut pas exécuter ce test).
+        # Marche à suivre : lancer le test une première fois, lire l'empreinte
+        # RÉELLE dans le message d'échec ci-dessous, la coller ici, relancer
+        # (doit être vert), puis modifier UNE ligne du rendu agricole
+        # (ex: un libellé de `page_onepage` dans generate_devis_premium.py)
+        # et confirmer que le test devient rouge, avant de revenir au code
+        # inchangé.
+        EMPREINTE_EPINGLEE = 'PLACEHOLDER_A_EPINGLER_AU_FOLD'
+
+        self.assertEqual(
+            empreinte, EMPREINTE_EPINGLEE,
+            f'Empreinte SHA-256 du one-page agricole gelé = {empreinte!r} '
+            f'(épinglée = {EMPREINTE_EPINGLEE!r}). Si ce changement est '
+            'VOULU, coller cette nouvelle valeur dans EMPREINTE_EPINGLEE '
+            '— sinon le rendu agricole a bougé sans intention.')
 
 
 class TestQjr53TotauxAuCentime(TestCase):
