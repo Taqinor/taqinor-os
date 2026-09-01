@@ -752,8 +752,8 @@ class _SpecCommeLigne:
     désignation, ce qu'il sait faire.
     """
 
-    __slots__ = ('index', 'designation', 'quantite', 'produit',
-                 'quantite_manuelle')
+    __slots__ = ('index', 'designation', 'produit', 'quantite_manuelle',
+                 '_quantite')
 
     def __init__(self, index, spec):
         self.index = index
@@ -761,9 +761,17 @@ class _SpecCommeLigne:
         self.produit = spec.get('produit')
         self.quantite_manuelle = bool(spec.get('quantite_manuelle', False))
         try:
-            self.quantite = int(float(spec.get('quantite') or 0))
+            self._quantite = int(float(spec.get('quantite') or 0))
         except (TypeError, ValueError):
-            self.quantite = 0
+            self._quantite = 0
+
+    @property
+    def quantite(self):
+        """En LECTURE SEULE — cet adaptateur ne se réécrit jamais : la seule
+        écriture de quantité de ce chemin est celle de la SPEC, faite par
+        :func:`_appliquer_preseance_quantite` puis persistée par l'écrivain
+        unique ``lignes.remplacer_lignes``."""
+        return self._quantite
 
 
 def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
