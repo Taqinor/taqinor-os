@@ -462,6 +462,8 @@ def _filtrer_onduleurs_complets(candidats):
 # QJR78 — même table unique que ci-dessus (``solar_design``).
 _is_hybrid_inverter = _sd.is_hybrid_inverter
 _is_reseau_inverter = _sd.is_reseau_inverter
+# QJR-OFFGRID — la TROISIÈME famille d'onduleur (autonome / site isolé).
+_is_offgrid_inverter = _sd.is_offgrid_inverter
 
 
 def _has_price(produit) -> bool:
