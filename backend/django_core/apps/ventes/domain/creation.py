@@ -516,7 +516,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                structure_type='acier',
                                taux_tva=Decimal('20'), mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
-                               dimensionnement_avec=None):
+                               dimensionnement_avec=None,
+                               hors_reseau=False):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -537,6 +538,17 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
     ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
     ``variante: ''``.
+
+    ``hors_reseau`` (QJR-OFFGRID, fondateur 01/09/2026) — le site est ISOLÉ :
+    la composition part sur l'onduleur AUTONOME + une batterie OBLIGATOIRE, en
+    mono-option. La FORME de la réponse ne change pas d'un champ. Deux
+    différences assumées avec le chemin raccordé : le scénario demandé est
+    ignoré (un site isolé n'a pas d'alternative à proposer), et un catalogue
+    incapable de servir l'autonome ou sa batterie fait REFUSER le dry-run par
+    une ``AutoDevisError`` française nommant la référence manquante — là où le
+    chemin raccordé se contente d'avertir. La raison : ici, « avertir » aurait
+    rendu une composition SANS onduleur, ou (pire) invité à lui substituer un
+    hybride que ce client ne peut pas raccorder.
     """
     kwp = float(kwc or 0)
     nb_force = int(nb_panneaux or 0)
@@ -553,6 +565,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     # Même défaut que le devis auto (U2) : sans consigne, on propose LES DEUX.
     avec_batterie = demande == 'avec'
     deux_options = demande not in ('avec', 'sans')
+    # QJR-OFFGRID — un site ISOLÉ n'a qu'une composition : autonome + batterie.
+    hors_reseau = bool(hors_reseau)
+    if hors_reseau:
+        avec_batterie, deux_options = True, False
 
     # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
     # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
@@ -565,7 +581,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         scenario=(COMPOSITION_LES_DEUX if deux_options
                   else (COMPOSITION_AVEC if avec_batterie
                         else COMPOSITION_SANS)),
+        hors_reseau=hors_reseau,
         gamme_nom_devis=gamme_nom_devis)) or ())
+    # QJR-OFFGRID — SEUL le hors réseau transforme cet avertissement en REFUS
+    # (voir la docstring) : sans onduleur autonome tarifé, il n'y a rien à
+    # composer et surtout rien à substituer.
+    if hors_reseau and avertissements:
+        raise AutoDevisError(avertissements[0], field='hors_reseau')
     # ── QJR80 — LA MÊME ÉTAPE `composer` QUE LA CRÉATION ────────────────────
     # « Miroir EXACT de ``build_devis_from_layout`` » n'est plus une intention
     # écrite en commentaire : les deux chemins remplissent LE MÊME
@@ -589,6 +611,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         gamme_nom_devis=gamme_nom_devis,
         dimensionnement_avec=dimensionnement_avec,
         avertissements=avertissements,
+        hors_reseau=hors_reseau,
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -787,6 +810,16 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     wants_battery = choix_batterie == 'avec'
     deux_options = choix_batterie not in ('avec', 'sans')
 
+    # ── QJR-OFFGRID (fondateur 01/09/2026) — LE SITE ISOLÉ ──────────────────
+    # Le lead déclare « aucun » raccordement : il n'y a pas de réseau à
+    # injecter, donc rien à comparer. Le devis auto part sur l'onduleur
+    # AUTONOME + batterie, en option unique — et il REFUSE (étape 4 ci-dessous)
+    # plutôt que de coter un hybride que ce client ne pourra pas raccorder.
+    from apps.ventes.compatibilites import est_site_isole
+    hors_reseau = est_site_isole(getattr(lead, 'raccordement', None))
+    if hors_reseau:
+        wants_battery, deux_options = True, False
+
     # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
     # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au
     # meilleur payback SANS stockage, et ``recommandation_avec`` au meilleur
@@ -893,7 +926,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         company=company, nb_panneaux=panneaux, kwc=kwc,
         scenario=(COMPOSITION_LES_DEUX if deux_options
                   else (COMPOSITION_AVEC if wants_battery
-                        else COMPOSITION_SANS))))
+                        else COMPOSITION_SANS)),
+        hors_reseau=hors_reseau))
     if refus_composition:
         raise AutoDevisError(refus_composition[0], field='composition')
 
@@ -902,6 +936,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=phase_client,
+        hors_reseau=hors_reseau,
         # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
         # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
         # n'est pas celui du devis.
@@ -971,6 +1006,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         taux_tva=taux_tva,
         remise_globale=remise_globale,
         phase=phase_client,
+        hors_reseau=hors_reseau,
     ))
     devis = resultat['devis']
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire

@@ -364,6 +364,8 @@ class _LigneArgentPdf:
 
 _is_hybrid_inverter = _sd.is_hybrid_inverter
 _is_reseau_inverter = _sd.is_reseau_inverter
+# QJR-OFFGRID — la TROISIÈME famille d'onduleur (autonome / site isolé).
+_is_offgrid_inverter = _sd.is_offgrid_inverter
 
 
 # ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
@@ -578,7 +580,12 @@ def _repartir_options(paires):
     for ligne, it in paires:
         variante = _variante_de_ligne(ligne)
         blob = _blob_item(it)
-        ok_sans = not _is_battery(blob) and not _is_hybrid_inverter(blob)
+        # QJR-OFFGRID — l'onduleur AUTONOME suit la règle de l'hybride : il est
+        # EXCLU du panier « sans » (une option « sans batterie » sur un système
+        # de site isolé n'existe pas) et INCLUS dans « avec ». Les panneaux,
+        # eux, continuent d'atterrir dans les DEUX paniers (invariant).
+        ok_sans = (not _is_battery(blob) and not _is_hybrid_inverter(blob)
+                   and not _is_offgrid_inverter(blob))
         ok_avec = not _is_reseau_inverter(blob)
         if variante == "sans":
             sans.append((ligne, it))
@@ -1046,6 +1053,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     has_reseau = _has_qty(sans_items, _is_reseau_inverter)
     has_hybride = _has_qty(avec_items, _is_hybrid_inverter)
+    # QJR-OFFGRID — dérivé du panier « avec », exactement comme l'hybride :
+    # c'est le seul panier où un onduleur autonome peut se trouver.
+    has_offgrid = _has_qty(avec_items, _is_offgrid_inverter)
     has_batterie = _has_qty(avec_items, _is_battery)
 
     # ── M2 (audit adversarial du 19/08/2026) — LE kWc N'EST PLUS DÉDUIT DU PRIX ─
@@ -1121,8 +1131,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Conséquence directe : plus aucun chemin ne fait dériver le taux
     # d'autoconsommation « avec batterie » d'un forfait 0,85 faute de capacité —
     # il n'y a plus d'option « avec » sans capacité réelle à additionner.
+    #
+    # QJR-OFFGRID — l'onduleur AUTONOME relève de la MÊME doctrine : il n'entre
+    # que dans le panier « avec » (comme l'hybride), donc un devis autonome sans
+    # ligne batterie perdrait lui aussi son onduleur et se verrait refuser le
+    # rendu. Le rattrapage est le même, et il est INDISPENSABLE ici : avant la
+    # correction du classifieur, un « Onduleur hors réseau » comptait pour un
+    # onduleur RÉSEAU et passait par ``sans_ok`` — le nier sans étendre Z1
+    # transformerait un document qui se rendait en refus.
     hybride_sans_batterie = has_hybride and not has_batterie
-    if hybride_sans_batterie:
+    offgrid_sans_batterie = has_offgrid and not has_batterie
+    option_unique_sans_batterie = (hybride_sans_batterie
+                                   or offgrid_sans_batterie)
+    if option_unique_sans_batterie:
         sans_items = [dict(it) for it in items]
         # L-2OPT — l'option unique porte TOUTES les lignes : ses scalaires se
         # lisent donc sur toutes les lignes (aucune divergence possible).
@@ -1137,11 +1158,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         pdf_mode = "onepage"
 
     sans_ok = has_reseau
-    avec_ok = has_hybride and has_batterie
-    if hybride_sans_batterie:
-        # Z1 — l'onduleur hybride EST là (l'option unique le porte, cf. la
-        # recomposition de ``sans_items`` ci-dessus) ; c'est la batterie qui
-        # manque. Une seule présentation, honnêtement étiquetée « Sans batterie ».
+    # QJR-OFFGRID — l'option « avec » se sert d'un onduleur HYBRIDE **ou**
+    # AUTONOME, et dans les deux cas d'une batterie RÉELLE. Sans cette
+    # disjonction, un devis de site isolé (onduleur autonome + batterie +
+    # panneaux) n'avait AUCUNE option servable : PDF refusé, options et compte
+    # de panneaux disparus de la page client.
+    avec_ok = (has_hybride or has_offgrid) and has_batterie
+    if option_unique_sans_batterie:
+        # Z1 — l'onduleur hybride (ou autonome) EST là (l'option unique le
+        # porte, cf. la recomposition de ``sans_items`` ci-dessus) ; c'est la
+        # batterie qui manque. Une seule présentation, honnêtement étiquetée
+        # « Sans batterie ».
         sans_ok, avec_ok = True, False
     if not sans_ok and not avec_ok and pdf_mode == "full":
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
@@ -1192,13 +1219,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.
     avertissements_internes = []
-    if hybride_sans_batterie:
+    if option_unique_sans_batterie:
         # Z1 — trace INTERNE : le vendeur doit savoir pourquoi le document est
         # mono-option (le devis porte un onduleur hybride mais aucune batterie
         # chiffrée). Jamais rendu au client.
+        _famille_sans_batterie = (
+            "hors réseau"
+            if offgrid_sans_batterie and not hybride_sans_batterie
+            else "hybride")
         avertissements_internes.append(
-            "onduleur hybride sans ligne batterie — document rendu en option "
-            "unique (aucune batterie n'est inventée)")
+            f"onduleur {_famille_sans_batterie} sans ligne batterie — "
+            "document rendu en option unique (aucune batterie n'est inventée)")
     for _desig in _variante_contradictions:
         # L-2OPT — trace INTERNE : la variante déclarée sur la ligne contredit
         # sa nature lue par mots-clés (une batterie marquée « sans »…). La
@@ -2406,7 +2437,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             if r["quantite"] <= 0:
                 continue
             d = r["designation"]
-            if _is_reseau_inverter(d) or _is_hybrid_inverter(d):
+            # QJR-OFFGRID — l'onduleur AUTONOME est une puce comme les deux
+            # autres : sans lui, un « Onduleur hors réseau » (qui comptait
+            # jusqu'ici pour un onduleur réseau) DISPARAÎTRAIT de la puce.
+            if (_is_reseau_inverter(d) or _is_hybrid_inverter(d)
+                    or _is_offgrid_inverter(d)):
                 q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
                 out.append(f"{q} × {d}" if q > 1 else d)
         for r in rows:

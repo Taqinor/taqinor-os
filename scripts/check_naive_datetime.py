@@ -96,7 +96,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # index insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
     # identique avant/après (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`, vérifié contre 1d6f4c29). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2394",  # CommissionPartenaire.paye_le (recale +62, RelanceEtape 26/08)
+    "backend/django_core/apps/crm/models.py:2402",  # CommissionPartenaire.paye_le (recale +8, Raccordement.AUCUN 01/09)
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

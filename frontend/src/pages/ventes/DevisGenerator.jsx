@@ -77,7 +77,7 @@ import {
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
+  isBattery, isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc,
@@ -759,6 +759,15 @@ export default function DevisGenerator({
   // devis d'accessoires/main-d'œuvre seuls (SAV, extension câblage…) n'a pas à
   // contenir panneau+onduleur/pompe. OFF par défaut (garde active).
   const [accessoiresOnly, setAccessoiresOnly] = useState(false)
+  // OFFGRID (ajout produit onduleur hors réseau) — « Raccordement » du devis,
+  // même patron d'état qu'`accessoiresOnly` juste au-dessus (booléen simple,
+  // PAS le reducer sizingReducer : orthogonal au dimensionnement kWc/panneaux
+  // qu'il modélise). Défaut = raccordé au réseau (comportement byte-identique
+  // à l'historique) ; `horsReseauTouched` protège un choix manuel du vendeur
+  // contre un lead appliqué ensuite (même garde que les drapeaux « touché »
+  // du reducer pour scenario/structure/tension).
+  const [horsReseau, setHorsReseau] = useState(false)
+  const [horsReseauTouched, setHorsReseauTouched] = useState(false)
   // Pompage (agricole)
   const [pompeCv, setPompeCv] = useState('5.5')
   const [pompeType, setPompeType] = useState('immergee')
@@ -801,7 +810,7 @@ export default function DevisGenerator({
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
     tensionRaccordement, repartitionMt,
-    prixCible, remiseMax, accessoiresOnly,
+    prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
@@ -814,7 +823,7 @@ export default function DevisGenerator({
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
     tensionRaccordement, repartitionMt,
-    prixCible, remiseMax, accessoiresOnly,
+    prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
@@ -900,6 +909,10 @@ export default function DevisGenerator({
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
+    // OFFGRID — un choix déjà posé (brouillon local) est un choix EXPLICITE :
+    // il ferme `horsReseauTouched`, sinon un lead appliqué après restauration
+    // écraserait le raccordement que le vendeur avait retenu.
+    if (d.horsReseau != null) { setHorsReseau(d.horsReseau); setHorsReseauTouched(true) }
     if (d.pompeCv != null) setPompeCv(d.pompeCv)
     if (d.pompeType != null) setPompeType(d.pompeType)
     if (d.pompeAlim != null) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: d.pompeAlim })
@@ -1616,6 +1629,11 @@ export default function DevisGenerator({
     const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
       ? computeAutoSizing(hiver, ete) : null
     dispatchSizing({ type: 'LEAD_APPLIQUE', lead, sizingLocal })
+    // OFFGRID — défaut dérivé du raccordement du lead : « aucun » (site
+    // isolé) bascule le devis en hors réseau tant que le vendeur n'a pas
+    // choisi lui-même (même garde « touché » que pompeAlim/structure/tension
+    // ci-dessus dans le reducer — ici en état simple, voir sa déclaration).
+    if (!horsReseauTouched) setHorsReseau(lead.raccordement === 'aucun')
     if (hiver > 0) {
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
@@ -2383,7 +2401,19 @@ export default function DevisGenerator({
       // marques, ou le bouton « Enregistrer cet ordre » de ce devis) ;
       // absent/vide = ordre canonique du simulateur (comportement historique).
       ordreLignes: gammesConfig?.ordre_lignes,
+      // OFFGRID — site isolé : UNE seule option (panneaux + onduleur hors
+      // réseau + batterie), jamais le double panier sans/avec ci-dessous.
+      // `undefined` quand `horsReseau` est faux : appel BYTE-IDENTIQUE à
+      // l'historique (aucun paramètre `offgrid` n'existait avant ce chantier).
+      offgrid: horsReseau || undefined,
     })
+    // OFFGRID — l'auto-remplissage hors réseau a échoué (aucun onduleur/
+    // batterie priced au catalogue) : `autoFillLines` renvoie un tableau VIDE
+    // avec son motif FRANÇAIS exact, jamais un repli silencieux sur l'hybride.
+    if (horsReseau && generated.offgridErreur) {
+      setErrors(e => ({ ...e, autofill: generated.offgridErreur }))
+      return
+    }
     // L-2OPT (fondateur 24/08) — deux optimiseurs indépendants : en
     // résidentiel, un scénario qui sert RÉELLEMENT l'option AVEC (« Les
     // deux » ou « Avec batterie » seule) compose CETTE branche à SON PROPRE
@@ -2392,8 +2422,9 @@ export default function DevisGenerator({
     // (le cas le plus courant, et le repli quand aucune source n'a d'avis)
     // retombent sur la composition unique ci-dessus, BYTE-IDENTIQUE à
     // l'historique — aucune ligne variantée, repli de sécurité épinglé par
-    // test.
-    if (modeInstallation === 'residentiel'
+    // test. OFFGRID — jamais cette branche : une composition hors réseau ne
+    // connaît qu'UNE option, déjà posée ci-dessus.
+    if (!horsReseau && modeInstallation === 'residentiel'
         && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
       const kwpAvec = resolveKwcAvec()
       if (Math.abs(kwpAvec - kwp) > 1e-9) {
@@ -2431,8 +2462,10 @@ export default function DevisGenerator({
     const metaOnduleursIncomplets = generated.onduleursIncomplets ?? []
     const metaMarquesManquantes = generated.marquesManquantes ?? []
     // Modes industriel ET commercial (QX44) : sans batterie par défaut
-    // (autoconsommation réseau, pas de stockage).
-    if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
+    // (autoconsommation réseau, pas de stockage). OFFGRID — jamais cette
+    // garde : un système hors réseau porte TOUJOURS sa batterie, quel que
+    // soit le marché du devis.
+    if (!horsReseau && (modeInstallation === 'industriel' || modeInstallation === 'commercial')) {
       generated = generated.map(r =>
         (isBattery(r.designation) || isHybridInverter(r.designation))
           ? { ...r, quantite: 0 } : r)
@@ -2631,10 +2664,18 @@ export default function DevisGenerator({
           panel_watt: parseFloat(panelW) || 710,
           structure_type: structureType,
         }
+        // OFFGRID — champ additif optionnel (contrat backend) : absent quand
+        // `horsReseau` est faux, le serveur dérive alors de
+        // `lead.raccordement == 'aucun'` lui-même. Envoyé explicitement ici
+        // pour couvrir le cas où le vendeur bascule le contrôle à la main sans
+        // que le lead porte ce raccordement.
+        if (horsReseau) body.hors_reseau = true
         // Même déclenchement que la fusion locale ci-dessus (composeLocalement) :
         // seuls « Les deux » et « Avec batterie » servent réellement l'axe
         // batterie, et seulement quand il diverge du champ sans stockage.
-        if (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC) {
+        // OFFGRID — jamais cette branche : une composition hors réseau ne
+        // connaît qu'une option, le serveur ne reçoit pas `dimensionnement_avec`.
+        if (!horsReseau && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
           const kwpAvec = resolveKwcAvec()
           if (Math.abs(kwpAvec - kwp) > 1e-9) {
             if (scenario === SCENARIO_AVEC) {
@@ -2847,7 +2888,11 @@ export default function DevisGenerator({
         }
       } else {
         const hasPanel = has(isPanel)
-        const hasInverter = has(d => isReseauInverter(d) || isHybridInverter(d))
+        // OFFGRID — un onduleur hors réseau compte comme onduleur : un devis
+        // hors réseau qui ne porte QUE cette ligne (jamais réseau/hybride)
+        // doit pouvoir s'enregistrer, sans obliger le vendeur à garder une
+        // ligne hybride « pour passer la garde ».
+        const hasInverter = has(d => isReseauInverter(d) || isHybridInverter(d) || isOffgridInverter(d))
         if (!hasPanel || !hasInverter) {
           const manque = [
             !hasPanel ? 'un panneau' : null,
@@ -3646,8 +3691,33 @@ export default function DevisGenerator({
               </Select>
             </div>
             <div className="grid gap-1.5">
+              {/* OFFGRID — « Raccordement » du devis : défaut « Raccordé au
+                  réseau » (comportement historique byte-identique), dérivé du
+                  lead (raccordement === 'aucun') tant que le vendeur ne
+                  choisit pas lui-même. */}
+              <Label htmlFor="gen-raccordement">Raccordement</Label>
+              <Select
+                value={horsReseau ? 'hors_reseau' : 'reseau'}
+                onValueChange={(v) => {
+                  setHorsReseauTouched(true)
+                  setHorsReseau(v === 'hors_reseau')
+                }}
+              >
+                <SelectTrigger id="gen-raccordement"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reseau">Raccordé au réseau</SelectItem>
+                  <SelectItem value="hors_reseau">Hors réseau (site isolé)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
               <Label htmlFor="gen-scenario">Scénario</Label>
-              <Select value={scenario} onValueChange={onScenarioChange}>
+              {/* OFFGRID — un système hors réseau porte TOUJOURS sa batterie :
+                  option unique, le sélecteur Sans/Avec/Les deux est désactivé
+                  (jamais retiré du DOM — l'id `gen-scenario` reste stable pour
+                  les tests/lecteurs d'écran) et sans effet sur la composition
+                  tant qu'il l'est (voir composeLocalement/handleAutoFill). */}
+              <Select value={scenario} onValueChange={onScenarioChange} disabled={horsReseau}>
                 <SelectTrigger id="gen-scenario"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Les deux (Sans + Avec)">Les deux (Sans + Avec batterie)</SelectItem>
@@ -3655,6 +3725,11 @@ export default function DevisGenerator({
                   <SelectItem value="Avec batterie">Avec batterie seulement</SelectItem>
                 </SelectContent>
               </Select>
+              {horsReseau && (
+                <p className="text-xs text-muted-foreground">
+                  Système hors réseau : option unique avec batterie.
+                </p>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-reco">Option Recommandée</Label>

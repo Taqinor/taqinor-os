@@ -69,6 +69,20 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(document.querySelector('#lf-raccordement')).toBeInTheDocument()
   })
 
+  // OFFGRID (ajout produit onduleur hors réseau) — crm.Lead.Raccordement.AUCUN
+  // ('aucun') : le site n'a jamais été raccordé à l'ONEE (devis hors réseau).
+  // Sans cette option le choix backend n'a AUCUN moyen d'être saisi côté écran.
+  it('SectionEnergie — le raccordement « Non raccordé (site isolé) » est sélectionnable', () => {
+    render(<SectionEnergie state={createState()} {...base} />)
+    const select = document.querySelector('#lf-raccordement')
+    const option = Array.from(select.options).find((o) => o.value === 'aucun')
+    expect(option).toBeTruthy()
+    expect(option.textContent).toBe('Non raccordé (site isolé)')
+    // Les trois choix historiques restent inchangés (jamais retirés/renommés).
+    const values = Array.from(select.options).map((o) => o.value)
+    expect(values).toEqual(['', 'monophase', 'triphase', 'inconnu', 'aucun'])
+  })
+
   it('SectionPompage rend les 3 champs pompage', () => {
     render(<SectionPompage state={createState()} {...base} />)
     expect(document.querySelector('#lf-pompe-cv')).toBeInTheDocument()
