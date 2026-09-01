@@ -980,10 +980,21 @@ def reconcilier(devis, intention):
         # plutôt que la fabriquer). Le calepinage modélise à watt constant :
         # ce n'est pas le panneau vendu. Sans kWc lisible, la clé est
         # ABSENTE — jamais un nombre de repli.
+        # QJR306 — LE kWc PÉRIMÉ NE SURVIT PAS À UNE RESYNCHRO MUETTE. QJR225
+        # avait retiré le REPLI sur le kWc du calepinage, mais pas la valeur
+        # HÉRITÉE d'une exécution PRÉCÉDENTE : quand le propriétaire ne sait
+        # plus répondre, la clé recopiée depuis ``verrou.etude_params`` à la
+        # ligne ci-dessus restait en place — un devis qui a DÉJÀ eu la clé la
+        # gardait, décrivant une installation qui n'est plus celle vendue. La
+        # règle Z2 (OMETTRE plutôt que fabriquer) s'applique donc aussi au
+        # RETRAIT d'une valeur devenue illisible, pas seulement à l'absence
+        # d'écriture.
         _kwc_proprietaire = puissance_kwc_du_devis(
             verrou, avertissements=avertissements)
         if _kwc_proprietaire:
             etude['puissance_kwc'] = _kwc_proprietaire
+        else:
+            etude.pop('puissance_kwc', None)
         if toiture:
             etude['toiture'] = toiture
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
