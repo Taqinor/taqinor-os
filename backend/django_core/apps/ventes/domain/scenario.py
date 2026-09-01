@@ -198,6 +198,14 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
     désaccord émet l'avertissement FR qui NOMME la ligne (phrase 3) dans
     ``avertissements`` quand une liste est fournie.
 
+    QJR304 (01/09/2026) — LA PHRASE 2 A ENFIN SON APPELANT, ET IL N'EST PAS
+    ICI. ``pipeline.decider_taille`` lit désormais le ``taille.nb_panneaux`` du
+    registre par ``overrides.cible_dimensionnement_du_devis`` (il ne le lisait
+    JAMAIS : il ne dérivait son compte que du dimensionneur horaire). Ce
+    lecteur-ci est INCHANGÉ — il continue de ne consulter que
+    ``verdict.cible_dimensionnement`` pour le kWc : les deux canaux de la table
+    R4-A restent DISTINCTS, et aucun montant ne bouge de ce côté.
+
     LECTURE PURE (règle #4).
     """
     from apps.ventes.domain.overrides import (

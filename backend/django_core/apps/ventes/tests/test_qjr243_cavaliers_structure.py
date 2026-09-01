@@ -67,9 +67,13 @@ class CavalierAImportsMorts(SimpleTestCase):
 class CavalierBEtape2SansParametreMort(SimpleTestCase):
 
     def test_la_signature_ne_declare_plus_entrees(self):
+        # QJR304 — ``devis`` s'est ajouté (le registre de surcharges de CE
+        # devis alimente l'étape 2, R4-A phrase 2) ; ce que ce test tient,
+        # c'est qu'``entrees`` — le paramètre MORT — ne revienne jamais.
         parametres = list(
             inspect.signature(_pipeline.decider_taille).parameters)
-        self.assertEqual(parametres, ['intention'])
+        self.assertNotIn('entrees', parametres)
+        self.assertEqual(parametres[0], 'intention')
 
     def test_une_cible_deja_arretee_ressort_telle_quelle(self):
         """Le comportement, lui, est INCHANGÉ."""
@@ -85,7 +89,9 @@ class CavalierBEtape2SansParametreMort(SimpleTestCase):
 
     def test_le_site_d_appel_ne_passe_plus_les_entrees(self):
         source = inspect.getsource(_pipeline.appliquer)
-        self.assertIn('decider_taille(intention)', source)
+        # QJR304 — le site d'appel passe désormais le DEVIS (jamais les
+        # entrées) : c'est son registre qui porte la cible de niveau devis.
+        self.assertIn('decider_taille(intention, devis)', source)
         self.assertNotIn('decider_taille(intention, entrees)', source)
 
 

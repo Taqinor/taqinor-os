@@ -2580,10 +2580,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         pas dériver restent OMIS, jamais remplis d'un défaut (règle Z2).
 
         ``chemins_regeneres`` — les chemins qui viennent de repasser en
-        automatique (DELETE). Ils sont FORCÉS dans la carte pour que la réponse
+        automatique (DELETE). Ils sont FORCÉS dans la vue pour que la réponse
         les porte avec leur valeur moteur : sortis du registre, ils
         disparaissaient purement et simplement de la réponse, alors que
         l'endpoint promet « retour à l'automatique ».
+
+        QJR305 — ILS SONT FORCÉS DANS LA VUE, PAS DANS LA CARTE ``autos``. Les
+        y insérer avec ``None`` (l'ancien ``setdefault``) faisait passer pour
+        « valeur automatique nulle » un chemin dont le moteur n'a simplement
+        AUCUNE valeur : ``vue_effective`` ne pouvait plus le marquer
+        ``non_derivable`` et l'écran retombait sur le champ vide ambigu.
 
         ``lignes`` est une carte ``{id: {...}}`` — JAMAIS une liste indexée par
         position (une ligne supprimée déplacerait la surcharge sur une autre).
@@ -2600,11 +2606,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             if any(marques.values()):
                 lignes[str(ligne.pk)] = marques
         autos = registre_overrides.autos_du_devis(devis)
-        for chemin in chemins_regeneres:
-            autos.setdefault(chemin, None)
         return {
             'overrides': registre_overrides.registre_du_devis(devis),
-            'effectif': registre_overrides.vue_effective(devis, autos),
+            'effectif': registre_overrides.vue_effective(
+                devis, autos,
+                chemins_supplementaires=tuple(chemins_regeneres)),
             'lignes': lignes,
         }
 
