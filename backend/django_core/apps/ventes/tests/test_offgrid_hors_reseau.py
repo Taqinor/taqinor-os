@@ -70,6 +70,54 @@ class TestClassificationHorsReseau(SimpleTestCase):
         self.assertFalse(sd.is_offgrid_inverter(nom))
         self.assertFalse(sd.is_reseau_inverter(nom))
 
+    def test_hybride_lemporte_meme_sans_mot_onduleur(self):
+        """ROUND 2 — la précédence hybride tient MÊME quand le nom ne porte
+        pas le mot « onduleur » (le cas que le round 2 vient d'ouvrir)."""
+        from apps.ventes import solar_design as sd
+        self.assertFalse(sd.is_offgrid_inverter('Deye Hybride Off-Grid 6kw'))
+
+    # ── ROUND 2 (incident fondateur 01/09/2026) ─────────────────────────────
+    # Les vrais produits en PROD n'ont jamais le mot « onduleur » dans leur
+    # nom (« Deye off-Grid 6kw ») : la reconnaissance devait s'adapter à la
+    # façon de nommer du fondateur, pas l'inverse.
+    def test_noms_reels_fondateur_sans_mot_onduleur(self):
+        """(a) LES deux orthographes réelles du catalogue prod, telles
+        quelles — sans le mot « onduleur »."""
+        from apps.ventes import solar_design as sd
+        from apps.ventes.domain.catalogue import classer_produit
+        for nom in ('Deye off-Grid 6kw', 'Deye off grid 6kw'):
+            self.assertTrue(sd.is_offgrid_inverter(nom), nom)
+            self.assertFalse(sd.is_reseau_inverter(nom), nom)
+            self.assertFalse(sd.is_hybrid_inverter(nom), nom)
+            self.assertTrue(sd.is_any_inverter(nom), nom)
+            self.assertEqual(classer_produit(nom), 'onduleur_offgrid', nom)
+
+    def test_mot_cle_dune_autre_famille_nest_jamais_vole(self):
+        """(b) « off-grid » est un argument marketing courant sur TOUT type
+        de produit (batterie, kit, câble, coffret) — sans le mot « onduleur »
+        dans le nom, ces désignations ne doivent JAMAIS être volées par le
+        classifieur onduleur autonome."""
+        from apps.ventes import solar_design as sd
+        from apps.ventes.domain.catalogue import classer_produit
+        for nom in ('Batterie off-grid 5kWh', 'Kit solaire off-grid',
+                    'Câble off-grid', 'Coffret off-grid'):
+            self.assertFalse(sd.is_offgrid_inverter(nom), nom)
+            self.assertFalse(sd.is_any_inverter(nom), nom)
+            self.assertNotEqual(classer_produit(nom), 'onduleur_offgrid', nom)
+        self.assertTrue(sd.is_battery('Batterie off-grid 5kWh'))
+
+    def test_is_panel_immunite_offgrid(self):
+        """(e) Un panneau nommé « ... off-grid ... » reste un panneau : le
+        mot-clé « panneau » de la liste d'exclusion protège ``is_panel`` —
+        il ne le remplace jamais."""
+        from apps.ventes import solar_design as sd
+        from apps.ventes.domain.catalogue import classer_produit
+        nom = 'Panneau off-grid 550W'
+        self.assertTrue(sd.is_panel(nom), nom)
+        self.assertFalse(sd.is_offgrid_inverter(nom), nom)
+        self.assertFalse(sd.is_any_inverter(nom), nom)
+        self.assertEqual(classer_produit(nom), 'panneau', nom)
+
     def test_les_deux_familles_historiques_sont_intactes(self):
         """LA BARRE DE NON-RÉGRESSION : rien ne bouge sans mot-clé autonome."""
         from apps.ventes import solar_design as sd
@@ -303,3 +351,53 @@ class TestCompositionHorsReseau(TestCase):
         with self.assertRaises(AutoDevisError):
             composer_devis_residentiel(
                 company=self.company, kwc=5, panel_watt=550, hors_reseau=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. ROUND 2 — LE NOM RÉEL DU FONDATEUR, SANS LE MOT « ONDULEUR »
+# ═══════════════════════════════════════════════════════════════════════════
+#: MÊME catalogue que ``CATALOGUE_ISOLE`` — seul l'onduleur autonome change de
+#: nom, pour porter celui RÉELLEMENT saisi en prod (aucun mot « onduleur »).
+CATALOGUE_ISOLE_NOM_REEL = [
+    ('Panneau Jinko 550W', 'OFFG2-PAN550', '1100'),
+    ('Deye off-Grid 6kw', 'OFFG2-ONDA6', '15000'),
+    ('Onduleur réseau Huawei 5kW Monophasé', 'OFFG2-ONDR5', '14000'),
+    ('Onduleur hybride Deye 5kW Monophasé', 'OFFG2-ONDH5', '17000'),
+    ('Batterie Dyness 5 kWh', 'OFFG2-BAT5', '16000'),
+    ('Structures acier', 'OFFG2-STR', '500'),
+]
+
+
+class TestCompositionResidentielleNomReel(TestCase):
+    """(d) ``composition_residentielle`` APPELÉE DIRECTEMENT (pas le wrapper
+    ``composer_devis_residentiel``) sur un catalogue dont le SEUL onduleur
+    off-grid tarifé porte le nom réel du fondateur."""
+
+    def setUp(self):
+        self.company = make_company()
+
+    def _seed(self, catalogue):
+        for nom, sku, prix in catalogue:
+            Produit.objects.create(
+                company=self.company, nom=nom,
+                sku='%s-%s' % (sku, self.company.pk),
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=100)
+
+    def test_compose_le_nom_reel_avec_sa_batterie(self):
+        from apps.ventes import services
+        self._seed(CATALOGUE_ISOLE_NOM_REEL)
+        produits = list(services.catalogue_de_la_societe(self.company))
+        resultat = services.composition_residentielle(
+            produits, kwc=5, panel_watt=550, hors_reseau=True)
+        designations = [ligne.designation for ligne in resultat]
+        roles = list(getattr(resultat, 'roles', ()) or ())
+        self.assertIn('Deye off-Grid 6kw', designations)
+        self.assertIn('onduleur_offgrid', roles)
+        self.assertTrue(
+            any('batterie' in d.lower() for d in designations),
+            'aucune batterie composée : %r' % designations)
+        # AUCUNE substitution : ni réseau, ni hybride, alors qu'ils sont au
+        # catalogue et tarifés (règle fondateur des chiffres vérifiés).
+        self.assertNotIn('onduleur_reseau', roles)
+        self.assertNotIn('onduleur_hybride', roles)
