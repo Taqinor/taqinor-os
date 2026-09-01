@@ -1709,15 +1709,12 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
-        # PLACEHOLDER — À ÉPINGLER PAR L'ORCHESTRATEUR AU FOLD (agent sans
-        # docker/WeasyPrint dans ce worktree, ne peut pas exécuter ce test).
-        # Marche à suivre : lancer le test une première fois, lire l'empreinte
-        # RÉELLE dans le message d'échec ci-dessous, la coller ici, relancer
-        # (doit être vert), puis modifier UNE ligne du rendu agricole
-        # (ex: un libellé de `page_onepage` dans generate_devis_premium.py)
-        # et confirmer que le test devient rouge, avant de revenir au code
-        # inchangé.
-        EMPREINTE_EPINGLEE = 'PLACEHOLDER_A_EPINGLER_AU_FOLD'
+        # Empreinte épinglée depuis l'exécution CI du 2026-09-01 (run
+        # 33566842913, shard 3) — le HTML gelé du one-page agricole. Toute
+        # modification du rendu agricole la fait dériver : si le changement
+        # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
+        EMPREINTE_EPINGLEE = (
+            '1b03d7075b89fec7039a773f9c16d2361d496118a689736531348c2434afce2a')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

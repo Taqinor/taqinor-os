@@ -556,9 +556,19 @@ def _jour_reference_auto(devis):
     """``etude.jour_reference`` — LA date que le moteur retiendrait SANS
     surcharge : ``entrees.jour_reference_du_devis`` lu sur le devis vu SANS
     son registre (sinon il rendrait la surcharge elle-même sous l'étiquette
-    ``auto``). ``None`` si rien n'est lisible."""
-    from apps.ventes.domain.entrees import jour_reference_du_devis
+    ``auto``). ``None`` si rien n'est lisible.
 
+    QJR305 — l'``auto`` doit être ANCRÉ DANS LE DEVIS : le repli « aujourd'hui »
+    de ``jour_reference_du_devis`` (chemin LEAD) n'est pas une dérivation de CE
+    devis — un devis muet recevrait la date d'exécution comme ``auto`` (et la
+    carte changerait à minuit). Sans ``date_creation`` lisible, PAS d'auto
+    (règle Z2, « mieux vaut taire »)."""
+    from apps.ventes.domain.entrees import (
+        _date_lisible, jour_reference_du_devis,
+    )
+
+    if _date_lisible(getattr(devis, 'date_creation', None)) is None:
+        return None
     return jour_reference_du_devis(_DevisSansRegistre(devis))
 
 

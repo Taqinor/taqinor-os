@@ -1050,6 +1050,13 @@ def reconcilier(devis, intention):
         _avant = dict(verrou.etude_params or {})
         _modifiees = {cle: valeur for cle, valeur in etude.items()
                       if cle not in _avant or _avant[cle] != valeur}
+        # QJR306 — les RETRAITS voyagent aussi : ``etude`` est une copie
+        # intégrale de ``_avant``, donc une clé présente AVANT et absente
+        # d'``etude`` a été retirée PAR CE CHEMIN (le kWc périmé quand le
+        # propriétaire ne répond plus). ``fusionner`` a déjà la sémantique du
+        # retrait (``None`` = retirer la clé) ; sans cette ligne, le pop
+        # d'amont était silencieusement perdu et la valeur périmée reconduite.
+        _modifiees.update({cle: None for cle in _avant if cle not in etude})
         verrou.etude_params = fusionner(
             _avant, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
