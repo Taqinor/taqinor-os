@@ -397,17 +397,28 @@ _is_wifi_dongle = _sd.is_wifi_dongle
 # ``_drop_huawei_accessories`` plus bas.
 
 
+# QJR301 — LES DEUX SEULS ADAPTATEURS D'ITEM (dicts) de la convention de texte
+# du noyau. Le texte lui-même est déclaré UNE fois, dans
+# ``apps.ventes.utils.options`` (``texte_classement`` / ``texte_marque``) ; il
+# n'y a plus de copie ici. Import fonction-local : ``utils.options`` importe ce
+# module à son sommet (cycle).
 def _item_classement(it) -> str:
-    """Texte de CLASSEMENT d'un item pour la règle QF9 — la désignation seule,
-    exactement ce que lisait ``_quote_is_huawei`` avant QJR200."""
-    return it.get("designation", "")
+    """Texte de CLASSEMENT d'un item — désignation + nom du produit lié.
+
+    QJR301 — c'était la désignation SEULE : un mot-clé qui ne vit que dans le
+    NOM du produit était vu par le noyau et PAS par les paniers du PDF, donc
+    les deux moitiés classaient la même ligne différemment.
+    """
+    from apps.ventes.utils.options import texte_classement
+    return texte_classement(it.get("designation", ""),
+                            it.get("_produit_nom", ""))
 
 
 def _item_marque(it) -> str:
-    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié —
-    les trois champs lus avant QJR200, mot pour mot."""
-    return (f"{it.get('designation', '')} {it.get('marque', '')} "
-            f"{it.get('_produit_nom', '')}")
+    """Texte de MARQUE d'un item : désignation + marque + nom du produit lié."""
+    from apps.ventes.utils.options import texte_marque
+    return texte_marque(it.get("designation", ""), it.get("marque", ""),
+                        it.get("_produit_nom", ""))
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -543,14 +554,11 @@ def _variante_de_ligne(ligne) -> str:
     return valeur if valeur in ("sans", "avec") else ""
 
 
-def _blob_item(it) -> str:
-    """Texte classifiable d'un item : désignation ET nom du produit lié.
-
-    Une désignation éditée à la main ne peut pas casser silencieusement le
-    découpage — c'est le contrat historique, extrait ici en fonction de module
-    pour être partagé par la répartition et ses appelants.
-    """
-    return f"{it['designation']} {it.get('_produit_nom', '')}"
+# QJR301 — ``_blob_item`` était la TROISIÈME lecture du même texte : c'est le
+# MÊME que ``_item_classement`` (désignation + nom du produit lié). Il est
+# SUPPRIMÉ et remplacé par un alias, pour que la répartition des options et les
+# paniers QF9 classent une ligne à l'identique — plus jamais deux verdicts.
+_blob_item = _item_classement
 
 
 def _repartir_options(paires):
@@ -1000,6 +1008,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # QJR200 — LA RÈGLE VIENT DU NOYAU, elle n'est plus recopiée ici : le moteur
     # ne fournit que les lecteurs de champs de ses items (dicts). Import
     # fonction-local — ``utils.options`` importe ce module à son sommet.
+    #
+    # QJR300 (01/09/2026) — LA RÈGLE N'EST PLUS APPLIQUÉE ICI, ET PLUS
+    # INCONDITIONNELLEMENT. Elle ne vaut QUE pour un document à DEUX options —
+    # son intention d'origine : purger d'un panier les artefacts de l'AUTRE
+    # option. Appliquée à un devis MONO-OPTION (ou à une liste libre), elle
+    # faisait disparaître du DOCUMENT une ligne que le noyau monnaie compte
+    # bel et bien (``utils.options.option_lines`` ne filtre pas hors du cas
+    # deux-options) : le total imprimé / affiché / public passait SOUS le total
+    # qui pilote l'échéancier, le solde, la commission et ``Devis.total_ttc``.
+    # Direction tranchée : LE PDF S'ALIGNE SUR LE NOYAU (D12 — les lignes du
+    # vendeur sont souveraines ; zéro-chiffre-inventé — l'argent la compte
+    # déjà). L'application est donc DÉPLACÉE plus bas, une fois ``deux_options``
+    # connu.
     def _drop_huawei_accessories(paires):
         from apps.ventes.utils.options import retirer_accessoires_huawei
         return retirer_accessoires_huawei(
@@ -1007,41 +1028,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             classement=lambda p: _item_classement(p[1]),
             marque=lambda p: _item_marque(p[1]))
 
-    _sans_paires = _drop_huawei_accessories(_sans_paires)
-    _avec_paires = _drop_huawei_accessories(_avec_paires)
-
-    # ── QJR124 — LA LISTE LIBRE EST FILTRÉE ICI, PAS AU RENDU ───────────────
-    # Le filtrage QF9 ci-dessus ne s'applique qu'à ``sans_items``/``avec_items``.
-    # Le chemin « devis libre / pompage / scénario non apparié » (plus bas :
-    # ``_all_rows = items`` et ``onepage_source = items``) servait donc la liste
-    # COMPLÈTE : ``totaux_all`` était figé sur les lignes NON filtrées pendant
-    # que le renderer re-filtrait le TABLEAU au dernier moment. Le client lisait
-    # alors un « Total TTC » incluant un accessoire absent du tableau.
-    # On filtre EN AMONT, une fois, pour que le tableau et les totaux
-    # décrivent le même panier.
-    # La règle est celle du BON SENS sur une liste à plat : les accessoires
-    # Huawei ne sont retirés que si AUCUN onduleur Huawei n'est facturé — une
-    # liste libre portant à la fois un onduleur Huawei et un onduleur Deye
-    # garde légitimement le Smart Meter du premier.
-    def _aucun_onduleur_huawei(rows):
-        inverters = [it for it in rows if _is_inverter(_blob(it))]
-        if not inverters:
-            return True
-        return not any(
-            "huawei" in (f"{it.get('designation', '')} {it.get('marque', '')} "
-                         f"{it.get('_produit_nom', '')}").lower()
-            for it in inverters)
-
-    # QJR200 — « est un accessoire Huawei » est le prédicat du noyau (une seule
-    # définition) ; la RÈGLE de la liste libre, elle, reste celle de QJR124
-    # ci-dessus (``any`` et non ``all``) et n'est pas touchée.
-    from apps.ventes.utils.options import (
-        est_accessoire_huawei as _est_accessoire_huawei,
-    )
+    # ── QJR300 — LA LISTE LIBRE N'EST PLUS FILTRÉE DU TOUT ──────────────────
+    # QJR124 filtrait ici le chemin « devis libre / pompage / scénario non
+    # apparié » (``_all_rows`` et ``onepage_source`` plus bas) pour que le
+    # tableau et les totaux du une-page décrivent le même panier. Ils le
+    # décrivent toujours — mais désormais SANS retirer la ligne, car le noyau
+    # monnaie ne la retire pas non plus sur ces devis : filtrer ici rouvrait la
+    # divergence « deux prix pour la même vente » du côté document. Le filtre
+    # QJR124 et son prédicat ``_aucun_onduleur_huawei`` sont SUPPRIMÉS (règle
+    # permanente 2 : jamais deux implémentations qui coexistent).
     _items_libres = list(items)
-    if _aucun_onduleur_huawei(items):
-        _items_libres = [it for it in items
-                         if not _est_accessoire_huawei(_item_classement(it))]
     sans_items = [it for _, it in _sans_paires]
     avec_items = [it for _, it in _avec_paires]
     # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
@@ -1262,6 +1258,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avertissements_internes.append(
             "deux onduleurs non optionnels — devis à assainir par "
             "resynchronisation")
+
+    # ── QJR300 — QF9 S'APPLIQUE ICI, ET SEULEMENT DANS LE CAS DEUX-OPTIONS ───
+    # ``deux_options`` est ici la valeur « VRAIES options » (avant tout
+    # rétrécissement de confort QF6/L-VAR) — exactement la question que pose le
+    # noyau monnaie (``utils.options.deux_options_declarees`` : alternative
+    # DÉCLARÉE + les deux familles réellement en lignes). Les deux côtés
+    # retirent donc l'accessoire orphelin ENSEMBLE, ou aucun ne le retire.
+    #
+    # HORS de ce cas, aucun filtrage : un devis mono-option, une liste libre,
+    # l'artefact PV86 ci-dessus et — explicitement — la branche Z1
+    # ``hybride_sans_batterie`` (qui recompose ``sans_items``/``sans_lignes``
+    # depuis la liste BRUTE ``items``) rendent TOUTES leurs lignes. C'est le
+    # rattrapage « aucune ligne, aucun dirham ne disparaît » : il ne doit NI
+    # être filtré NI être re-filtré.
+    if deux_options:
+        _sans_paires = _drop_huawei_accessories(_sans_paires)
+        _avec_paires = _drop_huawei_accessories(_avec_paires)
+        sans_items = [it for _, it in _sans_paires]
+        avec_items = [it for _, it in _avec_paires]
+        sans_lignes = [li for li, _ in _sans_paires]
+        avec_lignes = [li for li, _ in _avec_paires]
 
     # ── L-2OPT — SCALAIRES PAR OPTION (panneaux, kWc) ────────────────────────
     # Lus ICI, après TOUTE recomposition des deux paniers (Z1 hybride sans

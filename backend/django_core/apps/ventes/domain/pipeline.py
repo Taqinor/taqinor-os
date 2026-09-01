@@ -582,15 +582,72 @@ def resoudre_entrees(devis, intention):
     return None
 
 
-def decider_taille(intention):
+#: QJR304 — la SOURCE d'une cible arrêtée par le REGISTRE de surcharges
+#: (``taille.nb_panneaux``, décision fondateur D12). Nommée comme les sources
+#: du dimensionneur horaire : une cible dit toujours d'où elle vient.
+SOURCE_CIBLE_REGISTRE = 'registre_surcharges'
+
+
+def _cible_du_registre(devis):
+    """QJR304 — la ``CibleDevis`` que le REGISTRE de ce devis DÉCLARE, ou
+    ``None``.
+
+    R4-A phrase 2, enfin vraie : ``taille.nb_panneaux`` est le chemin de NIVEAU
+    DEVIS et il « alimente ``decider_taille`` » — ce que la règle affirmait
+    depuis le 29/08/2026 sans qu'aucune ligne de code ne le fasse.
+
+    LES DEUX LECTURES SONT CELLES DU REGISTRE, jamais des secondes :
+    le compte vient de :func:`domain.overrides.cible_dimensionnement_du_devis`
+    (la MÊME lecture que la table de préséance R4-A) et le wattage de
+    ``taille.panel_watt`` s'il est déclaré, sinon de la carte AUTO du moteur
+    (``overrides.autos_du_devis`` → ``builder.panneaux_et_watt_lu``, le lecteur
+    unique PVUNI). Le repli ``_AUTO_PANEL_WATT`` est celui, et le seul, que le
+    dimensionneur horaire applique déjà quelques lignes plus bas.
+
+    ``None`` dès que le registre ne déclare rien de lisible : le pipeline
+    repart alors EXACTEMENT comme avant (comportement byte-identique).
+    """
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return None
+    from apps.ventes.domain.overrides import (
+        autos_du_devis, cible_dimensionnement_du_devis, effectif,
+    )
+    nb = cible_dimensionnement_du_devis(devis)
+    if not nb or nb <= 0:
+        return None
+    watt_declare, source_watt = effectif(devis, 'taille.panel_watt', None)
+    watt = None
+    if source_watt != 'auto':
+        try:
+            watt = int(float(watt_declare))
+        except (TypeError, ValueError):
+            watt = None
+    if not watt:
+        try:
+            watt = int(float(autos_du_devis(devis).get('taille.panel_watt')))
+        except (TypeError, ValueError):
+            watt = None
+    watt = watt or _AUTO_PANEL_WATT
+    return CibleDevis(nb_panneaux=nb, panel_watt=watt,
+                      kwc=round(nb * float(watt) / 1000.0, 2),
+                      source=SOURCE_CIBLE_REGISTRE)
+
+
+def decider_taille(intention, devis=None):
     """Étape 2 — LE CHAMP PV.
 
     Le pipeline NE REDIMENSIONNE PAS de sa propre initiative : une cible déjà
     arrêtée par l'appelant (écran, calepinage, puissance demandée) est
-    SOUVERAINE. À défaut, et seulement à défaut, le moteur horaire tranche —
-    le seul dimensionneur, ordre fondateur du 29/08/2026 (« ALL sizing should
-    go through the new sizing tool ») — et son refus est NOMMÉ, jamais remplacé
-    par un repli forfaitaire.
+    SOUVERAINE. Vient ensuite le REGISTRE de surcharges du devis (QJR304 —
+    R4-A phrase 2 : ``taille.nb_panneaux`` alimente CETTE étape). À défaut, et
+    seulement à défaut, le moteur horaire tranche — le seul dimensionneur,
+    ordre fondateur du 29/08/2026 (« ALL sizing should go through the new
+    sizing tool ») — et son refus est NOMMÉ, jamais remplacé par un repli
+    forfaitaire.
+
+    ``devis`` — le devis dont on lit le registre (``None`` à la création, où
+    aucun registre n'existe encore). Il n'est JAMAIS écrit ici : cette étape
+    lit, elle ne persiste rien.
 
     QJR243 (b) — LE PARAMÈTRE ``entrees`` A ÉTÉ RETIRÉ, ET LA DOCUMENTATION
     CORRIGÉE AVEC LUI. Cette étape le DÉCLARAIT sans jamais le LIRE : la chaîne
@@ -606,6 +663,9 @@ def decider_taille(intention):
     """
     if intention.cible is not None:
         return intention.cible
+    declaree = _cible_du_registre(devis)
+    if declaree is not None:
+        return declaree
     if intention.lead is None:
         return None
     nb_panneaux, watt, source, avec = _panneaux_dimensionnement_horaire(
@@ -659,6 +719,9 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
     déjà le format de l'écrivain, avec ses sections, ses ``optionnelle`` et ses
     marqueurs de saisie manuelle (D12) — d'emprunter cette étape sans qu'un
     seul octet de son corps de requête change de sens en route.
+
+    QJR304 — LA RÈGLE R4-A S'APPLIQUE ICI, AU POINT OÙ LA QUANTITÉ DEVIENT
+    FACTURÉE. Voir :func:`_appliquer_preseance_quantite`.
     """
     lignes_in = [
         spec if isinstance(spec, dict) else {
@@ -671,8 +734,92 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
         }
         for index, spec in enumerate(composition or ())
     ]
+    _appliquer_preseance_quantite(devis, lignes_in,
+                                  avertissements=avertissements)
     return remplacer_lignes(devis, lignes_in, company,
                             avertissements=avertissements)
+
+
+class _SpecCommeLigne:
+    """Une spec de ligne VUE COMME une ligne, le temps d'un arbitrage R4-A.
+
+    ``preseance_nb_panneaux`` et ``ligne_panneau_dominante`` lisent des lignes
+    par ``getattr`` (``designation`` / ``quantite`` / ``produit`` /
+    ``quantite_manuelle``) : ce mince adaptateur leur présente une spec de
+    l'écrivain sous cette forme, plutôt que de dupliquer leur logique pour un
+    autre type d'entrée. ``produit`` est ici un IDENTIFIANT (l'écrivain ne
+    porte pas l'objet) : le prédicat panneau retombe alors sur la seule
+    désignation, ce qu'il sait faire.
+    """
+
+    __slots__ = ('index', 'designation', 'produit', 'quantite_manuelle',
+                 '_quantite')
+
+    def __init__(self, index, spec):
+        self.index = index
+        self.designation = spec.get('designation') or ''
+        self.produit = spec.get('produit')
+        self.quantite_manuelle = bool(spec.get('quantite_manuelle', False))
+        try:
+            self._quantite = int(float(spec.get('quantite') or 0))
+        except (TypeError, ValueError):
+            self._quantite = 0
+
+    @property
+    def quantite(self):
+        """En LECTURE SEULE — cet adaptateur ne se réécrit jamais : la seule
+        écriture de quantité de ce chemin est celle de la SPEC, faite par
+        :func:`_appliquer_preseance_quantite` puis persistée par l'écrivain
+        unique ``lignes.remplacer_lignes``."""
+        return self._quantite
+
+
+def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
+    """QJR304 — R4-A phrase 1, LÀ OÙ LA QUANTITÉ DEVIENT FACTURÉE.
+
+    LE TROU QUE CECI FERME. ``PreseanceQuantite.quantite_ligne`` n'avait AUCUN
+    consommateur de production : un devis dont le vendeur avait déclaré
+    ``taille.nb_panneaux = 21`` au niveau DEVIS voyait son kWc passer à 21
+    panneaux (``scenario.puissance_kwc_du_devis``, QJR217) pendant que la LIGNE
+    — donc le total facturé, l'échéancier et le PDF — en comptait toujours 14 :
+    deux nombres de panneaux pour une seule vente.
+
+    LA RÈGLE APPLIQUÉE EST CELLE DE LA TABLE, PAS UNE SECONDE. La quantité
+    retenue est ``overrides.quantite_ligne_panneau`` — donc : la ligne
+    VERROUILLÉE (``quantite_manuelle``) garde la sienne (phrase 1), sinon le
+    niveau devis décide, et un désaccord émet l'avertissement FR qui NOMME la
+    ligne (phrase 3) dans ``avertissements``.
+
+    LES DEUX CANAUX RESTENT DISTINCTS : ``cible_dimensionnement`` continue
+    d'alimenter :func:`decider_taille` et n'est pas touché ici.
+
+    NE FAIT RIEN quand le niveau devis n'a rien déclaré : sans surcharge
+    ``taille.nb_panneaux``, l'arbitrage rendrait la quantité déjà présente et
+    ce chemin est alors byte-identique à celui d'avant QJR304.
+    """
+    if devis is None or not lignes_in:
+        return
+    from apps.ventes.domain.overrides import (
+        cible_dimensionnement_du_devis, quantite_ligne_panneau,
+    )
+    try:
+        if cible_dimensionnement_du_devis(devis) is None:
+            return
+        vues = [_SpecCommeLigne(index, spec)
+                for index, spec in enumerate(lignes_in)
+                if isinstance(spec, dict)
+                and (spec.get('type_ligne') or 'produit') == 'produit'
+                and not spec.get('optionnelle')]
+        dominante, quantite = quantite_ligne_panneau(
+            devis, vues, avertissements=avertissements)
+    except Exception:  # noqa: BLE001 — un arbitrage raté n'écrit rien
+        logger.warning('préséance R4-A illisible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return
+    if dominante is None or not quantite or quantite <= 0:
+        return
+    if quantite != dominante.quantite:
+        lignes_in[dominante.index]['quantite'] = str(quantite)
 
 
 def ecrire_etude_params(devis, intention, composition):
@@ -888,7 +1035,9 @@ def appliquer(devis, intention):
     entrees = resoudre_entrees(devis, intention)
     journal.append('resoudre_entrees')
 
-    cible = decider_taille(intention)
+    # QJR304 — le devis (quand il existe déjà) voyage jusqu'à l'étape 2 : c'est
+    # SON registre qui porte ``taille.nb_panneaux``, la cible de niveau devis.
+    cible = decider_taille(intention, devis)
     journal.append('decider_taille')
 
     intention_compo = intention_de_composition(

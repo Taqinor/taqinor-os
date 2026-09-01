@@ -99,7 +99,12 @@ test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes d
 test('DevisGenerator : runAutoQuote (devis auto) transmet ordreLignes à createAutoQuote', () => {
   const idx = DG.indexOf('const runAutoQuote = async')
   assert.ok(idx > -1, 'runAutoQuote introuvable')
-  const bloc = DG.slice(idx, idx + 1600)
+  // QJR308 a allongé le prologue de `runAutoQuote` (avis palier 5 kWc) :
+  // la fenêtre est bornée à l'appel réseau suivant, pas à un compte de
+  // caractères qui dérive à chaque ligne ajoutée en amont.
+  const finAppel = DG.indexOf('createAutoQuote({', idx)
+  assert.ok(finAppel > -1, 'appel createAutoQuote introuvable dans runAutoQuote')
+  const bloc = DG.slice(idx, finAppel + 1600)
   assert.match(bloc, /marques:\s*marquesActives,/)
   assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
 })

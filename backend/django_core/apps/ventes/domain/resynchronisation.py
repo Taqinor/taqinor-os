@@ -980,10 +980,21 @@ def reconcilier(devis, intention):
         # plutôt que la fabriquer). Le calepinage modélise à watt constant :
         # ce n'est pas le panneau vendu. Sans kWc lisible, la clé est
         # ABSENTE — jamais un nombre de repli.
+        # QJR306 — LE kWc PÉRIMÉ NE SURVIT PAS À UNE RESYNCHRO MUETTE. QJR225
+        # avait retiré le REPLI sur le kWc du calepinage, mais pas la valeur
+        # HÉRITÉE d'une exécution PRÉCÉDENTE : quand le propriétaire ne sait
+        # plus répondre, la clé recopiée depuis ``verrou.etude_params`` à la
+        # ligne ci-dessus restait en place — un devis qui a DÉJÀ eu la clé la
+        # gardait, décrivant une installation qui n'est plus celle vendue. La
+        # règle Z2 (OMETTRE plutôt que fabriquer) s'applique donc aussi au
+        # RETRAIT d'une valeur devenue illisible, pas seulement à l'absence
+        # d'écriture.
         _kwc_proprietaire = puissance_kwc_du_devis(
             verrou, avertissements=avertissements)
         if _kwc_proprietaire:
             etude['puissance_kwc'] = _kwc_proprietaire
+        else:
+            etude.pop('puissance_kwc', None)
         if toiture:
             etude['toiture'] = toiture
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
@@ -1039,6 +1050,13 @@ def reconcilier(devis, intention):
         _avant = dict(verrou.etude_params or {})
         _modifiees = {cle: valeur for cle, valeur in etude.items()
                       if cle not in _avant or _avant[cle] != valeur}
+        # QJR306 — les RETRAITS voyagent aussi : ``etude`` est une copie
+        # intégrale de ``_avant``, donc une clé présente AVANT et absente
+        # d'``etude`` a été retirée PAR CE CHEMIN (le kWc périmé quand le
+        # propriétaire ne répond plus). ``fusionner`` a déjà la sémantique du
+        # retrait (``None`` = retirer la clé) ; sans cette ligne, le pop
+        # d'amont était silencieusement perdu et la valeur périmée reconduite.
+        _modifiees.update({cle: None for cle in _avant if cle not in etude})
         verrou.etude_params = fusionner(
             _avant, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,

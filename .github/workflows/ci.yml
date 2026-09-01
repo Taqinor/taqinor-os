@@ -454,6 +454,21 @@ jobs:
         run: python scripts/check_override_registry.py
       - name: Test the override-registry checker itself (QJR6)
         run: python -m unittest scripts.tests.test_check_override_registry -v
+      # QJR231 — the 6 market-mode enumeration sites (backend Devis
+      # TextChoices, backend Lead TextChoices, quote_engine tuple module,
+      # panneaux mode-options JS array reducer, classifieurs tuple module)
+      # must stay in parity; a mode added/removed at only one site rouges.
+      - name: Check market-mode enumeration parity (QJR231)
+        run: python scripts/check_modes_marche.py
+      - name: Test the market-mode parity checker itself (QJR231)
+        run: python -m unittest scripts.tests.test_check_modes_marche -v
+      # QJR239 — freezes the existing DevisGenerator*/solar*/autoQuote* tests
+      # that assert by regex on readFileSync'd source; forbids any NEW test
+      # of that family adopting the same anti-pattern (nominative allowlist).
+      - name: Check for new source-regex tests (QJR239)
+        run: python scripts/check_tests_source_regex.py
+      - name: Test the source-regex checker itself (QJR239)
+        run: python -m unittest scripts.tests.test_check_tests_source_regex -v
       # YDATA10/11 — timezone.now() everywhere (no naive datetime.now()/
       # utcnow()/datetime(...) ctor); timestamp columns are aware
       # DateTimeField, never DateField(auto_now[_add]=True).

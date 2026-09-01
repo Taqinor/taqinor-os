@@ -223,7 +223,48 @@ class LaPeriodeSApplique(_Base):
 
 
 class BudgetDeRequetes(AssertQueryBudgetMixin, _Base):
-    """SCA40 reste fermé : le tableau de bord n'a PAS de N+1."""
+    """SCA40 reste fermé : le tableau de bord n'a PAS de N+1.
+
+    QJR302 — ce budget ne construisait QUE des devis ``_devis_simple`` (une
+    ligne « Onduleur réseau », aucun ``etude_params['scenario']``), donc du
+    MONO-OPTION pur : il ne traversait JAMAIS la branche coûteuse. Or un devis
+    à DEUX options faisait rechaîner un ``select_related('produit')`` — un
+    queryset neuf, qui ignore le cache du prefetch — par le prédicat
+    ``deux_options_declarees`` PUIS par les totaux : jusqu'à 2 requêtes de plus
+    par devis, qui grandissent avec leur nombre. Les fixtures deux-options
+    ci-dessous sont ce que le test ne savait pas voir.
+    """
+
+    def test_le_nombre_de_requetes_ne_grandit_pas_avec_les_deux_options(self):
+        """ROUGE AVANT : 6 devis à deux options coûtaient ~10 requêtes de plus
+        qu'un seul (2 par devis supplémentaire)."""
+        self._devis_deux_options()
+        with self.assertMaxQueries(60) as petit:
+            self.api.get(URL)
+        compte_petit = len(petit.captured_queries)
+
+        for _ in range(5):
+            self._devis_deux_options()
+        with self.assertMaxQueries(compte_petit) as grand:
+            self.api.get(URL)
+        compte_grand = len(grand.captured_queries)
+
+        self.assertEqual(compte_grand, compte_petit, (
+            f"{compte_petit} requête(s) pour 1 devis à deux options, "
+            f"{compte_grand} pour 6 : le N+1 du tableau de bord se rouvre sur "
+            "les devis à deux options."))
+
+    def test_les_montants_des_deux_options_sont_inchanges_au_centime(self):
+        """Le correctif est PUREMENT un budget de requêtes : le pipeline reste
+        la somme des totaux de l'option mise en avant, remise honorée."""
+        for _ in range(3):
+            self._devis_deux_options()
+        data = self._dashboard()
+        self.assertEqual(self._pipeline_global(data), TTC_AVEC_REMISE * 3)
+        ligne = self._pipeline_commercial(data)
+        self.assertEqual(Decimal(ligne['valeur_pipeline']),
+                         TTC_AVEC_REMISE * 3)
+        self.assertEqual(ligne['devis_actifs'], 3)
 
     def test_le_nombre_de_requetes_ne_grandit_pas_avec_le_pipeline(self):
         self._devis_simple()

@@ -229,11 +229,26 @@ def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
     ``avertissements`` de ``domain.resynchronisation.reconcilier`` jusqu'à la
     réponse ``sync-layout`` que l'écran affiche déjà.
 
+    QJR304 (01/09/2026) — LES DEUX PHRASES SONT ENFIN VRAIES EN PRODUCTION.
+    QJR217 n'avait câblé que l'AVERTISSEMENT et la branche kWc : ``quantite_
+    ligne`` n'avait AUCUN consommateur de production (un grep hors tests sur
+    tout ``backend/django_core`` ne rendait que sa propre définition) et
+    ``pipeline.decider_taille`` ne lisait JAMAIS le ``taille.nb_panneaux`` du
+    registre. Les deux canaux sont désormais branchés, et ils restent
+    DISTINCTS — c'est exactement ce que cette table existe pour garantir :
+
+    * ``quantite_ligne`` → :func:`quantite_ligne_panneau`, consommée par
+      ``pipeline.ecrire_lignes`` (L'ÉCRIVAIN UNIQUE des lignes, donc le point
+      où la quantité devient FACTURÉE) ;
+    * ``cible_dimensionnement`` → :func:`cible_dimensionnement_du_devis`,
+      consommée par ``pipeline.decider_taille`` (étape 2, LE CHAMP PV).
+
+    Aucun des deux n'écrase l'autre : une ligne VERROUILLÉE garde sa quantité
+    pendant que le niveau devis continue d'alimenter le dimensionnement.
+
     LECTURE PURE : rien n'est écrit, ni sur le devis, ni sur la ligne.
     """
-    nb_devis_brut, source_devis = effectif(devis, 'taille.nb_panneaux', None)
-    cible = (_entier_ou_none(nb_devis_brut)
-             if source_devis != 'auto' else None)
+    cible = cible_dimensionnement_du_devis(devis)
 
     verrou = bool(getattr(ligne_dominante, 'quantite_manuelle', False))
     qte_ligne = _entier_ou_none(getattr(ligne_dominante, 'quantite', None))
@@ -255,6 +270,47 @@ def preseance_nb_panneaux(devis, ligne_dominante, *, avertissements=None):
         if avertissements is not None:
             avertissements.append(message)
     return PreseanceQuantite(quantite, source, cible, conflit, message)
+
+
+def cible_dimensionnement_du_devis(devis):
+    """R4-A phrase 2 — LE ``taille.nb_panneaux`` DE NIVEAU DEVIS, ou ``None``.
+
+    C'est la CIBLE du dimensionnement, jamais la quantité d'une ligne : elle
+    alimente ``pipeline.decider_taille`` (QJR304) et elle reste renseignée même
+    quand une ligne verrouillée gagne pour sa propre quantité.
+
+    ``None`` quand le chemin n'est pas surchargé, ou quand la surcharge n'est
+    pas un entier lisible — zéro chiffre inventé : un override illisible vaut
+    une absence, jamais un nombre deviné. LECTURE PURE.
+    """
+    valeur, source = effectif(devis, 'taille.nb_panneaux', None)
+    return _entier_ou_none(valeur) if source != 'auto' else None
+
+
+def quantite_ligne_panneau(devis, lignes, *, avertissements=None):
+    """R4-A phrase 1 POUR LA PRODUCTION — ``(ligne dominante, quantité)``.
+
+    QJR304 — LE CONSOMMATEUR MANQUANT de ``PreseanceQuantite.quantite_ligne``.
+    ``pipeline.ecrire_lignes`` (l'écrivain unique des lignes, donc le point où
+    une quantité devient FACTURÉE) appelle cette fonction : la quantité de la
+    ligne panneau dominante est celle que la table de préséance TRANCHE, pas la
+    quantité brute que l'appelant portait.
+
+    La ligne dominante est choisie par ``domain.scenario.ligne_panneau_
+    dominante`` — LE lecteur unique (prédicat ``solar_design.is_panel``, plus
+    grand compte), jamais une seconde définition. ``(None, None)`` quand aucune
+    ligne panneau n'est lisible : on ne fabrique pas de quantité.
+
+    LECTURE PURE : c'est l'appelant qui écrit, s'il écrit.
+    """
+    from apps.ventes.domain.scenario import ligne_panneau_dominante
+
+    dominante = ligne_panneau_dominante(lignes or ())
+    if dominante is None:
+        return None, None
+    verdict = preseance_nb_panneaux(devis, dominante,
+                                    avertissements=avertissements)
+    return dominante, verdict.quantite_ligne
 
 
 def chemin_autorise(chemin):
@@ -308,17 +364,31 @@ def effectif(devis, chemin, auto):
                               else ORIGINE_MANUEL)
 
 
-def vue_effective(devis, autos):
+def vue_effective(devis, autos, chemins_supplementaires=()):
     """Le bloc ``effectif`` du contrat : ``{chemin: {auto, manuel, effectif,
     source}}`` pour les chemins dont l'appelant a fourni la valeur ``auto``.
 
     ``autos`` est une carte ``{chemin: valeur_auto}``. Les chemins surchargés
-    mais absents d'``autos`` sont rendus quand même, avec ``auto=None`` : un
-    override posé ne disparaît jamais d'une lecture.
+    mais absents d'``autos`` sont rendus quand même : un override posé ne
+    disparaît jamais d'une lecture. ``chemins_supplementaires`` force en plus
+    des chemins que l'appelant veut voir figurer (le DELETE y met le chemin
+    qu'il vient de régénérer — sinon « retour à l'automatique » rendrait un
+    trou).
+
+    QJR305 — ``non_derivable: true`` PLUTÔT QU'UN ``auto: null`` AMBIGU. Un
+    ``auto`` nul disait DEUX choses à la fois — « le moteur n'a pas de valeur »
+    et « la valeur est vide » — et l'écran affichait un champ vide dans les
+    deux cas. Le marqueur est posé quand le moteur n'a AUCUNE valeur à donner
+    pour ce chemin SUR CE DEVIS : soit parce qu'aucun dérivateur serveur
+    n'existe (:data:`CHEMINS_SANS_AUTO`), soit parce que ce devis-là ne porte
+    pas de quoi la dériver (pas de ligne batterie, pas de profil de
+    consommation exploitable…). Une valeur RÉELLEMENT vide, elle, arrive avec
+    ``auto`` renseigné et sans marqueur — les deux états sont désormais
+    distinguables.
     """
     registre = _registre(devis)
     chemins = list(autos or {})
-    for chemin in registre:
+    for chemin in list(chemins_supplementaires or ()) + list(registre):
         if chemin not in chemins:
             chemins.append(chemin)
     bloc = {}
@@ -328,22 +398,215 @@ def vue_effective(devis, autos):
         entree = registre.get(chemin)
         manuel = (entree.get('valeur')
                   if isinstance(entree, dict) and 'valeur' in entree else None)
-        bloc[chemin] = {'auto': auto, 'manuel': manuel,
-                        'effectif': valeur, 'source': source}
+        vue = {'auto': auto, 'manuel': manuel,
+               'effectif': valeur, 'source': source}
+        if auto is None:
+            vue['non_derivable'] = True
+        bloc[chemin] = vue
     return bloc
 
 
-#: QJR216 — LES CHEMINS DONT LE MOTEUR SAIT DÉRIVER UNE VALEUR, et EUX SEULS.
+#: QJR216 / QJR305 — LES CHEMINS DONT LE MOTEUR SAIT DÉRIVER UNE VALEUR.
 #: Chaque entrée est documentée par sa dérivation dans :func:`autos_du_devis`.
-#: Les autres chemins de la liste blanche D12 (profil, tarif, structure…)
-#: n'ont AUCUN dérivateur serveur à ce jour : ils sont OMIS de la carte plutôt
-#: que remplis d'un zéro ou d'un défaut — règle Z2, « mieux vaut taire ».
+#: QJR216 n'en déclarait QUATRE : sur 15 chemins de la liste blanche D12 sur
+#: 19, la réponse portait donc ``auto: null`` — indistinguable d'une valeur
+#: vide. QJR305 a élargi la carte à tous les chemins RÉELLEMENT dérivables (la
+#: dérivation du MOTEUR, jamais une seconde) ; ceux qui ne le sont pas sont
+#: NOMMÉS dans :data:`CHEMINS_SANS_AUTO` et portent ``non_derivable: true``.
 CHEMINS_AVEC_AUTO = (
     'taille.nb_panneaux',
     'taille.panel_watt',
     'taille.kwc',
+    'taille.batterie_nb_modules',
+    'taille.batterie_module_kwh',
+    'scenario',
+    'profil.occupation',
+    'profil.conso_annuelle',
+    PREFIXE_EQUIPEMENT + '<clef>',
+    'tarif.tranches',
+    'tarif.charges_fixes_mad',
+    'etude.jour_reference',
     'mode_installation',
 )
+
+#: QJR305 — LES CHEMINS QUE LE MOTEUR NE DÉRIVE PAS, et la raison de chacun.
+#: Ce ne sont pas des oublis : ce sont des ENTRÉES pures (le vendeur les
+#: DÉCLARE, le serveur n'a rien à en dire), ou des champs sans aucun porteur
+#: côté moteur. La réponse le DIT (``non_derivable: true``) au lieu de laisser
+#: un ``auto: null`` que l'écran ne peut pas interpréter.
+CHEMINS_SANS_AUTO = {
+    'recommended_option': (
+        "entrée d'écran (``etude_schema`` : ECRAN/ENTREE) — le moteur ne "
+        "choisit pas l'option mise en avant, il l'obéit."),
+    'profil.factures_mensuelles_reelles': (
+        'entrée pure : le moteur BACK-CALCULE la consommation À PARTIR des '
+        'factures ; il ne sait pas faire le chemin inverse.'),
+    'tarif.distributeur': (
+        'aucun porteur côté moteur : le barème est lu par société '
+        '(``tarif.tranches`` / ``tarif.charges_fixes_mad``), jamais par nom '
+        'de distributeur.'),
+    'structure': 'choix de pose déclaré — aucun dérivateur serveur.',
+    'tension': 'choix de raccordement déclaré — aucun dérivateur serveur.',
+    'pompe_alim': "choix d'alimentation de pompe déclaré (agricole) — aucun "
+                  'dérivateur serveur.',
+}
+
+
+def _autos_taille_panneaux(devis):
+    """``{chemin: valeur}`` du champ PV — le lecteur unique des lignes PVUNI."""
+    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
+    lignes = [
+        li for li in devis.lignes.select_related(
+            'produit', 'produit__fiche_technique').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit'
+        and not getattr(li, 'optionnelle', False)]
+    nb, watt = panneaux_et_watt_lu(lignes)
+    autos = {}
+    if nb:
+        autos['taille.nb_panneaux'] = nb
+    if watt:
+        autos['taille.panel_watt'] = watt
+    if nb and watt:
+        autos['taille.kwc'] = round(nb * watt / 1000, 2)
+    return autos
+
+
+def _autos_banque_batterie(devis):
+    """``taille.batterie_nb_modules`` / ``taille.batterie_module_kwh``.
+
+    LE CALIBRE vient de ``dimensionnement_devis.module_batterie_du_devis``
+    (BATHOMO — « la page suit les articles du devis »), LE COMPTE de la ligne
+    batterie DOMINANTE : c'est la ligne que ``offres_tailles`` écrit quand une
+    taille change le nombre de modules, donc la lecture qui apparie la valeur
+    ``auto`` à son écrivain. Aucune ligne batterie ⇒ aucune des deux clés.
+    """
+    from apps.ventes.domain.catalogue import _is_battery
+    from apps.ventes.domain.dimensionnement_devis import (
+        _lignes_produit_du_devis, module_batterie_du_devis,
+    )
+
+    candidats = [
+        li for li in _lignes_produit_du_devis(devis)
+        if (getattr(li, 'variante', '') or '') != 'sans'
+        and _is_battery(getattr(li, 'designation', '') or '')]
+    if not candidats:
+        return {}
+    dominante = max(
+        candidats, key=lambda li: float(getattr(li, 'quantite', 0) or 0))
+    autos = {}
+    nb = int(float(getattr(dominante, 'quantite', 0) or 0))
+    if nb > 0:
+        autos['taille.batterie_nb_modules'] = nb
+    calibre = module_batterie_du_devis(devis)
+    if calibre:
+        autos['taille.batterie_module_kwh'] = calibre
+    return autos
+
+
+def _auto_scenario(devis):
+    """Le SCÉNARIO que les LIGNES servent — ``scenario_servable``, pas une
+    seconde règle.
+
+    « Les deux (Sans + Avec) » exige les TROIS faits (onduleur réseau,
+    onduleur hybride, batterie) ; à défaut, le libellé MONO honnête. C'est la
+    doctrine PVUNI (« les lignes sont la source unique ») appliquée telle
+    quelle : la DEMANDE, elle, est ce que le vendeur DÉCLARE — et c'est
+    justement ce que le bloc ``effectif`` met en regard de cette valeur.
+    """
+    from apps.ventes.domain.catalogue import (
+        _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
+    )
+    from apps.ventes.domain.scenario import scenario_servable
+
+    blobs = [
+        '%s %s' % (getattr(li, 'designation', '') or '',
+                   getattr(getattr(li, 'produit', None), 'nom', '') or '')
+        for li in devis.lignes.select_related('produit').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit']
+    if not blobs:
+        return None
+    return scenario_servable(
+        True,
+        a_reseau=any(_is_reseau_inverter(b) for b in blobs),
+        a_hybride=any(_is_hybrid_inverter(b) for b in blobs),
+        a_batterie=any(_is_battery(b) for b in blobs))
+
+
+class _DevisSansRegistre:
+    """LE MÊME devis, vu SANS son registre — pour les dérivations AUTO.
+
+    ``auto`` est ce que le moteur dirait SI aucune surcharge n'était posée : un
+    dérivateur qui consulte lui-même le registre (``entrees.jour_reference_du_
+    devis``) rendrait sinon la valeur MANUELLE sous l'étiquette ``auto``, et
+    l'écran ne verrait plus aucun écart. Ce proxy relaie tout au devis réel et
+    ne ment que sur ``overrides``, qu'il rend VIDE.
+    """
+
+    overrides = {}
+
+    def __init__(self, devis):
+        self._devis = devis
+
+    def __getattr__(self, nom):
+        return getattr(self._devis, nom)
+
+
+def _jour_reference_auto(devis):
+    """``etude.jour_reference`` — LA date que le moteur retiendrait SANS
+    surcharge : ``entrees.jour_reference_du_devis`` lu sur le devis vu SANS
+    son registre (sinon il rendrait la surcharge elle-même sous l'étiquette
+    ``auto``). ``None`` si rien n'est lisible.
+
+    QJR305 — l'``auto`` doit être ANCRÉ DANS LE DEVIS : le repli « aujourd'hui »
+    de ``jour_reference_du_devis`` (chemin LEAD) n'est pas une dérivation de CE
+    devis — un devis muet recevrait la date d'exécution comme ``auto`` (et la
+    carte changerait à minuit). Sans ``date_creation`` lisible, PAS d'auto
+    (règle Z2, « mieux vaut taire »)."""
+    from apps.ventes.domain.entrees import (
+        _date_lisible, jour_reference_du_devis,
+    )
+
+    if _date_lisible(getattr(devis, 'date_creation', None)) is None:
+        return None
+    return jour_reference_du_devis(_DevisSansRegistre(devis))
+
+
+def _autos_du_profil(devis):
+    """Occupation, consommation annuelle, barème et équipements — LA lecture
+    unique ``domain.entrees.entrees_depuis_devis`` (QJR42), jamais une seconde.
+
+    La date de référence lui est passée DÉJÀ résolue et SANS le registre
+    (:func:`_jour_reference_auto`) : c'est la seule lecture de ce chemin qui
+    consulterait les surcharges, et ``auto`` ne doit jamais les refléter.
+
+    Elle rend ``None`` hors résidentiel ou sans profil exploitable : les clés
+    sont alors simplement absentes (règle Z2, « mieux vaut taire »).
+    """
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+
+    entrees = entrees_depuis_devis(
+        devis, jour_reference=_jour_reference_auto(devis))
+    if entrees is None:
+        return {}
+    autos = {}
+    if entrees.occupation:
+        autos['profil.occupation'] = entrees.occupation
+    conso = entrees.conso_kwh_mensuelles
+    if conso:
+        try:
+            autos['profil.conso_annuelle'] = round(
+                sum(float(m) for m in conso), 2)
+        except (TypeError, ValueError):
+            pass
+    if entrees.tranches:
+        autos['tarif.tranches'] = entrees.tranches
+    if entrees.charges_fixes_mad is not None:
+        autos['tarif.charges_fixes_mad'] = entrees.charges_fixes_mad
+    for clef, valeur in (entrees.equipements or {}).items():
+        if valeur is not None and '.' not in str(clef):
+            autos[PREFIXE_EQUIPEMENT + str(clef)] = valeur
+    return autos
 
 
 def autos_du_devis(devis):
@@ -368,28 +631,39 @@ def autos_du_devis(devis):
     elles ignorent délibérément les surcharges posées, sinon ``auto`` et
     ``manuel`` diraient la même chose et le vendeur ne verrait plus l'écart.
 
-    Ne lève JAMAIS : un devis illisible rend une carte partielle (ou vide), et
-    le bloc ``effectif`` retombe alors sur ``auto: null`` — l'état d'avant.
+    QJR305 — LA CARTE COUVRE DÉSORMAIS LES 13 CHEMINS DÉRIVABLES, pas 4.
+    Chaque bloc appelle LE dérivateur du moteur qui possède déjà la question —
+    ``builder.panneaux_et_watt_lu`` (champ PV), ``dimensionnement_devis.
+    module_batterie_du_devis`` (banque), ``scenario.scenario_servable``
+    (scénario servi par les lignes), ``entrees.entrees_depuis_devis`` (profil,
+    barème, équipements), ``entrees.jour_reference_du_devis`` (date de
+    référence). Les 6 chemins restants n'ont AUCUN dérivateur serveur : ils
+    sont NOMMÉS dans :data:`CHEMINS_SANS_AUTO` et la réponse leur donne
+    ``non_derivable: true`` — jamais un ``auto: null`` muet.
+
+    Ne lève JAMAIS : chaque bloc est isolé, un bloc en échec retire SES clés
+    et laisse les autres — un devis illisible rend une carte partielle (ou
+    vide), et le bloc ``effectif`` retombe alors sur ``non_derivable``.
     """
     autos = {}
-    nb, watt = 0, None
+    for bloc in (_autos_taille_panneaux, _autos_banque_batterie,
+                 _autos_du_profil):
+        try:
+            autos.update(bloc(devis) or {})
+        except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien
+            continue
     try:
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
-
-        lignes = [
-            li for li in devis.lignes.select_related(
-                'produit', 'produit__fiche_technique').all()
-            if getattr(li, 'type_ligne', 'produit') == 'produit'
-            and not getattr(li, 'optionnelle', False)]
-        nb, watt = panneaux_et_watt_lu(lignes)
-    except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien
-        nb, watt = 0, None
-    if nb:
-        autos['taille.nb_panneaux'] = nb
-    if watt:
-        autos['taille.panel_watt'] = watt
-    if nb and watt:
-        autos['taille.kwc'] = round(nb * watt / 1000, 2)
+        scenario = _auto_scenario(devis)
+    except Exception:  # noqa: BLE001
+        scenario = None
+    if scenario:
+        autos['scenario'] = scenario
+    try:
+        jour = _jour_reference_auto(devis)
+    except Exception:  # noqa: BLE001
+        jour = None
+    if jour is not None:
+        autos['etude.jour_reference'] = jour.isoformat()
     mode = getattr(devis, 'mode_installation', None)
     if mode:
         autos['mode_installation'] = mode

@@ -245,9 +245,17 @@ def is_smart_meter(designation: str) -> bool:
     return "smart meter" in (designation or "").lower()
 
 
+#: QJR301 — « Wi-Fi » S'ÉCRIT DE PLUSIEURS FAÇONS. Le prédicat testait
+#: ``"wifi" in d`` : ``Passerelle Wi-Fi Deye`` (trait d'union) passait donc au
+#: travers, vérifié par exécution — ``est_accessoire_huawei('Passerelle Wi-Fi
+#: Deye')`` rendait ``False``. Les séparateurs usuels entre « wi » et « fi »
+#: sont désormais tolérés ; le reste du prédicat est inchangé.
+_WIFI_RE = re.compile(r"wi[\s\-_.]*fi")
+
+
 def is_wifi_dongle(designation: str) -> bool:
     d = (designation or "").lower()
-    return "wifi" in d or "dongle" in d
+    return "dongle" in d or bool(_WIFI_RE.search(d))
 
 
 def _as_kw(value):
