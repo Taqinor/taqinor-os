@@ -29,6 +29,7 @@ Nouvelle clé API ; durée max 3 mois, valeur affichée UNE seule fois) :
 Sans config complète, les commandes n'écrivent RIEN et affichent l'usage —
 même contrat « sans fichier → ne rien faire » que ``import_odoo_leads``.
 """
+import html
 import json
 import os
 import re
@@ -183,6 +184,9 @@ def build_rows(odoo_leads, tag_names):
 
         note_lines = []
         description = _HTML_TAG_RE.sub(' ', str(lead.get('description') or ''))
+        # Balises retirées PUIS entités décodées (&nbsp; & co) — le HTML
+        # d'Odoo contient les deux.
+        description = html.unescape(description)
         description = re.sub(r'\s+', ' ', description).strip()[:2000]
         if description:
             note_lines.append(description)
