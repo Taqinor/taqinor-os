@@ -1905,32 +1905,59 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
     plan.save()
 
     coefficient = plan.coefficient_degressif or Decimal('1')
+    annee_debut = plan.date_debut.year
+    # AUD165 — cumul RÉEL vs cumul théorique. Les dotations déjà POSTÉES au
+    # grand livre sont intangibles : le calendrier se recalcule donc sur la base
+    # RESTANTE (base − Σ postées) et sur les SEULES années non postées. Sans
+    # cela, la garantie « Σ annuités = base » de ``_calcul_annuites`` est rompue
+    # dès qu'une annuité est ignorée : une part de l'immobilisation n'est jamais
+    # amortie (raccourcissement) ou la base est dépassée (allongement).
+    postees = {
+        dot.annee: dot.montant
+        for dot in DotationAmortissement.objects.filter(plan=plan, posted=True)
+    }
+    deja_amorti = sum(postees.values(), Decimal('0'))
+    annees_cibles = [
+        annee_debut + i for i in range(plan.duree_annees)
+        if (annee_debut + i) not in postees
+    ]
+    base_restante = plan.base_amortissable - deja_amorti
     # XACC32 — prorata temporis LINÉAIRE uniquement : mois restants depuis la
     # mise en service (défaut = date d'acquisition, comportement inchangé si
     # la mise en service n'est pas renseignée). Le dégressif garde sa règle
-    # actuelle (aucun prorata).
+    # actuelle (aucun prorata). Le prorata ne s'applique qu'à la PREMIÈRE année
+    # du plan, et seulement si elle reste à doter.
     mois_premiere_annee = 12
-    if plan.mode == PlanAmortissement.Mode.LINEAIRE:
+    if (plan.mode == PlanAmortissement.Mode.LINEAIRE
+            and annee_debut in annees_cibles):
         mise_en_service = immobilisation.date_mise_en_service_effective
         if mise_en_service and mise_en_service.year == plan.date_debut.year:
             mois_premiere_annee = 13 - mise_en_service.month
-    annuites = _calcul_annuites(
-        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient,
-        mois_premiere_annee=mois_premiere_annee)
+    annuites = []
+    if base_restante > 0 and annees_cibles:
+        annuites = _calcul_annuites(
+            base_restante, len(annees_cibles), plan.mode, coefficient,
+            mois_premiere_annee=mois_premiere_annee)
 
-    annee_debut = plan.date_debut.year
-    cumul = Decimal('0')
+    # Montants retenus, année par année : les postés à leur valeur RÉELLE, les
+    # autres aux nouvelles annuités — c'est cette suite qui alimente le cumul
+    # stocké et la valeur nette.
+    montants = dict(postees)
     annees_calculees = set()
-    for idx, montant in enumerate(annuites):
-        annee = annee_debut + idx
+    for annee, montant in zip(annees_cibles, annuites):
+        montants[annee] = montant
         annees_calculees.add(annee)
+    cumul = Decimal('0')
+    for annee in sorted(montants):
+        montant = montants[annee]
         cumul += montant
+        if annee not in annees_calculees:
+            # Dotation déjà postée : elle compte dans le cumul, on n'y touche
+            # pas (immutabilité comptable).
+            continue
         valeur_nette = _arrondi(plan.base_amortissable - cumul)
         dotation = DotationAmortissement.objects.filter(
             plan=plan, annee=annee).first()
-        if dotation and dotation.posted:
-            # On NE TOUCHE PAS une dotation déjà postée (immutabilité comptable).
-            continue
         from datetime import date as _date
         date_dotation = _date(annee, 12, 31)
         if dotation is None:
