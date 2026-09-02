@@ -65,8 +65,12 @@ class TestChantierAssigneNotify(TestCase):
     def test_a_creation_notifie_le_technicien(self):
         """(a) créer le chantier depuis un devis notifie l'installateur."""
         devis = self._devis(1)
-        inst, created = create_installation_from_devis(
-            devis, self.resp, self.company)
+        # QJR422 — l'envoi part par ``transaction.on_commit`` (jamais sous les
+        # verrous de l'acceptation) : en TestCase il faut donc exécuter les
+        # rappels de commit. Le contenu et le nombre restent inchangés.
+        with self.captureOnCommitCallbacks(execute=True):
+            inst, created = create_installation_from_devis(
+                devis, self.resp, self.company)
         self.assertTrue(created)
         notifs = Notification.objects.filter(
             recipient=self.resp, event_type=EventType.CHANTIER_ASSIGNE)
@@ -78,10 +82,12 @@ class TestChantierAssigneNotify(TestCase):
     def test_a_reaccept_idempotent_ne_re_notifie_pas(self):
         """(a) ré-accepter (chantier déjà présent) ne recrée pas de notif."""
         devis = self._devis(2)
-        create_installation_from_devis(devis, self.resp, self.company)
+        with self.captureOnCommitCallbacks(execute=True):  # QJR422
+            create_installation_from_devis(devis, self.resp, self.company)
         # 2e appel : le service renvoie le chantier existant (created=False).
-        inst2, created2 = create_installation_from_devis(
-            devis, self.resp, self.company)
+        with self.captureOnCommitCallbacks(execute=True):  # QJR422
+            inst2, created2 = create_installation_from_devis(
+                devis, self.resp, self.company)
         self.assertFalse(created2)
         self.assertEqual(
             Notification.objects.filter(
@@ -99,9 +105,10 @@ class TestChantierAssigneNotify(TestCase):
             devis, self.resp, self.company)
         Notification.objects.all().delete()  # ignore la notif de création
         api = _auth(self.resp)
-        res = api.patch(
-            f'/api/django/installations/chantiers/{inst.pk}/',
-            {'technicien_responsable': autre.pk}, format='json')
+        with self.captureOnCommitCallbacks(execute=True):  # QJR422
+            res = api.patch(
+                f'/api/django/installations/chantiers/{inst.pk}/',
+                {'technicien_responsable': autre.pk}, format='json')
         self.assertIn(res.status_code, (200, 202), res.content)
         notifs = Notification.objects.filter(
             recipient=autre, event_type=EventType.CHANTIER_ASSIGNE)

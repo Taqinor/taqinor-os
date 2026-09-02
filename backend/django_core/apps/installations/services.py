@@ -382,10 +382,29 @@ def _seed_schema_unifilaire_document(installation, devis):
 def _notifier_chantier_assigne(inst, technicien):
     """VX213 (a)/(b) — notifie (best-effort, ne lève jamais) le technicien
     assigné à un chantier (création depuis devis, ou réassignation). No-op si
-    aucun technicien. La société est celle du chantier (jamais d'une requête)."""
+    aucun technicien. La société est celle du chantier (jamais d'une requête).
+
+    ── QJR422 / QJR4-05 — L'ENVOI PART APRÈS LE COMMIT ──────────────────────
+
+    CE QUI ÉTAIT FAUX. ``notify(...)`` est un envoi SMTP et web-push
+    SYNCHRONE, et cette fonction est appelée depuis les abonnés à
+    ``devis_accepted`` — c'est-à-dire DANS la transaction d'acceptation, alors
+    que les verrous ``select_for_update`` du groupe de variantes sont tenus
+    (``ventes/domain/cycle_vie.py``). Un serveur de messagerie lent tenait donc
+    la transaction — et les verrous — ouverts pendant tout le délai réseau :
+    contention garantie, dépassement de délai possible sur une acceptation
+    client. Pire, une transaction qui échouait ENSUITE avait déjà notifié un
+    chantier qui n'existe pas.
+
+    LA RÈGLE. Le message est COMPOSÉ ici (données déjà en mémoire, aucune I/O)
+    puis l'envoi est confié à ``transaction.on_commit`` : il ne part qu'une
+    fois la transaction validée, et ne part PAS DU TOUT si elle échoue. Hors
+    transaction (autocommit), Django exécute la fonction immédiatement — le
+    contenu et le nombre des notifications sont donc inchangés."""
     if technicien is None or not getattr(technicien, 'pk', None):
         return
     try:
+        from django.db import transaction
         from apps.notifications.services import notify
         from apps.notifications.models import EventType
         client_nom = getattr(getattr(inst, 'client', None), 'nom', '') or ''
@@ -393,10 +412,18 @@ def _notifier_chantier_assigne(inst, technicien):
         corps = (f"Le chantier « {inst.reference} »"
                  + (f" (client : {client_nom})" if client_nom else '')
                  + " vous est assigné.")
-        notify(
-            technicien, EventType.CHANTIER_ASSIGNE, titre,
-            body=corps, link=f'/installations?installation={inst.pk}',
-            company=inst.company)
+        lien = f'/installations?installation={inst.pk}'
+        company = inst.company
+
+        def _envoyer():
+            try:
+                notify(
+                    technicien, EventType.CHANTIER_ASSIGNE, titre,
+                    body=corps, link=lien, company=company)
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
         pass
 
@@ -2459,8 +2486,16 @@ def appliquer_replanification_masse(company, *, jour, motif, user,
 
 def _notifier_reassignation(interv, user):
     """XFSM3 — notifie (best-effort, ne lève jamais) le technicien réassigné
-    d'un changement de créneau."""
+    d'un changement de créneau.
+
+    QJR422 — MÊME MOTIF que ``_notifier_chantier_assigne`` et plus directement
+    vérifiable : l'appelant (``replanifier_en_masse``) exécute cette fonction
+    DANS un ``with transaction.atomic()`` qui tient des
+    ``select_for_update()`` sur chaque intervention déplacée. L'envoi part donc
+    par ``transaction.on_commit`` : jamais sous verrou, et jamais du tout si la
+    replanification est annulée."""
     try:
+        from django.db import transaction
         from apps.notifications.services import notify
         from apps.notifications.models import EventType
     except Exception:  # pragma: no cover - défensif
@@ -2469,10 +2504,18 @@ def _notifier_reassignation(interv, user):
         return
     try:
         titre = f"Intervention replanifiée — #{interv.id}"
-        notify(
-            interv.technicien, EventType.CHANTIER_DUE, titre,
-            body=f"Nouvelle date : {interv.date_prevue}.",
-            company=interv.company)
+        destinataire = interv.technicien
+        corps = f"Nouvelle date : {interv.date_prevue}."
+        company = interv.company
+
+        def _envoyer():
+            try:
+                notify(destinataire, EventType.CHANTIER_DUE, titre,
+                       body=corps, company=company)
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
         pass
 

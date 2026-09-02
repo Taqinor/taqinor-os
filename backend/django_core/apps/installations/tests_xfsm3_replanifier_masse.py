@@ -142,10 +142,16 @@ class TestReplanificationMasse(TestCase):
                 iv.activites.filter(kind='note').exists())
 
     def test_technicien_reassigne_notifie(self):
-        resp = self.api.post(f'{BASE}/interventions/replanifier-en-masse/', {
-            'jour': self.jour.isoformat(), 'technicien': self.absent.id,
-            'motif': 'Pluie',
-        }, format='json')
+        # QJR422 — l'envoi part par ``transaction.on_commit`` (plus jamais sous
+        # le ``select_for_update`` de la replanification) : en TestCase il faut
+        # donc exécuter les rappels de commit.
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.api.post(
+                f'{BASE}/interventions/replanifier-en-masse/', {
+                    'jour': self.jour.isoformat(),
+                    'technicien': self.absent.id,
+                    'motif': 'Pluie',
+                }, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         if resp.data['deplacees']:
             nouveau_id = resp.data['deplacees'][0]['nouveau_technicien_id']
