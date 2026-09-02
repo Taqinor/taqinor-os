@@ -565,7 +565,16 @@ def _ajouter_ligne_usage_contrat(contrat, facture):
     ``ventes`` (``ajouter_lignes_frais_refactures`` — même mécanisme que
     ``apps.compta`` pour les frais refacturés, aucun nouveau couplage).
     Renvoie le motif (chaîne vide si une ligne a bien été ajoutée) destiné au
-    journal XCTR5."""
+    journal XCTR5.
+
+    AUD151 — le FORFAIT est matérialisé en ligne AVANT l'usage lorsqu'il n'en
+    a pas. ``creer_facture_contrat`` fabrique une facture à montants FIGÉS et
+    SANS aucune ``LigneFacture`` ; or ``ajouter_lignes_frais_refactures``
+    recalcule les totaux DEPUIS LES LIGNES. Ajouter la seule ligne d'usage
+    aurait donc écrasé le forfait de la période (une facture de 3 000 MAD
+    serait retombée au montant de l'usage seul). Les deux lignes sont donc
+    posées d'un même geste : forfait (libellé de la facture, montant HT figé)
+    puis usage — le total recalculé vaut exactement forfait + usage."""
     periode_debut = facture.periode_service_debut
     periode_fin = facture.periode_service_fin
     if periode_debut is None or periode_fin is None:
@@ -578,10 +587,15 @@ def _ajouter_ligne_usage_contrat(contrat, facture):
 
     from apps.ventes.services import ajouter_lignes_frais_refactures
 
-    ajouter_lignes_frais_refactures(
-        facture=facture,
-        lignes=[{'designation': description, 'montant_ht': montant}],
-    )
+    lignes = []
+    forfait_ht = facture.montant_ht
+    if not facture.lignes.exists() and forfait_ht:
+        lignes.append({
+            'designation': facture.libelle or 'Forfait de maintenance',
+            'montant_ht': forfait_ht,
+        })
+    lignes.append({'designation': description, 'montant_ht': montant})
+    ajouter_lignes_frais_refactures(facture=facture, lignes=lignes)
     return ''
 
 
