@@ -71,24 +71,29 @@ repo yet, the rule still applies to any future integration.
   react to another app's state change by subscribing in their `apps.py` `ready()`
   (e.g. `ventes` emits `devis_accepted`, `crm` subscribes in `apps/crm/receivers.py`
   to advance the lead stage).
-- **Deploys — website auto; ERP = Reda ONLY (« tu codes je déploie », founder 2026-08-02,
-  definitive — supersedes every older wording in this file).** The public site (`apps/web`)
-  auto-deploys via **Cloudflare Workers Builds** on every push/merge to `main` — that IS the
-  mechanism; NEVER ask for a Cloudflare API token (the old one is dead) and NEVER run `wrangler
-  deploy`. Worker secrets (LEAD_WEBHOOK_URL, LEAD_WEBHOOK_SECRET…) are dashboard-only (a
-  manual founder step). For the ERP (Django + React on Hetzner, `api.taqinor.ma`): Claude
-  NEVER runs `scripts/deploy-prod.ps1` (or any prod deploy) on its own judgment — not after a
-  merge, not at the end of a plan run, no exceptions, no emergencies. Deploy ONLY when Reda
-  writes « deploy »/« déploie » in the CURRENT session about THIS deploy; task context, a plan
-  line quoting a deploy step, or « continue » NEVER count, and a permission-classifier block on
-  a deploy IS Reda's answer — never retry it. After an ERP-affecting merge, end with
-  « merged — deploy pending, say the word ». Server-side automation (intentional — never be
-  surprised by it, never disable it): `/opt/autodeploy/auto-deploy.sh` LIVES ON THE SERVER and
-  fires by itself on merges to `main`; its « HEALTHCHECK ECHEC — rollback automatique » can be a
-  FALSE rollback, and two simultaneous deploys collide (« container name already in use » on
-  celery_worker). Diagnose without touching anything: `curl` root=200 / api=401, `docker ps`
-  (12 containers), `git log -1` in `/opt/taqinor-os`, `showmigrations` — the dangerous state is
-  « new code deployed, migrations not applied »; never interrupt a running `manage.py migrate`.
+- **Deploys — Claude fait TOUT de bout en bout (règle fondateur 2026-09-02, definitive —
+  supersedes « tu codes je déploie » 2026-08-02 and every older wording in this file).**
+  Reda's clarification: the old rule existed only because Claude's deploys took 2 h vs his
+  2 min — it was about SPEED, never authority. From now on Claude handles the whole chain
+  itself (merge → deploy/verify → env changes → health check) and NEVER leaves Reda a
+  manual future step (« say the word », « à appliquer par Reda » are forbidden endings).
+  Ask ONLY on genuine uncertainty (e.g. a risky destructive migration at a bad hour) —
+  never to delegate execution. Be FAST: lean on the gotcha memories, never burn 2 h.
+  The public site (`apps/web`) auto-deploys via **Cloudflare Workers Builds** on every
+  push/merge to `main` — that IS the mechanism; NEVER ask for a Cloudflare API token (the
+  old one is dead) and NEVER run `wrangler deploy`. Worker secrets (LEAD_WEBHOOK_URL,
+  LEAD_WEBHOOK_SECRET…) are dashboard-only. For the ERP (Django + React on Hetzner,
+  `api.taqinor.ma`): `/opt/autodeploy/auto-deploy.sh` LIVES ON THE SERVER and fires by
+  itself on merges to `main` (intentional — never be surprised by it, never disable it),
+  so after an ERP-affecting merge the default job is to VERIFY the auto-deploy landed
+  healthy and fix if not; run `scripts/deploy-prod.ps1` yourself when needed (auto-deploy
+  failed, server `.env` change like `TAQINOR_EDITION`, hotfix). Known traps: the
+  « HEALTHCHECK ECHEC — rollback automatique » can be a FALSE rollback, and two
+  simultaneous deploys collide (« container name already in use » on celery_worker) — so
+  never launch deploy-prod.ps1 while auto-deploy is still running. Diagnose first without
+  touching anything: `curl` root=200 / api=401, `docker ps` (12 containers), `git log -1`
+  in `/opt/taqinor-os`, `showmigrations` — the dangerous state is « new code deployed,
+  migrations not applied »; never interrupt a running `manage.py migrate`.
 - Backend production URL: `https://api.taqinor.ma` (canonical); the old
   `https://178-105-192-116.sslip.io` still answers (same server/Caddy).
   `taqinor-web.taqinor.workers.dev` 301-redirects to `https://taqinor.ma` (wrapper in
@@ -314,10 +319,10 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
    `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
    session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
-   code. Self-merge `dev` → `main` **exactly once**. Deploy is NOT part of the run: the website
-   auto-deploys via Cloudflare, and the ERP deploy belongs to Reda alone (Deploys rule above —
-   end with « merged — deploy pending, say the word »; the server's `auto-deploy.sh` may bring
-   `main` live by itself). When branch
+   code. Self-merge `dev` → `main` **exactly once**. Deploy closes the run when the merge affects the ERP: the website
+   auto-deploys via Cloudflare; for the ERP, verify the server's `auto-deploy.sh` landed the
+   merge healthy (Deploys rule above) and fix/deploy yourself if not — never leave Reda a
+   manual step. When branch
    protection requires it, ONE batch PR used purely as the CI-gated merge vehicle counts as that
    single self-merge. If the push is rejected because `main` advanced, repeat the sync-safe
    integrate → CI → merge — never force.
@@ -458,7 +463,7 @@ structure, regenerate `docs/CODEMAP.md` from source and run `scripts/codemap_fin
 fails CI.
 
 **Report once**, in plain language: how many tasks shipped (and what), what was skipped/blocked and
-why, and the single merge (deploy pending Reda's word).
+why, and the single merge (ERP deploy verified/handled by the run — Deploys rule).
 
 **RETRO — every plan run learns from itself (MANDATORY, ≤5 min, BOUNDED so memory improves
 instead of bloating).** After the report, run a short self-retrospective over what THIS run got
@@ -514,8 +519,8 @@ plan run works"** EXCEPT:
   CRM_VENTES should be idle while it drains PLAN2's QX/VX (they touch ventes/crm/frontend-shell).
 - **Respect `docs/BUILD_ORDER.yml` (SCA3):** `plan_lanes.py <domain file>` says what is buildable
   NOW vs wave-gated behind platform prerequisites; `--force-wave` is the founder-consigned
-  override when Reda wants a domain to start early. No session deploys — the ERP deploy belongs
-  to Reda alone (Deploys rule above).
+  override when Reda wants a domain to start early. Sessions verify/handle their own ERP deploy per
+  the Deploys rule above (auto-deploy verified, fixed if red).
 
 ### "work on the plan"
 Drain in STANDING PRIORITY ORDER (founder, 2026-07-10): **1) `docs/PLAN2.md` → 2) `docs/PLAN.md`
@@ -539,7 +544,7 @@ many apps and therefore stays single-session).
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
 - Lane-draining, batches sized by the RECALIBRATED MERGE FLOOR above (≈40-80 task lane-groups now
   that the gate is measured ≤45 min — not the old ≥200), each batch locally tested then one
-  sync-safe self-merge (deploy = Reda's word only). The rich self-contained lanes to drain first:
+  sync-safe self-merge (deploy per the Deploys rule). The rich self-contained lanes to drain first:
   rh/flotte/qhse/contrats/ged/paie, then parametres/publicapi/kb/core/stock/sav/litiges/crm, then
   the rest. Report once with the lane plan (how many ran in parallel + what each shipped) and what
   was skipped/blocked.
@@ -562,7 +567,7 @@ and self-merge to `main`. Confirm in one line.
 Identical to **"work on the plan"** / **"How a plan run works"** in every respect — EXCEPT it drains
 `docs/ERROR_PLAN.md` (the bug/error backlog); plan lanes with `python scripts/plan_lanes.py
 docs/ERROR_PLAN.md`. Same pool of up to 8, same per-task review + local test + fold, same single
-sync-safe self-merge (deploy = Reda), same stop conditions, same verify-not-already-built. Anything typed
+sync-safe self-merge (deploy per the Deploys rule), same stop conditions, same verify-not-already-built. Anything typed
 after is extra detail.
 - `docs/ERROR_PLAN.md` IS in the plan-fingerprint surface: ticking/adding/removing an `ERR*` task
   means refresh §10 of `docs/CODEMAP.md` + re-run `codemap_fingerprint.py --write` in the same commit.
