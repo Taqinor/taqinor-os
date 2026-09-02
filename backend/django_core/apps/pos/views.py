@@ -101,7 +101,19 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         if vente.statut != VenteComptoir.Statut.BROUILLON:
             raise ValidationError('Vente déjà validée.')
         produit_id = request.data.get('produit')
-        quantite = request.data.get('quantite', 1)
+        # AUD205 — la quantité est validée AVANT toute création : une quantité
+        # nulle/négative encaissait un montant négatif ET produisait à la
+        # validation une « sortie » de stock au signe inversé (entrée déguisée
+        # en vente). Le sens du mouvement est porté par `type_mouvement`.
+        quantite_brute = request.data.get('quantite', 1)
+        try:
+            quantite = Decimal(str(
+                1 if quantite_brute is None else quantite_brute))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({'quantite': 'Quantité invalide.'})
+        if quantite <= 0:
+            raise ValidationError(
+                {'quantite': 'La quantité doit être strictement positive.'})
         prix = request.data.get('prix_unitaire_ttc')
         from apps.stock.selectors import get_produit_scoped
         produit = get_produit_scoped(vente.company, produit_id)
