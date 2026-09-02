@@ -144,6 +144,11 @@ ALLOWLIST: dict[str, str] = {
         "wiring API/Redux/Radix) non importable pur sous node --test - "
         "verifie le controle Raccordement/hors reseau par lecture de "
         "SOURCE, meme contrainte que les autres verrous DevisGenerator*.",
+    "frontend/src/pages/ventes/DevisGeneratorCartesValeurSignee.test.mjs":
+        "QJR426 (2026-09-02) - meme contrainte que l'entree Offgrid : "
+        "DevisGenerator.jsx non importable pur sous node --test ; verrouille "
+        "que les 13 CarteMetrique passent la prop signee valeur= (DR5) par "
+        "lecture de SOURCE, en attendant la conversion DOM (CRXB7-style).",
 }
 
 # QJR427 - cette entree (n. 21 ci-dessus) avait ete ajoutee par le commit
