@@ -70,7 +70,51 @@ def catalogue_modules(company):
         row = dict(manifest)
         row['actif'] = key not in desactives
         out.append(row)
+    # SOL8 — une clé QUI PORTE DÉJÀ une ligne ModuleToggle mais n'a pas de
+    # manifeste (surface purement frontend, ex. `magasin` : logistique
+    # d'entrepôt sans app backend dédiée) doit rester RÉACTIVABLE EN UN CLIC.
+    # Sans cette union, le semis SOL8 l'éteindrait sans qu'aucun écran ne
+    # puisse la rallumer — une porte à sens unique. Reste GÉNÉRIQUE : `core`
+    # n'énumère aucun module métier, il ne fait que refléter ce que la table
+    # contient déjà. Aucune ligne ⇒ liste identique à l'historique.
+    for key in sorted(_cles_togglees_sans_manifeste(company, manifests)):
+        out.append(_manifest_synthetique(key, actif=key not in desactives))
     return out
+
+
+def _cles_togglees_sans_manifeste(company, manifests):
+    """Clés ayant une ligne ModuleToggle mais aucun manifeste déclaré."""
+    if company is None:
+        return set()
+    from .models import ModuleToggle
+    portees = set(
+        ModuleToggle.objects
+        .filter(company=company)
+        .values_list('module', flat=True)
+    )
+    return {k for k in portees if k and k not in manifests}
+
+
+def _manifest_synthetique(key, *, actif):
+    """Entrée de catalogue pour une clé togglée sans manifeste (SOL8).
+
+    Même FORME qu'un manifeste normalisé (``core.modules``) : les consommateurs
+    (écran Applications, sérialisation) n'ont aucun cas particulier à gérer.
+    """
+    from . import modules as modules_infra
+
+    return {
+        'key': key,
+        'label': key.replace('_', ' ').capitalize(),
+        'icone': '',
+        'depends': [],
+        'installable': True,
+        'description': "Surface sans manifeste backend, activable par société.",
+        'categorie': 'Technique',
+        'sku': modules_infra.SKU_OPTIONAL,
+        'app_label': key,
+        'actif': actif,
+    }
 
 
 def _emettre_bascule(toggle, *, user=None):
@@ -111,7 +155,11 @@ def activer_module(company, key, *, user=None):
 
     manifests = modules_infra.collect_manifests()
     if key not in manifests:
-        raise DependencyError(f'Module inconnu : « {key} ».')
+        # SOL8 — une clé SANS manifeste reste pilotable si la société porte
+        # déjà une ligne pour elle (surface frontend éteinte au semis) : sinon
+        # l'écran Applications l'afficherait sans pouvoir la rallumer.
+        if key not in _cles_togglees_sans_manifeste(company, manifests):
+            raise DependencyError(f'Module inconnu : « {key} ».')
     a_activer = {key} | modules_infra.dependency_closure(key, manifests)
     active = []
     bascules = []
@@ -148,7 +196,11 @@ def desactiver_module(company, key, *, cascade=False, user=None):
 
     manifests = modules_infra.collect_manifests()
     if key not in manifests:
-        raise DependencyError(f'Module inconnu : « {key} ».')
+        # SOL8 — symétrique d'`activer_module` : une clé sans manifeste mais
+        # déjà portée par la société reste désactivable (aucun dépendant
+        # possible, elle n'est dans le `depends` d'aucun manifeste).
+        if key not in _cles_togglees_sans_manifeste(company, manifests):
+            raise DependencyError(f'Module inconnu : « {key} ».')
 
     desactives = modules_desactives(company)
 

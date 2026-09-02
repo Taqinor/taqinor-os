@@ -567,6 +567,14 @@ class RegisterCompanyView(generics.GenericAPIView):
 
         company = Company.objects.create(nom=company_nom, slug=slug)
 
+        # SOL8 — modules livrés mais RARES chez un installateur solaire :
+        # éteints AU DÉPART, réactivables en un clic (Paramètres →
+        # Applications). Appelé ICI, sur le chemin de CRÉATION, et jamais via
+        # `core.signup_hooks` (que `seed_company` rejoue sur une société
+        # EXISTANTE — ce serait un backfill, interdit).
+        from .module_seeds import semer_modules_off_par_defaut
+        semer_modules_off_par_defaut(company)
+
         from apps.parametres.models import CompanyProfile
         CompanyProfile.objects.get_or_create(
             company=company,
