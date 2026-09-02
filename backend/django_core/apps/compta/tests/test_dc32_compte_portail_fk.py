@@ -103,3 +103,26 @@ class TestDC32ComptePortailFK(TestCase):
         self.assertEqual(c1.id, c2.id)
         self.assertEqual(c1.client_id, self.client_crm.id)
         self.assertEqual(c1.email, 'client@dc32.ma')
+
+    def test_provisionner_ne_reactive_jamais_un_compte_revoque(self):
+        """AUD148(c) — re-provisionner un compte RÉVOQUÉ ne le réactive pas.
+
+        Avant AUD148(c), ``provisionner_compte_portail`` posait
+        ``compte.actif = True`` sur un compte existant désactivé — l'exact
+        opposé de la politique portail (AUD138, ``apps.portail.services`` :
+        « re-provisionner [...] NE RÉACTIVE JAMAIS un compte désactivé
+        (révoqué) »). ROUGE avant le correctif : ``revu.actif`` valait
+        ``True``.
+        """
+        compte = services.provisionner_compte_portail(
+            self.company, client_id=self.client_crm.id)
+        compte.actif = False
+        compte.save(update_fields=['actif'])
+
+        revu = services.provisionner_compte_portail(
+            self.company, client_id=self.client_crm.id)
+
+        self.assertEqual(revu.id, compte.id)
+        self.assertFalse(revu.actif)
+        compte.refresh_from_db()
+        self.assertFalse(compte.actif)

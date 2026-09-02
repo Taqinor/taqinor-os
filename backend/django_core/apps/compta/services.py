@@ -9828,21 +9828,25 @@ from apps.ao.services import (  # noqa: E402,F401
 # ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
 
 def provisionner_compte_portail(company, *, client_id):
-    """Crée/active un compte portail client tokenisé (FG228).
+    """Crée un compte portail client tokenisé (FG228).
 
     Token long/imprévisible (secrets). Idempotent par (company, client) :
-    réactive et renvoie le compte existant plutôt que d'en dupliquer un. Le
-    compte se lie au client PAR FK (``crm.Client``) et réutilise son email
-    (DC32 — pas de 2ᵉ copie d'identité) ; il NE duplique aucune donnée métier
-    (devis/factures/chantiers lus à la volée via les selectors des apps cibles).
+    renvoie le compte existant plutôt que d'en dupliquer un. Le compte se lie
+    au client PAR FK (``crm.Client``) et réutilise son email (DC32 — pas de
+    2ᵉ copie d'identité) ; il NE duplique aucune donnée métier (devis/
+    factures/chantiers lus à la volée via les selectors des apps cibles).
+
+    AUD148(c) — cet appel NE RÉACTIVE JAMAIS un compte existant révoqué
+    (``actif=False``) : c'était l'exact opposé de la politique portail posée
+    par AUD138 (``apps.portail.services`` : « re-provisionner ne réinitialise
+    pas le mot de passe et NE RÉACTIVE JAMAIS un compte désactivé (révoqué) »).
+    Un compte révoqué est renvoyé TEL QUEL ; la réactivation reste une action
+    admin explicite (``apps.portail.services.reactiver_acces_client``).
     """
     import secrets
     compte = ComptePortailClient.objects.filter(
         company=company, client_id=client_id).first()
     if compte is not None:
-        if not compte.actif:
-            compte.actif = True
-            compte.save(update_fields=['actif'])
         return compte
     return ComptePortailClient.objects.create(
         company=company,
