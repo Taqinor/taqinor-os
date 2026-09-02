@@ -145,6 +145,34 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
     return resume
 
 
+# AUD304 — SEUIL DE SUPPRESSION d'un chantier. Au-delà de « Planifié » dans
+# l'entonnoir canonique, le chantier porte des pièces qui ne se reconstituent
+# pas : recette IEC 62446-1 (`CommissioningRecord`), pack de remise
+# (`HandoverPack`), jalons de projet, documents et interventions — TOUS en
+# `on_delete=CASCADE`. La suppression est donc refusée (409) à partir de
+# « En cours » ; en deçà (Signé / Matériel commandé / Planifié, et les statuts
+# hérités qui s'y rabattent) elle reste autorisée pour nettoyer une saisie.
+_STATUTS_SUPPRESSION_AUTORISEE = frozenset({
+    Installation.Statut.SIGNE,
+    Installation.Statut.MATERIEL_COMMANDE,
+    Installation.Statut.PLANIFIE,
+})
+
+
+def raison_blocage_suppression_chantier(inst):
+    """AUD304 — message FR de blocage de la suppression, ou None si permise."""
+    canon = Installation.canonical_statut(inst.statut)
+    if canon in _STATUTS_SUPPRESSION_AUTORISEE:
+        return None
+    libelle = dict(Installation.Statut.choices).get(inst.statut, inst.statut)
+    return (
+        f"Chantier « {libelle} » : la suppression est refusée au-delà de "
+        "l'étape « Planifié » — elle emporterait en cascade la fiche de "
+        "recette, le pack de remise, les jalons, les documents et les "
+        "interventions du chantier. Annulez le chantier (motif obligatoire) "
+        "plutôt que de le supprimer.")
+
+
 def seed_types_intervention(company):
     if company is None or TypeIntervention.objects.filter(company=company).exists():
         return
@@ -274,6 +302,23 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD304 — garde de statut sur la suppression d'un chantier.
+
+        Sans elle, DRF appelait `instance.delete()` nu : un chantier
+        RÉCEPTIONNÉ se supprimait en 204 et sa recette IEC 62446-1, son pack
+        de remise, ses jalons, documents et interventions partaient en cascade
+        sans trace ni restauration possible. Le patron est celui de
+        `UsageGuardedDestroyMixin` (409 + message FR) ; la ligne AuditLog est
+        déjà posée par le signal générique (`Installation` est dans
+        `apps.audit.signals.TRACKED_MODELS`), on ne la double donc pas."""
+        inst = self.get_object()
+        raison = raison_blocage_suppression_chantier(inst)
+        if raison:
+            return Response({'detail': raison},
+                            status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
