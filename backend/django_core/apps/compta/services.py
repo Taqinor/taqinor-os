@@ -298,6 +298,42 @@ def get_centre_cout(company, centre_cout_id):
 
 # ── FG108 / COMPTA7 — Fabrique d'écriture en partie double ─────────────────
 
+def valider_lignes_ecriture(lignes):
+    """AUD188 — garde de LIGNE sur le chemin de production des écritures.
+
+    ``creer_ecriture`` créait ses ``LigneEcriture`` en boucle sans jamais
+    appeler ``full_clean()``, et ne revalidait QUE l'écriture globale
+    (``ecriture.clean()`` = l'équilibre) : les règles de
+    ``LigneEcriture.clean()`` étaient du code MORT en production, et le
+    contrôle amont comparant des SOMMES, deux erreurs symétriques se
+    compensaient. Une écriture dont chaque ligne est simultanément débitée ET
+    créditée de son propre montant passait — gonflant les colonnes MOUVEMENTS
+    de la balance, le journal et le FEC déposé à la DGI.
+
+    Deux des trois règles du modèle sont posées ici (elles sont aussi devenues
+    des ``CheckConstraint`` en base) :
+
+    * une ligne ne peut être débitée ET créditée ;
+    * les montants sont positifs.
+
+    La troisième (« montant non nul ») n'est DÉLIBÉRÉMENT pas appliquée sur ce
+    chemin : une clé de répartition dont une ligne porte un coefficient de 0 %
+    produit légitimement une part nulle (``executer_allocation``), et la
+    refuser casserait un cas de production existant. Le constat le note.
+    """
+    for index, ligne in enumerate(lignes, start=1):
+        debit = Decimal(ligne.get('debit') or 0)
+        credit = Decimal(ligne.get('credit') or 0)
+        if debit > 0 and credit > 0:
+            raise ValidationError(
+                f"Ligne {index} : une ligne ne peut être débitée ET créditée "
+                f"simultanément (débit {debit}, crédit {credit}).")
+        if debit < 0 or credit < 0:
+            raise ValidationError(
+                f"Ligne {index} : les montants débit/crédit doivent être "
+                f"positifs (débit {debit}, crédit {credit}).")
+
+
 @transaction.atomic
 def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
                    reference='', source_type='', source_id=None,
@@ -318,6 +354,9 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
                        Decimal('0'))
     if not lignes:
         raise ValidationError("Une écriture doit comporter au moins une ligne.")
+    # AUD188 — garde de LIGNE avant la garde de SOMME : deux erreurs
+    # symétriques se compensaient dans le total et passaient inaperçues.
+    valider_lignes_ecriture(lignes)
     if debit_total != credit_total:
         raise ValidationError(
             "L'écriture comptable doit être équilibrée : "

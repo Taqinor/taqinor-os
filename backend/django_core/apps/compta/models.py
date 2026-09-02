@@ -414,6 +414,16 @@ class LigneEcriture(models.Model):
         verbose_name = "Ligne d'écriture"
         verbose_name_plural = "Lignes d'écriture"
         ordering = ['id']
+        # AUD188 — backstop DB des règles de ``clean()`` : `bulk_create`,
+        # `QuerySet.update` et le SQL brut contournent tout garde Python.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(debit__gte=0) & models.Q(credit__gte=0),
+                name='ck_ligneecriture_montants_positifs'),
+            models.CheckConstraint(
+                condition=~(models.Q(debit__gt=0) & models.Q(credit__gt=0)),
+                name='ck_ligneecriture_pas_debit_et_credit'),
+        ]
 
     def __str__(self):
         return f'{self.compte.numero} D:{self.debit} C:{self.credit}'

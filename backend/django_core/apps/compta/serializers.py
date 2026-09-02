@@ -6,6 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import (
@@ -187,6 +188,15 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
             if len(lignes) < 2:
                 raise serializers.ValidationError(
                     "Une écriture doit comporter au moins deux lignes.")
+            # AUD188 — MÊME garde de ligne que le service : c'est le chemin le
+            # plus atteignable (il est branché sur l'écran, dont les inputs
+            # n'ont pas de `min="0"`), et il ne validait que des SOMMES.
+            from .services import valider_lignes_ecriture
+            try:
+                valider_lignes_ecriture(lignes)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(
+                    exc.messages[0] if exc.messages else str(exc))
             debit = sum((Decimal(lig.get('debit') or 0) for lig in lignes),
                         Decimal('0'))
             credit = sum((Decimal(lig.get('credit') or 0) for lig in lignes),
