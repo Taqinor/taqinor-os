@@ -1431,6 +1431,15 @@ class PointageReleve(models.Model):
     Matérialise un POINTAGE : on coche qu'une ligne de relevé correspond à une
     ligne d'écriture du grand livre. Unicité ``(ligne_releve, ligne_gl)`` : on
     ne pointe pas deux fois le même couple.
+
+    AUD174 — unicité AUSSI sur ``ligne_gl`` seule : un mouvement bancaire est
+    UNIQUE au grand livre, il ne peut donc être déclaré concordant que par UNE
+    ligne de relevé. Sans elle, la même ligne GL se pointait dans deux
+    rapprochements ouverts sur le même compte, masquant l'anomalie réelle
+    (relevé dupliqué, ligne bancaire manquante) exactement là où le contrôle
+    devait la révéler. Les pointages étant remplacés par SUPPRESSION puis
+    recréation (``pointer_ligne_releve``), un pointage en base est toujours
+    ACTIF : l'unicité simple suffit, aucune condition n'est nécessaire.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -1461,6 +1470,11 @@ class PointageReleve(models.Model):
             models.UniqueConstraint(
                 fields=['ligne_releve', 'ligne_gl'],
                 name='uniq_pointage_releve_gl',
+            ),
+            # AUD174 — un seul pointage actif par ligne du grand livre.
+            models.UniqueConstraint(
+                fields=['ligne_gl'],
+                name='uniq_pointage_par_ligne_gl',
             ),
         ]
 

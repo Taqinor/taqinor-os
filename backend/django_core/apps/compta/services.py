@@ -2631,6 +2631,22 @@ def pointer_ligne_releve(ligne_releve, ligne_gl_ids):
             raise ValidationError(
                 "Une ligne pointée doit appartenir au compte de trésorerie "
                 "du rapprochement.")
+    # AUD174 — une ligne GL déjà pointée par une AUTRE ligne de relevé est
+    # refusée AVANT l'écriture : sans cela la même ligne bancaire se déclarait
+    # concordante dans deux rapprochements, et l'IntegrityError de la nouvelle
+    # contrainte serait remontée nue en 500 au lieu d'un 400 lisible.
+    conflits = (
+        PointageReleve.objects
+        .filter(ligne_gl_id__in=ids)
+        .exclude(ligne_releve=ligne_releve)
+        .select_related('ligne_gl__compte')
+        .order_by('ligne_gl_id'))
+    conflit = conflits.first()
+    if conflit is not None:
+        raise ValidationError(
+            f"La ligne du grand livre {conflit.ligne_gl_id} est déjà pointée "
+            f"par la ligne de relevé {conflit.ligne_releve_id} : dépointez-la "
+            "avant de la rapprocher ici.")
     # Remplace les pointages existants par le nouveau lot.
     PointageReleve.objects.filter(ligne_releve=ligne_releve).delete()
     for ligne in lignes_gl:
@@ -2687,6 +2703,7 @@ def accepter_suggestions_rapprochement(rapprochement):
 
     suggestions = selectors.suggestions_rapprochement(rapprochement)
     pointees, ignorees = [], []
+    gl_consommees = set()
     for sugg in suggestions:
         if sugg['ambigue']:
             ignorees.append({
@@ -2699,9 +2716,19 @@ def accepter_suggestions_rapprochement(rapprochement):
                 'raison': 'aucun candidat'})
             continue
         meilleur = sugg['candidats'][0]
+        # AUD174 — les suggestions sont calculées EN UNE FOIS : deux lignes de
+        # relevé peuvent proposer la MÊME ligne GL. On ne la pointe qu'une
+        # fois et on dit pourquoi, plutôt que de laisser la garde anti
+        # double-pointage casser toute la boucle.
+        if meilleur['ligne_gl_id'] in gl_consommees:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'ligne du grand livre déjà pointée dans ce lot'})
+            continue
         ligne_releve = LigneReleve.objects.get(
             company=rapprochement.company, id=sugg['ligne_releve_id'])
         pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
+        gl_consommees.add(meilleur['ligne_gl_id'])
         pointees.append(sugg['ligne_releve_id'])
     return {'pointees': pointees, 'ignorees': ignorees}
 

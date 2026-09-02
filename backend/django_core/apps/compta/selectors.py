@@ -1414,16 +1414,35 @@ def solde_gl_compte_tresorerie(rapprochement):
     return (treso.solde_initial or Decimal('0')) + mouvements
 
 
+def _lignes_gl_deja_pointees(rapprochement):
+    """AUD174 — ids des lignes GL déjà pointées sur CE compte de trésorerie.
+
+    Le filtre historique était scopé au seul ``rapprochement`` courant : une
+    ligne GL rapprochée dans la campagne A restait proposée « libre » dans la
+    campagne B ouverte sur le même compte, et pouvait y être déclarée
+    concordante une seconde fois.
+    """
+    from .models import PointageReleve
+
+    return set(
+        PointageReleve.objects
+        .filter(company=rapprochement.company,
+                ligne_releve__rapprochement__compte_tresorerie_id=(
+                    rapprochement.compte_tresorerie_id))
+        .values_list('ligne_gl_id', flat=True))
+
+
 def lignes_gl_pointables(rapprochement):
     """Lignes du grand livre du compte de trésorerie sur la période (FG123).
 
     Restitue les ``LigneEcriture`` du compte comptable (classe 5) du compte de
     trésorerie dont l'écriture tombe dans ``[date_debut ; date_fin]``, avec un
-    drapeau ``pointee`` indiquant si la ligne est déjà appariée dans CE
-    rapprochement. Sert à présenter le côté GL face au relevé. Lecture seule.
+    drapeau ``pointee`` indiquant si la ligne est déjà appariée — AUD174 : sur
+    N'IMPORTE QUEL rapprochement du même compte de trésorerie, pas seulement
+    celui-ci ; un mouvement bancaire est unique, il ne peut pas être « libre »
+    ici et déjà rapproché ailleurs. Sert à présenter le côté GL face au relevé.
+    Lecture seule.
     """
-    from .models import LigneReleve
-
     treso = rapprochement.compte_tresorerie
     qs = LigneEcriture.objects.filter(
         company=rapprochement.company,
@@ -1432,10 +1451,7 @@ def lignes_gl_pointables(rapprochement):
         ecriture__date_ecriture__lte=rapprochement.date_fin,
     ).select_related('ecriture', 'ecriture__journal').order_by(
         'ecriture__date_ecriture', 'id')
-    # IDs des lignes GL déjà pointées dans ce rapprochement.
-    pointees = set(
-        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
-            'lignes_gl__id', flat=True))
+    pointees = _lignes_gl_deja_pointees(rapprochement)
     resultat = []
     for ligne in qs:
         resultat.append({
@@ -1513,9 +1529,8 @@ def suggestions_rapprochement(rapprochement):
         ecriture__date_ecriture__lte=rapprochement.date_fin
         + timedelta(days=SUGGESTION_FENETRE_JOURS),
     ).select_related('ecriture', 'ecriture__journal'))
-    deja_pointees = set(
-        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
-            'lignes_gl__id', flat=True))
+    # AUD174 — élargi à TOUS les rapprochements du même compte de trésorerie.
+    deja_pointees = _lignes_gl_deja_pointees(rapprochement)
     lignes_releve = rapprochement.lignes_releve.filter(
         statut=LigneReleve.Statut.NON_POINTEE).order_by('date_operation', 'id')
     resultat = []
