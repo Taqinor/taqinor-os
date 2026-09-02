@@ -351,6 +351,20 @@ def etude_horaire_preview(request):
 
     ville, lat, lon = _localisation(corps, devis, lead)
 
+    # QJR432 — MÊME HORLOGE QUE LE DEVIS RÉSOLU (même classe que QJR406/QJR232) :
+    # sans elle, cet aperçu recalcule contre l'horloge du serveur au moment de
+    # l'appel, alors que le bloc PERSISTÉ du devis a été calculé contre SA
+    # propre date de référence (``domain.entrees.jour_reference_du_devis`` —
+    # surcharge D12 déclarée, sinon la date de création du devis, jamais
+    # « aujourd'hui »). L'écart est visible pendant et autour du Ramadan, où la
+    # fenêtre imsak/iftar dépend de la date. Sans devis résolu, comportement
+    # INCHANGÉ : ``None`` laisse ``jours_types_annee`` retomber sur son repli
+    # d'horloge, comme avant cette tâche.
+    jour_reference = None
+    if devis is not None:
+        from apps.ventes.domain.entrees import jour_reference_du_devis
+        jour_reference = jour_reference_du_devis(devis)
+
     if not conso:
         avertissements.append(
             "Aucune facture exploitable : sans ancrage réel, le moteur ne "
@@ -376,7 +390,8 @@ def etude_horaire_preview(request):
             occupation=occupation, equipements=equipements,
             batterie_kwh_utile=_num(corps.get('batterie_kwh')),
             source_conso=source, detail_conso=detail,
-            tranches=tranches, charges_fixes_mad=charges_fixes)
+            tranches=tranches, charges_fixes_mad=charges_fixes,
+            jour_reference=jour_reference)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '
