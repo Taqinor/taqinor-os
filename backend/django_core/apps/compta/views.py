@@ -16,7 +16,7 @@ from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -7512,36 +7512,73 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
 
 
 class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
-    """Acceptations / e-signatures de devis depuis le portail (FG229). La
-    société est posée côté serveur ; l'action ``signer`` horodate la signature
-    et capture l'IP (preuve légère, loi 53-05)."""
+    """Acceptations / e-signatures de devis depuis le portail (FG229).
+
+    AUD140 — LECTURE SEULE côté ERP. Cette ligne EST la preuve d'acceptation
+    électronique (signataire, IP, horodatage — loi 53-05) : son propre modèle
+    justifie le ``PROTECT`` sur ``devis`` par cet argument, mais l'API la
+    laissait créer, réécrire et SUPPRIMER par tout Responsable, sans
+    ``created_by``, sans chatter et sans soft-delete — un devis contesté et sa
+    preuve effacée sans qu'aucune trace ne dise par qui.
+
+    La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesDevisPortailViewSet.accepter``, qui signe
+    au nom du CLIENT connecté). L'action ``signer`` — qui posait
+    ``nom_signataire`` depuis le corps et l'IP de l'utilisateur ERP, c'est-à-dire
+    une signature client fabriquée depuis l'ERP — est RETIRÉE ; le service
+    ``compta.services.signer_acceptation_devis`` qu'elle appelait reste utilisé
+    par le chemin portail. Une saisie ERP délibérée devra être explicite,
+    tracée (``created_by``, chatter) et marquée comme telle — jamais réintroduite
+    sous le nom « signer ».
+    """
     queryset = AcceptationDevisPortail.objects.all()
     serializer_class = AcceptationDevisPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'signe_le']
-
-    @action(detail=True, methods=['post'])
-    def signer(self, request, pk=None):
-        acceptation = self.get_object()
-        nom = request.data.get('nom_signataire') or None
-        ip = request.META.get('REMOTE_ADDR')
-        services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
-        return Response(self.get_serializer(acceptation).data)
+    #: AUD140 — POST/PUT/PATCH/DELETE répondent 405 (aucune action d'écriture
+    #: ne subsiste sur cette ressource : on peut fermer le verbe entier).
+    http_method_names = ['get', 'head', 'options']
 
 
 class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
     """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
-    La société est posée côté serveur ; ``initier`` pose une référence (NO-OP
-    tant que CMI est OFF) et ``rapprocher`` marque le paiement comme payé
-    (rapprochement auto webhook CMI ou manuel virement)."""
+
+    AUD140 — LECTURE SEULE côté ERP, à l'exception de ``rapprocher`` (le SEUL
+    workflow serveur : il confirme la réception d'un virement). La ligne porte
+    un montant MAD réel et parfois un statut ``paye`` ; elle était pourtant
+    créable, modifiable et SUPPRIMABLE par tout Responsable, sans trace
+    d'auteur. La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesFacturesPortailViewSet.payer``), qui appelle
+    ``services.initier_paiement_facture``.
+
+    ``http_method_names`` ne convient pas ici (il fermerait aussi ``rapprocher``,
+    qui est un POST) : on ferme donc les quatre méthodes d'écriture du CRUD
+    une par une.
+    """
     queryset = PaiementFacturePortail.objects.all()
     serializer_class = PaiementFacturePortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
 
-    def perform_create(self, serializer):
-        paiement = serializer.save(company=self.request.user.company)
-        services.initier_paiement_facture(paiement)
+    def _refus_lecture_seule(self, request):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Une intention de paiement portail ne se crée, ne se "
+                    "modifie et ne se supprime pas depuis l'ERP : elle est "
+                    "posée par le client depuis son portail. Seule l'action "
+                    "« rapprocher » est disponible."))
+
+    def create(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def destroy(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
 
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):

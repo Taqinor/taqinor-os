@@ -62,32 +62,40 @@ class AcceptationDevisPortailTests(TestCase):
         self.co = make_company('fg229', 'FG229')
         self.user = make_user(self.co, 'fg229-user')
 
-    def test_creation_pose_company_serveur(self):
+    # AUD140 — la preuve d'acceptation n'est plus créable ni signable depuis
+    # l'ERP (ce ViewSet est en LECTURE SEULE) : la création vit sur le chemin
+    # portail authentifié. Les deux tests d'écriture d'origine sont donc
+    # reformulés — l'API refuse, et le COMPORTEMENT qu'ils couvraient (company
+    # serveur, signature horodatée + IP) est vérifié là où il vit désormais.
+
+    def test_creation_depuis_lerp_refusee(self):
         api = auth(self.user)
         resp = api.post('/api/django/portail/acceptations-devis-portail/', {
             'devis_id': 41001, 'option_choisie': 'Hybride 5 kWc',
             'nom_signataire': 'Reda K.',
-            'company': 99999,  # doit être ignoré
         }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.content)
-        acc = AcceptationDevisPortail.objects.get(id=resp.data['id'])
-        self.assertEqual(acc.company_id, self.co.id)
-        self.assertFalse(acc.accepte)
-        self.assertIsNone(acc.signe_le)
+        self.assertEqual(resp.status_code, 405, resp.content)
+        self.assertFalse(
+            AcceptationDevisPortail.objects.filter(devis_id=41001).exists())
 
     def test_signer_horodate_et_capture_ip(self):
+        """Le SERVICE (appelé par le chemin portail) horodate et capture l'IP ;
+        l'action ERP « signer », elle, n'existe plus (AUD140)."""
         api = auth(self.user)
         acc = AcceptationDevisPortail.objects.create(
             company=self.co, devis_id=41002, nom_signataire='Sami')
+
         resp = api.post(
             f'/api/django/portail/acceptations-devis-portail/{acc.id}/signer/',
             {'nom_signataire': 'Sami B.'}, format='json')
-        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn(resp.status_code, (404, 405), resp.content)
+
+        services.signer_acceptation_devis(acc, nom='Sami B.', ip='10.0.0.7')
         acc.refresh_from_db()
         self.assertTrue(acc.accepte)
         self.assertIsNotNone(acc.signe_le)
         self.assertEqual(acc.nom_signataire, 'Sami B.')
-        self.assertIsNotNone(acc.signature_ip)
+        self.assertEqual(acc.signature_ip, '10.0.0.7')
 
     def test_signer_idempotent(self):
         acc = AcceptationDevisPortail.objects.create(
@@ -117,17 +125,27 @@ class PaiementFacturePortailTests(TestCase):
         self.co = make_company('fg230', 'FG230')
         self.user = make_user(self.co, 'fg230-user')
 
-    def test_creation_pose_company_et_reference(self):
+    # AUD140 — une intention de paiement portail n'est plus créable depuis
+    # l'ERP : elle est posée par le CLIENT depuis son portail. Le test de
+    # création est reformulé, et la pose de la référence locale (le
+    # comportement qu'il couvrait) est vérifiée sur le service.
+
+    def test_creation_depuis_lerp_refusee(self):
         api = auth(self.user)
         resp = api.post('/api/django/portail/paiements-facture-portail/', {
             'facture_id': 42001, 'montant': '12500.00', 'methode': 'carte',
-            'company': 88888,  # doit être ignoré
         }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.content)
-        pf = PaiementFacturePortail.objects.get(id=resp.data['id'])
-        self.assertEqual(pf.company_id, self.co.id)
+        self.assertEqual(resp.status_code, 405, resp.content)
+        self.assertFalse(
+            PaiementFacturePortail.objects.filter(facture_id=42001).exists())
+
+    def test_initier_pose_une_reference_locale(self):
+        pf = PaiementFacturePortail.objects.create(
+            company=self.co, facture_id=42005, montant=Decimal('12500.00'),
+            methode=PaiementFacturePortail.Methode.CARTE)
+        services.initier_paiement_facture(pf)
+        pf.refresh_from_db()
         self.assertEqual(pf.statut, PaiementFacturePortail.Statut.INITIE)
-        # initier_paiement_facture pose une référence locale.
         self.assertTrue(pf.reference)
 
     @override_settings(CMI_ENABLED=False)
