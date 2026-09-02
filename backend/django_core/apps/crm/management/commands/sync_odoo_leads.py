@@ -105,6 +105,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"{prefix}{rapport.inconnus} lead(s) laissés intouchés : "
                 "étape Odoo hors table de correspondance."))
+        if rapport.doublons_odoo:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}{rapport.doublons_odoo} ligne(s) Odoo retombant sur "
+                "une fiche ERP déjà traitée (doublons internes à Odoo) — la "
+                "première ligne gagne."))
         # D-CRX3 — une étape Odoo EN RETRAIT ne fait JAMAIS reculer l'ERP :
         # elle est signalée pour arbitrage humain, sans aucune écriture.
         for pk, nom, stage_erp, stage_odoo, cible in \
@@ -122,5 +127,6 @@ class Command(BaseCommand):
             f"{rapport.introuvables} non rapproché(s), "
             f"{rapport.corbeille} en corbeille, "
             f"{rapport.inconnus} étape Odoo inconnue, "
+            f"{rapport.doublons_odoo} doublon(s) Odoo, "
             f"{len(rapport.regressions)} régression(s) signalée(s) "
             "(aucune écriture)."))

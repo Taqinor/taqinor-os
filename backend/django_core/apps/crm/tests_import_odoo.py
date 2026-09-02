@@ -49,6 +49,24 @@ CSV_BORNES = (
     "302,Test Aberrant,,00000000000000000000000000,Casablanca,,New,\n"
 )
 
+# CRX10 — les cas Meta que seul le chemin JSON-2 savait nettoyer : email
+# bouche-trou (qui fusionnait 243 leads sur une fiche), fausse raison sociale,
+# et réponses du formulaire rangées dans l'adresse postale.
+CSV_META = (
+    "id,name,email_from,phone,city,partner_name,street,stage_id,description\n"
+    "601,Meta Un,no-email@example.com,0612000601,Casablanca,"
+    "Facebook Lead,entre_2000_dh_-_4000dh,New,\n"
+    "602,Meta Deux,no-email@example.com,0612000602,Rabat,"
+    "Facebook Lead,plus_de_5000_dh,New,\n"
+)
+
+# CRX10 — deux lignes Odoo qui désignent le même lead (même email).
+CSV_DOUBLONS = (
+    "id,name,email_from,phone,city,partner_name,stage_id,description\n"
+    "401,Test Doublon A,dup@example.test,0612000401,Casablanca,,New,\n"
+    "402,Test Doublon B,dup@example.test,0612000402,Rabat,,New,\n"
+)
+
 JSON_EXPORT = json.dumps([
     {"id": 201, "name": "Json Un", "email_from": "un@example.test",
      "phone": "0613000001", "city": "Fès", "stage_id": "Contacted"},
@@ -252,11 +270,12 @@ class TestSoftDeleteReconciliation(ImportOdooBase):
             company=self.company, nom='Dans la corbeille',
             email='alpha@example.test', stage=stages.NEW)
         lead.soft_delete()
-        trouve = _find_existing(
+        trouve, ambigu = _find_existing(
             self.company, None, {'email': 'alpha@example.test'})
         self.assertIsNotNone(trouve)
         self.assertEqual(trouve.pk, lead.pk)
         self.assertTrue(trouve.is_deleted)
+        self.assertFalse(ambigu)
 
     def test_live_lead_wins_over_soft_deleted_twin(self):
         mort = Lead.objects.create(
@@ -266,7 +285,7 @@ class TestSoftDeleteReconciliation(ImportOdooBase):
         vivant = Lead.objects.create(
             company=self.company, nom='Actuel',
             email='alpha@example.test', stage=stages.NEW)
-        trouve = _find_existing(
+        trouve, _ambigu = _find_existing(
             self.company, None, {'email': 'alpha@example.test'})
         self.assertEqual(trouve.pk, vivant.pk)
 
@@ -278,9 +297,84 @@ class TestSoftDeleteReconciliation(ImportOdooBase):
         vivant_tel = Lead.objects.create(
             company=self.company, nom='Actuel Tel',
             telephone='+212612000009', stage=stages.NEW)
-        trouve_tel = _find_existing(
+        trouve_tel, _ambigu_tel = _find_existing(
             self.company, None, {'telephone': '0612000009'})
         self.assertEqual(trouve_tel.pk, vivant_tel.pk)
+
+
+class TestCheminFichierRejointJson2(ImportOdooBase):
+    """CRX10 — l'export FICHIER applique enfin les règles du chemin JSON-2."""
+
+    def test_file_path_applies_the_same_meta_cleanup(self):
+        path = self._file('.csv', CSV_META)
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+
+        # DEUX fiches : avant, l'email bouche-trou les fusionnait en une seule
+        # (243 leads réels partageaient no-email@example.com).
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 2)
+        un = Lead.objects.get(company=self.company, external_id='601')
+        self.assertIsNone(un.email)            # bouche-trou purgé
+        self.assertIsNone(un.societe)          # « Facebook Lead » ≠ société
+        self.assertIsNone(un.adresse)          # réponses de formulaire
+        self.assertIn('Formulaire Meta: entre_2000_dh_-_4000dh', un.note)
+
+    def test_phone_match_uses_the_indexed_column(self):
+        # QW10 — la colonne INDEXÉE `phone_normalise` est le matcher (fin du
+        # scan Python de TOUS les leads pour CHAQUE ligne d'export). Preuve :
+        # une colonne dérivée désynchronisée à la main (UPDATE brut, hors
+        # `save()`) n'est plus rapprochée, là où le scan Python l'aurait vue.
+        lead = Lead.objects.create(
+            company=self.company, nom='Colonne Désynchronisée',
+            telephone='0612000701', stage=stages.NEW)
+        self.assertNotEqual(lead.phone_normalise, '')
+        Lead.objects.filter(pk=lead.pk).update(phone_normalise='')
+
+        trouve, _ambigu = _find_existing(
+            self.company, None, {'telephone': '0612000701'})
+        self.assertIsNone(trouve)
+
+    def test_ambiguous_match_reports_and_never_stamps_the_external_key(self):
+        jumeau_a = Lead.objects.create(
+            company=self.company, nom='Jumeau A',
+            telephone='0612000501', stage=stages.NEW)
+        jumeau_b = Lead.objects.create(
+            company=self.company, nom='Jumeau B',
+            telephone='+212612000501', stage=stages.NEW)
+        path = self._file('.csv', (
+            "id,name,email_from,phone,city,partner_name,stage_id,description\n"
+            "501,Test Ambigu,,0612000501,Casablanca,,New,\n"))
+
+        out = io.StringIO()
+        call_command('import_odoo_leads', path,
+                     '--company', self.company.slug, stdout=out)
+
+        jumeau_a.refresh_from_db()
+        jumeau_b.refresh_from_db()
+        # Lier la ligne Odoo à l'une des deux serait un choix arbitraire ET
+        # durable (clé technique de rapprochement) : on signale, on ne lie pas.
+        self.assertIsNone(jumeau_a.external_id)
+        self.assertIsNone(jumeau_b.external_id)
+        sortie = out.getvalue()
+        self.assertIn('Rapprochement ambigu', sortie)
+        self.assertIn('1 ambigu(s)', sortie)
+        # Et aucun doublon n'est créé pour autant.
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 2)
+
+    def test_dry_run_does_not_double_count_duplicate_rows(self):
+        path = self._file('.csv', CSV_DOUBLONS)
+
+        blanc = io.StringIO()
+        call_command('import_odoo_leads', path, '--company',
+                     self.company.slug, '--dry-run', stdout=blanc)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        # Avant : « 2 créé(s) » annoncés pour un seul lead réellement créé.
+        self.assertIn('1 créé(s)', blanc.getvalue())
+
+        reel = io.StringIO()
+        call_command('import_odoo_leads', path,
+                     '--company', self.company.slug, stdout=reel)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+        self.assertIn('1 créé(s)', reel.getvalue())
 
 
 class TestNoOpAndGuards(ImportOdooBase):

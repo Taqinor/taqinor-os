@@ -345,6 +345,21 @@ class TestAlignementAvanceSeulement(OdooSyncBase):
         self.assertEqual(rapport.moves[(stages.NEW, stages.FOLLOW_UP)], 1)
         self.assertEqual(recus, [])
 
+    def test_two_odoo_rows_on_the_same_erp_lead_are_counted(self):
+        # CRX10 — le doublon INTERNE au pipeline Odoo était sauté en silence.
+        lead = self._lead(nom='Un Seul', external_system='odoo',
+                          external_id='90', email='dup@example.test',
+                          stage=stages.NEW)
+
+        rapport = self._align([
+            {'id': 90, 'stage': 'Quote Discussed'},
+            {'id': 91, 'stage': 'New', 'email': 'dup@example.test'},
+        ])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)   # la 1re ligne gagne
+        self.assertEqual(rapport.doublons_odoo, 1)
+
     def test_regression_reaches_the_command_report(self):
         # Le lead 12 d'Odoo est en « Quote Discussed » (FOLLOW_UP) ; côté ERP
         # il est déjà SIGNED — la sync le SIGNALE au lieu de le reculer.

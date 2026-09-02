@@ -35,12 +35,17 @@ from django.db import transaction
 
 from apps.crm import services, stages
 from apps.crm.models import Lead
-# Source UNIQUE de la validation « téléphone plausible » (chemin JSON-2) —
-# jamais une seconde règle écrite ici (CRX9).
-from apps.crm.odoo_sync import _clean_phone
+# Source UNIQUE des règles d'assainissement Odoo (chemin JSON-2) — jamais une
+# seconde règle écrite ici (CRX9/CRX10).
+from apps.crm.odoo_sync import (
+    _clean_phone, email_reel, est_reponse_formulaire, societe_reelle)
 from apps.dataimport.services import parse_rows, _norm
 
 EXTERNAL_SYSTEM = 'odoo'
+
+# Plafonds d'affichage des rapports détaillés (les totaux restent complets).
+_MAX_CORBEILLE_AFFICHEE = 20
+_MAX_AMBIGUS_AFFICHES = 20
 
 # Mapping en-tête Odoo (normalisé via dataimport._norm) → champ du modèle Lead.
 # On accepte les noms techniques Odoo et leurs étiquettes françaises courantes.
@@ -189,6 +194,27 @@ def _row_to_fields(row):
             fields.pop(champ)
         else:
             fields[champ] = valeur
+
+    # CRX10 — les MÊMES règles d'assainissement que le chemin JSON-2
+    # (``odoo_sync``), appliquées ici : un export FICHIER des mêmes leads
+    # Odoo entrait sale — email bouche-trou Meta (qui fusionne 243 leads sur
+    # une fiche au rapprochement), « Facebook Lead » en raison sociale, et
+    # les réponses du formulaire Meta rangées dans l'adresse postale.
+    if 'email' in fields:
+        email = email_reel(fields['email'])
+        if email is None:
+            fields.pop('email')
+        else:
+            fields['email'] = email
+    if 'societe' in fields:
+        societe = societe_reelle(fields['societe'])
+        if societe is None:
+            fields.pop('societe')
+        else:
+            fields['societe'] = societe
+    if 'adresse' in fields and est_reponse_formulaire(fields['adresse']):
+        traces.append('Formulaire Meta: ' + fields.pop('adresse'))
+
     if traces:
         fields['note'] = '\n'.join(
             ([fields['note']] if fields.get('note') else []) + traces)
@@ -214,6 +240,12 @@ def _row_to_fields(row):
 def _find_existing(company, external_id, fields):
     """Trouve un lead existant pour rapprochement idempotent (jamais de doublon).
 
+    Renvoie ``(lead, ambigu)`` : ``lead`` est le meilleur candidat (ou
+    ``None``), ``ambigu`` dit que le rapprochement par email/téléphone a
+    trouvé PLUSIEURS fiches — l'appelant complète alors les champs vides mais
+    n'ESTAMPILLE PAS la clé externe Odoo, qui lierait durablement la ligne
+    Odoo à une fiche choisie au hasard (CRX10).
+
     Ordre : clé technique Odoo, puis email normalisé, puis téléphone normalisé.
     Tout est borné à la société.
 
@@ -228,28 +260,34 @@ def _find_existing(company, external_id, fields):
     Quand plusieurs candidats existent sur email/téléphone, le lead VIVANT
     gagne (``order_by('is_deleted', 'pk')``) : la corbeille ne sert que de
     filet contre le doublon, jamais de cible d'écriture prioritaire.
+
+    CRX10 — le rapprochement par téléphone interroge la colonne INDEXÉE
+    ``phone_normalise`` (QW10), maintenue par ``Lead.save()``. Il itérait
+    auparavant TOUS les leads de la société en Python, pour CHAQUE ligne
+    d'export, et deux fois par sync (import + alignement) : 930 leads × 930
+    lignes × 2.
     """
     if external_id:
         match = Lead.all_objects.filter(
             company=company, external_system=EXTERNAL_SYSTEM,
             external_id=external_id).order_by('is_deleted', 'pk').first()
         if match:
-            return match
+            return match, False
     email = services.normalize_email(fields.get('email'))
     if email:
-        match = Lead.all_objects.filter(
+        candidats = list(Lead.all_objects.filter(
             company=company, email__iexact=email).order_by(
-                'is_deleted', 'pk').first()
-        if match:
-            return match
+                'is_deleted', 'pk')[:2])
+        if candidats:
+            return candidats[0], len(candidats) > 1
     phone = services.normalize_phone(fields.get('telephone'))
     if phone:
-        for other in Lead.all_objects.filter(company=company).exclude(
-                telephone__isnull=True).exclude(telephone='').order_by(
-                    'is_deleted', 'pk'):
-            if services.normalize_phone(other.telephone) == phone:
-                return other
-    return None
+        candidats = list(Lead.all_objects.filter(
+            company=company, phone_normalise=phone).order_by(
+                'is_deleted', 'pk')[:2])
+        if candidats:
+            return candidats[0], len(candidats) > 1
+    return None, False
 
 
 def _fill_empty(lead, fields):
@@ -341,6 +379,15 @@ class Command(BaseCommand):
         # (ni écriture, ni restauration silencieuse), comptées au rapport.
         corbeille = 0
         corbeille_details = []
+        # CRX10 — rapprochements AMBIGUS (2+ fiches sur le même email/tel) :
+        # champs vides complétés, mais AUCUNE clé externe estampillée.
+        ambigus = []
+        # CRX10 — comptes honnêtes en dry-run : sans écriture, deux lignes
+        # visant la même fiche (ou créant le même lead) étaient comptées deux
+        # fois « créé » / « mis à jour », alors qu'un vrai run n'en compte
+        # qu'une. On mémorise donc ce qui a DÉJÀ été traité dans la passe.
+        vus_pk = set()
+        vus_cles = set()
 
         # Atomique : un export ne s'applique qu'en entier (rollback en dry-run).
         with transaction.atomic():
@@ -351,22 +398,39 @@ class Command(BaseCommand):
                     skipped += 1
                     continue
 
-                existing = _find_existing(company, external_id, fields)
+                existing, ambigu = _find_existing(company, external_id, fields)
                 if existing is not None and existing.is_deleted:
                     # Lead dans la corbeille : on NE crée pas de doublon (la
                     # contrainte d'unicité le refuserait et l'IntegrityError
                     # tuerait tout l'import) et on ne le restaure PAS — la
                     # restauration reste une décision humaine (/core/corbeille/).
                     corbeille += 1
-                    if len(corbeille_details) < 20:
+                    if len(corbeille_details) < _MAX_CORBEILLE_AFFICHEE:
                         corbeille_details.append(
                             f"lead #{existing.pk} « {existing.nom} »"
                             + (f" (Odoo {external_id})" if external_id else ''))
                     continue
                 if existing is not None:
-                    # Pose la clé technique si absente (rapproché par email/tel).
+                    if dry_run and existing.pk in vus_pk:
+                        # Une ligne précédente de CE MÊME export a déjà traité
+                        # cette fiche ; un VRAI run n'y trouverait plus rien à
+                        # compléter (il vient de le faire) et compterait
+                        # « inchangé ». Le dry-run, qui n'écrit pas, comptait
+                        # « mis à jour » autant de fois qu'il y avait de lignes.
+                        unchanged += 1
+                        continue
+                    vus_pk.add(existing.pk)
+                    if ambigu:
+                        # Plusieurs fiches partagent cet email/téléphone : lier
+                        # la ligne Odoo à l'une d'elles serait un choix
+                        # arbitraire et DURABLE. On signale, on ne lie pas.
+                        ambigus.append(
+                            f"Odoo {external_id or '?'} → lead #{existing.pk} "
+                            f"« {existing.nom} » et au moins un autre")
+                    # Pose la clé technique si absente (rapproché par email/tel)
+                    # ET si le rapprochement est certain.
                     tech_changed = False
-                    if external_id and not existing.external_id:
+                    if external_id and not existing.external_id and not ambigu:
                         existing.external_system = EXTERNAL_SYSTEM
                         existing.external_id = external_id
                         if not dry_run:
@@ -382,6 +446,25 @@ class Command(BaseCommand):
                     else:
                         unchanged += 1
                     continue
+
+                if dry_run:
+                    # Pas de fiche en base : un VRAI run en CRÉERAIT une, que
+                    # les lignes suivantes rapprocheraient. Le dry-run, qui
+                    # n'écrit pas, annonçait donc N créations là où il n'y en
+                    # aurait qu'une. On rejoue la chaîne en mémoire.
+                    cles = set()
+                    if external_id:
+                        cles.add(('ext', external_id))
+                    email_cle = services.normalize_email(fields.get('email'))
+                    if email_cle:
+                        cles.add(('email', email_cle))
+                    tel_cle = services.normalize_phone(fields.get('telephone'))
+                    if tel_cle:
+                        cles.add(('tel', tel_cle))
+                    if cles & vus_cles:
+                        unchanged += 1
+                        continue
+                    vus_cles |= cles
 
                 # Création — société FORCÉE, marquée import test Odoo.
                 if not dry_run:
@@ -416,9 +499,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"{prefix}… et {corbeille - len(corbeille_details)} autre(s) "
                 "ligne(s) rapprochée(s) sur un lead en corbeille."))
+        for detail in ambigus[:_MAX_AMBIGUS_AFFICHES]:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}Rapprochement ambigu — clé externe NON posée : "
+                f"{detail}"))
+        reste_ambigus = len(ambigus) - _MAX_AMBIGUS_AFFICHES
+        if reste_ambigus > 0:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}… et {reste_ambigus} autre(s) rapprochement(s) "
+                "ambigu(s)."))
         self.stdout.write(self.style.SUCCESS(
             f"{prefix}Import Odoo terminé pour « {company.nom} » : "
             f"{created} créé(s), {updated} mis à jour, "
             f"{unchanged} inchangé(s), {skipped} ignoré(s), "
-            f"{corbeille} en corbeille sur "
+            f"{corbeille} en corbeille, {len(ambigus)} ambigu(s) sur "
             f"{len(rows)} ligne(s)."))

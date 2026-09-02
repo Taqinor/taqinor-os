@@ -66,6 +66,45 @@ _JUNK_STREET_RE = re.compile(
 
 _HTML_TAG_RE = re.compile(r'<[^>]*>')
 
+# « Sociétés » que le connecteur Meta invente sur chaque lead publicitaire —
+# ce n'est pas une raison sociale. Comparé en minuscules.
+SOCIETES_FICTIVES = {'facebook lead'}
+
+
+# ── CRX10 — assainissement PARTAGÉ par les deux chemins d'entrée ────────────
+# Ces trois règles étaient enfermées dans ``build_rows`` (chemin JSON-2) : un
+# export FICHIER des mêmes leads Odoo entrait donc sale — 243 leads fusionnés
+# sur le même email bouche-trou, « Facebook Lead » en raison sociale, et les
+# réponses du formulaire Meta rangées dans l'adresse postale. Les deux chemins
+# appellent désormais les mêmes fonctions.
+
+def email_reel(raw):
+    """Email exploitable (minuscule) ou ``None`` — bouche-trous Meta purgés.
+
+    Sans cette purge, le rapprochement par email fusionne TOUS les leads
+    partageant ``no-email@example.com`` sur une seule fiche.
+    """
+    email = (raw or '').strip().lower()
+    if not email or email in PLACEHOLDER_EMAILS:
+        return None
+    return email
+
+
+def societe_reelle(raw):
+    """Raison sociale exploitable ou ``None`` (« Facebook Lead » n'en est pas)."""
+    societe = (raw or '').strip()
+    if not societe or societe.lower() in SOCIETES_FICTIVES:
+        return None
+    return societe
+
+
+def est_reponse_formulaire(street):
+    """``street`` Odoo contient-il en fait les réponses d'un formulaire Meta
+    (fourchette de facture, usage…) plutôt qu'une adresse postale ?"""
+    street = (street or '').strip()
+    return bool(street) and bool(_JUNK_STREET_RE.search(street))
+
+
 # Cible Odoo par défaut pour chaque étape canonique ERP (push ERP → Odoo).
 # Noms d'étapes Odoo = données du pipeline réel du fondateur (2026-09-01),
 # résolus en ids à l'exécution — jamais d'id codé en dur.
@@ -179,7 +218,7 @@ def build_rows(odoo_leads, tag_names):
         stage_odoo = lead['stage_id'][1] if lead.get('stage_id') else ''
         street = (lead.get('street') or '').strip()
         street2 = (lead.get('street2') or '').strip()
-        junk_street = bool(street) and bool(_JUNK_STREET_RE.search(street))
+        junk_street = est_reponse_formulaire(street)
         tags = [tag_names.get(tid) for tid in (lead.get('tag_ids') or [])]
         tags = [t for t in tags if t]
         telephone, tel_invalide = _clean_phone(lead.get('phone'))
@@ -214,12 +253,8 @@ def build_rows(odoo_leads, tag_names):
         if tel_invalide:
             note_lines.append('Téléphone Odoo invalide: ' + tel_invalide)
 
-        email = (lead.get('email_from') or '').strip().lower()
-        if not email or email in PLACEHOLDER_EMAILS:
-            email = None
-        societe = (lead.get('partner_name') or '').strip()
-        if not societe or societe == 'Facebook Lead':
-            societe = None
+        email = email_reel(lead.get('email_from'))
+        societe = societe_reelle(lead.get('partner_name'))
         adresse = None
         if street and not junk_street:
             adresse = street + (', ' + street2 if street2 else '')
@@ -253,6 +288,9 @@ class RapportAlignement:
     introuvables: int = 0
     corbeille: int = 0
     inconnus: int = 0
+    # Lignes Odoo qui retombent sur une fiche ERP déjà traitée dans la même
+    # passe (doublons INTERNES au pipeline Odoo) — la première ligne gagne.
+    doublons_odoo: int = 0
     regressions: list = field(default_factory=list)
 
 
@@ -299,7 +337,7 @@ def align_stages_from_rows(company, rows, apply_changes):
                 continue
             stage_odoo = row.get('stage')
             target = _map_stage_connu(stage_odoo)
-            lead = _find_existing(company, ext_id, {
+            lead, _ambigu = _find_existing(company, ext_id, {
                 'email': row.get('email'),
                 'telephone': row.get('telephone')})
             if lead is None:
@@ -309,6 +347,10 @@ def align_stages_from_rows(company, rows, apply_changes):
                 rapport.corbeille += 1
                 continue
             if lead.pk in deja_traites:
+                # CRX10 — DEUX lignes Odoo pointent la même fiche ERP : la
+                # première gagne, mais le silence cachait des doublons INTERNES
+                # au pipeline Odoo. Compté et remonté au rapport.
+                rapport.doublons_odoo += 1
                 continue
             deja_traites.add(lead.pk)
             if target is None:
