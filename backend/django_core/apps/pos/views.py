@@ -174,9 +174,16 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
     def valider(self, request, pk=None):
         vente = self.get_object()
         paiements = request.data.get('paiements') or []
+        # AUD204 — le coupon saisi à l'écran est transmis à la validation :
+        # c'est là que sa remise est réellement soustraite du total exigé et
+        # que le coupon est consommé, une seule fois, dans la même
+        # transaction que la facture.
+        coupon_code = request.data.get('coupon') or request.data.get(
+            'coupon_code')
         try:
             services.valider_vente(
-                vente=vente, paiements=paiements, user=request.user)
+                vente=vente, paiements=paiements, user=request.user,
+                coupon_code=coupon_code)
         except services.VenteComptoirError as exc:
             raise ValidationError(str(exc))
         return Response(VenteComptoirSerializer(vente).data)
@@ -199,13 +206,17 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='coupon')
     def coupon(self, request, pk=None):
-        """NTRET13 — Applique (consomme) un coupon à code unique saisi à
-        l'écran caisse."""
+        """NTRET13 / AUD204 — Valide un coupon à code unique saisi à l'écran
+        caisse et renvoie la remise qu'il ouvre sur ce panier, SANS le
+        consommer. Le coupon n'est brûlé qu'à ``valider/`` (passer le code en
+        ``coupon``), au moment où la remise est réellement soustraite du total
+        payé — avant, cette action consommait le coupon et rien ne l'appliquait
+        : le client payait plein tarif et perdait son coupon."""
         vente = self.get_object()
         code = request.data.get('code')
         try:
-            coupon, montant = services.appliquer_coupon(
-                vente=vente, code=code, user=request.user)
+            coupon, montant = services.previsualiser_coupon(
+                vente=vente, code=code)
         except services.CouponPosError as exc:
             raise ValidationError(str(exc))
         return Response({'code': coupon.code, 'montant_remise': str(montant)})

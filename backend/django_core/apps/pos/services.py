@@ -64,7 +64,7 @@ def _discount_threshold_ok(company, remise, *, approuve, user):
 
 
 @transaction.atomic
-def valider_vente(*, vente, paiements, user):
+def valider_vente(*, vente, paiements, user, coupon_code=None):
     """Valide une ``VenteComptoir`` (XPOS1).
 
     ``paiements`` : liste de dicts ``{mode, montant, reference?}``. En une
@@ -78,6 +78,14 @@ def valider_vente(*, vente, paiements, user):
     Refuse une remise de ligne au-delà du seuil d'approbation société sans
     approbation (T17). Refuse un règlement espèces sans session de caisse
     active (XPOS4). Renvoie la vente validée (avec ``facture`` posée).
+
+    AUD204 — ``coupon_code`` FERME LA BOUCLE du coupon à code unique. Avant,
+    l'action ``coupon/`` CONSOMMAIT le coupon (elle brûlait sa limite d'usage)
+    et ``valider_vente`` exigeait malgré tout le total plein : le client payait
+    plein tarif ET perdait son coupon. Désormais la remise est calculée puis
+    RÉELLEMENT SOUSTRAITE du total exigé et du montant facturé, et le coupon
+    n'est consommé qu'ici — dans la MÊME transaction que la facture, une seule
+    fois, et jamais si la vente échoue.
     """
     if vente.statut != VenteComptoir.Statut.BROUILLON:
         raise VenteComptoirError('Cette vente a déjà été validée ou annulée.')
@@ -95,7 +103,16 @@ def valider_vente(*, vente, paiements, user):
                 'dépasse le seuil autorisé sans approbation.')
 
     total_ttc = vente.total_ttc
-    total_ttc_q = _q2(total_ttc)
+    total_ttc_brut_q = _q2(total_ttc)
+    # (AUD204) — remise coupon calculée AVANT le contrôle du montant réglé :
+    # c'est tout l'objet du défaut, `total_ttc_q` était le total PLEIN. Le
+    # coupon est seulement VÉRIFIÉ ici (lecture seule) ; sa consommation
+    # intervient plus bas, une fois tous les pré-vols passés.
+    remise_coupon = Decimal('0')
+    if coupon_code:
+        remise_coupon = _remise_coupon_previsualisee(
+            vente=vente, code=coupon_code, plafond=total_ttc_brut_q)
+    total_ttc_q = _q2(total_ttc_brut_q - remise_coupon)
     total_paiements = sum((_q2(p.get('montant')) for p in paiements), Decimal('0'))
     if total_paiements <= 0:
         raise VenteComptoirError('Le montant réglé doit être positif.')
@@ -165,9 +182,24 @@ def valider_vente(*, vente, paiements, user):
         raise VenteComptoirError(
             'Un client est requis pour émettre la facture légale.')
 
+    # (AUD204) — le coupon n'est CONSOMMÉ qu'ici : tous les pré-vols sont
+    # passés, la transaction ira au bout ou sera intégralement annulée. Un
+    # coupon n'est donc jamais brûlé par une vente refusée.
+    libelle_facture = f'Vente comptoir {vente.reference}'
+    if coupon_code and remise_coupon > 0:
+        coupon = _consommer_coupon_vente(vente=vente, code=coupon_code)
+        libelle_facture += f' — remise coupon {coupon.code}'
+
     taux_tva = vente.taux_tva or Decimal('20')
-    total_ht = _q2(vente.total_ht)
-    montant_tva = _q2(total_ttc - total_ht)
+    total_ht_brut = _q2(vente.total_ht)
+    if remise_coupon > 0 and total_ttc_brut_q > 0:
+        # Remise répartie au prorata : le TAUX de TVA de la vente est préservé
+        # (jamais une remise imputée en totalité sur le HT ou sur la TVA).
+        ratio = total_ttc_q / total_ttc_brut_q
+        total_ht = _q2(total_ht_brut * ratio)
+    else:
+        total_ht = total_ht_brut
+    montant_tva = _q2(total_ttc_q - total_ht)
 
     facture = ventes_services.creer_facture_classique(
         company=vente.company,
@@ -176,8 +208,8 @@ def valider_vente(*, vente, paiements, user):
         taux_tva=taux_tva,
         montant_ht=total_ht,
         montant_tva=montant_tva,
-        montant_ttc=_q2(total_ttc),
-        libelle=f'Vente comptoir {vente.reference}',
+        montant_ttc=total_ttc_q,
+        libelle=libelle_facture,
     )
 
     # (b) Paiement(s) — multi-modes, via le thin service ventes.services.
@@ -1170,6 +1202,49 @@ def appliquer_coupon(*, vente, code, user=None):
     except CouponError as exc:
         raise CouponPosError(str(exc))
     return coupon, montant
+
+
+def previsualiser_coupon(*, vente, code):
+    """AUD204 — APERÇU d'un coupon sur le panier : le valide et calcule la
+    remise SANS le consommer. C'est ce que l'écran caisse appelle en saisissant
+    le code ; le coupon n'est brûlé qu'à ``valider_vente``, au moment où la
+    remise atteint RÉELLEMENT le client. Avant, l'action ``coupon/`` consommait
+    le coupon et rien ne soustrayait la remise : le client payait plein tarif
+    et perdait son coupon."""
+    from apps.promotions.services import (
+        CouponError, montant_remise_coupon, valider_coupon,
+    )
+    try:
+        coupon = valider_coupon(vente.company, code, client=vente.client)
+        montant = montant_remise_coupon(coupon, vente.lignes.all())
+    except CouponError as exc:
+        raise CouponPosError(str(exc))
+    return coupon, _q2(montant)
+
+
+def _remise_coupon_previsualisee(*, vente, code, plafond):
+    """Remise (MAD) qu'apportera ``code`` à cette vente — LECTURE SEULE, jamais
+    supérieure au total TTC du panier. Une erreur de coupon remonte en
+    ``VenteComptoirError`` : la vente est refusée AVANT toute écriture plutôt
+    que d'encaisser plein tarif en silence (AUD204)."""
+    try:
+        _, montant = previsualiser_coupon(vente=vente, code=code)
+    except CouponPosError as exc:
+        raise VenteComptoirError(str(exc))
+    if montant <= 0:
+        raise VenteComptoirError(
+            'Ce coupon n\'ouvre aucune remise sur ce panier.')
+    return min(montant, plafond)
+
+
+def _consommer_coupon_vente(*, vente, code):
+    """Consomme le coupon ``code`` pour cette vente (dans la transaction de
+    ``valider_vente``). Renvoie le coupon consommé."""
+    try:
+        coupon, _ = appliquer_coupon(vente=vente, code=code)
+    except CouponPosError as exc:
+        raise VenteComptoirError(str(exc))
+    return coupon
 
 
 # ── NTRET15 — Cartes cadeaux (apps.promotions) ──────────────────────────────
