@@ -134,6 +134,36 @@ class SolderTvaPeriodeTests(TestCase):
         self.assertEqual(ecr.lignes.get(compte__numero='3455').credit,
                          calc['tva_deductible'])
 
+    def test_aud163_declaration_apres_solde_garde_ses_deux_bases(self):
+        """AUD163 — l'écriture de solde TVA ne pollue plus ses propres bases.
+
+        Le total restait juste (44552 étant dans le groupe collectée, il
+        ré-injectait le net) mais les DEUX cases exigées séparément par le
+        formulaire DGI étaient faussées : collectée 150 au lieu de 200,
+        déductible 0 au lieu de 50.
+        """
+        avant = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 1, 1), date_fin=date(2026, 1, 31))
+        self.assertEqual(avant['tva_collectee'], Decimal('200'))
+        self.assertEqual(avant['tva_deductible'], Decimal('50'))
+        self.assertEqual(avant['tva_a_declarer'], Decimal('150'))
+        services.solder_tva_periode(self.periode)
+        apres = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 1, 1), date_fin=date(2026, 1, 31))
+        self.assertEqual(apres['tva_collectee'], Decimal('200'))
+        self.assertEqual(apres['tva_deductible'], Decimal('50'))
+        self.assertEqual(apres['tva_a_declarer'], Decimal('150'))
+
+    def test_aud163_comparaison_m1_sur_des_bases_non_polluees(self):
+        """AUD163 — le chemin ``comparer=True`` lit les mêmes bases saines."""
+        services.solder_tva_periode(self.periode)
+        res = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 1, 1), date_fin=date(2026, 1, 31),
+            comparer=True)
+        self.assertEqual(res['tva_collectee'], Decimal('200'))
+        self.assertEqual(res['tva_deductible'], Decimal('50'))
+        self.assertIn('tva_collectee_m1', res)
+
     def test_solde_tva_idempotent_par_periode(self):
         a = services.solder_tva_periode(self.periode)
         b = services.solder_tva_periode(self.periode)

@@ -2153,6 +2153,9 @@ def releve_fournisseur(company, tiers_id, *, tiers_type='fournisseur',
 # aux fournisseurs) est un ACTIF (classe 3455…) : elle naît au DÉBIT.
 _COMPTES_TVA_COLLECTEE = ('4455', '44552')      # TVA facturée / due (passif).
 _COMPTES_TVA_DEDUCTIBLE = ('3455', '34552')     # TVA récupérable (actif).
+# AUD163 — écriture de clôture TVA (``solder_tva_periode``) : elle ne doit
+# jamais rentrer dans l'agrégation qui la produit.
+_SOURCE_SOLDE_TVA = 'solde_tva'
 
 
 def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
@@ -2162,10 +2165,17 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
     À la différence de ``_solde_groupe`` (solde cumulé à une date), on agrège
     les MOUVEMENTS de la période ``[date_debut ; date_fin]`` — c'est ce qu'exige
     une déclaration périodique de TVA (la TVA du mois/trimestre, pas le cumul).
+
+    AUD163 — l'écriture de solde TVA de la période (``source_type='solde_tva'``,
+    datée ``periode.date_fin``, donc DANS la fenêtre) est EXCLUE : elle solde
+    4455/3455 et recrédite le net au 44552, ce qui laisse le total juste mais
+    fausse les DEUX cases que le formulaire DGI exige séparément (collectée /
+    déductible). Même logique de séparation que ``source_type='abonnement'``.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
-        compte__numero__in=numeros)
+        compte__numero__in=numeros).exclude(
+        ecriture__source_type=_SOURCE_SOLDE_TVA)
     agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
     return (agg['debit'] or Decimal('0'), agg['credit'] or Decimal('0'))
 
