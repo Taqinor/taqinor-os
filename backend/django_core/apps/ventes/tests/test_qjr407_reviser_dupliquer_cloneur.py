@@ -24,6 +24,7 @@ Run :
 from decimal import Decimal
 from unittest import mock
 
+from django.apps import apps
 from django.test import TestCase
 
 from apps.ventes.models import Devis
@@ -51,6 +52,12 @@ class _Base(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
+        # ``Devis.entite`` est un FK vers ``entites.Entite`` (string-FK, cf.
+        # models.py) — pas un libellé. On instancie donc une vraie entité,
+        # scopée au tenant du test, via ``apps.get_model`` : aucune arête
+        # d'import statique ventes → entites n'est créée.
+        self.entite = apps.get_model('entites', 'Entite').objects.create(
+            company=self.company, nom='TAQINOR SARL', code='TAQ-SARL')
         self.source = make_devis(
             self.company, self.user, self.client_obj, LIGNES,
             reference='DEV-QJR407-0001',
@@ -60,7 +67,7 @@ class _Base(TestCase):
             devise='EUR', taux_change=Decimal('11.0000'),
             echeancier=ECHEANCIER_NEGOCIE,
             acompte_pct=Decimal('45.00'), acompte_montant=Decimal('1234.56'),
-            entite='TAQINOR SARL', custom_data={'dossier': 'X-42'})
+            entite=self.entite, custom_data={'dossier': 'X-42'})
         self.source.refresh_from_db()
 
     def _assert_les_sept_champs(self, copie):
@@ -70,7 +77,7 @@ class _Base(TestCase):
         self.assertEqual(Decimal(str(copie.acompte_pct)), Decimal('45.00'))
         self.assertEqual(Decimal(str(copie.acompte_montant)),
                          Decimal('1234.56'))
-        self.assertEqual(copie.entite, 'TAQINOR SARL')
+        self.assertEqual(copie.entite_id, self.entite.pk)
         self.assertEqual(copie.custom_data, {'dossier': 'X-42'})
 
 
