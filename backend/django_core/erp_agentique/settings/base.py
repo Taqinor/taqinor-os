@@ -334,6 +334,16 @@ INSTALLED_APPS = [
     'apps.scm',
 ]
 
+# SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
+# (registre `settings/editions.py`) sortent d'INSTALLED_APPS : leurs modèles ne
+# sont plus chargés, leurs migrations ne sont plus appliquées sur une base
+# vierge, leurs tâches beat et leurs urls disparaissent (SOL2c / urls.py).
+# AUCUNE table n'est supprimée : repasser `TAQINOR_EDITION` à `full` réactive
+# tout à l'identique. En édition complète (défaut dev/tests/CI) la liste est
+# renvoyée BYTE-IDENTIQUE.
+INSTALLED_APPS = editions.filtrer_installed_apps(
+    INSTALLED_APPS, TAQINOR_EDITION)
+
 MIDDLEWARE = [
     # YAPIC4 — EN PREMIER : pose request.request_id (échoé/lu depuis
     # X-Request-Id) avant tout le reste de la pile, pour que
