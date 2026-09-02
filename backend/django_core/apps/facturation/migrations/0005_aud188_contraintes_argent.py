@@ -3,9 +3,12 @@
 ``Avoir`` et ``LigneAvoir`` n'avaient AUCUNE ``CheckConstraint`` — et ``Avoir``
 n'a même ni ``clean()`` ni ``save()`` — tandis que le registre censé cataloguer
 ces trous (``docs/db-invariants-gap.md``) avait un angle mort sur son propre
-périmètre : un ``Avoir.objects.filter(pk=x).update(montant_ttc=-500)`` posait
-une note de crédit négative qu'aucune contrainte ni aucun outil d'audit ne
-détectait.
+périmètre : une écriture directe en base (queryset ou SQL brut) posait un
+``montant_ttc`` négatif — une note de crédit négative — qu'aucune contrainte ni
+aucun outil d'audit ne détectait.
+
+Cette migration ne contient QUE des ``AddConstraint`` : aucun ``RunPython``,
+aucune écriture de masse.
 
 ADDITIF ET RÉVERSIBLE : que des ``AddConstraint``, aucune donnée touchée,
 ``git revert`` suffit. Une base portant déjà des montants négatifs ou une
