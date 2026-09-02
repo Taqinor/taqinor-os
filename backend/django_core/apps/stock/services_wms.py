@@ -1085,8 +1085,18 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
     jamais par un casier. L'entrée en stock reste celle, inchangée, de la
     confirmation de réception.
 
-    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees}``.
-    Lève ``ValueError`` si aucune ligne ne matche ou si le colis est scellé.
+    AUD221 — la quantité reçue est VENTILÉE entre les vagues qui attendent ce
+    produit, chacune plafonnée à SON reste à prélever, la plus ancienne
+    d'abord : la totalité partait auparavant sur la PREMIÈRE vague, si bien
+    qu'une réception de 20 pour une vague qui n'en attendait que 5 servait 5
+    unités utiles, gonflait son colis de 15 unités qu'elle ne demandait pas, et
+    laissait la vague suivante bloquée alors que la marchandise était là. Ce
+    que les vagues n'attendent pas reste un RELIQUAT (jamais mis au colis) et
+    repart sur le rangement normal NTWMS2.
+
+    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees,
+    reliquats}``. Lève ``ValueError`` si aucune ligne ne matche ou si le colis
+    est scellé.
     """
     from django.db import transaction
 
@@ -1115,32 +1125,65 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
             company=company,
             id__in=[p['produit_id'] for p in propositions])
     }
-    affectees, ignorees = [], []
+    affectees, ignorees, reliquats = [], [], []
+    # Un colis PAR VAGUE servie (un colis est rattaché à SA vague) — sauf si
+    # l'appelant impose lui-même une unité, qui reçoit alors tout.
+    colis_par_vague, unites = {}, []
     colis = unite
     with transaction.atomic():
         for proposition in propositions:
             produit = produits.get(proposition['produit_id'])
-            quantite = proposition['quantite'] or 0
-            if produit is None or quantite <= 0:
+            restant = proposition['quantite'] or 0
+            if produit is None or restant <= 0:
                 ignorees.append(proposition['ligne_id'])
                 continue
-            tete = proposition['vagues'][0]
-            if colis is None:
-                vague = VaguePicking.objects.filter(
-                    id=tete['vague_id'], company=company).first()
-                colis = creer_unite_logistique(
-                    company=company, type_unite='colis', vague=vague)
-            ligne_picking = LignePicking.objects.filter(
-                id=tete['ligne_picking_id'], company=company).first()
-            ajouter_ligne_unite_logistique(
-                company=company, unite=colis, produit=produit,
-                quantite=quantite, ligne_picking=ligne_picking)
+            # AUD221 — ventilation vague par vague, plafonnée au reste à
+            # prélever de CHACUNE (la plus ancienne d'abord).
+            premiere_cible, cross_dockee = None, 0
+            for cible in proposition['vagues']:
+                if restant <= 0:
+                    break
+                part = min(restant, cible['reste_a_prelever'] or 0)
+                if part <= 0:
+                    continue
+                if unite is not None:
+                    cible_colis = unite
+                else:
+                    cible_colis = colis_par_vague.get(cible['vague_id'])
+                    if cible_colis is None:
+                        vague = VaguePicking.objects.filter(
+                            id=cible['vague_id'], company=company).first()
+                        cible_colis = creer_unite_logistique(
+                            company=company, type_unite='colis', vague=vague)
+                        colis_par_vague[cible['vague_id']] = cible_colis
+                        unites.append(cible_colis)
+                    if colis is None:
+                        colis = cible_colis
+                ligne_picking = LignePicking.objects.filter(
+                    id=cible['ligne_picking_id'], company=company).first()
+                ajouter_ligne_unite_logistique(
+                    company=company, unite=cible_colis, produit=produit,
+                    quantite=part, ligne_picking=ligne_picking)
+                if premiere_cible is None:
+                    premiere_cible = ligne_picking
+                restant -= part
+                cross_dockee += part
+            if cross_dockee <= 0:
+                # Les vagues n'attendent plus rien : rangement normal.
+                ignorees.append(proposition['ligne_id'])
+                continue
+            # UNE trace par ligne reçue (contrainte d'unicité NTWMS15 :
+            # ré-appeler le service ne duplique jamais le colis) portant la
+            # quantité RÉELLEMENT cross-dockée.
             AffectationCrossDock.objects.create(
                 company=company, reception=reception,
                 ligne_reception_id=proposition['ligne_id'], produit=produit,
-                quantite=quantite, unite_logistique=colis,
-                ligne_picking=ligne_picking)
+                quantite=cross_dockee, unite_logistique=colis,
+                ligne_picking=premiere_cible)
             affectees.append(proposition['ligne_id'])
+            if restant > 0:
+                reliquats.append({'ligne_id': proposition['ligne_id'],
+                                  'quantite': restant})
     logger.info(
         'NTWMS15 cross-dock : réception %s → colis %s (%s ligne(s))',
         getattr(reception, 'reference', reception.pk),
@@ -1148,8 +1191,14 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
     return {
         'unite_logistique': colis.id if colis is not None else None,
         'sscc': colis.sscc if colis is not None else '',
+        # AUD221 — tous les colis servis (un par vague ; l'unique colis imposé
+        # par l'appelant sinon).
+        'unites_logistiques': ([unite.id] if unite is not None
+                               else [u.id for u in unites]),
         'lignes_affectees': affectees,
         'lignes_ignorees': ignorees,
+        # AUD221 — ce que les vagues n'attendaient pas : à ranger normalement.
+        'reliquats': reliquats,
         'reception_entierement_cross_dockee': reception_est_cross_dock(
             reception),
     }

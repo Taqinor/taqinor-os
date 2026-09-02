@@ -255,6 +255,15 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
                 child=serializers.IntegerField()),
             'lignes_ignorees': serializers.ListField(
                 child=serializers.IntegerField()),
+            # AUD221 — un colis par vague servie + ce que les vagues
+            # n'attendaient pas (à ranger normalement, NTWMS2).
+            'unites_logistiques': serializers.ListField(
+                child=serializers.IntegerField()),
+            'reliquats': serializers.ListField(
+                child=inline_serializer('StockReceptionCrossDockReliquat', {
+                    'ligne_id': serializers.IntegerField(),
+                    'quantite': serializers.IntegerField(),
+                })),
             'reception_entierement_cross_dockee': serializers.BooleanField(),
         }),
         400: inline_serializer('StockReceptionCrossDockErreur', {
