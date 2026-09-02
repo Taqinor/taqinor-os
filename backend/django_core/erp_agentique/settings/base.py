@@ -978,6 +978,9 @@ CELERY_TASK_ROUTES = {
     'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
     'crm.appointment_reminders': {'queue': 'scheduled'},
     'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
+    # CRX22 — recalcul des scores de lead devenus obsoletes (beat) : voir le
+    # commentaire ci-dessus, toute tache du beat_schedule DOIT etre routee.
+    'crm.recalculer_scores_obsoletes': {'queue': 'scheduled'},
     # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
