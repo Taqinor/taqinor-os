@@ -822,13 +822,31 @@ def plan_de_charge(company, debut, fin, heures_par_jour=None,
             date_fin__gte=debut,
         ).select_related('ressource', 'equipe'))
 
+    # AUD325 — indisponibilités préchargées en UNE requête, indexées par
+    # ressource. La boucle appelait `indisponibilites_sur_periode(ressource,
+    # …)` par ressource : 60 profils = 60 requêtes SQL supplémentaires à chaque
+    # ouverture de l'écran Ressources ou du bouton « Nivellement » (qui hérite
+    # de ce coût via `nivellement_charge`). Même stratégie que les affectations
+    # juste au-dessus. Mêmes bornes INCLUSIVES et même ordre
+    # (`date_debut`, `id`) que le sélecteur unitaire, qui reste inchangé pour
+    # ses autres appelants.
+    indispos_par_ressource = {}
+    for indispo in Indisponibilite.objects.filter(
+            company=company,
+            ressource_id__in=[r.id for r in ressources],
+            date_debut__lte=fin,
+            date_fin__gte=debut,
+    ).order_by('date_debut', 'id'):
+        indispos_par_ressource.setdefault(
+            indispo.ressource_id, []).append(indispo)
+
     lignes = []
     nb_surcharges = 0
     for ressource in ressources:
         capacite_brute = _jours_ouvres_periode(debut, fin, jours_ouvres)
         # Retrancher les jours ouvrés couverts par une indisponibilité.
         jours_indispo = 0
-        for indispo in indisponibilites_sur_periode(ressource, debut, fin):
+        for indispo in indispos_par_ressource.get(ressource.id, ()):
             chev = _chevauchement_inclusif(
                 indispo.date_debut, indispo.date_fin, debut, fin)
             if chev is not None:
