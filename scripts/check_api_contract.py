@@ -425,6 +425,23 @@ class BackendRoutes:
             if isinstance(entry, RouterRef):
                 self._expand_router(routers.get(entry.variable, []), prefix, module)
                 continue
+            # SOL3/SOL6 — montage CONDITIONNEL par edition : `urls.py` ecrit
+            # `*_si_active('mrp/', 'apps.mrp.urls')` la ou il ecrivait
+            # `path('mrp/', include('apps.mrp.urls'))` (le helper doit decider
+            # AVANT d'appeler `include()`, qui importerait une app parquee).
+            # Sans ce cas, la lecture statique perdait les SIX verticaux d'un
+            # coup : leurs routes disparaissaient de l'inventaire et tous les
+            # appels frontend vers elles sortaient du contrat en silence.
+            if isinstance(entry, ast.Starred):
+                entry = entry.value
+                if isinstance(entry, ast.Call) \
+                        and _call_name(entry) in MONTAGES_CONDITIONNELS:
+                    self._walk_montage_conditionnel(entry, prefix)
+                    continue
+                # Tout autre depaquetage reste un angle mort ASSUME et COMPTE
+                # (visible via --stats), jamais une disparition silencieuse.
+                self.unknown_routes += 1
+                continue
             if not (isinstance(entry, ast.Call) and _call_name(entry) in ("path", "re_path")):
                 continue
             if not entry.args:
@@ -453,6 +470,30 @@ class BackendRoutes:
                 self.routes.add(here)
                 self.views[here] = (module, _view_reference(view))
                 self.stats["vues"] += 1
+
+    def _walk_montage_conditionnel(self, call, prefix):
+        """`_si_active('<route>/', '<module.urls>')` ≡ path(route, include(module)).
+
+        Le helper renvoie `[]` ou `[path(...)]` selon l'edition ; pour la
+        lecture STATIQUE, l'inventaire doit toujours refleter l'edition
+        COMPLETE — c'est elle que la gate PR construit et c'est sur elle que
+        les contrats sont figes.
+        """
+        raw = _const_str(call.args[0]) if call.args else None
+        dotted = _const_str(call.args[1]) if len(call.args) > 1 else None
+        if raw is None or dotted is None:
+            self.unknown_routes += 1
+            return
+        segments, opaque = normalise_route(raw)
+        here = prefix + tuple(segments)
+        if opaque:
+            self._mark_opaque(here)
+            return
+        key = f"{dotted}|{here}"
+        if key in self._seen_includes:
+            return
+        self._seen_includes.add(key)
+        self._walk_module(dotted, here)
 
     def _walk_include(self, call, prefix, module, routers, lists):
         if not call.args:
@@ -590,6 +631,12 @@ def _flatten(node, lists):
         return _flatten(node.left, lists) + _flatten(node.right, lists)
     return []
 
+
+# SOL3 — helpers de MONTAGE CONDITIONNEL utilises dans `erp_agentique/urls.py`
+# a la place d'un `path(..., include(...))` litteral, sous la forme
+# `*<helper>('<route>/', '<module.urls>')`. Ils prennent exactement les memes
+# deux arguments litteraux et sont donc lisibles statiquement.
+MONTAGES_CONDITIONNELS = ("_si_active",)
 
 _DJANGO_CONVERTER = re.compile(r"<[^>]+>")
 _REGEX_GROUP = re.compile(r"\(\?P<[^>]+>[^)]*\)")

@@ -903,7 +903,7 @@
 - frontend/src/api/rolesApi.js :: getPermissionCatalog -> /api/django/roles/permission-catalog
     permissions:inconnu, routes:inconnu
 - frontend/src/api/rolesApi.js :: getPermissionsDisponibles -> /api/django/roles/permissions-disponibles
-    permissions:inconnu
+    modules:inconnu, permissions:inconnu
 - frontend/src/api/santeApi.js :: statistiques -> /api/django/sante/factures-sante/statistiques
     par_acte:inconnu, par_convention:inconnu
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
