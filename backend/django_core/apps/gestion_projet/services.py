@@ -405,11 +405,26 @@ def deposer_version_document(document, fichier, commentaire='', auteur=None):
     atomique. ``company`` est toujours celle du ``document`` (jamais lue d'un
     corps) ; ``auteur`` est posé côté serveur. Renvoie la ``VersionDocument``
     créée.
+
+    AUD309 — le fichier part dans MinIO via ``records.storage.store_attachment``
+    (clé préfixée par la société), au lieu du ``FileField`` Django qui écrivait
+    sur le disque hôte sans qu'aucune URL ne puisse le resservir (ni
+    ``MEDIA_URL``/``MEDIA_ROOT``, ni route ``/media/``, ni ``location /media/``
+    nginx). Un format refusé par le pipeline (PDF/PNG/JPEG/WebP) ou un fichier
+    trop volumineux lève une ``ValidationError`` DRF → 400 propre, jamais une
+    version créée sans contenu.
     """
+    from rest_framework.exceptions import ValidationError
+
+    from apps.records.storage import store_attachment
+
     from .models import DocumentProjet, VersionDocument
 
     if not isinstance(document, DocumentProjet):  # pragma: no cover - garde-fou
         raise TypeError('document doit être une instance de DocumentProjet.')
+    meta, erreur = store_attachment(fichier, company=document.company)
+    if meta is None:
+        raise ValidationError({'fichier': erreur})
     # Verrou ligne pour sérialiser des dépôts concurrents sur le même document.
     document = DocumentProjet.objects.select_for_update().get(pk=document.pk)
     prochaine = (document.derniere_version or 0) + 1
@@ -417,7 +432,10 @@ def deposer_version_document(document, fichier, commentaire='', auteur=None):
         company=document.company,
         document=document,
         version=prochaine,
-        fichier=fichier,
+        file_key=meta['file_key'],
+        filename=meta.get('filename') or '',
+        size=meta.get('size') or 0,
+        mime=meta.get('mime') or '',
         commentaire=commentaire or '',
         auteur=auteur,
     )

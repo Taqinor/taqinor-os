@@ -915,17 +915,33 @@ class VersionDocumentSerializer(serializers.ModelSerializer):
     Le ``version`` et l'``auteur`` sont posés côté serveur par le service de
     dépôt ; ce sérialiseur n'expose donc que la lecture des révisions (le dépôt
     se fait via l'action ``documents/<id>/deposer/``).
+
+    AUD309 — ``fichier_url`` est une URL PRÉSIGNÉE dérivée de la clé MinIO
+    (``records.storage.presign_attachment``), scopée société par le préfixe de
+    clé. Elle remplace l'ancien champ ``fichier`` (``FileField``) dont l'URL
+    était structurellement morte : aucun ``MEDIA_URL``/``MEDIA_ROOT`` dans les
+    settings, aucune route ``/media/``, aucune ``location /media/`` nginx.
+    ``None`` tant qu'une version n'a pas de clé (lignes historiques déposées
+    avant la bascule) — jamais une URL qui ne résout pas.
     """
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default='')
+    fichier_url = serializers.SerializerMethodField()
 
     class Meta:
         model = VersionDocument
         fields = [
-            'id', 'document', 'version', 'fichier', 'commentaire', 'auteur',
-            'auteur_nom', 'date_creation',
+            'id', 'document', 'version', 'file_key', 'filename', 'size',
+            'mime', 'fichier_url', 'commentaire', 'auteur', 'auteur_nom',
+            'date_creation',
         ]
         read_only_fields = fields
+
+    def get_fichier_url(self, obj):
+        if not obj.file_key:
+            return None
+        from apps.records.storage import presign_attachment
+        return presign_attachment(obj.file_key)
 
 
 class DocumentProjetSerializer(serializers.ModelSerializer):
