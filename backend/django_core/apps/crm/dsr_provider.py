@@ -7,7 +7,11 @@ opérations :
 * **export** — renvoie les données CRM (leads + clients) de la personne
   concernée, identifiée par email OU téléphone normalisé ;
 * **effacement** — ANONYMISE (n'efface pas) : nom générique, contacts vidés,
-  drapeau ``is_anonymized`` posé. Les activités/historique et l'intégrité
+  drapeau ``is_anonymized`` posé. CRX32 — l'ensemble scrubé est désormais
+  EXACTEMENT celui de l'action ``ClientViewSet.anonymize`` (FG26) : les
+  identifiants fiscaux et administratifs du client (``cin``/``ice``/
+  ``if_fiscal``/``rc``) et les champs personnalisés ``custom_data`` du client
+  ET du lead partent avec le reste. Les activités/historique et l'intégrité
   comptable (devis/factures) sont CONSERVÉS. Les identifiants de TRAÇAGE
   partent aussi (``Lead.appareil_id`` et, sur les ``VisiteExterne`` du lead,
   IP / navigateur / appareil / suffixe de jeton) : sans eux, un lead
@@ -48,18 +52,32 @@ def _matcher(company, subject_identifier):
         client_q = Q(pk__in=[])
 
     if phone:
-        # Filtrer côté Python sur le téléphone normalisé (les valeurs stockées
-        # ne sont pas normalisées) ; l'email reste filtré en base.
-        lead_ids = [
-            le.pk for le in Lead.objects.filter(company=company)
-            if normalize_phone(le.telephone) == phone
-            or normalize_phone(le.whatsapp) == phone
+        # CRX32 — LE TÉLÉPHONE DU LEAD PASSE PAR LA COLONNE INDEXÉE.
+        # ``Lead.phone_normalise`` est maintenu à chaque ``save()`` (QW10) et
+        # porte un index ``(company, phone_normalise)`` : la recherche devient
+        # une requête indexée au lieu d'un scan Python de TOUTE la table des
+        # leads de la société (le chemin DSR pouvait donc devenir illisible sur
+        # un tenant chargé). L'ancien scan est SUPPRIMÉ, jamais gardé en repli.
+        lead_q |= Q(phone_normalise=phone)
+        # Le WhatsApp n'a PAS de colonne normalisée : on restreint d'abord en
+        # BASE aux leads qui en portent un (une petite minorité), puis on
+        # normalise ce seul sous-ensemble — la couverture est identique à
+        # l'ancien scan, le coût ne l'est plus.
+        whatsapp_ids = [
+            pk for pk, whatsapp in Lead.objects
+            .filter(company=company)
+            .exclude(whatsapp__isnull=True).exclude(whatsapp='')
+            .values_list('pk', 'whatsapp')
+            if normalize_phone(whatsapp) == phone
         ]
+        if whatsapp_ids:
+            lead_q |= Q(pk__in=whatsapp_ids)
+        # ``Client`` n'a pas de colonne normalisée : le filtrage reste côté
+        # Python (hors périmètre de cette tâche — inchangé).
         client_ids = [
             cl.pk for cl in Client.objects.filter(company=company)
             if normalize_phone(cl.telephone) == phone
         ]
-        lead_q |= Q(pk__in=lead_ids)
         client_q |= Q(pk__in=client_ids)
 
     return leads.filter(lead_q), clients.filter(client_q)
@@ -145,13 +163,20 @@ def erase_crm(company, subject_identifier):
         # personne à sa fiche « effacée » (``visites.rattacher_visites_au_lead``
         # et l'alerte ``alerter_appareil_partage`` s'appuient dessus).
         le.appareil_id = None
+        # CRX32 — LES CHAMPS PERSONNALISÉS PARTENT AUSSI. ``custom_data``
+        # (T11) est un JSON libre où une société range ce qu'elle veut : CIN,
+        # numéro de compteur, notes nominatives. L'action ``anonymize`` du
+        # ClientViewSet le purgeait déjà ; le chemin DSR — le seul qui réponde
+        # à une demande LÉGALE d'effacement — l'oubliait des deux côtés.
+        le.custom_data = None
         # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
         # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
         # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
         # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
         le.save(update_fields=[
             'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
-            'appareil_id', 'email_normalise', 'phone_normalise'])
+            'appareil_id', 'custom_data',
+            'email_normalise', 'phone_normalise'])
         # Les traces de traçage du lead perdent leurs identifiants (IP,
         # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
         # n'est plus reconnaissable.
@@ -164,10 +189,22 @@ def erase_crm(company, subject_identifier):
         cl.email = None
         cl.telephone = None
         cl.adresse = None
+        # CRX32 — PARITÉ AVEC L'ACTION ``anonymize`` DU ClientViewSet.
+        # Elle purge depuis FG26 les identifiants fiscaux et administratifs
+        # (CIN, ICE, IF, RC) et les champs personnalisés ; le chemin DSR, LUI,
+        # les laissait intacts — un client « effacé » sur demande légale
+        # gardait donc son numéro de carte d'identité nationale. Les deux
+        # chemins scrubent désormais exactement le même ensemble.
+        cl.cin = None
+        cl.ice = None
+        cl.if_fiscal = None
+        cl.rc = None
+        cl.custom_data = None
         cl.is_anonymized = True
         cl.anonymized_at = now
         cl.save(update_fields=[
             'nom', 'prenom', 'email', 'telephone', 'adresse',
+            'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
             'is_anonymized', 'anonymized_at'])
         count += 1
 
