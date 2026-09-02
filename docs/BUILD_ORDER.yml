@@ -406,6 +406,12 @@ unmapped_ok:
   # 29/08/2026) : auto-ordonné par ses propres chaînes @after et son plan de
   # merge M0→M6 (en-tête du groupe) ; aucun prérequis de vague plateforme.
   - QJR
+  # CRX/CRXB — Radiographie du CRM (Groupe CRX de PLAN2, audit L3 du
+  # 02/09/2026) : auto-ordonné par ses chaînes @after (réconciliation QJR4
+  # dans l'en-tête du groupe) ; CRXB gated sur le mot fondateur (D-CRX4) ;
+  # aucun prérequis de vague plateforme.
+  - CRX
+  - CRXB
   # LB — Leads Board & Liste (refonte page pipeline, Groupe LB de PLAN2,
   # session 2026-07-19) : frontend pur, aucun prérequis de vague.
   - LB
