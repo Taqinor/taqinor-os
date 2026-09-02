@@ -1310,6 +1310,12 @@ def calculate_savings_roi(
     # forfaitaire (voir le bloc « LE MODÈLE HORAIRE PREND LA MAIN » plus bas).
     # Absent ⇒ comportement byte-identique à avant CJ2a.
     etude_horaire: dict | None = None,
+    # QJR409 — réglage société ``TariffSettings.redevance_compteur_mad_mois``,
+    # lu par ``etude_horaire._reglages_tarifaires`` (LE lecteur, il n'y en a
+    # qu'un) et transmis par ``builder``. Il REMPLACE en bloc les deux lignes
+    # fixes du barème, exactement comme sur le chemin « horaire ». ``None`` ⇒
+    # les montants SOURCÉS du barème, sortie byte-identique à avant.
+    charges_fixes_mad: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1429,12 +1435,18 @@ def calculate_savings_roi(
     factures_approximatif = False
     factures_note_methode = None
     if not (tarif_kwh_override is not None and tarif_kwh_override > 0):
+        # QJR409 — ``charges_fixes_mad`` (redevance de compteur RÉGLÉE par la
+        # société) descend jusqu'ici : c'est la branche « factures » qui le
+        # laissait tomber, alors que le chemin « horaire » l'honore. Les deux
+        # « Facture actuelle » comptent désormais les MÊMES lignes fixes.
         _tb_s = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_sans_eff,
-            utility=utility, tranches_override=tranches_override)
+            utility=utility, tranches_override=tranches_override,
+            charges_fixes_mad=charges_fixes_mad)
         _tb_a = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_avec,
-            utility=utility, tranches_override=tranches_override)
+            utility=utility, tranches_override=tranches_override,
+            charges_fixes_mad=charges_fixes_mad)
         if _tb_s and _tb_a:
             savings_model = "factures"
             economie_opt1 = _tb_s["economie"]

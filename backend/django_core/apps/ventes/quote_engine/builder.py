@@ -1767,19 +1767,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
     # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
     # que le barème résidentiel national, jamais Lydec/Redal estimés).
-    if not _tranches_override and (not _utility or str(_utility).lower() == "onee"):
-        try:
-            from apps.parametres.selectors import residential_tranches_for
-            _co_tranches = residential_tranches_for(getattr(devis, "company", None))
-            if _co_tranches:
-                from .pricing import TrancheTable
-                _tranches_override = TrancheTable(
-                    _co_tranches["pairs"],
-                    selective_threshold=_co_tranches["selective_threshold"],
-                    boundary_tolerance=_co_tranches["boundary_tolerance"],
-                )
-        except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
-            pass
+    #
+    # QJR409 — LES DEUX RÉGLAGES TARIFAIRES DE LA SOCIÉTÉ VIENNENT DU LECTEUR
+    # EXISTANT (``etude_horaire._reglages_tarifaires``), plus d'une seconde
+    # lecture recopiée ici. Il rend le COUPLE ``(tranches, charges_fixes)`` :
+    # la moitié « tranches » remplace mot pour mot le bloc qui vivait ici (même
+    # sélecteur, même reconstruction en ``TrancheTable``), et la moitié
+    # « charges fixes » — le réglage ``redevance_compteur_mad_mois`` — n'avait
+    # AUCUN chemin jusqu'au modèle « factures », alors que le modèle « horaire »
+    # l'honore depuis toujours : le même client voyait DEUX « Facture actuelle »
+    # différentes selon le modèle qui gagne. Ne lève jamais.
+    _co_charges_fixes = None
+    try:
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        _co_tranches, _co_charges_fixes = _reglages_tarifaires(
+            getattr(devis, "company", None))
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        _co_tranches = None
+    if (_co_tranches and not _tranches_override
+            and (not _utility or str(_utility).lower() == "onee")):
+        _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
@@ -1841,6 +1848,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         utility=_utility or None,
         tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
         tranches_override=_tranches_override or None,
+        # QJR409 — la redevance de compteur RÉGLÉE par la société atteint enfin
+        # le modèle « factures » : sans elle, sa « Facture actuelle » comptait
+        # les lignes fixes SOURCÉES par défaut pendant que le modèle horaire
+        # comptait celles de la société. ``None`` ⇒ défauts du barème, sortie
+        # byte-identique à avant.
+        charges_fixes_mad=_co_charges_fixes,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
         autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
         # ORDRE FONDATEUR (18/08) — capacité batterie RÉELLE de l'option 2 :
