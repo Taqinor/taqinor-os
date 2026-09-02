@@ -849,6 +849,15 @@ def instantiate_modele_projet(installation, modele, user=None):
     existing_libelles = {
         j.libelle for j in installation.jalons.all()
     }
+    # AUD321 — `JalonProjet(installation, phase)` est désormais UNIQUE en base.
+    # Ce chemin dédoublonne par LIBELLÉ : appliquer deux modèles portant chacun
+    # un jalon de la même PHASE (libellés différents) violerait la contrainte
+    # et remonterait en 500. On garde le premier jalon de chaque phase et les
+    # suivants deviennent AD HOC (`phase=None`) : le jalon existe toujours,
+    # sous son libellé, sans phase en double.
+    phases_prises = {
+        j.phase for j in installation.jalons.all() if j.phase
+    }
     jalons_crees = 0
     for mj in modele.jalons.all():
         if mj.libelle in existing_libelles:
@@ -858,10 +867,15 @@ def instantiate_modele_projet(installation, modele, user=None):
             date_cible = base_date + timedelta(days=mj.offset_jours)
         except (TypeError, OverflowError):
             date_cible = None
+        phase = mj.phase or None
+        if phase and phase in phases_prises:
+            phase = None
         JalonProjet.objects.create(
             company=company, installation=installation,
-            phase=mj.phase or None, libelle=mj.libelle, ordre=mj.ordre,
+            phase=phase, libelle=mj.libelle, ordre=mj.ordre,
             date_cible=date_cible)
+        if phase:
+            phases_prises.add(phase)
         existing_libelles.add(mj.libelle)
         jalons_crees += 1
 
