@@ -7,6 +7,7 @@ class AoConfig(AppConfig):
     verbose_name = "Appels d'offres (marchés publics/privés)"
     module_manifest = {
         'key': 'ao',
+        'sku': 'solar_core',
         'label': "Appels d'offres",
         'icone': 'gavel',
         'depends': ['crm', 'ventes'],

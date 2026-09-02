@@ -7,6 +7,7 @@ class ContactsConfig(AppConfig):
     verbose_name = 'Contacts multi-rôles'
     module_manifest = {
         'key': 'contacts',
+        'sku': 'generic',
         'label': 'Contacts multi-rôles',
         'icone': 'address-book',
         'depends': ['crm'],

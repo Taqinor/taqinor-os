@@ -7,6 +7,7 @@ class SavConfig(AppConfig):
     verbose_name = 'Après-vente (parc équipements & SAV)'
     module_manifest = {
         'key': 'sav',
+        'sku': 'solar_core',
         'label': 'Après-vente',
         'icone': 'wrench',
         'depends': ['crm'],

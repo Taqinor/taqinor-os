@@ -7,6 +7,7 @@ class LitigesConfig(AppConfig):
     verbose_name = 'Réclamations & litiges'
     module_manifest = {
         'key': 'litiges',
+        'sku': 'generic',
         'label': 'Réclamations & litiges',
         'icone': 'alert-triangle',
         'depends': ['crm'],

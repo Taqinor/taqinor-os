@@ -7,6 +7,7 @@ class RolesConfig(AppConfig):
     verbose_name = 'Gestion des Rôles'
     module_manifest = {
         'key': 'roles',
+        'sku': 'generic',
         'label': 'Rôles & permissions',
         'icone': 'lock',
         'depends': [],

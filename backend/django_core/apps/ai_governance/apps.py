@@ -16,6 +16,7 @@ class AiGovernanceConfig(AppConfig):
     verbose_name = 'Gouvernance IA'
     module_manifest = {
         'key': 'ai_governance',
+        'sku': 'generic',
         'label': 'Gouvernance IA',
         'icone': 'cpu',
         'depends': [],

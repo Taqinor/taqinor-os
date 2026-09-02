@@ -7,6 +7,7 @@ class CrmConfig(AppConfig):
     verbose_name = 'CRM'
     module_manifest = {
         'key': 'crm',
+        'sku': 'solar_core',
         'label': 'CRM',
         'icone': 'users',
         'depends': [],

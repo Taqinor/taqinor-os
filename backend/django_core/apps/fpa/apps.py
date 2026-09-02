@@ -7,6 +7,7 @@ class FpaConfig(AppConfig):
     verbose_name = 'FP&A — Budgets & prévisions'
     module_manifest = {
         'key': 'fpa',
+        'sku': 'generic',
         'label': 'FP&A',
         'icone': 'line-chart',
         'depends': [],

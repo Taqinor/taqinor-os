@@ -7,6 +7,7 @@ class ParametresConfig(AppConfig):
     verbose_name = 'Paramètres'
     module_manifest = {
         'key': 'parametres',
+        'sku': 'generic',
         'label': 'Paramètres',
         'icone': 'settings',
         'depends': [],

@@ -7,6 +7,7 @@ class QhseConfig(AppConfig):
     verbose_name = 'QHSE'
     module_manifest = {
         'key': 'qhse',
+        'sku': 'generic',
         'label': 'QHSE',
         'icone': 'shield',
         'depends': [],

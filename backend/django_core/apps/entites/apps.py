@@ -7,6 +7,7 @@ class EntitesConfig(AppConfig):
     verbose_name = 'Entités (structure organisationnelle intra-tenant)'
     module_manifest = {
         'key': 'entites',
+        'sku': 'generic',
         'label': 'Entités',
         'icone': 'network',
         'depends': [],

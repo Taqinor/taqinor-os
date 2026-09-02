@@ -8,6 +8,7 @@ class PublicApiConfig(AppConfig):
     verbose_name = 'API publique'
     module_manifest = {
         'key': 'publicapi',
+        'sku': 'generic',
         'label': 'API publique',
         'icone': 'globe',
         'depends': [],

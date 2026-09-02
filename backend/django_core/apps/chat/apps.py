@@ -7,6 +7,7 @@ class ChatConfig(AppConfig):
     verbose_name = 'Messagerie interne (Discuss)'
     module_manifest = {
         'key': 'chat',
+        'sku': 'generic',
         'label': 'Messagerie',
         'icone': 'message-circle',
         'depends': [],

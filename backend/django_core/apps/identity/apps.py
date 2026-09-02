@@ -17,6 +17,7 @@ class IdentityConfig(AppConfig):
     verbose_name = 'Identité & accès'
     module_manifest = {
         'key': 'identity',
+        'sku': 'generic',
         'label': 'Identité & accès',
         'icone': 'shield',
         'depends': [],

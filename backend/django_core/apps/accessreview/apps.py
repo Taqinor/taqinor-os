@@ -15,6 +15,7 @@ class AccessReviewConfig(AppConfig):
     verbose_name = 'Revue des accès'
     module_manifest = {
         'key': 'accessreview',
+        'sku': 'generic',
         'label': 'Revue des accès',
         'icone': 'shield-check',
         'depends': [],

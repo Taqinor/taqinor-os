@@ -8,6 +8,7 @@ class DataImportConfig(AppConfig):
     verbose_name = 'Import / Export de données'
     module_manifest = {
         'key': 'dataimport',
+        'sku': 'generic',
         'label': 'Import / Export',
         'icone': 'upload',
         'depends': [],

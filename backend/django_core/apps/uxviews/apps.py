@@ -6,6 +6,7 @@ class UxviewsConfig(AppConfig):
     name = 'apps.uxviews'
     module_manifest = {
         'key': 'uxviews',
+        'sku': 'generic',
         'label': 'Vues UX',
         'icone': 'layout-list',
         'depends': [],
