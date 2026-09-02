@@ -425,7 +425,7 @@
 - frontend/src/api/gestionProjetApi.js :: getProjetGantt -> /api/django/gestion-projet/projets/<>/gantt
     date_origine:inconnu, duree_projet:inconnu, has_cycle:inconnu, liens:inconnu, taches:inconnu
 - frontend/src/api/gestionProjetApi.js :: getProjetPnl -> /api/django/gestion-projet/projets/<>/pnl
-    budget_id:inconnu, budget_version:inconnu, cout_budget:texte, cout_reel:texte, cout_reel_affectations:texte, cout_reel_timesheets:texte, couts_par_categorie:liste, marge_pct_reelle:inconnu, marge_prev:texte, marge_reelle:texte, note_revenu:inconnu, revenu:texte
+    budget_id:inconnu, budget_version:inconnu, cout_budget:texte, cout_reel:texte, cout_reel_affectations:texte, cout_reel_mo_deja_pointee:texte, cout_reel_timesheets:texte, couts_par_categorie:liste, marge_pct_reelle:inconnu, marge_prev:texte, marge_reelle:texte, note_revenu:inconnu, revenu:texte
 - frontend/src/api/gestionProjetApi.js :: getRapprochementTemps -> /api/django/gestion-projet/timesheets/rapprochement
     debut:texte, detail:texte, ecarts:liste, fin:texte
 - frontend/src/api/gestionProjetApi.js :: getTacheDependances -> /api/django/gestion-projet/taches/<>/dependances

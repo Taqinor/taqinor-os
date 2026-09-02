@@ -251,9 +251,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/views_messages.py:136` | get_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/parametres/views_statuses.py:138` | get_or_create | StatutConfig.objects | cle, company, domaine |
 | `backend/django_core/apps/parametres/views_translations.py:130` | get_or_create | TranslationOverride.objects | company, key, locale |
-| `backend/django_core/apps/portail/services.py:146` | get_or_create | ComptePortailClient.objects | client, company |
-| `backend/django_core/apps/portail/services.py:163` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/views_client.py:119` | get_or_create | AcceptationDevisPortail.objects | company, devis |
+| `backend/django_core/apps/portail/services.py:150` | get_or_create | ComptePortailClient.objects | client, company |
+| `backend/django_core/apps/portail/services.py:167` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/views_client.py:156` | get_or_create | AcceptationDevisPortail.objects | company, devis |
 | `backend/django_core/apps/pos/services.py:877` | get_or_create | CodePinCaissier.objects | company, user |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/qhse/management/commands/seed_aspects_environnementaux_solaire.py:72` | get_or_create | AspectEnvironnemental.objects | activite, aspect, company |
