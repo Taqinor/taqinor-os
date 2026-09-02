@@ -380,6 +380,15 @@ def appliquer_section(lien, section, reponses=None, photo=None):
             lead.save(update_fields=_colonnes_a_ecrire(champs))
             enregistrees = list(champs)
             activity.log_changes(avant, lead, None)
+            # CRX33 — le questionnaire écrit exactement les champs qui
+            # NOURRISSENT le score (facture, surface, orientation, toiture,
+            # raccordement, maturité d'achat…). Sans recalcul APRÈS écriture,
+            # un prospect qui vient de tout remplir restait « froid » dans la
+            # file du commercial jusqu'à une édition manuelle — l'inverse de
+            # ce que le questionnaire sert à provoquer. ``recompute_lead_score``
+            # est best-effort par construction : il n'échoue jamais l'appelant.
+            from .services import recompute_lead_score
+            recompute_lead_score(lead)
 
     if not enregistrees:
         return []

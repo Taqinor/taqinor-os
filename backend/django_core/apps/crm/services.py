@@ -1060,6 +1060,12 @@ def merge_leads(survivor, others, user):
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
         survivor.save()
+    # CRX33 — l'étape 6 complète les champs VIDES du survivant depuis les
+    # absorbés (téléphone, e-mail, ville, facture, orientation…) : autant de
+    # composantes du score. Sans ce recalcul, le survivant gardait le score
+    # d'AVANT la fusion — une fiche enrichie restait « froide », et le badge
+    # comme le tri mentaient jusqu'à la prochaine édition manuelle.
+    recompute_lead_score(survivor)
     return survivor
 
 
