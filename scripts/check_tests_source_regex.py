@@ -19,6 +19,11 @@ adopterait ce patron (readFileSync sur un module source + assertion regex sur
 le texte lu) fait ROUGIR la garde. Aucun test existant n'est reecrit ici —
 une conversion est une autre tache.
 
+QJR427 - la liste blanche ne doit plus grossir en silence : toute entree
+NOUVELLE (au-dela du socle gele `_BASELINE_ALLOWLIST_KEYS`) doit porter une
+raison DATEE (AAAA-MM-JJ) et ATTRIBUEE (identifiant de tache ou "PR #NNN"),
+verifie par `check_allowlist_reasons()` - sinon la garde rougit.
+
 Usage :  python scripts/check_tests_source_regex.py
 Sortie :  0 si propre, 1 sinon (fichiers fautifs listes).
 """
@@ -127,11 +132,27 @@ ALLOWLIST: dict[str, str] = {
         "verifie le round-trip quantite_manuelle (enregistrement + ?edit=), "
         "meme patron que prix_manuel, par lecture de SOURCE.",
     "frontend/src/pages/ventes/DevisGeneratorOffgrid.test.mjs":
-        "OFFGRID - DevisGenerator.jsx (~5000 lignes, wiring API/Redux/Radix) "
-        "non importable pur sous node --test - verifie le controle "
-        "Raccordement/hors reseau par lecture de SOURCE, meme contrainte que "
-        "les autres verrous DevisGenerator*.",
+        "OFFGRID PR #604 (2026-09-01) - DevisGenerator.jsx (~5000 lignes, "
+        "wiring API/Redux/Radix) non importable pur sous node --test - "
+        "verifie le controle Raccordement/hors reseau par lecture de "
+        "SOURCE, meme contrainte que les autres verrous DevisGenerator*.",
 }
+
+# QJR427 - cette entree (n. 21 ci-dessus) avait ete ajoutee par le commit
+# d'armement de la garde lui-meme (QJR303, commit 41bdda58) SANS date ni
+# identifiant de tache dans sa raison - un ajout muet que la garde dont le
+# propos est d'empecher la proliferation de ce patron n'a pas su detecter
+# sur elle-meme. QJR427 documente cette entree (date + attribution
+# ci-dessus) et FIGE le reste de l'allowlist telle quelle : les entrees
+# historiques ne sont pas retro-datees (elles etaient necessaires et
+# documentees a leur niveau d'alors, cf. commentaire du bloc ALLOWLIST).
+# A partir de ce socle, toute entree NOUVELLE doit porter une raison DATEE
+# (AAAA-MM-JJ) et ATTRIBUEE (identifiant de tache type QJR427/CRX41, ou
+# "PR #NNN") - voir check_allowlist_reasons() plus bas.
+_BASELINE_ALLOWLIST_KEYS: frozenset[str] = frozenset(ALLOWLIST.keys())
+
+REASON_DATE_RE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+REASON_ATTRIBUTION_RE = re.compile(r"\b[A-Z]{2,}[0-9]+\b|PR #\d+")
 
 
 def uses_pattern(path: Path) -> bool:
@@ -169,8 +190,30 @@ def scan() -> list[str]:
     return offenders
 
 
+def check_allowlist_reasons(allowlist: dict[str, str] | None = None) -> list[str]:
+    """QJR427 - toute entree ALLOWLIST au-dela du socle gele
+    `_BASELINE_ALLOWLIST_KEYS` doit porter une raison DATEE (AAAA-MM-JJ) et
+    ATTRIBUEE (identifiant de tache type QJR427/CRX41, ou "PR #NNN") - sinon
+    elle est un ajout MUET, exactement le mode de defaite que QJR303 a
+    illustre (entree n. 21 ajoutee par le commit d'armement de cette garde,
+    sans date ni tache dans sa raison, jamais mentionnee au DONE LOG)."""
+    table = ALLOWLIST if allowlist is None else allowlist
+    offenders: list[str] = []
+    for rel, raison in table.items():
+        if rel in _BASELINE_ALLOWLIST_KEYS:
+            continue
+        if not REASON_DATE_RE.search(raison) or not REASON_ATTRIBUTION_RE.search(raison):
+            offenders.append(
+                f"{rel} - entree ALLOWLIST ajoutee sans raison DATEE et "
+                f"ATTRIBUEE (QJR427) : la raison doit citer une date "
+                f"AAAA-MM-JJ et un identifiant de tache (ex. QJR427) ou "
+                f"'PR #NNN'")
+    return offenders
+
+
 def main() -> int:
     offenders = scan()
+    offenders += check_allowlist_reasons()
     if offenders:
         print("[check_tests_source_regex] ECHEC - nouveau test "
               "'regex sur code source' hors allowlist :")
@@ -180,7 +223,8 @@ def main() -> int:
         print("  Ajouter le fichier a ALLOWLIST avec sa raison (une ligne) "
               "SEULEMENT si le patron est reellement incontournable (module "
               "non pur sous node --test) - sinon ecrire un vrai test qui "
-              "EXECUTE le code.")
+              "EXECUTE le code. Toute entree NOUVELLE doit citer une date "
+              "AAAA-MM-JJ et un identifiant de tache (ou 'PR #NNN') - QJR427.")
         return 1
     print(f"[check_tests_source_regex] OK - allowlist gelee a "
           f"{len(ALLOWLIST)} fichiers, aucun NOUVEAU test 'regex sur code "
