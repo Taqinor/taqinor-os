@@ -164,6 +164,38 @@ class ReferentielTests(TestCase):
              if li['numero'] == '6193'), Decimal('0'))
         self.assertEqual(charge_ifrs, Decimal('400000'))
 
+    def test_aud161_extourne_reste_dans_le_livre_parallele(self):
+        """AUD161 — l'extourne d'un ajustement IFRS est postée DANS le livre IFRS."""
+        principal = services.seed_referentiel_principal(self.company)
+        ifrs = ReferentielComptable.objects.create(
+            company=self.company, code=ReferentielComptable.Code.IFRS,
+            libelle='IFRS', est_principal=False)
+        avant_cgnc = selectors.balance_par_referentiel(
+            self.company, principal)['total_debit']
+        ajustement = services.poster_ajustement_gaap(
+            self.company, ifrs, [
+                {'compte': services.get_compte(self.company, '6193'),
+                 'debit': Decimal('400000'), 'credit': Decimal('0')},
+                {'compte': services.get_compte(self.company, '4411'),
+                 'debit': Decimal('0'), 'credit': Decimal('400000')},
+            ], 'Retraitement IFRS 16')
+        services.extourner_ecriture(ajustement.ecriture)
+        # Le livre IFRS retombe à zéro (l'ajustement et son inverse s'annulent).
+        bal_ifrs = selectors.balance_par_referentiel(self.company, ifrs)
+        solde_ifrs = next(
+            (li['solde_debiteur'] - li['solde_crediteur']
+             for li in bal_ifrs['lignes'] if li['numero'] == '6193'),
+            Decimal('0'))
+        self.assertEqual(solde_ifrs, Decimal('0'))
+        # Et AUCUNE contre-passation fantôme n'a atterri en CGNC.
+        self.assertEqual(
+            selectors.balance_par_referentiel(
+                self.company, principal)['total_debit'],
+            avant_cgnc)
+        self.assertEqual(
+            selectors.balance_generale(self.company)['total_debit'],
+            avant_cgnc)
+
 
 class AxesAnalytiquesTests(TestCase):
     def setUp(self):

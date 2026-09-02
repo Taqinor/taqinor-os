@@ -10336,7 +10336,7 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
     if existante:
         return existante
     lignes = []
-    for lig in ecriture.lignes.all():
+    for lig in ecriture.lignes.select_related('compte', 'referentiel'):
         # Permute débit et crédit pour annuler la ligne d'origine.
         lignes.append({
             'compte': lig.compte,
@@ -10346,6 +10346,10 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
             'tiers_type': lig.tiers_type,
             'tiers_id': lig.tiers_id,
             'centre_cout': lig.centre_cout,
+            # AUD161 — l'extourne reste DANS le livre de la ligne d'origine :
+            # sans ce report, une contre-passation d'ajustement IFRS atterrit
+            # en CGNC (referentiel NULL) et le livre parallèle garde son montant.
+            'referentiel': lig.referentiel,
         })
     if not lignes:
         raise ValidationError(
