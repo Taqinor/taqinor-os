@@ -38,6 +38,14 @@ const MONTH_LABELS = [
 ]
 const UNDATED_KEY = 'undated'
 
+/* CRX36 — plafond de RENDU par colonne (le pendant du RENDER_CAP=40 du
+   kanban, APX9). La colonne « Non daté » ramasse TOUS les leads sans
+   `date_cloture_prevue` : sur un portefeuille chargé elle montait des
+   centaines de cartes d'un seul bloc, chacune avec ses écouteurs de
+   glisser. On monte les premières, le reste attend « Charger plus ».
+   Aucun appel réseau : les données sont déjà en mémoire. */
+export const RENDER_CAP = 40
+
 // Clé de mois locale 'YYYY-MM' à partir d'une date 'YYYY-MM-DD' — jamais via
 // `new Date('YYYY-MM-DD')` (interprété en UTC), lecture directe de la chaîne.
 function monthKey(dateStr) {
@@ -283,6 +291,15 @@ export default function ForecastView({
   // (MonthMover), pour qu'un second geste sur la MÊME carte pendant un
   // enregistrement en cours soit refusé des deux côtés à la fois.
   const [savingId, setSavingId] = useState(null)
+  // CRX36 — combien de cartes sont MONTÉES par colonne (jamais combien
+  // sont chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
+  const [limiteParColonne, setLimiteParColonne] = useState({})
+  const chargerPlus = useCallback((colKey) => {
+    setLimiteParColonne((prev) => ({
+      ...prev,
+      [colKey]: (prev[colKey] ?? RENDER_CAP) + RENDER_CAP,
+    }))
+  }, [])
 
   // VX192 — annonces FR : id de lead → nom, id de colonne → libellé de mois
   // (ou « Non daté »). Même helper partagé que KanbanView (kanbanA11y) —
@@ -376,25 +393,44 @@ export default function ForecastView({
       {/* LB41 — même contrat que le kanban : le board est le scrolleur unique
           des deux axes, focalisable pour le défilement clavier. */}
       <div className="kb-board fv-board" ref={boardRef} tabIndex={0} aria-label="Board de prévision">
-        {columns.map((col) => (
-          <MonthColumn key={col.key} col={col}>
-            {col.leads.map((lead) => (
-              <DraggableCard
-                key={lead.id}
-                lead={lead}
-                busy={lead.id === busyLeadId || lead.id === savingId}
-                onOpen={onOpenLead}
-                onAutoQuote={onAutoQuote}
-                users={users}
-                onReassign={onReassign}
-                onPlanifierRelance={onPlanifierRelance}
-                onMarkPerdu={onMarkPerdu}
-                monthOptions={monthOptions}
-                onCommitDate={commitDate}
-              />
-            ))}
-          </MonthColumn>
-        ))}
+        {columns.map((col) => {
+          // CRX36 — plafond de RENDU par colonne (parité APX9/KanbanView).
+          // Les données sont DÉJÀ en mémoire : « Charger plus » ne déclenche
+          // aucun appel réseau, il monte simplement la suite des cartes. La
+          // colonne « Non daté » est le pire cas — elle ramasse TOUS les leads
+          // sans `date_cloture_prevue`, donc potentiellement le portefeuille
+          // entier, et montait jusqu'ici d'un seul bloc.
+          const limite = limiteParColonne[col.key] ?? RENDER_CAP
+          const restants = Math.max(0, col.leads.length - limite)
+          return (
+            <MonthColumn key={col.key} col={col}>
+              {col.leads.slice(0, limite).map((lead) => (
+                <DraggableCard
+                  key={lead.id}
+                  lead={lead}
+                  busy={lead.id === busyLeadId || lead.id === savingId}
+                  onOpen={onOpenLead}
+                  onAutoQuote={onAutoQuote}
+                  users={users}
+                  onReassign={onReassign}
+                  onPlanifierRelance={onPlanifierRelance}
+                  onMarkPerdu={onMarkPerdu}
+                  monthOptions={monthOptions}
+                  onCommitDate={commitDate}
+                />
+              ))}
+              {restants > 0 && (
+                <button
+                  type="button"
+                  className="kb-charger-plus"
+                  onClick={() => chargerPlus(col.key)}
+                >
+                  Charger plus ({restants} restant{restants > 1 ? 's' : ''})
+                </button>
+              )}
+            </MonthColumn>
+          )
+        })}
       </div>
       <DragOverlay>
         {activeLead ? (

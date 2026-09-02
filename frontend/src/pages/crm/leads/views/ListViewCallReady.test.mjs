@@ -23,9 +23,17 @@ function celluleLeadFin(start) {
   return fin
 }
 
-test('QX25 : telHref/waHref helpers ajoutés', () => {
-  assert.match(SRC, /const telHref = /)
-  assert.match(SRC, /const waHref = /)
+// CRX36 — les deux helpers ne sont plus RECOPIÉS dans ListView.jsx : ils sont
+// IMPORTÉS de `lib/contactLinks` (VX108), qui les porte déjà pour tout écran
+// affichant un numéro (ClientDetailPanel les importe de là depuis toujours).
+// La sonde suit le déplacement — elle vérifie toujours la même chose : la
+// cellule « Lead » dispose bien de telHref/waHref.
+test('QX25/CRX36 : telHref/waHref viennent du module PARTAGÉ lib/contactLinks', () => {
+  assert.match(SRC, /import \{ telHref, waHref \} from '\.\.\/\.\.\/\.\.\/\.\.\/lib\/contactLinks'/)
+  // Et plus aucune copie locale (deux copies d'une même règle de nettoyage
+  // finissent toujours par diverger).
+  assert.doesNotMatch(SRC, /const telHref = /)
+  assert.doesNotMatch(SRC, /const waHref = /)
 })
 
 test('QX25 : la cellule "Lead" (jamais masquée) porte les icônes tel/wa, contrairement à la colonne Téléphone (m-hide)', () => {
