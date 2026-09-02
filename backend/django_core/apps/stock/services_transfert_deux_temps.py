@@ -116,6 +116,7 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
     from django.utils import timezone
 
     from .models import MouvementStock, StockEmplacement, TransfertStock
+    from .services import record_stock_movement
 
     if transfert.statut != TransfertStock.Statut.EXPEDIE:
         raise ValueError('Seul un transfert EXPÉDIÉ peut être réceptionné.')
@@ -146,7 +147,7 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
             produit.refresh_from_db()
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + ecart
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=transfert.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
                 quantite=abs(ecart), quantite_avant=qte_avant,
@@ -155,8 +156,6 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
                       f'{quantite_recue} reçu(s) pour {transfert.quantite} '
                       f'expédié(s).'),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
 
         transfert.quantite_recue = quantite_recue
         transfert.statut = TransfertStock.Statut.RECU

@@ -47,7 +47,7 @@ def creer_depot_consignation(*, company, user, client_id, produit_id,
     from .models import (
         DepotConsignation, EmplacementStock, MouvementStock, Produit,
     )
-    from .services import check_negative_stock_guard
+    from .services import check_negative_stock_guard, record_stock_movement
 
     try:
         quantite = int(quantite)
@@ -80,7 +80,7 @@ def creer_depot_consignation(*, company, user, client_id, produit_id,
             emplacement_source=emplacement, note=(note or '').strip(),
             cree_par=user)
 
-        MouvementStock.objects.create(
+        record_stock_movement(
             company=company, produit=produit,
             type_mouvement=MouvementStock.TypeMouvement.SORTIE,
             quantite=quantite, quantite_avant=qte_avant,
@@ -89,8 +89,6 @@ def creer_depot_consignation(*, company, user, client_id, produit_id,
             note=f'Mise en consignation chez le client {client_id} '
                  f'({MOTIF_SORTIE}).',
             created_by=user)
-        produit.quantite_stock = qte_apres
-        produit.save(update_fields=['quantite_stock'])
 
     logger.info('NTDST3 depot de consignation %s (%d x produit=%s)',
                 depot.id, quantite, produit.id)

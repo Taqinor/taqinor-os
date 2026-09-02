@@ -975,14 +975,16 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
                 if opening > 0:
-                    produit.quantite_stock = opening
-                    produit.save(update_fields=['quantite_stock'])
-                    MouvementStock.objects.create(
+                    # AUD223 — le stock d'ouverture passe par le service
+                    # unique de mouvement (miroir comptable + alerte
+                    # seuil-bas), qui cale lui-même `quantite_stock`.
+                    from apps.stock.services import record_stock_movement
+                    record_stock_movement(
                         company=company, produit=produit,
                         type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                         quantite=opening, quantite_avant=0,
                         quantite_apres=opening, created_by=user,
-                        note='Stock initial (import)')
+                        reference='', note='Stock initial (import)')
                 created += 1
 
         # FG14 — Fournisseurs.
