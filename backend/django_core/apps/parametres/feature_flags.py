@@ -8,13 +8,21 @@ import-linter ``core-foundation-is-a-base-layer``, aucun import d'app
 métier) : cette logique vit donc dans ``apps.parametres`` (qui possède déjà
 ``CompanyProfile``), jamais dans ``core``.
 
-FONDATION SEULE (NTADM7) : rien n'appelle encore ``has_feature`` pour masquer
-la nav ou bloquer un endpoint — ce câblage reste sur FG391/ODX (nav masking),
-jamais dupliqué ici. Politique NON-RESTRICTIVE PAR DÉFAUT : une société sans
-plan (``CompanyProfile.plan`` NULL, le cas de TOUTE société existante
-aujourd'hui) voit ``has_feature`` renvoyer ``True`` pour n'importe quel
-module — zéro régression tant qu'aucun plan n'est explicitement assigné
-(assignation réservée au founder, admin Django).
+SOL9 (2026-09-02) — CÂBLAGE, fin de la « fondation seule ». ``has_feature`` est
+désormais branché sur le MÊME chemin que ``ModuleToggle`` : cette app
+s'enregistre dans ``core.feature_flags.register_module_access_check`` (motif du
+bus M6 — c'est l'app métier qui se branche, ``core`` n'importe rien). Effet :
+un module hors plan est renvoyé en 404 par ``DisabledModuleMiddleware`` ET
+disparaît de la nav, puisque ``/auth/me`` sert la même liste
+``modules_desactives``. Un seul chemin, donc pas de gating divergent.
+
+Politique NON-RESTRICTIVE PAR DÉFAUT, INCHANGÉE : une société sans plan
+(``CompanyProfile.plan`` NULL — le cas de TOUTE société existante aujourd'hui)
+voit ``has_feature`` renvoyer ``True`` pour n'importe quel module ; zéro
+régression tant qu'aucun plan n'est explicitement assigné (assignation
+réservée au founder, admin Django). Seuls les modules INSTALLABLES sont bornés
+par un plan : jamais une couche de fondation (roles, parametres, core…), ni une
+clé sans manifeste.
 """
 from __future__ import annotations
 
@@ -37,3 +45,57 @@ def has_feature(company, module_key):
     if plan is None:
         return True
     return module_key in (plan.modules_inclus or [])
+
+
+# ---------------------------------------------------------------------------
+# SOL9 — branchement sur le chemin unique de `core.feature_flags`
+# ---------------------------------------------------------------------------
+
+def _modules_installables():
+    """Clés de module INSTALLABLES (les seules qu'un plan puisse borner)."""
+    from core import modules as modules_infra
+    try:
+        manifests = modules_infra.collect_manifests()
+    except Exception:  # noqa: BLE001 — jamais enfermer un tenant
+        return set()
+    return {
+        key for key, manifest in manifests.items()
+        if manifest.get('installable')
+    }
+
+
+def module_dans_le_plan(company, module_key):
+    """Vérificateur UNITAIRE (chemin middleware : un appel par requête).
+
+    Une clé de FONDATION (``installable=False``) ou SANS manifeste n'est jamais
+    bornée par un plan — un palier commercial ne coupe pas ``roles`` ni une
+    surface purement frontend.
+    """
+    if module_key not in _modules_installables():
+        return True
+    return has_feature(company, module_key)
+
+
+def modules_hors_plan(company):
+    """Vérificateur GROUPÉ : modules installables exclus du plan, en 1 requête.
+
+    Utilisé par ``/auth/me`` (qui interroge ~70 modules) — sans lui, ce serait
+    une requête SQL par module.
+    """
+    if company is None:
+        return set()
+    from .models import CompanyProfile
+    profile = CompanyProfile.objects.filter(company=company).first()
+    plan = getattr(profile, 'plan', None)
+    if plan is None:
+        return set()          # aucun plan assigné ⇒ accès complet
+    inclus = set(plan.modules_inclus or [])
+    return {k for k in _modules_installables() if k not in inclus}
+
+
+def register_plan_access_check():
+    """Branche le plan de licence au chemin d'accès unique (idempotent)."""
+    from core.feature_flags import register_module_access_check
+
+    register_module_access_check(
+        'plan_licence', module_dans_le_plan, exclus=modules_hors_plan)

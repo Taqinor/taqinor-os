@@ -8,12 +8,74 @@ actif) ; une ligne ``actif=False`` désactive le module pour la société.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# SOL9 — Deuxième axe d'accès : le PLAN DE LICENCE, sur le MÊME chemin.
+# ---------------------------------------------------------------------------
+# `ModuleToggle` dit ce que la SOCIÉTÉ a éteint ; le plan de licence
+# (`adminops.PlanLicence` via `CompanyProfile.plan`) dit ce que son ABONNEMENT
+# inclut. Les deux doivent produire le MÊME effet, par le MÊME chemin — sinon
+# on obtient deux gatings divergents (le classique « masqué dans la nav mais
+# servi par l'API », ou l'inverse).
+#
+# `core` reste une couche de FONDATION : il n'importe AUCUNE app métier. Les
+# apps s'enregistrent ici (même motif que `core.signup_hooks` / le bus M6) et
+# `core` ne connaît que des callables opaques.
+#
+# Contrat d'un vérificateur :  fn(company, module_key) -> bool
+#   `False` = le module est HORS PÉRIMÈTRE pour cette société.
+# Politique NON-RESTRICTIVE : aucun vérificateur enregistré, ou un vérificateur
+# qui lève → accès accordé (comportement historique, zéro régression).
+_VERIFICATEURS_ACCES: list = []
+
+
+def register_module_access_check(name, fn, *, exclus=None):
+    """Enregistre (idempotent par ``name``) un vérificateur d'accès module.
+
+    ``fn(company, module_key) -> bool`` répond pour UNE clé (chemin du
+    middleware : un appel par requête). ``exclus(company) -> set[str]``, si
+    fourni, répond pour TOUTES les clés en une fois — indispensable pour
+    ``/auth/me``, qui interroge ~70 modules : sans version groupée, ce serait
+    ~70 requêtes SQL par appel.
+    """
+    if not name or not callable(fn):
+        raise ValueError('register_module_access_check : nom + callable requis.')
+    _VERIFICATEURS_ACCES[:] = [
+        v for v in _VERIFICATEURS_ACCES if v[0] != name]
+    _VERIFICATEURS_ACCES.append((name, fn, exclus))
+
+
+def registered_access_checks():
+    """Noms des vérificateurs enregistrés (introspection / tests)."""
+    return [v[0] for v in _VERIFICATEURS_ACCES]
+
+
+def acces_module_autorise(company, module):
+    """Vrai si AUCUN vérificateur enregistré n'exclut ``module``."""
+    if company is None:
+        return True
+    for nom, fn, _exclus in _VERIFICATEURS_ACCES:
+        try:
+            if not fn(company, module):
+                return False
+        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant
+            logger.warning(
+                'vérificateur d\'accès module %s a échoué (%s) : accès '
+                'accordé par défaut', nom, exc)
+    return True
+
 
 def module_actif(company, module, *, defaut=True):
     """Vrai si ``module`` est actif pour ``company``.
 
     Sans ligne ``ModuleToggle`` → ``defaut`` (activé par défaut). Avec ligne →
     son champ ``actif``. ``company`` ``None`` → ``defaut`` (pas de scope).
+
+    SOL9 — un module INCLUS côté toggle mais HORS du plan de licence est
+    inactif : les deux axes se composent en ET, sur ce seul point d'entrée.
     """
     if company is None:
         return defaut
@@ -22,19 +84,64 @@ def module_actif(company, module, *, defaut=True):
               .filter(company=company, module=module)
               .values_list('actif', flat=True)
               .first())
-    return defaut if toggle is None else bool(toggle)
+    actif = defaut if toggle is None else bool(toggle)
+    if not actif:
+        return False
+    return acces_module_autorise(company, module)
 
 
 def modules_desactives(company):
-    """Ensemble des clés de modules explicitement désactivés pour la société."""
+    """Ensemble des clés de modules INDISPONIBLES pour la société.
+
+    Union des deux axes (SOL9) : les modules explicitement éteints
+    (``ModuleToggle.actif=False``) ET les modules exclus par le plan de licence.
+    C'est la MÊME liste que sert ``/auth/me`` et que lit le masquage de nav
+    côté frontend : un module hors plan disparaît donc de l'UI exactement comme
+    un module éteint, et l'API le renvoie en 404 par le même middleware.
+    """
     if company is None:
         return set()
     from .models import ModuleToggle
-    return set(
+    hors = set(
         ModuleToggle.objects
         .filter(company=company, actif=False)
         .values_list('module', flat=True)
     )
+    hors |= _modules_hors_perimetre(company)
+    return hors
+
+
+def _modules_hors_perimetre(company):
+    """Modules INSTALLABLES qu'un vérificateur d'accès exclut (SOL9).
+
+    Restreint aux modules installables : une couche de fondation (roles,
+    parametres, core…) n'est jamais bornée par un plan. Utilise la version
+    GROUPÉE d'un vérificateur quand elle existe (une requête au lieu d'une par
+    module), et retombe sur la version unitaire sinon.
+    """
+    if company is None or not _VERIFICATEURS_ACCES:
+        return set()
+    from . import modules as modules_infra
+    try:
+        manifests = modules_infra.collect_manifests()
+    except Exception:  # noqa: BLE001 — jamais casser /auth/me
+        return set()
+    installables = {
+        key for key, manifest in manifests.items()
+        if manifest.get('installable')
+    }
+    hors = set()
+    for nom, fn, exclus in _VERIFICATEURS_ACCES:
+        try:
+            if exclus is not None:
+                hors |= {k for k in (exclus(company) or ()) if k in installables}
+            else:
+                hors |= {k for k in installables if not fn(company, k)}
+        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant
+            logger.warning(
+                'vérificateur d\'accès module %s (groupé) a échoué (%s) : '
+                'aucun module exclu par lui', nom, exc)
+    return hors
 
 
 # ---------------------------------------------------------------------------

@@ -49,3 +49,9 @@ class ParametresConfig(AppConfig):
         # ARC23 — hook de seed « nouvelle société » des taux de TVA usuels.
         from .signup_hooks import register_parametres_signup_hooks
         register_parametres_signup_hooks()
+        # SOL9 — branche le PLAN DE LICENCE (NTADM7) sur le chemin d'accès
+        # UNIQUE de `core.feature_flags` (même chemin que ModuleToggle : 404 du
+        # middleware + `modules_desactives` de /auth/me). C'est l'app métier qui
+        # se branche ; `core` reste une fondation qui n'importe rien.
+        from .feature_flags import register_plan_access_check
+        register_plan_access_check()

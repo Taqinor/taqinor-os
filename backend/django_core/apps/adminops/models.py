@@ -475,6 +475,11 @@ class PlanLicence(TimestampedModel):
         STARTER = 'starter', 'Starter'
         PRO = 'pro', 'Pro'
         ENTERPRISE = 'enterprise', 'Enterprise'
+        # SOL9 — palier de l'ÉDITION SOLAIRE : le périmètre vendu à un
+        # installateur (tous les modules installables SAUF les verticaux
+        # parqués). Semé par `adminops.plan_seeds.seed_plan_solaire`, jamais
+        # assigné automatiquement à une société existante.
+        SOLAIRE = 'solaire', 'Solaire'
 
     code = models.CharField(
         max_length=20, choices=Code.choices, unique=True,
