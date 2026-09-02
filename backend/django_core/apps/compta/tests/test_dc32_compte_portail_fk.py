@@ -67,8 +67,13 @@ class TestDC32ComptePortailFK(TestCase):
         self.assertEqual(r.data['client'], self.client_crm.id)
         # L'email provient du client (source unique).
         self.assertEqual(r.data['email'], 'client@dc32.ma')
-        self.assertTrue(r.data['token_acces'])
+        # AUD141 — le jeton est bien généré côté serveur, mais il ne sort plus
+        # dans le payload : seul un aperçu non réutilisable y figure.
+        self.assertNotIn('token_acces', r.data)
+        self.assertTrue(r.data['token_apercu'])
         compte = ComptePortailClient.objects.get(id=r.data['id'])
+        self.assertTrue(compte.token_acces)
+        self.assertNotIn(compte.token_acces, str(r.data))
         self.assertEqual(compte.client_id, self.client_crm.id)
         self.assertEqual(compte.email, 'client@dc32.ma')
 

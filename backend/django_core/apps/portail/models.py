@@ -147,6 +147,22 @@ class AcceptationDevisPortail(models.Model):
         verbose_name_plural = 'Acceptations de devis (portail)'
         db_table = 'compta_acceptationdevisportail'
         ordering = ['-date_creation']
+        constraints = [
+            # AUD145 — UNE seule preuve d'acceptation par devis et par société.
+            # ``views_client.accepter`` la posait par ``get_or_create`` HORS
+            # transaction et APRÈS ``accept_devis`` : le verrou anti-course
+            # d'``accept_devis`` (``select_for_update`` sur le groupe de
+            # variantes) protège le DEVIS, pas cette ligne — un double-clic du
+            # client produisait DEUX preuves du même devis, avec deux
+            # horodatages, soit une pièce juridique ambiguë. ``ComptePortailClient``
+            # portait déjà l'équivalent (``uniq_compte_portail_client``).
+            # ``devis`` est nullable : en PostgreSQL les NULL restent distincts,
+            # une preuve non rattachée ne bloque donc rien.
+            models.UniqueConstraint(
+                fields=['company', 'devis'],
+                name='uniq_acceptation_portail_devis',
+            ),
+        ]
 
     def __str__(self):
         return f'Acceptation devis #{self.devis_id} — {self.nom_signataire}'

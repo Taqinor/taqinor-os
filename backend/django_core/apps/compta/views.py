@@ -16,7 +16,7 @@ from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -7091,7 +7091,29 @@ def _portail_not_found():
 
 
 def _resoudre_compte_portail(token):
-    return selectors.compte_portail_par_token(token)
+    """Résout le compte portail d'un lien tokenisé, et HORODATE l'accès.
+
+    AUD148 (a) — ``ComptePortailClient.derniere_connexion`` n'était écrite par
+    AUCUN code (grep : le modèle et le serializer en lecture seule), alors que
+    l'écran ERP affiche la colonne : la piste d'audit d'accès était vide. On la
+    pose ici, au point d'entrée COMMUN des surfaces tokenisées de compta
+    (relevé, relevé PDF, contestation de facture), via le service portail —
+    jamais un import de ``apps.portail.models``.
+
+    LIMITE ASSUMÉE : ``apps.contrats`` (XCTR14) appelle
+    ``selectors.compte_portail_par_token`` DIRECTEMENT et n'est donc pas
+    couvert. Le poser dans le sélecteur lui-même couvrirait les deux, mais
+    ``apps/compta/selectors.py`` n'appartient pas à cette lane.
+    """
+    compte = selectors.compte_portail_par_token(token)
+    if compte is not None:
+        try:
+            from apps.portail.services import enregistrer_connexion_portail
+            enregistrer_connexion_portail(
+                compte.id, compte.derniere_connexion)
+        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+            pass
+    return compte
 
 
 @api_view(['GET'])
@@ -7623,36 +7645,96 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
 
 
 class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
-    """Acceptations / e-signatures de devis depuis le portail (FG229). La
-    société est posée côté serveur ; l'action ``signer`` horodate la signature
-    et capture l'IP (preuve légère, loi 53-05)."""
+    """Acceptations / e-signatures de devis depuis le portail (FG229).
+
+    AUD140 — LECTURE SEULE côté ERP. Cette ligne EST la preuve d'acceptation
+    électronique (signataire, IP, horodatage — loi 53-05) : son propre modèle
+    justifie le ``PROTECT`` sur ``devis`` par cet argument, mais l'API la
+    laissait créer, réécrire et SUPPRIMER par tout Responsable, sans
+    ``created_by``, sans chatter et sans soft-delete — un devis contesté et sa
+    preuve effacée sans qu'aucune trace ne dise par qui.
+
+    La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesDevisPortailViewSet.accepter``, qui signe
+    au nom du CLIENT connecté). L'action ``signer`` — qui posait
+    ``nom_signataire`` depuis le corps et l'IP de l'utilisateur ERP, c'est-à-dire
+    une signature client fabriquée depuis l'ERP — est RETIRÉE ; le service
+    ``compta.services.signer_acceptation_devis`` qu'elle appelait reste utilisé
+    par le chemin portail. Une saisie ERP délibérée devra être explicite,
+    tracée (``created_by``, chatter) et marquée comme telle — jamais réintroduite
+    sous le nom « signer ».
+    """
     queryset = AcceptationDevisPortail.objects.all()
     serializer_class = AcceptationDevisPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'signe_le']
-
-    @action(detail=True, methods=['post'])
-    def signer(self, request, pk=None):
-        acceptation = self.get_object()
-        nom = request.data.get('nom_signataire') or None
-        ip = request.META.get('REMOTE_ADDR')
-        services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
-        return Response(self.get_serializer(acceptation).data)
+    #: AUD140 — POST/PUT/PATCH/DELETE répondent 405 (aucune action d'écriture
+    #: ne subsiste sur cette ressource : on peut fermer le verbe entier).
+    http_method_names = ['get', 'head', 'options']
 
 
 class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
     """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
-    La société est posée côté serveur ; ``initier`` pose une référence (NO-OP
-    tant que CMI est OFF) et ``rapprocher`` marque le paiement comme payé
-    (rapprochement auto webhook CMI ou manuel virement)."""
+
+    AUD140 — LECTURE SEULE côté ERP, à l'exception de ``rapprocher`` (le SEUL
+    workflow serveur : il confirme la réception d'un virement). La ligne porte
+    un montant MAD réel et parfois un statut ``paye`` ; elle était pourtant
+    créable, modifiable et SUPPRIMABLE par tout Responsable, sans trace
+    d'auteur. La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesFacturesPortailViewSet.payer``), qui appelle
+    ``services.initier_paiement_facture``.
+
+    ``http_method_names`` ne convient pas ici (il fermerait aussi ``rapprocher``,
+    qui est un POST) : on ferme donc les quatre méthodes d'écriture du CRUD
+    une par une.
+    """
     queryset = PaiementFacturePortail.objects.all()
     serializer_class = PaiementFacturePortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
 
-    def perform_create(self, serializer):
-        paiement = serializer.save(company=self.request.user.company)
-        services.initier_paiement_facture(paiement)
+    def get_queryset(self):
+        """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
+
+        L'écran appelle `GET /portail/paiements-facture-portail/?statut=initie`
+        (filtre par défaut). Ce ViewSet ne déclare que `OrderingFilter`, sans
+        `filterset_fields` ni `get_queryset`, et les backends globaux
+        (`settings/base.py`) sont `OrderingFilter` + `SearchFilter` — il n'y a
+        PAS de `DjangoFilterBackend` : le paramètre était silencieusement
+        ignoré et la file affichait TOUS les statuts. L'opérateur croyait voir
+        les virements à rapprocher, y comptait des lignes déjà rapprochées ou
+        abandonnées, et rapprochait deux fois.
+
+        Une valeur inconnue est REFUSÉE (400) plutôt qu'ignorée : rendre la
+        liste entière sur un filtre incompris est exactement le défaut.
+        """
+        qs = super().get_queryset()
+        statut = (self.request.query_params.get('statut') or '').strip()
+        if not statut:
+            return qs
+        if statut not in PaiementFacturePortail.Statut.values:
+            raise ValidationError({'statut': 'Statut de paiement inconnu.'})
+        return qs.filter(statut=statut)
+
+    def _refus_lecture_seule(self, request):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Une intention de paiement portail ne se crée, ne se "
+                    "modifie et ne se supprime pas depuis l'ERP : elle est "
+                    "posée par le client depuis son portail. Seule l'action "
+                    "« rapprocher » est disponible."))
+
+    def create(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def destroy(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
 
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):

@@ -2376,21 +2376,104 @@ class ResultatAOSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
+# ── AUD142 — Validation TENANT des FK cross-app des ressources portail ─────
+#
+# Les cinq ressources portail désignent leurs cibles par un simple
+# ``IntegerField(min_value=0)`` : aucun ``validate_*``, aucun queryset borné.
+# Les ``perform_create`` correspondants ne posaient que
+# ``company=request.user.company`` — SEUL ``ComptePortailClientViewSet``
+# vérifiait l'appartenance. Et les FK portent ``db_constraint=False`` : la base
+# ne vérifie ni l'existence ni le tenant. Un Responsable de la société A
+# pouvait donc créer une ligne de paiement portail pointant sur la facture
+# 4711 de la société B, et le client de A voyait apparaître le montant d'un
+# tiers.
+#
+# Chaque id est désormais résolu par le SELECTOR de l'app cible, borné à la
+# société de l'appelant (jamais un import de ses ``models`` — frontière
+# cross-app CLAUDE.md), exactement comme le fait déjà
+# ``ComptePortailClientViewSet.perform_create``.
+
+def _valider_id_cross_app(serializer, valeur, resolveur, libelle):
+    """Résout ``valeur`` dans la société de l'appelant, ou lève une 400 FR.
+
+    ``None``/vide/0 traversent (champs optionnels). Hors contexte API (aucune
+    ``request`` : usage programmatique interne), on ne bloque pas — la porte
+    réellement exposée est le ViewSet, et un service interne a déjà résolu ses
+    objets.
+    """
+    if valeur in (None, '', 0):
+        return valeur
+    request = serializer.context.get('request')
+    if request is None:
+        return valeur
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is None or resolveur(company, valeur) is None:
+        raise serializers.ValidationError(
+            f'{libelle} inconnu(e) pour cette société.')
+    return valeur
+
+
+def _resoudre_client(company, client_id):
+    from apps.crm.selectors import get_company_client
+    return get_company_client(company, client_id)
+
+
+def _resoudre_lead(company, lead_id):
+    from apps.crm.selectors import get_company_lead
+    return get_company_lead(company, lead_id)
+
+
+def _resoudre_facture(company, facture_id):
+    from apps.ventes.selectors import get_facture_scoped
+    return get_facture_scoped(company, facture_id)
+
+
+def _resoudre_devis(company, devis_id):
+    # ``apps.ventes.selectors`` n'expose pas (encore) de résolveur de devis
+    # scopé société : on réutilise son point d'entrée par pk et on borne ici,
+    # plutôt que d'ajouter une fonction dans une app qui ne nous appartient
+    # pas.
+    from apps.ventes.selectors import get_devis_by_pk
+    devis = get_devis_by_pk(devis_id)
+    if devis is None:
+        return None
+    return devis if devis.company_id == getattr(company, 'id', None) else None
+
+
+def _resoudre_chantier(company, chantier_id):
+    from apps.installations.selectors import installation_scoped
+    return installation_scoped(company, chantier_id)
+
+
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(serializers.ModelSerializer):
     # DC32 — l'email est lu depuis le client (source unique), jamais stocké.
     email = serializers.EmailField(source='client.email', read_only=True)
+    # AUD141 — le jeton n'est PLUS servi en clair. Il authentifie à lui seul le
+    # relevé de compte, son PDF, la contestation de facture et les vues
+    # publiques contrats : un export CSV de cette liste, envoyé par email ou
+    # déposé sur un partage, donnait un accès permanent aux relevés financiers
+    # de TOUS les clients de la société. La liste ne porte donc qu'un aperçu
+    # non réutilisable ; le lien complet ne s'obtient que par l'action dédiée
+    # et tracée ``lien-acces``, et ``regenerer-jeton`` invalide l'ancien.
+    token_apercu = serializers.SerializerMethodField()
 
     class Meta:
         model = ComptePortailClient
         fields = [
-            'id', 'client', 'email', 'token_acces', 'actif',
+            'id', 'client', 'email', 'token_apercu', 'actif',
             'derniere_connexion', 'date_creation',
         ]
         read_only_fields = [
-            'token_acces', 'derniere_connexion', 'date_creation',
+            'token_apercu', 'derniere_connexion', 'date_creation',
         ]
+
+    def get_token_apercu(self, obj):
+        """4 derniers caractères du jeton — assez pour l'identifier dans une
+        liste, jamais assez pour s'en servir."""
+        token = getattr(obj, 'token_acces', '') or ''
+        return f'••••{token[-4:]}' if token else ''
 
 
 class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
@@ -2412,6 +2495,10 @@ class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
             'signature_ip', 'accepte', 'signe_le', 'date_creation',
         ]
 
+    def validate_devis_id(self, value):
+        """AUD142 — le devis DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_devis, 'Devis')
+
 
 class PaiementFacturePortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
@@ -2427,21 +2514,73 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
             'statut', 'reference', 'paye_le', 'date_creation',
         ]
 
+    def validate_facture_id(self, value):
+        """AUD142 — la facture DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_facture, 'Facture')
+
 
 class DocumentClientPortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
     lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # AUD148 (b) — le ``FileField`` était sérialisé tel quel et rendu en lien
+    # DIRECT par l'écran, alors que ``settings/base.py`` ne définit NI
+    # ``MEDIA_URL`` NI ``MEDIA_ROOT`` (seules des constantes MinIO), qu'aucune
+    # route ne sert ``/media/`` et que ``frontend/nginx.conf`` n'a aucune
+    # ``location /media/`` : le lien était mort par construction. Le champ
+    # reste ÉCRIVABLE (le dépôt WIR94 vers la GED se déclenche au ``save()``)
+    # mais n'est plus RENDU — on n'expose jamais une URL de média statique.
+    fichier = serializers.FileField(
+        write_only=True, required=False, allow_null=True)
+    fichier_present = serializers.SerializerMethodField()
+    lien_ged = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentClientPortail
         fields = [
             'id', 'client_id', 'lead_id', 'type_document', 'libelle',
-            'fichier', 'document_ged', 'traite', 'date_depot',
+            'fichier', 'fichier_present', 'lien_ged', 'document_ged',
+            'traite', 'date_depot',
         ]
         # WIR94 — ``document_ged`` posé côté serveur (dépôt GED automatique
         # au ``save()``, jamais lu du corps de requête).
-        read_only_fields = ['document_ged', 'traite', 'date_depot']
+        read_only_fields = [
+            'document_ged', 'fichier_present', 'lien_ged', 'traite',
+            'date_depot',
+        ]
+
+    def get_fichier_present(self, obj):
+        """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)"""
+        return bool(getattr(obj, 'fichier', None))
+
+    def get_lien_ged(self, obj):
+        """AUD148 (b) — Téléchargement GED AUTHENTIFIÉ de la dernière version.
+
+        Chemin canonique déjà utilisé par l'écran GED
+        (``/api/django/ged/versions/<id>/apercu/``, gardé ``IsAnyRole`` et
+        journalisé) : le document déposé se relit par la GED, avec ses ACL et
+        sa trace d'accès, jamais par une URL de fichier statique. Lecture
+        cross-app via ``apps.ged.selectors`` — jamais ``apps.ged.models``.
+        """
+        if not getattr(obj, 'document_ged_id', None):
+            return None
+        try:
+            from apps.ged.selectors import latest_version
+            version = latest_version(obj.document_ged)
+        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien
+            return None
+        if version is None:
+            return None
+        return f'/api/django/ged/versions/{version.id}/apercu/'
+
+    def validate_client_id(self, value):
+        """AUD142 — le client DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+
+    def validate_lead_id(self, value):
+        """AUD142 — le lead DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_lead, 'Lead')
 
 
 class JalonChantierPortailSerializer(serializers.ModelSerializer):
@@ -2455,6 +2594,11 @@ class JalonChantierPortailSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_chantier_id(self, value):
+        """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_chantier, 'Chantier')
 
 
 class DemandeTicketPortailSerializer(serializers.ModelSerializer):
@@ -2471,6 +2615,15 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
             'statut', 'ticket_id', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_creation']
+
+    def validate_client_id(self, value):
+        """AUD142 — le client DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+
+    def validate_chantier_id(self, value):
+        """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_chantier, 'Chantier')
 
 
 class PartenaireSerializer(serializers.ModelSerializer):
