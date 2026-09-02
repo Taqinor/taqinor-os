@@ -281,7 +281,13 @@ class TestBeaconPublic(TestCase):
             HTTP_USER_AGENT='Mozilla/5.0 (Android)')
         visite = VisiteExterne.objects.get()
         # L'IP du corps est IGNORÉE : seule celle des en-têtes compte.
-        self.assertEqual(visite.ip, '41.77.1.5')
+        #
+        # QJR416 — c'est le DERNIER saut de ``X-Forwarded-For`` qui est retenu,
+        # pas le premier : nginx APPEND à cette chaîne, donc la dernière entrée
+        # est la seule que l'appelant ne peut pas forger (le premier saut, lui,
+        # est écrit par le client). Ce test épinglait l'ordre d'AVANT, renversé
+        # exprès — cf. ``TestIpDeRequete`` plus bas pour le contrat complet.
+        self.assertEqual(visite.ip, '10.0.0.1')
         self.assertNotEqual(visite.ip, '9.9.9.9')
         self.assertIn('Mozilla', visite.user_agent)
         self.assertNotEqual(visite.user_agent, 'MENTEUR')
