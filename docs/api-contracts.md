@@ -1683,7 +1683,8 @@
 - frontend/src/api/crmApi.js :: getTags -> /api/django/crm/tags  [LeadTagSerializer]
     champs: archived, couleur, en_usage, id, nom
 - frontend/src/api/crmApi.js :: getWebsiteLeadPayloads -> /api/django/crm/website-lead-payloads  [WebsiteLeadPayloadSerializer]
-    champs: company, error, id, lead, lead_nom, payload, processed, received_at, remote_addr
+    champs: company, error, id, lead, lead_nom, payload, processed, received_at, remote_addr, source, source_display
+    source ∈ {meta_lead_ads, website}
 - frontend/src/api/crmApi.js :: listSavedViews -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: updateAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]

@@ -209,13 +209,39 @@ def detecter_signal_interet_salle_vente(salle):
     (JAMAIS un changement de stage automatique) et émet
     ``core.events.salle_vente_signal_interet``. Idempotent PAR JOUR : une
     nouvelle vue au-delà du seuil le même jour ne duplique pas la note.
-    Best-effort — appelé depuis la vue publique, ne doit jamais lever."""
+    Best-effort — appelé depuis la vue publique, ne doit jamais lever.
+
+    CRX31 — le comptage est DÉDUPLIQUÉ PAR APPAREIL ET PAR JOUR. Il portait sur
+    les vues BRUTES : trois rechargements de la page par le MÊME visiteur dans
+    la même minute déclenchaient « signal d'intérêt fort », et le commercial
+    rappelait un client qui n'avait rien fait de plus qu'appuyer sur F5. On
+    compte désormais les couples DISTINCTS (empreinte de visiteur, jour local) —
+    donc des visites RÉELLEMENT distinctes. Les vues sans empreinte exploitable
+    (IP illisible) partagent la clé vide : elles comptent pour UNE, jamais pour
+    trois — sous-compter est le bon sens du doute, sur-compter ne l'est pas.
+    """
+    from django.db.models.functions import TruncDate
+
+    from core.dates import TZ_METIER
+
     try:
         lead = getattr(salle, 'lead', None)
         if lead is None or lead.stage != stages.QUOTE_SENT:
             return None
         depuis = timezone.now() - timezone.timedelta(hours=FENETRE_SIGNAL_INTERET_HEURES)
-        nb_vues = salle.vues.filter(created_at__gte=depuis).count()
+        vues_fenetre = salle.vues.filter(created_at__gte=depuis)
+        # Jour LOCAL (Africa/Casablanca, CRX26) : le découpage journalier du
+        # signal doit être celui du terrain, pas celui d'UTC.
+        # `.order_by()` OBLIGATOIRE : ``SalleVenteVue.Meta.ordering`` vaut
+        # ``['-created_at']``, et Django ajoute les colonnes de tri au SELECT
+        # d'un `.distinct()` — chaque vue redeviendrait alors « distincte » et
+        # la déduplication serait un no-op silencieux.
+        nb_vues = (vues_fenetre
+                   .annotate(jour=TruncDate('created_at', tzinfo=TZ_METIER))
+                   .order_by()
+                   .values('ip_hash', 'jour')
+                   .distinct()
+                   .count())
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
         aujourd_hui = aujourd_hui_local()
@@ -230,8 +256,9 @@ def detecter_signal_interet_salle_vente(salle):
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
             body=(
-                f"signal d'intérêt fort — {nb_vues} consultations en "
-                f"{FENETRE_SIGNAL_INTERET_HEURES}h (salle de vente « {salle.titre} »)"
+                f"signal d'intérêt fort — {nb_vues} consultations distinctes "
+                f"en {FENETRE_SIGNAL_INTERET_HEURES}h "
+                f"(salle de vente « {salle.titre} »)"
             ),
         )
         try:
@@ -1928,12 +1955,27 @@ def create_lead_from_meta_lead_ads(
     ce ``leadgen_id`` — seuls des champs connus (nom/email/téléphone/ville)
     sont lus.
 
-    Dédup (QJ8) — DEUX couches, dans l'ordre :
+    Dédup — D-CRX1 (décision fondateur du 02/09/2026) : UNE SEULE couche.
       1. même ``leadgen_id`` déjà traité (idempotence webhook — retries Meta)
-         → renvoie le lead existant sans le modifier ;
-      2. sinon, téléphone/email connu dans la société (visiteur/prospect déjà
-         en base, ex. venu par un autre canal) → absorbe la nouvelle touche
-         dans le lead existant (complète sans écraser), comme le webhook site.
+         → renvoie le lead existant, enrichi (backfill) depuis le formulaire.
+
+    L'ancienne « Couche 2 (QJ8) » — téléphone/e-mail connu dans la société ⇒
+    ABSORPTION de la touche dans le lead existant — est SUPPRIMÉE. Chaque
+    touche Meta est une nouvelle demande et crée un NOUVEAU lead, exactement
+    comme une soumission du site (règle fondateur du 18/08/2026, étendue à Meta
+    le 02/09/2026). Aucun lead existant n'est plus écrit par ce chemin : le
+    rapprochement se fait EN VISIBILITÉ, avec les deux mêmes primitives que le
+    webhook site (aucune seconde implémentation) —
+      • ``webhooks._flag_possible_duplicates`` pose UNE note chatter de doublon
+        sur le NOUVEAU lead (les archivés y sont mentionnés, cf. QW11) ;
+      • ``webhooks._pick_owner_from_duplicates`` fait HÉRITER le commercial du
+        doublon le plus pertinent (parité QW11), pour qu'un même client ne soit
+        jamais rappelé par deux commerciaux différents.
+    Conséquence VOULUE : un contact connu mais ARCHIVÉ donne lui aussi un
+    NOUVEAU lead — il est signalé dans la note sans transmettre son owner
+    (l'absorption, elle, ressuscitait silencieusement la fiche au rebut).
+    L'attribution (canal/utm/meta_ids) et ``external_system``/``external_id``
+    se posent donc TOUJOURS sur le lead nouvellement créé.
 
     Attribution (ADSENG1) : ``canal=META_ADS``, ``utm_source='facebook'``.
     Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook leadgen ; il
@@ -1991,14 +2033,16 @@ def create_lead_from_meta_lead_ads(
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
 
-    # ── Couche 2 (QJ8) : dédup société par téléphone/email ──────────────────
-    absorbed = None
+    # ── D-CRX1 : plus AUCUNE absorption ─────────────────────────────────────
+    # Les doublons sont cherchés ICI, AVANT la création, pour DEUX usages
+    # strictement en lecture : (a) l'héritage du commercial (QW11) qui doit
+    # être décidé avant le round-robin, (b) la note de signalement posée après
+    # la création. Aucun lead existant n'est modifié sur ce chemin. Une seule
+    # requête, réutilisée par les deux (jamais deux fois la même).
+    dupes = []
     if telephone or email:
         dupes = find_duplicates_by_contact(
             company, phone=telephone or None, email=email or None)
-        if dupes:
-            absorbed = sorted(
-                dupes, key=lambda d: d.date_creation, reverse=True)[0]
 
     # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
     # résolus via les miroirs adsengine (jamais un import des modèles adsengine).
@@ -2018,87 +2062,73 @@ def create_lead_from_meta_lead_ads(
     meta_campaign_id = (names.get('campaign_id') or '')[:64] or None
     meta_form_id = form_id[:64] or None
 
-    if absorbed is not None:
-        lead = absorbed
-        for field_name, value in (
-            ('email', email), ('telephone', telephone),
-            ('ville', fields.get('ville')),
-        ):
-            if value and not getattr(lead, field_name, None):
-                setattr(lead, field_name, value)
-        # first-touch UTM/attribution préservée si déjà posée.
-        if not lead.utm_source:
-            lead.utm_source = utm_source
-        if not lead.utm_campaign:
-            lead.utm_campaign = utm_campaign
-        if not lead.utm_content:
-            lead.utm_content = utm_content
-        # Identifiants Meta natifs : posés seulement si absents (first-touch).
-        if not lead.meta_ad_id:
-            lead.meta_ad_id = meta_ad_id
-        if not lead.meta_adset_id:
-            lead.meta_adset_id = meta_adset_id
-        if not lead.meta_campaign_id:
-            lead.meta_campaign_id = meta_campaign_id
-        if not lead.meta_form_id:
-            lead.meta_form_id = meta_form_id
-        if not lead.external_system:
-            lead.external_system = _META_LEAD_ADS_SYSTEM
-            lead.external_id = str(leadgen_id)
-        # Réponses métier du formulaire : complètent le lead absorbé sans
-        # jamais écraser une valeur existante.
-        _apply_meta_form_extras(lead, extras)
-        lead.save()
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
-                  f'absorbée dans ce lead existant.'))
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # QW11 (parité site) — l'héritage du commercial se décide AVANT le
+    # round-robin : un lead qui EST un doublon n'entre pas dans l'attribution
+    # normale, il revient au commercial qui suit déjà ce contact. Les deux
+    # filtres d'éligibilité (doublon non archivé, owner actif+habilité) sont
+    # DANS ``_pick_owner_from_duplicates`` — jamais redécidés ici.
+    from .webhooks import _flag_possible_duplicates, _pick_owner_from_duplicates
+
+    extra = {}
+    inherited_owner, inherited_from = _pick_owner_from_duplicates(
+        dupes, telephone=telephone, email=email, company=company)
+    if inherited_owner is not None:
+        extra['owner'] = inherited_owner
     else:
-        extra = {}
         default = default_responsable_for(company)
         if default is not None:
             extra['owner'] = default
-        # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
-        # normale ou basse) ; en enrichissement (leads existants), seule la
-        # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
-        if extras.get('priorite'):
-            extra['priorite'] = extras['priorite']
-        lead = Lead.objects.create(
-            company=company,
-            nom=nom,
-            email=email or None,
-            telephone=telephone or None,
-            ville=fields.get('ville') or None,
-            source=Lead.Source.META_LEAD_ADS,
-            canal=Lead.Canal.META_ADS,
-            utm_source=utm_source,
-            utm_campaign=utm_campaign,
-            utm_content=utm_content,
-            meta_ad_id=meta_ad_id,
-            meta_adset_id=meta_adset_id,
-            meta_campaign_id=meta_campaign_id,
-            meta_form_id=meta_form_id,
-            external_system=_META_LEAD_ADS_SYSTEM,
-            external_id=str(leadgen_id),
-            **extra,
-        )
-        # Réponses métier du formulaire → champs structurés (facture hiver,
-        # type d'installation, priorité selon le délai déclaré, wa.me).
-        changed = _apply_meta_form_extras(lead, extras)
-        if changed:
-            lead.save(update_fields=changed)
-        activity.log_creation(lead, None)
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
-        try:
-            notify_new_lead(lead)
-        except Exception:  # noqa: BLE001 — best-effort
-            pass
+    # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
+    # normale ou basse) ; en enrichissement (leads existants), seule la
+    # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
+    if extras.get('priorite'):
+        extra['priorite'] = extras['priorite']
+    lead = Lead.objects.create(
+        company=company,
+        nom=nom,
+        email=email or None,
+        telephone=telephone or None,
+        ville=fields.get('ville') or None,
+        source=Lead.Source.META_LEAD_ADS,
+        canal=Lead.Canal.META_ADS,
+        utm_source=utm_source,
+        utm_campaign=utm_campaign,
+        utm_content=utm_content,
+        meta_ad_id=meta_ad_id,
+        meta_adset_id=meta_adset_id,
+        meta_campaign_id=meta_campaign_id,
+        meta_form_id=meta_form_id,
+        external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id),
+        **extra,
+    )
+    # Réponses métier du formulaire → champs structurés (facture hiver,
+    # type d'installation, priorité selon le délai déclaré, wa.me).
+    changed = _apply_meta_form_extras(lead, extras)
+    if changed:
+        lead.save(update_fields=changed)
+    activity.log_creation(lead, None)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+    _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
+    # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
+    # calculés (jamais une 2e requête). Best-effort, comme côté site : un
+    # rapprochement en échec ne remet jamais la capture du lead en cause.
+    try:
+        _flag_possible_duplicates(
+            lead, telephone=telephone, email=email, dupes=dupes,
+            inherited_owner=inherited_owner, inherited_from=inherited_from)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'create_lead_from_meta_lead_ads: note de doublon échouée '
+            '(lead #%s) : %s', lead.pk, _exc)
+    try:
+        notify_new_lead(lead)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
 
     recompute_lead_score(lead)
     return lead
@@ -2208,19 +2238,27 @@ def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - résea
     nœud lead Meta via le Graph API officiel, pour le backfill.
 
     Isolé en fonction module (jamais dans ``webhooks.py`` — inchangé hors
-    mapping) pour rester simulable en test (monkeypatch). Utilise la version
-    courante de l'API (v25 — jamais la v19 expirée). Renvoie le dict brut ou
-    lève sur échec (capté par l'appelant, best-effort par lead).
+    mapping) pour rester simulable en test (monkeypatch). Renvoie le dict brut
+    ou lève sur échec (capté par l'appelant, best-effort par lead).
+
+    CRX5 — la version de l'API vient de la SOURCE UNIQUE partagée
+    (``apps.adsengine.api_version.GRAPH_BASE_URL``), jamais d'un littéral :
+    la « v25.0 » codée en dur ici était la dernière copie divergente du
+    dépôt, et c'est exactement de cette façon que la v19.0 du webhook est
+    restée morte en production pendant des mois (ADSENG2). Constante plain —
+    aucun modèle adsengine n'est importé.
     """
     import json
     import urllib.parse
     import urllib.request
 
+    from apps.adsengine.api_version import GRAPH_BASE_URL
+
     qs = urllib.parse.urlencode({
         'fields': 'ad_id,adgroup_id,form_id',
         'access_token': access_token,
     })
-    url = f'https://graph.facebook.com/v25.0/{leadgen_id}?{qs}'
+    url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))
 
@@ -2233,7 +2271,10 @@ def backfill_meta_lead_attribution(
     Pour chaque ``Lead`` de source ``meta_lead_ads`` dont ``meta_ad_id`` est
     encore vide, récupère ses identifiants natifs (ad_id/adgroup_id/form_id)
     depuis le nœud lead Meta via ``fetch_fn(leadgen_id, access_token)`` (défaut :
-    ``webhooks.fetch_meta_lead_node`` — injectable/simulable en test), les
+    ``services.fetch_meta_lead_node``, juste au-dessus — CRX5 : la docstring
+    nommait ``webhooks.fetch_meta_lead_node``, qui n'a jamais existé et
+    envoyait le lecteur chercher dans le mauvais module ; injectable/simulable
+    en test), les
     stocke, résout les noms via les miroirs adsengine, et remplit ``utm_content``
     = ``ad-<ad_id>`` + ``utm_campaign`` = nom de campagne résolu.
 
@@ -3902,7 +3943,7 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
 
 def enregistrer_consentement_lead(
         lead, *, purpose, granted=True, source='', version_texte='',
-        ip_confirmation=None):
+        ip_confirmation=None, occurred_at=None):
     """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
 
     ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
@@ -3910,6 +3951,13 @@ def enregistrer_consentement_lead(
     ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
     ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
     de l'état courant prend toujours la ligne la plus récente.
+
+    CRX39 — ``occurred_at`` (additif, défaut ``now()`` : tout appelant existant
+    est inchangé) porte l'horodatage RÉEL du consentement quand on le connaît,
+    comme le champ le demande explicitement (« sur le consent_timestamp
+    existant côté métier »). Sans lui, le registre daterait le consentement du
+    moment où l'ERP l'a enregistré, pas de celui où la personne l'a donné —
+    une preuve CNDP fausse est pire qu'une preuve absente.
     """
     from core.models import ConsentRecord
 
@@ -3922,10 +3970,61 @@ def enregistrer_consentement_lead(
         purpose=purpose,
         granted=granted,
         source=source or '',
-        occurred_at=timezone.now(),
+        occurred_at=occurred_at or timezone.now(),
         version_texte=version_texte or '',
         ip_confirmation=ip_confirmation,
     )
+
+
+#: CRX39 — origine consignée dans ``ConsentRecord.source`` pour l'intake web.
+CONSENT_SOURCE_SITE_WEB = 'formulaire site web'
+
+
+def enregistrer_consentements_intake_web(lead):
+    """CRX39 (DRAFT165-57) — trace au REGISTRE le consentement recueilli par le
+    formulaire du site, FINALITÉ PAR FINALITÉ.
+
+    Jusqu'ici le consentement du visiteur ne vivait que sur la fiche
+    (``Lead.consent_timestamp`` / ``Lead.whatsapp_opt_in``) : le registre
+    ``core.ConsentRecord`` — celui qu'une demande CNDP interroge, celui que
+    lisent le DSR et les filtres marketing — restait VIDE pour la source de
+    leads n°1. Cette fonction est le pont, appelée à la CRÉATION du lead par
+    le webhook site.
+
+    Deux finalités, chacune écrite SEULEMENT si la donnée existe (jamais un
+    consentement supposé — règle « aucun chiffre/fait inventé ») :
+      • ``marketing`` — la case du formulaire, ACCORDÉE, datée du
+        ``consentTimestamp`` transmis par le site (pas de l'instant serveur) ;
+      • ``whatsapp`` — l'opt-in WhatsApp, accordé OU refusé selon la case
+        (``whatsapp_opt_in`` vaut ``None`` quand la question n'a pas été posée
+        : on n'écrit alors RIEN, un silence n'est pas un refus).
+
+    ``ip_confirmation`` reste vide À DESSEIN : ce champ est la preuve du clic
+    de confirmation d'un DOUBLE opt-in, que le formulaire du site ne pratique
+    pas — y verser l'IP de la soumission maquillerait un simple opt-in en
+    double opt-in. Idem ``version_texte`` : le site ne transmet aucune version
+    de texte de consentement aujourd'hui.
+
+    Renvoie la liste des entrées créées (vide si aucune donnée exploitable).
+    Ne lève pas sur un lead sans email ni téléphone (le point d'entrée unique
+    ``enregistrer_consentement_lead`` renvoie alors ``None``).
+    """
+    horodatage = getattr(lead, 'consent_timestamp', None)
+    creees = []
+    if horodatage:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='marketing', granted=True,
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage)
+        if entree is not None:
+            creees.append(entree)
+    opt_in = getattr(lead, 'whatsapp_opt_in', None)
+    if opt_in is not None:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='whatsapp', granted=bool(opt_in),
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage or None)
+        if entree is not None:
+            creees.append(entree)
+    return creees
 
 
 # ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────

@@ -5,7 +5,12 @@ POSTe chaque lead qualifié vers ce endpoint avec un secret statique dans
 l'en-tête ``X-Webhook-Secret``. Principes :
 
 1. JAMAIS perdre un lead : la charge utile brute est stockée
-   (WebsiteLeadPayload) AVANT toute tentative de mapping.
+   (WebsiteLeadPayload) AVANT toute tentative de mapping. CRX2 — cette
+   garantie couvre désormais LES DEUX intakes de ce module : le webhook Meta
+   Lead Ads persiste chaque entrée du batch avec ``source='meta_lead_ads'``
+   avant d'appeler le Graph API, et se rejoue par le MÊME endpoint (une
+   récupération Graph en échec laisse une ligne rejouable au lieu de perdre
+   le lead).
 2. RÈGLE FONDATEUR (18/08/2026) — CHAQUE soumission du site crée un
    NOUVEAU lead, toujours. Plus jamais de fusion silencieuse d'un
    « visiteur revenant » : c'est ainsi qu'un lead de test a disparu dans
@@ -732,6 +737,12 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
 # CONSÉQUENCE PRATIQUE : ajouter/retirer ici la lecture d'une clé du registre
 # se déclare DANS LE CONTRAT, dans le même commit. Une clé délibérément
 # ignorée s'y écrit avec sa raison — jamais par omission.
+#: CRX31 — borne du champ ``adresse`` (``TextField``, donc sans limite SQL) sur
+#: les surfaces publiques. Une adresse postale marocaine complète tient très
+#: largement dedans.
+MAX_LONGUEUR_ADRESSE = 500
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -808,7 +819,13 @@ def _map_payload_to_fields(data: dict) -> dict:
         fields['raccordement'] = raccordement
     adresse = data.get('adresse') or data.get('address')
     if adresse:
-        fields['adresse'] = str(adresse).strip() or None
+        # CRX31 — BORNÉE. ``Lead.adresse`` est un ``TextField`` (aucune limite
+        # SQL) et c'était le SEUL champ texte de ce mapping sans tranche : un
+        # POST anonyme pouvait donc écrire des mégaoctets par lead, sur une
+        # surface publique, via le webhook site ET le questionnaire tokenisé
+        # (qui repasse par ce même mapping). 500 caractères tiennent largement
+        # une adresse postale marocaine complète.
+        fields['adresse'] = str(adresse).strip()[:MAX_LONGUEUR_ADRESSE] or None
     # GPS : mêmes bornes que _clean_roof_point (lat ∈ [-90,90], lng ∈ [-180,180]).
     gps_lat = _clean_decimal(
         data.get('gpsLat', data.get('gps_lat')), lo=-90, hi=90)
@@ -1523,7 +1540,23 @@ def _map_and_link_lead(raw, data, company):
     RÈGLE FONDATEUR (18/08/2026) : une soumission du site = un NOUVEAU lead.
     Le SEUL cas où un lead existant est complété ici est la garde technique
     anti-rejeu < 60 s (même téléphone + source site web) — c'est la même
-    soumission qui revient, pas un visiteur revenant."""
+    soumission qui revient, pas un visiteur revenant.
+
+    ⚠ LA GARDE CACHE QW10 (``idempotencyKey`` → ``cache.add``, plus bas) EST
+    PORTEUSE — NE JAMAIS LA RETIRER (CRX40, audit L3 du 02/09/2026).
+    Elle a été signalée « code mort » par un constat d'audit, et ce constat a
+    été RÉFUTÉ : la garde protège deux chemins, pas un seul.
+      1. Le webhook : deux POSTs SIMULTANÉS portant la même clé ne peuvent pas
+         se croire tous deux « premiers » — le perdant attend brièvement, puis
+         rejoint la garde anti-rejeu < 60 s au lieu de créer un doublon.
+      2. Le REJEU (``replay_website_lead_payload``, action QX16) : il repasse
+         par CETTE fonction avec le MÊME payload, donc la MÊME clé — c'est la
+         garde qui empêche un rejeu concurrent (deux clics sur « rejouer », ou
+         un rejeu pendant que le POST d'origine finit) de fabriquer un second
+         lead à partir d'un seul payload.
+    Le retirer ne casserait aucun test existant : la course qu'elle ferme n'est
+    pas reproductible en test unitaire. C'est précisément pourquoi cette note
+    existe ici plutôt que dans un commentaire de commit."""
     fields = _map_payload_to_fields(data)
     # WREF2 — le « TQ-XXXX » du navigateur est PROVISOIRE : il ne s'écrit
     # jamais sur la fiche. On le sort du dict AVANT toute écriture, ce qui
@@ -1742,6 +1775,19 @@ def _map_and_link_lead(raw, data, company):
         except Exception as _exc:  # noqa: BLE001 — best-effort
             logger.warning(
                 'website_lead_webhook: recompute_lead_score échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+        # CRX39 (DRAFT165-57) — consentement CNDP TRACÉ AU REGISTRE. Le
+        # `consentTimestamp` du site ne vivait que sur la fiche : le registre
+        # `core.ConsentRecord`, celui qu'interroge une demande CNDP, restait
+        # vide pour la source de leads n°1. Posé à la CRÉATION uniquement (le
+        # chemin anti-rejeu < 60 s est la MÊME soumission — il ne doit pas
+        # écrire une seconde ligne). Best-effort, comme les blocs voisins.
+        try:
+            from .services import enregistrer_consentements_intake_web
+            enregistrer_consentements_intake_web(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: registre de consentement non écrit '
                 '(lead #%s) : %s', lead.pk, _exc)
         # Quote-journey — visibilité commerciale immédiate : UNE note chatter
         # automatique résumant le questionnaire web (pro/agricole) + les
@@ -2121,6 +2167,31 @@ def _check_meta_lead_ads_signature(request, secret):
                                expected.encode('utf-8'))
 
 
+#: CRX4 (résidu post-QJR414, D-CRX2) — forme admise d'un ``leadgen_id`` Meta :
+#: un identifiant NUMÉRIQUE, borné. La valeur vient du corps du webhook et
+#: était interpolée telle quelle dans l'URL Graph : une valeur hostile
+#: (``123/../../me?fields=``) y injectait un chemin et des paramètres, c.-à-d.
+#: faisait appeler par NOTRE token de page un tout autre endpoint Graph que
+#: celui qu'on croyait interroger. La signature HMAC (QJR414) rend l'attaque
+#: coûteuse, elle ne la rend pas impossible — la borne reste due ici.
+LEADGEN_ID_RE = re.compile(r'^[0-9]{1,32}$')
+
+
+def _valider_leadgen_id(leadgen_id):
+    """Renvoie le ``leadgen_id`` normalisé, ou lève ``ValueError``.
+
+    Lever est le bon contrat : l'appelant (webhook ou rejeu) traite déjà toute
+    exception par entrée (CRX3) et laisse une ligne brute rejouable portant
+    l'erreur (CRX2) — l'entrée douteuse est donc refusée sans jamais être
+    perdue ni interrompre le batch."""
+    valeur = str(leadgen_id or '').strip()
+    if not LEADGEN_ID_RE.match(valeur):
+        raise ValueError(
+            'leadgen_id Meta invalide (chiffres uniquement, 1-32) : '
+            f'{valeur[:64]!r}')
+    return valeur
+
+
 def fetch_meta_lead_data(leadgen_id, access_token):
     """Récupère le détail d'un lead Meta via le Graph API officiel.
 
@@ -2128,6 +2199,8 @@ def fetch_meta_lead_data(leadgen_id, access_token):
     (monkeypatch) — le test simulé décrit dans XMKT32 n'appelle jamais un
     vrai serveur Meta. Renvoie un dict ``{'field_data': [...]}`` ou lève sur
     échec réseau/HTTP (capté par l'appelant).
+
+    CRX4 — ``leadgen_id`` est VALIDÉ avant toute interpolation dans l'URL.
     """
     import urllib.request
 
@@ -2136,6 +2209,7 @@ def fetch_meta_lead_data(leadgen_id, access_token):
     # depuis 02/2025. Constante plain (aucun modèle adsengine importé).
     from apps.adsengine.api_version import GRAPH_BASE_URL
 
+    leadgen_id = _valider_leadgen_id(leadgen_id)
     url = f'{GRAPH_BASE_URL}/{leadgen_id}?access_token={access_token}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))
@@ -2216,6 +2290,7 @@ def meta_lead_ads_webhook(request):
         return JsonResponse({'detail': 'Aucune société résolue.'}, status=202)
 
     created_leads = []
+    echecs = 0
     try:
         entries = data.get('entry') or []
         for entry in entries:
@@ -2224,46 +2299,158 @@ def meta_lead_ads_webhook(request):
                 leadgen_id = value.get('leadgen_id')
                 if not leadgen_id:
                     continue
-                # ADSENG1 — Meta pousse ad_id/adgroup_id/form_id (JAMAIS
-                # campaign_name/adset_name) : on capture ces clés de jointure
-                # stables ; la résolution des noms se fait côté service.
-                ad_id = value.get('ad_id', '') or ''
-                adgroup_id = value.get('adgroup_id', '') or ''
-                form_id = value.get('form_id', '') or ''
+                # ── CRX3 — isolation PAR ENTRÉE ─────────────────────────────
+                # Un batch Meta contient plusieurs leads. Avant, la moindre
+                # exception sur l'un d'eux (create en échec, abonné d'événement
+                # cassé, contrainte DB) remontait au try/except du batch et
+                # ABANDONNAIT toutes les entrées SUIVANTES, jamais rejouées par
+                # Meta puisque le webhook répondait quand même. Chaque entrée a
+                # désormais sa propre garde : les autres continuent.
+                raw = None
                 try:
-                    lead_data = fetch_meta_lead_data(leadgen_id, access_token)
-                except Exception as exc:  # noqa: BLE001 — un lead en échec
-                    # ne doit jamais bloquer les autres entrées du batch.
-                    logger.warning(
-                        'meta_lead_ads_webhook: fetch échoué pour %s : %s',
-                        leadgen_id, exc)
-                    continue
-                field_data = lead_data.get('field_data') or []
-                from .services import create_lead_from_meta_lead_ads
-                lead = create_lead_from_meta_lead_ads(
-                    company=company, leadgen_id=leadgen_id,
-                    field_data=field_data, ad_id=ad_id,
-                    adgroup_id=adgroup_id, form_id=form_id,
-                    access_token=access_token)
-                created_leads.append(lead.pk)
-                # ADSDEEP17 — événement domaine (M6) : ``adsengine`` matérialise
-                # un MetaLeadMirror (leads par ad) SANS que ``crm`` l'importe.
-                # Best-effort : un abonné en échec ne casse jamais la capture.
-                try:
-                    from core.events import meta_lead_captured
-                    meta_lead_captured.send(
-                        sender='crm.meta_lead_ads_webhook', lead=lead,
-                        company=company, leadgen_id=str(leadgen_id),
-                        ad_id=ad_id, adset_id=adgroup_id, campaign_id='',
-                        form_id=form_id,
-                        created_time=value.get('created_time'),
-                        is_organic=not bool(ad_id))
-                except Exception:  # noqa: BLE001 — best-effort
-                    logger.warning(
-                        'meta_lead_ads_webhook: émission meta_lead_captured '
-                        'échouée (leadgen %s)', leadgen_id, exc_info=True)
-        return JsonResponse({'detail': 'Traité.', 'lead_ids': created_leads},
-                            status=200)
+                    # ── CRX2 — « jamais perdre un lead », parité site ────────
+                    # L'entrée est PERSISTÉE TELLE QUELLE avant toute tentative
+                    # de mapping : à partir d'ici, aucune panne (Graph API
+                    # injoignable, payload inattendu, bug de mapping) ne peut
+                    # plus effacer cette touche Meta — elle reste visible et
+                    # rejouable comme un payload site (QX16).
+                    raw = WebsiteLeadPayload.objects.create(
+                        source=WebsiteLeadPayload.Source.META_LEAD_ADS,
+                        company=company,
+                        payload=value,
+                        remote_addr=(
+                            request.META.get(
+                                'HTTP_X_FORWARDED_FOR',
+                                '').split(',')[0].strip()
+                            or request.META.get('REMOTE_ADDR') or '')[:64],
+                    )
+                    # Le mapping est atomique PAR ENTRÉE : une entrée qui
+                    # échoue à mi-chemin ne laisse ni demi-lead ni transaction
+                    # cassée derrière elle (ce qui ferait tomber les entrées
+                    # suivantes en cascade). La ligne brute, elle, est créée
+                    # AVANT ce bloc — elle survit donc au rollback, sinon la
+                    # garantie CRX2 disparaîtrait précisément dans le cas où
+                    # elle sert.
+                    with transaction.atomic():
+                        lead = _process_meta_lead_entry(
+                            raw, value, company, access_token)
+                    if lead is not None:
+                        created_leads.append(lead.pk)
+                    else:
+                        # Récupération Graph en échec : la ligne brute est déjà
+                        # consignée et rejouable (CRX2).
+                        echecs += 1
+                except Exception as exc:  # noqa: BLE001 — jamais le batch
+                    echecs += 1
+                    logger.exception(
+                        'meta_lead_ads_webhook: entrée %s en échec — les '
+                        'entrées suivantes continuent.', leadgen_id)
+                    if raw is not None:
+                        try:
+                            raw.error = f'{type(exc).__name__}: {exc}'
+                            raw.save(update_fields=['error'])
+                        except Exception:  # noqa: BLE001 — best-effort
+                            logger.exception(
+                                'meta_lead_ads_webhook: consignation de '
+                                "l'erreur impossible (payload #%s)", raw.pk)
+        return JsonResponse(
+            {'detail': 'Traité.', 'lead_ids': created_leads,
+             'created': len(created_leads), 'failed': echecs},
+            status=200)
     except Exception:
+        # Filet de sécurité pour un payload STRUCTURELLEMENT cassé (``entry``
+        # non itérable, ``changes`` non-liste…) — plus jamais pour l'échec
+        # d'un lead, désormais isolé ci-dessus.
         logger.exception('meta_lead_ads_webhook: traitement échoué.')
         return JsonResponse({'detail': 'Erreur de traitement.'}, status=202)
+
+
+def _process_meta_lead_entry(raw, value, company, access_token):
+    """CRX2 — SOURCE UNIQUE du mapping « entrée Meta → Lead », factorisée hors
+    de la vue pour être réutilisable telle quelle par le REJEU
+    (``replay_meta_lead_payload``) — jamais une seconde implémentation qui
+    pourrait diverger (même contrat que ``_map_and_link_lead`` côté site).
+
+    Persiste l'issue sur ``raw`` (``lead``/``processed``/``error``) et renvoie
+    le ``Lead`` créé, ou ``None`` quand la récupération Graph a échoué. Dans ce
+    dernier cas la ligne reste NON traitée avec son erreur consignée : elle
+    ressort dans la liste des payloads à rejouer, exactement comme un payload
+    site en erreur — c'est le lead que l'ancien ``continue`` perdait.
+    """
+    leadgen_id = value.get('leadgen_id')
+    # ADSENG1 — Meta pousse ad_id/adgroup_id/form_id (JAMAIS campaign_name/
+    # adset_name) : on capture ces clés de jointure stables ; la résolution
+    # des noms se fait côté service.
+    ad_id = value.get('ad_id', '') or ''
+    adgroup_id = value.get('adgroup_id', '') or ''
+    form_id = value.get('form_id', '') or ''
+    try:
+        lead_data = fetch_meta_lead_data(leadgen_id, access_token)
+    except Exception as exc:  # noqa: BLE001 — la ligne brute est déjà en base
+        logger.warning(
+            'meta_lead_ads_webhook: fetch échoué pour %s : %s',
+            leadgen_id, exc)
+        raw.error = f'Récupération Graph échouée — {type(exc).__name__}: {exc}'
+        raw.save(update_fields=['error'])
+        return None
+    field_data = lead_data.get('field_data') or []
+    from .services import create_lead_from_meta_lead_ads
+    lead = create_lead_from_meta_lead_ads(
+        company=company, leadgen_id=leadgen_id,
+        field_data=field_data, ad_id=ad_id,
+        adgroup_id=adgroup_id, form_id=form_id,
+        access_token=access_token)
+    raw.lead = lead
+    raw.processed = True
+    raw.error = ''
+    raw.save(update_fields=['lead', 'processed', 'error'])
+    # ADSDEEP17 — événement domaine (M6) : ``adsengine`` matérialise un
+    # MetaLeadMirror (leads par ad) SANS que ``crm`` l'importe. Best-effort :
+    # un abonné en échec ne casse jamais la capture.
+    try:
+        from core.events import meta_lead_captured
+        meta_lead_captured.send(
+            sender='crm.meta_lead_ads_webhook', lead=lead,
+            company=company, leadgen_id=str(leadgen_id),
+            ad_id=ad_id, adset_id=adgroup_id, campaign_id='',
+            form_id=form_id,
+            created_time=value.get('created_time'),
+            is_organic=not bool(ad_id))
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'meta_lead_ads_webhook: émission meta_lead_captured '
+            'échouée (leadgen %s)', leadgen_id, exc_info=True)
+    return lead
+
+
+def replay_meta_lead_payload(raw):
+    """CRX2 — rejoue une entrée Meta stockée à travers EXACTEMENT le même
+    chemin que le webhook (``_process_meta_lead_entry``). Jumeau strict de
+    ``replay_website_lead_payload`` (QX16) : même contrat de retour
+    ``(ok, detail, lead)``, ne lève jamais, consigne l'échec sur ``raw.error``
+    pour que la ligne reste rejouable indéfiniment.
+
+    La société vient de ``raw.company`` (posée côté serveur à la réception) ;
+    le token d'accès est re-résolu au moment du rejeu (env prioritaire, sinon
+    la connexion Meta activée — FIXPUB1), jamais stocké dans la ligne brute.
+    """
+    company = raw.company or _meta_lead_ads_company()
+    if company is None:
+        return False, 'Aucune Company résolue — rejeu impossible.', None
+    from apps.adsengine.selectors import resolve_lead_ads_access_token
+    access_token, _token_source = resolve_lead_ads_access_token(company)
+    if not access_token:
+        return False, 'Aucun access token Meta — rejeu impossible.', None
+    try:
+        lead = _process_meta_lead_entry(
+            raw, raw.payload or {}, company, access_token)
+    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
+        raw.error = f'{type(exc).__name__}: {exc}'
+        raw.save(update_fields=['error'])
+        logger.exception(
+            'replay_meta_lead_payload: mapping échoué (payload #%s)', raw.pk)
+        return False, f'Rejeu échoué : {exc}', None
+    if lead is None:
+        return False, (raw.error or 'Rejeu échoué : récupération Graph '
+                                    'impossible.'), None
+    return True, 'Lead Meta Lead Ads rejoué.', lead

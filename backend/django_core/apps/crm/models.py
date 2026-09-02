@@ -1111,13 +1111,28 @@ class Lead(SoftDeleteModel):
 
 
 class WebsiteLeadPayload(models.Model):
-    """Charge utile BRUTE reçue du site web — stockée AVANT tout mapping.
+    """Charge utile BRUTE reçue d'une source d'intake — stockée AVANT tout
+    mapping.
 
     Garantie « jamais perdre un lead » : même si le mapping vers Lead échoue
-    (payload inattendu, bug), la donnée d'origine est conservée telle quelle
-    et rejouable. Aucune logique métier ici.
+    (payload inattendu, bug, panne du Graph API), la donnée d'origine est
+    conservée telle quelle et rejouable. Aucune logique métier ici.
+
+    CRX2 — le modèle sert désormais LES DEUX intakes (le nom historique est
+    conservé : renommer la table coûterait plus qu'il ne rapporte). ``source``
+    dit lequel, et pilote le chemin de rejeu choisi par l'action ``replay``
+    (``webhooks.replay_website_lead_payload`` / ``replay_meta_lead_payload``).
     """
 
+    class Source(models.TextChoices):
+        WEBSITE = 'website', 'Site web'
+        META_LEAD_ADS = 'meta_lead_ads', 'Meta Lead Ads'
+
+    #: Intake d'origine. Défaut ``website`` : toutes les lignes existantes
+    #: viennent du webhook site (seul émetteur avant CRX2).
+    source = models.CharField(
+        max_length=32, choices=Source.choices, default=Source.WEBSITE,
+        db_index=True)
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1135,12 +1150,13 @@ class WebsiteLeadPayload(models.Model):
         related_name='website_payloads')
 
     class Meta:
-        verbose_name = 'Payload lead site web'
-        verbose_name_plural = 'Payloads leads site web'
+        verbose_name = 'Payload lead entrant'
+        verbose_name_plural = 'Payloads leads entrants'
         ordering = ['-received_at']
 
     def __str__(self):
-        return f"payload #{self.pk} ({'ok' if self.processed else 'brut'})"
+        return (f"payload #{self.pk} [{self.source}] "
+                f"({'ok' if self.processed else 'brut'})")
 
 
 class LeadActivity(models.Model):

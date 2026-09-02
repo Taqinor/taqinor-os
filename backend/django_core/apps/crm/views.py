@@ -2009,12 +2009,21 @@ class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     def replay(self, request, pk=None):
         """QX16 — rejoue ce payload à travers le mapping webhook standard.
 
+        CRX2 — le chemin de rejeu suit la SOURCE de la ligne : site web →
+        ``replay_website_lead_payload``, Meta Lead Ads →
+        ``replay_meta_lead_payload``. Chacun réutilise le mapping de SON
+        webhook (jamais une seconde implémentation).
+
         Renvoie 200 avec le lead résultant en cas de succès, 422 si le rejeu
         échoue encore (le payload reste rejouable — jamais supprimé)."""
-        from .webhooks import replay_website_lead_payload
+        from .webhooks import (
+            replay_meta_lead_payload, replay_website_lead_payload)
 
         payload = self.get_object()
-        ok, detail, lead = replay_website_lead_payload(payload)
+        if payload.source == WebsiteLeadPayload.Source.META_LEAD_ADS:
+            ok, detail, lead = replay_meta_lead_payload(payload)
+        else:
+            ok, detail, lead = replay_website_lead_payload(payload)
         payload.refresh_from_db()
         data = WebsiteLeadPayloadSerializer(payload).data
         if not ok:
