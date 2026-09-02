@@ -167,22 +167,36 @@ def _item_payload(item):
 
 
 @extend_schema(responses={200: _SALLE_VENTE_RESPONSE})
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
 def public_salle_vente(request, token):
     """NTCRM17/18 — Détail public d'une salle de vente. Journalise une
     ``SalleVenteVue`` à CHAQUE consultation réussie (NTCRM18/19), IP hachée
-    uniquement."""
+    uniquement.
+
+    QJR420 (QJR4-06) — LE MOT DE PASSE A QUITTÉ LA CHAÎNE DE REQUÊTE. Il était
+    lu dans ``request.query_params`` (le corps n'étant consulté qu'à défaut) :
+    un secret atterrissait donc dans les **journaux d'accès du serveur**,
+    l'**historique du navigateur** et l'en-tête **Referer** envoyé à tout
+    tiers. Il se transmet désormais **UNIQUEMENT dans le corps d'un POST** ; la
+    lecture depuis la chaîne de requête est **SUPPRIMÉE**, pas laissée en repli
+    (règle permanente 2 : un repli qui accepte encore le secret en clair dans
+    l'URL ne corrige rien).
+
+    Le GET reste servi à l'identique pour une salle SANS mot de passe — c'est
+    le cas courant, il ne change pas ; une salle protégée exige un POST.
+    """
     salle = _resolve_salle(token)
     if salle is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
     if not salle.is_accessible:
         return Response(status=status.HTTP_410_GONE)
     if salle.has_password:
-        mot_de_passe = request.query_params.get('mot_de_passe') or ''
-        if not mot_de_passe and request.data:
-            mot_de_passe = request.data.get('mot_de_passe', '')
+        corps = request.data if hasattr(request.data, 'get') else {}
+        mot_de_passe = corps.get('mot_de_passe') or ''
+        if not isinstance(mot_de_passe, str):
+            mot_de_passe = ''
         if not salle.check_password(mot_de_passe):
             return Response(
                 {'detail': 'Mot de passe requis ou invalide.'},
