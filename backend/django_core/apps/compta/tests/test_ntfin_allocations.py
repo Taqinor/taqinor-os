@@ -152,6 +152,42 @@ class AllocationRecurrenteTests(TestCase):
                 compte_source='6111', periode=date(2026, 2, 28)).count(), 1)
         self.assertIsInstance(r1, dict)
 
+    def test_aud187_periode_en_echec_est_rejouee_au_run_suivant(self):
+        """AUD187 — l'échéance n'avance QUE sur succès.
+
+        Elle avançait INCONDITIONNELLEMENT après un `except ValidationError`
+        et cette valeur était persistée : la période en échec n'était plus
+        jamais rejouée et sa charge disparaissait de la ventilation par centre
+        de coût.
+        """
+        r1 = services.generer_allocations_recurrentes(
+            self.co, jusqua=date(2026, 1, 31))
+        # Aucun solde sur 6111 → « aucun montant à répartir » → échec.
+        self.assertEqual(r1['generees'], [])
+        self.assertTrue(r1['ignorees'])
+        self.rec.refresh_from_db()
+        self.assertEqual(
+            self.rec.prochaine_echeance, date(2026, 1, 31),
+            "Une période en échec doit rester la prochaine à rejouer.")
+        # La cause disparaît (une charge est enfin postée) : le run suivant
+        # rattrape la période perdue.
+        from apps.compta.models import Journal
+
+        journal = services._journal(self.co, Journal.Type.OPERATIONS_DIVERSES)
+        services.creer_ecriture(
+            self.co, journal, date(2026, 1, 15), 'Charge à ventiler', [
+                {'compte': services._assurer_compte(self.co, '6111'),
+                 'debit': Decimal('1000'), 'credit': Decimal('0')},
+                {'compte': services._assurer_compte(self.co, '4411'),
+                 'debit': Decimal('0'), 'credit': Decimal('1000')},
+            ], statut='validee')
+        r2 = services.generer_allocations_recurrentes(
+            self.co, jusqua=date(2026, 1, 31))
+        self.assertEqual(len(r2['generees']), 1)
+        self.assertEqual(r2['generees'][0]['periode'], '2026-01-31')
+        self.rec.refresh_from_db()
+        self.assertGreater(self.rec.prochaine_echeance, date(2026, 1, 31))
+
 
 class EngagementTests(TestCase):
     def setUp(self):

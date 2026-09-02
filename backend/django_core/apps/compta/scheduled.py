@@ -96,7 +96,12 @@ def generer_ecritures_recurrentes_dues():
     duplique jamais une écriture déjà générée pour une période) : rejouer le
     même jour ne crée rien de plus (aucun double envoi). No-op tant qu'aucun
     ``AbonnementEcriture`` n'est configuré. Renvoie le nombre total d'écritures
-    générées."""
+    générées.
+
+    AUD187 — le service calcule une liste ``ignorees`` AVEC ses raisons (période
+    verrouillée, abonnement mal configuré…) que ce wrapper JETAIT : une
+    génération qui échouait ne remontait nulle part. Elle est désormais
+    journalisée en ERROR et notifiée (best-effort)."""
     from authentication.models import Company
     from . import services
 
@@ -104,4 +109,41 @@ def generer_ecritures_recurrentes_dues():
     for company in Company.objects.filter(actif=True):
         resultat = services.generer_ecritures_recurrentes(company)
         total += len(resultat['generees'])
+        _signaler_generations_ignorees(
+            company, resultat.get('ignorees') or [],
+            'écritures récurrentes')
     return total
+
+
+def _signaler_generations_ignorees(company, ignorees, quoi):
+    """AUD187 — remonte les générations ignorées : log ERROR + notification.
+
+    Best-effort côté notification (une notification indisponible ne doit jamais
+    faire échouer le beat) ; le log ERROR, lui, part toujours.
+    """
+    if not ignorees:
+        return
+    for item in ignorees:
+        logger.error(
+            'compta: génération de %s ignorée (société %s) — %s : %s',
+            quoi, getattr(company, 'slug', company.pk),
+            item.get('periode') or item.get('abonnement_id') or '',
+            item.get('raison') or 'raison non précisée')
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        from . import services
+
+        destinataires = services._destinataires_alerte_tresorerie(company, None)
+        titre = f'{len(ignorees)} génération(s) de {quoi} ignorée(s)'
+        corps = '\n'.join(
+            f"- {item.get('periode') or ''} : "
+            f"{item.get('raison') or 'raison non précisée'}"
+            for item in ignorees[:20])
+        for dest in destinataires:
+            notify(dest, EventType.FLOTTE_BUDGET_DEPASSEMENT, titre,
+                   body=corps, link='/compta/ecritures', company=company)
+    except Exception:  # pragma: no cover - notifications best-effort.
+        logger.warning(
+            'compta: notification des générations ignorées indisponible.')

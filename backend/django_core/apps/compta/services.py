@@ -13637,6 +13637,9 @@ def generer_allocations_recurrentes(company, *, jusqua=None):
         prochaine_echeance__lte=jusqua).select_related('cle')
     for rec in recurrentes:
         echeance = rec.prochaine_echeance
+        # AUD187 — première période EN ÉCHEC : c'est elle qui redevient la
+        # prochaine échéance, pour être rejouée au run suivant.
+        premiere_en_echec = None
         # Boucle de rattrapage : plusieurs périodes échues d'un coup.
         while echeance <= jusqua:
             deja = RunAllocation.objects.filter(
@@ -13661,8 +13664,17 @@ def generer_allocations_recurrentes(company, *, jusqua=None):
                         'allocation_id': rec.id,
                         'periode': echeance.isoformat(),
                         'raison': '; '.join(exc.messages)})
+                    if premiere_en_echec is None:
+                        premiere_en_echec = echeance
             echeance = rec.echeance_suivante(echeance)
-        rec.prochaine_echeance = echeance
+        # AUD187 — l'échéance n'avance QUE sur succès (ou « déjà générée »).
+        # Elle avançait INCONDITIONNELLEMENT après un `except ValidationError`
+        # et cette valeur était persistée : une période en échec (période
+        # verrouillée, clé de répartition ≠ 100 %) n'était plus JAMAIS rejouée,
+        # et sa charge disparaissait définitivement de la ventilation par
+        # centre de coût. Les périodes postérieures déjà exécutées restent
+        # protégées par la garde d'idempotence `deja` du haut de la boucle.
+        rec.prochaine_echeance = premiere_en_echec or echeance
         rec.derniere_generation = jusqua
         rec.save(update_fields=['prochaine_echeance', 'derniere_generation',
                                 'updated_at'])
