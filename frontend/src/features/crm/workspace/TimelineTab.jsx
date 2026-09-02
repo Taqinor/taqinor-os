@@ -81,10 +81,49 @@ export default function TimelineTab({
   // entrées, il devient la source (plus complet — jusqu'à N entrées, pas
   // limité à 50, et déjà rafraîchi après une action locale).
   const chatterRecent = state.server?.chatter_recent
-  const entries = useMemo(
+
+  // CRX37 — jalons du cycle de vie des devis (envoyé / ouvert / signé /
+  // refusé). `ChatterTimeline` sait rendre ces quatre `kind` depuis QX32 et le
+  // filtre « Devis » ci-dessus les attend — il ne manquait que la SOURCE :
+  // `crm.selectors.lead_jalons_devis`, adossé au sélecteur cross-app
+  // `ventes.selectors.devis_events_for_lead`. GET paresseux (une fois par
+  // lead), silencieux en cas d'erreur — même motif que les points de contact
+  // plus bas : un enrichissement passif ne lève jamais de toast.
+  const [jalonsDevis, setJalonsDevis] = useState([])
+  const [jalonsPour, setJalonsPour] = useState(leadId)
+  if (jalonsPour !== leadId) {
+    setJalonsPour(leadId)
+    setJalonsDevis([])
+  }
+  useEffect(() => {
+    if (!leadId) return undefined
+    let annule = false
+    crmApi.getLeadJalonsDevis(leadId)
+      .then((r) => {
+        if (annule) return
+        const recus = r?.data?.results
+        setJalonsDevis(Array.isArray(recus) ? recus : [])
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [leadId])
+
+  const chatter = useMemo(
     () => ((historique && historique.length > 0) ? historique : (chatterRecent ?? [])),
     [historique, chatterRecent],
   )
+  // Fusion + retri chronologique. Les jalons portent un `id` TEXTUEL
+  // (« devis-42-sent ») : aucune collision avec les `id` numériques du
+  // chatter. Les notes épinglées (LW28) restent en tête, comme les sert le
+  // backend — un jalon n'est jamais épinglé.
+  const entries = useMemo(() => {
+    if (jalonsDevis.length === 0) return chatter
+    const horodatage = (a) => a?.created_at || ''
+    return [...chatter, ...jalonsDevis].sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1
+      return horodatage(b).localeCompare(horodatage(a))
+    })
+  }, [chatter, jalonsDevis])
 
   const [filter, setFilter] = useState(readFilter)
   const changeFilter = useCallback((key) => { setFilter(key); writeFilter(key) }, [])

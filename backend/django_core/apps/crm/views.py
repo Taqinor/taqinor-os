@@ -1229,6 +1229,25 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             activites, many=True, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'], url_path='jalons-devis',
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
+    def jalons_devis(self, request, pk=None):
+        """CRX37 — jalons du cycle de vie des devis du lead (envoyé / ouvert /
+        signé / refusé), pour fusion dans la timeline côté écran.
+
+        Surface HTTP MINIMALE du sélecteur ``selectors.lead_jalons_devis``, qui
+        lit ``apps.ventes.selectors.devis_events_for_lead`` (jamais un import
+        de ``apps.ventes.models``). Additive : ``historique`` garde sa forme à
+        l'octet, aucun mock existant n'est invalidé. Même permission que
+        ``historique`` (``crm_voir``) — c'est le même historique de lead.
+
+        Contrat : ``apps/crm/contract_samples/lead_jalons_devis.json``.
+        """
+        from .selectors import lead_jalons_devis
+
+        lead = self.get_object()
+        return Response({'results': lead_jalons_devis(lead)})
+
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])

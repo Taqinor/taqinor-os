@@ -43,6 +43,8 @@ vi.mock('../../../api/recordsApi', () => ({
 vi.mock('../../../api/crmApi', () => ({
   default: {
     getLeadPointsContact: vi.fn(() => Promise.resolve({ data: { count: 0, timeline: [] } })),
+    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
+    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     // NTCRM19 — badge de consultation salle de vente, monté par DevisTab au
     // clic sur l'onglet Devis : no-op (aucune salle) pour ces tests.
     getLeadSalleVenteAnalytics: vi.fn(() => Promise.resolve({ data: null })),

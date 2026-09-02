@@ -2004,6 +2004,64 @@ def lead_chatter_envelope(lead, user=None):
     return sortie
 
 
+# ── CRX37 — Jalons devis dans l'historique du lead ───────────────────────────
+
+#: CRX37 — ``kind`` renvoyé par ``ventes.selectors.devis_events_for_lead`` →
+#: ``kind`` du chatter, celui que ``ChatterTimeline`` sait DÉJÀ rendre
+#: (📤/👁️/✅/❌) et que ``matchesTimelineFilter`` range sous le filtre
+#: « Devis ». Le rendu existait des deux côtés ; il ne manquait que la source.
+_KIND_DEVIS_VERS_CHATTER = {
+    'sent': 'devis_sent',
+    'opened': 'devis_opened',
+    'signed': 'devis_signed',
+    'refused': 'devis_refused',
+}
+
+
+def lead_jalons_devis(lead):
+    """CRX37 — jalons du cycle de vie des devis d'un lead, projetés dans la
+    forme du chatter (contrat ``apps/crm/contract_samples/lead_jalons_devis.json``).
+
+    Le sélecteur ``apps.ventes.selectors.devis_events_for_lead`` (QX32be) a été
+    écrit pour ça et n'avait AUCUN appelant : le commercial ne voyait donc
+    jamais « devis envoyé / proposition ouverte / signé / refusé » dans
+    l'historique du lead, alors que ``ChatterTimeline`` sait rendre ces quatre
+    ``kind`` depuis QX32 et que le filtre « Devis » de la timeline existe déjà.
+
+    Lecture seule, cross-app par le SÉLECTEUR de l'app cible (jamais un import
+    de ``apps.ventes.models``), bornée à la société du lead. Aucun montant :
+    la timeline montre des JALONS, pas des prix (et jamais de ``prix_achat``).
+
+    Chaque entrée porte la forme d'une ligne de chatter — ``id`` textuel et
+    STABLE (aucune collision avec les ``id`` numériques de ``LeadActivity``,
+    que le frontend fusionne dans la même liste), ``kind`` ``devis_*``,
+    ``body`` lisible, ``created_at`` ISO.
+    """
+    from apps.ventes import selectors as ventes_selectors
+
+    if lead is None or not getattr(lead, 'pk', None):
+        return []
+    evenements = ventes_selectors.devis_events_for_lead(lead.pk, lead.company)
+
+    lignes = []
+    for evenement in evenements:
+        kind = _KIND_DEVIS_VERS_CHATTER.get(evenement.get('kind'))
+        if kind is None:
+            continue
+        reference = evenement.get('reference') or ''
+        lignes.append({
+            'id': f"devis-{evenement.get('devis_id')}-{evenement.get('kind')}",
+            'kind': kind,
+            'body': reference,
+            'created_at': evenement.get('at'),
+            'devis_id': evenement.get('devis_id'),
+            'reference': reference,
+            'user_nom': None,
+            'pinned': False,
+        })
+    return lignes
+
+
 # ── ADSENG31 — Réconciliation Meta-vs-ERP : lignes de lead par mécanisme ──────
 
 def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
