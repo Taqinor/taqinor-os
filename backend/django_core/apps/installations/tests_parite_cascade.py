@@ -242,6 +242,128 @@ class CreationChatterPariteTests(TestCase):
         self.assertEqual(inst.activites.filter(kind='creation').count(), 1)
 
 
+class CascadeTerminaisonInterventionPariteTests(TestCase):
+    """AUD317 — les chemins de TERMINAISON d'une intervention convergent.
+
+    `Intervention.statut` avait 5 chemins d'écriture, dont un seul complet.
+    `create` écrivait `statut` librement (contournant la garde F8 et
+    n'émettant jamais `intervention_completed` — ticket SAV laissé OUVERT) et
+    la synchro terrain hors-ligne n'avait AUCUN op_type capable de clôturer
+    (statut figé sur « Sur site » à jamais)."""
+
+    CHEMINS_TERMINAISON = ('patch', 'create', 'field_sync')
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username=f'parite-iv-{next(_seq)}', password='x',
+            company=self.company, role_legacy='admin')
+        self.api = auth(self.user)
+        self.inst = Installation.objects.create(
+            company=self.company, reference=f'CHT-IV-{next(_seq)}',
+            statut=Installation.Statut.EN_COURS)
+
+    def _ticket(self):
+        from apps.sav.models import Ticket
+        return Ticket.objects.create(
+            company=self.company, reference=f'TIC-{next(_seq)}',
+            titre='Panne onduleur', statut=Ticket.Statut.EN_COURS)
+
+    def _via_patch(self, ticket):
+        from apps.installations.models import Intervention
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=ticket,
+            type_intervention=Intervention.Type.DEPANNAGE,
+            statut=Intervention.Statut.SUR_SITE, created_by=self.user)
+        r = self.api.patch(
+            f'/api/django/installations/interventions/{iv.id}/',
+            {'statut': Intervention.Statut.VALIDEE}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        return iv
+
+    def _via_create(self, ticket):
+        from apps.installations.models import Intervention
+        r = self.api.post(
+            '/api/django/installations/interventions/',
+            {'installation': self.inst.id, 'ticket': ticket.id,
+             'type_intervention': Intervention.Type.DEPANNAGE,
+             'statut': Intervention.Statut.VALIDEE}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        return Intervention.objects.get(pk=r.data['id'])
+
+    def _via_field_sync(self, ticket):
+        from apps.installations.models import Intervention
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=ticket,
+            type_intervention=Intervention.Type.DEPANNAGE,
+            statut=Intervention.Statut.SUR_SITE, created_by=self.user)
+        r = self.api.post(
+            '/api/django/installations/sync/',
+            {'ops': [{'client_op_id': f'op-fin-{next(_seq)}',
+                      'op_type': 'intervention.terminer',
+                      'payload': {'intervention': iv.id,
+                                  'statut': Intervention.Statut.VALIDEE}}]},
+            format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+        self.assertEqual(r.data['applied'], 1, r.data)
+        return iv
+
+    def _assert_terminaison_complete(self, iv, ticket, chemin):
+        from apps.installations.models import Intervention
+        from apps.sav.models import Ticket
+        iv.refresh_from_db()
+        ticket.refresh_from_db()
+        self.assertEqual(iv.statut, Intervention.Statut.VALIDEE, chemin)
+        self.assertIsNotNone(iv.date_realisee, f'{chemin} : date_realisee')
+        self.assertEqual(ticket.statut, Ticket.Statut.RESOLU,
+                         f'{chemin} : ticket SAV (YSERV2)')
+        self.assertTrue(iv.lien_rapport_token,
+                        f'{chemin} : jeton compte-rendu (ZFSM2)')
+        notes = [a.body or '' for a in self.inst.activites.all()]
+        self.assertTrue(
+            any('Intervention' in n for n in notes),
+            f'{chemin} : note au chatter du chantier — {notes}')
+
+    def test_parite_des_chemins_de_terminaison(self):
+        """DOIT ÉCHOUER avant AUD317 sur `create` et `field_sync`."""
+        for chemin in self.CHEMINS_TERMINAISON:
+            with self.subTest(chemin=chemin):
+                ticket = self._ticket()
+                iv = getattr(self, f'_via_{chemin}')(ticket)
+                self._assert_terminaison_complete(iv, ticket, chemin)
+
+    def test_annulation_de_chantier_laisse_le_statut_fige_par_decision(self):
+        """AUD317 — DÉCISION EXPLICITE, pas un oubli : `annuler_interventions_
+        ouvertes` pose `annulee=True` et NE TERMINE PAS l'intervention.
+
+        Une intervention annulée n'a pas été réalisée : la basculer
+        « Terminée » la ferait entrer dans les statistiques de réalisation,
+        déclencherait la facturation ZFSM4 et résoudrait le ticket SAV lié.
+        Changer ce choix impose de changer CE test."""
+        from apps.installations.models import Intervention
+        from apps.installations.services import (
+            annuler_interventions_ouvertes,
+        )
+        from apps.sav.models import Ticket
+        ticket = self._ticket()
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=ticket,
+            type_intervention=Intervention.Type.DEPANNAGE,
+            statut=Intervention.Statut.SUR_SITE, created_by=self.user)
+
+        nb = annuler_interventions_ouvertes(self.inst, self.user)
+
+        self.assertEqual(nb, 1)
+        iv.refresh_from_db()
+        ticket.refresh_from_db()
+        self.assertTrue(iv.annulee, 'le drapeau orthogonal est posé')
+        self.assertEqual(iv.statut, Intervention.Statut.SUR_SITE,
+                         'le statut reste FIGÉ — décision documentée')
+        self.assertIsNone(iv.date_realisee)
+        self.assertEqual(ticket.statut, Ticket.Statut.EN_COURS,
+                         'le ticket SAV ne se résout pas sur une annulation')
+
+
 class PointDEcritureUniqueTests(TestCase):
     """AUD316 — GARDE AST : `Installation.statut` ne s'écrit QUE dans le
     service unique. Une vue qui recommencerait à poser le statut « à la main »
@@ -357,3 +479,23 @@ class PointDEcritureUniqueTests(TestCase):
             "save(update_fields=[...'statut'...]) sur une Installation ne doit "
             f"exister QUE dans services.{self.FONCTION_AUTORISEE}() — "
             f"trouvé : {fautives}")
+
+    def test_une_seule_fonction_ecrit_intervention_statut(self):
+        """AUD317 — même garde, côté intervention."""
+        racine = pathlib.Path(__file__).resolve().parent
+        noms_origine = PointDEcritureUniqueTests.NOMS_INSTALLATION
+        PointDEcritureUniqueTests.NOMS_INSTALLATION = {
+            'interv', 'iv', 'intervention'}
+        try:
+            fautives = []
+            for rel in ('views/intervention.py', 'field_sync.py',
+                        'services.py'):
+                for fonction, ligne in self._ecritures_statut(racine / rel):
+                    if fonction != 'changer_statut_intervention':
+                        fautives.append(f'{rel}:{ligne} dans {fonction}()')
+        finally:
+            PointDEcritureUniqueTests.NOMS_INSTALLATION = noms_origine
+        self.assertEqual(
+            fautives, [],
+            "Intervention.statut ne doit s'écrire QUE dans "
+            f"services.changer_statut_intervention() — trouvé : {fautives}")

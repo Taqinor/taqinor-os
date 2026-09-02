@@ -217,6 +217,38 @@ def _h_signer_client(company, user, payload):
     return {'intervention': iv.id, 'signe_le': iv.signe_le.isoformat()}
 
 
+def _h_terminer(company, user, payload):
+    """AUD317 — CLÔTURE une intervention depuis la synchro terrain hors-ligne.
+
+    Trou refermé : AUCUN des op_types existants n'écrivait
+    `Intervention.statut`. Un technicien qui terminait et faisait signer le
+    client dans une zone blanche voyait, au retour en ligne, sa signature et
+    ses photos remonter… mais le statut rester « Sur site » à jamais — donc ni
+    `intervention_completed` (le ticket SAV lié ne se résolvait pas), ni le
+    jeton du compte-rendu signé (ZFSM2), ni la facturation (ZFSM4).
+
+    Passe par le service unique `changer_statut_intervention` : MÊMES gardes
+    (F5/F8 — une photo obligatoire manquante refuse la clôture, exactement
+    comme en ligne) et MÊME cascade que le PATCH. Statut par défaut
+    « Terminée » ; `payload['statut']` accepte « validee ».
+    Un refus de garde devient une `FieldOpError` — l'op n'est PAS mémorisée,
+    le terminal peut la rejouer après avoir téléversé la photo manquante."""
+    from .services import TransitionRefusee, changer_statut_intervention
+
+    iv = _intervention(company, payload)
+    statut = (payload.get('statut') or Intervention.Statut.TERMINEE)
+    if statut not in Intervention.Statut.values:
+        raise FieldOpError('Statut inconnu.')
+    try:
+        recu = changer_statut_intervention(iv, statut, user)
+    except TransitionRefusee as exc:
+        raise FieldOpError(' ; '.join(exc.raisons))
+    intervention_activity.log_note(
+        iv, user, 'Intervention clôturée (synchro hors-ligne).')
+    return {'intervention': iv.id, 'statut': iv.statut,
+            'ancien_statut': recu['ancien']}
+
+
 def _h_cocher_checklist(company, user, payload):
     """N91 — coche/décoche une étape de la checklist CHANTIER (last-write-wins).
     Ne fait PAS la capture de série ici (les séries passent par op `serial`)."""
@@ -246,6 +278,10 @@ FIELD_OP_HANDLERS = {
     'intervention.reserve': (_h_reserve, 'intervention', 'intervention'),
     'intervention.cocher_safety': (_h_cocher_safety, 'intervention', 'intervention'),
     'intervention.signer_client': (_h_signer_client, 'intervention', 'intervention'),
+    # AUD317 — le 12e op_type : clôturer l'intervention au retour en ligne.
+    # Sans lui, AUCUN op_type n'écrivait `Intervention.statut` et une
+    # intervention terminée hors-ligne restait « Sur site » à jamais.
+    'intervention.terminer': (_h_terminer, 'intervention', 'intervention'),
     'chantier.cocher_checklist': (_h_cocher_checklist, 'chantier', 'chantier'),
 }
 

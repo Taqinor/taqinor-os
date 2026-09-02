@@ -3173,12 +3173,121 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 
 # ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
 
+# ═════════════════════════════════════════════════════════════════════════════
+# AUD317 — SERVICE UNIQUE de changement de statut d'une INTERVENTION
+# ═════════════════════════════════════════════════════════════════════════════
+# `Intervention.statut` avait CINQ chemins d'écriture, dont un seul complet :
+#   I   PATCH (`views/intervention.py`) — COMPLET (garde F5/F8/ZFSM1,
+#       `_stamp_date_realisee`, chatter chantier, `intervention_completed`,
+#       `ensure_lien_rapport_token`) ;
+#   II  CRÉATION — `statut` était directement ÉCRIVABLE au corps
+#       (`fields='__all__'`) SANS aucune garde ni effet : créer directement en
+#       `terminee` contournait totalement la garde F8 (photo obligatoire par
+#       créneau) et n'émettait jamais `intervention_completed` — le ticket SAV
+#       lié restait OUVERT alors que le webhook public partait quand même ;
+#   III SYNCHRO TERRAIN HORS-LIGNE — AUCUN des 11 op_types n'écrivait
+#       `Intervention.statut` : un technicien qui signe le client hors-ligne ne
+#       pouvait JAMAIS clôturer l'intervention au retour en ligne (statut figé
+#       sur « Sur site », ticket SAV et facturation ZFSM4 jamais déclenchés) ;
+#   IV  réaffectation en masse — laisse `statut` intact (voulu) ;
+#   V   annulation de chantier — pose `annulee=True` SANS toucher `statut`.
+#
+# DÉCISION EXPLICITE sur V (demandée par l'audit, à ne pas laisser ambiguë) :
+# l'annulation d'un chantier NE TERMINE PAS ses interventions. `annulee` est un
+# drapeau ORTHOGONAL au statut (même esprit que `Installation.annule`) : une
+# intervention annulée n'a pas été RÉALISÉE, la marquer « Terminée » serait un
+# mensonge sur le terrain (elle apparaîtrait dans les statistiques de
+# réalisation, déclencherait la facturation ZFSM4 et résoudrait le ticket SAV).
+# Le statut reste donc FIGÉ, et c'est `annulee` — déjà filtré par le kanban, le
+# calendrier et « Ma tournée » — qui la retire des vues. Ce choix est ré-affirmé
+# par `tests_parite_cascade.py`.
+
+def changer_statut_intervention(intervention, nouveau_statut, user):
+    """AUD317 — LE point d'écriture de `Intervention.statut`.
+
+    Applique la garde F5/F8/ZFSM1 (`field_services.transition_block_reason`)
+    puis la chaîne d'effets COMPLÈTE, celle que seul le PATCH exécutait :
+    `_stamp_date_realisee` → `intervention_activity.log_changes` → trace au
+    chatter du CHANTIER → `intervention_completed` (YSERV2 : sav avance le
+    ticket lié, ZFSM4 la facturation) → `ensure_lien_rapport_token` (ZFSM2).
+
+    Lève `TransitionRefusee` quand la garde refuse. Renvoie un reçu
+    `{'ancien', 'nouveau', 'effets': {...}}`. No-op (reçu sans effet) quand le
+    statut demandé est déjà celui de l'intervention."""
+    from . import activity, field_services, intervention_activity
+    from .models_intervention import Intervention as _Intervention
+
+    ancien = intervention.statut
+    if nouveau_statut == ancien:
+        return {'ancien': ancien, 'nouveau': ancien, 'effets': {}}
+    raison = field_services.transition_block_reason(
+        intervention, nouveau_statut)
+    if raison:
+        raise TransitionRefusee([raison] if isinstance(raison, str) else raison)
+
+    old = _Intervention.objects.get(pk=intervention.pk)
+    intervention.statut = nouveau_statut
+    intervention.save(update_fields=['statut'])
+
+    effets = {}
+    _stamp_date_realisee_intervention(intervention)
+    effets['date_realisee'] = intervention.date_realisee
+    intervention_activity.log_changes(old, intervention, user)
+    if intervention.installation_id:
+        activity.log_note(
+            intervention.installation, user,
+            f"Intervention modifiée : "
+            f"{intervention.get_type_intervention_display()}")
+        effets['chatter_chantier'] = True
+    termines = (_Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
+    if ancien not in termines and intervention.statut in termines:
+        # YSERV2 — sav s'y abonne pour avancer le ticket lié (installations
+        # n'importe JAMAIS sav) ; ZFSM4 y accroche la facturation.
+        from core.events import intervention_completed
+        intervention_completed.send(
+            sender=_Intervention, intervention=intervention,
+            company=intervention.company, user=user)
+        effets['intervention_completed'] = True
+    if (ancien != _Intervention.Statut.VALIDEE
+            and intervention.statut == _Intervention.Statut.VALIDEE):
+        # ZFSM2 — jeton du lien public « compte-rendu signé » (lazy, idempotent).
+        intervention.ensure_lien_rapport_token()
+        effets['lien_rapport_token'] = bool(intervention.lien_rapport_token)
+    return {'ancien': ancien, 'nouveau': intervention.statut, 'effets': effets}
+
+
+def _stamp_date_realisee_intervention(interv):
+    """Pose `date_realisee` à aujourd'hui si elle est vide alors qu'un compte
+    rendu est renseigné OU que le statut est « Terminée »/« Validée ».
+    AUD317 — miroir de `_stamp_statut_dates` du chantier, côté service."""
+    from django.utils import timezone
+    from .models_intervention import Intervention as _Intervention
+
+    if interv.date_realisee is not None:
+        return
+    cr = (interv.compte_rendu or '').strip()
+    done = interv.statut in (
+        _Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
+    if cr or done:
+        interv.date_realisee = timezone.localdate()
+        interv.save(update_fields=['date_realisee'])
+
+
 def annuler_interventions_ouvertes(installation, user):
     """YSERV6 — à l'annulation d'un chantier, marque `annulee=True` (drapeau
     ORTHOGONAL, la state machine F3 `STATUT_ORDER` reste intacte) toutes ses
     interventions NON terminées (statut hors TERMINEE/VALIDEE, pas déjà
     annulée), journalise une note par intervention et notifie les
     techniciens/équipe assignés (best-effort). Renvoie le nombre marquées.
+
+    AUD317 — DÉCISION EXPLICITE, et non un oubli : `statut` reste FIGÉ.
+    « Annulée sans statut = voulu ». Une intervention annulée n'a PAS été
+    réalisée : la basculer « Terminée » la ferait entrer dans les statistiques
+    de réalisation, déclencherait la facturation (ZFSM4) et résoudrait le
+    ticket SAV lié — trois mensonges sur l'état du terrain. C'est `annulee`,
+    déjà filtré par le kanban / le calendrier / « Ma tournée », qui la retire
+    des vues. Ce choix est ré-affirmé par `tests_parite_cascade.py` ; le
+    changer exige de le changer AUSSI dans ce test.
     """
     from .models_intervention import Intervention
 

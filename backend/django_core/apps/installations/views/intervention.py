@@ -401,6 +401,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if technicien is not None:
             self._verifier_habilitation_ou_lever(
                 company, technicien, type_intervention)
+        # AUD317 — `statut` était directement ÉCRIVABLE au corps
+        # (`fields='__all__'`) SANS aucune garde ni effet : créer une
+        # intervention directement en « terminee » contournait la garde F8
+        # (photo obligatoire par créneau) et n'émettait jamais
+        # `intervention_completed` — le ticket SAV lié restait OUVERT alors que
+        # le webhook public `intervention.completed` partait quand même. On
+        # crée donc TOUJOURS au statut par défaut, puis on route la transition
+        # demandée par le service unique.
+        statut_demande = serializer.validated_data.pop('statut', None)
         interv = serializer.save(company=company, created_by=self.request.user)
         # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
         # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
@@ -432,20 +441,35 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 installation, self.request.user,
                 f"Intervention ajoutée : "
                 f"{interv.get_type_intervention_display()}")
+        # AUD317 — la transition demandée à la création passe par le service
+        # unique : mêmes gardes et MÊME cascade que le PATCH.
+        if statut_demande is not None and statut_demande != interv.statut:
+            from rest_framework.exceptions import ValidationError
+            from ..services import (
+                TransitionRefusee, changer_statut_intervention,
+            )
+            try:
+                changer_statut_intervention(
+                    interv, statut_demande, self.request.user)
+            except TransitionRefusee as exc:
+                raise ValidationError({'statut': exc.raisons})
 
     def perform_update(self, serializer):
+        """ADAPTATEUR (AUD317) — le statut passe par le service unique.
+
+        Le statut est RETIRÉ du payload validé et confié à
+        `services.changer_statut_intervention`, seul porteur de la garde
+        F5/F8/ZFSM1 ET de la chaîne d'effets (`_stamp_date_realisee`, chatter
+        chantier, `intervention_completed` YSERV2, `ensure_lien_rapport_token`
+        ZFSM2) — la même que la création et la synchro terrain obtiennent
+        désormais."""
         from rest_framework.exceptions import ValidationError
+        from ..services import (
+            TransitionRefusee, changer_statut_intervention,
+        )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
-        # F5/F8 — garde de transition de statut PROPRE à l'intervention :
-        # quitter « À préparer » exige « Tout est chargé » (F5) ; atteindre
-        # « Terminée » exige une photo par créneau obligatoire (F8). Ne lit/écrit
-        # JAMAIS le statut chantier ni STAGES.py.
-        new_statut = serializer.validated_data.get('statut', old.statut)
-        if new_statut != old.statut:
-            reason = field_services.transition_block_reason(old, new_statut)
-            if reason:
-                raise ValidationError({'statut': reason})
+        nouveau_statut = serializer.validated_data.pop('statut', None)
         # YHIRE9 — garde d'habilitation à l'AFFECTATION : seulement quand le
         # technicien CHANGE (pas de bruit sur une simple modification d'une
         # intervention déjà correctement affectée).
@@ -457,33 +481,25 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 self.request.user.company, new_technicien,
                 serializer.validated_data.get(
                     'type_intervention', old.type_intervention))
-        interv = serializer.save()
-        # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
-        self._stamp_date_realisee(interv)
-        # F3 — journalise les changements (dont le statut) dans le chatter
-        # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
-        intervention_activity.log_changes(old, interv, self.request.user)
-        # Édition d'intervention → trace au chatter du CHANTIER (la création
-        # l'était déjà ; l'édition ne l'était pas).
-        if interv.installation_id:
-            activity.log_note(
-                interv.installation, self.request.user,
-                f"Intervention modifiée : "
-                f"{interv.get_type_intervention_display()}")
-        # YSERV2 — passage à TERMINEE/VALIDEE (nouveau) : émet
-        # intervention_completed sur le bus (core/events.py). sav s'y abonne
-        # pour avancer un ticket lié — installations n'importe jamais sav.
-        if (old.statut not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
-                and interv.statut in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)):
-            from core.events import intervention_completed
-            intervention_completed.send(
-                sender=Intervention, intervention=interv,
-                company=self.request.user.company, user=self.request.user)
-        # ZFSM2 — génère le jeton du lien public « compte-rendu signé » à la
-        # validation de l'intervention (lazy, idempotent : ne régénère jamais).
-        if (old.statut != Intervention.Statut.VALIDEE
-                and interv.statut == Intervention.Statut.VALIDEE):
-            interv.ensure_lien_rapport_token()
+        from django.db import transaction
+        with transaction.atomic():
+            interv = serializer.save()
+            if nouveau_statut is None or nouveau_statut == old.statut:
+                # Pas de transition : effets « édition » inchangés.
+                self._stamp_date_realisee(interv)
+                intervention_activity.log_changes(
+                    old, interv, self.request.user)
+                if interv.installation_id:
+                    activity.log_note(
+                        interv.installation, self.request.user,
+                        f"Intervention modifiée : "
+                        f"{interv.get_type_intervention_display()}")
+                return
+            try:
+                changer_statut_intervention(
+                    interv, nouveau_statut, self.request.user)
+            except TransitionRefusee as exc:
+                raise ValidationError({'statut': exc.raisons})
 
     def destroy_guard_message(self, interv):
         """AUD302 — message FR de blocage de la suppression, ou None.
