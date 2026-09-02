@@ -35,6 +35,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
 import { useIsMobile } from '../ui/ResponsiveDialog'
+// SOL5 — gating par module actif des surfaces incrustées venues d'une AUTRE app.
+import { useModuleActif } from '../hooks/useModuleActif'
 import { defaultMobileHomeRoute } from '../features/offlinesync/mobile/mobileHome'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
@@ -485,6 +487,11 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const profile = cockpitProfile({ roleNom, roleTier })
+  // SOL5 — le Dashboard est l'atterrissage GÉNÉRIQUE : une carte appartenant à
+  // un autre module ne doit s'afficher que si ce module est actif pour la
+  // société (sinon elle appelle une route coupée en 404, ou inexistante quand
+  // le module est parqué par l'édition).
+  const mrpActif = useModuleActif('mrp')
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
   // que rien n'est décidé, '' = opt-out explicite via Mes préférences, sinon
@@ -1110,8 +1117,9 @@ export function Component() {
           )}
 
           {/* NTMFG22 — carte Production (Atelier MRP), drill-down
-              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide). */}
-          {profile === 'directeur' && (
+              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide).
+              SOL5 — masquée quand le module mrp est désactivé/parqué. */}
+          {profile === 'directeur' && mrpActif && (
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <ProductionKpiCard />

@@ -6,7 +6,7 @@ import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Ship, Route, Factory, Layers,
+  Ship, Route, Layers,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -133,13 +133,12 @@ const DouaneParametresPage = lazy(() => import('../../pages/parametres/DouanePar
 // lecture ouverte à tout rôle interne — nav ET route déclarées ensemble
 // (motif PACT150, même précédent que NTLOG36 ci-dessus).
 const TransportParametresPage = lazy(() => import('../../pages/parametres/TransportParametresPage'))
-// NTMFG29 — Paramètres > Atelier MRP (`mrp.ParametresMRP`, singleton par
-// société) : horizon MRP (NTMFG5), stock de sécurité par défaut, tolérance de
-// surcharge poste (NTMFG7), motif QC obligatoire (NTMFG13), kanban production
-// (NTMFG17). Admin UNIQUEMENT côté backend (`mrp.permissions.EstAdminMRP`) —
-// un Responsable planifie (NTMFG3) mais ne voit/modifie pas ces réglages ; nav
-// ET route déclarées ensemble (motif PACT150, même précédent que NTLOG35/36).
-const MrpParametresPage = lazy(() => import('../../pages/mrp/ParametresMRP'))
+// NTMFG29 — Paramètres > Atelier MRP : SOL5 — nav + route DÉPLACÉES sous le
+// module propriétaire (`features/mrp/module.config.jsx`). Déclarées ici, elles
+// vivaient dans une section `parametres` SANS clé de module : ni le gating
+// ModuleToggle (`moduleLoader`) ni l'édition ne pouvaient les retirer, et le
+// module `parametres` (fondation) importait `pages/mrp/*`. Le chemin
+// `/parametres/mrp` est INCHANGÉ.
 // WIR152 — Paramètres → Doublons tiers (`tiers.TiersViewSet.doublons`,
 // ARC20, admin-only côté backend — même gating ici).
 const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublonsPage'))
@@ -203,8 +202,6 @@ const config = {
       { to: '/parametres/douane', label: 'Douane', icon: <Ship size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG35 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/transport', label: 'Transport', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTMFG29 — Admin uniquement (voir commentaire du lazy import ci-dessus).
-      { to: '/parametres/mrp', label: 'Atelier MRP', icon: <Factory size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // PACT140 — Objets métier personnalisés (l'écran des enregistrements
       // `/objets/:code` s'atteint depuis cette page, un lien par objet).
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -228,7 +225,6 @@ const config = {
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/mrp', component: MrpParametresPage, roles: ['admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
