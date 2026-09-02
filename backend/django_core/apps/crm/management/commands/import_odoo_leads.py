@@ -95,10 +95,28 @@ _FILL_FIELDS = ('prenom', 'societe', 'email', 'telephone', 'whatsapp',
                 'adresse', 'ville', 'note')
 
 
-def _map_stage(raw):
-    """Étape Odoo (chaîne libre) → clé canonique STAGES.py, défaut NEW."""
+def _map_stage_connu(raw):
+    """Étape Odoo (chaîne libre) → clé canonique STAGES.py, ou ``None`` quand
+    l'intitulé est vide ou absent de la table.
+
+    CRX8/D-CRX3 — le repli sur ``stages.NEW`` (``_map_stage``) ne vaut QUE
+    pour la CRÉATION d'un lead. ALIGNER une fiche existante sur un intitulé
+    Odoo non reconnu la ramènerait à « Nouveau » : une étape Odoo inconnue
+    laisse le lead INTOUCHÉ.
+    """
     key = _norm(raw).replace('_', ' ').strip()
-    return _ODOO_STAGE_TO_KEY.get(key, stages.NEW)
+    if not key:
+        return None
+    return _ODOO_STAGE_TO_KEY.get(key)
+
+
+def _map_stage(raw):
+    """Étape Odoo (chaîne libre) → clé canonique STAGES.py, défaut NEW.
+
+    Le défaut NEW est réservé à la CRÉATION — pour l'alignement d'une fiche
+    existante, utiliser ``_map_stage_connu`` (qui renvoie ``None``).
+    """
+    return _map_stage_connu(raw) or stages.NEW
 
 
 def _read_export(path):

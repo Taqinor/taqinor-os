@@ -5,8 +5,9 @@ Deux directions, exposées par deux commandes de gestion qui restent minces :
 
   * ``sync_odoo_leads``  — Odoo → ERP : rapatrie tous les leads ``crm.lead``
     via l'API JSON-2, crée les manquants (en réutilisant la commande
-    idempotente ``import_odoo_leads``) puis ALIGNE les étapes ERP sur le
-    pipeline Odoo (miroir, comme l'opération manuelle du 2026-09-01).
+    idempotente ``import_odoo_leads``) puis AVANCE les étapes ERP sur le
+    pipeline Odoo — jamais en arrière (D-CRX3, 02/09/2026) : une étape Odoo
+    en retrait est signalée au rapport, sans aucune écriture.
   * ``push_odoo_stages`` — ERP → Odoo : pousse les étapes ERP vers Odoo.
 
 Règles absolues :
@@ -36,11 +37,12 @@ import re
 import urllib.error
 import urllib.request
 from collections import Counter
+from dataclasses import dataclass, field
 
 from django.db import transaction
 
 from apps.crm import services, stages
-from apps.crm.models import Lead, LeadActivity
+from apps.crm.models import Lead
 
 ODOO_USER_AGENT = 'erp-os-odoo-sync'
 
@@ -237,63 +239,101 @@ def build_rows(odoo_leads, tag_names):
     return rows
 
 
+@dataclass
+class RapportAlignement:
+    """Ce que l'alignement Odoo → ERP a fait — et ce qu'il a REFUSÉ de faire.
+
+    ``regressions`` est la liste des leads dont l'étape Odoo est EN RETRAIT
+    sur l'étape ERP : rien n'est écrit pour eux (D-CRX3), ils sont signalés
+    pour arbitrage humain. Chaque entrée est
+    ``(pk, nom, stage ERP, intitulé Odoo brut, clé canonique visée)``.
+    """
+    moves: Counter = field(default_factory=Counter)
+    deja_ok: int = 0
+    introuvables: int = 0
+    corbeille: int = 0
+    inconnus: int = 0
+    regressions: list = field(default_factory=list)
+
+
 def align_stages_from_rows(company, rows, apply_changes):
-    """Aligne l'étape ERP de chaque lead rapproché sur l'étape Odoo mappée.
+    """Aligne l'étape ERP de chaque lead rapproché sur l'étape Odoo mappée —
+    EN AVANT SEULEMENT (D-CRX3, décision fondateur du 02/09/2026).
 
     Même rapprochement 3 étages que ``import_odoo_leads`` (clé odoo, email,
     téléphone) — indispensable : les leads venus du bridge Meta portent déjà
     une clé externe Meta et ne sont retrouvables QUE par email/téléphone.
-    En doublon Odoo interne, la première ligne gagne. Chaque déplacement est
-    journalisé dans le chatter (entrée MODIFICATION « Étape »).
+    En doublon Odoo interne, la première ligne gagne.
 
-    CRX7 — ``_find_existing`` voit désormais aussi les leads SOFT-SUPPRIMÉS
-    (sans quoi l'import amont crashait sur la contrainte d'unicité) : un lead
-    en corbeille est ici IGNORÉ et compté, jamais déplacé ni restauré."""
+    Trois garanties (CRX8) :
+
+      * **Avance seulement.** Le rang vient de l'ordre canonique de STAGES.py
+        (``services._rang_funnel`` — jamais une liste d'étapes en dur ici).
+        Une étape Odoo EN RETRAIT sur l'ERP n'écrit RIEN : elle part en ligne
+        de rapport (``RapportAlignement.regressions``). Un pipeline Odoo tenu
+        à la main ne peut donc plus faire reculer le funnel de l'ERP — y
+        compris vers « Froid », qui est classé SOUS « Nouveau ».
+      * **Étape Odoo inconnue = lead intouché.** ``_map_stage_connu`` renvoie
+        ``None`` au lieu du défaut ``NEW`` ; ce défaut ne survit que pour la
+        CRÉATION d'un lead.
+      * **Écriture par le chemin canonique.** ``services.avancer_stage_lead_vers``
+        écrit, journalise le chatter via la façade ``activity`` ET émet
+        ``core.events.lead_stage_changed`` — les playbooks (crm) et les
+        séquences (compta) se déclenchent enfin sur un mouvement venu d'Odoo
+        (l'ancienne ``LeadActivity`` artisanale était muette). La provenance
+        reste tracée par une note « alignement sur le pipeline Odoo ».
+
+    CRX7 — ``_find_existing`` voit aussi les leads SOFT-SUPPRIMÉS (sans quoi
+    l'import amont crashait sur la contrainte d'unicité) : un lead en
+    corbeille est ici IGNORÉ et compté, jamais déplacé ni restauré."""
+    from apps.crm import activity
     from apps.crm.management.commands.import_odoo_leads import (
-        _find_existing, _map_stage)
+        _find_existing, _map_stage_connu)
 
-    moves = Counter()
-    deja_ok = 0
-    introuvables = 0
-    corbeille = 0
+    rapport = RapportAlignement()
     deja_traites = set()
     with transaction.atomic():
         for row in rows:
             ext_id = str(row.get('id') or '').strip()
             if not ext_id:
                 continue
-            target = _map_stage(row.get('stage'))
+            stage_odoo = row.get('stage')
+            target = _map_stage_connu(stage_odoo)
             lead = _find_existing(company, ext_id, {
                 'email': row.get('email'),
                 'telephone': row.get('telephone')})
             if lead is None:
-                introuvables += 1
+                rapport.introuvables += 1
                 continue
             if lead.is_deleted:
-                corbeille += 1
+                rapport.corbeille += 1
                 continue
             if lead.pk in deja_traites:
                 continue
             deja_traites.add(lead.pk)
-            if lead.stage == target:
-                deja_ok += 1
+            if target is None:
+                # Intitulé Odoo hors table : on ne devine pas, on ne touche pas.
+                rapport.inconnus += 1
                 continue
-            moves[(lead.stage, target)] += 1
+            if lead.stage == target:
+                rapport.deja_ok += 1
+                continue
+            if services._rang_funnel(target) <= services._rang_funnel(
+                    lead.stage):
+                rapport.regressions.append(
+                    (lead.pk, lead.nom, lead.stage,
+                     str(stage_odoo or ''), target))
+                continue
+            rapport.moves[(lead.stage, target)] += 1
             if apply_changes:
-                ancien = lead.stage
-                lead.stage = target
-                lead.save(update_fields=['stage'])
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
-                    kind=LeadActivity.Kind.MODIFICATION,
-                    field='stage', field_label='Étape',
-                    old_value=stages.STAGE_LABELS.get(ancien, ancien),
-                    new_value=stages.STAGE_LABELS.get(target, target),
-                    body='auto — alignement sur le pipeline Odoo',
-                )
+                # Chemin canonique : écrit, journalise via la façade et émet
+                # `lead_stage_changed` (user=None — c'est la machine).
+                if services.avancer_stage_lead_vers(lead, None, target):
+                    activity.log_bulk_note(
+                        lead, None, 'auto — alignement sur le pipeline Odoo')
         if not apply_changes:
             transaction.set_rollback(True)
-    return moves, deja_ok, introuvables, corbeille
+    return rapport
 
 
 def compute_push_moves(company, odoo_leads):

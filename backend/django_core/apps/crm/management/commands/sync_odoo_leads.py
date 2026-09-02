@@ -6,8 +6,11 @@ Enchaîne, via l'API JSON-2 uniquement (lecture seule côté Odoo) :
   1. rapatriement de TOUS les crm.lead (archivés compris) + tags ;
   2. import idempotent (réutilise ``import_odoo_leads`` : zéro doublon,
      jamais d'écrasement d'une saisie existante, société forcée) ;
-  3. alignement des étapes ERP sur le pipeline Odoo (miroir — l'opération
-     validée par le fondateur le 2026-09-01), journalisé dans le chatter.
+  3. alignement des étapes ERP sur le pipeline Odoo EN AVANT SEULEMENT
+     (D-CRX3, 02/09/2026), journalisé dans le chatter par la façade
+     ``activity`` et émetteur de ``lead_stage_changed``. Une étape Odoo en
+     retrait, ou hors table de correspondance, n'écrit RIEN : elle est
+     signalée au rapport pour arbitrage humain.
 
 Sans ODOO_SYNC_URL + ODOO_SYNC_API_KEY dans l'environnement, ne fait RIEN
 (usage + sortie propre). ``--dry-run`` : compte tout, n'écrit rien.
@@ -22,6 +25,9 @@ from django.core.management.base import BaseCommand, CommandError
 from apps.crm.odoo_sync import (
     OdooConfig, OdooSyncError, align_stages_from_rows, build_rows,
     fetch_odoo_leads)
+
+# Plafond d'affichage des régressions détaillées (le total reste au rapport).
+_MAX_REGRESSIONS_AFFICHEES = 50
 
 
 class Command(BaseCommand):
@@ -86,16 +92,35 @@ class Command(BaseCommand):
             except OSError:
                 pass
 
-        moves, deja_ok, introuvables, corbeille = align_stages_from_rows(
+        rapport = align_stages_from_rows(
             company, rows, apply_changes=not dry_run)
         prefix = '[dry-run] ' if dry_run else ''
-        for (src, dst), n in sorted(moves.items()):
+        for (src, dst), n in sorted(rapport.moves.items()):
             self.stdout.write(f'{prefix}étape {src} → {dst} : {n}')
-        if corbeille:
+        if rapport.corbeille:
             self.stdout.write(self.style.WARNING(
-                f"{prefix}{corbeille} lead(s) en corbeille ignoré(s) — "
+                f"{prefix}{rapport.corbeille} lead(s) en corbeille ignoré(s) — "
                 "jamais restauré(s) automatiquement."))
+        if rapport.inconnus:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}{rapport.inconnus} lead(s) laissés intouchés : "
+                "étape Odoo hors table de correspondance."))
+        # D-CRX3 — une étape Odoo EN RETRAIT ne fait JAMAIS reculer l'ERP :
+        # elle est signalée pour arbitrage humain, sans aucune écriture.
+        for pk, nom, stage_erp, stage_odoo, cible in \
+                rapport.regressions[:_MAX_REGRESSIONS_AFFICHEES]:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}Régression NON appliquée — lead #{pk} « {nom} » : "
+                f"ERP {stage_erp} / Odoo « {stage_odoo} » ({cible})."))
+        reste = len(rapport.regressions) - _MAX_REGRESSIONS_AFFICHEES
+        if reste > 0:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}… et {reste} autre(s) régression(s) non appliquée(s)."))
         self.stdout.write(self.style.SUCCESS(
-            f"{prefix}Alignement : {sum(moves.values())} déplacé(s), "
-            f"{deja_ok} déjà aligné(s), {introuvables} non rapproché(s), "
-            f"{corbeille} en corbeille."))
+            f"{prefix}Alignement : {sum(rapport.moves.values())} avancé(s), "
+            f"{rapport.deja_ok} déjà aligné(s), "
+            f"{rapport.introuvables} non rapproché(s), "
+            f"{rapport.corbeille} en corbeille, "
+            f"{rapport.inconnus} étape Odoo inconnue, "
+            f"{len(rapport.regressions)} régression(s) signalée(s) "
+            "(aucune écriture)."))
