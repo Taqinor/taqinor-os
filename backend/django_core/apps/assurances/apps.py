@@ -7,6 +7,7 @@ class AssurancesConfig(AppConfig):
     verbose_name = "Assurances d'entreprise"
     module_manifest = {
         'key': 'assurances',
+        'sku': 'generic',
         'label': 'Assurances',
         'icone': 'shield',
         'depends': [],

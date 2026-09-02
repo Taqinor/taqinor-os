@@ -590,6 +590,16 @@ class RegisterCompanyView(generics.GenericAPIView):
         # (membre). Un compte mono-société démarre donc avec {sa société}.
         user.societes_autorisees.add(company)
 
+        # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
+        # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,
+        # STRUCTURE de catalogue solaire, cartes de tableau de bord solaires).
+        # Appelé APRÈS le CompanyProfile (le gabarit y pose le plan) et sur le
+        # chemin de CRÉATION uniquement — jamais via `core.signup_hooks`, que
+        # `seed_company` rejoue sur une société EXISTANTE (backfill interdit).
+        # Léger : aucun produit n'est seedé ici (catalogue produit = opt-in).
+        from .tenant_templates import appliquer_gabarit_solaire
+        appliquer_gabarit_solaire(company, user=user)
+
         # SCA20 — seeds « à la création d'une société » migrés en HOOKS
         # idempotents (types d'activité + niveaux de relance historiques, PLUS
         # le catalogue produit désormais seedé). Chaque app enregistre son hook

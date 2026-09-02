@@ -7,6 +7,7 @@ class AgricultureConfig(AppConfig):
     verbose_name = 'Agriculture'
     module_manifest = {
         'key': 'agriculture',
+        'sku': 'vertical_agriculture',
         'label': 'Agriculture',
         'icone': 'leaf',
         'depends': [],

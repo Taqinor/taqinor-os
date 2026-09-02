@@ -45,6 +45,57 @@ powershell -File scripts\deploy-prod.ps1
 
 (pull de `main` sur le serveur → rebuild → migrations → redémarrage.)
 
+## Édition du produit — `TAQINOR_EDITION` (groupe SOL, 02/09/2026)
+
+TAQINOR OS se vend comme ERP **spécialisé solaire**. Une variable d'environnement
+serveur décide de l'édition déployée :
+
+| Valeur | Qui l'utilise | Effet |
+|---|---|---|
+| `full` (défaut) | dev, tests, gate CI | tout est chargé — zéro churn de schéma, toutes les baselines restent valides |
+| `solar` | **la production** | les sept verticaux non adaptables (`agriculture`, `ecommerce_connect`, `education`, `hospitality`, `immobilier`, `mrp`, `sante`) sortent d'`INSTALLED_APPS`, des urls, du planning Celery et du bundle frontend |
+
+**Aucune donnée n'est supprimée par la bascule** : tables, lignes et chaînes de
+migrations restent intactes. Repasser à `full` réactive tout à l'identique.
+Une valeur inconnue **fait échouer le démarrage** — jamais de repli silencieux.
+
+Côté frontend, l'équivalent au BUILD est `VITE_EDITION=solar` (le bundle ne
+contient alors plus aucun écran des verticaux parqués).
+
+### Procédure de bascule
+
+1. **Préflight, LECTURE SEULE**, depuis l'édition complète (la seule qui puisse
+   compter les données des apps parquées) :
+
+   ```bash
+   docker compose exec django python manage.py preflight_edition --edition solar
+   ```
+
+   Il imprime, en français : lignes par société dans chaque table parquée,
+   tâches beat qui disparaissent, jobs de fond en file, `ModuleToggle`,
+   préférences de notification et permissions concernés. Il n'écrit rien et se
+   relance autant de fois qu'on veut.
+
+2. **Lire le rapport.** Des données métier VIVANTES dans une app parquée, ou une
+   tâche encore en file, se remontent au fondateur AVANT la bascule.
+
+3. **Basculer** : dans le `.env` du serveur, poser **les DEUX** variables —
+   `TAQINOR_EDITION=solar` (backend, lu via `env_file` par django_core, celery
+   et beat) **et** `VITE_EDITION=solar` (frontend, passé en argument de BUILD
+   par `docker-compose.yml` → `frontend/Dockerfile.prod`). Un backend solaire
+   servi par un frontend complet afficherait des écrans dont les routes
+   n'existent plus. Puis `powershell -File scripts\deploy-prod.ps1` : le
+   frontend est un flag BUILD-TIME, il faut un **rebuild** de son image
+   (`docker compose up -d --build frontend`), jamais un simple redémarrage.
+
+4. **Vérifier** : `docker compose exec django python manage.py verifier_edition`
+   doit répondre « Édition « solar » cohérente », puis le contrôle de santé
+   habituel (`curl` racine=200 / api=401, `docker ps` = 12 conteneurs).
+
+**Qui l'exécute** : le run qui termine le groupe SOL, de bout en bout, après le
+préflight — règle Deploys du 02/09/2026 (Claude fait toute la chaîne et ne
+laisse aucune étape manuelle). Reda n'a rien à appliquer à la main.
+
 ## api.taqinor.ma (fait le 2026-06-13)
 
 La Caddyfile sert les DEUX hôtes (`{$PUBLIC_HOSTNAME}, api.taqinor.ma`) —

@@ -7,6 +7,7 @@ class CpqConfig(AppConfig):
     verbose_name = 'CPQ'
     module_manifest = {
         'key': 'cpq',
+        'sku': 'solar_core',
         'label': 'CPQ',
         'icone': 'sliders',
         'depends': [],

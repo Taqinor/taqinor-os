@@ -7,6 +7,7 @@ class OnboardingConfig(AppConfig):
     verbose_name = 'Onboarding produit'
     module_manifest = {
         'key': 'onboarding',
+        'sku': 'generic',
         'label': 'Onboarding produit',
         'icone': 'check-circle',
         'depends': [],

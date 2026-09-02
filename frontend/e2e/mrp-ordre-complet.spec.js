@@ -41,6 +41,15 @@ let gammeId
 let ofId
 
 test.describe('NTMFG37: parcours OF complet (créer -> réserver -> produire -> clôturer)', () => {
+  // SOL6 — ÉDITION. `mrp` est un vertical PARQUÉ hors de l'édition solaire :
+  // ses écrans ne sont pas dans le dist et ses routes n'existent pas. Ce spec
+  // n'a donc de sens que sur un build d'édition COMPLÈTE (le défaut, et ce que
+  // la gate PR construit) ; sur un build solaire il est SAUTÉ, jamais rouge.
+  test.skip(
+    (process.env.VITE_EDITION || 'full') !== 'full',
+    "Atelier MRP absent de l'édition solaire (SOL6) — spec réservée à l'édition complète.",
+  )
+
   test.afterAll(async ({ request }) => {
     // Nettoyage best-effort (patron comptes-justes.spec.js) : une erreur
     // isolée ne doit jamais empêcher de nettoyer le reste. Ordre imposé par

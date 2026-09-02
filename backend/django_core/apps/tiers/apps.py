@@ -7,6 +7,7 @@ class TiersConfig(AppConfig):
     verbose_name = 'Tiers (parties prenantes)'
     module_manifest = {
         'key': 'tiers',
+        'sku': 'generic',
         'label': 'Tiers',
         'icone': 'users',
         'depends': [],

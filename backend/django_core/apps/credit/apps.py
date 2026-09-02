@@ -7,6 +7,7 @@ class CreditConfig(AppConfig):
     verbose_name = 'Gestion du crédit client'
     module_manifest = {
         'key': 'credit',
+        'sku': 'generic',
         'label': 'Crédit client',
         'icone': 'shield-check',
         'depends': [],

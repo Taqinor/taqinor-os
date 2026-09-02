@@ -7,6 +7,7 @@ class OutillageConfig(AppConfig):
     verbose_name = 'Outillage'
     module_manifest = {
         'key': 'outillage',
+        'sku': 'solar_core',
         'label': 'Outillage',
         'icone': 'tool',
         'depends': [],

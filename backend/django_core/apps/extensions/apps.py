@@ -8,6 +8,7 @@ class ExtensionsConfig(AppConfig):
 
     module_manifest = {
         'key': 'extensions',
+        'sku': 'generic',
         'label': 'Extensions',
         'icone': 'puzzle',
         'depends': [],

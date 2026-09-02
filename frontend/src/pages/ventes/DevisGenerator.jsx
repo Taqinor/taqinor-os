@@ -38,6 +38,8 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 // NTMFG18 — vérification de faisabilité atelier (simulation SANS écriture).
 import mrpApi from '../../api/mrpApi'
+// SOL5 — gating de la surface mrp incrustée dans le générateur de devis.
+import { useModuleActif } from '../../hooks/useModuleActif'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
@@ -552,6 +554,10 @@ export default function DevisGenerator({
   // saisie sur les postes de charge (module mrp). No-op silencieux si aucun
   // produit du devis n'a de gamme de fabrication (devis 100% négoce) : le
   // backend renvoie alors `tenable: 'sans_gamme'`.
+  // SOL5 — toute cette surface (bouton + verdict) est conditionnée au module
+  // mrp actif pour la société : parqué ou désactivé, elle disparaît au lieu
+  // de tomber systématiquement dans le `catch` (404 du middleware de module).
+  const mrpActif = useModuleActif('mrp')
   const [faisabiliteBusy, setFaisabiliteBusy] = useState(false)
   const [faisabiliteResult, setFaisabiliteResult] = useState(null)
   const verifierFaisabiliteAtelier = async () => {
@@ -4923,7 +4929,7 @@ export default function DevisGenerator({
             {/* NTMFG18 — verdict de faisabilité atelier (non bloquant, ne
                 masque jamais le formulaire). Silencieux si le devis n'a
                 aucun produit fabriqué en interne (tenable === 'sans_gamme'). */}
-            {faisabiliteResult && faisabiliteResult.tenable !== 'sans_gamme' && (
+            {mrpActif && faisabiliteResult && faisabiliteResult.tenable !== 'sans_gamme' && (
               <div className={`mt-3 rounded-lg border p-3 text-sm ${
                 faisabiliteResult.tenable === 'tenable'
                   ? 'border-success/30 bg-success/10 text-success'
@@ -4952,12 +4958,17 @@ export default function DevisGenerator({
                   {formatMoney(kpiTotal)}
                 </strong>
               </div>
-              {/* NTMFG18 — faisabilité atelier (aucune écriture). */}
-              <Button type="button" variant="outline" loading={faisabiliteBusy}
-                      onClick={verifierFaisabiliteAtelier}
-                      title="Simule la charge atelier additionnelle qu'induirait ce devis, sans rien enregistrer">
-                Vérifier faisabilité atelier
-              </Button>
+              {/* NTMFG18 — faisabilité atelier (aucune écriture).
+                  SOL5 — n'apparaît que si le module mrp est actif : sans lui
+                  l'appel tombait en 404 et le bouton ne renvoyait QUE
+                  « indisponible pour le moment » (catch permanent). */}
+              {mrpActif && (
+                <Button type="button" variant="outline" loading={faisabiliteBusy}
+                        onClick={verifierFaisabiliteAtelier}
+                        title="Simule la charge atelier additionnelle qu'induirait ce devis, sans rien enregistrer">
+                  Vérifier faisabilité atelier
+                </Button>
+              )}
               {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
               {editDevis && (
                 <Button type="button" variant="outline" loading={superieurBusy}

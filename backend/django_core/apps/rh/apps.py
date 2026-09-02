@@ -7,6 +7,7 @@ class RhConfig(AppConfig):
     verbose_name = 'Ressources humaines'
     module_manifest = {
         'key': 'rh',
+        'sku': 'generic',
         'label': 'Ressources humaines',
         'icone': 'id-card',
         'depends': [],

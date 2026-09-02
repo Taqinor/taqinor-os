@@ -19,6 +19,7 @@ class MigrationConfig(AppConfig):
 
     module_manifest = {
         'key': 'migration',
+        'sku': 'generic',
         'label': 'Migration',
         'icone': 'database',
         'depends': [],

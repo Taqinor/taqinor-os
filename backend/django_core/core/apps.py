@@ -18,6 +18,7 @@ class CoreConfig(AppConfig):
     verbose_name = 'Fondation'
     module_manifest = {
         'key': 'core',
+        'sku': 'generic',
         'label': 'Fondation',
         'icone': 'layers',
         'depends': [],

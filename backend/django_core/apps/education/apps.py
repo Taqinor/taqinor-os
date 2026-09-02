@@ -19,6 +19,7 @@ class EducationConfig(AppConfig):
 
     module_manifest = {
         'key': 'education',
+        'sku': 'vertical_education',
         'label': 'Éducation',
         'icone': 'graduation-cap',
         'depends': [],

@@ -18,6 +18,7 @@ class ConversationAiConfig(AppConfig):
         # IDENTIQUE au 2ᵉ segment d'URL (`api/django/conversation_ai/`), donc
         # aucune entrée ``PREFIX_TO_MODULE`` n'est nécessaire.
         'key': 'conversation_ai',
+        'sku': 'generic',
         'label': 'Conversations commerciales',
         'icone': 'phone',
         'depends': [],

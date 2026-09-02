@@ -7,6 +7,7 @@ class TrashConfig(AppConfig):
     verbose_name = 'Corbeille'
     module_manifest = {
         'key': 'trash',
+        'sku': 'generic',
         'label': 'Corbeille',
         'icone': 'trash-2',
         'depends': [],

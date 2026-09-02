@@ -943,7 +943,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/rh/models.py:6031` | HistoriqueCompetence.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:6094` | RetourFeedback360.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:6166` | PlanAppreciation.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/roles/models.py:900` | Role.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/roles/models.py:959` | Role.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:54` | SavSlaSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:159` | MaintenanceChecklistTemplate.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py:177` | MaintenanceChecklistItem.company | authentication.Company | CASCADE |
@@ -1132,8 +1132,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/voip/models.py:33` | VoipParametres.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/voip/models.py:65` | VoipIdentifiantUtilisateur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/voip/models.py:107` | Appel.company | authentication.Company | CASCADE |
-| `backend/django_core/authentication/models.py:195` | CustomUser.company | Company | SET_NULL |
-| `backend/django_core/authentication/models.py:595` | UserSession.company | Company | CASCADE |
+| `backend/django_core/authentication/models.py:206` | CustomUser.company | Company | SET_NULL |
+| `backend/django_core/authentication/models.py:606` | UserSession.company | Company | CASCADE |
 | `backend/django_core/core/models.py:78` | TenantModel.company | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py:217` | DeletionRecord.company | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py:294` | AnomalyFlag.company | authentication.Company | CASCADE |

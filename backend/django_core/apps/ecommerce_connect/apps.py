@@ -7,6 +7,7 @@ class EcommerceConnectConfig(AppConfig):
     verbose_name = 'Connecteur e-commerce'
     module_manifest = {
         'key': 'ecommerce_connect',
+        'sku': 'vertical_ecommerce',
         'label': 'Connecteur e-commerce',
         'icone': 'shopping-bag',
         'depends': [],

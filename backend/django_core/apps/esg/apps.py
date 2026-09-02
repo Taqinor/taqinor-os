@@ -7,6 +7,7 @@ class EsgConfig(AppConfig):
     verbose_name = 'ESG / RSE'
     module_manifest = {
         'key': 'esg',
+        'sku': 'generic',
         'label': 'ESG / RSE',
         'icone': 'leaf',
         # Lit qhse (indicateurs ESG bruts QHSE40, bilan carbone QHSE39) en

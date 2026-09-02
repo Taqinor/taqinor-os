@@ -15,6 +15,7 @@ class FraisConfig(AppConfig):
     verbose_name = 'Notes de frais'
     module_manifest = {
         'key': 'frais',
+        'sku': 'generic',
         'label': 'Notes de frais',
         'icone': 'receipt',
         'depends': ['rh', 'compta'],

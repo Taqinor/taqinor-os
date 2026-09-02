@@ -17,14 +17,42 @@ Un manifest a la forme ::
         'installable': True,          # activable/désactivable (défaut True)
         'description': '…',           # (optionnel)
         'categorie': 'Services',      # Ventes/Finance/RH/Stock/Services/…
+        'sku': 'solar_core',          # SOL1 — appartenance à l'édition
     }
 
 Les apps techniques/fondation (roles, records, customfields, parametres,
 authentication, core, audit, publicapi, dataimport…) portent
 ``installable=False`` : elles apparaissent dans le graphe mais ne se
 désactivent pas.
+
+SOL1 — le champ ``sku``
+-----------------------
+
+``sku`` dit à quel TITRE le module fait partie du produit :
+
+* ``solar_core``    — cœur du métier installateur solaire (devis, chantiers,
+  stock, SAV…). Jamais parqué, jamais off par défaut.
+* ``generic``       — ERP transverse utile à toute PME (compta, RH, GED…).
+  Gardé actif dans l'édition solaire.
+* ``optional``      — livré mais ``ModuleToggle`` OFF à la création d'un
+  tenant (SOL8) : rare chez un installateur (POS, douane, transport, SCM…)
+  ou dépendant du pack pays (facturation électronique, fiscal, paie).
+* ``vertical_<x>``  — vertical métier non adaptable : SORTI du build de
+  l'édition solaire (registre ``erp_agentique/settings/editions.py``).
+
+La cohérence tags ↔ registre d'éditions est gardée par
+``core/tests/test_editions_registre.py`` : tout module ``vertical_*`` est
+parqué dans l'édition solaire, et réciproquement.
 """
 from __future__ import annotations
+
+# SOL1 — vocabulaire des « sku » de manifeste.
+SKU_SOLAR_CORE = 'solar_core'
+SKU_GENERIC = 'generic'
+SKU_OPTIONAL = 'optional'
+SKU_VERTICAL_PREFIX = 'vertical_'
+#: sku sans suffixe (les verticaux portent ``vertical_<x>``).
+SKUS_SIMPLES = frozenset({SKU_SOLAR_CORE, SKU_GENERIC, SKU_OPTIONAL})
 
 CATEGORIES = {
     'Ventes', 'Finance', 'RH', 'Stock', 'Services', 'Marketing', 'Technique',
@@ -41,9 +69,35 @@ class ManifestError(ValueError):
     """Erreur de validation du graphe de manifests de modules."""
 
 
+def sku_valide(sku):
+    """Vrai si ``sku`` appartient au vocabulaire SOL1."""
+    if not isinstance(sku, str) or not sku:
+        return False
+    if sku in SKUS_SIMPLES:
+        return True
+    return (
+        sku.startswith(SKU_VERTICAL_PREFIX)
+        and len(sku) > len(SKU_VERTICAL_PREFIX)
+    )
+
+
+def est_vertical(sku):
+    """Vrai si ``sku`` désigne un vertical métier (``vertical_<x>``)."""
+    return bool(sku) and str(sku).startswith(SKU_VERTICAL_PREFIX)
+
+
 def _normaliser(app_config, manifest):
     """Renvoie une copie normalisée d'un manifest (défauts appliqués)."""
     key = manifest.get('key')
+    # SOL1 — le sku est OPTIONNEL au runtime (défaut « generic », donc aucune
+    # app neuve ne casse le boot en l'oubliant) mais sa VALEUR est validée, et
+    # sa présence explicite est exigée par la garde de test.
+    sku = manifest.get('sku', SKU_GENERIC)
+    if not sku_valide(sku):
+        raise ManifestError(
+            f"Manifest de l'app « {app_config.label} » : sku « {sku} » "
+            f"inconnu (attendu : {', '.join(sorted(SKUS_SIMPLES))} ou "
+            f"« {SKU_VERTICAL_PREFIX}<x> »).")
     out = {
         'key': key,
         'label': manifest.get('label') or key or app_config.label,
@@ -52,6 +106,7 @@ def _normaliser(app_config, manifest):
         'installable': bool(manifest.get('installable', True)),
         'description': manifest.get('description', ''),
         'categorie': manifest.get('categorie', 'Technique'),
+        'sku': sku,
         'app_label': app_config.label,
     }
     return out

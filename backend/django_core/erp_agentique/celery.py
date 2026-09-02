@@ -940,6 +940,34 @@ app.conf.beat_schedule = {
     },
 }
 
+
+def filtrer_beat_apps_parquees(schedule, edition=None):
+    """SOL2(c) — retire du beat les tâches des apps PARQUÉES par l'édition.
+
+    Le nom d'une tâche porte l'app en préfixe (``mrp.recalculer_besoins_nocturne``,
+    ``sante.alertes_prise_en_charge_expirant``…) : le filtrage se fait sur ce
+    préfixe, à partir du registre STATIQUE ``erp_agentique/settings/editions.py``.
+
+    Sans ce filtre, beat continuerait de PLANIFIER des tâches dont le module
+    n'est plus chargé : chaque tick produirait un ``NotRegistered`` bruyant et
+    une entrée en file que plus aucun worker ne peut consommer. En édition
+    complète (défaut), rien n'est parqué → le planning est renvoyé À
+    L'IDENTIQUE (aucune entrée retirée, aucun changement de comportement).
+    """
+    from erp_agentique.settings import editions
+
+    parques = editions.modules_parques(edition)
+    if not parques:
+        return schedule
+    prefixes = tuple(f'{cle}.' for cle in sorted(parques))
+    return {
+        nom: entree for nom, entree in schedule.items()
+        if not str(entree.get('task', '')).startswith(prefixes)
+    }
+
+
+app.conf.beat_schedule = filtrer_beat_apps_parquees(app.conf.beat_schedule)
+
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
 # l'endpoint /metrics. Enregistrés au niveau du signal Celery (pas Django) :
 # fonctionne aussi bien côté worker que côté beat, sans importer d'app métier.

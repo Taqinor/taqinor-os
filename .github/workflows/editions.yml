@@ -1,0 +1,186 @@
+name: Editions (hebdomadaire)
+
+# SOL15 — CE QUI EST TROP LENT POUR UNE PR, MAIS QUI DOIT ÊTRE PROUVÉ.
+#
+# La gate PR reste en édition COMPLÈTE (zéro churn de schéma, zéro baseline à
+# recalibrer) et `solar-boot` (dans ci.yml) y ajoute la fumée rapide de
+# l'édition solaire. Restent deux vérifications réelles mais coûteuses :
+#
+#   1. `migrate` sur une base VIERGE en édition SOLAIRE — ~850 migrations,
+#      mesuré ~97 % du temps d'un shard backend (~37 min). C'est LA preuve
+#      qu'aucune migration d'app gardée ne dépend d'une app parquée. À chaque
+#      PR, `check_editions_decouplage` donne déjà cette réponse en deux
+#      secondes par lecture d'AST ; ce job la confirme pour de vrai.
+#   2. Le passage PROFOND de l'édition complète : contrats import-linter +
+#      suites de tests des SEPT apps parquées. Elles restent livrées et
+#      supportées — une régression chez elles doit se voir, même si plus
+#      personne ne les regarde au quotidien.
+#
+# ALERTE VISIBLE si rouge : le job `alerte-editions` ouvre (ou met à jour) une
+# issue GitHub. Un job hebdomadaire qui rougit sans rien réveiller ne sert à
+# rien — c'est exactement le piège qu'on évite ici.
+
+on:
+  schedule:
+    # Lundi 04:17 UTC — hors des heures de merge, et une minute non ronde pour
+    # ne pas tomber dans le pic d'ordonnancement de GitHub.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  solar-migrate:
+    name: migrate sur base vierge — édition solaire
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user -d erp_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TAQINOR_EDITION: solar
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements.txt
+      - run: pip install -r backend/django_core/requirements.txt
+      # Le cœur du job : le graphe de migrations se résout et s'applique SANS
+      # les sept apps parquées. Une seule dépendance oubliée le fait échouer.
+      - name: migrate (base vierge, édition solaire)
+        working-directory: backend/django_core
+        run: python manage.py migrate --noinput
+      - name: Cohérence de l'édition après migrate
+        working-directory: backend/django_core
+        run: python manage.py verifier_edition
+      # Le préflight tourne aussi : il ne doit jamais planter, et sa sortie
+      # documente l'état d'une base fraîche (tout à zéro).
+      - name: Préflight de bascule (lecture seule)
+        working-directory: backend/django_core
+        env:
+          TAQINOR_EDITION: full
+        run: python manage.py preflight_edition --edition solar
+
+  full-profond:
+    name: édition complète — passage profond
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user -d erp_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      TAQINOR_EDITION: full
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements-dev.txt
+      - run: pip install -r backend/django_core/requirements-dev.txt
+      - run: pip install import-linter==2.11
+      - name: Contrats d'architecture (import-linter)
+        working-directory: backend/django_core
+        run: lint-imports
+      # Les sept verticaux parqués restent LIVRÉS : leurs suites doivent rester
+      # vertes, sinon on les découvrirait cassés le jour où un client les
+      # rallume.
+      - name: Suites des apps parquées (édition complète)
+        working-directory: backend/django_core
+        run: |
+          python manage.py test \
+            apps.agriculture apps.education apps.hospitality \
+            apps.immobilier apps.mrp apps.sante apps.ecommerce_connect \
+            --noinput --parallel 4
+
+  alerte-editions:
+    name: alerte si un passage hebdomadaire est rouge
+    needs: [solar-migrate, full-profond]
+    if: ${{ always() && (needs.solar-migrate.result == 'failure' || needs.full-profond.result == 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Ouvrir / mettre à jour l'issue d'alerte
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const titre = 'CI hebdomadaire éditions — passage ROUGE';
+            const corps = [
+              'Le passage hebdomadaire des éditions a échoué.',
+              '',
+              `- migrate base vierge (solaire) : \`${{ needs.solar-migrate.result }}\``,
+              `- édition complète profonde     : \`${{ needs.full-profond.result }}\``,
+              '',
+              `Run : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Un rouge ici veut dire, au choix : une migration d\'app gardée',
+              'dépend à nouveau d\'une app parquée (l\'édition solaire ne',
+              's\'installe plus sur une base neuve), ou une app parquée a',
+              'régressé sans que personne ne la regarde. Les deux se corrigent',
+              'avant la prochaine bascule d\'édition.',
+            ].join('\n');
+            const ouvertes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'ci-editions',
+            });
+            const existante = ouvertes.data.find(i => i.title === titre);
+            if (existante) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existante.number, body: corps,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: titre, body: corps, labels: ['ci-editions'],
+              });
+            }

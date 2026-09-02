@@ -7,6 +7,7 @@ class MarketingConfig(AppConfig):
     verbose_name = 'Marketing'
     module_manifest = {
         'key': 'marketing',
+        'sku': 'generic',
         'label': 'Marketing',
         'icone': 'megaphone',
         'depends': ['crm'],

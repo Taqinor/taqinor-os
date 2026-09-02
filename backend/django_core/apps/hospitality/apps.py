@@ -7,6 +7,7 @@ class HospitalityConfig(AppConfig):
     verbose_name = 'Hôtellerie & restauration'
     module_manifest = {
         'key': 'hospitality',
+        'sku': 'vertical_hospitality',
         'label': 'Hôtellerie',
         'icone': 'bed',
         'depends': [],

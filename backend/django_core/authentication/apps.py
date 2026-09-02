@@ -7,6 +7,7 @@ class AuthenticationConfig(AppConfig):
     verbose_name = 'Authentification'
     module_manifest = {
         'key': 'authentication',
+        'sku': 'generic',
         'label': 'Authentification',
         'icone': 'key',
         'depends': [],

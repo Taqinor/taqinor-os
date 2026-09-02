@@ -9,8 +9,20 @@ import warnings
 from pathlib import Path
 from datetime import timedelta
 
+from . import editions  # noqa: E402  (registre statique, sans Django)
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SOL1/SOL3 — Édition produit
+# ─────────────────────────────────────────────────────────────────────────────
+# `full` (défaut : dev, tests, CI — zéro churn openapi/baselines) ou `solar`
+# (édition spécialisée installateur solaire : les verticaux non adaptables
+# sortent d'INSTALLED_APPS, des urls et du bundle frontend). Aucune table n'est
+# jamais supprimée : re-flipper la variable réactive une app parquée.
+# Une valeur inconnue LÈVE au boot (jamais de repli silencieux sur `full`).
+TAQINOR_EDITION = editions.edition_active()
 
 # SECURITY WARNING: keep the secret key used in production secret!
 _DEBUG_FLAG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
@@ -321,6 +333,16 @@ INSTALLED_APPS = [
     # mensuel) au-dessus de l'exécution `apps.stock` existante.
     'apps.scm',
 ]
+
+# SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
+# (registre `settings/editions.py`) sortent d'INSTALLED_APPS : leurs modèles ne
+# sont plus chargés, leurs migrations ne sont plus appliquées sur une base
+# vierge, leurs tâches beat et leurs urls disparaissent (SOL2c / urls.py).
+# AUCUNE table n'est supprimée : repasser `TAQINOR_EDITION` à `full` réactive
+# tout à l'identique. En édition complète (défaut dev/tests/CI) la liste est
+# renvoyée BYTE-IDENTIQUE.
+INSTALLED_APPS = editions.filtrer_installed_apps(
+    INSTALLED_APPS, TAQINOR_EDITION)
 
 MIDDLEWARE = [
     # YAPIC4 — EN PREMIER : pose request.request_id (échoé/lu depuis
@@ -793,6 +815,15 @@ SPECTACULAR_SETTINGS = {
             'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
     },
 }
+
+# SOL2(d) — un override d'énumération qui pointe vers une app PARQUÉE par
+# l'édition courante (`apps.immobilier.…`, `apps.mrp.…`) désigne un modèle qui
+# n'est plus chargé : drf-spectacular échouerait à le résoudre au moment de
+# générer le schéma. On les retire ici, une fois, depuis le registre statique
+# d'éditions. En édition complète (défaut) le dictionnaire est renvoyé À
+# L'IDENTIQUE — aucun nom d'énumération ne bouge, donc aucun churn de schéma.
+SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES'] = editions.filtrer_chemins(
+    SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES'], TAQINOR_EDITION)
 
 # Simple JWT Configuration
 SIMPLE_JWT = {

@@ -31,6 +31,7 @@ class NotificationsConfig(AppConfig):
     verbose_name = 'Notifications'
     module_manifest = {
         'key': 'notifications',
+        'sku': 'generic',
         'label': 'Notifications',
         'icone': 'bell',
         'depends': [],

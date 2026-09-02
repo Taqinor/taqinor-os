@@ -7,6 +7,7 @@ class ContratsConfig(AppConfig):
     verbose_name = 'Gestion des contrats'
     module_manifest = {
         'key': 'contrats',
+        'sku': 'generic',
         'label': 'Contrats',
         'icone': 'file-signature',
         'depends': [],

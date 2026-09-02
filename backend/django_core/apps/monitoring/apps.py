@@ -7,6 +7,7 @@ class MonitoringConfig(AppConfig):
     verbose_name = 'Monitoring (supervision production)'
     module_manifest = {
         'key': 'monitoring',
+        'sku': 'solar_core',
         'label': 'Supervision',
         'icone': 'activity',
         'depends': [],
