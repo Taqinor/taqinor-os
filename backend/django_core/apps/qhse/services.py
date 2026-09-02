@@ -155,8 +155,9 @@ def creer_ncr_depuis_cycle_sterilisation(*, company, cycle_id,
 
     Écriture FINE, cross-app conforme : l'appelant (le récepteur d'événement
     de cette app) ne passe que des données DÉJÀ résolues (id + libellés) —
-    jamais d'import de ``apps.sante.models`` ici ; le lien reste une FK-chaîne
-    ``cycle_sterilisation``. Gravité MAJEURE par défaut : un cycle raté
+    jamais d'import de ``apps.sante.models`` ici ; le lien reste une référence
+    non contrainte ``cycle_sterilisation_id`` (SOL2a : ``sante`` est parquée
+    dans l'édition solaire, ``qhse`` non). Gravité MAJEURE par défaut : un cycle raté
     engage la sécurité patient (matériel potentiellement non stérile déjà
     utilisé). Idempotent : une seule NCR ouverte par cycle ; ré-appeler
     renvoie l'existante. Renvoie ``(ncr, created)``."""

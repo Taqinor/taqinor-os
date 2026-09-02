@@ -103,17 +103,17 @@ class NonConformite(models.Model):
         related_name='qhse_ncr',
         verbose_name="Ticket SAV d'origine",
     )
-    # NTSAN23 — pont Stérilisation (sante.CycleSterilisation) → NCR. Lien
-    # optionnel via FK-chaîne (jamais un import cross-app de modèle, même
-    # patron que QHSE11/XMFG13/XQHS23) : un cycle d'autoclave déclaré non
-    # conforme ouvre automatiquement une non-conformité, via l'événement
+    # NTSAN23 — pont Stérilisation (sante.CycleSterilisation) → NCR : un cycle
+    # d'autoclave non conforme ouvre une NCR via l'événement
     # ``core.events.cycle_sterilisation_non_conforme`` auquel qhse s'abonne.
-    cycle_sterilisation = models.ForeignKey(
-        'sante.CycleSterilisation',
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='qhse_ncr',
-        verbose_name="Cycle de stérilisation d'origine",
+    # SOL2(a) — RÉFÉRENCE NON CONTRAINTE (plus une FK) : `qhse` est GARDÉ dans
+    # l'édition solaire, `sante` y est PARQUÉ, et une FK vers une app non
+    # chargée bloquerait `migrate` sur une base vierge. MÊME colonne physique
+    # (`cycle_sterilisation_id`, migration qhse/0057) : données conservées,
+    # aucun drop, appelants inchangés (bloc gardé à 12 lignes : allowlists).
+    cycle_sterilisation_id = models.IntegerField(
+        null=True, blank=True, db_index=True,
+        verbose_name="Cycle de stérilisation d'origine (sante)",
     )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
