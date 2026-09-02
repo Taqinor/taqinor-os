@@ -4154,6 +4154,39 @@ def figer_payment_run(run):
     return run
 
 
+def _refuser_lignes_sur_dette_disparue(run, lignes):
+    """AUD172 — refuse le posting d'une ligne qui dépasse la dette RESTANTE.
+
+    Le bug est atteignable même avec UNE seule campagne : il suffit que la
+    facture soit soldée par un autre canal entre la proposition et le posting.
+    Lève ``ValidationError`` explicite — jamais une seconde écriture GL ni un
+    second ``PaiementFournisseur`` en silence.
+    """
+    from apps.stock import selectors as stock_selectors
+
+    facture_ids = {
+        ligne.facture_fournisseur_id for ligne in lignes
+        if ligne.facture_fournisseur_id
+    }
+    if not facture_ids:
+        return
+    soldes = {
+        item['facture_id']: Decimal(str(item['montant'] or 0))
+        for item in stock_selectors.factures_fournisseur_ouvertes(run.company)
+    }
+    for ligne in lignes:
+        if not ligne.facture_fournisseur_id:
+            continue
+        reste = soldes.get(ligne.facture_fournisseur_id, Decimal('0'))
+        montant = Decimal(ligne.montant or 0)
+        if montant > reste:
+            raise ValidationError(
+                f"La facture fournisseur {ligne.reference or ligne.facture_fournisseur_id} "
+                f"ne doit plus que {reste} : la ligne de {montant} de cette "
+                "campagne est périmée (dette réglée entre-temps). Reprenez la "
+                "proposition avant de poster.")
+
+
 @transaction.atomic
 def poster_payment_run(run, *, user=None):
     """Poste une campagne de règlement au grand livre EN LOT (FG133).
@@ -4191,6 +4224,12 @@ def poster_payment_run(run, *, user=None):
         raise ValidationError(
             "Double validation requise : deux approbateurs DISTINCTS et "
             "habilités doivent approuver cette campagne avant de la poster.")
+    # AUD172 — le montant de chaque ligne est FIGÉ à la proposition et n'était
+    # jamais reconfronté à la dette réelle : une facture soldée entre-temps
+    # (par une autre campagne ou par un autre canal) se repayait intégralement.
+    # On relit le solde dû via le sélecteur de stock (jamais ses modèles) : une
+    # facture absente de la liste des ouvertes a un solde de zéro.
+    _refuser_lignes_sur_dette_disparue(run, lignes)
     journal = _journal(company, Journal.Type.BANQUE)
     if journal is None:
         seed_journaux(company)
@@ -4431,21 +4470,47 @@ def _chatter_payment_run(run, user, action):
         detail=f'statut={run.statut} total={run.total}')
 
 
+# AUD172 — statuts d'une campagne encore OUVERTE : ses lignes réservent déjà
+# les factures qu'elles référencent, une autre campagne ne doit pas les
+# reproposer (sinon la même dette part deux fois, deux écritures GL et deux
+# fois le même RIB dans le fichier de virement).
+_STATUTS_PAYMENT_RUN_OUVERT = (
+    PaymentRun.Statut.BROUILLON,
+    PaymentRun.Statut.PROPOSEE,
+    PaymentRun.Statut.EN_ATTENTE_APPROBATION,
+)
+
+
+def _factures_reservees_par_un_run_ouvert(company):
+    """Ids de factures fournisseur déjà référencées par une campagne OUVERTE.
+
+    Le filtrage vit ICI et non dans ``stock.selectors`` : la réservation est un
+    fait de ``compta`` (``PaymentRunLine``) et ``stock`` ne doit jamais importer
+    les modèles de compta (frontière M3).
+    """
+    return set(
+        PaymentRunLine.objects
+        .filter(company=company,
+                payment_run__statut__in=_STATUTS_PAYMENT_RUN_OUVERT)
+        .exclude(facture_fournisseur_id__isnull=True)
+        .values_list('facture_fournisseur_id', flat=True))
+
+
 def proposer_lignes_payment_run(run, *, date_limite=None):
     """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
     fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
     jamais un import de ses modèles), triées par date d'échéance. N'ajoute
-    QUE les factures pas déjà référencées par une ligne existante de CETTE
-    campagne (idempotent si appelé deux fois). Renvoie la liste des lignes
-    ajoutées."""
+    QUE les factures pas déjà référencées par une ligne d'une campagne
+    ENCORE OUVERTE — la sienne (idempotence) comme celle d'un collègue
+    (AUD172 : la déduplication ne regardait que la campagne courante, si bien
+    que deux campagnes brouillon proposaient la MÊME facture et la réglaient
+    deux fois). Renvoie la liste des lignes ajoutées."""
     from apps.stock import selectors as stock_selectors
 
     if run.statut != PaymentRun.Statut.BROUILLON:
         raise ValidationError(
             "Une campagne figée ou postée ne peut plus être modifiée.")
-    deja_references = set(
-        run.lignes.exclude(facture_fournisseur_id__isnull=True)
-        .values_list('facture_fournisseur_id', flat=True))
+    deja_references = _factures_reservees_par_un_run_ouvert(run.company)
     candidates = stock_selectors.factures_fournisseur_ouvertes(
         run.company, date_limite=date_limite)
     ajoutees = []

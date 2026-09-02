@@ -68,6 +68,26 @@ class TestProposer(_Base):
         self.assertEqual(ajoutees_2, [])
         self.assertEqual(run.lignes.count(), 1)
 
+    def test_aud172_seconde_campagne_ne_repropose_pas_la_meme_facture(self):
+        """AUD172 — la déduplication ne regardait que la campagne courante.
+
+        Deux campagnes brouillon proposaient donc la MÊME facture : postées
+        toutes deux, elles réglaient la dette deux fois (deux écritures GL,
+        deux `PaiementFournisseur`, deux fois le même RIB dans le fichier de
+        virement).
+        """
+        run_a = services.creer_payment_run(
+            self.company, date_paiement=self.today,
+            mode_paiement='virement', compte_tresorerie=self.banque,
+            reference='RUN-AUD172-A')
+        self.assertEqual(len(services.proposer_lignes_payment_run(run_a)), 1)
+        run_b = services.creer_payment_run(
+            self.company, date_paiement=self.today,
+            mode_paiement='virement', compte_tresorerie=self.banque,
+            reference='RUN-AUD172-B')
+        self.assertEqual(services.proposer_lignes_payment_run(run_b), [])
+        self.assertEqual(run_b.lignes.count(), 0)
+
     def test_facture_payee_absente_de_la_proposition(self):
         PaiementFournisseur.objects.create(
             company=self.company, facture=self.facture,
@@ -120,6 +140,38 @@ class TestPosterCreeReglement(_Base):
         self.assertEqual(
             PaiementFournisseur.objects.filter(
                 facture__reference='LIBRE').count(), 0)
+
+    def test_aud172_facture_soldee_entre_proposition_et_posting_refusee(self):
+        """AUD172 — le montant figé à la proposition est reconfronté à la dette.
+
+        `poster_payment_run` ne relisait JAMAIS le solde courant et postait
+        inconditionnellement `ligne.montant` : une facture soldée entre-temps
+        (ici par un autre canal) se repayait intégralement — double écriture GL
+        et second `PaiementFournisseur` sur une dette unique.
+        """
+        from django.core.exceptions import ValidationError
+
+        from apps.compta.models import EcritureComptable
+
+        run = services.creer_payment_run(
+            self.company, date_paiement=self.today,
+            mode_paiement='virement', compte_tresorerie=self.banque,
+            reference='RUN-AUD172-1')
+        services.proposer_lignes_payment_run(run)
+        # La dette est réglée par un AUTRE canal après la proposition.
+        PaiementFournisseur.objects.create(
+            company=self.company, facture=self.facture,
+            montant=Decimal('10000'), date_paiement=self.today,
+            mode='virement')
+        with self.assertRaises(ValidationError):
+            services.poster_payment_run(run)
+        run.refresh_from_db()
+        self.assertFalse(run.posted)
+        self.assertEqual(
+            EcritureComptable.objects.filter(
+                company=self.company, source_type='payment_run').count(), 0)
+        self.assertEqual(
+            PaiementFournisseur.objects.filter(facture=self.facture).count(), 1)
 
     def test_paiement_partiel_laisse_partiellement_payee(self):
         run = services.creer_payment_run(
