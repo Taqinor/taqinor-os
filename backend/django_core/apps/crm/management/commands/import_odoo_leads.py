@@ -35,6 +35,9 @@ from django.db import transaction
 
 from apps.crm import services, stages
 from apps.crm.models import Lead
+# Source UNIQUE de la validation « téléphone plausible » (chemin JSON-2) —
+# jamais une seconde règle écrite ici (CRX9).
+from apps.crm.odoo_sync import _clean_phone
 from apps.dataimport.services import parse_rows, _norm
 
 EXTERNAL_SYSTEM = 'odoo'
@@ -93,6 +96,14 @@ _ODOO_STAGE_TO_KEY = {
 # (jamais d'écrasement d'une saisie déjà présente).
 _FILL_FIELDS = ('prenom', 'societe', 'email', 'telephone', 'whatsapp',
                 'adresse', 'ville', 'note')
+
+# Colonnes DÉRIVÉES recalculées par ``Lead.save()`` et qui doivent donc
+# accompagner leur source dans ``update_fields`` (QW10 — colonnes indexées de
+# dédup ; sans elles la valeur recalculée en mémoire n'est jamais persistée).
+_COLONNES_DERIVEES = {
+    'telephone': 'phone_normalise',
+    'email': 'email_normalise',
+}
 
 
 def _map_stage_connu(raw):
@@ -161,6 +172,27 @@ def _row_to_fields(row):
         # Première valeur gagne (les en-têtes Odoo natifs précèdent les alias).
         fields.setdefault(field, text)
 
+    # CRX9 — parité avec le chemin JSON-2 (``odoo_sync._clean_phone``) : un
+    # téléphone aberrant (aucun chiffre, plus de 20 chiffres, ou plus de 50
+    # caractères) ne peut PAS entrer en base — ``Lead.telephone`` est
+    # varchar(50) et sa colonne dérivée ``phone_normalise`` varchar(20) :
+    # l'insert CASSE, et le dry-run ne le voit pas. Il part en NOTE, comme le
+    # fait déjà l'export JSON-2 (« Téléphone Odoo invalide: … »).
+    traces = []
+    for champ, libelle in (('telephone', 'Téléphone'), ('whatsapp', 'WhatsApp')):
+        if champ not in fields:
+            continue
+        valeur, invalide = _clean_phone(fields[champ])
+        if invalide is not None:
+            traces.append(f'{libelle} Odoo invalide: {invalide}')
+        if valeur is None:
+            fields.pop(champ)
+        else:
+            fields[champ] = valeur
+    if traces:
+        fields['note'] = '\n'.join(
+            ([fields['note']] if fields.get('note') else []) + traces)
+
     external_id = None
     for key in ODOO_ID_KEYS:
         for raw_key, value in row.items():
@@ -221,17 +253,39 @@ def _find_existing(company, external_id, fields):
 
 
 def _fill_empty(lead, fields):
-    """Complète les champs VIDES du lead existant. Renvoie True si modifié."""
+    """Complète les champs VIDES du lead existant. Renvoie True si modifié.
+
+    CRX9 — deux corrections du chemin RÉCONCILIATION (le chemin création les
+    avait déjà, celui-ci non) :
+
+      * chaque valeur est BORNÉE à la longueur réelle de sa colonne, lue sur
+        le modèle (jamais un nombre deviné) : un `ville` de 200 caractères ou
+        un `telephone` de 60 faisait casser l'UPDATE, donc TOUT l'import
+        (transaction unique) ;
+      * les colonnes DÉRIVÉES ``phone_normalise``/``email_normalise`` entrent
+        dans ``update_fields`` quand ``telephone``/``email`` sont remplis.
+        ``Lead.save()`` les recalcule EN MÉMOIRE, mais
+        ``save(update_fields=[...])`` ne PERSISTE que les colonnes listées :
+        sans elles, les colonnes INDEXÉES de dédup (QW10) restaient vides en
+        base et ``find_duplicates_by_contact`` ne retrouvait jamais le lead —
+        exactement le bug réel déjà corrigé dans ``services.py`` sur le
+        chemin WhatsApp.
+    """
     changed = []
     for field in _FILL_FIELDS:
         if field not in fields:
             continue
         current = getattr(lead, field, None)
-        if current in (None, '', False):
-            setattr(lead, field, fields[field])
-            changed.append(field)
+        if current not in (None, '', False):
+            continue
+        valeur = fields[field]
+        maxi = Lead._meta.get_field(field).max_length
+        setattr(lead, field, valeur[:maxi] if maxi else valeur)
+        changed.append(field)
+    derivees = [_COLONNES_DERIVEES[f]
+                for f in changed if f in _COLONNES_DERIVEES]
     if changed:
-        lead.save(update_fields=changed)
+        lead.save(update_fields=changed + derivees)
     return bool(changed)
 
 

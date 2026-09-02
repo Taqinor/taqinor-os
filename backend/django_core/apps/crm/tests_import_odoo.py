@@ -16,6 +16,7 @@ import tempfile
 from django.core.management import call_command
 from django.test import TestCase
 
+from apps.crm import services as crm_services
 from apps.crm import stages
 from apps.crm.management.commands.import_odoo_leads import _find_existing
 from apps.crm.models import Lead
@@ -36,6 +37,16 @@ CSV_EXPORT = (
     "101,Test Alpha,alpha@example.test,0612000001,Casablanca,Alpha SARL,New,Note A\n"
     "102,Test Beta,beta@example.test,+212 6 12-00-00-02,Rabat,,Won,Note B\n"
     "103,Test Gamma,,0612000003,Agadir,Gamma Co,Proposition,\n"
+)
+
+# CRX9 — deux lignes limites : valeurs plus longues que leur colonne, et un
+# téléphone aberrant (26 chiffres) que `Lead.telephone` (varchar 50) et
+# `phone_normalise` (varchar 20) ne peuvent pas porter.
+CSV_BORNES = (
+    "id,name,email_from,phone,city,partner_name,stage_id,description\n"
+    "301,Test Long,long@example.test,0612000301,"
+    + 'V' * 200 + "," + 'S' * 300 + ",New,Note L\n"
+    "302,Test Aberrant,,00000000000000000000000000,Casablanca,,New,\n"
 )
 
 JSON_EXPORT = json.dumps([
@@ -151,6 +162,57 @@ class TestReconciliation(ImportOdooBase):
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 3)
         existing.refresh_from_db()
         self.assertEqual(existing.ville, 'Agadir')
+
+
+class TestColonnesDeriveesEtLongueurs(ImportOdooBase):
+    """CRX9 — le chemin RÉCONCILIATION borne ses valeurs et persiste les
+    colonnes dérivées ; un téléphone aberrant n'atteint jamais la colonne."""
+
+    def test_reconciliation_persists_derived_dedup_columns(self):
+        existing = Lead.objects.create(
+            company=self.company, nom='Fiche Nue', stage=stages.NEW,
+            external_system='odoo', external_id='101')
+        self.assertEqual(existing.phone_normalise, '')
+
+        path = self._file('.csv', CSV_EXPORT)
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.telephone, '0612000001')
+        self.assertEqual(existing.email, 'alpha@example.test')
+        # Colonnes INDEXÉES de dédup (QW10) réellement écrites en base : sans
+        # elles dans `update_fields`, elles restaient vides et la dédup était
+        # aveugle sur ce lead.
+        self.assertEqual(existing.phone_normalise,
+                         crm_services.normalize_phone('0612000001'))
+        self.assertEqual(existing.email_normalise,
+                         crm_services.normalize_email('alpha@example.test'))
+        self.assertTrue(Lead.objects.filter(
+            company=self.company,
+            phone_normalise=existing.phone_normalise).exists())
+
+    def test_reconciliation_clamps_values_to_column_length(self):
+        existing = Lead.objects.create(
+            company=self.company, nom='À Compléter', stage=stages.NEW,
+            external_system='odoo', external_id='301')
+
+        path = self._file('.csv', CSV_BORNES)
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+
+        existing.refresh_from_db()
+        # Avant : l'UPDATE dépassait varchar(120)/varchar(255) et faisait
+        # échouer TOUT l'import (transaction unique).
+        self.assertEqual(len(existing.ville), 120)
+        self.assertEqual(len(existing.societe), 255)
+
+    def test_aberrant_phone_never_reaches_the_column_and_lands_in_the_note(self):
+        path = self._file('.csv', CSV_BORNES)
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+
+        aberrant = Lead.objects.get(company=self.company, external_id='302')
+        self.assertIsNone(aberrant.telephone)      # varchar(50)/varchar(20)
+        self.assertEqual(aberrant.phone_normalise, '')
+        self.assertIn('Téléphone Odoo invalide: 000', aberrant.note)
 
 
 class TestSoftDeleteReconciliation(ImportOdooBase):
