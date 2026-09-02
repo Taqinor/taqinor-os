@@ -1,5 +1,12 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
+
+from core.serializers import (
+    model_is_company_scoped,
+    request_company_id,
+    scope_related_field,
+)
 from .models import (
     Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
     EquipeCommerciale,
@@ -23,6 +30,45 @@ from apps.compta.serializers import (  # noqa: F401,E402
     SoumissionLeadPartenaireSerializer,
     TerritoireCommercialSerializer,
 )
+
+
+# ── LW29/CRX19 — PII du lead : une SEULE liste, un SEUL masquage ────────────
+#
+# ``LeadSerializer`` masque déjà ces six champs pour un rôle sans
+# ``client_pii_voir``… mais le CHATTER les recopiait en clair dans
+# ``old_value``/``new_value`` : « telephone : 0612345678 → 0698765432 » restait
+# lisible par tout le monde. Le masquage vit donc AU NIVEAU DU SÉRIALISEUR
+# d'activité, donc PAR CONSTRUCTION sur les trois surfaces qui servent le
+# chatter (action ``historique``, ``chatter_recent`` embarqué au retrieve, et
+# l'enveloppe uniforme ARC9).
+LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
+                   'gps_lat', 'gps_lng')
+
+#: Remplacement affiché à la place d'une valeur PII masquée.
+PII_MASQUE = '•••'
+
+
+def pii_masquee_pour(user) -> bool:
+    """Condition UNIQUE du masquage PII (LW29) : ``user`` connu et privé de
+    ``client_pii_voir``. Sans utilisateur (rendu serveur/interne, tâche de
+    fond), rien n'est masqué — comportement historique."""
+    return user is not None and not getattr(user, 'can_view_client_pii', True)
+
+
+def masquer_valeurs_chatter(field, old_value, new_value, user):
+    """Renvoie ``(old_value, new_value)`` masqués si ``field`` est une PII du
+    lead et que ``user`` n'a pas le droit de la voir.
+
+    Fonction PARTAGÉE par ``LeadActivitySerializer`` et par l'enveloppe
+    uniforme (``selectors.lead_chatter_envelope``) : une seule règle, jamais
+    deux implémentations qui divergent.
+    """
+    if not pii_masquee_pour(user):
+        return old_value, new_value
+    if (field or '') not in LEAD_PII_FIELDS:
+        return old_value, new_value
+    return (PII_MASQUE if old_value else old_value,
+            PII_MASQUE if new_value else new_value)
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
@@ -57,6 +103,23 @@ class LeadActivitySerializer(serializers.ModelSerializer):
 
     def get_attachment_mime(self, obj):
         return getattr(obj.attachment, 'mime', None)
+
+    def to_representation(self, instance):
+        """CRX19 — masque ``old_value``/``new_value`` quand l'entrée porte sur
+        une PII du lead et que l'utilisateur n'a pas ``client_pii_voir``.
+
+        Ici et NULLE PART AILLEURS : les trois surfaces qui servent le chatter
+        (``historique``, ``chatter_recent``, enveloppe ARC9) héritent donc du
+        masquage par construction. Sans ``context['request']`` (rendu interne),
+        rien n'est masqué — comportement historique."""
+        data = super().to_representation(instance)
+        request = self.context.get('request') if hasattr(self, 'context') \
+            else None
+        user = getattr(request, 'user', None) if request is not None else None
+        data['old_value'], data['new_value'] = masquer_valeurs_chatter(
+            data.get('field'), data.get('old_value'), data.get('new_value'),
+            user)
+        return data
 
 
 class RelanceEtapeSerializer(serializers.ModelSerializer):
@@ -99,7 +162,82 @@ class _CurrentCompanyDefault:
         return serializer_field.context['request'].user.company
 
 
-class ClientSerializer(serializers.ModelSerializer):
+# ── CRX13 — relations NUES re-scopées société (primitive CRX12) ──────────────
+#
+# Treize relations d'``apps/crm`` étaient déclarées (ou auto-construites) avec
+# un queryset NON scopé : un POST/PATCH pouvait donc rattacher l'objet à une
+# ligne d'une AUTRE société, et l'erreur renvoyée servait d'ORACLE d'existence.
+# Le re-scope se fait par PROMOTION du champ déjà construit
+# (``core.serializers.scope_related_field``) plutôt que par re-déclaration :
+# les arguments d'origine (``required``, ``allow_null``, ``source``, messages)
+# sont conservés à l'identique — seule la résolution de l'id change. Un champ
+# déjà en lecture seule, ou dont la cible n'a pas de ``company``, est ignoré.
+
+
+class _CompanyScopedRelationsMixin:
+    """Re-scope société les relations nommées dans ``scoped_relations``.
+
+    Posé en PREMIÈRE base du sérialiseur : un ``get_fields`` propre au
+    sérialiseur (ClientSerializer, LeadSerializer) reste prioritaire et appelle
+    ``super()``, donc la promotion s'applique dans tous les cas.
+    """
+
+    #: Noms de champs de relation à re-scoper sur ``request.user.company``.
+    scoped_relations: tuple = ()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        for name in self.scoped_relations:
+            field = fields.get(name)
+            if field is not None:
+                scope_related_field(field)
+        return fields
+
+
+class _CompanyScopedUniqueValidator(UniqueValidator):
+    """``UniqueValidator`` dont le queryset est re-scopé société.
+
+    Le validateur d'unicité auto-généré par DRF pour un champ ``unique``
+    interroge TOUTES les sociétés : répondre « déjà utilisé » sur un id qui
+    n'appartient pas au demandeur révèle l'existence d'une ligne voisine. On
+    restreint donc la recherche à la société de la requête. Sans requête (rendu
+    interne) ou pour un acteur sans société, le comportement d'origine est
+    conservé à l'identique.
+    """
+
+    def __call__(self, value, serializer_field):
+        company_id = request_company_id(serializer_field.context)
+        if company_id is not None and model_is_company_scoped(
+                self.queryset.model):
+            scoped = UniqueValidator(
+                queryset=self.queryset.filter(company_id=company_id),
+                message=self.message, lookup=self.lookup)
+            return scoped(value, serializer_field)
+        return super().__call__(value, serializer_field)
+
+
+def _scope_unique_validators(field):
+    """Remplace les ``UniqueValidator`` d'un champ par leur version scopée."""
+    if field is None:
+        return
+    validators = getattr(field, 'validators', None)
+    if not validators:
+        return
+    field.validators = [
+        _CompanyScopedUniqueValidator(
+            queryset=v.queryset, message=v.message, lookup=v.lookup)
+        if type(v) is UniqueValidator else v
+        for v in validators
+    ]
+
+
+class ClientSerializer(_CompanyScopedRelationsMixin,
+                       serializers.ModelSerializer):
+    # CRX13 — la liste de prix négociée et la fiche du répertoire unifié sont
+    # deux relations SORTANTES (ventes/tiers) : sans re-scope, un PATCH pouvait
+    # rattacher le client au tarif d'une autre société.
+    scoped_relations = ('liste_prix', 'tiers')
+
     devis_count = serializers.SerializerMethodField()
     total_facture_ttc = serializers.SerializerMethodField()
     total_paye = serializers.SerializerMethodField()
@@ -210,7 +348,15 @@ class ClientSerializer(serializers.ModelSerializer):
         return str(total)
 
 
-class LeadSerializer(serializers.ModelSerializer):
+class LeadSerializer(_CompanyScopedRelationsMixin,
+                     serializers.ModelSerializer):
+    # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
+    # n'importe quel utilisateur, toutes sociétés confondues. CRX15 l'a depuis
+    # verrouillé en LECTURE SEULE (cf. ``Meta.read_only_fields``) : la
+    # promotion est alors un no-op, conservée comme filet si le champ
+    # redevenait un jour inscriptible.
+    scoped_relations = ('deleted_by',)
+
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -547,6 +693,14 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
+            # CRX15 — triplet de soft-delete VERROUILLÉ, par parité exacte avec
+            # `is_archived` juste au-dessus : il ne se pilote que par la
+            # suppression (`SoftDeleteModel.soft_delete`/`restore`), jamais par
+            # un PATCH direct du corps. Écrivable, `is_deleted: true` faisait
+            # DISPARAÎTRE le lead des listes sans écrire de `DeletionRecord`
+            # (donc sans corbeille ni undo) et en contournant la garde 409 qui
+            # refuse la suppression d'un lead porteur de devis.
+            'is_deleted', 'deleted_at', 'deleted_by',
             'first_contacted_at',  # FG28 — posé server-side uniquement
             'updated_by',  # VX98 — posé server-side (perform_update) uniquement
             # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
@@ -557,8 +711,10 @@ class LeadSerializer(serializers.ModelSerializer):
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
-    PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
-                  'gps_lat', 'gps_lng')
+    # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :
+    # deux listes divergentes, c'est un champ masqué sur la fiche et lisible
+    # dans son historique.
+    PII_FIELDS = LEAD_PII_FIELDS
 
     def _pii_masked(self):
         """LW29 — condition UNIQUE de masquage PII, réutilisée par
@@ -619,13 +775,18 @@ class LeadSerializer(serializers.ModelSerializer):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
         (tri LW28), ``select_related('user','attachment')`` pour éviter tout
         N+1 (même garde que LW8). Calculée uniquement quand get_fields() a
-        gardé le champ (RETRIEVE) — jamais appelée sur une liste."""
+        gardé le champ (RETRIEVE) — jamais appelée sur une liste.
+
+        CRX19 — le CONTEXTE est propagé : sans lui, le sérialiseur d'activité
+        ne connaît pas l'utilisateur et le masquage PII du chatter ne
+        s'appliquerait pas sur cette surface."""
         rows = (
             obj.activites
             .select_related('user', 'attachment')
             .order_by('-pinned', '-created_at')[:50]
         )
-        return LeadActivitySerializer(rows, many=True).data
+        return LeadActivitySerializer(
+            rows, many=True, context=self.context).data
 
     def get_client_nom(self, obj):
         if not obj.client_id:
@@ -917,8 +1078,12 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
 
-class ObjectifCommercialSerializer(serializers.ModelSerializer):
+class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
     """Sérialise un objectif commercial + champs lecture optionnels."""
+
+    # CRX13 — le porteur de l'objectif doit être un utilisateur de la société.
+    scoped_relations = ('owner',)
 
     owner_nom = serializers.SerializerMethodField()
     metric_display = serializers.SerializerMethodField()
@@ -1116,7 +1281,12 @@ class PlanActiviteSerializer(serializers.ModelSerializer):
 # ── ZSAL3 — Équipes commerciales (admin CRUD ; le dashboard « Mes équipes »
 # lit stats_equipe() séparément, voir views.equipes_statistiques) ────────────
 
-class EquipeCommercialeSerializer(serializers.ModelSerializer):
+class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
+                                  serializers.ModelSerializer):
+    # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
+    # son ``child_relation``, promu lui aussi.
+    scoped_relations = ('responsable', 'membres')
+
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, default=None)
     nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
@@ -1132,7 +1302,14 @@ class EquipeCommercialeSerializer(serializers.ModelSerializer):
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
-class ForecastEntrySerializer(serializers.ModelSerializer):
+class ForecastEntrySerializer(_CompanyScopedRelationsMixin,
+                              serializers.ModelSerializer):
+    # CRX13 — ``lead`` est un OneToOne : DRF lui greffe automatiquement un
+    # ``UniqueValidator`` sur TOUTES les sociétés. Le champ est re-scopé ET son
+    # validateur d'unicité aussi, sinon « déjà utilisé » sur un lead voisin
+    # resterait un oracle d'existence.
+    scoped_relations = ('lead',)
+
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
     montant_effectif = serializers.DecimalField(
@@ -1147,6 +1324,11 @@ class ForecastEntrySerializer(serializers.ModelSerializer):
             'mis_a_jour_par', 'mis_a_jour_le',
         ]
         read_only_fields = ['mis_a_jour_par', 'mis_a_jour_le']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        _scope_unique_validators(fields.get('lead'))
+        return fields
 
 
 class ForecastSnapshotSerializer(serializers.ModelSerializer):
@@ -1165,7 +1347,13 @@ class ForecastSnapshotSerializer(serializers.ModelSerializer):
 # serializer *Activity maison ici.
 
 
-class RevueCompteSerializer(serializers.ModelSerializer):
+class RevueCompteSerializer(_CompanyScopedRelationsMixin,
+                            serializers.ModelSerializer):
+    # CRX13 — ``plan`` est la SEULE frontière société de ce modèle (RevueCompte
+    # n'a pas de ``company`` propre) : sans re-scope, une revue pouvait être
+    # accrochée au plan de compte d'une autre société.
+    scoped_relations = ('plan',)
+
     class Meta:
         model = RevueCompte
         fields = [
@@ -1176,7 +1364,11 @@ class RevueCompteSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at']
 
 
-class PlanCompteSerializer(serializers.ModelSerializer):
+class PlanCompteSerializer(_CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
+    # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
+    scoped_relations = ('client',)
+
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     revues = RevueCompteSerializer(many=True, read_only=True)
@@ -1276,7 +1468,8 @@ class SalleVenteItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
-class SalleVenteSerializer(serializers.ModelSerializer):
+class SalleVenteSerializer(_CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
     """NTCRM17 — salle de vente digitale (écran interne, authentifié).
 
     ``company`` est TOUJOURS posé côté serveur (jamais lu du corps).
@@ -1284,6 +1477,11 @@ class SalleVenteSerializer(serializers.ModelSerializer):
     de passe est posé via le champ ``write_only`` ``mot_de_passe`` (haché
     côté serveur, jamais stocké en clair). ``has_password`` expose
     seulement un booléen — jamais le hash."""
+
+    # CRX13 — la salle référence exactement un lead OU un client : les deux
+    # relations sont re-scopées société.
+    scoped_relations = ('lead', 'client')
+
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     items = SalleVenteItemSerializer(many=True, read_only=True)
     has_password = serializers.BooleanField(read_only=True)
@@ -1348,10 +1546,15 @@ class ApporteurSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'token_acces']
 
 
-class DealEnregistreSerializer(serializers.ModelSerializer):
+class DealEnregistreSerializer(_CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
     """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
     (``clean()`` du modèle) est appliquée via ``full_clean()`` explicite
     (DRF n'invoque jamais la validation modèle automatiquement)."""
+
+    # CRX13 — l'apporteur et le lead protégé doivent être de la société.
+    scoped_relations = ('apporteur', 'lead')
+
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     apporteur_nom = serializers.CharField(source='apporteur.nom', read_only=True)
     lead_nom = serializers.CharField(source='lead.nom', read_only=True)

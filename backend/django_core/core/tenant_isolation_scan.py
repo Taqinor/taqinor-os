@@ -7,10 +7,13 @@ INVISIBLE (list) et 404 (retrieve/patch/delete) pour un utilisateur de la
 société A. Ce module :
 
 * ``discover_tenant_viewsets()`` parcourt l'URLconf racine (même technique que
-  ``core.rbac_inventory``) et renvoie chaque ``ModelViewSet`` concret (pas
-  ``ReadOnlyModelViewSet``/``ViewSet`` — ceux-là n'ont pas de update/destroy à
-  tester de la même façon) qui porte ``TenantMixin`` dans son MRO, avec le
-  chemin de base de son router ;
+  ``core.rbac_inventory``) et renvoie chaque ``ModelViewSet`` **ou**
+  ``ReadOnlyModelViewSet`` concret qui porte ``TenantMixin`` dans son MRO, avec
+  le chemin de base de son router. CRX17 — les ``ReadOnlyModelViewSet`` étaient
+  exclus « faute d'update/destroy à tester » : c'était une faute de
+  raisonnement, la fuite de LECTURE (list qui montre l'objet du voisin,
+  retrieve qui répond 200) est exactement la même et n'était couverte nulle
+  part. Les assertions PATCH/DELETE acceptent déjà 405 pour ces vues ;
 * ``build_minimal_instance(model, company)`` est une factory TOLÉRANTE : elle
   ne pose QUE les champs obligatoires (``null=False``, pas de défaut, pas
   ``auto_now*``/``auto_created``), synthétise une valeur triviale par type de
@@ -19,7 +22,16 @@ société A. Ce module :
   seuls modèles FOUNDATION connus), et lève ``SkipModel`` (jamais une exception
   non gérée) dès qu'un champ obligatoire est un ``ForeignKey``/``ManyToMany``
   vers un AUTRE modèle, ou un type de champ non géré — ce modèle reste alors de
-  la dette EXPLICITE listée par le test, jamais silencieusement exclue.
+  la dette EXPLICITE listée par le test, jamais silencieusement exclue ;
+* ``build_foreign_relation_payload(view_class, company)`` (CRX17) synthétise un
+  corps de CRÉATION dont une relation inscriptible pointe une ligne d'une AUTRE
+  société — le trou que le balai ne voyait pas : il n'exerçait que la LECTURE
+  et l'ÉDITION d'un objet existant, jamais l'accrochage d'un objet NEUF à une
+  ligne du voisin (l'audit CRM a trouvé 13 relations nues par ce chemin) ;
+* ``detail_get_actions(view_class)`` (CRX17) énumère les
+  ``@action(detail=True)`` acceptant GET : elles sortaient entièrement du
+  balai, alors qu'une action qui n'appelle pas ``self.get_object()`` répond
+  200 sur l'objet du voisin.
 
 ``core`` reste FONDATION : aucun import d'app métier au niveau module (les
 imports de modèles concrets sont FONCTION-LOCAUX, déclenchés par la
@@ -80,9 +92,14 @@ def _iter_patterns(patterns, prefix=""):
 def _is_concrete_tenant_modelviewset(view_class) -> bool:
     if view_class is None:
         return False
-    if not issubclass(view_class, viewsets.ModelViewSet):
+    # CRX17 — ``ReadOnlyModelViewSet`` est INCLUS : il n'a certes ni update ni
+    # destroy (les assertions correspondantes tolèrent 405), mais la fuite de
+    # LECTURE — list qui montre l'objet du voisin, retrieve qui répond 200 —
+    # est identique et n'était couverte par aucun test transversal.
+    if not issubclass(view_class, (viewsets.ModelViewSet,
+                                   viewsets.ReadOnlyModelViewSet)):
         return False
-    # Exclut les ModelViewSet sans TenantMixin dans le MRO (hors périmètre —
+    # Exclut les viewsets sans TenantMixin dans le MRO (hors périmètre —
     # pas de garantie d'isolation à prouver ici).
     return any(base.__name__ == "TenantMixin" for base in view_class.__mro__)
 
@@ -258,6 +275,162 @@ def build_minimal_instance(model, company):
         kwargs[field.name] = _synthetic_scalar(field)
 
     return model.objects.create(**kwargs)
+
+
+# ── CRX17 — CRÉATION avec une relation vers une AUTRE société ───────────────
+#
+# Le balai ne testait que list/retrieve/patch/delete d'un objet EXISTANT du
+# voisin. Le chemin réellement exploité par un client malveillant est l'autre :
+# créer un objet DANS SA société mais l'ACCROCHER à une ligne du voisin (un
+# lead, un client, une liste de prix…). Ce cas n'était couvert nulle part —
+# l'audit CRM du 02/09 y a trouvé 13 relations nues d'un coup.
+
+
+def _model_has_company(model) -> bool:
+    try:
+        return any(f.name == "company" for f in model._meta.get_fields())
+    except Exception:  # noqa: BLE001 — modèle exotique : hors périmètre
+        return False
+
+
+def _synthetic_serializer_value(field, field_name):
+    """Valeur triviale pour un champ de SÉRIALISEUR obligatoire (non relation).
+
+    Volontairement plus étroite que ``_synthetic_scalar`` (champs de MODÈLE) :
+    tout ce qui n'est pas trivialement synthétisable lève ``SkipModel`` — le
+    viewset devient de la dette EXPLICITE listée par le test, jamais un cas
+    faussement « vérifié » avec un corps bancal.
+    """
+    from rest_framework import serializers as drf
+
+    # ChoiceField AVANT CharField (ChoiceField n'en dérive pas, mais les
+    # sous-classes typées — Email/Slug/URL — en dérivent : ordre du plus
+    # spécifique au plus général).
+    if isinstance(field, drf.MultipleChoiceField):
+        raise SkipModel(f"champ non synthétisable : {field_name}")
+    if isinstance(field, drf.ChoiceField):
+        choices = [key for key in field.choices]
+        if not choices:
+            raise SkipModel(f"choix vide : {field_name}")
+        return choices[0]
+    if isinstance(field, drf.BooleanField):
+        return False
+    if isinstance(field, drf.EmailField):
+        return f"{_next_unique_suffix()}@example.com"
+    if isinstance(field, drf.UUIDField):
+        import uuid
+        return str(uuid.uuid4())
+    if isinstance(field, drf.URLField):
+        return "https://example.com/"
+    if isinstance(field, (drf.SlugField, drf.CharField)):
+        max_len = getattr(field, "max_length", None)
+        value = _next_unique_suffix()
+        return value[:max_len] if max_len else value
+    if isinstance(field, drf.IntegerField):
+        return 1
+    if isinstance(field, (drf.DecimalField, drf.FloatField)):
+        return "1"
+    if isinstance(field, drf.DateTimeField):
+        from django.utils import timezone
+        return timezone.now().isoformat()
+    if isinstance(field, drf.DateField):
+        return datetime.date.today().isoformat()
+    if isinstance(field, drf.DurationField):
+        return "00:00:00"
+    if isinstance(field, drf.JSONField):
+        return {}
+    if isinstance(field, drf.ListField):
+        return []
+    raise SkipModel(
+        f"champ obligatoire non synthétisable : {field_name} "
+        f"({type(field).__name__})")
+
+
+def build_foreign_relation_payload(view_class, company):
+    """Corps de CRÉATION dont ≥1 relation pointe une ligne de ``company``.
+
+    ``company`` est la société ÉTRANGÈRE (celle du voisin). Renvoie
+    ``(payload, noms_des_relations_etrangeres)``. Lève ``SkipModel`` dès qu'un
+    champ obligatoire n'est pas synthétisable ou qu'aucune relation
+    company-scopée inscriptible n'existe — dette explicite, jamais un test
+    faussement vert.
+    """
+    from rest_framework import serializers as drf
+
+    serializer_class = getattr(view_class, "serializer_class", None)
+    if serializer_class is None:
+        raise SkipModel("pas de serializer_class de classe")
+    try:
+        fields = serializer_class().fields
+    except Exception as exc:  # noqa: BLE001 — dette explicite, pas un crash
+        raise SkipModel(f"sérialiseur non instanciable : {exc}")
+
+    payload = {}
+    etrangeres = []
+    for name, field in fields.items():
+        if field.read_only or isinstance(field, drf.HiddenField):
+            continue
+        relation = getattr(field, "child_relation", None) or field
+        many = relation is not field
+        if isinstance(relation, drf.PrimaryKeyRelatedField):
+            queryset = getattr(relation, "queryset", None)
+            if queryset is None or not _model_has_company(queryset.model):
+                if field.required:
+                    raise SkipModel(
+                        f"relation obligatoire hors périmètre : {name}")
+                continue
+            cible = build_minimal_instance(queryset.model, company)
+            payload[name] = [cible.pk] if many else cible.pk
+            etrangeres.append(name)
+            continue
+        if isinstance(relation, drf.RelatedField):
+            # Slug/Hyperlink/StringRelated : la valeur attendue n'est pas un pk,
+            # on ne devine pas — dette explicite si le champ est obligatoire.
+            if field.required:
+                raise SkipModel(f"relation non-PK obligatoire : {name}")
+            continue
+        if isinstance(field, drf.BaseSerializer):
+            if field.required:
+                raise SkipModel(f"sérialiseur imbriqué obligatoire : {name}")
+            continue
+        if not field.required:
+            continue
+        payload[name] = _synthetic_serializer_value(field, name)
+
+    if not etrangeres:
+        raise SkipModel("aucune relation company-scopée inscriptible")
+    return payload, etrangeres
+
+
+def detail_get_actions(view_class, limit=3) -> list[str]:
+    """``url_path`` des ``@action(detail=True)`` acceptant GET (≤ ``limit``).
+
+    Bornée volontairement : le balai tourne sur des centaines de viewsets, on
+    veut une COUVERTURE DE BASE de la surface @action, pas un test exhaustif
+    qui multiplierait par dix la durée de la suite.
+    """
+    try:
+        extra = view_class.get_extra_actions()
+    except Exception:  # noqa: BLE001 — vue exotique : aucune action exercée
+        return []
+    chemins = []
+    for action in extra:
+        if not getattr(action, "detail", False):
+            continue
+        mapping = getattr(action, "mapping", None) or {}
+        try:
+            methodes = set(mapping)
+        except TypeError:
+            continue
+        if "get" not in methodes:
+            continue
+        url_path = getattr(action, "url_path", None)
+        if not url_path or "<" in url_path or "(" in url_path:
+            continue  # action paramétrée : pas d'URL synthétisable
+        chemins.append(url_path)
+        if len(chemins) >= limit:
+            break
+    return chemins
 
 
 # ── NTPLT8 — Scan d'ÉTANCHÉITÉ des DONNÉES vivantes (DRY-RUN mensuel) ────────

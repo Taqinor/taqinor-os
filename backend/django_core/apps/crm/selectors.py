@@ -1958,7 +1958,7 @@ def ma_file_commercial_items(company, user, today=None):
     return items
 
 
-def lead_chatter_envelope(lead):
+def lead_chatter_envelope(lead, user=None):
     """ARC9 — timeline chatter du lead dans l'ENVELOPPE UNIFORME.
 
     Étape 1 (additive) de la convergence des chatters historiques : projette
@@ -1967,20 +1967,36 @@ def lead_chatter_envelope(lead):
     lecture pour le frontend, quel que soit le modèle source). Lecture seule —
     AUCUNE table modifiée. Le queryset est déjà borné par le lead (lui-même
     borné société par l'appelant).
+
+    CRX19 — ``user`` optionnel : quand il est fourni, ``old_value``/
+    ``new_value`` d'une entrée portant sur une PII du lead sont masqués par la
+    MÊME règle que le sérialiseur d'activité (source unique
+    ``serializers.masquer_valeurs_chatter``) — sinon cette troisième surface
+    resservait en clair ce que les deux autres masquent. ``user=None`` (appel
+    interne, ex. ``records.services`` qui ne lit que ``created_at``) laisse le
+    rendu HISTORIQUE strictement inchangé. TOUTE surface HTTP qui exposera
+    cette enveloppe DOIT passer l'utilisateur de la requête.
     """
+    from .serializers import masquer_valeurs_chatter
+
     rows = lead.activites.select_related('user').all()
-    return [{
-        'id': a.id,
-        'kind': a.kind,
-        'field': a.field or '',
-        'field_label': a.field_label or '',
-        'old_value': a.old_value or '',
-        'new_value': a.new_value or '',
-        'body': a.body or '',
-        'user_username': a.user.username if a.user_id else None,
-        'created_at': a.created_at,
-        'source': 'crm.leadactivity',
-    } for a in rows]
+    sortie = []
+    for a in rows:
+        old_value, new_value = masquer_valeurs_chatter(
+            a.field or '', a.old_value or '', a.new_value or '', user)
+        sortie.append({
+            'id': a.id,
+            'kind': a.kind,
+            'field': a.field or '',
+            'field_label': a.field_label or '',
+            'old_value': old_value,
+            'new_value': new_value,
+            'body': a.body or '',
+            'user_username': a.user.username if a.user_id else None,
+            'created_at': a.created_at,
+            'source': 'crm.leadactivity',
+        })
+    return sortie
 
 
 # ── ADSENG31 — Réconciliation Meta-vs-ERP : lignes de lead par mécanisme ──────

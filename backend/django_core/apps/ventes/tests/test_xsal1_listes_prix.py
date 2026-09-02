@@ -130,3 +130,44 @@ class TestListePrixViewSetTenantIsolation(TestCase):
             LignePrixListe.objects.filter(
                 liste=self.liste, produit=produit,
                 prix_unitaire=Decimal('420.00')).exists())
+
+    # ── CRX18 — le produit d'une ligne de liste de prix est scopé société ────
+
+    def test_lignes_refuse_un_produit_d_une_autre_societe(self):
+        """``produit_id`` était posé tel quel : un id d'une AUTRE société
+        créait la ligne ET la réponse renvoyait son ``produit_nom`` — une fuite
+        en un seul appel. 404, exactement comme un id inexistant."""
+        autre_company, _ = another_tenant()
+        produit_voisin = ProduitFactory(
+            company=autre_company, nom='Onduleur du voisin',
+            prix_vente=Decimal('900'))
+        api = self._api_for(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
+            {'produit': produit_voisin.id, 'prix_unitaire': '420.00'})
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+        self.assertNotIn('Onduleur du voisin', resp.content.decode())
+        self.assertFalse(
+            LignePrixListe.objects.filter(
+                liste=self.liste, produit=produit_voisin).exists())
+
+    def test_lignes_produit_inexistant_repond_comme_un_produit_voisin(self):
+        """Même code ET même message qu'un produit d'une autre société :
+        aucun oracle d'existence inter-société."""
+        autre_company, _ = another_tenant()
+        produit_voisin = ProduitFactory(
+            company=autre_company, prix_vente=Decimal('900'))
+        api = self._api_for(self.admin)
+        url = f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/'
+        voisin = api.post(
+            url, {'produit': produit_voisin.id, 'prix_unitaire': '1'})
+        absent = api.post(url, {'produit': 999_999_999, 'prix_unitaire': '1'})
+        self.assertEqual(voisin.status_code, absent.status_code)
+        self.assertEqual(voisin.data, absent.data)
+
+    def test_lignes_produit_non_numerique_ne_leve_pas_500(self):
+        api = self._api_for(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
+            {'produit': 'abc', 'prix_unitaire': '1'})
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
