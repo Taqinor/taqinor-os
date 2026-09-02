@@ -2348,6 +2348,75 @@ class ResultatAOSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
+# ── AUD142 — Validation TENANT des FK cross-app des ressources portail ─────
+#
+# Les cinq ressources portail désignent leurs cibles par un simple
+# ``IntegerField(min_value=0)`` : aucun ``validate_*``, aucun queryset borné.
+# Les ``perform_create`` correspondants ne posaient que
+# ``company=request.user.company`` — SEUL ``ComptePortailClientViewSet``
+# vérifiait l'appartenance. Et les FK portent ``db_constraint=False`` : la base
+# ne vérifie ni l'existence ni le tenant. Un Responsable de la société A
+# pouvait donc créer une ligne de paiement portail pointant sur la facture
+# 4711 de la société B, et le client de A voyait apparaître le montant d'un
+# tiers.
+#
+# Chaque id est désormais résolu par le SELECTOR de l'app cible, borné à la
+# société de l'appelant (jamais un import de ses ``models`` — frontière
+# cross-app CLAUDE.md), exactement comme le fait déjà
+# ``ComptePortailClientViewSet.perform_create``.
+
+def _valider_id_cross_app(serializer, valeur, resolveur, libelle):
+    """Résout ``valeur`` dans la société de l'appelant, ou lève une 400 FR.
+
+    ``None``/vide/0 traversent (champs optionnels). Hors contexte API (aucune
+    ``request`` : usage programmatique interne), on ne bloque pas — la porte
+    réellement exposée est le ViewSet, et un service interne a déjà résolu ses
+    objets.
+    """
+    if valeur in (None, '', 0):
+        return valeur
+    request = serializer.context.get('request')
+    if request is None:
+        return valeur
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is None or resolveur(company, valeur) is None:
+        raise serializers.ValidationError(
+            f'{libelle} inconnu(e) pour cette société.')
+    return valeur
+
+
+def _resoudre_client(company, client_id):
+    from apps.crm.selectors import get_company_client
+    return get_company_client(company, client_id)
+
+
+def _resoudre_lead(company, lead_id):
+    from apps.crm.selectors import get_company_lead
+    return get_company_lead(company, lead_id)
+
+
+def _resoudre_facture(company, facture_id):
+    from apps.ventes.selectors import get_facture_scoped
+    return get_facture_scoped(company, facture_id)
+
+
+def _resoudre_devis(company, devis_id):
+    # ``apps.ventes.selectors`` n'expose pas (encore) de résolveur de devis
+    # scopé société : on réutilise son point d'entrée par pk et on borne ici,
+    # plutôt que d'ajouter une fonction dans une app qui ne nous appartient
+    # pas.
+    from apps.ventes.selectors import get_devis_by_pk
+    devis = get_devis_by_pk(devis_id)
+    if devis is None:
+        return None
+    return devis if devis.company_id == getattr(company, 'id', None) else None
+
+
+def _resoudre_chantier(company, chantier_id):
+    from apps.installations.selectors import installation_scoped
+    return installation_scoped(company, chantier_id)
+
+
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(serializers.ModelSerializer):
@@ -2398,6 +2467,10 @@ class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
             'signature_ip', 'accepte', 'signe_le', 'date_creation',
         ]
 
+    def validate_devis_id(self, value):
+        """AUD142 — le devis DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_devis, 'Devis')
+
 
 class PaiementFacturePortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
@@ -2412,6 +2485,11 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'reference', 'paye_le', 'date_creation',
         ]
+
+    def validate_facture_id(self, value):
+        """AUD142 — la facture DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_facture, 'Facture')
 
 
 class DocumentClientPortailSerializer(serializers.ModelSerializer):
@@ -2429,6 +2507,14 @@ class DocumentClientPortailSerializer(serializers.ModelSerializer):
         # au ``save()``, jamais lu du corps de requête).
         read_only_fields = ['document_ged', 'traite', 'date_depot']
 
+    def validate_client_id(self, value):
+        """AUD142 — le client DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+
+    def validate_lead_id(self, value):
+        """AUD142 — le lead DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_lead, 'Lead')
+
 
 class JalonChantierPortailSerializer(serializers.ModelSerializer):
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
@@ -2441,6 +2527,11 @@ class JalonChantierPortailSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_chantier_id(self, value):
+        """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_chantier, 'Chantier')
 
 
 class DemandeTicketPortailSerializer(serializers.ModelSerializer):
@@ -2457,6 +2548,15 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
             'statut', 'ticket_id', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_creation']
+
+    def validate_client_id(self, value):
+        """AUD142 — le client DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+
+    def validate_chantier_id(self, value):
+        """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
+        return _valider_id_cross_app(
+            self, value, _resoudre_chantier, 'Chantier')
 
 
 class PartenaireSerializer(serializers.ModelSerializer):

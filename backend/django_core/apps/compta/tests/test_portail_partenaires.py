@@ -17,6 +17,7 @@ Couvrent, par tâche (tous scopés société, ``company`` jamais lue du corps) :
 * FG241 Moteur d'upsell / cross-sell.
 * FG244 Abonnements de monitoring (revenu récurrent).
 """
+import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -53,6 +54,26 @@ def auth(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
     return api
+
+
+# AUD142 — les FK cross-app des ressources portail sont résolues dans la
+# société de l'appelant : les tests de création posent donc de VRAIS objets de
+# cette société (un id inexistant est désormais refusé en 400).
+
+_aud142_seq = itertools.count(1)
+
+
+def make_crm_client(company, nom='Client portail'):
+    from apps.crm.models import Client as CrmClient
+    n = next(_aud142_seq)
+    return CrmClient.objects.create(
+        company=company, nom=nom, prenom=f'P{n}',
+        email=f'portail-{company.id}-{n}@example.invalid')
+
+
+def make_chantier(company, reference):
+    from apps.installations.models import Installation
+    return Installation.objects.create(company=company, reference=reference)
 
 
 # ── FG229 — Acceptation / e-signature de devis (portail) ───────────────────
@@ -183,11 +204,15 @@ class DocumentClientPortailTests(TestCase):
     def setUp(self):
         self.co = make_company('fg231', 'FG231')
         self.user = make_user(self.co, 'fg231-user')
+        # AUD142 — les FK cross-app sont désormais résolues dans la société de
+        # l'appelant : un id inexistant est refusé (400). Le test de « company
+        # posée serveur » utilise donc un client RÉEL de cette société.
+        self.client_crm = make_crm_client(self.co, 'FG231 Client')
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
         resp = api.post('/api/django/portail/documents-client-portail/', {
-            'client_id': 43001, 'type_document': 'facture_onee',
+            'client_id': self.client_crm.id, 'type_document': 'facture_onee',
             'libelle': 'Facture ONEE janvier',
             'company': 77777,  # doit être ignoré
         }, format='json')
@@ -221,11 +246,14 @@ class JalonChantierPortailTests(TestCase):
     def setUp(self):
         self.co = make_company('fg232', 'FG232')
         self.user = make_user(self.co, 'fg232-user')
+        # AUD142 — voir DocumentClientPortailTests : chantier RÉEL de la société.
+        self.chantier = make_chantier(self.co, 'CHT-FG232-01')
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
         resp = api.post('/api/django/portail/jalons-chantier-portail/', {
-            'chantier_id': 44001, 'libelle': 'Installation', 'ordre': 3,
+            'chantier_id': self.chantier.id, 'libelle': 'Installation',
+            'ordre': 3,
             'company': 66666,  # doit être ignoré
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -272,11 +300,13 @@ class DemandeTicketPortailTests(TestCase):
     def setUp(self):
         self.co = make_company('fg233', 'FG233')
         self.user = make_user(self.co, 'fg233-user')
+        # AUD142 — voir DocumentClientPortailTests : client RÉEL de la société.
+        self.client_crm = make_crm_client(self.co, 'FG233 Client')
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
         resp = api.post('/api/django/portail/demandes-ticket-portail/', {
-            'client_id': 45001, 'sujet': 'Onduleur en défaut',
+            'client_id': self.client_crm.id, 'sujet': 'Onduleur en défaut',
             'description': 'Voyant rouge depuis hier',
             'company': 55555,  # doit être ignoré
         }, format='json')
