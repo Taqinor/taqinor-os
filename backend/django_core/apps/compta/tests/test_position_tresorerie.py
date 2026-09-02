@@ -100,6 +100,34 @@ class PositionTresorerieSelectorTests(TestCase):
         self.assertEqual(len(pos['comptes']), 1)
         self.assertEqual(pos['total'], Decimal('1000'))
 
+    # ── AUD175 — doctrine mono-devise MAD exécutoire ────────────────────────
+
+    def test_aud175_devises_heterogenes_refusees(self):
+        """Un compte EUR + un compte MAD ne s'additionnent plus en silence.
+
+        Avant : 5 000 EUR + 100 000 MAD produisaient un « total » de 105 000
+        affiché comme solde consolidé du cockpit — ni des MAD, ni convertible.
+        """
+        CompteTresorerie.objects.create(
+            company=self.co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='Compte EUR', solde_initial=Decimal('5000'),
+            devise='EUR',
+            compte_comptable=services.get_compte(self.co, '5141'))
+        with self.assertRaises(selectors.DevisesHeterogenes):
+            selectors.position_tresorerie(self.co)
+        # Le refus se propage au prévisionnel et à la projection, qui partent
+        # tous deux de ``position['total']``.
+        with self.assertRaises(selectors.DevisesHeterogenes):
+            selectors.projection_tresorerie(self.co)
+        with self.assertRaises(selectors.DevisesHeterogenes):
+            selectors.previsionnel_tresorerie(self.co)
+
+    def test_aud175_societe_100_pct_mad_inchangee(self):
+        pos = selectors.position_tresorerie(self.co)
+        self.assertEqual(pos['total'], Decimal('1200'))
+        self.assertEqual(
+            {c['devise'] for c in pos['comptes']}, {'MAD'})
+
     def test_projection_nette_ar_ap_tva(self):
         # AR : facture client 1200 TTC (débit 3421 / crédit 7121 1000 + 4455 200).
         _ecriture(self.co, 'VTE', [
@@ -177,3 +205,22 @@ class PositionTresorerieIsolationTests(TestCase):
         resp = auth(normal).get(
             '/api/django/compta/etats/position-tresorerie/')
         self.assertEqual(resp.status_code, 403)
+
+    def test_aud175_creation_compte_devise_non_mad_refusee(self):
+        """AUD175 — le champ `devise` n'est plus librement éditable par l'API."""
+        api = auth(self.user_a)
+        compte = services.get_compte(self.co_a, '5141')
+        resp = api.post(
+            '/api/django/compta/tresorerie/',
+            {'type_compte': 'banque', 'libelle': 'Compte EUR',
+             'devise': 'EUR', 'compte_comptable': compte.id},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('devise', resp.data)
+        # Le même POST en MAD reste accepté.
+        resp_mad = api.post(
+            '/api/django/compta/tresorerie/',
+            {'type_compte': 'banque', 'libelle': 'Compte MAD',
+             'devise': 'MAD', 'compte_comptable': compte.id},
+            format='json')
+        self.assertEqual(resp_mad.status_code, 201, resp_mad.data)

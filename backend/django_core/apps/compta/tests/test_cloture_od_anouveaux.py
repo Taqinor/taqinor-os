@@ -241,6 +241,19 @@ class ANouveauxTests(TestCase):
                 {'compte': self.capital, 'debit': Decimal('0'),
                  'credit': Decimal('1000')},
             ])
+        # AUD162 — la fixture historique n'avait AUCUN mouvement de gestion :
+        # le résultat valait 0, l'écriture d'à-nouveaux tombait toujours juste
+        # par accident et l'assertion « 7121 n'est pas reporté » était
+        # trivialement vraie. Une vente réelle rend le résultat non nul.
+        services.creer_ecriture(
+            self.co, self.journal, date(2025, 9, 1),
+            "Vente de l'exercice",
+            [
+                {'compte': self.clients, 'debit': Decimal('1500'),
+                 'credit': Decimal('0')},
+                {'compte': self.ventes, 'debit': Decimal('0'),
+                 'credit': Decimal('1500')},
+            ])
         self.ex2025 = services.creer_exercice(
             self.co, date(2025, 1, 1), date(2025, 12, 31), libelle='2025')
         self.ex2026 = services.creer_exercice(
@@ -258,8 +271,35 @@ class ANouveauxTests(TestCase):
             ecr.lignes.get(compte__numero='5141').debit, Decimal('1000'))
         self.assertEqual(
             ecr.lignes.get(compte__numero='1111').credit, Decimal('1000'))
-        # Les comptes de résultat (7xxx) ne sont PAS reportés.
+        # Clients reportés au débit 1500 (contrepartie de la vente).
+        self.assertEqual(
+            ecr.lignes.get(compte__numero='3421').debit, Decimal('1500'))
+        # Les comptes de résultat (7xxx) ne sont PAS reportés ligne à ligne…
         self.assertFalse(ecr.lignes.filter(compte__numero='7121').exists())
+        # … ils sont SOLDÉS en une ligne de résultat sur 1191 (AUD162), ce qui
+        # est la seule raison pour laquelle l'écriture s'équilibre.
+        self.assertEqual(
+            ecr.lignes.get(compte__numero='1191').credit, Decimal('1500'))
+
+    def test_aud162_report_reussit_avec_un_resultat_non_nul(self):
+        """AUD162 — le report ne lève plus ValidationError sur un résultat ≠ 0."""
+        from apps.compta import selectors
+        services.cloturer_exercice(self.ex2025)
+        resultat = selectors.cpc(
+            self.co, date_debut=date(2025, 1, 1),
+            date_fin=date(2025, 12, 31))['resultat']
+        self.assertEqual(resultat, Decimal('1500'))
+        ecr = services.reporter_a_nouveaux(self.ex2025, self.ex2026)
+        self.assertIsNotNone(ecr)
+        self.assertTrue(ecr.est_equilibree)
+        total_debit = sum(
+            (li.debit for li in ecr.lignes.all()), Decimal('0'))
+        total_credit = sum(
+            (li.credit for li in ecr.lignes.all()), Decimal('0'))
+        self.assertEqual(total_debit, total_credit)
+        # La ligne de résultat vaut exactement le résultat de l'exercice.
+        self.assertEqual(
+            ecr.lignes.get(compte__numero='1191').credit, resultat)
 
     def test_report_idempotent(self):
         services.cloturer_exercice(self.ex2025)
@@ -373,10 +413,100 @@ class ClotureApiTests(_ApiBase):
         self.assertEqual(ecr.company, self.co)
         self.assertTrue(ecr.est_equilibree)
 
+    def test_aud168_od_api_refusee_en_periode_close(self):
+        """AUD168 — une date ISO en CHAÎNE ne contourne plus le verrou.
+
+        `date_verrouillee` renvoyait `False` avant toute requête sur une
+        chaîne : les DEUX gardes (creer_ecriture_od puis save()) tombaient sur
+        la même valeur non typée et l'écriture atterrissait en 201 dans un mois
+        clôturé.
+        """
+        periode = services.creer_periode(
+            self.co, date(2026, 3, 1), date(2026, 3, 31), libelle='Mars 2026')
+        services.cloturer_periode(periode)
+        dotations = services.get_compte(self.co, '6191')
+        amort = services.get_compte(self.co, '2832')
+        resp = self.api.post(
+            '/api/django/compta/exercices/ecriture-od/',
+            {
+                'date_ecriture': '2026-03-31',
+                'libelle': 'Trop tard',
+                'lignes': [
+                    {'compte': dotations.id, 'debit': '500', 'credit': '0'},
+                    {'compte': amort.id, 'debit': '0', 'credit': '500'},
+                ],
+            },
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), 0)
+
+    def test_aud168_od_api_date_illisible_refusee(self):
+        dotations = services.get_compte(self.co, '6191')
+        amort = services.get_compte(self.co, '2832')
+        resp = self.api.post(
+            '/api/django/compta/exercices/ecriture-od/',
+            {
+                'date_ecriture': 'pas-une-date',
+                'libelle': 'Illisible',
+                'lignes': [
+                    {'compte': dotations.id, 'debit': '10', 'credit': '0'},
+                    {'compte': amort.id, 'debit': '0', 'credit': '10'},
+                ],
+            },
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), 0)
+
+    def test_aud168_extourner_api_refuse_en_periode_close(self):
+        journal = Journal.objects.get(company=self.co, code='VTE')
+        banque = services.get_compte(self.co, '5141')
+        capital = services.get_compte(self.co, '1111')
+        ecriture = services.creer_ecriture(
+            self.co, journal, date(2026, 2, 10), "Apport",
+            [
+                {'compte': banque, 'debit': Decimal('300'),
+                 'credit': Decimal('0')},
+                {'compte': capital, 'debit': Decimal('0'),
+                 'credit': Decimal('300')},
+            ])
+        periode = services.creer_periode(
+            self.co, date(2026, 4, 1), date(2026, 4, 30), libelle='Avril 2026')
+        services.cloturer_periode(periode)
+        avant = EcritureComptable.objects.filter(company=self.co).count()
+        resp = self.api.post(
+            f'/api/django/compta/ecritures/{ecriture.id}/extourner/',
+            {'date_extourne': '2026-04-15'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), avant)
+
+    def test_aud168_provisions_fnp_fae_api_refusees_en_periode_close(self):
+        periode = services.creer_periode(
+            self.co, date(2026, 5, 1), date(2026, 5, 31), libelle='Mai 2026')
+        services.cloturer_periode(periode)
+        avant = EcritureComptable.objects.filter(company=self.co).count()
+        corps = {
+            'date_periode': '2026-05-31',
+            'date_extourne': '2026-06-01',
+            'items': [{'source_id': 1, 'reference': 'R-1',
+                       'montant_ht': '1000'}],
+        }
+        for url in ('generer-fnp', 'generer-fae'):
+            resp = self.api.post(
+                f'/api/django/compta/provisions-periode/{url}/',
+                corps, format='json')
+            self.assertEqual(resp.status_code, 400, (url, resp.data))
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), avant)
+
     def test_reporter_a_nouveaux_via_api(self):
         journal = Journal.objects.get(company=self.co, code='VTE')
         banque = services.get_compte(self.co, '5141')
         capital = services.get_compte(self.co, '1111')
+        clients = services.get_compte(self.co, '3421')
+        ventes = services.get_compte(self.co, '7121')
         services.creer_ecriture(
             self.co, journal, date(2025, 6, 1), "Apport",
             [
@@ -384,6 +514,15 @@ class ClotureApiTests(_ApiBase):
                  'credit': Decimal('0')},
                 {'compte': capital, 'debit': Decimal('0'),
                  'credit': Decimal('800')},
+            ])
+        # AUD162 — résultat non nul : le report doit passer par l'API aussi.
+        services.creer_ecriture(
+            self.co, journal, date(2025, 9, 1), "Vente",
+            [
+                {'compte': clients, 'debit': Decimal('600'),
+                 'credit': Decimal('0')},
+                {'compte': ventes, 'debit': Decimal('0'),
+                 'credit': Decimal('600')},
             ])
         ex1 = services.creer_exercice(
             self.co, date(2025, 1, 1), date(2025, 12, 31))

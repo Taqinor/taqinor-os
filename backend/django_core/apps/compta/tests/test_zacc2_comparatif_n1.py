@@ -173,6 +173,14 @@ class TestEndpointComparatif(_Base):
         self.assertNotIn('resultat_n1', resp_a.data)
 
     def test_bilan_endpoint_comparer_1(self):
+        from datetime import date
+
+        from apps.compta.models import ExerciceComptable
+
+        # AUD169 — l'API borne le résultat à l'exercice couvrant la date.
+        ExerciceComptable.objects.get_or_create(
+            company=self.company, date_debut=date(2026, 1, 1),
+            date_fin=date(2026, 12, 31), defaults={'libelle': '2026'})
         resp = self.api.get(
             '/api/django/compta/etats/bilan/?date_fin=2026-12-31&comparer=1')
         self.assertEqual(resp.status_code, 200)

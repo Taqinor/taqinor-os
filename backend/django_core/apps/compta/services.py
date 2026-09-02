@@ -298,6 +298,42 @@ def get_centre_cout(company, centre_cout_id):
 
 # ── FG108 / COMPTA7 — Fabrique d'écriture en partie double ─────────────────
 
+def valider_lignes_ecriture(lignes):
+    """AUD188 — garde de LIGNE sur le chemin de production des écritures.
+
+    ``creer_ecriture`` créait ses ``LigneEcriture`` en boucle sans jamais
+    appeler ``full_clean()``, et ne revalidait QUE l'écriture globale
+    (``ecriture.clean()`` = l'équilibre) : les règles de
+    ``LigneEcriture.clean()`` étaient du code MORT en production, et le
+    contrôle amont comparant des SOMMES, deux erreurs symétriques se
+    compensaient. Une écriture dont chaque ligne est simultanément débitée ET
+    créditée de son propre montant passait — gonflant les colonnes MOUVEMENTS
+    de la balance, le journal et le FEC déposé à la DGI.
+
+    Deux des trois règles du modèle sont posées ici (elles sont aussi devenues
+    des ``CheckConstraint`` en base) :
+
+    * une ligne ne peut être débitée ET créditée ;
+    * les montants sont positifs.
+
+    La troisième (« montant non nul ») n'est DÉLIBÉRÉMENT pas appliquée sur ce
+    chemin : une clé de répartition dont une ligne porte un coefficient de 0 %
+    produit légitimement une part nulle (``executer_allocation``), et la
+    refuser casserait un cas de production existant. Le constat le note.
+    """
+    for index, ligne in enumerate(lignes, start=1):
+        debit = Decimal(ligne.get('debit') or 0)
+        credit = Decimal(ligne.get('credit') or 0)
+        if debit > 0 and credit > 0:
+            raise ValidationError(
+                f"Ligne {index} : une ligne ne peut être débitée ET créditée "
+                f"simultanément (débit {debit}, crédit {credit}).")
+        if debit < 0 or credit < 0:
+            raise ValidationError(
+                f"Ligne {index} : les montants débit/crédit doivent être "
+                f"positifs (débit {debit}, crédit {credit}).")
+
+
 @transaction.atomic
 def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
                    reference='', source_type='', source_id=None,
@@ -318,6 +354,9 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
                        Decimal('0'))
     if not lignes:
         raise ValidationError("Une écriture doit comporter au moins une ligne.")
+    # AUD188 — garde de LIGNE avant la garde de SOMME : deux erreurs
+    # symétriques se compensaient dans le total et passaient inaperçues.
+    valider_lignes_ecriture(lignes)
     if debit_total != credit_total:
         raise ValidationError(
             "L'écriture comptable doit être équilibrée : "
@@ -623,6 +662,103 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
     )
 
 
+# ── FG112 / COMPTA22 / YLEDG6 — Lettrage / délettrage ──────────────────────
+# AUD167 — ces deux fonctions vivaient dans ``selectors.py`` : ce sont des
+# ÉCRITURES (``queryset.update``), et cette convention brisée est exactement ce
+# qui a laissé passer le trou du verrou de période. Un UPDATE SQL direct ne
+# passe jamais par ``LigneEcriture.save()``, seule implémentation du verrou
+# FG115 côté ligne : le garde est donc posé ICI, une fois, pour les deux sens.
+
+
+def _refuser_si_periode_verrouillee(qs, action):
+    """Refuse une opération de lettrage touchant une période verrouillée.
+
+    ``qs`` : queryset de ``LigneEcriture``. Lève ``ValidationError`` dès qu'une
+    seule ligne du lot tombe dans une période close — sans quoi un délettrage
+    modifie rétroactivement la balance âgée d'un exercice déjà déposé, sans
+    erreur ni trace (le lettrage n'entre pas dans ``_empreinte_ecriture``).
+    """
+    for company_id, date_ecriture in qs.values_list(
+            'company_id', 'ecriture__date_ecriture').distinct():
+        if company_id is None or date_ecriture is None:
+            continue
+        if PeriodeComptable.date_verrouillee(company_id, date_ecriture):
+            raise ValidationError(
+                f"Période comptable clôturée : impossible de {action} une "
+                f"ligne datée du {date_ecriture}.")
+
+
+@transaction.atomic
+def lettrer(company, ligne_ids, code, *, forcer=False):
+    """Pose un code de lettrage sur un lot de lignes SSI il est appariable.
+
+    Un lettrage APPARIE des lignes d'un même compte de tiers : l'équilibre seul
+    ne suffit pas. AUD166 — quatre conditions, toutes vérifiées avant l'update :
+
+    1. un SEUL compte pour tout le lot (sans quoi une créance client 3421 et
+       une dette fournisseur 4411 de même montant se « lettrent » ensemble et
+       disparaissent l'une du recouvrement, l'autre du prévisionnel) ;
+    2. ce compte est lettrable et de tiers ;
+    3. un SEUL couple ``(tiers_type, tiers_id)`` non vide ;
+    4. aucune ligne ne porte DÉJÀ un code (relettrer écraserait silencieusement
+       le lot d'origine et laisserait sa facture seule, apparemment soldée) —
+       ``forcer=True`` lève cette seule condition, pour un relettrage assumé.
+
+    AUD167 — plus le verrou de période (FG115), que l'``update`` SQL contournait.
+
+    Renvoie le nombre de lignes lettrées, ou lève ``ValueError`` (appariement
+    impossible) / ``ValidationError`` (période close).
+    """
+    qs = LigneEcriture.objects.filter(company=company, id__in=ligne_ids)
+    lignes = list(qs.select_related('compte'))
+    if not lignes:
+        raise ValueError("Lettrage impossible : aucune ligne à lettrer.")
+    comptes = {ligne.compte_id for ligne in lignes}
+    if len(comptes) > 1:
+        numeros = sorted({ligne.compte.numero for ligne in lignes})
+        raise ValueError(
+            "Lettrage impossible : toutes les lignes doivent porter le MÊME "
+            f"compte (reçu : {', '.join(numeros)}).")
+    compte = lignes[0].compte
+    if not compte.lettrable or not compte.est_tiers:
+        raise ValueError(
+            f"Lettrage impossible : le compte {compte.numero} n'est pas un "
+            "compte de tiers lettrable.")
+    tiers = {
+        (ligne.tiers_type, ligne.tiers_id) for ligne in lignes
+        if ligne.tiers_type or ligne.tiers_id
+    }
+    if len(tiers) > 1:
+        raise ValueError(
+            "Lettrage impossible : les lignes ne concernent pas le même tiers.")
+    if not forcer:
+        deja = sorted({ligne.lettrage for ligne in lignes if ligne.lettrage})
+        if deja:
+            raise ValueError(
+                "Lettrage impossible : des lignes portent déjà le lettrage "
+                f"{', '.join(deja)} — délettrez-les d'abord.")
+    debit = sum((ligne.debit for ligne in lignes), Decimal('0'))
+    credit = sum((ligne.credit for ligne in lignes), Decimal('0'))
+    if debit != credit:
+        raise ValueError(
+            f"Lettrage impossible : Σ débit ({debit}) ≠ Σ crédit ({credit}).")
+    _refuser_si_periode_verrouillee(qs, 'lettrer')
+    return qs.update(lettrage=code)
+
+
+@transaction.atomic
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — ne touche jamais aux montants ni aux écritures elles-mêmes (COMPTA11 :
+    jamais de suppression/altération d'une écriture validée), et AUD167 rend
+    cette promesse exécutoire en refusant toute ligne en période close."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    _refuser_si_periode_verrouillee(qs, 'délettrer')
+    return qs.update(lettrage='')
+
+
 @transaction.atomic
 def auto_lettrer_facture_soldee(facture):
     """YLEDG6 — lettre automatiquement le compte clients (3421) d'une facture
@@ -666,10 +802,13 @@ def auto_lettrer_facture_soldee(facture):
     from . import selectors
     code = selectors.prochain_code_lettrage(company, compte_clients)
     try:
-        return selectors.lettrer(company, lignes, code)
-    except ValueError:
-        # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
-        # le lettrage manuel s'en charger, jamais d'exception ici.
+        return lettrer(company, lignes, code)
+    except (ValueError, ValidationError):
+        # Lot déséquilibré (ex. génération partielle désactivée) ou ligne en
+        # période close (AUD167 : le verrou refuse désormais le lettrage) : on
+        # laisse le lettrage manuel s'en charger, jamais d'exception ici — ce
+        # chemin est appelé DEPUIS un receiver d'encaissement, qu'il ne doit
+        # sous aucun prétexte casser.
         return None
 
 
@@ -1524,6 +1663,8 @@ def rouvrir_exercice(exercice):
 # Comptes de bilan : classes 1 à 5 (le résultat des classes 6/7 est soldé via
 # le compte de résultat — non reporté tel quel en à-nouveau).
 _CLASSES_BILAN = (1, 2, 3, 4, 5)
+# CGNC — résultat net en instance d'affectation (plan semé, services.py ~:108).
+_COMPTE_RESULTAT_AN = '1191'
 
 
 @transaction.atomic
@@ -1536,9 +1677,13 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
     pas deux fois (``ExerciceComptable.an_reporte``). Renvoie l'écriture créée
     (ou None s'il n'y a aucun solde à reporter).
 
-    Le résultat (classes 6/7) n'est PAS reporté ligne à ligne ; il est porté au
-    bilan via le CPC et s'affecte ensuite (1191) — hors périmètre de ce report
-    automatique d'à-nouveaux de bilan.
+    Le résultat (classes 6/7) n'est PAS reporté ligne à ligne : il est SOLDÉ en
+    UNE ligne sur le compte de résultat en instance d'affectation (1191).
+    AUD162 — sans cette ligne, l'écriture d'à-nouveaux est déséquilibrée de
+    exactement le résultat de l'exercice (sur un grand livre équilibré,
+    Σsolde(1..5) = −Σsolde(6,7) = le résultat) et ``creer_ecriture`` la refusait
+    en ``ValidationError`` dès que le résultat était non nul — c'est-à-dire pour
+    toute société ayant réellement vendu quelque chose.
     """
     from . import selectors  # import local : évite tout cycle au chargement.
 
@@ -1559,12 +1704,14 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
 
     # Soldes des comptes de bilan à la date de fin de l'exercice clos.
     lignes = []
+    solde_bilan = Decimal('0')
     for compte in CompteComptable.objects.filter(
             company=company, classe__in=_CLASSES_BILAN).order_by('numero'):
         solde = selectors.solde_compte(
             company, compte, date_fin=exercice_clos.date_fin)
         if solde == Decimal('0'):
             continue
+        solde_bilan += solde
         if solde > 0:
             lignes.append({'compte': compte, 'debit': solde,
                            'credit': Decimal('0'),
@@ -1572,6 +1719,20 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
         else:
             lignes.append({'compte': compte, 'debit': Decimal('0'),
                            'credit': -solde, 'libelle': "À-nouveau"})
+
+    # AUD162 — ligne de résultat : elle solde les classes 6/7 sur le compte de
+    # résultat en instance d'affectation (1191) et rend l'écriture équilibrée
+    # PAR CONSTRUCTION (son solde vaut exactement −Σsolde(1..5)).
+    if lignes and solde_bilan != Decimal('0'):
+        compte_resultat = _assurer_compte(company, _COMPTE_RESULTAT_AN)
+        if solde_bilan > 0:
+            lignes.append({'compte': compte_resultat, 'debit': Decimal('0'),
+                           'credit': solde_bilan,
+                           'libelle': "Résultat de l'exercice"})
+        else:
+            lignes.append({'compte': compte_resultat, 'debit': -solde_bilan,
+                           'credit': Decimal('0'),
+                           'libelle': "Résultat de l'exercice"})
 
     exercice_nouveau.an_reporte = True
     exercice_nouveau.save(update_fields=['an_reporte'])
@@ -1883,32 +2044,59 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
     plan.save()
 
     coefficient = plan.coefficient_degressif or Decimal('1')
+    annee_debut = plan.date_debut.year
+    # AUD165 — cumul RÉEL vs cumul théorique. Les dotations déjà POSTÉES au
+    # grand livre sont intangibles : le calendrier se recalcule donc sur la base
+    # RESTANTE (base − Σ postées) et sur les SEULES années non postées. Sans
+    # cela, la garantie « Σ annuités = base » de ``_calcul_annuites`` est rompue
+    # dès qu'une annuité est ignorée : une part de l'immobilisation n'est jamais
+    # amortie (raccourcissement) ou la base est dépassée (allongement).
+    postees = {
+        dot.annee: dot.montant
+        for dot in DotationAmortissement.objects.filter(plan=plan, posted=True)
+    }
+    deja_amorti = sum(postees.values(), Decimal('0'))
+    annees_cibles = [
+        annee_debut + i for i in range(plan.duree_annees)
+        if (annee_debut + i) not in postees
+    ]
+    base_restante = plan.base_amortissable - deja_amorti
     # XACC32 — prorata temporis LINÉAIRE uniquement : mois restants depuis la
     # mise en service (défaut = date d'acquisition, comportement inchangé si
     # la mise en service n'est pas renseignée). Le dégressif garde sa règle
-    # actuelle (aucun prorata).
+    # actuelle (aucun prorata). Le prorata ne s'applique qu'à la PREMIÈRE année
+    # du plan, et seulement si elle reste à doter.
     mois_premiere_annee = 12
-    if plan.mode == PlanAmortissement.Mode.LINEAIRE:
+    if (plan.mode == PlanAmortissement.Mode.LINEAIRE
+            and annee_debut in annees_cibles):
         mise_en_service = immobilisation.date_mise_en_service_effective
         if mise_en_service and mise_en_service.year == plan.date_debut.year:
             mois_premiere_annee = 13 - mise_en_service.month
-    annuites = _calcul_annuites(
-        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient,
-        mois_premiere_annee=mois_premiere_annee)
+    annuites = []
+    if base_restante > 0 and annees_cibles:
+        annuites = _calcul_annuites(
+            base_restante, len(annees_cibles), plan.mode, coefficient,
+            mois_premiere_annee=mois_premiere_annee)
 
-    annee_debut = plan.date_debut.year
-    cumul = Decimal('0')
+    # Montants retenus, année par année : les postés à leur valeur RÉELLE, les
+    # autres aux nouvelles annuités — c'est cette suite qui alimente le cumul
+    # stocké et la valeur nette.
+    montants = dict(postees)
     annees_calculees = set()
-    for idx, montant in enumerate(annuites):
-        annee = annee_debut + idx
+    for annee, montant in zip(annees_cibles, annuites):
+        montants[annee] = montant
         annees_calculees.add(annee)
+    cumul = Decimal('0')
+    for annee in sorted(montants):
+        montant = montants[annee]
         cumul += montant
+        if annee not in annees_calculees:
+            # Dotation déjà postée : elle compte dans le cumul, on n'y touche
+            # pas (immutabilité comptable).
+            continue
         valeur_nette = _arrondi(plan.base_amortissable - cumul)
         dotation = DotationAmortissement.objects.filter(
             plan=plan, annee=annee).first()
-        if dotation and dotation.posted:
-            # On NE TOUCHE PAS une dotation déjà postée (immutabilité comptable).
-            continue
         from datetime import date as _date
         date_dotation = _date(annee, 12, 31)
         if dotation is None:
@@ -2485,6 +2673,22 @@ def pointer_ligne_releve(ligne_releve, ligne_gl_ids):
             raise ValidationError(
                 "Une ligne pointée doit appartenir au compte de trésorerie "
                 "du rapprochement.")
+    # AUD174 — une ligne GL déjà pointée par une AUTRE ligne de relevé est
+    # refusée AVANT l'écriture : sans cela la même ligne bancaire se déclarait
+    # concordante dans deux rapprochements, et l'IntegrityError de la nouvelle
+    # contrainte serait remontée nue en 500 au lieu d'un 400 lisible.
+    conflits = (
+        PointageReleve.objects
+        .filter(ligne_gl_id__in=ids)
+        .exclude(ligne_releve=ligne_releve)
+        .select_related('ligne_gl__compte')
+        .order_by('ligne_gl_id'))
+    conflit = conflits.first()
+    if conflit is not None:
+        raise ValidationError(
+            f"La ligne du grand livre {conflit.ligne_gl_id} est déjà pointée "
+            f"par la ligne de relevé {conflit.ligne_releve_id} : dépointez-la "
+            "avant de la rapprocher ici.")
     # Remplace les pointages existants par le nouveau lot.
     PointageReleve.objects.filter(ligne_releve=ligne_releve).delete()
     for ligne in lignes_gl:
@@ -2541,6 +2745,7 @@ def accepter_suggestions_rapprochement(rapprochement):
 
     suggestions = selectors.suggestions_rapprochement(rapprochement)
     pointees, ignorees = [], []
+    gl_consommees = set()
     for sugg in suggestions:
         if sugg['ambigue']:
             ignorees.append({
@@ -2553,9 +2758,19 @@ def accepter_suggestions_rapprochement(rapprochement):
                 'raison': 'aucun candidat'})
             continue
         meilleur = sugg['candidats'][0]
+        # AUD174 — les suggestions sont calculées EN UNE FOIS : deux lignes de
+        # relevé peuvent proposer la MÊME ligne GL. On ne la pointe qu'une
+        # fois et on dit pourquoi, plutôt que de laisser la garde anti
+        # double-pointage casser toute la boucle.
+        if meilleur['ligne_gl_id'] in gl_consommees:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'ligne du grand livre déjà pointée dans ce lot'})
+            continue
         ligne_releve = LigneReleve.objects.get(
             company=rapprochement.company, id=sugg['ligne_releve_id'])
         pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
+        gl_consommees.add(meilleur['ligne_gl_id'])
         pointees.append(sugg['ligne_releve_id'])
     return {'pointees': pointees, 'ignorees': ignorees}
 
@@ -2717,11 +2932,25 @@ def appliquer_modele_rapprochement(ligne_releve, modele=None):
     contrepartie et crédite la banque, une entrée l'inverse), ventile la TVA si
     ``modele.taux_tva`` est posé, puis POINTE la ligne de relevé sur la ligne
     banque de l'écriture créée. Respecte le verrou de période (``creer_
-    ecriture``). Idempotent : rejouer sur la même ligne de relevé déjà pointée
-    ne recrée rien (renvoie l'écriture existante liée à son pointage).
+    ecriture``). Idempotent : rejouer sur la même ligne de relevé ne recrée
+    rien (renvoie l'écriture déjà produite pour elle).
+
+    AUD176 — l'idempotence ne peut PAS reposer sur ``statut == RAPPROCHEE`` :
+    ``pointer_ligne_releve`` ne pose ce statut que si le montant de la ligne GL
+    créée ÉGALE exactement celui du relevé, c'est-à-dire jamais dans le cas
+    d'usage nominal de ``montant_fixe`` (un forfait de frais bancaires connu,
+    par définition différent du montant réellement débité). La garde ne se
+    déclenchait donc jamais là où elle sert, et un double-clic ou un retry
+    réseau rejouait l'action pour finir en erreur technique au lieu d'un no-op.
+    Elle repose désormais sur l'écriture ``source_type='modele_rapprochement',
+    source_id=<ligne de relevé>``, indépendamment du statut.
     """
     company = ligne_releve.company
     rapprochement = ligne_releve.rapprochement
+    deja_produite = _ecriture_existante(
+        company, 'modele_rapprochement', ligne_releve.id)
+    if deja_produite is not None:
+        return deja_produite
     if ligne_releve.statut == LigneReleve.Statut.RAPPROCHEE:
         pointage = PointageReleve.objects.filter(
             ligne_releve=ligne_releve).select_related(
@@ -4008,6 +4237,39 @@ def figer_payment_run(run):
     return run
 
 
+def _refuser_lignes_sur_dette_disparue(run, lignes):
+    """AUD172 — refuse le posting d'une ligne qui dépasse la dette RESTANTE.
+
+    Le bug est atteignable même avec UNE seule campagne : il suffit que la
+    facture soit soldée par un autre canal entre la proposition et le posting.
+    Lève ``ValidationError`` explicite — jamais une seconde écriture GL ni un
+    second ``PaiementFournisseur`` en silence.
+    """
+    from apps.stock import selectors as stock_selectors
+
+    facture_ids = {
+        ligne.facture_fournisseur_id for ligne in lignes
+        if ligne.facture_fournisseur_id
+    }
+    if not facture_ids:
+        return
+    soldes = {
+        item['facture_id']: Decimal(str(item['montant'] or 0))
+        for item in stock_selectors.factures_fournisseur_ouvertes(run.company)
+    }
+    for ligne in lignes:
+        if not ligne.facture_fournisseur_id:
+            continue
+        reste = soldes.get(ligne.facture_fournisseur_id, Decimal('0'))
+        montant = Decimal(ligne.montant or 0)
+        if montant > reste:
+            raise ValidationError(
+                f"La facture fournisseur {ligne.reference or ligne.facture_fournisseur_id} "
+                f"ne doit plus que {reste} : la ligne de {montant} de cette "
+                "campagne est périmée (dette réglée entre-temps). Reprenez la "
+                "proposition avant de poster.")
+
+
 @transaction.atomic
 def poster_payment_run(run, *, user=None):
     """Poste une campagne de règlement au grand livre EN LOT (FG133).
@@ -4045,6 +4307,12 @@ def poster_payment_run(run, *, user=None):
         raise ValidationError(
             "Double validation requise : deux approbateurs DISTINCTS et "
             "habilités doivent approuver cette campagne avant de la poster.")
+    # AUD172 — le montant de chaque ligne est FIGÉ à la proposition et n'était
+    # jamais reconfronté à la dette réelle : une facture soldée entre-temps
+    # (par une autre campagne ou par un autre canal) se repayait intégralement.
+    # On relit le solde dû via le sélecteur de stock (jamais ses modèles) : une
+    # facture absente de la liste des ouvertes a un solde de zéro.
+    _refuser_lignes_sur_dette_disparue(run, lignes)
     journal = _journal(company, Journal.Type.BANQUE)
     if journal is None:
         seed_journaux(company)
@@ -4285,21 +4553,47 @@ def _chatter_payment_run(run, user, action):
         detail=f'statut={run.statut} total={run.total}')
 
 
+# AUD172 — statuts d'une campagne encore OUVERTE : ses lignes réservent déjà
+# les factures qu'elles référencent, une autre campagne ne doit pas les
+# reproposer (sinon la même dette part deux fois, deux écritures GL et deux
+# fois le même RIB dans le fichier de virement).
+_STATUTS_PAYMENT_RUN_OUVERT = (
+    PaymentRun.Statut.BROUILLON,
+    PaymentRun.Statut.PROPOSEE,
+    PaymentRun.Statut.EN_ATTENTE_APPROBATION,
+)
+
+
+def _factures_reservees_par_un_run_ouvert(company):
+    """Ids de factures fournisseur déjà référencées par une campagne OUVERTE.
+
+    Le filtrage vit ICI et non dans ``stock.selectors`` : la réservation est un
+    fait de ``compta`` (``PaymentRunLine``) et ``stock`` ne doit jamais importer
+    les modèles de compta (frontière M3).
+    """
+    return set(
+        PaymentRunLine.objects
+        .filter(company=company,
+                payment_run__statut__in=_STATUTS_PAYMENT_RUN_OUVERT)
+        .exclude(facture_fournisseur_id__isnull=True)
+        .values_list('facture_fournisseur_id', flat=True))
+
+
 def proposer_lignes_payment_run(run, *, date_limite=None):
     """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
     fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
     jamais un import de ses modèles), triées par date d'échéance. N'ajoute
-    QUE les factures pas déjà référencées par une ligne existante de CETTE
-    campagne (idempotent si appelé deux fois). Renvoie la liste des lignes
-    ajoutées."""
+    QUE les factures pas déjà référencées par une ligne d'une campagne
+    ENCORE OUVERTE — la sienne (idempotence) comme celle d'un collègue
+    (AUD172 : la déduplication ne regardait que la campagne courante, si bien
+    que deux campagnes brouillon proposaient la MÊME facture et la réglaient
+    deux fois). Renvoie la liste des lignes ajoutées."""
     from apps.stock import selectors as stock_selectors
 
     if run.statut != PaymentRun.Statut.BROUILLON:
         raise ValidationError(
             "Une campagne figée ou postée ne peut plus être modifiée.")
-    deja_references = set(
-        run.lignes.exclude(facture_fournisseur_id__isnull=True)
-        .values_list('facture_fournisseur_id', flat=True))
+    deja_references = _factures_reservees_par_un_run_ouvert(run.company)
     candidates = stock_selectors.factures_fournisseur_ouvertes(
         run.company, date_limite=date_limite)
     ajoutees = []
@@ -5532,7 +5826,7 @@ def marquer_indemnite_remboursee_par_paie(indem, *, user=None,
 
 def preparer_declaration_tva(company, *, date_debut, date_fin,
                              regime='mensuel', methode='debit',
-                             credit_anterieur=Decimal('0'), libelle='',
+                             credit_anterieur=None, libelle='',
                              validees_seulement=False, user=None):
     """Prépare et FIGE une déclaration de TVA sur une période (FG137).
 
@@ -5542,13 +5836,20 @@ def preparer_declaration_tva(company, *, date_debut, date_fin,
     l'éventuel crédit reportable, puis persiste un snapshot ``DeclarationTVA`` en
     statut « préparée ». La ``reference`` (TVA-YYYYMM-NNNN) et la ``company`` sont
     posées côté serveur (jamais lues du corps). Renvoie la déclaration.
+
+    AUD164 — ``credit_anterieur=None`` (le défaut, et le cas d'un corps de
+    requête qui ne le porte pas) DÉRIVE le crédit de la dernière déclaration
+    DÉPOSÉE dont la période précède celle-ci ; une valeur explicite (0 compris)
+    garde la main. Avant, le crédit valait toujours 0 par l'application.
     """
     from . import selectors  # import local : évite tout cycle au chargement.
     from apps.ventes.utils.references import create_with_reference
 
     calc = selectors.preparer_declaration_tva(
         company, date_debut=date_debut, date_fin=date_fin, regime=regime,
-        methode=methode, credit_anterieur=credit_anterieur or Decimal('0'),
+        methode=methode,
+        credit_anterieur=(selectors.CREDIT_ANTERIEUR_AUTO
+                          if credit_anterieur is None else credit_anterieur),
         validees_seulement=validees_seulement)
     declaration = DeclarationTVA(
         company=company,
@@ -5801,14 +6102,23 @@ def deposer_declaration_tva(declaration):
 def solder_tva_periode(periode, *, user=None):
     """Poste l'écriture de solde TVA d'une période (XACC10, checklist de clôture).
 
-    Recalcule la TVA à déclarer EXACTEMENT comme ``preparer_declaration_tva``
-    (même agrégation GL, cohérente avec FG137 — aucune divergence possible)
-    et poste, si le montant net dû est positif, l'écriture de solde :
-    débit 4455 (TVA facturée, on solde) + débit 3455 (TVA récupérable, on
-    solde) → crédit 44552 (« État TVA due »). Si le net est négatif (crédit de
-    TVA), ne poste rien (rien à devoir — le crédit se reporte via FG137).
+    Reprend le net FIGÉ de la ``DeclarationTVA`` de la période quand elle
+    existe (c'est ELLE qui a été déposée), sinon recalcule via
+    ``selectors.preparer_declaration_tva``. Poste, si le montant net dû est
+    positif : débit 4455 (TVA facturée, on solde) → crédit 3455 (TVA
+    récupérable + crédit antérieur, on solde et on APURE le report) + crédit
+    44552 (« État TVA due » = net DÉCLARÉ). Si le net est négatif (crédit de
+    TVA), ne poste rien (rien à devoir — le crédit se reporte, AUD164).
     IDEMPOTENT par période (``source_type='solde_tva'``,
     ``source_id=periode.id``). Renvoie l'écriture, ou None si rien à solder.
+
+    AUD164 — l'ancienne docstring affirmait « aucune divergence possible » avec
+    la déclaration, mais l'appel réel ne transmettait PAS ``credit_anterieur``
+    (défaut 0) et créditait le net BRUT au 44552 : sur février à crédit 30 000
+    puis mars 90 000/20 000, l'écriture créditait 70 000 au lieu de 40 000, et
+    44552/3455 accumulaient des résiduels de sens opposé que rien n'apurait.
+    Le crédit antérieur est désormais imputé au 3455 — ne PAS se contenter de
+    le passer au calcul, ce qui déséquilibrerait l'écriture.
     """
     from . import selectors
 
@@ -5816,28 +6126,45 @@ def solder_tva_periode(periode, *, user=None):
     existante = _ecriture_existante(company, 'solde_tva', periode.id)
     if existante:
         return existante
-    calc = selectors.preparer_declaration_tva(
-        company, date_debut=periode.date_debut, date_fin=periode.date_fin)
-    collectee = calc['tva_collectee']
-    deductible = calc['tva_deductible']
-    net = calc['tva_a_declarer']
+    declaration = (DeclarationTVA.objects
+                   .filter(company=company, date_debut=periode.date_debut,
+                           date_fin=periode.date_fin)
+                   .order_by('-date_creation', '-id')
+                   .first())
+    if declaration is not None:
+        collectee = Decimal(declaration.tva_collectee or 0)
+        deductible = Decimal(declaration.tva_deductible or 0)
+        anterieur = Decimal(declaration.credit_anterieur or 0)
+        net = Decimal(declaration.tva_a_declarer or 0)
+    else:
+        calc = selectors.preparer_declaration_tva(
+            company, date_debut=periode.date_debut, date_fin=periode.date_fin)
+        collectee = calc['tva_collectee']
+        deductible = calc['tva_deductible']
+        anterieur = calc['credit_anterieur']
+        net = calc['tva_a_declarer']
     if net <= 0:
         return None
     comptes = _comptes_requis(company)
     compte_due = _assurer_compte(company, '44552')
     # Mécanique CGNC : 4455 (TVA facturée) porte un solde CRÉDITEUR, 3455 (TVA
     # récupérable) un solde DÉBITEUR. Pour les solder tous les deux, on
-    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit) ;
-    # le NET (collectée − déductible = 44552) équilibre l'écriture.
+    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit,
+    # crédit antérieur COMPRIS) ; le NET déclaré (44552) équilibre l'écriture :
+    # collectée = (déductible + antérieur) + net, par construction.
     lignes = []
     if collectee > 0:
         lignes.append({
             'compte': comptes['tva_facturee'], 'debit': collectee,
             'credit': Decimal('0'), 'libelle': 'Solde TVA facturée'})
-    if deductible > 0:
+    credit_recuperable = deductible + anterieur
+    if credit_recuperable > 0:
         lignes.append({
             'compte': comptes['tva_recuperable'], 'debit': Decimal('0'),
-            'credit': deductible, 'libelle': 'Solde TVA récupérable'})
+            'credit': credit_recuperable,
+            'libelle': ('Solde TVA récupérable'
+                        + (f' (dont crédit reporté {anterieur})'
+                           if anterieur > 0 else ''))})
     lignes.append({
         'compte': compte_due, 'debit': Decimal('0'), 'credit': net,
         'libelle': 'État TVA due'})
@@ -10336,7 +10663,7 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
     if existante:
         return existante
     lignes = []
-    for lig in ecriture.lignes.all():
+    for lig in ecriture.lignes.select_related('compte', 'referentiel'):
         # Permute débit et crédit pour annuler la ligne d'origine.
         lignes.append({
             'compte': lig.compte,
@@ -10346,6 +10673,10 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
             'tiers_type': lig.tiers_type,
             'tiers_id': lig.tiers_id,
             'centre_cout': lig.centre_cout,
+            # AUD161 — l'extourne reste DANS le livre de la ligne d'origine :
+            # sans ce report, une contre-passation d'ajustement IFRS atterrit
+            # en CGNC (referentiel NULL) et le livre parallèle garde son montant.
+            'referentiel': lig.referentiel,
         })
     if not lignes:
         raise ValidationError(
@@ -13381,6 +13712,9 @@ def generer_allocations_recurrentes(company, *, jusqua=None):
         prochaine_echeance__lte=jusqua).select_related('cle')
     for rec in recurrentes:
         echeance = rec.prochaine_echeance
+        # AUD187 — première période EN ÉCHEC : c'est elle qui redevient la
+        # prochaine échéance, pour être rejouée au run suivant.
+        premiere_en_echec = None
         # Boucle de rattrapage : plusieurs périodes échues d'un coup.
         while echeance <= jusqua:
             deja = RunAllocation.objects.filter(
@@ -13405,8 +13739,17 @@ def generer_allocations_recurrentes(company, *, jusqua=None):
                         'allocation_id': rec.id,
                         'periode': echeance.isoformat(),
                         'raison': '; '.join(exc.messages)})
+                    if premiere_en_echec is None:
+                        premiere_en_echec = echeance
             echeance = rec.echeance_suivante(echeance)
-        rec.prochaine_echeance = echeance
+        # AUD187 — l'échéance n'avance QUE sur succès (ou « déjà générée »).
+        # Elle avançait INCONDITIONNELLEMENT après un `except ValidationError`
+        # et cette valeur était persistée : une période en échec (période
+        # verrouillée, clé de répartition ≠ 100 %) n'était plus JAMAIS rejouée,
+        # et sa charge disparaissait définitivement de la ventilation par
+        # centre de coût. Les périodes postérieures déjà exécutées restent
+        # protégées par la garde d'idempotence `deja` du haut de la boucle.
+        rec.prochaine_echeance = premiere_en_echec or echeance
         rec.derniere_generation = jusqua
         rec.save(update_fields=['prochaine_echeance', 'derniere_generation',
                                 'updated_at'])

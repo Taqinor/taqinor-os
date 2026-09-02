@@ -46,7 +46,7 @@ from .models import (
     ChargeConstateeAvance,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DemandeApprobationRib,
-    DotationAmortissement, ECatalogue, EcritureComptable, Effet,
+    DotationAmortissement, ECatalogue, EcritureComptable, LigneEcriture, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
     ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
@@ -311,6 +311,36 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def perform_destroy(self, instance):
+        """AUD170 — une écriture VALIDÉE (ou scellée) ne se supprime pas.
+
+        Le ViewSet était un ``ModelViewSet`` complet sans aucun
+        ``perform_destroy`` : un ``DELETE`` sur une écriture de vente validée
+        de 250 000 MAD dans un mois non clôturé renvoyait 204 et effaçait
+        l'écriture, ses lignes et son maillon d'audit (CASCADE), faisant
+        baisser le CA du mois sans trace. La doctrine COMPTA11 est pourtant
+        écrite noir sur blanc dans ``services`` : « on NE SUPPRIME JAMAIS une
+        écriture validée : on passe une écriture inverse ».
+        """
+        if instance.statut == EcritureComptable.Statut.VALIDEE:
+            raise DjangoValidationError(
+                "Une écriture VALIDÉE ne se supprime pas (COMPTA11) : passez "
+                "une contre-passation via l'action « extourner ».")
+        if getattr(instance, 'piste_audit', None) is not None:
+            raise DjangoValidationError(
+                "Cette écriture est scellée dans la piste d'audit "
+                "(append-only) : elle ne peut plus être supprimée. Utilisez "
+                "l'action « extourner ».")
+        super().perform_destroy(instance)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_409_CONFLICT)
+
     @action(detail=True, methods=['post'])
     def extourner(self, request, pk=None):
         """COMPTA11 — Passe l'écriture d'extourne (contre-passation).
@@ -319,7 +349,16 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         Idempotent. Corps optionnel : ``{'date_extourne': 'YYYY-MM-DD'}``.
         """
         ecriture = self.get_object()
-        date_extourne = request.data.get('date_extourne') or None
+        # AUD168 — la date brute du corps JSON n'est PAS typée : la laisser
+        # passer en chaîne rendait le garde de période fail-open.
+        brut = request.data.get('date_extourne') or None
+        try:
+            date_extourne = _parse_date(brut) if brut else None
+        except ValueError:
+            return Response(
+                {'detail': "Date d'extourne invalide (format attendu : "
+                           'AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             extourne = services.extourner_ecriture(
                 ecriture, date_extourne=date_extourne, user=request.user)
@@ -436,6 +475,33 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'date_debut_n1': params.get('date_debut_n1') or None,
             'date_fin_n1': params.get('date_fin_n1') or None,
         }
+
+    def _debut_exercice_du_bilan(self, request, date_fin):
+        """AUD169 — borne basse du bilan = début de l'exercice couvrant ``date_fin``.
+
+        Renvoie ``(date_debut, None)`` ou ``(None, Response 400)``. Aucun
+        exercice couvrant la date → REFUS explicite : cumuler silencieusement
+        tous les exercices produit un « Résultat de l'exercice » faux sur un
+        état de synthèse déposable, et c'est exactement ce que rien ne signalait.
+        """
+        try:
+            fin = _parse_date(date_fin) if date_fin else timezone.localdate()
+        except ValueError:
+            return None, Response(
+                {'detail': "'date_fin' invalide (format attendu : AAAA-MM-JJ)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=request.user.company,
+            date_debut__lte=fin, date_fin__gte=fin,
+        ).order_by('-date_debut').first()
+        if exercice is None:
+            return None, Response(
+                {'detail': "Aucun exercice comptable ne couvre le "
+                           f"{fin.isoformat()} : créez-le avant d'éditer le "
+                           'bilan (le résultat serait sinon le cumul de tous '
+                           'les exercices).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return exercice.date_debut, None
 
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
@@ -643,10 +709,22 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     def bilan(self, request):
         periode = self._periode(request)
         comparatif = self._comparatif_kwargs(request)
+        # AUD169 — le « Résultat de l'exercice » d'un état de synthèse
+        # déposable doit être celui de l'EXERCICE, pas le cumul depuis la
+        # première écriture. La borne basse vient de l'exercice couvrant
+        # ``date_fin`` ; à défaut on REFUSE plutôt que de cumuler en silence.
+        date_debut = periode['date_debut']
+        if date_debut is None:
+            date_debut, err = self._debut_exercice_du_bilan(
+                request, periode['date_fin'])
+            if err is not None:
+                return err
         data = selectors.bilan(
-            request.user.company, date_fin=periode['date_fin'],
+            request.user.company, date_debut=date_debut,
+            date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'],
             comparer=comparatif['comparer'],
+            date_debut_n1=comparatif.get('date_debut_n1'),
             date_fin_n1=comparatif['date_fin_n1'])
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_bilan_pdf
@@ -1501,8 +1579,10 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         date_debut = exercice.date_debut.isoformat()
         date_fin = exercice.date_fin.isoformat()
 
+        # AUD169 — bilan borné à l'exercice, comme le CPC juste en dessous.
         bilan = selectors.bilan(
-            company, date_fin=date_fin, validees_seulement=validees)
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
         cpc_data = selectors.cpc(
             company, date_debut=date_debut, date_fin=date_fin,
             validees_seulement=validees)
@@ -1897,12 +1977,27 @@ class LettrageViewSet(viewsets.ViewSet):
                     {'detail': "'code' ou 'compte' (pour en générer un) "
                                'requis.'},
                     status=status.HTTP_400_BAD_REQUEST)
+            # AUD166 — le compte servant à générer le code doit être CELUI des
+            # lignes : sinon le code séquentiel est tiré d'un compte qui n'a
+            # jamais été confronté aux lignes réellement lettrées.
+            comptes_reels = set(
+                LigneEcriture.objects
+                .filter(company=company, id__in=ligne_ids)
+                .values_list('compte_id', flat=True))
+            if comptes_reels and comptes_reels != {compte.pk}:
+                return Response(
+                    {'detail': "Le compte fourni ne correspond pas à celui "
+                               'des lignes à lettrer.'},
+                    status=status.HTTP_400_BAD_REQUEST)
             code = selectors.prochain_code_lettrage(company, compte)
         try:
-            nb = selectors.lettrer(company, ligne_ids, code)
-        except ValueError as exc:
+            # AUD167 — lettrer/délettrer sont des ÉCRITURES : elles vivent dans
+            # ``services`` et y portent le verrou de période.
+            nb = services.lettrer(company, ligne_ids, code)
+        except (ValueError, DjangoValidationError) as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_lettrees': nb})
 
     @action(detail=False, methods=['post'])
@@ -1912,7 +2007,12 @@ class LettrageViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': "'code' requis."},
                 status=status.HTTP_400_BAD_REQUEST)
-        nb = selectors.delettrer(request.user.company, code)
+        try:
+            nb = services.delettrer(request.user.company, code)
+        except (ValueError, DjangoValidationError) as exc:
+            return Response(
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_delettrees': nb})
 
 
@@ -2062,9 +2162,18 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
                 'credit': lig.get('credit') or 0,
                 'libelle': lig.get('libelle', '') or '',
             })
+        # AUD168 — date typée AVANT le service : une chaîne rendait les deux
+        # gardes de période fail-open (l'écriture atterrissait dans un mois
+        # clôturé en 201).
+        try:
+            date_ecriture = _parse_date(data.get('date_ecriture'))
+        except ValueError:
+            return Response(
+                {'detail': "'date_ecriture' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             ecriture = services.creer_ecriture_od(
-                company, data.get('date_ecriture'),
+                company, date_ecriture,
                 data.get('libelle', '') or 'Régularisation', lignes,
                 reference=data.get('reference', '') or '',
                 created_by=request.user)
@@ -4267,7 +4376,9 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             date_fin=vd['date_fin'],
             regime=vd.get('regime') or DeclarationTVA.Regime.MENSUEL,
             methode=vd.get('methode') or DeclarationTVA.Methode.DEBIT,
-            credit_anterieur=vd.get('credit_anterieur') or 0,
+            # AUD164 — absent du corps = DÉRIVÉ de la dernière déclaration
+            # déposée (jamais un forfait 0) ; une valeur saisie garde la main.
+            credit_anterieur=vd.get('credit_anterieur'),
             libelle=vd.get('libelle', '') or '',
             validees_seulement=request.query_params.get('validees') == '1',
             user=request.user)
@@ -8311,15 +8422,30 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     scopé société côté serveur."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @staticmethod
+    def _dates_provision(data):
+        """AUD168 — dates typées avant tout appel de service (jamais une chaîne
+        brute, qui rendait le garde de période fail-open)."""
+        periode = _parse_date(data.get('date_periode'))
+        brut_extourne = data.get('date_extourne') or None
+        extourne = _parse_date(brut_extourne) if brut_extourne else None
+        return periode, extourne
+
     @action(detail=False, methods=['post'], url_path='generer-fnp')
     def generer_fnp(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fnp(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:
@@ -8332,11 +8458,17 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     def generer_fae(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fae(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:

@@ -396,6 +396,17 @@ class Devis(models.Model):
                 fields=['company', 'date_creation'],
                 name='ventes_devis_co_datecrea_idx'),
         ]
+        # AUD188 — backstop DB des invariants d'argent (`QuerySet.update`,
+        # `bulk_create` et le SQL brut contournent tout garde Python).
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(remise_globale__gte=0)
+                & models.Q(remise_globale__lte=100),
+                name='ck_devis_remise_globale_0_100'),
+            models.CheckConstraint(
+                condition=models.Q(acompte_montant__gte=0),
+                name='ck_devis_acompte_montant_positif'),
+        ]
 
     def __str__(self):
         return self.reference
@@ -676,6 +687,18 @@ class LigneDevis(models.Model):
         # Toutes les lignes existantes ont ordre=0 → tri par id = ordre
         # d'insertion historique (rendu octet-identique quand rien n'est réordonné).
         ordering = ['ordre', 'id']
+        # AUD188 — backstop DB des invariants de ligne. XSAL14 a rendu
+        # `quantite`/`prix_unitaire` nullables (lignes de section/note) : une
+        # colonne NULL satisfait un CHECK en SQL, ces lignes restent valides.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantite__gte=0)
+                & models.Q(prix_unitaire__gte=0),
+                name='ck_lignedevis_montants_positifs'),
+            models.CheckConstraint(
+                condition=models.Q(remise__gte=0) & models.Q(remise__lte=100),
+                name='ck_lignedevis_remise_0_100'),
+        ]
 
     @property
     def est_ligne_produit(self):

@@ -62,6 +62,11 @@ class _Base(TestCase):
                  'credit': Decimal('1200')},
             ],
             journal=journal_od)
+        # AUD169 — le bilan borne son résultat à l'exercice couvrant la date :
+        # l'API refuse d'éditer un bilan hors de tout exercice.
+        ExerciceComptable.objects.get_or_create(
+            company=self.company, date_debut=date(2026, 1, 1),
+            date_fin=date(2026, 12, 31), defaults={'libelle': '2026'})
         self.user = make_user(self.company, 'zacc1-admin')
         self.api = auth(self.user)
 

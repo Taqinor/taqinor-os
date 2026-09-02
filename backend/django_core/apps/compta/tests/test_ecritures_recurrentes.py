@@ -133,6 +133,41 @@ class GenererEcrituresRecurrentesTests(TestCase):
         self.ab.refresh_from_db()
         self.assertEqual(self.ab.prochaine_echeance, date(2026, 1, 31))
 
+    def test_aud187_non_regression_echeance_conservee_sur_echec(self):
+        """AUD187 — verrou de la garantie : `generer_ecritures_recurrentes` NE
+        souffre PAS du défaut d'avance inconditionnelle (le `continue` de son
+        bloc `except ValidationError` l'en empêche). Volet explicitement RÉFUTÉ
+        de l'audit : on ne change rien ici, on épingle le comportement pour
+        qu'un futur refactor ne le casse pas en silence.
+        """
+        periode = services.creer_periode(
+            self.co, date(2026, 1, 1), date(2026, 1, 31), libelle='Janvier')
+        services.cloturer_periode(periode)
+        avant = self.ab.prochaine_echeance
+        for _ in range(3):  # plusieurs passages : jamais d'avance.
+            res = services.generer_ecritures_recurrentes(
+                self.co, jusqua=date(2026, 1, 31))
+            self.assertEqual(res['generees'], [])
+            self.assertTrue(res['ignorees'])
+            self.assertTrue(res['ignorees'][0].get('raison'))
+        self.ab.refresh_from_db()
+        self.assertEqual(self.ab.prochaine_echeance, avant)
+
+    def test_aud187_beat_journalise_les_generations_ignorees(self):
+        """AUD187 — le wrapper beat ne JETTE plus la liste `ignorees`."""
+        from apps.compta import scheduled
+
+        periode = services.creer_periode(
+            self.co, date(2026, 1, 1), date(2026, 1, 31), libelle='Janvier')
+        services.cloturer_periode(periode)
+        self.ab.prochaine_echeance = date(2026, 1, 31)
+        self.ab.save(update_fields=['prochaine_echeance'])
+        with self.assertLogs('apps.compta.scheduled', level='ERROR') as logs:
+            scheduled.generer_ecritures_recurrentes_dues()
+        self.assertTrue(
+            any('ignorée' in message for message in logs.output),
+            logs.output)
+
     def test_ligne_sans_montant_par_defaut_leve_erreur_explicite(self):
         LigneModeleEcriture.objects.filter(
             modele=self.modele, sens='credit').update(montant_defaut=None)

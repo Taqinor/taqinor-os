@@ -6,6 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import (
@@ -187,6 +188,15 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
             if len(lignes) < 2:
                 raise serializers.ValidationError(
                     "Une écriture doit comporter au moins deux lignes.")
+            # AUD188 — MÊME garde de ligne que le service : c'est le chemin le
+            # plus atteignable (il est branché sur l'écran, dont les inputs
+            # n'ont pas de `min="0"`), et il ne validait que des SOMMES.
+            from .services import valider_lignes_ecriture
+            try:
+                valider_lignes_ecriture(lignes)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(
+                    exc.messages[0] if exc.messages else str(exc))
             debit = sum((Decimal(lig.get('debit') or 0) for lig in lignes),
                         Decimal('0'))
             credit = sum((Decimal(lig.get('credit') or 0) for lig in lignes),
@@ -237,6 +247,24 @@ class CompteTresorerieSerializer(serializers.ModelSerializer):
 
     def validate_compte_comptable(self, value):
         return _meme_societe(self, value, 'Compte comptable')
+
+    def validate_devise(self, value):
+        """AUD175 — le socle est MONO-DEVISE MAD (docs/money-convention.md).
+
+        Le champ était librement éditable et n'était honoré par AUCUN calcul de
+        trésorerie : un compte EUR créé par API entrait tel quel dans le
+        « total » consolidé. Tant qu'aucune conversion n'existe, on refuse la
+        saisie plutôt que de laisser créer un agrégat incalculable.
+        """
+        from .selectors import DEVISE_PIVOT
+
+        devise = (value or DEVISE_PIVOT).strip().upper()
+        if devise != DEVISE_PIVOT:
+            raise serializers.ValidationError(
+                f"Le socle est mono-devise {DEVISE_PIVOT} : aucune conversion "
+                "n'est définie, un compte dans une autre devise rendrait la "
+                "position de trésorerie incalculable.")
+        return devise
 
 
 class ExerciceComptableSerializer(serializers.ModelSerializer):
