@@ -77,8 +77,12 @@ def _filtre_referentiel(qs, company, referentiel=None):
 
 def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False,
                referentiel=None):
+    # AUD171 — ``'ecriture__journal'`` est indispensable : ``grand_livre`` lit
+    # ``ligne.ecriture.journal.code`` sur CHAQUE ligne (:106) et
+    # ``releve_fournisseur`` fait de même — soit une requête unitaire par ligne
+    # sur un grand livre non filtré (≈40 000 lignes sur un exercice).
     qs = LigneEcriture.objects.filter(company=company).select_related(
-        'compte', 'ecriture')
+        'compte', 'ecriture', 'ecriture__journal')
     # AUD160 — livre comptable : par DÉFAUT le principal (les livres parallèles
     # IFRS/multi-GAAP sortent de tous les états statutaires).
     qs = _filtre_referentiel(qs, company, referentiel)
