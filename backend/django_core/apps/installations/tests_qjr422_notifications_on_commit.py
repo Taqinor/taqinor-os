@@ -19,7 +19,15 @@ nombre des notifications nominales sont inchangés.
 
 Lancer :
     docker compose exec django_core python manage.py test \
-        apps.installations.tests.test_qjr422_notifications_on_commit -v 2
+        apps.installations.tests_qjr422_notifications_on_commit -v 2
+
+NOTE D'EMPLACEMENT (02/09/2026) — ce module vit à la RACINE de l'app, comme
+les ~150 autres ``tests_*.py`` d'``installations``, et JAMAIS dans un
+répertoire ``apps/installations/tests/``. Un tel paquet masquerait le module
+``apps/installations/tests.py`` existant (37 ko de tests + les fabriques
+``make_company`` / ``auth`` / ``make_accepted_devis`` qu'importent
+``test_regime.py`` et consorts) : Python résout le paquet d'abord, l'import
+casse et tout ``tests.py`` cesse d'être collecté en silence.
 """
 from datetime import date, timedelta
 from decimal import Decimal
