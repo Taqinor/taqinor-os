@@ -254,6 +254,12 @@ class PlanCompteRelationsTests(ScopedRelationsBase):
         super().setUp()
         self.client_a = Client.objects.create(company=self.a, nom='Compte A')
         self.client_b = Client.objects.create(company=self.b, nom='Compte B')
+        # ``PlanCompte.client`` est un OneToOneField : le client qui sert de
+        # « bon id de sa propre société » ne peut donc PAS être celui qui porte
+        # déjà ``plan_a``, sinon le contrôle positif se heurte au (légitime)
+        # UniqueValidator et non au re-scope société qu'on veut mesurer.
+        self.client_a_libre = Client.objects.create(
+            company=self.a, nom='Compte A sans plan')
         self.plan_a = PlanCompte.objects.create(
             company=self.a, client=self.client_a)
         self.plan_b = PlanCompte.objects.create(
@@ -263,9 +269,18 @@ class PlanCompteRelationsTests(ScopedRelationsBase):
         self.assert_relation_scoped(
             PlanCompteSerializer, 'client',
             foreign_pk=self.client_b.pk,
-            own_pk=self.client_a.pk,
+            own_pk=self.client_a_libre.pk,
             create_data={'statut': 'brouillon'},
             instance=self.plan_a)
+
+    def test_unique_client_toujours_refuse_dans_la_societe(self):
+        """Non-régression : le re-scope CRX13 ne desserre pas l'unicité —
+        un DEUXIÈME plan sur un client qui en a déjà un reste refusé."""
+        errors = self._errors(
+            PlanCompteSerializer,
+            {'client': self.client_a.pk, 'statut': 'brouillon'})
+        self.assertIn('client', errors)
+        self.assertEqual(_codes(errors['client']), {'unique'})
 
     def test_plan_de_revue_scoped(self):
         """``RevueCompte.plan`` est la SEULE frontière société du modèle."""
@@ -281,7 +296,7 @@ class PlanCompteRelationsTests(ScopedRelationsBase):
     def test_creation_complete_reste_valide(self):
         """Contrôle positif complet : un plan de compte légitime passe."""
         serializer = PlanCompteSerializer(
-            data={'client': self.client_a.pk, 'statut': 'brouillon'},
+            data={'client': self.client_a_libre.pk, 'statut': 'brouillon'},
             context=self.ctx())
         self.assertTrue(serializer.is_valid(), serializer.errors)
 

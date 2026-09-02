@@ -324,12 +324,20 @@ class TestLeadExportColumns(TestCase):
 
 
 class TestClientExportColumns(TestCase):
-    """L'export clients sort Type/ICE/IF/RC/CIN/RIB."""
+    """L'export clients sort Type/ICE/IF/RC/CIN — plus « RIB » depuis CRX35.
+
+    ``crm.Client`` ne porte AUCUN champ ``rib`` : la colonne rendait un
+    ``getattr(c, 'rib', '')`` vide à chaque export, ce qui fait croire à une
+    donnée manquante plutôt qu'à une donnée absente du modèle. Le test épingle
+    donc les deux moitiés de la décision : les identifiants légaux marocains
+    restent là, « RIB » ne revient pas.
+    """
 
     def test_client_headers(self):
         from apps.crm.exports import CLIENT_EXPORT_HEADERS
-        for col in ('Type', 'ICE', 'IF', 'RC', 'CIN', 'RIB'):
+        for col in ('Type', 'ICE', 'IF', 'RC', 'CIN'):
             self.assertIn(col, CLIENT_EXPORT_HEADERS)
+        self.assertNotIn('RIB', CLIENT_EXPORT_HEADERS)
 
     def test_client_row_values(self):
         from apps.crm.exports import CLIENT_EXPORT_HEADERS
@@ -342,7 +350,8 @@ class TestClientExportColumns(TestCase):
         from apps.crm.exports import export_clients_xlsx
         resp = export_clients_xlsx([c])
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(CLIENT_EXPORT_HEADERS), 12)
+        # 12 avant CRX35, 11 depuis le retrait de la colonne « RIB ».
+        self.assertEqual(len(CLIENT_EXPORT_HEADERS), 11)
 
 
 class TestClientTracabilite(TestCase):

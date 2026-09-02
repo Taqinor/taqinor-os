@@ -861,7 +861,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'duplicates',
+        if self.action in READ_ACTIONS + ['duplicates',
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
@@ -869,6 +869,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
             return [IsAnyRole()]
+        elif self.action in ('historique', 'jalons_devis'):
+            # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
+            # devis, qui sont le même historique vu côté ventes) exige
+            # ``crm_voir``. get_permissions() PRIME sur le permission_classes
+            # de l'@action : posée seulement là-bas, la garde fine était morte
+            # — `historique` retombait sur IsAnyRole (ouvert à TOUT porteur de
+            # rôle) et `jalons_devis`, absent de toutes les listes, sur le
+            # `return [IsAdminRole()]` final (403 pour la Commerciale).
+            return [HasPermissionOrLegacy('crm_voir')()]
         elif self.action in (
                 'merge', 'convertir_client', 'epingler', 'desepingler'):
             # VX199 — fusion / conversion de lead : permission ERP FINE

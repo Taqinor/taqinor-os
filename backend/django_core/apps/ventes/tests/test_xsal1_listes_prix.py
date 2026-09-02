@@ -18,6 +18,24 @@ from testkit.factories import (
 )
 
 
+def _sans_request_id(donnees):
+    """Corps d'erreur privé de son ``request_id``.
+
+    L'enveloppe d'erreur maison pose un ``request_id`` de CORRÉLATION, unique
+    par requête : il ne dit rien de l'existence de la ressource et ne peut donc
+    pas servir d'oracle. Deux réponses ne sont comparables qu'une fois ce
+    champ volatil écarté.
+    """
+    if not isinstance(donnees, dict):
+        return donnees
+    copie = dict(donnees)
+    erreur = copie.get('error')
+    if isinstance(erreur, dict):
+        copie['error'] = {c: v for c, v in erreur.items() if c != 'request_id'}
+    copie.pop('request_id', None)
+    return copie
+
+
 class TestPrixApplicableResolution(TestCase):
     """XSAL1 — service `prix_applicable` (résolution liste client)."""
 
@@ -163,7 +181,13 @@ class TestListePrixViewSetTenantIsolation(TestCase):
             url, {'produit': produit_voisin.id, 'prix_unitaire': '1'})
         absent = api.post(url, {'produit': 999_999_999, 'prix_unitaire': '1'})
         self.assertEqual(voisin.status_code, absent.status_code)
-        self.assertEqual(voisin.data, absent.data)
+        # Tout SAUF le ``request_id`` (identifiant de corrélation, unique par
+        # requête par construction) : c'est le code + le message + les champs
+        # qui ne doivent pas distinguer « existe ailleurs » de « n'existe pas ».
+        self.assertEqual(_sans_request_id(voisin.data),
+                         _sans_request_id(absent.data))
+        self.assertEqual(str(voisin.data['detail']),
+                         str(absent.data['detail']))
 
     def test_lignes_produit_non_numerique_ne_leve_pas_500(self):
         api = self._api_for(self.admin)
