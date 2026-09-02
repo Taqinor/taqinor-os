@@ -104,6 +104,47 @@ class ThrottleWiringTests(TestCase):
         throttles = getattr(get_chat_session.cls, 'throttle_classes', [])
         self.assertIn(PublicChatRateThrottle, throttles)
 
+    def test_open_session_view_has_throttle_classes(self):
+        """CRX29 — ``open_chat_session`` était la SEULE vue publique du module
+        sans limiteur de débit, alors qu'elle CRÉE une ligne en base à chaque
+        appel anonyme : un bouclage remplissait ``ChatSessionPublique``."""
+        from apps.crm.public_chat_views import (
+            open_chat_session, PublicChatRateThrottle,
+        )
+        throttles = getattr(open_chat_session.cls, 'throttle_classes', [])
+        self.assertIn(
+            PublicChatRateThrottle, throttles,
+            "open_chat_session n'est pas limitée en débit alors que ses deux "
+            'sœurs le sont.')
+
+    def test_parite_des_trois_vues_publiques_du_module(self):
+        """CRX29 — PARITÉ : aucune vue AllowAny de ce module ne reste sans
+        limiteur. La garde vaut pour la PROCHAINE vue publique ajoutée."""
+        from rest_framework.permissions import AllowAny
+
+        from apps.crm import public_chat_views as vues
+        from apps.crm.public_chat_views import PublicChatRateThrottle
+
+        publiques = []
+        for nom in dir(vues):
+            vue = getattr(vues, nom)
+            cls = getattr(vue, 'cls', None)
+            if cls is None:
+                continue
+            if AllowAny in getattr(cls, 'permission_classes', []):
+                publiques.append((nom, cls))
+
+        self.assertEqual(
+            len(publiques), 3,
+            'inventaire inattendu des vues publiques du module : %r'
+            % [nom for nom, _ in publiques])
+        for nom, cls in publiques:
+            with self.subTest(vue=nom):
+                self.assertIn(
+                    PublicChatRateThrottle,
+                    getattr(cls, 'throttle_classes', []),
+                    'la vue publique %s n\'est pas limitée en débit.' % nom)
+
 
 class DegradedModeCaptureTests(TestCase):
     """Sans clé LLM configurée : mode dégradé, capture quand même le lead."""
