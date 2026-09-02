@@ -36,7 +36,11 @@ from apps.compta.services import (  # noqa: F401
 #     part uniquement par email au client (backend console en local, SendGrid
 #     gated en prod — no-op silencieux sans clé). Le compte est créé avec
 #     ``must_change_password=True`` (N96) : le client DOIT le changer à sa
-#     première session.
+#     première session. AUD139 — cette garantie est désormais APPLIQUÉE côté
+#     serveur : ``roles.permissions.exiger_mot_de_passe_change`` refuse toute
+#     route portail (403, code ``mot_de_passe_a_changer``) tant que le mot de
+#     passe temporaire n'est pas remplacé ; seuls ``/auth/me/``,
+#     ``/auth/logout/`` et ``/auth/change-password/`` restent joignables.
 #   * Idempotent SANS effet de bord : re-provisionner ne réinitialise pas le mot
 #     de passe et NE RÉACTIVE JAMAIS un compte désactivé (révoqué). Réactiver
 #     silencieusement un accès retiré serait un élargissement d'accès non
