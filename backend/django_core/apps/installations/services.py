@@ -1528,6 +1528,54 @@ def _gates_non_satisfaits(installation, stages, i, j):
     return raisons
 
 
+# ── AUD326 — « Clôturé » est un ÉTAT GELÉ ────────────────────────────────────
+# `verifier_transition_statut` ne garde QUE les avancées (`j <= i → return []`,
+# un recul n'est jamais bloqué) et c'est le seul gate appliqué à un changement
+# de statut dans `perform_update` : un chantier CLÔTURÉ (situation soldée,
+# garantie démarrée) repassait « En cours » par un simple
+# PATCH {"statut": "en_cours"} de n'importe quel Responsable, sans motif, sans
+# confirmation, même sur une société ayant pleinement configuré CH2. Le
+# chantier redevenait librement modifiable pendant que facturation, garantie et
+# parc en aval le considéraient toujours clos.
+
+def est_directeur(user):
+    """AUD326 — le compte porte-t-il l'autorité « Directeur » ?
+
+    MÊME règle que `views.stage_config.IsDirecteur` (dupliquée ici pour que la
+    couche service ne dépende pas d'un module de vues) : superuser toujours ;
+    rôle fin → il porte `journal_activite_voir` (le signal réservé Directeur) ;
+    compte hérité sans rôle fin → palier admin legacy (propriétaire)."""
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'role_id', None):
+        return 'journal_activite_voir' in (user.role.permissions or [])
+    return bool(getattr(user, 'is_admin_role', False))
+
+
+def verifier_reouverture_cloture(installation, nouveau_statut, user, motif):
+    """AUD326 — raison FR qui bloque la RÉOUVERTURE d'un chantier clôturé, ou
+    None quand le recul est permis.
+
+    Un recul depuis CLOTURE exige DEUX conditions cumulées : un motif explicite
+    et le rôle Directeur. Le reste (statut inchangé, chantier non clos, simple
+    avancée) n'est jamais concerné — comportement historique intact."""
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_old != Installation.Statut.CLOTURE:
+        return None
+    if canon_new == Installation.Statut.CLOTURE:
+        return None
+    if not (motif or '').strip():
+        return ("Ce chantier est CLÔTURÉ : sa réouverture exige un motif "
+                "explicite (`motif_reouverture`), journalisé à l'historique.")
+    if not est_directeur(user):
+        return ("Ce chantier est CLÔTURÉ : seul un Directeur peut le rouvrir "
+                "(facturation, garantie et parc en aval le considèrent clos).")
+    return None
+
+
 def verifier_transition_statut(installation, nouveau_statut):
     """CH2 — raisons FRANÇAISES qui bloquent le passage du chantier (dans son
     état actuel) à `nouveau_statut`. Liste vide = transition autorisée.

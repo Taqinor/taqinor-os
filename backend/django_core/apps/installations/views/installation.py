@@ -352,6 +352,21 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         franchit_vers_planifie = (
             nouveau_statut == Installation.Statut.PLANIFIE
             and nouveau_statut != old.statut)
+        # AUD326 — « Clôturé » est un ÉTAT GELÉ : `verifier_transition_statut`
+        # ne garde que les AVANCÉES, si bien qu'un chantier clos repassait
+        # « En cours » par un simple PATCH de n'importe quel Responsable. Une
+        # réouverture exige désormais un motif ET le rôle Directeur.
+        motif_reouverture = (self.request.data.get('motif_reouverture')
+                             or '').strip()
+        if nouveau_statut and nouveau_statut != old.statut:
+            from rest_framework.exceptions import PermissionDenied, ValidationError
+            from ..services import est_directeur, verifier_reouverture_cloture
+            raison_reouverture = verifier_reouverture_cloture(
+                old, nouveau_statut, self.request.user, motif_reouverture)
+            if raison_reouverture:
+                if motif_reouverture and not est_directeur(self.request.user):
+                    raise PermissionDenied(raison_reouverture)
+                raise ValidationError({'statut': [raison_reouverture]})
         if nouveau_statut and nouveau_statut != old.statut:
             from rest_framework.exceptions import ValidationError
             from ..services import verifier_transition_statut
@@ -391,6 +406,22 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # installé actif (parc) : on trace l'événement dans le chatter.
         canon_old = Installation.canonical_statut(old.statut)
         canon_new = Installation.canonical_statut(inst.statut)
+        # AUD326 — pose / lève le verrou de clôture, côté serveur uniquement,
+        # et journalise DISTINCTEMENT toute réouverture (patron annuler/
+        # reactiver : la note dit qui, quand et pourquoi).
+        if (canon_new == Installation.Statut.CLOTURE
+                and not inst.cloture_verrouillee):
+            inst.cloture_verrouillee = True
+            inst.save(update_fields=['cloture_verrouillee'])
+        elif (canon_old == Installation.Statut.CLOTURE
+                and canon_new != Installation.Statut.CLOTURE):
+            if inst.cloture_verrouillee:
+                inst.cloture_verrouillee = False
+                inst.save(update_fields=['cloture_verrouillee'])
+            activity.log_note(
+                inst, self.request.user,
+                "Chantier CLÔTURÉ rouvert par un Directeur — motif : "
+                f"{motif_reouverture}")
         if (canon_new == Installation.Statut.RECEPTIONNE
                 and canon_old != Installation.Statut.RECEPTIONNE):
             activity.log_note(

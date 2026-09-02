@@ -478,6 +478,10 @@ class InstallationSerializer(serializers.ModelSerializer):
             # re-signature et journalisée) : un PATCH générique ne peut plus
             # l'écraser ni la vider.
             'signature_client', 'signataire_nom', 'signe_le',
+            # AUD326 — le verrou de clôture est posé/levé côté serveur (à
+            # l'entrée en CLOTURE, et à une réouverture Directeur motivée) :
+            # jamais lu du corps, sinon la garde se désarme d'un PATCH.
+            'cloture_verrouillee',
         ]
 
     def get_statut_ordre(self, obj):
