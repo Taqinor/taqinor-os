@@ -111,6 +111,36 @@ def modules_desactives(company):
     return hors
 
 
+def societes_avec_module(module, queryset=None):
+    """SOL14 — sociétés pour lesquelles ``module`` est ACTIF.
+
+    LA brique des tâches planifiées : une tâche périodique qui boucle sur
+    ``Company.objects.all()`` travaille pour des sociétés qui ont éteint le
+    module — elle leur écrit des prévisions, leur envoie des notifications, et
+    contredit le 404 que l'API leur renvoie au même instant. Elle enveloppe le
+    queryset au lieu de le remplacer : l'appelant garde ses propres filtres.
+
+    Le filtrage est fait EN PYTHON (une requête ``ModuleToggle`` groupée puis
+    les vérificateurs d'accès SOL9), pas en SQL : la politique « absence de
+    ligne = actif » ne s'exprime pas par une jointure, et un futur vérificateur
+    d'accès n'a pas à être traduisible en SQL pour être respecté.
+    """
+    from authentication.models import Company
+    from .models import ModuleToggle
+
+    if queryset is None:
+        queryset = Company.objects.all()
+    eteints = set(
+        ModuleToggle.objects
+        .filter(module=module, actif=False)
+        .values_list('company_id', flat=True)
+    )
+    return [
+        c for c in queryset
+        if c.pk not in eteints and acces_module_autorise(c, module)
+    ]
+
+
 def _modules_hors_perimetre(company):
     """Modules INSTALLABLES qu'un vérificateur d'accès exclut (SOL9).
 

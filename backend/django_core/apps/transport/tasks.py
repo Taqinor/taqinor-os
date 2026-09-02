@@ -53,6 +53,7 @@ def check_etapes_transport_retard():
     transport de chaque `EtapeTransport` en retard (`date_prevue` < demain,
     `statut_etape` != fait), au plus UNE fois par étape par jour."""
     from authentication.selectors import active_companies
+    from core.feature_flags import societes_avec_module
 
     from apps.notifications.models import Notification
     from apps.notifications.services import notify
@@ -63,7 +64,10 @@ def check_etapes_transport_retard():
     total_societes = 0
     total_notifiees = 0
 
-    for company in active_companies():
+    # SOL14 — une tâche planifiée saute les sociétés qui ont ÉTEINT le module
+    # (sinon le beat travaille pour un tenant à qui l'API répond 404 au
+    # même instant : deux vérités contradictoires le même jour).
+    for company in societes_avec_module('transport', active_companies()):
         try:
             etapes_retard = list(
                 EtapeTransport.objects.filter(
@@ -125,6 +129,7 @@ def archiver_ordres_transport_anciens():
     (`OrdreTransportViewSet.get_queryset`, `?inclure_archives=1` pour les
     revoir). Idempotent : un ordre déjà archivé n'est pas re-traité."""
     from authentication.selectors import active_companies
+    from core.feature_flags import societes_avec_module
 
     from .models import OrdreTransport, ParametresTransport
 
@@ -132,7 +137,10 @@ def archiver_ordres_transport_anciens():
     total_archives = 0
     maintenant = timezone.now()
 
-    for company in active_companies():
+    # SOL14 — une tâche planifiée saute les sociétés qui ont ÉTEINT le module
+    # (sinon le beat travaille pour un tenant à qui l'API répond 404 au
+    # même instant : deux vérités contradictoires le même jour).
+    for company in societes_avec_module('transport', active_companies()):
         try:
             seuil_mois = ParametresTransport.for_company(
                 company).archive_ordres_apres_mois
