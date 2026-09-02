@@ -108,8 +108,12 @@ def valider_vente(*, vente, paiements, user, coupon_code=None):
     # c'est tout l'objet du défaut, `total_ttc_q` était le total PLEIN. Le
     # coupon est seulement VÉRIFIÉ ici (lecture seule) ; sa consommation
     # intervient plus bas, une fois tous les pré-vols passés.
+    # (AUD229) — module « promotions » désactivé : le code coupon est ignoré
+    # proprement (no-op, aucune promotion appliquée, aucun coupon consommé),
+    # le moteur promo n'est jamais atteint.
     remise_coupon = Decimal('0')
-    if coupon_code:
+    coupon_applicable = bool(coupon_code) and _promotions_actives(vente.company)
+    if coupon_applicable:
         remise_coupon = _remise_coupon_previsualisee(
             vente=vente, code=coupon_code, plafond=total_ttc_brut_q)
     total_ttc_q = _q2(total_ttc_brut_q - remise_coupon)
@@ -164,6 +168,14 @@ def valider_vente(*, vente, paiements, user, coupon_code=None):
     # créée derrière lui.
     for p in paiements:
         if (p.get('mode') or '').strip().lower() == MODE_CARTE_CADEAU:
+            # (AUD229) — module « promotions » désactivé : le règlement par
+            # carte cadeau est REFUSÉ avant toute écriture (on ne peut pas
+            # débiter une carte d'un module éteint), le moteur n'est jamais
+            # atteint.
+            if not _promotions_actives(vente.company):
+                raise VenteComptoirError(
+                    'Le module Promotions est désactivé pour cette société : '
+                    'le règlement par carte cadeau est indisponible.')
             from apps.promotions.services import (
                 CarteCadeauError, verifier_carte_cadeau,
             )
@@ -186,7 +198,7 @@ def valider_vente(*, vente, paiements, user, coupon_code=None):
     # passés, la transaction ira au bout ou sera intégralement annulée. Un
     # coupon n'est donc jamais brûlé par une vente refusée.
     libelle_facture = f'Vente comptoir {vente.reference}'
-    if coupon_code and remise_coupon > 0:
+    if coupon_applicable and remise_coupon > 0:
         coupon = _consommer_coupon_vente(vente=vente, code=coupon_code)
         libelle_facture += f' — remise coupon {coupon.code}'
 
@@ -1156,6 +1168,24 @@ def _ecriture_carte_cadeau(*, company, montant, libelle, reference, user,
         reference=reference or '', created_by=user)
 
 
+# ── AUD229 — Garde d'activation du module « promotions » côté APPELANT ──────
+# `DisabledModuleMiddleware` (core/permissions.py:103-117, :167-176) ne coupe
+# qu'au PRÉFIXE D'URL : il est structurellement aveugle aux appels
+# function-local que `apps/pos` fait vers `apps.promotions.services`. Une
+# société ayant désactivé le module voyait donc quand même le moteur promo
+# s'exécuter depuis la caisse. La garde est posée ICI, côté appelant — sans
+# jamais toucher `core/modules.py` ni son registre (zone SOL1-16).
+MODULE_PROMOTIONS = 'promotions'
+
+
+def _promotions_actives(company):
+    """Vrai si le module « promotions » est actif pour ``company`` (défaut :
+    actif — une société sans ``ModuleToggle`` est inchangée). ``core`` est une
+    app foundation, exemptée de la frontière inter-apps."""
+    from core.feature_flags import module_actif
+    return module_actif(company, MODULE_PROMOTIONS)
+
+
 # ── NTRET12 — Moteur de promotions panier (apps.promotions) ────────────────
 
 def promotions_applicables(vente, *, maintenant=None):
@@ -1166,7 +1196,12 @@ def promotions_applicables(vente, *, maintenant=None):
     erreur du moteur promo (ex. app absente, règle mal configurée) ne
     bloque JAMAIS une vente — renvoie ``[]`` plutôt que de lever. Consommé
     par l'écran caisse (aperçu avant encaissement) et par
-    ``apps/promotions`` pour les tests d'intégration."""
+    ``apps/promotions`` pour les tests d'intégration.
+
+    AUD229 — module « promotions » désactivé pour la société : ``[]`` sans
+    jamais toucher le moteur (même forme de sortie que le best-effort)."""
+    if not _promotions_actives(vente.company):
+        return []
     try:
         from apps.promotions.services import evaluer_panier
         return evaluer_panier(
@@ -1194,7 +1229,13 @@ def appliquer_coupon(*, vente, code, user=None):
     ``apps.promotions.services`` — jamais l'inverse. CONSOMME réellement le
     coupon (contrairement à ``promotions_applicables``, best-effort) : un
     coupon invalide/expiré/déjà utilisé remonte une erreur explicite à
-    l'appelant, jamais un échec muet."""
+    l'appelant, jamais un échec muet.
+
+    AUD229 — refuse explicitement quand le module « promotions » est désactivé
+    pour la société (le moteur n'est jamais atteint)."""
+    if not _promotions_actives(vente.company):
+        raise CouponPosError(
+            'Le module Promotions est désactivé pour cette société.')
     from apps.promotions.services import CouponError, consommer_coupon
     try:
         coupon, montant = consommer_coupon(
@@ -1210,7 +1251,12 @@ def previsualiser_coupon(*, vente, code):
     le code ; le coupon n'est brûlé qu'à ``valider_vente``, au moment où la
     remise atteint RÉELLEMENT le client. Avant, l'action ``coupon/`` consommait
     le coupon et rien ne soustrayait la remise : le client payait plein tarif
-    et perdait son coupon."""
+    et perdait son coupon.
+
+    AUD229 — refuse quand le module « promotions » est désactivé."""
+    if not _promotions_actives(vente.company):
+        raise CouponPosError(
+            'Le module Promotions est désactivé pour cette société.')
     from apps.promotions.services import (
         CouponError, montant_remise_coupon, valider_coupon,
     )
@@ -1278,6 +1324,11 @@ def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
 
     Renvoie ``(carte, None)`` — le second membre du tuple reste la facture
     d'émission, désormais toujours ``None`` (aucune facture n'existe)."""
+    # AUD229 — refuse quand le module « promotions » est désactivé pour la
+    # société (le moteur cartes cadeaux n'est jamais atteint).
+    if not _promotions_actives(company):
+        raise CarteCadeauPosError(
+            'Le module Promotions est désactivé pour cette société.')
     from apps.promotions.services import CarteCadeauError
     from apps.promotions.services import emettre_carte_cadeau as _emettre
 
