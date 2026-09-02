@@ -97,7 +97,9 @@ class PlaybookEndToEndApiTests(TestCase):
 
     def test_changement_stage_non_bloque_meme_avec_taches_obligatoires(self):
         # Le changement de stage réussit MÊME si aucune tâche n'est cochée —
-        # jamais un blocage dur (playbook.bloquant=False par défaut).
+        # jamais un blocage dur. CRX35 : le drapeau `playbook.bloquant` a été
+        # RETIRÉ (personne ne le lisait, il ne bloquait donc rien) ; c'est
+        # désormais la seule règle, sans exception configurable.
         resp = self.client_api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT})
         self.assertEqual(resp.status_code, 200)

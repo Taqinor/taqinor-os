@@ -50,6 +50,12 @@ const crmApi = {
   restaurerCorbeille: (corbeilleId) =>
     api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
+  // CRX37 — jalons du cycle de vie des devis du lead (envoyé / ouvert / signé /
+  // refusé), fusionnés dans la timeline par `TimelineTab`. Réponse
+  // `{ results: [{ id, kind: 'devis_*', body, created_at, devis_id, reference,
+  // user_nom, pinned }] }` — contrat committé dans
+  // `apps/crm/contract_samples/lead_jalons_devis.json`.
+  getLeadJalonsDevis: (id) => api.get(`/crm/leads/${id}/jalons-devis/`),
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (roof_views.lead_roof_footprint) :
   // { polygon: [{lat,lng}, ...], source: 'osm' } ou polygon vide + `message` FR
   // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une

@@ -52,9 +52,20 @@ _MAX_AMBIGUS_AFFICHES = 20
 ODOO_FIELD_MAP = {
     # identité / contact
     'name': 'nom', 'contact_name': 'nom', 'nom': 'nom',
+    # CRX35 — `prenom` était LU à la création et dans `_FILL_FIELDS` alors
+    # qu'AUCUNE en-tête ne le produisait : la lecture était morte et le prénom
+    # d'un fichier d'export restait systématiquement vide. Odoo `crm.lead`
+    # n'a pas de champ prénom (il n'a que `contact_name`, le nom complet) —
+    # ces alias servent donc le chemin FICHIER, où l'en-tête existe vraiment.
+    'prenom': 'prenom', 'first_name': 'prenom', 'firstname': 'prenom',
     'partner_name': 'societe', 'societe': 'societe', 'company_name': 'societe',
     'email_from': 'email', 'email': 'email',
     'phone': 'telephone', 'telephone': 'telephone', 'tel': 'telephone',
+    # CRX35 — PIÈGE : `mobile` est un NUMÉRO DE TÉLÉPHONE côté Odoo, pas un
+    # identifiant WhatsApp. Le garder ici est correct (c'est le numéro que
+    # wa.me utilise), mais un lead Odoo qui ne portait QUE `mobile` arrivait
+    # avec `telephone` VIDE : `phone_normalise` restait vide et toute la dédup
+    # indexée (QW10) était aveugle sur lui. Le repli est posé à la création.
     'mobile': 'whatsapp', 'whatsapp': 'whatsapp',
     'street': 'adresse', 'adresse': 'adresse', 'address': 'adresse',
     'city': 'ville', 'ville': 'ville',
@@ -476,7 +487,12 @@ class Command(BaseCommand):
                         prenom=fields.get('prenom'),
                         societe=fields.get('societe'),
                         email=fields.get('email'),
-                        telephone=(fields.get('telephone') or '')[:50] or None,
+                        # CRX35 — repli sur le mobile quand Odoo n'a pas de
+                        # `phone` : sans lui, `phone_normalise` reste vide et
+                        # le lead devient introuvable par la dédup indexée.
+                        telephone=((fields.get('telephone')
+                                    or fields.get('whatsapp') or '')[:50]
+                                   or None),
                         whatsapp=(fields.get('whatsapp') or '')[:50] or None,
                         adresse=fields.get('adresse'),
                         ville=(fields.get('ville') or '')[:120] or None,

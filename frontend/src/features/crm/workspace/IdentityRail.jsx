@@ -53,8 +53,6 @@ const ECHANGE_KINDS = new Set(['note', 'appel', 'email'])
 // Extensions onAction que le shell doit câbler (au-delà du contrat existant) :
 //   'set-field' { key, value } → setField(key, value)  (responsable, relance)
 //   'change-stage' key         → draft.changeStage(key) (StageControl)
-//   'apply-card'               → applique la carte collée (inerte tant que
-//                                state.cardPaste n'est pas exposé par le moteur)
 
 export default function IdentityRail({ state, onAction, users = [], archiveBusy = false }) {
   const server = state.server || {}
@@ -130,9 +128,6 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   // réponses) ⇒ falsy ⇒ libellé strictement inchangé.
   const hasMatchFort = useMemo(
     () => allDups.some((d) => d && d.match_fort), [allDups])
-  // VX237 — carte de visite collée : état optionnel exposé par le moteur
-  // (lane 1) / la section Contact (lane 4). Inerte tant qu'il est absent.
-  const cardPaste = state.cardPaste
   const doMerge = async (otherId) => {
     const ok = await confirm({
       title: 'Fusionner ce doublon dans la fiche courante ?',
@@ -264,14 +259,12 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           </a>
         </div>
       )}
-      {cardPaste && (
-        <div className="lw-banner-card lw-banner-card--info" role="status">
-          <span>Carte de visite détectée : {cardPaste.nom}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => onAction('apply-card')}>
-            Répartir
-          </Button>
-        </div>
-      )}
+      {/* CRX36 — la bannière « Carte de visite détectée » (VX237) a été
+          RETIRÉE : `state.cardPaste` n'a jamais été exposé par le moteur, et
+          l'action 'apply-card' n'a jamais eu de câblage côté shell. Le bloc
+          était donc inatteignable — une promesse d'UI morte. La rétablir
+          suppose d'exposer l'état ET de câbler l'action, pas seulement de
+          remettre le JSX. */}
 
       {/* Identité */}
       <header className="lw-rail-head">

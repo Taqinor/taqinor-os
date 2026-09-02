@@ -22,11 +22,13 @@ import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
 import { useSavedViews } from '../../hooks/useSavedViews'
-import { formatMAD } from '../../lib/format'
+// CRX36 — `formatDate` du formateur PARTAGÉ remplace la copie locale, qui
+// rendait « Invalid Date » sur une date absente ou mal formée au lieu du
+// tiret cadratin du reste de l'application.
+import { formatDate, formatMAD } from '../../lib/format'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
-const formatDateFR = (iso) => new Date(iso).toLocaleDateString('fr-FR')
 
 // Un client est « entreprise » s'il porte ce type ou un identifiant légal B2B.
 const isEntreprise = (c) => c.type_client === 'entreprise'
@@ -332,9 +334,9 @@ export default function ClientList() {
       width: 120,
       searchable: false,
       cell: (value) => (
-        <span className="text-muted-foreground">{value ? formatDateFR(value) : '—'}</span>
+        <span className="text-muted-foreground">{value ? formatDate(value) : '—'}</span>
       ),
-      exportValue: (c) => (c.date_creation ? formatDateFR(c.date_creation) : ''),
+      exportValue: (c) => (c.date_creation ? formatDate(c.date_creation) : ''),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [])

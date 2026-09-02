@@ -1741,19 +1741,24 @@ def relances_du_jour(company, user, scope='today', today=None):
     rôle restreint ne voit que ses leads). Lecture seule, scopée société.
     """
     import datetime
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     qs = Lead.objects.filter(
         company=company, is_archived=False, relance_date__isnull=False)
     qs = scope_queryset(qs, user, ['owner'])
     if scope == 'overdue':
         qs = qs.filter(relance_date__lt=today)
     elif scope == 'week':
+        # CRX28 — la borne BASSE manquait : sans ``__gte=today``, « cette
+        # semaine » ramenait TOUT le passé (un retard de six mois s'affichait
+        # comme une relance de la semaine) et doublonnait le scope ``overdue``,
+        # qui existe précisément pour montrer les retards. La semaine, c'est
+        # aujourd'hui → aujourd'hui + 6 jours, bornes incluses.
         week_end = today + datetime.timedelta(days=6)
-        qs = qs.filter(relance_date__lte=week_end)
+        qs = qs.filter(relance_date__gte=today, relance_date__lte=week_end)
     else:  # today
         qs = qs.filter(relance_date=today)
     return qs.order_by('relance_date', 'nom')
@@ -1774,11 +1779,11 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     portée de visibilité de l'utilisateur est respectée (``scope_queryset``
     via le lead) ; ``owner`` filtre en plus sur le responsable du lead.
     """
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead, RelanceEtape
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
@@ -1835,11 +1840,11 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     date_expiration, total_ttc}``.
     """
     import datetime
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     limite = today + datetime.timedelta(days=dans_jours)
     leads = scope_queryset(
         Lead.objects.filter(company=company, is_archived=False),
@@ -1906,8 +1911,8 @@ def ma_file_commercial_items(company, user, today=None):
         de cette tâche, cf. ``FilterBar.jsx`` qui expose le même signal en
         chip dédiée, cliquable indépendamment de « Ma file »).
     """
-    from django.utils import timezone
-    today = today or timezone.localdate()
+    from core.dates import aujourd_hui_local
+    today = today or aujourd_hui_local()
     items = []
 
     for lead in relances_du_jour(company, user, scope='overdue', today=today):
@@ -1997,6 +2002,64 @@ def lead_chatter_envelope(lead, user=None):
             'source': 'crm.leadactivity',
         })
     return sortie
+
+
+# ── CRX37 — Jalons devis dans l'historique du lead ───────────────────────────
+
+#: CRX37 — ``kind`` renvoyé par ``ventes.selectors.devis_events_for_lead`` →
+#: ``kind`` du chatter, celui que ``ChatterTimeline`` sait DÉJÀ rendre
+#: (📤/👁️/✅/❌) et que ``matchesTimelineFilter`` range sous le filtre
+#: « Devis ». Le rendu existait des deux côtés ; il ne manquait que la source.
+_KIND_DEVIS_VERS_CHATTER = {
+    'sent': 'devis_sent',
+    'opened': 'devis_opened',
+    'signed': 'devis_signed',
+    'refused': 'devis_refused',
+}
+
+
+def lead_jalons_devis(lead):
+    """CRX37 — jalons du cycle de vie des devis d'un lead, projetés dans la
+    forme du chatter (contrat ``apps/crm/contract_samples/lead_jalons_devis.json``).
+
+    Le sélecteur ``apps.ventes.selectors.devis_events_for_lead`` (QX32be) a été
+    écrit pour ça et n'avait AUCUN appelant : le commercial ne voyait donc
+    jamais « devis envoyé / proposition ouverte / signé / refusé » dans
+    l'historique du lead, alors que ``ChatterTimeline`` sait rendre ces quatre
+    ``kind`` depuis QX32 et que le filtre « Devis » de la timeline existe déjà.
+
+    Lecture seule, cross-app par le SÉLECTEUR de l'app cible (jamais un import
+    de ``apps.ventes.models``), bornée à la société du lead. Aucun montant :
+    la timeline montre des JALONS, pas des prix (et jamais de ``prix_achat``).
+
+    Chaque entrée porte la forme d'une ligne de chatter — ``id`` textuel et
+    STABLE (aucune collision avec les ``id`` numériques de ``LeadActivity``,
+    que le frontend fusionne dans la même liste), ``kind`` ``devis_*``,
+    ``body`` lisible, ``created_at`` ISO.
+    """
+    from apps.ventes import selectors as ventes_selectors
+
+    if lead is None or not getattr(lead, 'pk', None):
+        return []
+    evenements = ventes_selectors.devis_events_for_lead(lead.pk, lead.company)
+
+    lignes = []
+    for evenement in evenements:
+        kind = _KIND_DEVIS_VERS_CHATTER.get(evenement.get('kind'))
+        if kind is None:
+            continue
+        reference = evenement.get('reference') or ''
+        lignes.append({
+            'id': f"devis-{evenement.get('devis_id')}-{evenement.get('kind')}",
+            'kind': kind,
+            'body': reference,
+            'created_at': evenement.get('at'),
+            'devis_id': evenement.get('devis_id'),
+            'reference': reference,
+            'user_nom': None,
+            'pinned': False,
+        })
+    return lignes
 
 
 # ── ADSENG31 — Réconciliation Meta-vs-ERP : lignes de lead par mécanisme ──────
@@ -2835,7 +2898,7 @@ def certifications_expirantes(company, within_days=60):
     """
     from datetime import timedelta
 
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
 
     from .models import Partenaire
 
@@ -2847,7 +2910,7 @@ def certifications_expirantes(company, within_days=60):
         within_days = 60
     if within_days < 0:
         within_days = 0
-    today = timezone.localdate()
+    today = aujourd_hui_local()
     limite = today + timedelta(days=within_days)
     return (Partenaire.objects
             .filter(company=company,

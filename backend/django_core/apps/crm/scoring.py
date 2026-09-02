@@ -234,11 +234,31 @@ def _readiness_score(lead) -> int:
 
 # ── Entrée publique ───────────────────────────────────────────────────────────
 
+def score_ajustement(lead) -> int:
+    """CRX22 — delta PERSISTANT ajouté au score calculé (``Lead.score_ajustement``).
+
+    Une automatisation (ou un correctif manuel) qui écrivait ``Lead.score``
+    directement voyait son delta effacé au premier recalcul. Le delta a
+    désormais SA colonne, et c'est le CALCUL qui l'applique : il survit à
+    chaque ``recompute_lead_score``. ``getattr`` défensif — la fonction reste
+    utilisable sur un objet partiel (tests, lead d'avant la migration 0087).
+    """
+    valeur = getattr(lead, 'score_ajustement', None)
+    try:
+        return int(valeur or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def compute_score(lead) -> int:
     """Calcule et retourne le score de qualité du lead (entier 0–100).
 
     N'effectue aucune écriture. Appelable depuis le sérialiseur, la vue,
     ou un service.  Alias : ``compute_lead_score``.
+
+    CRX22 — l'ajustement persistant (``Lead.score_ajustement``) est appliqué
+    ICI, avant le bornage : c'est le SEUL endroit qui décide de la valeur d'un
+    score, badge, tri et « Ma file » compris.
     """
     score = 0
     score += _completeness_score(lead)
@@ -248,7 +268,9 @@ def compute_score(lead) -> int:
     score += _recency_score(lead)
     score += _solar_signals_score(lead)
     score += _readiness_score(lead)
-    return min(score, 100)
+    score += score_ajustement(lead)
+    # Un ajustement négatif ne doit jamais produire un score négatif.
+    return max(0, min(score, 100))
 
 
 # Alias pour les imports qui utilisent le nom long (QJ6).
@@ -265,6 +287,9 @@ _FACTEUR_LABELS = {
     'recency': 'Lead récent',
     'solar': 'Signaux solaires',
     'readiness': "Maturité d'achat",
+    # CRX22 — l'ajustement persistant est un facteur comme un autre : le
+    # tooltip « pourquoi ce score » ne doit pas cacher un delta appliqué.
+    'ajustement': 'Ajustement',
 }
 
 
@@ -276,7 +301,8 @@ def score_reasons(lead) -> list[dict]:
 
     Le total des ``points`` peut dépasser 100 (bonus QK2) ; le score exposé reste
     borné par ``compute_score``. On n'expose que les facteurs qui rapportent des
-    points (> 0) pour rester lisible."""
+    points (> 0) pour rester lisible — SAUF l'ajustement CRX22, montré aussi
+    quand il est NÉGATIF : un score rabaissé à la main doit s'expliquer."""
     parts = [
         ('completude', _completeness_score(lead)),
         ('facture', _bill_score(lead.facture_hiver)),
@@ -285,6 +311,7 @@ def score_reasons(lead) -> list[dict]:
         ('recency', _recency_score(lead)),
         ('solar', _solar_signals_score(lead)),
         ('readiness', _readiness_score(lead)),
+        ('ajustement', score_ajustement(lead)),
     ]
     reasons = [
         {
@@ -292,7 +319,8 @@ def score_reasons(lead) -> list[dict]:
             'label': _FACTEUR_LABELS[key],
             'points': pts,
         }
-        for key, pts in parts if pts > 0
+        for key, pts in parts
+        if pts > 0 or (key == 'ajustement' and pts != 0)
     ]
     reasons.sort(key=lambda r: r['points'], reverse=True)
     return reasons

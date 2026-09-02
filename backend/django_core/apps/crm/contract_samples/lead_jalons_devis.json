@@ -1,0 +1,45 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<pk>/jalons-devis/",
+  "pourquoi": "CRX37 (audit L3 CRM du 02/09/2026) — le sélecteur cross-app apps.ventes.selectors.devis_events_for_lead (QX32be) avait été écrit POUR que le CRM fusionne les jalons devis dans l'historique d'un lead, et n'avait AUCUN appelant. Côté écran, tout était déjà prêt depuis QX32 : ChatterTimeline rend les quatre kind devis_sent / devis_opened / devis_signed / devis_refused (📤 👁️ ✅ ❌) et TimelineTab expose le filtre « Devis » (matchesTimelineFilter, kind.startsWith('devis_')). Il ne manquait que la SOURCE : le commercial ne voyait donc jamais, dans l'historique du lead, que son devis avait été envoyé, ouvert, signé ou refusé. Cet endpoint est la surface minimale de ce sélecteur ; il est ADDITIF — l'action historique/ garde sa forme à l'octet, aucun mock existant n'est invalidé. Même permission que historique (crm_voir) : c'est le même historique de lead. Aucun montant n'est exposé (des JALONS, pas des prix — et jamais de prix_achat). L'id est TEXTUEL et stable (« devis-<devis_id>-<kind> ») pour ne jamais entrer en collision avec les id NUMÉRIQUES de crm.LeadActivity, que l'écran fusionne dans la même liste.",
+  "exemple": {
+    "results": [
+      {
+        "id": "devis-42-signed",
+        "kind": "devis_signed",
+        "body": "DEV-2026-0042",
+        "created_at": "2026-08-14T09:30:00+00:00",
+        "devis_id": 42,
+        "reference": "DEV-2026-0042",
+        "user_nom": null,
+        "pinned": false
+      },
+      {
+        "id": "devis-42-opened",
+        "kind": "devis_opened",
+        "body": "DEV-2026-0042",
+        "created_at": "2026-08-12T17:05:00+00:00",
+        "devis_id": 42,
+        "reference": "DEV-2026-0042",
+        "user_nom": null,
+        "pinned": false
+      },
+      {
+        "id": "devis-42-sent",
+        "kind": "devis_sent",
+        "body": "DEV-2026-0042",
+        "created_at": "2026-08-11T08:00:00+00:00",
+        "devis_id": 42,
+        "reference": "DEV-2026-0042",
+        "user_nom": null,
+        "pinned": false
+      }
+    ]
+  },
+  "notes": {
+    "ordre": "Plus récent d'abord — le sélecteur ventes trie déjà par horodatage décroissant ; l'écran fusionne ensuite avec le chatter et retrie.",
+    "kind": "Exactement les quatre valeurs devis_sent / devis_opened / devis_signed / devis_refused. Un kind inconnu renvoyé par ventes est IGNORÉ plutôt que rendu en ligne muette.",
+    "vide": "Un lead sans devis renvoie {\"results\": []} — jamais 404.",
+    "user_nom": "Toujours null : un jalon de devis est un fait système, pas le geste d'un utilisateur nommé.",
+    "pinned": "Toujours false : seules les notes du chatter s'épinglent (LW28)."
+  }
+}

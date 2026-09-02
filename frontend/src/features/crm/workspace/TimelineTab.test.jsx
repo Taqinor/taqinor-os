@@ -16,11 +16,15 @@ const { apiGet, apiPost } = vi.hoisted(() => ({
 }))
 vi.mock('../../../api/axios', () => ({ default: { get: apiGet, post: apiPost } }))
 
-const { getLeadPointsContact, createPointContact } = vi.hoisted(() => ({
+const { getLeadPointsContact, createPointContact, getLeadJalonsDevis } = vi.hoisted(() => ({
   getLeadPointsContact: vi.fn(() => Promise.resolve({ data: { count: 0, timeline: [] } })),
   createPointContact: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
+  getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
 }))
-vi.mock('../../../api/crmApi', () => ({ default: { getLeadPointsContact, createPointContact } }))
+vi.mock('../../../api/crmApi', () => ({
+  default: { getLeadPointsContact, createPointContact, getLeadJalonsDevis },
+}))
 
 vi.mock('../../../api/marketingApi', () => ({
   default: {

@@ -53,6 +53,8 @@ vi.mock('../../../api/crmApi', () => ({
     getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
     getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
     getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
+    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
+    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
     mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
