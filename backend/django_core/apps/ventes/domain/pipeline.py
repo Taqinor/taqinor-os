@@ -820,6 +820,44 @@ def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
         return
     if quantite != dominante.quantite:
         lignes_in[dominante.index]['quantite'] = str(quantite)
+        _reecrire_quantites_soeurs(lignes_in, quantite)
+
+
+def _reecrire_quantites_soeurs(lignes_in, nb_panneaux):
+    """QJR4-1 — LES QUANTITÉS SŒURS SUIVENT LE COMPTE DE PANNEAUX RÉÉCRIT.
+
+    CE QUI ÉTAIT FAUX. ``_appliquer_preseance_quantite`` ne touchait QUE la
+    ligne panneau dominante. Les quantités dérivées du MÊME compte — structure
+    et socle — n'étaient posées qu'à la COMPOSITION : sur le chemin
+    ``MODE_ECRIRE``, le devis sortait donc avec un nombre de panneaux À JOUR et
+    une structure / des socles PÉRIMÉS. « N panneaux montés sur M structures » :
+    une nomenclature fausse et un prix faux. ``ecrire`` et ``reconcilier`` ne se
+    composaient pas.
+
+    LA RÈGLE VIENT DE LA COMPOSITION, jamais d'une seconde formule :
+    ``composition.quantites_derivees_du_compte`` en est la SEULE définition, et
+    ``catalogue.classer_produit`` le SEUL classifieur qui apparie une ligne à sa
+    catégorie. Ce site ne fait que les appliquer.
+
+    D12 — UNE LIGNE VERROUILLÉE RESTE SOUVERAINE : une sœur portant
+    ``quantite_manuelle`` n'est jamais réécrite (c'est la quantité que le
+    commercial a tapée). Lignes de section/note et options non activées :
+    hors périmètre, comme pour la dominante.
+    """
+    from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.composition import quantites_derivees_du_compte
+
+    derivees = quantites_derivees_du_compte(nb_panneaux)
+    for spec in lignes_in:
+        if not isinstance(spec, dict):
+            continue
+        if (spec.get('type_ligne') or 'produit') != 'produit':
+            continue
+        if spec.get('optionnelle') or spec.get('quantite_manuelle'):
+            continue
+        categorie = classer_produit(spec.get('designation') or '')
+        if categorie in derivees:
+            spec['quantite'] = str(derivees[categorie])
 
 
 def ecrire_etude_params(devis, intention, composition):

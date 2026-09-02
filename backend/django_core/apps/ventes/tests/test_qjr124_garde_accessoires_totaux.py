@@ -42,6 +42,18 @@ SMART_METER = {"designation": "Smart Meter", "marque": "", "quantite": 1,
                "taux_tva": 20.0}
 
 
+def _regle_qf9(items):
+    """QJR408 — LA règle QF9, telle que le builder l'applique aux paniers d'un
+    document à deux options. Le moteur de rendu portait une SECONDE passe
+    (``_guard_huawei_accessories``) qui reclassait sur la désignation seule :
+    elle est supprimée, et ces assertions épinglent désormais le propriétaire
+    unique."""
+    from apps.ventes.quote_engine import builder as _b
+    from apps.ventes.utils.options import retirer_accessoires_huawei
+    return retirer_accessoires_huawei(
+        list(items), classement=_b._item_classement, marque=_b._item_marque)
+
+
 class TestGardeSuitLaRegleDuNoyau(SimpleTestCase):
     """QJR301 — le garde-fou legacy ne porte plus sa propre règle : il délègue
     à ``utils.options.retirer_accessoires_huawei``. Le verdict d'un panier
@@ -49,12 +61,12 @@ class TestGardeSuitLaRegleDuNoyau(SimpleTestCase):
     ``any`` local — deux verdicts pour le même panier, c'était le défaut."""
 
     def test_liste_sans_onduleur_huawei_perd_l_accessoire(self):
-        garde = moteur._guard_huawei_accessories([ONDULEUR_DEYE, SMART_METER])
+        garde = _regle_qf9([ONDULEUR_DEYE, SMART_METER])
         self.assertEqual([it["designation"] for it in garde],
                          ["Onduleur hybride Deye 5kW"])
 
     def test_liste_a_deux_marques_perd_l_accessoire(self):
-        garde = moteur._guard_huawei_accessories(
+        garde = _regle_qf9(
             [ONDULEUR_HUAWEI, ONDULEUR_DEYE, SMART_METER])
         self.assertNotIn("Smart Meter", [it["designation"] for it in garde])
 
@@ -62,7 +74,7 @@ class TestGardeSuitLaRegleDuNoyau(SimpleTestCase):
         # Règle du noyau : sans onduleur identifiable, l'accessoire est
         # orphelin. Inatteignable par le rendu (une option ne se rend jamais
         # sans onduleur), épinglé pour que les deux moitiés restent d'accord.
-        garde = moteur._guard_huawei_accessories([SMART_METER])
+        garde = _regle_qf9([SMART_METER])
         self.assertEqual(garde, [])
 
 

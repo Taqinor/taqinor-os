@@ -62,41 +62,27 @@ def _esc_items(items):
     return out
 
 
-def _guard_huawei_accessories(items):
-    """QF9 — défense en profondeur : ne jamais rendre Smart Meter / Clé Wifi
-    (dongle) quand l'onduleur des lignes n'est pas Huawei. Le builder filtre
-    déjà ces lignes en amont ; ce garde-fou empêche qu'une ligne obsolète glissée
-    dans ``data`` réapparaisse dans le PDF. Huawei détecté sur la désignation +
-    la marque de l'onduleur des lignes fournies.
+# ── QJR408 — LA SECONDE PASSE DE CLASSIFICATION EST SUPPRIMÉE ──────────────
+#
+# ``_guard_huawei_accessories`` vivait ici : une SECONDE passe QF9 sur les
+# listes par option, armée exactement quand ``nb_options == 2``. Or le
+# builder applique DÉJÀ la règle du noyau à ces deux paniers dans ce cas
+# précis (``builder._drop_huawei_accessories``, branche ``if deux_options``)
+# — et il le fait AVANT de retirer la clé interne ``_produit_nom`` des
+# items. Ce garde-fou, lui, s'exécutait APRÈS ce retrait : il ne classait
+# donc plus que sur la DÉSIGNATION SEULE, précisément la divergence que
+# QJR301 déclare fermée. Un panier dont l'identité Huawei ne vit que dans
+# le NOM du produit lié était vu « Huawei » par le builder (accessoire
+# CONSERVÉ, donc COMPTÉ dans le total figé) et « non-Huawei » ici
+# (accessoire RETIRÉ du tableau) : le client lisait un tableau dont la
+# somme ne fait pas le total. Cette passe ne pouvait que SOUS-compter le
+# tableau, jamais le sur-compter.
+#
+# Issue retenue : SUPPRESSION (règle permanente 2 — le code mort part dans
+# le même commit). La règle QF9 garde UN seul propriétaire
+# (``utils.options.retirer_accessoires_huawei``) et UN seul site
+# d'application (le builder, là où la clé de classement existe encore).
 
-    QJR124 — n'est PLUS appliqué au tableau une-page : ses lignes sont filtrées
-    en amont par le builder, en même temps que ``totaux_all``, de sorte que la
-    somme des lignes rendues et le Total TTC imprimé décrivent le même panier
-    (le re-filtrage au rendu retirait une ligne DÉJÀ comptée dans le total).
-    Il ne subsiste que sur les listes PAR OPTION, dont les totaux sont eux
-    aussi calculés sur des listes filtrées.
-
-    QJR301 (01/09/2026) — CE GARDE-FOU NE PORTE PLUS SA PROPRE RÈGLE. Il en
-    portait une QUATRIÈME : sa liste de mots-clés en dur (« smart meter » /
-    « wifi » / « dongle »), sa propre détection d'onduleur (« onduleur » dans
-    la désignation SEULE) et un ``any`` là où le noyau exige ``all``. Un panier
-    mixte Huawei + Deye était donc jugé « Huawei » ici et « non-Huawei » par le
-    noyau (``_panier_sert_huawei`` rend False au PREMIER onduleur non-Huawei) :
-    deux verdicts pour le même panier, sur le même devis. Il DÉLÈGUE désormais
-    à la règle du noyau (``utils.options.retirer_accessoires_huawei``, la plus
-    conservatrice), avec les adaptateurs d'item du moteur — donc en lisant
-    aussi le NOM du produit lié, pas seulement la désignation. Les copies sont
-    SUPPRIMÉES (règle permanente 2).
-
-    QJR300 — il n'est armé que sur un document à DEUX options (cf. son unique
-    site d'appel) : hors de là, le noyau facture l'accessoire et le tableau
-    doit le montrer.
-    """
-    from apps.ventes.quote_engine.builder import _item_classement, _item_marque
-    from apps.ventes.utils.options import retirer_accessoires_huawei
-    return retirer_accessoires_huawei(
-        list(items or []),
-        classement=_item_classement, marque=_item_marque)
 
 # ── Inline SVG icons for Page 1 (WeasyPrint renders inline SVG perfectly) ────
 SVG_CHECK   = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -4147,18 +4133,11 @@ def apply_quote_data(data: dict) -> None:
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.
-    # QF9 — garde-fou marque (défense en profondeur, après le filtrage builder).
-    # QJR300 — IL NE S'ARME QUE SUR UN DOCUMENT À DEUX OPTIONS, comme la règle
-    # qu'il double : sur un document mono-option (ou une liste libre), le noyau
-    # monnaie facture l'accessoire, donc le retirer du tableau ferait imprimer
-    # un tableau qui ne somme plus au total imprimé — la divergence même que ce
-    # garde-fou existe pour empêcher.
-    _qf9_actif = data.get("nb_options") == 2
+    # QJR408 — PLUS AUCUNE SECONDE PASSE DE CLASSIFICATION ICI : le tableau
+    # imprime EXACTEMENT les lignes que le builder a comptées dans le total
+    # figé (cf. le bloc QJR408 en tête de module).
     SANS_ITEMS   = _esc_items(data["sans_items"])
     AVEC_ITEMS   = _esc_items(data["avec_items"])
-    if _qf9_actif:
-        SANS_ITEMS = _guard_huawei_accessories(SANS_ITEMS)
-        AVEC_ITEMS = _guard_huawei_accessories(AVEC_ITEMS)
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     # M1 — `data["factures_mensuelles"]` vaut None quand le client n'a pas

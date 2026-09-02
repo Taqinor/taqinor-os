@@ -454,7 +454,18 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "garantie_production_mois": getattr(
             produit, "garantie_production_mois", None),
         "quantite": float(ligne.quantite),
-        "prix_unit_ht": float(round(pu_ht, 2)),
+        # QJR410 (b) / S8-F8 — LE PRIX UNITAIRE REMISÉ N'EST PLUS ARRONDI
+        # AVANT D'ÊTRE MULTIPLIÉ. Il l'était à 2 décimales ici, et
+        # ``_LigneArgentPdf`` alimentait ensuite le noyau monnaie
+        # (``domain.argent.totaux``) avec ce PU DÉJÀ arrondi, là où
+        # ``Devis.total_ht`` appelle LE MÊME ``totaux()`` sur les lignes
+        # BRUTES : même fonction, deux entrées — sur toute ligne remisée de
+        # quantité > 1 les deux totaux dérivaient. L'ARRONDI EST UN FAIT
+        # D'AFFICHAGE : les gabarits formatent déjà ce nombre à 2 décimales
+        # (``residential/options.fmt``), et le total de ligne imprimé
+        # (``prix_unit_ht × quantite``) devient du même coup celui que le
+        # devis facture. Une ligne non remisée à prix rond est byte-identique.
+        "prix_unit_ht": float(pu_ht),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
         "taux_tva": float(ligne_taux),
         # XSAL14 — position d'affichage (0 par défaut) : sert à intercaler les
@@ -584,6 +595,13 @@ def _repartir_options(paires):
     Rend des listes de COUPLES : l'appelant a besoin des lignes ORM (pour lire la
     puissance panneau de chaque option) autant que des items de rendu.
     """
+    # QJR400 — L'ENSEMBLE D'EXCLUSION VIENT DU NOYAU, il n'est plus recopié
+    # ici : ``utils.options.blob_va_dans_sans`` / ``blob_va_dans_avec`` sont sa
+    # SEULE définition (S8-F5 : le panier « sans » du noyau excluait
+    # batterie + hybride mais PAS l'off-grid, contrairement à celui-ci).
+    # Import fonction-local — ``utils.options`` importe ce module à son sommet.
+    from apps.ventes.utils.options import blob_va_dans_avec, blob_va_dans_sans
+
     sans, avec, contradictions = [], [], []
     for ligne, it in paires:
         variante = _variante_de_ligne(ligne)
@@ -592,9 +610,8 @@ def _repartir_options(paires):
         # EXCLU du panier « sans » (une option « sans batterie » sur un système
         # de site isolé n'existe pas) et INCLUS dans « avec ». Les panneaux,
         # eux, continuent d'atterrir dans les DEUX paniers (invariant).
-        ok_sans = (not _is_battery(blob) and not _is_hybrid_inverter(blob)
-                   and not _is_offgrid_inverter(blob))
-        ok_avec = not _is_reseau_inverter(blob)
+        ok_sans = blob_va_dans_sans(blob)
+        ok_avec = blob_va_dans_avec(blob)
         if variante == "sans":
             sans.append((ligne, it))
             if not ok_sans:
@@ -1153,13 +1170,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if mode == "agricole" and pdf_mode == "full":
         pdf_mode = "onepage"
 
-    sans_ok = has_reseau
-    # QJR-OFFGRID — l'option « avec » se sert d'un onduleur HYBRIDE **ou**
-    # AUTONOME, et dans les deux cas d'une batterie RÉELLE. Sans cette
-    # disjonction, un devis de site isolé (onduleur autonome + batterie +
-    # panneaux) n'avait AUCUNE option servable : PDF refusé, options et compte
-    # de panneaux disparus de la page client.
-    avec_ok = (has_hybride or has_offgrid) and has_batterie
+    # QJR400 — LA RÈGLE DE SERVABILITÉ VIENT DU NOYAU (``utils.options``), elle
+    # n'est plus recalculée ici. QJR-OFFGRID — l'option « avec » se sert d'un
+    # onduleur HYBRIDE **ou** AUTONOME, et dans les deux cas d'une batterie
+    # RÉELLE. Sans cette disjonction, un devis de site isolé (onduleur autonome
+    # + batterie + panneaux) n'avait AUCUNE option servable : PDF refusé,
+    # options et compte de panneaux disparus de la page client.
+    from apps.ventes.utils.options import familles_servables as _familles_ok
+    sans_ok, avec_ok = _familles_ok(
+        has_reseau=has_reseau, has_hybride=has_hybride,
+        has_offgrid=has_offgrid, has_batterie=has_batterie)
     if option_unique_sans_batterie:
         # Z1 — l'onduleur hybride (ou autonome) EST là (l'option unique le
         # porte, cf. la recomposition de ``sans_items`` ci-dessus) ; c'est la
@@ -1194,23 +1214,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # afficher à la page client un prix qui n'existait dans AUCUN document
     # (« Sans batterie — 26 186 MAD » à l'écran contre « Avec batterie —
     # 60 186 MAD » au PDF, pour un seul et même devis).
-    _stored_choice = (devis.etude_params or {}).get('scenario')
     # QJR64 / décision fondateur D12 — LE REGISTRE DE SURCHARGES PASSE DEVANT.
     # ``scenario`` y est un chemin : une déclaration humaine survit à tout
     # recalcul aval, y compris à celui qui a écrit ``etude_params`` en dernier.
     # Aucun override posé ⇒ la valeur stockée, byte-identique à avant.
-    try:
-        from apps.ventes.domain.overrides import effectif as _effectif
-        _impose, _source_scenario = _effectif(devis, 'scenario',
-                                              _stored_choice)
-        if _source_scenario != 'auto' and _impose:
-            _stored_choice = _impose
-    except Exception:  # noqa: BLE001 — un registre illisible ne casse jamais
-        # un PDF : on garde la valeur stockée.
-        pass
-    _valid_choices = {
-        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
-    alternative_declaree = _stored_choice in _valid_choices
+    #
+    # QJR400 — CETTE RÉSOLUTION ET SON VOCABULAIRE VIENNENT DU NOYAU
+    # (``utils.options.scenario_declare`` / ``est_alternative_declaree``) : le
+    # bloc qui les recalculait ici — et sa copie de la liste des trois
+    # libellés — est SUPPRIMÉ. C'est ce qui garantit qu'un scénario posé par
+    # l'endpoint de surcharges est relu à l'identique par le document ET par
+    # le noyau monnaie.
+    from apps.ventes.utils.options import (
+        est_alternative_declaree as _est_alternative,
+    )
+    from apps.ventes.utils.options import scenario_declare as _scenario_declare
+    _stored_choice = _scenario_declare(devis)
+    alternative_declaree = _est_alternative(_stored_choice)
     # Avertissements INTERNES (vendeur/support) — jamais rendus au client : la
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.
@@ -1236,9 +1256,28 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "nature — déclaration conservée, devis à vérifier")
     # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
     # total d'affichage = option 1, et le une-page ne mélange jamais.
-    deux_options = sans_ok and avec_ok and alternative_declaree
+    #
+    # QJR400 — LE VERDICT VIENT DU NOYAU, et il honore désormais le
+    # COURT-CIRCUIT VARIANTE que le noyau appliquait seul : une ligne variantée
+    # n'existe que parce que la composition a DÉJÀ distingué les deux options.
+    # Sans lui, un devis à deux champs PV dont ``etude_params['scenario']`` a
+    # été perdu partait ici sur le repli ARTEFACT (une présentation unique)
+    # pendant que le noyau facturait l'option AVEC — deux prix pour la même
+    # vente.
+    from apps.ventes.utils.options import (
+        deux_options_depuis_paniers as _deux_options_paniers,
+    )
+    _variantes_declarees = any(_variante_de_ligne(li) for li in lignes)
+    deux_options = _deux_options_paniers(
+        sans_ok, avec_ok, alternative_declaree=alternative_declaree,
+        variantes=_variantes_declarees)
+    # QJR401 — LE VERDICT **STRUCTUREL**, figé AVANT tout rétrécissement de
+    # confort (QF6 / L-VAR) : c'est exactement la question que pose le noyau
+    # monnaie (« ce devis porte-t-il deux paniers distincts ? »), donc la
+    # condition sous laquelle son filtre d'option s'applique.
+    _deux_options_structurel = deux_options
 
-    if sans_ok and avec_ok and not alternative_declaree:
+    if sans_ok and avec_ok and not deux_options:
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
@@ -1412,10 +1451,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # drapeaux d'option et le mélange une-page sur ce scénario (SANS = réseau
     # seul, sans batterie ni onduleur hybride ; AVEC = hybride + batterie, sans
     # onduleur réseau). Comportement « les deux » et repli inchangés.
-    if scenario == 'Sans batterie':
+    #
+    # QJR400 — LA CORRESPONDANCE « libellé mono → option » VIENT DU NOYAU
+    # (``utils.options.option_du_scenario_mono``), pour que l'argent du noyau
+    # suive l'option que ce rétrécissement fait TITRER au document.
+    from apps.ventes.utils.options import AVEC_BATTERIE as _NOYAU_AVEC
+    from apps.ventes.utils.options import SANS_BATTERIE as _NOYAU_SANS
+    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de
+    _scenario_mono = _mono_de(scenario)
+    if _scenario_mono == _NOYAU_SANS:
         avec_ok = False
         deux_options = False
-    elif scenario == 'Avec batterie':
+    elif _scenario_mono == _NOYAU_AVEC:
         sans_ok = False
         deux_options = False
 
@@ -1566,6 +1613,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     else:
         display_total = totaux_all["ttc"]
         nb_options = 1
+    # ── QJR401 / DR1 — APRÈS SIGNATURE, L'ARGENT AFFICHÉ SUIT L'OPTION SIGNÉE ─
+    #
+    # CE QUI ÉTAIT FAUX. Ce bloc ne lisait NI ``Devis.option_acceptee`` NI
+    # ``Devis.statut`` : sa sortie était octet-pour-octet la même avant et
+    # après la signature, et ``display_total`` restait ``totaux_avec`` dès
+    # qu'il y avait deux options. Pendant ce temps le noyau monnaie
+    # (``utils.options.option_effective``) faisait suivre l'acceptation à
+    # ``Devis.total_ttc``, au solde, à l'échéancier, à la commission et à la
+    # nomenclature : le client signait « Sans batterie » et l'ERP continuait
+    # d'AFFICHER le prix « Avec » — sur la liste, le Kanban, le tableau de
+    # bord, la page publique des gammes ET la salle de vente publique, qui
+    # héritent TOUTES de cette source (aucun écran n'est touché).
+    #
+    # AVANT signature, RIEN NE CHANGE (DR1) : c'est l'option mise en avant qui
+    # s'affiche, exactement comme aujourd'hui — la condition est l'existence
+    # d'une option ACCEPTÉE, la même que celle du noyau.
+    #
+    # Le rétrécissement se limite au MONTANT AFFICHÉ : le document composé par
+    # le commercial continue de rendre ses deux options (L-VAR — signer n'est
+    # pas un choix de lecture).
+    from apps.ventes.utils.options import AVEC_BATTERIE as _SIGNE_AVEC
+    from apps.ventes.utils.options import SANS_BATTERIE as _SIGNE_SANS
+    _option_signee = getattr(devis, 'option_acceptee', '') or ''
+    if _option_signee and _deux_options_structurel:
+        if _option_signee == _SIGNE_SANS:
+            display_total = totaux_sans["ttc"]
+        elif _option_signee == _SIGNE_AVEC:
+            display_total = totaux_avec["ttc"]
     total_sans = totaux_sans["ttc"]
     total_avec = totaux_avec["ttc"]
     total_sans_before = totaux_sans["ttc_avant"]
@@ -1703,19 +1778,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
     # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
     # que le barème résidentiel national, jamais Lydec/Redal estimés).
-    if not _tranches_override and (not _utility or str(_utility).lower() == "onee"):
-        try:
-            from apps.parametres.selectors import residential_tranches_for
-            _co_tranches = residential_tranches_for(getattr(devis, "company", None))
-            if _co_tranches:
-                from .pricing import TrancheTable
-                _tranches_override = TrancheTable(
-                    _co_tranches["pairs"],
-                    selective_threshold=_co_tranches["selective_threshold"],
-                    boundary_tolerance=_co_tranches["boundary_tolerance"],
-                )
-        except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
-            pass
+    #
+    # QJR409 — LES DEUX RÉGLAGES TARIFAIRES DE LA SOCIÉTÉ VIENNENT DU LECTEUR
+    # EXISTANT (``etude_horaire._reglages_tarifaires``), plus d'une seconde
+    # lecture recopiée ici. Il rend le COUPLE ``(tranches, charges_fixes)`` :
+    # la moitié « tranches » remplace mot pour mot le bloc qui vivait ici (même
+    # sélecteur, même reconstruction en ``TrancheTable``), et la moitié
+    # « charges fixes » — le réglage ``redevance_compteur_mad_mois`` — n'avait
+    # AUCUN chemin jusqu'au modèle « factures », alors que le modèle « horaire »
+    # l'honore depuis toujours : le même client voyait DEUX « Facture actuelle »
+    # différentes selon le modèle qui gagne. Ne lève jamais.
+    _co_charges_fixes = None
+    try:
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        _co_tranches, _co_charges_fixes = _reglages_tarifaires(
+            getattr(devis, "company", None))
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        _co_tranches = None
+    if (_co_tranches and not _tranches_override
+            and (not _utility or str(_utility).lower() == "onee")):
+        _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
@@ -1777,6 +1859,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         utility=_utility or None,
         tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
         tranches_override=_tranches_override or None,
+        # QJR409 — la redevance de compteur RÉGLÉE par la société atteint enfin
+        # le modèle « factures » : sans elle, sa « Facture actuelle » comptait
+        # les lignes fixes SOURCÉES par défaut pendant que le modèle horaire
+        # comptait celles de la société. ``None`` ⇒ défauts du barème, sortie
+        # byte-identique à avant.
+        charges_fixes_mad=_co_charges_fixes,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
         autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
         # ORDRE FONDATEUR (18/08) — capacité batterie RÉELLE de l'option 2 :
@@ -1870,12 +1958,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # dessous). Sans ce réalignement, le une-page aurait pu servir une
         # production dérivée pendant que la page 1 sert celle de l'étude.
         prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
+        # ── QJR410 (a) / S8-F6 — LE CHIFFRE DÉCRIT L'OPTION QUE LE DOCUMENT
+        # TITRE ────────────────────────────────────────────────────────────
+        # ``_ref_total`` était clavé sur ``sans_ok`` : sur un document dont
+        # l'option titrée est « avec » (deux options — le total mis en avant
+        # est celui de l'option AVEC — ou mono-option « avec »), la carte
+        # « Prix par kWc » et le payback décrivaient l'option SANS. Un chiffre
+        # CLIENT qui décrit une offre que le document ne porte pas. La bascule
+        # suit EXACTEMENT celle de ``display_total`` (« avec » dès que le
+        # document met cette option en avant), pour qu'il n'y ait qu'une
+        # vérité par document.
+        _titree_avec = bool(deux_options or avec_ok)
+        _ref_total = total_avec if _titree_avec else total_sans
         if etude.get("economies_annuelles"):
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
             roi["eco_a_cumul"] = eco
-            _ref_total = total_sans if sans_ok else total_avec
             roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
             roi["roi_a"] = roi["roi_s"]
             _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
@@ -1884,10 +1983,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
         etude["production_annuelle"] = roi["prod_kwh"]
-        _ref_total = total_sans if sans_ok else total_avec
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
-            etude["payback"] = roi["roi_s"]
+            # QJR410 (a) — le payback était CÂBLÉ EN DUR sur le ROI « sans ».
+            etude["payback"] = roi["roi_a"] if _titree_avec else roi["roi_s"]
         # ── QJR160 — LE PRIX PAR KWC DÉCRIT UNE OFFRE, PAS UN MÉLANGE ───────
         # ``_ref_total`` est le TTC de l'option 1 (« sans » quand elle est
         # servable) tandis que ``puissance_kwc`` a été recalé sur le kWc de
@@ -1897,7 +1996,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # MÊME branche. Et sur un document qui chiffre DEUX options de tailles
         # différentes, aucun prix au kWc unique n'a de sens : la carte est
         # OMISE plutôt que de faire choisir au client entre deux vérités.
-        _kwc_ref = (puissance_kwc_sans if sans_ok else puissance_kwc_avec)
+        # QJR410 (a) — le kWc suit la MÊME branche que ``_ref_total``.
+        _kwc_ref = (puissance_kwc_avec if _titree_avec else puissance_kwc_sans)
         if not _kwc_ref or _kwc_ref <= 0:
             _kwc_ref = puissance_kwc
         if deux_options and panneaux_divergents:
@@ -1964,6 +2064,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         etude["facture_annuelle_avec_solaire_opt2"] = roi["facture_avec_a"]
         etude["economie_reelle_opt1"] = roi["eco_s_ann"]
         etude["economie_reelle_opt2"] = roi["eco_a_ann"]
+        # ── QJR425 / DR7 — LA NOTE DE MÉTHODE ATTEINT ENFIN LA SURFACE QUI
+        # PORTE LES MONTANTS ─────────────────────────────────────────────────
+        # ``calculate_savings_roi`` RENDAIT déjà ``factures_note_methode``
+        # (QJR157) et PERSONNE ne le lisait : la note qui dit sur quelle base
+        # les douze mois ont été tarifés — la traçabilité qu'exige la règle
+        # checked-facts — n'était publiée par AUCUNE surface, et
+        # ``pricing.NOTE_DOUZE_MOIS`` restait inatteignable depuis l'ERP.
+        # Elle voyage désormais AVEC les montants qu'elle décrit, sur la même
+        # surface d'étude. Aucun montant ne bouge : la note s'AJOUTE (règle
+        # permanente 1 — cette tâche câble, elle ne recalcule rien).
+        # Note ABSENTE ⇒ AUCUNE clé (jamais une note vide, jamais un texte par
+        # défaut, règle Z2).
+        if roi.get("factures_note_methode"):
+            etude["factures_note"] = roi["factures_note_methode"]
 
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
     # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
@@ -1999,6 +2113,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} MAD/an → "
                 f"avec solaire ≈ {_fr_int(_sm_avec)} MAD/an → économie ≈ "
                 f"{_fr_int(roi['facture_sans'] - _sm_avec)} MAD/an"),
+            # QJR425 / DR7 — la note de méthode voyage AVEC le chiffre qu'elle
+            # décrit (« sur quelle base ces douze mois ont-ils été tarifés »).
+            # ``None`` quand le moteur n'en a produit aucune — jamais un texte
+            # par défaut.
+            "note_methode": roi.get("factures_note_methode") or None,
         }
     elif savings_model == "horaire":
         # ── QJR27 — LE BLOC DÉCRIT LA MÉTHODE RÉELLEMENT EMPLOYÉE ───────────
@@ -2765,6 +2884,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "factures_approximatif": (
             bool(roi.get("factures_approximatif"))
             if savings_model == "factures" else False),
+        # QJR425 / DR7 — la note de méthode des DOUZE MOIS, publiée à côté des
+        # montants qu'elle décrit. ``None`` hors modèle « factures » ou sans
+        # note : jamais une note vide (règle Z2).
+        "factures_note": (
+            roi.get("factures_note_methode")
+            if savings_model == "factures" else None),
         # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
         # chiffré compact). Même dict rendu par le PDF premium et /proposal.
         "savings_method": savings_method,
