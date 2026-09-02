@@ -59,6 +59,20 @@ def _lead_data(leadgen_id='1001', nom='Yassine Bennani',
     }
 
 
+def _batch_notification_payload(leadgen_ids):
+    """CRX3 — vrai batch Meta : PLUSIEURS entrées dans une seule notification
+    (une par lead), la forme que Meta envoie réellement en pointe de trafic et
+    qu'AUCUN test ne couvrait."""
+    return {
+        'entry': [
+            {'changes': [{'field': 'leadgen',
+                          'value': {'leadgen_id': lg, 'ad_id': '',
+                                    'adgroup_id': '', 'form_id': ''}}]}
+            for lg in leadgen_ids
+        ]
+    }
+
+
 def _notification_payload(leadgen_id='1001', ad_id='', adgroup_id='',
                           form_id=''):
     # ADSENG1 — le webhook leadgen de Meta pousse UNIQUEMENT des clés de
@@ -360,6 +374,110 @@ class MetaLeadAdsStoreAndReplayTests(TestCase):
         self.assertEqual(raw.lead_id, lead.pk)
         self.assertEqual(raw.error, '')
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+
+
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN,
+                   META_LEAD_ADS_APP_SECRET=APP_SECRET)
+class MetaLeadAdsBatchIsolationTests(TestCase):
+    """CRX3 — isolation PAR ENTRÉE du batch (premier test multi-entrées).
+
+    Un batch Meta porte plusieurs leads : l'échec de l'un ne doit plus
+    abandonner les SUIVANTS (Meta ne les rejoue pas, le webhook ayant
+    répondu), et la réponse doit dire combien ont réussi/échoué."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Meta Batch', slug='taqinor-meta-batch')
+        self.url = reverse('meta-lead-ads-webhook')
+
+    def _post(self, payload):
+        body = json.dumps(payload).encode('utf-8')
+        return self.client.post(
+            self.url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_sign(APP_SECRET, body))
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_batch_multi_entrees_toutes_traitees(self, fetch_mock):
+        """Trois entrées saines → trois leads, compteurs cohérents."""
+        fetch_mock.side_effect = lambda lg, tok: _lead_data(
+            leadgen_id=lg, telephone=f'+21266000{lg}',
+            email=f'lead{lg}@example.com')
+        resp = self._post(_batch_notification_payload(
+            ['9101', '9102', '9103']))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['created'], 3)
+        self.assertEqual(body['failed'], 0)
+        self.assertEqual(len(body['lead_ids']), 3)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 3)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_une_entree_en_echec_n_abandonne_pas_les_suivantes(self, fetch_mock):
+        """L'entrée du MILIEU échoue : les deux autres sont créées quand même,
+        la réponse compte 2 réussies / 1 échouée, et l'échouée laisse une
+        ligne brute rejouable (CRX2)."""
+        from apps.crm.models import WebsiteLeadPayload
+
+        def _fetch(leadgen_id, token):
+            if leadgen_id == '9202':
+                raise Exception('graph 500')
+            return _lead_data(leadgen_id=leadgen_id,
+                              telephone=f'+21266000{leadgen_id}',
+                              email=f'lead{leadgen_id}@example.com')
+
+        fetch_mock.side_effect = _fetch
+        resp = self._post(_batch_notification_payload(
+            ['9201', '9202', '9203']))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['created'], 2)
+        self.assertEqual(body['failed'], 1)
+
+        # La 3e entrée — celle qui suivait l'échec — existe bien.
+        self.assertTrue(Lead.objects.filter(
+            company=self.company, external_id='9203').exists())
+        self.assertFalse(Lead.objects.filter(
+            company=self.company, external_id='9202').exists())
+        # Et la touche perdue est conservée, rejouable.
+        raw = WebsiteLeadPayload.objects.get(
+            company=self.company, payload__leadgen_id='9202')
+        self.assertFalse(raw.processed)
+        self.assertIn('graph 500', raw.error)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_exception_de_creation_n_abandonne_pas_le_batch(self, fetch_mock):
+        """Cas que l'ancien try/except du BATCH perdait : ce n'est pas le
+        fetch qui casse mais la CRÉATION du lead. Avant, l'exception remontait
+        au niveau batch et toutes les entrées suivantes étaient abandonnées."""
+        from apps.crm import services as crm_services
+        from apps.crm.models import WebsiteLeadPayload
+
+        # Capturé AVANT le patch : sinon le repli appellerait le mock
+        # lui-même (récursion infinie).
+        vrai = crm_services.create_lead_from_meta_lead_ads
+
+        fetch_mock.side_effect = lambda lg, tok: _lead_data(
+            leadgen_id=lg, telephone=f'+21266000{lg}',
+            email=f'lead{lg}@example.com')
+
+        def _create(**kwargs):
+            if str(kwargs.get('leadgen_id')) == '9301':
+                raise RuntimeError('create casse')
+            return vrai(**kwargs)
+
+        with mock.patch.object(
+                crm_services, 'create_lead_from_meta_lead_ads', _create):
+            resp = self._post(_batch_notification_payload(['9301', '9302']))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['created'], 1)
+        self.assertEqual(body['failed'], 1)
+        self.assertTrue(Lead.objects.filter(
+            company=self.company, external_id='9302').exists())
+        raw = WebsiteLeadPayload.objects.get(
+            company=self.company, payload__leadgen_id='9301')
+        self.assertFalse(raw.processed)
+        self.assertIn('create casse', raw.error)
 
 
 @override_settings(

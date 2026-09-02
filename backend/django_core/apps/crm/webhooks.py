@@ -2221,6 +2221,7 @@ def meta_lead_ads_webhook(request):
         return JsonResponse({'detail': 'Aucune société résolue.'}, status=202)
 
     created_leads = []
+    echecs = 0
     try:
         entries = data.get('entry') or []
         for entry in entries:
@@ -2229,28 +2230,68 @@ def meta_lead_ads_webhook(request):
                 leadgen_id = value.get('leadgen_id')
                 if not leadgen_id:
                     continue
-                # ── CRX2 — « jamais perdre un lead », parité site ────────────
-                # L'entrée est PERSISTÉE TELLE QUELLE avant toute tentative de
-                # mapping : à partir d'ici, aucune panne (Graph API injoignable,
-                # payload inattendu, bug de mapping) ne peut plus effacer cette
-                # touche Meta — elle reste visible et rejouable comme un payload
-                # site (QX16).
-                raw = WebsiteLeadPayload.objects.create(
-                    source=WebsiteLeadPayload.Source.META_LEAD_ADS,
-                    company=company,
-                    payload=value,
-                    remote_addr=(
-                        request.META.get(
-                            'HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
-                        or request.META.get('REMOTE_ADDR') or '')[:64],
-                )
-                lead = _process_meta_lead_entry(
-                    raw, value, company, access_token)
-                if lead is not None:
-                    created_leads.append(lead.pk)
-        return JsonResponse({'detail': 'Traité.', 'lead_ids': created_leads},
-                            status=200)
+                # ── CRX3 — isolation PAR ENTRÉE ─────────────────────────────
+                # Un batch Meta contient plusieurs leads. Avant, la moindre
+                # exception sur l'un d'eux (create en échec, abonné d'événement
+                # cassé, contrainte DB) remontait au try/except du batch et
+                # ABANDONNAIT toutes les entrées SUIVANTES, jamais rejouées par
+                # Meta puisque le webhook répondait quand même. Chaque entrée a
+                # désormais sa propre garde : les autres continuent.
+                raw = None
+                try:
+                    # ── CRX2 — « jamais perdre un lead », parité site ────────
+                    # L'entrée est PERSISTÉE TELLE QUELLE avant toute tentative
+                    # de mapping : à partir d'ici, aucune panne (Graph API
+                    # injoignable, payload inattendu, bug de mapping) ne peut
+                    # plus effacer cette touche Meta — elle reste visible et
+                    # rejouable comme un payload site (QX16).
+                    raw = WebsiteLeadPayload.objects.create(
+                        source=WebsiteLeadPayload.Source.META_LEAD_ADS,
+                        company=company,
+                        payload=value,
+                        remote_addr=(
+                            request.META.get(
+                                'HTTP_X_FORWARDED_FOR',
+                                '').split(',')[0].strip()
+                            or request.META.get('REMOTE_ADDR') or '')[:64],
+                    )
+                    # Le mapping est atomique PAR ENTRÉE : une entrée qui
+                    # échoue à mi-chemin ne laisse ni demi-lead ni transaction
+                    # cassée derrière elle (ce qui ferait tomber les entrées
+                    # suivantes en cascade). La ligne brute, elle, est créée
+                    # AVANT ce bloc — elle survit donc au rollback, sinon la
+                    # garantie CRX2 disparaîtrait précisément dans le cas où
+                    # elle sert.
+                    with transaction.atomic():
+                        lead = _process_meta_lead_entry(
+                            raw, value, company, access_token)
+                    if lead is not None:
+                        created_leads.append(lead.pk)
+                    else:
+                        # Récupération Graph en échec : la ligne brute est déjà
+                        # consignée et rejouable (CRX2).
+                        echecs += 1
+                except Exception as exc:  # noqa: BLE001 — jamais le batch
+                    echecs += 1
+                    logger.exception(
+                        'meta_lead_ads_webhook: entrée %s en échec — les '
+                        'entrées suivantes continuent.', leadgen_id)
+                    if raw is not None:
+                        try:
+                            raw.error = f'{type(exc).__name__}: {exc}'
+                            raw.save(update_fields=['error'])
+                        except Exception:  # noqa: BLE001 — best-effort
+                            logger.exception(
+                                'meta_lead_ads_webhook: consignation de '
+                                "l'erreur impossible (payload #%s)", raw.pk)
+        return JsonResponse(
+            {'detail': 'Traité.', 'lead_ids': created_leads,
+             'created': len(created_leads), 'failed': echecs},
+            status=200)
     except Exception:
+        # Filet de sécurité pour un payload STRUCTURELLEMENT cassé (``entry``
+        # non itérable, ``changes`` non-liste…) — plus jamais pour l'échec
+        # d'un lead, désormais isolé ci-dessus.
         logger.exception('meta_lead_ads_webhook: traitement échoué.')
         return JsonResponse({'detail': 'Erreur de traitement.'}, status=202)
 
