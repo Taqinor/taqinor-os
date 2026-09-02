@@ -128,6 +128,24 @@ def _fichiers_de_production():
         yield chemin
 
 
+#: Échantillons de code que la garde DOIT capturer, et ceux qu'elle doit
+#: laisser passer. Déclarés ici, hors de toute ligne d'assertion : le balayage
+#: `check_test_determinism` cherche un appel d'horloge VIVANT à côté d'un
+#: `assert…`, et prendrait ces chaînes littérales pour tel (elles ne sont que
+#: des entrées de la regex — ce module ne lit jamais l'heure).
+_EXEMPLES_INTERDITS = (
+    'today = timezone.localdate()',
+    'd = timezone.now().date()',
+    'self.lead.stage_date = timezone.localdate( )',
+)
+_EXEMPLES_LEGITIMES = (
+    'd = aujourd_hui_local()',
+    # Un horodatage technique reste parfaitement légitime.
+    'quand = timezone.now()',
+    'if lead.stage == timezone_label:',
+)
+
+
 def _lignes_de_code(texte):
     """Lignes NON commentées (une mention d'une forme interdite dans un
     commentaire explicatif ne doit pas faire rougir la garde)."""
@@ -157,11 +175,10 @@ class GardeDateMetierTests(TestCase):
 
     def test_la_garde_sait_rougir(self):
         """Une garde qui ne peut plus rougir est inutilisable."""
-        self.assertTrue(_FORMES_NUES.search('today = timezone.localdate()'))
-        self.assertTrue(_FORMES_NUES.search('d = timezone.now().date()'))
-        self.assertIsNone(_FORMES_NUES.search('d = aujourd_hui_local()'))
-        # Un horodatage technique reste parfaitement légitime.
-        self.assertIsNone(_FORMES_NUES.search('quand = timezone.now()'))
+        for exemple in _EXEMPLES_INTERDITS:
+            self.assertIsNotNone(_FORMES_NUES.search(exemple), exemple)
+        for exemple in _EXEMPLES_LEGITIMES:
+            self.assertIsNone(_FORMES_NUES.search(exemple), exemple)
 
     def test_la_garde_ignore_les_commentaires(self):
         lignes = list(_lignes_de_code('# timezone.localdate() interdit\nx = 1'))
