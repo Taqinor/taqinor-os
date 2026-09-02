@@ -28,7 +28,7 @@ JAMAIS lue du corps. Une cible (intervention/chantier) hors-société est rejet�
 proprement (l'op échoue mais ne casse pas le lot). Additif — la machine à états
 de l'intervention n'est jamais touchée (séparée du chantier et de STAGES.py).
 """
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -250,6 +250,16 @@ FIELD_OP_HANDLERS = {
 }
 
 
+def _fieldop_memorise(company, op_id):
+    """Journal de dédup : le ``FieldOp`` déjà appliqué pour cette clé, ou None.
+
+    UN SEUL point de lecture, partagé par le test de rejeu (avant application)
+    ET par la reprise sur collision d'unicité (AUD319, après application) — les
+    deux doivent voir exactement la même chose."""
+    return FieldOp.objects.filter(
+        company=company, client_op_id=op_id, ok=True).first()
+
+
 def _apply_one(company, user, op):
     """Applique UNE opération de façon idempotente. Renvoie un dict de statut :
     {client_op_id, op_type, status: applied|replayed|error, result|error}.
@@ -267,8 +277,7 @@ def _apply_one(company, user, op):
 
     # REJEU : la même clé d'un même locataire ne s'applique qu'une fois → on
     # renvoie le résultat mémorisé SANS rejouer l'effet (no-op idempotent).
-    existing = FieldOp.objects.filter(
-        company=company, client_op_id=op_id, ok=True).first()
+    existing = _fieldop_memorise(company, op_id)
     if existing is not None:
         return {'client_op_id': op_id, 'op_type': existing.op_type,
                 'status': 'replayed', 'result': existing.result}
@@ -291,6 +300,30 @@ def _apply_one(company, user, op):
         # n'est pas mémorisée → rejouable. Le lot CONTINUE.
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'error', 'error': str(exc)}
+    except IntegrityError:
+        # AUD319 — COURSE sur la clé d'idempotence. Le test d'existence
+        # ci-dessus est fait HORS de tout verrou (TOCTOU) : deux onglets/
+        # appareils du même technicien (ou un retry réseau) postant le même
+        # `client_op_id` passaient tous deux la lecture, et la seconde
+        # transaction violait `UniqueConstraint(company, client_op_id)`. Seule
+        # `FieldOpError` était catchée : l'`IntegrityError` remontait à travers
+        # `apply_batch` et `FieldSyncView.post` (qui ne catche que
+        # `ValueError`) → 500 générique, alors que les opérations PRÉCÉDENTES
+        # du même lot étaient déjà committées et que le terminal ne savait plus
+        # ce qui avait réellement été appliqué.
+        # La transaction interne est déjà annulée : on relit le `FieldOp` créé
+        # entre-temps par le gagnant de la course et on renvoie son résultat
+        # mémorisé, exactement comme un rejeu ordinaire.
+        gagnant = _fieldop_memorise(company, op_id)
+        if gagnant is not None:
+            return {'client_op_id': op_id, 'op_type': gagnant.op_type,
+                    'status': 'replayed', 'result': gagnant.result}
+        # Collision d'intégrité SANS FieldOp concurrent : c'est une contrainte
+        # métier violée par le handler lui-même — le lot continue, l'op reste
+        # rejouable après correction (jamais un 500 opaque).
+        return {'client_op_id': op_id, 'op_type': op_type,
+                'status': 'error',
+                'error': "Conflit d'intégrité — opération non appliquée."}
 
 
 def apply_batch(company, user, ops):
