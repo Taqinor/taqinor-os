@@ -114,6 +114,22 @@ def verify_webhook_hmac(raw_body: bytes, hmac_header: str) -> bool:
     return common.verify_hmac_base64(secret, raw_body, hmac_header)
 
 
+# AUD202 — `financial_status` Shopify : SEUL `paid` vaut « encaissé ».
+# `pending`/`authorized`/`partially_paid` ne sont pas des encaissements, et
+# `refunded`/`partially_refunded`/`voided` sont des SORTIES d'argent : aucun
+# de ces états ne doit produire une Facture émise + un Paiement + une sortie
+# de stock. Un statut ABSENT est traité comme non payé (fail-closed, même
+# doctrine que la signature HMAC : jamais d'acceptation par défaut).
+FINANCIAL_STATUS_PAYES = frozenset({'paid'})
+
+
+def commande_est_payee(payload) -> bool:
+    """``True`` si le payload Shopify décrit une commande RÉELLEMENT encaissée
+    (``financial_status == 'paid'``) — AUD202. Fail-closed."""
+    statut = str((payload or {}).get('financial_status') or '').strip().lower()
+    return statut in FINANCIAL_STATUS_PAYES
+
+
 def traiter_webhook_commande(*, company, external_order_id, montant_ttc,
                              email_client='', libelle='', lignes=None,
                              user=None, payload_brut=None):

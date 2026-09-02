@@ -17,7 +17,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from . import shopify, woocommerce
+from . import common, shopify, woocommerce
 
 # Réponse d'erreur PARTAGÉE des deux webhooks (400/401/404/503, toujours
 # `{"detail": ...}`) — une SEULE instance `inline_serializer` réutilisée :
@@ -121,13 +121,33 @@ def webhook_commande_shopify(request):
         return Response({'detail': 'Boutique inconnue.'},
                         status=status.HTTP_404_NOT_FOUND)
 
+    # AUD202 — statut RÉEL avant tout traitement « payé » : une commande non
+    # encaissée (pending/authorized) ou remboursée/annulée ne doit produire ni
+    # facture, ni paiement, ni sortie de stock.
+    if not shopify.commande_est_payee(payload):
+        return Response(
+            {'detail': 'Commande non encaissée (financial_status '
+                       f"« {payload.get('financial_status') or '—'} ») — "
+                       'aucun traitement.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    # AUD202 — devise : l'ERP facture en MAD, jamais dans la devise du panier.
+    if not common.devise_compatible(payload.get('currency')):
+        return Response(
+            {'detail': f"Devise « {payload.get('currency')} » non facturable "
+                       f'par l\'ERP ({common.DEVISE_ERP}).'},
+            status=status.HTTP_400_BAD_REQUEST)
+
     # NOTE — mapping ligne minimal : un déploiement réel avec clé API
     # résoudrait chaque `line_items[].sku`/`variant_id` vers
     # `ProduitSync.external_product_id` (mapping inverse). Ce lot pose la
     # structure ; le mapping fin se règle avec le fondateur à l'armement de
     # la clé (voir shopify.is_configured()).
     lignes = [
-        {'produit_id': li.get('produit_id'), 'quantite': li.get('quantity')}
+        {'produit_id': li.get('produit_id'), 'quantite': li.get('quantity'),
+         # AUD202 — montant TTC de la ligne, utilisé UNIQUEMENT quand la
+         # commande mêle plusieurs taux de TVA (sinon le taux produit suffit).
+         'montant_ttc': li.get('montant_ttc')}
         for li in payload.get('line_items', [])
         if isinstance(li, dict)
     ]
@@ -184,10 +204,28 @@ def webhook_commande_woocommerce(request):
         return Response({'detail': 'Boutique inconnue.'},
                         status=status.HTTP_404_NOT_FOUND)
 
+    # AUD202 — `order.updated` se déclenche à CHAQUE transition (y compris
+    # `cancelled`/`refunded`) : sans ce test, une commande annulée créait une
+    # facture émise, un paiement encaissé et une sortie de stock.
+    if not woocommerce.commande_est_payee(payload):
+        return Response(
+            {'detail': 'Commande non encaissée (status '
+                       f"« {payload.get('status') or '—'} ») — "
+                       'aucun traitement.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    # AUD202 — devise : l'ERP facture en MAD, jamais dans la devise du panier.
+    if not common.devise_compatible(payload.get('currency')):
+        return Response(
+            {'detail': f"Devise « {payload.get('currency')} » non facturable "
+                       f'par l\'ERP ({common.DEVISE_ERP}).'},
+            status=status.HTTP_400_BAD_REQUEST)
+
     # NOTE — même simplification que Shopify (voir ci-dessus) : mapping fin
     # `line_items[].sku` → `ProduitSync.external_product_id` à l'armement.
     lignes = [
-        {'produit_id': li.get('produit_id'), 'quantite': li.get('quantity')}
+        {'produit_id': li.get('produit_id'), 'quantite': li.get('quantity'),
+         'montant_ttc': li.get('montant_ttc')}
         for li in payload.get('line_items', [])
         if isinstance(li, dict)
     ]

@@ -99,6 +99,22 @@ def verify_webhook_signature(raw_body: bytes, signature_header: str) -> bool:
     return common.verify_hmac_base64(secret, raw_body, signature_header)
 
 
+# AUD202 — le topic WooCommerce câblé est `order.updated`, qui se déclenche à
+# CHAQUE transition de la commande : `pending`, `on-hold`, `cancelled`,
+# `refunded`, `failed`… Sans lire `status`, une commande ANNULÉE produisait
+# quand même une Facture émise + un Paiement encaissé + une sortie de stock.
+# Seuls `processing` (payée, en préparation) et `completed` (payée, livrée)
+# sont des encaissements. Statut absent = non payé (fail-closed).
+STATUTS_PAYES = frozenset({'processing', 'completed'})
+
+
+def commande_est_payee(payload) -> bool:
+    """``True`` si le payload WooCommerce décrit une commande RÉELLEMENT
+    encaissée (``status`` dans ``STATUTS_PAYES``) — AUD202. Fail-closed."""
+    statut = str((payload or {}).get('status') or '').strip().lower()
+    return statut in STATUTS_PAYES
+
+
 def traiter_webhook_commande(*, company, external_order_id, montant_ttc,
                              email_client='', libelle='', lignes=None,
                              user=None, payload_brut=None):

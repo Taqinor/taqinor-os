@@ -184,6 +184,10 @@ class TraiterWebhookCommandeTests(TestCase):
     def test_endpoint_webhook_signature_hmac_bout_en_bout(self):
         payload = {
             'id': 'SHOP-4004', 'total_price': '100.00',
+            # AUD202 — `financial_status` est désormais LU : un vrai webhook
+            # Shopify « orders/paid » le porte toujours ; sans lui, le
+            # traitement est refusé (fail-closed).
+            'financial_status': 'paid',
             'email': 'client@example.com', 'line_items': [],
         }
         body = json.dumps(payload).encode('utf-8')

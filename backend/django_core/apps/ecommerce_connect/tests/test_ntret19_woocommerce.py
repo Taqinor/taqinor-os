@@ -184,6 +184,9 @@ class TraiterWebhookCommandeTests(TestCase):
     def test_endpoint_webhook_signature_bout_en_bout(self):
         payload = {
             'id': 'WOO-4004', 'total': '100.00',
+            # AUD202 — `status` est désormais LU : `order.updated` se déclenche
+            # à chaque transition, seuls `processing`/`completed` sont payés.
+            'status': 'completed',
             'billing': {'email': 'woo-client@example.com'}, 'line_items': [],
         }
         body = json.dumps(payload).encode('utf-8')
