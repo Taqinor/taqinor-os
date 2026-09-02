@@ -413,6 +413,94 @@ class ClotureApiTests(_ApiBase):
         self.assertEqual(ecr.company, self.co)
         self.assertTrue(ecr.est_equilibree)
 
+    def test_aud168_od_api_refusee_en_periode_close(self):
+        """AUD168 — une date ISO en CHAÎNE ne contourne plus le verrou.
+
+        `date_verrouillee` renvoyait `False` avant toute requête sur une
+        chaîne : les DEUX gardes (creer_ecriture_od puis save()) tombaient sur
+        la même valeur non typée et l'écriture atterrissait en 201 dans un mois
+        clôturé.
+        """
+        periode = services.creer_periode(
+            self.co, date(2026, 3, 1), date(2026, 3, 31), libelle='Mars 2026')
+        services.cloturer_periode(periode)
+        dotations = services.get_compte(self.co, '6191')
+        amort = services.get_compte(self.co, '2832')
+        resp = self.api.post(
+            '/api/django/compta/exercices/ecriture-od/',
+            {
+                'date_ecriture': '2026-03-31',
+                'libelle': 'Trop tard',
+                'lignes': [
+                    {'compte': dotations.id, 'debit': '500', 'credit': '0'},
+                    {'compte': amort.id, 'debit': '0', 'credit': '500'},
+                ],
+            },
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), 0)
+
+    def test_aud168_od_api_date_illisible_refusee(self):
+        dotations = services.get_compte(self.co, '6191')
+        amort = services.get_compte(self.co, '2832')
+        resp = self.api.post(
+            '/api/django/compta/exercices/ecriture-od/',
+            {
+                'date_ecriture': 'pas-une-date',
+                'libelle': 'Illisible',
+                'lignes': [
+                    {'compte': dotations.id, 'debit': '10', 'credit': '0'},
+                    {'compte': amort.id, 'debit': '0', 'credit': '10'},
+                ],
+            },
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), 0)
+
+    def test_aud168_extourner_api_refuse_en_periode_close(self):
+        journal = Journal.objects.get(company=self.co, code='VTE')
+        banque = services.get_compte(self.co, '5141')
+        capital = services.get_compte(self.co, '1111')
+        ecriture = services.creer_ecriture(
+            self.co, journal, date(2026, 2, 10), "Apport",
+            [
+                {'compte': banque, 'debit': Decimal('300'),
+                 'credit': Decimal('0')},
+                {'compte': capital, 'debit': Decimal('0'),
+                 'credit': Decimal('300')},
+            ])
+        periode = services.creer_periode(
+            self.co, date(2026, 4, 1), date(2026, 4, 30), libelle='Avril 2026')
+        services.cloturer_periode(periode)
+        avant = EcritureComptable.objects.filter(company=self.co).count()
+        resp = self.api.post(
+            f'/api/django/compta/ecritures/{ecriture.id}/extourner/',
+            {'date_extourne': '2026-04-15'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), avant)
+
+    def test_aud168_provisions_fnp_fae_api_refusees_en_periode_close(self):
+        periode = services.creer_periode(
+            self.co, date(2026, 5, 1), date(2026, 5, 31), libelle='Mai 2026')
+        services.cloturer_periode(periode)
+        avant = EcritureComptable.objects.filter(company=self.co).count()
+        corps = {
+            'date_periode': '2026-05-31',
+            'date_extourne': '2026-06-01',
+            'items': [{'source_id': 1, 'reference': 'R-1',
+                       'montant_ht': '1000'}],
+        }
+        for url in ('generer-fnp', 'generer-fae'):
+            resp = self.api.post(
+                f'/api/django/compta/provisions-periode/{url}/',
+                corps, format='json')
+            self.assertEqual(resp.status_code, 400, (url, resp.data))
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), avant)
+
     def test_reporter_a_nouveaux_via_api(self):
         journal = Journal.objects.get(company=self.co, code='VTE')
         banque = services.get_compte(self.co, '5141')

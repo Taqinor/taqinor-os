@@ -19,6 +19,7 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Aucun comportement existant n'est modifié — ce
 module est entièrement additif.
 """
+import datetime
 from decimal import Decimal
 
 from django.conf import settings
@@ -851,12 +852,28 @@ class PeriodeComptable(models.Model):
 
         Point d'appui de l'immutabilité (FG115) : une seule requête, scopée
         société, qui répond « cette date est-elle figée ? ». ``une_date`` peut
-        être une ``date`` ou un ``datetime`` (on prend sa partie date).
+        être une ``date``, un ``datetime`` (on prend sa partie date) ou une
+        CHAÎNE ISO.
+
+        AUD168 — une chaîne était auparavant traitée comme « non verrouillée »
+        (``return False`` avant toute requête) : un fail-OPEN. Django ne
+        convertit la valeur brute du corps JSON qu'au ``get_prep_value`` SQL,
+        si bien qu'un POST portant ``"date_ecriture": "2026-03-31"`` traversait
+        les DEUX gardes (``creer_ecriture_od`` puis ``save()``) et créait une
+        écriture dans un mois clôturé. Une chaîne est désormais PARSÉE ; une
+        chaîne illisible est traitée comme VERROUILLÉE (fail-closed), jamais
+        comme une autorisation.
         """
         if une_date is None or company_id is None:
             return False
         if isinstance(une_date, str):
-            return False
+            texte = une_date.strip()
+            if not texte:
+                return False
+            try:
+                une_date = datetime.date.fromisoformat(texte[:10])
+            except ValueError:
+                return True
         # ``datetime`` est une sous-classe de ``date`` : on prend sa partie date.
         d = une_date.date() if hasattr(une_date, 'hour') else une_date
         return cls.objects.filter(

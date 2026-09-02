@@ -319,7 +319,16 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         Idempotent. Corps optionnel : ``{'date_extourne': 'YYYY-MM-DD'}``.
         """
         ecriture = self.get_object()
-        date_extourne = request.data.get('date_extourne') or None
+        # AUD168 — la date brute du corps JSON n'est PAS typée : la laisser
+        # passer en chaîne rendait le garde de période fail-open.
+        brut = request.data.get('date_extourne') or None
+        try:
+            date_extourne = _parse_date(brut) if brut else None
+        except ValueError:
+            return Response(
+                {'detail': "Date d'extourne invalide (format attendu : "
+                           'AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             extourne = services.extourner_ecriture(
                 ecriture, date_extourne=date_extourne, user=request.user)
@@ -2082,9 +2091,18 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
                 'credit': lig.get('credit') or 0,
                 'libelle': lig.get('libelle', '') or '',
             })
+        # AUD168 — date typée AVANT le service : une chaîne rendait les deux
+        # gardes de période fail-open (l'écriture atterrissait dans un mois
+        # clôturé en 201).
+        try:
+            date_ecriture = _parse_date(data.get('date_ecriture'))
+        except ValueError:
+            return Response(
+                {'detail': "'date_ecriture' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             ecriture = services.creer_ecriture_od(
-                company, data.get('date_ecriture'),
+                company, date_ecriture,
                 data.get('libelle', '') or 'Régularisation', lignes,
                 reference=data.get('reference', '') or '',
                 created_by=request.user)
@@ -8331,15 +8349,30 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     scopé société côté serveur."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @staticmethod
+    def _dates_provision(data):
+        """AUD168 — dates typées avant tout appel de service (jamais une chaîne
+        brute, qui rendait le garde de période fail-open)."""
+        periode = _parse_date(data.get('date_periode'))
+        brut_extourne = data.get('date_extourne') or None
+        extourne = _parse_date(brut_extourne) if brut_extourne else None
+        return periode, extourne
+
     @action(detail=False, methods=['post'], url_path='generer-fnp')
     def generer_fnp(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fnp(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:
@@ -8352,11 +8385,17 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     def generer_fae(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fae(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:
