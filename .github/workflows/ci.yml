@@ -1858,7 +1858,13 @@ jobs:
     needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # 02/09/2026 — 12 → 30 : aligné sur les shards backend. Un lot riche en
+    # migrations + éviction du dump WOW8 (LRU, journée à forte activité CI)
+    # force un replay froid qui dépasse largement 12 min (run 33666097975 :
+    # replay complet depuis admin.0001, tué au plafond, shards annulés en
+    # cascade). Le chemin cache-HIT reste ~6-8 min ; le plafond ne borne que
+    # le pire cas froid.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
