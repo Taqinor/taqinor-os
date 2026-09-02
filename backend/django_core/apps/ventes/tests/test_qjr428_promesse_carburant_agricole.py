@@ -166,7 +166,16 @@ class TestQjr428TextePanneauAgricoleHonnete(TestCase):
         self.assertTrue(chemin.exists(),
                         f"PanneauAgricole.jsx introuvable à {chemin} — la "
                         "racine calculée est-elle toujours correcte ?")
-        return chemin.read_text(encoding='utf-8')
+        source = chemin.read_text(encoding='utf-8')
+        # ESPACES NORMALISÉS. Le texte visé vit dans un commentaire JSX
+        # RENVOYÉ À LA LIGNE : « aucune promesse de chiffre dans le\n
+        # PDF ». Chercher la phrase telle quelle dans le source brut ne
+        # mesure pas l'honnêteté du texte, mais la largeur de colonne du
+        # jour — et un simple reformatage la ferait rougir (ou, pire, ferait
+        # passer un ``assertNotIn`` sur une promesse fausse simplement
+        # coupée en deux). On compare donc sur le texte à espaces normalisés,
+        # ce que lit un humain.
+        return ' '.join(source.split())
 
     def test_le_texte_ne_promet_plus_un_chiffre_carburant_que_le_pdf_ne_rend_pas(self):
         source = self._lire_panneau_agricole()
