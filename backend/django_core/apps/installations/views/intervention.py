@@ -39,6 +39,35 @@ from .. import field_capture  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+
+# AUD324 — préchargements communs aux écrans de DISPATCH d'intervention
+# (kanban, calendrier FG68, « Ma tournée » FG73).
+#
+# `InterventionSerializer` porte 5 `SerializerMethodField` sans eager-loading :
+# `equipe_noms` (M2M), `preparation_completion` / `preparation_confirmee`
+# (OneToOne inverse, jamais préchargé), `reserves_ouvertes` (COUNT sur FK
+# inverse) et `photos_obligatoires_manquantes` (shot-list — mémoïsée côté
+# serializer). Sans ces préchargements, charger ~50 interventions déclenchait
+# 150-250 requêtes additionnelles sur l'écran de dispatch quotidien le plus
+# consulté. Le `Prefetch` des réserves est déjà FILTRÉ sur OUVERTE et déposé
+# sur un attribut dédié : le serializer en lit la longueur au lieu de refaire
+# un COUNT par intervention.
+RESERVES_OUVERTES_ATTR = '_reserves_ouvertes_prefetch'
+
+
+def dispatch_prefetches():
+    from django.db.models import Prefetch
+    return (
+        'equipe',
+        'preparation__materiel',
+        'preparation__outils',
+        Prefetch(
+            'reserves',
+            queryset=Reserve.objects.filter(statut=Reserve.Statut.OUVERTE),
+            to_attr=RESERVES_OUVERTES_ATTR),
+    )
+
+
 # Types d'intervention par défaut (clés = Intervention.Type), tous « système ».
 _DEFAULT_TYPES_INTERVENTION = [
     ('pose', 'Pose'),
@@ -116,9 +145,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
     la société ; l'acteur et la société sont posés côté serveur."""
+    # AUD324 — le kanban/la liste sérialisent l'InterventionSerializer complet :
+    # les préchargements de dispatch (préparation, réserves ouvertes) rejoignent
+    # `equipe`, sinon chaque intervention tirait ses propres requêtes.
     queryset = Intervention.objects.select_related(
         'installation', 'installation__client', 'installation__devis',
-        'technicien', 'camionnette').prefetch_related('equipe').all()
+        'technicien', 'camionnette').prefetch_related(
+            *dispatch_prefetches()).all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = [
@@ -1826,10 +1859,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # AUD324 — le calendrier construisait son propre queryset SANS le
+        # moindre prefetch, alors qu'il sérialise l'InterventionSerializer
+        # complet : `equipe` (M2M), `preparation` (OneToOne inverse) et le
+        # compte des réserves ouvertes tiraient chacun une requête PAR
+        # intervention sur l'écran de dispatch le plus consulté.
         qs = qs.select_related(
             'technicien', 'installation', 'installation__client',
             'camionnette',
-        ).order_by('date_prevue', 'id')
+        ).prefetch_related(*dispatch_prefetches()).order_by('date_prevue', 'id')
         # Regrouper par technicien
         from collections import defaultdict
         by_tech = defaultdict(list)
@@ -1909,7 +1947,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
               .filter(company=company, technicien=request.user, date_prevue=jour)
               .select_related('installation', 'installation__client',
                               'technicien', 'camionnette')
-              .prefetch_related('equipe'))
+              # AUD324 — mêmes préchargements que le kanban/le calendrier.
+              .prefetch_related(*dispatch_prefetches()))
         intervs = list(qs)
         if not intervs:
             return Response({'date': jour, 'stops': []})

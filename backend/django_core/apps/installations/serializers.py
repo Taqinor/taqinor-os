@@ -344,15 +344,40 @@ class InterventionSerializer(serializers.ModelSerializer):
         prep = getattr(obj, 'preparation', None)
         return bool(prep and prep.tout_charge)
 
+    def _shotlist(self, company):
+        """AUD324 — shot-list MÉMOÏSÉE pour toute la passe de sérialisation.
+
+        `active_shotlist(company)` était ré-exécutée à l'identique pour CHAQUE
+        intervention sérialisée (kanban, calendrier, ma-tournée) : ~50
+        interventions = 50 requêtes `ShotListSlot` rigoureusement identiques.
+        Le cache vit dans le contexte, partagé par toutes les instances d'une
+        même passe (`self.context` remonte à la racine du serializer)."""
+        cache = self.context.get('_shotlist_cache')
+        if cache is None:
+            cache = self.context['_shotlist_cache'] = {}
+        cid = getattr(company, 'id', None)
+        if cid not in cache:
+            from .field_services import active_shotlist
+            cache[cid] = active_shotlist(company)
+        return cache[cid]
+
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
-        return len(missing_required_shots(obj))
+        return len(missing_required_shots(
+            obj, slots=self._shotlist(obj.company)))
 
     def get_crew_time(self, obj):
         from .field_capture import crew_time
         return crew_time(obj)
 
     def get_reserves_ouvertes(self, obj):
+        # AUD324 — quand l'appelant a préchargé les réserves OUVERTES (Prefetch
+        # filtré déposé par `views.intervention.dispatch_prefetches()`), on lit
+        # la liste au lieu de tirer un COUNT par intervention sur les écrans de
+        # dispatch. Repli inchangé quand rien n'est préchargé.
+        prefetch = getattr(obj, '_reserves_ouvertes_prefetch', None)
+        if prefetch is not None:
+            return len(prefetch)
         return obj.reserves.filter(statut=Reserve.Statut.OUVERTE).count()
 
 
