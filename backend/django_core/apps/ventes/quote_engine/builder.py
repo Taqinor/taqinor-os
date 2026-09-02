@@ -2064,6 +2064,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         etude["facture_annuelle_avec_solaire_opt2"] = roi["facture_avec_a"]
         etude["economie_reelle_opt1"] = roi["eco_s_ann"]
         etude["economie_reelle_opt2"] = roi["eco_a_ann"]
+        # ── QJR425 / DR7 — LA NOTE DE MÉTHODE ATTEINT ENFIN LA SURFACE QUI
+        # PORTE LES MONTANTS ─────────────────────────────────────────────────
+        # ``calculate_savings_roi`` RENDAIT déjà ``factures_note_methode``
+        # (QJR157) et PERSONNE ne le lisait : la note qui dit sur quelle base
+        # les douze mois ont été tarifés — la traçabilité qu'exige la règle
+        # checked-facts — n'était publiée par AUCUNE surface, et
+        # ``pricing.NOTE_DOUZE_MOIS`` restait inatteignable depuis l'ERP.
+        # Elle voyage désormais AVEC les montants qu'elle décrit, sur la même
+        # surface d'étude. Aucun montant ne bouge : la note s'AJOUTE (règle
+        # permanente 1 — cette tâche câble, elle ne recalcule rien).
+        # Note ABSENTE ⇒ AUCUNE clé (jamais une note vide, jamais un texte par
+        # défaut, règle Z2).
+        if roi.get("factures_note_methode"):
+            etude["factures_note"] = roi["factures_note_methode"]
 
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
     # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
@@ -2099,6 +2113,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} MAD/an → "
                 f"avec solaire ≈ {_fr_int(_sm_avec)} MAD/an → économie ≈ "
                 f"{_fr_int(roi['facture_sans'] - _sm_avec)} MAD/an"),
+            # QJR425 / DR7 — la note de méthode voyage AVEC le chiffre qu'elle
+            # décrit (« sur quelle base ces douze mois ont-ils été tarifés »).
+            # ``None`` quand le moteur n'en a produit aucune — jamais un texte
+            # par défaut.
+            "note_methode": roi.get("factures_note_methode") or None,
         }
     elif savings_model == "horaire":
         # ── QJR27 — LE BLOC DÉCRIT LA MÉTHODE RÉELLEMENT EMPLOYÉE ───────────
@@ -2865,6 +2884,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "factures_approximatif": (
             bool(roi.get("factures_approximatif"))
             if savings_model == "factures" else False),
+        # QJR425 / DR7 — la note de méthode des DOUZE MOIS, publiée à côté des
+        # montants qu'elle décrit. ``None`` hors modèle « factures » ou sans
+        # note : jamais une note vide (règle Z2).
+        "factures_note": (
+            roi.get("factures_note_methode")
+            if savings_model == "factures" else None),
         # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
         # chiffré compact). Même dict rendu par le PDF premium et /proposal.
         "savings_method": savings_method,

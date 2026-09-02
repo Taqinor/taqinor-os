@@ -1316,6 +1316,14 @@ def calculate_savings_roi(
     # fixes du barème, exactement comme sur le chemin « horaire ». ``None`` ⇒
     # les montants SOURCÉS du barème, sortie byte-identique à avant.
     charges_fixes_mad: float | None = None,
+    # QJR425 — répartition mensuelle de la consommation (12 parts OU 12 kWh),
+    # passée telle quelle à ``two_bills_savings``. Présente ⇒ les douze mois
+    # sont tarifés chacun à sa tranche et la sortie porte
+    # :data:`NOTE_DOUZE_MOIS` ; ABSENTE (le défaut, et le cas de tous les
+    # appelants d'aujourd'hui) ⇒ mois moyen × 12 et :data:`NOTE_MOIS_MOYEN`,
+    # sortie byte-identique. C'est le seul chemin par lequel la note « douze
+    # mois » devient atteignable depuis l'ERP.
+    repartition_mensuelle=None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1442,11 +1450,13 @@ def calculate_savings_roi(
         _tb_s = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_sans_eff,
             utility=utility, tranches_override=tranches_override,
-            charges_fixes_mad=charges_fixes_mad)
+            charges_fixes_mad=charges_fixes_mad,
+            repartition_mensuelle=repartition_mensuelle)
         _tb_a = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_avec,
             utility=utility, tranches_override=tranches_override,
-            charges_fixes_mad=charges_fixes_mad)
+            charges_fixes_mad=charges_fixes_mad,
+            repartition_mensuelle=repartition_mensuelle)
         if _tb_s and _tb_a:
             savings_model = "factures"
             economie_opt1 = _tb_s["economie"]
