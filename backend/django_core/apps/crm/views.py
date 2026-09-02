@@ -1110,7 +1110,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             LeadSerializer(survivor, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def historique(self, request, pk=None):
         """Timeline chatter du lead (auto + notes), du plus récent au plus ancien.
 
@@ -1118,14 +1118,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ``LeadActivitySerializer.get_user_nom``/``get_attachment_*`` retouchent
         chacune une FK PAR LIGNE (N+1 réel, recon 02 §5). ``order_by`` explicite
         (au lieu du tri implicite ``Meta.ordering`` du modèle) — LW28 : les
-        notes ÉPINGLÉES remontent en tête, hors chronologie."""
+        notes ÉPINGLÉES remontent en tête, hors chronologie.
+
+        CRX19 — deux corrections : la lecture exige ``crm_voir`` (elle était
+        ouverte à TOUT porteur de rôle, alors qu'elle sert l'historique
+        complet d'un lead), et le CONTEXTE est propagé au sérialiseur, sans
+        quoi le masquage PII du chatter ne s'appliquerait pas ici."""
         lead = self.get_object()
         activites = (
             lead.activites
             .select_related('user', 'attachment')
             .order_by('-pinned', '-created_at')
         )
-        return Response(LeadActivitySerializer(activites, many=True).data)
+        return Response(LeadActivitySerializer(
+            activites, many=True, context={'request': request}).data)
 
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',

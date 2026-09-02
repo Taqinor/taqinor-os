@@ -32,6 +32,45 @@ from apps.compta.serializers import (  # noqa: F401,E402
 )
 
 
+# ── LW29/CRX19 — PII du lead : une SEULE liste, un SEUL masquage ────────────
+#
+# ``LeadSerializer`` masque déjà ces six champs pour un rôle sans
+# ``client_pii_voir``… mais le CHATTER les recopiait en clair dans
+# ``old_value``/``new_value`` : « telephone : 0612345678 → 0698765432 » restait
+# lisible par tout le monde. Le masquage vit donc AU NIVEAU DU SÉRIALISEUR
+# d'activité, donc PAR CONSTRUCTION sur les trois surfaces qui servent le
+# chatter (action ``historique``, ``chatter_recent`` embarqué au retrieve, et
+# l'enveloppe uniforme ARC9).
+LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
+                   'gps_lat', 'gps_lng')
+
+#: Remplacement affiché à la place d'une valeur PII masquée.
+PII_MASQUE = '•••'
+
+
+def pii_masquee_pour(user) -> bool:
+    """Condition UNIQUE du masquage PII (LW29) : ``user`` connu et privé de
+    ``client_pii_voir``. Sans utilisateur (rendu serveur/interne, tâche de
+    fond), rien n'est masqué — comportement historique."""
+    return user is not None and not getattr(user, 'can_view_client_pii', True)
+
+
+def masquer_valeurs_chatter(field, old_value, new_value, user):
+    """Renvoie ``(old_value, new_value)`` masqués si ``field`` est une PII du
+    lead et que ``user`` n'a pas le droit de la voir.
+
+    Fonction PARTAGÉE par ``LeadActivitySerializer`` et par l'enveloppe
+    uniforme (``selectors.lead_chatter_envelope``) : une seule règle, jamais
+    deux implémentations qui divergent.
+    """
+    if not pii_masquee_pour(user):
+        return old_value, new_value
+    if (field or '') not in LEAD_PII_FIELDS:
+        return old_value, new_value
+    return (PII_MASQUE if old_value else old_value,
+            PII_MASQUE if new_value else new_value)
+
+
 class LeadActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
     # VX111 — pièce jointe optionnelle sur une note (photo prise depuis
@@ -64,6 +103,23 @@ class LeadActivitySerializer(serializers.ModelSerializer):
 
     def get_attachment_mime(self, obj):
         return getattr(obj.attachment, 'mime', None)
+
+    def to_representation(self, instance):
+        """CRX19 — masque ``old_value``/``new_value`` quand l'entrée porte sur
+        une PII du lead et que l'utilisateur n'a pas ``client_pii_voir``.
+
+        Ici et NULLE PART AILLEURS : les trois surfaces qui servent le chatter
+        (``historique``, ``chatter_recent``, enveloppe ARC9) héritent donc du
+        masquage par construction. Sans ``context['request']`` (rendu interne),
+        rien n'est masqué — comportement historique."""
+        data = super().to_representation(instance)
+        request = self.context.get('request') if hasattr(self, 'context') \
+            else None
+        user = getattr(request, 'user', None) if request is not None else None
+        data['old_value'], data['new_value'] = masquer_valeurs_chatter(
+            data.get('field'), data.get('old_value'), data.get('new_value'),
+            user)
+        return data
 
 
 class RelanceEtapeSerializer(serializers.ModelSerializer):
@@ -655,8 +711,10 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
-    PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
-                  'gps_lat', 'gps_lng')
+    # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :
+    # deux listes divergentes, c'est un champ masqué sur la fiche et lisible
+    # dans son historique.
+    PII_FIELDS = LEAD_PII_FIELDS
 
     def _pii_masked(self):
         """LW29 — condition UNIQUE de masquage PII, réutilisée par
@@ -717,13 +775,18 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
         (tri LW28), ``select_related('user','attachment')`` pour éviter tout
         N+1 (même garde que LW8). Calculée uniquement quand get_fields() a
-        gardé le champ (RETRIEVE) — jamais appelée sur une liste."""
+        gardé le champ (RETRIEVE) — jamais appelée sur une liste.
+
+        CRX19 — le CONTEXTE est propagé : sans lui, le sérialiseur d'activité
+        ne connaît pas l'utilisateur et le masquage PII du chatter ne
+        s'appliquerait pas sur cette surface."""
         rows = (
             obj.activites
             .select_related('user', 'attachment')
             .order_by('-pinned', '-created_at')[:50]
         )
-        return LeadActivitySerializer(rows, many=True).data
+        return LeadActivitySerializer(
+            rows, many=True, context=self.context).data
 
     def get_client_nom(self, obj):
         if not obj.client_id:
