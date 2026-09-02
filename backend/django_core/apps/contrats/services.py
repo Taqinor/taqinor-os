@@ -2721,6 +2721,25 @@ def enregistrer_cycle(company, *, source_type, source_id, periode,
     )
 
 
+def attacher_facture_au_cycle(cycle, *, facture_id, motif=None):
+    """AUD149 — rattache la ``Facture`` produite à un cycle DÉJÀ journalisé.
+
+    Thin service exposé pour les appelants qui RÉSERVENT la période AVANT de
+    créer la facture (``enregistrer_cycle(statut='genere')`` d'abord, création
+    ensuite — l'ordre qui rend la garde anti-doublon efficace) : ils ne
+    connaissent l'id de la facture qu'après coup et ne doivent pas écrire dans
+    ``contrats.models`` eux-mêmes (frontière cross-app, CLAUDE.md). ``motif``
+    ``None`` laisse le motif existant intact. Renvoie le cycle.
+    """
+    champs = ['facture_id']
+    cycle.facture_id = facture_id
+    if motif is not None:
+        cycle.motif = motif
+        champs.append('motif')
+    cycle.save(update_fields=champs)
+    return cycle
+
+
 def facturer_ligne_echeance_journalisee(ligne, *, user=None,
                                         taux_tva=Decimal('20'),
                                         periode=None):

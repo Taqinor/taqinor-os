@@ -298,23 +298,42 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
         XCTR5 — chaque tentative (succès/échec) est journalisée dans le journal
         de facturation récurrente de ``apps.contrats`` (source_type=
-        ``sav_maintenance``) : best-effort, une erreur de journalisation ne
-        bloque JAMAIS la facturation elle-même.
+        ``sav_maintenance``).
+
+        AUD149 — la garde anti-doublon passe AVANT la création : l'action
+        délègue au chemin unique ``sav.services.facturer_contrat_maintenance``,
+        qui réserve la période (cycle ``genere``) dans la même transaction
+        atomique et ne crée la Facture qu'ensuite, sous ``select_for_update``
+        et après un contrôle explicite de ``facturation_due``. Un second clic,
+        ou un clic le jour du passage du beat, répond 409 au lieu de produire
+        une SECONDE facture d'abonnement pour le même mois.
+
+        AUD151 — ce chemin ajoute aussi la ligne de facturation à l'usage
+        (XCTR16), jusqu'ici réservée au beat quotidien.
 
         Réponse 201 : {ok: true, facture_reference: str, facture_id: int}
+        Réponse 409 : {ok: false, detail: str} — période déjà facturée.
         """
         from django.utils import timezone
+
+        from apps.sav.services import (
+            FacturationContratDoublonError, FacturationContratError,
+            facturer_contrat_maintenance,
+        )
 
         contrat = self.get_object()
         periode = timezone.localdate().strftime('%Y-%m')
         try:
-            from apps.ventes.services import creer_facture_contrat
-            facture = creer_facture_contrat(
-                contrat=contrat,
+            facture = facturer_contrat_maintenance(
+                contrat,
                 user=request.user,
                 company=request.user.company,
+                periode=periode,
             )
-        except ValueError as exc:
+        except FacturationContratDoublonError as exc:
+            return Response({'ok': False, 'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        except (FacturationContratError, ValueError) as exc:
             self._journaliser_cycle_best_effort(
                 request.user.company, contrat.pk, periode,
                 statut_echec=True, motif=str(exc))
@@ -330,9 +349,6 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'ok': False, 'detail': 'Erreur inattendue lors de la facturation.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        self._journaliser_cycle_best_effort(
-            request.user.company, contrat.pk, periode,
-            statut_echec=False, facture_id=facture.id)
         return Response(
             {
                 'ok': True,
@@ -349,10 +365,17 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
         Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
         ``apps.contrats.services`` (jamais ses ``models``/``views``), import
-        FONCTION-LOCAL pour éviter tout cycle au chargement. BEST-EFFORT : une
-        erreur de journalisation (garde anti-doublon incluse) ne doit JAMAIS
-        remonter — la facturation SAV elle-même est déjà terminée.
+        FONCTION-LOCAL pour éviter tout cycle au chargement.
+
+        AUD149 — n'est plus appelée que sur le chemin d'ÉCHEC : le succès est
+        journalisé par ``sav.services.facturer_contrat_maintenance``, AVANT la
+        création de la facture (c'est ce qui rend la garde anti-doublon
+        efficace). ``RejeuError`` n'est plus avalée — elle signale un doublon
+        réel ; le reste demeure best-effort (une panne de journalisation ne
+        doit pas masquer l'erreur métier déjà en cours de remontée).
         """
+        from apps.contrats.services import RejeuError
+
         try:
             from apps.contrats import services as contrats_services
             from apps.contrats.models import CycleFacturationLog
@@ -369,6 +392,8 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
                 motif=motif,
                 facture_id=facture_id,
             )
+        except RejeuError:
+            raise
         except Exception:  # pragma: no cover - défensif (best-effort)
             pass
 
