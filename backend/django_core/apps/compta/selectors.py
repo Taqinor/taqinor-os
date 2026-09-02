@@ -44,9 +44,44 @@ def _as_date(value):
     return date.fromisoformat(str(value))
 
 
-def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def _referentiel_principal(company):
+    """Le référentiel comptable PRINCIPAL de la société (ou None)."""
+    return ReferentielComptable.objects.filter(
+        company=company, est_principal=True).first()
+
+
+def _filtre_referentiel(qs, company, referentiel=None):
+    """Restreint un queryset de ``LigneEcriture`` à UN livre comptable (NTFIN14).
+
+    ``referentiel`` = instance ``ReferentielComptable``, ou ``None`` pour le
+    livre PRINCIPAL. Le principal agrège les lignes taguées ``referentiel``
+    NULL (comportement historique) PLUS celles explicitement taguées principal ;
+    un livre parallèle (IFRS…) n'agrège QUE ses propres lignes.
+
+    AUD160 — point de filtrage UNIQUE : tous les états statutaires (grand
+    livre, balance, CPC, bilan, FEC, déclaration TVA) le traversent, faute de
+    quoi un retraitement IFRS entre dans la liasse déposée à la DGI.
+    """
+    principal = _referentiel_principal(company)
+    ref_id = referentiel.id if referentiel is not None else (
+        principal.id if principal else None)
+    est_principal = (referentiel is None) or (
+        principal is not None and ref_id == principal.id)
+    if est_principal:
+        cond = Q(referentiel__isnull=True)
+        if principal is not None:
+            cond |= Q(referentiel_id=principal.id)
+        return qs.filter(cond)
+    return qs.filter(referentiel_id=ref_id)
+
+
+def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+               referentiel=None):
     qs = LigneEcriture.objects.filter(company=company).select_related(
         'compte', 'ecriture')
+    # AUD160 — livre comptable : par DÉFAUT le principal (les livres parallèles
+    # IFRS/multi-GAAP sortent de tous les états statutaires).
+    qs = _filtre_referentiel(qs, company, referentiel)
     if date_debut:
         qs = qs.filter(ecriture__date_ecriture__gte=date_debut)
     if date_fin:
@@ -359,6 +394,8 @@ def export_fec(company, exercice, *, validees_seulement=False):
         ecriture__date_ecriture__gte=exercice.date_debut,
         ecriture__date_ecriture__lte=exercice.date_fin,
     ).select_related('compte', 'ecriture', 'ecriture__journal')
+    # AUD160 — le FEC déposé à la DGI ne porte QUE le livre principal.
+    qs = _filtre_referentiel(qs, company)
     if validees_seulement:
         qs = qs.filter(ecriture__statut='validee')
     # Ordre auditable : date d'écriture, puis pièce (numéro d'écriture stable =
@@ -4536,21 +4573,14 @@ def balance_par_referentiel(company, referentiel, *, date_debut=None,
     (IFRS…) n'agrège QUE ses propres lignes. Renvoie la même forme que
     ``balance_generale`` (débit/crédit/solde par compte + totaux).
     """
+    # AUD160 — le filtrage vit désormais dans ``_filtre_referentiel``, appliqué
+    # par ``_lignes_qs`` : un seul point de vérité pour les six états.
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
-                    validees_seulement=validees_seulement)
-    principal = ReferentielComptable.objects.filter(
-        company=company, est_principal=True).first()
+                    validees_seulement=validees_seulement,
+                    referentiel=referentiel)
+    principal = _referentiel_principal(company)
     ref_id = referentiel.id if referentiel is not None else (
         principal.id if principal else None)
-    est_principal = (referentiel is None) or (
-        principal is not None and ref_id == principal.id)
-    if est_principal:
-        cond = Q(referentiel__isnull=True)
-        if principal is not None:
-            cond |= Q(referentiel_id=principal.id)
-        qs = qs.filter(cond)
-    else:
-        qs = qs.filter(referentiel_id=ref_id)
     agg = qs.values(
         'compte__numero', 'compte__intitule', 'compte__classe',
     ).annotate(debit=Sum('debit'), credit=Sum('credit')).order_by(
