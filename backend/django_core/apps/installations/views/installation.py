@@ -1090,9 +1090,13 @@ class InstallationViewSet(CompanyScopedModelViewSet):
     def etapes(self, request, pk=None):
         """CH2 — parcours d'étapes du chantier (cycle de vie configurable CH1)
         avec, pour CHAQUE étape, l'état de son gate (exigences réunies ou non +
-        raisons en français). Amorce le cycle international de la société à la
-        première consultation. Les étapes non bloquantes sont consultatives ;
-        les bloquantes sont appliquées à l'avancement."""
+        raisons en français). LECTURE PURE : AUD313 — cette consultation
+        n'amorce PLUS le cycle de la société (elle renvoyait sinon 10 étapes
+        dont 4 gates bloquants créés par un simple GET de n'importe quel rôle) ;
+        tant que le Directeur n'a pas amorcé via
+        `POST /etapes-chantier/amorcer/`, la liste est vide. Les étapes non
+        bloquantes sont consultatives ; les bloquantes sont appliquées à
+        l'avancement."""
         from ..services import etape_courante, stage_gate_status, stages_actifs
         inst = self.get_object()
         stages = stages_actifs(inst.company)

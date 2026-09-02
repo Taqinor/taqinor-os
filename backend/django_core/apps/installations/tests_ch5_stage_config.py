@@ -75,16 +75,24 @@ class StageConfigRoleGateTests(TestCase):
         self.directeur = make_directeur(self.company)
         self.responsable = make_responsable(self.company)
 
-    def test_lecture_amorce_le_cycle(self):
+    def test_lecture_namorce_pas_le_cycle(self):
+        # AUD313 — une lecture ne crée plus aucune étape ; c'est l'action
+        # d'écriture `amorcer` (Directeur) qui amorce le cycle.
         api = auth(self.responsable)
         r = api.get(f'{BASE}/')
         self.assertEqual(r.status_code, 200)
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
-        self.assertEqual(len(rows), 10)  # cycle PV international amorcé
+        self.assertEqual(len(rows), 0)
+        self.assertEqual(StageModele.objects.filter(
+            company=self.company).count(), 0)
+        auth(self.directeur).post(f'{BASE}/amorcer/', {}, format='json')
+        r2 = api.get(f'{BASE}/')
+        rows2 = r2.data['results'] if isinstance(r2.data, dict) else r2.data
+        self.assertEqual(len(rows2), 10)  # cycle PV international amorcé
 
     def test_directeur_ajoute_une_etape(self):
         api = auth(self.directeur)
-        api.get(f'{BASE}/')  # amorce
+        api.post(f'{BASE}/amorcer/', {}, format='json')  # AUD313 — amorce
         r = api.post(f'{BASE}/', {
             'cle': 'controle_qualite', 'libelle': 'Contrôle qualité',
             'ordre': 5, 'bloquant': True, 'exige_photos': True,
@@ -95,7 +103,7 @@ class StageConfigRoleGateTests(TestCase):
 
     def test_directeur_reordonne_et_bascule_bloquant(self):
         api = auth(self.directeur)
-        api.get(f'{BASE}/')
+        api.post(f'{BASE}/amorcer/', {}, format='json')
         stage = StageModele.objects.get(
             company=self.company, cle='autorisations')
         r = api.patch(f'{BASE}/{stage.id}/',
@@ -107,7 +115,11 @@ class StageConfigRoleGateTests(TestCase):
 
     def test_non_directeur_ne_peut_pas_ecrire(self):
         api = auth(self.responsable)
-        api.get(f'{BASE}/')
+        # AUD313 — `amorcer` est une écriture : refusée à un non-Directeur.
+        self.assertEqual(
+            api.post(f'{BASE}/amorcer/', {}, format='json').status_code, 403)
+        from apps.installations.services import seed_stages
+        seed_stages(self.company)
         stage = StageModele.objects.filter(company=self.company).first()
         r = api.patch(f'{BASE}/{stage.id}/', {'ordre': 42}, format='json')
         self.assertEqual(r.status_code, 403, r.data)
@@ -117,7 +129,7 @@ class StageConfigRoleGateTests(TestCase):
 
     def test_etape_protegee_ne_se_supprime_pas(self):
         api = auth(self.directeur)
-        api.get(f'{BASE}/')
+        api.post(f'{BASE}/amorcer/', {}, format='json')
         stage = StageModele.objects.get(
             company=self.company, cle='mise_en_service')
         self.assertTrue(stage.protege)
@@ -131,7 +143,7 @@ class StageConfigRoleGateTests(TestCase):
 
     def test_etape_personnalisee_supprimable(self):
         api = auth(self.directeur)
-        api.get(f'{BASE}/')
+        api.post(f'{BASE}/amorcer/', {}, format='json')
         stage = StageModele.objects.create(
             company=self.company, cle='perso', libelle='Perso', ordre=20)
         r = api.delete(f'{BASE}/{stage.id}/')
@@ -146,7 +158,8 @@ class StageConfigScopeTests(TestCase):
 
     def test_scope_par_societe(self):
         api = auth(self.directeur)
-        api.get(f'{BASE}/')  # amorce la société du directeur
+        # AUD313 — amorce la société du directeur (action d'écriture).
+        api.post(f'{BASE}/amorcer/', {}, format='json')
         # Une étape d'une AUTRE société est invisible/inaccessible.
         from apps.installations.services import seed_stages
         seed_stages(self.autre)

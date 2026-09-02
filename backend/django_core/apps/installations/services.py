@@ -1122,11 +1122,19 @@ def seed_stages(company):
 
 
 def stages_actifs(company):
-    """Étapes ACTIVES de la société, ordonnées (amorce d'abord si vide)."""
+    """Étapes ACTIVES de la société, ordonnées — LECTURE PURE.
+
+    AUD313 : cette fonction n'amorce PLUS le cycle par défaut. Elle est
+    appelée depuis des GET ouverts à tout rôle (liste des étapes CH5, onglet
+    « Jalons » d'une fiche chantier) ; y semer les 10
+    `DEFAULT_LIFECYCLE_GATES` faisait basculer `stages_configures()` à True
+    pour TOUTE la société sur une simple consultation, activant 4 gates
+    BLOQUANTS que personne n'avait configurés. L'amorçage a désormais un seul
+    point d'entrée : l'action d'écriture `POST /etapes-chantier/amorcer/`,
+    réservée au Directeur (`seed_stages`). Société non amorcée → liste vide,
+    donc comportement historique strictement préservé."""
     if company is None:
         return []
-    if not StageModele.objects.filter(company=company).exists():
-        seed_stages(company)
     return list(StageModele.objects.filter(company=company, actif=True)
                 .order_by('ordre', 'id'))
 
