@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/portail/mes-livraisons/{id}/preuve/",
+  "pourquoi": "AUD301 — le lien « Voir la preuve de livraison » du portail client (PortailClientLivraisons.jsx) pointait vers l'endpoint INTERNE /api/django/installations/preuves-livraison/<id>/ (PreuveLivraisonViewSet, IsAnyRole), dont authentication.permissions exclut explicitement portee != 'interne' : un compte portail_client obtenait 403 à CHAQUE clic, depuis l'introduction de la fonctionnalité. Et même en interne, la réponse était du JSON brut (photo = un id d'Attachment), pas un document consultable. Cet endpoint PORTAIL sert la preuve (FG330) scopée au client CONNECTÉ — jamais un paramètre — via apps.installations.selectors.preuve_livraison_client_portail. La livraison d'un autre client ou d'une autre société est INTROUVABLE (404), jamais « trouvée puis refusée ». `signature_image` est le tracé de signature en data-URL (rendu directement par le navigateur) ; `photo_url` pointe vers l'action portail preuve-photo, qui relaie le fichier sous la même garde de portée (records/attachments/<id>/download/ est IsAnyRole et rejouerait le 403). Aucun coût de transport ni prix d'achat n'y figure jamais — même contrat client-safe que la liste des livraisons. `pod_url` de GET /api/django/portail/mes-livraisons/ pointe désormais sur ce chemin.",
+  "exemple": {
+    "livraison_id": 42,
+    "livraison_reference": "LIV-2026-0042",
+    "signataire_nom": "Karim Bennani",
+    "signature_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+    "horodatage": "2026-09-01T14:32:05Z",
+    "note": "Remis en main propre au chef de chantier.",
+    "gps_lat": "33.573110",
+    "gps_lng": "-7.589843",
+    "photo_url": "/api/django/portail/mes-livraisons/42/preuve-photo/"
+  },
+  "exemple_sans_photo_ni_gps": {
+    "livraison_id": 43,
+    "livraison_reference": "LIV-2026-0043",
+    "signataire_nom": null,
+    "signature_image": null,
+    "horodatage": "2026-09-02T09:10:00Z",
+    "note": null,
+    "gps_lat": null,
+    "gps_lng": null,
+    "photo_url": null
+  }
+}
