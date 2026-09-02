@@ -22,8 +22,15 @@ from django.db import models
 
 # Champs sensibles, jamais exportés, par (app_label, model_name).
 # Centralise la garantie « aucun prix d'achat / marge ne sort ».
+# AUD314 — Intervention.lien_client_token/lien_rapport_token sont des jetons
+# publics PERMANENTS (le second « n'expire jamais par date ») donnant accès
+# sans login à un compte-rendu signé/suivi de visite : un export N97 « sauve-
+# garde » les livrait en clair, offrant à quiconque récupère le fichier un
+# accès public à vie à tous les comptes-rendus de la société.
 SENSITIVE_FIELDS = {
     ('stock', 'produit'): {'prix_achat'},
+    ('installations', 'intervention'): {
+        'lien_client_token', 'lien_rapport_token'},
 }
 
 
