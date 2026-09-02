@@ -336,8 +336,11 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='emettre-carte-cadeau',
             permission_classes=[IsResponsableOrAdmin])
     def emettre_carte_cadeau(self, request):
-        """NTRET15 — Émet une carte cadeau au comptoir (encaissée comme une
-        vente normale, sans ligne de stock)."""
+        """NTRET15 — Émet une carte cadeau au comptoir (encaissée, sans ligne
+        de stock). AUD203 — l'émission ne produit AUCUNE facture de vente :
+        elle constate une dette envers le porteur, soldée à l'usage par la
+        facture des biens réellement vendus. ``facture`` reste donc null dans
+        la réponse."""
         company = request.user.company
         client = None
         client_id = request.data.get('client')
@@ -370,7 +373,7 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         return Response({
             'code': carte.code,
             'solde': str(carte.solde),
-            'facture': facture.reference,
+            'facture': facture.reference if facture is not None else None,
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='payer-carte-cadeau')
