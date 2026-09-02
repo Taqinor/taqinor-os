@@ -1752,8 +1752,13 @@ def relances_du_jour(company, user, scope='today', today=None):
     if scope == 'overdue':
         qs = qs.filter(relance_date__lt=today)
     elif scope == 'week':
+        # CRX28 — la borne BASSE manquait : sans ``__gte=today``, « cette
+        # semaine » ramenait TOUT le passé (un retard de six mois s'affichait
+        # comme une relance de la semaine) et doublonnait le scope ``overdue``,
+        # qui existe précisément pour montrer les retards. La semaine, c'est
+        # aujourd'hui → aujourd'hui + 6 jours, bornes incluses.
         week_end = today + datetime.timedelta(days=6)
-        qs = qs.filter(relance_date__lte=week_end)
+        qs = qs.filter(relance_date__gte=today, relance_date__lte=week_end)
     else:  # today
         qs = qs.filter(relance_date=today)
     return qs.order_by('relance_date', 'nom')
