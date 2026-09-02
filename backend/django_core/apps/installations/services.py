@@ -332,6 +332,14 @@ def create_installation_from_devis(devis, user, company):
     # à la création (created=True) ; ré-accepter le devis retourne le chantier
     # existant (created=False) plus haut sans repasser ici — pas de doublon.
     _notifier_chantier_assigne(inst, inst.technicien_responsable)
+    # AUD316 — la création journalise ELLE-MÊME au chatter. Les deux chemins
+    # API (`perform_create`, `creer-depuis-devis`) appelaient `log_creation`
+    # depuis la VUE ; le chemin ÉVÉNEMENTIEL (`receivers._creer_chantier_
+    # on_devis_accepted` → ici) ne l'appelait jamais : un chantier né de
+    # l'acceptation d'un devis n'avait aucune ligne « Chantier créé » dans son
+    # Historique. Ici, les trois chemins l'obtiennent.
+    from . import activity
+    activity.log_creation(inst, user)
     return inst, True
 
 
@@ -2893,6 +2901,274 @@ def verifier_gate_acompte_planification(installation):
     return ("Planification refusée : l'acompte de ce devis n'est pas "
             'encore encaissé (réglage société « acompte avant '
             'planification »).')
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AUD316 — SERVICE UNIQUE de changement de statut d'un chantier
+# ═════════════════════════════════════════════════════════════════════════════
+# Trois chemins d'écriture réels posaient `Installation.statut` avec des
+# chaînes d'effets DIVERGENTES malgré une arrivée commune à RECEPTIONNE :
+# le PATCH générique (`perform_update`), POST `mise-en-service` et POST
+# `avancer-etape`. `avancer-etape` — l'écran de timeline poussé par le produit
+# — n'appelait JAMAIS `verifier_gate_acompte_planification`,
+# `chantier_receptionne.send`, `notifier_reception_solde_a_facturer`, ni la note
+# de chatter « Chantier réceptionné… » (absente aussi de `mise-en-service`).
+# Conséquence mesurée : une société pilotant ses chantiers par la timeline
+# n'obtenait jamais l'enquête NPS (compta), jamais la proposition de contrat
+# d'entretien (sav — du revenu O&M perdu en silence), jamais la baseline de
+# monitoring, jamais le rappel de facturation du solde ; et l'acompte-avant-
+# planification était totalement contourné.
+#
+# Ce service est désormais LE SEUL endroit qui écrit `Installation.statut` : les
+# trois vues sont des adaptateurs sans logique métier, et les aides d'effets
+# (`_stamp_statut_dates`, `_apply_reception_handover`,
+# `_apply_stock_statut_effects`) vivent ICI pour qu'une vue ne puisse plus les
+# appeler à la carte. Une garde sémantique (`tests_parite_cascade.py`) échoue si
+# un quatrième chemin réapparaît.
+
+class TransitionRefusee(Exception):
+    """AUD316 — refus de transition, porteur de TOUTES ses raisons (FR).
+
+    Exception UNIQUE de la chaîne de gardes : les vues la traduisent en 400.
+    `raisons` est toujours une liste, jamais une chaîne."""
+
+    def __init__(self, raisons):
+        self.raisons = list(raisons or [])
+        super().__init__(' ; '.join(self.raisons))
+
+
+# Jalon de statut canonique → champ date à horodater (N6/N7) si vide.
+_STATUT_DATE_FIELD = {
+    Installation.Statut.SIGNE: 'date_signature',
+    Installation.Statut.MATERIEL_COMMANDE: 'date_materiel_commande',
+    Installation.Statut.PLANIFIE: 'date_pose_prevue',
+    Installation.Statut.INSTALLE: 'date_pose_reelle',
+    Installation.Statut.RECEPTIONNE: 'date_reception',
+    Installation.Statut.CLOTURE: 'date_cloture',
+}
+
+
+def _stamp_statut_dates(inst, old_statut):
+    """Pose la date du jalon atteint si elle est vide (jamais d'écrasement).
+    Travaille sur le statut CANONIQUE pour couvrir aussi les statuts hérités.
+    AUD316 — migré de `views/installation.py` : un effet de bord de statut ne
+    s'appelle plus « à la carte » depuis une vue."""
+    from django.utils import timezone
+    canon = Installation.canonical_statut(inst.statut)
+    if Installation.canonical_statut(old_statut) == canon:
+        return None
+    field = _STATUT_DATE_FIELD.get(canon)
+    if field and getattr(inst, field, None) is None:
+        setattr(inst, field, timezone.localdate())
+        inst.save(update_fields=[field])
+        return field
+    return None
+
+
+def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
+    """N14 — effets STOCK d'un changement de statut canonique du chantier.
+
+    À l'arrivée à « Installé », consomme les réservations (une SORTIE par SKU,
+    idempotente côté service). À l'arrivée à « Clôturé », libère les
+    réservations restantes non consommées. Le service est idempotent : il ne
+    rejoue jamais une réservation déjà consommée.
+    AUD316 — migré de `views/installation.py`."""
+    from . import activity
+    if canon_new == canon_old:
+        return {}
+    if canon_new == Installation.Statut.INSTALLE:
+        nb = consume_reservations(inst, user)
+        if nb:
+            activity.log_note(
+                inst, user,
+                f"Stock consommé — {nb} référence(s) sortie(s) du stock "
+                f"(chantier « Installé »).")
+        return {'consommees': nb}
+    if canon_new == Installation.Statut.CLOTURE:
+        nb = release_reservations(inst)
+        if nb:
+            activity.log_note(
+                inst, user,
+                f"Réservation de stock libérée — {nb} référence(s) "
+                f"(chantier clôturé).")
+        return {'liberees': nb}
+    return {}
+
+
+def _apply_reception_handover(inst, canon_old, canon_new, user):
+    """FG70 — remise de garantie automatique au passage à « Réceptionné ».
+
+    Balaye la nomenclature gelée du chantier (`inst.bom`) et garantit un
+    équipement de parc (sans n° de série) par ligne de BoM ayant un produit
+    catalogue. CROSS-APP : l'écriture passe par `apps.sav.services` (jamais
+    d'import direct des modèles SAV). Idempotent. Assemble ensuite le pack de
+    remise CH4. AUD316 — migré de `views/installation.py`."""
+    from django.utils import timezone
+    from . import activity
+    if canon_new == canon_old or canon_new != Installation.Statut.RECEPTIONNE:
+        return None
+    from apps.sav.services import sweep_bom_to_parc
+    from apps.stock.selectors import get_produit_scoped
+
+    def _resolve(produit_id):
+        return get_produit_scoped(inst.company, produit_id)
+
+    date_pose = (inst.date_reception or inst.date_pose_reelle
+                 or timezone.localdate())
+    resume = sweep_bom_to_parc(
+        installation=inst, company=inst.company, date_pose=date_pose,
+        created_by=user, resolve_produit=_resolve)
+    crees = resume['crees']
+    existants = resume['existants']
+    if crees or existants:
+        couverts = ', '.join(
+            ligne['designation'] for ligne in resume['lignes']
+            if ligne['designation'])
+        detail = f" — {couverts}" if couverts else ''
+        activity.log_note(
+            inst, user,
+            "Remise de garantie : "
+            f"{crees} équipement(s) ajouté(s) au parc"
+            + (f", {existants} déjà couvert(s)" if existants else "")
+            + detail + ".")
+    # CH4 — au passage à « Réceptionné » (gate de remise), assemble le pack de
+    # remise client (idempotent, dégrade proprement). Le pack RÉFÉRENCE l'état
+    # réel du chantier ; sa génération n'échoue jamais.
+    pack = generer_handover_pack(inst, user)
+    activity.log_note(
+        inst, user,
+        "Pack de remise "
+        + ("assemblé (complet)." if pack.complet
+           else "assemblé (pièces manquantes — voir le détail)."))
+    return resume
+
+
+def _raisons_transition(installation, nouveau_statut, user,
+                        motif_override_acompte, motif_reouverture):
+    """AUD316 — la chaîne de gardes COMPLÈTE, en un seul endroit.
+
+    Ordre : gates CH2 (qui portent aussi le point d'arrêt DUERP QHSE22), puis
+    le verrou de clôture AUD326, puis le gate d'acompte YSERV1 — ce dernier
+    armé sur TOUTE arrivée à PLANIFIE, quel que soit le chemin (il n'était
+    testé que par le PATCH)."""
+    raisons = list(verifier_transition_statut(installation, nouveau_statut))
+    raison_cloture = verifier_reouverture_cloture(
+        installation, nouveau_statut, user, motif_reouverture)
+    if raison_cloture:
+        raisons.append(raison_cloture)
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if (canon_new == Installation.Statut.PLANIFIE
+            and canon_old != Installation.Statut.PLANIFIE
+            and not (motif_override_acompte or '').strip()):
+        raison = verifier_gate_acompte_planification(installation)
+        if raison:
+            raisons.append(raison)
+    return raisons
+
+
+def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
+                            motif_override_acompte=None,
+                            motif_reouverture=None, verifier_gates=True,
+                            champs_supplementaires=None):
+    """AUD316 — LE point d'écriture de `Installation.statut`.
+
+    Applique, dans un ORDRE FIXE (celui du PATCH, le seul complet) :
+      (a) relecture de l'ancien état ;
+      (b) chaîne de gardes complète → `TransitionRefusee(raisons)` ;
+      (c) écriture de `statut` (+ `etape`, + `champs_supplementaires`) en UN
+          `save(update_fields=[...])` ;
+      (d) chaîne d'effets INTÉGRALE et inconditionnelle : `_stamp_statut_dates`
+          → `activity.log_changes` → note « système ajouté au parc installé »
+          → `_apply_reception_handover` (FG70 + CH4) → `chantier_receptionne`
+          (YSERV4) → `notifier_reception_solde_a_facturer` (YSERV7) →
+          `_apply_stock_statut_effects` (N14) → verrou de clôture (AUD326) →
+          `sync_etape_from_statut` ;
+      (e) renvoi d'un REÇU `{'ancien', 'nouveau', 'effets': {...}}`.
+
+    `verifier_gates=False` saute UNIQUEMENT (b) — jamais (d) : aucun appelant
+    ne peut obtenir une écriture de statut sans sa cascade.
+    """
+    from . import activity
+
+    old = Installation.objects.get(pk=installation.pk)
+    ancien_statut = old.statut
+    if verifier_gates:
+        raisons = _raisons_transition(
+            old, nouveau_statut, user, motif_override_acompte,
+            motif_reouverture)
+        if raisons:
+            raise TransitionRefusee(raisons)
+
+    canon_old = Installation.canonical_statut(ancien_statut)
+    fields = []
+    if installation.statut != nouveau_statut:
+        installation.statut = nouveau_statut
+        fields.append('statut')
+    if etape is not None and installation.etape_id != etape.id:
+        installation.etape = etape
+        fields.append('etape')
+    for nom, valeur in (champs_supplementaires or {}).items():
+        setattr(installation, nom, valeur)
+        fields.append(nom)
+    if fields:
+        installation.save(update_fields=fields)
+    canon_new = Installation.canonical_statut(installation.statut)
+
+    effets = {}
+    effets['date_jalon'] = _stamp_statut_dates(installation, ancien_statut)
+    activity.log_changes(old, installation, user)
+    if (canon_new == Installation.Statut.RECEPTIONNE
+            and canon_old != Installation.Statut.RECEPTIONNE):
+        activity.log_note(
+            installation, user,
+            "Chantier réceptionné — système ajouté au parc installé.")
+    effets['handover'] = _apply_reception_handover(
+        installation, canon_old, canon_new, user)
+    if (canon_new == Installation.Statut.RECEPTIONNE
+            and canon_old != Installation.Statut.RECEPTIONNE):
+        # YSERV4 — événement bus (best-effort, ne modifie aucun statut).
+        # Abonnés : compta (enquête NPS), sav (proposition de contrat
+        # d'entretien), monitoring (baseline de production attendue).
+        from core.events import chantier_receptionne
+        chantier_receptionne.send(
+            sender=Installation, installation=installation,
+            user=user, ancien_statut=ancien_statut)
+        effets['evenement_reception'] = True
+        # YSERV7 — rappel de facturation de la tranche SOLDE restante
+        # (best-effort, idempotent, jamais de facture créée).
+        try:
+            effets['rappel_solde'] = notifier_reception_solde_a_facturer(
+                installation, user)
+        except Exception:  # pragma: no cover - défensif
+            effets['rappel_solde'] = None
+    effets['stock'] = _apply_stock_statut_effects(
+        installation, canon_old, canon_new, user)
+    # AUD326 — pose / lève le verrou de clôture, côté serveur uniquement, et
+    # journalise DISTINCTEMENT une réouverture motivée.
+    if (canon_new == Installation.Statut.CLOTURE
+            and not installation.cloture_verrouillee):
+        installation.cloture_verrouillee = True
+        installation.save(update_fields=['cloture_verrouillee'])
+    elif (canon_old == Installation.Statut.CLOTURE
+            and canon_new != Installation.Statut.CLOTURE):
+        if installation.cloture_verrouillee:
+            installation.cloture_verrouillee = False
+            installation.save(update_fields=['cloture_verrouillee'])
+        activity.log_note(
+            installation, user,
+            "Chantier CLÔTURÉ rouvert par un Directeur — motif : "
+            f"{(motif_reouverture or '').strip()}")
+    if canon_new != canon_old:
+        sync_etape_from_statut(installation)
+    if (motif_override_acompte or '').strip() and canon_new == (
+            Installation.Statut.PLANIFIE) and canon_old != (
+            Installation.Statut.PLANIFIE):
+        activity.log_note(
+            installation, user,
+            f'Planifié sans acompte — motif : {motif_override_acompte.strip()}')
+    return {'ancien': ancien_statut, 'nouveau': installation.statut,
+            'effets': effets}
 
 
 # ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────

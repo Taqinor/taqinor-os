@@ -48,101 +48,12 @@ _DEFAULT_TYPES_INTERVENTION = [
 ]
 
 
-# Jalon de statut canonique → champ date à horodater (N6/N7) si vide.
-_STATUT_DATE_FIELD = {
-    Installation.Statut.SIGNE: 'date_signature',
-    Installation.Statut.MATERIEL_COMMANDE: 'date_materiel_commande',
-    Installation.Statut.PLANIFIE: 'date_pose_prevue',
-    Installation.Statut.INSTALLE: 'date_pose_reelle',
-    Installation.Statut.RECEPTIONNE: 'date_reception',
-    Installation.Statut.CLOTURE: 'date_cloture',
-}
-
-
-def _stamp_statut_dates(inst, old_statut):
-    """Pose la date du jalon atteint si elle est vide (jamais d'écrasement).
-    Travaille sur le statut CANONIQUE pour couvrir aussi les statuts hérités."""
-    canon = Installation.canonical_statut(inst.statut)
-    if Installation.canonical_statut(old_statut) == canon:
-        return
-    field = _STATUT_DATE_FIELD.get(canon)
-    if field and getattr(inst, field, None) is None:
-        setattr(inst, field, timezone.localdate())
-        inst.save(update_fields=[field])
-
-
-def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
-    """N14 — effets STOCK d'un changement de statut canonique du chantier.
-
-    À l'arrivée à « Installé », consomme les réservations (une SORTIE par SKU,
-    idempotente côté service). À l'arrivée à « Clôturé », libère les
-    réservations restantes non consommées. Le service est idempotent : il ne
-    rejoue jamais une réservation déjà consommée."""
-    from ..services import consume_reservations, release_reservations  # noqa: F401
-    if canon_new == canon_old:
-        return
-    if canon_new == Installation.Statut.INSTALLE:
-        nb = consume_reservations(inst, user)
-        if nb:
-            activity.log_note(
-                inst, user,
-                f"Stock consommé — {nb} référence(s) sortie(s) du stock "
-                f"(chantier « Installé »).")
-    elif canon_new == Installation.Statut.CLOTURE:
-        nb = release_reservations(inst)
-        if nb:
-            activity.log_note(
-                inst, user,
-                f"Réservation de stock libérée — {nb} référence(s) "
-                f"(chantier clôturé).")
-
-
-def _apply_reception_handover(inst, canon_old, canon_new, user):
-    """FG70 — remise de garantie automatique au passage à « Réceptionné ».
-
-    Balaye la nomenclature gelée du chantier (`inst.bom`) et garantit un
-    équipement de parc (sans n° de série) par ligne de BoM ayant un produit
-    catalogue — la couverture de garantie ne dépend plus d'une saisie manuelle
-    de chaque n° de série. CROSS-APP : l'écriture passe par
-    `apps.sav.services` (jamais d'import direct des modèles SAV). Idempotent :
-    un re-passage à « Réceptionné » ne crée aucun doublon. Ajoute une note de
-    remise au chatter listant les équipements couverts."""
-    if canon_new == canon_old or canon_new != Installation.Statut.RECEPTIONNE:
-        return
-    from apps.sav.services import sweep_bom_to_parc
-    from apps.stock.selectors import get_produit_scoped
-
-    def _resolve(produit_id):
-        return get_produit_scoped(inst.company, produit_id)
-
-    date_pose = inst.date_reception or inst.date_pose_reelle or timezone.localdate()
-    resume = sweep_bom_to_parc(
-        installation=inst, company=inst.company, date_pose=date_pose,
-        created_by=user, resolve_produit=_resolve)
-    crees = resume['crees']
-    existants = resume['existants']
-    if crees or existants:
-        couverts = ', '.join(
-            ligne['designation'] for ligne in resume['lignes']
-            if ligne['designation'])
-        detail = f" — {couverts}" if couverts else ''
-        activity.log_note(
-            inst, user,
-            "Remise de garantie : "
-            f"{crees} équipement(s) ajouté(s) au parc"
-            + (f", {existants} déjà couvert(s)" if existants else "")
-            + detail + ".")
-    # CH4 — au passage à « Réceptionné » (gate de remise), assemble le pack de
-    # remise client (idempotent, dégrade proprement). Le pack RÉFÉRENCE l'état
-    # réel du chantier ; sa génération n'échoue jamais.
-    from ..services import generer_handover_pack
-    pack = generer_handover_pack(inst, user)
-    activity.log_note(
-        inst, user,
-        "Pack de remise "
-        + ("assemblé (complet)." if pack.complet
-           else "assemblé (pièces manquantes — voir le détail)."))
-    return resume
+# AUD316 — `_STATUT_DATE_FIELD`, `_stamp_statut_dates`,
+# `_apply_stock_statut_effects` et `_apply_reception_handover` ont MIGRÉ vers
+# `apps/installations/services.py` : la chaîne d'effets d'un changement de
+# statut n'est plus appelable « à la carte » depuis une vue. Le seul point
+# d'écriture de `Installation.statut` est `services.changer_statut_chantier`,
+# et les trois vues ci-dessous en sont des ADAPTATEURS.
 
 
 # AUD304 — SEUIL DE SUPPRESSION d'un chantier. Au-delà de « Planifié » dans
@@ -342,118 +253,61 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         activity.log_creation(inst, self.request.user)
 
     def perform_update(self, serializer):
+        """ADAPTATEUR (AUD316) — aucune logique métier de statut ici.
+
+        Le PATCH générique écrit les champs ordinaires, puis DÉLÈGUE tout
+        changement de `statut` à `services.changer_statut_chantier`, seul
+        porteur de la chaîne de gardes ET de la chaîne d'effets (elle était
+        divergente entre les 3 chemins d'écriture). La méthode est ATOMIQUE :
+        une transition refusée ne laisse jamais les autres champs du même
+        PATCH écrits en base — le comportement d'avant, où les gates
+        tournaient avant la sauvegarde."""
+        from django.db import transaction
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from ..services import (
+            TransitionRefusee, changer_statut_chantier, est_directeur,
+            verifier_reouverture_cloture,
+        )
+
         old = Installation.objects.get(pk=serializer.instance.pk)
-        # CH2 — GATES BLOQUANTS : un changement de statut qui franchit une
-        # étape bloquante aux exigences non réunies (checklist/photos/séries/
-        # essais/matériel/dossier 82-21 + points d'arrêt QHSE) est REJETÉ avec
-        # les raisons en français. Interrupteur : une société sans étapes
-        # configurées garde exactement le comportement historique.
-        nouveau_statut = serializer.validated_data.get('statut')
-        franchit_vers_planifie = (
-            nouveau_statut == Installation.Statut.PLANIFIE
-            and nouveau_statut != old.statut)
-        # AUD326 — « Clôturé » est un ÉTAT GELÉ : `verifier_transition_statut`
-        # ne garde que les AVANCÉES, si bien qu'un chantier clos repassait
-        # « En cours » par un simple PATCH de n'importe quel Responsable. Une
-        # réouverture exige désormais un motif ET le rôle Directeur.
-        motif_reouverture = (self.request.data.get('motif_reouverture')
-                             or '').strip()
-        if nouveau_statut and nouveau_statut != old.statut:
-            from rest_framework.exceptions import PermissionDenied, ValidationError
-            from ..services import est_directeur, verifier_reouverture_cloture
-            raison_reouverture = verifier_reouverture_cloture(
-                old, nouveau_statut, self.request.user, motif_reouverture)
-            if raison_reouverture:
-                if motif_reouverture and not est_directeur(self.request.user):
-                    raise PermissionDenied(raison_reouverture)
-                raise ValidationError({'statut': [raison_reouverture]})
-        if nouveau_statut and nouveau_statut != old.statut:
-            from rest_framework.exceptions import ValidationError
-            from ..services import verifier_transition_statut
-            raisons = verifier_transition_statut(old, nouveau_statut)
-            if raisons:
-                raise ValidationError({'statut': raisons})
-        # YSERV1 — Gate « acompte encaissé » avant planification. Toggle OFF
-        # (défaut) = comportement byte-identique. ON : un responsable/admin
-        # (seul rôle admis en écriture ici) peut forcer avec un `motif`
-        # obligatoire, journalisé au chatter.
+        # Le statut ne passe PAS par le serializer : il est retiré du payload
+        # validé et confié au service — c'est ce qui fait de ce dernier le SEUL
+        # point d'écriture de `Installation.statut`.
+        nouveau_statut = serializer.validated_data.pop('statut', None)
         motif_override = (self.request.data.get('motif_override_acompte')
                           or '').strip()
-        if franchit_vers_planifie:
-            from rest_framework.exceptions import ValidationError
-            from ..services import verifier_gate_acompte_planification
-            raison = verifier_gate_acompte_planification(old)
-            if raison:
-                if not motif_override:
-                    raise ValidationError({'statut': [raison]})
-        super().perform_update(serializer)
-        inst = serializer.instance
-        _stamp_statut_dates(inst, old.statut)
-        activity.log_changes(old, inst, self.request.user)
-        # VX213 (b) — handoff AVAL : réassigner un chantier à un NOUVEAU
-        # technicien le notifie (diff pré/post sur technicien_responsable_id).
-        # `_notifier_chantier_assigne` no-op si absent ; best-effort (ne lève
-        # jamais). On ne notifie QUE sur un vrai changement de titulaire.
-        if (inst.technicien_responsable_id
-                and inst.technicien_responsable_id != old.technicien_responsable_id):
-            from ..services import _notifier_chantier_assigne
-            _notifier_chantier_assigne(inst, inst.technicien_responsable)
-        if franchit_vers_planifie and motif_override:
-            activity.log_note(
-                inst, self.request.user,
-                f'Planifié sans acompte — motif : {motif_override}')
-        # N7 — au passage à « Réceptionné », le chantier devient un système
-        # installé actif (parc) : on trace l'événement dans le chatter.
-        canon_old = Installation.canonical_statut(old.statut)
-        canon_new = Installation.canonical_statut(inst.statut)
-        # AUD326 — pose / lève le verrou de clôture, côté serveur uniquement,
-        # et journalise DISTINCTEMENT toute réouverture (patron annuler/
-        # reactiver : la note dit qui, quand et pourquoi).
-        if (canon_new == Installation.Statut.CLOTURE
-                and not inst.cloture_verrouillee):
-            inst.cloture_verrouillee = True
-            inst.save(update_fields=['cloture_verrouillee'])
-        elif (canon_old == Installation.Statut.CLOTURE
-                and canon_new != Installation.Statut.CLOTURE):
-            if inst.cloture_verrouillee:
-                inst.cloture_verrouillee = False
-                inst.save(update_fields=['cloture_verrouillee'])
-            activity.log_note(
-                inst, self.request.user,
-                "Chantier CLÔTURÉ rouvert par un Directeur — motif : "
-                f"{motif_reouverture}")
-        if (canon_new == Installation.Statut.RECEPTIONNE
-                and canon_old != Installation.Statut.RECEPTIONNE):
-            activity.log_note(
-                inst, self.request.user,
-                "Chantier réceptionné — système ajouté au parc installé.")
-            # YSERV7 — rappel de facturation pour la tranche SOLDE restante
-            # (best-effort, idempotent, jamais de facture créée).
+        motif_reouverture = (self.request.data.get('motif_reouverture')
+                             or '').strip()
+        with transaction.atomic():
+            super().perform_update(serializer)
+            inst = serializer.instance
+            # VX213 (b) — handoff AVAL : réassigner un chantier à un NOUVEAU
+            # technicien le notifie (diff pré/post). Best-effort, ne lève
+            # jamais ; uniquement sur un vrai changement de titulaire.
+            if (inst.technicien_responsable_id
+                    and inst.technicien_responsable_id
+                    != old.technicien_responsable_id):
+                from ..services import _notifier_chantier_assigne
+                _notifier_chantier_assigne(inst, inst.technicien_responsable)
+            if nouveau_statut is None or nouveau_statut == old.statut:
+                # Pas de transition : le chatter trace les autres champs.
+                activity.log_changes(old, inst, self.request.user)
+                return
+            # AUD326 — la distinction 403 (autorité) / 400 (motif manquant)
+            # est une décision HTTP : elle reste dans l'adaptateur, la RÈGLE
+            # elle-même vit dans le service.
+            raison_reouverture = verifier_reouverture_cloture(
+                old, nouveau_statut, self.request.user, motif_reouverture)
+            if (raison_reouverture and motif_reouverture
+                    and not est_directeur(self.request.user)):
+                raise PermissionDenied(raison_reouverture)
             try:
-                notifier_reception_solde_a_facturer(inst, self.request.user)
-            except Exception:  # pragma: no cover - défensif
-                pass
-        # FG70 — remise de garantie automatique : balaye le BoM gelé vers le
-        # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
-        _apply_reception_handover(
-            inst, canon_old, canon_new, self.request.user)
-        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
-        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
-        if (canon_new == Installation.Statut.RECEPTIONNE
-                and canon_old != Installation.Statut.RECEPTIONNE):
-            from core.events import chantier_receptionne
-            chantier_receptionne.send(
-                sender=Installation, installation=inst,
-                user=self.request.user, ancien_statut=old.statut)
-        # N14 — applique les effets stock du changement de statut (consomme à
-        # « Installé », libère à la clôture). Idempotent côté service.
-        _apply_stock_statut_effects(
-            inst, canon_old, canon_new, self.request.user)
-        # CH2 — aligne le pointeur d'étape sur le statut hérité (no-op tant
-        # que la société n'a pas configuré ses étapes).
-        if canon_new != canon_old:
-            from ..services import sync_etape_from_statut
-            sync_etape_from_statut(inst)
+                changer_statut_chantier(
+                    inst, nouveau_statut, self.request.user,
+                    motif_override_acompte=motif_override,
+                    motif_reouverture=motif_reouverture)
+            except TransitionRefusee as exc:
+                raise ValidationError({'statut': exc.raisons})
 
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
@@ -471,10 +325,12 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Le devis doit être « Accepté » pour créer le chantier.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AUD316 — `create_installation_from_devis` journalise ELLE-MÊME la
+        # création au chatter (les 3 chemins — API, ce bouton, et l'événement
+        # `devis_accepted` — l'obtiennent donc identiquement). Ne PAS rappeler
+        # `log_creation` ici : ce serait une seconde ligne « Chantier créé ».
         inst, created = create_installation_from_devis(
             devis, request.user, company)
-        if created:
-            activity.log_creation(inst, request.user)
         data = InstallationSerializer(inst, context={'request': request}).data
         data['created'] = created
         return Response(
@@ -527,54 +383,36 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         NOTE — point d'accroche FUTUR : c'est ici que démarrera la garantie
         une fois qu'un registre d'équipements (n° de série) existera. Aucune
         logique de garantie n'est construite maintenant (modèle absent).
+
+        ADAPTATEUR (AUD316) — ce chemin recopiait une PARTIE seulement de la
+        cascade du PATCH : il n'écrivait ni la note « Chantier réceptionné… »,
+        ni le rappel de facturation du solde (YSERV7). Il délègue désormais à
+        `services.changer_statut_chantier`, qui applique la chaîne intégrale.
         """
+        from ..services import TransitionRefusee, changer_statut_chantier
+
         inst = self.get_object()
-        old = Installation.objects.get(pk=inst.pk)
-        # CH2 — « Mise en service » se rabat sur « Réceptionné » : le passage
-        # est soumis aux mêmes gates bloquants que n'importe quel changement
-        # de statut (no-op tant que la société n'a pas configuré ses étapes).
-        from ..services import verifier_transition_statut
-        raisons = verifier_transition_statut(
-            old, Installation.Statut.MISE_EN_SERVICE)
-        if raisons:
-            return Response(
-                {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
-                status=status.HTTP_400_BAD_REQUEST)
         data = request.data
+        # Les champs de mise en service accompagnent la transition : ils sont
+        # écrits par le service, dans le MÊME `save()` que le statut.
+        champs = {}
         if data.get('date_mise_en_service'):
-            inst.date_mise_en_service = data['date_mise_en_service']
+            champs['date_mise_en_service'] = data['date_mise_en_service']
         if 'mes_pv_notes' in data:
-            inst.mes_pv_notes = data.get('mes_pv_notes')
+            champs['mes_pv_notes'] = data.get('mes_pv_notes')
         if data.get('mes_production_test') not in (None, ''):
-            inst.mes_production_test = data['mes_production_test']
+            champs['mes_production_test'] = data['mes_production_test']
         if data.get('mes_tension') not in (None, ''):
-            inst.mes_tension = data['mes_tension']
-        canon_old = Installation.canonical_statut(old.statut)
-        inst.statut = Installation.Statut.MISE_EN_SERVICE
-        inst.save()
-        canon_new = Installation.canonical_statut(inst.statut)
-        # ERR40 — route le changement de statut par les MÊMES aides que
-        # `perform_update` : horodate le jalon (« Mise en service » se rabat sur
-        # « Réceptionné » → `date_reception`) et applique les effets stock du
-        # changement (consommation des réservations). Sans cela le chantier
-        # comptait au parc sans `date_reception` ni sortie de stock.
-        _stamp_statut_dates(inst, old.statut)
-        # FG70 — « Mise en service » se rabat sur « Réceptionné » : la remise de
-        # garantie balaie le BoM gelé vers le parc SAV (idempotente côté service).
-        _apply_reception_handover(inst, canon_old, canon_new, request.user)
-        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
-        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
-        if (canon_new == Installation.Statut.RECEPTIONNE
-                and canon_old != Installation.Statut.RECEPTIONNE):
-            from core.events import chantier_receptionne
-            chantier_receptionne.send(
-                sender=Installation, installation=inst,
-                user=request.user, ancien_statut=old.statut)
-        _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
-        # CH2 — aligne le pointeur d'étape sur le nouveau statut.
-        from ..services import sync_etape_from_statut
-        sync_etape_from_statut(inst)
-        activity.log_changes(old, inst, request.user)
+            champs['mes_tension'] = data['mes_tension']
+        try:
+            changer_statut_chantier(
+                inst, Installation.Statut.MISE_EN_SERVICE, request.user,
+                champs_supplementaires=champs)
+        except TransitionRefusee as exc:
+            return Response(
+                {'detail': 'Étape bloquée par un gate.',
+                 'raisons': exc.raisons},
+                status=status.HTTP_400_BAD_REQUEST)
         # Note de chatter explicite incluant les valeurs mesurées (production /
         # tension) quand elles sont renseignées — pas seulement la date.
         mesures = []
@@ -1331,28 +1169,38 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                 return Response({'detail': 'Dernière étape déjà atteinte.'},
                                 status=status.HTTP_400_BAD_REQUEST)
             cible = stages[idx + 1]
+        # Gate propre à l'ÉTAPE demandée (le choix de la cible est la
+        # responsabilité de cet adaptateur) ; la chaîne de gardes du STATUT est
+        # appliquée par le service.
         raisons = verifier_avancement_etape(inst, cible)
         if raisons:
             return Response(
                 {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
                 status=status.HTTP_400_BAD_REQUEST)
-        old = Installation.objects.get(pk=inst.pk)
-        canon_old = Installation.canonical_statut(old.statut)
-        inst.etape = cible
-        fields = ['etape']
+        # ADAPTATEUR (AUD316) — ce chemin, l'écran de timeline poussé par le
+        # produit, écrivait `statut` lui-même et ne tirait qu'une PARTIE de la
+        # cascade : ni `verifier_gate_acompte_planification` (YSERV1), ni
+        # `chantier_receptionne` (YSERV4 → NPS compta, contrat d'entretien sav,
+        # baseline monitoring), ni `notifier_reception_solde_a_facturer`
+        # (YSERV7), ni la note « Chantier réceptionné… ». Il délègue désormais.
+        from ..services import TransitionRefusee, changer_statut_chantier
+        canon_old = Installation.canonical_statut(inst.statut)
+        statut_cible = inst.statut
         if (cible.statut_legacy
                 and Installation.canonical_statut(cible.statut_legacy)
                 != canon_old):
-            inst.statut = cible.statut_legacy
-            fields.append('statut')
-        inst.save(update_fields=fields)
-        canon_new = Installation.canonical_statut(inst.statut)
-        # Mêmes aides que perform_update : jalon horodaté + effets de bord
-        # préservés sur les gates mappés (garantie/parc FG70, stock N14).
-        _stamp_statut_dates(inst, old.statut)
-        _apply_reception_handover(inst, canon_old, canon_new, request.user)
-        _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
-        activity.log_changes(old, inst, request.user)
+            statut_cible = cible.statut_legacy
+        motif_override = (request.data.get('motif_override_acompte')
+                          or '').strip()
+        try:
+            changer_statut_chantier(
+                inst, statut_cible, request.user, etape=cible,
+                motif_override_acompte=motif_override)
+        except TransitionRefusee as exc:
+            return Response(
+                {'detail': 'Étape bloquée par un gate.',
+                 'raisons': exc.raisons},
+                status=status.HTTP_400_BAD_REQUEST)
         activity.log_note(
             inst, request.user, f"Étape avancée : « {cible.libelle} ».")
         return Response(
