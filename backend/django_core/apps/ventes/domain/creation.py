@@ -566,9 +566,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     avec_batterie = demande == 'avec'
     deux_options = demande not in ('avec', 'sans')
     # QJR-OFFGRID — un site ISOLÉ n'a qu'une composition : autonome + batterie.
+    # QJR400 — la règle « hors réseau ⇒ jamais deux options » vient du NOYAU
+    # (``utils.options.deux_options_composables``), elle n'est plus recopiée.
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        avec_batterie, deux_options = True, False
+        avec_batterie = True
 
     # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
     # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
@@ -816,9 +820,13 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # AUTONOME + batterie, en option unique — et il REFUSE (étape 4 ci-dessous)
     # plutôt que de coter un hybride que ce client ne pourra pas raccorder.
     from apps.ventes.compatibilites import est_site_isole
+    # QJR400 — même propriétaire unique que ci-dessus pour « hors réseau ⇒
+    # jamais deux options ».
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = est_site_isole(getattr(lead, 'raccordement', None))
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        wants_battery, deux_options = True, False
+        wants_battery = True
 
     # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
     # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au

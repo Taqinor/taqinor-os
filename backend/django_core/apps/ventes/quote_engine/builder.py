@@ -584,6 +584,13 @@ def _repartir_options(paires):
     Rend des listes de COUPLES : l'appelant a besoin des lignes ORM (pour lire la
     puissance panneau de chaque option) autant que des items de rendu.
     """
+    # QJR400 — L'ENSEMBLE D'EXCLUSION VIENT DU NOYAU, il n'est plus recopié
+    # ici : ``utils.options.blob_va_dans_sans`` / ``blob_va_dans_avec`` sont sa
+    # SEULE définition (S8-F5 : le panier « sans » du noyau excluait
+    # batterie + hybride mais PAS l'off-grid, contrairement à celui-ci).
+    # Import fonction-local — ``utils.options`` importe ce module à son sommet.
+    from apps.ventes.utils.options import blob_va_dans_avec, blob_va_dans_sans
+
     sans, avec, contradictions = [], [], []
     for ligne, it in paires:
         variante = _variante_de_ligne(ligne)
@@ -592,9 +599,8 @@ def _repartir_options(paires):
         # EXCLU du panier « sans » (une option « sans batterie » sur un système
         # de site isolé n'existe pas) et INCLUS dans « avec ». Les panneaux,
         # eux, continuent d'atterrir dans les DEUX paniers (invariant).
-        ok_sans = (not _is_battery(blob) and not _is_hybrid_inverter(blob)
-                   and not _is_offgrid_inverter(blob))
-        ok_avec = not _is_reseau_inverter(blob)
+        ok_sans = blob_va_dans_sans(blob)
+        ok_avec = blob_va_dans_avec(blob)
         if variante == "sans":
             sans.append((ligne, it))
             if not ok_sans:
@@ -1153,13 +1159,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if mode == "agricole" and pdf_mode == "full":
         pdf_mode = "onepage"
 
-    sans_ok = has_reseau
-    # QJR-OFFGRID — l'option « avec » se sert d'un onduleur HYBRIDE **ou**
-    # AUTONOME, et dans les deux cas d'une batterie RÉELLE. Sans cette
-    # disjonction, un devis de site isolé (onduleur autonome + batterie +
-    # panneaux) n'avait AUCUNE option servable : PDF refusé, options et compte
-    # de panneaux disparus de la page client.
-    avec_ok = (has_hybride or has_offgrid) and has_batterie
+    # QJR400 — LA RÈGLE DE SERVABILITÉ VIENT DU NOYAU (``utils.options``), elle
+    # n'est plus recalculée ici. QJR-OFFGRID — l'option « avec » se sert d'un
+    # onduleur HYBRIDE **ou** AUTONOME, et dans les deux cas d'une batterie
+    # RÉELLE. Sans cette disjonction, un devis de site isolé (onduleur autonome
+    # + batterie + panneaux) n'avait AUCUNE option servable : PDF refusé,
+    # options et compte de panneaux disparus de la page client.
+    from apps.ventes.utils.options import familles_servables as _familles_ok
+    sans_ok, avec_ok = _familles_ok(
+        has_reseau=has_reseau, has_hybride=has_hybride,
+        has_offgrid=has_offgrid, has_batterie=has_batterie)
     if option_unique_sans_batterie:
         # Z1 — l'onduleur hybride (ou autonome) EST là (l'option unique le
         # porte, cf. la recomposition de ``sans_items`` ci-dessus) ; c'est la
@@ -1194,23 +1203,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # afficher à la page client un prix qui n'existait dans AUCUN document
     # (« Sans batterie — 26 186 MAD » à l'écran contre « Avec batterie —
     # 60 186 MAD » au PDF, pour un seul et même devis).
-    _stored_choice = (devis.etude_params or {}).get('scenario')
     # QJR64 / décision fondateur D12 — LE REGISTRE DE SURCHARGES PASSE DEVANT.
     # ``scenario`` y est un chemin : une déclaration humaine survit à tout
     # recalcul aval, y compris à celui qui a écrit ``etude_params`` en dernier.
     # Aucun override posé ⇒ la valeur stockée, byte-identique à avant.
-    try:
-        from apps.ventes.domain.overrides import effectif as _effectif
-        _impose, _source_scenario = _effectif(devis, 'scenario',
-                                              _stored_choice)
-        if _source_scenario != 'auto' and _impose:
-            _stored_choice = _impose
-    except Exception:  # noqa: BLE001 — un registre illisible ne casse jamais
-        # un PDF : on garde la valeur stockée.
-        pass
-    _valid_choices = {
-        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
-    alternative_declaree = _stored_choice in _valid_choices
+    #
+    # QJR400 — CETTE RÉSOLUTION ET SON VOCABULAIRE VIENNENT DU NOYAU
+    # (``utils.options.scenario_declare`` / ``est_alternative_declaree``) : le
+    # bloc qui les recalculait ici — et sa copie de la liste des trois
+    # libellés — est SUPPRIMÉ. C'est ce qui garantit qu'un scénario posé par
+    # l'endpoint de surcharges est relu à l'identique par le document ET par
+    # le noyau monnaie.
+    from apps.ventes.utils.options import (
+        est_alternative_declaree as _est_alternative,
+    )
+    from apps.ventes.utils.options import scenario_declare as _scenario_declare
+    _stored_choice = _scenario_declare(devis)
+    alternative_declaree = _est_alternative(_stored_choice)
     # Avertissements INTERNES (vendeur/support) — jamais rendus au client : la
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.
@@ -1236,9 +1245,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "nature — déclaration conservée, devis à vérifier")
     # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
     # total d'affichage = option 1, et le une-page ne mélange jamais.
-    deux_options = sans_ok and avec_ok and alternative_declaree
+    #
+    # QJR400 — LE VERDICT VIENT DU NOYAU, et il honore désormais le
+    # COURT-CIRCUIT VARIANTE que le noyau appliquait seul : une ligne variantée
+    # n'existe que parce que la composition a DÉJÀ distingué les deux options.
+    # Sans lui, un devis à deux champs PV dont ``etude_params['scenario']`` a
+    # été perdu partait ici sur le repli ARTEFACT (une présentation unique)
+    # pendant que le noyau facturait l'option AVEC — deux prix pour la même
+    # vente.
+    from apps.ventes.utils.options import (
+        deux_options_depuis_paniers as _deux_options_paniers,
+    )
+    _variantes_declarees = any(_variante_de_ligne(li) for li in lignes)
+    deux_options = _deux_options_paniers(
+        sans_ok, avec_ok, alternative_declaree=alternative_declaree,
+        variantes=_variantes_declarees)
 
-    if sans_ok and avec_ok and not alternative_declaree:
+    if sans_ok and avec_ok and not deux_options:
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
@@ -1412,10 +1435,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # drapeaux d'option et le mélange une-page sur ce scénario (SANS = réseau
     # seul, sans batterie ni onduleur hybride ; AVEC = hybride + batterie, sans
     # onduleur réseau). Comportement « les deux » et repli inchangés.
-    if scenario == 'Sans batterie':
+    #
+    # QJR400 — LA CORRESPONDANCE « libellé mono → option » VIENT DU NOYAU
+    # (``utils.options.option_du_scenario_mono``), pour que l'argent du noyau
+    # suive l'option que ce rétrécissement fait TITRER au document.
+    from apps.ventes.utils.options import AVEC_BATTERIE as _NOYAU_AVEC
+    from apps.ventes.utils.options import SANS_BATTERIE as _NOYAU_SANS
+    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de
+    _scenario_mono = _mono_de(scenario)
+    if _scenario_mono == _NOYAU_SANS:
         avec_ok = False
         deux_options = False
-    elif scenario == 'Avec batterie':
+    elif _scenario_mono == _NOYAU_AVEC:
         sans_ok = False
         deux_options = False
 

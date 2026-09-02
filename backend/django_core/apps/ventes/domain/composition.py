@@ -415,9 +415,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # QJR-OFFGRID — un site ISOLÉ n'a qu'UNE composition possible : onduleur
     # autonome + stockage. La forme deux options (réseau / hybride) n'a alors
     # aucun sens et le drapeau batterie n'est plus une question.
+    # QJR400 — LA RÈGLE VIENT DU NOYAU (``utils.options.deux_options_composables``),
+    # elle n'est plus écrite ici : c'est le MÊME propriétaire que le prédicat
+    # « devis à deux options » du document.
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        deux_options = False
         avec_batterie = True
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
