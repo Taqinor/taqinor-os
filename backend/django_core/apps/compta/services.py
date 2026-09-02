@@ -803,9 +803,12 @@ def auto_lettrer_facture_soldee(facture):
     code = selectors.prochain_code_lettrage(company, compte_clients)
     try:
         return lettrer(company, lignes, code)
-    except ValueError:
-        # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
-        # le lettrage manuel s'en charger, jamais d'exception ici.
+    except (ValueError, ValidationError):
+        # Lot déséquilibré (ex. génération partielle désactivée) ou ligne en
+        # période close (AUD167 : le verrou refuse désormais le lettrage) : on
+        # laisse le lettrage manuel s'en charger, jamais d'exception ici — ce
+        # chemin est appelé DEPUIS un receiver d'encaissement, qu'il ne doit
+        # sous aucun prétexte casser.
         return None
 
 

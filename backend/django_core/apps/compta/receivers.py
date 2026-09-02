@@ -249,8 +249,22 @@ def _delettrer_paiement_rejete(sender, paiement, facture, montant, company,
                      .exclude(lettrage='').first())
     if ligne_lettree is None:
         return
+    import logging
+
+    from django.core.exceptions import ValidationError
+
     from . import services
-    services.delettrer(company, ligne_lettree.lettrage)
+    try:
+        services.delettrer(company, ligne_lettree.lettrage)
+    except ValidationError:
+        # AUD167 — le délettrage refuse désormais une ligne en période close.
+        # Le REJET du paiement (traité côté ventes) doit aboutir malgré tout :
+        # on journalise et on laisse la correction du lettrage au manuel, plutôt
+        # que de casser le flux depuis un receiver.
+        logging.getLogger('compta').warning(
+            "compta: délettrage du lot %s refusé (période clôturée) après le "
+            "rejet du paiement %s — à reprendre manuellement.",
+            ligne_lettree.lettrage, getattr(paiement, 'pk', None))
 
 
 # ── ARC36 — facture intégralement réglée → lettrage du solde (compta) ────────
