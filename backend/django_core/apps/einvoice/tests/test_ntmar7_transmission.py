@@ -13,6 +13,12 @@ from apps.einvoice.models import TransmissionDGI
 from ._fixtures import make_company, make_facture, seller_profile
 
 
+# AUD154 — ces trois cas testent le flag de transmission (`DGI_TRANSMISSION_*`),
+# qui est DISTINCT du flag maître : ils supposent donc la facturation
+# électronique ACTIVE. Le flag maître est désormais explicite au niveau de la
+# classe — auparavant `transmettre` ne le regardait pas du tout, ce qui est
+# exactement le défaut corrigé (cf. test_aud154_flag_maitre_inerte.py).
+@override_settings(EINVOICE_ENABLED=True)
 class TransmettreTests(TestCase):
     def setUp(self):
         self.company = make_company('einvoice-tx', 'EInvoice Tx')
