@@ -152,7 +152,7 @@ def apply_inventory_count(*, company, user, motif, lignes):
             # (`appliquer_ecarts_comptage`, `valider_inventaire_session`) et
             # celle qu'affiche la colonne « Quantité » d'
             # `export_mouvements_xlsx`.
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
                 quantite=abs(compte - avant),
@@ -161,8 +161,6 @@ def apply_inventory_count(*, company, user, motif, lignes):
                 note=f'Inventaire — comptage {compte} (écart {compte - avant})'
                      + (f' · {motif}' if motif else ''),
                 created_by=user)
-            produit.quantite_stock = compte
-            produit.save(update_fields=['quantite_stock'])
             result['ajustes'] += 1
             result['mouvements'].append({
                 'produit': produit.id, 'avant': avant, 'apres': compte})
@@ -1046,7 +1044,7 @@ def apply_retour_fournisseur(retour, user):
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
             check_negative_stock_guard(retour.company, qte_avant, qte_apres)
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=retour.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                 quantite=ligne.quantite, quantite_avant=qte_avant,
@@ -1054,8 +1052,6 @@ def apply_retour_fournisseur(retour, user):
                 note=f'Retour fournisseur {retour.reference}'
                      + (f' — {ligne.motif}' if ligne.motif else ''),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
@@ -1139,7 +1135,7 @@ def confirm_reception_fournisseur(reception, user):
             produit.refresh_from_db()
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + qte
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=reception.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=qte_avant,
@@ -1147,8 +1143,6 @@ def confirm_reception_fournisseur(reception, user):
                 note=f'Réception {reception.reference}'
                      + (f' (BCF {bc.reference})' if bc else ''),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             ligne_cmd.quantite_recue += qte
             ligne_cmd.save(update_fields=['quantite_recue'])
             # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
@@ -1260,7 +1254,7 @@ def annuler_reception_confirmee(reception, user):
             qte_sortie = min(qte, qte_avant) if qte_avant > 0 else 0
             qte_apres = qte_avant - qte_sortie
             if qte_sortie > 0:
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=reception.company, produit=produit,
                     type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                     quantite=qte_sortie, quantite_avant=qte_avant,
@@ -1269,8 +1263,6 @@ def annuler_reception_confirmee(reception, user):
                     note=(f'Contre-passation annulation réception '
                           f'{reception.reference}'),
                     created_by=user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
             ligne_cmd = ligne.ligne_commande
             if ligne_cmd is not None:
                 ligne_cmd.refresh_from_db()
@@ -1826,7 +1818,8 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
                           created_by, save_produit=True, emplacement_source=None,
-                          bin_source=None, bin_destination=None):
+                          bin_source=None, bin_destination=None,
+                          bin_source_id=None, motif_rebut=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1843,8 +1836,21 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     plafonnée à 0 par ERR94). Un `emplacement_source` PRINCIPAL est un no-op
     (le principal est déjà dérivé, jamais stocké). Ne s'applique qu'aux
     mouvements SORTIE (une ENTREE avec emplacement passe par
-    `credit_emplacement_destination`, jamais dupliquée ici)."""
+    `credit_emplacement_destination`, jamais dupliquée ici).
+
+    AUD223 — ``motif_rebut`` (mouvements REBUT, XMFG11/XSTK10) et
+    ``bin_source_id`` (casier connu par son ID au scan) sont des passe-plats
+    additifs : ils existent pour que les chemins qui posaient un
+    ``MouvementStock`` en direct puissent converger ici SANS perdre une seule
+    colonne. Absents = comportement historique strictement inchangé."""
     from .models import MouvementStock, StockEmplacement
+    # NTWMS5 — casiers source/destination du poste scanner. None partout
+    # ailleurs : comportement historique strictement inchangé.
+    casiers = {'bin_destination': bin_destination}
+    if bin_source_id is not None:
+        casiers['bin_source_id'] = bin_source_id
+    else:
+        casiers['bin_source'] = bin_source
     mouvement = MouvementStock.objects.create(
         company=company,
         produit=produit,
@@ -1855,10 +1861,8 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         reference=reference,
         note=note,
         created_by=created_by,
-        # NTWMS5 — casiers source/destination du poste scanner. None partout
-        # ailleurs : comportement historique strictement inchangé.
-        bin_source=bin_source,
-        bin_destination=bin_destination,
+        motif_rebut=motif_rebut,
+        **casiers,
     )
     if save_produit:
         produit.quantite_stock = quantite_apres
@@ -1884,8 +1888,14 @@ def _emit_mouvement_stock_enregistre(mouvement, company):
     ``compta.services.poster_mouvement_stock`` (inventaire permanent) était
     défini et testé mais n'avait AUCUN appelant de production, et aucun
     événement « mouvement de stock » n'existait sur le bus : l'écriture
-    automatique ne partait jamais. Ce point d'émission — le SEUL endroit du
-    dépôt qui crée un ``MouvementStock`` — le branche.
+    automatique ne partait jamais. Ce point d'émission le branche.
+
+    AUD223 — l'affirmation historique « le SEUL endroit du dépôt qui crée un
+    ``MouvementStock`` » était FAUSSE : 22 sites de production en créaient un
+    en direct et échappaient donc à ce miroir comptable comme à l'alerte
+    seuil-bas. Ils convergent désormais tous vers ``record_stock_movement``, et
+    ``scripts/check_mouvement_stock_service.py`` (garde CI sémantique) refuse
+    tout nouveau ``MouvementStock.objects.create`` hors de ce service.
 
     ``stock`` n'importe jamais ``apps.compta`` : l'instance transite par le
     signal. Best-effort strict : un abonné qui échoue ne doit JAMAIS faire
@@ -2015,14 +2025,12 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
         avant = p.quantite_stock
         qte_sortie = min(quantite, avant) if avant > 0 else 0
         apres = avant - qte_sortie
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
             quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, motif_rebut=motif,
             created_by=user)
-        p.quantite_stock = apres
-        p.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -2055,14 +2063,12 @@ def rebuter_produit(
         avant = p.quantite_stock
         apres = avant - quantite
         check_negative_stock_guard(company, avant, apres)
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference_chantier or 'REBUT', note=note,
             motif_rebut=motif, created_by=user)
-        p.quantite_stock = apres
-        p.save(update_fields=['quantite_stock'])
         if emplacement is not None and not emplacement.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
                 produit=p, emplacement=emplacement,
@@ -2171,13 +2177,11 @@ def decrementer_stock_dotation_epi(*, company, produit_id, quantite,
             raise ValueError(
                 'Stock insuffisant pour cette dotation EPI '
                 f'({avant} disponible, {quantite} demandé).')
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=produit,
             type_mouvement=MouvementStock.TypeMouvement.SORTIE,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note='Dotation EPI', created_by=user)
-        produit.quantite_stock = apres
-        produit.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -2201,13 +2205,11 @@ def reintegrer_stock_restitution_epi(*, company, produit_id, quantite,
             return None
         avant = produit.quantite_stock
         apres = avant + quantite
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=produit,
             type_mouvement=MouvementStock.TypeMouvement.ENTREE,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note='Restitution EPI', created_by=user)
-        produit.quantite_stock = apres
-        produit.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -3152,7 +3154,7 @@ def valider_inventaire_session(session, user):
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + ecart
 
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=session.company,
                 produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
@@ -3162,9 +3164,6 @@ def valider_inventaire_session(session, user):
                 reference=session.reference,
                 note=f'Inventaire {session.reference} — écart {ecart:+d}',
                 created_by=user)
-
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             ajustes += 1
 
         session.statut = InventaireSession.Statut.VALIDE

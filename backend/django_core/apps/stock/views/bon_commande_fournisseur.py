@@ -588,7 +588,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from django.utils import timezone
         from ..services import (
             record_purchase_price, credit_emplacement_destination,
-            affecter_livraison_directe_chantier,
+            affecter_livraison_directe_chantier, record_stock_movement,
         )
         today = timezone.now().date()
         with transaction.atomic():
@@ -607,7 +607,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                            .get(pk=ligne.produit_id))
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + qte
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=bc.company,
                     produit=produit,
                     type_mouvement=MouvementStock.TypeMouvement.ENTREE,
@@ -618,8 +618,6 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     note=f'Réception BCF {bc.reference}',
                     created_by=request.user,
                 )
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
                 ligne.quantite_recue += qte
                 ligne.save(update_fields=['quantite_recue'])
                 # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.

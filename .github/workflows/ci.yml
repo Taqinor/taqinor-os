@@ -494,6 +494,14 @@ jobs:
         run: python scripts/check_read_modify_write.py
       - name: Test the read-modify-write checker itself (YDATA16)
         run: python -m unittest scripts.tests.test_check_read_modify_write -v
+      # AUD223 — un MouvementStock ne se crée QUE par
+      # apps.stock.services.record_stock_movement (seul émetteur du miroir
+      # comptable d'inventaire permanent et de l'alerte seuil-bas). Fails on a
+      # NEW direct create not in scripts/mouvement_stock_service_allow.txt.
+      - name: Check MouvementStock passe par son service unique (AUD223)
+        run: python scripts/check_mouvement_stock_service.py
+      - name: Test the MouvementStock-service checker itself (AUD223)
+        run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
       # YDATA18 — business unique=True must be company-scoped; a unique on a
       # soft-delete model must be a partial index. Fails on a NEW unscoped
       # business unique not in scripts/unique_scoping_allow.txt.
