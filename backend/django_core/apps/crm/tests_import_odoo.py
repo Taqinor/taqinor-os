@@ -8,6 +8,7 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.crm.tests_import_odoo -v 2
 """
+import io
 import json
 import os
 import tempfile
@@ -16,6 +17,7 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from apps.crm import stages
+from apps.crm.management.commands.import_odoo_leads import _find_existing
 from apps.crm.models import Lead
 from authentication.models import Company
 
@@ -149,6 +151,74 @@ class TestReconciliation(ImportOdooBase):
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 3)
         existing.refresh_from_db()
         self.assertEqual(existing.ville, 'Agadir')
+
+
+class TestSoftDeleteReconciliation(ImportOdooBase):
+    """CRX7 — un lead mis à la corbeille ne bricke plus l'import.
+
+    Avant : ``_find_existing`` interrogeait ``Lead.objects`` (vivants), donc un
+    lead soft-supprimé restait INVISIBLE alors que sa clé externe occupait
+    toujours la contrainte ``uniq_lead_external_ref`` — l'import tentait une
+    création, l'``IntegrityError`` remontait dans le ``transaction.atomic()``
+    global et TOUT l'import échouait. Désormais : rapprochement sur
+    ``all_objects``, ligne ignorée et comptée, zéro restauration silencieuse.
+    """
+
+    def test_reimport_after_soft_delete_skips_and_never_resurrects(self):
+        path = self._file('.csv', CSV_EXPORT)
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+        alpha = Lead.objects.get(company=self.company, external_id='101')
+        alpha.soft_delete()
+
+        out = io.StringIO()
+        call_command('import_odoo_leads', path,
+                     '--company', self.company.slug, stdout=out)
+
+        # Aucun doublon : la ligne 101 a été rapprochée sur le lead en
+        # corbeille et ignorée (avant, la création tuait toute la transaction).
+        self.assertEqual(
+            Lead.all_objects.filter(company=self.company).count(), 3)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 2)
+        alpha.refresh_from_db()
+        self.assertTrue(alpha.is_deleted)          # jamais restauré
+        sortie = out.getvalue()
+        self.assertIn('1 en corbeille', sortie)
+        self.assertIn('Corbeille — ignoré (jamais restauré)', sortie)
+
+    def test_find_existing_sees_soft_deleted_lead(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Dans la corbeille',
+            email='alpha@example.test', stage=stages.NEW)
+        lead.soft_delete()
+        trouve = _find_existing(
+            self.company, None, {'email': 'alpha@example.test'})
+        self.assertIsNotNone(trouve)
+        self.assertEqual(trouve.pk, lead.pk)
+        self.assertTrue(trouve.is_deleted)
+
+    def test_live_lead_wins_over_soft_deleted_twin(self):
+        mort = Lead.objects.create(
+            company=self.company, nom='Ancien',
+            email='alpha@example.test', stage=stages.NEW)
+        mort.soft_delete()
+        vivant = Lead.objects.create(
+            company=self.company, nom='Actuel',
+            email='alpha@example.test', stage=stages.NEW)
+        trouve = _find_existing(
+            self.company, None, {'email': 'alpha@example.test'})
+        self.assertEqual(trouve.pk, vivant.pk)
+
+        # Même préférence sur le rapprochement par téléphone.
+        mort_tel = Lead.objects.create(
+            company=self.company, nom='Ancien Tel',
+            telephone='0612000009', stage=stages.NEW)
+        mort_tel.soft_delete()
+        vivant_tel = Lead.objects.create(
+            company=self.company, nom='Actuel Tel',
+            telephone='+212612000009', stage=stages.NEW)
+        trouve_tel = _find_existing(
+            self.company, None, {'telephone': '0612000009'})
+        self.assertEqual(trouve_tel.pk, vivant_tel.pk)
 
 
 class TestNoOpAndGuards(ImportOdooBase):

@@ -166,23 +166,37 @@ def _find_existing(company, external_id, fields):
 
     Ordre : clé technique Odoo, puis email normalisé, puis téléphone normalisé.
     Tout est borné à la société.
+
+    CRX7 — le rapprochement porte sur ``Lead.all_objects``, donc sur les leads
+    SOFT-SUPPRIMÉS aussi. Un lead mis à la corbeille garde sa clé externe et
+    reste soumis à la contrainte d'unicité ``uniq_lead_external_ref`` : en ne
+    le voyant pas, l'import tentait une CRÉATION en doublon dont
+    l'``IntegrityError`` tuait l'atomique de TOUT l'import (une seule
+    suppression suffisait à bricker la sync). L'appelant décide quoi faire du
+    lead supprimé — il n'est JAMAIS restauré silencieusement ici.
+
+    Quand plusieurs candidats existent sur email/téléphone, le lead VIVANT
+    gagne (``order_by('is_deleted', 'pk')``) : la corbeille ne sert que de
+    filet contre le doublon, jamais de cible d'écriture prioritaire.
     """
     if external_id:
-        match = Lead.objects.filter(
+        match = Lead.all_objects.filter(
             company=company, external_system=EXTERNAL_SYSTEM,
-            external_id=external_id).first()
+            external_id=external_id).order_by('is_deleted', 'pk').first()
         if match:
             return match
     email = services.normalize_email(fields.get('email'))
     if email:
-        match = Lead.objects.filter(
-            company=company, email__iexact=email).first()
+        match = Lead.all_objects.filter(
+            company=company, email__iexact=email).order_by(
+                'is_deleted', 'pk').first()
         if match:
             return match
     phone = services.normalize_phone(fields.get('telephone'))
     if phone:
-        for other in Lead.objects.filter(company=company).exclude(
-                telephone__isnull=True).exclude(telephone=''):
+        for other in Lead.all_objects.filter(company=company).exclude(
+                telephone__isnull=True).exclude(telephone='').order_by(
+                    'is_deleted', 'pk'):
             if services.normalize_phone(other.telephone) == phone:
                 return other
     return None
@@ -251,6 +265,10 @@ class Command(BaseCommand):
 
         rows = _read_export(path)
         created = updated = unchanged = skipped = 0
+        # CRX7 — lignes dont le lead rapproché est dans la CORBEILLE : ignorées
+        # (ni écriture, ni restauration silencieuse), comptées au rapport.
+        corbeille = 0
+        corbeille_details = []
 
         # Atomique : un export ne s'applique qu'en entier (rollback en dry-run).
         with transaction.atomic():
@@ -262,6 +280,17 @@ class Command(BaseCommand):
                     continue
 
                 existing = _find_existing(company, external_id, fields)
+                if existing is not None and existing.is_deleted:
+                    # Lead dans la corbeille : on NE crée pas de doublon (la
+                    # contrainte d'unicité le refuserait et l'IntegrityError
+                    # tuerait tout l'import) et on ne le restaure PAS — la
+                    # restauration reste une décision humaine (/core/corbeille/).
+                    corbeille += 1
+                    if len(corbeille_details) < 20:
+                        corbeille_details.append(
+                            f"lead #{existing.pk} « {existing.nom} »"
+                            + (f" (Odoo {external_id})" if external_id else ''))
+                    continue
                 if existing is not None:
                     # Pose la clé technique si absente (rapproché par email/tel).
                     tech_changed = False
@@ -308,8 +337,16 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
 
         prefix = "[dry-run] " if dry_run else ""
+        for detail in corbeille_details:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}Corbeille — ignoré (jamais restauré) : {detail}"))
+        if corbeille > len(corbeille_details):
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}… et {corbeille - len(corbeille_details)} autre(s) "
+                "ligne(s) rapprochée(s) sur un lead en corbeille."))
         self.stdout.write(self.style.SUCCESS(
             f"{prefix}Import Odoo terminé pour « {company.nom} » : "
             f"{created} créé(s), {updated} mis à jour, "
-            f"{unchanged} inchangé(s), {skipped} ignoré(s) sur "
+            f"{unchanged} inchangé(s), {skipped} ignoré(s), "
+            f"{corbeille} en corbeille sur "
             f"{len(rows)} ligne(s)."))

@@ -86,11 +86,16 @@ class Command(BaseCommand):
             except OSError:
                 pass
 
-        moves, deja_ok, introuvables = align_stages_from_rows(
+        moves, deja_ok, introuvables, corbeille = align_stages_from_rows(
             company, rows, apply_changes=not dry_run)
         prefix = '[dry-run] ' if dry_run else ''
         for (src, dst), n in sorted(moves.items()):
             self.stdout.write(f'{prefix}étape {src} → {dst} : {n}')
+        if corbeille:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}{corbeille} lead(s) en corbeille ignoré(s) — "
+                "jamais restauré(s) automatiquement."))
         self.stdout.write(self.style.SUCCESS(
             f"{prefix}Alignement : {sum(moves.values())} déplacé(s), "
-            f"{deja_ok} déjà aligné(s), {introuvables} non rapproché(s)."))
+            f"{deja_ok} déjà aligné(s), {introuvables} non rapproché(s), "
+            f"{corbeille} en corbeille."))

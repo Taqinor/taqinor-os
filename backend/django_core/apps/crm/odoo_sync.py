@@ -244,13 +244,18 @@ def align_stages_from_rows(company, rows, apply_changes):
     téléphone) — indispensable : les leads venus du bridge Meta portent déjà
     une clé externe Meta et ne sont retrouvables QUE par email/téléphone.
     En doublon Odoo interne, la première ligne gagne. Chaque déplacement est
-    journalisé dans le chatter (entrée MODIFICATION « Étape »)."""
+    journalisé dans le chatter (entrée MODIFICATION « Étape »).
+
+    CRX7 — ``_find_existing`` voit désormais aussi les leads SOFT-SUPPRIMÉS
+    (sans quoi l'import amont crashait sur la contrainte d'unicité) : un lead
+    en corbeille est ici IGNORÉ et compté, jamais déplacé ni restauré."""
     from apps.crm.management.commands.import_odoo_leads import (
         _find_existing, _map_stage)
 
     moves = Counter()
     deja_ok = 0
     introuvables = 0
+    corbeille = 0
     deja_traites = set()
     with transaction.atomic():
         for row in rows:
@@ -263,6 +268,9 @@ def align_stages_from_rows(company, rows, apply_changes):
                 'telephone': row.get('telephone')})
             if lead is None:
                 introuvables += 1
+                continue
+            if lead.is_deleted:
+                corbeille += 1
                 continue
             if lead.pk in deja_traites:
                 continue
@@ -285,7 +293,7 @@ def align_stages_from_rows(company, rows, apply_changes):
                 )
         if not apply_changes:
             transaction.set_rollback(True)
-    return moves, deja_ok, introuvables
+    return moves, deja_ok, introuvables, corbeille
 
 
 def compute_push_moves(company, odoo_leads):
