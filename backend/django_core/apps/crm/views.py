@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -2619,38 +2620,107 @@ class PlaybookViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class PlaybookEtapeViewSet(CompanyScopedModelViewSet):
+class _PlaybookEnfantViewSetMixin:
+    """CRX14 — socle des deux enfants de playbook (étapes, tâches).
+
+    ``PlaybookEtape`` et ``PlaybookTache`` N'ONT PAS de champ ``company`` : la
+    frontière société passe par le playbook parent. Le ``get_queryset`` de
+    ``TenantMixin`` (``qs.filter(company=…)``) levait donc un ``FieldError``
+    AVANT d'atteindre le re-scope ``playbook__company`` écrit juste après —
+    autrement dit ce re-scope était MORT et toute lecture/écriture d'un objet
+    existant (list, retrieve, update, destroy) répondait 500. On remplace
+    entièrement le filtrage par le chemin parent, en gardant la sémantique de
+    ``TenantMixin`` pour les trois acteurs : utilisateur d'une société →
+    scopé ; superuser SANS société (acteur plateforme) → tout ; ni l'un ni
+    l'autre → rien.
+
+    ``perform_create``/``perform_update`` valident en plus le PARENT désigné
+    par le corps : sans cela, un id de playbook (ou d'étape) d'une autre
+    société suffisait à y greffer — ou à y déplacer — une étape.
+    """
+
+    #: Chemin ORM du parent portant la société (ex. ``playbook__company_id``).
+    company_path = ''
+    #: Nom du champ de relation parent dans le corps de la requête.
+    parent_field = ''
+
+    def base_queryset(self):
+        raise NotImplementedError
+
+    def get_queryset(self):
+        qs = self.base_queryset()
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(**{self.company_path: user.company_id})
+        if user.is_superuser:
+            return qs
+        return qs.none()
+
+    def parent_company_id(self, parent):
+        raise NotImplementedError
+
+    def _valider_parent(self, serializer):
+        company_id = getattr(self.request.user, 'company_id', None)
+        if not company_id:
+            return
+        parent = serializer.validated_data.get(self.parent_field)
+        if parent is None:
+            # Absent d'un PATCH partiel : le parent existant a déjà été scopé
+            # par ``get_queryset``, rien à revalider.
+            if serializer.partial:
+                return
+            raise DRFValidationError(
+                {self.parent_field: 'Ce champ est obligatoire.'})
+        if self.parent_company_id(parent) != company_id:
+            raise DRFValidationError(
+                {self.parent_field: 'Élément hors de votre société.'})
+
+    def perform_create(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+
+class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
     queryset = PlaybookEtape.objects.select_related('playbook').prefetch_related('taches')
     serializer_class = PlaybookEtapeSerializer
+    company_path = 'playbook__company_id'
+    parent_field = 'playbook'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
-    def get_queryset(self):
-        return super().get_queryset().filter(
-            playbook__company=self.request.user.company)
+    def base_queryset(self):
+        return PlaybookEtape.objects.select_related(
+            'playbook').prefetch_related('taches')
 
-    def perform_create(self, serializer):
-        serializer.save()
+    def parent_company_id(self, parent):
+        return parent.company_id
 
 
-class PlaybookTacheViewSet(CompanyScopedModelViewSet):
+class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
     queryset = PlaybookTache.objects.select_related('etape__playbook')
     serializer_class = PlaybookTacheSerializer
+    company_path = 'etape__playbook__company_id'
+    parent_field = 'etape'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
-    def get_queryset(self):
-        return super().get_queryset().filter(
-            etape__playbook__company=self.request.user.company)
+    def base_queryset(self):
+        return PlaybookTache.objects.select_related('etape__playbook')
 
-    def perform_create(self, serializer):
-        serializer.save()
+    def parent_company_id(self, parent):
+        return parent.playbook.company_id
 
 
 @api_view(['GET', 'POST'])
