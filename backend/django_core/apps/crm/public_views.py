@@ -39,6 +39,17 @@ _SALLE_VENTE_RESPONSE = inline_serializer('PublicSalleVente', {
         })),
 })
 
+# QJR420 — le mot de passe a quitté la chaîne de requête : il ne se transmet
+# plus que dans le CORPS d'un POST. Sans corps déclaré, drf-spectacular ne
+# savait pas deviner de sérialiseur pour l'opération POST (« unable to guess
+# serializer », avertissement bloquant de la garde de schéma).
+_SALLE_VENTE_ACCES_REQUEST = inline_serializer('PublicSalleVenteAcces', {
+    'mot_de_passe': drf_serializers.CharField(
+        required=False, allow_blank=True,
+        help_text="Requis uniquement si la salle est protégée par mot de "
+                  "passe. Jamais transmis dans l'URL."),
+})
+
 _APPORTEUR_DEALS_RESPONSE = inline_serializer('PublicApporteurMesDeals', {
     'apporteur': drf_serializers.CharField(),
     'deals': drf_serializers.ListField(child=inline_serializer(
@@ -166,7 +177,10 @@ def _item_payload(item):
     return payload
 
 
-@extend_schema(responses={200: _SALLE_VENTE_RESPONSE})
+@extend_schema(methods=['GET'], request=None,
+               responses={200: _SALLE_VENTE_RESPONSE})
+@extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
+               responses={200: _SALLE_VENTE_RESPONSE})
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
