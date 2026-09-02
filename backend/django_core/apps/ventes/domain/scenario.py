@@ -217,7 +217,26 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         'produit', 'produit__fiche_technique').all()
         if getattr(li, 'type_ligne', 'produit') == 'produit'
         and not getattr(li, 'optionnelle', False)]
-    nb_lu, watt_lu = panneaux_et_watt_lu(lignes)
+    # ── QJR410 (c) / S8-F7 — LE kWc D'UN DEVIS EST CELUI D'**UNE** OPTION ────
+    # Cette dérivation sommait les lignes panneau des DEUX variantes : sur un
+    # devis à deux options aux champs PV divergents (22 panneaux « sans »,
+    # 26 « avec »), elle stockait un compte — 48 — qui n'existe sur AUCUNE des
+    # deux options. On lit donc le panier de l'option que le document met en
+    # avant (l'option AVEC, comme les clés legacy du moteur), par le filtre
+    # d'option du noyau — jamais une seconde règle de répartition.
+    # (Constat abaissé à « low » par la ronde V2 : aucune surface client
+    # prouvée, le kWc du PDF n'étant pas affecté. Le corriger reste juste ;
+    # aucun impact client ne lui est inventé.)
+    lignes_kwc = lignes
+    try:
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, deux_options_declarees, filter_lines_for_option,
+        )
+        if deux_options_declarees(devis):
+            lignes_kwc = filter_lines_for_option(lignes, AVEC_BATTERIE)
+    except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais
+        lignes_kwc = lignes
+    nb_lu, watt_lu = panneaux_et_watt_lu(lignes_kwc)
     auto = (round(nb_lu * watt_lu / 1000, 2)
             if nb_lu > 0 and watt_lu else None)
 

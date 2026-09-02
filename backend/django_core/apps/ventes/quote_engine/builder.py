@@ -454,7 +454,18 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "garantie_production_mois": getattr(
             produit, "garantie_production_mois", None),
         "quantite": float(ligne.quantite),
-        "prix_unit_ht": float(round(pu_ht, 2)),
+        # QJR410 (b) / S8-F8 — LE PRIX UNITAIRE REMISÉ N'EST PLUS ARRONDI
+        # AVANT D'ÊTRE MULTIPLIÉ. Il l'était à 2 décimales ici, et
+        # ``_LigneArgentPdf`` alimentait ensuite le noyau monnaie
+        # (``domain.argent.totaux``) avec ce PU DÉJÀ arrondi, là où
+        # ``Devis.total_ht`` appelle LE MÊME ``totaux()`` sur les lignes
+        # BRUTES : même fonction, deux entrées — sur toute ligne remisée de
+        # quantité > 1 les deux totaux dérivaient. L'ARRONDI EST UN FAIT
+        # D'AFFICHAGE : les gabarits formatent déjà ce nombre à 2 décimales
+        # (``residential/options.fmt``), et le total de ligne imprimé
+        # (``prix_unit_ht × quantite``) devient du même coup celui que le
+        # devis facture. Une ligne non remisée à prix rond est byte-identique.
+        "prix_unit_ht": float(pu_ht),
         "prix_unit_ttc": float(round(pu_ttc, 2)),
         "taux_tva": float(ligne_taux),
         # XSAL14 — position d'affichage (0 par défaut) : sert à intercaler les
@@ -1947,12 +1958,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # dessous). Sans ce réalignement, le une-page aurait pu servir une
         # production dérivée pendant que la page 1 sert celle de l'étude.
         prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
+        # ── QJR410 (a) / S8-F6 — LE CHIFFRE DÉCRIT L'OPTION QUE LE DOCUMENT
+        # TITRE ────────────────────────────────────────────────────────────
+        # ``_ref_total`` était clavé sur ``sans_ok`` : sur un document dont
+        # l'option titrée est « avec » (deux options — le total mis en avant
+        # est celui de l'option AVEC — ou mono-option « avec »), la carte
+        # « Prix par kWc » et le payback décrivaient l'option SANS. Un chiffre
+        # CLIENT qui décrit une offre que le document ne porte pas. La bascule
+        # suit EXACTEMENT celle de ``display_total`` (« avec » dès que le
+        # document met cette option en avant), pour qu'il n'y ait qu'une
+        # vérité par document.
+        _titree_avec = bool(deux_options or avec_ok)
+        _ref_total = total_avec if _titree_avec else total_sans
         if etude.get("economies_annuelles"):
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
             roi["eco_a_cumul"] = eco
-            _ref_total = total_sans if sans_ok else total_avec
             roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
             roi["roi_a"] = roi["roi_s"]
             _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
@@ -1961,10 +1983,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
         etude["production_annuelle"] = roi["prod_kwh"]
-        _ref_total = total_sans if sans_ok else total_avec
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
-            etude["payback"] = roi["roi_s"]
+            # QJR410 (a) — le payback était CÂBLÉ EN DUR sur le ROI « sans ».
+            etude["payback"] = roi["roi_a"] if _titree_avec else roi["roi_s"]
         # ── QJR160 — LE PRIX PAR KWC DÉCRIT UNE OFFRE, PAS UN MÉLANGE ───────
         # ``_ref_total`` est le TTC de l'option 1 (« sans » quand elle est
         # servable) tandis que ``puissance_kwc`` a été recalé sur le kWc de
@@ -1974,7 +1996,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # MÊME branche. Et sur un document qui chiffre DEUX options de tailles
         # différentes, aucun prix au kWc unique n'a de sens : la carte est
         # OMISE plutôt que de faire choisir au client entre deux vérités.
-        _kwc_ref = (puissance_kwc_sans if sans_ok else puissance_kwc_avec)
+        # QJR410 (a) — le kWc suit la MÊME branche que ``_ref_total``.
+        _kwc_ref = (puissance_kwc_avec if _titree_avec else puissance_kwc_sans)
         if not _kwc_ref or _kwc_ref <= 0:
             _kwc_ref = puissance_kwc
         if deux_options and panneaux_divergents:
