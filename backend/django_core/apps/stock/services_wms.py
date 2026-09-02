@@ -675,6 +675,81 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
         destination=destination or '', cout_reel=cout_reel)
 
 
+def reference_sortie_expedition(expedition):
+    """Référence du mouvement de SORTIE d'une expédition (AUD224).
+
+    Sert aussi de garde d'idempotence : une expédition déjà décomptée n'est
+    jamais re-décomptée."""
+    return f'EXP-{expedition.id}'
+
+
+def decrementer_stock_expedition(*, expedition, user=None):
+    """AUD224 — SORTIE du stock canonique au point de CONFIRMATION
+    d'expédition.
+
+    Le pipeline WMS picking → emballage → scellage → expédition ne décrémentait
+    JAMAIS ``Produit.quantite_stock`` : la marchandise partait physiquement du
+    quai sans jamais sortir du système. Tout ce qui en dépend s'en trouvait
+    faussé — la valorisation, le réappro, et jusqu'au théorique des comptages
+    tournants (``generer_comptages_tournants``).
+
+    La sortie est posée ICI, une seule fois, via ``record_stock_movement``
+    (donc miroir comptable et alerte seuil-bas inclus), sur le contenu de
+    l'unité expédiée ET de ses colis enfants s'il s'agit d'une palette.
+
+    PAS DE DOUBLE DÉCOMPTE SUR LE FLUX CHANTIER : une ligne de colis issue
+    d'une ligne de picking rattachée à une ``Installation`` est déjà consommée
+    par ``installations.services.consume_reservations`` au passage à INSTALLÉ
+    (``StockReservation.consomme``) — elle est ignorée ici. Seul le flux
+    e-commerce/B2B pur (sans chantier) est décompté.
+
+    Renvoie ``{mouvements, lignes_chantier_ignorees}``.
+    """
+    from django.db import transaction
+
+    from .models import MouvementStock
+    from .selectors import lock_produit
+    from .services import record_stock_movement
+
+    unite = expedition.unite_logistique
+    company = expedition.company
+    reference = reference_sortie_expedition(expedition)
+    if MouvementStock.objects.filter(
+            company=company, reference=reference).exists():
+        return {'mouvements': [], 'lignes_chantier_ignorees': 0}
+
+    mouvements, ignorees = [], 0
+    with transaction.atomic():
+        for colis in _unites_a_deplacer(unite):
+            for ligne in colis.lignes.select_related(
+                    'produit', 'ligne_picking').all():
+                if ligne.produit_id is None or (ligne.quantite or 0) <= 0:
+                    continue
+                picking = ligne.ligne_picking
+                if picking is not None and picking.installation_id:
+                    # Flux chantier : consommé à l'INSTALLÉ (N14).
+                    ignorees += 1
+                    continue
+                produit = lock_produit(ligne.produit_id)
+                avant = produit.quantite_stock
+                # ERR80 — plancher : on ne sort jamais plus que le stock en
+                # main (même garde que la consommation chantier).
+                sortie = min(ligne.quantite, avant) if avant > 0 else 0
+                if sortie <= 0:
+                    continue
+                mouvements.append(record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=sortie, quantite_avant=avant,
+                    quantite_apres=avant - sortie,
+                    reference=reference,
+                    note=(f'Expédition {colis.sscc}'
+                          + (f' — suivi {expedition.numero_suivi}'
+                             if expedition.numero_suivi else '')),
+                    created_by=user))
+    return {'mouvements': mouvements, 'lignes_chantier_ignorees': ignorees}
+
+
 def generer_etiquette_expedition(*, expedition, user=None):
     """Demande au connecteur son numéro de suivi + son étiquette PDF.
 
@@ -682,6 +757,10 @@ def generer_etiquette_expedition(*, expedition, user=None):
     intégration réelle si (et seulement si) elle est configurée et gated par
     une clé pour cette société, SINON le NoOp (étiquette interne, zéro appel
     réseau). Idempotent : une étiquette déjà générée n'est pas régénérée.
+
+    AUD224 — c'est LE point de confirmation d'expédition : la marchandise
+    quitte le quai, donc le stock canonique est décrémenté ici
+    (``decrementer_stock_expedition``, idempotent lui aussi).
     """
     from django.utils import timezone
 
@@ -705,6 +784,7 @@ def generer_etiquette_expedition(*, expedition, user=None):
     expedition.date_expedition = timezone.now()
     expedition.save(update_fields=[
         'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
+    decrementer_stock_expedition(expedition=expedition, user=user)
     return expedition
 
 
