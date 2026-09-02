@@ -143,15 +143,13 @@ import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
 import { CHEMINS_AUTORISES } from '../../features/ventes/quote/overrides'
-// QJR102 — `apercu` n'est plus importé ici : la seule valeur d'aperçu que cet
-// écran signait était le balayage local du dimensionnement affiché, devenu
-// injoignable (la puce « estimation d'exemple » des cartes ROI, elle, passe
-// par `CarteMetrique`, qui possède le déballeur).
-// QJR108 — l'écran ne SIGNE plus aucune valeur lui-même : les trois
-// helpers (`moteur`/`absent`/`estFait`) n'étaient utilisés que par
-// `paireDimensionnement`, qui vit désormais dans son propre module pur.
 import { deuxValeursDim as selecteurDeuxValeursDim }
   from '../../features/ventes/quote/paireDimensionnement'
+// QJR426 (DR5) — les 13 cartes de métrique du générateur (bloc Aperçu de la
+// Simulation + étude industrielle/commercial) portent désormais la VALEUR
+// SIGNÉE (`moteur`/`apercu`) au lieu d'un `value=` littéral : `CarteMetrique`
+// reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
+import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -1333,6 +1331,13 @@ export default function DevisGenerator({
   // repère) ni remplacé par un autre chiffre — étiqueté. QJR89/QJR90 rendent
   // cette règle structurelle ; ceci est l'intérim minimal.
   const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur
+  // QJR426 (DR5) — même discriminant que la puce ci-dessus, porté sur la
+  // VALEUR SIGNÉE des quatre cartes Économies/ROI : `apercu()` (puce
+  // `PUCE_APERCU`, strictement le même texte que le `badge` littéral
+  // remplacé) quand aucune donnée réelle n'appuie le chiffre, `moteur()`
+  // (aucune puce, comme aujourd'hui) dès qu'une facture réelle ou l'étude
+  // horaire serveur est là — rendu byte-identique à l'ancien `badge=`.
+  const signerEcoOuRoi = (v) => (apercuEstimationExemple ? apercu(v) : moteur(v))
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -4466,32 +4471,35 @@ export default function DevisGenerator({
                     `features/ventes/solar.js`), pas par le moteur serveur :
                     étiquetage SEULEMENT (mot du fondateur D10) — ne JAMAIS
                     serveriser l'étude indus/commercial dans cette tâche. Les
-                    9 autres cartes de cet écran sont hors périmètre DV3. */}
+                    9 autres cartes de cet écran sont hors périmètre DV3.
+                    QJR426 — la prop `valeur`, signée via `apercu` : valeur.js
+                    docstring NOMME `computeEtudeIndustrielle` comme exemple canonique
+                    d'aperçu local, la puce `PUCE_APERCU` (« estimation
+                    d'exemple ») consolide donc le libellé ad hoc
+                    « estimation locale » posé ici avant QJR86/CarteMetrique
+                    — même MOTIF (chiffre local, pas une mesure), la valeur
+                    et le libellé restent inchangés à l'octet. */}
                 <CarteMetrique label="Taux d'autoconsommation"
-                               value={`${etudeCI.taux_autoconso} %`}
-                               unit="part de la production consommée" accent
-                               badge="estimation locale" />
+                               valeur={apercu(`${etudeCI.taux_autoconso} %`)}
+                               unit="part de la production consommée" accent />
                 {etudeCI.taux_couverture != null && (
                   <CarteMetrique label="Taux de couverture"
-                                 value={`${etudeCI.taux_couverture} %`}
-                                 unit="part de la conso couverte" accent
-                                 badge="estimation locale" />
+                                 valeur={apercu(`${etudeCI.taux_couverture} %`)}
+                                 unit="part de la conso couverte" accent />
                 )}
                 {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
                     vaut null : la carte est OMISE (jamais un « 0 » trompeur),
                     le motif est affiché juste en dessous. */}
                 {etudeCI.economies_annuelles != null && (
                   <CarteMetrique label="Économies annuelles (étude)"
-                                 value={fmtNum(etudeCI.economies_annuelles)}
+                                 valeur={apercu(fmtNum(etudeCI.economies_annuelles))}
                                  unit={etudeCI.tension_raccordement === 'mt'
-                                   ? 'MAD / an · barème MT' : 'MAD / an'}
-                                 badge="estimation locale" />
+                                   ? 'MAD / an · barème MT' : 'MAD / an'} />
                 )}
                 {etudeCI.payback != null && (
                   <CarteMetrique label="Payback (étude)"
-                                 value={`${etudeCI.payback} ans`}
-                                 unit="retour sur invest."
-                                 badge="estimation locale" />
+                                 valeur={apercu(`${etudeCI.payback} ans`)}
+                                 unit="retour sur invest." />
                 )}
               </div>
             )}
@@ -4549,17 +4557,26 @@ export default function DevisGenerator({
                 <div className="gen-metrics-grid">
                   {/* CJ2b — Production/Autoconso/Couverture : le serveur
                       horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
-                      sinon repli sur `roi` (miroir local, inchangé). */}
+                      sinon repli sur `roi` (miroir local, inchangé).
+                      QJR426 — aucune puce ici avant comme après : cette carte
+                      ne distingue déjà pas ses deux sources à l'écran (le
+                      repli `roi` reste, comme aujourd'hui, non étiqueté) —
+                      `moteur()` reproduit ce silence à l'octet, jamais un
+                      nouveau badge introduit au passage. */}
                   <CarteMetrique label="Production annuelle"
-                                 value={fmtNum(Math.round(apercuProductionKwh))}
+                                 valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
                                  unit="kWh / an" accent />
                   {etudeHoraireSourceServeur && (
                     <>
+                      {/* QJR426 — ces deux cartes ne rendent QUE dans la
+                          branche serveur (`etudeHoraireSourceServeur`) :
+                          `moteur()` y est toujours exact, jamais un motif
+                          inventé. */}
                       <CarteMetrique label="Taux d'autoconsommation (sans)"
-                                     value={`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`}
+                                     valeur={moteur(`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`)}
                                      unit="part de la production consommée" />
                       <CarteMetrique label="Taux de couverture (sans)"
-                                     value={`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`}
+                                     valeur={moteur(`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`)}
                                      unit="part de la conso couverte" />
                     </>
                   )}
@@ -4575,16 +4592,23 @@ export default function DevisGenerator({
                         Sans batterie
                         {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
                       </div>
+                      {/* QJR426 — `signerEcoOuRoi` reproduit EXACTEMENT
+                          l'ancien `badge={apercuEstimationExemple ? ... :
+                          null}` : `apercu()` porte la même puce
+                          `PUCE_APERCU` (« estimation d'exemple », le même
+                          texte), `moteur()` n'en porte aucune. */}
                       <CarteMetrique label="Économies"
-                                     value={fmtNum(Math.round(apercuEcoSans))}
-                                     unit="MAD / an"
-                                     badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                                     valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoSans)))}
+                                     unit="MAD / an" />
                       <CarteMetrique label="ROI"
-                                     value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
-                                     unit="retour sur invest." accent
-                                     badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                                     valeur={signerEcoOuRoi(
+                                       apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
+                                     unit="retour sur invest." accent />
+                      {/* QJR426 — le coût est celui, certain, des lignes du
+                          devis (`optionTotalsTTC`) : jamais de disclaimer
+                          avant, `moteur()` en garde l'absence à l'octet. */}
                       <CarteMetrique label="Coût"
-                                     value={fmtNum(Math.round(totals.totalSans))}
+                                     valeur={moteur(fmtNum(Math.round(totals.totalSans)))}
                                      unit="MAD TTC" />
                     </div>
                   )}
@@ -4608,15 +4632,14 @@ export default function DevisGenerator({
                       ) : (
                         <>
                           <CarteMetrique label="Économies"
-                                         value={fmtNum(Math.round(apercuEcoAvec))}
-                                         unit="MAD / an"
-                                         badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                                         valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
+                                         unit="MAD / an" />
                           <CarteMetrique label="ROI"
-                                         value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
-                                         unit="retour sur invest." accent
-                                         badge={apercuEstimationExemple ? 'estimation d\'exemple' : null} />
+                                         valeur={signerEcoOuRoi(
+                                           apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
+                                         unit="retour sur invest." accent />
                           <CarteMetrique label="Coût"
-                                         value={fmtNum(Math.round(totals.totalAvec))}
+                                         valeur={moteur(fmtNum(Math.round(totals.totalAvec)))}
                                          unit="MAD TTC" />
                           {/* BAT5DEF — au moins une ligne batterie n'a pas de
                               kWh lisible : la capacité utilisée par le ROI et
