@@ -14,6 +14,9 @@ Couvre :
     doublon est seulement SIGNALÉ (note chatter) et le commercial est HÉRITÉ
     (parité QW11) ; un contact connu mais ARCHIVÉ donne lui aussi un nouveau
     lead, sans héritage d'owner ;
+  - CRX2 — chaque entrée du batch est persistée AVANT mapping
+    (``WebsiteLeadPayload`` source ``meta_lead_ads``) : un échec Graph laisse
+    une ligne REJOUABLE (parité QX16) au lieu de perdre le lead ;
   - aucun scraping : la récupération passe par ``fetch_meta_lead_data``
     (Graph API officiel), jamais par un fetch de page HTML.
   - PUB26 — signature HMAC ``X-Hub-Signature-256`` : bien formée → traité ;
@@ -25,6 +28,7 @@ import hmac
 import json
 from unittest import mock
 
+from django.db.models import Q
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -282,6 +286,80 @@ class MetaLeadAdsIngestTests(TestCase):
         resp = self._post(_notification_payload(leadgen_id='5001'))
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN,
+                   META_LEAD_ADS_APP_SECRET=APP_SECRET)
+class MetaLeadAdsStoreAndReplayTests(TestCase):
+    """CRX2 — « jamais perdre un lead », parité site (QX16).
+
+    Chaque entrée du batch Meta est PERSISTÉE avant tout mapping ; une
+    récupération Graph en échec laisse une ligne REJOUABLE au lieu de perdre
+    définitivement la touche (l'ancien ``continue`` la jetait)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Meta Store', slug='taqinor-meta-store')
+        self.url = reverse('meta-lead-ads-webhook')
+
+    def _post(self, payload):
+        body = json.dumps(payload).encode('utf-8')
+        return self.client.post(
+            self.url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_sign(APP_SECRET, body))
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_entree_traitee_laisse_une_ligne_brute_reliee(self, fetch_mock):
+        """Succès : la ligne brute existe, marquée traitée et reliée au lead."""
+        from apps.crm.models import WebsiteLeadPayload
+        fetch_mock.return_value = _lead_data(leadgen_id='8001')
+        resp = self._post(_notification_payload(
+            leadgen_id='8001', ad_id='AD-8001'))
+        self.assertEqual(resp.status_code, 200)
+
+        raw = WebsiteLeadPayload.objects.get(company=self.company)
+        self.assertEqual(raw.source, WebsiteLeadPayload.Source.META_LEAD_ADS)
+        self.assertTrue(raw.processed)
+        self.assertIsNotNone(raw.lead_id)
+        # Le brut conserve l'entrée Meta TELLE QUELLE (clés de jointure).
+        self.assertEqual(raw.payload.get('leadgen_id'), '8001')
+        self.assertEqual(raw.payload.get('ad_id'), 'AD-8001')
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_echec_graph_laisse_une_ligne_rejouable(self, fetch_mock):
+        """Échec Graph : AUCUN lead, mais la touche est conservée, non traitée
+        et avec son erreur — donc rejouable ; le rejeu (une fois le Graph de
+        nouveau joignable) crée bien le lead et clôt la ligne."""
+        from apps.crm.models import WebsiteLeadPayload
+        from apps.crm.webhooks import replay_meta_lead_payload
+
+        fetch_mock.side_effect = Exception('graph down')
+        resp = self._post(_notification_payload(leadgen_id='8002'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+        raw = WebsiteLeadPayload.objects.get(company=self.company)
+        self.assertEqual(raw.source, WebsiteLeadPayload.Source.META_LEAD_ADS)
+        self.assertFalse(raw.processed)
+        self.assertIsNone(raw.lead_id)
+        self.assertIn('graph down', raw.error)
+        # La ligne ressort bien dans la file « à rejouer » du viewset QX16.
+        self.assertIn(
+            raw,
+            list(WebsiteLeadPayload.objects.filter(
+                Q(error__gt='') | Q(lead__isnull=True))))
+
+        # Rejeu : même chemin de mapping que le webhook, Graph rétabli.
+        fetch_mock.side_effect = None
+        fetch_mock.return_value = _lead_data(leadgen_id='8002')
+        ok, detail, lead = replay_meta_lead_payload(raw)
+        self.assertTrue(ok, msg=detail)
+        self.assertIsNotNone(lead)
+        raw.refresh_from_db()
+        self.assertTrue(raw.processed)
+        self.assertEqual(raw.lead_id, lead.pk)
+        self.assertEqual(raw.error, '')
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
 
 
 @override_settings(

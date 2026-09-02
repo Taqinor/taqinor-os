@@ -953,18 +953,25 @@ class CanalSerializer(serializers.ModelSerializer):
 
 
 class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
-    """QX16 — surface LECTURE SEULE des payloads bruts du site web, pour que
+    """QX16 — surface LECTURE SEULE des payloads bruts d'intake, pour que
     « jamais perdre un lead » (webhooks.py) soit vérifiable/actionnable, pas
     juste une promesse en commentaire. Le rejeu s'effectue via l'action
     ``replay`` du viewset (jamais depuis ce sérialiseur, jamais un champ
-    modifiable ici)."""
+    modifiable ici).
+
+    CRX2 — ``source``/``source_display`` disent de quel intake vient la ligne
+    (site web ou Meta Lead Ads) : sans eux, l'écran ne pourrait pas expliquer
+    ce qu'un rejeu va faire."""
     lead_nom = serializers.CharField(source='lead.nom', read_only=True, default=None)
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
 
     class Meta:
         model = WebsiteLeadPayload
         fields = [
-            'id', 'company', 'payload', 'remote_addr', 'received_at',
-            'processed', 'error', 'lead', 'lead_nom',
+            'id', 'company', 'source', 'source_display', 'payload',
+            'remote_addr', 'received_at', 'processed', 'error', 'lead',
+            'lead_nom',
         ]
         read_only_fields = fields
 
