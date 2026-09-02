@@ -1524,6 +1524,8 @@ def rouvrir_exercice(exercice):
 # Comptes de bilan : classes 1 à 5 (le résultat des classes 6/7 est soldé via
 # le compte de résultat — non reporté tel quel en à-nouveau).
 _CLASSES_BILAN = (1, 2, 3, 4, 5)
+# CGNC — résultat net en instance d'affectation (plan semé, services.py ~:108).
+_COMPTE_RESULTAT_AN = '1191'
 
 
 @transaction.atomic
@@ -1536,9 +1538,13 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
     pas deux fois (``ExerciceComptable.an_reporte``). Renvoie l'écriture créée
     (ou None s'il n'y a aucun solde à reporter).
 
-    Le résultat (classes 6/7) n'est PAS reporté ligne à ligne ; il est porté au
-    bilan via le CPC et s'affecte ensuite (1191) — hors périmètre de ce report
-    automatique d'à-nouveaux de bilan.
+    Le résultat (classes 6/7) n'est PAS reporté ligne à ligne : il est SOLDÉ en
+    UNE ligne sur le compte de résultat en instance d'affectation (1191).
+    AUD162 — sans cette ligne, l'écriture d'à-nouveaux est déséquilibrée de
+    exactement le résultat de l'exercice (sur un grand livre équilibré,
+    Σsolde(1..5) = −Σsolde(6,7) = le résultat) et ``creer_ecriture`` la refusait
+    en ``ValidationError`` dès que le résultat était non nul — c'est-à-dire pour
+    toute société ayant réellement vendu quelque chose.
     """
     from . import selectors  # import local : évite tout cycle au chargement.
 
@@ -1559,12 +1565,14 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
 
     # Soldes des comptes de bilan à la date de fin de l'exercice clos.
     lignes = []
+    solde_bilan = Decimal('0')
     for compte in CompteComptable.objects.filter(
             company=company, classe__in=_CLASSES_BILAN).order_by('numero'):
         solde = selectors.solde_compte(
             company, compte, date_fin=exercice_clos.date_fin)
         if solde == Decimal('0'):
             continue
+        solde_bilan += solde
         if solde > 0:
             lignes.append({'compte': compte, 'debit': solde,
                            'credit': Decimal('0'),
@@ -1572,6 +1580,20 @@ def reporter_a_nouveaux(exercice_clos, exercice_nouveau, *, user=None):
         else:
             lignes.append({'compte': compte, 'debit': Decimal('0'),
                            'credit': -solde, 'libelle': "À-nouveau"})
+
+    # AUD162 — ligne de résultat : elle solde les classes 6/7 sur le compte de
+    # résultat en instance d'affectation (1191) et rend l'écriture équilibrée
+    # PAR CONSTRUCTION (son solde vaut exactement −Σsolde(1..5)).
+    if lignes and solde_bilan != Decimal('0'):
+        compte_resultat = _assurer_compte(company, _COMPTE_RESULTAT_AN)
+        if solde_bilan > 0:
+            lignes.append({'compte': compte_resultat, 'debit': Decimal('0'),
+                           'credit': solde_bilan,
+                           'libelle': "Résultat de l'exercice"})
+        else:
+            lignes.append({'compte': compte_resultat, 'debit': -solde_bilan,
+                           'credit': Decimal('0'),
+                           'libelle': "Résultat de l'exercice"})
 
     exercice_nouveau.an_reporte = True
     exercice_nouveau.save(update_fields=['an_reporte'])
