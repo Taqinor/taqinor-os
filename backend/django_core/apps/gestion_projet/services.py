@@ -843,6 +843,13 @@ def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
     ou n°1) ; ``montant_periode`` = cumulé − antérieur. Une ``SituationTravaux``
     déjà VALIDÉE/FACTURÉE ne peut plus recevoir de nouvelle ligne (lève
     ``SituationTravauxError``).
+
+    AUD178 — le « remplace » de cette docstring est désormais RÉEL : un second
+    appel sur le MÊME libellé MET À JOUR la ligne existante (``update_or_create``)
+    au lieu d'en créer une seconde que ``valider_situation`` facturerait deux
+    fois ; l'invariant est verrouillé en base par
+    ``UniqueConstraint(situation, libelle)`` (migration 0044), donc infranchissable
+    même via ``LigneSituationViewSet``.
     """
     from .models import LigneSituation, SituationTravaux
 
@@ -859,16 +866,19 @@ def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
         situation, libelle)
     montant_periode = montant_cumule - montant_cumule_anterieur
 
-    return LigneSituation.objects.create(
-        company=situation.company,
+    ligne, _cree = LigneSituation.objects.update_or_create(
         situation=situation,
         libelle=libelle,
-        montant_marche_ht=montant_marche_ht,
-        avancement_cumule_pct=avancement_cumule_pct,
-        montant_cumule_anterieur=montant_cumule_anterieur,
-        montant_periode=montant_periode,
-        montant_cumule=montant_cumule,
+        defaults={
+            'company': situation.company,
+            'montant_marche_ht': montant_marche_ht,
+            'avancement_cumule_pct': avancement_cumule_pct,
+            'montant_cumule_anterieur': montant_cumule_anterieur,
+            'montant_periode': montant_periode,
+            'montant_cumule': montant_cumule,
+        },
     )
+    return ligne
 
 
 @transaction.atomic

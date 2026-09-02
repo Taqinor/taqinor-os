@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -137,6 +138,102 @@ class SituationServiceTests(TestCase):
             services.ajouter_ligne_situation(
                 s1, libelle='Autre', montant_marche_ht=Decimal('1000'),
                 avancement_cumule_pct=Decimal('10'))
+
+
+class LigneSituationUniciteTests(TestCase):
+    """AUD178 — un lot n'apparaît qu'UNE fois par situation.
+
+    La docstring de ``ajouter_ligne_situation`` promettait « ajoute (ou
+    remplace) » mais créait inconditionnellement une seconde ligne : corriger
+    un avancement en rappelant l'action facturait le lot DEUX fois.
+    """
+    BASE = '/api/django/gestion-projet/situations/'
+
+    def setUp(self):
+        self.co = make_company('gp-situ-uniq', 'U')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client BTP unique')
+        self.user = make_user(self.co, 'situ-uniq')
+        self.projet = Projet.objects.create(
+            company=self.co, code='P-SITU', nom='U',
+            client_id=self.client_crm.id)
+
+    def test_ajouter_ligne_deux_fois_remplace_et_facture_une_fois(self):
+        api = auth(self.user)
+        resp = api.post(self.BASE, {
+            'projet': self.projet.id, 'periode': '2026-01-01',
+        }, format='json')
+        situation_id = resp.data['id']
+
+        # Saisie initiale erronée : 30 %.
+        resp = api.post(
+            f'{self.BASE}{situation_id}/ajouter-ligne/', {
+                'libelle': 'Terrassement',
+                'montant_marche_ht': '100000',
+                'avancement_cumule_pct': '30',
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        # Correction : même libellé, 40 %.
+        resp = api.post(
+            f'{self.BASE}{situation_id}/ajouter-ligne/', {
+                'libelle': 'Terrassement',
+                'montant_marche_ht': '100000',
+                'avancement_cumule_pct': '40',
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+        lignes = LigneSituation.objects.filter(situation_id=situation_id)
+        self.assertEqual(lignes.count(), 1)
+        ligne = lignes.get()
+        self.assertEqual(ligne.avancement_cumule_pct, Decimal('40.00'))
+        self.assertEqual(ligne.montant_cumule, Decimal('40000.00'))
+        self.assertEqual(ligne.montant_periode, Decimal('40000.00'))
+
+        resp = api.post(f'{self.BASE}{situation_id}/valider/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        facture = Facture.objects.get(id=resp.data['facture_id'])
+        # Le lot est facturé UNE fois (40 000), pas 30 000 + 40 000.
+        self.assertEqual(facture.montant_ht, Decimal('40000.00'))
+
+    def test_cumul_suivant_repart_du_montant_corrige(self):
+        s1 = services.creer_situation(self.projet, periode=date(2026, 1, 1))
+        services.ajouter_ligne_situation(
+            s1, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('30'))
+        services.ajouter_ligne_situation(
+            s1, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('40'))
+        services.valider_situation(s1, user=self.user)
+
+        s2 = services.creer_situation(self.projet, periode=date(2026, 2, 1))
+        ligne2 = services.ajouter_ligne_situation(
+            s2, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('70'))
+        # Repart du montant CORRIGÉ (40 %), pas de la saisie erronée (30 %).
+        self.assertEqual(ligne2.montant_cumule_anterieur, Decimal('40000.00'))
+        self.assertEqual(ligne2.montant_periode, Decimal('30000.00'))
+
+    def test_contrainte_db_bloque_le_doublon_direct(self):
+        s1 = services.creer_situation(self.projet, periode=date(2026, 1, 1))
+        services.ajouter_ligne_situation(
+            s1, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('30'))
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LigneSituation.objects.create(
+                    company=self.co, situation=s1, libelle='Terrassement',
+                    montant_marche_ht=Decimal('100000'),
+                    avancement_cumule_pct=Decimal('50'))
+
+    def test_libelles_distincts_coexistent(self):
+        s1 = services.creer_situation(self.projet, periode=date(2026, 1, 1))
+        services.ajouter_ligne_situation(
+            s1, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('30'))
+        services.ajouter_ligne_situation(
+            s1, libelle='Électricité', montant_marche_ht=Decimal('50000'),
+            avancement_cumule_pct=Decimal('20'))
+        self.assertEqual(s1.lignes.count(), 2)
 
 
 class SituationApiTests(TestCase):
