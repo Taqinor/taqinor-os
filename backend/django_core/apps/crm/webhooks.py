@@ -1540,7 +1540,23 @@ def _map_and_link_lead(raw, data, company):
     RÈGLE FONDATEUR (18/08/2026) : une soumission du site = un NOUVEAU lead.
     Le SEUL cas où un lead existant est complété ici est la garde technique
     anti-rejeu < 60 s (même téléphone + source site web) — c'est la même
-    soumission qui revient, pas un visiteur revenant."""
+    soumission qui revient, pas un visiteur revenant.
+
+    ⚠ LA GARDE CACHE QW10 (``idempotencyKey`` → ``cache.add``, plus bas) EST
+    PORTEUSE — NE JAMAIS LA RETIRER (CRX40, audit L3 du 02/09/2026).
+    Elle a été signalée « code mort » par un constat d'audit, et ce constat a
+    été RÉFUTÉ : la garde protège deux chemins, pas un seul.
+      1. Le webhook : deux POSTs SIMULTANÉS portant la même clé ne peuvent pas
+         se croire tous deux « premiers » — le perdant attend brièvement, puis
+         rejoint la garde anti-rejeu < 60 s au lieu de créer un doublon.
+      2. Le REJEU (``replay_website_lead_payload``, action QX16) : il repasse
+         par CETTE fonction avec le MÊME payload, donc la MÊME clé — c'est la
+         garde qui empêche un rejeu concurrent (deux clics sur « rejouer », ou
+         un rejeu pendant que le POST d'origine finit) de fabriquer un second
+         lead à partir d'un seul payload.
+    Le retirer ne casserait aucun test existant : la course qu'elle ferme n'est
+    pas reproductible en test unitaire. C'est précisément pourquoi cette note
+    existe ici plutôt que dans un commentaire de commit."""
     fields = _map_payload_to_fields(data)
     # WREF2 — le « TQ-XXXX » du navigateur est PROVISOIRE : il ne s'écrit
     # jamais sur la fiche. On le sort du dict AVANT toute écriture, ce qui
