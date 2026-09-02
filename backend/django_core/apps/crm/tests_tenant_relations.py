@@ -151,14 +151,23 @@ class ClientRelationsTests(ScopedRelationsBase):
 
 
 class LeadRelationsTests(ScopedRelationsBase):
-    def test_deleted_by_scoped(self):
+    def test_deleted_by_non_inscriptible(self):
+        """CRX13 avait re-scopé ``deleted_by`` ; CRX15 l'a ensuite VERROUILLÉ
+        en lecture seule (triplet de soft-delete). La garantie est donc plus
+        forte que le scope : aucun corps ne peut le poser, quelle que soit la
+        société de l'utilisateur désigné."""
         lead_a = Lead.objects.create(company=self.a, nom='Lead A')
-        self.assert_relation_scoped(
-            LeadSerializer, 'deleted_by',
-            foreign_pk=self.user_b.pk,
-            own_pk=self.user_a.pk,
-            create_data={'nom': 'Lead créé'},
-            instance=lead_a)
+        field = LeadSerializer(context=self.ctx()).fields['deleted_by']
+        self.assertTrue(
+            field.read_only,
+            'LeadSerializer.deleted_by est redevenu inscriptible : il doit '
+            'rester en lecture seule (CRX15) ou, à défaut, être scopé société '
+            '(CRX13).')
+        serializer = LeadSerializer(
+            lead_a, data={'deleted_by': self.user_b.pk}, partial=True,
+            context=self.ctx())
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertNotIn('deleted_by', serializer.validated_data)
 
 
 class ObjectifRelationsTests(ScopedRelationsBase):
@@ -353,6 +362,10 @@ class ThirteenRelationsCoverageTests(ScopedRelationsBase):
     )
 
     def test_all_thirteen_relations_are_company_scoped(self):
+        """Chaque relation est soit scopée société (CRX13), soit carrément
+        NON INSCRIPTIBLE (garantie plus forte — c'est le cas de
+        ``deleted_by`` depuis CRX15). Une relation NUE et inscriptible
+        échoue."""
         total = 0
         for serializer_class, names in self.EXPECTED:
             fields = serializer_class(context=self.ctx()).fields
@@ -361,9 +374,11 @@ class ThirteenRelationsCoverageTests(ScopedRelationsBase):
                               f'{serializer_class.__name__}.{name} a disparu.')
                 field = fields[name]
                 target = getattr(field, 'child_relation', field)
-                self.assertIsInstance(
-                    target, CompanyScopedPrimaryKeyRelatedField,
+                self.assertTrue(
+                    field.read_only
+                    or isinstance(target,
+                                  CompanyScopedPrimaryKeyRelatedField),
                     f'{serializer_class.__name__}.{name} est redevenue une '
-                    'relation NUE (non scopée société).')
+                    'relation NUE inscriptible (non scopée société).')
                 total += 1
         self.assertEqual(total, 13, 'CRX13 couvre exactement 13 relations.')

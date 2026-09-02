@@ -811,3 +811,79 @@ class TestLeadLanguePreferee(TestCase):
             {'devis_ids': [self.devis.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('FR-MARKER', resp.data['message'])
+
+
+class TestLeadSoftDeleteVerrouille(TestCase):
+    """CRX15 — le triplet de soft-delete (`is_deleted`/`deleted_at`/
+    `deleted_by`) ne se pilote QUE par la suppression, jamais par un PATCH.
+
+    Écrivable, `is_deleted: true` faisait DISPARAÎTRE le lead des listes
+    (``Lead.objects`` masque les supprimés) sans écrire de ``DeletionRecord``
+    — donc sans corbeille ni annulation — et en contournant la garde 409 qui
+    refuse de supprimer un lead porteur de devis. Parité exacte avec
+    `is_archived`, déjà verrouillé (« jamais par un PATCH direct »).
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='crx15-co', nom='CRX15 Co')
+        self.user = User.objects.create_user(
+            username='crx15_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead CRX15')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _deletion_records(self):
+        from core.models import DeletionRecord
+        return DeletionRecord.objects.count()
+
+    def test_patch_is_deleted_est_ignore(self):
+        records_avant = self._deletion_records()
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertFalse(
+            self.lead.is_deleted,
+            'Un PATCH a pu poser is_deleted : le lead disparaît des listes '
+            'sans corbeille ni undo.')
+        # Le lead reste visible du manager par défaut (corbeille masquée).
+        self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())
+        # …et aucune entrée de corbeille n'a été créée (la disparition
+        # silencieuse est précisément ce que CRX15 tue).
+        self.assertEqual(self._deletion_records(), records_avant)
+
+    def test_patch_deleted_at_et_deleted_by_sont_ignores(self):
+        from django.utils import timezone
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/',
+            {'deleted_at': timezone.now().isoformat(),
+             'deleted_by': self.user.pk})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.deleted_at)
+        self.assertIsNone(self.lead.deleted_by_id)
+
+    def test_le_triplet_est_declare_en_lecture_seule(self):
+        from apps.crm.serializers import LeadSerializer
+        fields = LeadSerializer().fields
+        for name in ('is_deleted', 'deleted_at', 'deleted_by'):
+            self.assertTrue(
+                fields[name].read_only,
+                f'LeadSerializer.{name} doit rester en lecture seule (CRX15).')
+
+    def test_patch_ne_contourne_pas_la_garde_409_devis(self):
+        """Un lead porteur de devis ne peut pas être « supprimé » par un PATCH :
+        la suppression réelle, elle, reste bloquée en 409."""
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client CRX15')
+        Devis.objects.create(company=self.company, reference='CRX15-D1',
+                             lead=self.lead, client=client)
+
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_deleted)
+        self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())

@@ -295,7 +295,10 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
 class LeadSerializer(_CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
     # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
-    # n'importe quel utilisateur, toutes sociétés confondues.
+    # n'importe quel utilisateur, toutes sociétés confondues. CRX15 l'a depuis
+    # verrouillé en LECTURE SEULE (cf. ``Meta.read_only_fields``) : la
+    # promotion est alors un no-op, conservée comme filet si le champ
+    # redevenait un jour inscriptible.
     scoped_relations = ('deleted_by',)
 
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
@@ -634,6 +637,14 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = [
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
+            # CRX15 — triplet de soft-delete VERROUILLÉ, par parité exacte avec
+            # `is_archived` juste au-dessus : il ne se pilote que par la
+            # suppression (`SoftDeleteModel.soft_delete`/`restore`), jamais par
+            # un PATCH direct du corps. Écrivable, `is_deleted: true` faisait
+            # DISPARAÎTRE le lead des listes sans écrire de `DeletionRecord`
+            # (donc sans corbeille ni undo) et en contournant la garde 409 qui
+            # refuse la suppression d'un lead porteur de devis.
+            'is_deleted', 'deleted_at', 'deleted_by',
             'first_contacted_at',  # FG28 — posé server-side uniquement
             'updated_by',  # VX98 — posé server-side (perform_update) uniquement
             # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
