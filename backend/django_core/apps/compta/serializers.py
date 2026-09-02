@@ -2353,16 +2353,30 @@ class ResultatAOSerializer(serializers.ModelSerializer):
 class ComptePortailClientSerializer(serializers.ModelSerializer):
     # DC32 — l'email est lu depuis le client (source unique), jamais stocké.
     email = serializers.EmailField(source='client.email', read_only=True)
+    # AUD141 — le jeton n'est PLUS servi en clair. Il authentifie à lui seul le
+    # relevé de compte, son PDF, la contestation de facture et les vues
+    # publiques contrats : un export CSV de cette liste, envoyé par email ou
+    # déposé sur un partage, donnait un accès permanent aux relevés financiers
+    # de TOUS les clients de la société. La liste ne porte donc qu'un aperçu
+    # non réutilisable ; le lien complet ne s'obtient que par l'action dédiée
+    # et tracée ``lien-acces``, et ``regenerer-jeton`` invalide l'ancien.
+    token_apercu = serializers.SerializerMethodField()
 
     class Meta:
         model = ComptePortailClient
         fields = [
-            'id', 'client', 'email', 'token_acces', 'actif',
+            'id', 'client', 'email', 'token_apercu', 'actif',
             'derniere_connexion', 'date_creation',
         ]
         read_only_fields = [
-            'token_acces', 'derniere_connexion', 'date_creation',
+            'token_apercu', 'derniere_connexion', 'date_creation',
         ]
+
+    def get_token_apercu(self, obj):
+        """4 derniers caractères du jeton — assez pour l'identifier dans une
+        liste, jamais assez pour s'en servir."""
+        token = getattr(obj, 'token_acces', '') or ''
+        return f'••••{token[-4:]}' if token else ''
 
 
 class AcceptationDevisPortailSerializer(serializers.ModelSerializer):

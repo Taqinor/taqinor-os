@@ -13,7 +13,7 @@
 // n'a donc RIEN à faire de plus que le PATCH qu'il faisait déjà.
 import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
-import { Plus, KeyRound } from 'lucide-react'
+import { Plus, KeyRound, Link2, RefreshCw } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
 import {
@@ -88,13 +88,46 @@ export default function ComptesPortailAdmin() {
     }
   }
 
+  // AUD141 — le lien tokenisé se DEMANDE (action serveur journalisée) et part
+  // directement dans le presse-papiers : il n'est jamais rendu à l'écran, donc
+  // jamais capté par une capture d'écran ou un partage de session.
+  const copierLien = async (row) => {
+    setBusyId(row.id)
+    try {
+      const r = await portailApi.admin.comptes.lienAcces(row.id)
+      const lien = r.data?.lien
+      if (!lien) throw new Error('lien absent')
+      await navigator.clipboard.writeText(lien)
+      toast.success("Lien d'accès copié — cette demande est journalisée")
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? "Lien d'accès indisponible.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const regenerer = async (row) => {
+    setBusyId(row.id)
+    try {
+      await portailApi.admin.comptes.regenererJeton(row.id)
+      toast.success("Jeton régénéré — l'ancien lien ne fonctionne plus")
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Régénération impossible.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const columns = [
     { id: 'client', header: 'Client', width: 160, accessor: (r) => `#${r.client}` },
     { id: 'email', header: 'Email', width: 200, accessor: (r) => r.email || '—' },
     {
-      id: 'token', header: "Jeton d'accès", width: 220,
-      cell: (_v, row) => <code className="text-xs">{row.token_acces}</code>,
-      exportValue: (row) => row.token_acces || '',
+      // AUD141 — aperçu seul (4 derniers caractères, servi par le serveur) :
+      // le jeton complet ne sort ni de la liste ni de l'export CSV.
+      id: 'token', header: "Jeton d'accès", width: 140,
+      cell: (_v, row) => <code className="text-xs">{row.token_apercu || '—'}</code>,
+      exportValue: (row) => row.token_apercu || '',
     },
     {
       id: 'actif', header: 'Actif', width: 90, sortable: false,
@@ -113,12 +146,24 @@ export default function ComptesPortailAdmin() {
       accessor: (r) => formatDateHeure(r.date_creation),
     },
     {
-      id: 'actions', header: '', width: 170, sortable: false, searchable: false, hideable: false,
+      id: 'actions', header: '', width: 330, sortable: false, searchable: false, hideable: false,
       cell: (_v, row) => (
-        <Button variant="outline" size="sm" disabled={busyId === row.id}
-                onClick={() => provisionner(row)}>
-          <KeyRound /> Provisionner l'accès
-        </Button>
+        <div className="flex flex-wrap items-center gap-1">
+          <Button variant="outline" size="sm" disabled={busyId === row.id}
+                  onClick={() => provisionner(row)}>
+            <KeyRound /> Provisionner l'accès
+          </Button>
+          <Button variant="outline" size="sm" disabled={busyId === row.id}
+                  onClick={() => copierLien(row)}
+                  aria-label={`Copier le lien d'accès de ${row.email || row.client}`}>
+            <Link2 /> Copier le lien
+          </Button>
+          <Button variant="outline" size="sm" disabled={busyId === row.id}
+                  onClick={() => regenerer(row)}
+                  aria-label={`Régénérer le jeton de ${row.email || row.client}`}>
+            <RefreshCw /> Régénérer
+          </Button>
+        </div>
       ),
     },
   ]
@@ -130,7 +175,10 @@ export default function ComptesPortailAdmin() {
         l'accès » crée le vrai compte utilisateur portail (mot de passe
         temporaire envoyé par email, jamais affiché ici). Révoquer un compte
         (bascule Actif) ferme son accès IMMÉDIATEMENT — magic-link et compte
-        utilisateur, y compris une session déjà ouverte (AUD138).
+        utilisateur, y compris une session déjà ouverte (AUD138). Le jeton
+        d'accès n'est jamais affiché ni exporté : « Copier le lien » le place
+        directement dans le presse-papiers (demande journalisée) et
+        « Régénérer » invalide l'ancien lien.
       </p>
 
       <Card className="p-4">

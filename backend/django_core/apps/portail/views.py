@@ -17,6 +17,8 @@ L'IDENTIQUE sous ``/api/django/compta/…`` : la nouvelle action n'existe que su
 le préfixe ``/api/django/portail/…``, aucun endpoint historique n'est modifié.
 """
 
+import logging
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -33,6 +35,10 @@ from apps.compta.views import (
 from authentication.permissions import IsAdminRole
 
 from . import services
+
+#: AUD141 — journal des RÉVÉLATIONS et rotations de jeton portail (qui, quand,
+#: sur quel compte). Le jeton lui-même n'est JAMAIS journalisé.
+logger = logging.getLogger('portail.acces')
 
 
 class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
@@ -59,7 +65,11 @@ class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
         une arête ``compta.views -> portail.services`` de plus.
         """
         avant = bool(getattr(serializer.instance, 'actif', True))
-        compte = serializer.save()
+        # ``super()`` = ``TenantMixin.perform_update`` : la société reste forcée
+        # côté serveur (jamais lue du corps) — on ajoute un effet, on n'en
+        # retire aucun.
+        super().perform_update(serializer)
+        compte = serializer.instance
         apres = bool(compte.actif)
         if apres == avant:
             return
@@ -106,4 +116,67 @@ class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
                 if cree else
                 'Un accès portail existe déjà pour ce client.'
             ),
+        })
+
+    # ── AUD141 — le jeton d'accès quitte le payload de liste ────────────────
+    #
+    # ``token_acces`` authentifie À LUI SEUL le relevé de compte, son PDF, la
+    # contestation de facture et les vues publiques contrats. Il était affiché
+    # en clair dans une colonne de l'écran ERP et publié dans son export CSV :
+    # un export envoyé par email ou déposé sur un partage donnait un accès
+    # permanent aux relevés financiers de tous les clients de la société.
+    # ``ComptePortailClientSerializer`` ne rend donc plus qu'un aperçu
+    # (4 derniers caractères) ; le lien complet ne s'obtient que par ces deux
+    # actions, réservées à l'ADMINISTRATEUR et journalisées.
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='lien-acces',
+        permission_classes=[IsAdminRole],
+    )
+    def lien_acces(self, request, pk=None):
+        """AUD141 — Révèle le lien d'accès tokenisé, UNE demande à la fois.
+
+        POST (jamais GET) : une révélation est un ACTE, pas une lecture — elle
+        ne doit ni s'appeler en préchargement, ni finir dans un historique de
+        navigateur ou un log d'accès HTTP. Réservée à l'administrateur, et
+        journalisée (qui, quand, quel compte — jamais le jeton lui-même).
+        """
+        compte = self.get_object()
+        logger.info(
+            'AUD141 lien-acces revele — compte=%s client=%s societe=%s par=%s',
+            compte.id, compte.client_id, compte.company_id, request.user.id)
+        return Response({
+            'token_acces': compte.token_acces,
+            'lien': request.build_absolute_uri(
+                f'/portail-contrats/{compte.token_acces}'),
+            'detail': ("Lien d'accès révélé — cette demande est journalisée."),
+        })
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='regenerer-jeton',
+        permission_classes=[IsAdminRole],
+    )
+    def regenerer_jeton(self, request, pk=None):
+        """AUD141 — Fait tourner le jeton : l'ancien lien cesse de fonctionner.
+
+        Le geste de reprise quand un export ou un email a fui. Renvoie
+        l'aperçu du NOUVEAU jeton, jamais le jeton entier — le lien complet se
+        redemande explicitement par ``lien-acces``.
+        """
+        import secrets
+
+        compte = self.get_object()
+        compte.token_acces = secrets.token_urlsafe(32)
+        compte.save(update_fields=['token_acces'])
+        logger.info(
+            'AUD141 jeton regenere — compte=%s client=%s societe=%s par=%s',
+            compte.id, compte.client_id, compte.company_id, request.user.id)
+        return Response({
+            'token_apercu': self.get_serializer(compte).data.get(
+                'token_apercu'),
+            'detail': ("Jeton régénéré — l'ancien lien ne fonctionne plus."),
         })
