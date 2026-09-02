@@ -115,11 +115,30 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                         else status.HTTP_400_BAD_REQUEST))
 
         # Trace portail (FG229) — posée APRÈS la bascule, jamais à sa place.
+        #
+        # AUD145 — le ``get_or_create`` tournait HORS transaction et sans
+        # contrainte d'unicité : deux POST concurrents (le double-clic du
+        # client sur « J'accepte ») créaient DEUX preuves du même devis, avec
+        # deux horodatages. Le verrou d'``accept_devis`` ne couvre que le
+        # DEVIS. On englobe donc création + signature dans UNE transaction, et
+        # on rattrape l'``IntegrityError`` que la nouvelle contrainte
+        # ``uniq_acceptation_portail_devis`` lève sur le perdant de la course :
+        # il RELIT la preuve du gagnant au lieu d'en fabriquer une seconde.
+        from django.db import IntegrityError, transaction
+
         from .models import AcceptationDevisPortail
-        acceptation, _ = AcceptationDevisPortail.objects.get_or_create(
-            company=company, devis=devis)
-        services.signer_acceptation_devis(
-            acceptation, nom=nom, ip=_ip(request))
+        try:
+            with transaction.atomic():
+                acceptation, _ = AcceptationDevisPortail.objects.get_or_create(
+                    company=company, devis=devis)
+                services.signer_acceptation_devis(
+                    acceptation, nom=nom, ip=_ip(request))
+        except IntegrityError:
+            acceptation = AcceptationDevisPortail.objects.filter(
+                company=company, devis=devis).first()
+            if acceptation is not None:
+                services.signer_acceptation_devis(
+                    acceptation, nom=nom, ip=_ip(request))
 
         devis.refresh_from_db(fields=['statut'])
         return Response({
