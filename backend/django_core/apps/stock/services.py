@@ -983,6 +983,38 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
             'opération ferait passer le stock sous zéro.')
 
 
+def check_periode_comptable_ouverte(company, une_date, *,
+                                    document='Ce document'):
+    """AUD232 — refuse un DOCUMENT d'achat daté dans une période comptable
+    VERROUILLÉE (FG115).
+
+    Le refus n'existait qu'au fond de la pile (``EcritureComptable.save``) et
+    seulement quand ``COMPTA_AUTO_ECRITURES`` est actif (défaut OFF) : sans
+    écriture, une facture ou un paiement fournisseur pouvait être ANTIDATÉ
+    dans un mois clos sans que rien ne bronche ; avec le toggle ON, il partait
+    en ``ValidationError`` non traduite APRÈS la création du document (facture
+    orpheline). La garde est donc posée EN AMONT, sur le document lui-même —
+    même patron que ``compta.services.verifier_facture_modifiable`` côté
+    ventes : import function-local du SERVICE compta, jamais de son modèle.
+
+    ``compta`` absente, société inconnue, date vide ou aucune période
+    verrouillée = no-op strict (comportement historique). Lève ``ValueError``
+    (les vues la traduisent en 400 métier).
+    """
+    if company is None or une_date is None:
+        return
+    try:
+        from apps.compta.services import periode_verrouillee_pour
+    except Exception:  # noqa: BLE001 — compta absent = garde silencieuse
+        return
+    periode = periode_verrouillee_pour(company, une_date)
+    if periode is not None:
+        raise ValueError(
+            f'Période comptable clôturée : {document.lower()} daté du '
+            f'{une_date} tombe dans une période verrouillée '
+            f'({periode.date_debut} → {periode.date_fin}).')
+
+
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def _reouvrir_quantite_recue_bcf(bc, produit_id, quantite_retournee):
@@ -1533,6 +1565,9 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
         raise ValueError('Le montant du paiement doit être positif.')
     if montant_dec > facture.solde_du:
         raise ValueError('Le paiement dépasse le reste à payer.')
+    # AUD232 — garde de période comptable EN AMONT du document.
+    check_periode_comptable_ouverte(
+        company, date_paiement, document='Ce règlement sous-traitant')
     with transaction.atomic():
         paiement = PaiementFournisseur.objects.create(
             company=company, facture=facture, montant=montant_dec,
