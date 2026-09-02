@@ -4009,6 +4009,22 @@ def proposal_activate_option(request, token):
     # décision du client, jamais un geste d'aperçu.
     if link.via_interne:
         return _refus_apercu_interne()
+    # ── QJR418 (DR2, actions) — SIGNER EST AU MOINS AUSSI GARDÉ QUE LIRE, ET
+    # ACTIVER UNE OPTION PAYANTE AUSSI. Ce endpoint ne consultait JAMAIS
+    # ``otp_lecture_verified`` : quiconque détenait le jeton pouvait CHANGER LE
+    # PÉRIMÈTRE FACTURÉ d'un devis sans franchir la garde que la lecture, elle,
+    # exige (QJR132/QJR417). Le raisonnement de QJR132 ne leur avait jamais été
+    # appliqué. DR2 tranche : la garde couvre les actions clientes,
+    # ``activate_option`` étant le minimum absolu.
+    # C'est LA garde de QJR417, jamais une seconde formulation, posée AVANT
+    # toute mutation (et même avant la lecture du corps). NO-OP sur un lien
+    # sans OTP de lecture : la garde répond True — aucun lien d'aujourd'hui ne
+    # change. Même contrat de refus que les lectures (403 ``otp_required``)
+    # pour que l'écran client sache redemander le code.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     try:
         ligne_id = int(request.data.get('ligne_id'))
     except (TypeError, ValueError):
