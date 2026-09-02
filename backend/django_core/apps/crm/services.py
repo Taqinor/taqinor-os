@@ -3916,7 +3916,7 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
 
 def enregistrer_consentement_lead(
         lead, *, purpose, granted=True, source='', version_texte='',
-        ip_confirmation=None):
+        ip_confirmation=None, occurred_at=None):
     """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
 
     ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
@@ -3924,6 +3924,13 @@ def enregistrer_consentement_lead(
     ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
     ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
     de l'état courant prend toujours la ligne la plus récente.
+
+    CRX39 — ``occurred_at`` (additif, défaut ``now()`` : tout appelant existant
+    est inchangé) porte l'horodatage RÉEL du consentement quand on le connaît,
+    comme le champ le demande explicitement (« sur le consent_timestamp
+    existant côté métier »). Sans lui, le registre daterait le consentement du
+    moment où l'ERP l'a enregistré, pas de celui où la personne l'a donné —
+    une preuve CNDP fausse est pire qu'une preuve absente.
     """
     from core.models import ConsentRecord
 
@@ -3936,10 +3943,61 @@ def enregistrer_consentement_lead(
         purpose=purpose,
         granted=granted,
         source=source or '',
-        occurred_at=timezone.now(),
+        occurred_at=occurred_at or timezone.now(),
         version_texte=version_texte or '',
         ip_confirmation=ip_confirmation,
     )
+
+
+#: CRX39 — origine consignée dans ``ConsentRecord.source`` pour l'intake web.
+CONSENT_SOURCE_SITE_WEB = 'formulaire site web'
+
+
+def enregistrer_consentements_intake_web(lead):
+    """CRX39 (DRAFT165-57) — trace au REGISTRE le consentement recueilli par le
+    formulaire du site, FINALITÉ PAR FINALITÉ.
+
+    Jusqu'ici le consentement du visiteur ne vivait que sur la fiche
+    (``Lead.consent_timestamp`` / ``Lead.whatsapp_opt_in``) : le registre
+    ``core.ConsentRecord`` — celui qu'une demande CNDP interroge, celui que
+    lisent le DSR et les filtres marketing — restait VIDE pour la source de
+    leads n°1. Cette fonction est le pont, appelée à la CRÉATION du lead par
+    le webhook site.
+
+    Deux finalités, chacune écrite SEULEMENT si la donnée existe (jamais un
+    consentement supposé — règle « aucun chiffre/fait inventé ») :
+      • ``marketing`` — la case du formulaire, ACCORDÉE, datée du
+        ``consentTimestamp`` transmis par le site (pas de l'instant serveur) ;
+      • ``whatsapp`` — l'opt-in WhatsApp, accordé OU refusé selon la case
+        (``whatsapp_opt_in`` vaut ``None`` quand la question n'a pas été posée
+        : on n'écrit alors RIEN, un silence n'est pas un refus).
+
+    ``ip_confirmation`` reste vide À DESSEIN : ce champ est la preuve du clic
+    de confirmation d'un DOUBLE opt-in, que le formulaire du site ne pratique
+    pas — y verser l'IP de la soumission maquillerait un simple opt-in en
+    double opt-in. Idem ``version_texte`` : le site ne transmet aucune version
+    de texte de consentement aujourd'hui.
+
+    Renvoie la liste des entrées créées (vide si aucune donnée exploitable).
+    Ne lève pas sur un lead sans email ni téléphone (le point d'entrée unique
+    ``enregistrer_consentement_lead`` renvoie alors ``None``).
+    """
+    horodatage = getattr(lead, 'consent_timestamp', None)
+    creees = []
+    if horodatage:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='marketing', granted=True,
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage)
+        if entree is not None:
+            creees.append(entree)
+    opt_in = getattr(lead, 'whatsapp_opt_in', None)
+    if opt_in is not None:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='whatsapp', granted=bool(opt_in),
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage or None)
+        if entree is not None:
+            creees.append(entree)
+    return creees
 
 
 # ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────

@@ -1748,6 +1748,19 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: recompute_lead_score échoué '
                 '(lead #%s) : %s', lead.pk, _exc)
+        # CRX39 (DRAFT165-57) — consentement CNDP TRACÉ AU REGISTRE. Le
+        # `consentTimestamp` du site ne vivait que sur la fiche : le registre
+        # `core.ConsentRecord`, celui qu'interroge une demande CNDP, restait
+        # vide pour la source de leads n°1. Posé à la CRÉATION uniquement (le
+        # chemin anti-rejeu < 60 s est la MÊME soumission — il ne doit pas
+        # écrire une seconde ligne). Best-effort, comme les blocs voisins.
+        try:
+            from .services import enregistrer_consentements_intake_web
+            enregistrer_consentements_intake_web(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: registre de consentement non écrit '
+                '(lead #%s) : %s', lead.pk, _exc)
         # Quote-journey — visibilité commerciale immédiate : UNE note chatter
         # automatique résumant le questionnaire web (pro/agricole) + les
         # chiffres montrés au visiteur. Le dict COMPLET est repris du payload
