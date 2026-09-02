@@ -121,9 +121,14 @@ class RecommandationExclutLeResultatTronqueTest(SimpleTestCase):
 
 
 class BalayageReelDeclencheLePlafondTest(TestCase):
-    """Intégration : un vrai profil ~10 000 kWh/mois, sur le catalogue seedé,
+    """Intégration : un vrai profil hors résidentiel, sur le catalogue seedé,
     déclenche VRAIMENT le plafond — le message RENDU au client ne ment plus,
-    et le résultat tronqué ne porte plus l'étiquette « recommandé »."""
+    et le résultat tronqué ne porte plus l'étiquette « recommandé ».
+
+    La consommation de ce profil est DÉRIVÉE des deux entrées réelles (table
+    PVGIS de la ville + panneau retenu par le catalogue), jamais posée en dur :
+    voir :meth:`_conso_qui_declenche_le_plafond`.
+    """
 
     maxDiff = None
 
@@ -137,20 +142,65 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
         call_command('seed_catalogue', company_slug=cls.company.slug,
                      stdout=StringIO())
 
-    def test_profil_10000_kwh_mois_plafonne_avec_message_honnete(self):
+    def _sizer(self, conso_mensuelle):
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        tranches, charges_fixes = _reglages_tarifaires(self.company)
+        return D.recommander_taille(
+            company=self.company, conso_kwh_mensuelles=[conso_mensuelle] * 12,
+            ville=VILLE, occupation=OCCUPATION_PRESENCE, tranches=tranches,
+            charges_fixes_mad=charges_fixes)
+
+    def _conso_qui_declenche_le_plafond(self):
+        """La consommation mensuelle DÉRIVÉE des vraies données, jamais devinée.
+
+        Le plafond tombe quand la taille de PARITÉ dépasse
+        ``MAX_PANNEAUX_BALAYAGE`` (``bornes_candidates`` :
+        ``ceil(conso_an / productible_an × 1000 / watt) + 1 > 120``). Les deux
+        entrées de cette inégalité sont LUES, pas estimées :
+
+        * ``productible_an`` — la table PVGIS de la ville (Casablanca ≈ 1 719
+          kWh/kWc/an) ;
+        * ``watt`` — le panneau que le catalogue SEEDÉ retient réellement, lu
+          sur une ligne d'un balayage sonde (le même champ ``panel_watt`` que
+          rend ``balayer_tailles``).
+
+        La version précédente de ce test posait 10 000 kWh/mois depuis une
+        estimation de productible (~1 278) qui n'est pas celle de la table :
+        à 1 719 kWh/kWc/an et 710 W, la parité tombe à ~100 panneaux et le
+        plafond ne se déclenchait jamais. Dérivé, le seuil suit la table et le
+        catalogue au lieu de les contredire.
+        """
+        import math
+
+        from apps.parametres.pvgis_profils import productible_mensuel
+
+        productibles, _source = productible_mensuel(ville=VILLE)
+        productible_an = sum(productibles)
+        self.assertGreater(productible_an, 0)
+
+        sonde = self._sizer(300.0)['tableau']
+        self.assertTrue(sonde, 'le catalogue seedé doit composer au moins une '
+                               'taille, même sur un petit profil')
+        watt = float(sonde[0]['panel_watt'])
+        self.assertGreater(watt, 0)
+
+        # +20 panneaux de marge au-dessus de la borne : le plafond est franchi
+        # sans ambiguïté d'arrondi, quel que soit le panneau du catalogue.
+        panneaux_vises = D.MAX_PANNEAUX_BALAYAGE + 20
+        conso_an = panneaux_vises * (watt / 1000.0) * productible_an
+        mensuel = math.ceil(conso_an / 12.0 / 100.0) * 100.0
+        # Contrôle de la dérivation elle-même (l'inégalité de bornes_candidates).
+        parite = math.ceil((mensuel * 12.0 / productible_an) * 1000.0 / watt)
+        self.assertGreater(
+            parite + 1, D.MAX_PANNEAUX_BALAYAGE,
+            'la consommation dérivée doit vraiment dépasser le plafond')
+        return mensuel
+
+    def test_profil_hors_residentiel_plafonne_avec_message_honnete(self):
         """ROUGE avant le correctif : le message rendu contenait « la
         consommation déduite est anormalement élevée — vérifier la facture
         saisie » sur un profil pourtant parfaitement légitime."""
-        from apps.ventes.etude_horaire import _reglages_tarifaires
-        tranches, charges_fixes = _reglages_tarifaires(self.company)
-        # ~10 000 kWh/mois — exactement le profil que la ronde 4 a identifié
-        # comme légitime au-delà du dimensionnement résidentiel (le plafond
-        # tombe vers ~108 900 kWh/an, soit ~9 075 kWh/mois).
-        conso = [10000.0] * 12
-        resultat = D.recommander_taille(
-            company=self.company, conso_kwh_mensuelles=conso, ville=VILLE,
-            occupation=OCCUPATION_PRESENCE, tranches=tranches,
-            charges_fixes_mad=charges_fixes)
+        resultat = self._sizer(self._conso_qui_declenche_le_plafond())
         tableau = resultat['tableau']
         self.assertTrue(tableau, 'le catalogue seedé doit composer au moins '
                                  'une taille pour ce profil')
@@ -158,8 +208,8 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
                       if ligne.get('plafond_panneaux_atteint')]
         self.assertTrue(
             plafonnees,
-            'un profil à ~10 000 kWh/mois doit déclencher '
-            'MAX_PANNEAUX_BALAYAGE=%d (borne inchangée par DR4)'
+            'un profil dont la taille de parité dépasse la borne doit '
+            'déclencher MAX_PANNEAUX_BALAYAGE=%d (borne inchangée par DR4)'
             % D.MAX_PANNEAUX_BALAYAGE)
 
         for ligne in plafonnees:
