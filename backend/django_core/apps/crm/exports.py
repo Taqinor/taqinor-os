@@ -41,6 +41,23 @@ _DEVIS_STATUT_LABELS = {
 }
 
 
+def dernier_devis(lead):
+    """Dernier devis du lead (le plus récent), sans N+1 quand c'est possible.
+
+    CRX16 — l'appelant peut préparer un ``Prefetch`` ORDONNÉ exposé sous
+    ``devis_ordonnes`` (``to_attr``) ; on lit alors le cache, donc UNE requête
+    pour toute la sélection. Un prefetch NU ne suffirait pas : le
+    ``order_by(...).first()`` d'origine reconstruit un queryset et contourne
+    systématiquement le cache (1 requête par ligne exportée, plus une par
+    devis pour ses lignes via ``total_ttc``). Sans le prefetch, on retombe sur
+    la requête individuelle — comportement historique inchangé.
+    """
+    prefetched = getattr(lead, 'devis_ordonnes', None)
+    if prefetched is not None:
+        return prefetched[0] if prefetched else None
+    return lead.devis.order_by('-date_creation').first()
+
+
 def lead_row(lead):
     """Une ligne d'export pour un lead (valeurs FR lisibles)."""
     canal_label = dict(
@@ -48,7 +65,7 @@ def lead_row(lead):
     ).get(lead.canal, lead.canal or '')
     # Dernier devis du lead (le plus récent) — montant TTC + statut. Aucun prix
     # d'achat ni marge : uniquement le total client-facing.
-    dernier = lead.devis.order_by('-date_creation').first()
+    dernier = dernier_devis(lead)
     devis_total = str(dernier.total_ttc) if dernier else ''
     devis_statut = (
         _DEVIS_STATUT_LABELS.get(dernier.statut, dernier.statut)

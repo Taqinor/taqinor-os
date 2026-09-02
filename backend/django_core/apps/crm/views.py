@@ -212,7 +212,13 @@ class ClientViewSet(CompanyScopedModelViewSet):
         if_fiscal, rc, adresse, telephone, email}, …]}`` (≤ 12)."""
         from .company_search import search_companies
         q = (request.query_params.get('q') or '').strip()
-        results = search_companies(request.user.company, q) if q else []
+        # CRX16 — la portée de visibilité du rôle s'applique à l'autocomplete
+        # comme à la liste (``scope_client_queryset`` côté clients) : sans
+        # elle, un rôle restreint lisait ici les coordonnées d'enregistrements
+        # que sa propre liste lui masque.
+        results = (search_companies(request.user.company, q,
+                                    user=request.user)
+                   if q else [])
         return Response({'results': results})
 
     @action(detail=True, methods=['get'], url_path='documents',
@@ -1628,8 +1634,31 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         except ValueError:
             return Response({'detail': 'Identifiant de lead invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
-                 .select_related('owner').order_by('id'))
+        # CRX16 — l'export passe par ``self.get_queryset()`` (parité
+        # ClientViewSet.export_xlsx) : la PORTÉE DE VISIBILITÉ du rôle
+        # s'applique enfin. Le filtre société brut d'origine exportait tous
+        # les leads de la société, y compris ceux qu'un rôle restreint ne peut
+        # même pas ouvrir dans la liste.
+        from django.db.models import Prefetch
+        from apps.ventes.models import Devis
+        leads = (
+            self.get_queryset()
+            .filter(id__in=ids)
+            # On remplace les prefetch de la LISTE par un prefetch ORDONNÉ :
+            # ``lead_row`` a besoin du DERNIER devis. Un prefetch nu ne suffit
+            # pas — ``lead.devis.order_by(...).first()`` re-requête et ignore
+            # le cache (1 requête PAR LIGNE, plus 1 par devis pour ses lignes
+            # via ``total_ttc``). Le tri vit donc DANS le prefetch, exposé sous
+            # ``devis_ordonnes`` (lu par ``exports.lead_row``) : O(1) requêtes
+            # quelle que soit la taille de la sélection.
+            .prefetch_related(None)
+            .select_related('owner')
+            .prefetch_related(Prefetch(
+                'devis',
+                queryset=Devis.objects.order_by(
+                    '-date_creation').prefetch_related('lignes'),
+                to_attr='devis_ordonnes'))
+            .order_by('id'))
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT,
