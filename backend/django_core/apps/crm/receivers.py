@@ -190,14 +190,32 @@ def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_stat
     ``en_attente`` → ``converti`` (la récompense reste versée manuellement,
     hors périmètre ici). Même bus que l'avance de funnel ci-dessus — aucun
     import de ``ventes`` (le devis n'est manipulé qu'au travers des kwargs du
-    signal). No-op si le devis n'a pas de lead, si aucun Parrainage
-    ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
-    ``recompense_versee`` (jamais reculé)."""
-    if not getattr(devis, 'lead_id', None):
+    signal). No-op si le devis ne désigne ni lead ni client, si aucun
+    Parrainage ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
+    ``recompense_versee`` (jamais reculé).
+
+    CRX34 — LE FILLEUL DÉJÀ CONVERTI EN CLIENT ÉTAIT LAISSÉ DE CÔTÉ. Le
+    modèle ``Parrainage`` porte DEUX désignations du filleul (``filleul_lead``
+    ET ``filleul_client``) parce qu'un filleul peut arriver comme prospect,
+    comme client, ou devenir client entre-temps. Le récepteur, lui, ne
+    consultait que ``filleul_lead_id`` : un parrainage enregistré sur le seul
+    ``filleul_client`` restait ÉTERNELLEMENT « en attente » alors que la vente
+    était signée — et le parrain n'était jamais récompensé. On apparie
+    désormais sur l'une OU l'autre désignation."""
+    from django.db.models import Q
+
+    lead_id = getattr(devis, 'lead_id', None)
+    client_id = getattr(devis, 'client_id', None)
+    if not lead_id and not client_id:
         return
     from .models import Parrainage
+    appariement = Q(pk__in=[])
+    if lead_id:
+        appariement |= Q(filleul_lead_id=lead_id)
+    if client_id:
+        appariement |= Q(filleul_client_id=client_id)
     parrainage = Parrainage.objects.filter(
-        filleul_lead_id=devis.lead_id, company=devis.company,
+        appariement, company=devis.company,
         statut=Parrainage.Statut.EN_ATTENTE,
     ).first()
     if parrainage is None:

@@ -326,3 +326,88 @@ class DevisAcceptedFlipsParrainageTests(TestCase):
                 ancien_statut='envoye')
         parrainage.refresh_from_db()
         self.assertEqual(parrainage.statut, Parrainage.Statut.CONVERTI)
+
+
+class ParrainageFilleulClientSeulTests(TestCase):
+    """CRX34 — le filleul déjà converti en CLIENT (parrainage SANS lead).
+
+    LE DÉFAUT. ``Parrainage`` porte DEUX désignations du filleul
+    (``filleul_lead`` et ``filleul_client``) parce qu'un filleul peut arriver
+    comme prospect, comme client, ou devenir client entre-temps. Le récepteur
+    ``devis_accepted``, lui, ne consultait que ``filleul_lead_id`` : un
+    parrainage enregistré sur le seul ``filleul_client`` restait ÉTERNELLEMENT
+    « en attente » alors que la vente était signée — et le parrain n'était
+    jamais récompensé.
+    """
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='crx34-co', defaults={'nom': 'CRX34 Co'})
+        self.user = User.objects.create_user(
+            username='crx34_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.parrain = Client.objects.create(
+            company=self.company, nom='Parrain CRX34')
+        self.filleul = Client.objects.create(
+            company=self.company, nom='Filleul CRX34', prenom='Sans Lead',
+            email='filleul-crx34@example.com', telephone='+212600000134')
+
+    def _devis(self, num, *, lead=None, client=None):
+        return Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-CRX34{num:04d}',
+            client=client or self.filleul, lead=lead,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'))
+
+    def test_le_parrainage_sur_le_seul_client_est_converti(self):
+        """LE TEST ROUGE — aujourd'hui il reste « en attente » à jamais."""
+        parrainage = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain,
+            filleul_client=self.filleul,
+            statut=Parrainage.Statut.EN_ATTENTE)
+        devis = self._devis(num=1)          # aucun lead sur le devis
+        self.assertIsNone(devis.lead_id)
+
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+
+        parrainage.refresh_from_db()
+        self.assertEqual(
+            parrainage.statut, Parrainage.Statut.CONVERTI,
+            'un parrainage désigné par le seul filleul_client reste en '
+            "attente : le récepteur n'apparie que sur filleul_lead.")
+
+    def test_un_client_sans_parrainage_reste_un_no_op(self):
+        devis = self._devis(num=2)
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+        self.assertEqual(
+            Parrainage.objects.filter(company=self.company).count(), 0)
+
+    def test_le_parrainage_d_une_autre_societe_n_est_jamais_touche(self):
+        autre = Company.objects.create(nom='Autre CRX34', slug='autre-crx34')
+        parrain_autre = Client.objects.create(company=autre, nom='Parrain X')
+        filleul_autre = Client.objects.create(company=autre, nom='Filleul X')
+        parrainage_autre = Parrainage.objects.create(
+            company=autre, parrain=parrain_autre,
+            filleul_client=filleul_autre,
+            statut=Parrainage.Statut.EN_ATTENTE)
+
+        devis = self._devis(num=3)
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+
+        parrainage_autre.refresh_from_db()
+        self.assertEqual(
+            parrainage_autre.statut, Parrainage.Statut.EN_ATTENTE)
+
+    def test_deja_recompense_jamais_recule(self):
+        parrainage = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain,
+            filleul_client=self.filleul,
+            statut=Parrainage.Statut.RECOMPENSE_VERSEE)
+        devis = self._devis(num=4)
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+        parrainage.refresh_from_db()
+        self.assertEqual(
+            parrainage.statut, Parrainage.Statut.RECOMPENSE_VERSEE)
