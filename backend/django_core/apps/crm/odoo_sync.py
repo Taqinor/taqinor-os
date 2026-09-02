@@ -118,6 +118,21 @@ PUSH_STAGE_TARGETS = {
 }
 
 
+# ── CRX11 — allowlist STRUCTURELLE des écritures Odoo ──────────────────────
+# Méthodes de LECTURE de l'API Odoo : toujours autorisées.
+_READ_METHODS = frozenset({
+    'search_read', 'search', 'search_count', 'read', 'read_group',
+    'fields_get', 'name_search', 'name_get', 'default_get',
+})
+
+# La SEULE écriture Odoo autorisée dans tout le dépôt : le déplacement
+# d'étape de ``push_odoo_stages`` (``stage_id`` seul, à blanc par défaut,
+# ``--apply`` explicite). Ajouter une entrée ici est une DÉCISION : elle doit
+# être déclarée dans le même commit à ``scripts/check_odoo_writes.py``, qui
+# refuse toute écriture non déclarée.
+_WRITE_ALLOWED = frozenset({('crm.lead', 'write')})
+
+
 class OdooSyncError(Exception):
     """Erreur d'appel JSON-2 (transport, auth ou réponse d'erreur Odoo)."""
 
@@ -141,7 +156,23 @@ class OdooConfig:
 def odoo_call(config, model, method, payload, timeout=120):
     """POST ``/json/2/<model>/<method>`` (API JSON-2 — la SEULE voie d'accès
     à Odoo, CLAUDE.md règle #1). ``payload`` : paramètres NOMMÉS de la
-    méthode (+ ``ids``/``context``), conformément à la doc JSON-2."""
+    méthode (+ ``ids``/``context``), conformément à la doc JSON-2.
+
+    CRX11 — GARDE STRUCTURELLE : ce transport est générique (``model`` et
+    ``method`` sont des paramètres), donc rien n'empêchait un appelant futur
+    d'écrire ce qu'il voulait dans la base Odoo du fondateur. Toute méthode
+    hors ``_READ_METHODS`` doit désormais figurer dans ``_WRITE_ALLOWED``,
+    qui ne contient QU'UNE entrée : ``crm.lead.write`` (déplacement d'étape
+    de ``push_odoo_stages``, à blanc par défaut, ``--apply`` explicite,
+    ``stage_id`` seul). Le refus tombe AVANT le moindre octet réseau.
+    ``scripts/check_odoo_writes.py`` vérifie la même règle statiquement.
+    """
+    if method not in _READ_METHODS and (model, method) not in _WRITE_ALLOWED:
+        raise OdooSyncError(
+            f"Écriture Odoo refusée : {model}.{method} n'est pas une méthode "
+            f"de lecture et ne figure pas dans l'allowlist "
+            f"{sorted(_WRITE_ALLOWED)}. Toute écriture Odoo doit être "
+            f"déclarée ici ET dans scripts/check_odoo_writes.py.")
     url = config.url.rstrip('/') + f'/json/2/{model}/{method}'
     headers = {
         'Content-Type': 'application/json; charset=utf-8',

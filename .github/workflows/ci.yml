@@ -1380,6 +1380,21 @@ jobs:
         run: python scripts/check_build_order.py
       - name: Test the BUILD_ORDER.yml checker itself (SCA5)
         run: python -m unittest scripts.tests.test_check_build_order -v
+      # REGLE #1 MACHINE-VERIFIEE (CRX11). « Toute ecriture Odoo passe par
+      # l'API JSON-2, jamais de SQL » n'etait tenue que par la discipline,
+      # alors que le depot porte TROIS transports Odoo dont deux savent
+      # ecrire — et que `apps/crm/odoo_sync.odoo_call` est ENTIEREMENT
+      # generique (`model` et `method` sont des parametres : rien n'empechait
+      # un appelant futur d'ecrire n'importe quoi dans la base du fondateur).
+      # La garde exige que chaque appel Odoo soit une LECTURE ou une exception
+      # ECRITE avec sa raison, refuse tout nouveau transport non declare, et
+      # verifie que l'allowlist d'execution `_WRITE_ALLOWED` dit exactement la
+      # meme chose. Stdlib pure, sans base ni dependance, comme les autres
+      # check_*.py de ce job.
+      - name: Check écritures Odoo (règle #1 — lecture, ou exception déclarée)
+        run: python scripts/check_odoo_writes.py
+      - name: Test the Odoo-writes checker itself (CRX11)
+        run: python -m unittest scripts.tests.test_check_odoo_writes -v
       - name: Test the testdb-cache safety guard itself (WOW8 — a wrong DELTA verdict false-greens a stale schema)
         run: python -m unittest scripts.tests.test_ci_testdb_manifest_diff -v
       # WOW-CI2 — le decoupage des tests backend decide QUELS tests tournent.

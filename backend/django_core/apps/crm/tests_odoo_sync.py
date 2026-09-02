@@ -376,6 +376,53 @@ class TestAlignementAvanceSeulement(OdooSyncBase):
         self.assertIn('1 régression(s) signalée(s)', sortie)
 
 
+class TestAllowlistEcrituresOdoo(TestCase):
+    """CRX11 — règle #1 : `odoo_call` refuse toute écriture non déclarée.
+
+    Ce transport est GÉNÉRIQUE (`model` et `method` sont des paramètres) :
+    sans cette garde, n'importe quel appelant futur pouvait écrire ce qu'il
+    voulait dans la base Odoo du fondateur. Le refus tombe AVANT le réseau.
+    """
+
+    def setUp(self):
+        self.config = odoo_sync.OdooConfig(
+            url='https://odoo.example.test', api_key='cle-de-test')
+
+    def test_only_one_write_is_allowed_in_the_whole_repo(self):
+        self.assertEqual(odoo_sync._WRITE_ALLOWED,
+                         frozenset({('crm.lead', 'write')}))
+
+    def test_undeclared_write_is_refused_before_any_http(self):
+        with patch('urllib.request.urlopen') as reseau:
+            for model, method in (('crm.lead', 'unlink'),
+                                  ('crm.lead', 'create'),
+                                  ('res.partner', 'write'),
+                                  ('account.move', 'create')):
+                with self.assertRaises(odoo_sync.OdooSyncError) as ctx:
+                    odoo_sync.odoo_call(self.config, model, method, {})
+                self.assertIn('allowlist', str(ctx.exception))
+            reseau.assert_not_called()
+
+    def test_reads_and_the_single_declared_write_reach_the_transport(self):
+        class _Reponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'[]'
+
+        with patch('urllib.request.urlopen',
+                   return_value=_Reponse()) as reseau:
+            odoo_sync.odoo_call(self.config, 'crm.lead', 'search_read', {})
+            odoo_sync.odoo_call(self.config, 'crm.stage', 'search_read', {})
+            odoo_sync.odoo_call(self.config, 'crm.lead', 'write',
+                                {'ids': [1], 'vals': {'stage_id': 2}})
+        self.assertEqual(reseau.call_count, 3)
+
+
 class TestPushCommand(OdooSyncBase):
     def _lead(self, **kwargs):
         return Lead.objects.create(company=self.company, **kwargs)
