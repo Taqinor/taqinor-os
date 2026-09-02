@@ -2891,9 +2891,15 @@ def rotation_report(company, jours=180):
     """Rapport de rotation des produits (dead-stock / immobile).
 
     Retourne une liste de dicts avec : produit_id, nom, sku, quantite_stock,
-    valeur_stock (prix_achat × qte, INTERNE), derniere_sortie (date ou null),
+    valeur_stock (INTERNE), derniere_sortie (date ou null),
     jours_sans_mouvement (int ou null), bucket ('actif'|'ralenti'|'immobile').
     Admin-only ; prix d'achat interne jamais client-facing.
+
+    AUD225 / DC28 — `valeur_stock` passe par l'accesseur de coût UNIQUE
+    (`valuation_cost_with_source`, celui de `stock_valuation_by_location`) au
+    lieu de recalculer une TROISIÈME valeur du stock sur le `prix_achat`
+    catalogue brut, et exclut la marchandise DE_TIERS (NTWMS19) : les deux
+    écrans ne peuvent plus diverger structurellement pour un même produit.
     """
     from django.utils import timezone
     from .models import Produit, MouvementStock
@@ -2901,7 +2907,11 @@ def rotation_report(company, jours=180):
     today = timezone.now().date()
     produits = (Produit.objects
                 .filter(company=company, is_archived=False, quantite_stock__gt=0)
-                .only('id', 'nom', 'sku', 'quantite_stock', 'prix_achat'))
+                .only('id', 'nom', 'sku', 'quantite_stock', 'prix_achat',
+                      'company'))
+    # Méthode société et carte du stock de tiers résolues une seule fois.
+    method = stock_valuation_method(company)
+    de_tiers = quantite_de_tiers(company)
 
     result = []
     for p in produits:
@@ -2922,12 +2932,15 @@ def rotation_report(company, jours=180):
         else:
             bucket = 'actif'
 
+        cout, _source = valuation_cost_with_source(p, method=method)
+        quantite_propre = max(p.quantite_stock - de_tiers.get(p.id, 0), 0)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
             'sku': p.sku,
             'quantite_stock': p.quantite_stock,
-            'valeur_stock': str(p.prix_achat * p.quantite_stock),
+            'valeur_stock': str(
+                (cout * quantite_propre).quantize(Decimal('0.01'))),
             'derniere_sortie': derniere.date().isoformat() if derniere else None,
             'jours_sans_mouvement': jours_sans,
             'bucket': bucket,
