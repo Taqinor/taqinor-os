@@ -92,6 +92,9 @@ def severity_rank(event_type: str) -> int:
 
 EVENT_CATEGORY = {
     EventType.LEAD_ASSIGNED: 'ventes',
+    # CRX27 — même catégorie d'affichage que la clé qu'ils empruntaient.
+    EventType.COMPTE_A_REACTIVER: 'ventes',
+    EventType.LEAD_NON_CONTACTE: 'ventes',
     EventType.LEAD_NEW: 'ventes',
     EventType.DEVIS_ACCEPTED: 'ventes',
     EventType.DEVIS_OPENED: 'ventes',
@@ -169,6 +172,11 @@ def category_of(event_type: str) -> str:
 
 ACTION_EVENT_TYPES = frozenset({
     EventType.LEAD_ASSIGNED,
+    # CRX27 — les deux alertes séparées restent des ACTIONS attendues (elles
+    # l'étaient déjà sous la clé ``lead_assigned``) : réactiver un compte
+    # dormant et rattraper un lead non contacté sont des gestes, pas des infos.
+    EventType.COMPTE_A_REACTIVER,
+    EventType.LEAD_NON_CONTACTE,
     EventType.LEAD_NEW,
     EventType.HOT_LEAD_UNREAD,
     EventType.CLIENT_CONTACT_REQUEST,
