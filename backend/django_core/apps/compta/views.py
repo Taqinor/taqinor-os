@@ -7560,6 +7560,29 @@ class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
 
+    def get_queryset(self):
+        """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
+
+        L'écran appelle `GET /portail/paiements-facture-portail/?statut=initie`
+        (filtre par défaut). Ce ViewSet ne déclare que `OrderingFilter`, sans
+        `filterset_fields` ni `get_queryset`, et les backends globaux
+        (`settings/base.py`) sont `OrderingFilter` + `SearchFilter` — il n'y a
+        PAS de `DjangoFilterBackend` : le paramètre était silencieusement
+        ignoré et la file affichait TOUS les statuts. L'opérateur croyait voir
+        les virements à rapprocher, y comptait des lignes déjà rapprochées ou
+        abandonnées, et rapprochait deux fois.
+
+        Une valeur inconnue est REFUSÉE (400) plutôt qu'ignorée : rendre la
+        liste entière sur un filtre incompris est exactement le défaut.
+        """
+        qs = super().get_queryset()
+        statut = (self.request.query_params.get('statut') or '').strip()
+        if not statut:
+            return qs
+        if statut not in PaiementFacturePortail.Statut.values:
+            raise ValidationError({'statut': 'Statut de paiement inconnu.'})
+        return qs.filter(statut=statut)
+
     def _refus_lecture_seule(self, request):
         raise MethodNotAllowed(
             request.method,
