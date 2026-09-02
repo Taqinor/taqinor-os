@@ -147,10 +147,16 @@ def apply_inventory_count(*, company, user, motif, lignes):
             if compte == avant:
                 result['inchanges'] += 1
                 continue
+            # AUD227 — `quantite` porte l'ÉCART, pas le niveau compté : c'est
+            # la sémantique de ses deux fonctions sœurs
+            # (`appliquer_ecarts_comptage`, `valider_inventaire_session`) et
+            # celle qu'affiche la colonne « Quantité » d'
+            # `export_mouvements_xlsx`.
             MouvementStock.objects.create(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=compte, quantite_avant=avant, quantite_apres=compte,
+                quantite=abs(compte - avant),
+                quantite_avant=avant, quantite_apres=compte,
                 reference='INVENTAIRE',
                 note=f'Inventaire — comptage {compte} (écart {compte - avant})'
                      + (f' · {motif}' if motif else ''),
