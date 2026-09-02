@@ -863,7 +863,12 @@ jobs:
         # n'est pas scindee ».
         shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 02/09/2026 — 15 → 45 : couvre le replay froid des migrations quand le
+    # dump WOW8 est évicté du cache (LRU, journée à forte activité CI — run
+    # 33668521748 : les 6 shards tués à 15:03 pile, e2e à ~19 min, rls à 30:07,
+    # AUCUN n'a atteint ses tests). Le chemin cache-HIT reste ~6-10 min ; le
+    # push du merge re-sauve le dump et rend le plafond théorique.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
