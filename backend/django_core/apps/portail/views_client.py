@@ -27,7 +27,10 @@ SÉCURITÉ — chaque endpoint exige ``IsPortalClientUser`` : portée EXACTEMENT
 passe ensuite par un sélecteur qui exige le triplet (société, client, id) : un
 document d'autrui est INTROUVABLE (404), jamais « trouvé puis refusé ».
 """
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -245,6 +248,39 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         })
 
 
+class MesLivraisonsPortailArticleSerializer(serializers.Serializer):
+    """Un article d'une livraison — vue CLIENT (jamais un prix ni un coût).
+
+    Déclaré en classe (et non plus par ``inline_serializer``) pour que le
+    schéma OpenAPI soit dérivable : drf-spectacular nomme le composant d'après
+    la classe en retirant le suffixe ``Serializer``, donc le composant reste
+    EXACTEMENT ``MesLivraisonsPortailArticle`` — le contrat publié ne bouge pas.
+    """
+    designation = serializers.CharField()
+    quantite = serializers.FloatField()
+
+
+class MesLivraisonsPortailLigneSerializer(serializers.Serializer):
+    """Une livraison telle que le portail la montre au client.
+
+    Reflet EXACT de ``apps.installations.selectors.livraisons_client_portail``
+    (le contrat client-safe testé par XSTK22 : jamais ``cout_transport``,
+    jamais un prix d'achat). Même remarque que ci-dessus sur le nom du
+    composant : il reste ``MesLivraisonsPortailLigne``.
+    """
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    chantier_id = serializers.IntegerField(allow_null=True)
+    date_prevue = serializers.DateField(allow_null=True)
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    numero_suivi = serializers.CharField(allow_null=True)
+    articles = serializers.ListField(
+        child=MesLivraisonsPortailArticleSerializer())
+    pod_disponible = serializers.BooleanField()
+    pod_url = serializers.CharField(allow_null=True)
+
+
 class MesLivraisonsPortailViewSet(viewsets.ViewSet):
     """WIR216 — « Mes livraisons » : la section portail que le lien de l'email
     ``livraison_en_transit``/``livraison_livree`` (FG228,
@@ -261,29 +297,19 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
     client est dérivé du compte portail CONNECTÉ, jamais d'un paramètre."""
 
     permission_classes = [IsPortalClientUser]
+    #: ``viewsets.ViewSet`` n'est pas une ``GenericAPIView`` : sans cet
+    #: attribut, drf-spectacular ne peut PAS deviner le sérialiseur de la vue
+    #: et journalise « unable to guess serializer » (garde YAPIC6). Ce n'est
+    #: pas une déclaration décorative : c'est la ressource principale de ce
+    #: ViewSet (une livraison), réutilisée telle quelle dans la réponse de
+    #: ``list``. ``preuve`` déclare sa propre forme dans son ``@extend_schema``.
+    serializer_class = MesLivraisonsPortailLigneSerializer
 
     @extend_schema(responses=inline_serializer(
         name='MesLivraisonsPortail',
         fields={
-            'results': serializers.ListField(child=inline_serializer(
-                name='MesLivraisonsPortailLigne',
-                fields={
-                    'id': serializers.IntegerField(),
-                    'reference': serializers.CharField(),
-                    'chantier_id': serializers.IntegerField(allow_null=True),
-                    'date_prevue': serializers.DateField(allow_null=True),
-                    'statut': serializers.CharField(),
-                    'statut_display': serializers.CharField(),
-                    'numero_suivi': serializers.CharField(allow_null=True),
-                    'articles': serializers.ListField(child=inline_serializer(
-                        name='MesLivraisonsPortailArticle',
-                        fields={
-                            'designation': serializers.CharField(),
-                            'quantite': serializers.FloatField(),
-                        })),
-                    'pod_disponible': serializers.BooleanField(),
-                    'pod_url': serializers.CharField(allow_null=True),
-                })),
+            'results': serializers.ListField(
+                child=MesLivraisonsPortailLigneSerializer()),
         }))
     def list(self, request):
         from apps.installations.selectors import livraisons_client_portail
@@ -291,7 +317,16 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         return Response(
             {'results': livraisons_client_portail(company, client_id)})
 
-    @extend_schema(responses=inline_serializer(
+    @extend_schema(parameters=[
+        # ``ViewSet`` sans queryset : drf-spectacular ne peut pas déduire le
+        # type de ``{id}`` et le dégradait en "string" avec avertissement.
+        # L'identifiant est la PK entière de la livraison.
+        OpenApiParameter(
+            name='id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant de la livraison du client connecté.",
+        ),
+    ], responses=inline_serializer(
         name='MesLivraisonsPortailPreuve',
         fields={
             'livraison_id': serializers.IntegerField(),

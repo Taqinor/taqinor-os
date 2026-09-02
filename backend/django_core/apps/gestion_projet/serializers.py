@@ -4,6 +4,7 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -937,6 +938,7 @@ class VersionDocumentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_fichier_url(self, obj):
         if not obj.file_key:
             return None
