@@ -39,7 +39,13 @@ def verify_hmac_base64(secret, raw_body: bytes, signature_header: str) -> bool:
     digest = hmac.new(
         secret.encode('utf-8'), raw_body, hashlib.sha256).digest()
     computed = base64.b64encode(digest).decode('utf-8')
-    return hmac.compare_digest(computed, signature_header)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans ``X-Shopify-Hmac-Sha256`` /
+    # ``X-WC-Webhook-Signature`` rendait un HTTP 500 NON AUTHENTIFIÉ au lieu
+    # d'un refus. Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(computed.encode('utf-8'),
+                               str(signature_header).encode('utf-8'))
 
 
 def traiter_commande_payee(*, connexion, external_order_id, montant_ttc,

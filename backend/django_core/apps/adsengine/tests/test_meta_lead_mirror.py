@@ -4,6 +4,8 @@ Prouve : le webhook CRM existant crée le lead CRM ET (via meta_lead_captured) u
 MetaLeadMirror ; jamais de doublon leadgen_id ; l'événement est catalogué
 (couverture verte) ; phone_key normalisé + crm_lead_id posés.
 """
+import hashlib
+import hmac
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -64,8 +66,20 @@ class EventCatalogTests(TestCase):
         self.assertNotIn('meta_lead_captured', uncatalogued_events())
 
 
+#: QJR414 (DR3) — le webhook Meta Lead Ads est FAIL-CLOSED : sans secret
+#: d'application, tout POST est refusé (403). Ces tests portent sur le MIROIR,
+#: pas sur la signature : ils posent donc un secret et signent leur corps.
+_APP_SECRET = 'mirror-app-secret'
+
+
+def _signer(body: bytes) -> str:
+    return 'sha256=' + hmac.new(
+        _APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+
+
 @override_settings(
-    META_LEAD_ADS_ACCESS_TOKEN='tok', META_LEAD_ADS_VERIFY_TOKEN='vtok')
+    META_LEAD_ADS_ACCESS_TOKEN='tok', META_LEAD_ADS_VERIFY_TOKEN='vtok',
+    META_LEAD_ADS_APP_SECRET=_APP_SECRET)
 class WebhookIntegrationTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='ML Web', slug='mlweb')
@@ -81,8 +95,10 @@ class WebhookIntegrationTests(TestCase):
             'form_id': 'f9', 'created_time': '2026-07-16T09:00:00Z',
         }}]}]}
         url = reverse('meta-lead-ads-webhook')
+        body = json.dumps(payload).encode('utf-8')
         resp = self.client.post(
-            url, data=json.dumps(payload), content_type='application/json')
+            url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_signer(body))
         self.assertEqual(resp.status_code, 200, resp.content)
         # Le lead CRM a été créé (comportement existant)…
         from apps.crm.models import Lead
@@ -102,9 +118,12 @@ class WebhookIntegrationTests(TestCase):
         payload = {'entry': [{'changes': [{'value': {
             'leadgen_id': 'lg-web-2', 'ad_id': 'ad1', 'form_id': 'f1'}}]}]}
         url = reverse('meta-lead-ads-webhook')
-        body = json.dumps(payload)
-        self.client.post(url, data=body, content_type='application/json')
-        self.client.post(url, data=body, content_type='application/json')
+        body = json.dumps(payload).encode('utf-8')
+        signature = _signer(body)
+        self.client.post(url, data=body, content_type='application/json',
+                         HTTP_X_HUB_SIGNATURE_256=signature)
+        self.client.post(url, data=body, content_type='application/json',
+                         HTTP_X_HUB_SIGNATURE_256=signature)
         self.assertEqual(
             MetaLeadMirror.objects.filter(
                 company=self.company, leadgen_id='lg-web-2').count(), 1)

@@ -7,10 +7,15 @@ import api from '../../../api/axios'
 import PublicSalleVentePage from './PublicSalleVentePage.jsx'
 
 /* NTCRM18 — page publique de la salle de vente : affiche les items,
-   gère mot de passe (403) et expiration (410). */
+   gère mot de passe (403) et expiration (410).
+
+   QJR420 — le mot de passe part désormais dans le CORPS d'un POST, jamais
+   dans la chaîne de requête (le secret atterrissait sinon dans les journaux
+   d'accès, l'historique du navigateur et l'en-tête Referer). La lecture sans
+   mot de passe reste un GET, inchangée. */
 
 vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() },
 }))
 
 function renderAt(path) {
@@ -44,9 +49,9 @@ describe('NTCRM18 PublicSalleVentePage', () => {
     expect(screen.getByText('Bonjour')).toBeInTheDocument()
   })
 
-  it('demande le mot de passe sur 403 puis réessaie', async () => {
+  it('demande le mot de passe sur 403 puis réessaie en POST', async () => {
     api.get.mockRejectedValueOnce({ response: { status: 403 } })
-    api.get.mockResolvedValueOnce({ data: { titre: 'Protégée', items: [] } })
+    api.post.mockResolvedValueOnce({ data: { titre: 'Protégée', items: [] } })
 
     renderAt('/salle-vente/tok-2')
     await waitFor(() => expect(screen.getByLabelText('Mot de passe')).toBeInTheDocument())
@@ -55,6 +60,13 @@ describe('NTCRM18 PublicSalleVentePage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Accéder/i }))
 
     await waitFor(() => expect(screen.getByText('Protégée')).toBeInTheDocument())
+    // QJR420 — le secret voyage dans le CORPS, jamais dans l'URL.
+    expect(api.post).toHaveBeenCalledWith(
+      '/crm/salle-vente/tok-2/', { mot_de_passe: 'secret' },
+    )
+    const urlsAppelees = api.post.mock.calls.map((appel) => appel[0])
+      .concat(api.get.mock.calls.map((appel) => appel[0]))
+    urlsAppelees.forEach((url) => expect(url).not.toContain('mot_de_passe'))
   })
 
   it('affiche un message d\'expiration sur 410', async () => {

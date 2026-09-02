@@ -2025,3 +2025,36 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
             self.assertIn(
                 'jour_reference', [kw.arg for kw in site.keywords],
                 'appel ligne %d sans jour_reference' % site.lineno)
+
+    # ── QJR406 — LE TROU DE CE TEST : il n'exerçait que le PARAMÈTRE ─────────
+
+    def test_les_deux_vues_publiques_transmettent_la_date_du_devis(self):
+        """QJR406 (S3-F2) — on exerce désormais L'APPELANT, pas la signature.
+
+        Tout ce qui précède prouve que les deux fonctions publiques SAVENT
+        recevoir une date. Rien ne prouvait que les deux VUES la leur
+        donnaient : elles ne le faisaient pas, et les deux surfaces CLIENT
+        retombaient sur l'horloge du serveur. Deux devis de dates
+        DIFFÉRENTES doivent rendre des sorties différentes — c'est le
+        chemin de production, bout en bout.
+
+        (Le détail des deux surfaces vit dans
+        ``test_qjr406_jour_reference_appelants`` ; ici on ferme le trou de
+        CE test, celui qui a laissé passer la régression.)
+        """
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes import public_views
+
+        profil = (6.0, self.CONSO, self.VILLE, None, None,
+                  CJ.OCCUPATION_PRESENCE, None)
+        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+                               return_value=profil):
+            a = public_views._jours_types_publique(
+                SimpleNamespace(date_creation=self.JOUR_A, overrides={}))
+            b = public_views._jours_types_publique(
+                SimpleNamespace(date_creation=self.JOUR_B, overrides={}))
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertNotEqual(a, b)
