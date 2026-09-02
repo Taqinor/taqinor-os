@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9602, operations: 17271, components: 5078}
+counts: {paths: 9616, operations: 17279, components: 5082}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -102,6 +102,7 @@ operations:
 - post /api/django/achats/receptions-fournisseur/{id}/lignes/{ligne_id}/pesee/ -> django_achats_receptions_fournisseur_lignes_pesee_create
 - get /api/django/achats/receptions-fournisseur/{id}/pesees/ -> django_achats_receptions_fournisseur_pesees_retrieve
 - get /api/django/achats/receptions-fournisseur/{id}/proposer-cross-dock/ -> django_achats_receptions_fournisseur_proposer_cross_dock_retrieve
+- post /api/django/achats/receptions-fournisseur/{id}/rapprocher-pesees/ -> django_achats_receptions_fournisseur_rapprocher_pesees_create
 - get /api/django/achats/receptions-fournisseur/{id}/suggestions-rangement/ -> django_achats_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/django/achats/retours-fournisseur/ -> django_achats_retours_fournisseur_list
 - post /api/django/achats/retours-fournisseur/ -> django_achats_retours_fournisseur_create
@@ -2605,6 +2606,7 @@ operations:
 - post /api/django/crm/leads/{id}/devis-auto/ -> django_crm_leads_devis_auto_create
 - get /api/django/crm/leads/{id}/duplicates/ -> django_crm_leads_duplicates_retrieve
 - get /api/django/crm/leads/{id}/historique/ -> django_crm_leads_historique_retrieve
+- get /api/django/crm/leads/{id}/jalons-devis/ -> django_crm_leads_jalons_devis_retrieve
 - post /api/django/crm/leads/{id}/log-interaction/ -> django_crm_leads_log_interaction_create
 - post /api/django/crm/leads/{id}/merge/ -> django_crm_leads_merge_create
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
@@ -2712,6 +2714,7 @@ operations:
 - patch /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_partial_update
 - put /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_update
 - get /api/django/crm/salle-vente/{token}/ -> django_crm_salle_vente_retrieve
+- post /api/django/crm/salle-vente/{token}/ -> django_crm_salle_vente_create
 - get /api/django/crm/salles-vente/ -> django_crm_salles_vente_list
 - post /api/django/crm/salles-vente/ -> django_crm_salles_vente_create
 - delete /api/django/crm/salles-vente/{id}/ -> django_crm_salles_vente_destroy
@@ -4602,6 +4605,7 @@ operations:
 - put /api/django/installations/etapes-assemblage/{id}/ -> django_installations_etapes_assemblage_update
 - get /api/django/installations/etapes-chantier/ -> django_installations_etapes_chantier_list
 - post /api/django/installations/etapes-chantier/ -> django_installations_etapes_chantier_create
+- post /api/django/installations/etapes-chantier/amorcer/ -> django_installations_etapes_chantier_amorcer_create
 - delete /api/django/installations/etapes-chantier/{id}/ -> django_installations_etapes_chantier_destroy
 - get /api/django/installations/etapes-chantier/{id}/ -> django_installations_etapes_chantier_retrieve
 - patch /api/django/installations/etapes-chantier/{id}/ -> django_installations_etapes_chantier_partial_update
@@ -5986,19 +5990,16 @@ operations:
 - post /api/django/parametres/upload-logo/ -> django_parametres_upload_logo_create
 - post /api/django/parametres/upload-signature/ -> django_parametres_upload_signature_create
 - get /api/django/portail/acceptations-devis-portail/ -> django_portail_acceptations_devis_portail_list
-- post /api/django/portail/acceptations-devis-portail/ -> django_portail_acceptations_devis_portail_create
-- delete /api/django/portail/acceptations-devis-portail/{id}/ -> django_portail_acceptations_devis_portail_destroy
 - get /api/django/portail/acceptations-devis-portail/{id}/ -> django_portail_acceptations_devis_portail_retrieve
-- patch /api/django/portail/acceptations-devis-portail/{id}/ -> django_portail_acceptations_devis_portail_partial_update
-- put /api/django/portail/acceptations-devis-portail/{id}/ -> django_portail_acceptations_devis_portail_update
-- post /api/django/portail/acceptations-devis-portail/{id}/signer/ -> django_portail_acceptations_devis_portail_signer_create
 - get /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_list
 - post /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_create
 - delete /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_destroy
 - get /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_retrieve
 - patch /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_partial_update
 - put /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_update
+- post /api/django/portail/comptes-portail/{id}/lien-acces/ -> django_portail_comptes_portail_lien_acces_create
 - post /api/django/portail/comptes-portail/{id}/provisionner-acces/ -> django_portail_comptes_portail_provisionner_acces_create
+- post /api/django/portail/comptes-portail/{id}/regenerer-jeton/ -> django_portail_comptes_portail_regenerer_jeton_create
 - get /api/django/portail/demandes-ticket-portail/ -> django_portail_demandes_ticket_portail_list
 - post /api/django/portail/demandes-ticket-portail/ -> django_portail_demandes_ticket_portail_create
 - post /api/django/portail/demandes-ticket-portail/consulter-article-kb/ -> django_portail_demandes_ticket_portail_consulter_article_kb_create
@@ -6031,6 +6032,8 @@ operations:
 - get /api/django/portail/mes-factures/{id}/ -> django_portail_mes_factures_retrieve_2
 - post /api/django/portail/mes-factures/{id}/payer/ -> django_portail_mes_factures_payer_create
 - get /api/django/portail/mes-livraisons/ -> django_portail_mes_livraisons_list
+- get /api/django/portail/mes-livraisons/{id}/preuve-photo/ -> django_portail_mes_livraisons_preuve_photo_retrieve
+- get /api/django/portail/mes-livraisons/{id}/preuve/ -> django_portail_mes_livraisons_preuve_retrieve
 - get /api/django/portail/paiements-facture-portail/ -> django_portail_paiements_facture_portail_list
 - post /api/django/portail/paiements-facture-portail/ -> django_portail_paiements_facture_portail_create
 - delete /api/django/portail/paiements-facture-portail/{id}/ -> django_portail_paiements_facture_portail_destroy
@@ -8094,6 +8097,7 @@ operations:
 - post /api/django/stock/receptions-fournisseur/{id}/lignes/{ligne_id}/pesee/ -> django_stock_receptions_fournisseur_lignes_pesee_create
 - get /api/django/stock/receptions-fournisseur/{id}/pesees/ -> django_stock_receptions_fournisseur_pesees_retrieve
 - get /api/django/stock/receptions-fournisseur/{id}/proposer-cross-dock/ -> django_stock_receptions_fournisseur_proposer_cross_dock_retrieve
+- post /api/django/stock/receptions-fournisseur/{id}/rapprocher-pesees/ -> django_stock_receptions_fournisseur_rapprocher_pesees_create
 - get /api/django/stock/receptions-fournisseur/{id}/suggestions-rangement/ -> django_stock_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/django/stock/regles-code-barres/ -> django_stock_regles_code_barres_list
 - post /api/django/stock/regles-code-barres/ -> django_stock_regles_code_barres_create
@@ -8775,6 +8779,7 @@ operations:
 - post /api/v1/achats/receptions-fournisseur/{id}/lignes/{ligne_id}/pesee/ -> v1_achats_receptions_fournisseur_lignes_pesee_create
 - get /api/v1/achats/receptions-fournisseur/{id}/pesees/ -> v1_achats_receptions_fournisseur_pesees_retrieve
 - get /api/v1/achats/receptions-fournisseur/{id}/proposer-cross-dock/ -> v1_achats_receptions_fournisseur_proposer_cross_dock_retrieve
+- post /api/v1/achats/receptions-fournisseur/{id}/rapprocher-pesees/ -> v1_achats_receptions_fournisseur_rapprocher_pesees_create
 - get /api/v1/achats/receptions-fournisseur/{id}/suggestions-rangement/ -> v1_achats_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/v1/achats/retours-fournisseur/ -> v1_achats_retours_fournisseur_list
 - post /api/v1/achats/retours-fournisseur/ -> v1_achats_retours_fournisseur_create
@@ -11278,6 +11283,7 @@ operations:
 - post /api/v1/crm/leads/{id}/devis-auto/ -> v1_crm_leads_devis_auto_create
 - get /api/v1/crm/leads/{id}/duplicates/ -> v1_crm_leads_duplicates_retrieve
 - get /api/v1/crm/leads/{id}/historique/ -> v1_crm_leads_historique_retrieve
+- get /api/v1/crm/leads/{id}/jalons-devis/ -> v1_crm_leads_jalons_devis_retrieve
 - post /api/v1/crm/leads/{id}/log-interaction/ -> v1_crm_leads_log_interaction_create
 - post /api/v1/crm/leads/{id}/merge/ -> v1_crm_leads_merge_create
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
@@ -11385,6 +11391,7 @@ operations:
 - patch /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_partial_update
 - put /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_update
 - get /api/v1/crm/salle-vente/{token}/ -> v1_crm_salle_vente_retrieve
+- post /api/v1/crm/salle-vente/{token}/ -> v1_crm_salle_vente_create
 - get /api/v1/crm/salles-vente/ -> v1_crm_salles_vente_list
 - post /api/v1/crm/salles-vente/ -> v1_crm_salles_vente_create
 - delete /api/v1/crm/salles-vente/{id}/ -> v1_crm_salles_vente_destroy
@@ -13275,6 +13282,7 @@ operations:
 - put /api/v1/installations/etapes-assemblage/{id}/ -> v1_installations_etapes_assemblage_update
 - get /api/v1/installations/etapes-chantier/ -> v1_installations_etapes_chantier_list
 - post /api/v1/installations/etapes-chantier/ -> v1_installations_etapes_chantier_create
+- post /api/v1/installations/etapes-chantier/amorcer/ -> v1_installations_etapes_chantier_amorcer_create
 - delete /api/v1/installations/etapes-chantier/{id}/ -> v1_installations_etapes_chantier_destroy
 - get /api/v1/installations/etapes-chantier/{id}/ -> v1_installations_etapes_chantier_retrieve
 - patch /api/v1/installations/etapes-chantier/{id}/ -> v1_installations_etapes_chantier_partial_update
@@ -14659,19 +14667,16 @@ operations:
 - post /api/v1/parametres/upload-logo/ -> v1_parametres_upload_logo_create
 - post /api/v1/parametres/upload-signature/ -> v1_parametres_upload_signature_create
 - get /api/v1/portail/acceptations-devis-portail/ -> v1_portail_acceptations_devis_portail_list
-- post /api/v1/portail/acceptations-devis-portail/ -> v1_portail_acceptations_devis_portail_create
-- delete /api/v1/portail/acceptations-devis-portail/{id}/ -> v1_portail_acceptations_devis_portail_destroy
 - get /api/v1/portail/acceptations-devis-portail/{id}/ -> v1_portail_acceptations_devis_portail_retrieve
-- patch /api/v1/portail/acceptations-devis-portail/{id}/ -> v1_portail_acceptations_devis_portail_partial_update
-- put /api/v1/portail/acceptations-devis-portail/{id}/ -> v1_portail_acceptations_devis_portail_update
-- post /api/v1/portail/acceptations-devis-portail/{id}/signer/ -> v1_portail_acceptations_devis_portail_signer_create
 - get /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_list
 - post /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_create
 - delete /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_destroy
 - get /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_retrieve
 - patch /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_partial_update
 - put /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_update
+- post /api/v1/portail/comptes-portail/{id}/lien-acces/ -> v1_portail_comptes_portail_lien_acces_create
 - post /api/v1/portail/comptes-portail/{id}/provisionner-acces/ -> v1_portail_comptes_portail_provisionner_acces_create
+- post /api/v1/portail/comptes-portail/{id}/regenerer-jeton/ -> v1_portail_comptes_portail_regenerer_jeton_create
 - get /api/v1/portail/demandes-ticket-portail/ -> v1_portail_demandes_ticket_portail_list
 - post /api/v1/portail/demandes-ticket-portail/ -> v1_portail_demandes_ticket_portail_create
 - post /api/v1/portail/demandes-ticket-portail/consulter-article-kb/ -> v1_portail_demandes_ticket_portail_consulter_article_kb_create
@@ -14704,6 +14709,8 @@ operations:
 - get /api/v1/portail/mes-factures/{id}/ -> v1_portail_mes_factures_retrieve_2
 - post /api/v1/portail/mes-factures/{id}/payer/ -> v1_portail_mes_factures_payer_create
 - get /api/v1/portail/mes-livraisons/ -> v1_portail_mes_livraisons_list
+- get /api/v1/portail/mes-livraisons/{id}/preuve-photo/ -> v1_portail_mes_livraisons_preuve_photo_retrieve
+- get /api/v1/portail/mes-livraisons/{id}/preuve/ -> v1_portail_mes_livraisons_preuve_retrieve
 - get /api/v1/portail/paiements-facture-portail/ -> v1_portail_paiements_facture_portail_list
 - post /api/v1/portail/paiements-facture-portail/ -> v1_portail_paiements_facture_portail_create
 - delete /api/v1/portail/paiements-facture-portail/{id}/ -> v1_portail_paiements_facture_portail_destroy
@@ -16723,6 +16730,7 @@ operations:
 - post /api/v1/stock/receptions-fournisseur/{id}/lignes/{ligne_id}/pesee/ -> v1_stock_receptions_fournisseur_lignes_pesee_create
 - get /api/v1/stock/receptions-fournisseur/{id}/pesees/ -> v1_stock_receptions_fournisseur_pesees_retrieve
 - get /api/v1/stock/receptions-fournisseur/{id}/proposer-cross-dock/ -> v1_stock_receptions_fournisseur_proposer_cross_dock_retrieve
+- post /api/v1/stock/receptions-fournisseur/{id}/rapprocher-pesees/ -> v1_stock_receptions_fournisseur_rapprocher_pesees_create
 - get /api/v1/stock/receptions-fournisseur/{id}/suggestions-rangement/ -> v1_stock_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/v1/stock/regles-code-barres/ -> v1_stock_regles_code_barres_list
 - post /api/v1/stock/regles-code-barres/ -> v1_stock_regles_code_barres_create
@@ -17300,7 +17308,6 @@ components:
 - AbonnementMonitoringRequest
 - AbonnementMonitoringStatutEnum
 - AcceptationDevisPortail
-- AcceptationDevisPortailRequest
 - AccessReviewCampaign
 - AccessReviewCampaignPerimetreEnum
 - AccessReviewCampaignRequest
@@ -18975,6 +18982,7 @@ components:
 - MesLivraisonsPortail
 - MesLivraisonsPortailArticle
 - MesLivraisonsPortailLigne
+- MesLivraisonsPortailPreuve
 - Message
 - MessageAttachment
 - MessageAttachmentKindEnum
@@ -20286,7 +20294,6 @@ components:
 - PatchedAbonnementEcritureRequest
 - PatchedAbonnementListeRequest
 - PatchedAbonnementMonitoringRequest
-- PatchedAcceptationDevisPortailRequest
 - PatchedAccessReviewCampaignRequest
 - PatchedAccidentTravailRequest
 - PatchedAccordRFAFournisseurRequest
@@ -21476,6 +21483,7 @@ components:
 - PublicQuestionnaireReponse
 - PublicQuestionnaireReponseRequestRequest
 - PublicSalleVente
+- PublicSalleVenteAccesRequest
 - PublicSalleVenteItem
 - PublicScmTableauBordReappro
 - PublicScmTableauBordReapproLigne
@@ -21928,7 +21936,7 @@ components:
 - SoumissionLeadPartenaire
 - SoumissionLeadPartenaireRequest
 - SoumissionLeadPartenaireStatutEnum
-- Source1ddEnum
+- Source4efEnum
 - SourceTypeEnum
 - SourceVeille
 - SourceVeilleRequest
@@ -22008,8 +22016,11 @@ components:
 - StockReceptionCrossDockAffectation
 - StockReceptionCrossDockErreur
 - StockReceptionCrossDockPropositions
+- StockReceptionCrossDockReliquat
 - StockReceptionEchantillon
 - StockReceptionPeseeLigne
+- StockReceptionPeseeMouvement
+- StockReceptionPeseeRapprochement
 - StockReceptionPesees
 - StockReleveConsignation
 - StockReslottingSuggestions
@@ -22338,6 +22349,7 @@ components:
 - Webhook
 - WebhookRequest
 - WebsiteLeadPayload
+- WebsiteLeadPayloadSourceEnum
 - WhatsAppTemplate
 - WhatsAppTemplateCategorieEnum
 - WhatsAppTemplateRequest
