@@ -1700,8 +1700,9 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
     def test_empreinte_sha256_du_onepage_agricole_est_epinglee(self):
         """VERT au premier coup — une preuve, pas une correction. Rouge dès
-        qu'une seule ligne du rendu agricole change (vérifié à la main avant
-        d'épingler l'empreinte définitive ci-dessous)."""
+        qu'une seule ligne du rendu agricole change (empreinte recopiée
+        depuis le message d'échec d'un run CI, pas vérifiée à la main, avant
+        d'être épinglée ci-dessous — cf. commentaire QJR430)."""
         html, HTML = self._render_html_gele()
 
         # Sanity : c'est bien le format UNE PAGE (dégradation QJR236/QJR32).
