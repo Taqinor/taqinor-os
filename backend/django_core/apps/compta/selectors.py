@@ -1202,6 +1202,33 @@ def _solde_groupe(company, numeros, *, date_fin=None, validees_seulement=False):
     return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
 
 
+# AUD175 — devise unique tenue par le socle (docs/money-convention.md).
+DEVISE_PIVOT = 'MAD'
+
+
+class DevisesHeterogenes(ValueError):
+    """Agrégat de trésorerie impossible : plusieurs devises, aucune conversion."""
+
+
+def _refuser_devises_heterogenes(treso_qs):
+    """Refuse d'agréger des comptes de trésorerie de devises différentes.
+
+    ``CompteTresorerie.devise`` était librement éditable par l'API et n'était
+    honoré par AUCUN calcul : ``position_tresorerie`` sommait tous les comptes
+    actifs sans consulter ``TauxDevise``, et le biais se propageait au
+    prévisionnel 13 semaines puis à la projection nette.
+    """
+    devises = {
+        (treso.devise or DEVISE_PIVOT).strip().upper()
+        for treso in treso_qs
+    }
+    if len(devises) > 1:
+        raise DevisesHeterogenes(
+            "Agrégat de trésorerie impossible : les comptes portent plusieurs "
+            f"devises ({', '.join(sorted(devises))}) et aucune conversion "
+            f"n'est définie. Le socle est mono-devise {DEVISE_PIVOT}.")
+
+
 def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Position de trésorerie consolidée : solde par compte/caisse + total.
 
@@ -1213,12 +1240,21 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     'mouvements', 'solde'}``. ``encours_emprunts`` (XACC14) est le capital
     restant dû cumulé de TOUS les emprunts/leasings de la société — ajouté en
     lecture seule, n'affecte pas ``total``. Lecture seule, scopée société.
+
+    AUD175 — doctrine MONO-DEVISE MAD (docs/money-convention.md) : tant
+    qu'aucune conversion n'existe (le grand livre n'a même pas de colonne
+    devise, et ``TauxDevise`` n'est consulté par aucun de ces calculs),
+    additionner des comptes de devises différentes produirait un « total » qui
+    n'est ni des MAD ni rien de convertible. On lève une erreur EXPLICITE
+    plutôt que d'afficher un nombre mixte en solde consolidé du cockpit. Une
+    société 100 % MAD est strictement inchangée.
     """
     comptes = []
     total = Decimal('0')
     treso_qs = CompteTresorerie.objects.filter(
         company=company, actif=True).select_related('compte_comptable').order_by(
         'type_compte', 'libelle')
+    _refuser_devises_heterogenes(treso_qs)
     for treso in treso_qs:
         mouvements = solde_compte(
             company, treso.compte_comptable, date_fin=date_fin,

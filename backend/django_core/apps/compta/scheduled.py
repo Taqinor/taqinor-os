@@ -43,7 +43,13 @@ def recalculer_alerte_rupture():
 
     for company in Company.objects.filter(actif=True):
         params = services.get_parametres_tresorerie(company)
-        prev = selectors.previsionnel_tresorerie(company)
+        try:
+            prev = selectors.previsionnel_tresorerie(company)
+        except selectors.DevisesHeterogenes:
+            # AUD175 — une société aux devises hétérogènes n'a pas de position
+            # calculable : on la SAUTE (sa configuration est à corriger) sans
+            # casser l'alerte des autres sociétés du même passage de beat.
+            continue
         rupture = prev.get('date_rupture_estimee')
         if not rupture:
             continue

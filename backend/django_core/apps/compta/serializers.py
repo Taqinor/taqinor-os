@@ -238,6 +238,24 @@ class CompteTresorerieSerializer(serializers.ModelSerializer):
     def validate_compte_comptable(self, value):
         return _meme_societe(self, value, 'Compte comptable')
 
+    def validate_devise(self, value):
+        """AUD175 — le socle est MONO-DEVISE MAD (docs/money-convention.md).
+
+        Le champ était librement éditable et n'était honoré par AUCUN calcul de
+        trésorerie : un compte EUR créé par API entrait tel quel dans le
+        « total » consolidé. Tant qu'aucune conversion n'existe, on refuse la
+        saisie plutôt que de laisser créer un agrégat incalculable.
+        """
+        from .selectors import DEVISE_PIVOT
+
+        devise = (value or DEVISE_PIVOT).strip().upper()
+        if devise != DEVISE_PIVOT:
+            raise serializers.ValidationError(
+                f"Le socle est mono-devise {DEVISE_PIVOT} : aucune conversion "
+                "n'est définie, un compte dans une autre devise rendrait la "
+                "position de trésorerie incalculable.")
+        return devise
+
 
 class ExerciceComptableSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(

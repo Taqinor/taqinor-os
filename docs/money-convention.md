@@ -39,6 +39,33 @@ must NOT silently assume both are MAD. The audit above is exactly the map of
 is a **decision + inventory task (YDATA22)**, not a migration: no model is
 changed here.
 
+### La doctrine mono-devise est EXÉCUTOIRE en trésorerie (AUD175)
+
+`CompteTresorerie.devise` (défaut `MAD`) était librement éditable par l'API et
+n'était honoré par **aucun** calcul : `position_tresorerie` sommait tous les
+comptes actifs sans jamais consulter `TauxDevise`, et le biais se propageait à
+`previsionnel_tresorerie` (13 semaines) puis à `projection_tresorerie`. Un
+compte EUR créé par API (5 000) additionné à 100 000 MAD donnait un « total »
+de 105 000 qui n'est ni des MAD ni rien de convertible — affiché comme solde
+consolidé du cockpit.
+
+Tant qu'aucune conversion n'existe (le grand livre n'a même pas de colonne
+devise), la règle est donc :
+
+- `apps.compta.selectors.position_tresorerie` **lève**
+  `DevisesHeterogenes` dès que les comptes actifs portent plus d'une devise —
+  jamais un nombre mixte silencieux ; le prévisionnel et la projection
+  propagent ce refus puisqu'ils partent de `position['total']`.
+- `CompteTresorerieSerializer.validate_devise` **refuse** (400) toute devise
+  autre que `MAD` : on n'autorise pas la saisie d'un état qui rendrait la
+  position incalculable.
+- Une société 100 % MAD est **strictement inchangée** : c'est une garde, pas un
+  changement de calcul.
+
+Lever cette limite suppose d'abord une vraie couche de conversion (taux de
+clôture/moyen, devise pivot, écarts de change) — c'est un chantier, pas un
+réglage.
+
 ## Convention d'arrondi monétaire (YDATA8)
 
 **Un seul point d'arrondi pour toute valeur en dirhams (MAD) :
