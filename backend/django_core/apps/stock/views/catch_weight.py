@@ -93,3 +93,32 @@ class PeseeLigneActionsMixin:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_pesee_payload(ligne, pesee))
+
+    @extend_schema(request=None, responses={
+        200: inline_serializer('StockReceptionPeseeRapprochement', {
+            'ajustes': serializers.IntegerField(),
+            'inchanges': serializers.IntegerField(),
+            'mouvements': serializers.ListField(
+                child=inline_serializer('StockReceptionPeseeMouvement', {
+                    'produit': serializers.IntegerField(),
+                    'avant': serializers.IntegerField(),
+                    'apres': serializers.IntegerField(),
+                })),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='rapprocher-pesees',
+            permission_classes=[IsResponsableOrAdmin])
+    def rapprocher_pesees(self, request, pk=None):
+        """AUD226 — solde les écarts de pesée de la réception CONFIRMÉE par un
+        ajustement de stock tracé (idempotent, ``{note?}``)."""
+        from ..services_catch_weight import rapprocher_pesee_reception
+
+        reception = self.get_object()
+        try:
+            result = rapprocher_pesee_reception(
+                reception=reception, user=request.user,
+                note=request.data.get('note') or None)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
