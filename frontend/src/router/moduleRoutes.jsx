@@ -27,8 +27,33 @@
    - Les routes sont gatées via le MÊME `roleLoader`/`authLoader` que le reste de
      l'app (reflète le gating du menu). */
 
-// Collecte EAGER de toutes les configs de module (données + composants lazy).
-const configModules = import.meta.glob('../features/*/module.config.jsx', { eager: true })
+/* Collecte EAGER de toutes les configs de module (données + composants lazy).
+
+   SOL6 — ÉDITION AU BUILD. `__EDITION_SOLAIRE__` est remplacé par le LITTÉRAL
+   `true`/`false` à la compilation (bloc `define` de `vite.config.js`, alimenté
+   par `VITE_EDITION`) : le ternaire ci-dessous est donc résolu STATIQUEMENT et
+   Rollup élimine la branche morte — avec les `module.config.jsx` des six
+   verticaux parqués, et donc avec TOUS les `lazy(() => import('../../pages/<x>/…'))`
+   qu'elles portent. C'est ce qui fait disparaître leurs écrans du dist solaire.
+
+   Pourquoi pas un simple `.filter()` après le glob : un filtre s'exécute au
+   RUNTIME, quand les modules sont déjà dans le bundle — il masquerait les
+   écrans sans rien retirer du build (ni du temps de chargement).
+
+   Les motifs négatifs sont écrits EN DUR (un `import.meta.glob` n'accepte que
+   des littéraux) et restent alignés sur `src/lib/editions.js` par la garde
+   `router/moduleRoutes.edition.test.jsx`. */
+const configModules = __EDITION_SOLAIRE__
+  ? import.meta.glob([
+      '../features/*/module.config.jsx',
+      '!../features/agriculture/module.config.jsx',
+      '!../features/education/module.config.jsx',
+      '!../features/hospitality/module.config.jsx',
+      '!../features/immobilier/module.config.jsx',
+      '!../features/mrp/module.config.jsx',
+      '!../features/sante/module.config.jsx',
+    ], { eager: true })
+  : import.meta.glob('../features/*/module.config.jsx', { eager: true })
 
 const configs = Object.values(configModules)
   .map((m) => m.default)

@@ -15,6 +15,15 @@ const stub = (rel) => fileURLToPath(new URL(rel, import.meta.url))
    pure exécutés par `node --test` (fichiers *.test.mjs). On limite donc Vitest aux
    fichiers *.test.jsx pour éviter tout double-passage avec node:test. */
 export default defineConfig({
+  // SOL6 — mêmes constantes littérales d'édition que `vite.config.js` (la
+  // config Vitest est SÉPARÉE : sans ce bloc, tout composant portant une
+  // condition d'édition lèverait un ReferenceError sous jsdom). La suite
+  // unitaire tourne en édition COMPLÈTE, comme la gate PR.
+  define: {
+    __TAQINOR_EDITION__: JSON.stringify('full'),
+    __EDITION_SOLAIRE__: 'false',
+    __EDITION_A_MRP__: 'true',
+  },
   plugins: [react()],
   resolve: {
     alias: {
