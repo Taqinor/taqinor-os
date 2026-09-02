@@ -51,3 +51,18 @@ def snapshot_forecast_hebdo_task():
     )
     nb = snapshot_forecast_hebdo()
     return {'snapshots': nb}
+
+
+@shared_task(name='crm.recalculer_scores_obsoletes')
+def recalculer_scores_obsoletes_task():
+    """CRX22 — Enveloppe Celery Beat du rafraîchissement quotidien des scores.
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``). Le score
+    n'était recalculé qu'à l'édition : la décote de RÉCENCE ne s'appliquait
+    donc jamais aux leads dormants, qui gardaient le score de leur premier
+    jour. Délègue entièrement au service (testable hors Celery via
+    ``apps.crm.services.recalculer_scores_obsoletes``).
+    """
+    from apps.crm.services import recalculer_scores_obsoletes
+
+    return recalculer_scores_obsoletes()

@@ -991,6 +991,20 @@ class Lead(SoftDeleteModel):
         help_text='Score 0–100 calculé automatiquement (voir scoring.py).',
     )
 
+    # CRX22 — ajustement PERSISTANT du score, additif au calcul.
+    # Avant, une automatisation qui écrivait ``score`` directement voyait son
+    # delta effacé au premier ``recompute_lead_score`` (édition du lead, job
+    # nocturne…). Le delta vit maintenant dans SA propre colonne, appliquée
+    # PAR le calcul (``scoring.compute_score``) : il survit à tout recalcul.
+    # NULL = aucun ajustement (comportement historique strictement inchangé) ;
+    # colonne nullable sans défaut → aucune réécriture des lignes existantes.
+    score_ajustement = models.SmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Ajustement du score',
+        help_text="Delta (positif ou négatif) ajouté au score calculé. "
+                  "Survit aux recalculs. Vide = aucun ajustement.",
+    )
+
     # XMKT21 — horodatage de l'assignation automatique MQL (franchissement du
     # seuil de score société). NULL tant que le lead n'a jamais franchi le
     # seuil : marqueur d'idempotence (une seule assignation+notification par

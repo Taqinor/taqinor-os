@@ -1076,6 +1076,55 @@ def recompute_lead_score(lead) -> int:
         return 0
 
 
+#: CRX22 — un lead édité aujourd'hui a déjà son score à jour (le PATCH appelle
+#: ``recompute_lead_score``) : le passage nocturne ne s'occupe QUE des autres.
+DELAI_SCORE_OBSOLETE_JOURS = 1
+
+
+def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
+    """CRX22 — rafraîchit le score des leads que PERSONNE n'a touchés.
+
+    ``Lead.score`` n'était (re)calculé qu'à la création et à l'édition. Or la
+    composante de RÉCENCE décroît avec le temps (12 pts le premier jour, 1 pt
+    au-delà de 90 jours) : un lead jamais rouvert gardait éternellement le
+    score de son premier jour. Le tri « par score » remontait donc des leads
+    vieux de six mois au-dessus de leads du jour, et le badge affichait une
+    chaleur qui n'existait plus.
+
+    Ce passage quotidien recalcule les leads dont ``date_modification`` a plus
+    de :data:`DELAI_SCORE_OBSOLETE_JOURS` jour(s) et n'écrit QUE ceux dont la
+    valeur bouge réellement. Il passe par ``recompute_lead_score`` — l'unique
+    propriétaire de l'écriture du score — plutôt que par un ``update()`` en
+    masse : une seule fonction décide de la valeur, ici comme à l'édition.
+
+    ``save(update_fields=['score'])`` ne touche PAS ``date_modification``
+    (``auto_now`` n'est rafraîchi que si le champ figure dans
+    ``update_fields``) : le passage nocturne ne fait donc jamais passer un
+    lead dormant pour un lead fraîchement édité.
+
+    Renvoie ``{'examines': int, 'mis_a_jour': int}``.
+    """
+    from datetime import timedelta
+
+    from .scoring import compute_score
+
+    seuil = timezone.now() - timedelta(days=DELAI_SCORE_OBSOLETE_JOURS)
+    examines = 0
+    mis_a_jour = 0
+    queryset = (Lead.objects.filter(date_modification__lt=seuil)
+                .order_by('pk').iterator(chunk_size=taille_lot))
+    for lead in queryset:
+        examines += 1
+        if compute_score(lead) == lead.score:
+            continue
+        recompute_lead_score(lead)
+        mis_a_jour += 1
+    logger.info(
+        'CRX22 recalculer_scores_obsoletes: %d lead(s) examiné(s), '
+        '%d score(s) rafraîchi(s)', examines, mis_a_jour)
+    return {'examines': examines, 'mis_a_jour': mis_a_jour}
+
+
 # ── XMKT21 — Passage MQL automatique sur seuil de score ──────────────────────
 
 def _seuil_mql_for(company) -> int:

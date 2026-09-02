@@ -98,6 +98,16 @@ app.conf.beat_schedule = {
         'task': 'crm.appointment_reminders',
         'schedule': crontab(minute='*/15'),  # every 15 minutes
     },
+    # CRX22 — rafraîchissement quotidien du score des leads NON TOUCHÉS. Le
+    # score n'était recalculé qu'à l'édition : la décote de récence (12 pts le
+    # premier jour → 1 pt au-delà de 90 jours) ne s'appliquait jamais à un
+    # lead dormant, qui restait « chaud » pour toujours — et le tri par score
+    # remontait des leads de six mois au-dessus de leads du jour. Passage à
+    # 4 h 10, avant les relances et digests du matin, qui lisent ce score.
+    'crm-recalculer-scores-obsoletes': {
+        'task': 'crm.recalculer_scores_obsoletes',
+        'schedule': crontab(hour=4, minute=10),
+    },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
         'schedule': crontab(hour=7, minute=0),

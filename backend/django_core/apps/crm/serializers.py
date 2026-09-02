@@ -509,10 +509,27 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
 
     # FG27 — Score de qualité (lecture seule)
     def get_score(self, obj):
+        """CRX22 — sert la colonne PERSISTÉE ``Lead.score``.
+
+        Avant, le badge recalculait le score À LA VOLÉE pour chaque ligne
+        alors que le TRI (``ordering_fields``) et « Ma file »
+        (``selectors.leads_chauds_non_contactes``, ``score__gte``) filtrent sur
+        la COLONNE : deux valeurs différentes pour le même lead, donc une
+        liste triée « par score » dont les badges n'étaient pas dans l'ordre.
+        Une seule valeur fait foi maintenant — celle que
+        ``services.recompute_lead_score`` écrit à chaque édition et que le job
+        beat quotidien rafraîchit sur les leads non touchés.
+
+        Repli sur le calcul UNIQUEMENT quand la colonne est encore NULL (leads
+        importés avant la migration QJ6, jamais réenregistrés) : le badge ne
+        doit pas afficher un trou.
+        """
+        if obj.score is not None:
+            return obj.score
         return compute_score(obj)
 
     def get_score_label(self, obj):
-        return score_label(compute_score(obj))
+        return score_label(self.get_score(obj))
 
     def get_score_reasons(self, obj):
         # VX221 — liste [{facteur, label, points}] triée par points décroissants.
