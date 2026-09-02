@@ -1928,12 +1928,27 @@ def create_lead_from_meta_lead_ads(
     ce ``leadgen_id`` — seuls des champs connus (nom/email/téléphone/ville)
     sont lus.
 
-    Dédup (QJ8) — DEUX couches, dans l'ordre :
+    Dédup — D-CRX1 (décision fondateur du 02/09/2026) : UNE SEULE couche.
       1. même ``leadgen_id`` déjà traité (idempotence webhook — retries Meta)
-         → renvoie le lead existant sans le modifier ;
-      2. sinon, téléphone/email connu dans la société (visiteur/prospect déjà
-         en base, ex. venu par un autre canal) → absorbe la nouvelle touche
-         dans le lead existant (complète sans écraser), comme le webhook site.
+         → renvoie le lead existant, enrichi (backfill) depuis le formulaire.
+
+    L'ancienne « Couche 2 (QJ8) » — téléphone/e-mail connu dans la société ⇒
+    ABSORPTION de la touche dans le lead existant — est SUPPRIMÉE. Chaque
+    touche Meta est une nouvelle demande et crée un NOUVEAU lead, exactement
+    comme une soumission du site (règle fondateur du 18/08/2026, étendue à Meta
+    le 02/09/2026). Aucun lead existant n'est plus écrit par ce chemin : le
+    rapprochement se fait EN VISIBILITÉ, avec les deux mêmes primitives que le
+    webhook site (aucune seconde implémentation) —
+      • ``webhooks._flag_possible_duplicates`` pose UNE note chatter de doublon
+        sur le NOUVEAU lead (les archivés y sont mentionnés, cf. QW11) ;
+      • ``webhooks._pick_owner_from_duplicates`` fait HÉRITER le commercial du
+        doublon le plus pertinent (parité QW11), pour qu'un même client ne soit
+        jamais rappelé par deux commerciaux différents.
+    Conséquence VOULUE : un contact connu mais ARCHIVÉ donne lui aussi un
+    NOUVEAU lead — il est signalé dans la note sans transmettre son owner
+    (l'absorption, elle, ressuscitait silencieusement la fiche au rebut).
+    L'attribution (canal/utm/meta_ids) et ``external_system``/``external_id``
+    se posent donc TOUJOURS sur le lead nouvellement créé.
 
     Attribution (ADSENG1) : ``canal=META_ADS``, ``utm_source='facebook'``.
     Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook leadgen ; il
@@ -1991,14 +2006,16 @@ def create_lead_from_meta_lead_ads(
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
 
-    # ── Couche 2 (QJ8) : dédup société par téléphone/email ──────────────────
-    absorbed = None
+    # ── D-CRX1 : plus AUCUNE absorption ─────────────────────────────────────
+    # Les doublons sont cherchés ICI, AVANT la création, pour DEUX usages
+    # strictement en lecture : (a) l'héritage du commercial (QW11) qui doit
+    # être décidé avant le round-robin, (b) la note de signalement posée après
+    # la création. Aucun lead existant n'est modifié sur ce chemin. Une seule
+    # requête, réutilisée par les deux (jamais deux fois la même).
+    dupes = []
     if telephone or email:
         dupes = find_duplicates_by_contact(
             company, phone=telephone or None, email=email or None)
-        if dupes:
-            absorbed = sorted(
-                dupes, key=lambda d: d.date_creation, reverse=True)[0]
 
     # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
     # résolus via les miroirs adsengine (jamais un import des modèles adsengine).
@@ -2018,87 +2035,73 @@ def create_lead_from_meta_lead_ads(
     meta_campaign_id = (names.get('campaign_id') or '')[:64] or None
     meta_form_id = form_id[:64] or None
 
-    if absorbed is not None:
-        lead = absorbed
-        for field_name, value in (
-            ('email', email), ('telephone', telephone),
-            ('ville', fields.get('ville')),
-        ):
-            if value and not getattr(lead, field_name, None):
-                setattr(lead, field_name, value)
-        # first-touch UTM/attribution préservée si déjà posée.
-        if not lead.utm_source:
-            lead.utm_source = utm_source
-        if not lead.utm_campaign:
-            lead.utm_campaign = utm_campaign
-        if not lead.utm_content:
-            lead.utm_content = utm_content
-        # Identifiants Meta natifs : posés seulement si absents (first-touch).
-        if not lead.meta_ad_id:
-            lead.meta_ad_id = meta_ad_id
-        if not lead.meta_adset_id:
-            lead.meta_adset_id = meta_adset_id
-        if not lead.meta_campaign_id:
-            lead.meta_campaign_id = meta_campaign_id
-        if not lead.meta_form_id:
-            lead.meta_form_id = meta_form_id
-        if not lead.external_system:
-            lead.external_system = _META_LEAD_ADS_SYSTEM
-            lead.external_id = str(leadgen_id)
-        # Réponses métier du formulaire : complètent le lead absorbé sans
-        # jamais écraser une valeur existante.
-        _apply_meta_form_extras(lead, extras)
-        lead.save()
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
-                  f'absorbée dans ce lead existant.'))
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # QW11 (parité site) — l'héritage du commercial se décide AVANT le
+    # round-robin : un lead qui EST un doublon n'entre pas dans l'attribution
+    # normale, il revient au commercial qui suit déjà ce contact. Les deux
+    # filtres d'éligibilité (doublon non archivé, owner actif+habilité) sont
+    # DANS ``_pick_owner_from_duplicates`` — jamais redécidés ici.
+    from .webhooks import _flag_possible_duplicates, _pick_owner_from_duplicates
+
+    extra = {}
+    inherited_owner, inherited_from = _pick_owner_from_duplicates(
+        dupes, telephone=telephone, email=email, company=company)
+    if inherited_owner is not None:
+        extra['owner'] = inherited_owner
     else:
-        extra = {}
         default = default_responsable_for(company)
         if default is not None:
             extra['owner'] = default
-        # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
-        # normale ou basse) ; en enrichissement (leads existants), seule la
-        # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
-        if extras.get('priorite'):
-            extra['priorite'] = extras['priorite']
-        lead = Lead.objects.create(
-            company=company,
-            nom=nom,
-            email=email or None,
-            telephone=telephone or None,
-            ville=fields.get('ville') or None,
-            source=Lead.Source.META_LEAD_ADS,
-            canal=Lead.Canal.META_ADS,
-            utm_source=utm_source,
-            utm_campaign=utm_campaign,
-            utm_content=utm_content,
-            meta_ad_id=meta_ad_id,
-            meta_adset_id=meta_adset_id,
-            meta_campaign_id=meta_campaign_id,
-            meta_form_id=meta_form_id,
-            external_system=_META_LEAD_ADS_SYSTEM,
-            external_id=str(leadgen_id),
-            **extra,
-        )
-        # Réponses métier du formulaire → champs structurés (facture hiver,
-        # type d'installation, priorité selon le délai déclaré, wa.me).
-        changed = _apply_meta_form_extras(lead, extras)
-        if changed:
-            lead.save(update_fields=changed)
-        activity.log_creation(lead, None)
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
-        try:
-            notify_new_lead(lead)
-        except Exception:  # noqa: BLE001 — best-effort
-            pass
+    # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
+    # normale ou basse) ; en enrichissement (leads existants), seule la
+    # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
+    if extras.get('priorite'):
+        extra['priorite'] = extras['priorite']
+    lead = Lead.objects.create(
+        company=company,
+        nom=nom,
+        email=email or None,
+        telephone=telephone or None,
+        ville=fields.get('ville') or None,
+        source=Lead.Source.META_LEAD_ADS,
+        canal=Lead.Canal.META_ADS,
+        utm_source=utm_source,
+        utm_campaign=utm_campaign,
+        utm_content=utm_content,
+        meta_ad_id=meta_ad_id,
+        meta_adset_id=meta_adset_id,
+        meta_campaign_id=meta_campaign_id,
+        meta_form_id=meta_form_id,
+        external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id),
+        **extra,
+    )
+    # Réponses métier du formulaire → champs structurés (facture hiver,
+    # type d'installation, priorité selon le délai déclaré, wa.me).
+    changed = _apply_meta_form_extras(lead, extras)
+    if changed:
+        lead.save(update_fields=changed)
+    activity.log_creation(lead, None)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+    _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
+    # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
+    # calculés (jamais une 2e requête). Best-effort, comme côté site : un
+    # rapprochement en échec ne remet jamais la capture du lead en cause.
+    try:
+        _flag_possible_duplicates(
+            lead, telephone=telephone, email=email, dupes=dupes,
+            inherited_owner=inherited_owner, inherited_from=inherited_from)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'create_lead_from_meta_lead_ads: note de doublon échouée '
+            '(lead #%s) : %s', lead.pk, _exc)
+    try:
+        notify_new_lead(lead)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
 
     recompute_lead_score(lead)
     return lead

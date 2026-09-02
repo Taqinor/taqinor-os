@@ -9,8 +9,11 @@ Couvre :
     utm_source=facebook, utm_campaign/utm_content = campagne/adset) ;
   - un second POST avec le MÊME leadgen_id (retry Meta) ne crée pas de
     deuxième lead (idempotence sur leadgen_id) ;
-  - un prospect déjà connu (même téléphone) absorbe la touche Meta Lead Ads
-    dans le lead existant au lieu d'en créer un second (QJ8) ;
+  - D-CRX1 (02/09/2026) — un prospect déjà connu (même téléphone) NE fait plus
+    absorber la touche Meta : un NOUVEAU lead est créé à chaque fois, le
+    doublon est seulement SIGNALÉ (note chatter) et le commercial est HÉRITÉ
+    (parité QW11) ; un contact connu mais ARCHIVÉ donne lui aussi un nouveau
+    lead, sans héritage d'owner ;
   - aucun scraping : la récupération passe par ``fetch_meta_lead_data``
     (Graph API officiel), jamais par un fetch de page HTML.
   - PUB26 — signature HMAC ``X-Hub-Signature-256`` : bien formée → traité ;
@@ -183,20 +186,93 @@ class MetaLeadAdsIngestTests(TestCase):
             Lead.objects.filter(company=self.company).count(), 1)
 
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
-    def test_known_contact_absorbs_into_existing_lead(self, fetch_mock):
-        """QJ8 : un prospect déjà connu (même téléphone, autre canal) absorbe
-        la touche Meta Lead Ads dans son lead existant."""
+    def test_contact_connu_cree_toujours_un_nouveau_lead(self, fetch_mock):
+        """D-CRX1 : un prospect déjà connu (même téléphone, autre canal) ne
+        fait PLUS absorber la touche Meta — un NOUVEAU lead est créé.
+
+        La fiche d'origine ressort INTACTE (aucune écriture sur ce chemin :
+        ni ``external_id``, ni canal, ni utm), le nouveau lead porte toute
+        l'attribution Meta, hérite du commercial de la fiche d'origine (parité
+        QW11) et porte la note chatter de doublon."""
+        from apps.crm.models import LeadActivity
+        from django.contrib.auth import get_user_model
+        commercial = get_user_model().objects.create_user(
+            username='meta_crx1_owner', password='x',
+            company=self.company, role_legacy='responsable')
         existing = Lead.objects.create(
             company=self.company, nom='Yassine Ancien',
-            telephone='+212661112233', canal=Lead.Canal.TELEPHONE)
+            telephone='+212661112233', canal=Lead.Canal.TELEPHONE,
+            owner=commercial)
         fetch_mock.return_value = _lead_data(
             leadgen_id='4001', telephone='+212661112233')
         resp = self._post(_notification_payload(leadgen_id='4001'))
         self.assertEqual(resp.status_code, 200)
+
         self.assertEqual(
-            Lead.objects.filter(company=self.company).count(), 1)
+            Lead.objects.filter(company=self.company).count(), 2)
+        nouveau = Lead.objects.get(
+            company=self.company, external_id='4001')
+        self.assertNotEqual(nouveau.pk, existing.pk)
+        self.assertEqual(nouveau.canal, Lead.Canal.META_ADS)
+        self.assertEqual(nouveau.source, Lead.Source.META_LEAD_ADS)
+        self.assertEqual(nouveau.utm_source, 'facebook')
+        # Héritage du commercial (QW11) — jamais deux commerciaux sur le
+        # même client. La note le dit explicitement (c'est la seule preuve
+        # que l'owner vient de l'HÉRITAGE et non du round-robin par défaut).
+        self.assertEqual(nouveau.owner_id, commercial.pk)
+        note = LeadActivity.objects.filter(
+            lead=nouveau, body__startswith='Doublon possible').first()
+        self.assertIsNotNone(note)
+        self.assertIn(f"comme la fiche d'origine #{existing.pk}", note.body)
+        # La fiche d'origine n'a PAS été touchée.
         existing.refresh_from_db()
-        self.assertEqual(existing.external_id, '4001')
+        self.assertEqual(existing.external_id, None)
+        self.assertEqual(existing.canal, Lead.Canal.TELEPHONE)
+        # Signalement du doublon sur le NOUVEAU lead uniquement.
+        self.assertTrue(
+            LeadActivity.objects.filter(
+                lead=nouveau, body__startswith='Doublon possible').exists())
+        self.assertFalse(
+            LeadActivity.objects.filter(
+                lead=existing, body__startswith='Doublon possible').exists())
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_contact_archive_cree_aussi_un_nouveau_lead(self, fetch_mock):
+        """D-CRX1 — cas explicitement refusé à l'adoucissement : un contact
+        connu mais ARCHIVÉ donne LUI AUSSI un nouveau lead.
+
+        L'archivé est mentionné dans la note de doublon (signalement) mais ne
+        transmet PAS son owner (``_pick_owner_from_duplicates``) : une fiche
+        classée au rebut ne ressuscite plus silencieusement."""
+        from apps.crm.models import LeadActivity
+        from django.contrib.auth import get_user_model
+        ancien_commercial = get_user_model().objects.create_user(
+            username='meta_crx1_archive', password='x',
+            company=self.company, role_legacy='responsable')
+        archive = Lead.objects.create(
+            company=self.company, nom='Yassine Archivé',
+            telephone='+212661114444', canal=Lead.Canal.TELEPHONE,
+            owner=ancien_commercial, is_archived=True)
+        fetch_mock.return_value = _lead_data(
+            leadgen_id='4002', telephone='+212661114444')
+        resp = self._post(_notification_payload(leadgen_id='4002'))
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), 2)
+        nouveau = Lead.objects.get(company=self.company, external_id='4002')
+        self.assertNotEqual(nouveau.pk, archive.pk)
+        # L'archivé reste archivé et intact.
+        archive.refresh_from_db()
+        self.assertTrue(archive.is_archived)
+        self.assertEqual(archive.external_id, None)
+        # Il est tout de même SIGNALÉ sur le nouveau lead — mais SANS
+        # héritage (la note ne mentionne aucune fiche d'origine).
+        note = LeadActivity.objects.filter(
+            lead=nouveau, body__startswith='Doublon possible').first()
+        self.assertIsNotNone(note)
+        self.assertIn(f'#{archive.pk}', note.body)
+        self.assertNotIn("comme la fiche d'origine", note.body)
 
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     def test_fetch_failure_is_skipped_not_fatal(self, fetch_mock):
