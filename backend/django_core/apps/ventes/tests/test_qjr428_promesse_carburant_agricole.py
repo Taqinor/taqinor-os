@@ -37,13 +37,19 @@ ce module ne fait que PROUVER l'état existant, puis épingler le texte écran.
 """
 from pathlib import Path
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
 
 
+# WOW5 — cette classe RÉALISE un rendu WeasyPrint
+# (``HTML(string=...).render()`` dans ``_render_onepage_html``) : elle est
+# LOURDE et doit rester hors du palier rapide de la CI, comme tous les autres
+# tests du moteur PDF. La classe suivante, elle, ne lit qu'un fichier source :
+# elle reste délibérément dans le gate rapide.
+@tag('pdf')
 class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
     """Le devis porte les VRAIES données « exploitation » du fermier
     (`current_fuel` + `fuel_spend_current`, exactement les champs que
