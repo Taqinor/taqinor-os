@@ -107,15 +107,18 @@ class PanierMixteTrancheSurAll(SimpleTestCase):
         self.assertNotIn('Smart Meter',
                          [it['designation'] for it in garde])
 
-    def test_le_garde_fou_legacy_rend_le_MEME_verdict(self):
-        garde = moteur._guard_huawei_accessories(list(self.ROWS))
-        self.assertNotIn('Smart Meter',
-                         [it['designation'] for it in garde])
+    def test_le_moteur_de_rendu_ne_reclasse_plus(self):
+        """QJR408 — le garde-fou legacy est SUPPRIMÉ : il reclassait après le
+        retrait de ``_produit_nom``, donc sur la désignation seule. Il ne reste
+        qu'une passe, celle du builder — épinglée juste au-dessus."""
+        self.assertFalse(hasattr(moteur, '_guard_huawei_accessories'))
 
     def test_un_panier_tout_huawei_garde_son_accessoire(self):
         rows = [_item('Onduleur réseau Huawei 10kW', marque='Huawei'),
                 _item('Smart Meter')]
-        garde = moteur._guard_huawei_accessories(rows)
+        garde = retirer_accessoires_huawei(
+            rows, classement=builder._item_classement,
+            marque=builder._item_marque)
         self.assertIn('Smart Meter', [it['designation'] for it in garde])
 
 
