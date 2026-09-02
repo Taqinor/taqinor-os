@@ -851,6 +851,22 @@ CACHES = {
             # via le logger 'django_redis' (LOGGING ci-dessous) pour ne pas
             # masquer une panne réelle. Argument SLA : une brique de cache qui
             # tombe ne couche pas le produit.
+            #
+            # CRX30 — CE QUE CE FAIL-OPEN COÛTE AUX THROTTLES, ÉCRIT NOIR SUR
+            # BLANC. ``SimpleRateThrottle`` (donc TOUS les throttles DRF du
+            # dépôt : login, register, publicapi, liens publics, tenant…) stocke
+            # ses compteurs dans ``caches['default']`` — ce cache-ci. Avec
+            # ``IGNORE_EXCEPTIONS``, une panne Redis rend ``get`` → ``None`` et
+            # ``set`` → no-op : le compteur repart de zéro à chaque requête, donc
+            # **la limitation applicative s'ouvre en grand** (fail-OPEN) au lieu
+            # de renvoyer 500. C'est le compromis VOULU (une panne de cache ne
+            # doit pas coucher l'ERP), mais il n'est tenable que parce qu'une
+            # SECONDE couche, elle, survit à Redis : les zones ``limit_req`` de
+            # ``backend/nginx/nginx.conf`` (login/register/contact/public_token/
+            # public_flux/api), en mémoire nginx, sans aucune dépendance externe.
+            # C'est la raison d'être de la couche nginx — ne jamais la retirer en
+            # se disant « DRF limite déjà ». Symétriquement, un throttle DRF
+            # nouveau qui protège une surface critique doit avoir sa zone nginx.
             "IGNORE_EXCEPTIONS": True,
         }
     }
@@ -1445,6 +1461,40 @@ _tenant_rate = os.environ.get(
     'TENANT_RATE_LIMIT', '0' if TESTING else '1200/min').strip()
 REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['tenant'] = (
     _tenant_rate if _tenant_rate and _tenant_rate != '0' else None)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRX30 — TOPOLOGIE DE PROXY DÉCLARÉE (le pendant Django de la couche realip
+# de `backend/nginx/nginx.conf` — les deux se lisent ENSEMBLE).
+#
+# CE QUE `NUM_PROXIES` COMMANDE, ET CHEZ DEUX LECTEURS DIFFÉRENTS :
+#   1. `core.throttling.ip_de_requete` (QJR416), LA primitive d'adresse IP du
+#      dépôt : elle saute les N derniers sauts de `X-Forwarded-For` pour
+#      retrouver le visiteur ;
+#   2. le `get_ident` NATIF de DRF, celui dont héritent les ~56 sous-classes de
+#      `SimpleRateThrottle` qui ne portent PAS `IdentIpPartageeMixin`.
+#
+# POURQUOI 1 EN PRODUCTION. Depuis CRX30, nginx réécrit `$remote_addr` avec
+# l'adresse réelle du visiteur (module realip) PUIS l'ajoute à
+# `X-Forwarded-For`. Django reçoit donc une chaîne dont le DERNIER saut est le
+# visiteur, ajouté par notre propre proxy : `NUM_PROXIES = 1` désigne exactement
+# ce saut chez les deux lecteurs. Les entrées forgées par l'appelant restent
+# plus à gauche et sont ignorées.
+#
+# POURQUOI SURTOUT PAS 0. `get_ident` de DRF traite 0 comme « aucun proxy » et
+# renvoie `REMOTE_ADDR` — qui, derrière nginx, vaut le conteneur nginx pour
+# TOUT LE MONDE. Ce serait précisément le seau global unique que CRX30 ferme
+# (5 tentatives de login par minute pour tout Internet), et en pire : partout.
+#
+# SOUS LE TEST RUNNER : réglage ABSENT (None), comportement DRF historique
+# byte-identique — aucune suite existante ne change de seau, et la primitive
+# retombe sur son défaut « dernier saut » (cf.
+# apps/crm/tests/test_qjr416_primitive_ip.py, qui teste ce défaut).
+_num_proxies = os.environ.get('NUM_PROXIES', '' if TESTING else '1').strip()
+NUM_PROXIES = int(_num_proxies) if _num_proxies.isdigit() else None
+# Posé AUSSI dans REST_FRAMEWORK : c'est là que DRF le lit (`api_settings`),
+# et la primitive QJR416 honore les deux emplacements. Une seule source, deux
+# adresses de lecture — jamais deux valeurs.
+REST_FRAMEWORK['NUM_PROXIES'] = NUM_PROXIES
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
