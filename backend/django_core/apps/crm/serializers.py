@@ -148,8 +148,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         return getattr(obj.lead.owner, 'username', None)
 
     def get_overdue(self, obj) -> bool:
-        from django.utils import timezone
-        return obj.due_date < timezone.localdate()
+        from core.dates import aujourd_hui_local
+        return obj.due_date < aujourd_hui_local()
 
 
 class _CurrentCompanyDefault:

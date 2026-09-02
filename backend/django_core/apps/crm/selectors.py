@@ -1741,11 +1741,11 @@ def relances_du_jour(company, user, scope='today', today=None):
     rôle restreint ne voit que ses leads). Lecture seule, scopée société.
     """
     import datetime
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     qs = Lead.objects.filter(
         company=company, is_archived=False, relance_date__isnull=False)
     qs = scope_queryset(qs, user, ['owner'])
@@ -1774,11 +1774,11 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     portée de visibilité de l'utilisateur est respectée (``scope_queryset``
     via le lead) ; ``owner`` filtre en plus sur le responsable du lead.
     """
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead, RelanceEtape
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     qs = RelanceEtape.objects.filter(
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
@@ -1835,11 +1835,11 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     date_expiration, total_ttc}``.
     """
     import datetime
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead
 
-    today = today or timezone.localdate()
+    today = today or aujourd_hui_local()
     limite = today + datetime.timedelta(days=dans_jours)
     leads = scope_queryset(
         Lead.objects.filter(company=company, is_archived=False),
@@ -1906,8 +1906,8 @@ def ma_file_commercial_items(company, user, today=None):
         de cette tâche, cf. ``FilterBar.jsx`` qui expose le même signal en
         chip dédiée, cliquable indépendamment de « Ma file »).
     """
-    from django.utils import timezone
-    today = today or timezone.localdate()
+    from core.dates import aujourd_hui_local
+    today = today or aujourd_hui_local()
     items = []
 
     for lead in relances_du_jour(company, user, scope='overdue', today=today):
@@ -2835,7 +2835,7 @@ def certifications_expirantes(company, within_days=60):
     """
     from datetime import timedelta
 
-    from django.utils import timezone
+    from core.dates import aujourd_hui_local
 
     from .models import Partenaire
 
@@ -2847,7 +2847,7 @@ def certifications_expirantes(company, within_days=60):
         within_days = 60
     if within_days < 0:
         within_days = 0
-    today = timezone.localdate()
+    today = aujourd_hui_local()
     limite = today + timedelta(days=within_days)
     return (Partenaire.objects
             .filter(company=company,

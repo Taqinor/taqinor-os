@@ -2326,11 +2326,11 @@ class Partenaire(models.Model):
     @property
     def certification_expiree(self):
         """La certification est-elle échue ? (Faux si aucune échéance posée.)"""
-        from django.utils import timezone
+        from core.dates import aujourd_hui_local
 
         if not self.date_expiration_certification:
             return False
-        return self.date_expiration_certification < timezone.localdate()
+        return self.date_expiration_certification < aujourd_hui_local()
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_partenaire_display()})'

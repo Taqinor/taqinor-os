@@ -26,6 +26,11 @@ import re as _re
 from django.apps import apps as django_apps
 from django.utils import timezone
 
+# CRX26 — LA date MÉTIER (Africa/Casablanca). ``timezone.localdate()`` rendrait
+# la date UTC (``settings.TIME_ZONE = 'UTC'``) : une heure par nuit, elle est
+# en retard d'un jour entier sur le terrain marocain.
+from core.dates import aujourd_hui_local
+
 from . import activity, stages
 from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtape
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
@@ -213,7 +218,7 @@ def detecter_signal_interet_salle_vente(salle):
         nb_vues = salle.vues.filter(created_at__gte=depuis).count()
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
-        aujourd_hui = timezone.now().date()
+        aujourd_hui = aujourd_hui_local()
         deja_note = LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.NOTE,
             body__startswith='signal d\'intérêt fort',
@@ -531,7 +536,7 @@ def initialiser_plan_relance(lead, user, *, depart=None):
     if not cadence:
         return []
 
-    depart = depart or timezone.localdate()
+    depart = depart or aujourd_hui_local()
     etapes = []
     for gabarit in cadence:
         etapes.append(RelanceEtape(
@@ -1574,7 +1579,7 @@ def appliquer_plan_activite(*, lead, plan, user):
     from apps.records.models import Activity
 
     ct = ContentType.objects.get_for_model(Lead)
-    today = timezone.now().date()
+    today = aujourd_hui_local()
     resultats = []
     for etape in plan.etapes.select_related(
             'activity_type', 'assigne_par_defaut').order_by('ordre', 'delai_jours'):
