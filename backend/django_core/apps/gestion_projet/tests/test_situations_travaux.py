@@ -17,7 +17,8 @@ from authentication.models import Company
 
 from apps.crm.models import Client
 from apps.gestion_projet import services
-from apps.gestion_projet.models import Projet, SituationTravaux
+from apps.gestion_projet.models import (
+    LigneSituation, Projet, SituationTravaux)
 from apps.ventes.models import Facture
 
 User = get_user_model()
@@ -190,3 +191,101 @@ class SituationApiTests(TestCase):
         api_b = auth(user_b)
         resp = api_b.post(f'{self.BASE}{situation_id}/valider/')
         self.assertEqual(resp.status_code, 404)
+
+
+class SituationFigeeApiTests(TestCase):
+    """AUD177 — une situation VALIDÉE/FACTURÉE est gelée (ni DELETE ni PATCH).
+
+    Sans la garde, supprimer la situation intermédiaire d'une chaîne
+    30 %/60 %/90 % fait repartir le cumul antérieur de la suivante à 30 %,
+    et la tranche de 60 % déjà encaissée est facturée une SECONDE fois.
+    """
+    BASE = '/api/django/gestion-projet/situations/'
+    LIGNES = '/api/django/gestion-projet/lignes-situation/'
+
+    def setUp(self):
+        self.co = make_company('gp-situ-fige', 'F')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client BTP figé')
+        self.user = make_user(self.co, 'situ-fige')
+        self.projet = Projet.objects.create(
+            company=self.co, code='P-SITF', nom='F',
+            client_id=self.client_crm.id)
+        self.api = auth(self.user)
+
+    def _situation_facturee(self, periode, pct):
+        situation = services.creer_situation(self.projet, periode=periode)
+        services.ajouter_ligne_situation(
+            situation, libelle='Terrassement',
+            montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal(pct))
+        return services.valider_situation(situation, user=self.user)
+
+    def test_suppression_situation_facturee_refusee_et_cumul_preserve(self):
+        s1 = self._situation_facturee(date(2026, 1, 1), '30')
+        s2 = self._situation_facturee(date(2026, 2, 1), '60')
+
+        resp = self.api.delete(f'{self.BASE}{s2.id}/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertTrue(
+            SituationTravaux.objects.filter(pk=s2.id).exists())
+
+        s3 = services.creer_situation(self.projet, periode=date(2026, 3, 1))
+        ligne3 = services.ajouter_ligne_situation(
+            s3, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('90'))
+        # Le cumul antérieur reste celui de la situation n°2 (60 %).
+        self.assertEqual(ligne3.montant_cumule_anterieur, Decimal('60000.00'))
+        self.assertEqual(ligne3.montant_periode, Decimal('30000.00'))
+        services.valider_situation(s3, user=self.user)
+
+        # Le cumul facturé n'excède JAMAIS le montant du marché.
+        total_facture = sum(
+            Facture.objects.get(id=s.facture_id).montant_ht
+            for s in (s1, s2, s3))
+        self.assertEqual(total_facture, Decimal('90000.00'))
+        self.assertLessEqual(total_facture, Decimal('100000'))
+
+    def test_patch_situation_facturee_refuse(self):
+        s1 = self._situation_facturee(date(2026, 1, 1), '30')
+        resp = self.api.patch(
+            f'{self.BASE}{s1.id}/', {'retenue_garantie_pct': '50'},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        s1.refresh_from_db()
+        self.assertIsNone(s1.retenue_garantie_pct)
+
+    def test_patch_ligne_de_situation_facturee_refuse(self):
+        s1 = self._situation_facturee(date(2026, 1, 1), '30')
+        ligne = s1.lignes.first()
+        resp = self.api.patch(
+            f'{self.LIGNES}{ligne.id}/',
+            {'avancement_cumule_pct': '90'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.avancement_cumule_pct, Decimal('30.00'))
+
+    def test_suppression_ligne_de_situation_facturee_refusee(self):
+        s1 = self._situation_facturee(date(2026, 1, 1), '30')
+        ligne = s1.lignes.first()
+        resp = self.api.delete(f'{self.LIGNES}{ligne.id}/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertTrue(LigneSituation.objects.filter(pk=ligne.id).exists())
+
+    def test_suppression_brouillon_toujours_204(self):
+        situation = services.creer_situation(
+            self.projet, periode=date(2026, 4, 1))
+        resp = self.api.delete(f'{self.BASE}{situation.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(
+            SituationTravaux.objects.filter(pk=situation.id).exists())
+
+    def test_patch_brouillon_toujours_autorise(self):
+        situation = services.creer_situation(
+            self.projet, periode=date(2026, 5, 1))
+        resp = self.api.patch(
+            f'{self.BASE}{situation.id}/', {'retenue_garantie_pct': '10'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        situation.refresh_from_db()
+        self.assertEqual(situation.retenue_garantie_pct, Decimal('10.00'))
