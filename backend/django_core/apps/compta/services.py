@@ -2890,11 +2890,25 @@ def appliquer_modele_rapprochement(ligne_releve, modele=None):
     contrepartie et crédite la banque, une entrée l'inverse), ventile la TVA si
     ``modele.taux_tva`` est posé, puis POINTE la ligne de relevé sur la ligne
     banque de l'écriture créée. Respecte le verrou de période (``creer_
-    ecriture``). Idempotent : rejouer sur la même ligne de relevé déjà pointée
-    ne recrée rien (renvoie l'écriture existante liée à son pointage).
+    ecriture``). Idempotent : rejouer sur la même ligne de relevé ne recrée
+    rien (renvoie l'écriture déjà produite pour elle).
+
+    AUD176 — l'idempotence ne peut PAS reposer sur ``statut == RAPPROCHEE`` :
+    ``pointer_ligne_releve`` ne pose ce statut que si le montant de la ligne GL
+    créée ÉGALE exactement celui du relevé, c'est-à-dire jamais dans le cas
+    d'usage nominal de ``montant_fixe`` (un forfait de frais bancaires connu,
+    par définition différent du montant réellement débité). La garde ne se
+    déclenchait donc jamais là où elle sert, et un double-clic ou un retry
+    réseau rejouait l'action pour finir en erreur technique au lieu d'un no-op.
+    Elle repose désormais sur l'écriture ``source_type='modele_rapprochement',
+    source_id=<ligne de relevé>``, indépendamment du statut.
     """
     company = ligne_releve.company
     rapprochement = ligne_releve.rapprochement
+    deja_produite = _ecriture_existante(
+        company, 'modele_rapprochement', ligne_releve.id)
+    if deja_produite is not None:
+        return deja_produite
     if ligne_releve.statut == LigneReleve.Statut.RAPPROCHEE:
         pointage = PointageReleve.objects.filter(
             ligne_releve=ligne_releve).select_related(
