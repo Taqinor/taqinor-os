@@ -7,6 +7,8 @@ s'écrasent jamais. Couvre : dépôt incrémental (v1, v2…) ; cache
 de dépôt atomique ; scoping (404 cross-tenant) ; accès Administrateur/
 Responsable (403 pour ``normal``).
 """
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -19,6 +21,20 @@ from apps.gestion_projet import services
 from apps.gestion_projet.models import DocumentProjet, Projet
 
 User = get_user_model()
+
+
+# AUD309 — le dépôt passe désormais par `records.storage.store_attachment`
+# (MinIO). Ces tests couvrent le VERSIONNEMENT, pas le stockage : on moque le
+# téléversement (même parti pris que `apps/ged/tests/test_ged.py`) pour ne
+# dépendre d'aucun MinIO ici.
+def _meta_stockage(nom='plan.pdf'):
+    return ({'file_key': f'attachments/1/{nom}', 'filename': nom,
+             'size': 4, 'mime': 'application/pdf'}, None)
+
+
+def _minio_moque(nom='plan.pdf'):
+    return mock.patch('apps.records.storage.store_attachment',
+                      return_value=_meta_stockage(nom))
 
 
 def make_company(slug, nom):
@@ -51,10 +67,11 @@ class DocumentServiceTests(TestCase):
             company=self.co, projet=self.projet, nom='Plan toiture')
 
     def test_deposer_incremente_version(self):
-        v1 = services.deposer_version_document(
-            self.document, _fichier(), auteur=self.user)
-        v2 = services.deposer_version_document(
-            self.document, _fichier('plan2.pdf'), auteur=self.user)
+        with _minio_moque():
+            v1 = services.deposer_version_document(
+                self.document, _fichier(), auteur=self.user)
+            v2 = services.deposer_version_document(
+                self.document, _fichier('plan2.pdf'), auteur=self.user)
         self.assertEqual(v1.version, 1)
         self.assertEqual(v2.version, 2)
         self.document.refresh_from_db()
@@ -83,10 +100,11 @@ class DocumentApiTests(TestCase):
         self.assertEqual(resp.data['derniere_version'], 0)
 
         # Dépôt d'une révision (multipart).
-        resp2 = api.post(
-            f'{self.BASE}{doc_id}/deposer/',
-            {'fichier': _fichier(), 'commentaire': 'init'},
-            format='multipart')
+        with _minio_moque():
+            resp2 = api.post(
+                f'{self.BASE}{doc_id}/deposer/',
+                {'fichier': _fichier(), 'commentaire': 'init'},
+                format='multipart')
         self.assertEqual(resp2.status_code, 201, resp2.data)
         self.assertEqual(resp2.data['version'], 1)
         self.assertEqual(resp2.data['auteur'], self.user_a.id)
@@ -104,8 +122,9 @@ class DocumentApiTests(TestCase):
     def test_versions_endpoint(self):
         doc = DocumentProjet.objects.create(
             company=self.co_a, projet=self.projet, nom='D')
-        services.deposer_version_document(
-            doc, _fichier(), auteur=self.user_a)
+        with _minio_moque():
+            services.deposer_version_document(
+                doc, _fichier(), auteur=self.user_a)
         api = auth(self.user_a)
         resp = api.get(f'{self.BASE}{doc.id}/versions/')
         self.assertEqual(resp.status_code, 200)
@@ -116,9 +135,10 @@ class DocumentApiTests(TestCase):
         autre_d = DocumentProjet.objects.create(
             company=self.co_b, projet=autre_p, nom='D')
         api = auth(self.user_a)
-        resp = api.post(
-            f'{self.BASE}{autre_d.id}/deposer/',
-            {'fichier': _fichier()}, format='multipart')
+        with _minio_moque():
+            resp = api.post(
+                f'{self.BASE}{autre_d.id}/deposer/',
+                {'fichier': _fichier()}, format='multipart')
         self.assertEqual(resp.status_code, 404)
 
     def test_role_normal_interdit(self):

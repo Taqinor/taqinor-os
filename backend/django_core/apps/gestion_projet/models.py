@@ -1824,6 +1824,17 @@ class VersionDocument(models.Model):
     versions ne s'écrasent jamais : chaque dépôt crée une nouvelle ligne, l'unique
     ``(document, version)`` garantit l'absence de collision.
 
+    AUD309 — le contenu vit dans MinIO, désigné par ``file_key`` (conventions
+    de ``apps.records.storage``, même patron que ``apps.ged.DocumentVersion``).
+    L'ancien ``fichier`` (``FileField``) contournait ce stockage : sans
+    ``MEDIA_URL``/``MEDIA_ROOT``/``STORAGES`` dans les settings, sans
+    ``location /media/`` côté nginx et sans route ``/media/`` dans
+    ``erp_agentique/urls.py``, l'URL sérialisée ne résolvait JAMAIS — le
+    fichier s'écrivait sur le disque HÔTE (bind-mount ``./backend/django_core``)
+    et s'y accumulait, non tracké et inaccessible à l'application. Le champ est
+    CONSERVÉ (désormais optionnel, plus jamais écrit) pour ne rien perdre des
+    lignes historiques ; la lecture passe par ``presign_attachment(file_key)``.
+
     Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
     corps de requête. Modèle entièrement additif.
     """
@@ -1840,8 +1851,20 @@ class VersionDocument(models.Model):
         verbose_name='Document',
     )
     version = models.PositiveIntegerField(verbose_name='Version')
+    # AUD309 — LEGACY, plus jamais écrit : conservé nullable pour les lignes
+    # déposées avant la bascule MinIO (leur chemin disque reste lisible).
     fichier = models.FileField(
-        upload_to='gestion_projet/documents/', verbose_name='Fichier')
+        upload_to='gestion_projet/documents/', blank=True, null=True,
+        verbose_name='Fichier (legacy, hors MinIO)')
+    # AUD309 — clé objet MinIO (bucket erp-uploads), conventions
+    # ``records.storage`` : ``attachments/{company_id}/{uuid}.{ext}``.
+    file_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé MinIO')
+    filename = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du fichier')
+    size = models.PositiveIntegerField(default=0, verbose_name='Taille (octets)')
+    mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
     commentaire = models.TextField(
         blank=True, default='', verbose_name='Commentaire de révision')
     auteur = models.ForeignKey(
