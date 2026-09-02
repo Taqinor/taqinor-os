@@ -2126,6 +2126,31 @@ def _check_meta_lead_ads_signature(request, secret):
                                expected.encode('utf-8'))
 
 
+#: CRX4 (résidu post-QJR414, D-CRX2) — forme admise d'un ``leadgen_id`` Meta :
+#: un identifiant NUMÉRIQUE, borné. La valeur vient du corps du webhook et
+#: était interpolée telle quelle dans l'URL Graph : une valeur hostile
+#: (``123/../../me?fields=``) y injectait un chemin et des paramètres, c.-à-d.
+#: faisait appeler par NOTRE token de page un tout autre endpoint Graph que
+#: celui qu'on croyait interroger. La signature HMAC (QJR414) rend l'attaque
+#: coûteuse, elle ne la rend pas impossible — la borne reste due ici.
+LEADGEN_ID_RE = re.compile(r'^[0-9]{1,32}$')
+
+
+def _valider_leadgen_id(leadgen_id):
+    """Renvoie le ``leadgen_id`` normalisé, ou lève ``ValueError``.
+
+    Lever est le bon contrat : l'appelant (webhook ou rejeu) traite déjà toute
+    exception par entrée (CRX3) et laisse une ligne brute rejouable portant
+    l'erreur (CRX2) — l'entrée douteuse est donc refusée sans jamais être
+    perdue ni interrompre le batch."""
+    valeur = str(leadgen_id or '').strip()
+    if not LEADGEN_ID_RE.match(valeur):
+        raise ValueError(
+            'leadgen_id Meta invalide (chiffres uniquement, 1-32) : '
+            f'{valeur[:64]!r}')
+    return valeur
+
+
 def fetch_meta_lead_data(leadgen_id, access_token):
     """Récupère le détail d'un lead Meta via le Graph API officiel.
 
@@ -2133,6 +2158,8 @@ def fetch_meta_lead_data(leadgen_id, access_token):
     (monkeypatch) — le test simulé décrit dans XMKT32 n'appelle jamais un
     vrai serveur Meta. Renvoie un dict ``{'field_data': [...]}`` ou lève sur
     échec réseau/HTTP (capté par l'appelant).
+
+    CRX4 — ``leadgen_id`` est VALIDÉ avant toute interpolation dans l'URL.
     """
     import urllib.request
 
@@ -2141,6 +2168,7 @@ def fetch_meta_lead_data(leadgen_id, access_token):
     # depuis 02/2025. Constante plain (aucun modèle adsengine importé).
     from apps.adsengine.api_version import GRAPH_BASE_URL
 
+    leadgen_id = _valider_leadgen_id(leadgen_id)
     url = f'{GRAPH_BASE_URL}/{leadgen_id}?access_token={access_token}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))

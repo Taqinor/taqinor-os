@@ -21,7 +21,10 @@ Couvre :
     (Graph API officiel), jamais par un fetch de page HTML.
   - PUB26 — signature HMAC ``X-Hub-Signature-256`` : bien formée → traité ;
     mal signée → 403 ; QJR414/DR3 — secret ABSENT → **403** (fail-closed), là
-    où PUB26 acceptait encore le payload « par rétro-compatibilité ».
+    où PUB26 acceptait encore le payload « par rétro-compatibilité » (le test
+    permissif correspondant a bien été retiré par QJR414 — vérifié en CRX4) ;
+  - CRX4 — ``leadgen_id`` borné (numérique) AVANT toute construction de l'URL
+    Graph : une valeur hostile ne part jamais sur le réseau.
 """
 import hashlib
 import hmac
@@ -616,3 +619,69 @@ class FetchMetaLeadDataVersionTests(TestCase):
             seen['url'].startswith(f'{GRAPH_BASE_URL}/42'),
             msg=f"URL Graph inattendue : {seen['url']}")
         self.assertNotIn('v19.0', seen['url'])
+
+
+class MetaLeadgenIdValidationTests(TestCase):
+    """CRX4 (résidu post-QJR414) — ``leadgen_id`` vient du corps du webhook et
+    était interpolé TEL QUEL dans l'URL Graph. Il est désormais borné à un
+    identifiant numérique AVANT toute construction d'URL : aucune requête ne
+    part pour une valeur douteuse."""
+
+    def _urlopen_espion(self):
+        appels = []
+
+        def fake_urlopen(url, timeout=None):  # pragma: no cover - jamais
+            appels.append(url)                # atteint sur les cas refusés
+            raise AssertionError(
+                f'urlopen ne doit pas être appelé : {url}')
+
+        return appels, fake_urlopen
+
+    def test_valeurs_hostiles_sont_refusees_sans_appel_reseau(self):
+        from unittest.mock import patch
+
+        from apps.crm.webhooks import fetch_meta_lead_data
+
+        appels, fake_urlopen = self._urlopen_espion()
+        hostiles = [
+            '123/../../me?fields=id',   # sortie du chemin
+            '123&fields=access_token',  # paramètre injecté
+            'lg-web-1',                 # non numérique
+            '',                         # vide
+            None,                       # absent
+            '9' * 33,                   # au-delà de la borne
+        ]
+        for valeur in hostiles:
+            with self.subTest(valeur=valeur):
+                with patch('urllib.request.urlopen', fake_urlopen):
+                    with self.assertRaises(ValueError):
+                        fetch_meta_lead_data(valeur, 'tok')
+        self.assertEqual(appels, [])
+
+    def test_identifiant_numerique_reste_accepte(self):
+        from unittest.mock import patch
+
+        from apps.adsengine.api_version import GRAPH_BASE_URL
+        from apps.crm.webhooks import fetch_meta_lead_data
+
+        seen = {}
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'{"field_data": []}'
+
+        def fake_urlopen(url, timeout=None):
+            seen['url'] = url
+            return _Resp()
+
+        with patch('urllib.request.urlopen', fake_urlopen):
+            data = fetch_meta_lead_data(' 123456789 ', 'tok')
+        self.assertEqual(data, {'field_data': []})
+        # Normalisé (espaces retirés) puis interpolé.
+        self.assertTrue(seen['url'].startswith(f'{GRAPH_BASE_URL}/123456789?'))
