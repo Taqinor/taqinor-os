@@ -3955,12 +3955,44 @@ def create_lead_from_public_api(*, company, fields):
     return lead
 
 
+#: CRX21 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10). Sans
+#: elles dans ``update_fields``, un changement de téléphone/email n'est PAS
+#: répercuté sur les colonnes indexées de dédup : le lead reste trouvable par
+#: son ANCIEN numéro et invisible sous le nouveau. Même table que
+#: ``LeadViewSet.COLONNES_DERIVEES`` (views.py) — la parité est le sujet de la
+#: tâche : l'API publique écrit les mêmes leads que l'écran.
+PUBLIC_LEAD_COLONNES_DERIVEES = {'telephone': 'phone_normalise',
+                                 'email': 'email_normalise'}
+
+
 def update_lead_from_public_api(*, company, lead_id, fields):
     """XPLT5 — met à jour un lead EXISTANT DE CETTE SOCIÉTÉ depuis l'API
     publique en écriture. Lève ``Lead.DoesNotExist`` si le lead n'appartient
     pas (ou plus) à ``company`` — jamais de fuite cross-tenant. Champs
     filtrés à la même liste blanche que la création ; ``stage`` validé contre
-    STAGES.py. Journalise chaque champ changé (chatter, acteur système)."""
+    STAGES.py. Journalise chaque champ changé (chatter, acteur système).
+
+    CRX21 — PARITÉ avec le PATCH de l'écran (``LeadViewSet.perform_update``),
+    qui manquait entièrement à ce chemin :
+
+    * **verrou du lead perdu** — un lead marqué perdu ne change pas d'étape,
+      pas même par une intégration (le ``LeadSerializer`` refuse déjà, et ce
+      verrou PRÉCÈDE toute échappatoire) ;
+    * **garde funnel** ``_bulk_stage_allowed`` — une intégration ne recule ni
+      ne rouvre un pipeline. Il n'y a PAS ici l'échappatoire ``confirme_recul``
+      de l'écran : elle suppose une confirmation HUMAINE devant un lead nommé,
+      qu'aucun appel machine ne peut donner ;
+    * **les 4 effets internes** de ``perform_update`` : émission de
+      ``lead_stage_changed``, ``first_contacted_at`` (FG28), recalcul du score
+      (QJ6) et synchronisation de l'activité de relance ;
+    * **colonnes dérivées** (``phone_normalise``/``email_normalise``) ajoutées
+      à ``update_fields`` quand leur source change — sinon la dédup indexée
+      devient aveugle après un changement de téléphone (chemins publicapi bulk
+      ET PATCH unitaire).
+
+    Lève ``ValueError`` (traduit en 400 par les vues publiques) sur une étape
+    inconnue, un lead perdu, ou un recul de funnel.
+    """
     lead = Lead.objects.get(company=company, pk=lead_id)
     clean = {k: v for k, v in (fields or {}).items()
              if k in PUBLIC_LEAD_WRITABLE_FIELDS}
@@ -3968,6 +4000,11 @@ def update_lead_from_public_api(*, company, lead_id, fields):
     if stage is not None and stage not in stages.STAGES:
         raise ValueError(
             f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    if stage is not None and stage != lead.stage:
+        if lead.perdu:
+            raise ValueError('Lead perdu — étape non modifiable.')
+        if not _bulk_stage_allowed(lead.stage, stage):
+            raise ValueError("On ne recule pas une étape.")
     old = Lead.objects.get(pk=lead.pk)
     changed_fields = []
     for field, value in clean.items():
@@ -3977,8 +4014,19 @@ def update_lead_from_public_api(*, company, lead_id, fields):
             setattr(lead, field, value)
             changed_fields.append(field)
     if changed_fields:
-        lead.save(update_fields=changed_fields)
+        ecrits = list(changed_fields)
+        for source, derivee in PUBLIC_LEAD_COLONNES_DERIVEES.items():
+            if source in changed_fields:
+                ecrits.append(derivee)
+        lead.save(update_fields=ecrits)
         activity.log_changes(old, lead, None)
+        # Les 4 effets du PATCH de l'écran, dans le même ordre. Tous sont
+        # best-effort par construction (chacun catche pour son compte) : une
+        # intégration ne doit jamais échouer sur un effet secondaire.
+        sync_relance_activity(lead, None)
+        maybe_set_first_contacted_at(old, lead)
+        recompute_lead_score(lead)
+        _emit_stage_changed(lead, old.stage, lead.stage, user=None)
     return lead
 
 
