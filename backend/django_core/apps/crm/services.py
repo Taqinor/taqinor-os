@@ -18,6 +18,8 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
+import contextlib
+import hashlib as _hashlib
 import logging
 import re as _re
 
@@ -1298,9 +1300,40 @@ def dupliquer_client(client: Client, *, user) -> Client:
     return copie
 
 
-def resolve_client_for_lead(lead: Lead) -> Client:
-    from django.db import IntegrityError, transaction
+@contextlib.contextmanager
+def _verrou_client_par_telephone(company_id, cle_telephone):
+    """CRX24 — sérialise la résolution de client du chemin SANS e-mail.
 
+    Le chemin e-mail est arbitré par la base (contrainte unique
+    ``crx24_client_email_unique_ci``, insensible à la casse) : deux créations
+    concurrentes ⇒ ``IntegrityError`` rattrapée, puis relecture. Le repli
+    TÉLÉPHONE (QX17) n'a AUCUNE contrainte équivalente — ``Client`` ne porte
+    pas de colonne normalisée — donc deux devis générés en même temps pour le
+    même prospect sans e-mail créaient DEUX fiches client, silencieusement.
+
+    Verrou consultatif PostgreSQL porté par la transaction
+    (``pg_advisory_xact_lock``) : il ne bloque aucune ligne, se libère tout
+    seul à la fin de la transaction (même en cas d'erreur), et ne sérialise
+    QUE les résolutions visant le même (société, téléphone normalisé). Sur un
+    moteur sans verrou consultatif, ou sans clé téléphone exploitable, le
+    contexte est un no-op : comportement strictement inchangé.
+    """
+    from django.db import connection, transaction
+
+    if not cle_telephone or connection.vendor != 'postgresql':
+        yield False
+        return
+    empreinte = _hashlib.blake2b(
+        f'crm.resolve_client:{company_id}:{cle_telephone}'.encode('utf-8'),
+        digest_size=8).digest()
+    verrou = int.from_bytes(empreinte, 'big', signed=True)
+    with transaction.atomic():
+        with connection.cursor() as curseur:
+            curseur.execute('SELECT pg_advisory_xact_lock(%s)', [verrou])
+        yield True
+
+
+def resolve_client_for_lead(lead: Lead) -> Client:
     if lead.client_id:
         # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
         # jamais modifier la résolution existante ni un champ de nom.
@@ -1330,6 +1363,38 @@ def resolve_client_for_lead(lead: Lead) -> Client:
             if normalize_phone(candidate.telephone) == lead_phone:
                 return candidate
         return None
+
+    # CRX24 — le chemin SANS e-mail (repli téléphone QX17) n'a aucune
+    # contrainte d'unicité en base pour l'arbitrer : on le sérialise par
+    # (société, téléphone normalisé) le temps du « chercher puis créer ». Le
+    # chemin e-mail garde son arbitrage par la base (contrainte unique
+    # insensible à la casse + relecture) et le verrou y est un no-op.
+    cle_verrou = '' if lead.email else normalize_phone(lead.telephone)
+    with _verrou_client_par_telephone(lead.company_id, cle_verrou):
+        client = _resoudre_ou_creer_client(lead, _find_existing)
+
+    lead.client = client
+    lead.save(update_fields=['client'])
+    # Trace la résolution/création du client dans le chatter du lead (geste
+    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
+    # (résolution déclenchée par le générateur de devis) → entrée système.
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Client lié : {nom_client}")
+    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
+    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
+    # nom du lead n'est touché (QW7).
+    attacher_tiers_au_lead(lead, client)
+    return client
+
+
+def _resoudre_ou_creer_client(lead, _find_existing):
+    """Cœur « chercher, sinon créer » de :func:`resolve_client_for_lead`,
+    extrait pour tenir sous le verrou CRX24 sans dupliquer une ligne de sa
+    logique. Aucun changement de comportement."""
+    from django.db import IntegrityError, transaction
 
     client = _find_existing()
 
@@ -1366,24 +1431,14 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     langue_document=langue_document,
                 )
         except IntegrityError:
+            # CRX24 — attrape AUSSI la contrainte insensible à la casse
+            # ``crx24_client_email_unique_ci`` : ``_find_existing`` cherche en
+            # ``email__iexact``, donc la relecture retrouve bien le gagnant de
+            # la course, quelle que soit la casse qu'il a écrite.
             client = _find_existing()
             if client is None:
                 raise
 
-    lead.client = client
-    lead.save(update_fields=['client'])
-    # Trace la résolution/création du client dans le chatter du lead (geste
-    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
-    # (résolution déclenchée par le générateur de devis) → entrée système.
-    nom_client = f"{client.nom} {client.prenom or ''}".strip()
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
-        kind=LeadActivity.Kind.NOTE,
-        body=f"Client lié : {nom_client}")
-    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
-    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
-    # nom du lead n'est touché (QW7).
-    attacher_tiers_au_lead(lead, client)
     return client
 
 

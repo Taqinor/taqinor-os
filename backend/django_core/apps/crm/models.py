@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.functions import Lower
 
 from core.models import SoftDeleteModel, TenantModel
 
@@ -203,6 +204,25 @@ class Client(models.Model):
         verbose_name = "Client"
         verbose_name_plural = "Clients"
         unique_together = [('company', 'email')]
+        constraints = [
+            # CRX24 — unicité de l'e-mail INSENSIBLE À LA CASSE. Le
+            # ``unique_together`` ci-dessus est sensible à la casse, alors que
+            # toutes les recherches de client se font en ``email__iexact``
+            # (``services.resolve_client_for_lead``) : « A@x.ma » et « a@x.ma »
+            # étaient donc DEUX lignes que le code traitait comme une seule —
+            # le doublon naissait à la création, la lecture n'en voyait qu'un,
+            # et les devis se répartissaient entre les deux fiches.
+            # Index fonctionnel partiel : les e-mails vides/NULL restent
+            # multiples (un client sans e-mail est légitime et fréquent).
+            models.UniqueConstraint(
+                'company', Lower('email'),
+                name='crx24_client_email_unique_ci',
+                condition=models.Q(email__isnull=False) & ~models.Q(email=''),
+                violation_error_message=(
+                    "Un client de cette société porte déjà cet e-mail "
+                    "(la casse ne compte pas)."),
+            ),
+        ]
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
