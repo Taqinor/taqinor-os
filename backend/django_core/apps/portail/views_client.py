@@ -248,6 +248,18 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         })
 
 
+#: ``MesLivraisonsPortailViewSet`` est un ``ViewSet`` nu (aucun queryset) :
+#: drf-spectacular ne peut pas déduire le type de ``{id}`` sur ses routes de
+#: détail et le dégradait en "string" avec un avertissement. L'identifiant est
+#: la PK entière de la livraison. Déclaré UNE fois et partagé par TOUTES les
+#: actions `detail=True` — en oublier une laisse l'avertissement revenir (c'est
+#: exactement ce qui est arrivé à ``preuve-photo``).
+_ID_LIVRAISON = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de la livraison du client connecté.",
+)
+
+
 class MesLivraisonsPortailArticleSerializer(serializers.Serializer):
     """Un article d'une livraison — vue CLIENT (jamais un prix ni un coût).
 
@@ -317,16 +329,7 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         return Response(
             {'results': livraisons_client_portail(company, client_id)})
 
-    @extend_schema(parameters=[
-        # ``ViewSet`` sans queryset : drf-spectacular ne peut pas déduire le
-        # type de ``{id}`` et le dégradait en "string" avec avertissement.
-        # L'identifiant est la PK entière de la livraison.
-        OpenApiParameter(
-            name='id', type=OpenApiTypes.INT,
-            location=OpenApiParameter.PATH,
-            description="Identifiant de la livraison du client connecté.",
-        ),
-    ], responses=inline_serializer(
+    @extend_schema(parameters=[_ID_LIVRAISON], responses=inline_serializer(
         name='MesLivraisonsPortailPreuve',
         fields={
             'livraison_id': serializers.IntegerField(),
@@ -362,6 +365,7 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         preuve.pop('photo_attachment_id', None)
         return Response(preuve)
 
+    @extend_schema(parameters=[_ID_LIVRAISON])
     @action(detail=True, methods=['get'], url_path='preuve-photo')
     def preuve_photo(self, request, pk=None):
         """AUD301 — sert la PHOTO de la preuve de livraison, en ligne.
