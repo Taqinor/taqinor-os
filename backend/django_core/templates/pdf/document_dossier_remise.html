@@ -77,6 +77,36 @@
   </table>
   {% endif %}
 
+  {# AUD307 — pièces réellement validées par le pack de remise CH4. Absent
+     tant qu'aucun pack n'est persisté : le document reste alors identique à
+     ce qu'il était avant cette tâche. #}
+  {% if pack_remise %}
+  <div class="section-title">
+    Pièces du dossier de remise ({{ pack_remise.presentes }}/{{ pack_remise.total }})
+    — {{ 'dossier complet' if pack_remise.complet else 'dossier incomplet' }}
+  </div>
+  <table>
+    <thead><tr><th>Pièce</th><th>Référence</th><th>Remise</th></tr></thead>
+    <tbody>
+      {% for p in pack_remise.pieces %}
+      <tr>
+        <td>{{ p.libelle }}</td>
+        <td>{{ p.reference or '—' }}</td>
+        <td>{{ 'Oui' if p.present else 'Non' }}</td>
+      </tr>
+      {% endfor %}
+      {% if not pack_remise.pieces %}
+      <tr><td colspan="3">Aucune pièce référencée dans le pack.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% if pack_remise.monitoring_acces %}
+  <div class="contact-block">
+    <strong>Accès monitoring</strong> : {{ pack_remise.monitoring_acces }}
+  </div>
+  {% endif %}
+  {% endif %}
+
   <div class="section-title">Exploitation & maintenance</div>
   <ul class="guidance">
     {% for g in guidance %}<li>{{ g }}</li>{% endfor %}

@@ -322,11 +322,54 @@ def generate_bon_livraison(chantier):
     return _html_to_pdf(html)
 
 
+def _handover_pack_summary(chantier):
+    """AUD307 — pièces du pack de remise CH4 (`installations.HandoverPack`).
+
+    Même patron défensif que `_checklist_summary` : ``None`` quand le chantier
+    n'a pas encore de pack persisté (l'accesseur inverse OneToOne lève une
+    exception qui hérite d'``AttributeError``, donc ``getattr(..., None)``
+    suffit), et chaque pièce dégrade proprement — une entrée malformée est
+    ignorée plutôt que de casser la génération du document client.
+    """
+    pack = getattr(chantier, 'handover_pack', None)
+    if pack is None:
+        return None
+    pieces = []
+    for piece in (pack.pieces or []):
+        if not isinstance(piece, dict):
+            continue
+        pieces.append({
+            'libelle': (
+                piece.get('libelle') or piece.get('type') or '—'),
+            'reference': piece.get('reference') or '',
+            'present': bool(piece.get('present')),
+        })
+    return {
+        'pieces': pieces,
+        'complet': bool(pack.complet),
+        'presentes': sum(1 for p in pieces if p['present']),
+        'total': len(pieces),
+        'monitoring_acces': pack.monitoring_acces or '',
+    }
+
+
 def generate_dossier_remise(chantier):
-    """N23 — Dossier de remise (handover pack)."""
+    """N23 — Dossier de remise (handover pack).
+
+    AUD307 — le PDF LIT désormais le `HandoverPack` (CH4) qui gate la remise.
+    Avant, il se construisait uniquement depuis `_composants` + un texte
+    statique : une équipe pouvait confirmer `pack_remise.complet=True` puis
+    remettre au client un PDF ne contenant AUCUNE des pièces validées par CH4
+    (ni certificat de recette IEC 62446-1, ni dossier 82-21, ni accès
+    monitoring). Un chantier SANS pack persisté garde un contexte
+    strictement identique à avant cette tâche.
+    """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
     ctx['guidance'] = DEFAULT_OPERATING_GUIDANCE
+    pack = _handover_pack_summary(chantier)
+    if pack is not None:
+        ctx['pack_remise'] = pack
     html = get_template('document_dossier_remise.html').render(ctx)
     return _html_to_pdf(html)
 
