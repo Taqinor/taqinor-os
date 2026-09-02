@@ -246,6 +246,7 @@ corrigée dans ce batch). Les findings restants sont notés ici comme tâches de
   le prix réel (n === offeredUnits jamais atteint) — élargir le max au nombre offert ou afficher le
   vrai total. (@lane: web-proposal) (@model: sonnet)
 - [x] WJ129 — **Durcissements mineurs (findings 5+6, NITS).** `batterySim.ts` : `clamp01` renvoie
+- [ ] WJ130 — **buildIdempotencyKey en CSPRNG** : `apps/web/src/lib/lead.ts:1227` génère la clé d'idempotence (seul credential du lookup public `lead-ref` qui renvoie `client_ref` avec le nom de famille) via `Math.random()` — passer à `crypto.getRandomValues` (les 3 appelants de mon-toit inchangés, la signature garde le paramètre injectable pour les tests). Constat de l'audit CRM L3 du 02/09 (vérifié 2×), coupé du groupe CRX car hors contrat d'apps (site web). Files: `apps/web/src/lib/lead.ts`.
   `hi` (1.0, borne la plus optimiste) sur entrée non-finie — le `??` ne rattrape que null/undefined ;
   utiliser le constant par défaut documenté sur NaN (inatteignable des appelants actuels, mais piège).
   Et documenter le décalage sémantique télémétrie : en chemin gaté, `estimation/viewed` se déclenche
