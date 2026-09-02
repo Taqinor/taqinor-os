@@ -443,6 +443,42 @@ def affecter_livraison_directe_chantier(
 # le prix d'achat catalogue. Valorisation = quantité par emplacement × coût
 # moyen. INTERNE uniquement (les prix d'achat ne sont jamais client-facing).
 
+def _annoter_date_entree_stock(qs):
+    """AUD210 — annote des lignes de BCF avec leur DATE D'ENTRÉE EN STOCK RÉELLE.
+
+    Une unité pèse sur le coût du stock à partir du jour où elle est
+    RÉCEPTIONNÉE, pas du jour où le bon de commande a été saisi : un BCF créé
+    en janvier et réceptionné en mars n'était pas en stock en février. On prend
+    donc la dernière `ReceptionFournisseur.date_reception` CONFIRMÉE couvrant
+    la ligne ; à défaut (réception directe par l'action `recevoir` du BCF, sans
+    document de réception) on retombe sur la date de création du BCF —
+    comportement strictement inchangé pour tout BCF sans réception documentée.
+
+    L'annotation `date_entree_stock` est une DATE (jamais un datetime) : toutes
+    les comparaisons de ce module sont ramenées au jour. INTERNE."""
+    from django.db.models import DateField, Max, Q
+    from django.db.models.functions import Coalesce, TruncDate
+    from .models import ReceptionFournisseur
+    return qs.annotate(
+        date_entree_stock=Coalesce(
+            Max('lignes_reception__reception__date_reception',
+                filter=Q(lignes_reception__reception__statut=(
+                    ReceptionFournisseur.Statut.CONFIRME))),
+            TruncDate('bon_commande__date_creation'),
+            output_field=DateField()))
+
+
+def _jour(valeur):
+    """Ramène un datetime (aware ou naïf) ou une date au JOUR local."""
+    from django.utils import timezone
+    if valeur is None:
+        return None
+    if hasattr(valeur, 'hour'):
+        return (timezone.localdate(valeur) if timezone.is_aware(valeur)
+                else valeur.date())
+    return valeur
+
+
 def average_cost_with_source(produit):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
@@ -470,8 +506,9 @@ def average_cost_with_source(produit):
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, quantite_recue__gt=0)
     if revalo is not None and revalo.date_validation is not None:
-        lignes_qs = lignes_qs.filter(
-            bon_commande__date_creation__gt=revalo.date_validation)
+        # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
+        lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
+            date_entree_stock__gt=_jour(revalo.date_validation))
     lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
     total_q, total_v = 0, Decimal('0')
@@ -538,9 +575,12 @@ def fifo_cost_with_source(produit):
     from .models import LigneBonCommandeFournisseur
     # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
     # les dernières entrées). On valorise au coût débarqué unitaire.
-    lignes = (LigneBonCommandeFournisseur.objects
-              .filter(produit=produit, quantite_recue__gt=0)
-              .order_by('-bon_commande__date_creation', '-id'))
+    # AUD210 — couches ordonnées par ENTRÉE EN STOCK réelle (date de réception),
+    # pas par date de saisie du bon de commande.
+    lignes = (_annoter_date_entree_stock(
+        LigneBonCommandeFournisseur.objects
+        .filter(produit=produit, quantite_recue__gt=0))
+        .order_by('-date_entree_stock', '-id'))
     restant = produit.quantite_stock or 0
     if restant <= 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
@@ -724,16 +764,18 @@ def _quantite_produit_a_date(produit, date):
 
 
 def _cout_moyen_produit_a_date(produit, date):
-    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les
-    réceptions de BCF dont le bon de commande est daté <= date (cf.
+    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les lignes de
+    BCF RÉELLEMENT ENTRÉES EN STOCK au plus tard à `date` (AUD210 : date de
+    réception, pas date de création du bon de commande ; cf.
     `average_cost_with_source`, borné dans le temps). Repli catalogue si
     aucun achat reçu avant cette date."""
     from .models import LigneBonCommandeFournisseur
-    lignes = (LigneBonCommandeFournisseur.objects
-              .filter(produit=produit, quantite_recue__gt=0,
-                      bon_commande__date_creation__date__lte=date)
-              .values_list('quantite_recue', 'prix_achat_unitaire',
-                           'quantite', 'frais_annexes'))
+    lignes = (_annoter_date_entree_stock(
+        LigneBonCommandeFournisseur.objects
+        .filter(produit=produit, quantite_recue__gt=0))
+        .filter(date_entree_stock__lte=_jour(date))
+        .values_list('quantite_recue', 'prix_achat_unitaire',
+                     'quantite', 'frais_annexes'))
     total_q, total_v = 0, Decimal('0')
     for q_recue, pu, q_ligne, frais in lignes:
         pu = pu or Decimal('0')
