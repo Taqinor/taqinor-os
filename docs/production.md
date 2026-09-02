@@ -79,9 +79,14 @@ contient alors plus aucun écran des verticaux parqués).
 2. **Lire le rapport.** Des données métier VIVANTES dans une app parquée, ou une
    tâche encore en file, se remontent au fondateur AVANT la bascule.
 
-3. **Basculer** : `TAQINOR_EDITION=solar` dans le `.env` du serveur, puis
-   `powershell -File scripts\deploy-prod.ps1` (le changement d'env impose un
-   redéploiement, il n'est pas rechargé à chaud).
+3. **Basculer** : dans le `.env` du serveur, poser **les DEUX** variables —
+   `TAQINOR_EDITION=solar` (backend, lu via `env_file` par django_core, celery
+   et beat) **et** `VITE_EDITION=solar` (frontend, passé en argument de BUILD
+   par `docker-compose.yml` → `frontend/Dockerfile.prod`). Un backend solaire
+   servi par un frontend complet afficherait des écrans dont les routes
+   n'existent plus. Puis `powershell -File scripts\deploy-prod.ps1` : le
+   frontend est un flag BUILD-TIME, il faut un **rebuild** de son image
+   (`docker compose up -d --build frontend`), jamais un simple redémarrage.
 
 4. **Vérifier** : `docker compose exec django python manage.py verifier_edition`
    doit répondre « Édition « solar » cohérente », puis le contrôle de santé
