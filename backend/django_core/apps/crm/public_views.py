@@ -112,6 +112,21 @@ def _hash_ip(request, salle=None):
 
 
 def _item_payload(item):
+    """QJR419 (QJR4-10) — la charge utile publique ne remet plus au visiteur un
+    chemin INTERNE qu'il ne peut pas ouvrir.
+
+    ``proposal_path`` valait ``/api/django/ventes/devis/<pk>/proposal/`` : un
+    lien vers un endpoint AUTHENTIFIÉ, servi par un endpoint ``AllowAny``. Deux
+    défauts d'un coup — il était inutilisable pour son destinataire (le
+    visiteur anonyme n'a pas de session), et il DIVULGUAIT la clé primaire
+    interne du devis. On sert désormais LE LIEN PUBLIC (la page tokenisée du
+    site, construite par le builder unique ``ventes.utils.client_links`` —
+    jamais une URL forgée à la main), c'est-à-dire celui qui fonctionne
+    réellement pour un visiteur. Aucune clé primaire, aucun ``/api/django/``.
+
+    Le nom de clé ``proposal_path`` est CONSERVÉ : c'est le contrat de l'écran
+    qui le consomme, et cette tâche ne touche pas d'écran.
+    """
     payload = {
         'id': item.id, 'type': item.type, 'titre': item.titre,
         'ordre': item.ordre,
@@ -126,14 +141,24 @@ def _item_payload(item):
         # Kanban) : chaîne canonique par option, remise honorée, jamais la
         # somme des deux options d'un devis à deux options (D2/D9).
         from apps.ventes.quote_engine.builder import display_totals
+        # QJR419 — builder UNIQUE des URLs client-facing (QX13) : jamais un
+        # chemin reconstruit à la main. Utilitaire pur, aucun import de
+        # ``ventes.models``.
+        from apps.ventes.utils.client_links import url_proposition
         devis = get_devis_by_pk(item.reference)
         if devis is not None and str(devis.company_id) == str(item.salle.company_id):
             payload.update({
                 'reference': devis.reference,
                 'statut': devis.statut,
                 'total_ttc': str(display_totals(devis)['total']),
-                'proposal_path': f'/api/django/ventes/devis/{devis.pk}/proposal/',
             })
+            # Le lien public est OMIS plutôt que fabriqué si sa résolution
+            # échoue : mieux vaut aucune clé qu'un lien mort (Done « ou rien
+            # du tout »).
+            try:
+                payload['proposal_path'] = url_proposition(devis)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                pass
         else:
             payload['reference'] = None
     else:
