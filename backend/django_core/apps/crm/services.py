@@ -103,6 +103,35 @@ def _emit_stage_changed(lead, old_stage, new_stage, user=None):
             getattr(lead, 'pk', '?'), exc_info=True)
 
 
+def appliquer_stage_lead(lead, nouveau_stage, *, user=None):
+    """CRX20 — Point de passage CANONIQUE de toute écriture de ``Lead.stage``.
+
+    Écrit l'étape (``save(update_fields=['stage'])``) PUIS émet
+    ``core.events.lead_stage_changed`` via :func:`_emit_stage_changed`, de
+    sorte qu'aucun chemin ne puisse plus déplacer un lead « en muet » (les
+    récepteurs playbook NTCRM12 et séquences compta XMKT1 s'abonnent à ce
+    signal — un chemin muet les prive silencieusement de leur déclencheur).
+
+    Ne journalise RIEN dans le chatter : chaque appelant garde sa propre
+    écriture d'historique (note système, ``activity.log_bulk_change``…), qui
+    diffère d'un point d'entrée à l'autre.
+
+    ``nouveau_stage`` doit être une clé canonique de STAGES.py — jamais un
+    littéral inventé. No-op si l'étape ne change pas.
+
+    Renvoie ``True`` si l'étape a effectivement changé, ``False`` sinon.
+    Point d'entrée PUBLIC : ``apps.ventes`` l'appelle pour l'expiration des
+    devis (jamais un import des models crm depuis ventes).
+    """
+    ancien_stage = lead.stage
+    if ancien_stage == nouveau_stage:
+        return False
+    lead.stage = nouveau_stage
+    lead.save(update_fields=['stage'])
+    _emit_stage_changed(lead, ancien_stage, nouveau_stage, user=user)
+    return True
+
+
 def _playbook_correspond_au_lead(playbook, lead):
     """NTCRM26 — ``playbook.condition`` matche-t-il ce lead ? ``None``/vide =
     playbook universel (comportement historique) — toujours ``True``.
@@ -2317,8 +2346,9 @@ def avancer_stage_sur_ouverture_devis(lead) -> bool:
         return False  # déjà à FOLLOW_UP ou plus avancé (jamais en arrière).
 
     ancien_stage = lead.stage
-    lead.stage = cible
-    lead.save(update_fields=['stage'])
+    # CRX20 — chemin canonique : écrit ET émet ``lead_stage_changed`` (ce
+    # point d'entrée était muet, les playbooks/séquences ne partaient pas).
+    appliquer_stage_lead(lead, cible, user=None)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.MODIFICATION,
@@ -3079,8 +3109,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                     skip(lead, "étape déjà atteinte ou recul non autorisé")
                     continue
                 old = lead.stage
-                lead.stage = target_stage
-                lead.save(update_fields=['stage'])
+                # CRX20 — chemin canonique : le bulk émet enfin
+                # ``lead_stage_changed`` (playbooks NTCRM12 + séquences compta
+                # XMKT1 partaient pour un PATCH unitaire, jamais pour un bulk).
+                appliquer_stage_lead(lead, target_stage, user=user)
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
                 # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
                 # (pas de devis accepté associé ni d'attribution UTM disponible).
