@@ -39,6 +39,35 @@ from .. import field_capture  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+
+# AUD324 — préchargements communs aux écrans de DISPATCH d'intervention
+# (kanban, calendrier FG68, « Ma tournée » FG73).
+#
+# `InterventionSerializer` porte 5 `SerializerMethodField` sans eager-loading :
+# `equipe_noms` (M2M), `preparation_completion` / `preparation_confirmee`
+# (OneToOne inverse, jamais préchargé), `reserves_ouvertes` (COUNT sur FK
+# inverse) et `photos_obligatoires_manquantes` (shot-list — mémoïsée côté
+# serializer). Sans ces préchargements, charger ~50 interventions déclenchait
+# 150-250 requêtes additionnelles sur l'écran de dispatch quotidien le plus
+# consulté. Le `Prefetch` des réserves est déjà FILTRÉ sur OUVERTE et déposé
+# sur un attribut dédié : le serializer en lit la longueur au lieu de refaire
+# un COUNT par intervention.
+RESERVES_OUVERTES_ATTR = '_reserves_ouvertes_prefetch'
+
+
+def dispatch_prefetches():
+    from django.db.models import Prefetch
+    return (
+        'equipe',
+        'preparation__materiel',
+        'preparation__outils',
+        Prefetch(
+            'reserves',
+            queryset=Reserve.objects.filter(statut=Reserve.Statut.OUVERTE),
+            to_attr=RESERVES_OUVERTES_ATTR),
+    )
+
+
 # Types d'intervention par défaut (clés = Intervention.Type), tous « système ».
 _DEFAULT_TYPES_INTERVENTION = [
     ('pose', 'Pose'),
@@ -116,9 +145,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
     la société ; l'acteur et la société sont posés côté serveur."""
+    # AUD324 — le kanban/la liste sérialisent l'InterventionSerializer complet :
+    # les préchargements de dispatch (préparation, réserves ouvertes) rejoignent
+    # `equipe`, sinon chaque intervention tirait ses propres requêtes.
     queryset = Intervention.objects.select_related(
         'installation', 'installation__client', 'installation__devis',
-        'technicien', 'camionnette').prefetch_related('equipe').all()
+        'technicien', 'camionnette').prefetch_related(
+            *dispatch_prefetches()).all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = [
@@ -368,6 +401,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if technicien is not None:
             self._verifier_habilitation_ou_lever(
                 company, technicien, type_intervention)
+        # AUD317 — `statut` était directement ÉCRIVABLE au corps
+        # (`fields='__all__'`) SANS aucune garde ni effet : créer une
+        # intervention directement en « terminee » contournait la garde F8
+        # (photo obligatoire par créneau) et n'émettait jamais
+        # `intervention_completed` — le ticket SAV lié restait OUVERT alors que
+        # le webhook public `intervention.completed` partait quand même. On
+        # crée donc TOUJOURS au statut par défaut, puis on route la transition
+        # demandée par le service unique.
+        statut_demande = serializer.validated_data.pop('statut', None)
         interv = serializer.save(company=company, created_by=self.request.user)
         # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
         # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
@@ -399,20 +441,35 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 installation, self.request.user,
                 f"Intervention ajoutée : "
                 f"{interv.get_type_intervention_display()}")
+        # AUD317 — la transition demandée à la création passe par le service
+        # unique : mêmes gardes et MÊME cascade que le PATCH.
+        if statut_demande is not None and statut_demande != interv.statut:
+            from rest_framework.exceptions import ValidationError
+            from ..services import (
+                TransitionRefusee, changer_statut_intervention,
+            )
+            try:
+                changer_statut_intervention(
+                    interv, statut_demande, self.request.user)
+            except TransitionRefusee as exc:
+                raise ValidationError({'statut': exc.raisons})
 
     def perform_update(self, serializer):
+        """ADAPTATEUR (AUD317) — le statut passe par le service unique.
+
+        Le statut est RETIRÉ du payload validé et confié à
+        `services.changer_statut_intervention`, seul porteur de la garde
+        F5/F8/ZFSM1 ET de la chaîne d'effets (`_stamp_date_realisee`, chatter
+        chantier, `intervention_completed` YSERV2, `ensure_lien_rapport_token`
+        ZFSM2) — la même que la création et la synchro terrain obtiennent
+        désormais."""
         from rest_framework.exceptions import ValidationError
+        from ..services import (
+            TransitionRefusee, changer_statut_intervention,
+        )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
-        # F5/F8 — garde de transition de statut PROPRE à l'intervention :
-        # quitter « À préparer » exige « Tout est chargé » (F5) ; atteindre
-        # « Terminée » exige une photo par créneau obligatoire (F8). Ne lit/écrit
-        # JAMAIS le statut chantier ni STAGES.py.
-        new_statut = serializer.validated_data.get('statut', old.statut)
-        if new_statut != old.statut:
-            reason = field_services.transition_block_reason(old, new_statut)
-            if reason:
-                raise ValidationError({'statut': reason})
+        nouveau_statut = serializer.validated_data.pop('statut', None)
         # YHIRE9 — garde d'habilitation à l'AFFECTATION : seulement quand le
         # technicien CHANGE (pas de bruit sur une simple modification d'une
         # intervention déjà correctement affectée).
@@ -424,33 +481,55 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 self.request.user.company, new_technicien,
                 serializer.validated_data.get(
                     'type_intervention', old.type_intervention))
-        interv = serializer.save()
-        # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
-        self._stamp_date_realisee(interv)
-        # F3 — journalise les changements (dont le statut) dans le chatter
-        # PROPRE de l'intervention. Ne touche JAMAIS le statut du chantier.
-        intervention_activity.log_changes(old, interv, self.request.user)
-        # Édition d'intervention → trace au chatter du CHANTIER (la création
-        # l'était déjà ; l'édition ne l'était pas).
-        if interv.installation_id:
-            activity.log_note(
-                interv.installation, self.request.user,
-                f"Intervention modifiée : "
-                f"{interv.get_type_intervention_display()}")
-        # YSERV2 — passage à TERMINEE/VALIDEE (nouveau) : émet
-        # intervention_completed sur le bus (core/events.py). sav s'y abonne
-        # pour avancer un ticket lié — installations n'importe jamais sav.
-        if (old.statut not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
-                and interv.statut in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)):
-            from core.events import intervention_completed
-            intervention_completed.send(
-                sender=Intervention, intervention=interv,
-                company=self.request.user.company, user=self.request.user)
-        # ZFSM2 — génère le jeton du lien public « compte-rendu signé » à la
-        # validation de l'intervention (lazy, idempotent : ne régénère jamais).
-        if (old.statut != Intervention.Statut.VALIDEE
-                and interv.statut == Intervention.Statut.VALIDEE):
-            interv.ensure_lien_rapport_token()
+        from django.db import transaction
+        with transaction.atomic():
+            interv = serializer.save()
+            if nouveau_statut is None or nouveau_statut == old.statut:
+                # Pas de transition : effets « édition » inchangés.
+                self._stamp_date_realisee(interv)
+                intervention_activity.log_changes(
+                    old, interv, self.request.user)
+                if interv.installation_id:
+                    activity.log_note(
+                        interv.installation, self.request.user,
+                        f"Intervention modifiée : "
+                        f"{interv.get_type_intervention_display()}")
+                return
+            try:
+                changer_statut_intervention(
+                    interv, nouveau_statut, self.request.user)
+            except TransitionRefusee as exc:
+                raise ValidationError({'statut': exc.raisons})
+
+    def destroy_guard_message(self, interv):
+        """AUD302 — message FR de blocage de la suppression, ou None.
+
+        Une intervention SIGNÉE par le client ou VALIDÉE est une pièce de
+        preuve (compte-rendu signé servi par le lien public ZFSM2, base de la
+        facturation ZFSM4) : elle ne se détruit plus."""
+        if (interv.signature_client or '').strip():
+            return ("Cette intervention porte la signature du client : le "
+                    "compte-rendu signé ne peut plus être supprimé.")
+        if interv.statut == Intervention.Statut.VALIDEE:
+            return ("Cette intervention est VALIDÉE : elle ne peut plus être "
+                    "supprimée. Reprenez-la en « Terminée » si elle doit être "
+                    "corrigée.")
+        return None
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD302 — garde de suppression (patron ``UsageGuardedDestroyMixin``).
+
+        Le mixin lui-même n'est PAS appliqué ici : il écrirait une SECONDE
+        ligne ``AuditLog`` DELETE, car ``('installations', 'Intervention')``
+        EST déjà dans ``apps.audit.signals.TRACKED_MODELS`` (contrairement à
+        ``CommissioningRecord`` et ``PreuveLivraison``) — le signal générique
+        `post_delete` journalise donc déjà toute suppression autorisée. Seule
+        la garde manquait."""
+        message = self.destroy_guard_message(self.get_object())
+        if message:
+            return Response({'detail': message},
+                            status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
@@ -1796,10 +1875,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # AUD324 — le calendrier construisait son propre queryset SANS le
+        # moindre prefetch, alors qu'il sérialise l'InterventionSerializer
+        # complet : `equipe` (M2M), `preparation` (OneToOne inverse) et le
+        # compte des réserves ouvertes tiraient chacun une requête PAR
+        # intervention sur l'écran de dispatch le plus consulté.
         qs = qs.select_related(
             'technicien', 'installation', 'installation__client',
             'camionnette',
-        ).order_by('date_prevue', 'id')
+        ).prefetch_related(*dispatch_prefetches()).order_by('date_prevue', 'id')
         # Regrouper par technicien
         from collections import defaultdict
         by_tech = defaultdict(list)
@@ -1879,7 +1963,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
               .filter(company=company, technicien=request.user, date_prevue=jour)
               .select_related('installation', 'installation__client',
                               'technicien', 'camionnette')
-              .prefetch_related('equipe'))
+              # AUD324 — mêmes préchargements que le kanban/le calendrier.
+              .prefetch_related(*dispatch_prefetches()))
         intervs = list(qs)
         if not intervs:
             return Response({'date': jour, 'stops': []})

@@ -247,3 +247,78 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         company, client_id = _scope(request)
         return Response(
             {'results': livraisons_client_portail(company, client_id)})
+
+    @extend_schema(responses=inline_serializer(
+        name='MesLivraisonsPortailPreuve',
+        fields={
+            'livraison_id': serializers.IntegerField(),
+            'livraison_reference': serializers.CharField(),
+            'signataire_nom': serializers.CharField(allow_null=True),
+            'signature_image': serializers.CharField(allow_null=True),
+            'horodatage': serializers.DateTimeField(allow_null=True),
+            'note': serializers.CharField(allow_null=True),
+            'gps_lat': serializers.CharField(allow_null=True),
+            'gps_lng': serializers.CharField(allow_null=True),
+            'photo_url': serializers.CharField(allow_null=True),
+        }))
+    @action(detail=True, methods=['get'], url_path='preuve')
+    def preuve(self, request, pk=None):
+        """AUD301 — preuve de livraison (FG330) CONSULTABLE par le client.
+
+        Le lien « Voir la preuve de livraison » du portail pointait vers
+        l'endpoint INTERNE ``/installations/preuves-livraison/<id>/``
+        (``IsAnyRole``, qui exclut explicitement ``portee != 'interne'``) : un
+        compte ``portail_client`` obtenait 403 à CHAQUE clic. Ici, le client
+        est dérivé du compte CONNECTÉ (jamais d'un paramètre) et la lecture
+        passe par ``apps.installations.selectors`` — jamais un import de ses
+        modèles. Une livraison d'un autre client (ou d'une autre société) est
+        INTROUVABLE : 404, jamais « trouvée puis refusée »."""
+        from apps.installations.selectors import (
+            preuve_livraison_client_portail,
+        )
+        company, client_id = _scope(request)
+        preuve = preuve_livraison_client_portail(company, client_id, pk)
+        if preuve is None:
+            return Response({'detail': 'Preuve de livraison introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        preuve.pop('photo_attachment_id', None)
+        return Response(preuve)
+
+    @action(detail=True, methods=['get'], url_path='preuve-photo')
+    def preuve_photo(self, request, pk=None):
+        """AUD301 — sert la PHOTO de la preuve de livraison, en ligne.
+
+        L'endpoint générique ``records/attachments/<id>/download/`` est
+        ``IsAnyRole`` : il rejouerait exactement le 403 que cette tâche
+        corrige. On relaie donc le fichier ici, sous la MÊME garde de portée et
+        le MÊME scope client que ``preuve``. ``apps.records`` est une app de
+        FONDATION (import direct autorisé) ; le scope, lui, vient du sélecteur
+        installations."""
+        from django.http import HttpResponse
+        from apps.installations.selectors import (
+            preuve_livraison_client_portail,
+        )
+        from apps.records.models import Attachment
+        from apps.records.storage import fetch_attachment
+
+        company, client_id = _scope(request)
+        preuve = preuve_livraison_client_portail(company, client_id, pk)
+        attachment_id = (preuve or {}).get('photo_attachment_id')
+        if not attachment_id:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        att = Attachment.objects.filter(
+            id=attachment_id, company=company).first()
+        if att is None:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(att.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(
+            data, content_type=att.mime or 'application/octet-stream')
+        nom = (att.filename or 'preuve-livraison').replace('"', '')
+        resp['Content-Disposition'] = f'inline; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp

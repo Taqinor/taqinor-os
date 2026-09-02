@@ -95,6 +95,23 @@ class JalonProjet(models.Model):
         indexes = [
             models.Index(fields=['company', 'installation']),
         ]
+        # AUD321 — un jalon de PHASE TYPE est unique par chantier.
+        # `services.notifier_reception_solde_a_facturer` crée le jalon
+        # RECEPTION par `get_or_create`, mais `get_or_create` n'est
+        # course-safe QUE si la base porte la contrainte : sa reprise
+        # (IntegrityError → re-`get`) n'a rien à intercepter sans elle. Deux
+        # PATCH quasi-simultanés faisant passer le même chantier à RECEPTIONNE
+        # (double submit, retry) passaient donc tous deux la lecture et
+        # créaient DEUX lignes RECEPTION divergentes — dont une seule portait
+        # le drapeau d'idempotence `rappel_facturation_envoye`.
+        # La condition laisse les jalons AD HOC libres : `phase` vide ou NULL
+        # (`NOT (phase = '')` vaut NULL pour un NULL) n'entre pas dans l'index.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['installation', 'phase'],
+                name='uniq_jalonprojet_installation_phase',
+                condition=~models.Q(phase='')),
+        ]
 
     def __str__(self):
         return f'{self.installation_id} · {self.libelle}'

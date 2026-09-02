@@ -2473,6 +2473,8 @@
 - frontend/src/api/installationsApi.js :: deleteRecurrenceIntervention -> /api/django/installations/recurrences-intervention/<>  [RecurrenceInterventionSerializer]
     champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
     regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
+- frontend/src/api/installationsApi.js :: deleteStageChantier -> /api/django/installations/etapes-chantier/<>  [StageModeleSerializer]
+    champs: actif, bloquant, cle, exige_checklist, exige_dossier, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, protege, statut_legacy, statut_legacy_display
 - frontend/src/api/installationsApi.js :: deleteTransporteur -> /api/django/installations/transporteurs/<>  [TransporteurSerializer]
     champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
     type_transporteur ∈ {interne, tiers}
@@ -2637,6 +2639,8 @@
     statut ∈ {en_cours, planifie, termine}
 - frontend/src/api/installationsApi.js :: getSeuilsApprobationBcf -> /api/django/installations/seuils-approbation-bcf  [SeuilApprobationBCFSerializer]
     champs: actif, date_creation, date_modification, id, seuil_responsable
+- frontend/src/api/installationsApi.js :: getStagesChantier -> /api/django/installations/etapes-chantier  [StageModeleSerializer]
+    champs: actif, bloquant, cle, exige_checklist, exige_dossier, exige_materiel, exige_pack, exige_photos, exige_series, exige_tests, id, libelle, ordre, protege, statut_legacy, statut_legacy_display
 - frontend/src/api/installationsApi.js :: getTransporteurs -> /api/django/installations/transporteurs  [TransporteurSerializer]
     champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
     type_transporteur ∈ {interne, tiers}
