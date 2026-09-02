@@ -452,6 +452,36 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 and interv.statut == Intervention.Statut.VALIDEE):
             interv.ensure_lien_rapport_token()
 
+    def destroy_guard_message(self, interv):
+        """AUD302 — message FR de blocage de la suppression, ou None.
+
+        Une intervention SIGNÉE par le client ou VALIDÉE est une pièce de
+        preuve (compte-rendu signé servi par le lien public ZFSM2, base de la
+        facturation ZFSM4) : elle ne se détruit plus."""
+        if (interv.signature_client or '').strip():
+            return ("Cette intervention porte la signature du client : le "
+                    "compte-rendu signé ne peut plus être supprimé.")
+        if interv.statut == Intervention.Statut.VALIDEE:
+            return ("Cette intervention est VALIDÉE : elle ne peut plus être "
+                    "supprimée. Reprenez-la en « Terminée » si elle doit être "
+                    "corrigée.")
+        return None
+
+    def destroy(self, request, *args, **kwargs):
+        """AUD302 — garde de suppression (patron ``UsageGuardedDestroyMixin``).
+
+        Le mixin lui-même n'est PAS appliqué ici : il écrirait une SECONDE
+        ligne ``AuditLog`` DELETE, car ``('installations', 'Intervention')``
+        EST déjà dans ``apps.audit.signals.TRACKED_MODELS`` (contrairement à
+        ``CommissioningRecord`` et ``PreuveLivraison``) — le signal générique
+        `post_delete` journalise donc déjà toute suppression autorisée. Seule
+        la garde manquait."""
+        message = self.destroy_guard_message(self.get_object())
+        if message:
+            return Response({'detail': message},
+                            status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
         installation = instance.installation

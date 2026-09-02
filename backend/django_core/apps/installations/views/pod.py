@@ -12,6 +12,7 @@ from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import PreuveLivraison
 from ..serializers import PreuveLivraisonSerializer
@@ -19,9 +20,17 @@ from ..serializers import PreuveLivraisonSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PreuveLivraisonViewSet(CompanyScopedModelViewSet):
+class PreuveLivraisonViewSet(UsageGuardedDestroyMixin,
+                             CompanyScopedModelViewSet):
     """FG330 — preuves de livraison. Lecture tout rôle, écriture
-    responsable/admin. Filtrable par `livraison`."""
+    responsable/admin. Filtrable par `livraison`.
+
+    AUD302 — le ``destroy`` nu de DRF laissait détruire définitivement une
+    preuve de livraison SIGNÉE (signature du client + horodatage capturés),
+    sans une seule ligne au Journal. Le mixin apporte la garde 409 en français
+    et la trace ``AuditLog`` de toute suppression restant autorisée (ce modèle
+    n'est pas dans ``TRACKED_MODELS`` — le mixin est le SEUL endroit qui la
+    pose)."""
     queryset = PreuveLivraison.objects.select_related(
         'livraison', 'photo', 'created_by').all()
     serializer_class = PreuveLivraisonSerializer
@@ -30,6 +39,15 @@ class PreuveLivraisonViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+    def destroy_guard_message(self, preuve):
+        signee = bool((preuve.signature_data or '').strip()
+                      or (preuve.signataire_nom or '').strip())
+        if signee and preuve.horodatage is not None:
+            return ("Cette preuve de livraison est signée et horodatée : "
+                    "elle atteste la remise au client et ne peut plus être "
+                    "supprimée.")
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()

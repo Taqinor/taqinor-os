@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import CommissioningRecord, CommissioningIVReading
 from ..serializers_commissioning import (
@@ -23,9 +24,18 @@ from ..serializers_commissioning import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class CommissioningRecordViewSet(CompanyScopedModelViewSet):
+class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
+                                 CompanyScopedModelViewSet):
     """CH3 — fiches de recette IEC 62446-1. Lecture tout rôle, écriture
-    Responsable/Admin. Filtrable par ``?installation=<id>``."""
+    Responsable/Admin. Filtrable par ``?installation=<id>``.
+
+    AUD302 — le ``destroy`` nu de DRF laissait un simple Responsable/Admin
+    détruire définitivement une fiche PASSÉE (conforme / conforme avec
+    réserves), c'est-à-dire la preuve de conformité qui débloque le gate
+    « Mise en service » (CH2), sans une seule ligne au Journal. Le mixin
+    apporte les deux : la garde 409 en français et la trace ``AuditLog`` de
+    toute suppression restant autorisée (ce modèle n'est pas dans
+    ``TRACKED_MODELS`` — le mixin est donc le SEUL endroit qui la pose)."""
     queryset = CommissioningRecord.objects.select_related(
         'installation').prefetch_related('iv_readings').all()
     serializer_class = CommissioningRecordSerializer
@@ -34,6 +44,14 @@ class CommissioningRecordViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+    def destroy_guard_message(self, record):
+        if record.passe:
+            return ("Cette fiche de recette IEC 62446-1 est PASSÉE "
+                    f"({record.get_resultat_display()}) : elle atteste la "
+                    "conformité du chantier et ne peut plus être supprimée. "
+                    "Corrigez son résultat si la recette doit être refaite.")
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()
