@@ -1,0 +1,18 @@
+# SOL4 — arêtes « app gardée → app parquée » TOLÉRÉES, avec leur justification.
+#
+# Format : chemin/relatif/au/depot.py | jeton   # pourquoi c'est inoffensif
+#   - jeton = le module importé (IMPORT), le « label.modele » (REF_CHAINE) ou
+#     le label d'app (MIGRATION).
+#   - VOLONTAIREMENT sans numéro de ligne : une allowlist file:line se périme
+#     dès qu'une ligne bouge (classe de bug #34). Seul le couple
+#     (fichier, symbole) compte.
+#
+# Une entrée devenue inutile (l'arête n'existe plus) fait ÉCHOUER la garde :
+# l'allowlist ne peut donc pas pourrir silencieusement.
+#
+# N'ajouter une ligne ici que si l'arête est PROUVÉE inatteignable en édition
+# solaire — sinon, corriger l'arête.
+
+backend/django_core/apps/dataimport/services.py | apps.education.services  # SOL2(b) : import FONCTION-LOCAL dans la branche `target == 'eleves_education'`, rendue INATTEIGNABLE en édition solaire — `cibles_parquees_par_edition()` retire la cible de `TARGETS`, donc le commit est refusé en amont (« cible inconnue »). Prouvé par apps/dataimport/test_sol2_cibles_parquees.py.
+
+backend/django_core/core/platform_coverage.py | mrp.ordrefabrication  # SOL15 : chaîne de DONNÉES d'une baseline de dérive (couple modèle/règle), jamais résolue en modèle Django. En édition solaire l'entrée devient simplement inutilisée — `nouvelles_derives()` ne compare la baseline qu'aux manifestes RÉELLEMENT chargés.
