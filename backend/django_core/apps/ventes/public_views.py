@@ -563,6 +563,22 @@ def public_document(request, token):
     if link.devis_id and not _section_servie(link, 'pdf'):
         return _not_found()
 
+    # ── QJR417 (DR2, lectures) — LA FENÊTRE OUVERTE À CÔTÉ DE LA PORTE FERMÉE.
+    # ``proposal_data``, ``proposal_pdf`` (deux sites) et ``proposal_accept``
+    # consultaient déjà ``otp_lecture_verified`` ; CE flux servait le PDF
+    # CLIENT COMPLET avec le MÊME jeton ShareLink sans jamais la consulter —
+    # le code d'accès posé sur le lien (L-NIV/QJR132) ne protégeait donc que
+    # la page, pas le document. DR2 tranche : la garde couvre LES 4 LECTURES.
+    # C'est la garde EXISTANTE, appelée telle quelle (aucun second helper,
+    # règle permanente 2), posée AVANT tout effet de bord (stamp de vue) :
+    # une tentative non vérifiée ne compte pas comme une consultation.
+    # L-INTPREV — le jeton interne dispense de l'OTP (c'est le commercial),
+    # exactement comme sur les trois autres lectures.
+    from .services import otp_lecture_verified
+    if not via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
     # de stamp/notification via le jeton interne (via_interne=True → toujours
     # False, voir _stamp_view_si_public).
@@ -4087,9 +4103,20 @@ def suivi_public(request, token):
     celui du lien déjà résolu (le MÊME document), sans lui apprendre un second
     espace de jetons."""
     from .selectors import devis_milestones
-    link, _via_interne = _resolve_share_link_by_token(token)
+    link, via_interne = _resolve_share_link_by_token(token)
     if link is None or not link.devis_id:
         return _not_found()
+
+    # ── QJR417 (DR2, lectures) — L'ORPHELIN. Cette lecture publique servait le
+    # suivi post-signature du client (jalons, dates, avancement) avec le MÊME
+    # jeton ShareLink sans jamais consulter la garde OTP que les trois autres
+    # lectures exigent. DR2 tranche : la garde couvre LES 4 LECTURES. Même
+    # fonction partagée, même ordre (garde d'abord) — aucun second helper.
+    from .services import otp_lecture_verified
+    if not via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     data = devis_milestones(link.token)
     if data is None:
         return _not_found()
