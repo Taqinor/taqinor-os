@@ -632,7 +632,11 @@ def totaux_affichage_repli(devis) -> dict:
         devis, filter_lines_for_option(lignes, SANS_BATTERIE))
     avec = _totaux_canoniques(
         devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
-    mono = option_du_scenario_mono(scenario_declare(devis))
+    # QJR401 / DR1 — le repli suit lui aussi l'option SIGNÉE : sans cela, le
+    # jour où le moteur lève, la liste réafficherait le prix de l'option NON
+    # signée sur un devis déjà accepté.
+    mono = (getattr(devis, 'option_acceptee', '') or ''
+            or option_du_scenario_mono(scenario_declare(devis)))
     if mono == SANS_BATTERIE:
         return {'total': float(sans['ttc']), 'nb_options': 1}
     if mono == AVEC_BATTERIE:

@@ -1260,6 +1260,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     deux_options = _deux_options_paniers(
         sans_ok, avec_ok, alternative_declaree=alternative_declaree,
         variantes=_variantes_declarees)
+    # QJR401 — LE VERDICT **STRUCTUREL**, figé AVANT tout rétrécissement de
+    # confort (QF6 / L-VAR) : c'est exactement la question que pose le noyau
+    # monnaie (« ce devis porte-t-il deux paniers distincts ? »), donc la
+    # condition sous laquelle son filtre d'option s'applique.
+    _deux_options_structurel = deux_options
 
     if sans_ok and avec_ok and not deux_options:
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
@@ -1597,6 +1602,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     else:
         display_total = totaux_all["ttc"]
         nb_options = 1
+    # ── QJR401 / DR1 — APRÈS SIGNATURE, L'ARGENT AFFICHÉ SUIT L'OPTION SIGNÉE ─
+    #
+    # CE QUI ÉTAIT FAUX. Ce bloc ne lisait NI ``Devis.option_acceptee`` NI
+    # ``Devis.statut`` : sa sortie était octet-pour-octet la même avant et
+    # après la signature, et ``display_total`` restait ``totaux_avec`` dès
+    # qu'il y avait deux options. Pendant ce temps le noyau monnaie
+    # (``utils.options.option_effective``) faisait suivre l'acceptation à
+    # ``Devis.total_ttc``, au solde, à l'échéancier, à la commission et à la
+    # nomenclature : le client signait « Sans batterie » et l'ERP continuait
+    # d'AFFICHER le prix « Avec » — sur la liste, le Kanban, le tableau de
+    # bord, la page publique des gammes ET la salle de vente publique, qui
+    # héritent TOUTES de cette source (aucun écran n'est touché).
+    #
+    # AVANT signature, RIEN NE CHANGE (DR1) : c'est l'option mise en avant qui
+    # s'affiche, exactement comme aujourd'hui — la condition est l'existence
+    # d'une option ACCEPTÉE, la même que celle du noyau.
+    #
+    # Le rétrécissement se limite au MONTANT AFFICHÉ : le document composé par
+    # le commercial continue de rendre ses deux options (L-VAR — signer n'est
+    # pas un choix de lecture).
+    from apps.ventes.utils.options import AVEC_BATTERIE as _SIGNE_AVEC
+    from apps.ventes.utils.options import SANS_BATTERIE as _SIGNE_SANS
+    _option_signee = getattr(devis, 'option_acceptee', '') or ''
+    if _option_signee and _deux_options_structurel:
+        if _option_signee == _SIGNE_SANS:
+            display_total = totaux_sans["ttc"]
+        elif _option_signee == _SIGNE_AVEC:
+            display_total = totaux_avec["ttc"]
     total_sans = totaux_sans["ttc"]
     total_avec = totaux_avec["ttc"]
     total_sans_before = totaux_sans["ttc_avant"]
