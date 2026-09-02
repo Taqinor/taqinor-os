@@ -2,9 +2,11 @@
 
 Shopify/WooCommerce livrent le webhook « commande payée » en POST, signé
 HMAC (jamais de session/JWT côté plateforme externe). La signature EST
-l'authentification : sans secret configuré, ``verify_webhook_hmac``/
-``verify_webhook_signature`` renvoient toujours ``False`` — 401, jamais un
-traitement en clair.
+l'authentification ET (AUD212) la DÉSIGNATION DU TENANT : chaque
+``ConnexionEcommerce`` porte son propre secret, et seule celle dont le secret
+valide le corps brut traite la commande. Aucune connexion signataire — secret
+absent, secret faux, en-tête absent — ⇒ 401, jamais un traitement en clair et
+jamais une société déduite d'un en-tête fourni par l'appelant.
 """
 import json
 
@@ -67,17 +69,15 @@ class EcommerceWebhookThrottle(SimpleRateThrottle):
         }
 
 
-def _company_from_boutique_url(plateforme, url_fragment):
-    """Résout la société propriétaire d'une connexion (Shopify/WooCommerce)
-    par fragment d'URL de boutique. Lecture seule, jamais d'exception —
-    ``None`` si introuvable."""
-    from .models import ConnexionEcommerce
-    if not url_fragment:
-        return None
-    connexion = ConnexionEcommerce.objects.filter(
-        plateforme=plateforme, boutique_url__icontains=url_fragment, actif=True,
-    ).select_related('company').first()
-    return connexion.company if connexion else None
+# AUD212 — `_company_from_boutique_url` a été SUPPRIMÉE. Elle résolvait le
+# tenant depuis un en-tête CLIENT (`X-Shopify-Shop-Domain` /
+# `X-WC-Webhook-Source`) par un `boutique_url__icontains` + `.first()` sans
+# ordre déterministe, alors que le secret HMAC était une variable `.env`
+# UNIQUE pour toute la plateforme : la société A pouvait signer un POST avec
+# le secret qu'elle connaît légitimement et le faire atterrir chez B en
+# changeant l'en-tête. Le tenant vient désormais EXCLUSIVEMENT de la
+# `ConnexionEcommerce` dont le secret PROPRE a validé la signature
+# (`common.connexion_par_signature`) — l'en-tête de boutique n'est plus lu.
 
 
 @extend_schema(request=None, responses={
@@ -104,7 +104,11 @@ def webhook_commande_shopify(request):
 
     raw_body = request.body
     hmac_header = request.META.get('HTTP_X_SHOPIFY_HMAC_SHA256', '')
-    if not shopify.verify_webhook_hmac(raw_body, hmac_header):
+    # AUD212 — la signature DÉSIGNE le tenant : seule la connexion dont le
+    # secret PROPRE valide ce corps brut est retenue. Aucun en-tête client
+    # n'entre dans cette résolution.
+    connexion = shopify.connexion_signataire(raw_body, hmac_header)
+    if connexion is None:
         return Response({'detail': 'Signature invalide.'},
                         status=status.HTTP_401_UNAUTHORIZED)
 
@@ -113,13 +117,6 @@ def webhook_commande_shopify(request):
     except (ValueError, TypeError):
         return Response({'detail': 'Payload JSON invalide.'},
                         status=status.HTTP_400_BAD_REQUEST)
-
-    shop_domain = request.META.get('HTTP_X_SHOPIFY_SHOP_DOMAIN', '')
-    company = _company_from_boutique_url(shopify.PLATEFORME, shop_domain)
-    if company is None:
-        # Boutique inconnue de ce dépôt : rien à faire, jamais une 500.
-        return Response({'detail': 'Boutique inconnue.'},
-                        status=status.HTTP_404_NOT_FOUND)
 
     # AUD202 — statut RÉEL avant tout traitement « payé » : une commande non
     # encaissée (pending/authorized) ou remboursée/annulée ne doit produire ni
@@ -152,7 +149,7 @@ def webhook_commande_shopify(request):
         if isinstance(li, dict)
     ]
     commande = shopify.traiter_webhook_commande(
-        company=company,
+        connexion=connexion,
         external_order_id=payload.get('id') or payload.get('order_number'),
         montant_ttc=payload.get('total_price') or '0',
         email_client=payload.get('email') or payload.get('contact_email') or '',
@@ -188,7 +185,10 @@ def webhook_commande_woocommerce(request):
 
     raw_body = request.body
     signature_header = request.META.get('HTTP_X_WC_WEBHOOK_SIGNATURE', '')
-    if not woocommerce.verify_webhook_signature(raw_body, signature_header):
+    # AUD212 — même règle que Shopify : le secret PROPRE de la connexion
+    # désigne le tenant, l'en-tête `X-WC-Webhook-Source` n'est plus lu.
+    connexion = woocommerce.connexion_signataire(raw_body, signature_header)
+    if connexion is None:
         return Response({'detail': 'Signature invalide.'},
                         status=status.HTTP_401_UNAUTHORIZED)
 
@@ -197,12 +197,6 @@ def webhook_commande_woocommerce(request):
     except (ValueError, TypeError):
         return Response({'detail': 'Payload JSON invalide.'},
                         status=status.HTTP_400_BAD_REQUEST)
-
-    source_url = request.META.get('HTTP_X_WC_WEBHOOK_SOURCE', '')
-    company = _company_from_boutique_url(woocommerce.PLATEFORME, source_url)
-    if company is None:
-        return Response({'detail': 'Boutique inconnue.'},
-                        status=status.HTTP_404_NOT_FOUND)
 
     # AUD202 — `order.updated` se déclenche à CHAQUE transition (y compris
     # `cancelled`/`refunded`) : sans ce test, une commande annulée créait une
@@ -231,7 +225,7 @@ def webhook_commande_woocommerce(request):
     ]
     billing = payload.get('billing') or {}
     commande = woocommerce.traiter_webhook_commande(
-        company=company,
+        connexion=connexion,
         external_order_id=payload.get('id') or payload.get('number'),
         montant_ttc=payload.get('total') or '0',
         email_client=billing.get('email') or '',

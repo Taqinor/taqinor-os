@@ -32,6 +32,18 @@ class ConnexionEcommerce(TenantModel):
     boutique_url = models.URLField(
         blank=True, default='',
         help_text="URL de la boutique (ex. https://ma-boutique.myshopify.com).")
+    # AUD212 — secret HMAC PROPRE à cette connexion. Il remplace la variable
+    # `.env` UNIQUE (`SHOPIFY_WEBHOOK_SECRET`/`WOOCOMMERCE_WEBHOOK_SECRET`)
+    # partagée par TOUTE la plateforme : avec un secret global, la société A
+    # pouvait forger un webhook signé et le faire atterrir chez B en changeant
+    # simplement l'en-tête de boutique. C'est désormais le secret qui DÉSIGNE
+    # le tenant (`common.connexion_par_signature`), jamais l'en-tête client.
+    # Vide = cette connexion n'accepte AUCUN webhook (fail-closed).
+    webhook_secret = models.CharField(
+        max_length=128, blank=True, default='',
+        help_text=(
+            'Secret HMAC-SHA256 propre à cette boutique (AUD212). Vide = '
+            "aucun webhook accepté. N'est exposé par aucune API."))
     actif = models.BooleanField(
         default=False,
         help_text=(

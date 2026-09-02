@@ -42,6 +42,39 @@ def verify_hmac_base64(secret, raw_body: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(computed, signature_header)
 
 
+def connexion_par_signature(plateforme, raw_body: bytes, signature_header: str):
+    """AUD212 — résout la ``ConnexionEcommerce`` dont le secret PROPRE valide
+    cette signature. C'est LE point d'entrée d'un webhook public.
+
+    Avant ce correctif, le secret HMAC était une variable ``.env`` UNIQUE pour
+    toute la plateforme et le tenant venait d'un en-tête CLIENT
+    (``X-Shopify-Shop-Domain`` / ``X-WC-Webhook-Source``, résolu par un
+    ``boutique_url__icontains`` non déterministe) : la société A, qui connaît
+    légitimement le secret partagé, pouvait signer un POST et le faire
+    atterrir — vraie Facture, vrai Paiement, vraie sortie de stock — dans le
+    tenant de B en changeant simplement l'en-tête. Désormais c'est le SECRET
+    qui désigne le tenant, et l'en-tête n'est plus lu du tout.
+
+    Fail-closed : ``None`` sans en-tête, sans connexion active, ou si aucun
+    secret ne valide. Une connexion sans secret n'accepte JAMAIS de webhook
+    (``verify_hmac_base64`` renvoie ``False`` sur secret vide) — la
+    comparaison reste en temps constant (``hmac.compare_digest``).
+    """
+    if not signature_header:
+        return None
+    connexions = (
+        ConnexionEcommerce.objects
+        .filter(plateforme=plateforme, actif=True)
+        .exclude(webhook_secret='')
+        .select_related('company')
+        .order_by('id'))
+    for connexion in connexions:
+        if verify_hmac_base64(
+                connexion.webhook_secret, raw_body, signature_header):
+            return connexion
+    return None
+
+
 # ── AUD202 — devise : l'ERP facture en MAD, JAMAIS dans la devise du panier ──
 # `facturation.Facture.devise` a pour défaut `'MAD'` (models.py, champ FG52) et
 # `creer_facture_classique` ne pose aucune devise : toute commande libellée dans

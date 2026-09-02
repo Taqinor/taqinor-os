@@ -44,11 +44,13 @@ class _Base(TestCase):
         self.connexion_woo = ConnexionEcommerce.objects.create(
             company=self.company,
             plateforme=ConnexionEcommerce.Plateforme.WOOCOMMERCE,
-            boutique_url=WOO_URL, actif=True)
+            boutique_url=WOO_URL, actif=True,
+            webhook_secret='secret-aud202-woo')
         self.connexion_shopify = ConnexionEcommerce.objects.create(
             company=self.company,
             plateforme=ConnexionEcommerce.Plateforme.SHOPIFY,
-            boutique_url=SHOP_URL, actif=True)
+            boutique_url=SHOP_URL, actif=True,
+            webhook_secret='secret-aud202-shop')
         self.client_crm = Client.objects.create(
             company=self.company, nom='Bennani', email='aud202@example.com')
         # Panneau PV : TVA 10 % (le taux imposé par `seed_catalogue`).
@@ -140,8 +142,7 @@ class TvaDeriveeDuProduitTests(_Base):
 
 
 @override_settings(
-    WOOCOMMERCE_CONSUMER_KEY='ck_fake', WOOCOMMERCE_CONSUMER_SECRET='cs_fake',
-    WOOCOMMERCE_WEBHOOK_SECRET='secret-aud202-woo')
+    WOOCOMMERCE_CONSUMER_KEY='ck_fake', WOOCOMMERCE_CONSUMER_SECRET='cs_fake')
 class StatutWooCommerceTests(_Base):
     """Défaut n°2 — `order.updated` n'est PAS un signal de paiement."""
 
@@ -214,8 +215,7 @@ class StatutWooCommerceTests(_Base):
         self.assertEqual(resp.status_code, 200)
 
 
-@override_settings(
-    SHOPIFY_ADMIN_TOKEN='fake-token', SHOPIFY_WEBHOOK_SECRET='secret-aud202-shop')
+@override_settings(SHOPIFY_ADMIN_TOKEN='fake-token')
 class StatutShopifyTests(_Base):
     """Défaut n°2 (versant Shopify) — `financial_status` est LU."""
 

@@ -142,16 +142,19 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     # NTRET18/19 — webhooks « commande payée » Shopify / WooCommerce. AllowAny
     # DÉLIBÉRÉ : l'appelant est la PLATEFORME e-commerce, pas un humain — elle
     # n'a ni session ni JWT ERP. L'authentification réelle est la SIGNATURE
-    # HMAC-SHA256 du corps brut, vérifiée AVANT tout traitement et avant tout
-    # accès base (``shopify.verify_webhook_hmac`` /
-    # ``woocommerce.verify_webhook_signature`` → ``common.verify_hmac_base64``,
+    # HMAC-SHA256 du corps brut, vérifiée AVANT tout traitement
+    # (``shopify.connexion_signataire`` / ``woocommerce.connexion_signataire``
+    # → ``common.connexion_par_signature`` → ``common.verify_hmac_base64``,
     # comparaison en temps constant via ``hmac.compare_digest``). Secret absent
-    # ou signature fausse ⇒ ``False`` (JAMAIS d'acceptation par défaut) ⇒ 401
-    # sans effet de bord ; connecteur non configuré ⇒ 503 no-op. La société est
-    # résolue depuis le domaine de boutique de l'en-tête plateforme, JAMAIS du
-    # corps, et le traitement est idempotent (clé connexion+external_order_id :
-    # un rejeu at-least-once ne crée pas deux factures). Throttlés 60/min par
-    # IP (``EcommerceWebhookThrottle``).
+    # ou signature fausse ⇒ aucune connexion signataire (JAMAIS d'acceptation
+    # par défaut) ⇒ 401 sans effet de bord ; connecteur non configuré ⇒ 503
+    # no-op. AUD212 — chaque ``ConnexionEcommerce`` porte son PROPRE secret et
+    # la société est celle de la connexion qui a validé la signature, JAMAIS
+    # déduite d'un en-tête de boutique fourni par l'appelant ni du corps ; le
+    # traitement est idempotent (clé connexion+external_order_id : un rejeu
+    # at-least-once ne crée pas deux factures). AUD202 — statut « payé » réel
+    # et devise vérifiés avant tout effet de bord. Throttlés 60/min par IP
+    # (``EcommerceWebhookThrottle``).
     "api/django/ecommerce-connect/shopify/webhook/commande/",
     "api/django/ecommerce-connect/woocommerce/webhook/commande/",
     "api/schema",                             # OpenAPI (si activé plus tard)

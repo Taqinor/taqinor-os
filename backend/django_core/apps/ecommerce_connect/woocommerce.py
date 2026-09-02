@@ -89,14 +89,15 @@ def sync_catalogue(company):
     return {'skipped': False, 'pushed': pushed, 'errors': errors}
 
 
-def verify_webhook_signature(raw_body: bytes, signature_header: str) -> bool:
-    """Vérifie la signature ``X-WC-Webhook-Signature`` (base64, HMAC-SHA256 —
-    même format que Shopify, voir ``common.verify_hmac_base64``).
+def connexion_signataire(raw_body: bytes, signature_header: str):
+    """AUD212 — ``ConnexionEcommerce`` WooCommerce dont le secret PROPRE valide
+    la signature ``X-WC-Webhook-Signature``, ou ``None``.
 
-    ``False`` sans secret configuré (jamais d'acceptation par défaut) OU sans
-    en-tête fourni."""
-    secret = getattr(settings, 'WOOCOMMERCE_WEBHOOK_SECRET', '') or ''
-    return common.verify_hmac_base64(secret, raw_body, signature_header)
+    Remplace l'ancien couple « ``verify_webhook_signature`` contre le secret
+    `.env` GLOBAL + société déduite de l'en-tête ``X-WC-Webhook-Source`` » :
+    le tenant vient maintenant de la connexion dont le secret a validé la
+    signature, jamais d'un en-tête client."""
+    return common.connexion_par_signature(PLATEFORME, raw_body, signature_header)
 
 
 # AUD202 — le topic WooCommerce câblé est `order.updated`, qui se déclenche à
@@ -115,16 +116,22 @@ def commande_est_payee(payload) -> bool:
     return statut in STATUTS_PAYES
 
 
-def traiter_webhook_commande(*, company, external_order_id, montant_ttc,
-                             email_client='', libelle='', lignes=None,
-                             user=None, payload_brut=None):
+def traiter_webhook_commande(*, connexion=None, company=None, external_order_id,
+                             montant_ttc, email_client='', libelle='',
+                             lignes=None, user=None, payload_brut=None):
     """NTRET19 — traite une commande WooCommerce PAYÉE (webhook), IDEMPOTENT.
 
     Normalise les arguments WooCommerce puis délègue le mapping
     commande→facture à ``common.traiter_commande_payee`` — logique PARTAGÉE
     avec ``shopify.traiter_webhook_commande`` (NTRET18), jamais dupliquée.
+
+    AUD212 — ``connexion`` (celle dont le secret a validé la signature) est la
+    SOURCE DE VÉRITÉ du tenant : c'est le seul argument que passe le webhook
+    public. ``company`` reste accepté pour les appelants INTERNES déjà scopés.
     """
-    connexion = common.connexion_active(company, PLATEFORME)
+    if connexion is None:
+        connexion = (common.connexion_active(company, PLATEFORME)
+                     if company is not None else None)
     if connexion is None:
         return None
     return common.traiter_commande_payee(
