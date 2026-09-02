@@ -107,8 +107,12 @@ def _alerter(client, entry, now):
     try:
         from apps.notifications.services import notify
 
+        # CRX27 — TYPE DÉDIÉ. Cette alerte empruntait la clé
+        # ``lead_assigned`` : couper « Nouveau lead assigné » dans ses
+        # préférences coupait donc AUSSI, sans le savoir, la détection des
+        # comptes dormants. Elle a désormais sa clé propre.
         notify(
-            owner, 'lead_assigned',
+            owner, 'compte_a_reactiver',
             f'Compte à réactiver : {nom}',
             body=body,
             link=f'/crm?client={client.pk}',
