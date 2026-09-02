@@ -43,6 +43,31 @@ class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
     ``IsResponsableOrAdmin``) et n'ajoute QUE l'action NTPRT2.
     """
 
+    def perform_update(self, serializer):
+        """AUD138 — La bascule « Actif » RÉVOQUE (ou rouvre) vraiment l'accès.
+
+        L'écran ERP PATCHe ``actif`` et annonce que la révocation « empêche la
+        prochaine connexion ». Jusqu'ici ce drapeau n'était lu que par le
+        chemin magic-link tokenisé : le compte utilisateur JWT (mécanisme
+        PRIMAIRE depuis NTPRT2) continuait d'accéder à tout. Le PATCH est donc
+        routé vers l'action serveur UNIQUE
+        ``services.revoquer_acces_client`` / ``reactiver_acces_client``, qui
+        ferme (ou rouvre) les DEUX portes dans la même transaction.
+
+        Posé sur cette sous-classe — la seule montée sous
+        ``/api/django/portail/comptes-portail/`` (PACT26) — pour ne pas créer
+        une arête ``compta.views -> portail.services`` de plus.
+        """
+        avant = bool(getattr(serializer.instance, 'actif', True))
+        compte = serializer.save()
+        apres = bool(compte.actif)
+        if apres == avant:
+            return
+        if apres:
+            services.reactiver_acces_client(compte.company, compte.client_id)
+        else:
+            services.revoquer_acces_client(compte.company, compte.client_id)
+
     @action(
         detail=True,
         methods=['post'],

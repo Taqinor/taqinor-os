@@ -187,3 +187,65 @@ def provisionner_compte_portail_client(company, client_id):
 
     _envoyer_identifiants_portail(user, mot_de_passe, company)
     return user, True
+
+
+# ── AUD138 — Révocation RÉELLE de l'accès portail d'un client ───────────────
+#
+# Avant AUD138, « révoquer » un compte portail ne posait que
+# ``ComptePortailClient.actif = False``. Or ce drapeau n'était lu QUE par le
+# chemin magic-link tokenisé (``compta.selectors.compte_portail_par_token``) :
+# le mécanisme d'accès PRIMAIRE depuis NTPRT2 est le ``CustomUser``
+# ``portee=portail_client`` + JWT, dont la garde ne le lisait jamais. Un client
+# « révoqué » continuait donc de consulter ses devis et ses factures avec le
+# jeton déjà émis.
+#
+# La révocation est désormais UNE action serveur qui, dans une transaction,
+# ferme les DEUX portes : le drapeau ``actif`` (magic-link) ET
+# ``CustomUser.is_active`` (JWT — SimpleJWT refuse un utilisateur inactif dès
+# l'authentification, y compris sur un jeton déjà distribué). La réactivation
+# est SYMÉTRIQUE et EXPLICITE : elle n'a lieu que sur cet appel-là, jamais en
+# effet de bord d'un re-provisionnement (cf. la politique ci-dessus).
+
+
+def _basculer_acces_portail_client(company, client_id, *, actif):
+    """Pose ``actif`` sur le compte portail ET ``is_active`` sur ses comptes
+    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``."""
+    from django.db import transaction
+
+    from authentication.models import CustomUser
+
+    from .models import ComptePortailClient
+
+    if company is None or not client_id:
+        return None, 0
+
+    with transaction.atomic():
+        compte = (
+            ComptePortailClient.objects
+            .select_for_update()
+            .filter(company=company, client_id=client_id)
+            .first()
+        )
+        if compte is not None and compte.actif != actif:
+            compte.actif = actif
+            compte.save(update_fields=['actif'])
+        nb = CustomUser.objects.filter(
+            company=company,
+            portee=CustomUser.PORTEE_PORTAIL_CLIENT,
+            portail_client_id=client_id,
+        ).update(is_active=actif)
+    return compte, nb
+
+
+def revoquer_acces_client(company, client_id):
+    """AUD138 — Ferme l'accès portail d'un client : magic-link ET compte JWT."""
+    return _basculer_acces_portail_client(company, client_id, actif=False)
+
+
+def reactiver_acces_client(company, client_id):
+    """AUD138 — Rouvre l'accès portail d'un client (action ADMIN explicite).
+
+    Symétrique de ``revoquer_acces_client`` : c'est le SEUL chemin qui
+    réactive un accès retiré — jamais un re-provisionnement silencieux.
+    """
+    return _basculer_acces_portail_client(company, client_id, actif=True)

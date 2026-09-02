@@ -6,6 +6,11 @@
 // « jamais de réactivation silencieuse d'un compte révoqué » (docstring
 // serveur) : cet écran ne fait QUE relayer l'action serveur, aucune logique
 // de réactivation côté client.
+// AUD138 — la bascule `actif` est routée côté serveur (`perform_update` de
+// `apps.portail.views.ComptePortailClientViewSet`) vers
+// `portail.services.revoquer_acces_client` / `reactiver_acces_client`, qui
+// ferment (ou rouvrent) le magic-link ET le compte utilisateur JWT. L'écran
+// n'a donc RIEN à faire de plus que le PATCH qu'il faisait déjà.
 import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { Plus, KeyRound } from 'lucide-react'
@@ -124,7 +129,8 @@ export default function ComptesPortailAdmin() {
         Un compte porte le jeton d'accès self-service d'un client. « Provisionner
         l'accès » crée le vrai compte utilisateur portail (mot de passe
         temporaire envoyé par email, jamais affiché ici). Révoquer un compte
-        (bascule Actif) empêche sa prochaine connexion.
+        (bascule Actif) ferme son accès IMMÉDIATEMENT — magic-link et compte
+        utilisateur, y compris une session déjà ouverte (AUD138).
       </p>
 
       <Card className="p-4">

@@ -118,11 +118,42 @@ class IsPortalScopedUser(BasePermission):
 #       filtre ``.filter(client_id=None)`` — ou pire, un filtre oublié — devient
 #       une fuite silencieuse.
 
+def acces_portail_revoque(user):
+    """AUD138 — Le compte portail CLIENT de ``user`` a-t-il été RÉVOQUÉ ?
+
+    Le drapeau ``ComptePortailClient.actif`` n'était lu que par le chemin
+    magic-link tokenisé : un client « révoqué » depuis l'écran ERP gardait un
+    accès complet par son ``CustomUser`` + JWT. On le lit donc aussi ici, en
+    COMPLÉMENT de la désactivation du compte utilisateur posée par
+    ``portail.services.revoquer_acces_client`` (ceinture et bretelles : la
+    garde reste juste même si un compte a été désactivé par un seul des deux
+    chemins).
+
+    Lecture via ``apps.portail.selectors`` (jamais ``apps.portail.models``) et
+    import FONCTION-LOCAL : ``apps.roles`` reste sans dépendance de démarrage.
+    Seule la portée ``portail_client`` porte un ``ComptePortailClient`` — les
+    portées fournisseur/partenaire ne sont donc jamais concernées.
+    """
+    if getattr(user, 'portee', PORTEE_INTERNE) != 'portail_client':
+        return False
+    from apps.portail.selectors import compte_portail_client_actif
+    etat = compte_portail_client_actif(
+        getattr(user, 'company_id', None),
+        getattr(user, 'portail_client_id', None),
+    )
+    # ``None`` = aucun compte portail enregistré : ce n'est PAS une révocation
+    # (cf. la docstring du sélecteur).
+    return etat is False
+
+
 class _IsPortalUserOfScope(BasePermission):
     """Base : compte portail de la portée EXACTE ``portee_requise``, rattaché."""
 
     portee_requise = None
     message = 'Accès réservé aux comptes du portail concerné.'
+    #: AUD138 — message servi quand l'accès a été explicitement révoqué.
+    message_revoque = ('Votre accès au portail a été révoqué. Contactez votre '
+                       'interlocuteur commercial.')
 
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)
@@ -130,7 +161,14 @@ class _IsPortalUserOfScope(BasePermission):
             return False
         if getattr(user, 'portee', PORTEE_INTERNE) != self.portee_requise:
             return False
-        return portal_scope_id(user) is not None
+        if portal_scope_id(user) is None:
+            return False
+        # AUD138 — un accès révoqué ne franchit plus AUCUN endpoint portail,
+        # même avec un JWT déjà émis.
+        if acces_portail_revoque(user):
+            self.message = self.message_revoque
+            return False
+        return True
 
 
 class IsPortalClientUser(_IsPortalUserOfScope):
