@@ -137,7 +137,15 @@ _PANEL_BRANDS = (
 
 
 def is_panel(designation: str, produit_nom: str = "") -> bool:
-    blob = f"{designation} {produit_nom}".lower()
+    # QJR424 — SEULE définition du texte de classement (QJR301,
+    # ``apps.ventes.utils.options.texte_classement``). Import LOCAL : ce
+    # module reste PUR au chargement (voir l'en-tête) — `utils.options`
+    # importe `quote_engine.builder`, qui importe CE module au niveau
+    # module (`from apps.ventes import solar_design as _sd`) ; un import
+    # de tête ici romprait ce cycle avant que `is_battery`/`is_panel` etc.
+    # n'existent encore.
+    from apps.ventes.utils.options import texte_classement
+    blob = texte_classement(designation, produit_nom).lower()
     if "panneau" in blob or "panneaux" in blob:
         return True
     # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
