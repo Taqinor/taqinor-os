@@ -2136,6 +2136,34 @@ def meta_lead_ads_webhook(request):
         return JsonResponse({'detail': 'Vérification refusée.'}, status=403)
 
     # POST — notification de nouveau lead.
+    #
+    # ── QJR414 (DÉCISION FONDATEUR DR3) — FAIL-CLOSED, AVANT TOUT LE RESTE.
+    # PUB26 avait câblé la vérification HMAC « rétro-compatible » : secret
+    # absent ⇒ avertissement PUIS traitement du payload. Comme
+    # ``META_LEAD_ADS_APP_SECRET`` vaut '' par défaut et n'était documenté dans
+    # AUCUN ``.env.example``, le déploiement par défaut était donc OUVERT *et*
+    # SILENCIEUX : n'importe qui pouvait poster de faux leads. DR3 tranche —
+    # secret absent ⇒ la requête est REFUSÉE (403), jamais traitée.
+    # CONSÉQUENCE VOULUE ET ACCEPTÉE : la synchronisation entrante reste EN
+    # PAUSE tant que le secret n'est pas posé au deploy. Ce n'est pas une
+    # panne, c'est la décision.
+    # La garde est posée AVANT la résolution de société et du token d'accès
+    # (ci-dessous) pour qu'un POST non signé ne déclenche AUCUN effet de bord,
+    # pas même une lecture de configuration tenant.
+    app_secret = _meta_lead_ads_app_secret()
+    if not app_secret:
+        logger.error(
+            'meta_lead_ads_webhook: META_LEAD_ADS_APP_SECRET non configuré — '
+            'requête REFUSÉE (DR3, fail-closed). La synchronisation entrante '
+            'reste en pause tant que le secret n\'est pas posé.')
+        return JsonResponse(
+            {'detail': 'Signature requise.'}, status=403)
+    if not _check_meta_lead_ads_signature(request, app_secret):
+        logger.warning(
+            'meta_lead_ads_webhook: signature X-Hub-Signature-256 '
+            'absente ou invalide.')
+        return JsonResponse({'detail': 'Signature invalide.'}, status=403)
+
     # FIXPUB1 — token d'accès : env (META_LEAD_ADS_ACCESS_TOKEN) prioritaire,
     # sinon le token de la MetaConnection activée de la société (repli
     # permanent). On journalise la SOURCE choisie, jamais le token lui-même.
@@ -2148,23 +2176,6 @@ def meta_lead_ads_webhook(request):
             'meta_lead_ads_webhook: aucun access token (env ni connexion) — no-op.')
         return JsonResponse({'detail': 'Non configuré — ignoré.'}, status=200)
     logger.info('meta_lead_ads_webhook: token Lead Ads via %s.', token_source)
-
-    # PUB26 — vérification HMAC (`X-Hub-Signature-256`) : n'importe qui pouvait
-    # jusqu'ici poster de faux leads (META_LEAD_ADS_APP_SECRET était listé dans
-    # WIRING_ENV_KEYS mais jamais vérifié). Rétro-compatible : secret absent →
-    # warning + payload accepté quand même (comportement historique préservé) ;
-    # secret présent + signature absente/invalide → 403.
-    app_secret = _meta_lead_ads_app_secret()
-    if app_secret:
-        if not _check_meta_lead_ads_signature(request, app_secret):
-            logger.warning(
-                'meta_lead_ads_webhook: signature X-Hub-Signature-256 '
-                'absente ou invalide.')
-            return JsonResponse({'detail': 'Signature invalide.'}, status=403)
-    else:
-        logger.warning(
-            'meta_lead_ads_webhook: META_LEAD_ADS_APP_SECRET non configuré — '
-            'signature non vérifiée (rétro-compatibilité).')
 
     try:
         data = json.loads(request.body.decode('utf-8'))

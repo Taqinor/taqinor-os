@@ -14,7 +14,8 @@ Couvre :
   - aucun scraping : la récupération passe par ``fetch_meta_lead_data``
     (Graph API officiel), jamais par un fetch de page HTML.
   - PUB26 — signature HMAC ``X-Hub-Signature-256`` : bien formée → traité ;
-    mal signée → 403 ; secret absent → accepté quand même (rétro-compat).
+    mal signée → 403 ; QJR414/DR3 — secret ABSENT → **403** (fail-closed), là
+    où PUB26 acceptait encore le payload « par rétro-compatibilité ».
 """
 import hashlib
 import hmac
@@ -87,12 +88,20 @@ class MetaLeadAdsUnconfiguredTests(TestCase):
             'hub.challenge': 'chal123'})
         self.assertEqual(resp.status_code, 404)
 
-    @override_settings(META_LEAD_ADS_VERIFY_TOKEN='', META_LEAD_ADS_ACCESS_TOKEN='')
-    def test_post_noop_without_access_token(self):
+    @override_settings(META_LEAD_ADS_VERIFY_TOKEN='',
+                       META_LEAD_ADS_ACCESS_TOKEN='',
+                       META_LEAD_ADS_APP_SECRET='')
+    def test_post_refuse_sans_secret_d_application(self):
+        """QJR414 (DR3) — FAIL-CLOSED : sans ``META_LEAD_ADS_APP_SECRET``, le
+        POST est REFUSÉ (403) avant même la résolution du token d'accès.
+
+        Remplace ``test_post_noop_without_access_token`` (200 no-op) : la
+        garde de signature passe désormais AVANT, et un POST non signé n'a
+        plus le droit d'atteindre quoi que ce soit."""
         resp = self.client.post(
             self.url, data=json.dumps(_notification_payload()),
             content_type='application/json')
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 403)
         self.assertEqual(Lead.objects.count(), 0)
 
 
@@ -115,7 +124,8 @@ class MetaLeadAdsVerificationTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
-@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN)
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN,
+                   META_LEAD_ADS_APP_SECRET=APP_SECRET)
 class MetaLeadAdsIngestTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
@@ -123,9 +133,13 @@ class MetaLeadAdsIngestTests(TestCase):
         self.url = reverse('meta-lead-ads-webhook')
 
     def _post(self, payload):
+        # QJR414 (DR3) — le webhook est FAIL-CLOSED : ces tests portent sur
+        # l'INGESTION, pas sur la signature (couverte par
+        # MetaLeadAdsSignatureTests), ils signent donc leur corps.
+        body = json.dumps(payload).encode('utf-8')
         return self.client.post(
-            self.url, data=json.dumps(payload),
-            content_type='application/json')
+            self.url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_sign(APP_SECRET, body))
 
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     def test_simulated_payload_creates_attributed_lead(self, fetch_mock):
@@ -235,16 +249,24 @@ class MetaLeadAdsSignatureTests(TestCase):
 
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     @override_settings(META_LEAD_ADS_APP_SECRET='')
-    def test_absent_secret_stays_backward_compatible(self, fetch_mock):
-        """Secret non configuré : le webhook reste ouvert (comportement
-        historique préservé) — un warning est loggué mais rien n'est bloqué."""
+    def test_absent_secret_est_fail_closed(self, fetch_mock):
+        """QJR414 (DR3) — secret non configuré : le webhook REFUSE (403) et ne
+        crée AUCUN lead.
+
+        Remplace ``test_absent_secret_stays_backward_compatible`` : la
+        rétro-compatibilité de PUB26 laissait le déploiement par défaut OUVERT
+        (le réglage vaut '' et n'était documenté nulle part). La
+        synchronisation entrante reste en pause tant que Reda n'a pas posé le
+        secret au deploy — c'est la décision, pas une panne."""
         fetch_mock.return_value = _lead_data(leadgen_id='6004')
         resp = self._post(_notification_payload(leadgen_id='6004'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        fetch_mock.assert_not_called()
 
 
-@override_settings(META_LEAD_ADS_ACCESS_TOKEN='')
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN='',
+                   META_LEAD_ADS_APP_SECRET=APP_SECRET)
 class MetaLeadAdsConnectionFallbackTests(TestCase):
     """FIXPUB1 — sans ``META_LEAD_ADS_ACCESS_TOKEN`` (env), le webhook utilise le
     token de la ``MetaConnection`` activée de la société ; l'env, quand présent,
@@ -261,9 +283,12 @@ class MetaLeadAdsConnectionFallbackTests(TestCase):
         self.url = reverse('meta-lead-ads-webhook')
 
     def _post(self, payload):
+        # QJR414 (DR3) — corps signé : le webhook est FAIL-CLOSED. Ces tests
+        # portent sur la RÉSOLUTION du token d'accès, pas sur la signature.
+        body = json.dumps(payload).encode('utf-8')
         return self.client.post(
-            self.url, data=json.dumps(payload),
-            content_type='application/json')
+            self.url, data=body, content_type='application/json',
+            HTTP_X_HUB_SIGNATURE_256=_sign(APP_SECRET, body))
 
     @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
     def test_uses_connection_token_when_env_absent(self, fetch_mock):
