@@ -1434,6 +1434,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                                  ville=None, lat=None, lon=None,
                                  occupation=None, equipements=None,
                                  puissances_par_pack=None,
+                                 batterie_rendement=None,
+                                 batterie_rendement_source=None,
                                  jour_reference=None):
     """COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
     DOIT MONTRER : la part de la consommation du client réellement COUVERTE
@@ -1473,11 +1475,30 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
     jour que l'étude complète et le balayage, pas ceux de l'horloge du serveur
     au moment du rendu. ``None`` ⇒ repli d'horloge posé au fond, dans
     :func:`jours_types_annee` et nulle part ailleurs.
+
+    ``batterie_rendement`` / ``batterie_rendement_source`` — QJR412 : MÊME
+    discipline que :func:`calculer_etude_horaire` (QJR137). Avant cette
+    tâche, ce bloc simulait TOUJOURS à ``pricing.BATTERY_ROUNDTRIP`` (0,90) et
+    le publiait comme s'il décrivait la batterie vendue, sans dire que
+    c'était un forfait — exactement ce que la règle zéro-chiffre-inventé
+    interdit. Sans valeur prouvée (``rendement_batterie_des_lignes``, lue par
+    l'appelant), l'hypothèse de référence s'applique et se DÉCLARE
+    (``rendement_source``) — jamais un chiffre nu.
     """
     try:
         capacite_pack = _num(capacite_utile_pack_kwh)
         if capacite_pack <= 0:
             return None
+
+        # QJR412 — LE RENDEMENT ALLER-RETOUR VIENT DE LA FICHE QUAND ELLE LE
+        # PUBLIE (même résolution que QJR137 dans :func:`calculer_etude_horaire`).
+        rendement = _num(batterie_rendement)
+        if not 0 < rendement <= 1:
+            rendement = BATTERY_ROUNDTRIP
+            rendement_source = RENDEMENT_SOURCE_HYPOTHESE
+        else:
+            rendement_source = (batterie_rendement_source
+                                or RENDEMENT_SOURCE_FICHE)
         try:
             n_max = int(nb_packs_max)
         except (TypeError, ValueError):
@@ -1538,8 +1559,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
         # jusqu'à l'autonomie complète (« monter à 30-40 kWh avec des modules
         # de 5 kWh, pas de problème »). Un repère qu'on ne peut pas atteindre
         # avec le curseur ne se compare à rien.
-        capacite_requise = (deficit_max / BATTERY_ROUNDTRIP
-                            if BATTERY_ROUNDTRIP > 0 else deficit_max)
+        capacite_requise = (deficit_max / rendement
+                            if rendement > 0 else deficit_max)
         nb_packs_autonomie = int(math.ceil(
             capacite_requise / capacite_pack)) if capacite_requise > 0 else 0
         n_max = max(n_max, min(nb_packs_autonomie, COUVERTURE_PACKS_PLAFOND),
@@ -1563,11 +1584,13 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                             pas_fins, capacite,
                             puissance_decharge_kw=borne_dech,
                             puissance_decharge_onduleur_kw=borne_dech_ond,
-                            puissance_charge_kw=borne_charge)
+                            puissance_charge_kw=borne_charge,
+                            rendement=rendement)
                     else:
                         sim = simuler_batterie_jour(
                             conso_24h, jour['prod_24h'], capacite,
-                            puissance_charge_kw=borne_charge)
+                            puissance_charge_kw=borne_charge,
+                            rendement=rendement)
                 else:
                     sim = {'restitue_kwh': 0.0, 'restitue_24h': [0.0] * 24}
                 restitue = _num(sim['restitue_kwh'])
@@ -1650,7 +1673,11 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
 
         return {
             'capacite_utile_pack_kwh': round(capacite_pack, 3),
-            'rendement': BATTERY_ROUNDTRIP,
+            # QJR412 — CE rendement (fiche quand elle le prouve, hypothèse
+            # étiquetée sinon) : jamais plus un 0,90 muet présenté comme la
+            # batterie vendue.
+            'rendement': round(rendement, 4),
+            'rendement_source': rendement_source,
             'conso_annuelle_kwh': round(conso_annuelle, 2),
             'mois_jours_types': list(JOURS_TYPES_PUBLICS_MOIS),
             'nb_packs_max': n_max,
@@ -2187,6 +2214,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              occupation=None, equipements=None,
                              batterie_puissance_decharge_kw=None,
                              puissances_par_capacite=None,
+                             batterie_rendement=None,
+                             batterie_rendement_source=None,
                              tranches=None, charges_fixes_mad=None,
                              tppan=True, millesime=bareme.MILLESIME_COURANT,
                              jour_reference=None):
@@ -2238,6 +2267,14 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
     Renvoie ``None`` quand l'année n'est pas complète (même règle que
     :func:`calculer_etude_horaire` : une année tronquée n'est pas une année).
+
+    ``batterie_rendement`` / ``batterie_rendement_source`` — QJR412 : MÊME
+    discipline que :func:`calculer_etude_horaire` (QJR137) et
+    :func:`couverture_batterie_publique`. Avant cette tâche, ce balayage
+    simulait TOUJOURS à ``pricing.BATTERY_ROUNDTRIP`` (0,90) et le publiait
+    (``rendement_batterie``) sans dire que c'était un forfait. Sans valeur
+    prouvée, l'hypothèse de référence s'applique et se DÉCLARE
+    (``rendement_batterie_source``) — jamais un chiffre nu.
     """
     jours_types, _avertissements, _sources = jours_types_annee(
         kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
@@ -2246,6 +2283,15 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         jour_reference=jour_reference)
     if not jours_types or len(jours_types) != 12:
         return None
+
+    # QJR412 — LE RENDEMENT ALLER-RETOUR VIENT DE LA FICHE QUAND ELLE LE
+    # PUBLIE (même résolution que QJR137 / QJR412 ci-dessus).
+    rendement = _num(batterie_rendement)
+    if not 0 < rendement <= 1:
+        rendement = BATTERY_ROUNDTRIP
+        rendement_source = RENDEMENT_SOURCE_HYPOTHESE
+    else:
+        rendement_source = batterie_rendement_source or RENDEMENT_SOURCE_FICHE
 
     capacites = sorted({round(_num(c), 3) for c in (capacites_kwh or ())
                         if _num(c) > 0})
@@ -2328,11 +2374,13 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                     pas_fins, capacite,
                     puissance_decharge_kw=borne_dech,
                     puissance_decharge_onduleur_kw=borne_dech_ond,
-                    puissance_charge_kw=borne_charge)
+                    puissance_charge_kw=borne_charge,
+                    rendement=rendement)
             else:
                 batterie = simuler_batterie_jour(
                     conso_24h, prod_24h, capacite,
-                    puissance_charge_kw=borne_charge)
+                    puissance_charge_kw=borne_charge,
+                    rendement=rendement)
             auto_jour = min(auto_direct_jour + batterie['restitue_kwh'],
                             conso_jour_kwh, prod_jour_kwh)
             auto_mois = auto_jour * jours
@@ -2355,8 +2403,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                 }
 
     plafond_remplissage = max(0.0, surplus_min or 0.0)
-    plafond_deficit = (deficit_max / BATTERY_ROUNDTRIP
-                       if BATTERY_ROUNDTRIP > 0 else deficit_max)
+    plafond_deficit = (deficit_max / rendement
+                       if rendement > 0 else deficit_max)
     if plafond_remplissage <= plafond_deficit:
         plafond, motif = plafond_remplissage, 'remplissage_quotidien'
     else:
@@ -2411,7 +2459,11 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         'plafond_deficit_kwh': round(plafond_deficit, 2),
         'plafond_stockage_kwh': round(plafond, 2),
         'plafond_motif': motif,
-        'rendement_batterie': BATTERY_ROUNDTRIP,
+        # QJR412 — CE rendement (fiche quand elle le prouve, hypothèse
+        # étiquetée sinon) : jamais plus un 0,90 muet présenté comme la
+        # batterie vendue.
+        'rendement_batterie': round(rendement, 4),
+        'rendement_batterie_source': rendement_source,
         'paliers': paliers,
     }
 
