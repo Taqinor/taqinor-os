@@ -6980,7 +6980,29 @@ def _portail_not_found():
 
 
 def _resoudre_compte_portail(token):
-    return selectors.compte_portail_par_token(token)
+    """Résout le compte portail d'un lien tokenisé, et HORODATE l'accès.
+
+    AUD148 (a) — ``ComptePortailClient.derniere_connexion`` n'était écrite par
+    AUCUN code (grep : le modèle et le serializer en lecture seule), alors que
+    l'écran ERP affiche la colonne : la piste d'audit d'accès était vide. On la
+    pose ici, au point d'entrée COMMUN des surfaces tokenisées de compta
+    (relevé, relevé PDF, contestation de facture), via le service portail —
+    jamais un import de ``apps.portail.models``.
+
+    LIMITE ASSUMÉE : ``apps.contrats`` (XCTR14) appelle
+    ``selectors.compte_portail_par_token`` DIRECTEMENT et n'est donc pas
+    couvert. Le poser dans le sélecteur lui-même couvrirait les deux, mais
+    ``apps/compta/selectors.py`` n'appartient pas à cette lane.
+    """
+    compte = selectors.compte_portail_par_token(token)
+    if compte is not None:
+        try:
+            from apps.portail.services import enregistrer_connexion_portail
+            enregistrer_connexion_portail(
+                compte.id, compte.derniere_connexion)
+        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+            pass
+    return compte
 
 
 @api_view(['GET'])

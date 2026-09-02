@@ -55,9 +55,16 @@ export default function DocumentsClientPortailAdmin() {
     { id: 'type_document', header: 'Type', width: 140, accessor: (r) => TYPE_LABELS[r.type_document] ?? r.type_document },
     { id: 'libelle', header: 'Libellé', width: 180, accessor: (r) => r.libelle || '—' },
     {
+      // AUD148 (b) — le lien pointait sur l'URL BRUTE du `FileField`
+      // (`/media/compta/portail_docs/…`), morte par construction : le backend
+      // ne définit ni `MEDIA_URL` ni `MEDIA_ROOT`, aucune route ne sert
+      // `/media/` et `frontend/nginx.conf` n'a aucune `location /media/`. On
+      // pointe désormais sur le téléchargement GED AUTHENTIFIÉ servi par le
+      // serveur (`lien_ged`), et on n'expose plus jamais d'URL de média
+      // statique.
       id: 'fichier', header: 'Fichier', width: 110, sortable: false,
-      cell: (_v, row) => (row.fichier ? (
-        <a href={row.fichier} target="_blank" rel="noreferrer" className="text-primary underline">
+      cell: (_v, row) => (row.lien_ged ? (
+        <a href={row.lien_ged} target="_blank" rel="noreferrer" className="text-primary underline">
           Voir le fichier
         </a>
       ) : '—'),

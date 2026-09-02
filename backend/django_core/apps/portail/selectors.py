@@ -16,6 +16,25 @@ from .models import ComptePortailClient, DemandeTicketPortail
 
 # ── AUD138 — État d'activation du compte portail d'un client ────────────────
 
+def etat_compte_portail_client(company_id, client_id):
+    """AUD138/AUD148 — ``(id, actif, derniere_connexion)`` du compte portail
+    d'un client, ou ``None`` s'il n'en a pas.
+
+    UNE requête pour les deux besoins de la garde portail : savoir si l'accès
+    est révoqué, et savoir si l'horodatage de connexion mérite d'être
+    rafraîchi. Lecture seule, jamais un import de ``apps.portail.models``
+    depuis l'extérieur.
+    """
+    if not company_id or not client_id:
+        return None
+    return (
+        ComptePortailClient.objects
+        .filter(company_id=company_id, client_id=client_id)
+        .values_list('id', 'actif', 'derniere_connexion')
+        .first()
+    )
+
+
 def compte_portail_client_actif(company_id, client_id):
     """AUD138 — Tri-état de l'accès portail d'un client, SANS import modèle.
 
@@ -32,14 +51,8 @@ def compte_portail_client_actif(company_id, client_id):
     Point d'entrée cross-app LECTURE SEULE (``apps.roles.permissions`` le lit
     pour la garde de portée) — jamais un import de ``apps.portail.models``.
     """
-    if not company_id or not client_id:
-        return None
-    return (
-        ComptePortailClient.objects
-        .filter(company_id=company_id, client_id=client_id)
-        .values_list('actif', flat=True)
-        .first()
-    )
+    etat = etat_compte_portail_client(company_id, client_id)
+    return None if etat is None else etat[1]
 
 
 # ── XSAV22 — Déflection KB sur le portail client ────────────────────────────

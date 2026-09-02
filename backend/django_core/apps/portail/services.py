@@ -241,6 +241,51 @@ def _basculer_acces_portail_client(company, client_id, *, actif):
     return compte, nb
 
 
+# ── AUD148 (a) — ``derniere_connexion`` n'était écrite par AUCUN code ───────
+#
+# La colonne existe (``portail/models.py``), l'écran ERP l'affiche, et grep sur
+# ``backend/django_core`` ne rendait que le modèle et le serializer en lecture
+# seule : ni le chemin tokenisé ni le login JWT ne la posaient. La colonne
+# d'audit d'accès était donc vide le jour où l'on cherche qui a consulté quoi —
+# alors que le patron existe déjà dans le dépôt (``education/public_views.py``
+# met bien à jour SON équivalent).
+#
+# On écrit au plus une fois par PÉRIODE : une écriture par requête portail
+# transformerait chaque GET en UPDATE (et « dernière connexion » n'a pas besoin
+# d'une précision à la seconde).
+
+#: Granularité de l'horodatage de connexion portail.
+PERIODE_HORODATAGE_CONNEXION = 3600  # secondes
+
+
+def enregistrer_connexion_portail(compte_id, derniere_connexion=None,
+                                  maintenant=None):
+    """AUD148 — Horodate ``derniere_connexion``, au plus une fois par période.
+
+    ``compte_id`` / ``derniere_connexion`` viennent d'une lecture DÉJÀ faite
+    par l'appelant (``selectors.etat_compte_portail_client``, ou le compte
+    résolu par token) : cette fonction n'ajoute JAMAIS de SELECT, seulement un
+    UPDATE ciblé quand il est utile. Renvoie l'horodatage posé, ou ``None``.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import ComptePortailClient
+
+    if not compte_id:
+        return None
+    maintenant = maintenant or timezone.now()
+    if derniere_connexion is not None and (
+            maintenant - derniere_connexion
+            < timedelta(seconds=PERIODE_HORODATAGE_CONNEXION)):
+        return None
+    (ComptePortailClient.objects
+     .filter(pk=compte_id)
+     .update(derniere_connexion=maintenant))
+    return maintenant
+
+
 def revoquer_acces_client(company, client_id):
     """AUD138 — Ferme l'accès portail d'un client : magic-link ET compte JWT."""
     return _basculer_acces_portail_client(company, client_id, actif=False)

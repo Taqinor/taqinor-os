@@ -41,8 +41,32 @@ _VRAI = (True, 'true', 'True', '1', 1, 'on')
 
 
 def _scope(request):
-    """(société, client_id) du compte portail appelant."""
-    return request.user.company, portal_scope_id(request.user)
+    """(société, client_id) du compte portail appelant.
+
+    AUD148 (a) — POINT UNIQUE du chemin JWT client : c'est la porte que
+    traversent TOUTES les méthodes des trois ViewSets self-service ci-dessous.
+    On y horodate ``ComptePortailClient.derniere_connexion`` (au plus une fois
+    par heure, cf. ``services.enregistrer_connexion_portail``) — la colonne
+    était affichée par l'écran ERP et n'était écrite par aucun code, donc vide
+    le jour où l'on cherche qui a consulté quoi.
+    """
+    company = request.user.company
+    client_id = portal_scope_id(request.user)
+    _noter_connexion(company, client_id)
+    return company, client_id
+
+
+def _noter_connexion(company, client_id):
+    """Horodatage best-effort : une panne de trace n'a jamais fermé un
+    portail."""
+    try:
+        from .selectors import etat_compte_portail_client
+        etat = etat_compte_portail_client(
+            getattr(company, 'id', None), client_id)
+        if etat is not None:
+            services.enregistrer_connexion_portail(etat[0], etat[2])
+    except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+        pass
 
 
 def _ip(request):
