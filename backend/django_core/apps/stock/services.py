@@ -1300,24 +1300,33 @@ def alimenter_lot_entrepot(
         reference_reception, emplacement=None, user=None):
     """XSTK6 — crée (ou incrémente si le MÊME lot existe déjà pour ce
     produit) une entrée de `LotEntrepot`. Jamais appelée pour une ligne sans
-    ``numero_lot`` (comportement historique inchangé)."""
+    ``numero_lot`` (comportement historique inchangé).
+
+    AUD218 — le `get_or_create` est VERROUILLÉ (`select_for_update`) et adossé
+    à la `UniqueConstraint(company, produit, numero_lot)` du modèle : deux
+    réceptions concurrentes du même lot s'additionnent sur UNE seule ligne au
+    lieu d'en créer deux (même patron que `StockEmplacement`)."""
+    from django.db import transaction
     from .models import LotEntrepot
-    lot, created = LotEntrepot.objects.get_or_create(
-        company=company, produit=produit, numero_lot=numero_lot,
-        defaults={
-            'date_peremption': date_peremption,
-            'emplacement': emplacement,
-            'quantite_recue': 0,
-            'quantite_restante': 0,
-            'reference_reception': reference_reception,
-            'created_by': user,
-        })
-    if not created and date_peremption and not lot.date_peremption:
-        lot.date_peremption = date_peremption
-    lot.quantite_recue += quantite
-    lot.quantite_restante += quantite
-    lot.save(update_fields=[
-        'quantite_recue', 'quantite_restante', 'date_peremption'])
+    # `atomic` imbriqué (savepoint) : l'appelant réel est déjà dans une
+    # transaction, mais le verrou doit rester légal pour tout futur appelant.
+    with transaction.atomic():
+        lot, created = LotEntrepot.objects.select_for_update().get_or_create(
+            company=company, produit=produit, numero_lot=numero_lot,
+            defaults={
+                'date_peremption': date_peremption,
+                'emplacement': emplacement,
+                'quantite_recue': 0,
+                'quantite_restante': 0,
+                'reference_reception': reference_reception,
+                'created_by': user,
+            })
+        if not created and date_peremption and not lot.date_peremption:
+            lot.date_peremption = date_peremption
+        lot.quantite_recue += quantite
+        lot.quantite_restante += quantite
+        lot.save(update_fields=[
+            'quantite_recue', 'quantite_restante', 'date_peremption'])
     return lot
 
 
