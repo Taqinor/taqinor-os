@@ -125,11 +125,6 @@ class TenantConsoleCreateView(APIView):
         # ── Provisionnement (même séquence que RegisterCompanyView) ─────────
         company = Company.objects.create(nom=nom, slug=_slug_libre(nom))
 
-        # SOL8 — mêmes modules éteints par défaut que sur le signup public
-        # (chemin de CRÉATION uniquement, jamais de backfill).
-        from .module_seeds import semer_modules_off_par_defaut
-        semer_modules_off_par_defaut(company)
-
         from apps.parametres.models import CompanyProfile
         CompanyProfile.objects.get_or_create(
             company=company, defaults={'nom': nom, 'email': email})
@@ -154,6 +149,12 @@ class TenantConsoleCreateView(APIView):
         admin.save(update_fields=['must_change_password'])
         # XPLT19 — la société d'attache est aussi la première société autorisée.
         admin.societes_autorisees.add(company)
+
+        # SOL10 — même gabarit « Solaire » que le signup public (modules rares
+        # éteints SOL8, plan de licence SOL9, rôles types, structure de
+        # catalogue, cartes de tableau de bord). Chemin de CRÉATION uniquement.
+        from .tenant_templates import appliquer_gabarit_solaire
+        appliquer_gabarit_solaire(company, user=admin)
 
         # SCA20 — hooks « nouvelle société » (best-effort, isolés).
         from core.signup_hooks import run_signup_hooks

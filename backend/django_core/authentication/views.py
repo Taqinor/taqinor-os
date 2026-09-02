@@ -567,14 +567,6 @@ class RegisterCompanyView(generics.GenericAPIView):
 
         company = Company.objects.create(nom=company_nom, slug=slug)
 
-        # SOL8 — modules livrés mais RARES chez un installateur solaire :
-        # éteints AU DÉPART, réactivables en un clic (Paramètres →
-        # Applications). Appelé ICI, sur le chemin de CRÉATION, et jamais via
-        # `core.signup_hooks` (que `seed_company` rejoue sur une société
-        # EXISTANTE — ce serait un backfill, interdit).
-        from .module_seeds import semer_modules_off_par_defaut
-        semer_modules_off_par_defaut(company)
-
         from apps.parametres.models import CompanyProfile
         CompanyProfile.objects.get_or_create(
             company=company,
@@ -597,6 +589,16 @@ class RegisterCompanyView(generics.GenericAPIView):
         # XPLT19 — la société d'attache est aussi la première société autorisée
         # (membre). Un compte mono-société démarre donc avec {sa société}.
         user.societes_autorisees.add(company)
+
+        # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
+        # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,
+        # STRUCTURE de catalogue solaire, cartes de tableau de bord solaires).
+        # Appelé APRÈS le CompanyProfile (le gabarit y pose le plan) et sur le
+        # chemin de CRÉATION uniquement — jamais via `core.signup_hooks`, que
+        # `seed_company` rejoue sur une société EXISTANTE (backfill interdit).
+        # Léger : aucun produit n'est seedé ici (catalogue produit = opt-in).
+        from .tenant_templates import appliquer_gabarit_solaire
+        appliquer_gabarit_solaire(company, user=user)
 
         # SCA20 — seeds « à la création d'une société » migrés en HOOKS
         # idempotents (types d'activité + niveaux de relance historiques, PLUS
