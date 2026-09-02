@@ -655,11 +655,21 @@ def stock_valuation_by_location(company):
     Renvoie {par_emplacement:[{emplacement_id, emplacement_nom, is_principal,
     quantite, valeur}], total, lignes:[{produit_id, sku, designation,
     emplacement_nom, quantite, cout_moyen, valeur}]}. INTERNE — ne jamais
-    exposer dans un contexte client."""
+    exposer dans un contexte client.
+
+    NTWMS19 / AUD211 — la marchandise posée sur un emplacement DE_TIERS
+    (dépôt-vente : elle est dans nos murs mais appartient à un tiers) est
+    EXCLUE, exactement comme le fait déjà `valorisation_a_date` : elle n'est
+    jamais un actif de la société. Sans emplacement DE_TIERS (le cas de toutes
+    les sociétés existantes), le résultat est strictement inchangé."""
     from .models import Produit, EmplacementStock
     ensure_emplacements(company)
     emplacements = list(EmplacementStock.objects.filter(
         company=company, archived=False))
+    de_tiers_ids = {
+        e.id for e in emplacements
+        if e.type_proprietaire == EmplacementStock.TypeProprietaire.DE_TIERS}
+    emplacements = [e for e in emplacements if e.id not in de_tiers_ids]
     totals = {e.id: {'emplacement_id': e.id, 'emplacement_nom': e.nom,
                      'is_principal': e.is_principal, 'quantite': 0,
                      'valeur': Decimal('0')} for e in emplacements}
@@ -673,7 +683,7 @@ def stock_valuation_by_location(company):
     for p in produits:
         cout, source = valuation_cost_with_source(p, method=method)
         for b in stock_breakdown(p):
-            if b['quantite'] == 0:
+            if b['quantite'] == 0 or b['emplacement_id'] in de_tiers_ids:
                 continue
             valeur = (cout * b['quantite']).quantize(Decimal('0.01'))
             t = totals.get(b['emplacement_id'])
