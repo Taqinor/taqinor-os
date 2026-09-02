@@ -3060,13 +3060,17 @@ def valider_inventaire_session(session, user):
                 inchanges += 1
                 continue
 
-            # Ajustement : on pose la nouvelle valeur directement.
+            # AUD206 — Ajustement en DELTA, jamais en remplacement : entre le
+            # snapshot (quantite_theorique, potentiellement figé des mois plus
+            # tôt par `generer_comptages_tournants`) et cette validation, des
+            # mouvements légitimes ont pu passer. On applique donc l'écart
+            # constaté à la quantité LIVE verrouillée, ce qui les préserve.
             produit = ligne.produit
             # Verrou anti-concurrence
             from .models import Produit
             produit = Produit.objects.select_for_update().get(pk=produit.pk)
             qte_avant = produit.quantite_stock
-            qte_apres = ligne.quantite_comptee  # on remplace par le comptage
+            qte_apres = qte_avant + ecart
 
             MouvementStock.objects.create(
                 company=session.company,
