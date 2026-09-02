@@ -106,14 +106,18 @@ _TYPE_CLIENT_LABELS = {'particulier': 'Particulier', 'entreprise': 'Entreprise'}
 
 CLIENT_EXPORT_HEADERS = [
     'Nom', 'Prénom', 'Type', 'Email', 'Téléphone', 'Adresse',
-    'ICE', 'IF', 'RC', 'CIN', 'RIB', 'Créé le',
+    'ICE', 'IF', 'RC', 'CIN', 'Créé le',
 ]
 
 
 def export_clients_xlsx(clients):
-    """Export .xlsx clients avec les identifiants légaux marocains (ICE/IF/RC/
-    CIN/RIB). Aucun prix d'achat ni marge — données d'identité uniquement.
-    RIB lu via getattr (champ optionnel/à venir) → vide s'il n'existe pas."""
+    """Export .xlsx clients avec les identifiants légaux marocains (ICE/IF/
+    RC/CIN). Aucun prix d'achat ni marge — données d'identité uniquement.
+
+    CRX35 — la colonne « RIB » a été retirée : ``crm.Client`` ne porte PAS de
+    champ ``rib``, le ``getattr(c, 'rib', '')`` rendait donc une colonne vide
+    à CHAQUE export. Une colonne toujours vide fait croire à une donnée
+    manquante plutôt qu'à une donnée absente du modèle."""
     rows = [[
         c.nom or '', c.prenom or '',
         _TYPE_CLIENT_LABELS.get(
@@ -121,7 +125,6 @@ def export_clients_xlsx(clients):
         c.email or '', c.telephone or '', c.adresse or '',
         getattr(c, 'ice', '') or '', getattr(c, 'if_fiscal', '') or '',
         getattr(c, 'rc', '') or '', getattr(c, 'cin', '') or '',
-        getattr(c, 'rib', '') or '',
         c.date_creation.strftime('%Y-%m-%d') if getattr(c, 'date_creation', None) else '',
     ] for c in clients]
     return build_xlsx_response(

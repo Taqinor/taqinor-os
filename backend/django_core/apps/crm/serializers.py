@@ -1430,7 +1430,8 @@ class PlaybookSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Playbook
-        fields = ['id', 'nom', 'actif', 'bloquant', 'condition', 'etapes', 'date_creation']
+        # CRX35 — 'bloquant' retiré : le champ n'existe plus (rien ne le lisait).
+        fields = ['id', 'nom', 'actif', 'condition', 'etapes', 'date_creation']
         read_only_fields = ['date_creation']
 
 

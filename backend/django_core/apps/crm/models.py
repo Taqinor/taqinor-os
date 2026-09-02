@@ -290,7 +290,12 @@ class Lead(SoftDeleteModel):
 
     class Source(models.TextChoices):
         OS_NATIVE = 'os_native', 'Créé dans TAQINOR'
-        ODOO_IMPORT_TEST = 'odoo_import_test', 'Import test Odoo'
+        # CRX35 — la VALEUR en base reste 'odoo_import_test' (des milliers de
+        # lignes la portent, un renommage serait une migration de données pour
+        # rien) ; seul le LIBELLÉ est corrigé : la synchronisation Odoo→ERP
+        # n'est plus un test depuis le 01/09/2026, elle est le miroir de
+        # production. « test » induisait en erreur dans les filtres et exports.
+        ODOO_IMPORT_TEST = 'odoo_import_test', 'Import Odoo'
         SITE_WEB = 'site_web', 'Site web'
         # XMKT32 — lead créé depuis un formulaire Meta Lead Ads (Facebook/
         # Instagram), via l'API officielle (jamais de scraping).
@@ -2740,11 +2745,12 @@ class Playbook(TenantModel):
         related_name='playbooks')
     nom = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
-    # Configuration STRICTE optionnelle : un changement de stage avec tâches
-    # obligatoires non cochées reste TOUJOURS possible (avertissement
-    # seulement) SAUF si ce playbook est marqué bloquant=True — cohérent avec
-    # « never auto-move »/jamais un blocage dur par défaut.
-    bloquant = models.BooleanField(default=False)
+    # CRX35 — le drapeau ``bloquant`` a été RETIRÉ (migration 0088) : aucun
+    # code ne le lisait, donc un playbook « bloquant » ne bloquait rien. Un
+    # changement d'étape reste TOUJOURS possible même avec des tâches
+    # obligatoires non cochées (avertissement seulement) — « never auto-move »,
+    # jamais un blocage dur. Le rétablir supposerait d'écrire la garde, pas
+    # seulement la colonne.
     # NTCRM26 — critère de sélection optionnel (arbre core.rules FG367, évalué
     # contre {type_installation, canal} du lead). ``None`` = playbook
     # universel (comportement historique, s'applique à tout lead) ; renseigné

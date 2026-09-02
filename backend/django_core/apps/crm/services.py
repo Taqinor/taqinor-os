@@ -595,32 +595,6 @@ def marquer_etape_relance(etape, user, statut, note=''):
     return etape
 
 
-def _next_round_robin_owner_for_new_lead(company):
-    """QW6 — Round-robin parmi les commerciaux actifs d'une société, quand
-    AUCUN responsable par défaut n'est configuré (``CompanyProfile.
-    responsable_defaut_leads``).
-
-    Distinct de ``_next_round_robin_commercial`` (XMKT21, départagé par
-    ``mql_assigned_at``, réservé au franchissement du seuil MQL) : ici on
-    départage par le nombre TOTAL de leads déjà assignés (tous statuts), pour
-    répartir la charge entrante générale — pas seulement les MQL. Renvoie
-    None si aucun commercial actif (no-op : le lead reste sans owner, comme
-    aujourd'hui).
-    """
-    from django.contrib.auth import get_user_model
-    from django.db.models import Count
-
-    User = get_user_model()
-    candidats = list(
-        User.objects.filter(
-            company=company, is_active=True, role__nom='Commercial',
-        ).annotate(
-            nb_leads=Count('leads_assignes'),
-        ).order_by('nb_leads', 'id')
-    )
-    return candidats[0] if candidats else None
-
-
 def _leads_ouverts_count(commercial):
     """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
     SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
