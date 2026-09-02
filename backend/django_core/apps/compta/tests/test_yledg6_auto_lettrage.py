@@ -165,3 +165,84 @@ class TestLettrageEndpoint(_Base):
             '/api/django/compta/lettrage/lettrer/',
             {'ligne_ids': [l1.id, l2.id], 'code': 'ZZ'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class TestAud166GardesLettrage(TestCase):
+    """AUD166 — le lettrage exige un compte unique et des lignes non lettrées."""
+
+    def setUp(self):
+        from apps.compta import services as compta_services
+
+        self.company = make_company('aud166-co', 'AUD166 Co')
+        compta_services.seed_plan_comptable(self.company)
+        compta_services.seed_journaux(self.company)
+        self.clients = compta_services.get_compte(self.company, '3421')
+        self.fournisseurs = compta_services.get_compte(self.company, '4411')
+        journal = compta_services._journal(
+            self.company, compta_services.Journal.Type.OPERATIONS_DIVERSES)
+        self.ecriture = EcritureComptable.objects.create(
+            company=self.company, journal=journal,
+            date_ecriture='2026-07-01', libelle='OD AUD166',
+            reference='OD-AUD166',
+            statut=EcritureComptable.Statut.VALIDEE)
+
+    def _ligne(self, compte, debit='0', credit='0'):
+        return LigneEcriture.objects.create(
+            company=self.company, ecriture=self.ecriture, compte=compte,
+            debit=Decimal(debit), credit=Decimal(credit))
+
+    def test_comptes_differents_refuses(self):
+        from apps.compta import selectors
+
+        creance = self._ligne(self.clients, debit='12000')
+        dette = self._ligne(self.fournisseurs, credit='12000')
+        with self.assertRaises(ValueError):
+            selectors.lettrer(
+                self.company, [creance.id, dette.id], 'A')
+        creance.refresh_from_db()
+        dette.refresh_from_db()
+        self.assertEqual(creance.lettrage, '')
+        self.assertEqual(dette.lettrage, '')
+
+    def test_ligne_deja_lettree_refusee(self):
+        from apps.compta import selectors
+
+        a1 = self._ligne(self.clients, debit='500')
+        a2 = self._ligne(self.clients, credit='500')
+        selectors.lettrer(self.company, [a1.id, a2.id], 'A')
+        b1 = self._ligne(self.clients, credit='500')
+        with self.assertRaises(ValueError):
+            selectors.lettrer(self.company, [a1.id, b1.id], 'B')
+        a1.refresh_from_db()
+        self.assertEqual(a1.lettrage, 'A')
+
+    def test_meme_compte_equilibre_reussit(self):
+        from apps.compta import selectors
+
+        d = self._ligne(self.clients, debit='800')
+        c = self._ligne(self.clients, credit='800')
+        self.assertEqual(
+            selectors.lettrer(self.company, [d.id, c.id], 'C'), 2)
+        d.refresh_from_db()
+        self.assertEqual(d.lettrage, 'C')
+
+    def test_compte_non_lettrable_refuse(self):
+        from apps.compta import selectors, services as compta_services
+
+        banque = compta_services.get_compte(self.company, '5141')
+        d = self._ligne(banque, debit='300')
+        c = self._ligne(banque, credit='300')
+        with self.assertRaises(ValueError):
+            selectors.lettrer(self.company, [d.id, c.id], 'D')
+
+    def test_tiers_differents_refuses(self):
+        from apps.compta import selectors
+
+        d = self._ligne(self.clients, debit='400')
+        c = self._ligne(self.clients, credit='400')
+        LigneEcriture.objects.filter(pk=d.pk).update(
+            tiers_type='client', tiers_id=1)
+        LigneEcriture.objects.filter(pk=c.pk).update(
+            tiers_type='client', tiers_id=2)
+        with self.assertRaises(ValueError):
+            selectors.lettrer(self.company, [d.id, c.id], 'E')

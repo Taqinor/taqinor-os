@@ -46,7 +46,7 @@ from .models import (
     ChargeConstateeAvance,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DemandeApprobationRib,
-    DotationAmortissement, ECatalogue, EcritureComptable, Effet,
+    DotationAmortissement, ECatalogue, EcritureComptable, LigneEcriture, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
     ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
@@ -1896,6 +1896,18 @@ class LettrageViewSet(viewsets.ViewSet):
                 return Response(
                     {'detail': "'code' ou 'compte' (pour en générer un) "
                                'requis.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            # AUD166 — le compte servant à générer le code doit être CELUI des
+            # lignes : sinon le code séquentiel est tiré d'un compte qui n'a
+            # jamais été confronté aux lignes réellement lettrées.
+            comptes_reels = set(
+                LigneEcriture.objects
+                .filter(company=company, id__in=ligne_ids)
+                .values_list('compte_id', flat=True))
+            if comptes_reels and comptes_reels != {compte.pk}:
+                return Response(
+                    {'detail': "Le compte fourni ne correspond pas à celui "
+                               'des lignes à lettrer.'},
                     status=status.HTTP_400_BAD_REQUEST)
             code = selectors.prochain_code_lettrage(company, compte)
         try:
