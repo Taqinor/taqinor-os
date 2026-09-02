@@ -80,28 +80,62 @@ def suggestions_rangement_reception(reception):
 # NTWMS4 — Vagues de prélèvement multi-source, ordonnées par le parcours
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _casier_pour_ligne(produit, quantite):
-    """(bin, lot, ordre, zone, allée) résolus par la stratégie de picking du
-    produit (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le
-    tri zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; zone et
-    allée servent au parcours en serpentin (NTWMS28)."""
-    from .selectors_wms import resoudre_allocation_picking
+def _plan_casiers_pour_ligne(produit, quantite):
+    """AUD220 — plan de prélèvement COMPLET d'un besoin : une entrée par
+    lot/casier retenu par la stratégie du produit (NTWMS3), enrichie du rang de
+    parcours de son casier.
 
-    plan = resoudre_allocation_picking(produit, quantite)
-    if not plan:
-        return None, None, 1000, '', ''
-    tete = plan[0]
-    ordre, zone, allee = 1000, '', ''
-    if tete['bin_id']:
-        # Le rang de parcours vient du casier lui-même (jamais recalculé ici).
-        from .selectors_wms import localisation_casiers
-        for casier in localisation_casiers(produit):
-            if casier['bin_id'] == tete['bin_id']:
-                ordre = casier['ordre']
-                zone = casier['zone'] or ''
-                allee = casier['allee'] or ''
-                break
-    return tete['bin_id'], tete['lot_id'], ordre, zone, allee
+    Renvoie ``[{bin_id, lot_id, quantite, ordre, zone, allee}]``. Le tri
+    zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; ``zone`` et
+    ``allee`` servent au parcours en serpentin (NTWMS28).
+
+    Le défaut corrigé : seule la TÊTE du plan était retenue, si bien qu'un
+    besoin couvert par DEUX lots FEFO produisait une ligne unique portant le
+    premier lot — le lot enregistré ne représentait pas ce qui serait
+    réellement prélevé, et FEFO était contourné en pratique. Un reliquat que le
+    plan ne couvre pas (lots insuffisants) revient en une entrée SANS lot :
+    la vague demande toujours la quantité complète, comme avant.
+    """
+    from .selectors_wms import (
+        localisation_casiers, resoudre_allocation_picking,
+    )
+
+    plan = resoudre_allocation_picking(produit, quantite) or []
+    casiers = None
+    entrees, couvert = [], 0
+    for entree in plan:
+        try:
+            prise = int(entree.get('quantite') or 0)
+        except (TypeError, ValueError):
+            continue
+        if prise <= 0:
+            continue
+        ordre, zone, allee = 1000, '', ''
+        if entree['bin_id']:
+            # Le rang de parcours vient du casier lui-même (jamais recalculé).
+            if casiers is None:
+                casiers = localisation_casiers(produit)
+            for casier in casiers:
+                if casier['bin_id'] == entree['bin_id']:
+                    ordre = casier['ordre']
+                    zone = casier['zone'] or ''
+                    allee = casier['allee'] or ''
+                    break
+        couvert += prise
+        entrees.append({
+            'bin_id': entree['bin_id'], 'lot_id': entree['lot_id'],
+            'quantite': prise, 'ordre': ordre, 'zone': zone, 'allee': allee,
+        })
+
+    if not entrees:
+        return [{'bin_id': None, 'lot_id': None, 'quantite': quantite,
+                 'ordre': 1000, 'zone': '', 'allee': ''}]
+    reliquat = quantite - couvert
+    if reliquat > 0:
+        entrees.append({'bin_id': None, 'lot_id': None,
+                        'quantite': reliquat, 'ordre': 1000,
+                        'zone': '', 'allee': ''})
+    return entrees
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -237,14 +271,17 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             # Tout le stock de ce produit est sous quarantaine : la ligne
             # n'est pas servable tant que la levée n'est pas actée.
             continue
-        bin_id, lot_id, ordre, zone, allee = _casier_pour_ligne(
-            produit, quantite)
-        preparees.append({
-            'produit': produit, 'quantite': quantite, 'bin_id': bin_id,
-            'lot_id': lot_id, 'ordre': ordre, 'zone': zone, 'allee': allee,
-            'installation_id': besoin.get('installation_id'),
-            'bon_commande_id': besoin.get('bon_commande_id'),
-        })
+        # AUD220 — UNE ligne de picking par lot/casier du plan résolu : le lot
+        # porté par chaque ligne est bien celui qui sera prélevé.
+        for entree in _plan_casiers_pour_ligne(produit, quantite):
+            preparees.append({
+                'produit': produit, 'quantite': entree['quantite'],
+                'bin_id': entree['bin_id'], 'lot_id': entree['lot_id'],
+                'ordre': entree['ordre'], 'zone': entree['zone'],
+                'allee': entree['allee'],
+                'installation_id': besoin.get('installation_id'),
+                'bon_commande_id': besoin.get('bon_commande_id'),
+            })
 
     if not preparees:
         raise ValueError('Aucun besoin valide à regrouper dans cette vague.')
