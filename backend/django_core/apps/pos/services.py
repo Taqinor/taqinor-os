@@ -400,11 +400,26 @@ def rapport_z(session):
     factures des ventes comptoir rattachées à la session (via le string-FK
     ``VenteComptoir.facture``), lus via ``ventes.selectors`` (jamais d'import
     direct du modèle ``Paiement``).
+
+    AUD150 — le rapport porte sur TOUTE vente de la session AYANT UNE FACTURE,
+    ``VALIDEE`` **ou** ``EN_ATTENTE_SOLDE``. Le filtre historique
+    ``statut=VALIDEE`` excluait les ventes prises en arrhes, alors que
+    ``encaisser_arrhes`` crée une facture RÉELLE et enregistre un vrai
+    ``Paiement`` de n'importe quel mode — carte comprise — DANS LA MÊME
+    SESSION, tout en laissant la vente en ``EN_ATTENTE_SOLDE`` tant que le
+    solde n'est pas réglé. Ces encaissements n'apparaissaient donc ni au
+    rapport X/Z ni dans ``attendu_carte`` : une vente prise en arrhes par
+    carte faisait apparaître à la clôture un excédent TPE fantôme du même
+    montant, et le caissier était mis en cause.
     """
     from apps.ventes.selectors import paiements_totaux_par_mode
 
     ventes_qs = session.ventes.filter(
-        statut=VenteComptoir.Statut.VALIDEE, facture__isnull=False)
+        statut__in=[
+            VenteComptoir.Statut.VALIDEE,
+            VenteComptoir.Statut.EN_ATTENTE_SOLDE,
+        ],
+        facture__isnull=False)
     facture_ids = list(ventes_qs.values_list('facture_id', flat=True))
     par_mode = {}
     for row in paiements_totaux_par_mode(facture_ids):
