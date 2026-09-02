@@ -305,7 +305,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                 changer_statut_chantier(
                     inst, nouveau_statut, self.request.user,
                     motif_override_acompte=motif_override,
-                    motif_reouverture=motif_reouverture)
+                    motif_reouverture=motif_reouverture,
+                    # Instantané d'AVANT la sauvegarde des autres champs : le
+                    # diff du chatter doit les voir, et les gates doivent
+                    # s'évaluer sur l'état d'avant (comportement historique).
+                    etat_avant=old)
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 

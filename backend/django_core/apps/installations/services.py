@@ -3070,7 +3070,7 @@ def _raisons_transition(installation, nouveau_statut, user,
 def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
                             motif_override_acompte=None,
                             motif_reouverture=None, verifier_gates=True,
-                            champs_supplementaires=None):
+                            champs_supplementaires=None, etat_avant=None):
     """AUD316 — LE point d'écriture de `Installation.statut`.
 
     Applique, dans un ORDRE FIXE (celui du PATCH, le seul complet) :
@@ -3088,10 +3088,18 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 
     `verifier_gates=False` saute UNIQUEMENT (b) — jamais (d) : aucun appelant
     ne peut obtenir une écriture de statut sans sa cascade.
+
+    `etat_avant` est l'instantané D'AVANT toute écriture, utilisé pour le diff
+    du chatter. Le PATCH générique écrit ses autres champs AVANT d'appeler ce
+    service : sans cet instantané, `log_changes` relirait un état déjà modifié
+    et n'aurait plus qu'un diff de statut — les autres champs du même PATCH
+    disparaîtraient de l'Historique. Les deux autres adaptateurs n'écrivent
+    rien avant, et laissent donc la relecture par défaut.
     """
     from . import activity
 
-    old = Installation.objects.get(pk=installation.pk)
+    old = (etat_avant if etat_avant is not None
+           else Installation.objects.get(pk=installation.pk))
     ancien_statut = old.statut
     if verifier_gates:
         raisons = _raisons_transition(
