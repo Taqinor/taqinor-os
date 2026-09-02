@@ -621,6 +621,46 @@ class FetchMetaLeadDataVersionTests(TestCase):
         self.assertNotIn('v19.0', seen['url'])
 
 
+class FetchMetaLeadNodeVersionTests(TestCase):
+    """CRX5 — MIROIR de ``FetchMetaLeadDataVersionTests`` pour le second point
+    d'appel Graph du CRM : ``services.fetch_meta_lead_node`` (backfill
+    d'attribution ADSENG1), qui gardait « v25.0 » codé en dur — la dernière
+    copie divergente. Même garde anti-dérive : la version vient de la source
+    unique partagée, jamais d'un littéral."""
+
+    def test_fetch_node_builds_url_from_shared_graph_base(self):
+        from unittest.mock import patch
+
+        from apps.adsengine.api_version import GRAPH_BASE_URL
+        from apps.crm.services import fetch_meta_lead_node
+
+        seen = {}
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'{"ad_id": "AD-1"}'
+
+        def fake_urlopen(url, timeout=None):
+            seen['url'] = url
+            return _Resp()
+
+        with patch('urllib.request.urlopen', fake_urlopen):
+            data = fetch_meta_lead_node('4242', 'tok')
+        self.assertEqual(data, {'ad_id': 'AD-1'})
+        self.assertTrue(
+            seen['url'].startswith(f'{GRAPH_BASE_URL}/4242'),
+            msg=f"URL Graph inattendue : {seen['url']}")
+        # Aucune version codée en dur ne doit subsister dans ce chemin.
+        self.assertNotIn('v25.0', seen['url'].replace(GRAPH_BASE_URL, ''))
+        self.assertNotIn('v19.0', seen['url'])
+
+
 class MetaLeadgenIdValidationTests(TestCase):
     """CRX4 (résidu post-QJR414) — ``leadgen_id`` vient du corps du webhook et
     était interpolé TEL QUEL dans l'URL Graph. Il est désormais borné à un

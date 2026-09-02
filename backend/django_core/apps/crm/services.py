@@ -2211,19 +2211,27 @@ def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - résea
     nœud lead Meta via le Graph API officiel, pour le backfill.
 
     Isolé en fonction module (jamais dans ``webhooks.py`` — inchangé hors
-    mapping) pour rester simulable en test (monkeypatch). Utilise la version
-    courante de l'API (v25 — jamais la v19 expirée). Renvoie le dict brut ou
-    lève sur échec (capté par l'appelant, best-effort par lead).
+    mapping) pour rester simulable en test (monkeypatch). Renvoie le dict brut
+    ou lève sur échec (capté par l'appelant, best-effort par lead).
+
+    CRX5 — la version de l'API vient de la SOURCE UNIQUE partagée
+    (``apps.adsengine.api_version.GRAPH_BASE_URL``), jamais d'un littéral :
+    la « v25.0 » codée en dur ici était la dernière copie divergente du
+    dépôt, et c'est exactement de cette façon que la v19.0 du webhook est
+    restée morte en production pendant des mois (ADSENG2). Constante plain —
+    aucun modèle adsengine n'est importé.
     """
     import json
     import urllib.parse
     import urllib.request
 
+    from apps.adsengine.api_version import GRAPH_BASE_URL
+
     qs = urllib.parse.urlencode({
         'fields': 'ad_id,adgroup_id,form_id',
         'access_token': access_token,
     })
-    url = f'https://graph.facebook.com/v25.0/{leadgen_id}?{qs}'
+    url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))
 
@@ -2236,7 +2244,10 @@ def backfill_meta_lead_attribution(
     Pour chaque ``Lead`` de source ``meta_lead_ads`` dont ``meta_ad_id`` est
     encore vide, récupère ses identifiants natifs (ad_id/adgroup_id/form_id)
     depuis le nœud lead Meta via ``fetch_fn(leadgen_id, access_token)`` (défaut :
-    ``webhooks.fetch_meta_lead_node`` — injectable/simulable en test), les
+    ``services.fetch_meta_lead_node``, juste au-dessus — CRX5 : la docstring
+    nommait ``webhooks.fetch_meta_lead_node``, qui n'a jamais existé et
+    envoyait le lecteur chercher dans le mauvais module ; injectable/simulable
+    en test), les
     stocke, résout les noms via les miroirs adsengine, et remplit ``utm_content``
     = ``ad-<ad_id>`` + ``utm_campaign`` = nom de campagne résolu.
 
