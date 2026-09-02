@@ -203,6 +203,12 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # Parc — l'état de garantie agrégé (parc_garantie_etat) lit les
         # équipements posés du système : on précharge pour éviter un N+1.
         'equipements',
+        # AUD323 — `InstallationSerializer.get_checklist_completion` fait
+        # `obj.checklist.all()` PAR chantier : sans ce préchargement, l'écran
+        # liste/planification tirait une requête `ChantierChecklistItem`
+        # supplémentaire par chantier (300 chantiers actifs = 300 requêtes,
+        # latence croissant linéairement avec le portefeuille).
+        'checklist',
     ).all()
     serializer_class = InstallationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
