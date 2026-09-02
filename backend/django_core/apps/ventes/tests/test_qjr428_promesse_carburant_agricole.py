@@ -37,13 +37,19 @@ ce module ne fait que PROUVER l'état existant, puis épingler le texte écran.
 """
 from pathlib import Path
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
 
 
+# WOW5 — cette classe RÉALISE un rendu WeasyPrint
+# (``HTML(string=...).render()`` dans ``_render_onepage_html``) : elle est
+# LOURDE et doit rester hors du palier rapide de la CI, comme tous les autres
+# tests du moteur PDF. La classe suivante, elle, ne lit qu'un fichier source :
+# elle reste délibérément dans le gate rapide.
+@tag('pdf')
 class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
     """Le devis porte les VRAIES données « exploitation » du fermier
     (`current_fuel` + `fuel_spend_current`, exactement les champs que
@@ -166,7 +172,16 @@ class TestQjr428TextePanneauAgricoleHonnete(TestCase):
         self.assertTrue(chemin.exists(),
                         f"PanneauAgricole.jsx introuvable à {chemin} — la "
                         "racine calculée est-elle toujours correcte ?")
-        return chemin.read_text(encoding='utf-8')
+        source = chemin.read_text(encoding='utf-8')
+        # ESPACES NORMALISÉS. Le texte visé vit dans un commentaire JSX
+        # RENVOYÉ À LA LIGNE : « aucune promesse de chiffre dans le\n
+        # PDF ». Chercher la phrase telle quelle dans le source brut ne
+        # mesure pas l'honnêteté du texte, mais la largeur de colonne du
+        # jour — et un simple reformatage la ferait rougir (ou, pire, ferait
+        # passer un ``assertNotIn`` sur une promesse fausse simplement
+        # coupée en deux). On compare donc sur le texte à espaces normalisés,
+        # ce que lit un humain.
+        return ' '.join(source.split())
 
     def test_le_texte_ne_promet_plus_un_chiffre_carburant_que_le_pdf_ne_rend_pas(self):
         source = self._lire_panneau_agricole()

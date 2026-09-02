@@ -142,6 +142,27 @@ class UneEcritureBestEffortEnEchecNEmpoisonnePlusLaVente(_BaseAcceptation):
             'absorbé ne veut pas dire invisible. Journal : %r' % journal.output)
 
 
+class _TransactionEspion:
+    """Un proxy du module ``django.db.transaction`` qui COMPTE les ``atomic()``.
+
+    Il ne remplace le nom ``transaction`` que DANS l'espace de noms de
+    ``apps.ventes.domain.cycle_vie`` : tout le reste du chemin d'acceptation
+    (stock, installations, facturation…) continue d'utiliser le vrai module et
+    n'est donc jamais compté ici — c'est précisément ce qu'on veut mesurer.
+    """
+
+    def __init__(self, vrai):
+        self._vrai = vrai
+        self.entrees = 0
+
+    def atomic(self, *args, **kwargs):
+        self.entrees += 1
+        return self._vrai.atomic(*args, **kwargs)
+
+    def __getattr__(self, nom):
+        return getattr(self.__dict__['_vrai'], nom)
+
+
 class LeCoutDuPointDeSauvegardeEstConstant(_BaseAcceptation):
     """Troisième test — le point de sauvegarde ne coûte pas une requête par
     ligne de devis, et une acceptation nominale reste inchangée au centime."""
@@ -155,19 +176,54 @@ class LeCoutDuPointDeSauvegardeEstConstant(_BaseAcceptation):
         return len([q for q in requetes.captured_queries
                     if _est_savepoint(q['sql'])])
 
+    def _atomics_de_l_acceptation(self, devis):
+        """Le nombre d'``atomic()`` ouverts PAR ``cycle_vie`` pendant
+        l'acceptation — les trois blocs best-effort de QJR421 compris."""
+        from apps.ventes.domain import cycle_vie
+
+        espion = _TransactionEspion(cycle_vie.transaction)
+        with patch.object(cycle_vie, 'transaction', espion):
+            accept_devis(devis=devis, user=None, nom='M. Client')
+        return espion.entrees
+
     def test_le_nombre_de_savepoints_ne_suit_pas_le_nombre_de_lignes(self):
+        """CE QUE QJR421 PROMET, ET RIEN D'AUTRE.
+
+        La première écriture de ce test comptait TOUS les points de sauvegarde
+        émis par la chaîne d'acceptation complète — donc aussi ceux, PRÉEXISTANTS
+        et étrangers à cette tâche, que posent l'aval (stock, installations,
+        numérotation) une fois par ligne de devis. Elle mesurait ainsi 22
+        savepoints à 2 lignes et 52 à 20 lignes, et faisait porter à QJR421 un
+        coût qu'il n'a pas créé : le diff de la tâche n'ajoute QUE trois
+        ``atomic()`` imbriqués, tous hors de la moindre boucle.
+
+        La mesure porte donc désormais sur ce que ``cycle_vie`` ouvre lui-même :
+        ce nombre doit être RIGOUREUSEMENT le même à 2 lignes et à 20 —
+        l'égalité, pas une tolérance. Un savepoint par bloc best-effort ; jamais
+        un par ligne.
+        """
         petit = self.devis                       # 2 lignes
         gros = self._devis('DEV-QJR421-GROS', nb_lignes=20)
 
-        savepoints_petit = self._savepoints_pour(petit)
-        savepoints_gros = self._savepoints_pour(gros)
+        atomics_petit = self._atomics_de_l_acceptation(petit)
+        atomics_gros = self._atomics_de_l_acceptation(gros)
 
-        self.assertLessEqual(
-            savepoints_gros - savepoints_petit, 3,
-            'le coût en points de sauvegarde suit le nombre de lignes '
-            '(%d lignes → %d, 20 lignes → %d) : un savepoint par bloc '
-            'best-effort était attendu, pas un par ligne.'
-            % (2, savepoints_petit, savepoints_gros))
+        self.assertGreaterEqual(
+            atomics_petit, 3,
+            'les trois blocs best-effort de QJR421 doivent bien ouvrir leur '
+            'point de sauvegarde (mesuré : %d)' % atomics_petit)
+        self.assertEqual(
+            atomics_gros, atomics_petit,
+            'le coût en points de sauvegarde de l\'acceptation suit le nombre '
+            'de lignes (2 lignes → %d atomic(), 20 lignes → %d) : un savepoint '
+            'par bloc best-effort était attendu, pas un par ligne.'
+            % (atomics_petit, atomics_gros))
+
+    def test_l_acceptation_emet_bien_des_points_de_sauvegarde(self):
+        """Le compteur de requêtes reste utile comme TÉMOIN : les ``atomic()``
+        imbriqués se traduisent réellement en SQL ``SAVEPOINT`` (sans quoi le
+        test ci-dessus mesurerait une intention, pas un effet)."""
+        self.assertGreater(self._savepoints_pour(self.devis), 0)
 
     def test_une_acceptation_nominale_est_inchangee_au_centime(self):
         avant_ht = self.devis.total_ht

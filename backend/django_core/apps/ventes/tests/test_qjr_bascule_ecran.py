@@ -250,28 +250,52 @@ class GoldenMonoOption(_BaseEcran):
 class GoldenDeuxOptionsDivergentes(_BaseEcran):
     """FIXTURE 2 — les DEUX options, et elles divergent.
 
-    Composition envoyée par l'écran (une ligne COMMUNE, une par option) :
+    Composition envoyée par l'écran (une ligne COMMUNE, puis chaque option) :
 
-        ordre 0 — Kit commun QJR93 ×1 à 1 000,00  variante ''      → 1 000,00
-        ordre 1 — Poste A QJR93    ×1 à 2 000,00  variante 'sans'  → 2 000,00
-        ordre 2 — Poste B QJR93    ×1 à 5 000,00  variante 'avec'  → 5 000,00
+        ordre 0 — Kit commun QJR93       ×1 à 1 000,00 variante ''     → 1 000
+        ordre 1 — Onduleur réseau QJR93  ×1 à 2 000,00 variante 'sans' → 2 000
+        ordre 2 — Onduleur hybride QJR93 ×1 à 3 000,00 variante 'avec' → 3 000
+        ordre 3 — Batterie QJR93         ×1 à 2 000,00 variante 'avec' → 2 000
+
+    QJR400 (02/09/2026) — POURQUOI DE VRAIS NOMS D'ÉQUIPEMENT ICI. Le noyau
+    exige désormais que la variante remplace la DÉCLARATION, jamais la
+    SERVABILITÉ (``utils.options.familles_servables``) : « sans » réclame un
+    onduleur RÉSEAU, « avec » un onduleur HYBRIDE (ou autonome) **et** une
+    batterie réelle. Les désignations neutres d'origine (« Poste A/B ») ne
+    servaient donc AUCUN des deux paniers : le devis redevenait mono-option et
+    ``option_totaux`` rendait la somme des deux (8 000 au lieu de 3 000) —
+    c'est le comportement CORRECT du noyau sur une composition qu'aucun
+    document n'aurait pu rendre. Le poste « avec » à 5 000 est simplement
+    redécoupé en 3 000 (onduleur hybride) + 2 000 (batterie).
+
+    **AUCUN nombre golden ne bouge** : les trois paniers valent exactement ce
+    qu'ils valaient. Les deux autres fixtures gardent leurs désignations
+    neutres — elles ne dépendent pas de ce prédicat.
 
     DÉRIVATION. La colonne ``variante`` est EXCLUSIVE (L-2OPT / F14) : une
     ligne déclarée ne part jamais dans le panier de l'autre option, et une ligne
     sans déclaration reste commune aux deux. D'où :
 
-        panier « sans »  = commun + Poste A = 1 000 + 2 000 =  3 000,00 HT
+        panier « sans »  = commun + réseau  = 1 000 + 2 000 =  3 000,00 HT
                            tva = 3 000 × 20 / 100           =    600,00
                            ttc                              =  3 600,00
-        panier « avec »  = commun + Poste B = 1 000 + 5 000 =  6 000,00 HT
+        panier « avec »  = commun + hyb.+bat = 1 000 + 5 000 =  6 000,00 HT
                            tva = 6 000 × 20 / 100           =  1 200,00
                            ttc                              =  7 200,00
-        vue BRUT (aucun filtre d'option)    = 1+2+5 mille   =  8 000,00 HT
+        vue BRUT (aucun filtre d'option)    = 1+2+3+2 mille =  8 000,00 HT
 
     Et ``Devis.total_*`` suit l'option EFFECTIVE (D9 : avant acceptation,
     l'option AVEC), donc le panier « avec » — JAMAIS la somme des deux, qui
     serait un montant que le client ne paiera jamais.
     """
+
+    def setUp(self):
+        super().setUp()
+        # QJR400 — le quatrième article : le panier « avec » a besoin de SA
+        # batterie EN PLUS de son onduleur hybride pour être servable.
+        self.poste_c = Produit.objects.create(
+            company=self.company, nom='Poste C QJR93', sku='QJR93-C',
+            prix_vente=Decimal('2000'), quantite_stock=100)
 
     def _creer(self):
         return self.api.post(ATOMIC, {
@@ -282,11 +306,14 @@ class GoldenDeuxOptionsDivergentes(_BaseEcran):
                 {'produit': self.commun.id, 'quantite': '1',
                  'prix_unitaire': '1000', 'designation': 'Kit commun QJR93'},
                 {'produit': self.poste_a.id, 'quantite': '1',
-                 'prix_unitaire': '2000', 'designation': 'Poste A QJR93',
-                 'variante': 'sans'},
+                 'prix_unitaire': '2000',
+                 'designation': 'Onduleur réseau QJR93', 'variante': 'sans'},
                 {'produit': self.poste_b.id, 'quantite': '1',
-                 'prix_unitaire': '5000', 'designation': 'Poste B QJR93',
-                 'variante': 'avec'},
+                 'prix_unitaire': '3000',
+                 'designation': 'Onduleur hybride QJR93', 'variante': 'avec'},
+                {'produit': self.poste_c.id, 'quantite': '1',
+                 'prix_unitaire': '2000',
+                 'designation': 'Batterie QJR93', 'variante': 'avec'},
             ],
         }, format='json')
 
@@ -300,7 +327,8 @@ class GoldenDeuxOptionsDivergentes(_BaseEcran):
              for li in self._lignes(devis)],
             [(0, '', Decimal('1000')),
              (1, 'sans', Decimal('2000')),
-             (2, 'avec', Decimal('5000'))])
+             (2, 'avec', Decimal('3000')),
+             (3, 'avec', Decimal('2000'))])
 
     def test_golden_l_argent_de_chaque_option(self):
         reponse = self._creer()
