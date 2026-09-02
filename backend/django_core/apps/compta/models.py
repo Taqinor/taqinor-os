@@ -5005,7 +5005,9 @@ class PisteAuditComptable(models.Model):
     # L'écriture couverte par ce maillon (une seule par écriture — idempotent).
     ecriture = models.OneToOneField(
         EcritureComptable,
-        on_delete=models.CASCADE,
+        # AUD170 — PROTECT, pas CASCADE : une chaîne décrite « INALTÉRABLE » et
+        # « append-only » ne peut pas s'effacer avec l'écriture qu'elle scelle.
+        on_delete=models.PROTECT,
         related_name='piste_audit',
         verbose_name='Écriture',
     )

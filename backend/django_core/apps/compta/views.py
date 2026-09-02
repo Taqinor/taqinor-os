@@ -311,6 +311,36 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def perform_destroy(self, instance):
+        """AUD170 — une écriture VALIDÉE (ou scellée) ne se supprime pas.
+
+        Le ViewSet était un ``ModelViewSet`` complet sans aucun
+        ``perform_destroy`` : un ``DELETE`` sur une écriture de vente validée
+        de 250 000 MAD dans un mois non clôturé renvoyait 204 et effaçait
+        l'écriture, ses lignes et son maillon d'audit (CASCADE), faisant
+        baisser le CA du mois sans trace. La doctrine COMPTA11 est pourtant
+        écrite noir sur blanc dans ``services`` : « on NE SUPPRIME JAMAIS une
+        écriture validée : on passe une écriture inverse ».
+        """
+        if instance.statut == EcritureComptable.Statut.VALIDEE:
+            raise DjangoValidationError(
+                "Une écriture VALIDÉE ne se supprime pas (COMPTA11) : passez "
+                "une contre-passation via l'action « extourner ».")
+        if getattr(instance, 'piste_audit', None) is not None:
+            raise DjangoValidationError(
+                "Cette écriture est scellée dans la piste d'audit "
+                "(append-only) : elle ne peut plus être supprimée. Utilisez "
+                "l'action « extourner ».")
+        super().perform_destroy(instance)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_409_CONFLICT)
+
     @action(detail=True, methods=['post'])
     def extourner(self, request, pk=None):
         """COMPTA11 — Passe l'écriture d'extourne (contre-passation).
