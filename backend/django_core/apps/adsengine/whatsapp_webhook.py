@@ -53,13 +53,20 @@ def _is_configured():
 def _resolve_company():
     """Société cible, résolue CÔTÉ SERVEUR (jamais du corps de requête), au même
     patron que les autres webhooks Meta de l'ERP : ``WHATSAPP_CLOUD_COMPANY_ID``
-    si posé, sinon la 1re ``Company`` (scaffold mono-société)."""
-    from authentication.models import Company
+    si posé, sinon la 1re ``Company``.
 
-    company_id = getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', None)
-    if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+    QJR415 — CE REPLI ÉTAIT MUET. Dans un ERP multi-tenant, retomber en silence
+    sur la première société range des conversations entrantes chez un autre
+    client sans qu'aucun signal ne soit émis. Il partage désormais LE motif
+    unique du dépôt (``apps.crm.webhooks.resoudre_company_avec_repli_bruyant``,
+    le garde-fou QXG5) : plus aucune variante muette. Import fonction-local —
+    jamais au chargement du module, jamais un import de ``crm.models``."""
+    from apps.crm.webhooks import resoudre_company_avec_repli_bruyant
+
+    return resoudre_company_avec_repli_bruyant(
+        getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', None),
+        reglage='WHATSAPP_CLOUD_COMPANY_ID',
+        contexte='adsengine.whatsapp_webhook._resolve_company')
 
 
 def _check_signature(request, secret):

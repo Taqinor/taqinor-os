@@ -126,38 +126,57 @@ def _secret_ok(request) -> bool:
                                str(provided).encode('utf-8'))
 
 
-def _resolve_company():
-    """Résolution serveur du tenant pour ce webhook public (jamais reçue du
-    corps de requête). ``WEBSITE_LEADS_COMPANY_ID`` DOIT être posé en prod dès
-    qu'une 2e ``Company`` existe (QXG5, gated ops check) : sans elle, le repli
-    ci-dessous (1re Company par pk) est ARBITRAIRE et peut router
-    silencieusement un lead vers le mauvais tenant.
+def resoudre_company_avec_repli_bruyant(company_id, *, reglage, contexte):
+    """QJR415 — LE SEUL motif de repli « première Company » du dépôt (QXG5).
 
-    QXG5 (code guard) : on ne casse jamais l'endpoint (le repli reste "safe",
-    jamais bloquant — « jamais perdre un lead »), mais on lève un
-    ``logger.error`` LOUD dès que la config est ambiguë, pour qu'un défaut de
-    configuration prod soit visible (logs/alerting) plutôt que silencieux."""
-    company_id = getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None)
+    Résolution SERVEUR du tenant d'un webhook public (jamais reçue du corps de
+    requête) : la ``Company`` désignée par ``company_id``, sinon la première par
+    ``pk`` — mais **jamais en silence**.
+
+    LE DÉFAUT QUE CECI FERME. Trois webhooks portaient le même repli et un seul
+    portait le garde-fou : dans un ERP MULTI-TENANT, retomber muettement sur
+    ``Company.objects.order_by('pk').first()`` range les leads entrants dans la
+    société d'un AUTRE client sans qu'aucun signal ne soit émis. Le motif est
+    désormais unique et les variantes muettes sont supprimées (règle
+    permanente 2).
+
+    LA RÈGLE QXG5, INCHANGÉE : on ne casse JAMAIS l'endpoint (le repli reste
+    « safe », jamais bloquant — « jamais perdre un lead »), mais un
+    ``logger.error`` LOUD part dès que la configuration est ambiguë, pour qu'un
+    défaut de configuration prod soit visible (logs/alerting) plutôt que
+    silencieux. Une base à UNE seule société ne déclenche aucun bruit : il n'y
+    a alors rien d'ambigu.
+
+    ``reglage`` — le NOM du réglage à poser (il apparaît dans le message).
+    ``contexte`` — le nom de l'appelant, pour retrouver le webhook fautif.
+    """
     if company_id:
         company = Company.objects.filter(pk=company_id).first()
         if company is None:
             logger.error(
-                "_resolve_company: WEBSITE_LEADS_COMPANY_ID=%r ne correspond "
-                "à aucune Company — vérifier la configuration prod.",
-                company_id,
+                "%s: %s=%r ne correspond à aucune Company — vérifier la "
+                "configuration prod.",
+                contexte, reglage, company_id,
             )
         return company
     total = Company.objects.count()
     fallback = Company.objects.order_by('pk').first()
     if total > 1:
         logger.error(
-            "_resolve_company: WEBSITE_LEADS_COMPANY_ID n'est pas configuré "
-            "et %d Company existent — repli ARBITRAIRE sur la 1re (pk=%s). "
-            "Risque de routage silencieux vers le mauvais tenant : poser "
-            "WEBSITE_LEADS_COMPANY_ID en prod (QXG5).",
-            total, getattr(fallback, 'pk', None),
+            "%s: %s n'est pas configuré et %d Company existent — repli "
+            "ARBITRAIRE sur la 1re (pk=%s). Risque de routage silencieux vers "
+            "le mauvais tenant : poser %s en prod (QXG5).",
+            contexte, reglage, total, getattr(fallback, 'pk', None), reglage,
         )
     return fallback
+
+
+def _resolve_company():
+    """Tenant du webhook « leads site web » — voir
+    :func:`resoudre_company_avec_repli_bruyant` (QXG5)."""
+    return resoudre_company_avec_repli_bruyant(
+        getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None),
+        reglage='WEBSITE_LEADS_COMPANY_ID', contexte='_resolve_company')
 
 
 def _clean_roof_point(raw):
@@ -2068,10 +2087,18 @@ def replay_website_lead_payload(raw):
 
 
 def _meta_lead_ads_company():
-    company_id = getattr(settings, 'META_LEAD_ADS_COMPANY_ID', None)
-    if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+    """QJR415 — tenant du webhook Meta Lead Ads, avec le garde-fou QXG5 que son
+    jumeau ``_resolve_company`` possédait déjà.
+
+    Ce chemin retombait SILENCIEUSEMENT sur la première ``Company`` : dans un
+    ERP multi-tenant, les leads Meta d'un client atterrissaient chez un autre
+    sans qu'aucun signal ne soit émis. Il partage désormais LE motif unique
+    (:func:`resoudre_company_avec_repli_bruyant`) — plus aucune variante muette
+    dans ce module."""
+    return resoudre_company_avec_repli_bruyant(
+        getattr(settings, 'META_LEAD_ADS_COMPANY_ID', None),
+        reglage='META_LEAD_ADS_COMPANY_ID',
+        contexte='_meta_lead_ads_company')
 
 
 def _meta_lead_ads_app_secret():
