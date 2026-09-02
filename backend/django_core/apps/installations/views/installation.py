@@ -763,19 +763,45 @@ class InstallationViewSet(CompanyScopedModelViewSet):
     def signer_client(self, request, pk=None):
         """NTMOB16 — enregistre la signature client du bon de livraison.
         Corps : {"signature_client": <data-URL PNG>, "signataire_nom": <str>}.
-        Pose `signe_le` côté serveur."""
+        Pose `signe_le` côté serveur.
+
+        AUD305 — une RE-signature (chantier déjà signé) est refusée en 409 :
+        elle écrasait sinon inconditionnellement la preuve de livraison
+        originale, sans trace, précisément quand un litige la réclame. Elle
+        reste possible avec un motif explicite (`motif_override_signature`,
+        patron `motif_override_acompte`), journalisé au chatter. Les
+        changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
         inst = self.get_object()
         sig = (request.data.get('signature_client') or '').strip()
         nom = (request.data.get('signataire_nom') or '').strip()
+        motif = (request.data.get('motif_override_signature')
+                 or request.data.get('motif_override') or '').strip()
         if not sig:
             return Response({'signature_client': 'Signature vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if inst.signe_le and not motif:
+            return Response(
+                {'detail': (
+                    "Ce bon de livraison est déjà signé"
+                    + (f" par {inst.signataire_nom}"
+                       if inst.signataire_nom else "")
+                    + f" le {timezone.localtime(inst.signe_le):%d/%m/%Y à %H:%M}"
+                    ". Une re-signature exige un motif explicite "
+                    "(`motif_override_signature`) — il sera journalisé.")},
+                status=status.HTTP_409_CONFLICT)
+        old = Installation.objects.get(pk=inst.pk)
         inst.signature_client = sig
         if nom:
             inst.signataire_nom = nom
         inst.signe_le = timezone.now()
         fields = ['signature_client', 'signataire_nom', 'signe_le']
         inst.save(update_fields=fields)
+        activity.log_changes(old, inst, request.user)
+        if old.signe_le and motif:
+            activity.log_note(
+                inst, request.user,
+                f"Bon de livraison RE-signé (signature précédente remplacée) "
+                f"— motif : {motif}")
         activity.log_note(
             inst, request.user,
             f"Signature client enregistrée sur le bon de livraison "

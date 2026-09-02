@@ -473,6 +473,11 @@ class InstallationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
+            # AUD305 — la preuve de livraison signée (NTMOB16) ne s'écrit QUE
+            # par l'action dédiée `signer-client` (gardée contre la
+            # re-signature et journalisée) : un PATCH générique ne peut plus
+            # l'écraser ni la vider.
+            'signature_client', 'signataire_nom', 'signe_le',
         ]
 
     def get_statut_ordre(self, obj):
