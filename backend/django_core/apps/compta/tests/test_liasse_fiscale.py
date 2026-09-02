@@ -125,6 +125,39 @@ class LiasseFiscaleSelectorTests(TestCase):
         self.assertEqual(
             data['balance']['total_credit'], balance_seul['total_credit'])
 
+    def test_aud169_bilan_borne_le_resultat_a_l_exercice(self):
+        """AUD169 — le bilan de N2 affiche le résultat de N2, pas le cumul.
+
+        `bilan` n'acceptait aucune borne basse et son CPC interne cumulait
+        depuis la première écriture : au 31/12/2026, un exercice 2025 à
+        300 000 et un 2026 à 200 000 donnaient « Résultat : 500 000 » sur un
+        état de synthèse déposable.
+        """
+        ex2025 = ExerciceComptable.objects.create(
+            company=self.co, libelle='Exercice 2025',
+            date_debut=date(2025, 1, 1), date_fin=date(2025, 12, 31))
+        passer_vente(self.co, date(2025, 6, 1), 'Vente 2025', '300000')
+        passer_vente(self.co, date(2026, 6, 1), 'Vente 2026', '200000')
+        borne = selectors.bilan(
+            self.co, date_debut=self.ex.date_debut, date_fin=self.ex.date_fin)
+        self.assertEqual(borne['resultat'], Decimal('200000'))
+        # Le cumul historique reste accessible sans borne basse (défaut).
+        cumule = selectors.bilan(self.co, date_fin=self.ex.date_fin)
+        self.assertEqual(cumule['resultat'], Decimal('500000'))
+        # Et l'exercice 2025 lu seul retombe sur son propre résultat.
+        self.assertEqual(
+            selectors.bilan(
+                self.co, date_debut=ex2025.date_debut,
+                date_fin=ex2025.date_fin)['resultat'],
+            Decimal('300000'))
+
+    def test_aud169_liasse_ne_porte_plus_deux_resultats_contradictoires(self):
+        passer_vente(self.co, date(2025, 6, 1), 'Vente 2025', '300000')
+        passer_vente(self.co, date(2026, 6, 1), 'Vente 2026', '200000')
+        data = selectors.liasse_fiscale(self.co, self.ex)
+        self.assertEqual(data['resultat'], Decimal('200000'))
+        self.assertEqual(data['bilan']['resultat'], data['resultat'])
+
     def test_resultat_egale_produits_moins_charges(self):
         passer_vente(self.co, date(2026, 3, 1), 'Vente', '5000')
         passer_charge(self.co, date(2026, 4, 1), 'Achat', '1200')

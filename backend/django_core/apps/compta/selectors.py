@@ -583,14 +583,22 @@ def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False,
 
 # ── FG114 / COMPTA28 — Bilan (format CGNC) ─────────────────────────────────
 
-def bilan(company, *, date_fin=None, validees_seulement=False,
-          comparer=False, date_fin_n1=None):
+def bilan(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+          comparer=False, date_debut_n1=None, date_fin_n1=None):
     """Bilan : actif (classes 2,3,5) / passif (classes 1,4) depuis les soldes.
 
     Le résultat de l'exercice (CPC) est porté au passif pour équilibrer
     (équation comptable : Actif = Passif + Résultat). Renvoie
     ``{'actif', 'total_actif', 'passif', 'total_passif', 'resultat',
     'equilibre'}``.
+
+    AUD169 — ``date_debut`` BORNE le CPC interne à l'exercice. Sans lui, le
+    « Résultat de l'exercice » imprimé sur un état de synthèse déposable est le
+    CUMUL de tous les exercices depuis la première écriture (2025 à 300 000
+    puis 2026 à 200 000 → « Résultat : 500 000 » au 31/12/2026). Le résultat
+    ANTÉRIEUR reste porté par le report à nouveau (AUD162). Défaut ``None`` =
+    comportement historique intact ; c'est la vue qui remplit ``date_debut``
+    depuis l'``ExerciceComptable`` couvrant ``date_fin``.
 
     ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
     sur chaque poste d'actif/passif, calculés à ``date_fin_n1`` (défaut :
@@ -623,7 +631,7 @@ def bilan(company, *, date_fin=None, validees_seulement=False,
             total_passif += -solde
             passif.append(item)
     resultat_exercice = cpc(
-        company, date_fin=date_fin,
+        company, date_debut=date_debut, date_fin=date_fin,
         validees_seulement=validees_seulement)['resultat']
     out = {
         'actif': actif,
@@ -634,8 +642,9 @@ def bilan(company, *, date_fin=None, validees_seulement=False,
         'equilibre': total_actif == (total_passif + resultat_exercice),
     }
     if comparer:
-        _, fin_n1 = _periode_n1(None, date_fin, None, date_fin_n1)
-        n1 = bilan(company, date_fin=fin_n1,
+        deb_n1, fin_n1 = _periode_n1(
+            date_debut, date_fin, date_debut_n1, date_fin_n1)
+        n1 = bilan(company, date_debut=deb_n1, date_fin=fin_n1,
                    validees_seulement=validees_seulement)
         n1_actif = {li['numero']: li['montant'] for li in n1['actif']}
         n1_passif = {li['numero']: li['montant'] for li in n1['passif']}
@@ -2932,8 +2941,12 @@ def liasse_fiscale(company, exercice, *, validees_seulement=False):
     date_debut = exercice.date_debut
     date_fin = exercice.date_fin
     # On RÉUTILISE les sélecteurs existants — aucun recalcul ad hoc ici.
+    # AUD169 — le bilan reçoit la MÊME borne basse que le CPC : sans elle, la
+    # liasse affichait deux résultats contradictoires (``resultat`` borné à
+    # l'exercice vs ``bilan.resultat`` cumulé depuis la première écriture).
     etat_bilan = bilan(
-        company, date_fin=date_fin, validees_seulement=validees_seulement)
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
     etat_cpc = cpc(
         company, date_debut=date_debut, date_fin=date_fin,
         validees_seulement=validees_seulement)

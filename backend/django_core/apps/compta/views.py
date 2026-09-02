@@ -446,6 +446,33 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'date_fin_n1': params.get('date_fin_n1') or None,
         }
 
+    def _debut_exercice_du_bilan(self, request, date_fin):
+        """AUD169 — borne basse du bilan = début de l'exercice couvrant ``date_fin``.
+
+        Renvoie ``(date_debut, None)`` ou ``(None, Response 400)``. Aucun
+        exercice couvrant la date → REFUS explicite : cumuler silencieusement
+        tous les exercices produit un « Résultat de l'exercice » faux sur un
+        état de synthèse déposable, et c'est exactement ce que rien ne signalait.
+        """
+        try:
+            fin = _parse_date(date_fin) if date_fin else timezone.localdate()
+        except ValueError:
+            return None, Response(
+                {'detail': "'date_fin' invalide (format attendu : AAAA-MM-JJ)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=request.user.company,
+            date_debut__lte=fin, date_fin__gte=fin,
+        ).order_by('-date_debut').first()
+        if exercice is None:
+            return None, Response(
+                {'detail': "Aucun exercice comptable ne couvre le "
+                           f"{fin.isoformat()} : créez-le avant d'éditer le "
+                           'bilan (le résultat serait sinon le cumul de tous '
+                           'les exercices).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return exercice.date_debut, None
+
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
         company = request.user.company
@@ -652,10 +679,22 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     def bilan(self, request):
         periode = self._periode(request)
         comparatif = self._comparatif_kwargs(request)
+        # AUD169 — le « Résultat de l'exercice » d'un état de synthèse
+        # déposable doit être celui de l'EXERCICE, pas le cumul depuis la
+        # première écriture. La borne basse vient de l'exercice couvrant
+        # ``date_fin`` ; à défaut on REFUSE plutôt que de cumuler en silence.
+        date_debut = periode['date_debut']
+        if date_debut is None:
+            date_debut, err = self._debut_exercice_du_bilan(
+                request, periode['date_fin'])
+            if err is not None:
+                return err
         data = selectors.bilan(
-            request.user.company, date_fin=periode['date_fin'],
+            request.user.company, date_debut=date_debut,
+            date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'],
             comparer=comparatif['comparer'],
+            date_debut_n1=comparatif.get('date_debut_n1'),
             date_fin_n1=comparatif['date_fin_n1'])
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_bilan_pdf
@@ -1510,8 +1549,10 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         date_debut = exercice.date_debut.isoformat()
         date_fin = exercice.date_fin.isoformat()
 
+        # AUD169 — bilan borné à l'exercice, comme le CPC juste en dessous.
         bilan = selectors.bilan(
-            company, date_fin=date_fin, validees_seulement=validees)
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
         cpc_data = selectors.cpc(
             company, date_debut=date_debut, date_fin=date_fin,
             validees_seulement=validees)
