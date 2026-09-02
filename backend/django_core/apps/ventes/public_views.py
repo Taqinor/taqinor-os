@@ -1990,9 +1990,41 @@ def _estimation_conso_publique(devis):
         return None
 
 
+def _jour_reference_publique(devis):
+    """QJR406 — LA date de référence du devis, pour les surfaces PUBLIQUES.
+
+    Les blocs ``jours_types`` et ``couverture_batterie`` rejouent les douze
+    jours types (``etude_horaire.jours_types_annee``), dont la forme dépend de
+    la fenêtre RAMADAN, donc d'une DATE. QJR164 a câblé le paramètre
+    ``jour_reference`` dans les deux fonctions publiques, mais AUCUN des deux
+    appelants de production ne le passait : les deux surfaces retombaient sur
+    l'horloge du serveur (``timezone.localdate()``, au fond de
+    ``jours_types_annee``) pendant que le devis persisté, lui, porte SON jour
+    de référence — le client qui rouvrait son lien voyait une journée type qui
+    n'était pas celle de son devis (écart visible autour du Ramadan).
+
+    Source UNIQUE : ``domain.entrees.jour_reference_du_devis`` (QJR232) —
+    surcharge D12 ``etude.jour_reference``, sinon la date du devis, sinon
+    « aujourd'hui ». Aucune seconde règle de résolution.
+
+    ``None`` best-effort : une résolution impossible rend l'ancien
+    comportement (repli d'horloge posé au fond de ``jours_types_annee``,
+    inchangé) plutôt que de faire tomber un bloc d'affichage additif.
+    """
+    try:
+        from .domain.entrees import jour_reference_du_devis
+        return jour_reference_du_devis(devis)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('jour_reference indisponible', exc_info=True)
+        return None
+
+
 def _jours_types_publique(devis):
     """L-BACK T4 — bloc ``jours_types`` (contrat public, voir
-    ``etude_horaire.jours_types_publics``). ``None`` best-effort."""
+    ``etude_horaire.jours_types_publics``). ``None`` best-effort.
+
+    QJR406 — la date de référence du DEVIS est transmise (voir
+    :func:`_jour_reference_publique`), jamais l'horloge du rendu."""
     try:
         from .etude_horaire import jours_types_publics
         kwc, conso, ville, lat, lon, occupation, equipements = (
@@ -2001,7 +2033,8 @@ def _jours_types_publique(devis):
             return None
         return jours_types_publics(
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
-            lon=lon, occupation=occupation, equipements=equipements)
+            lon=lon, occupation=occupation, equipements=equipements,
+            jour_reference=_jour_reference_publique(devis))
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
         logger.warning('jours_types indisponible', exc_info=True)
         return None
@@ -2417,7 +2450,10 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
             nb_packs_plancher=banque['nb_packs'],
             ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
-            puissances_par_pack=banque)
+            puissances_par_pack=banque,
+            # QJR406 — les mêmes douze jours types que l'étude persistée :
+            # la date vient du DEVIS, jamais de l'horloge du rendu.
+            jour_reference=_jour_reference_publique(devis))
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
