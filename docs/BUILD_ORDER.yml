@@ -398,6 +398,11 @@ edges:
       ARC-noyau: 80
       SCA-kit-document: 80
 unmapped_ok:
+  # AUD — Campagne d'audit L3 ERP solaire entier (Groupes AUD1/AUD2/AUD3 de
+  # PLAN.md, nuit du 02-03/09/2026) : des CORRECTIFS de code existant,
+  # auto-ordonnés par leurs @after internes ; aucun prérequis de vague
+  # plateforme.
+  - AUD
   # SOL — Specialisation ERP solaire (Groupe SOL de PLAN.md, 2026-09-02) :
   # auto-ordonne par ses propres @after (SOL1 -> SOL2 -> SOL3 -> ...), aucun
   # prerequis de vague plateforme.
