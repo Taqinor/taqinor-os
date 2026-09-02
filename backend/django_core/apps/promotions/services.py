@@ -145,12 +145,20 @@ def consommer_coupon(company, code, lignes, *, client=None, maintenant=None):
     from .models import CouponUtilisation
 
     coupon = valider_coupon(company, code, client=client)
+    # AUD204 — la remise est calculée AVANT toute consommation : un coupon dont
+    # la règle n'ouvre AUCUNE remise sur ce panier ne doit pas brûler sa limite
+    # d'usage. Sinon le client perd son coupon sans jamais rien économiser —
+    # exactement le défaut constaté au comptoir.
+    montant = montant_remise_coupon(coupon, lignes, maintenant=maintenant)
+    if montant <= 0:
+        raise CouponError(
+            "Ce coupon n'ouvre aucune remise sur ce panier : il n'a pas été "
+            'consommé.')
     CouponUtilisation.objects.create(company=company, coupon=coupon, client=client)
     if coupon.utilise_le is None:
         coupon.utilise_par = client
         coupon.utilise_le = timezone.now()
         coupon.save(update_fields=['utilise_par', 'utilise_le'])
-    montant = montant_remise_coupon(coupon, lignes, maintenant=maintenant)
     return coupon, montant
 
 

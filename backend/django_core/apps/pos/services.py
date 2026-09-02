@@ -64,7 +64,7 @@ def _discount_threshold_ok(company, remise, *, approuve, user):
 
 
 @transaction.atomic
-def valider_vente(*, vente, paiements, user):
+def valider_vente(*, vente, paiements, user, coupon_code=None):
     """Valide une ``VenteComptoir`` (XPOS1).
 
     ``paiements`` : liste de dicts ``{mode, montant, reference?}``. En une
@@ -78,6 +78,14 @@ def valider_vente(*, vente, paiements, user):
     Refuse une remise de ligne au-delà du seuil d'approbation société sans
     approbation (T17). Refuse un règlement espèces sans session de caisse
     active (XPOS4). Renvoie la vente validée (avec ``facture`` posée).
+
+    AUD204 — ``coupon_code`` FERME LA BOUCLE du coupon à code unique. Avant,
+    l'action ``coupon/`` CONSOMMAIT le coupon (elle brûlait sa limite d'usage)
+    et ``valider_vente`` exigeait malgré tout le total plein : le client payait
+    plein tarif ET perdait son coupon. Désormais la remise est calculée puis
+    RÉELLEMENT SOUSTRAITE du total exigé et du montant facturé, et le coupon
+    n'est consommé qu'ici — dans la MÊME transaction que la facture, une seule
+    fois, et jamais si la vente échoue.
     """
     if vente.statut != VenteComptoir.Statut.BROUILLON:
         raise VenteComptoirError('Cette vente a déjà été validée ou annulée.')
@@ -95,7 +103,20 @@ def valider_vente(*, vente, paiements, user):
                 'dépasse le seuil autorisé sans approbation.')
 
     total_ttc = vente.total_ttc
-    total_ttc_q = _q2(total_ttc)
+    total_ttc_brut_q = _q2(total_ttc)
+    # (AUD204) — remise coupon calculée AVANT le contrôle du montant réglé :
+    # c'est tout l'objet du défaut, `total_ttc_q` était le total PLEIN. Le
+    # coupon est seulement VÉRIFIÉ ici (lecture seule) ; sa consommation
+    # intervient plus bas, une fois tous les pré-vols passés.
+    # (AUD229) — module « promotions » désactivé : le code coupon est ignoré
+    # proprement (no-op, aucune promotion appliquée, aucun coupon consommé),
+    # le moteur promo n'est jamais atteint.
+    remise_coupon = Decimal('0')
+    coupon_applicable = bool(coupon_code) and _promotions_actives(vente.company)
+    if coupon_applicable:
+        remise_coupon = _remise_coupon_previsualisee(
+            vente=vente, code=coupon_code, plafond=total_ttc_brut_q)
+    total_ttc_q = _q2(total_ttc_brut_q - remise_coupon)
     total_paiements = sum((_q2(p.get('montant')) for p in paiements), Decimal('0'))
     if total_paiements <= 0:
         raise VenteComptoirError('Le montant réglé doit être positif.')
@@ -147,6 +168,14 @@ def valider_vente(*, vente, paiements, user):
     # créée derrière lui.
     for p in paiements:
         if (p.get('mode') or '').strip().lower() == MODE_CARTE_CADEAU:
+            # (AUD229) — module « promotions » désactivé : le règlement par
+            # carte cadeau est REFUSÉ avant toute écriture (on ne peut pas
+            # débiter une carte d'un module éteint), le moteur n'est jamais
+            # atteint.
+            if not _promotions_actives(vente.company):
+                raise VenteComptoirError(
+                    'Le module Promotions est désactivé pour cette société : '
+                    'le règlement par carte cadeau est indisponible.')
             from apps.promotions.services import (
                 CarteCadeauError, verifier_carte_cadeau,
             )
@@ -165,9 +194,24 @@ def valider_vente(*, vente, paiements, user):
         raise VenteComptoirError(
             'Un client est requis pour émettre la facture légale.')
 
+    # (AUD204) — le coupon n'est CONSOMMÉ qu'ici : tous les pré-vols sont
+    # passés, la transaction ira au bout ou sera intégralement annulée. Un
+    # coupon n'est donc jamais brûlé par une vente refusée.
+    libelle_facture = f'Vente comptoir {vente.reference}'
+    if coupon_applicable and remise_coupon > 0:
+        coupon = _consommer_coupon_vente(vente=vente, code=coupon_code)
+        libelle_facture += f' — remise coupon {coupon.code}'
+
     taux_tva = vente.taux_tva or Decimal('20')
-    total_ht = _q2(vente.total_ht)
-    montant_tva = _q2(total_ttc - total_ht)
+    total_ht_brut = _q2(vente.total_ht)
+    if remise_coupon > 0 and total_ttc_brut_q > 0:
+        # Remise répartie au prorata : le TAUX de TVA de la vente est préservé
+        # (jamais une remise imputée en totalité sur le HT ou sur la TVA).
+        ratio = total_ttc_q / total_ttc_brut_q
+        total_ht = _q2(total_ht_brut * ratio)
+    else:
+        total_ht = total_ht_brut
+    montant_tva = _q2(total_ttc_q - total_ht)
 
     facture = ventes_services.creer_facture_classique(
         company=vente.company,
@@ -176,8 +220,8 @@ def valider_vente(*, vente, paiements, user):
         taux_tva=taux_tva,
         montant_ht=total_ht,
         montant_tva=montant_tva,
-        montant_ttc=_q2(total_ttc),
-        libelle=f'Vente comptoir {vente.reference}',
+        montant_ttc=total_ttc_q,
+        libelle=libelle_facture,
     )
 
     # (b) Paiement(s) — multi-modes, via le thin service ventes.services.
@@ -202,8 +246,20 @@ def valider_vente(*, vente, paiements, user):
             # dans la même transaction atomique que la facture/le paiement,
             # jamais en négatif, plusieurs passages jusqu'à épuisement.
             from apps.promotions.services import debiter_carte_cadeau
-            debiter_carte_cadeau(
-                vente.company, p.get('carte_code') or p.get('reference'), montant)
+            carte_code = p.get('carte_code') or p.get('reference')
+            debiter_carte_cadeau(vente.company, carte_code, montant)
+            # (AUD203) — la carte SOLDE le passif né à l'émission ; elle ne
+            # crée aucune seconde recette. La seule recette est la facture
+            # des biens livrés, créée ci-dessus. L'écriture générique
+            # d'encaissement (compta, mode non-espèces) débite la banque : la
+            # contre-passation ci-dessous l'annule exactement et transforme
+            # le règlement en extinction de dette.
+            _ecriture_carte_cadeau(
+                company=vente.company, montant=montant,
+                libelle=(f'Carte cadeau {carte_code} — règlement '
+                         f'{facture.reference}'),
+                reference=carte_code, user=user, date_ecriture=today,
+                sens_passif='debit', mode=mode)
 
     # (b bis) — les espèces encaissées entrent dans la caisse comptable de la
     # session (XPOS4) : sans ce mouvement, le solde théorique de la caisse à la
@@ -344,11 +400,26 @@ def rapport_z(session):
     factures des ventes comptoir rattachées à la session (via le string-FK
     ``VenteComptoir.facture``), lus via ``ventes.selectors`` (jamais d'import
     direct du modèle ``Paiement``).
+
+    AUD150 — le rapport porte sur TOUTE vente de la session AYANT UNE FACTURE,
+    ``VALIDEE`` **ou** ``EN_ATTENTE_SOLDE``. Le filtre historique
+    ``statut=VALIDEE`` excluait les ventes prises en arrhes, alors que
+    ``encaisser_arrhes`` crée une facture RÉELLE et enregistre un vrai
+    ``Paiement`` de n'importe quel mode — carte comprise — DANS LA MÊME
+    SESSION, tout en laissant la vente en ``EN_ATTENTE_SOLDE`` tant que le
+    solde n'est pas réglé. Ces encaissements n'apparaissaient donc ni au
+    rapport X/Z ni dans ``attendu_carte`` : une vente prise en arrhes par
+    carte faisait apparaître à la clôture un excédent TPE fantôme du même
+    montant, et le caissier était mis en cause.
     """
     from apps.ventes.selectors import paiements_totaux_par_mode
 
     ventes_qs = session.ventes.filter(
-        statut=VenteComptoir.Statut.VALIDEE, facture__isnull=False)
+        statut__in=[
+            VenteComptoir.Statut.VALIDEE,
+            VenteComptoir.Statut.EN_ATTENTE_SOLDE,
+        ],
+        facture__isnull=False)
     facture_ids = list(ventes_qs.values_list('facture_id', flat=True))
     par_mode = {}
     for row in paiements_totaux_par_mode(facture_ids):
@@ -1002,14 +1073,22 @@ def remettre_marchandise_override(*, vente, user, motif):
     return vente
 
 
-def _poster_encaissement_especes(*, company, mode, montant, facture, motif, user,
+def _poster_encaissement_especes(*, company, mode, montant, motif, user,
+                                 facture=None, reference=None,
                                  session_caisse=None, client=None):
     """Mouvement de caisse + timbre fiscal sur un règlement espèces
     (factorisé entre ``encaisser_arrhes``/``encaisser_solde_arrhes``,
     ``emettre_carte_cadeau_comptoir`` (NTRET15) et le même bloc dans
     ``valider_vente``). Paramètres explicites (pas un objet ``vente`` —
     l'émission d'une carte cadeau n'a pas de ``VenteComptoir`` : c'est une
-    transaction financière sans ligne de stock)."""
+    transaction financière sans ligne de stock).
+
+    AUD203 — ``facture`` est devenu OPTIONNEL : l'émission d'une carte cadeau
+    n'émet plus aucune facture de vente (elle constate une DETTE, pas une
+    recette), mais l'espèce encaissée reste tracée en caisse et au timbre.
+    ``reference`` fournit alors la pièce à laquelle rattacher le timbre (le
+    code de la carte) ; sans elle, on retombe sur la référence de la facture,
+    comportement historique inchangé pour les trois autres appelants."""
     if mode != MODE_ESPECES or montant <= 0:
         return
     today = timezone.localdate()
@@ -1020,13 +1099,106 @@ def _poster_encaissement_especes(*, company, mode, montant, facture, motif, user
             session_caisse.caisse_comptable,
             sens=MouvementCaisse.Sens.ENTREE, montant=montant,
             date_mouvement=today, motif=motif, user=user)
+    piece = reference if reference is not None else getattr(
+        facture, 'reference', '')
     from apps.compta.services import enregistrer_timbre_fiscal
     enregistrer_timbre_fiscal(
         company, date_encaissement=today, base=montant,
-        mode_reglement=MODE_ESPECES, facture_ref=facture.reference,
+        mode_reglement=MODE_ESPECES, facture_ref=piece,
         tiers_type='client', tiers_id=client.id if client else None,
         tiers_nom=str(client) if client else '',
         libelle=motif, user=user)
+
+
+# ── AUD203 — Cartes cadeaux : un PASSIF, jamais une recette à l'émission ────
+# Une carte cadeau vendue n'est pas un produit livré : c'est de l'argent reçu
+# d'avance contre une livraison future. L'émission créait pourtant une Facture
+# de VENTE, et l'utilisation en créait une SECONDE sur les biens réellement
+# vendus — le chiffre d'affaires était compté deux fois et la dette envers le
+# porteur de la carte n'apparaissait nulle part. Le passif est porté par le
+# compte CGNC 4421 « Clients — avances et acomptes reçus », déjà semé au plan
+# et déjà utilisé par la chaîne acompte (compta/services.py:495).
+COMPTE_PASSIF_CARTES_CADEAUX = '4421'
+# Contreparties de trésorerie : caisse (espèces) / banque (tout autre mode).
+# La banque est aussi la contrepartie que `compta.ecriture_pour_paiement`
+# débite à l'UTILISATION d'une carte (mode non-espèces) — la contre-passation
+# de l'usage l'annule donc exactement, et seul le passif bouge.
+_COMPTE_CAISSE = '5161'
+_COMPTE_BANQUE = '5141'
+
+
+def _compte_compta(company, numero):
+    """Compte comptable ``numero`` de la société, en semant le plan/journaux au
+    besoin (idempotent). Lecture via ``compta.services`` uniquement — jamais un
+    import des modèles compta ici (règle de modularité cross-app)."""
+    from apps.compta.services import (
+        get_compte, seed_journaux, seed_plan_comptable,
+    )
+    compte = get_compte(company, numero)
+    if compte is None:
+        seed_plan_comptable(company)
+        seed_journaux(company)
+        compte = get_compte(company, numero)
+    return compte
+
+
+def _ecriture_carte_cadeau(*, company, montant, libelle, reference, user,
+                           date_ecriture, sens_passif, mode):
+    """Écriture OD de la dette « cartes cadeaux » (AUD203).
+
+    ``sens_passif='credit'`` = émission (la dette naît, la trésorerie entre) ;
+    ``sens_passif='debit'`` = utilisation (la dette est soldée par la livraison
+    des biens, dont la facture porte seule la recette). No-op quand
+    l'auto-génération d'écritures est désactivée pour la société (réglage
+    ``compta``) : le comportement du reste de l'ERP, jamais une écriture
+    orpheline. Renvoie l'écriture ou ``None``."""
+    from apps.compta.services import auto_ecritures_actif, creer_ecriture_od
+    if not auto_ecritures_actif(company):
+        return None
+    montant = _q2(montant)
+    if montant <= 0:
+        return None
+    compte_passif = _compte_compta(company, COMPTE_PASSIF_CARTES_CADEAUX)
+    compte_treso = _compte_compta(
+        company, _COMPTE_CAISSE if mode == MODE_ESPECES else _COMPTE_BANQUE)
+    if compte_passif is None or compte_treso is None:
+        return None
+    zero = Decimal('0')
+    if sens_passif == 'credit':
+        lignes = [
+            {'compte': compte_treso, 'debit': montant, 'credit': zero,
+             'libelle': libelle},
+            {'compte': compte_passif, 'debit': zero, 'credit': montant,
+             'libelle': libelle},
+        ]
+    else:
+        lignes = [
+            {'compte': compte_passif, 'debit': montant, 'credit': zero,
+             'libelle': libelle},
+            {'compte': compte_treso, 'debit': zero, 'credit': montant,
+             'libelle': libelle},
+        ]
+    return creer_ecriture_od(
+        company, date_ecriture, libelle, lignes,
+        reference=reference or '', created_by=user)
+
+
+# ── AUD229 — Garde d'activation du module « promotions » côté APPELANT ──────
+# `DisabledModuleMiddleware` (core/permissions.py:103-117, :167-176) ne coupe
+# qu'au PRÉFIXE D'URL : il est structurellement aveugle aux appels
+# function-local que `apps/pos` fait vers `apps.promotions.services`. Une
+# société ayant désactivé le module voyait donc quand même le moteur promo
+# s'exécuter depuis la caisse. La garde est posée ICI, côté appelant — sans
+# jamais toucher `core/modules.py` ni son registre (zone SOL1-16).
+MODULE_PROMOTIONS = 'promotions'
+
+
+def _promotions_actives(company):
+    """Vrai si le module « promotions » est actif pour ``company`` (défaut :
+    actif — une société sans ``ModuleToggle`` est inchangée). ``core`` est une
+    app foundation, exemptée de la frontière inter-apps."""
+    from core.feature_flags import module_actif
+    return module_actif(company, MODULE_PROMOTIONS)
 
 
 # ── NTRET12 — Moteur de promotions panier (apps.promotions) ────────────────
@@ -1039,7 +1211,12 @@ def promotions_applicables(vente, *, maintenant=None):
     erreur du moteur promo (ex. app absente, règle mal configurée) ne
     bloque JAMAIS une vente — renvoie ``[]`` plutôt que de lever. Consommé
     par l'écran caisse (aperçu avant encaissement) et par
-    ``apps/promotions`` pour les tests d'intégration."""
+    ``apps/promotions`` pour les tests d'intégration.
+
+    AUD229 — module « promotions » désactivé pour la société : ``[]`` sans
+    jamais toucher le moteur (même forme de sortie que le best-effort)."""
+    if not _promotions_actives(vente.company):
+        return []
     try:
         from apps.promotions.services import evaluer_panier
         return evaluer_panier(
@@ -1067,7 +1244,13 @@ def appliquer_coupon(*, vente, code, user=None):
     ``apps.promotions.services`` — jamais l'inverse. CONSOMME réellement le
     coupon (contrairement à ``promotions_applicables``, best-effort) : un
     coupon invalide/expiré/déjà utilisé remonte une erreur explicite à
-    l'appelant, jamais un échec muet."""
+    l'appelant, jamais un échec muet.
+
+    AUD229 — refuse explicitement quand le module « promotions » est désactivé
+    pour la société (le moteur n'est jamais atteint)."""
+    if not _promotions_actives(vente.company):
+        raise CouponPosError(
+            'Le module Promotions est désactivé pour cette société.')
     from apps.promotions.services import CouponError, consommer_coupon
     try:
         coupon, montant = consommer_coupon(
@@ -1075,6 +1258,54 @@ def appliquer_coupon(*, vente, code, user=None):
     except CouponError as exc:
         raise CouponPosError(str(exc))
     return coupon, montant
+
+
+def previsualiser_coupon(*, vente, code):
+    """AUD204 — APERÇU d'un coupon sur le panier : le valide et calcule la
+    remise SANS le consommer. C'est ce que l'écran caisse appelle en saisissant
+    le code ; le coupon n'est brûlé qu'à ``valider_vente``, au moment où la
+    remise atteint RÉELLEMENT le client. Avant, l'action ``coupon/`` consommait
+    le coupon et rien ne soustrayait la remise : le client payait plein tarif
+    et perdait son coupon.
+
+    AUD229 — refuse quand le module « promotions » est désactivé."""
+    if not _promotions_actives(vente.company):
+        raise CouponPosError(
+            'Le module Promotions est désactivé pour cette société.')
+    from apps.promotions.services import (
+        CouponError, montant_remise_coupon, valider_coupon,
+    )
+    try:
+        coupon = valider_coupon(vente.company, code, client=vente.client)
+        montant = montant_remise_coupon(coupon, vente.lignes.all())
+    except CouponError as exc:
+        raise CouponPosError(str(exc))
+    return coupon, _q2(montant)
+
+
+def _remise_coupon_previsualisee(*, vente, code, plafond):
+    """Remise (MAD) qu'apportera ``code`` à cette vente — LECTURE SEULE, jamais
+    supérieure au total TTC du panier. Une erreur de coupon remonte en
+    ``VenteComptoirError`` : la vente est refusée AVANT toute écriture plutôt
+    que d'encaisser plein tarif en silence (AUD204)."""
+    try:
+        _, montant = previsualiser_coupon(vente=vente, code=code)
+    except CouponPosError as exc:
+        raise VenteComptoirError(str(exc))
+    if montant <= 0:
+        raise VenteComptoirError(
+            'Ce coupon n\'ouvre aucune remise sur ce panier.')
+    return min(montant, plafond)
+
+
+def _consommer_coupon_vente(*, vente, code):
+    """Consomme le coupon ``code`` pour cette vente (dans la transaction de
+    ``valider_vente``). Renvoie le coupon consommé."""
+    try:
+        coupon, _ = appliquer_coupon(vente=vente, code=code)
+    except CouponPosError as exc:
+        raise VenteComptoirError(str(exc))
+    return coupon
 
 
 # ── NTRET15 — Cartes cadeaux (apps.promotions) ──────────────────────────────
@@ -1087,14 +1318,32 @@ class CarteCadeauPosError(Exception):
 def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
                                   session_caisse=None, code=None,
                                   date_expiration=None):
-    """NTRET15 — Émission d'une carte cadeau au comptoir : encaissée sur les
-    MÊMES rails qu'une vente normale (facture légale + paiement + timbre
-    fiscal cash + mouvement de caisse) mais SANS ligne de stock — une carte
-    cadeau n'est pas un produit inventorié, ``apps/pos`` ne crée jamais de
-    ``stock.Produit`` factice pour ça (cf. règle de modularité cross-app,
-    CLAUDE.md : jamais d'écriture dans ``apps/stock``). Import FONCTION-LOCAL
-    vers ``apps.promotions.services`` — jamais l'inverse. Le règlement fourni
-    doit correspondre EXACTEMENT au montant de la carte."""
+    """NTRET15 — Émission d'une carte cadeau au comptoir, SANS ligne de stock —
+    une carte cadeau n'est pas un produit inventorié, ``apps/pos`` ne crée
+    jamais de ``stock.Produit`` factice pour ça (cf. règle de modularité
+    cross-app, CLAUDE.md : jamais d'écriture dans ``apps/stock``). Import
+    FONCTION-LOCAL vers ``apps.promotions.services`` — jamais l'inverse. Le
+    règlement fourni doit correspondre EXACTEMENT au montant de la carte.
+
+    AUD203 — l'émission ne crée AUCUNE Facture de vente. Vendre une carte
+    cadeau n'est pas une recette : c'est de l'argent reçu d'avance contre une
+    livraison future. L'ancienne version facturait l'émission PUIS
+    ``valider_vente`` facturait à nouveau les biens réellement vendus au
+    moment de l'usage — le chiffre d'affaires était compté DEUX fois (1 000
+    MAD comptabilisés pour une carte de 500 MAD utilisée en totalité) et la
+    dette envers le porteur n'existait nulle part. Restent : l'encaissement
+    réel (mouvement de caisse + timbre fiscal espèces, rattachés au CODE de la
+    carte à défaut de facture) et la naissance du PASSIF (crédit 4421). La
+    recette n'apparaît qu'à l'usage, portée par la seule facture des biens
+    livrés, dont le règlement carte solde le passif.
+
+    Renvoie ``(carte, None)`` — le second membre du tuple reste la facture
+    d'émission, désormais toujours ``None`` (aucune facture n'existe)."""
+    # AUD229 — refuse quand le module « promotions » est désactivé pour la
+    # société (le moteur cartes cadeaux n'est jamais atteint).
+    if not _promotions_actives(company):
+        raise CarteCadeauPosError(
+            'Le module Promotions est désactivé pour cette société.')
     from apps.promotions.services import CarteCadeauError
     from apps.promotions.services import emettre_carte_cadeau as _emettre
 
@@ -1109,37 +1358,28 @@ def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
             'carte cadeau.')
     if client is None:
         raise CarteCadeauPosError(
-            'Un client est requis pour émettre la facture légale.')
+            'Un client est requis pour identifier le porteur de la carte '
+            '(la dette est nominative).')
 
-    from apps.ventes import services as ventes_services
-
-    # TVA 0 — aucun bien/service n'est délivré à l'émission (le fait
-    # générateur TVA marocain intervient à l'UTILISATION de la carte contre
-    # de vraies marchandises, pas à l'émission).
-    facture = ventes_services.creer_facture_classique(
-        company=company, client=client, user=user,
-        taux_tva=Decimal('0'), montant_ht=montant, montant_tva=Decimal('0'),
-        montant_ttc=montant, libelle='Émission carte cadeau',
-    )
     mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
     today = timezone.localdate()
-    ventes_services.enregistrer_paiement(
-        facture=facture, montant=montant_paiement, mode=mode,
-        date_paiement=paiement.get('date_paiement') or today, user=user,
-        reference=paiement.get('reference') or '',
-        note='Émission carte cadeau',
-    )
-    _poster_encaissement_especes(
-        company=company, mode=mode, montant=montant_paiement, facture=facture,
-        motif='Émission carte cadeau', user=user,
-        session_caisse=session_caisse, client=client)
 
     try:
         carte = _emettre(
             company, montant, code=code, date_expiration=date_expiration)
     except CarteCadeauError as exc:
         raise CarteCadeauPosError(str(exc))
-    return carte, facture
+
+    motif = f'Émission carte cadeau {carte.code}'
+    _poster_encaissement_especes(
+        company=company, mode=mode, montant=montant_paiement,
+        reference=carte.code, motif=motif, user=user,
+        session_caisse=session_caisse, client=client)
+    _ecriture_carte_cadeau(
+        company=company, montant=montant_paiement, libelle=motif,
+        reference=carte.code, user=user, date_ecriture=today,
+        sens_passif='credit', mode=mode)
+    return carte, None
 
 
 # ── NTRET28 — Kits/bundles vendus comme un seul article ─────────────────────
