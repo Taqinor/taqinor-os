@@ -2374,13 +2374,33 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     Réutilise EXACTEMENT les règles de ``DemandeAchatViewSet.approuver`` /
     ``.refuser`` (seule une demande ``SOUMISE`` est décidable ; l'approbateur
     et la date de décision sont posés côté serveur). Lève ``DecisionError`` si
-    la demande n'est pas au statut attendu."""
+    la demande n'est pas au statut attendu.
+
+    AUD312 — ce point d'entrée portait DEUX écarts avec le chemin normal, qui
+    n'étaient PAS un franchissement de rôle (le rôle exigé est identique des
+    deux côtés) mais une perte d'intégrité :
+
+    * il ne consultait pas ``workflow_approbation_achat_actif`` : une demande
+      sous plan d'approbation NTP2P2 (N approbateurs séquentiels) était
+      approuvée EN UN COUP depuis l'écran d'approbations générique, laissant
+      des ``EtapeApprobationAchat`` ``en_attente`` orphelines et perdant la
+      séparation des tâches (``sod_stricte``) ;
+    * il n'appelait pas ``liberer_budget_demande_achat`` au refus : l'enveloppe
+      budgétaire départementale engagée (NTP2P4) n'était JAMAIS rendue.
+    """
     from django.utils import timezone
-    from .models import DemandeAchat
+    from .models import DemandeAchat, EtapeApprobationAchat
 
     if demande_achat.statut != DemandeAchat.Statut.SOUMISE:
         raise DecisionError(
             "Seule une demande soumise peut être décidée.")
+    # AUD312 — converge avec `DemandeAchatViewSet.approuver` : sous plan
+    # d'approbation actif, la décision passe par « approuver-etape », jamais
+    # par la boîte d'approbations générique.
+    if workflow_approbation_achat_actif(demande_achat):
+        raise DecisionError(
+            "Un plan d'approbation est en cours sur cette demande : validez "
+            "les étapes via « approuver-etape ».")
 
     demande_achat.approuvee_par = user
     demande_achat.date_decision = timezone.now()
@@ -2393,6 +2413,14 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     demande_achat.save(update_fields=[
         'statut', 'approuvee_par', 'date_decision', 'motif_refus',
         'date_modification'])
+    if not approuver:
+        # AUD312 — miroir exact du refus par la vue : plus d'étape orpheline,
+        # et l'enveloppe budgétaire engagée est rendue (NTP2P4).
+        demande_achat.etapes_approbation.filter(
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+        ).update(statut=EtapeApprobationAchat.Statut.REJETE,
+                 decision_le=timezone.now())
+        liberer_budget_demande_achat(demande_achat)
     return demande_achat
 
 

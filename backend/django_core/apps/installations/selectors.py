@@ -1972,10 +1972,19 @@ def demandes_achat_en_attente(company):
     Sélecteur company-wide LECTURE SEULE utilisé par l'agrégateur
     d'approbations cross-app (``apps/reporting``). « En attente » = statut
     ``SOUMISE`` (seul statut approuvable, cf. ``DemandeAchatViewSet.approuver``).
+
+    AUD312 — les demandes portant un plan d'approbation NTP2P2 encore en
+    cours (au moins une ``EtapeApprobationAchat`` ``en_attente``) sont EXCLUES :
+    elles ne se décident que par « approuver-etape », étape par étape. Les
+    lister ici proposait une décision en un coup que le service refuse
+    désormais — et faisait perdre le nombre d'approbations exigé ainsi que la
+    séparation des tâches.
     """
-    from .models import DemandeAchat
+    from .models import DemandeAchat, EtapeApprobationAchat
     return (DemandeAchat.objects
             .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
+            .exclude(etapes_approbation__statut=(
+                EtapeApprobationAchat.Statut.EN_ATTENTE))
             .select_related('chantier', 'programme')
             .order_by('date_besoin', 'id'))
 
