@@ -14,6 +14,7 @@ la liste/le Kanban) : remise globale honorée, et sur un devis à deux options,
 JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 """
 import hashlib
+import hmac
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
@@ -99,16 +100,28 @@ def _hash_ip(request, salle=None):
       deux identifiants, et un même visiteur sur deux liens en produit deux
       DIFFÉRENTS.
 
+    CRX31 — le sel par lien ne suffisait pas : le jeton de la salle est connu de
+    quiconque DÉTIENT le lien (le destinataire du devis, et toute personne à qui
+    il l'a transféré). Cette personne pouvait donc reconstruire la table des
+    empreintes de l'espace IPv4 pour CE lien et ré-identifier chaque visiteur.
+    L'empreinte est désormais un **HMAC-SHA256 clavé par ``SECRET_KEY``** : sans
+    la clé du serveur, la table n'est plus calculable. Le sel par lien est
+    CONSERVÉ à l'intérieur du message (le décloisonnement inter-liens reste
+    fermé) ; la sortie reste 64 caractères hexadécimaux, la colonne ne bouge pas.
+
     Aucune IP en clair n'est persistée — seulement cette empreinte.
     """
+    from django.conf import settings
+
     from core.throttling import ip_de_requete
 
     ip = ip_de_requete(request)
     if not ip:
         return ''
     sel = str(getattr(salle, 'token', '') or '')
-    return hashlib.sha256(
-        ('%s|%s' % (sel, ip)).encode('utf-8')).hexdigest()
+    cle = str(getattr(settings, 'SECRET_KEY', '') or '').encode('utf-8')
+    return hmac.new(
+        cle, ('%s|%s' % (sel, ip)).encode('utf-8'), hashlib.sha256).hexdigest()
 
 
 def _item_payload(item):

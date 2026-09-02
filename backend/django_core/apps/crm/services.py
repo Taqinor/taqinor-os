@@ -209,13 +209,39 @@ def detecter_signal_interet_salle_vente(salle):
     (JAMAIS un changement de stage automatique) et émet
     ``core.events.salle_vente_signal_interet``. Idempotent PAR JOUR : une
     nouvelle vue au-delà du seuil le même jour ne duplique pas la note.
-    Best-effort — appelé depuis la vue publique, ne doit jamais lever."""
+    Best-effort — appelé depuis la vue publique, ne doit jamais lever.
+
+    CRX31 — le comptage est DÉDUPLIQUÉ PAR APPAREIL ET PAR JOUR. Il portait sur
+    les vues BRUTES : trois rechargements de la page par le MÊME visiteur dans
+    la même minute déclenchaient « signal d'intérêt fort », et le commercial
+    rappelait un client qui n'avait rien fait de plus qu'appuyer sur F5. On
+    compte désormais les couples DISTINCTS (empreinte de visiteur, jour local) —
+    donc des visites RÉELLEMENT distinctes. Les vues sans empreinte exploitable
+    (IP illisible) partagent la clé vide : elles comptent pour UNE, jamais pour
+    trois — sous-compter est le bon sens du doute, sur-compter ne l'est pas.
+    """
+    from django.db.models.functions import TruncDate
+
+    from core.dates import TZ_METIER
+
     try:
         lead = getattr(salle, 'lead', None)
         if lead is None or lead.stage != stages.QUOTE_SENT:
             return None
         depuis = timezone.now() - timezone.timedelta(hours=FENETRE_SIGNAL_INTERET_HEURES)
-        nb_vues = salle.vues.filter(created_at__gte=depuis).count()
+        vues_fenetre = salle.vues.filter(created_at__gte=depuis)
+        # Jour LOCAL (Africa/Casablanca, CRX26) : le découpage journalier du
+        # signal doit être celui du terrain, pas celui d'UTC.
+        # `.order_by()` OBLIGATOIRE : ``SalleVenteVue.Meta.ordering`` vaut
+        # ``['-created_at']``, et Django ajoute les colonnes de tri au SELECT
+        # d'un `.distinct()` — chaque vue redeviendrait alors « distincte » et
+        # la déduplication serait un no-op silencieux.
+        nb_vues = (vues_fenetre
+                   .annotate(jour=TruncDate('created_at', tzinfo=TZ_METIER))
+                   .order_by()
+                   .values('ip_hash', 'jour')
+                   .distinct()
+                   .count())
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
         aujourd_hui = aujourd_hui_local()
@@ -230,8 +256,9 @@ def detecter_signal_interet_salle_vente(salle):
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
             body=(
-                f"signal d'intérêt fort — {nb_vues} consultations en "
-                f"{FENETRE_SIGNAL_INTERET_HEURES}h (salle de vente « {salle.titre} »)"
+                f"signal d'intérêt fort — {nb_vues} consultations distinctes "
+                f"en {FENETRE_SIGNAL_INTERET_HEURES}h "
+                f"(salle de vente « {salle.titre} »)"
             ),
         )
         try:

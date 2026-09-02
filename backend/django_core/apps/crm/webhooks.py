@@ -737,6 +737,12 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
 # CONSÉQUENCE PRATIQUE : ajouter/retirer ici la lecture d'une clé du registre
 # se déclare DANS LE CONTRAT, dans le même commit. Une clé délibérément
 # ignorée s'y écrit avec sa raison — jamais par omission.
+#: CRX31 — borne du champ ``adresse`` (``TextField``, donc sans limite SQL) sur
+#: les surfaces publiques. Une adresse postale marocaine complète tient très
+#: largement dedans.
+MAX_LONGUEUR_ADRESSE = 500
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -813,7 +819,13 @@ def _map_payload_to_fields(data: dict) -> dict:
         fields['raccordement'] = raccordement
     adresse = data.get('adresse') or data.get('address')
     if adresse:
-        fields['adresse'] = str(adresse).strip() or None
+        # CRX31 — BORNÉE. ``Lead.adresse`` est un ``TextField`` (aucune limite
+        # SQL) et c'était le SEUL champ texte de ce mapping sans tranche : un
+        # POST anonyme pouvait donc écrire des mégaoctets par lead, sur une
+        # surface publique, via le webhook site ET le questionnaire tokenisé
+        # (qui repasse par ce même mapping). 500 caractères tiennent largement
+        # une adresse postale marocaine complète.
+        fields['adresse'] = str(adresse).strip()[:MAX_LONGUEUR_ADRESSE] or None
     # GPS : mêmes bornes que _clean_roof_point (lat ∈ [-90,90], lng ∈ [-180,180]).
     gps_lat = _clean_decimal(
         data.get('gpsLat', data.get('gps_lat')), lo=-90, hi=90)

@@ -24,7 +24,11 @@ TROIS PRINCIPES NON NÉGOCIABLES :
     client, en MOINS précis, ce qu'il vient de donner. Le grain de cette
     décision est le CHAMP, pas la section : voir :func:`champs_a_poser`.
 """
+import logging
+
 from .models import Lead, LeadActivity, QuestionnaireLien
+
+logger = logging.getLogger(__name__)
 
 #: Whitelist des sections — source unique, portée par le modèle.
 SECTIONS = QuestionnaireLien.SECTIONS_CLES
@@ -302,6 +306,39 @@ def _extension_photo(brut) -> str:
     return '.jpg'
 
 
+#: CRX31 — PLAFOND de photos acceptées par lien de questionnaire.
+#: Le lien est PUBLIC et tokenisé : son porteur pouvait rejouer la même section
+#: photo indéfiniment, chaque envoi stockant jusqu'à 10 Mo sur MinIO — un seul
+#: lien suffisait donc à remplir le magasin de fichiers. Trois sections photo
+#: existent (facture, compteur, tableau) ; le plafond laisse largement la place
+#: aux reprises (photo floue, mauvaise section) tout en fermant la boucle.
+PLAFOND_PHOTOS_PAR_LIEN = 12
+
+#: Préfixe posé par ce module sur les fichiers qu'il joint (cf. `_enregistrer_photo`)
+#: — c'est lui qui rend le plafond comptable sans nouvelle colonne.
+PREFIXE_FICHIER_QUESTIONNAIRE = 'questionnaire-'
+
+
+def _photos_deja_recues(lead) -> int:
+    """Nombre de photos DÉJÀ jointes à ce lead par le questionnaire.
+
+    Compté sur les pièces jointes réelles (le magasin qu'on veut borner), via
+    le préfixe de nom posé par :func:`_enregistrer_photo` — aucune colonne
+    ajoutée, aucun compteur à maintenir en cohérence. Le comptage est par LEAD :
+    c'est un sur-ensemble du « par lien » (un lead a en pratique un lien
+    questionnaire actif), donc une borne conservatrice, jamais permissive."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    return Attachment.objects.filter(
+        company=lead.company,
+        content_type=ContentType.objects.get_for_model(Lead),
+        object_id=lead.pk,
+        filename__startswith=PREFIXE_FICHIER_QUESTIONNAIRE,
+    ).count()
+
+
 def _enregistrer_photo(lead, section, photo):
     """Joint la photo d'une section photo_* au lead. Réutilise TEL QUEL le
     chemin de capture du site (``intake_photo.attach_capture_photo`` :
@@ -309,11 +346,23 @@ def _enregistrer_photo(lead, section, photo):
     company-scopé) — jamais un second magasin de fichiers.
 
     Le nom du fichier porte le mot-clé de la section pour que
-    :func:`manquantes` la reconnaisse ensuite."""
+    :func:`manquantes` la reconnaisse ensuite.
+
+    CRX31 — au-delà de :data:`PLAFOND_PHOTOS_PAR_LIEN` photos déjà reçues, la
+    photo est REFUSÉE (``None``, exactement comme une photo invalide : la
+    section n'est simplement pas enregistrée). Le refus est journalisé côté
+    serveur, jamais renvoyé en détail au porteur du lien."""
     from .intake_photo import attach_capture_photo
 
+    if _photos_deja_recues(lead) >= PLAFOND_PHOTOS_PAR_LIEN:
+        logger.warning(
+            'questionnaire: plafond de %s photos atteint (lead #%s) — '
+            'section %s refusée.',
+            PLAFOND_PHOTOS_PAR_LIEN, lead.pk, section)
+        return None
+
     mot = _PHOTO_MOTS_CLES[section][0]
-    nom = f'questionnaire-{mot}{_extension_photo(photo)}'
+    nom = f'{PREFIXE_FICHIER_QUESTIONNAIRE}{mot}{_extension_photo(photo)}'
     return attach_capture_photo(
         lead, {'photo': photo, 'photoFilename': nom})
 
