@@ -1051,9 +1051,33 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         # ── Consommation du JOUR MOYEN de ce mois (silhouette + équipements) ──
         conso_mois_kwh = conso_mois[index]
         conso_jour_kwh = conso_mois_kwh / jours if jours else 0.0
+
+        # QJR404 — ALIGNEMENT SUR LE CONTRAT DE forme_consommation_detaillee,
+        # PAS L'INVERSE. Sa docstring (``courbes_journalieres.py:991-994``) est
+        # explicite : l'énergie du véhicule électrique « est déjà comptée dans
+        # kwh_jour » — le composeur la RETIRE du niveau avant de renormaliser
+        # les couches de redistribution (``:1028-1036``), puis la RAJOUTE telle
+        # quelle en passe 2, sans dilution. ``conso_jour_kwh`` ci-dessus est la
+        # facture NUE (VE exclu, back-calculée par
+        # :func:`profil_depuis_factures`/:func:`serie_kwh_depuis_mad`) : la lui
+        # passer telle quelle faisait retirer une SECONDE fois une énergie déjà
+        # absente, et la courbe rendue perdait le VE que la publication
+        # (:func:`estimation_conso_mensuelle`) affiche pourtant — mesuré
+        # 7 200 contre 8 660 kWh/an sur un même devis. Même garde d'activité
+        # que celle-ci (mode ``addition``, valeur positive, saison éligible) :
+        # AUCUNE seconde définition, juste la valeur à ADDITIONNER avant
+        # l'appel, puisque le composeur la retranchera lui-même.
+        ve = couches.get('ve')
+        ve_jour_actif = 0.0
+        if ve and ve.get('mode') == 'addition':
+            ve_kwh_jour = _num(ve.get('kwh_jour'))
+            ve_saisons = ve.get('saisons')
+            if ve_kwh_jour > 0 and (not ve_saisons or saison in ve_saisons):
+                ve_jour_actif = ve_kwh_jour
+
         conso_24h, couches_horaires = forme_consommation_detaillee(
-            conso_jour_kwh, occupation, saison=saison, equipements=couches,
-            ramadan=contexte_ramadan.get(numero))
+            conso_jour_kwh + ve_jour_actif, occupation, saison=saison,
+            equipements=couches, ramadan=contexte_ramadan.get(numero))
 
         # L-GLITCH — la chronologie FINE du même jour type, posée ICI et nulle
         # part ailleurs : le balayage du stockage (DIM2) et l'étude complète
