@@ -464,7 +464,10 @@ class DepotReelTests(unittest.TestCase):
         # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
         # aujourd'hui). Le plancher garde son rôle — une extraction cassée
         # rendrait ~0 — sans punir le fait d'avoir livré.
-        self.assertGreater(stats["f1_candidates"], 100)
+        # 100 -> 60 : le parcage solaire du 2026-09-02 a déménagé 136 tâches
+        # non-solaires vers docs/backlog/FULL_SAAS_PLAN.md (corpus 95
+        # aujourd'hui) — même logique : une extraction cassée rendrait ~0.
+        self.assertGreater(stats["f1_candidates"], 60)
         # 80 -> 25 -> 0. ATTENTION : ce plancher a PERDU son pouvoir
         # discriminant et ne doit plus être lu comme une canari. Il ne compte
         # que les tâches NON COCHÉES qui CRÉENT un écran avec montage +
