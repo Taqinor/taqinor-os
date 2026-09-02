@@ -606,6 +606,24 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])
             activity.log_note(inst, request.user, "Chantier réactivé")
+            # AUD322 — miroir symétrique de `release_reservations` dans
+            # `annuler` : sans cela les réservations désactivées par
+            # l'annulation restaient `active=False` POUR TOUJOURS
+            # (`consume_reservations` ne filtre que `active=True`), donc un
+            # chantier annulé par erreur puis réactivé allait jusqu'à
+            # « Installé », matériel physiquement posé, sans qu'aucune SORTIE
+            # de stock ne se poste — le stock restait silencieusement gonflé.
+            # Borné aux chantiers qui PORTAIENT déjà des réservations : en
+            # mode `methode_reservation_stock='manuelle'` (ZSTK11), un
+            # chantier jamais réservé ne se réserve pas tout seul ici.
+            from ..services import seed_reservations
+            if inst.reservations.exists():
+                reamorcees = seed_reservations(inst)
+                if reamorcees:
+                    activity.log_note(
+                        inst, request.user,
+                        f"Réservation de stock réamorcée — "
+                        f"{len(reamorcees)} référence(s) (chantier réactivé).")
             # YSERV6 — lève le drapeau uniquement sur les interventions
             # annulées PAR cette annulation (traçabilité de provenance).
             from ..services import reactiver_interventions_annulees
