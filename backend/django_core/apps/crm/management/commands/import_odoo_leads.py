@@ -301,6 +301,24 @@ def _find_existing(company, external_id, fields):
     return None, False
 
 
+def _borne(champ, valeur):
+    """Borne une valeur à la longueur RÉELLE de sa colonne, lue sur le modèle.
+
+    LA SEULE source de la longueur : ``Lead._meta`` — jamais un nombre deviné
+    ni recopié. ``max_length`` absent (``TextField``) ⇒ valeur inchangée.
+
+    CRX9 avait borné le chemin RÉCONCILIATION ; le chemin CRÉATION ne bornait
+    en fait que ``ville``/``telephone``/``whatsapp``, avec des nombres écrits
+    en dur. Un ``partner_name`` Odoo de 300 caractères faisait donc tomber
+    l'INSERT (``DataError: value too long for type character varying(255)``)
+    et, la transaction étant unique, TOUT l'import avec lui.
+    """
+    if not valeur:
+        return valeur
+    maxi = Lead._meta.get_field(champ).max_length
+    return valeur[:maxi] if maxi else valeur
+
+
 def _fill_empty(lead, fields):
     """Complète les champs VIDES du lead existant. Renvoie True si modifié.
 
@@ -327,9 +345,7 @@ def _fill_empty(lead, fields):
         current = getattr(lead, field, None)
         if current not in (None, '', False):
             continue
-        valeur = fields[field]
-        maxi = Lead._meta.get_field(field).max_length
-        setattr(lead, field, valeur[:maxi] if maxi else valeur)
+        setattr(lead, field, _borne(field, fields[field]))
         changed.append(field)
     derivees = [_COLONNES_DERIVEES[f]
                 for f in changed if f in _COLONNES_DERIVEES]
@@ -479,28 +495,33 @@ class Command(BaseCommand):
 
                 # Création — société FORCÉE, marquée import test Odoo.
                 if not dry_run:
+                    # Chaque colonne texte est BORNÉE à sa longueur réelle
+                    # (`_borne`, lue sur le modèle) : une seule ligne trop
+                    # longue faisait tomber l'INSERT et, la transaction étant
+                    # unique, tout l'import avec elle.
                     Lead.objects.create(
                         company=company,
-                        nom=fields.get('nom') or (fields.get('societe')
-                                                  or fields.get('email')
-                                                  or 'Lead Odoo'),
-                        prenom=fields.get('prenom'),
-                        societe=fields.get('societe'),
-                        email=fields.get('email'),
+                        nom=_borne('nom',
+                                   fields.get('nom') or fields.get('societe')
+                                   or fields.get('email') or 'Lead Odoo'),
+                        prenom=_borne('prenom', fields.get('prenom')),
+                        societe=_borne('societe', fields.get('societe')),
+                        email=_borne('email', fields.get('email')),
                         # CRX35 — repli sur le mobile quand Odoo n'a pas de
                         # `phone` : sans lui, `phone_normalise` reste vide et
                         # le lead devient introuvable par la dédup indexée.
-                        telephone=((fields.get('telephone')
-                                    or fields.get('whatsapp') or '')[:50]
-                                   or None),
-                        whatsapp=(fields.get('whatsapp') or '')[:50] or None,
-                        adresse=fields.get('adresse'),
-                        ville=(fields.get('ville') or '')[:120] or None,
+                        telephone=_borne('telephone',
+                                         fields.get('telephone')
+                                         or fields.get('whatsapp')) or None,
+                        whatsapp=_borne('whatsapp',
+                                        fields.get('whatsapp')) or None,
+                        adresse=_borne('adresse', fields.get('adresse')),
+                        ville=_borne('ville', fields.get('ville')) or None,
                         note=fields.get('note'),
                         stage=stage_key,
                         source=Lead.Source.ODOO_IMPORT_TEST,
                         external_system=EXTERNAL_SYSTEM if external_id else None,
-                        external_id=external_id,
+                        external_id=_borne('external_id', external_id),
                     )
                 created += 1
 
