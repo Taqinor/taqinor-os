@@ -5784,7 +5784,7 @@ def marquer_indemnite_remboursee_par_paie(indem, *, user=None,
 
 def preparer_declaration_tva(company, *, date_debut, date_fin,
                              regime='mensuel', methode='debit',
-                             credit_anterieur=Decimal('0'), libelle='',
+                             credit_anterieur=None, libelle='',
                              validees_seulement=False, user=None):
     """Prépare et FIGE une déclaration de TVA sur une période (FG137).
 
@@ -5794,13 +5794,20 @@ def preparer_declaration_tva(company, *, date_debut, date_fin,
     l'éventuel crédit reportable, puis persiste un snapshot ``DeclarationTVA`` en
     statut « préparée ». La ``reference`` (TVA-YYYYMM-NNNN) et la ``company`` sont
     posées côté serveur (jamais lues du corps). Renvoie la déclaration.
+
+    AUD164 — ``credit_anterieur=None`` (le défaut, et le cas d'un corps de
+    requête qui ne le porte pas) DÉRIVE le crédit de la dernière déclaration
+    DÉPOSÉE dont la période précède celle-ci ; une valeur explicite (0 compris)
+    garde la main. Avant, le crédit valait toujours 0 par l'application.
     """
     from . import selectors  # import local : évite tout cycle au chargement.
     from apps.ventes.utils.references import create_with_reference
 
     calc = selectors.preparer_declaration_tva(
         company, date_debut=date_debut, date_fin=date_fin, regime=regime,
-        methode=methode, credit_anterieur=credit_anterieur or Decimal('0'),
+        methode=methode,
+        credit_anterieur=(selectors.CREDIT_ANTERIEUR_AUTO
+                          if credit_anterieur is None else credit_anterieur),
         validees_seulement=validees_seulement)
     declaration = DeclarationTVA(
         company=company,
@@ -6053,14 +6060,23 @@ def deposer_declaration_tva(declaration):
 def solder_tva_periode(periode, *, user=None):
     """Poste l'écriture de solde TVA d'une période (XACC10, checklist de clôture).
 
-    Recalcule la TVA à déclarer EXACTEMENT comme ``preparer_declaration_tva``
-    (même agrégation GL, cohérente avec FG137 — aucune divergence possible)
-    et poste, si le montant net dû est positif, l'écriture de solde :
-    débit 4455 (TVA facturée, on solde) + débit 3455 (TVA récupérable, on
-    solde) → crédit 44552 (« État TVA due »). Si le net est négatif (crédit de
-    TVA), ne poste rien (rien à devoir — le crédit se reporte via FG137).
+    Reprend le net FIGÉ de la ``DeclarationTVA`` de la période quand elle
+    existe (c'est ELLE qui a été déposée), sinon recalcule via
+    ``selectors.preparer_declaration_tva``. Poste, si le montant net dû est
+    positif : débit 4455 (TVA facturée, on solde) → crédit 3455 (TVA
+    récupérable + crédit antérieur, on solde et on APURE le report) + crédit
+    44552 (« État TVA due » = net DÉCLARÉ). Si le net est négatif (crédit de
+    TVA), ne poste rien (rien à devoir — le crédit se reporte, AUD164).
     IDEMPOTENT par période (``source_type='solde_tva'``,
     ``source_id=periode.id``). Renvoie l'écriture, ou None si rien à solder.
+
+    AUD164 — l'ancienne docstring affirmait « aucune divergence possible » avec
+    la déclaration, mais l'appel réel ne transmettait PAS ``credit_anterieur``
+    (défaut 0) et créditait le net BRUT au 44552 : sur février à crédit 30 000
+    puis mars 90 000/20 000, l'écriture créditait 70 000 au lieu de 40 000, et
+    44552/3455 accumulaient des résiduels de sens opposé que rien n'apurait.
+    Le crédit antérieur est désormais imputé au 3455 — ne PAS se contenter de
+    le passer au calcul, ce qui déséquilibrerait l'écriture.
     """
     from . import selectors
 
@@ -6068,28 +6084,45 @@ def solder_tva_periode(periode, *, user=None):
     existante = _ecriture_existante(company, 'solde_tva', periode.id)
     if existante:
         return existante
-    calc = selectors.preparer_declaration_tva(
-        company, date_debut=periode.date_debut, date_fin=periode.date_fin)
-    collectee = calc['tva_collectee']
-    deductible = calc['tva_deductible']
-    net = calc['tva_a_declarer']
+    declaration = (DeclarationTVA.objects
+                   .filter(company=company, date_debut=periode.date_debut,
+                           date_fin=periode.date_fin)
+                   .order_by('-date_creation', '-id')
+                   .first())
+    if declaration is not None:
+        collectee = Decimal(declaration.tva_collectee or 0)
+        deductible = Decimal(declaration.tva_deductible or 0)
+        anterieur = Decimal(declaration.credit_anterieur or 0)
+        net = Decimal(declaration.tva_a_declarer or 0)
+    else:
+        calc = selectors.preparer_declaration_tva(
+            company, date_debut=periode.date_debut, date_fin=periode.date_fin)
+        collectee = calc['tva_collectee']
+        deductible = calc['tva_deductible']
+        anterieur = calc['credit_anterieur']
+        net = calc['tva_a_declarer']
     if net <= 0:
         return None
     comptes = _comptes_requis(company)
     compte_due = _assurer_compte(company, '44552')
     # Mécanique CGNC : 4455 (TVA facturée) porte un solde CRÉDITEUR, 3455 (TVA
     # récupérable) un solde DÉBITEUR. Pour les solder tous les deux, on
-    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit) ;
-    # le NET (collectée − déductible = 44552) équilibre l'écriture.
+    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit,
+    # crédit antérieur COMPRIS) ; le NET déclaré (44552) équilibre l'écriture :
+    # collectée = (déductible + antérieur) + net, par construction.
     lignes = []
     if collectee > 0:
         lignes.append({
             'compte': comptes['tva_facturee'], 'debit': collectee,
             'credit': Decimal('0'), 'libelle': 'Solde TVA facturée'})
-    if deductible > 0:
+    credit_recuperable = deductible + anterieur
+    if credit_recuperable > 0:
         lignes.append({
             'compte': comptes['tva_recuperable'], 'debit': Decimal('0'),
-            'credit': deductible, 'libelle': 'Solde TVA récupérable'})
+            'credit': credit_recuperable,
+            'libelle': ('Solde TVA récupérable'
+                        + (f' (dont crédit reporté {anterieur})'
+                           if anterieur > 0 else ''))})
     lignes.append({
         'compte': compte_due, 'debit': Decimal('0'), 'credit': net,
         'libelle': 'État TVA due'})

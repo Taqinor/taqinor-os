@@ -2217,8 +2217,63 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
     return (agg['debit'] or Decimal('0'), agg['credit'] or Decimal('0'))
 
 
+# AUD164 — sentinelle « non fourni » : le crédit antérieur est alors DÉRIVÉ de
+# la dernière déclaration déposée, jamais un forfait 0 silencieux. Un appelant
+# qui passe explicitement une valeur (y compris 0) garde la main.
+CREDIT_ANTERIEUR_AUTO = object()
+
+
+def credit_anterieur_reporte(company, date_debut):
+    """AUD164 — crédit de TVA reporté de la dernière déclaration DÉPOSÉE.
+
+    Renvoie ``(montant, declaration_source)``. ``credit_reportable`` était
+    calculé, stocké sur la ``DeclarationTVA`` et exporté, mais AUCUN code ne le
+    relisait : la seule source de ``credit_anterieur`` était le corps de requête
+    (défaut 0) et le champ n'existait même pas dans le formulaire — par
+    l'application, le crédit valait TOUJOURS 0. Février à crédit 30 000 puis
+    mars collectée 90 000 / déductible 20 000 faisait déclarer 70 000 au lieu de
+    40 000 : 30 000 MAD payés en trop à la DGI.
+    """
+    from .models import DeclarationTVA
+
+    debut = _as_date(date_debut)
+    if debut is None:
+        return Decimal('0'), None
+    precedente = (DeclarationTVA.objects
+                  .filter(company=company,
+                          statut=DeclarationTVA.Statut.DEPOSEE,
+                          date_fin__lt=debut)
+                  .order_by('-date_fin', '-id')
+                  .first())
+    if precedente is None:
+        return Decimal('0'), None
+    montant = Decimal(precedente.credit_reportable or 0)
+    if montant <= 0:
+        return Decimal('0'), None
+    return montant, precedente
+
+
+def _source_credit_anterieur(declaration, montant):
+    """Bloc d'affichage TRACÉ du crédit reporté (jamais un nombre orphelin)."""
+    if declaration is None:
+        return None
+    return {
+        'declaration_id': declaration.id,
+        'reference': declaration.reference or '',
+        'date_debut': declaration.date_debut,
+        'date_fin': declaration.date_fin,
+        'montant': montant,
+        'libelle': (
+            f'Crédit reporté de {declaration.date_debut} → '
+            f'{declaration.date_fin} : {montant} MAD'
+            + (f' (déclaration {declaration.reference})'
+               if declaration.reference else '')),
+    }
+
+
 def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
-                             methode='debit', credit_anterieur=Decimal('0'),
+                             methode='debit',
+                             credit_anterieur=CREDIT_ANTERIEUR_AUTO,
                              validees_seulement=False, comparer=False,
                              date_debut_m1=None, date_fin_m1=None):
     """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
@@ -2252,7 +2307,15 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     if deductible < 0:
         deductible = Decimal('0')
 
-    anterieur = credit_anterieur or Decimal('0')
+    # AUD164 — crédit antérieur : dérivé de la dernière déclaration déposée
+    # quand l'appelant n'en fournit pas, jamais un forfait 0 silencieux.
+    source_credit = None
+    if credit_anterieur is CREDIT_ANTERIEUR_AUTO:
+        anterieur, declaration_source = credit_anterieur_reporte(
+            company, date_debut)
+        source_credit = _source_credit_anterieur(declaration_source, anterieur)
+    else:
+        anterieur = Decimal(str(credit_anterieur or 0))
     net = collectee - deductible - anterieur
     a_declarer = net if net >= 0 else Decimal('0')
     reportable = -net if net < 0 else Decimal('0')
@@ -2264,6 +2327,7 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_collectee': collectee,
         'tva_deductible': deductible,
         'credit_anterieur': anterieur,
+        'credit_anterieur_source': source_credit,
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }

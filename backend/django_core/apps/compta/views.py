@@ -4376,7 +4376,9 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             date_fin=vd['date_fin'],
             regime=vd.get('regime') or DeclarationTVA.Regime.MENSUEL,
             methode=vd.get('methode') or DeclarationTVA.Methode.DEBIT,
-            credit_anterieur=vd.get('credit_anterieur') or 0,
+            # AUD164 — absent du corps = DÉRIVÉ de la dernière déclaration
+            # déposée (jamais un forfait 0) ; une valeur saisie garde la main.
+            credit_anterieur=vd.get('credit_anterieur'),
             libelle=vd.get('libelle', '') or '',
             validees_seulement=request.query_params.get('validees') == '1',
             user=request.user)
