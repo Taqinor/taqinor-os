@@ -192,12 +192,12 @@ class TestAud166GardesLettrage(TestCase):
             debit=Decimal(debit), credit=Decimal(credit))
 
     def test_comptes_differents_refuses(self):
-        from apps.compta import selectors
+        from apps.compta import services as compta_services
 
         creance = self._ligne(self.clients, debit='12000')
         dette = self._ligne(self.fournisseurs, credit='12000')
         with self.assertRaises(ValueError):
-            selectors.lettrer(
+            compta_services.lettrer(
                 self.company, [creance.id, dette.id], 'A')
         creance.refresh_from_db()
         dette.refresh_from_db()
@@ -205,38 +205,38 @@ class TestAud166GardesLettrage(TestCase):
         self.assertEqual(dette.lettrage, '')
 
     def test_ligne_deja_lettree_refusee(self):
-        from apps.compta import selectors
+        from apps.compta import services as compta_services
 
         a1 = self._ligne(self.clients, debit='500')
         a2 = self._ligne(self.clients, credit='500')
-        selectors.lettrer(self.company, [a1.id, a2.id], 'A')
+        compta_services.lettrer(self.company, [a1.id, a2.id], 'A')
         b1 = self._ligne(self.clients, credit='500')
         with self.assertRaises(ValueError):
-            selectors.lettrer(self.company, [a1.id, b1.id], 'B')
+            compta_services.lettrer(self.company, [a1.id, b1.id], 'B')
         a1.refresh_from_db()
         self.assertEqual(a1.lettrage, 'A')
 
     def test_meme_compte_equilibre_reussit(self):
-        from apps.compta import selectors
+        from apps.compta import services as compta_services
 
         d = self._ligne(self.clients, debit='800')
         c = self._ligne(self.clients, credit='800')
         self.assertEqual(
-            selectors.lettrer(self.company, [d.id, c.id], 'C'), 2)
+            compta_services.lettrer(self.company, [d.id, c.id], 'C'), 2)
         d.refresh_from_db()
         self.assertEqual(d.lettrage, 'C')
 
     def test_compte_non_lettrable_refuse(self):
-        from apps.compta import selectors, services as compta_services
+        from apps.compta import services as compta_services
 
         banque = compta_services.get_compte(self.company, '5141')
         d = self._ligne(banque, debit='300')
         c = self._ligne(banque, credit='300')
         with self.assertRaises(ValueError):
-            selectors.lettrer(self.company, [d.id, c.id], 'D')
+            compta_services.lettrer(self.company, [d.id, c.id], 'D')
 
     def test_tiers_differents_refuses(self):
-        from apps.compta import selectors
+        from apps.compta import services as compta_services
 
         d = self._ligne(self.clients, debit='400')
         c = self._ligne(self.clients, credit='400')
@@ -245,4 +245,77 @@ class TestAud166GardesLettrage(TestCase):
         LigneEcriture.objects.filter(pk=c.pk).update(
             tiers_type='client', tiers_id=2)
         with self.assertRaises(ValueError):
-            selectors.lettrer(self.company, [d.id, c.id], 'E')
+            compta_services.lettrer(self.company, [d.id, c.id], 'E')
+
+
+class TestAud167VerrouPeriodeLettrage(TestCase):
+    """AUD167 — lettrer/délettrer respectent le verrou de période (FG115).
+
+    ``queryset.update`` ne passe jamais par ``LigneEcriture.save()``, seule
+    implémentation du verrou côté ligne : un délettrage sur un exercice déposé
+    changeait rétroactivement la balance âgée, sans erreur ni trace.
+    """
+
+    def setUp(self):
+        from datetime import date
+
+        from apps.compta import services as compta_services
+
+        self.company = make_company('aud167-co', 'AUD167 Co')
+        compta_services.seed_plan_comptable(self.company)
+        compta_services.seed_journaux(self.company)
+        self.clients = compta_services.get_compte(self.company, '3421')
+        journal = compta_services._journal(
+            self.company, compta_services.Journal.Type.OPERATIONS_DIVERSES)
+        self.ecriture = EcritureComptable.objects.create(
+            company=self.company, journal=journal,
+            date_ecriture=date(2025, 12, 15), libelle='OD AUD167',
+            reference='OD-AUD167',
+            statut=EcritureComptable.Statut.VALIDEE)
+        self.d = LigneEcriture.objects.create(
+            company=self.company, ecriture=self.ecriture, compte=self.clients,
+            debit=Decimal('900'), credit=Decimal('0'))
+        self.c = LigneEcriture.objects.create(
+            company=self.company, ecriture=self.ecriture, compte=self.clients,
+            debit=Decimal('0'), credit=Decimal('900'))
+        self.periode = compta_services.creer_periode(
+            self.company, date(2025, 12, 1), date(2025, 12, 31),
+            libelle='Décembre 2025')
+
+    def _verrouiller(self):
+        from apps.compta import services as compta_services
+
+        compta_services.cloturer_periode(self.periode)
+
+    def test_delettrer_refuse_en_periode_close(self):
+        from django.core.exceptions import ValidationError
+
+        from apps.compta import services as compta_services
+
+        compta_services.lettrer(self.company, [self.d.id, self.c.id], 'A')
+        self._verrouiller()
+        with self.assertRaises(ValidationError):
+            compta_services.delettrer(self.company, 'A')
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.lettrage, 'A')
+
+    def test_lettrer_refuse_en_periode_close(self):
+        from django.core.exceptions import ValidationError
+
+        from apps.compta import services as compta_services
+
+        self._verrouiller()
+        with self.assertRaises(ValidationError):
+            compta_services.lettrer(self.company, [self.d.id, self.c.id], 'B')
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.lettrage, '')
+
+    def test_periode_ouverte_inchangee(self):
+        from apps.compta import services as compta_services
+
+        self.assertEqual(
+            compta_services.lettrer(
+                self.company, [self.d.id, self.c.id], 'C'), 2)
+        self.assertEqual(compta_services.delettrer(self.company, 'C'), 2)
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.lettrage, '')

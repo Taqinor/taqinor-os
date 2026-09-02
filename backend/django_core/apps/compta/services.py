@@ -623,6 +623,103 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
     )
 
 
+# ── FG112 / COMPTA22 / YLEDG6 — Lettrage / délettrage ──────────────────────
+# AUD167 — ces deux fonctions vivaient dans ``selectors.py`` : ce sont des
+# ÉCRITURES (``queryset.update``), et cette convention brisée est exactement ce
+# qui a laissé passer le trou du verrou de période. Un UPDATE SQL direct ne
+# passe jamais par ``LigneEcriture.save()``, seule implémentation du verrou
+# FG115 côté ligne : le garde est donc posé ICI, une fois, pour les deux sens.
+
+
+def _refuser_si_periode_verrouillee(qs, action):
+    """Refuse une opération de lettrage touchant une période verrouillée.
+
+    ``qs`` : queryset de ``LigneEcriture``. Lève ``ValidationError`` dès qu'une
+    seule ligne du lot tombe dans une période close — sans quoi un délettrage
+    modifie rétroactivement la balance âgée d'un exercice déjà déposé, sans
+    erreur ni trace (le lettrage n'entre pas dans ``_empreinte_ecriture``).
+    """
+    for company_id, date_ecriture in qs.values_list(
+            'company_id', 'ecriture__date_ecriture').distinct():
+        if company_id is None or date_ecriture is None:
+            continue
+        if PeriodeComptable.date_verrouillee(company_id, date_ecriture):
+            raise ValidationError(
+                f"Période comptable clôturée : impossible de {action} une "
+                f"ligne datée du {date_ecriture}.")
+
+
+@transaction.atomic
+def lettrer(company, ligne_ids, code, *, forcer=False):
+    """Pose un code de lettrage sur un lot de lignes SSI il est appariable.
+
+    Un lettrage APPARIE des lignes d'un même compte de tiers : l'équilibre seul
+    ne suffit pas. AUD166 — quatre conditions, toutes vérifiées avant l'update :
+
+    1. un SEUL compte pour tout le lot (sans quoi une créance client 3421 et
+       une dette fournisseur 4411 de même montant se « lettrent » ensemble et
+       disparaissent l'une du recouvrement, l'autre du prévisionnel) ;
+    2. ce compte est lettrable et de tiers ;
+    3. un SEUL couple ``(tiers_type, tiers_id)`` non vide ;
+    4. aucune ligne ne porte DÉJÀ un code (relettrer écraserait silencieusement
+       le lot d'origine et laisserait sa facture seule, apparemment soldée) —
+       ``forcer=True`` lève cette seule condition, pour un relettrage assumé.
+
+    AUD167 — plus le verrou de période (FG115), que l'``update`` SQL contournait.
+
+    Renvoie le nombre de lignes lettrées, ou lève ``ValueError`` (appariement
+    impossible) / ``ValidationError`` (période close).
+    """
+    qs = LigneEcriture.objects.filter(company=company, id__in=ligne_ids)
+    lignes = list(qs.select_related('compte'))
+    if not lignes:
+        raise ValueError("Lettrage impossible : aucune ligne à lettrer.")
+    comptes = {ligne.compte_id for ligne in lignes}
+    if len(comptes) > 1:
+        numeros = sorted({ligne.compte.numero for ligne in lignes})
+        raise ValueError(
+            "Lettrage impossible : toutes les lignes doivent porter le MÊME "
+            f"compte (reçu : {', '.join(numeros)}).")
+    compte = lignes[0].compte
+    if not compte.lettrable or not compte.est_tiers:
+        raise ValueError(
+            f"Lettrage impossible : le compte {compte.numero} n'est pas un "
+            "compte de tiers lettrable.")
+    tiers = {
+        (ligne.tiers_type, ligne.tiers_id) for ligne in lignes
+        if ligne.tiers_type or ligne.tiers_id
+    }
+    if len(tiers) > 1:
+        raise ValueError(
+            "Lettrage impossible : les lignes ne concernent pas le même tiers.")
+    if not forcer:
+        deja = sorted({ligne.lettrage for ligne in lignes if ligne.lettrage})
+        if deja:
+            raise ValueError(
+                "Lettrage impossible : des lignes portent déjà le lettrage "
+                f"{', '.join(deja)} — délettrez-les d'abord.")
+    debit = sum((ligne.debit for ligne in lignes), Decimal('0'))
+    credit = sum((ligne.credit for ligne in lignes), Decimal('0'))
+    if debit != credit:
+        raise ValueError(
+            f"Lettrage impossible : Σ débit ({debit}) ≠ Σ crédit ({credit}).")
+    _refuser_si_periode_verrouillee(qs, 'lettrer')
+    return qs.update(lettrage=code)
+
+
+@transaction.atomic
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — ne touche jamais aux montants ni aux écritures elles-mêmes (COMPTA11 :
+    jamais de suppression/altération d'une écriture validée), et AUD167 rend
+    cette promesse exécutoire en refusant toute ligne en période close."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    _refuser_si_periode_verrouillee(qs, 'délettrer')
+    return qs.update(lettrage='')
+
+
 @transaction.atomic
 def auto_lettrer_facture_soldee(facture):
     """YLEDG6 — lettre automatiquement le compte clients (3421) d'une facture
@@ -666,7 +763,7 @@ def auto_lettrer_facture_soldee(facture):
     from . import selectors
     code = selectors.prochain_code_lettrage(company, compte_clients)
     try:
-        return selectors.lettrer(company, lignes, code)
+        return lettrer(company, lignes, code)
     except ValueError:
         # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
         # le lettrage manuel s'en charger, jamais d'exception ici.

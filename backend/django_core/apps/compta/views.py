@@ -1911,10 +1911,13 @@ class LettrageViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST)
             code = selectors.prochain_code_lettrage(company, compte)
         try:
-            nb = selectors.lettrer(company, ligne_ids, code)
-        except ValueError as exc:
+            # AUD167 — lettrer/délettrer sont des ÉCRITURES : elles vivent dans
+            # ``services`` et y portent le verrou de période.
+            nb = services.lettrer(company, ligne_ids, code)
+        except (ValueError, DjangoValidationError) as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_lettrees': nb})
 
     @action(detail=False, methods=['post'])
@@ -1924,7 +1927,12 @@ class LettrageViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': "'code' requis."},
                 status=status.HTTP_400_BAD_REQUEST)
-        nb = selectors.delettrer(request.user.company, code)
+        try:
+            nb = services.delettrer(request.user.company, code)
+        except (ValueError, DjangoValidationError) as exc:
+            return Response(
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_delettrees': nb})
 
 

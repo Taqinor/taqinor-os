@@ -249,8 +249,8 @@ def _delettrer_paiement_rejete(sender, paiement, facture, montant, company,
                      .exclude(lettrage='').first())
     if ligne_lettree is None:
         return
-    from . import selectors
-    selectors.delettrer(company, ligne_lettree.lettrage)
+    from . import services
+    services.delettrer(company, ligne_lettree.lettrage)
 
 
 # ── ARC36 — facture intégralement réglée → lettrage du solde (compta) ────────

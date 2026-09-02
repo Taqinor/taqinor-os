@@ -480,59 +480,6 @@ def encours_tiers(company, compte):
     return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
 
 
-def lettrer(company, ligne_ids, code, *, forcer=False):
-    """Pose un code de lettrage sur un lot de lignes SSI il est appariable.
-
-    Un lettrage APPARIE des lignes d'un même compte de tiers : l'équilibre seul
-    ne suffit pas. AUD166 — quatre conditions, toutes vérifiées avant l'update :
-
-    1. un SEUL compte pour tout le lot (sans quoi une créance client 3421 et
-       une dette fournisseur 4411 de même montant se « lettrent » ensemble et
-       disparaissent l'une du recouvrement, l'autre du prévisionnel) ;
-    2. ce compte est lettrable et de tiers ;
-    3. un SEUL couple ``(tiers_type, tiers_id)`` non vide ;
-    4. aucune ligne ne porte DÉJÀ un code (relettrer écraserait silencieusement
-       le lot d'origine et laisserait sa facture seule, apparemment soldée) —
-       ``forcer=True`` lève cette seule condition, pour un relettrage assumé.
-
-    Renvoie le nombre de lignes lettrées, ou lève ``ValueError``.
-    """
-    qs = LigneEcriture.objects.filter(company=company, id__in=ligne_ids)
-    lignes = list(qs.select_related('compte'))
-    if not lignes:
-        raise ValueError("Lettrage impossible : aucune ligne à lettrer.")
-    comptes = {ligne.compte_id for ligne in lignes}
-    if len(comptes) > 1:
-        numeros = sorted({ligne.compte.numero for ligne in lignes})
-        raise ValueError(
-            "Lettrage impossible : toutes les lignes doivent porter le MÊME "
-            f"compte (reçu : {', '.join(numeros)}).")
-    compte = lignes[0].compte
-    if not compte.lettrable or not compte.est_tiers:
-        raise ValueError(
-            f"Lettrage impossible : le compte {compte.numero} n'est pas un "
-            "compte de tiers lettrable.")
-    tiers = {
-        (ligne.tiers_type, ligne.tiers_id) for ligne in lignes
-        if ligne.tiers_type or ligne.tiers_id
-    }
-    if len(tiers) > 1:
-        raise ValueError(
-            "Lettrage impossible : les lignes ne concernent pas le même tiers.")
-    if not forcer:
-        deja = sorted({ligne.lettrage for ligne in lignes if ligne.lettrage})
-        if deja:
-            raise ValueError(
-                "Lettrage impossible : des lignes portent déjà le lettrage "
-                f"{', '.join(deja)} — délettrez-les d'abord.")
-    debit = sum((ligne.debit for ligne in lignes), Decimal('0'))
-    credit = sum((ligne.credit for ligne in lignes), Decimal('0'))
-    if debit != credit:
-        raise ValueError(
-            f"Lettrage impossible : Σ débit ({debit}) ≠ Σ crédit ({credit}).")
-    return qs.update(lettrage=code)
-
-
 def prochain_code_lettrage(company, compte):
     """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
     compte lettrable donné (jamais réutilisé, même après délettrage — le
@@ -558,17 +505,6 @@ def prochain_code_lettrage(company, compte):
     valides = [c for c in codes if c and c.isalpha() and c.isupper()]
     dernier_rang = max((_rang(c) for c in valides), default=0)
     return _code(dernier_rang + 1)
-
-
-def delettrer(company, code):
-    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
-    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
-    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
-    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
-    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
-    d'une écriture validée)."""
-    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
-    return qs.update(lettrage='')
 
 
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
