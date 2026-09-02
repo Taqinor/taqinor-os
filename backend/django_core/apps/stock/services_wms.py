@@ -298,10 +298,18 @@ def prelever_ligne_picking(*, ligne, quantite, user=None):
     Refuse (``ValueError``) une quantité non positive, un dépassement du reste
     à prélever, ou une vague non LANCÉE. Clôture automatiquement la vague quand
     toutes ses lignes sont servies.
+
+    AUD219 — la ligne est chargée par la vue AVANT d'entrer en transaction :
+    deux scanners sur la MÊME ligne lisaient donc tous deux le même
+    ``quantite_prelevee`` et le second écrasait le premier (lost update). La
+    ligne est re-lue SOUS VERROU (``select_for_update``) à l'intérieur de la
+    transaction, et c'est cette copie fraîche qui décide du reste à prélever :
+    le second scan est refusé s'il dépasse, additionné sinon. Verrou distinct
+    de celui du produit (AUD216) : l'objet en course ici est la LignePicking.
     """
     from django.db import transaction
     from django.utils import timezone
-    from .models_wms import VaguePicking
+    from .models_wms import LignePicking, VaguePicking
 
     try:
         quantite = int(quantite)
@@ -313,12 +321,13 @@ def prelever_ligne_picking(*, ligne, quantite, user=None):
     if vague.statut != VaguePicking.Statut.LANCEE:
         raise ValueError(
             'La vague doit être lancée avant tout prélèvement.')
-    if quantite > ligne.reste_a_prelever:
-        raise ValueError(
-            f'Il ne reste que {ligne.reste_a_prelever} unité(s) à prélever '
-            f'sur cette ligne.')
 
     with transaction.atomic():
+        ligne = LignePicking.objects.select_for_update().get(pk=ligne.pk)
+        if quantite > ligne.reste_a_prelever:
+            raise ValueError(
+                f'Il ne reste que {ligne.reste_a_prelever} unité(s) à '
+                f'prélever sur cette ligne.')
         ligne.quantite_prelevee += quantite
         ligne.save(update_fields=['quantite_prelevee'])
         vague.refresh_from_db()
