@@ -323,29 +323,50 @@ class TestBeaconPublic(TestCase):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestIpDeRequete(TestCase):
-    """Finding #8 — le rendu SSR du Worker atteint l'ERP depuis SA sortie :
-    sans en-tête transmis, ``REMOTE_ADDR`` est la même pour TOUS les clients.
-    L'ordre de lecture privilégie donc les en-têtes qui désignent le visiteur.
+    """QJR416 (QJR4-03) — L'ORDRE DE LECTURE A ÉTÉ RENVERSÉ, EXPRÈS.
+
+    Finding #8 (25/08/2026) avait fait privilégier ``CF-Connecting-IP`` puis le
+    PREMIER saut de ``X-Forwarded-For`` pour distinguer des visiteurs derrière
+    le Worker. Mais ces deux valeurs sont **choisies par l'appelant** : la
+    MÊME primitive sert la preuve légale de signature (loi 53-05) et les seaux
+    de limitation de débit, où une valeur forgeable est une faille — un
+    attaquant écrivait l'IP qu'on opposerait plus tard à un signataire, et
+    changeait de seau à volonté.
+
+    La primitive partagée (``core.throttling.ip_de_requete``) lit donc le
+    **dernier saut de confiance** : nginx APPEND à ``X-Forwarded-For``, la
+    dernière entrée est celle que notre propre proxy a vue, la seule
+    infalsifiable. ``NUM_PROXIES`` déclare combien de nos proxies ajoutent leur
+    entrée (c'est ce réglage, posé au deploy avec QJW25, qui rendra la
+    granularité par visiteur derrière le Worker) ; ``CF-Connecting-IP`` n'est
+    honoré que si le déploiement déclare Cloudflare de confiance.
     """
 
     def _requete(self, **entetes):
         from django.test import RequestFactory
         return RequestFactory().get('/', **entetes)
 
-    def test_cf_connecting_ip_prioritaire(self):
-        """L'en-tête que pose Cloudflare/le Worker désigne UNE adresse, celle
-        du visiteur — c'est déjà l'ordre du site (``lib/rateLimit.ts``)."""
+    def test_dernier_saut_de_x_forwarded_for(self):
+        """Le premier saut est FORGEABLE : il ne décide plus rien."""
         requete = self._requete(
             HTTP_CF_CONNECTING_IP='41.77.1.5',
-            HTTP_X_FORWARDED_FOR='198.51.100.7',
+            HTTP_X_FORWARDED_FOR='41.77.1.5, 198.51.100.7',
             REMOTE_ADDR='10.0.0.1')
-        self.assertEqual(visites.ip_de_requete(requete), '41.77.1.5')
+        self.assertEqual(visites.ip_de_requete(requete), '198.51.100.7')
 
-    def test_premier_saut_non_vide_de_x_forwarded_for(self):
-        """Un proxy peut poser une entrée VIDE en tête : la lecture naïve
-        retombait alors sur ``REMOTE_ADDR``, donc sur le proxy lui-même."""
+    def test_num_proxies_saute_nos_propres_sauts(self):
+        from django.test import override_settings
+
         requete = self._requete(
-            HTTP_X_FORWARDED_FOR=' , 41.77.1.5, 10.0.0.1',
+            HTTP_X_FORWARDED_FOR='41.77.1.5, 198.51.100.7, 10.0.0.1',
+            REMOTE_ADDR='10.0.0.1')
+        with override_settings(NUM_PROXIES=1):
+            self.assertEqual(visites.ip_de_requete(requete), '198.51.100.7')
+
+    def test_les_entrees_vides_sont_ignorees(self):
+        """Un proxy peut poser une entrée VIDE : elle ne compte pas comme saut."""
+        requete = self._requete(
+            HTTP_X_FORWARDED_FOR=' , 41.77.1.5,  ',
             REMOTE_ADDR='10.0.0.1')
         self.assertEqual(visites.ip_de_requete(requete), '41.77.1.5')
 

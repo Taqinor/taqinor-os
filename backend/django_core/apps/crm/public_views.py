@@ -22,6 +22,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from core.throttling import IdentIpPartageeMixin
+
 from .models import SalleVente, SalleVenteItem, SalleVenteVue
 
 _SALLE_VENTE_RESPONSE = inline_serializer('PublicSalleVente', {
@@ -52,9 +54,13 @@ _APPORTEUR_DEALS_RESPONSE = inline_serializer('PublicApporteurMesDeals', {
 })
 
 
-class PublicSalleVenteRateThrottle(SimpleRateThrottle):
+class PublicSalleVenteRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
     """Débit limité par IP + jeton — même patron que
-    ``PublicBookingRateThrottle``."""
+    ``PublicBookingRateThrottle``.
+
+    QJR416 — l'identifiant du seau vient de la primitive partagée : le
+    ``get_ident`` de DRF lisait le PREMIER saut de ``X-Forwarded-For``, donc un
+    seau ADRESSABLE par l'appelant."""
     scope = 'public_salle_vente'
     rate = '30/minute'
 
@@ -74,11 +80,35 @@ def _resolve_salle(token):
     return SalleVente.objects.select_related('company').filter(token=token).first()
 
 
-def _hash_ip(request):
-    ip = request.META.get('REMOTE_ADDR', '') or ''
+def _hash_ip(request, salle=None):
+    """QJR416 (QJR4-11, requalifié « qualité de données ») — identifiant de
+    VISITEUR, salé PAR LIEN.
+
+    DEUX DÉFAUTS, UN SEUL CORRECTIF.
+
+    * L'adresse lue était ``REMOTE_ADDR`` : derrière le proxy, elle vaut la
+      MÊME valeur pour TOUS les visiteurs, donc le journal de consultation
+      NTCRM18 ne distinguait plus personne (tout le monde partageait une
+      empreinte unique). On lit désormais LA primitive partagée
+      (``core.throttling.ip_de_requete``, dernier saut de confiance).
+    * Le hachage était un SHA-256 NU : la même IP produit la même empreinte sur
+      TOUS les liens du dépôt, ce qui permet de recouper les consultations d'un
+      même visiteur d'une salle à l'autre — et un dictionnaire d'IPv4 le
+      renverse en quelques minutes. Le hachage est désormais SALÉ PAR LIEN
+      (jeton de la salle) : deux visiteurs distincts d'un même lien produisent
+      deux identifiants, et un même visiteur sur deux liens en produit deux
+      DIFFÉRENTS.
+
+    Aucune IP en clair n'est persistée — seulement cette empreinte.
+    """
+    from core.throttling import ip_de_requete
+
+    ip = ip_de_requete(request)
     if not ip:
         return ''
-    return hashlib.sha256(ip.encode('utf-8')).hexdigest()
+    sel = str(getattr(salle, 'token', '') or '')
+    return hashlib.sha256(
+        ('%s|%s' % (sel, ip)).encode('utf-8')).hexdigest()
 
 
 def _item_payload(item):
@@ -133,7 +163,8 @@ def public_salle_vente(request, token):
                 {'detail': 'Mot de passe requis ou invalide.'},
                 status=status.HTTP_403_FORBIDDEN)
 
-    SalleVenteVue.objects.create(salle=salle, ip_hash=_hash_ip(request))
+    SalleVenteVue.objects.create(
+        salle=salle, ip_hash=_hash_ip(request, salle))
     try:
         # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
         from .services import detecter_signal_interet_salle_vente
@@ -156,7 +187,8 @@ def public_salle_vente(request, token):
 # autre) et n'expose du client que nom/ville (jamais téléphone/email/adresse
 # complète — cf. `AUTH`).
 
-class PublicApporteurRateThrottle(SimpleRateThrottle):
+class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
+    # QJR416 — même primitive d'identifiant que les autres throttles publics.
     scope = 'public_apporteur_portail'
     rate = '30/minute'
 

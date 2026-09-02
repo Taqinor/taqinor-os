@@ -26,6 +26,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from core.throttling import IdentIpPartageeMixin
+
 from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
@@ -55,8 +57,14 @@ LINK_EXPIRED_MESSAGE = (
 )
 
 
-class PublicLinkRateThrottle(SimpleRateThrottle):
+class PublicLinkRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
     """Limite le débit des liens publics par IP + jeton (cache-based).
+
+    QJR416 — l'identifiant du seau vient de la primitive partagée
+    (``core.throttling.IdentIpPartageeMixin``) : le ``get_ident`` de DRF lit le
+    PREMIER saut de ``X-Forwarded-For`` quand ``NUM_PROXIES`` est absent, ce qui
+    rendait le seau ADRESSABLE par l'appelant — donc la limite contournable en
+    changeant un en-tête.
 
     Pas de dépendance externe : on s'appuie sur le throttle DRF intégré et le
     cache du projet. Le taux est fixé ici (pas de réglage settings nécessaire)
@@ -672,8 +680,18 @@ def public_bcf_document(request, token):
 # qu'un seul devis d'une seule société). Aucun login : le jeton AUTHENTIFIE.
 
 def _client_ip(request):
-    fwd = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    return (fwd.split(',')[0].strip() or request.META.get('REMOTE_ADDR') or '')
+    """QJR416 — l'IP de PREUVE, lue par LA primitive partagée.
+
+    Cette valeur part dans le registre IMMUABLE de signature électronique
+    (loi 53-05) : c'est un champ de preuve. Elle lisait le PREMIER saut de
+    ``X-Forwarded-For`` — donc une valeur **choisie par l'attaquant**, qui
+    pouvait écrire l'adresse opposée plus tard à un signataire. Elle délègue
+    désormais à :func:`core.throttling.ip_de_requete`, qui lit le DERNIER saut
+    de confiance. Aucune seconde lecture d'IP dans le dépôt.
+    """
+    from core.throttling import ip_de_requete
+
+    return ip_de_requete(request)
 
 
 def _parse_client_ts(value):
