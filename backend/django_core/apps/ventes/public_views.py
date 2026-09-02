@@ -763,7 +763,9 @@ def _monthly_consumption(devis) -> list:
     (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
     distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
     figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même
-    proposition. Facture d'hiver toute l'année, ou hiver+été quand
+    proposition. QJR405 — l'inversion se fait en mode ``facture_totale``
+    (le lead saisit le TOTAL de sa facture : lignes fixes et TPPAN
+    comprises). Facture d'hiver toute l'année, ou hiver+été quand
     ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → [] (la page masque
     alors le graphe)."""
     depuis_etude = _monthly_consumption_etude(devis)
@@ -789,14 +791,27 @@ def _monthly_consumption(devis) -> list:
     # division de la facture par un forfait, présentée comme une mesure. Le
     # drapeau décide maintenant : estimation ⇒ série vide ⇒ la page masque le
     # graphe (elle le fait déjà pour un devis sans facture).
-    _sonde = kwh_from_bill(hiver_mad, utility=utility)
+    #
+    # ── QJR405 (DR7, moitié ERP) — ON INVERSE UNE FACTURE **TOTALE**. Les
+    # champs ``facture_hiver`` / ``facture_ete`` du lead viennent de l'écran
+    # « Votre facture d'électricité mensuelle (MAD) » : c'est le TOTAL que le
+    # client lit sur son papier — lignes fixes (location compteur + entretien)
+    # et TPPAN comprises. Les inverser avec le modèle ÉNERGIE SEULE attribuait
+    # ces ~40 MAD fixes + la TPPAN à de la consommation et SURESTIMAIT la
+    # courbe « votre consommation » publiée (facture de référence : 592,77 MAD
+    # ⇒ 429 kWh/mois au lieu de 359, soit +19,5 %). ``facture_totale=True``
+    # route l'inversion sur ``bareme.kwh_depuis_facture_mad``, l'inverse EXACT
+    # de ``bareme.facture_mad`` (chaîne principale) : lignes fixes retranchées
+    # d'abord, TPPAN résolue par la dichotomie sur la facture COMPLÈTE.
+    _sonde = kwh_from_bill(hiver_mad, utility=utility, facture_totale=True)
     if _sonde.get('estimation'):
         return []
 
     def _kwh(mad):
         if mad not in _cache:
             _cache[mad] = round(
-                kwh_from_bill(mad, utility=utility).get('kwh_mensuel') or 0)
+                kwh_from_bill(mad, utility=utility, facture_totale=True)
+                .get('kwh_mensuel') or 0)
         return _cache[mad]
 
     out = []
