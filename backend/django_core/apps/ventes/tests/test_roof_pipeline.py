@@ -464,8 +464,14 @@ class TestProposalMonthlyArrays(TestCase):
         self.assertEqual(len(conso), 12)
         # M10 — ce que ce test protège est la RÉSOLUTION du lead via le
         # client, pas le tarif : le lead porte son distributeur, donc 1000 MAD
-        # se lisent au barème national par tranches (616 kWh).
-        self.assertEqual(conso[0], 616)
+        # se lisent au barème national par tranches. QJR405 (DR7) — 1000 MAD
+        # est la facture TOTALE du client (lignes fixes + TPPAN comprises) et
+        # s'inverse au barème COMPLET (``bareme.kwh_depuis_facture_mad``) :
+        # 535 kWh. L'ancien modèle énergie-seule attribuait les ~40 MAD de
+        # lignes fixes et la TPPAN à de la consommation et lisait 616 kWh.
+        # C'est la MÊME correction que les deux tests ci-dessus (875 → 510,
+        # 1200 → 653, 600 → 364) ; cette troisième assertion avait été omise.
+        self.assertEqual(conso[0], 535)
 
 
 class _Q7ProposalAcceptBase(TestCase):
