@@ -3499,6 +3499,42 @@ def resolve_booking_link(token):
     return link
 
 
+#: CRX23 — horizon maximal d'une réservation PUBLIQUE, en jours. Sert de
+#: borne haute de bon sens : un visiteur (ou un script) ne réserve pas une
+#: visite en l'an 9999. Constante de module pour que les tests la patchent.
+BOOKING_HORIZON_JOURS = 365
+
+
+def _valider_creneau_public(scheduled_at):
+    """CRX23 — bornes d'un créneau réservé PUBLIQUEMENT.
+
+    Le corps public arrive de ``parse_datetime`` : il rend un datetime NAÏF
+    quand la chaîne ne porte pas d'offset, et accepte n'importe quelle année.
+    Un naïf serait stocké tel quel (interprétation de fuseau indéterminée) et
+    une année absurde polluerait durablement le calendrier du commercial.
+
+    Lève ``ValueError`` (traduit en 400 par la vue publique) si le créneau
+    est absent, naïf, déjà passé, ou au-delà de :data:`BOOKING_HORIZON_JOURS`.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+
+    if scheduled_at is None:
+        raise ValueError('Date/heure de créneau manquante.')
+    if _timezone.is_naive(scheduled_at):
+        raise ValueError(
+            'Le créneau doit porter son fuseau horaire (date/heure naïve '
+            'refusée).')
+    now = _timezone.now()
+    if scheduled_at <= now:
+        raise ValueError('Le créneau demandé est déjà passé.')
+    if scheduled_at > now + timedelta(days=BOOKING_HORIZON_JOURS):
+        raise ValueError(
+            'Le créneau demandé est trop lointain '
+            f'(au-delà de {BOOKING_HORIZON_JOURS} jours).')
+
+
 def reserver_creneau_public(token, *, scheduled_at, notes=None):
     """XSAL17 — Réservation PUBLIQUE d'un créneau via un jeton
     ``BookingLink`` : crée l'``Appointment`` (via ``book_appointment``,
@@ -3507,15 +3543,43 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
     UTILISÉ (idempotent : un second appel avec le même jeton lève
     :class:`BookingLinkUnavailable`, jamais un second rendez-vous).
     Le lead atterrit toujours sur SON lead d'origine (booking-to-lead) —
-    jamais un autre, jamais choisi par le visiteur."""
+    jamais un autre, jamais choisi par le visiteur.
+
+    CRX23 — l'idempotence est désormais VRAIE sous concurrence. Avant, deux
+    requêtes simultanées passaient toutes les deux le ``resolve_booking_link``
+    (``used_at`` encore nul pour les deux), créaient DEUX rendez-vous sur le
+    même lien, et la seconde écrasait ``link.appointment`` : le commercial
+    voyait deux visites pour un seul créneau réservé. Le lien est maintenant
+    RÉCLAMÉ par un UPDATE conditionnel (``used_at__isnull=True`` → nombre de
+    lignes touchées) DANS la transaction : exactement une requête gagne, la
+    perdante reçoit :class:`BookingLinkUnavailable` (410). Le rendez-vous est
+    créé APRÈS la réclamation, dans la même transaction — un échec de création
+    annule la réclamation (le lien reste utilisable), jamais un lien brûlé
+    pour rien.
+    """
+    from django.db import transaction
     from django.utils import timezone as _timezone
 
+    from .models import BookingLink
+
+    # Le jeton d'abord (404/410 honnête, lecture seule), puis les bornes du
+    # créneau — AVANT toute écriture : un créneau invalide ne doit pas
+    # consommer le lien (le visiteur doit pouvoir corriger et réessayer).
     link = resolve_booking_link(token)
-    appointment = book_appointment(
-        lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
-    link.used_at = _timezone.now()
+    _valider_creneau_public(scheduled_at)
+
+    with transaction.atomic():
+        maintenant = _timezone.now()
+        reclame = BookingLink.objects.filter(
+            pk=link.pk, used_at__isnull=True).update(used_at=maintenant)
+        if not reclame:
+            raise BookingLinkUnavailable('Ce créneau a déjà été réservé.')
+        appointment = book_appointment(
+            lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
+        BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
+
+    link.used_at = maintenant
     link.appointment = appointment
-    link.save(update_fields=['used_at', 'appointment'])
     return appointment
 
 
