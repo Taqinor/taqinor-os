@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -62,6 +64,41 @@ from apps.compta.views import (  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+@contextmanager
+def _save_borne_aux_champs(instance, champs):
+    """CRX25 — force ``update_fields`` sur le prochain ``instance.save()``.
+
+    ``ModelSerializer.update()`` termine par un ``instance.save()`` NU, qui
+    réécrit TOUTES les colonnes depuis la copie en mémoire : deux requêtes
+    concurrentes touchant des champs DISJOINTS se révertent alors l'une
+    l'autre (lost update). DRF n'expose aucun crochet pour borner cette
+    écriture ; on remplace donc la méthode LIÉE le temps de l'appel, puis on la
+    restaure — le sérialiseur n'est pas modifié, les M2M (posés APRÈS le save
+    par DRF) ne sont pas concernés, et un appelant qui passerait déjà un
+    ``update_fields`` explicite garde le sien.
+
+    ``champs`` vide ⇒ aucune borne (un ``update_fields=[]`` ne ferait
+    strictement rien et perdrait l'écriture).
+    """
+    if not champs:
+        yield
+        return
+    original = instance.save
+
+    def _save(*args, **kwargs):
+        kwargs.setdefault('update_fields', champs)
+        return original(*args, **kwargs)
+
+    instance.save = _save
+    try:
+        yield
+    finally:
+        try:
+            del instance.save
+        except AttributeError:  # pragma: no cover — défense en profondeur
+            instance.save = original
 
 
 @api_view(['GET'])
@@ -742,15 +779,74 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
 
+    #: CRX25 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10) : sans
+    #: elles dans ``update_fields``, un changement de téléphone/email ne serait
+    #: pas répercuté sur les colonnes indexées de dédup. On ne les écrit QUE
+    #: quand leur source est dans le corps : les inclure systématiquement
+    #: réécrirait la dédup depuis une copie périmée.
+    COLONNES_DERIVEES = {'telephone': 'phone_normalise',
+                         'email': 'email_normalise'}
+
+    @staticmethod
+    def _champs_ecrivables(noms):
+        """Restreint ``noms`` aux champs LOCAUX CONCRETS de ``Lead``, en y
+        ajoutant TOUJOURS les horodatages ``auto_now``.
+
+        Deux pièges de ``update_fields`` :
+
+        * il refuse un M2M, une relation inverse ou un nom inconnu
+          (``ValueError``) — on filtre donc sur le méta du modèle plutôt que de
+          faire confiance aux clés du corps ;
+        * Django ne rafraîchit un champ ``auto_now`` que s'il figure DANS
+          ``update_fields``. Sans cet ajout, ``date_modification`` cesserait
+          d'avancer à chaque PATCH — la fraîcheur affichée mentirait.
+        """
+        concrets = set()
+        horodatages = set()
+        for f in Lead._meta.get_fields():
+            if (not getattr(f, 'concrete', False)
+                    or getattr(f, 'many_to_many', False)
+                    or getattr(f, 'primary_key', False)):
+                continue
+            concrets.add(f.name)
+            if getattr(f, 'auto_now', False):
+                horodatages.add(f.name)
+        return sorted({n for n in noms if n in concrets} | horodatages)
+
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
-        super().perform_update(serializer)
-        new_lead = serializer.instance
+        instance = serializer.instance
+
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
-        # alimente la puce de fraîcheur. Pattern archived_by.
-        new_lead.updated_by = self.request.user
-        new_lead.save(update_fields=['updated_by'])
+        # alimente la puce de fraîcheur. Pattern archived_by. CRX25 : posé
+        # AVANT l'écriture et inclus dans update_fields, au lieu d'un second
+        # save() (une écriture de moins, et jamais un lead sauvé deux fois).
+        instance.updated_by = self.request.user
+
+        # CRX25 — l'écriture est BORNÉE aux champs réellement touchés. Avant,
+        # DRF faisait un ``instance.save()`` COMPLET : deux PATCH concurrents
+        # sur des champs DISJOINTS (le commercial change la ville pendant que
+        # l'assistante corrige le nom) se révertaient l'un l'autre — le second
+        # save réécrivait TOUTES les colonnes depuis sa copie périmée.
+        ecrits = set(serializer.validated_data.keys())
+        if self.request.user.company_id:
+            ecrits.add('company')  # forcée côté serveur (TenantMixin)
+        ecrits.add('updated_by')
+        for source, derivee in self.COLONNES_DERIVEES.items():
+            if source in ecrits:
+                ecrits.add(derivee)
+        with _save_borne_aux_champs(instance, self._champs_ecrivables(ecrits)):
+            super().perform_update(serializer)
+
+        new_lead = serializer.instance
+        # CRX25 — l'instance en mémoire peut porter des valeurs PÉRIMÉES sur
+        # les champs NON écrits (une requête concurrente les a changés entre
+        # la lecture et l'écriture) : on relit avant de journaliser, sinon le
+        # chatter annoncerait un changement qui n'a jamais été persisté — et
+        # la réponse renverrait au client un état qui n'est pas celui de la
+        # base.
+        new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
         from .services import (
             _emit_stage_changed, maybe_set_first_contacted_at,
