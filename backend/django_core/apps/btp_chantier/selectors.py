@@ -79,6 +79,33 @@ def rfi_en_retard(company=None, *, chantier=None):
 
 # ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
 
+def situations_incluses_hors_societe(situation_ids, company):
+    """AUD310 — parmi ``situation_ids`` (IDs de ``gestion_projet.
+    SituationTravaux``, tels qu'écrits dans ``DecompteGeneral.
+    situations_incluses``), renvoie le sous-ensemble qui N'APPARTIENT PAS à
+    ``company`` (ID inconnu OU appartenant à une autre société). Une liste
+    vide signifie « tout est valide ». LECTURE cross-app via ``django.apps.
+    apps.get_model`` — jamais un import statique, jamais une écriture.
+    Utilisé par ``DecompteGeneralSerializer.validate_situations_incluses``
+    pour refuser (400) une référence cross-société AVANT écriture.
+    """
+    from django.apps import apps as django_apps
+
+    situation_ids = list(situation_ids or [])
+    if not situation_ids:
+        return []
+    try:
+        SituationTravaux = django_apps.get_model(
+            'gestion_projet', 'SituationTravaux')
+    except LookupError:  # pragma: no cover - gestion_projet non installé
+        return list(situation_ids)
+    ids_de_la_societe = set(
+        SituationTravaux.objects.filter(
+            id__in=situation_ids, company=company,
+        ).values_list('id', flat=True))
+    return [sid for sid in situation_ids if sid not in ids_de_la_societe]
+
+
 def calculer_dgd(dgd):
     """NTCON9 — recalcule (LECTURE SEULE, ne sauvegarde RIEN) les totaux d'un
     ``DecompteGeneral`` : ``total_avenants_ht`` (avenants NTCON7 approuvés du
@@ -107,8 +134,14 @@ def calculer_dgd(dgd):
         try:
             LigneSituation = django_apps.get_model(
                 'gestion_projet', 'LigneSituation')
+            # AUD310 — défense en profondeur : même si ``situations_incluses``
+            # a été écrit sans passer par ``validate_situations_incluses``
+            # (données déjà corrompues, écriture directe...), l'agrégat ne
+            # doit JAMAIS sommer une ligne d'une autre société sur ce
+            # document contractuel de clôture de chantier.
             total_situations = LigneSituation.objects.filter(
                 situation_id__in=situation_ids,
+                situation__projet__company=dgd.company,
             ).aggregate(total=Sum('montant_periode'))['total'] or Decimal('0')
         except LookupError:  # pragma: no cover - gestion_projet non installé
             total_situations = Decimal('0')
