@@ -109,7 +109,13 @@ def verify_signature_v2(secret, body_bytes, header_value, *,
     if abs(now - timestamp) > tolerance_seconds:
         return False
     expected = sign_payload(secret, body_bytes, timestamp=str(timestamp))
-    return hmac.compare_digest(expected, received)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un ``v1=`` hostile dans l'en-tête de signature levait donc
+    # au lieu d'être simplement INVALIDE (la docstring promet « jamais
+    # d'exception »). Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(expected.encode('utf-8'),
+                               str(received).encode('utf-8'))
 
 
 def ensure_event_id(payload):

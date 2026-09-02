@@ -56,7 +56,13 @@ def _verify_signature(trigger, raw_body, provided_sig):
         return False
     expected = hmac.new(
         trigger.hmac_secret.encode('utf-8'), raw_body, 'sha256').hexdigest()
-    return hmac.compare_digest(expected, provided_sig)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans ``X-Signature`` rendait un
+    # HTTP 500 NON AUTHENTIFIÉ au lieu du 401 prévu. Même patron que
+    # ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(expected.encode('utf-8'),
+                               str(provided_sig).encode('utf-8'))
 
 
 @csrf_exempt

@@ -101,7 +101,13 @@ def _check_signature(request, secret):
     expected = "sha256=" + hmac.new(
         secret.encode(), request.body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(sig_header, expected)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans ``X-Hub-Signature-256`` rendait
+    # un HTTP 500 NON AUTHENTIFIÉ, dont la trame d'erreur portait la valeur
+    # ATTENDUE en clair. Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(str(sig_header).encode("utf-8"),
+                               expected.encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +132,10 @@ class WhatsAppBspWebhookView(View):
 
         if mode != "subscribe":
             return HttpResponse("Mode invalide.", status=403)
-        if not hmac.compare_digest(token, verify_token):
+        # QJR413 (a) — comparaison en BYTES (voir ``_check_signature``) : un
+        # ``hub.verify_token`` non-ASCII rendait un 500 public.
+        if not hmac.compare_digest(str(token).encode("utf-8"),
+                                   verify_token.encode("utf-8")):
             return HttpResponse("Verify token incorrect.", status=403)
         # Renvoie le challenge en texte brut (Meta l'exige).
         return HttpResponse(challenge, content_type="text/plain", status=200)

@@ -117,7 +117,13 @@ def _secret_ok(request) -> bool:
     if not expected:
         # Pas de secret configuré → endpoint fermé (jamais ouvert par défaut)
         return False
-    return hmac.compare_digest(expected, provided)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans ``X-Webhook-Secret`` rendait un
+    # HTTP 500 NON AUTHENTIFIÉ, dont la trame d'erreur portait le secret
+    # ATTENDU en clair. Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(expected.encode('utf-8'),
+                               str(provided).encode('utf-8'))
 
 
 def _resolve_company():
@@ -2082,7 +2088,10 @@ def _check_meta_lead_ads_signature(request, secret):
         return False
     expected = 'sha256=' + hmac.new(
         secret.encode(), request.body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig_header, expected)
+    # QJR413 (a) — comparaison en BYTES (voir ``_secret_ok``) : un
+    # ``X-Hub-Signature-256`` non-ASCII rendait un 500 public.
+    return hmac.compare_digest(str(sig_header).encode('utf-8'),
+                               expected.encode('utf-8'))
 
 
 def fetch_meta_lead_data(leadgen_id, access_token):
@@ -2117,7 +2126,11 @@ def meta_lead_ads_webhook(request):
         mode = request.GET.get('hub.mode')
         token = request.GET.get('hub.verify_token')
         challenge = request.GET.get('hub.challenge', '')
-        if mode == 'subscribe' and hmac.compare_digest(verify_token, token or ''):
+        # QJR413 (a) — comparaison en BYTES (voir ``_secret_ok``) : un
+        # ``hub.verify_token`` non-ASCII rendait un 500 public.
+        if mode == 'subscribe' and hmac.compare_digest(
+                verify_token.encode('utf-8'),
+                str(token or '').encode('utf-8')):
             from django.http import HttpResponse
             return HttpResponse(challenge, content_type='text/plain')
         return JsonResponse({'detail': 'Vérification refusée.'}, status=403)

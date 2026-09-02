@@ -100,6 +100,56 @@ def _not_found():
     ))
 
 
+def _texte_du_corps(request, *cles, defaut=''):
+    """QJR413 (b) — UN champ de corps JSON public lu comme du TEXTE.
+
+    Renvoie ``(texte, None)`` en succès, ``(None, <Response 400>)`` en refus —
+    l'appelant fait ``if refus is not None: return refus``.
+
+    LE DÉFAUT QUE CECI FERME. Ces endpoints sont ``AllowAny`` et lisaient leur
+    corps en écrivant ``(request.data.get('x') or '').strip()`` : un corps JSON
+    dont le champ vaut un NOMBRE, un OBJET, une LISTE ou un ``null`` EXPLICITE
+    faisait lever un ``AttributeError``/``TypeError`` non intercepté, donc un
+    **HTTP 500 non authentifié** — la même racine que le ``compare_digest`` en
+    chaînes du (a) : « une entrée hostile fait planter un endpoint public au
+    lieu de se faire refuser ».
+
+    RÈGLES, et il n'y en a que trois :
+
+    * la **première** des ``cles`` PRÉSENTE dans le corps décide (les suivantes
+      ne sont consultées que si la précédente est absente ou vide) ;
+    * une valeur qui n'est **pas une chaîne** — nombre, booléen, objet, liste,
+      ``null`` explicite — est REFUSÉE par un **400 propre** qui nomme le champ
+      et ne renvoie **jamais** la valeur reçue ;
+    * une clé **absente** vaut le ``defaut`` : le comportement d'aujourd'hui,
+      byte-identique, pour tout client qui omet un champ facultatif (le
+      client réel omet ces champs, il ne les envoie jamais à ``null`` — voir
+      ``apps/web/src/lib/proposition.ts buildAcceptBodyRich``).
+
+    Un corps JSON qui n'est même pas un objet (tableau, scalaire) est refusé de
+    la même façon : ``request.data.get`` y levait aussi.
+    """
+    if not hasattr(request.data, 'get'):
+        return None, _noindex(Response(
+            {'detail': 'Le corps de la requête doit être un objet JSON.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    for cle in cles:
+        if cle not in request.data:
+            continue
+        valeur = request.data.get(cle)
+        if not isinstance(valeur, str):
+            return None, _noindex(Response(
+                {'detail': 'Le champ « %s » doit être du texte.' % cle},
+                status=status.HTTP_400_BAD_REQUEST))
+        # La bascule de clé se fait sur la valeur BRUTE, exactement comme le
+        # ``a or b or ''`` d'avant : une chaîne d'espaces reste une valeur
+        # fournie (elle rend '' après strip et NE bascule PAS sur la clé
+        # suivante) — comportement d'aujourd'hui, byte-identique.
+        if valeur:
+            return valeur.strip(), None
+    return defaut, None
+
+
 _CONFIDENTIAL_KEY_MARKERS = ('prix_achat', 'achat', 'marge', 'revendeur')
 
 
@@ -3554,7 +3604,10 @@ def proposal_verify_otp_lecture(request, token):
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from .services import validate_otp_lecture
-    otp_code = (request.data.get('otp_code') or '').strip()
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    otp_code, refus = _texte_du_corps(request, 'otp_code')
+    if refus is not None:
+        return refus
     err = validate_otp_lecture(link, otp_code)
     if err:
         return _noindex(Response(
@@ -3817,12 +3870,17 @@ def proposal_accept(request, token):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
-    nom = (request.data.get('nom') or request.data.get('name') or '').strip()
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    nom, refus = _texte_du_corps(request, 'nom', 'name')
+    if refus is not None:
+        return refus
     if not nom:
         return _noindex(Response(
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
-    option = (request.data.get('option') or '').strip()
+    option, refus = _texte_du_corps(request, 'option')
+    if refus is not None:
+        return refus
     # QX9 — consentement explicite requis (loi 43-20). Le front envoie
     # ``consent_esign`` (booléen) ; on accepte aussi l'ancien ``consentement``
     # en repli. Le consentement ne défaute PLUS silencieusement à True : une
@@ -3841,9 +3899,15 @@ def proposal_accept(request, token):
     signature_image = (request.data.get('signature_data_url') or '')
     signed_at_client = _parse_client_ts(
         request.data.get('signed_at_client'))
-    on_behalf_of = (request.data.get('on_behalf_of') or '').strip()[:150]
+    # QJR413 (b) — gardes de type sur le corps public (voir _texte_du_corps).
+    on_behalf_of, refus = _texte_du_corps(request, 'on_behalf_of')
+    if refus is not None:
+        return refus
+    on_behalf_of = on_behalf_of[:150]
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
-    otp_code = (request.data.get('otp_code') or '').strip()
+    otp_code, refus = _texte_du_corps(request, 'otp_code')
+    if refus is not None:
+        return refus
     from .services import accept_devis, AcceptError, validate_esign_otp
     # QJ11 — validation OTP avant l'acceptation (no-op quand toggle OFF).
     otp_err = validate_esign_otp(link=link, otp_code=otp_code)
@@ -4194,7 +4258,11 @@ def ecatalogue_demander_devis(request, token):
         return _not_found()
 
     # Honeypot — un bot qui remplit ce champ caché voit un succès factice.
-    if (request.data.get('site_web') or '').strip():
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    site_web, refus = _texte_du_corps(request, 'site_web')
+    if refus is not None:
+        return refus
+    if site_web:
         return _noindex(Response(
             {'detail': 'Votre demande a bien été transmise. Merci.'},
             status=status.HTTP_201_CREATED))
