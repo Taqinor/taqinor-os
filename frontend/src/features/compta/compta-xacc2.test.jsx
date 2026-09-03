@@ -8,6 +8,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 // charge utile : elle vient de l'exemple committé que le backend affirme
 // (apps/compta/contract_samples/previsionnel_tresorerie.json).
 import { reponseContrat } from '../../test/fixtures/contractSamples'
+import { formatMAD } from '../../lib/format'
 import comptaApi from '../../api/comptaApi'
 
 /* Tests du module Comptabilité — round 2 (XACC/ZACC) :
@@ -231,5 +232,33 @@ describe('TresoreriePage — prévisionnel roulant 13 semaines (WIR182)', () => 
     expect(screen.getByText('0,00 MAD')).toBeInTheDocument()
     // L'exemple committé a `date_rupture_estimee: null` : pas de bandeau d'alerte.
     expect(screen.queryByText(/Rupture de trésorerie estimée/)).not.toBeInTheDocument()
+  }, 30000)
+
+  /* AUDV01 / DRAFT165-34 — une échéance d'emprunt (XACC14) était fondue dans
+     la colonne « Sorties » sans le moindre libellé : le comptable voyait un
+     montant sans jamais savoir d'où il venait. La charge utile vient de
+     l'exemple COMMITTÉ (le même que le test backend
+     `PrevisionnelEcheancesEmpruntTests` affirme contre la vraie réponse du
+     sélecteur) — jamais d'un objet recopié à la main. */
+  it('NOMME les échéances d’emprunt du prévisionnel (AUDV01)', async () => {
+    comptaApi.etats.previsionnelTresorerie.mockResolvedValue(
+      reponseContrat('compta', 'previsionnel_tresorerie'))
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=position' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Détail des mouvements prévus')).toBeInTheDocument()
+    })
+    // Le libellé RÉEL du serveur, pas un total anonyme.
+    expect(screen.getByText('Échéance emprunt Banque Populaire')).toBeInTheDocument()
+    expect(screen.getByText('Échéance emprunt')).toBeInTheDocument()
+    // Décaissement : le montant reste NÉGATIF à l'écran (jamais réécrit ici).
+    // Attendu construit par `formatMAD` : l'espace fine insécable d'Intl fr-FR
+    // n'est pas une espace ordinaire — la retaper à la main rougit à tort.
+    expect(screen.getAllByText(formatMAD(-3336.25)).length).toBeGreaterThan(0)
   }, 30000)
 })

@@ -36,6 +36,10 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
+# YDATA8 — arrondi monétaire centralisé (``core`` est une app de FONDATION :
+# import exempt de la frontière cross-app M3).
+from core.money import quantize_mad
+
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
@@ -10858,24 +10862,46 @@ def poster_echeance_emprunt(echeance, *, user=None):
     return ecriture
 
 
-def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13):
-    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel 13 semaines
-    (FG126) — lecture seule, pure. Renvoie une liste de dicts compatibles avec
-    les lignes du prévisionnel : ``{'libelle', 'date_prevue', 'montant'}``
-    (montant NÉGATIF = décaissement). Ne persiste rien : c'est
-    ``selectors.previsionnel_tresorerie`` qui les agrège à l'existant.
+def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13,
+                                    inclure_postees=False):
+    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel (FG126).
+
+    AUDV01 / DRAFT165-34 — cette fonction est l'UNIQUE source des lignes
+    « échéance d'emprunt » du prévisionnel roulant :
+    ``selectors.previsionnel_tresorerie`` l'APPELLE désormais au lieu de
+    refaire la même requête à côté. Elle était orpheline (sa propre docstring
+    affirmait le contraire) pendant que le sélecteur en dupliquait la logique —
+    deux copies d'une même règle ne peuvent que diverger.
+
+    Lecture seule, pure, ne persiste rien. Chaque ligne a la forme d'une ligne
+    de prévisionnel : ``{'type': 'echeance_emprunt', 'libelle', 'categorie',
+    'date', 'date_prevue', 'montant'}``. ``montant`` est NÉGATIF (décaissement).
+    ``date`` est le nom de clé des lignes de ``previsionnel_tresorerie`` ;
+    ``date_prevue`` est celui du champ ``LignePrevisionnelTresorerie`` — les
+    deux portent la même valeur pour que la ligne soit utilisable des deux
+    côtés sans traduction.
+
+    Une échéance DÉJÀ POSTÉE au grand livre n'est plus un prévisionnel (elle a
+    bougé la trésorerie réelle) : elle est exclue sauf ``inclure_postees``.
+    L'horizon est ``[date_debut, date_debut + nb_semaines[`` — borne de fin
+    EXCLUE, exactement celle du prévisionnel.
     """
     from datetime import timedelta
-    debut = date_debut or timezone.now().date()
+    debut = date_debut or timezone.localdate()
     fin = debut + timedelta(weeks=nb_semaines)
     qs = EcheanceEmprunt.objects.filter(
-        company=company, date_echeance__gte=debut, date_echeance__lte=fin,
-    ).select_related('emprunt').order_by('date_echeance')
+        company=company, date_echeance__gte=debut, date_echeance__lt=fin,
+    ).select_related('emprunt').order_by('date_echeance', 'id')
+    if not inclure_postees:
+        qs = qs.filter(posted=False)
     return [
         {
+            'type': 'echeance_emprunt',
             'libelle': f'Échéance emprunt {e.emprunt.banque or e.emprunt.reference}',
+            'categorie': 'decaissement',
+            'date': e.date_echeance,
             'date_prevue': e.date_echeance,
-            'montant': -Decimal(e.mensualite),
+            'montant': -quantize_mad(e.mensualite or 0),
         }
         for e in qs
     ]

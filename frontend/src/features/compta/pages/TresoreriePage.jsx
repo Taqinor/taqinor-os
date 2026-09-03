@@ -37,6 +37,16 @@ const TABS = [
   { value: 'position', label: 'Position & projection' },
 ]
 
+// AUDV01 — libellés des NATURES de ligne publiées par
+// `apps/compta/selectors.py::previsionnel_tresorerie` (clé `type`). Un type
+// inconnu s'affiche tel quel plutôt que de disparaître : mieux vaut un mot
+// technique visible qu'une ligne muette.
+const NATURE_MOUVEMENT = {
+  prevu: 'Prévision saisie',
+  effet: 'Effet',
+  echeance_emprunt: 'Échéance emprunt',
+}
+
 const RESOURCE = {
   tresorerie: comptaApi.tresorerie,
   caisses: comptaApi.caisses,
@@ -177,6 +187,13 @@ function PositionPanel() {
 
   const comptes = position?.comptes || []
   const semaines = previsionnel?.semaines || previsionnel?.lignes || []
+  // AUDV01 / DRAFT165-34 — le détail NOMMÉ des mouvements prévus. Le serveur
+  // publie déjà `semaines[].lignes[]` (contrat committé
+  // apps/compta/contract_samples/previsionnel_tresorerie.json) mais l'écran ne
+  // lisait que les totaux : une échéance d'emprunt (XACC14) était fondue dans
+  // « Sorties » sans le moindre libellé — le comptable voyait le montant sans
+  // jamais savoir d'où il venait. Aucun calcul ici : on aplatit, on affiche.
+  const mouvements = semaines.flatMap((s) => (s.lignes || []))
 
   return (
     <div className="flex flex-col gap-4">
@@ -243,6 +260,28 @@ function PositionPanel() {
                 sortValue: (s) => Number(s.solde_fin) || 0, cell: (s) => formatMAD(s.solde_fin) },
             ]}
           />
+        )}
+
+        {mouvements.length > 0 && (
+          <div className="mt-4">
+            <h4 className="mb-2 text-sm font-medium">Détail des mouvements prévus</h4>
+            <ComptaTable
+              aria-label="Détail des mouvements prévus"
+              exportName="previsionnel-mouvements"
+              rows={mouvements}
+              getRowKey={(m, i) => i}
+              columns={[
+                { key: 'date', label: 'Date', sortValue: (m) => m.date || '',
+                  cell: (m) => formatDate(m.date) },
+                { key: 'libelle', label: 'Libellé', cell: (m) => m.libelle || '—' },
+                { key: 'type', label: 'Nature',
+                  cell: (m) => NATURE_MOUVEMENT[m.type] || m.type || '—' },
+                { key: 'montant', label: 'Montant', align: 'right', numeric: true,
+                  sortValue: (m) => Number(m.montant) || 0,
+                  cell: (m) => formatMAD(m.montant) },
+              ]}
+            />
+          </div>
         )}
       </Card>
 
