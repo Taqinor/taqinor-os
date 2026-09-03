@@ -711,6 +711,76 @@ def _arrondir_jours_absence(jours, rubrique):
 
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
 
+def _jours_absence_non_remunerees(elements):
+    """Jours d'absence NON rémunérée d'une liste d'``ElementVariable``.
+
+    PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit jamais les jours
+    payés : le salarié est payé comme présent. ZPAI8 — la quantité est
+    arrondie selon la rubrique catalogue de l'élément (si rattachée).
+    """
+    total = Decimal('0')
+    for el in elements:
+        if el.type != ElementVariable.TYPE_ABSENCE:
+            continue
+        if getattr(el, 'remunere', False):
+            continue
+        total += _arrondir_jours_absence(
+            el.quantite, getattr(el, 'rubrique', None))
+    return total
+
+
+def jours_hors_contrat_periode(profil, periode):
+    """Jours calendaires de la période NON couverts par le contrat (AUD706).
+
+    Un salarié embauché le 20/06 n'est sous contrat que du 20 au 30 : les 19
+    premiers jours du mois ne lui sont pas dus. Symétriquement, les jours qui
+    suivent une ``date_sortie`` tombant dans la période ne le sont pas non
+    plus. Ces jours sont décomptés de la norme mensuelle du profil EXACTEMENT
+    comme une absence non rémunérée (même formule de proration).
+
+    Les dates RH sont lues via ``apps.rh.selectors`` (jamais ``rh.models``
+    directement). Un dossier sans date d'embauche/sortie renseignée ne borne
+    rien → 0 (comportement historique strictement inchangé).
+
+    Renvoie un ``Decimal`` >= 0.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    debut, fin = _bornes_periode(periode)
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, _motif = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+
+    jours = 0
+    if date_embauche and date_embauche > debut:
+        # Jours du mois AVANT l'embauche (bornés au mois).
+        jours += (min(date_embauche, fin + timedelta(days=1)) - debut).days
+    if date_sortie and date_sortie < fin:
+        # Jours du mois APRÈS la sortie (le jour de sortie reste travaillé).
+        jours += (fin - max(date_sortie, debut - timedelta(days=1))).days
+    return Decimal(max(0, jours))
+
+
+def jours_payes_periode(profil, periode, elements=None):
+    """Jours réellement dus au salarié sur la période (AUD706).
+
+    ``jours_travail_mensuel`` du profil (norme) − absences non rémunérées −
+    jours hors contrat (embauche/sortie en cours de mois), borné à zéro.
+    C'est la MÊME grandeur que celle qui prorate le salaire mensuel : la
+    déclaration CNSS et le bulletin ne peuvent donc plus diverger.
+    """
+    if elements is None:
+        elements = list(
+            ElementVariable.objects.filter(periode=periode, profil=profil)
+        )
+    jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
+    jours = (jours_normes
+             - _jours_absence_non_remunerees(elements)
+             - jours_hors_contrat_periode(profil, periode))
+    return jours if jours > 0 else Decimal('0')
+
+
 def calculer_salaire_base_periode(profil, periode, elements=None):
     """Salaire de base proraté pour ``profil`` sur ``periode`` (PAIE13).
 
@@ -719,8 +789,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
     * **mensuel** — Le salaire mensuel contractuel est proraté quand l'employé
       n'a pas travaillé le mois complet : on déduit les jours d'absence
       (``ElementVariable.TYPE_ABSENCE``, exprimée en quantité = nombre de jours)
-      et le résultat est borné à zéro.
-      Formula : ``salaire_base × (jours_normes − jours_absence) / jours_normes``.
+      ET les jours hors contrat (AUD706 — embauche/sortie en cours de mois,
+      ``jours_hors_contrat_periode``) ; le résultat est borné à zéro.
+      Formula : ``salaire_base × (jours_normes − jours_absence −
+      jours_hors_contrat) / jours_normes``.
 
     * **journalier** — Le ``salaire_base`` est le taux JOURNALIER. Le brut est
       ``taux_journalier × jours_travailles``, où les jours travaillés proviennent
@@ -759,22 +831,11 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
         )
 
     # Comptabiliser les absences et les heures travaillées déclarées.
-    jours_absence = Decimal('0')
+    jours_absence = _jours_absence_non_remunerees(elements)
     heures_travaillees_declares = None
 
     for el in elements:
-        if el.type == ElementVariable.TYPE_ABSENCE:
-            # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit pas le
-            # salaire proraté : le salarié est payé comme présent. Seules les
-            # absences NON rémunérées sont décomptées des jours travaillés.
-            if getattr(el, 'remunere', False):
-                continue
-            # Les absences sont en jours par convention dans ElementVariable.
-            # ZPAI8 — arrondi selon la rubrique catalogue de l'élément (si
-            # rattachée), sinon quantité brute (comportement historique).
-            jours_absence += _arrondir_jours_absence(
-                el.quantite, getattr(el, 'rubrique', None))
-        elif el.type == ElementVariable.TYPE_HEURES:
+        if el.type == ElementVariable.TYPE_HEURES:
             # Des heures travaillées déclarées explicitement.
             heures_travaillees_declares = (
                 (heures_travaillees_declares or Decimal('0'))
@@ -783,10 +844,17 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
 
     jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
     heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+    # AUD706 — jours du mois hors contrat (embauche/sortie en cours de mois).
+    # Décomptés comme une absence non rémunérée : un salarié embauché le 20 ne
+    # perçoit que la fraction du mois réellement couverte par son contrat. Ne
+    # s'applique JAMAIS quand des heures travaillées ont été déclarées
+    # explicitement (elles décrivent déjà le travail réel de la période).
+    jours_hors_contrat = jours_hors_contrat_periode(profil, periode)
 
     if type_rem == ProfilPaie.TYPE_MENSUEL:
-        # Proration : déduit les jours d'absence du plein mois.
-        jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+        # Proration : déduit absences ET jours hors contrat du plein mois.
+        jours_effectifs = max(
+            Decimal('0'), jours_normes - jours_absence - jours_hors_contrat)
         brut = salaire_base * jours_effectifs / jours_normes
         return _q(brut)
 
@@ -800,7 +868,9 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
             )
             jours_effectifs = max(Decimal('0'), jours_de_heures - jours_absence)
         else:
-            jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+            jours_effectifs = max(
+                Decimal('0'),
+                jours_normes - jours_absence - jours_hors_contrat)
         brut = salaire_base * jours_effectifs
         return _q(brut)
 
@@ -809,9 +879,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
         if heures_travaillees_declares is not None:
             heures_effectifs = heures_travaillees_declares
         else:
-            # Déduit les absences (en jours) converties en heures.
+            # Déduit les absences ET les jours hors contrat (en jours)
+            # converties en heures.
             ratio = heures_normes / jours_normes if jours_normes else Decimal('1')
-            heures_absence_h = jours_absence * ratio
+            heures_absence_h = (jours_absence + jours_hors_contrat) * ratio
             heures_effectifs = max(Decimal('0'), heures_normes - heures_absence_h)
         brut = salaire_base * heures_effectifs
         return _q(brut)
@@ -3578,12 +3649,32 @@ def reemettre_ligne_virement(ligne_rejetee, *, nouveau_rib):
 
 # ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
 
+def jours_declares_cnss(profil, periode):
+    """Nombre de jours déclarés à la CNSS pour un profil/période (AUD706).
+
+    DÉRIVÉ des jours réellement payés (``jours_payes_periode`` : norme
+    mensuelle du profil − absences non rémunérées − jours hors contrat),
+    arrondi à l'entier le plus proche (``ROUND_HALF_UP``, la politique
+    d'arrondi maison) et borné à zéro. Un salarié embauché ou sorti en cours
+    de mois n'est donc plus déclaré comme présent tout le mois.
+
+    Le plafond réglementaire du BDS reste la norme du profil
+    (``jours_travail_mensuel``, 26 j/mois par défaut) : ``jours_payes_periode``
+    ne peut jamais la dépasser.
+    """
+    jours = jours_payes_periode(profil, periode)
+    entier = int(jours.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    return max(0, entier)
+
+
 def declaration_cnss(periode):
     """Bordereau de déclaration des salaires CNSS (BDS) d'une période (PAIE31).
 
     Agrège, pour les bulletins VALIDÉS de la ``periode``, les éléments du BDS
     par salarié affilié CNSS : numéro d'immatriculation CNSS, nom, nombre de
-    jours déclarés (plafonné réglementairement à 26 j/mois), salaire brut réel
+    jours déclarés (AUD706 — DÉRIVÉ des jours réellement payés par
+    ``jours_declares_cnss``, plafonné par la norme mensuelle du profil,
+    26 j/mois par défaut ; jamais un littéral), salaire brut réel
     et salaire PLAFONNÉ (base de cotisation, ``min(brut, plafond_cnss)``).
     Calcule aussi les totaux et les cotisations (salariale + patronale CNSS, AMO,
     allocations familiales, taxe de formation professionnelle).
@@ -3637,7 +3728,7 @@ def declaration_cnss(periode):
             'numero_cnss': profil.numero_cnss or '',
             'matricule': getattr(employe, 'matricule', '') if employe else '',
             'nom': nom,
-            'jours_declares': 26,  # mois plein déclaré par défaut (réglementaire)
+            'jours_declares': jours_declares_cnss(profil, periode),
             'brut': _q(brut),
             'plafonne': _q(plafonne),
             'cnss_salariale': _q(bulletin.cnss_salariale),
