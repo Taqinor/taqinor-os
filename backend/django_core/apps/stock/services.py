@@ -2101,7 +2101,21 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
     rattachée à un document source (``reference``, ex. un ordre d'assemblage).
     ``motif`` doit être une valeur de ``MouvementStock.MotifRebut``. Lève
-    ValueError si la quantité est invalide."""
+    ValueError si la quantité est invalide.
+
+    AUD222 — la sortie n'est PLUS ramenée en silence au stock disponible.
+    L'ancien ``qte_sortie = min(quantite, avant)`` produisait un mouvement où
+    ``quantite ≠ quantite_avant − quantite_apres`` : le registre devenait
+    incohérent AVEC LUI-MÊME, puisque ``_quantite_produit_a_date`` reconstruit
+    depuis ``quantite_apres`` tandis qu'``export_mouvements_xlsx`` affiche
+    ``quantite``. Un rebut de 10 sur un stock de 3 s'écrivait « 3 » sans que
+    personne n'apprenne que 7 unités déclarées perdues n'ont jamais été
+    tracées. Cette fonction s'aligne donc sur sa sœur ``rebuter_produit``
+    (juste en dessous) : ``check_negative_stock_guard`` refuse par défaut, et
+    n'autorise le passage sous zéro que si la société a explicitement activé
+    ``AchatsParametres.stock_negatif_autorise``. La vue appelante
+    (``installations/views/kitting.py``, action ``declarer-rebut``) traduit
+    déjà ce ``ValueError`` en 400 lisible."""
     from django.db import transaction
     from .models import MouvementStock, Produit
 
@@ -2114,12 +2128,12 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     with transaction.atomic():
         p = Produit.objects.select_for_update().get(id=produit.id)
         avant = p.quantite_stock
-        qte_sortie = min(quantite, avant) if avant > 0 else 0
-        apres = avant - qte_sortie
+        apres = avant - quantite
+        check_negative_stock_guard(company, avant, apres)
         mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
-            quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, motif_rebut=motif,
             created_by=user)
     return mouvement

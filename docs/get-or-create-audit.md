@@ -311,11 +311,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:1354` | get_or_create | LotEntrepot.objects.select_for_update() | company, numero_lot, produit |
 | `backend/django_core/apps/stock/services.py:1516` | get_or_create | SousTraitantProfile.objects | fournisseur |
 | `backend/django_core/apps/stock/services.py:1964` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:2164` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3874` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3893` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3940` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3966` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:2178` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3888` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3907` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3954` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3980` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services_transfert_deux_temps.py:89` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services_transfert_deux_temps.py:141` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services_van_sales.py:93` | get_or_create | StockVehicule.objects.select_for_update() | actif_flotte_id, company, produit |
