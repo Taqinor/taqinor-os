@@ -183,6 +183,12 @@ def ir_bareme(bareme, base):
     Formule par tranche du barème marocain : ``base × taux% −
     somme_a_deduire`` de la tranche couvrante. Jamais négatif. Sans tranche
     couvrante (base sous la 1ʳᵉ borne), l'IR est nul.
+
+    AUD711 — arrondi ROUND_HALF_UP EXPLICITE (crossref AUD189, politique
+    fondateur du 18/08/2026), comme ``_q()`` qui gouverne tout le reste du
+    bulletin. Sans ``rounding=``, Python appliquait son défaut
+    ROUND_HALF_EVEN : un centime d'écart sur le poste le plus scruté du
+    bulletin, mesuré sur ~5 % des bases aux tranches 10 % et 30 %.
     """
     base = Decimal(base)
     tranche = _tranche_couvrante(bareme, base)
@@ -191,7 +197,7 @@ def ir_bareme(bareme, base):
     impot = base * (tranche.taux / Decimal('100')) - tranche.somme_a_deduire
     if impot < 0:
         return Decimal('0.00')
-    return impot.quantize(Decimal('0.01'))
+    return impot.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def deduction_charges_famille(parametre, personnes_a_charge):
@@ -205,7 +211,9 @@ def deduction_charges_famille(parametre, personnes_a_charge):
     plafond = int(parametre.plafond_personnes_a_charge or 0)
     retenu = min(nombre, plafond)
     montant = parametre.deduction_par_personne_a_charge * Decimal(retenu)
-    return montant.quantize(Decimal('0.01'))
+    # AUD711 — hygiène : même politique d'arrondi explicite que le reste du
+    # bulletin (ici un no-op, la valeur est déjà à 2 décimales exactes).
+    return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def compute_ir(base, bareme, parametre, personnes_a_charge=0):
@@ -221,7 +229,9 @@ def compute_ir(base, bareme, parametre, personnes_a_charge=0):
     net = brut - deduction
     if net < 0:
         return Decimal('0.00')
-    return net.quantize(Decimal('0.01'))
+    # AUD711 — hygiène : arrondi explicite (no-op ici, les deux opérandes sont
+    # déjà au centime — l'ancre effective est ``ir_bareme``).
+    return net.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 # ── PAIE6 — Rubriques de paie standard (catalogue par défaut) ───────────────
