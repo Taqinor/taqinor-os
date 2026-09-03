@@ -1414,9 +1414,28 @@ class TestPdfFormats(TestCase):
         self.assertEqual(data['eco_s_ann'], data['etude']['economies_annuelles'])
         self.assertEqual(data['roi_s'], data['etude']['payback'])
         # prix/kWc recalculé depuis le total canonique (jamais l'ancien stocké)
-        ref_total = data['total_sans']
+        #
+        # QJR410 (a) — LE CHIFFRE DÉCRIT L'OPTION QUE LE DOCUMENT TITRE.
+        # Cette attente appariait le prix/kWc au total « sans » alors que ce
+        # document porte DEUX options : la valeur mise en avant est celle de
+        # l'option AVEC (``display_total``). Le prix par kWc doit donc se
+        # dériver de CE total et du kWc de LA MÊME branche, sinon la carte
+        # chiffre une offre que le document ne porte pas — précisément le
+        # « mélange » que QJR160 puis QJR410 ont supprimé. Vérifié au centime
+        # sur ce jeu de lignes : option « avec » = 68 994 HT → 82 792,80 TTC,
+        # ÷ 7,7 kWc = 10 752,31 → 10 752 (l'ancienne attente, 51 232,80 ÷ 7,7
+        # = 6 653,6 → 6 654, décrivait l'option NON titrée).
+        self.assertEqual(data['display_total'], data['totaux_avec']['ttc'],
+                         "le document titre l'option « avec » : c'est son "
+                         'total qui est mis en avant en page 1')
+        # Les deux options partagent le MÊME champ PV (une seule ligne de
+        # panneaux, commune) : le kWc de référence ne prête donc à aucune
+        # ambiguïté ici, et le quotient décrit bien une offre entière.
+        self.assertEqual(data['puissance_kwc_avec'], data['puissance_kwc'])
+        ref_total = data['display_total']
+        ref_kwc = data['puissance_kwc_avec']
         self.assertEqual(data['etude']['prix_kwc'],
-                         round(ref_total / data['puissance_kwc']))
+                         round(ref_total / ref_kwc))
         # rendu : le Total TTC canonique apparaît plusieurs fois — même nombre
         # partout (les pages diffèrent seulement par le type d'espace fine)
         import re
