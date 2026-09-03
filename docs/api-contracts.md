@@ -1219,7 +1219,7 @@
 - frontend/src/api/contratsApi.js :: createClauseContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: createContrat -> /api/django/contrats/contrats  [ContratSerializer]
-    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
     statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
@@ -1227,7 +1227,7 @@
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
     type_cible ∈ {devis, installation, lead, maintenance}
 - frontend/src/api/contratsApi.js :: createEcheancier -> /api/django/contrats/echeanciers  [EcheancierContratSerializer]
-    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
     periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
     statut ∈ {actif, annule, brouillon, solde}
 - frontend/src/api/contratsApi.js :: createIndexation -> /api/django/contrats/indexations  [IndexationPrixSerializer]
@@ -1283,7 +1283,7 @@
 - frontend/src/api/contratsApi.js :: deleteClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: deleteContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
-    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
     statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
@@ -1291,7 +1291,7 @@
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
     type_cible ∈ {devis, installation, lead, maintenance}
 - frontend/src/api/contratsApi.js :: deleteEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
-    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
     periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
     statut ∈ {actif, annule, brouillon, solde}
 - frontend/src/api/contratsApi.js :: deleteIndexation -> /api/django/contrats/indexations/<>  [IndexationPrixSerializer]
@@ -1352,7 +1352,7 @@
 - frontend/src/api/contratsApi.js :: getClausesContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: getContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
-    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
     statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
@@ -1360,7 +1360,7 @@
     champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
     type_cible ∈ {devis, installation, lead, maintenance}
 - frontend/src/api/contratsApi.js :: getContrats -> /api/django/contrats/contrats  [ContratSerializer]
-    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
     statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
@@ -1369,11 +1369,11 @@
     source_type ∈ {contrat, ordre_location, sav_maintenance}
     statut ∈ {echec, genere, saute}
 - frontend/src/api/contratsApi.js :: getEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
-    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
     periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
     statut ∈ {actif, annule, brouillon, solde}
 - frontend/src/api/contratsApi.js :: getEcheanciers -> /api/django/contrats/echeanciers  [EcheancierContratSerializer]
-    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
     periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
     statut ∈ {actif, annule, brouillon, solde}
 - frontend/src/api/contratsApi.js :: getIndexations -> /api/django/contrats/indexations  [IndexationPrixSerializer]
@@ -1441,12 +1441,12 @@
 - frontend/src/api/contratsApi.js :: updateClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
     champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
 - frontend/src/api/contratsApi.js :: updateContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
-    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, taux_tva, type_contrat, type_contrat_display
     confidentialite ∈ {confidentiel, interne, public}
     statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
     type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
 - frontend/src/api/contratsApi.js :: updateEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
-    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display, taux_tva
     periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
     statut ∈ {actif, annule, brouillon, solde}
 - frontend/src/api/contratsApi.js :: updateIndexation -> /api/django/contrats/indexations/<>  [IndexationPrixSerializer]
@@ -2024,9 +2024,6 @@
     champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
     categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
     statut ∈ {clos, maitrise, ouvert, surveille}
-- frontend/src/api/gestionProjetApi.js :: createSituation -> /api/django/gestion-projet/situations  [SituationTravauxSerializer]
-    champs: contrat_id, date_creation, date_validation, facture_id, id, montant_periode_total, numero, periode, projet, projet_code, retenue_garantie_pct, statut, statut_display
-    statut ∈ {brouillon, facturee, validee}
 - frontend/src/api/gestionProjetApi.js :: createSousTraitant -> /api/django/gestion-projet/sous-traitants  [SousTraitantSerializer]
     champs: actif, contact, date_creation, email, id, nom, specialite, telephone
 - frontend/src/api/gestionProjetApi.js :: createTache -> /api/django/gestion-projet/taches  [TacheSerializer]
@@ -2157,8 +2154,6 @@
 - frontend/src/api/gestionProjetApi.js :: getLignesBudget -> /api/django/gestion-projet/lignes-budget  [LigneBudgetProjetSerializer]
     champs: budget, categorie, categorie_display, date_creation, id, libelle, montant_prevu, pu, quantite
     categorie ∈ {divers, main_oeuvre, materiel, sous_traitance}
-- frontend/src/api/gestionProjetApi.js :: getLignesSituation -> /api/django/gestion-projet/lignes-situation  [LigneSituationSerializer]
-    champs: avancement_cumule_pct, date_creation, id, libelle, montant_cumule, montant_cumule_anterieur, montant_marche_ht, montant_periode, situation
 - frontend/src/api/gestionProjetApi.js :: getLotsSousTraitance -> /api/django/gestion-projet/lots-sous-traitance  [LotSousTraitanceSerializer]
     champs: date_creation, date_debut, date_fin, description, id, libelle, montant, projet, projet_code, sous_traitant, sous_traitant_nom, statut, statut_display
     statut ∈ {annule, en_cours, prevu, receptionne}
@@ -2196,9 +2191,6 @@
     champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
     categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
     statut ∈ {clos, maitrise, ouvert, surveille}
-- frontend/src/api/gestionProjetApi.js :: getSituations -> /api/django/gestion-projet/situations  [SituationTravauxSerializer]
-    champs: contrat_id, date_creation, date_validation, facture_id, id, montant_periode_total, numero, periode, projet, projet_code, retenue_garantie_pct, statut, statut_display
-    statut ∈ {brouillon, facturee, validee}
 - frontend/src/api/gestionProjetApi.js :: getSousTraitants -> /api/django/gestion-projet/sous-traitants  [SousTraitantSerializer]
     champs: actif, contact, date_creation, email, id, nom, specialite, telephone
 - frontend/src/api/gestionProjetApi.js :: getTaches -> /api/django/gestion-projet/taches  [TacheSerializer]

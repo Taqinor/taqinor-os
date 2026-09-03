@@ -2331,8 +2331,26 @@ class FacturationError(Exception):
     """
 
 
+def taux_tva_effectif(company, *porteurs):
+    """AUD181 — LE point unique de résolution du taux de TVA de cette app.
+
+    Renvoie le premier ``taux_tva`` non nul trouvé sur les ``porteurs``
+    (``EcheancierContrat``, ``Contrat``, ``OrdreLocation``… dans cet ordre de
+    priorité), et à défaut le KNOB SOCIÉTÉ ``CompanyProfile.tva_standard``
+    (défaut 20 %) lu via ``ventes.utils.company_settings`` — le MÊME knob que
+    lisent déjà les factures SAV. Plus aucun ``Decimal('20')`` ni
+    ``/ Decimal('1.2')`` littéral ne doit subsister chez les producteurs.
+    """
+    for porteur in porteurs:
+        valeur = getattr(porteur, 'taux_tva', None) if porteur else None
+        if valeur is not None:
+            return Decimal(str(valeur))
+    from apps.ventes.utils.company_settings import tva_standard
+    return tva_standard(company)
+
+
 @transaction.atomic
-def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
+def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
     """Émet une Facture récurrente pour une échéance — CONTRAT31.
 
     Crée une ``ventes.Facture`` (statut émise) à partir d'une ``LigneEcheance``
@@ -2347,6 +2365,11 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     qu'utilise déjà l'app ``sav`` pour ses factures de maintenance —, sans jamais
     importer une ``view`` d'une autre app. Le ``montant`` de la ligne est traité
     comme TTC (cohérent avec l'ERP 100 % TTC) et ventilé HT/TVA au ``taux_tva``.
+
+    AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
+    taux via ``taux_tva_effectif`` : échéancier, puis contrat, puis knob société
+    ``CompanyProfile.tva_standard``. Un taux explicite passé par l'appelant
+    reste prioritaire.
 
     GARDES (toutes lèvent ``FacturationError`` sans rien écrire — atomicité) :
 
@@ -2402,7 +2425,8 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     if montant_addons:
         montant_ttc += montant_addons
 
-    tva_pct = Decimal(str(taux_tva))
+    tva_pct = (Decimal(str(taux_tva)) if taux_tva is not None
+               else taux_tva_effectif(echeancier.company, echeancier, contrat))
     montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     montant_tva = (montant_ttc - montant_ht).quantize(
@@ -2741,7 +2765,7 @@ def attacher_facture_au_cycle(cycle, *, facture_id, motif=None):
 
 
 def facturer_ligne_echeance_journalisee(ligne, *, user=None,
-                                        taux_tva=Decimal('20'),
+                                        taux_tva=None,
                                         periode=None):
     """Facture une échéance (CONTRAT31) ET journalise le résultat — XCTR5.
 
@@ -2753,6 +2777,10 @@ def facturer_ligne_echeance_journalisee(ligne, *, user=None,
     ``periode`` par défaut = ``date_echeance`` ISO de la ligne (une échéance
     datée EST sa propre période). Renvoie la ``Facture`` créée (comme
     ``facturer_ligne_echeance``).
+
+    AUD181 — ``taux_tva=None`` est transmis tel quel : c'est
+    ``facturer_ligne_echeance`` qui résout (échéancier → contrat → knob
+    société), jamais un 20 % figé.
     """
     from .models import CycleFacturationLog
 
@@ -2778,7 +2806,7 @@ def facturer_ligne_echeance_journalisee(ligne, *, user=None,
 
 
 @transaction.atomic
-def rejouer_cycle(log, *, user=None, taux_tva=Decimal('20')):
+def rejouer_cycle(log, *, user=None, taux_tva=None):
     """Rejoue UN échec du journal de facturation — XCTR5.
 
     Ne re-tente qu'une entrée ``echec`` (``RejeuError`` sinon). Pour une source
@@ -3447,6 +3475,10 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
         tarif_jour=tarif,
         montant_estime=montant_estime,
         frais_retard_jour=frais_retard,
+        # AUD181 — SNAPSHOT du taux société à la création (comme montant_estime
+        # fige le tarif) : la facturation de l'ordre ne dépend plus d'un 20 %
+        # codé en dur, et une édition ultérieure du knob ne réécrit pas le passé.
+        taux_tva=taux_tva_effectif(company),
         note=note or '',
         created_by=created_by,
     )
@@ -3567,7 +3599,7 @@ def restituer_caution(ordre, *, auteur=None):
 
 @transaction.atomic
 def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
-                              auteur=None, taux_tva=Decimal('20')):
+                              auteur=None, taux_tva=None):
     """Retenue PARTIELLE sur la caution — XCTR18.
 
     GARDE : impossible avant le retour effectif (même garde que
@@ -3608,6 +3640,9 @@ def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
 
     from apps.ventes.services import creer_facture_regie
 
+    # AUD181 — taux réel de l'ordre, à défaut le knob société (jamais 20 figé).
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else taux_tva_effectif(ordre.company, ordre))
     montant_ht = (montant_retenu / (1 + taux_tva / 100)).quantize(
         Decimal('0.01'))
     facture = creer_facture_regie(
@@ -3719,13 +3754,17 @@ def cloturer_ordre_location(ordre, *, user=None, today=None):
 
             from apps.ventes.services import creer_facture_regie
 
-            montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+            # AUD181 — le `/ Decimal('1.2')` littéral figeait 20 % sans aucun
+            # paramètre exposé ; le taux vient de l'ordre, puis du knob société.
+            taux_tva = taux_tva_effectif(ordre.company, ordre)
+            montant_ht = (montant / (1 + taux_tva / 100)).quantize(
+                Decimal('0.01'))
             facture = creer_facture_regie(
                 company=ordre.company, client=client, user=user,
                 libelle=(
                     f'Frais de retard — ordre de location #{ordre.id} '
                     f'({jours_retard} jour(s))'),
-                montant_ht=montant_ht)
+                montant_ht=montant_ht, taux_tva=taux_tva)
 
             ordre.frais_retard_montant = montant
             ordre.frais_retard_facture_id = facture.id
@@ -3776,13 +3815,16 @@ def inspecter_retour(ordre, *, checklist=None, releve_compteur='',
         client = _resoudre_client_ordre(ordre)
         from apps.ventes.services import creer_facture_regie
 
-        montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+        # AUD181 — même littéral `/ Decimal('1.2')` supprimé ici.
+        taux_tva = taux_tva_effectif(ordre.company, ordre)
+        montant_ht = (montant / (1 + taux_tva / 100)).quantize(
+            Decimal('0.01'))
         facture = creer_facture_regie(
             company=ordre.company, client=client, user=user,
             libelle=(
                 f'Dommages constatés au retour — ordre de location #{ordre.id}'
                 + (f' — {motif_dommages.strip()}' if motif_dommages else '')),
-            montant_ht=montant_ht)
+            montant_ht=montant_ht, taux_tva=taux_tva)
         ordre.inspection_facture_id = facture.id
 
         try:
@@ -3850,7 +3892,12 @@ def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
     client = _resoudre_client_ordre(ordre)
     from apps.ventes.services import creer_facture_regie
 
-    montant_ht = (montant_ttc / Decimal('1.2')).quantize(Decimal('0.01'))
+    # AUD181 — le `/ Decimal('1.2')` littéral + l'appel SANS `taux_tva`
+    # figeaient 20 % de bout en bout ; le taux vient de l'ordre, puis du knob
+    # société, et traverse jusqu'à la facture.
+    taux_tva = taux_tva_effectif(ordre.company, ordre)
+    montant_ht = (montant_ttc / (1 + taux_tva / 100)).quantize(
+        Decimal('0.01'))
 
     try:
         facture = creer_facture_regie(
@@ -3858,7 +3905,7 @@ def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
             libelle=(
                 f'Location longue durée — ordre #{ordre.id} '
                 f'({ordre.get_facturation_moment_display()}, {periode})'),
-            montant_ht=montant_ht)
+            montant_ht=montant_ht, taux_tva=taux_tva)
     except Exception as exc:  # pragma: no cover - défensif
         enregistrer_cycle(
             ordre.company,

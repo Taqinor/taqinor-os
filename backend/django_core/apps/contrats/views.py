@@ -225,8 +225,16 @@ class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # AUD181 — SNAPSHOT du taux de TVA société à la CRÉATION (défaut :
+        # `CompanyProfile.tva_standard`). Une valeur explicitement saisie n'est
+        # jamais écrasée ; NULL restera résolu au knob à la facturation.
+        extra = {}
+        if serializer.validated_data.get('taux_tva') is None:
+            extra['taux_tva'] = services.taux_tva_effectif(
+                self.request.user.company)
         contrat = serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
+            company=self.request.user.company, created_by=self.request.user,
+            **extra)
         # NTSUB1 — un plan d'abonnement (offre catalogue) rattaché à la
         # CRÉATION pré-remplit montant/plan_recurrent en SNAPSHOT, SAUF si le
         # client a explicitement saisi un montant (jamais d'écrasement d'une
@@ -1812,9 +1820,18 @@ class EcheancierContratViewSet(_ContratsBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Pose ``company`` (celle du contrat) côté serveur."""
+        """Pose ``company`` (celle du contrat) côté serveur.
+
+        AUD181 — pose aussi le taux de TVA effectif (taux propre du contrat, à
+        défaut knob société ``CompanyProfile.tva_standard``) quand aucun n'est
+        saisi : les factures d'échéance cessent de figer 20 %.
+        """
         contrat = serializer.validated_data['contrat']
-        serializer.save(company=contrat.company)
+        extra = {}
+        if serializer.validated_data.get('taux_tva') is None:
+            extra['taux_tva'] = services.taux_tva_effectif(
+                contrat.company, contrat)
+        serializer.save(company=contrat.company, **extra)
 
     @action(detail=True, methods=['post'], url_path='ajouter-ligne')
     def ajouter_ligne(self, request, pk=None):

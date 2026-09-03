@@ -156,6 +156,14 @@ class Contrat(models.Model):
         verbose_name='Montant')
     devise = models.CharField(
         max_length=3, default='MAD', verbose_name='Devise')
+    # AUD181 — taux de TVA RÉEL du contrat, posé à la création depuis le knob
+    # société (``CompanyProfile.tva_standard``). NULL = non renseigné : les
+    # producteurs replient alors sur le knob société au moment de facturer —
+    # JAMAIS sur un ``Decimal('20')`` en dur. Additif et nullable : aucune
+    # reprise de données, comportement identique tant que le knob vaut 20.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de TVA (%)')
     # ZCTR1 — plan de facturation récurrente réutilisable rattaché (nullable).
     # NULL = comportement actuel inchangé (périodicité lue sur l'échéancier
     # local, ``EcheancierContrat.periodicite``). Référence interne à l'app
@@ -2250,6 +2258,12 @@ class EcheancierContrat(models.Model):
     periodicite = models.CharField(
         max_length=20, choices=Periodicite.choices,
         default=Periodicite.UNIQUE, verbose_name='Périodicité')
+    # AUD181 — taux de TVA RÉEL appliqué aux factures d'échéance de cet
+    # échéancier. NULL = repli sur le taux du contrat, puis sur le knob société
+    # (``CompanyProfile.tva_standard``) — jamais un ``Decimal('20')`` en dur.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de TVA (%)')
     # Somme des lignes (cache posé côté serveur). Recalculé à chaque
     # création/modification/suppression de ligne.
     montant_total = models.DecimalField(
@@ -2774,6 +2788,13 @@ class OrdreLocation(models.Model):
     montant_estime = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant estimé')
+    # AUD181 — taux de TVA RÉEL de l'ordre (caution retenue, frais de retard,
+    # dommages, cycle de location longue durée). NULL = repli sur le knob
+    # société (``CompanyProfile.tva_standard``) — jamais un ``/ Decimal('1.2')``
+    # littéral, qui figeait 20 % sans aucun paramètre exposé.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de TVA (%)')
     note = models.TextField(blank=True, default='', verbose_name='Note')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

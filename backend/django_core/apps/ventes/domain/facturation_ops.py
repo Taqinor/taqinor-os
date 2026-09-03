@@ -211,7 +211,7 @@ def creer_facture_contrat(*, contrat, user, company):
 # ── XPRJ3 — Facturation en régie (T&M) depuis gestion_projet ─────────────────
 
 def creer_facture_regie(*, company, client, user, libelle, montant_ht,
-                        taux_tva=Decimal('20')):
+                        taux_tva=None):
     """XPRJ3 — Crée une Facture BROUILLON « en régie » (temps & matériel).
 
     Fonction FINE sanctionnée pour ``gestion_projet.services.facturer_temps_
@@ -225,10 +225,20 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     directement) : une facture de régie doit rester éditable/relisible avant
     envoi. Numérotation via ``apps/ventes/utils/references.py`` (jamais
     ``count()+1``). Renvoie la ``Facture`` créée.
+
+    AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
+    KNOB SOCIÉTÉ ``CompanyProfile.tva_standard`` comme le font déjà les deux
+    fonctions frères de ce module : un tenant réglé à 14 % ne voyait 14 % que
+    sur ses factures SAV, et 20 % sur sa régie. Le défaut du knob reste 20 %,
+    donc le comportement est inchangé tant que rien n'est édité.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_ht = Decimal(montant_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     montant_tva = (montant_ht * taux_tva / 100).quantize(
@@ -262,7 +272,7 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
 def creer_facture_acompte_situation(*, company, client, user, libelle,
                                     montant_periode_ht,
                                     retenue_garantie_pct=None,
-                                    taux_tva=Decimal('20')):
+                                    taux_tva=None):
     """XPRJ4 — Crée une Facture BROUILLON d'ACOMPTE pour une situation de
     travaux (décompte progressif BTP).
 
@@ -284,10 +294,17 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
     de base à la TVA (``montant_ht_net``), ce qui sous-déclarait la TVA.
     Elle est désormais tracée dans ``conditions_paiement``, seul endroit où
     elle a sa place ; à contre-valider par le comptable, sans bloquer.
+
+    AUD181 — ``taux_tva=None`` résout le knob société ``tva_standard`` (défaut
+    20 %) au lieu de figer 20 %, comme les deux fonctions frères de ce module.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_periode_ht = Decimal(montant_periode_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     rg_pct = Decimal(retenue_garantie_pct or 0)
