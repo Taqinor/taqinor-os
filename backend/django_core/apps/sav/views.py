@@ -2631,6 +2631,26 @@ def sav_parts_forecast(request):
     return Response(results)
 
 
+# ── AUD521 — Réglages SLA mis en cache PAR SOCIÉTÉ pour les scans quotidiens ─
+# Les trois scans ci-dessous parcourent la queryset Ticket multi-société et
+# appelaient ``SavSlaSettings.get(ticket.company)`` DANS la boucle — soit un
+# ``get_or_create`` par ticket. Ce helper charge tous les réglages en UNE
+# requête et ne retombe sur ``get()`` que pour une société sans réglage
+# enregistré (au plus une requête par société distincte, jamais par ticket).
+
+def _reglages_sla_par_ticket(tickets):
+    """Renvoie une fonction ``(ticket) -> SavSlaSettings`` sans N+1."""
+    cache = SavSlaSettings.par_company({t.company_id for t in tickets})
+
+    def _pour(ticket):
+        if ticket.company_id in cache:
+            return cache[ticket.company_id]
+        reglage = SavSlaSettings.get(ticket.company)
+        cache[ticket.company_id] = reglage
+        return reglage
+    return _pour
+
+
 # ── FG81 — Scan journalier de breach (appelé par Celery-beat ou management cmd) ──
 
 def scan_sla_breaches():
@@ -2643,17 +2663,20 @@ def scan_sla_breaches():
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
-    breached = Ticket.objects.filter(
+    breached = list(Ticket.objects.filter(
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
         sla_due_at__lt=today,
         sla_breach=False,
-    ).select_related('company', 'technicien_responsable')
+    ).select_related('company', 'technicien_responsable'))
+    # AUD521 — réglages chargés UNE fois par société (plus un get_or_create
+    # par ticket).
+    reglage_pour = _reglages_sla_par_ticket(breached)
 
     updated = 0
     for ticket in breached:
         # Vérifie que la société a activé les notifications SLA.
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         if not sla.sla_breach_enabled:
             continue
         ticket.sla_breach = True
@@ -2693,16 +2716,18 @@ def scan_sla_pre_alerts_and_escalations():
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
-    qs = Ticket.objects.filter(
+    qs = list(Ticket.objects.filter(
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
         sla_due_at__isnull=False,
-    ).select_related('company', 'technicien_responsable')
+    ).select_related('company', 'technicien_responsable'))
+    # AUD521 — réglages chargés UNE fois par société.
+    reglage_pour = _reglages_sla_par_ticket(qs)
 
     pre_alerts = 0
     escalations = 0
     for ticket in qs:
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         due_effectif = ticket.sla_due_at_effectif(today=today)
 
         # ── Pré-alerte J-x au technicien assigné ──
@@ -2769,17 +2794,19 @@ def scan_auto_cloture_tickets_resolus():
     (``notify_ticket_transition``, best-effort, n'envoie rien sans le toggle
     société ``notifications_client_sav`` — indépendant du toggle
     ``auto_cloture_jours``)."""
-    from .models import SavSlaSettings, TicketActivity
+    from .models import TicketActivity
 
     today = timezone.localdate()
     cloture = 0
 
-    tickets = (Ticket.objects
-               .filter(statut=Ticket.Statut.RESOLU, annule=False)
-               .select_related('company'))
+    tickets = list(Ticket.objects
+                   .filter(statut=Ticket.Statut.RESOLU, annule=False)
+                   .select_related('company'))
+    # AUD521 — réglages chargés UNE fois par société.
+    reglage_pour = _reglages_sla_par_ticket(tickets)
 
     for ticket in tickets:
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         if not sla.auto_cloture_jours:
             continue
 

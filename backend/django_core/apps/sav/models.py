@@ -138,6 +138,20 @@ class SavSlaSettings(models.Model):
         obj, _ = cls.objects.get_or_create(company=company)
         return obj
 
+    @classmethod
+    def par_company(cls, company_ids):
+        """AUD521 — réglages SLA des sociétés données, en UNE requête.
+
+        Renvoie ``{company_id: SavSlaSettings}`` (les sociétés sans réglage
+        enregistré sont simplement absentes — l'appelant retombe sur
+        ``get()``, qui fait le ``get_or_create``). Sert aux scans quotidiens
+        qui parcourent des tickets multi-sociétés : avant AUD521, chacun
+        appelait ``get()`` — donc un ``get_or_create`` — PAR TICKET."""
+        ids = {cid for cid in company_ids if cid is not None}
+        if not ids:
+            return {}
+        return {r.company_id: r for r in cls.objects.filter(company_id__in=ids)}
+
     def days_for(self, priorite):
         """Renvoie (response_days, resolution_days) pour une priorité donnée."""
         par = self.sla_par_priorite or {}
