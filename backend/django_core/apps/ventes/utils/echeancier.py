@@ -329,6 +329,14 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     Lève ValueError si le devis n'est pas accepté ou si l'échéancier est complet.
     ``create_with_reference`` est injecté (utils.references) pour la numérotation
     sans collision, identique au reste du module ventes.
+
+    AUD101 — la tranche naît BROUILLON puis passe par LE service d'émission
+    (``domain.facturation_ops.emettre_facture``). C'était le plus grave des
+    cinq chemins muets : la chaîne acompte → matériel → solde du parcours
+    solaire posait ``EMISE`` sans émettre ``facture_emise``, donc sans jamais
+    atteindre le grand livre, alors que ``core/events.py`` affirmait le
+    contraire. Elle hérite désormais du verrou de période, du blocage crédit
+    XFAC28 et de l'événement, exactement comme l'émission depuis l'écran.
     """
     if devis.statut != devis.Statut.ACCEPTE:
         raise ValueError("Le devis doit être au statut « Accepté ».")
@@ -346,7 +354,7 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             reference=ref,
             devis=devis,
             client=devis.client,
-            statut=Facture.Statut.EMISE,
+            statut=Facture.Statut.BROUILLON,
             type_facture=tr['type'],
             pourcentage=tr['pourcentage'],
             libelle=libelle,
@@ -358,11 +366,16 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             company=company,
         )
 
+    from django.db import transaction
+    from apps.ventes.domain.facturation_ops import emettre_facture
     from apps.ventes.utils.company_settings import numbering_config
     cfg = numbering_config(company, 'facture')
-    return create_with_reference(
-        Facture, cfg['prefix'], company, _create,
-        padding=cfg['padding'], period=cfg['period'])
+    with transaction.atomic():
+        facture = create_with_reference(
+            Facture, cfg['prefix'], company, _create,
+            padding=cfg['padding'], period=cfg['period'])
+        emettre_facture(facture, user=user, source='echeancier_tranche')
+    return facture
 
 
 def solde_devis(devis):

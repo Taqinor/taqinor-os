@@ -313,46 +313,21 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # XFAC18 — workflow de revue (ségrégation des tâches). Flag OFF
-        # (défaut) → comportement inchangé, aucun contrôle supplémentaire.
-        # Flag ON et facture « à valider » → le valideur doit être un
-        # responsable/admin DIFFÉRENT du créateur.
-        from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=facture.company)
-        anomalies = []
-        if getattr(profile, 'revue_factures_active', False) and \
-                facture.revue_statut == Facture.RevueStatut.A_VALIDER:
-            if facture.created_by_id == request.user.id:
-                return Response(
-                    {'detail': (
-                        'Cette facture doit être validée par un '
-                        'responsable/admin différent du créateur.'
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            from ..services import anomalies_emission_facture
-            anomalies = anomalies_emission_facture(facture)
-            facture.revue_statut = Facture.RevueStatut.VALIDEE
-        facture.statut = Facture.Statut.EMISE
-        # XFAC23 — dérive l'échéance depuis les conditions de paiement du
-        # client à l'émission, SAUF si une échéance a déjà été saisie
-        # manuellement (jamais écrasée — input freedom) ; sans réglage
-        # client, l'échéancier FG46/FG220 ou le repli +30 j (scheduled.py)
-        # gardent la priorité, comportement inchangé.
-        if not facture.date_echeance:
-            from ..services import calculer_date_echeance
-            derivee = calculer_date_echeance(
-                client=facture.client, date_emission=facture.date_emission)
-            if derivee is not None:
-                facture.date_echeance = derivee
-        # XFAC18 — save complet (persiste statut + revue_statut + échéance
-        # dérivée), puis surface les anomalies de revue dans la réponse.
-        facture.save()
-        # YEVNT6 — événement documentaire (best-effort, ne change rien au
-        # statut déjà posé ci-dessus).
-        from core.events import facture_emise
-        facture_emise.send(
-            sender=Facture, instance=facture, company=facture.company)
+        # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
+        # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
+        # et émission de `facture_emise`) vit DANS le service unique. L'écran
+        # ne fait plus que traduire ses refus en 400/403 français.
+        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
+        from ..domain.recouvrement import CreditHoldError
+        try:
+            anomalies = emettre_facture(
+                facture, user=request.user, source='ecran_facture')
+        except EmissionRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except CreditHoldError as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_403_FORBIDDEN)
         data = FactureSerializer(facture).data
         if anomalies:
             data['anomalies'] = anomalies
@@ -1616,14 +1591,30 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         def _create(ref):
             return Facture.objects.create(
                 reference=ref, company=facture.company,
-                client=facture.client, statut=Facture.Statut.EMISE,
+                client=facture.client, statut=Facture.Statut.BROUILLON,
                 libelle=libelle, montant_ht=penalite,
                 montant_tva=Decimal('0'), montant_ttc=penalite,
                 taux_tva=Decimal('0'), created_by=request.user,
             )
 
-        facture_penalite = create_numbered(
-            Facture, facture.company, 'facture', _create)
+        # AUD101 — la facture de pénalités passe par LE service unique : elle
+        # posait EMISE sans jamais émettre `facture_emise`, donc sans écriture
+        # au grand livre, et sans consulter le blocage crédit du client.
+        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
+        from ..domain.recouvrement import CreditHoldError
+        try:
+            with transaction.atomic():
+                facture_penalite = create_numbered(
+                    Facture, facture.company, 'facture', _create)
+                emettre_facture(
+                    facture_penalite, user=request.user,
+                    source='penalites_retard')
+        except EmissionRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except CreditHoldError as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_403_FORBIDDEN)
         from .. import activity
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)
@@ -1822,8 +1813,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             'ok': False,
                             'detail': 'La facture doit avoir au moins une ligne.'}
                     else:
-                        facture.statut = Facture.Statut.EMISE
-                        facture.save(update_fields=['statut'])
+                        # AUD101 — le bulk passe par LE service unique : il
+                        # posait EMISE en silence, sans verrou de période,
+                        # sans workflow de revue XFAC18, sans dérivation
+                        # d'échéance et sans `facture_emise` (donc sans
+                        # écriture au grand livre).
+                        from ..domain.facturation_ops import emettre_facture
+                        emettre_facture(
+                            facture, user=request.user, source='bulk')
                         results[fid_int] = {
                             'ok': True,
                             'detail': 'Émise.',

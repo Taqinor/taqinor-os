@@ -573,7 +573,7 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
         def _create(ref):
             return Facture.objects.create(
                 reference=ref, company=company, client=client,
-                statut=Facture.Statut.EMISE, created_by=created_by,
+                statut=Facture.Statut.BROUILLON, created_by=created_by,
             )
 
         facture = create_numbered(Facture, company, 'facture', _create)
@@ -593,6 +593,14 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                 company=company, facture=facture, devis=d,
                 sous_total_ht=sous_total,
             )
+
+        # AUD101 — l'émission passe par LE service unique, APRÈS la recopie
+        # des lignes (émettre une facture consolidée encore vide écrirait une
+        # écriture comptable à zéro). Elle hérite ainsi du verrou de période,
+        # du blocage crédit XFAC28 et de `facture_emise` — qu'elle n'avait
+        # jamais alors qu'elle posait EMISE.
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        emettre_facture(facture, user=user, source='consolidation')
 
     return facture
 
