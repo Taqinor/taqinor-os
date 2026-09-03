@@ -225,8 +225,11 @@ class CreationChatterPariteTests(TestCase):
             _creer_chantier_on_devis_accepted,
         )
         devis = self._devis()
+        # Le signal `devis_accepted` porte `ancien_statut` (contrat partagé
+        # avec les abonnés crm/contrats) : l'appel direct doit le fournir.
         _creer_chantier_on_devis_accepted(
-            sender=None, devis=devis, user=self.user)
+            sender=None, devis=devis, user=self.user,
+            ancien_statut=Devis.Statut.ENVOYE)
         inst = Installation.objects.get(devis=devis)
         self.assertTrue(
             inst.activites.filter(kind='creation').exists(),
@@ -265,9 +268,15 @@ class CascadeTerminaisonInterventionPariteTests(TestCase):
 
     def _ticket(self):
         from apps.sav.models import Ticket
+        n = next(_seq)
+        # `sav.Ticket` n'a pas de champ `titre` (le libellé du problème est
+        # `description`) et son `client` est obligatoire (FK PROTECT).
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            email=f'parite-iv-{self.company.id}-{n}@example.invalid')
         return Ticket.objects.create(
-            company=self.company, reference=f'TIC-{next(_seq)}',
-            titre='Panne onduleur', statut=Ticket.Statut.EN_COURS)
+            company=self.company, reference=f'TIC-{n}', client=client,
+            description='Panne onduleur', statut=Ticket.Statut.EN_COURS)
 
     def _via_patch(self, ticket):
         from apps.installations.models import Intervention
