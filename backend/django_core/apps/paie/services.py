@@ -4831,6 +4831,58 @@ def livre_de_paie(periode):
     }
 
 
+# AUD708 — clé d'idempotence du postage paie→compta. Le journal SIMPLE et le
+# journal VENTILÉ sont deux représentations du MÊME run de paie : ils partagent
+# volontairement la même source, sans quoi poster les deux doublerait la masse
+# salariale au grand livre.
+_SOURCE_JOURNAL_PAIE = 'paie_journal'
+
+# Libellé du crédit organismes sociaux (4441) — inclut désormais les deux
+# charges 100 % patronales recouvrées par la CNSS (AUD708).
+_LIBELLE_CREDIT_CNSS = (
+    'CNSS / AMO / allocations familiales / formation pro à payer')
+
+
+def _credit_organismes_cnss(totaux):
+    """Total crédité au compte des organismes sociaux (4441) — AUD708.
+
+    CNSS + AMO (parts salariale ET patronale) + allocations familiales + taxe
+    de formation professionnelle. Ces deux dernières sont 100 % patronales et
+    étaient jusqu'ici débitées en 6174 sans crédit organisme : elles
+    grossissaient le solde équilibrant du compte 4432 (dette envers le
+    PERSONNEL), que rien ne réglait jamais.
+    """
+    return (
+        totaux['cnss_salariale'] + totaux['cnss_patronale']
+        + totaux['amo_salariale'] + totaux['amo_patronale']
+        + totaux['allocations_familiales']
+        + totaux['formation_professionnelle']
+    )
+
+
+def _refuser_journal_deja_poste(periode):
+    """Refuse un second postage du journal de paie d'une période (AUD708).
+
+    Garde APPLICATIVE, doublée par la contrainte DB
+    ``uniq_ecriture_par_source`` (réactivée par le couple
+    ``source_type``/``source_id`` posé sur l'écriture) : la lecture compta
+    passe EXCLUSIVEMENT par ``compta.selectors`` (cross-app READ, jamais
+    ``compta.models``). Lève ``ValidationError`` — les vues la traduisent en
+    400, jamais en 500.
+    """
+    from django.core.exceptions import ValidationError
+
+    from apps.compta import selectors as compta_selectors  # cross-app READ
+
+    existante = compta_selectors.ecriture_pour_source(
+        periode.company, _SOURCE_JOURNAL_PAIE, periode.id)
+    if existante is not None:
+        raise ValidationError(
+            f'Journal de paie {periode.mois:02d}/{periode.annee} déjà '
+            f'comptabilisé (écriture #{existante.id}) : un second postage '
+            'doublerait le grand livre.')
+
+
 def journal_de_paie(periode, *, created_by=None):
     """Passe l'écriture comptable du journal de paie d'une période (PAIE33).
 
@@ -4844,14 +4896,31 @@ def journal_de_paie(periode, *, created_by=None):
 
     * Débit 6171 Rémunérations du personnel = total BRUT ;
     * Débit 6174 Charges sociales = total des charges PATRONALES ;
-    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales) ;
+    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales)
+      + allocations familiales + taxe de formation professionnelle (AUD708) ;
     * Crédit 4452 État, impôts & taxes = IR retenu ;
     * Crédit 4443 Caisses de retraite = CIMR salariale ;
     * Crédit 4432 Rémunérations dues au personnel = net à payer + retenues.
 
+    AUD708 — les allocations familiales (6,4 %) et la taxe de formation
+    professionnelle (1,6 %), 100 % PATRONALES, étaient débitées en 6174 mais
+    n'avaient AUCUN crédit organisme : elles tombaient dans le solde
+    équilibrant du compte 4432 « Rémunérations dues au personnel », un passif
+    fantôme envers le SALARIÉ que ni ``payer_ordre_virement`` (net seul) ni
+    ``payer_organismes`` ne soldait jamais. Elles sont désormais créditées au
+    compte des organismes sociaux (``_COMPTE_CNSS``, 4441 — la CNSS recouvre
+    les deux au Maroc). MAPPING À CONTRE-VALIDER PAR LE COMPTABLE : actuel
+    (avant ce correctif) = 4432 personnel ; cible = 4441 organismes sociaux.
+
     L'écriture s'équilibre par construction (Σ débit = Σ crédit). Sème le plan
     comptable au besoin. Renvoie l'écriture créée, ou ``None`` s'il n'y a aucun
     bulletin validé (rien à passer).
+
+    AUD708 — IDEMPOTENCE : l'écriture porte ``source_type``/``source_id``
+    stables (``_SOURCE_JOURNAL_PAIE`` + id de la période), donc la contrainte
+    DB ``uniq_ecriture_par_source`` s'applique ; un second postage de la même
+    période (journal simple OU ventilé — même source) est refusé par une
+    ``ValidationError`` explicite au lieu de doubler le grand livre.
     """
     from apps.compta import services as compta_services  # cross-app via services
 
@@ -4859,6 +4928,7 @@ def journal_de_paie(periode, *, created_by=None):
     if registre['nombre_salaries'] == 0:
         return None
     totaux = registre['totaux']
+    _refuser_journal_deja_poste(periode)
 
     company = periode.company
     # Sème le plan comptable si un compte requis manque (idempotent).
@@ -4874,10 +4944,7 @@ def journal_de_paie(periode, *, created_by=None):
 
     brut = totaux['brut']
     charges_pat = totaux['charges_patronales']
-    cnss_amo = (
-        totaux['cnss_salariale'] + totaux['cnss_patronale']
-        + totaux['amo_salariale'] + totaux['amo_patronale']
-    )
+    cnss_amo = _credit_organismes_cnss(totaux)
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
@@ -4893,7 +4960,7 @@ def journal_de_paie(periode, *, created_by=None):
     if cnss_amo > 0:
         lignes.append({
             'compte': compte(_COMPTE_CNSS),
-            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
             'compte': compte(_COMPTE_IR),
@@ -4924,7 +4991,8 @@ def journal_de_paie(periode, *, created_by=None):
     reference = f'PAIE-{periode.annee}-{periode.mois:02d}'
     ecriture = compta_services.creer_ecriture_od(
         company, date_ecriture, libelle, lignes,
-        reference=reference, created_by=created_by)
+        reference=reference, created_by=created_by,
+        source_type=_SOURCE_JOURNAL_PAIE, source_id=periode.id)
     return ecriture
 
 
@@ -4949,19 +5017,30 @@ def etat_des_charges(periode):
     total à payer. Renvoie un dict ``{'annee', 'mois', 'organismes': [...]
     (chacun {'code', 'libelle', 'salarial', 'patronal', 'total',
     'echeance'}), 'total_general'}``. Lecture seule.
+
+    AUD708 — la part patronale de l'organisme ``cnss_amo`` inclut désormais
+    les allocations familiales et la taxe de formation professionnelle, comme
+    le crédit 4441 posté par ``journal_de_paie`` : sans quoi le rapprochement
+    paie↔GL signalerait un faux écart et ``payer_organismes`` laisserait un
+    reliquat impayé sur le compte de dette.
     """
     registre = livre_de_paie(periode)
     totaux = registre['totaux']
 
     cnss_amo_sal = totaux['cnss_salariale'] + totaux['amo_salariale']
-    cnss_amo_pat = totaux['cnss_patronale'] + totaux['amo_patronale']
+    cnss_amo_pat = (
+        totaux['cnss_patronale'] + totaux['amo_patronale']
+        + totaux['allocations_familiales']
+        + totaux['formation_professionnelle']
+    )
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
     # Échéances réglementaires usuelles (jour du mois suivant) — informatif.
     organismes = [
         {
-            'code': 'cnss_amo', 'libelle': 'CNSS / AMO',
+            'code': 'cnss_amo',
+            'libelle': 'CNSS / AMO / allocations familiales / formation pro',
             'salarial': _q(cnss_amo_sal), 'patronal': _q(cnss_amo_pat),
             'total': _q(cnss_amo_sal + cnss_amo_pat),
             'echeance_jour': 10,
@@ -6218,6 +6297,13 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     ``ventilation_analytique_bulletin``) au lieu d'une ligne agrégée unique.
     Le reste de l'écriture (CNSS/IR/CIMR/net à payer) est inchangé. Renvoie
     l'écriture créée, ou ``None`` s'il n'y a aucun bulletin validé.
+
+    AUD708 — même correction de ventilation que ``journal_de_paie``
+    (allocations familiales + taxe de formation créditées aux organismes 4441,
+    plus au 4432 du personnel) et MÊME clé d'idempotence
+    (``_SOURCE_JOURNAL_PAIE`` + id de période) : poster le journal simple PUIS
+    le ventilé — ou deux fois le même — est refusé, les deux décrivant le même
+    run de paie.
     """
     from apps.compta import services as compta_services  # cross-app via services
 
@@ -6230,6 +6316,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
         .select_related('profil'))
     if not bulletins:
         return None
+    _refuser_journal_deja_poste(periode)
 
     company = periode.company
     requis = [
@@ -6253,10 +6340,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
 
     registre = livre_de_paie(periode)
     totaux = registre['totaux']
-    cnss_amo = (
-        totaux['cnss_salariale'] + totaux['cnss_patronale']
-        + totaux['amo_salariale'] + totaux['amo_patronale']
-    )
+    cnss_amo = _credit_organismes_cnss(totaux)
     ir = totaux['ir']
     cimr = totaux['cimr_salariale']
 
@@ -6277,7 +6361,7 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     if cnss_amo > 0:
         lignes.append({
             'compte': compte(_COMPTE_CNSS),
-            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+            'libelle': _LIBELLE_CREDIT_CNSS, 'debit': 0, 'credit': cnss_amo})
     if ir > 0:
         lignes.append({
             'compte': compte(_COMPTE_IR),
@@ -6301,7 +6385,8 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     reference = f'PAIE-VENTILE-{periode.annee}-{periode.mois:02d}'
     return compta_services.creer_ecriture_od(
         company, date_ecriture, libelle, lignes,
-        reference=reference, created_by=created_by)
+        reference=reference, created_by=created_by,
+        source_type=_SOURCE_JOURNAL_PAIE, source_id=periode.id)
 
 
 # ── XPAI20 — Provisions gratifications (13e mois) & IFC ────────────────────

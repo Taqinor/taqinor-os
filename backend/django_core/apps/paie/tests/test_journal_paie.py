@@ -6,17 +6,25 @@ Couvre :
   ``compta.services`` (cross-app par la couche services, jamais les models) ;
   None si aucun bulletin validé.
 * Multi-tenant — isolation société.
+* AUD708 — idempotence du postage (source stable + contrainte DB) et
+  ventilation des charges 100 % patronales aux comptes ORGANISMES (444x) au
+  lieu du compte 4432 « Rémunérations dues au personnel ».
 """
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
-from authentication.models import Company
+from authentication.models import Company, CustomUser as User
 from apps.paie.models import PeriodePaie, ProfilPaie
 from apps.paie.services import (
     ensure_defaults,
+    etat_des_charges,
     generer_bulletin,
     journal_de_paie,
+    journal_de_paie_ventile,
     livre_de_paie,
     valider_bulletin,
 )
@@ -26,6 +34,17 @@ from apps.rh.models import DossierEmploye
 def make_company(slug):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': slug})
     return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class JournalPaieTests(TestCase):
@@ -124,3 +143,144 @@ class JournalPaieTests(TestCase):
             self.assertIsNotNone(
                 get_compte(self.co, num),
                 f'Compte {num} absent du plan comptable (référentiel DC21).')
+
+
+class JournalPaieIdempotenceTests(TestCase):
+    """AUD708 — le journal de paie ne peut plus être posté deux fois."""
+
+    def setUp(self):
+        self.co = make_company('jp-idem')
+        ensure_defaults(self.co)
+        self.periode = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=6)
+        self.user = make_user(self.co, 'jp-idem-user')
+
+    def _bulletin_valide(self, mat, salaire=Decimal('10000')):
+        dossier = DossierEmploye.objects.create(
+            company=self.co, matricule=mat, nom='N' + mat, prenom='P')
+        profil = ProfilPaie.objects.create(
+            company=self.co, employe=dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=salaire, affilie_cnss=True, affilie_amo=True)
+        b = generer_bulletin(profil, self.periode)
+        valider_bulletin(b)
+        return b
+
+    def test_ecriture_porte_sa_source(self):
+        """La source stable (période) réarme la contrainte DB d'idempotence."""
+        self._bulletin_valide('I0')
+        ecriture = journal_de_paie(self.periode)
+        self.assertEqual(ecriture.source_type, 'paie_journal')
+        self.assertEqual(ecriture.source_id, self.periode.id)
+
+    def test_second_postage_refuse(self):
+        from apps.compta.models import EcritureComptable
+
+        self._bulletin_valide('I1')
+        premiere = journal_de_paie(self.periode)
+        self.assertIsNotNone(premiere)
+        with self.assertRaises(DjangoValidationError):
+            journal_de_paie(self.periode)
+        # UNE seule écriture au grand livre, jamais deux.
+        self.assertEqual(
+            EcritureComptable.objects.filter(
+                company=self.co, source_type='paie_journal',
+                source_id=self.periode.id).count(), 1)
+
+    def test_journal_ventile_apres_journal_simple_refuse(self):
+        """Les deux journaux décrivent le MÊME run : poster les deux doublerait."""
+        self._bulletin_valide('I2')
+        journal_de_paie(self.periode)
+        with self.assertRaises(DjangoValidationError):
+            journal_de_paie_ventile(self.periode)
+
+    def test_api_double_post_renvoie_400(self):
+        self._bulletin_valide('I3')
+        api = auth(self.user)
+        url = f'/api/django/paie/periodes/{self.periode.id}/journal-de-paie/'
+        premier = api.post(url, {}, format='json')
+        self.assertEqual(premier.status_code, 200, premier.data)
+        second = api.post(url, {}, format='json')
+        self.assertEqual(second.status_code, 400, second.data)
+
+    def test_api_journal_ventile_periode_verrouillee_400(self):
+        """Une période comptable verrouillée → 400 explicite, jamais un 500."""
+        from apps.compta.models import PeriodeComptable
+
+        self._bulletin_valide('I4')
+        PeriodeComptable.objects.create(
+            company=self.co, date_debut='2026-06-01', date_fin='2026-06-30',
+            verrouillee=True, libelle='Juin 2026')
+        resp = auth(self.user).post(
+            f'/api/django/paie/periodes/{self.periode.id}/journal-ventile/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class JournalPaieVentilationOrganismesTests(TestCase):
+    """AUD708 — allocations familiales + taxe formation aux organismes 444x."""
+
+    def setUp(self):
+        self.co = make_company('jp-vent')
+        ensure_defaults(self.co)
+        self.periode = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=6)
+        dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='V1', nom='NV1', prenom='P')
+        profil = ProfilPaie.objects.create(
+            company=self.co, employe=dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('10000'),
+            affilie_cnss=True, affilie_amo=True)
+        self.bulletin = generer_bulletin(profil, self.periode)
+        valider_bulletin(self.bulletin)
+
+    def test_charges_patronales_hors_net_creditees_aux_organismes(self):
+        """Le crédit 4432 = net à payer exactement (plus le net + ~800 MAD).
+
+        Sur un brut de 10 000 MAD : allocations familiales (6,4 %) + taxe de
+        formation professionnelle (1,6 %) = 800 MAD tombaient dans le solde
+        équilibrant du compte 4432 (dette envers le PERSONNEL) faute de crédit
+        organisme.
+        """
+        from apps.compta.services import get_compte
+
+        ecart = (Decimal(self.bulletin.allocations_familiales)
+                 + Decimal(self.bulletin.formation_professionnelle))
+        self.assertEqual(ecart, Decimal('800.00'))  # 6,4 % + 1,6 % de 10 000
+
+        ecriture = journal_de_paie(self.periode)
+        lignes = list(ecriture.lignes.all())
+        compte_net = get_compte(self.co, '4432')
+        compte_cnss = get_compte(self.co, '4441')
+        credit_net = sum(
+            (lig.credit for lig in lignes if lig.compte_id == compte_net.id),
+            Decimal('0'))
+        credit_organismes = sum(
+            (lig.credit for lig in lignes if lig.compte_id == compte_cnss.id),
+            Decimal('0'))
+
+        self.assertEqual(credit_net, self.bulletin.net_a_payer)
+        # Les 800 MAD sont désormais DANS le crédit organismes.
+        attendu_organismes = (
+            Decimal(self.bulletin.cnss_salariale)
+            + Decimal(self.bulletin.cnss_patronale)
+            + Decimal(self.bulletin.amo_salariale)
+            + Decimal(self.bulletin.amo_patronale) + ecart)
+        self.assertEqual(credit_organismes, attendu_organismes)
+        # L'écriture reste équilibrée.
+        self.assertEqual(
+            sum((lig.debit for lig in lignes), Decimal('0')),
+            sum((lig.credit for lig in lignes), Decimal('0')))
+
+    def test_etat_des_charges_suit_le_gl(self):
+        """``etat_des_charges`` inclut les mêmes montants : aucun faux écart."""
+        etat = etat_des_charges(self.periode)
+        cnss = next(
+            o for o in etat['organismes'] if o['code'] == 'cnss_amo')
+        self.assertEqual(
+            cnss['patronal'],
+            Decimal(self.bulletin.cnss_patronale)
+            + Decimal(self.bulletin.amo_patronale)
+            + Decimal(self.bulletin.allocations_familiales)
+            + Decimal(self.bulletin.formation_professionnelle))
