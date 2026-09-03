@@ -212,8 +212,12 @@ def equipement_public_signaler(request, token):
             type=Ticket.Type.CORRECTIF, description=corps,
             date_ouverture=timezone.localdate(),
         )
-    ticket = create_with_reference(
-        Ticket, 'SAV', equipement.company, _create)
+    # AUD519 — le signalement QR public porte la même échéance SLA que le
+    # chemin manuel (sans quoi il était exclu des scans quotidiens).
+    from .services import poser_sla_due_at
+
+    ticket = poser_sla_due_at(create_with_reference(
+        Ticket, 'SAV', equipement.company, _create))
 
     # Photo optionnelle — pièce jointe MinIO (apps.records, foundation app).
     photo = request.FILES.get('photo')

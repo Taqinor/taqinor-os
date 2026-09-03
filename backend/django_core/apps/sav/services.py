@@ -160,6 +160,74 @@ def assign_technicien_auto(*, company, jour=None):
     return None
 
 
+# ── AUD519 — Échéance SLA posée par TOUS les producteurs de tickets ─────────
+# Avant AUD519, ``TicketViewSet.perform_create`` était le SEUL point qui
+# calculait ``sla_due_at`` : tous les autres producteurs (WhatsApp, alias
+# e-mail, QR public, visites préventives, monitoring, tâche projet, NCR,
+# escalade d'alarme onduleur) créaient un Ticket sans échéance. Or
+# ``recompute_sla_breach`` ne calcule JAMAIS ``sla_due_at`` s'il est None :
+# ces tickets étaient silencieusement exclus des scans quotidiens — SLA
+# purement décoratif sur tous les canaux non manuels.
+# Une seule implémentation vit ici ; la vue s'y branche aussi.
+
+def resolution_days_pour(company, client, priorite):
+    """XSAV7 — délai de résolution (jours), précédence inchangée : override
+    du contrat de maintenance ACTIF du client > ``sla_par_priorite`` >
+    défauts société. Extrait tel quel de ``TicketViewSet``."""
+    from .models import ContratMaintenance, SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    contrat = ContratMaintenance.actif_pour_client(client)
+    if contrat is not None and contrat.sla_resolution_days is not None:
+        return contrat.sla_resolution_days
+    _, resolution_days = sla.days_for(priorite)
+    return resolution_days
+
+
+def compute_sla_due_at(company, client, priorite, date_ouverture):
+    """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
+    activé ``sla_breach_enabled``. Logique extraite telle quelle de
+    ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
+    calendaires sinon)."""
+    from datetime import timedelta
+
+    from .models import SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    if not sla.sla_breach_enabled:
+        return None
+    resolution_days = resolution_days_pour(company, client, priorite)
+    if sla.sla_jours_ouvres:
+        from core.calendar import add_working_days
+        return add_working_days(date_ouverture, resolution_days)
+    return date_ouverture + timedelta(days=resolution_days)
+
+
+def poser_sla_due_at(ticket, *, persister=True):
+    """AUD519 — pose ``sla_due_at`` sur un ticket FRAÎCHEMENT créé par un
+    producteur automatique, exactement comme le chemin manuel.
+
+    No-op si l'échéance est déjà posée, si la société n'a pas activé le SLA,
+    ou si le ticket n'a pas de société. La ``couverture`` n'est
+    DÉLIBÉRÉMENT pas figée ici : sur le chemin manuel elle reste
+    ``a_determiner`` et se calcule à la lecture
+    (``TicketSerializer.couverture_proposee``) et à la facturation
+    (``couverture_calculee``) — la figer à la création divergerait du chemin
+    manuel et gèlerait une couverture contrat qui peut expirer d'ici là
+    (AUD502). Renvoie le ticket."""
+    if ticket is None or ticket.sla_due_at or ticket.company_id is None:
+        return ticket
+    due = compute_sla_due_at(
+        ticket.company, ticket.client, ticket.priorite,
+        ticket.date_ouverture or timezone.localdate())
+    if due is None:
+        return ticket
+    ticket.sla_due_at = due
+    if persister:
+        ticket.save(update_fields=['sla_due_at'])
+    return ticket
+
+
 def create_corrective_ticket(*, company, client, installation, description,
                              created_by):
     """F16 — crée un ticket SAV correctif (référence sans collision via
@@ -172,7 +240,9 @@ def create_corrective_ticket(*, company, client, installation, description,
             company=company, reference=ref, client=client,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def creer_ticket_preventif(*, company, client, installation, description,
@@ -197,7 +267,9 @@ def creer_ticket_preventif(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.PREVENTIF,
             statut=Ticket.Statut.NOUVEAU, priorite=priorite,
             description=description, created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def create_ticket_from_projet_tache(*, company, client, description):
@@ -216,7 +288,9 @@ def create_ticket_from_projet_tache(*, company, client, description):
         return Ticket.objects.create(
             company=company, reference=ref, client=client,
             type=Ticket.Type.CORRECTIF, description=description)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 # ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
@@ -370,7 +444,9 @@ def _generer_ticket_preventif_compteur(company, equipement, type_releve,
             type=Ticket.Type.PREVENTIF, statut=Ticket.Statut.NOUVEAU,
             date_ouverture=timezone.localdate(), description=description,
             created_by=created_by)
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 # ── YSUBS1 — Sélection des contrats de maintenance dus à facturation ────────
@@ -567,7 +643,9 @@ def creer_intervention_depuis_installation(
             company=company, reference=ref, client=installation.client,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=full_description)
-    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    ticket = poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
     return ticket, True
 
 
@@ -792,7 +870,9 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
             company=company, reference=ref, client=client,
             type=Ticket.Type.CORRECTIF,
             description=f'[WhatsApp] {texte}'.strip())
-    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    ticket = poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
     # XSAV24 — la trace de création (CREATION) est posée automatiquement par
     # le récepteur `post_save` de `receivers.py` (voir
     # `_log_creation_on_ticket_created`), plus besoin de l'appel explicite ici.
@@ -1226,7 +1306,9 @@ def creer_ticket_depuis_email_alias(message, company):
             equipe=categorie.equipe_responsable,
             date_ouverture=timezone.localdate(),
             description=description[:4000])
-    return create_with_reference(Ticket, 'SAV', company, _create)
+    # AUD519 — même échéance SLA que le chemin manuel.
+    return poser_sla_due_at(
+        create_with_reference(Ticket, 'SAV', company, _create))
 
 
 def register_email_alias_handler():

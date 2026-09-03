@@ -690,14 +690,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         """XSAV7 — Résout le délai de résolution (jours) avec précédence :
         contrat de maintenance ACTIF du client avec override > sla_par_priorite
         > défauts société (premier match gagne). Sans contrat/override, la
-        résolution retombe exactement sur le comportement FG81 d'origine."""
-        from .models import ContratMaintenance
-        sla = SavSlaSettings.get(company)
-        contrat = ContratMaintenance.actif_pour_client(client)
-        if contrat is not None and contrat.sla_resolution_days is not None:
-            return contrat.sla_resolution_days
-        _, resolution_days = sla.days_for(priorite)
-        return resolution_days
+        résolution retombe exactement sur le comportement FG81 d'origine.
+
+        AUD519 — l'implémentation vit désormais dans ``services`` (une seule
+        copie, partagée avec les 7 autres producteurs de tickets)."""
+        from .services import resolution_days_pour
+        return resolution_days_pour(company, client, priorite)
 
     def _compute_sla_due_at(self, company, client, priorite, date_ouverture):
         """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
@@ -708,16 +706,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         comportement calendaire byte-identique à avant XSAV5.
 
         XSAV7 — ``resolution_days`` peut venir d'un contrat de maintenance actif
-        du client (override), avant repli sur ``sla_par_priorite``/défauts."""
-        sla = SavSlaSettings.get(company)
-        if not sla.sla_breach_enabled:
-            return None
-        resolution_days = self._resolve_resolution_days(
-            company, client, priorite)
-        if sla.sla_jours_ouvres:
-            from core.calendar import add_working_days
-            return add_working_days(date_ouverture, resolution_days)
-        return date_ouverture + timedelta(days=resolution_days)
+        du client (override), avant repli sur ``sla_par_priorite``/défauts.
+
+        AUD519 — délègue à ``services.compute_sla_due_at`` : ce chemin manuel
+        n'est plus le seul à poser l'échéance, la logique est partagée."""
+        from .services import compute_sla_due_at
+        return compute_sla_due_at(company, client, priorite, date_ouverture)
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -2308,7 +2302,10 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                 f'Escalade alarme onduleur {alarme.code} '
                 f'({alarme.get_gravite_display()})'
                 + (f' : {alarme.libelle}' if alarme.libelle else ''))
-            ticket = create_with_reference(
+            # AUD519 — l'escalade d'alarme pose la même échéance SLA que le
+            # chemin manuel (sans quoi le ticket était invisible aux scans).
+            from .services import poser_sla_due_at
+            ticket = poser_sla_due_at(create_with_reference(
                 Ticket, 'SAV', company,
                 lambda ref: Ticket.objects.create(
                     reference=ref, company=company,
@@ -2322,7 +2319,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                     description=description,
                     date_ouverture=timezone.localdate(),
                     created_by=request.user),
-            )
+            ))
         alarme.ticket = ticket
         alarme.statut = AlarmeOnduleur.Statut.ESCALADEE
         alarme.save(update_fields=['ticket', 'statut', 'date_modification'])
