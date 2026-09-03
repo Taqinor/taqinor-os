@@ -883,11 +883,17 @@ class Paiement(models.Model):
                 & ~models.Q(idempotency_key=''),
                 name='uniq_paiement_idempotency_par_societe',
             ),
-            # AUD188 — backstop DB : un encaissement négatif n'existe pas (un
-            # remboursement est un avoir, pas un paiement de signe inverse).
-            models.CheckConstraint(
-                condition=models.Q(montant__gte=0),
-                name='ck_paiement_montant_positif'),
+            # AUD188 — PAS DE CONTRAINTE DE SIGNE SUR ``montant``, et c'est
+            # DÉLIBÉRÉ (retirée par 0006). La première écriture d'AUD188
+            # posait ``montant >= 0`` en partant de « un remboursement est un
+            # avoir, pas un paiement de signe inverse ». C'est faux DANS CE
+            # DÉPÔT : FG50 (annulation d'une facture d'acompte, action
+            # « rembourser », apps/ventes/views/facture.py) écrit une
+            # CONTRE-PASSATION — un ``Paiement`` négatif qui ramène le net
+            # encaissé à zéro pour que l'acompte ne reste pas « coincé » sur
+            # une facture morte. La contrainte rendait cet appel 500 en
+            # production. Les huit autres contraintes d'AUD188 (Facture,
+            # LigneFacture, Avoir, LigneAvoir) restent en place.
         ]
 
     def __str__(self):

@@ -89,22 +89,32 @@ class FactureAdminVerrousTests(TestCase):
         self.client_a = ClientFactory(company=self.societe_a, nom='ClientA185')
         self.client_b = ClientFactory(company=self.societe_b, nom='ClientB185')
 
+        self.superuser = UserFactory(
+            company=self.societe_a, username='aud185-root-ventes',
+            is_staff=True, is_superuser=True)
+
+        # ``Facture.created_by`` est ``null=True`` MAIS ``blank=False`` : le
+        # formulaire d'admin le rend donc OBLIGATOIRE. Une facture posée sans
+        # lui faisait échouer la validation du POST reconstruit ci-dessous
+        # (« Ce champ est obligatoire »), et l'admin ré-affichait le
+        # formulaire en 200 au lieu d'enregistrer en 302 — un rouge qui ne
+        # disait rien des verrous mesurés ici. Le fixture porte donc son
+        # auteur, comme toute facture réellement créée par l'ERP.
         self.emise = Facture.objects.create(
             company=self.societe_a, reference='FAC-AUD185-EMISE',
             client=self.client_a, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20.00'), remise_globale=Decimal('0.00'))
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('0.00'),
+            created_by=self.superuser)
         self.brouillon = Facture.objects.create(
             company=self.societe_a, reference='FAC-AUD185-BROUILLON',
             client=self.client_a, statut=Facture.Statut.BROUILLON,
-            taux_tva=Decimal('20.00'), remise_globale=Decimal('0.00'))
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('0.00'),
+            created_by=self.superuser)
         self.facture_b = Facture.objects.create(
             company=self.societe_b, reference='FAC-AUD185-AUTRE-SOCIETE',
             client=self.client_b, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'))
 
-        self.superuser = UserFactory(
-            company=self.societe_a, username='aud185-root-ventes',
-            is_staff=True, is_superuser=True)
         self.http = HttpClient()
         self.http.force_login(self.superuser)
         self.model_admin = django_admin.site._registry[Facture]
@@ -120,6 +130,21 @@ class FactureAdminVerrousTests(TestCase):
         data.update(surcharges)
         url = reverse('admin:facturation_facture_change', args=[facture.pk])
         return self.http.post(url, data)
+
+    def _assert_enregistre(self, reponse):
+        """302 = enregistré. Sur un 200, NOMME les erreurs du formulaire.
+
+        Un `AssertionError: 200 != 302` nu ne dit pas QUEL champ a refusé le
+        POST ; la diagnose coûtait alors un cycle de CI complet.
+        """
+        if reponse.status_code != 302:
+            try:
+                erreurs = dict(reponse.context['adminform'].form.errors)
+            except Exception:  # noqa: BLE001 — le diagnostic ne casse jamais
+                erreurs = '<erreurs de formulaire illisibles>'
+            self.fail(
+                "le formulaire d'admin n'a pas enregistré (HTTP %s au lieu de "
+                '302) — erreurs : %r' % (reponse.status_code, erreurs))
 
     # ── (1) période comptable verrouillée ──────────────────────────────────
     def test_periode_verrouillee_refuse_la_modification(self):
@@ -156,7 +181,7 @@ class FactureAdminVerrousTests(TestCase):
         # formulaire, donc la valeur envoyée est ignorée.
         reponse = self._post_change(
             self.emise, remise_globale='15.00', taux_tva='7.00')
-        self.assertEqual(reponse.status_code, 302)
+        self._assert_enregistre(reponse)
         self.emise.refresh_from_db()
         self.assertEqual(self.emise.remise_globale, Decimal('0.00'))
         self.assertEqual(self.emise.taux_tva, Decimal('20.00'))
@@ -168,7 +193,7 @@ class FactureAdminVerrousTests(TestCase):
         self.assertNotIn('remise_globale', readonly)
 
         reponse = self._post_change(self.brouillon, remise_globale='5.00')
-        self.assertEqual(reponse.status_code, 302)
+        self._assert_enregistre(reponse)
         self.brouillon.refresh_from_db()
         self.assertEqual(self.brouillon.remise_globale, Decimal('5.00'))
 

@@ -18,7 +18,7 @@ backstop.
 | `Avoir` | facturation | — | montant_ht, montant_ttc, montant_tva, remise_globale | (all constrained) |
 | `LigneAvoir` | facturation | — | prix_unitaire, quantite, remise | (all constrained) |
 | `MouvementStock` | stock | — | — | quantite >= 0 |
-| `Paiement` | facturation | — | montant | (all constrained) |
+| `Paiement` | facturation | — | — | frais_rejet >= 0; escompte_montant >= 0 |
 | `LigneEcriture` | compta | credit, debit | credit, debit | (all constrained) |
 
 Legend: a field in *Python invariant fields* but absent from
