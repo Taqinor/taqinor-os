@@ -401,21 +401,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        facture.statut = Facture.Statut.PAYEE
-        facture.save()
-        # YDOCF4 — facture_paid, exactement une fois. Un passage manuel
-        # « marquer payée » ne porte pas de montant de paiement propre : on
-        # transmet le résiduel qui vient d'être annulé (montant_du AVANT ce
-        # passage, ici recalculé à 0 côté document — le montant informatif
-        # posé est donc le solde figé de la facture, cohérent avec les autres
-        # sites d'émission qui portent le montant réglé).
-        from core.events import facture_paid, facture_payee
-        facture_paid.send(
-            sender=Facture, facture=facture, montant=facture.total_ttc,
-            company=facture.company)
-        # YEVNT6 — événement documentaire générique (même transition).
-        facture_payee.send(
-            sender=Facture, instance=facture, company=facture.company)
+        # AUD102 (P1) — la bascule passe par LE service unique. ``force`` : un
+        # passage MANUEL « marquer payée » est un geste responsable/admin
+        # délibéré qui solde sans encaissement — l'un des deux seuls cas
+        # autorisés à sauter la garde centime-près. Le montant informatif
+        # porté par l'événement reste le TTC du document, comme avant.
+        from ..domain.encaissements import marquer_facture_soldee
+        marquer_facture_soldee(
+            facture, montant=facture.total_ttc, user=request.user,
+            source='marquer_payee_manuel', force=True)
+        facture.refresh_from_db()
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -719,26 +714,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             paiement_enregistre.send(
                 sender=Paiement, instance=paiement, company=locked.company)
             # Statut auto : intégralement réglée → « Payée ».
+            # AUD102 (P2) — la bascule (garde centime-près, U10
+            # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
+            # `facture_payee`) vit DANS le service unique.
             locked.refresh_from_db()
-            if locked.montant_du <= Decimal('0') and \
-                    locked.statut != Facture.Statut.ANNULEE:
-                locked.statut = Facture.Statut.PAYEE
-                locked.save(update_fields=['statut'])
-                # U10 — facture soldée : on arrête l'escalade de relance
-                # (efface la prochaine relance et neutralise le compteur de
-                # niveau) pour qu'une facture payée cesse d'afficher un retard.
-                from ..services import reset_relance_escalation
-                reset_relance_escalation(locked)
-                # YDOCF4 — facture_paid, exactement une fois au passage
-                # résiduel→0 (jamais à un règlement partiel).
-                from core.events import facture_paid, facture_payee
-                facture_paid.send(
-                    sender=Facture, facture=locked, montant=montant,
-                    company=locked.company)
-                # YEVNT6 — événement documentaire générique (même transition).
-                facture_payee.send(
-                    sender=Facture, instance=locked, company=locked.company)
-            elif locked.statut != Facture.Statut.ANNULEE:
+            from ..domain.encaissements import marquer_facture_soldee
+            soldee = marquer_facture_soldee(
+                locked, montant=montant, user=request.user,
+                source='encaissement_facture')
+            if not soldee and locked.statut != Facture.Statut.ANNULEE:
                 # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
                 # reste à payer arrondi au pas société (défaut 0 = désactivé,
                 # comportement inchangé) solde la facture, l'écart d'arrondi

@@ -24,6 +24,138 @@ from decimal import Decimal
 from apps.stock.services import qr_svg_for
 
 
+def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
+                           reste=None, force=False):
+    """AUD102 — LE SERVICE UNIQUE DE BASCULE « PAYÉE » d'une ``Facture``.
+
+    AUCUN autre site du domaine ventes ne doit poser ``Facture.Statut.PAYEE``
+    (test de parité : ``apps/ventes/tests/test_aud102_bascule_payee.py``).
+    Avant ce service, NEUF chemins basculaient la facture et seuls TROIS
+    émettaient ``facture_payee`` — or c'est ``facture_payee``, pas
+    ``facture_paid``, qui est LE signal à consommer (``core/events.py``) et
+    auquel ``apps/compta/receivers.py`` branche le lettrage. Six soldes
+    n'étaient donc jamais lettrés en comptabilité, et deux chemins d'argent
+    encaissé ne soldaient rien du tout (débit de mandat, rapprochement
+    portail — voir ``debiter_mandat_pour_facture`` et
+    ``enregistrer_paiement_portail``).
+
+    Le service :
+
+      * VERROUILLE la ligne facture (``select_for_update``) — deux
+        encaissements concurrents ne peuvent plus émettre deux fois ;
+      * refuse silencieusement une facture ANNULÉE et est IDEMPOTENT sur une
+        facture déjà PAYÉE (jamais un second événement) ;
+      * applique la garde CENTIME-PRÈS sur le résiduel : la facture ne bascule
+        que si ``montant_du`` (ou le ``reste`` fourni par l'appelant, pour les
+        assiettes particulières comme la retenue à la source XFAC4) est
+        retombé à zéro à un centime près ;
+      * ``force=True`` — et seulement là — saute cette garde : ce sont les
+        deux gestes délibérés qui SOLDENT sans encaisser, « marquer payée »
+        manuel (geste responsable/admin) et l'abandon de créance XFAC13 ;
+      * ré-arme les relances (``reset_relance_escalation``) ;
+      * émet ``facture_paid`` PUIS ``facture_payee`` exactement une fois (donc
+        déclenche le lettrage compta).
+
+    RÈGLE #4 : seul le statut de la Facture change ; aucun document n'est
+    rendu, le moteur de devis n'est jamais touché.
+
+    Renvoie ``True`` si la facture vient de basculer, ``False`` sinon.
+    """
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from apps.ventes.models import Facture
+
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut in (Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
+            return False
+        if not force:
+            residuel = locked.montant_du if reste is None else Decimal(
+                str(reste))
+            if residuel > Decimal('0.01'):
+                return False
+        locked.statut = Facture.Statut.PAYEE
+        locked.save(update_fields=['statut'])
+        reset_relance_escalation(locked)
+        montant_evenement = (
+            locked.total_ttc if montant is None else Decimal(str(montant)))
+        from core.events import facture_paid, facture_payee
+        facture_paid.send(
+            sender=Facture, facture=locked, montant=montant_evenement,
+            company=locked.company)
+        facture_payee.send(
+            sender=Facture, instance=locked, company=locked.company)
+
+    # L'instance de l'appelant reflète la bascule (elle n'est pas ``locked``).
+    if facture.pk == locked.pk:
+        facture.statut = Facture.Statut.PAYEE
+    return True
+
+
+def enregistrer_paiement_portail(*, facture, montant, reference,
+                                 date_paiement=None, mode=None, company=None):
+    """AUD102 / PORT-3 — reporte sur la chaîne VENTES un règlement encaissé au
+    PORTAIL client.
+
+    ``compta.services.rapprocher_paiement_facture`` marquait l'intention
+    portail ``paye`` et déléguait le report « à la charge de la chaîne
+    ventes » — sauf qu'AUCUN appelant ne le faisait : l'argent réellement
+    encaissé au portail n'entrait dans le ``montant_paye`` d'aucune facture,
+    et l'ERP relançait un client déjà réglé. Cette fonction est la porte
+    d'entrée cross-app manquante (jamais d'import de ``apps.compta.models``
+    ici, ni de ``apps.ventes.models`` là-bas).
+
+    IDEMPOTENT sur le couple (facture, référence de transaction) : un webhook
+    rejoué ne crée jamais un second ``Paiement``. Le montant est BORNÉ au
+    reste à payer (jamais de sur-paiement) et la bascule « payée » passe par
+    ``marquer_facture_soldee``. Renvoie le ``Paiement`` créé, ou ``None`` si
+    rien n'était à encaisser (facture annulée, déjà soldée, doublon).
+    """
+    from decimal import Decimal
+
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.ventes.models import Facture, Paiement
+
+    if facture is None:
+        return None
+    reference = (reference or '')[:120]
+    montant = Decimal(str(montant or 0))
+    if montant <= Decimal('0'):
+        return None
+
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            return None
+        if reference and Paiement.objects.filter(
+                facture=locked, reference=reference).exists():
+            return None
+        reste = locked.montant_du
+        if montant > reste:
+            montant = reste
+        if montant <= Decimal('0'):
+            return None
+        paiement = Paiement.objects.create(
+            company=company or locked.company,
+            facture=locked,
+            montant=montant,
+            date_paiement=date_paiement or timezone.localdate(),
+            mode=mode or Paiement.Mode.VIREMENT,
+            reference=reference,
+            note='Paiement encaissé au portail client.',
+        )
+        from core.events import paiement_enregistre
+        paiement_enregistre.send(
+            sender=Paiement, instance=paiement, company=paiement.company)
+        marquer_facture_soldee(
+            locked, montant=montant, source='portail_client')
+    return paiement
+
+
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
     """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
@@ -121,13 +253,13 @@ def affecter_encaissement_groupe(
                     facture, part, mode, date_paiement, user, reference))
                 restant -= part
 
+        # AUD102 (P3) — la bascule passe par LE service unique : ce chemin
+        # soldait en silence, sans `facture_payee`, donc sans lettrage compta.
         for facture in locked:
             facture.refresh_from_db()
-            if facture.montant_du <= Decimal('0') and \
-                    facture.statut not in (
-                        Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
-                facture.statut = Facture.Statut.PAYEE
-                facture.save(update_fields=['statut'])
+            marquer_facture_soldee(
+                facture, montant=facture.total_ttc,
+                source='encaissement_groupe')
 
     return paiements
 
@@ -294,19 +426,11 @@ def record_payment_from_link(*, link, payload=None):
         locked_link.save(update_fields=[
             'statut', 'paiement', 'provider_ref', 'paid_at'])
         facture.refresh_from_db()
-        if facture.montant_du <= Decimal('0') \
-                and facture.statut != Facture.Statut.ANNULEE:
-            facture.statut = Facture.Statut.PAYEE
-            facture.save(update_fields=['statut'])
-            # YDOCF4 — facture_paid, exactement une fois au passage
-            # résiduel→0 via le webhook de lien de paiement.
-            from core.events import facture_paid, facture_payee
-            facture_paid.send(
-                sender=Facture, facture=facture, montant=montant,
-                company=facture.company)
-            # YEVNT6 — événement documentaire générique (même transition).
-            facture_payee.send(
-                sender=Facture, instance=facture, company=facture.company)
+        # AUD102 (P4) — YDOCF4/YEVNT6 passent par LE service unique (garde
+        # centime-près, verrou, `facture_paid` + `facture_payee` une seule
+        # fois). Comportement identique pour ce chemin, déjà correct.
+        marquer_facture_soldee(
+            facture, montant=montant, source='lien_paiement')
     return paiement, None
 
 
@@ -416,11 +540,10 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
         locked_paiement.save(update_fields=['statut_affectation'])
 
         locked_facture.refresh_from_db()
-        if locked_facture.montant_du <= 0 and \
-                locked_facture.statut != Facture.Statut.ANNULEE:
-            locked_facture.statut = Facture.Statut.PAYEE
-            locked_facture.save(update_fields=['statut'])
-            reset_relance_escalation(locked_facture)
+        # AUD102 (P5) — la ventilation d'une avance soldait en silence : elle
+        # passe par LE service unique (donc `facture_payee` + lettrage).
+        marquer_facture_soldee(
+            locked_facture, montant=montant, source='ventilation_avance')
 
         from .. import activity
         activity.log_facture_avance_affectee(
@@ -503,12 +626,15 @@ def enregistrer_paiement_avec_retenue(
         activity.log_facture_retenue_subie(locked, created_by, retenue)
 
         locked.refresh_from_db()
-        if locked.montant_paye_avec_retenues >= locked.total_ttc - \
-                locked.avoirs_total - Decimal('0.01') and \
-                locked.statut != Facture.Statut.ANNULEE:
-            locked.statut = Facture.Statut.PAYEE
-            locked.save(update_fields=['statut'])
-            reset_relance_escalation(locked)
+        # AUD102 (P6) — la retenue à la source a sa PROPRE assiette (payé +
+        # retenue soldent ensemble le TTC net d'avoirs) : on la passe en
+        # ``reste`` au service unique, qui applique la même garde centime-près
+        # puis émet `facture_payee` — ce que ce chemin ne faisait pas.
+        reste_retenue = (locked.total_ttc - locked.avoirs_total
+                         - locked.montant_paye_avec_retenues)
+        marquer_facture_soldee(
+            locked, montant=montant, reste=reste_retenue,
+            source='retenue_source')
 
     return paiement, retenue
 
@@ -679,6 +805,16 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
                 statut=TentativeDebitMandat.Statut.REUSSI,
                 paiement=paiement,
             )
+            # AUD102 (B9) — DÉFAUT DÉCOUVERT PAR L'ADJUDICATION : ce chemin
+            # créait un Paiement du TTC intégral et ne basculait JAMAIS la
+            # facture, qui restait ÉMISE, passait EN_RETARD et partait en
+            # relance alors qu'elle était encaissée. Il rejoint le service
+            # unique (le montant débité lui-même relève d'AUD123).
+            from core.events import paiement_enregistre
+            paiement_enregistre.send(
+                sender=Paiement, instance=paiement, company=facture.company)
+            marquer_facture_soldee(
+                facture, montant=paiement.montant, source='mandat_recurrent')
             return paiement
 
         tentatives_precedentes = TentativeDebitMandat.objects.filter(

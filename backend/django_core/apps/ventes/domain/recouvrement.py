@@ -167,15 +167,21 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     facture.abandon_auto = bool(auto)
     facture.abandon_par = user if (
         user and getattr(user, 'is_authenticated', False)) else None
-    facture.statut = Facture.Statut.PAYEE
     facture.save(update_fields=[
         'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
-        'abandon_par', 'statut',
+        'abandon_par',
     ])
+    # AUD102 (P7) — la bascule PAYÉE passe par LE service unique. ``force`` :
+    # un abandon de créance SOLDE sans encaisser (le résiduel reste dû au sens
+    # de ``montant_du``), c'est l'un des deux seuls gestes délibérés autorisés
+    # à sauter la garde centime-près. Ce chemin n'émettait que ``facture_paid``
+    # via ses appelants, jamais ``facture_payee`` — donc aucun lettrage compta.
+    from .encaissements import marquer_facture_soldee
+    marquer_facture_soldee(
+        facture, montant=reste, user=user, source='abandon_solde', force=True)
     from .. import activity
     motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
     activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
-    reset_relance_escalation(facture)
     return reste
 
 
