@@ -578,7 +578,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst, request.user,
             f"Checklist : « {item.libelle} » {'cochée' if fait else 'décochée'}"
             + capture_txt)
-        items = list(inst.checklist.all())
+        # AUD323 (suite) — même piège que `ensure_checklist_items` : le
+        # `prefetch_related('checklist')` fige le cache à `get_object()`,
+        # AVANT le toggle — relire par le manager, jamais par la relation.
+        from ..models import ChantierChecklistItem
+        items = list(ChantierChecklistItem.objects.filter(installation=inst))
         done = sum(1 for it in items if it.fait)
         return Response({
             'items': ChantierChecklistItemSerializer(items, many=True).data,
