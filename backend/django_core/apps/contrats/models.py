@@ -2264,6 +2264,13 @@ class EcheancierContrat(models.Model):
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         verbose_name='Taux de TVA (%)')
+    # AUD182 — MARQUE de gel : cet échéancier a été gelé PAR la suspension pour
+    # impayé du contrat (``facturation_active`` forcé à False). Sert à rendre la
+    # réactivation SUSPENDU→ACTIF strictement SYMÉTRIQUE : seuls les échéanciers
+    # gelés par la suspension sont rallumés, jamais ceux que l'utilisateur avait
+    # lui-même désactivés avant.
+    gele_par_suspension = models.BooleanField(
+        default=False, verbose_name='Gelé par une suspension pour impayé')
     # Somme des lignes (cache posé côté serveur). Recalculé à chaque
     # création/modification/suppression de ligne.
     montant_total = models.DecimalField(

@@ -107,13 +107,38 @@ def changer_statut(contrat, statut_cible, *, persister=True, user=None):  # noqa
     comportement inchangé) puis émet le déclencheur automation générique sur un
     changement RÉELLEMENT persisté. Tous les appelants du service (vue
     ``changer-statut``, ``activer_si_eligible``, ``signer_contrat``) émettent
-    donc sans modification. ``user`` (optionnel) est journalisé sur les runs."""
+    donc sans modification. ``user`` (optionnel) est journalisé sur les runs.
+
+    AUD182 — la sortie SUSPENDU→ACTIF DÉGÈLE les échéanciers que la suspension
+    pour impayé avait gelés (marque ``gele_par_suspension``), et EUX SEULS : un
+    échéancier que l'utilisateur avait lui-même désactivé avant la suspension
+    n'est jamais rallumé à son insu."""
     ancien = contrat.statut
     _changer_statut_machine(contrat, statut_cible, persister=persister)
     if persister and contrat.statut != ancien:
+        _degeler_echeanciers_si_reactivation(contrat, ancien_statut=ancien)
         emettre_changement_statut_automation(
             contrat, ancien_statut=ancien, user=user)
     return contrat
+
+
+def _degeler_echeanciers_si_reactivation(contrat, *, ancien_statut):
+    """AUD182 — réactivation SYMÉTRIQUE des échéanciers gelés par suspension.
+
+    N'agit QUE sur la transition ``suspendu → actif`` (permise par
+    ``machine_etats``) et ne rallume que les échéanciers portant la marque
+    ``gele_par_suspension`` posée par ``_appliquer_suspension_impaye``.
+    """
+    from .models import Contrat, EcheancierContrat
+
+    if ancien_statut != Contrat.Statut.SUSPENDU:
+        return
+    if contrat.statut != Contrat.Statut.ACTIF:
+        return
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        gele_par_suspension=True,
+    ).update(facturation_active=True, gele_par_suspension=False)
 
 
 # ---------------------------------------------------------------------------
@@ -4130,15 +4155,30 @@ def _appliquer_suspension_impaye(contrat, *, message, body, auteur=None):
     l'appellent, jamais un second chemin dupliqué. Renvoie le ``Contrat`` si
     suspendu, ``None`` si la transition n'est pas permise (préservation des
     statuts).
+
+    AUD182 — la suspension GÈLE aussi l'échéancier. Sans cela, le beat
+    quotidien (``scheduled.generer_factures_recurrentes_dues``), qui ne filtre
+    QUE sur ``echeancier__facturation_active``/``statut`` et jamais sur
+    ``contrat.statut``, émettait dès le lendemain une NOUVELLE facture pour un
+    contrat suspendu pour impayé — facture jamais payée, qui aggravait
+    ``jours_impaye`` au passage suivant. Le gel réutilise exactement le
+    garde-fou de ``demarrer_essai_contrat`` et MARQUE les échéanciers gelés
+    (``gele_par_suspension``) pour que la réactivation SUSPENDU→ACTIF soit
+    strictement symétrique (voir ``changer_statut``).
     """
     from .machine_etats import transition_permise
-    from .models import Contrat
+    from .models import Contrat, EcheancierContrat
 
     if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
         return None  # pragma: no cover - défensif (garde machine d'états)
 
     ancien = contrat.statut
     changer_statut(contrat, Contrat.Statut.SUSPENDU)
+
+    EcheancierContrat.objects.filter(
+        company=contrat.company, contrat=contrat,
+        facturation_active=True,
+    ).update(facturation_active=False, gele_par_suspension=True)
 
     journaliser_transition(
         contrat, field='statut', old_value=ancien,

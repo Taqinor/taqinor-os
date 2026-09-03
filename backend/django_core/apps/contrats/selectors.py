@@ -493,15 +493,20 @@ def mrr_contrats(company):
     trimestrielle = ÷3, semestrielle = ÷6, annuelle = ÷12). Les périodicités
     ``unique``/``personnalisée`` n'entrent pas dans le MRR. Lecture seule, scopée
     société. Renvoie un ``Decimal`` (arrondi 2 décimales).
+
+    AUD182 — le filtre porte AUSSI sur ``contrat.statut = actif`` : un contrat
+    suspendu pour impayé continuait à compter comme revenu récurrent SAIN dans
+    le tableau de bord.
     """
     from decimal import Decimal
 
-    from .models import EcheancierContrat
+    from .models import Contrat, EcheancierContrat
 
     qs = EcheancierContrat.objects.filter(
         company=company,
         facturation_active=True,
         statut=EcheancierContrat.Statut.ACTIF,
+        contrat__statut=Contrat.Statut.ACTIF,
     )
     total = Decimal('0')
     for ech in qs.only('montant_total', 'periodicite'):
@@ -788,10 +793,16 @@ def mrr_contrat_actif(contrat):
 
     Réutilise la même conversion que ``mrr_contrats`` (CONTRAT33) mais bornée à
     UN contrat — sert de brique à ``mouvements_mrr`` (new/expansion/churn).
+
+    AUD182 — un contrat qui n'est pas ACTIF (suspendu pour impayé, résilié,
+    expiré) porte un MRR NUL : il n'est plus du revenu récurrent sain.
     """
     from decimal import Decimal
 
-    from .models import EcheancierContrat
+    from .models import Contrat, EcheancierContrat
+
+    if contrat.statut != Contrat.Statut.ACTIF:
+        return Decimal('0.00')
 
     total = Decimal('0')
     qs = contrat.echeanciers.filter(
