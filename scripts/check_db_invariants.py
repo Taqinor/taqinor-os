@@ -53,7 +53,13 @@ TARGET_MODELS = {
     "LigneAvoir": ("facturation", ["quantite >= 0", "prix_unitaire >= 0",
                                    "remise in [0,100]"]),
     "MouvementStock": ("stock", ["quantite >= 0"]),
-    "Paiement": ("facturation", ["montant >= 0"]),
+    # AUD188 (rectificatif) — ``montant >= 0`` N'EST PAS un invariant de ce
+    # modèle, et le réclamer était une erreur du registre : FG50 (annulation
+    # d'une facture d'acompte avec remboursement) écrit délibérément un
+    # ``Paiement`` NÉGATIF de contre-passation. La contrainte posée par la
+    # migration 0005 rendait cet appel HTTP 500 ; 0006 la retire. Restent les
+    # deux champs monétaires du modèle qui, eux, sont positifs par nature.
+    "Paiement": ("facturation", ["frais_rejet >= 0", "escompte_montant >= 0"]),
     "LigneEcriture": ("compta", ["debit >= 0", "credit >= 0",
                                  "debit exclusif du credit"]),
 }

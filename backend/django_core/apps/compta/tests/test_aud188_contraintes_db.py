@@ -210,15 +210,34 @@ class ContraintesArgentFacturationTests(TestCase):
                 Avoir.objects.filter(pk=avoir.pk).update(
                     remise_globale=Decimal('150'))
 
-    def test_paiement_montant_negatif_refuse(self):
-        paiement = Paiement.objects.create(
+    def test_paiement_negatif_reste_possible_contre_passation(self):
+        """Le seul modèle d'argent DÉLIBÉRÉMENT sans contrainte de signe.
+
+        La première écriture d'AUD188 posait ``montant >= 0`` sur ``Paiement``
+        (« un remboursement est un avoir, pas un paiement de signe inverse »).
+        C'est faux DANS CE DÉPÔT : FG50 (annulation d'une facture d'acompte,
+        action « rembourser », ``apps/ventes/views/facture.py``) écrit une
+        CONTRE-PASSATION — un ``Paiement`` négatif qui ramène le net encaissé
+        à zéro pour que l'acompte ne reste pas coincé sur une facture morte.
+        La contrainte rendait cet appel HTTP 500 ; la migration 0006 la
+        retire. Ce test garde la trace de la décision : la contre-passation
+        est un chemin SUPPORTÉ, pas une corruption à rattraper.
+        """
+        Paiement.objects.create(
             company=self.co, facture=self.facture,
-            montant=Decimal('100'), date_paiement=date(2026, 6, 1),
+            montant=Decimal('2000'), date_paiement=date(2026, 6, 1),
             mode=Paiement.Mode.VIREMENT)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                Paiement.objects.filter(pk=paiement.pk).update(
-                    montant=Decimal('-1'))
+        contre_passation = Paiement.objects.create(
+            company=self.co, facture=self.facture,
+            montant=Decimal('-2000'), date_paiement=date(2026, 6, 2),
+            mode=Paiement.Mode.AUTRE,
+            note='Remboursement acompte (annulation facture)')
+        contre_passation.refresh_from_db()
+        self.assertEqual(contre_passation.montant, Decimal('-2000'))
+        net = sum(
+            (p.montant for p in Paiement.objects.filter(facture=self.facture)),
+            Decimal('0'))
+        self.assertEqual(net, Decimal('0'))
 
     def test_ligne_facture_prix_negatif_refuse(self):
         # ``LigneFacture.produit`` est un FK NON NULL (PROTECT) : une ligne
