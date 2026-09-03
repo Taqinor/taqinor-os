@@ -2898,6 +2898,48 @@ def rattacher_bulletins(periode_cible, bulletin_ids):
     return bulletins
 
 
+def _resynchroniser_snapshot_avant_validation(bulletin):
+    """Re-snapshot d'un bulletin NORMAL avant de le figer (AUD714).
+
+    ``valider_bulletin`` figeait le statut sans jamais rappeler
+    ``generer_bulletin`` (le seul point d'écriture du snapshot), tout en
+    recalculant juste après un bulletin LIVE pour en extraire
+    ``net_avant_saisie`` — la base d'imputation des saisies-arrêt. Un
+    ``ElementVariable`` ajouté entre ``generer`` et ``valider`` était donc
+    ABSENT du document figé remis au salarié mais PRÉSENT dans l'imputation
+    réelle : deux vérités pour le même bulletin.
+
+    Le re-snapshot ne concerne QUE les bulletins de type NORMAL : les
+    annulations (montants négatifs recopiés), STC, gratifications et rappels
+    sont produits par leurs propres générateurs — leur rejouer le moteur
+    standard écraserait leur contenu.
+
+    Une régularisation IR déjà appliquée (ligne ``IR-REGUL``) est REJOUÉE
+    après le re-snapshot : elle est recalculée sur le bulletin à jour au lieu
+    d'être silencieusement effacée.
+    """
+    from .models import BulletinPaie
+
+    if bulletin.type_bulletin != BulletinPaie.TYPE_NORMAL:
+        return bulletin
+    # ``generer_bulletin`` cible le bulletin par (période, profil) : si la
+    # période porte AUSSI une annulation/un rappel pour ce profil, la cible
+    # serait ambiguë — on ne rejoue alors jamais le moteur (ne jamais écraser
+    # un autre bulletin en croyant resynchroniser celui-ci).
+    if (BulletinPaie.objects
+            .filter(periode=bulletin.periode, profil=bulletin.profil)
+            .exclude(pk=bulletin.pk).exists()):
+        return bulletin
+    avait_regularisation = bulletin.lignes.filter(code='IR-REGUL').exists()
+    generer_bulletin(bulletin.profil, bulletin.periode,
+                     personnes_a_charge=bulletin.personnes_a_charge)
+    bulletin.refresh_from_db()
+    if avait_regularisation:
+        appliquer_regularisation_ir(bulletin)
+        bulletin.refresh_from_db()
+    return bulletin
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 
@@ -2905,11 +2947,17 @@ def valider_bulletin(bulletin):
     ``date_validation``. Une fois validé, le bulletin et ses lignes sont
     immuables (gardes ``save``/``delete`` côté modèle). Re-valider un bulletin
     déjà validé est un no-op. Renvoie le bulletin.
+
+    AUD714 — le snapshot est RESYNCHRONISÉ juste avant d'être figé (cf.
+    ``_resynchroniser_snapshot_avant_validation``) : le document figé et
+    l'imputation des avances/saisies parlent enfin des mêmes éléments
+    variables.
     """
     from .models import BulletinPaie
 
     if bulletin.statut == BulletinPaie.STATUT_VALIDE:
         return bulletin
+    _resynchroniser_snapshot_avant_validation(bulletin)
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
