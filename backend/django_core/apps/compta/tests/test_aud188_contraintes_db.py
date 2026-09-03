@@ -29,6 +29,7 @@ from apps.compta import services
 from apps.compta.models import EcritureComptable, Journal, LigneEcriture
 from apps.crm.models import Client
 from apps.facturation.models import Avoir, Facture, LigneFacture, Paiement
+from testkit.factories import ProduitFactory
 
 
 def make_company(slug, nom):
@@ -220,8 +221,12 @@ class ContraintesArgentFacturationTests(TestCase):
                     montant=Decimal('-1'))
 
     def test_ligne_facture_prix_negatif_refuse(self):
+        # ``LigneFacture.produit`` est un FK NON NULL (PROTECT) : une ligne
+        # sans produit ne pouvait même pas être insérée, et le test échouait
+        # sur cette NotNullViolation AVANT d'atteindre la contrainte mesurée.
+        produit = ProduitFactory(company=self.co, nom='Onduleur AUD188')
         ligne = LigneFacture.objects.create(
-            facture=self.facture, designation='Onduleur',
+            facture=self.facture, produit=produit, designation='Onduleur',
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
             taux_tva=Decimal('20.00'))
         with self.assertRaises(IntegrityError):
