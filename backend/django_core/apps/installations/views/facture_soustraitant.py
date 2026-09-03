@@ -214,19 +214,61 @@ class PaiementSousTraitantViewSet(viewsets.ViewSet):
         return Response(_PaiementSousTraitantSerializer(paiement).data)
 
     def create(self, request):
+        """AUD209 — ce POST est le SEUL endpoint de règlement sous-traitant :
+        il applique désormais la chaîne AP standard au complet, comme
+        ``stock.views.paiement_fournisseur.PaiementFournisseurViewSet``
+        — gates XPUR4 (fournisseur bloqué paiements) et XPUR1 (conformité
+        obligatoire manquante/expirée) AVANT création, RAS-TVA XPUR2 calculée
+        côté serveur (jamais depuis le corps) et persistée sur le règlement,
+        puis l'événement documentaire ``paiement_fournisseur_enregistre``
+        (YLEDG2) qui fait poster l'écriture comptable. Avant AUD209 aucune de
+        ces trois étapes n'existait ici : la retenue à la source n'était jamais
+        prélevée, les deux gates étaient contournés et aucune écriture n'était
+        postée.
+
+        L'appelant INTERNE ``compta.services.valider_compensation`` reste
+        volontairement HORS de cette chaîne (il appelle le service stock
+        directement et poste sa propre écriture de compensation) — voir la
+        docstring de ``stock.services.add_paiement_sous_traitant``.
+        """
+        from django.db import transaction
+        from core.events import paiement_fournisseur_enregistre
+
         serializer = _PaiementSousTraitantSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
+        company = self._company()
         facture = stock_selectors.facture_fournisseur_scoped(
-            self._company(), vd['facture'])
+            company, vd['facture'])
         if facture is None or facture.fournisseur.type != 'service':
             raise ValidationError(
                 {'facture': 'Facture inconnue pour cette société.'})
         try:
-            paiement = stock_services.add_paiement_sous_traitant(
-                company=self._company(), user=request.user, facture=facture,
-                montant=vd['montant'], date_paiement=vd.get('date_paiement'),
-                mode=vd.get('mode', 'virement'), note=vd.get('note'))
+            # XPUR4 — sous-traitant bloqué pour les paiements (ou total).
+            stock_services.check_fournisseur_statut_paiement(
+                facture.fournisseur)
+            # XPUR1 — document de conformité obligatoire manquant/expiré,
+            # quand la société a activé le blocage (OFF par défaut).
+            stock_services.check_paiement_conformite_gate(
+                company, facture.fournisseur)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        # XPUR2 — RAS-TVA calculée côté serveur AVANT création.
+        taux, montant_ras = stock_services.compute_ras_tva(
+            company, facture, vd['montant'])
+        try:
+            with transaction.atomic():
+                paiement = stock_services.add_paiement_sous_traitant(
+                    company=company, user=request.user, facture=facture,
+                    montant=vd['montant'],
+                    date_paiement=vd.get('date_paiement'),
+                    mode=vd.get('mode', 'virement'), note=vd.get('note'),
+                    taux_ras=taux, montant_ras_tva=montant_ras)
+                # YLEDG2 — seam générique (jamais d'import du service compta) ;
+                # le récepteur est idempotent.
+                paiement_fournisseur_enregistre.send(
+                    sender=paiement.__class__, instance=paiement,
+                    company=company)
         except ValueError as exc:
             raise ValidationError({'montant': str(exc)})
         return Response(_PaiementSousTraitantSerializer(paiement).data,

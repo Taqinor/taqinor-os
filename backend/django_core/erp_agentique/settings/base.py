@@ -1205,6 +1205,20 @@ CELERY_TASK_ROUTES = {
     'mrp.archiver_of_prototype_anciens': {'queue': 'scheduled'},
     # NTMFG32 — rappel d'entretien de poste de charge à échéance proche (J-7).
     'mrp.rappeler_entretiens_poste_j7': {'queue': 'scheduled'},
+    # AUD231 — les huit balayages qui existaient en commande de gestion « pour
+    # Celery beat » sans aucune entrée de beat : désormais planifiés, donc
+    # routés vers `scheduled` comme tous les jobs beat.
+    'stock.generer_comptages_tournants': {'queue': 'scheduled'},   # NTWMS13
+    'stock.liberer_vagues_planifiees': {'queue': 'scheduled'},     # NTWMS12
+    'pos.liberer_reservations_expirees': {'queue': 'scheduled'},   # NTRET23
+    'installations.generer_interventions_recurrentes': {
+        'queue': 'scheduled'},                                     # ZFSM3
+    'gestion_projet.generer_taches_recurrentes': {
+        'queue': 'scheduled'},                                     # XPRJ13
+    'gestion_projet.alertes_retards_projets': {
+        'queue': 'scheduled'},                                     # XPRJ22
+    'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
+    'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

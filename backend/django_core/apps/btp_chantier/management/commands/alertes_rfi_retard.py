@@ -7,12 +7,17 @@ SEULE notification par jour par RFI (idempotence via
 répondus/clos sont exclus (le sélecteur ``selectors.rfi_en_retard`` ne
 retient que ``statut=ouvert``).
 
+AUD231 — ce balayage est désormais RÉELLEMENT planifié
+(``btp_chantier.alertes_rfi_retard`` dans ``erp_agentique/celery.py``,
+queue ``scheduled``) : la docstring ci-dessus l'annonçait depuis toujours alors
+qu'aucune entrée de beat n'existait. Le corps du balayage vit dans
+``services.alerter_rfi_en_retard`` — unique implémentation, partagée par cette
+commande (à la demande) et par la tâche planifiée.
+
 Run :
     python manage.py alertes_rfi_retard
 """
 from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.utils import timezone
 
 
 class Command(BaseCommand):
@@ -22,36 +27,10 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        from apps.btp_chantier.selectors import rfi_en_retard
+        from apps.btp_chantier.services import alerter_rfi_en_retard
 
-        today = timezone.localdate()
-        total = 0
-        notifiees = 0
-        for rfi in rfi_en_retard().select_related(
-                'chantier', 'pose_par', 'destinataire_user'):
-            total += 1
-            if rfi.derniere_alerte_retard == today:
-                continue  # déjà alerté aujourd'hui — idempotent
-            self._alerter(rfi)
-            with transaction.atomic():
-                rfi.derniere_alerte_retard = today
-                rfi.save(update_fields=['derniere_alerte_retard'])
-            notifiees += 1
-
+        resultat = alerter_rfi_en_retard()
         self.stdout.write(self.style.SUCCESS(
-            f'alertes_rfi_retard : {total} RFI en retard, '
-            f'{notifiees} alerte(s) envoyée(s) (idempotent).'))
-
-    def _alerter(self, rfi):
-        from apps.btp_chantier.services import _notifier_btp
-
-        titre = f'RFI #{rfi.numero} en retard de réponse'
-        corps = (
-            f'RFI #{rfi.numero} ({rfi.chantier}) — échéance '
-            f'{rfi.date_limite_reponse} dépassée sans réponse.')
-        link = f'/btp/rfi/{rfi.id}'
-        destinataires = {rfi.destinataire_user, rfi.pose_par} - {None}
-        for user in destinataires:
-            _notifier_btp(
-                user, 'APPROVAL_REMINDER', titre, corps,
-                company=rfi.company, link=link)
+            f"alertes_rfi_retard : {resultat['examines']} RFI en retard, "
+            f"{resultat['alertes_envoyees']} alerte(s) envoyée(s) "
+            f"(idempotent)."))

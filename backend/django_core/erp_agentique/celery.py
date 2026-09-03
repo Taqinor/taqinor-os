@@ -187,13 +187,15 @@ app.conf.beat_schedule = {
         'task': 'automation.process_due_automation_steps',
         'schedule': crontab(minute='*/5'),
     },
+    # AUD231 — UNE seule entrée. Il y en avait DEUX pour la même tâche sans
+    # argument (`…-daily` à 6 h 00 et `…-weekly` lundi 6 h 00) : la tâche
+    # décide elle-même des rapports dus (`_due_schedules`, toutes cadences
+    # confondues — apps/reporting/scheduled_reports.py), donc l'entrée
+    # hebdomadaire ne faisait que la rejouer une 2ᵉ fois chaque lundi à la même
+    # minute. L'entrée quotidienne couvre déjà le lundi.
     'reporting-email-saved-reports-daily': {
         'task': 'reporting.email_saved_reports',
         'schedule': crontab(hour=6, minute=0),
-    },
-    'reporting-email-saved-reports-weekly': {
-        'task': 'reporting.email_saved_reports',
-        'schedule': crontab(hour=6, minute=0, day_of_week=1),
     },
     # NTEXT12 — abonnements aux rapports (report-builder). Tourne à CHAQUE
     # heure pile : le `cron` de chaque abonnement décide s'il est dû (grain =
@@ -937,6 +939,67 @@ app.conf.beat_schedule = {
     'scm-notifier-ecarts-prevision-importants': {
         'task': 'scm.notifier_ecarts_prevision_importants',
         'schedule': crontab(hour=6, minute=15, day_of_month=3),
+    },
+    # ── AUD231 — huit balayages écrits « pour Celery beat » et planifiés NULLE
+    # PART. Chacune de ces commandes de gestion l'annonçait dans sa docstring
+    # (« Plannifiable par Celery beat », « cron / Celery beat », « Sweep
+    # quotidien … (Celery beat) ») alors que le grep sur `erp_agentique/`
+    # rendait ZÉRO : elles ne tournaient que si quelqu'un les lançait à la
+    # main. Conséquence la plus visible : une réservation Click & Collect
+    # expirée n'était JAMAIS libérée, son stock restant réservé indéfiniment.
+    # La garde `scripts/check_commandes_planifiees.py` empêche désormais la
+    # récidive sur TOUTES les apps.
+
+    # NTWMS13 — sessions d'inventaire de comptage tournant dues (idempotent :
+    # rejoué le même jour, ne recrée rien). Heure creuse, avant le bloc stock.
+    'stock-generer-comptages-tournants': {
+        'task': 'stock.generer_comptages_tournants',
+        'schedule': crontab(hour=5, minute=15),
+    },
+    # NTWMS12 — libération des vagues de prélèvement AUTO_HEURE / AUTO_SEUIL.
+    # Cadence courte ASSUMÉE : l'heure de coupure est un réglage PAR SOCIÉTÉ
+    # (`AchatsParametres.heure_coupure_vagues`), à la minute près — un job
+    # quotidien laisserait une vague attendre jusqu'au lendemain. Requête
+    # bornée aux vagues BROUILLON non manuelles, donc vide la plupart du temps.
+    'stock-liberer-vagues-planifiees': {
+        'task': 'stock.liberer_vagues_planifiees',
+        'schedule': crontab(minute='*/15'),
+    },
+    # NTRET23 — libération des réservations Click & Collect expirées (annule +
+    # ré-incrémente le stock si déjà sorti à la préparation). Horaire : le
+    # délai d'expiration est configuré en heures côté Paramètres POS.
+    'pos-liberer-reservations-expirees': {
+        'task': 'pos.liberer_reservations_expirees',
+        'schedule': crontab(minute=20),
+    },
+    # ZFSM3 — prochaine intervention de chaque récurrence active à échéance
+    # (prestation périodique SANS contrat de maintenance). Idempotent.
+    'installations-generer-interventions-recurrentes': {
+        'task': 'installations.generer_interventions_recurrentes',
+        'schedule': crontab(hour=5, minute=35),
+    },
+    # XPRJ13 — prochaine tâche de chaque récurrence de projet à échéance.
+    'gestion-projet-generer-taches-recurrentes': {
+        'task': 'gestion_projet.generer_taches_recurrentes',
+        'schedule': crontab(hour=5, minute=40),
+    },
+    # XPRJ22 — alerte du responsable sur les projets actifs en retard/à risque
+    # (jamais deux alertes pour le même (projet, élément) le même jour).
+    'gestion-projet-alertes-retards-projets': {
+        'task': 'gestion_projet.alertes_retards_projets',
+        'schedule': crontab(hour=7, minute=18),
+    },
+    # XPRJ7 — rappel des ressources en retard de saisie de temps (fenêtre des
+    # 7 derniers jours, même défaut que la commande).
+    'gestion-projet-rappels-timesheets': {
+        'task': 'gestion_projet.rappels_timesheets',
+        'schedule': crontab(hour=7, minute=22),
+    },
+    # NTCON4 — alerte quotidienne des RFI ouverts dont la date limite de
+    # réponse est dépassée (une seule alerte par jour et par RFI).
+    'btp-chantier-alertes-rfi-retard': {
+        'task': 'btp_chantier.alertes_rfi_retard',
+        'schedule': crontab(hour=7, minute=28),
     },
 }
 

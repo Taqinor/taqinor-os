@@ -1549,10 +1549,29 @@ def create_facture_sous_traitant(*, company, user=None, fournisseur,
 
 
 def add_paiement_sous_traitant(*, company, user=None, facture, montant,
-                               date_paiement=None, mode='virement', note=None):
+                               date_paiement=None, mode='virement', note=None,
+                               taux_ras=None, montant_ras_tva=None):
     """DC34 — impute un règlement sur une facture sous-traitant via la chaîne AP
     standard (PaiementFournisseur) et recalcule le statut de la facture. On
-    n'impute jamais plus que le solde dû. Renvoie le PaiementFournisseur."""
+    n'impute jamais plus que le solde dû. Renvoie le PaiementFournisseur.
+
+    AUD209 — ``taux_ras``/``montant_ras_tva`` (XPUR2) sont calculés par
+    l'APPELANT et persistés ici quand ils sont fournis ; laissés à ``None``,
+    le paiement garde les valeurs par défaut du modèle (0/0). La chaîne AP
+    complète — gates XPUR1/XPUR4, ``compute_ras_tva`` et l'événement
+    ``paiement_fournisseur_enregistre`` (YLEDG2, qui déclenche l'écriture
+    comptable) — appartient à l'ENDPOINT
+    ``installations.views.facture_soustraitant.PaiementSousTraitantViewSet``,
+    exactement comme ``stock.views.paiement_fournisseur`` le fait pour la
+    chaîne fournisseur générique.
+
+    APPELANT INTERNE DÉLIBÉRÉMENT EXCLU de cette chaîne :
+    ``apps.compta.services.valider_compensation`` (compensation AR/AP) appelle
+    ce service SANS RAS ni événement — elle poste sa PROPRE écriture de
+    compensation, un second passage par ``ecriture_pour_paiement_fournisseur``
+    doublonnerait le décaissement, et une retenue à la source n'a pas de sens
+    sur une compensation de créances. Ne pas « harmoniser » les deux chemins.
+    """
     from decimal import Decimal, InvalidOperation
     from django.db import transaction
     from .models import PaiementFournisseur
@@ -1568,11 +1587,16 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
     # AUD232 — garde de période comptable EN AMONT du document.
     check_periode_comptable_ouverte(
         company, date_paiement, document='Ce règlement sous-traitant')
+    extra = {}
+    if taux_ras is not None:
+        extra['taux_ras'] = taux_ras
+    if montant_ras_tva is not None:
+        extra['montant_ras_tva'] = montant_ras_tva
     with transaction.atomic():
         paiement = PaiementFournisseur.objects.create(
             company=company, facture=facture, montant=montant_dec,
             date_paiement=date_paiement, mode=mode, note=note,
-            created_by=user)
+            created_by=user, **extra)
         facture.refresh_from_db()
         recompute_facture_fournisseur_statut(facture)
     return paiement

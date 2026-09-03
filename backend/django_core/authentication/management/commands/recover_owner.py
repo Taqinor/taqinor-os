@@ -12,6 +12,12 @@ Elle garantit qu'il existe toujours au moins un propriétaire actif :
   * s'il a disparu : le recrée dans la société indiquée (ou la seule société
     existante), puis applique la même remise en état.
 
+AUD186 — le propriétaire rétabli n'est JAMAIS marqué ``is_staff`` : c'est
+l'administrateur d'une société CLIENTE, pas un compte interne TAQINOR. Ses
+droits ERP viennent du rôle admin métier (``role_legacy`` + le rôle portant
+``roles_gerer``), qui est ce que l'API lit ; ``is_staff`` n'ouvrirait que
+/admin/ et les réglages plateforme.
+
 Exemples :
     # Réinitialiser demo_admin avec un mot de passe GÉNÉRÉ (affiché une fois)
     python manage.py recover_owner
@@ -86,11 +92,21 @@ class Command(BaseCommand):
                     raise CommandError(
                         "Plusieurs sociétés existent — précisez --company "
                         "<slug> pour savoir où recréer le propriétaire.")
+            # AUD186 — le propriétaire recréé n'est PAS un compte interne
+            # TAQINOR : c'est l'administrateur normal d'UNE société cliente.
+            # On lui posait ``is_staff=True``, ce qui lui ouvrait /admin/ (où
+            # aucun ``get_queryset`` n'est cloisonné, cf. AUD185) et, jusqu'à
+            # AUD186, le registre des sociétés de TOUTE la plateforme. Ses
+            # droits ERP viennent du rôle admin métier posé plus bas
+            # (``role_legacy`` + le rôle portant ``roles_gerer``) — jamais du
+            # drapeau ``is_staff``. La commande ne PROMEUT donc plus personne ;
+            # elle ne DÉMET pas non plus un compte opérateur préexistant
+            # (branche « le compte existe » ci-dessous, laissée intacte).
             user = CustomUser.objects.create(
                 username=username,
                 email=opts['email'] or '',
                 company=company,
-                is_staff=True,
+                is_staff=False,
             )
             self.stdout.write(self.style.WARNING(
                 f"Compte '{username}' recréé dans la société "

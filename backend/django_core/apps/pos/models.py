@@ -449,8 +449,14 @@ class CommandeRetrait(models.Model):
     # NTRET23 — posée à la création d'après le délai configuré (Paramètres
     # POS, NTRET8) ; NULL = pas de délai configuré, cette réservation
     # n'expire JAMAIS automatiquement (comportement historique inchangé).
-    # Libérée par ``services.liberer_reservations_expirees`` (Celery beat/
-    # commande de gestion idempotente).
+    # Libérée par ``services.liberer_reservations_expirees``, appelée par la
+    # tâche planifiée ``pos.liberer_reservations_expirees``
+    # (``apps/pos/tasks.py``, beat horaire, queue `scheduled`) ou par la
+    # commande de gestion homonyme — les deux idempotentes.
+    # AUD231 — cette phrase était FAUSSE en production jusqu'ici : elle
+    # affirmait « Celery beat » alors qu'aucune entrée de ``beat_schedule`` ni
+    # aucune tâche Celery n'existait, donc AUCUNE réservation expirée n'était
+    # jamais libérée automatiquement.
     date_expiration_reservation = models.DateTimeField(null=True, blank=True)
 
     class Meta:
