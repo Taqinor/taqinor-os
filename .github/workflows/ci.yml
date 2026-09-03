@@ -868,7 +868,7 @@ jobs:
     # 33668521748 : les 6 shards tués à 15:03 pile, e2e à ~19 min, rls à 30:07,
     # AUCUN n'a atteint ses tests). Le chemin cache-HIT reste ~6-10 min ; le
     # push du merge re-sauve le dump et rend le plafond théorique.
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: read
@@ -1599,7 +1599,10 @@ jobs:
       matrix:
         shard: [1, 2]
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    # 02/09/2026 — 18 → 60 : replay froid post-éviction du dump WOW8 (run
+    # 33671929388 : tués à leur plafond sans atteindre un seul test) ;
+    # hit-path inchangé, le push du merge re-sauve le dump.
+    timeout-minutes: 60
     services:
       # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
       # Il est remplacé par un serveur local que `backend-env` démarre DANS le
@@ -1869,7 +1872,7 @@ jobs:
     # replay complet depuis admin.0001, tué au plafond, shards annulés en
     # cascade). Le chemin cache-HIT reste ~6-8 min ; le plafond ne borne que
     # le pire cas froid.
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: read
