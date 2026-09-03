@@ -68,3 +68,17 @@ change: add the three fields + a partial-unique migration + swap
 — never a blanket sweep. Start with the money/legal documents, then the
 cross-app master data, then GED/e-sign (folding their ad-hoc trash onto the
 shared journal).
+
+## Décision fondateur 03/09/2026 — documents d'ARGENT : immutabilité, pas soft-delete
+
+Pour les documents financiers postés (Facture, Avoir, NoteDebit, Paiement, écritures
+comptables, situations de travaux facturées, contrats signés) la doctrine retenue est
+l'IMMUTABILITÉ : un document posté ne se supprime NI ne se modifie — la correction
+passe par CONTRE-PASSATION (avoir, extourne, écriture inverse), référence de
+production : la chaîne de hash d'Odoo sur account.move. Le soft-delete n'est PAS la
+cible pour ces modèles (la littérature de référence le classe anti-pattern pour le
+financier : prédicat `deleted_at` à répéter partout, contraintes cassées). Le
+soft-delete reste possible AU CAS PAR CAS pour le non-financier (brouillons, master
+data) où un « undo » utilisateur a du sens — décision par modèle, jamais de sweep.
+Les gardes concrètes vivent dans les groupes AUD1-AUD3 de docs/PLAN.md (perform_destroy
+gardés, FK en PROTECT, CheckConstraints, admin verrouillé).
