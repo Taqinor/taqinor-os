@@ -46,6 +46,18 @@ class CookieJWTAuthentication(BaseAuthentication):
         if not user.is_active:
             raise AuthenticationFailed('Compte desactive.')
 
+        # AUD408 — révocation EFFECTIVE du jeton d'accès. Jusqu'ici logout,
+        # révocation d'une session distante, éviction concurrente et changement
+        # de mot de passe ne blacklistaient que le REFRESH : le jeton d'accès
+        # déjà émis continuait d'authentifier jusqu'à 30 min après une
+        # révocation pourtant affichée comme effective — y compris pour un
+        # appareil distant qui ne reçoit littéralement aucune réponse. On
+        # consulte l'état de la session portée par le claim ``sid``.
+        from .session_policy import access_session_revoked
+        if access_session_revoked(validated):
+            raise AuthenticationFailed(
+                'Session révoquée. Reconnectez-vous.')
+
         # XPLT19 — société ACTIVE : si le jeton porte un claim
         # ``active_company_id`` et que l'utilisateur est bien membre de cette
         # société, on borne CETTE requête à la société choisie en posant

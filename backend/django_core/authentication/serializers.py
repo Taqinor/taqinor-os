@@ -131,6 +131,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # lit ce claim à chaque requête et borne ``request.user.company``.
         from authentication.active_company import ACTIVE_COMPANY_CLAIM
         token[ACTIVE_COMPANY_CLAIM] = user.company_id
+        # AUD408 — claim de SESSION recopié sur le jeton d'accès dérivé (le
+        # ``jti`` du refresh, lui, ne l'est jamais : simplejwt le liste dans
+        # ``no_copy_claims``). C'est l'identifiant de la ligne ``UserSession``
+        # tracée par ``_record_session`` — il rend le jeton d'ACCÈS révocable
+        # immédiatement (logout / révocation d'appareil / éviction concurrente /
+        # changement de mot de passe), au lieu de survivre jusqu'à 30 min.
+        from authentication.session_policy import SESSION_CLAIM
+        token[SESSION_CLAIM] = token.get('jti')
         return token
 
 

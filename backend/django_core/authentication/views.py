@@ -334,6 +334,13 @@ class CookieTokenRefreshView(APIView):
     Le client n'a pas besoin d'envoyer quoi que ce soit dans le body.
     """
     permission_classes = [permissions.AllowAny]
+    # AUD408 — cette vue ne lit QUE le cookie refresh (jamais ``request.user``).
+    # Sans cette ligne, le cookie d'accès d'une session révoquée ferait échouer
+    # l'authentification par défaut AVANT le corps de la vue, et le client
+    # recevrait « Session révoquée » au lieu du 401 « refresh invalide » qui
+    # décrit sa vraie situation. Le contrôle de révocation reste porté par le
+    # refresh (blacklist) et par ``session_policy``.
+    authentication_classes = []
 
     def post(self, request):
         refresh_raw = request.COOKIES.get('refresh_token')
@@ -675,6 +682,19 @@ class LogoutView(generics.GenericAPIView):
                 token = RefreshToken(refresh_raw)
                 token.blacklist()
             except TokenError:
+                pass
+            # AUD408 — la déconnexion marque AUSSI la ligne de session comme
+            # révoquée : c'est ce drapeau qui coupe le jeton d'ACCÈS déjà émis
+            # (claim ``sid``, cf. session_policy). Sans lui, le logout ne
+            # fermait que le refresh et l'appareil restait authentifié jusqu'à
+            # 30 min. Best-effort : ne fait jamais échouer la déconnexion.
+            try:
+                jti = _refresh_jti(refresh_raw)
+                if jti:
+                    UserSession.objects.filter(
+                        user=request.user, jti=jti, revoked=False,
+                    ).update(revoked=True)
+            except Exception:
                 pass
         # Journal d'activité (Feature G) — déconnexion. Best-effort.
         try:
@@ -1460,12 +1480,16 @@ class SessionRevokeView(APIView):
                 {'detail': 'Session introuvable.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        # AUD408 — le ``jti`` courant est lu AVANT le blacklistage : après lui,
+        # ``RefreshToken(raw)`` lève (jeton blacklisté) et ``_refresh_jti``
+        # renvoyait None, donc la branche « c'est ma propre session » ne se
+        # déclenchait JAMAIS et les cookies de l'appareil n'étaient pas effacés.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
         _blacklist_refresh_jti(session.jti)
         session.revoked = True
         session.save(update_fields=['revoked'])
         # Si l'utilisateur révoque SA session courante, on efface ses cookies
         # pour le déconnecter immédiatement de cet appareil.
-        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
         response = Response({'detail': 'Session révoquée.'})
         if current_jti and current_jti == session.jti:
             _clear_auth_cookies(response)
