@@ -116,7 +116,7 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
     from django.utils import timezone
 
     from .models import MouvementStock, StockEmplacement, TransfertStock
-    from .services import record_stock_movement
+    from .services import record_stock_movement, verrouiller_produit
 
     if transfert.statut != TransfertStock.Statut.EXPEDIE:
         raise ValueError('Seul un transfert EXPÉDIÉ peut être réceptionné.')
@@ -133,7 +133,13 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
     with transaction.atomic():
         destination = transfert.destination
         if not destination.is_principal and quantite_recue:
-            ligne, _ = StockEmplacement.objects.get_or_create(
+            # AUD216 — VERROU de ligne : asymétrie corrigée avec
+            # `expedier_transfert` juste au-dessus, qui verrouille déjà. Sans
+            # lui, deux réceptions concurrentes sur le même couple
+            # (produit, emplacement) lisaient la même `quantite` et la seconde
+            # écrasait l'incrément de la première.
+            ligne, _ = StockEmplacement.objects.select_for_update(
+            ).get_or_create(
                 produit=transfert.produit, emplacement=destination,
                 defaults={'company': transfert.company, 'quantite': 0})
             ligne.quantite += quantite_recue
@@ -143,8 +149,9 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
         if ecart:
             # L'écart change le TOTAL de la société : il est tracé comme un
             # ajustement motivé, jamais dissimulé dans la ventilation.
-            produit = transfert.produit
-            produit.refresh_from_db()
+            # AUD216 — même raison : `refresh_from_db()` relisait le produit
+            # sans le verrouiller avant d'en dériver `qte_apres`.
+            produit = verrouiller_produit(transfert.produit_id)
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + ecart
             record_stock_movement(

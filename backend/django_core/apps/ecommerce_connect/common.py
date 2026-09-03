@@ -246,6 +246,15 @@ def traiter_commande_payee(*, connexion, external_order_id, montant_ttc,
                 produit = stock_selectors.get_produit_scoped(company, produit_id)
                 if produit is None:
                     continue
+                # AUD216 — VERROU de ligne produit AVANT la lecture de
+                # `quantite_stock`. Le sélecteur ne verrouille pas (c'est une
+                # LECTURE scopée société, son rôle) : un webhook e-commerce est
+                # at-least-once ET concurrent, donc deux commandes du même
+                # article lisaient la même valeur et la seconde sortie écrasait
+                # la première — la garde de stock négatif ci-dessous décidait
+                # elle aussi sur une valeur morte. Le scoping société reste
+                # celui du sélecteur ; le verrou ne fait que figer la ligne.
+                produit = stock_services.verrouiller_produit(produit.pk)
                 avant = produit.quantite_stock
                 # AUD202 — plus de `max(..., 0)` : une commande web qui
                 # dépasse le stock disponible est REFUSÉE (sauf société en

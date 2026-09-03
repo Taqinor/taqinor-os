@@ -279,8 +279,14 @@ def valider_vente(*, vente, paiements, user, coupon_code=None):
     # (c) Décrément stock immédiat (sortie) via stock.services.
     from apps.stock import services as stock_services
     for ligne in lignes:
-        produit = ligne.produit
-        produit.refresh_from_db()
+        # AUD216 — VERROU de ligne produit (patron ERR24), pris par le thin
+        # service stock (jamais d'import des models stock ici).
+        # `refresh_from_db()` relisait SANS verrouiller : deux `valider_vente`
+        # simultanées sur le même article lisaient le MÊME `quantite_stock` et
+        # la seconde écrasait la décrémentation de la première (lost update —
+        # de la marchandise vendue deux fois restait comptée en stock). Toute
+        # la fonction est déjà `@transaction.atomic`.
+        produit = stock_services.verrouiller_produit(ligne.produit_id)
         avant = produit.quantite_stock
         apres = avant - int(ligne.quantite)
         stock_services.record_stock_movement(

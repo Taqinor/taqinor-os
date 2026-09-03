@@ -1118,7 +1118,7 @@ def confirm_reception_fournisseur(reception, user):
     from django.db import transaction
     from django.utils import timezone
     from .models import (
-        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+        Produit, ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
     )
     if reception.statut != ReceptionFournisseur.Statut.BROUILLON:
         # Idempotence : une réception déjà confirmée/annulée ne touche pas le
@@ -1163,8 +1163,14 @@ def confirm_reception_fournisseur(reception, user):
                 ligne_cmd.quantite_recue += qte
                 ligne_cmd.save(update_fields=['quantite_recue'])
                 continue
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # AUD216 — VERROU de ligne produit (patron ERR24 déjà appliqué à
+            # `apply_retour_fournisseur` juste au-dessus). Un
+            # `refresh_from_db()` relit la ligne SANS la verrouiller : deux
+            # confirmations concurrentes du même produit lisaient le MÊME
+            # `quantite_stock` et la seconde écrasait la première (lost
+            # update). `select_for_update` sérialise les deux.
+            produit = Produit.objects.select_for_update().get(
+                pk=ligne.produit_id)
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + qte
             record_stock_movement(
@@ -1262,7 +1268,7 @@ def annuler_reception_confirmee(reception, user):
     from django.db import transaction
     from django.utils import timezone
     from .models import (
-        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+        Produit, ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
     )
 
     if reception.statut != ReceptionFournisseur.Statut.CONFIRME:
@@ -1277,8 +1283,12 @@ def annuler_reception_confirmee(reception, user):
             qte = int(ligne.quantite or 0)
             if qte <= 0 or ligne.produit_id is None:
                 continue
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # AUD216 — VERROU de ligne produit : la contre-passation calcule
+            # `min(qte, stock en main)`, donc une lecture non verrouillée
+            # décide sur une valeur périmée et écrase la décrémentation d'une
+            # transaction concurrente (lost update).
+            produit = Produit.objects.select_for_update().get(
+                pk=ligne.produit_id)
             qte_avant = produit.quantite_stock
             # XSTK8 — jamais négatif : la contre-passation ne sort jamais
             # plus que le stock en main (une partie a pu être déjà consommée
@@ -1843,6 +1853,27 @@ def resolve_fournisseur(company, fournisseur_id, installation):
     return None
 
 
+# ── AUD216 — point d'entrée cross-app : VERROU de ligne produit ─────────────
+# Les autres apps (ventes, sav, pos, ecommerce_connect…) doivent verrouiller le
+# produit AVANT de lire `quantite_stock`, sinon deux transactions concurrentes
+# lisent la même valeur et la seconde écrase la première (lost update). Elles
+# ne peuvent pas le faire elles-mêmes sans importer `stock.models` — ce que la
+# règle de frontière inter-apps interdit. Ce thin service est donc le SEUL
+# chemin supporté, exactement comme `record_stock_movement` l'est pour
+# l'écriture.
+
+def verrouiller_produit(produit_id):
+    """Renvoie le ``Produit`` VERROUILLÉ (``SELECT … FOR UPDATE``).
+
+    À appeler DANS le ``transaction.atomic()`` de l'appelant, AVANT de lire
+    ``quantite_stock`` : le verrou n'a de valeur que s'il précède la lecture
+    sur laquelle l'arithmétique est faite. Lève ``Produit.DoesNotExist`` comme
+    un ``get()`` ordinaire — l'appelant garde sa propre gestion d'absence.
+    """
+    from .models import Produit
+    return Produit.objects.select_for_update().get(pk=produit_id)
+
+
 # ── Point d'entrée cross-app : mouvement de stock + maj du produit ───────────
 # Les autres apps (ventes, installations, sav) décrémentent/incrémentent le
 # stock à travers ce service plutôt qu'en créant `MouvementStock` directement et
@@ -1854,7 +1885,8 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
                           created_by, save_produit=True, emplacement_source=None,
                           bin_source=None, bin_destination=None,
-                          bin_source_id=None, motif_rebut=None):
+                          bin_source_id=None, motif_rebut=None,
+                          verrouiller_produit=True):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1877,8 +1909,32 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     ``bin_source_id`` (casier connu par son ID au scan) sont des passe-plats
     additifs : ils existent pour que les chemins qui posaient un
     ``MouvementStock`` en direct puissent converger ici SANS perdre une seule
-    colonne. Absents = comportement historique strictement inchangé."""
-    from .models import MouvementStock, StockEmplacement
+    colonne. Absents = comportement historique strictement inchangé.
+
+    AUD216 — ``verrouiller_produit`` (défaut ``True``) : le service prend
+    LUI-MÊME le verrou de ligne ``SELECT … FOR UPDATE`` sur le produit avant
+    d'écrire, pour que le contrat cesse de reposer sur la discipline de chaque
+    appelant. Ce que cela garantit exactement, sans le survendre :
+
+    * deux écritures concurrentes sur le MÊME produit se sérialisent ici, même
+      si un appelant a oublié son verrou — la seconde attend le commit de la
+      première au lieu d'écrire par-dessus au même instant ;
+    * cela ne rend PAS juste une arithmétique déjà périmée : un appelant qui a
+      lu ``quantite_stock`` HORS verrou peut passer un ``quantite_apres``
+      calculé sur une valeur morte. Le verrou doit être pris AVANT la lecture
+      — c'est ce que font désormais les 9 sites listés par AUD216.
+
+    Le verrou n'est posé que dans un bloc atomique (hors transaction,
+    ``select_for_update`` lèverait ``TransactionManagementError``) et jamais
+    pour un produit non encore enregistré : sans transaction ouverte, le
+    comportement reste strictement historique. Un appelant qui détient déjà le
+    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op)."""
+    from django.db import transaction as _transaction
+    from .models import MouvementStock, Produit, StockEmplacement
+
+    if (verrouiller_produit and getattr(produit, 'pk', None)
+            and _transaction.get_connection().in_atomic_block):
+        Produit.objects.select_for_update().filter(pk=produit.pk).first()
     # NTWMS5 — casiers source/destination du poste scanner. None partout
     # ailleurs : comportement historique strictement inchangé.
     casiers = {'bin_destination': bin_destination}
