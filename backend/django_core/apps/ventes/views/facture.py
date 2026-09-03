@@ -1221,6 +1221,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 company=company, reference=ref, facture=facture,
                 client=facture.client, statut=Avoir.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
+                # AUD106 — la remise globale de la facture SUIT sur l'avoir.
+                # Elle n'était jamais reprise : l'avoir total recopiait les
+                # lignes BRUTES alors que la facture facture le NET, donc il
+                # créditait plus que ce qui avait été facturé.
+                remise_globale=facture.remise_globale,
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:

@@ -19,7 +19,123 @@ from django.conf import settings
 # telles quelles ('crm.Client', 'crm.Lead').
 
 
-class Facture(models.Model):
+class TotauxDocumentMixin:
+    """AUD106/AUD107 — LE SEUL PROPRIÉTAIRE de la chaîne HT → remise globale →
+    TVA par taux → TTC, partagé par ``Facture``, ``Avoir`` et ``NoteDebit``.
+
+    POURQUOI IL EXISTE. La chaîne était implémentée trois fois. Seule
+    ``Facture`` honorait ``remise_globale`` (QX1) ; ``Avoir`` et ``NoteDebit``
+    sommaient les lignes BRUTES. Conséquences chiffrées et réelles : sur une
+    facture remisée à 15 %, l'avoir TOTAL créditait le brut (20 400 TTC
+    facturés, 24 000 TTC crédités — 3 600 MAD offerts au client) et la note de
+    débit majorait le client sur un montant NON remisé. ``Avoir.remise_globale``
+    existait pourtant depuis sa migration d'origine : jamais lu, jamais posé —
+    un champ d'argent MORT sur un document client, qui donnait l'illusion que
+    la remise était gérée.
+
+    Le document hôte doit exposer : ``lignes`` (avec ``total_ht`` et
+    ``taux_tva_effectif``), ``remise_globale``, ``taux_tva`` et le triplet de
+    montants FIGÉS ``montant_ht``/``montant_tva``/``montant_ttc`` (nullable —
+    un avoir/une note sur facture de tranche fige ses montants comme la
+    facture).
+
+    Un document SANS remise globale (le défaut, 0) ou à montants figés garde la
+    sémantique historique « total = somme des lignes », au bit près.
+    """
+
+    @property
+    def _remise_globale_active(self):
+        """QX1 — vrai si une remise globale doit être appliquée aux totaux.
+
+        Ne s'applique JAMAIS à un document à montants figés (tranche
+        d'échéancier) et seulement si ``remise_globale`` > 0."""
+        from decimal import Decimal
+        if self.montant_ht is not None:
+            return False
+        return (getattr(self, 'remise_globale', None) or Decimal('0')) > 0
+
+    def _canonique(self):
+        """La chaîne canonique QX1 sur les lignes de CE document."""
+        from apps.ventes.selectors import _canonical_totaux
+        return _canonical_totaux(
+            self.lignes.all(),
+            remise_globale_pct=self.remise_globale,
+            fallback_taux=self.taux_tva)
+
+    @property
+    def total_ht(self):
+        # Montant figé (tranche d'échéancier) → tel quel. Sinon : somme des
+        # lignes, NETTE de la remise globale quand elle est active.
+        if self.montant_ht is not None:
+            return self.montant_ht
+        if self._remise_globale_active:
+            return self._canonique()['ht_net']
+        return sum(ligne.total_ht for ligne in self.lignes.all())
+
+    @property
+    def tva_par_taux(self):
+        """Ventilation de la TVA par taux (10 % / 20 %), réconciliée au centime.
+
+        Mono-taux (tout l'historique et les documents de tranche) → un seul
+        panier, formule d'origine, rendu strictement inchangé. Taux mixtes →
+        un panier par taux, chaque TVA arrondie au centime, dont la somme est
+        le total TVA. DC23 — délègue au selector unique ``tva_buckets`` ; QX1 —
+        remise globale active → la TVA est calculée sur le HT NET."""
+        if self._remise_globale_active:
+            return self._canonique()['tva_par_taux']
+        from apps.ventes.selectors import tva_buckets
+        frozen = None
+        if self.montant_tva is not None:
+            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
+        return tva_buckets(
+            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
+
+    @property
+    def total_tva(self):
+        if self.montant_tva is not None:
+            return self.montant_tva
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def total_ttc(self):
+        if self.montant_ttc is not None:
+            return self.montant_ttc
+        if self._remise_globale_active:
+            return self._canonique()['ttc']
+        return self.total_ht + self.total_tva
+
+    @property
+    def totaux_affichage(self):
+        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, ht_net,
+        tva_par_taux, ttc}``, seule source des documents client.
+
+        Les gabarits imprimaient « Sous-total HT » = ``total_ht`` puis
+        « Remise globale (X %) » = ``total_ht × remise / 100``. Or ``total_ht``
+        EST le HT NET dès qu'une remise globale est active (QX1) : le document
+        affichait un net étiqueté « Sous-total » puis lui appliquait le
+        pourcentage une SECONDE fois — double décompte, et une chaîne imprimée
+        qui ne retombait sur aucun total de la page. UN GABARIT NE RECALCULE
+        JAMAIS UN POURCENTAGE : il lit ces trois valeurs.
+
+        Sans remise globale active, ``ht_brut == ht_net`` et ``remise`` vaut 0
+        — rendu strictement inchangé."""
+        from decimal import Decimal
+        if self._remise_globale_active:
+            totaux = self._canonique()
+            return {
+                'ht_brut': totaux['ht_brut'], 'remise': totaux['remise'],
+                'ht_net': totaux['ht_net'],
+                'tva_par_taux': totaux['tva_par_taux'], 'ttc': totaux['ttc'],
+            }
+        ht = self.total_ht
+        return {
+            'ht_brut': ht, 'remise': Decimal('0'), 'ht_net': ht,
+            'tva_par_taux': self.tva_par_taux, 'ttc': self.total_ttc,
+        }
+
+
+class Facture(TotauxDocumentMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         EMISE = 'emise', 'Émise'
@@ -385,120 +501,11 @@ class Facture(models.Model):
                 self.conditions_paiement = libelle
         super().save(*args, **kwargs)
 
-    @property
-    def _remise_globale_active(self):
-        """QX1 — vrai si une remise globale doit être appliquée aux totaux.
-
-        Ne s'applique JAMAIS à une facture de tranche (montants figés) et
-        seulement si ``remise_globale`` > 0. Une facture sans remise (défaut 0)
-        garde donc la sémantique historique « total = somme des lignes »,
-        byte-identique."""
-        from decimal import Decimal
-        if self.montant_ht is not None:
-            return False
-        return (self.remise_globale or Decimal('0')) > 0
-
-    @property
-    def total_ht(self):
-        # Tranche d'échéancier : montant figé. Sinon : somme des lignes.
-        if self.montant_ht is not None:
-            return self.montant_ht
-        if self._remise_globale_active:
-            # QX1 — HT NET (remise globale appliquée) via la chaîne canonique
-            # partagée avec le devis/l'échéancier (centime-exact).
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['ht_net']
-        return sum(ligne.total_ht for ligne in self.lignes.all())
-
-    @property
-    def total_tva(self):
-        if self.montant_tva is not None:
-            return self.montant_tva
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
-
-    @property
-    def tva_par_taux(self):
-        """Ventilation de la TVA par taux (10 % / 20 %), réconciliée au centime.
-
-        Miroir exact de la logique devis : on regroupe les lignes par taux
-        effectif. Mono-taux (toutes les factures historiques ou de tranche) →
-        un seul panier, calculé par la formule d'origine, rendu strictement
-        inchangé. Taux mixtes (10/20) → un panier par taux, chaque TVA
-        arrondie au centime, dont la somme est le total TVA.
-
-        DC23 — délègue au selector unique ``tva_buckets``. Facture de tranche
-        (montant figé) : panier figé passé via ``frozen``.
-
-        QX1 — quand une remise globale est active, la TVA est calculée sur le HT
-        NET via la même chaîne canonique que le devis (``_canonical_totaux``),
-        pour que devis/BC/facture s'accordent au centime.
-        """
-        if self._remise_globale_active:
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['tva_par_taux']
-        from apps.ventes.selectors import tva_buckets
-        frozen = None
-        if self.montant_tva is not None:
-            # Facture de tranche (acompte) : montant figé, un seul panier.
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
-        return tva_buckets(
-            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
-
-    @property
-    def total_ttc(self):
-        if self.montant_ttc is not None:
-            return self.montant_ttc
-        if self._remise_globale_active:
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['ttc']
-        return self.total_ht + self.total_tva
-
-    @property
-    def totaux_affichage(self):
-        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, ht_net,
-        tva_par_taux, ttc}``, seule source des documents client.
-
-        Le gabarit ``templates/pdf/facture.html`` imprimait « Sous-total HT »
-        = ``facture.total_ht`` puis « Remise globale (X %) » =
-        ``total_ht × remise / 100``. Or depuis QX1 ``total_ht`` EST le HT NET
-        dès que ``remise_globale > 0`` : le document affichait un net étiqueté
-        « Sous-total », puis lui appliquait le pourcentage une SECONDE fois —
-        double décompte, et une chaîne imprimée qui ne retombait sur aucun
-        total de la page. Le correctif QX1/QX2 avait pourtant été appliqué
-        partout ailleurs (PDF bon de commande, export UBL) : seul le document
-        CLIENT le plus imprimé avait été oublié.
-
-        Un gabarit ne recalcule JAMAIS un pourcentage : il lit ces trois
-        valeurs. Sans remise globale active (défaut, et toute facture de
-        tranche à montants figés), ``ht_brut == ht_net`` et ``remise`` vaut 0
-        — rendu strictement inchangé."""
-        from decimal import Decimal
-        if self._remise_globale_active:
-            from apps.ventes.selectors import _canonical_totaux
-            totaux = _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)
-            return {
-                'ht_brut': totaux['ht_brut'], 'remise': totaux['remise'],
-                'ht_net': totaux['ht_net'],
-                'tva_par_taux': totaux['tva_par_taux'], 'ttc': totaux['ttc'],
-            }
-        ht = self.total_ht
-        return {
-            'ht_brut': ht, 'remise': Decimal('0'), 'ht_net': ht,
-            'tva_par_taux': self.tva_par_taux, 'ttc': self.total_ttc,
-        }
+    # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
+    # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans
+    # ``TotauxDocumentMixin`` (en tête de module), partagé au caractère près
+    # avec Avoir et NoteDebit. Corps IDENTIQUES à ceux qui étaient ici :
+    # aucune valeur ne bouge pour la Facture.
 
     @property
     def montant_paye(self):
@@ -946,7 +953,7 @@ class Paiement(models.Model):
         return reste if reste > 0 else Decimal('0')
 
 
-class Avoir(models.Model):
+class Avoir(TotauxDocumentMixin, models.Model):
     """Note de crédit (Avoir) liée à une facture émise — style Odoo : on garde
     le lien vers la facture d'origine, jamais une facture négative isolée.
 
@@ -1002,36 +1009,13 @@ class Avoir(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
-    def total_ht(self):
-        if self.montant_ht is not None:
-            return self.montant_ht
-        return sum(ligne.total_ht for ligne in self.lignes.all())
-
-    @property
-    def total_tva(self):
-        if self.montant_tva is not None:
-            return self.montant_tva
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
-
-    @property
-    def tva_par_taux(self):
-        """Ventilation TVA par taux — même logique exacte que Facture.
-
-        DC23 — délègue au selector unique ``tva_buckets``."""
-        from apps.ventes.selectors import tva_buckets
-        frozen = None
-        if self.montant_tva is not None:
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
-        return tva_buckets(
-            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
-
-    @property
-    def total_ttc(self):
-        if self.montant_ttc is not None:
-            return self.montant_ttc
-        return self.total_ht + self.total_tva
+    # AUD106 — les totaux viennent de ``TotauxDocumentMixin`` (en tête de
+    # module). AVANT, les trois propriétés de l'Avoir sommaient les lignes
+    # BRUTES et n'ont JAMAIS lu ``remise_globale`` — grep sur tout ``apps/`` :
+    # le champ n'apparaissait que dans sa déclaration et sa migration. Sur une
+    # facture remisée à 15 %, l'avoir TOTAL créditait donc le brut (20 400 TTC
+    # facturés, 24 000 TTC crédités : 3 600 MAD offerts). Le champ existait et
+    # donnait l'illusion que la remise était gérée (FAC-16).
 
 
 class LigneAvoir(models.Model):
