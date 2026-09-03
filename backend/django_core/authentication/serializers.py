@@ -156,6 +156,28 @@ class RegisterSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 'role', 'must_change_password',
         )
 
+    def validate_password(self, value):
+        """AUD402 — force du mot de passe à la création admin→collaborateur.
+
+        Jusqu'ici ``create()`` posait le mot de passe tel quel : un
+        administrateur pressé créait un compte avec « azerty » même quand sa
+        société avait durci sa politique FG22. Même entrée unique que le signup
+        public et le changement de mot de passe.
+        """
+        from .password_policy import validate_new_password
+        data = getattr(self, 'initial_data', None) or {}
+        candidate = CustomUser(
+            username=(data.get('username') or '').strip(),
+            email=(data.get('email') or '').strip(),
+            first_name=data.get('first_name') or '',
+            last_name=data.get('last_name') or '',
+        )
+        errors = validate_new_password(
+            value, self.context.get('company'), user=candidate)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return value
+
     def create(self, validated_data):
         from apps.roles.models import Role
         company = self.context.get('company')

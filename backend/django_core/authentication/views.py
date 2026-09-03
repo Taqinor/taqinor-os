@@ -558,6 +558,23 @@ class RegisterCompanyView(generics.GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # AUD402 — force de mot de passe à la CRÉATION (jusqu'ici seul
+        # ``ChangePasswordView`` câblait AUTH_PASSWORD_VALIDATORS : un signup
+        # public passait avec « 1 »). Validé AVANT de créer la société, pour
+        # qu'un refus ne laisse aucune Company orpheline. La société n'existe
+        # pas encore → pas de politique FG22 applicable, seuls les validateurs
+        # Django (dont la longueur minimale) s'appliquent ici.
+        from .password_policy import validate_new_password
+        password_errors = validate_new_password(
+            password, None,
+            user=CustomUser(username=username, email=email),
+        )
+        if password_errors:
+            return Response(
+                {'password': password_errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         slug_base = slugify(company_nom) or 'company'
         slug = slug_base
         i = 1
@@ -1467,8 +1484,6 @@ class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError as DjValidationError
         from django.utils import timezone
         user = request.user
         current = request.data.get('current_password', '')
@@ -1483,21 +1498,15 @@ class ChangePasswordView(APIView):
                 {'detail': 'Le nouveau mot de passe est requis.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            validate_password(new, user=user)
-        except DjValidationError as exc:
+        # AUD402 — validateurs Django + politique société FG22 via l'entrée
+        # UNIQUE ``validate_new_password`` (le même helper garde désormais les
+        # deux chemins de CRÉATION de compte). Messages et statut inchangés.
+        from .password_policy import validate_new_password
+        password_errors = validate_new_password(
+            new, getattr(user, 'company', None), user=user)
+        if password_errors:
             return Response(
-                {'detail': ' '.join(exc.messages)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # FG22 — politique par société (longueur/complexité) en plus des
-        # validateurs Django. Inerte tant que la société n'a rien durci.
-        from .password_policy import validate_password_policy
-        policy_errors = validate_password_policy(
-            new, getattr(user, 'company', None))
-        if policy_errors:
-            return Response(
-                {'detail': ' '.join(policy_errors)},
+                {'detail': ' '.join(password_errors)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         user.set_password(new)
