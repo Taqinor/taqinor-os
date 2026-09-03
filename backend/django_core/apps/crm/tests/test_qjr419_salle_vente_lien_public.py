@@ -115,8 +115,12 @@ class SalleVenteLienPublicTests(TestCase):
     def test_un_devis_d_une_autre_societe_ne_fuit_rien(self):
         """Multi-tenant : ni référence, ni total, ni lien."""
         autre = Company.objects.create(nom='Autre QJR419', slug='qjr419-autre')
+        # `Devis.client` est NOT NULL : le devis de l'autre société porte SON
+        # propre client (le cloisonnement testé n'en dépend pas).
+        client_autre = Client.objects.create(
+            company=autre, nom='Client Autre QJR419')
         devis_autre = Devis.objects.create(
-            company=autre, reference='DEV-QJR419-X',
+            company=autre, client=client_autre, reference='DEV-QJR419-X',
             statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'))
         SalleVenteItem.objects.all().delete()
         SalleVenteItem.objects.create(
