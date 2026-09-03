@@ -758,21 +758,35 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
 
     if destination == PieceRetiree.Destination.STOCK_OCCASION:
         if not piece.restockee:
+            from django.db import transaction
             from apps.stock.services import (
                 mouvement_type_entree, record_stock_movement,
+                verrouiller_produit,
             )
-            produit.refresh_from_db()
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + quantite
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=mouvement_type_entree(),
-                quantite=quantite, quantite_avant=qte_avant,
-                quantite_apres=qte_apres, reference=ticket.reference,
-                note=f'Retrait pièce SAV {ticket.reference} (stock occasion)',
-                created_by=user)
-            piece.restockee = True
-            piece.save(update_fields=['restockee'])
+            # AUD216 — VERROU de ligne produit AVANT la lecture de
+            # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller,
+            # donc deux retraits de pièce concurrents sur le même produit
+            # lisaient la même valeur et la seconde ré-incrémentation écrasait
+            # la première (une pièce remise en stock disparaissait du registre).
+            # Verrou pris par le thin service stock — jamais d'import des
+            # models stock ici. Le bloc atomique est posé ICI parce que
+            # `retirer_piece` est un service PUBLIC : la vue SAV l'enveloppe
+            # déjà (imbrication = simple savepoint, sans effet), mais un appel
+            # hors transaction ferait autrement échouer `select_for_update`.
+            with transaction.atomic():
+                produit = verrouiller_produit(produit.pk)
+                qte_avant = produit.quantite_stock
+                qte_apres = qte_avant + quantite
+                record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=mouvement_type_entree(),
+                    quantite=quantite, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres, reference=ticket.reference,
+                    note=(f'Retrait pièce SAV {ticket.reference} '
+                          '(stock occasion)'),
+                    created_by=user)
+                piece.restockee = True
+                piece.save(update_fields=['restockee'])
     elif destination == PieceRetiree.Destination.RETOUR_FOURNISSEUR:
         if equipement_remplace is not None:
             claim = WarrantyClaim.objects.create(

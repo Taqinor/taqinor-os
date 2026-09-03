@@ -61,7 +61,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
         mouvement_type_sortie, record_stock_movement,
-        sortie_exists_for_reference,
+        sortie_exists_for_reference, verrouiller_produit,
     )
     from apps.ventes.models import BonCommande
 
@@ -85,7 +85,13 @@ def reserver_stock_devis_facture(*, devis, user, company):
         produit = ligne.produit
         if produit is None:
             continue
-        produit.refresh_from_db()
+        # AUD216 — VERROU de ligne produit AVANT la lecture de
+        # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller, et
+        # la garde « stock insuffisant » ci-dessous décidait donc sur une
+        # valeur qu'une transaction concurrente pouvait déjà avoir consommée
+        # (survente, exactement ce que U9 existe pour empêcher). Verrou pris
+        # par le thin service stock — jamais d'import des models stock ici.
+        produit = verrouiller_produit(ligne.produit_id)
         # Même règle que la livraison BC (ERR15) : on arrondit au plus proche
         # (HALF_UP) au lieu de tronquer, le registre de stock étant en entiers.
         qte = int(Decimal(ligne.quantite).quantize(

@@ -74,16 +74,27 @@ def creer_demande_transfert(*, company, user, produit_id, source_id,
 
 
 def expedier_transfert(transfert, user):
-    """Départ du camion : la SOURCE décrémente, la destination attend."""
+    """Départ du camion : la SOURCE décrémente, la destination attend.
+
+    AUD217 — le DOCUMENT lui-même est verrouillé (``select_for_update``) AVANT
+    son contrôle de statut. Distinct d'AUD216, qui verrouille la LIGNE DE
+    STOCK : ici l'objet en course est le transfert. Sans ce verrou, deux
+    requêtes d'expédition concurrentes lisaient toutes les deux
+    ``statut == DEMANDE``, passaient toutes les deux le contrôle et
+    décrémentaient DEUX FOIS la source pour un seul départ de camion. Patron
+    déjà utilisé par ``promotions.services.debiter_carte_cadeau``.
+    """
     from django.db import transaction
 
     from .models import StockEmplacement, TransfertStock
 
-    if transfert.statut != TransfertStock.Statut.DEMANDE:
-        raise ValueError(
-            'Seul un transfert DEMANDÉ peut être expédié.')
-
     with transaction.atomic():
+        transfert = TransfertStock.objects.select_for_update().get(
+            pk=transfert.pk)
+        if transfert.statut != TransfertStock.Statut.DEMANDE:
+            raise ValueError(
+                'Seul un transfert DEMANDÉ peut être expédié.')
+
         source = transfert.source
         if not source.is_principal:
             ligne, _ = StockEmplacement.objects.select_for_update(
@@ -111,29 +122,45 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
     Un écart (manquant ou surplus) est journalisé dans la note du transfert
     ET tracé par un ``MouvementStock`` AJUSTEMENT motivé — jamais absorbé en
     silence.
+
+    AUD217 — même verrou de DOCUMENT qu'``expedier_transfert`` : deux
+    réceptions concurrentes du même transfert lisaient toutes les deux
+    ``statut == EXPEDIE`` et créditaient DEUX FOIS la destination (et deux
+    fois l'ajustement d'écart) pour une seule arrivée. Le contrôle de statut
+    ne vaut que s'il est fait SOUS verrou, d'où le re-fetch en tout début de
+    transaction.
     """
     from django.db import transaction
     from django.utils import timezone
 
     from .models import MouvementStock, StockEmplacement, TransfertStock
-    from .services import record_stock_movement
-
-    if transfert.statut != TransfertStock.Statut.EXPEDIE:
-        raise ValueError('Seul un transfert EXPÉDIÉ peut être réceptionné.')
-
-    if quantite_recue is None:
-        quantite_recue = transfert.quantite
-    try:
-        quantite_recue = int(quantite_recue)
-    except (TypeError, ValueError):
-        raise ValueError('Quantité reçue invalide.')
-    if quantite_recue < 0:
-        raise ValueError('La quantité reçue ne peut pas être négative.')
+    from .services import record_stock_movement, verrouiller_produit
 
     with transaction.atomic():
+        transfert = TransfertStock.objects.select_for_update().get(
+            pk=transfert.pk)
+        if transfert.statut != TransfertStock.Statut.EXPEDIE:
+            raise ValueError(
+                'Seul un transfert EXPÉDIÉ peut être réceptionné.')
+
+        if quantite_recue is None:
+            quantite_recue = transfert.quantite
+        try:
+            quantite_recue = int(quantite_recue)
+        except (TypeError, ValueError):
+            raise ValueError('Quantité reçue invalide.')
+        if quantite_recue < 0:
+            raise ValueError('La quantité reçue ne peut pas être négative.')
+
         destination = transfert.destination
         if not destination.is_principal and quantite_recue:
-            ligne, _ = StockEmplacement.objects.get_or_create(
+            # AUD216 — VERROU de ligne : asymétrie corrigée avec
+            # `expedier_transfert` juste au-dessus, qui verrouille déjà. Sans
+            # lui, deux réceptions concurrentes sur le même couple
+            # (produit, emplacement) lisaient la même `quantite` et la seconde
+            # écrasait l'incrément de la première.
+            ligne, _ = StockEmplacement.objects.select_for_update(
+            ).get_or_create(
                 produit=transfert.produit, emplacement=destination,
                 defaults={'company': transfert.company, 'quantite': 0})
             ligne.quantite += quantite_recue
@@ -143,8 +170,9 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
         if ecart:
             # L'écart change le TOTAL de la société : il est tracé comme un
             # ajustement motivé, jamais dissimulé dans la ventilation.
-            produit = transfert.produit
-            produit.refresh_from_db()
+            # AUD216 — même raison : `refresh_from_db()` relisait le produit
+            # sans le verrouiller avant d'en dériver `qte_apres`.
+            produit = verrouiller_produit(transfert.produit_id)
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + ecart
             record_stock_movement(

@@ -186,6 +186,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
+        elif self.action == 'prix_fournisseurs':
+            # AUD213 — cette action ne renvoie QUE des prix d'ACHAT (et leurs
+            # paliers) : même gate `prix_achat_voir` que le ViewSet dédié et
+            # que le champ `prix_achat` de `ProduitSerializer`. Sans ce cas
+            # explicite elle retombait sur `IsAdminRole` (`get_permissions`
+            # prime sur le `permission_classes` de l'@action), qu'un rôle
+            # « roles_gerer » SANS `prix_achat_voir` franchissait.
+            return [HasPermissionOrLegacy('prix_achat_voir')()]
         elif self.action in (
                 'analyse_achats', 'analyse_achats_export_xlsx',
                 'analyse_achats_pdf',
@@ -429,14 +437,19 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         })
 
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
-            permission_classes=[IsAnyRole])
+            permission_classes=[HasPermissionOrLegacy('prix_achat_voir')])
     def prix_fournisseurs(self, request, *args, **kwargs):
         """N17 — liste de prix multi-fournisseurs de ce produit (INTERNE),
-        triée du moins cher au plus cher."""
+        triée du moins cher au plus cher.
+
+        AUD213 — gardée par `prix_achat_voir` (la garde effective est celle de
+        `get_permissions` ci-dessus, qui prime ; ce `permission_classes` la
+        double pour que la lecture du décorateur ne mente pas)."""
         produit = self.get_object()
         qs = produit.prix_fournisseurs.select_related('fournisseur').order_by(
             'prix_achat')
-        return Response(PrixFournisseurSerializer(qs, many=True).data)
+        return Response(PrixFournisseurSerializer(
+            qs, many=True, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=['get'], url_path='emplacements',
             permission_classes=[IsAnyRole])
