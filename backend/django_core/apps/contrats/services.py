@@ -2407,10 +2407,25 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
     Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
     CONTRAT12) ; aucun funnel ``STAGES.py`` (rule #2). La société est celle de la
     ligne (posée côté serveur). Renvoie la Facture créée.
+
+    AUD183 — CLÉ D'IDEMPOTENCE : la ligne est RECHARGÉE sous
+    ``select_for_update()`` à l'intérieur du ``@transaction.atomic`` AVANT la
+    garde « déjà facturée ». Sans ce verrou, la garde portait sur l'objet
+    DÉJÀ CHARGÉ EN MÉMOIRE par le beat (queryset itéré sans verrou), donc deux
+    appels concurrents (double worker Celery, retry après timeout apparent, ou
+    ``rejouer_cycle`` lancé pendant un passage du beat) franchissaient tous
+    deux la garde avant que le premier n'ait posé ``facture_id`` — deux
+    Factures distinctes pour la même échéance. Le second garde-fou
+    (``enregistrer_cycle``) ne détecte le doublon qu'APRÈS création de la
+    Facture, trop tard.
     """
     from decimal import ROUND_HALF_UP
 
     from .models import LigneEcheance
+
+    # Verrou de ligne : la garde d'idempotence teste désormais l'état PERSISTÉ,
+    # pas un instantané mémoire.
+    ligne = LigneEcheance.objects.select_for_update().get(pk=ligne.pk)
 
     echeancier = ligne.echeancier
     if not echeancier.facturation_active:

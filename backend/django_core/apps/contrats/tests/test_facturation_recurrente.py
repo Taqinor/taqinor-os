@@ -141,6 +141,59 @@ class FacturationApiTests(TestCase):
         self.assertEqual(res.status_code, 403)
 
 
+class IdempotenceVerrouLigneTests(TestCase):
+    """AUD183 — clé d'idempotence : verrou en base sur la LigneEcheance.
+
+    La garde « déjà facturée » portait sur l'objet DÉJÀ CHARGÉ EN MÉMOIRE par
+    le beat (queryset itéré sans `select_for_update`) : deux exécutions
+    concurrentes — double worker Celery, retry après timeout apparent, ou
+    `rejouer_cycle` lancé pendant un passage du beat — franchissaient toutes
+    deux la garde avant que la première n'ait posé `facture_id`, produisant
+    DEUX Factures pour la même échéance. Ce test reproduit exactement ce
+    mécanisme de façon déterministe : deux INSTANCES distinctes de la même
+    ligne, la seconde restant « périmée » en mémoire.
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-idem", "FacRecIdem")
+        self.user = make_user(self.co, "facrec-idem-admin", role="admin")
+
+    def test_seconde_execution_sur_instance_perimee_ne_double_facture_pas(self):
+        from apps.contrats.models import LigneEcheance
+        _, _, ligne = make_setup(self.co, montant="1200")
+        # Deux instances SÉPARÉES de la même ligne, toutes deux « fraîches »
+        # avant la première facturation : c'est l'état de deux workers.
+        instance_a = LigneEcheance.objects.get(pk=ligne.pk)
+        instance_b = LigneEcheance.objects.get(pk=ligne.pk)
+        self.assertIsNone(instance_b.facture_id)
+
+        services.facturer_ligne_echeance(instance_a, user=self.user)
+
+        with self.assertRaises(services.FacturationError):
+            services.facturer_ligne_echeance(instance_b, user=self.user)
+
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 1)
+        ligne.refresh_from_db()
+        self.assertIsNotNone(ligne.facture_id)
+
+    def test_rejeu_apres_facturation_ne_double_facture_pas(self):
+        from apps.contrats.models import LigneEcheance
+        _, _, ligne = make_setup(self.co, montant="1200")
+        perimee = LigneEcheance.objects.get(pk=ligne.pk)
+        services.facturer_ligne_echeance_journalisee(ligne, user=self.user)
+        with self.assertRaises(services.FacturationError):
+            services.facturer_ligne_echeance_journalisee(
+                perimee, user=self.user)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 1)
+
+    def test_chemin_nominal_reste_vert(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        self.assertEqual(facture.montant_ttc, Decimal("1200.00"))
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.facture_id, facture.id)
+
+
 class TauxTvaTraverseTests(TestCase):
     """AUD181 — le taux de TVA société TRAVERSE toute la facturation contrats.
 
