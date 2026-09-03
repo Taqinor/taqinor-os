@@ -1599,9 +1599,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 type_intervention=request.data.get('type_intervention'))
         except TicketSansInstallationError as exc:
             return Response({'detail': str(exc)}, status=400)
+        # AUD514 — le passage NOUVEAU → PLANIFIE passe par la machine d'états
+        # gardée (``machine_etats``), plus par une écriture directe qui
+        # court-circuitait le graphe. La transition est dans le graphe normal ;
+        # un refus (statut inattendu) laisse simplement le ticket en l'état —
+        # l'intervention, elle, est déjà créée.
         if ticket.statut == Ticket.Statut.NOUVEAU:
-            ticket.statut = Ticket.Statut.PLANIFIE
-            ticket.save(update_fields=['statut'])
+            from .machine_etats import TransitionInterdite, changer_statut
+            try:
+                changer_statut(ticket, Ticket.Statut.PLANIFIE, persister=False)
+                ticket.save(update_fields=['statut'])
+            except TransitionInterdite:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'sav: planifier_intervention — transition NOUVEAU → '
+                    'PLANIFIE refusée sur le ticket #%s', ticket.pk)
         activity.log_note(
             ticket, request.user,
             f'Intervention #{interv.id} planifiée depuis le ticket.')
