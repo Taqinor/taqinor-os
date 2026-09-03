@@ -64,8 +64,8 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
     # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:945",
-    "backend/django_core/apps/facturation/models.py:1155",
+    "backend/django_core/apps/facturation/models.py:951",
+    "backend/django_core/apps/facturation/models.py:1161",
     "backend/django_core/apps/ventes/models.py:1180",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les

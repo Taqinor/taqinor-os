@@ -435,9 +435,10 @@ def facturer_contrat_maintenance(contrat, *, user=None, company=None,
     période était perdu, définitivement et en silence.
 
     Renvoie la ``Facture`` créée. Lève ``FacturationContratDoublonError``
-    (période déjà facturée ou non due), ``FacturationContratError`` (contrat
-    introuvable pour la société) ou ``ValueError`` (pré-conditions FG40 :
-    facturation inactive, prix absent, contrat inactif).
+    (période DÉJÀ facturée : échéance non encore atteinte, ou cycle ``genere``
+    existant → 409), ``FacturationContratError`` (contrat introuvable pour la
+    société, ou facturation récurrente désactivée → 400) ou ``ValueError``
+    (autres pré-conditions FG40, dont le prix absent → 400).
     """
     from django.utils import timezone as _timezone
 
@@ -462,6 +463,16 @@ def facturer_contrat_maintenance(contrat, *, user=None, company=None,
             "Contrat de maintenance introuvable pour cette société.")
     contrat = verrouille
 
+    # `facturation_due()` est fausse pour DEUX raisons très différentes, à ne
+    # jamais confondre (FG40 vs AUD149) :
+    #   * la facturation récurrente du contrat est ÉTEINTE (ou le contrat est
+    #     inactif) — une pré-condition métier FG40, refusée en 400 comme un
+    #     prix absent. Ce n'est pas un doublon : rien n'a jamais été facturé.
+    #   * l'échéance n'est pas encore atteinte — c'est LE signal de la période
+    #     déjà facturée (double-clic, collision avec le beat) : 409.
+    if not contrat.facturation_active or not contrat.actif:
+        raise FacturationContratError(
+            "La facturation récurrente de ce contrat est désactivée.")
     if not contrat.facturation_due(today=today):
         raise FacturationContratDoublonError(
             "La facturation de ce contrat n'est pas due "

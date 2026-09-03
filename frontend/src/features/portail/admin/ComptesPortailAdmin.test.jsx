@@ -36,18 +36,29 @@ function renderPage(ui) {
 }
 
 describe('ComptesPortailAdmin — PACT96', () => {
-  it('affiche la liste des comptes avec email, jeton et statut actif', async () => {
+  // AUD141 — l'API ne sert PLUS le jeton en clair : la liste ne porte qu'un
+  // aperçu non réutilisable (`token_apercu`, 4 derniers caractères), et le lien
+  // complet ne s'obtient que par l'action serveur journalisée « Copier le lien ».
+  // Le fixture garde volontairement un `token_acces` (charge utile périmée ou
+  // hostile) pour prouver que l'écran ne le rend JAMAIS, même s'il lui arrive.
+  it('affiche la liste des comptes avec email, aperçu du jeton et statut actif', async () => {
     portailApi.admin.comptes.liste.mockResolvedValue({
       data: [{
-        id: 1, client: 12, email: 'client@exemple.ma', token_acces: 'tok-abc123',
+        id: 1, client: 12, email: 'client@exemple.ma',
+        token_acces: 'tok-abc123', token_apercu: '••••c123',
         actif: true, derniere_connexion: null, date_creation: '2026-08-01T10:00:00Z',
       }],
     })
     renderPage(<ComptesPortailAdmin />)
     await waitFor(() => expect(
       screen.getAllByText('client@exemple.ma').length).toBeGreaterThan(0))
-    expect(screen.getAllByText('tok-abc123').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('••••c123').length).toBeGreaterThan(0)
     expect(screen.getAllByText('#12').length).toBeGreaterThan(0)
+    // Statut actif : la bascule est rendue et cochée.
+    expect(screen.getAllByRole('switch')[0]).toBeChecked()
+    // Le jeton COMPLET n'apparaît nulle part — ni en cellule, ni ailleurs.
+    expect(screen.queryAllByText('tok-abc123')).toHaveLength(0)
+    expect(document.body.textContent).not.toContain('tok-abc123')
   })
 
   it('affiche un état vide quand aucun compte', async () => {

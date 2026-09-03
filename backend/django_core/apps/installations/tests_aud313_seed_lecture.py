@@ -86,8 +86,12 @@ class LectureNAmorcePasTests(TestCase):
 
     def test_get_etapes_du_chantier_ne_cree_aucune_ligne(self):
         """ROUGE avant AUD313 : l'onglet « Jalons » amorçait la société."""
+        # Le rôle Technicien porte SCOPE_TEAM : il ne voit que les chantiers
+        # dont il est le responsable (sinon 404 sur le détail). C'est
+        # exactement le cas d'usage visé — SON chantier, SON onglet Jalons.
         inst = Installation.objects.create(
-            company=self.company, reference='AUD313-1')
+            company=self.company, reference='AUD313-1',
+            technicien_responsable=self.technicien)
         api = auth(self.technicien)
         r = api.get(f'/api/django/installations/chantiers/{inst.id}/etapes/')
         self.assertEqual(r.status_code, 200, r.data)

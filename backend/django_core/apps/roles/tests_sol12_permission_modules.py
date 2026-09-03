@@ -64,10 +64,33 @@ class TableCorrespondanceTests(TestCase):
             self.assertNotIn(code, PERMISSION_MODULE, code)
 
     def test_les_modules_optionnels_sont_couverts(self):
-        """Les modules éteints à la création (SOL8) doivent être masquables."""
+        """Les modules éteints à la création (SOL8) doivent être masquables.
+
+        Restreint aux modules qui POSSÈDENT des codes de permission propres :
+        masquer un module n'a de sens que s'il a des cases à cacher (cf.
+        ``test_pos_ne_porte_encore_aucun_code_a_masquer``)."""
         couverts = set(PERMISSION_MODULE.values())
-        for module in ('pos', 'paie', 'scm', 'douane', 'transport'):
+        for module in ('paie', 'scm', 'douane', 'transport'):
             self.assertIn(module, couverts, module)
+
+    def test_pos_ne_porte_encore_aucun_code_a_masquer(self):
+        """`pos` est optionnel mais n'a AUCUN code de permission à lui.
+
+        Ses vues sont gardées par le grossier ``IsResponsableOrAdmin`` (aucun
+        ``pos_*`` dans ``ALL_PERMISSIONS``) : le picker n'affiche aucune case
+        POS, il n'y a donc rien à masquer et rien à mapper — une entrée
+        ``PERMISSION_MODULE`` pointant 'pos' devrait forcément citer le code
+        d'un AUTRE module, ce qui masquerait ce module-là par erreur.
+
+        Ce test TOMBE le jour où un code ``pos_*`` apparaît : il faudra alors
+        l'ajouter à ``PERMISSION_MODULE``, sinon sa case resterait visible dans
+        une société qui n'a pas le module."""
+        codes_pos = sorted(c for c in ALL_PERMISSIONS if c.startswith('pos_'))
+        self.assertEqual(
+            codes_pos, [],
+            'des codes POS existent désormais : mappez-les sur '
+            f"PERMISSION_MODULE['<code>'] = 'pos' — {codes_pos}")
+        self.assertNotIn('pos', set(PERMISSION_MODULE.values()))
 
 
 class EndpointTests(TestCase):

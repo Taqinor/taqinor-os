@@ -403,6 +403,9 @@ unmapped_ok:
   # auto-ordonnés par leurs @after internes ; aucun prérequis de vague
   # plateforme.
   - AUD
+  # AUDV — menu fondateur (exposition des features invisibles, 03/09/2026) :
+  # draine APRES les correctifs AUD1-AUD5 (regle d'en-tete du groupe), pas de vague.
+  - AUDV
   # SOL — Specialisation ERP solaire (Groupe SOL de PLAN.md, 2026-09-02) :
   # auto-ordonne par ses propres @after (SOL1 -> SOL2 -> SOL3 -> ...), aucun
   # prerequis de vague plateforme.

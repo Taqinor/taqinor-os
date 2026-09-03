@@ -1990,6 +1990,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             current_lng = float(best.installation.gps_lng or 0)
             remaining.remove(best)
         stops = []
+        # AUD324 (suite) — UN SEUL contexte pour toute la passe de
+        # sérialisation. Le cache de shot-list mémoïsé par
+        # `InterventionSerializer._shotlist` vit dans le contexte : un
+        # dictionnaire neuf par arrêt le repartait de zéro, et « Ma tournée »
+        # retirait donc une requête `ShotListSlot` PAR intervention (le seul
+        # des trois écrans de dispatch resté en N+1).
+        contexte = {'request': request}
         for iv in ordered:
             lat = iv.installation.gps_lat
             lng = iv.installation.gps_lng
@@ -1999,8 +2006,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                     f'https://www.google.com/maps/dir/?api=1&destination='
                     f'{lat},{lng}')
             stops.append({
-                **InterventionSerializer(
-                    iv, context={'request': request}).data,
+                **InterventionSerializer(iv, context=contexte).data,
                 'itineraire_url': maps_link,
                 # NTMOB21 — coordonnées du site exposées telles quelles (elles
                 # étaient déjà encodées dans `itineraire_url`) : l'écran

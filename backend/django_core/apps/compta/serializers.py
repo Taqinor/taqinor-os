@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -2469,6 +2470,7 @@ class ComptePortailClientSerializer(serializers.ModelSerializer):
             'token_apercu', 'derniere_connexion', 'date_creation',
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_token_apercu(self, obj):
         """4 derniers caractères du jeton — assez pour l'identifier dans une
         liste, jamais assez pour s'en servir."""
@@ -2550,10 +2552,12 @@ class DocumentClientPortailSerializer(serializers.ModelSerializer):
             'date_depot',
         ]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_fichier_present(self, obj):
         """Y a-t-il un binaire déposé ? (sans jamais publier son URL brute)"""
         return bool(getattr(obj, 'fichier', None))
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lien_ged(self, obj):
         """AUD148 (b) — Téléchargement GED AUTHENTIFIÉ de la dernière version.
 

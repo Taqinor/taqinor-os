@@ -21,10 +21,12 @@ Lancer :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qjr421_savepoints_acceptation -v 2
 """
+import inspect
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.db import connection
+from django.db import transaction as django_transaction
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 
@@ -142,25 +144,38 @@ class UneEcritureBestEffortEnEchecNEmpoisonnePlusLaVente(_BaseAcceptation):
             'absorbé ne veut pas dire invisible. Journal : %r' % journal.output)
 
 
-class _TransactionEspion:
-    """Un proxy du module ``django.db.transaction`` qui COMPTE les ``atomic()``.
+class _AtomicEspion:
+    """Compte les ``atomic()`` ouverts DEPUIS ``cycle_vie``, et eux seuls.
 
-    Il ne remplace le nom ``transaction`` que DANS l'espace de noms de
-    ``apps.ventes.domain.cycle_vie`` : tout le reste du chemin d'acceptation
-    (stock, installations, facturation…) continue d'utiliser le vrai module et
-    n'est donc jamais compté ici — c'est précisément ce qu'on veut mesurer.
+    POURQUOI PAS UN PROXY POSÉ SUR ``cycle_vie.transaction``. La première
+    écriture de cet espion remplaçait l'attribut ``transaction`` du module —
+    mais ``cycle_vie`` importe ``transaction`` FONCTION-LOCALEMENT
+    (``from django.db import transaction`` à l'intérieur d'``accept_devis``).
+    Le module ne porte donc AUCUN attribut ``transaction`` à remplacer
+    (``AttributeError`` au montage), et l'import local ré-écraserait de toute
+    façon le nom à chaque appel.
+
+    On remplace donc ``atomic`` sur le VRAI module — celui que l'import local
+    retrouve — et on n'incrémente que lorsque le cadre appelant EST
+    ``cycle_vie``. Tout le reste de la chaîne d'acceptation (stock,
+    installations, numérotation) traverse le compteur sans l'incrémenter :
+    exactement la mesure que le proxy visait, et le comportement du vrai
+    ``atomic`` reste intact (on ne fait que le déléguer).
     """
 
-    def __init__(self, vrai):
-        self._vrai = vrai
+    MODULE = 'apps.ventes.domain.cycle_vie'
+
+    def __init__(self):
         self.entrees = 0
+        self._vrai = django_transaction.atomic
 
-    def atomic(self, *args, **kwargs):
-        self.entrees += 1
-        return self._vrai.atomic(*args, **kwargs)
-
-    def __getattr__(self, nom):
-        return getattr(self.__dict__['_vrai'], nom)
+    def __call__(self, *args, **kwargs):
+        cadre = inspect.currentframe()
+        appelant = cadre.f_back if cadre is not None else None
+        if (appelant is not None
+                and appelant.f_globals.get('__name__') == self.MODULE):
+            self.entrees += 1
+        return self._vrai(*args, **kwargs)
 
 
 class LeCoutDuPointDeSauvegardeEstConstant(_BaseAcceptation):
@@ -179,10 +194,8 @@ class LeCoutDuPointDeSauvegardeEstConstant(_BaseAcceptation):
     def _atomics_de_l_acceptation(self, devis):
         """Le nombre d'``atomic()`` ouverts PAR ``cycle_vie`` pendant
         l'acceptation — les trois blocs best-effort de QJR421 compris."""
-        from apps.ventes.domain import cycle_vie
-
-        espion = _TransactionEspion(cycle_vie.transaction)
-        with patch.object(cycle_vie, 'transaction', espion):
+        espion = _AtomicEspion()
+        with patch('django.db.transaction.atomic', espion):
             accept_devis(devis=devis, user=None, nom='M. Client')
         return espion.entrees
 

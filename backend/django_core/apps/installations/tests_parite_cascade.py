@@ -225,8 +225,11 @@ class CreationChatterPariteTests(TestCase):
             _creer_chantier_on_devis_accepted,
         )
         devis = self._devis()
+        # Le signal `devis_accepted` porte `ancien_statut` (contrat partagé
+        # avec les abonnés crm/contrats) : l'appel direct doit le fournir.
         _creer_chantier_on_devis_accepted(
-            sender=None, devis=devis, user=self.user)
+            sender=None, devis=devis, user=self.user,
+            ancien_statut=Devis.Statut.ENVOYE)
         inst = Installation.objects.get(devis=devis)
         self.assertTrue(
             inst.activites.filter(kind='creation').exists(),
@@ -265,9 +268,15 @@ class CascadeTerminaisonInterventionPariteTests(TestCase):
 
     def _ticket(self):
         from apps.sav.models import Ticket
+        n = next(_seq)
+        # `sav.Ticket` n'a pas de champ `titre` (le libellé du problème est
+        # `description`) et son `client` est obligatoire (FK PROTECT).
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            email=f'parite-iv-{self.company.id}-{n}@example.invalid')
         return Ticket.objects.create(
-            company=self.company, reference=f'TIC-{next(_seq)}',
-            titre='Panne onduleur', statut=Ticket.Statut.EN_COURS)
+            company=self.company, reference=f'TIC-{n}', client=client,
+            description='Panne onduleur', statut=Ticket.Statut.EN_COURS)
 
     def _via_patch(self, ticket):
         from apps.installations.models import Intervention
@@ -283,13 +292,28 @@ class CascadeTerminaisonInterventionPariteTests(TestCase):
 
     def _via_create(self, ticket):
         from apps.installations.models import Intervention
+        from apps.installations.models_field import InterventionPreparation
+        # AUD317 — la création ne pose plus un statut librement : le service
+        # canonique applique les gardes, et F5 refuse de quitter « À
+        # préparer » sans « Tout est chargé » (qui ne peut exister qu'APRÈS
+        # la création). Le chemin « create » suit donc le flux produit :
+        # créer, confirmer la préparation, puis terminer par le canon.
         r = self.api.post(
             '/api/django/installations/interventions/',
             {'installation': self.inst.id, 'ticket': ticket.id,
-             'type_intervention': Intervention.Type.DEPANNAGE,
-             'statut': Intervention.Statut.VALIDEE}, format='json')
+             'type_intervention': Intervention.Type.DEPANNAGE},
+            format='json')
         self.assertEqual(r.status_code, 201, r.data)
-        return Intervention.objects.get(pk=r.data['id'])
+        iv = Intervention.objects.get(pk=r.data['id'])
+        prep, _ = InterventionPreparation.objects.get_or_create(
+            intervention=iv, defaults={'company': self.company})
+        prep.tout_charge = True
+        prep.save(update_fields=['tout_charge'])
+        r2 = self.api.patch(
+            f'/api/django/installations/interventions/{iv.id}/',
+            {'statut': Intervention.Statut.VALIDEE}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        return iv
 
     def _via_field_sync(self, ticket):
         from apps.installations.models import Intervention

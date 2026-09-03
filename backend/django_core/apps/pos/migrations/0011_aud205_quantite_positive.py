@@ -15,7 +15,19 @@ from django.db import migrations, models
 
 def _normaliser_quantites(apps, schema_editor):
     Ligne = apps.get_model('pos', 'LigneVenteComptoir')
-    Ligne.objects.filter(quantite__lte=0).update(quantite=Decimal('1'))
+    # Batching (garde check_safe_migrations) : mise à jour par tranches de pks
+    # via .iterator() — un update global non borné verrouillerait toute la
+    # table des lignes de vente comptoir le temps de la transaction. Patron
+    # repris de ventes/0100_l_niv_niveau_otp_lecture.py.
+    pks = Ligne.objects.filter(quantite__lte=0).values_list('pk', flat=True)
+    batch = []
+    for pk in pks.iterator(chunk_size=500):
+        batch.append(pk)
+        if len(batch) >= 500:
+            Ligne.objects.filter(pk__in=batch).update(quantite=Decimal('1'))
+            batch = []
+    if batch:
+        Ligne.objects.filter(pk__in=batch).update(quantite=Decimal('1'))
 
 
 class Migration(migrations.Migration):

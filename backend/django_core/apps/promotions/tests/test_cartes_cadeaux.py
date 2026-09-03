@@ -11,17 +11,20 @@ import datetime
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.compta import services as compta_services
+from apps.compta.models import LigneEcriture
 from apps.crm.models import Client
 from apps.pos import services as pos_services
 from apps.pos.models import LigneVenteComptoir, VenteComptoir
 from apps.promotions import services as promo_services
 from apps.promotions.models import CarteCadeau
 from apps.stock.models import Categorie, Produit
+from apps.ventes.models import Facture
 
 User = get_user_model()
 
@@ -173,15 +176,38 @@ class CarteCadeauPosIntegrationTests(TestCase):
         carte.refresh_from_db()
         self.assertEqual(carte.solde, Decimal('80.00'))
 
+    @override_settings(COMPTA_AUTO_ECRITURES=True)
     def test_emettre_carte_cadeau_comptoir_encaisse_exact_amount(self):
+        """AUD203 — l'émission n'est plus une RECETTE, c'est un PASSIF.
+
+        Ce test mesurait « le comptoir encaisse exactement le montant de la
+        carte » sur la facture d'émission. Cette facture n'existe plus, et à
+        raison : elle comptait le chiffre d'affaires DEUX fois (une fois à
+        l'émission, une fois sur les biens réellement livrés à l'usage) et la
+        dette envers le porteur n'apparaissait nulle part. L'intention est
+        conservée, mesurée sur le nouveau contrat comptable — le crédit du
+        compte 4421 « Clients — avances et acomptes reçus » vaut EXACTEMENT
+        le montant de la carte (ici par un règlement CARTE, contrepartie
+        banque ; la variante espèces est couverte par
+        `apps/pos/tests/test_aud203_carte_cadeau_passif.py`).
+        """
         carte, facture = pos_services.emettre_carte_cadeau_comptoir(
             company=self.co, montant=Decimal('250'),
             paiement={'mode': 'carte', 'montant': '250'}, user=self.user,
             client=self.client_obj)
         self.assertEqual(carte.solde, Decimal('250.00'))
-        self.assertEqual(facture.montant_ttc, Decimal('250.00'))
-        self.assertEqual(facture.paiements.count(), 1)
-        self.assertEqual(facture.paiements.first().montant, Decimal('250.00'))
+        # Aucune facture de vente : ni renvoyée, ni créée en douce.
+        self.assertIsNone(facture)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 0)
+        # Le montant encaissé, au centime, porté par le PASSIF.
+        compte = compta_services.get_compte(
+            self.co, pos_services.COMPTE_PASSIF_CARTES_CADEAUX)
+        passif = sum(
+            (Decimal(str(ligne.credit or 0)) - Decimal(str(ligne.debit or 0))
+             for ligne in LigneEcriture.objects.filter(
+                 company=self.co, compte=compte)),
+            Decimal('0'))
+        self.assertEqual(passif, Decimal('250.00'))
 
     def test_emettre_carte_cadeau_comptoir_amount_mismatch_refused(self):
         with self.assertRaises(pos_services.CarteCadeauPosError):
