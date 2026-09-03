@@ -5224,6 +5224,16 @@ _ECHEANCE_TYPES_PAR_ORGANISME = {
     'cimr': (EcheanceDeclarative.TYPE_CIMR,),
 }
 
+# AUD712 — sources stables des écritures de RÈGLEMENT : elles réarment la
+# contrainte DB ``uniq_ecriture_par_source``, qui ferme la course même si la
+# garde applicative venait à être contournée. ``source_type`` ≤ 30 caractères.
+_SOURCE_REGLEMENT_OV = 'paie_ov_reglement'
+
+
+def _source_reglement_organisme(organisme):
+    """``source_type`` du règlement d'un organisme (un par code)."""
+    return f'paie_org_{organisme}'
+
 
 def payer_ordre_virement(ordre, compte_tresorerie, *,
                          date_reglement=None, created_by=None):
@@ -5237,43 +5247,71 @@ def payer_ordre_virement(ordre, compte_tresorerie, *,
     verrouillée (FG115). Le ``compte_tresorerie`` DOIT appartenir à la même
     société que l'ordre.
 
+    AUD712 — COURSE FERMÉE : le contrôle « déjà réglé » se faisait sur
+    l'instance en mémoire de l'appelant, hors transaction et sans verrou —
+    deux POST concurrents (ou une instance périmée) postaient DEUX écritures
+    de règlement. La lecture d'état se fait désormais sous
+    ``select_for_update()`` dans un ``transaction.atomic()``, et l'écriture
+    porte ``source_type``/``source_id`` : la contrainte DB
+    ``uniq_ecriture_par_source`` ferme la course même si la garde applicative
+    est un jour contournée.
+
     Renvoie l'écriture comptable postée.
     """
     from apps.compta import services as compta_services
     from apps.compta.models import EcritureComptable
 
+    from .models import OrdreVirement
+
     company = ordre.company
-    if ordre.ecriture_reglement_id:
-        return EcritureComptable.objects.filter(
-            pk=ordre.ecriture_reglement_id).first()
-    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
-    if compte_tresorerie is None:
-        raise ValueError(
-            "Le compte de trésorerie doit appartenir à la société de "
-            "l'ordre de virement.")
-    if not ordre.total or ordre.total <= 0:
-        raise ValueError("L'ordre de virement n'a aucun montant à régler.")
+    with transaction.atomic():
+        verrouille = (
+            OrdreVirement.objects
+            .select_for_update()
+            .filter(pk=ordre.pk)
+            .first()
+        )
+        if verrouille is None:
+            raise ValueError("Ordre de virement introuvable.")
+        if verrouille.ecriture_reglement_id:
+            # Recopie l'état réel sur l'instance de l'appelant (qui peut être
+            # périmée) — jamais une seconde écriture.
+            ordre.ecriture_reglement_id = verrouille.ecriture_reglement_id
+            ordre.date_reglement = verrouille.date_reglement
+            return EcritureComptable.objects.filter(
+                pk=verrouille.ecriture_reglement_id).first()
+        compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+        if compte_tresorerie is None:
+            raise ValueError(
+                "Le compte de trésorerie doit appartenir à la société de "
+                "l'ordre de virement.")
+        if not verrouille.total or verrouille.total <= 0:
+            raise ValueError("L'ordre de virement n'a aucun montant à régler.")
 
-    date_reg = date_reglement or timezone.localdate()
-    compte_net = compta_services.get_compte(company, _COMPTE_NET)
-    if compte_net is None:
-        compta_services.seed_plan_comptable(company)
+        date_reg = date_reglement or timezone.localdate()
         compte_net = compta_services.get_compte(company, _COMPTE_NET)
+        if compte_net is None:
+            compta_services.seed_plan_comptable(company)
+            compte_net = compta_services.get_compte(company, _COMPTE_NET)
 
-    montant = _q(ordre.total)
-    libelle = f'Règlement salaires {ordre.reference or ordre.id}'
-    lignes = [
-        {'compte': compte_net, 'libelle': libelle,
-         'debit': montant, 'credit': Decimal('0')},
-        {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
-         'debit': Decimal('0'), 'credit': montant},
-    ]
-    ecriture = compta_services.creer_ecriture_od(
-        company, date_reg, libelle, lignes,
-        reference=f'OV-REGLEMENT-{ordre.id}', created_by=created_by)
-    ordre.ecriture_reglement_id = ecriture.id
-    ordre.date_reglement = timezone.now()
-    ordre.save(update_fields=['ecriture_reglement_id', 'date_reglement'])
+        montant = _q(verrouille.total)
+        libelle = f'Règlement salaires {verrouille.reference or verrouille.id}'
+        lignes = [
+            {'compte': compte_net, 'libelle': libelle,
+             'debit': montant, 'credit': Decimal('0')},
+            {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
+             'debit': Decimal('0'), 'credit': montant},
+        ]
+        ecriture = compta_services.creer_ecriture_od(
+            company, date_reg, libelle, lignes,
+            reference=f'OV-REGLEMENT-{verrouille.id}', created_by=created_by,
+            source_type=_SOURCE_REGLEMENT_OV, source_id=verrouille.id)
+        verrouille.ecriture_reglement_id = ecriture.id
+        verrouille.date_reglement = timezone.now()
+        verrouille.save(
+            update_fields=['ecriture_reglement_id', 'date_reglement'])
+    ordre.ecriture_reglement_id = verrouille.ecriture_reglement_id
+    ordre.date_reglement = verrouille.date_reglement
     return ecriture
 
 
@@ -5289,6 +5327,13 @@ def payer_organismes(periode, organisme, compte_tresorerie, *,
     organisme (idempotent par écheance — une échéance déjà payée n'est jamais
     re-postée). Refusé si la période comptable de règlement est verrouillée.
 
+    AUD712 — COURSE FERMÉE (même classe que ``payer_ordre_virement``) : le
+    « check-then-create » sur les échéances non payées se faisait hors
+    transaction et sans verrou. Les échéances sont désormais lues sous
+    ``select_for_update()`` dans un ``transaction.atomic()``, et l'écriture
+    porte ``source_type``/``source_id`` (un couple par organisme et période)
+    pour que la contrainte DB ``uniq_ecriture_par_source`` ferme la course.
+
     Renvoie l'écriture postée, ou ``None`` si le montant dû est nul (rien à
     régler) ou si toutes les échéances de l'organisme sont déjà payées.
     """
@@ -5302,49 +5347,57 @@ def payer_organismes(periode, organisme, compte_tresorerie, *,
 
     company = periode.company
     types_echeance = _ECHEANCE_TYPES_PAR_ORGANISME.get(organisme, ())
-    echeances = list(EcheanceDeclarative.objects.filter(
-        company=company, periode=periode, type_echeance__in=types_echeance,
-    ).exclude(statut=EcheanceDeclarative.STATUT_PAYEE))
-    if not echeances:
-        # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
-        return None
+    with transaction.atomic():
+        echeances = list(
+            EcheanceDeclarative.objects
+            .select_for_update()
+            .filter(company=company, periode=periode,
+                    type_echeance__in=types_echeance)
+            .exclude(statut=EcheanceDeclarative.STATUT_PAYEE)
+        )
+        if not echeances:
+            # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
+            return None
 
-    etat = etat_des_charges(periode)
-    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
-    montant = total_par_code.get(organisme, Decimal('0.00'))
-    if montant <= 0:
-        return None
+        etat = etat_des_charges(periode)
+        total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+        montant = total_par_code.get(organisme, Decimal('0.00'))
+        if montant <= 0:
+            return None
 
-    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
-    if compte_tresorerie is None:
-        raise ValueError(
-            "Le compte de trésorerie doit appartenir à la société de la "
-            "période.")
+        compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+        if compte_tresorerie is None:
+            raise ValueError(
+                "Le compte de trésorerie doit appartenir à la société de la "
+                "période.")
 
-    date_reg = date_reglement or timezone.localdate()
-    compte_dette = compta_services.get_compte(company, numero_compte)
-    if compte_dette is None:
-        compta_services.seed_plan_comptable(company)
+        date_reg = date_reglement or timezone.localdate()
         compte_dette = compta_services.get_compte(company, numero_compte)
+        if compte_dette is None:
+            compta_services.seed_plan_comptable(company)
+            compte_dette = compta_services.get_compte(company, numero_compte)
 
-    montant = _q(montant)
-    libelle_ecriture = (
-        f'Règlement {libelle_organisme} — {periode.mois:02d}/{periode.annee}')
-    lignes = [
-        {'compte': compte_dette, 'libelle': libelle_ecriture,
-         'debit': montant, 'credit': Decimal('0')},
-        {'compte': compte_tresorerie.compte_comptable,
-         'libelle': libelle_ecriture,
-         'debit': Decimal('0'), 'credit': montant},
-    ]
-    ecriture = compta_services.creer_ecriture_od(
-        company, date_reg, libelle_ecriture, lignes,
-        reference=f'ORG-{organisme.upper()}-{periode.id}',
-        created_by=created_by)
-    for echeance in echeances:
-        echeance.statut = EcheanceDeclarative.STATUT_PAYEE
-        echeance.ecriture_reglement_id = ecriture.id
-        echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
+        montant = _q(montant)
+        libelle_ecriture = (
+            f'Règlement {libelle_organisme} — '
+            f'{periode.mois:02d}/{periode.annee}')
+        lignes = [
+            {'compte': compte_dette, 'libelle': libelle_ecriture,
+             'debit': montant, 'credit': Decimal('0')},
+            {'compte': compte_tresorerie.compte_comptable,
+             'libelle': libelle_ecriture,
+             'debit': Decimal('0'), 'credit': montant},
+        ]
+        ecriture = compta_services.creer_ecriture_od(
+            company, date_reg, libelle_ecriture, lignes,
+            reference=f'ORG-{organisme.upper()}-{periode.id}',
+            created_by=created_by,
+            source_type=_source_reglement_organisme(organisme),
+            source_id=periode.id)
+        for echeance in echeances:
+            echeance.statut = EcheanceDeclarative.STATUT_PAYEE
+            echeance.ecriture_reglement_id = ecriture.id
+            echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
     return ecriture
 
 
