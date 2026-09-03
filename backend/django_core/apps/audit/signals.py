@@ -70,6 +70,14 @@ TRACKED_MODELS = [
     # d'usage particulier à écrire.
     ('kb', 'KbArticle'),
     ('gestion_projet', 'Timesheet'),
+    # AUD303 — btp_chantier était entièrement absent de TRACKED_MODELS malgré
+    # des DELETE désormais gardés (perform_destroy) sur des objets à valeur
+    # contractuelle : réserve levée/contestée, visa décidé, avenant décidé
+    # (potentiellement facturé). Toute suppression restant autorisée (statut
+    # non verrouillé) doit au moins laisser une trace au Journal.
+    ('btp_chantier', 'ReserveChantier'),
+    ('btp_chantier', 'VisaDocument'),
+    ('btp_chantier', 'AvenantChantier'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).

@@ -79,6 +79,33 @@ def rfi_en_retard(company=None, *, chantier=None):
 
 # ── NTCON9/NTCON10 — DGD (Décompte Général et Définitif) ───────────────────
 
+def situations_incluses_hors_societe(situation_ids, company):
+    """AUD310 — parmi ``situation_ids`` (IDs de ``gestion_projet.
+    SituationTravaux``, tels qu'écrits dans ``DecompteGeneral.
+    situations_incluses``), renvoie le sous-ensemble qui N'APPARTIENT PAS à
+    ``company`` (ID inconnu OU appartenant à une autre société). Une liste
+    vide signifie « tout est valide ». LECTURE cross-app via ``django.apps.
+    apps.get_model`` — jamais un import statique, jamais une écriture.
+    Utilisé par ``DecompteGeneralSerializer.validate_situations_incluses``
+    pour refuser (400) une référence cross-société AVANT écriture.
+    """
+    from django.apps import apps as django_apps
+
+    situation_ids = list(situation_ids or [])
+    if not situation_ids:
+        return []
+    try:
+        SituationTravaux = django_apps.get_model(
+            'gestion_projet', 'SituationTravaux')
+    except LookupError:  # pragma: no cover - gestion_projet non installé
+        return list(situation_ids)
+    ids_de_la_societe = set(
+        SituationTravaux.objects.filter(
+            id__in=situation_ids, company=company,
+        ).values_list('id', flat=True))
+    return [sid for sid in situation_ids if sid not in ids_de_la_societe]
+
+
 def calculer_dgd(dgd):
     """NTCON9 — recalcule (LECTURE SEULE, ne sauvegarde RIEN) les totaux d'un
     ``DecompteGeneral`` : ``total_avenants_ht`` (avenants NTCON7 approuvés du
@@ -107,8 +134,14 @@ def calculer_dgd(dgd):
         try:
             LigneSituation = django_apps.get_model(
                 'gestion_projet', 'LigneSituation')
+            # AUD310 — défense en profondeur : même si ``situations_incluses``
+            # a été écrit sans passer par ``validate_situations_incluses``
+            # (données déjà corrompues, écriture directe...), l'agrégat ne
+            # doit JAMAIS sommer une ligne d'une autre société sur ce
+            # document contractuel de clôture de chantier.
             total_situations = LigneSituation.objects.filter(
                 situation_id__in=situation_ids,
+                situation__projet__company=dgd.company,
             ).aggregate(total=Sum('montant_periode'))['total'] or Decimal('0')
         except LookupError:  # pragma: no cover - gestion_projet non installé
             total_situations = Decimal('0')
@@ -166,9 +199,16 @@ def debourse_sec_vs_facture(chantier):
       (ou ``montant`` si non réceptionné), via la relation RÉELLE déjà
       déclarée sur ``chantier`` (``installations_ordres_sous_traitance`` —
       MÊME app que le FK ``chantier``, aucun import) ;
-    * matériel — ``installations.StockReservation`` CONSOMMÉE × ``stock.
-      Produit.prix_achat`` (GENERATOR-ONLY, jamais client-facing — CLAUDE.md),
-      via la relation RÉELLE ``chantier.reservations``.
+    * matériel — ``installations.StockReservation`` CONSOMMÉE × coût unitaire
+      DÉBARQUÉ (AUD327 : FOB + quote-part frais d'import — fret/douane/TVA
+      import/transit — via ``installations.selectors.landed_cost_dossier``)
+      quand le produit réservé trace vers un ``DossierImport`` (dernière
+      ``LandedCostLigne`` connue pour ce produit) ; repli sur ``stock.
+      Produit.prix_achat`` FOB brut sinon (GENERATOR-ONLY, jamais
+      client-facing — CLAUDE.md), via la relation RÉELLE
+      ``chantier.reservations``. Câblage DC38 complet (écriture dans le coût
+      moyen pondéré stock) reste hors scope — lecture seule, aucune écriture
+      ``stock`` (``installations/models_landed_cost.py:14-18``).
 
     Facturé : situations facturées (XPRJ4, ``gestion_projet.LigneSituation.
     montant_periode`` des situations ``statut=facturee`` du/des projet(s) du
@@ -205,11 +245,42 @@ def debourse_sec_vs_facture(chantier):
             else ordre.montant)
 
     # ── Matériel (relation RÉELLE, même app) ────────────────────────────
+    # AUD327 — préfère le coût unitaire DÉBARQUÉ (FOB + quote-part frais
+    # d'import) quand le produit réservé trace vers un ``DossierImport``
+    # (via sa dernière ``LandedCostLigne`` connue), au lieu du ``prix_achat``
+    # FOB brut qui sous-évalue silencieusement le comparatif. Lecture cross-
+    # app par le SELECTEUR de la cible (``installations.selectors``,
+    # jamais son ``models``/``views``) — comme le reste de cette fonction.
+    from apps.installations import selectors as installations_selectors
+
+    LandedCostLigne = django_apps.get_model('installations', 'LandedCostLigne')
+    landed_par_dossier = {}  # dossier_id -> {ligne_id: cout_debarque_unitaire}
+
     materiel = Decimal('0')
     for resa in chantier.reservations.filter(
             consomme=True).select_related('produit'):
-        prix = getattr(resa.produit, 'prix_achat', None) or Decimal('0')
-        materiel += Decimal(resa.quantite) * Decimal(prix)
+        cout_unitaire = None
+        derniere_ligne = (
+            LandedCostLigne.objects
+            .filter(company=chantier.company, produit_id=resa.produit_id)
+            .select_related('dossier')
+            .order_by('-date_creation', '-id')
+            .first()
+        )
+        if derniere_ligne is not None:
+            dossier_id = derniere_ligne.dossier_id
+            if dossier_id not in landed_par_dossier:
+                landed = installations_selectors.landed_cost_dossier(
+                    derniere_ligne.dossier)
+                landed_par_dossier[dossier_id] = {
+                    ln['ligne_id']: Decimal(str(ln['cout_debarque_unitaire']))
+                    for ln in landed['lignes']
+                }
+            cout_unitaire = landed_par_dossier[dossier_id].get(derniere_ligne.id)
+        if cout_unitaire is None:
+            cout_unitaire = (
+                getattr(resa.produit, 'prix_achat', None) or Decimal('0'))
+        materiel += Decimal(resa.quantite) * Decimal(cout_unitaire)
 
     debourse_total = main_oeuvre + sous_traitance + materiel
 

@@ -5,6 +5,7 @@ tout rôle. Multi-tenant via ``TenantMixin`` : queryset filtré sur la société
 l'utilisateur, société + ``created_by`` posés côté serveur. Le technicien
 assigné doit appartenir à la société de l'utilisateur."""
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -58,13 +59,21 @@ class AstreinteViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'non_field_errors': exc.messages})
 
     def perform_create(self, serializer):
+        # AUD318 — sans ATOMIC_REQUESTS, `serializer.save()` autocommit
+        # AVANT que `full_clean()` détecte un chevauchement : la ligne
+        # invalide reste en base malgré le 400 remonté au client. On
+        # enveloppe écriture + garde dans une transaction : un échec de
+        # `full_clean()` fait ROLLBACK l'INSERT.
         company = self.request.user.company
         _check_target_tenant(serializer, company)
-        instance = serializer.save(company=company, created_by=self.request.user)
-        self._full_clean_or_400(instance)
+        with transaction.atomic():
+            instance = serializer.save(company=company, created_by=self.request.user)
+            self._full_clean_or_400(instance)
 
     def perform_update(self, serializer):
+        # AUD318 — même garde que perform_create, côté UPDATE.
         company = self.request.user.company
         _check_target_tenant(serializer, company)
-        instance = serializer.save(company=company)
-        self._full_clean_or_400(instance)
+        with transaction.atomic():
+            instance = serializer.save(company=company)
+            self._full_clean_or_400(instance)

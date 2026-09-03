@@ -110,3 +110,18 @@ class TestPublicRFQResponse(TestCase):
         r = self.api.post(
             f'{BASE}/rfq/{self.c1.token}/', {'montant_ht': '1000'})
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_public_write_endpoint_throttled_after_burst(self):
+        # AUD314 — c'est la SEULE des 4 routes publiques tokenisées qui
+        # ÉCRIT (crée/MAJ une RFQOffre) ; un lien fournisseur fuité doit être
+        # borné en débit comme ses 3 sœurs (PublicTokenThrottle, 30/min).
+        from django.core.cache import cache
+        cache.clear()
+        last = None
+        for _ in range(30):
+            last = self.api.post(
+                f'{BASE}/rfq/{self.c1.token}/', {'montant_ht': '1000'})
+            self.assertNotEqual(last.status_code, 429, last.data)
+        blocked = self.api.post(
+            f'{BASE}/rfq/{self.c1.token}/', {'montant_ht': '1000'})
+        self.assertEqual(blocked.status_code, 429, blocked.data)

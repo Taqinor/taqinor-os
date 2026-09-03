@@ -137,3 +137,29 @@ def make_reservation_stock(company, chantier, produit, quantite=1, **kwargs):
     return StockReservation.objects.create(
         company=company, installation=chantier, produit=produit,
         quantite=quantite, **kwargs)
+
+
+def make_dossier_import(company, **kwargs):
+    """Crée un ``installations.DossierImport`` (FG315) — AUD327."""
+    from apps.installations.models_dossier_import import DossierImport
+    n = next(_seq)
+    kwargs.setdefault('reference', f'IMP-{company.id}-{n}')
+    kwargs.setdefault('designation', f'Conteneur {n}')
+    return DossierImport.objects.create(company=company, **kwargs)
+
+
+def make_frais_import(company, dossier, **kwargs):
+    """Crée un ``installations.FraisImport`` (FG316) — AUD327."""
+    from apps.installations.models_landed_cost import FraisImport
+    kwargs.setdefault('categorie', FraisImport.Categorie.FRET)
+    kwargs.setdefault('montant', 0)
+    return FraisImport.objects.create(company=company, dossier=dossier, **kwargs)
+
+
+def make_landed_cost_ligne(company, dossier, produit, **kwargs):
+    """Crée une ``installations.LandedCostLigne`` (FG316) — AUD327."""
+    from apps.installations.models_landed_cost import LandedCostLigne
+    kwargs.setdefault('quantite', 1)
+    kwargs.setdefault('valeur_fob', 0)
+    return LandedCostLigne.objects.create(
+        company=company, dossier=dossier, produit=produit, **kwargs)

@@ -223,6 +223,28 @@ class DecompteGeneralSerializer(serializers.ModelSerializer):
     def validate_chantier(self, value):
         return _meme_societe(self, value, 'Chantier')
 
+    def validate_situations_incluses(self, value):
+        # AUD310 — ``situations_incluses`` (IDs ``gestion_projet.
+        # SituationTravaux``) était écrivable sans aucune vérification
+        # société : un ID (devinable) d'une autre société s'agrégeait dans
+        # les totaux du DGD, document contractuel de clôture de chantier.
+        # Même patron que ``validate_chantier``/``_meme_societe``.
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'situations_incluses doit être une liste d\'identifiants.')
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None or not value:
+            return value
+        from . import selectors
+        hors_societe = selectors.situations_incluses_hors_societe(
+            value, company)
+        if hors_societe:
+            raise serializers.ValidationError(
+                'Situation(s) inconnue(s) ou appartenant à une autre '
+                f'société : {hors_societe}.')
+        return value
+
 
 # ── NTCON12/NTCON13 — Diffusion contrôlée de plans ──────────────────────────
 
