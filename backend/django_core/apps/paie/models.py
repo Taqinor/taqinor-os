@@ -56,6 +56,15 @@ class ParametrePaie(models.Model):
     taux_amo_salarial = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('2.26'),
         verbose_name='Taux AMO salarial')
+    # AUD710 — PROPRIÉTAIRE UNIQUE du taux : ce défaut de champ est la seule
+    # valeur de repli du dépôt (``selectors.taux_charges_patronales`` le lit
+    # au lieu de recopier un littéral ; ``services.PARAMETRES_DEFAUT_2026``
+    # provisionne la même valeur, égalité vérifiée par un test).
+    # QUESTION FONDATEUR/COMPTABLE OUVERTE, jamais tranchée dans le code : ce
+    # taux AMO PATRONAL (2,26 %) est identique au taux SALARIAL, alors que la
+    # référence usuelle du cadre marocain cite 4,11 %. Le champ est exposé et
+    # éditable dans l'écran « Paramètres de paie » ; la confirmation passe par
+    # ``valide_par_fondateur``.
     taux_amo_patronal = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('2.26'),
         verbose_name='Taux AMO patronal')

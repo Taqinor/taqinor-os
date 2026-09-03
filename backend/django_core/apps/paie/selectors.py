@@ -180,21 +180,27 @@ def taux_charges_patronales(company):
 
     Sélecteur de LECTURE pour ``apps.fpa`` (driver masse salariale) : FP&A ne
     lit jamais ``paie.models`` directement. Repli sur les défauts du modèle si
-    aucun ``ParametrePaie`` n'existe encore (jamais d'exception)."""
+    aucun ``ParametrePaie`` n'existe encore (jamais d'exception).
+
+    AUD710 — ce sélecteur ne RECOPIE plus les taux en dur : il lit le
+    ``ParametrePaie`` réel de la société et, à défaut, les DÉFAUTS DES CHAMPS
+    du modèle. Un taux (dont l'AMO patronal) n'a donc plus qu'un seul
+    propriétaire : le paramètre en base, dont le modèle porte le défaut."""
     from decimal import Decimal
 
     from .models import ParametrePaie
 
+    champs = ('taux_cnss_patronal', 'taux_amo_patronal',
+              'taux_allocations_familiales', 'taux_formation_pro')
     param = ParametrePaie.objects.filter(company=company).order_by('-id').first()
     if param is None:
-        # Défauts du cadre marocain (mêmes valeurs par défaut que le modèle).
-        pct = Decimal('8.98') + Decimal('2.26') + Decimal('6.4') + Decimal('1.6')
+        pct = sum(
+            (Decimal(ParametrePaie._meta.get_field(champ).default)
+             for champ in champs), Decimal('0'))
     else:
-        pct = (
-            (param.taux_cnss_patronal or 0)
-            + (param.taux_amo_patronal or 0)
-            + (param.taux_allocations_familiales or 0)
-            + (param.taux_formation_pro or 0))
+        pct = sum(
+            (Decimal(getattr(param, champ) or 0) for champ in champs),
+            Decimal('0'))
     return Decimal(pct) / Decimal('100')
 
 

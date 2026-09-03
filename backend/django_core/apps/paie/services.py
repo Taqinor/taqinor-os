@@ -24,6 +24,7 @@ déduction pour charges de famille — ≈ 30 MAD/mois et par personne, plafond 
 Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise
 qu'ils restent à confirmer.
 """
+import logging
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -42,6 +43,8 @@ from .models import (
     TypeEntreePonctuelle,
 )
 
+logger = logging.getLogger(__name__)
+
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
 DATE_EFFET_2026 = date(2026, 1, 1)
 
@@ -54,6 +57,13 @@ PARAMETRES_DEFAUT_2026 = {
     'taux_cnss_salarial': Decimal('4.48'),
     'taux_cnss_patronal': Decimal('8.98'),
     'taux_amo_salarial': Decimal('2.26'),
+    # AUD710 — QUESTION FONDATEUR/COMPTABLE OUVERTE, jamais tranchée dans le
+    # code : le taux AMO PATRONAL provisionné ici (2,26 %) est identique au
+    # taux SALARIAL, alors que la référence usuelle du cadre marocain cite
+    # 4,11 % — l'écart (1,85 pt) vaut exactement 4,11 − 2,26. Aucune valeur
+    # n'est changée ici : le taux est désormais VISIBLE et ÉDITABLE dans
+    # l'écran « Paramètres de paie », et le drapeau ``valide_par_fondateur``
+    # avertit tant que le fondateur/comptable n'a pas confirmé.
     'taux_amo_patronal': Decimal('2.26'),
     # PAIE23 — Allocations familiales (charge patronale, non plafonnée, ~6,4 %).
     'taux_allocations_familiales': Decimal('6.4'),
@@ -1747,6 +1757,44 @@ def parametre_en_vigueur(company, le_jour):
     )
 
 
+def avertissements_parametre_paie(company, le_jour, *, contexte=''):
+    """Avertissements FORTS sur les paramètres sociaux en vigueur (AUD710).
+
+    ``valide_par_fondateur`` n'était lu QUE par le seed/l'admin/le serializer :
+    un ``ParametrePaie`` jamais confirmé calculait des bulletins RÉELS sans le
+    moindre signal (seul un badge cosmétique existait à l'écran). Cette
+    fonction matérialise le signal manquant, à trois endroits qui produisent
+    de l'argent ou du déclaratif : ``calculer_bulletin``, ``declaration_cnss``
+    et ``generer_ordre_virement``.
+
+    AVERTISSEMENT et non REFUS : les valeurs légales sont provisionnées avec
+    ``valide_par_fondateur=False`` par ``ensure_defaults`` — refuser le calcul
+    bloquerait toute paie dès le premier jour d'une société. Le message est
+    renvoyé aux appelants (payload API) ET journalisé en WARNING.
+
+    Renvoie une liste de chaînes (vide quand tout est confirmé).
+    """
+    parametre = parametre_en_vigueur(company, le_jour)
+    if parametre is None:
+        message = (
+            "Aucun paramètre social en vigueur : les cotisations et l'IR ne "
+            'peuvent pas être calculés sur des valeurs confirmées. '
+            'Provisionnez puis validez les paramètres de paie.')
+    elif not parametre.valide_par_fondateur:
+        message = (
+            f'Paramètres sociaux du {parametre.date_effet} NON VALIDÉS par le '
+            'fondateur : taux et plafonds restent des valeurs par défaut à '
+            "confirmer (dont le taux AMO patronal). Validez-les dans l'écran "
+            '« Paramètres de paie » avant tout usage légal ou déclaratif.')
+    else:
+        return []
+    if contexte:
+        message = f'{contexte} — {message}'
+    logger.warning('paie/parametres non validés (company=%s) : %s',
+                   getattr(company, 'id', company), message)
+    return [message]
+
+
 def bareme_en_vigueur(company, le_jour):
     """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
     return (
@@ -2417,6 +2465,11 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'mutuelle_salariale': mutuelle_sal,
         'mutuelle_patronale': mutuelle_pat,
         'lignes': lignes,
+        # AUD710 — avertissement FORT quand les paramètres sociaux ne sont pas
+        # validés par le fondateur (liste vide sinon). Non persisté : c'est un
+        # signal de calcul, remonté tel quel par l'API du bulletin.
+        'avertissements': avertissements_parametre_paie(
+            profil.company, le_jour, contexte='Bulletin de paie'),
         # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
@@ -3246,6 +3299,13 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         BulletinPaie, LigneVirement, OrdreVirement, ProfilPaie,
     )
 
+    # AUD710 — signal FORT (journalisé) si les paramètres sociaux ne sont pas
+    # validés : l'ordre de virement engage de l'argent réel sur des nets
+    # calculés avec des taux à confirmer.
+    avertissements_parametre_paie(
+        periode.company, date(periode.annee, periode.mois, 1),
+        contexte='Ordre de virement')
+
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
 
     with transaction.atomic():
@@ -3764,6 +3824,10 @@ def declaration_cnss(periode):
         'plafond_cnss': _q(plafond),
         'lignes': lignes,
         'nombre_salaries': len(lignes),
+        # AUD710 — un BDS déposé sur des taux non confirmés est un risque
+        # déclaratif : le signal accompagne la déclaration.
+        'avertissements': avertissements_parametre_paie(
+            periode.company, le_jour, contexte='Déclaration CNSS'),
     }
     for cle, valeur in totaux.items():
         resultat[cle] = _q(valeur)
@@ -4684,6 +4748,18 @@ def avertissements_periode(periode):
     company = periode.company
 
     avertissements = []
+
+    # AUD710 — prérequis de SOCIÉTÉ (pas d'employé) : des paramètres sociaux
+    # non confirmés par le fondateur produisent des bulletins réels sur des
+    # taux à valider. Le panneau pré-run est le seul endroit où l'ERP dit
+    # « à corriger avant de payer » — le signal y est donc bloquant.
+    for message in avertissements_parametre_paie(
+            company, date(periode.annee, periode.mois, 1)):
+        avertissements.append({
+            'type': 'parametres_non_valides', 'employe_id': None,
+            'matricule': '', 'nom': '',
+            'gravite': 'bloquant', 'message': message,
+        })
 
     for item in completude['actifs_sans_profil']:
         avertissements.append({
