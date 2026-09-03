@@ -241,8 +241,17 @@ def facturer_temps_projet(projet, *, debut, fin, user):
     la même transaction) — un RE-RUN sur la même période ne re-sélectionne donc
     RIEN (idempotent, 0 ligne re-facturée). Renvoie un dict
     ``{facture, montant_ht, nb_lignes, groupes}``.
+
+    AUD179 — un projet ANNULÉ n'est plus facturable : la fonction lisait
+    company/projet/statut de timesheet/dates mais JAMAIS ``projet.statut``, si
+    bien qu'un chantier abandonné consommait une référence FAC réelle et
+    marquait ses timesheets ``facture_id`` de façon irréversible.
     """
     from .models import Timesheet
+
+    if projet.statut == Projet.Statut.ANNULE:
+        raise FacturationRegieError(
+            "Projet annulé — facturation impossible.")
 
     qs = Timesheet.objects.filter(
         company=projet.company, projet=projet,
@@ -894,10 +903,19 @@ def valider_situation(situation, *, user):
     cross-app, import fonction-local). L'écriture de la ``Facture`` passe
     EXCLUSIVEMENT par ``ventes.services.creer_facture_acompte_situation``.
     Renvoie la ``SituationTravaux`` mise à jour.
+
+    AUD179 — un projet ANNULÉ n'est plus facturable : la fonction ne vérifiait
+    que ``situation.statut``, jamais ``situation.projet.statut``, si bien qu'un
+    chantier abandonné consommait une référence FAC réelle et basculait la
+    situation en FACTUREE.
     """
     from django.utils import timezone
 
     from .models import SituationTravaux
+
+    if situation.projet.statut == Projet.Statut.ANNULE:
+        raise SituationTravauxError(
+            "Projet annulé — facturation impossible.")
 
     if situation.statut != SituationTravaux.Statut.BROUILLON:
         raise SituationTravauxError(

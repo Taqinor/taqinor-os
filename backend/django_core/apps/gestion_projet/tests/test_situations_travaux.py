@@ -140,6 +140,60 @@ class SituationServiceTests(TestCase):
                 avancement_cumule_pct=Decimal('10'))
 
 
+class SituationProjetAnnuleTests(TestCase):
+    """AUD179 — un projet ANNULÉ ne se facture plus par situation.
+
+    ``valider_situation`` ne vérifiait que ``situation.statut``, jamais
+    ``situation.projet.statut`` : un chantier abandonné consommait une
+    référence FAC réelle et basculait la situation en FACTUREE.
+    """
+    BASE = '/api/django/gestion-projet/situations/'
+
+    def setUp(self):
+        self.co = make_company('gp-situ-annule', 'N')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client annulé BTP')
+        self.user = make_user(self.co, 'situ-annule')
+        self.projet = Projet.objects.create(
+            company=self.co, code='P-SITN', nom='N',
+            client_id=self.client_crm.id)
+        self.situation = services.creer_situation(
+            self.projet, periode=date(2026, 1, 1))
+        services.ajouter_ligne_situation(
+            self.situation, libelle='Terrassement',
+            montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('30'))
+
+    def _annuler(self):
+        self.projet.statut = Projet.Statut.ANNULE
+        self.projet.save(update_fields=['statut'])
+
+    def test_service_refuse_projet_annule(self):
+        self._annuler()
+        with self.assertRaises(services.SituationTravauxError):
+            services.valider_situation(self.situation, user=self.user)
+        self.situation.refresh_from_db()
+        self.assertEqual(
+            self.situation.statut, SituationTravaux.Statut.BROUILLON)
+        self.assertIsNone(self.situation.facture_id)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 0)
+
+    def test_endpoint_refuse_projet_annule_400(self):
+        self._annuler()
+        api = auth(self.user)
+        resp = api.post(f'{self.BASE}{self.situation.id}/valider/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.situation.refresh_from_db()
+        self.assertIsNone(self.situation.facture_id)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 0)
+
+    def test_projet_actif_reste_facturable(self):
+        api = auth(self.user)
+        resp = api.post(f'{self.BASE}{self.situation.id}/valider/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'facturee')
+
+
 class LigneSituationUniciteTests(TestCase):
     """AUD178 — un lot n'apparaît qu'UNE fois par situation.
 
