@@ -2749,6 +2749,14 @@ def creer_bulletin_annulation(bulletin_origine, periode_cible):
             personnes_a_charge=bulletin_origine.personnes_a_charge,
         )
         for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            # AUD707 — ``personnes_a_charge`` est un compteur NON SIGNÉ
+            # (PositiveSmallIntegerField, CHECK >= 0) : le néguer faisait
+            # crasher l'extourne en IntegrityError dès que le salarié avait
+            # une charge de famille. Il est REPORTÉ tel quel (posé à la
+            # création ci-dessus), comme le font déjà ``generer_bulletin`` et
+            # le générateur de gratification.
+            if champ == 'personnes_a_charge':
+                continue
             valeur = getattr(bulletin_origine, champ) or Decimal('0')
             setattr(annulation, champ, _q(-Decimal(valeur)))
         annulation.save()
