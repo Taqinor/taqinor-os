@@ -863,6 +863,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 tags = (f.pop('tags', '') or '')
                 f['tags'] = (tags + (', ' if tags else '') + 'Import').strip(', ')[:500]
                 lead = Lead.objects.create(company=company, **f)
+                # AUD518 — le lead importé reçoit les MÊMES effets de création
+                # que le chemin manuel (owner par défaut, chatter de création,
+                # score + évaluation MQL), via la frontière
+                # ``apps.crm.services`` — jamais ``crm.activity`` en direct.
+                from apps.crm.services import finaliser_lead_importe
+                finaliser_lead_importe(lead, user=user, lead_attrs=f)
                 if ext_id:
                     _get_or_create_ref(company, external_system, ext_id, lead)
                 created += 1
