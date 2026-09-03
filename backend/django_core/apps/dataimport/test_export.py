@@ -141,6 +141,35 @@ class TestNoPrixAchat(ExportBase):
             self.assertNotIn(str(SECRET_BUY_PRICE).encode(), blob)
 
 
+class TestInterventionPublicTokensExcluded(ExportBase):
+    """AUD314 — Intervention.lien_client_token/lien_rapport_token sont des
+    jetons publics permanents (accès sans login à un compte-rendu signé) :
+    l'export N97 « sauvegarde » ne doit jamais les livrer en clair."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.installations.models import Installation, Intervention
+        client = Client.objects.create(company=self.company, nom='Site')
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-AUD314-1', client=client)
+        self.interv = Intervention.objects.create(
+            company=self.company, installation=inst, type_intervention='pose',
+            lien_client_token='secret-lien-client-aud314',
+            lien_rapport_token='secret-lien-rapport-aud314')
+
+    def test_header_excludes_public_tokens(self):
+        header = REGISTRY['interventions'].header()
+        self.assertNotIn('lien_client_token', header)
+        self.assertNotIn('lien_rapport_token', header)
+
+    def test_tokens_absent_from_rows(self):
+        spec = REGISTRY['interventions']
+        for row in spec.rows(self.company):
+            row_str = [str(v) for v in row]
+            self.assertNotIn('secret-lien-client-aud314', row_str)
+            self.assertNotIn('secret-lien-rapport-aud314', row_str)
+
+
 class TestFormats(ExportBase):
     def setUp(self):
         super().setUp()

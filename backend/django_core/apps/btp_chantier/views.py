@@ -113,6 +113,20 @@ class ReserveChantierViewSet(
         services.enregistrer_creation_reserve(
             serializer.instance, created_by=self.request.user)
 
+    def perform_destroy(self, instance):
+        # AUD303 — seule garde jusqu'ici : write_permission='btp_gerer' (un
+        # rôle, pas un état). Une réserve LEVEE ou CONTESTEE porte une
+        # signature (``SignatureBtp``, GenericForeignKey sans cascade DB
+        # réelle) et un historique de transitions (``ReserveChantierHistorique``,
+        # cascade) — sa suppression les efface sans trace. Patron
+        # ``DecompteGeneralViewSet._refuser_si_verrouille`` du même fichier.
+        if instance.statut in (
+                ReserveChantier.Statut.LEVEE, ReserveChantier.Statut.CONTESTEE):
+            raise PermissionDenied(
+                f'Réserve #{instance.pk} : statut « {instance.get_statut_display()} » '
+                '— verrouillée contre la suppression (levée ou contestée).')
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def photos(self, request, pk=None):
@@ -272,6 +286,16 @@ class VisaDocumentViewSet(
         )
         serializer.instance = visa
 
+    def perform_destroy(self, instance):
+        # AUD303 — un visa APPROUVE/REFUSE est une décision technique rendue ;
+        # aucune garde d'état n'existait avant ce fix. Patron
+        # ``DecompteGeneralViewSet._refuser_si_verrouille`` du même fichier.
+        if instance.statut in VisaDocument.STATUTS_DECIDES:
+            raise PermissionDenied(
+                f'Visa #{instance.pk} : statut « {instance.get_statut_display()} » '
+                '— décision déjà rendue, verrouillé contre la suppression.')
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['post'], url_path='soumettre-observations',
             permission_classes=[ScopedPermission])
     def soumettre_observations(self, request, pk=None):
@@ -428,6 +452,19 @@ class AvenantChantierViewSet(
             lignes=serializer.validated_data.get('lignes'),
         )
         serializer.instance = avenant
+
+    def perform_destroy(self, instance):
+        # AUD303 — un avenant APPROUVE peut déjà être facturé
+        # (``AvenantChantier.facture_id`` — ``PositiveIntegerField`` sans FK,
+        # pouvant pointer une vraie ``ventes.Facture`` d'acompte) ; sa
+        # suppression disparaîtrait sans trace. Patron
+        # ``DecompteGeneralViewSet._refuser_si_verrouille`` du même fichier.
+        if instance.statut in (
+                AvenantChantier.Statut.APPROUVE, AvenantChantier.Statut.REFUSE):
+            raise PermissionDenied(
+                f'Avenant #{instance.pk} : statut « {instance.get_statut_display()} » '
+                '— décision déjà rendue, verrouillé contre la suppression.')
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=['post'], url_path='faire-approuver',
             permission_classes=[ScopedPermission])
