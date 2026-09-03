@@ -216,6 +216,12 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         if self.request.query_params.get('due') in ('1', 'true'):
             ids = [c.id for c in qs if c.is_due()]
             qs = qs.filter(id__in=ids)
+        # AUD502 — file « à renouveler » : date de renouvellement atteinte OU
+        # échéance duree_mois dépassée (période de grâce comprise — la
+        # couverture tombe à la fin de la fenêtre de 30 jours).
+        if self.request.query_params.get('a_renouveler') in ('1', 'true'):
+            ids = [c.id for c in qs if c.a_renouveler()]
+            qs = qs.filter(id__in=ids)
         return qs
 
     @action(detail=False, methods=['post'], url_path='generer-dus',

@@ -844,15 +844,10 @@ class Ticket(models.Model):
             return self.Couverture.GARANTIE
         if contrat_cache is not None:
             if self.client_id not in contrat_cache:
-                contrat_cache[self.client_id] = (
-                    ContratMaintenance.objects
-                    .filter(client_id=self.client_id, actif=True)
-                    .order_by('-date_creation').first())
+                contrat_cache[self.client_id] = self._contrat_couvrant()
             contrat = contrat_cache[self.client_id]
         else:
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=self.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            contrat = self._contrat_couvrant()
         if contrat is not None and contrat.couvre_equipement(self.equipement):
             from .selectors import droits_restants
             annee = (self.date_ouverture or timezone.localdate()).year
@@ -864,6 +859,26 @@ class Ticket(models.Model):
             if restant is None or restant > 0:
                 return self.Couverture.CONTRAT
         return self.Couverture.FACTURABLE
+
+    def _contrat_couvrant(self, today=None):
+        """AUD502 — contrat de maintenance du client qui COUVRE réellement à
+        la date du jour : le plus récent parmi les contrats actifs ET non
+        expirés au-delà de la grâce (``ContratMaintenance.est_actif``).
+
+        Avant AUD502, seul le drapeau ``actif`` était testé : un contrat mort
+        depuis des mois (``duree_mois`` échu) continuait d'être sélectionné et
+        le ticket sortait « couvert », donc facturé 0 DH. L'expiration se
+        calcule en Python (date_debut + duree_mois) : on ordonne comme avant
+        (le plus récemment créé gagne) et on retient le premier encore
+        valide. Un contrat sans ``duree_mois`` n'expire jamais — comportement
+        historique intégralement préservé."""
+        today = today or timezone.localdate()
+        for contrat in (ContratMaintenance.objects
+                        .filter(client_id=self.client_id, actif=True)
+                        .order_by('-date_creation')):
+            if contrat.est_actif(today):
+                return contrat
+        return None
 
     def canal_resolution_propose(self):
         """YSERV2 — Propose ``sur_site`` si ≥1 intervention liée à ce ticket
@@ -1403,10 +1418,78 @@ class ContratMaintenance(models.Model):
         except Exception:  # noqa: BLE001 — calendrier absent → date brute
             return cible
 
+    # ── AUD502 / décision fondateur D13 (03/09/2026) — expiration réelle ────
+    # `duree_mois` était un champ MORT (lu nulle part hors serializer/PDF) :
+    # un contrat de maintenance n'expirait donc jamais — visites préventives
+    # générées à vie et tickets facturés 0 DH « couvert » sur un contrat mort
+    # depuis des mois. D13 : échéance = date_debut + duree_mois, avec une
+    # GRÂCE de 30 jours (le renouvellement se signe souvent en retard) pendant
+    # laquelle la couverture reste acquise ; au-delà, le ticket redevient
+    # FACTURABLE et plus aucune visite n'est générée.
+    # `duree_mois` vide = contrat sans échéance = comportement historique
+    # intégralement préservé (aucune régression sur les contrats existants).
+    GRACE_EXPIRATION_JOURS = 30
+
+    def date_expiration(self):
+        """AUD502/D13 — date d'échéance du contrat (date_debut + duree_mois).
+
+        None si ``duree_mois`` (ou ``date_debut``) n'est pas renseigné :
+        contrat sans échéance, jamais expiré."""
+        if not self.duree_mois or not self.date_debut:
+            return None
+        return add_months(self.date_debut, int(self.duree_mois))
+
+    def date_fin_grace(self):
+        """AUD502/D13 — dernier jour de couverture (échéance + 30 jours)."""
+        expiration = self.date_expiration()
+        if expiration is None:
+            return None
+        return expiration + timezone.timedelta(days=self.GRACE_EXPIRATION_JOURS)
+
+    def est_expire(self, today=None):
+        """True dès que l'échéance est dépassée (grâce NON comprise)."""
+        expiration = self.date_expiration()
+        if expiration is None:
+            return False
+        return (today or timezone.localdate()) > expiration
+
+    def en_periode_grace(self, today=None):
+        """True pendant les 30 jours de grâce qui suivent l'échéance : le
+        contrat couvre encore, mais il doit être renouvelé (alerte)."""
+        fin = self.date_fin_grace()
+        if fin is None:
+            return False
+        return self.est_expire(today=today) and (
+            today or timezone.localdate()) <= fin
+
+    def est_actif(self, today=None):
+        """AUD502/D13 — LE test de couverture central : le contrat est-il
+        actif ET encore dans sa fenêtre de validité (grâce comprise) ?
+
+        C'est cette méthode — et non le simple drapeau ``actif`` — que doivent
+        interroger la génération de visites, le calcul de couverture d'un
+        ticket et la facturation récurrente."""
+        if not self.actif:
+            return False
+        fin = self.date_fin_grace()
+        if fin is None:
+            return True
+        return (today or timezone.localdate()) <= fin
+
+    def a_renouveler(self, today=None):
+        """AUD502 — le contrat doit être renouvelé : soit la date de
+        renouvellement explicite est atteinte (comportement historique
+        ``renouvellement_du``), soit l'échéance duree_mois est dépassée
+        (période de grâce comprise — c'est exactement la fenêtre pendant
+        laquelle le renouvellement est encore rattrapable)."""
+        return bool(self.renouvellement_du(today=today)
+                    or (self.actif and self.est_expire(today=today)))
+
     def is_due(self, today=None):
         # Bucket « aujourd'hui » sur le fuseau de l'app (Africa/Casablanca) :
         # un date.today() naïf (UTC) décalait le « dû » d'un jour à minuit.
-        return self.actif and (
+        # AUD502 — plus aucune visite générée après l'échéance + grâce.
+        return self.est_actif(today) and (
             today or timezone.localdate()) >= self.prochaine_visite()
 
     def renouvellement_du(self, today=None):
@@ -1432,8 +1515,11 @@ class ContratMaintenance(models.Model):
         return _date(y, mo, day)
 
     def facturation_due(self, today=None):
-        """True si la facturation récurrente est due aujourd'hui ou passée."""
-        if not self.facturation_active or not self.actif:
+        """True si la facturation récurrente est due aujourd'hui ou passée.
+
+        AUD502 — un contrat expiré au-delà de la grâce n'est plus facturé :
+        ``est_actif`` remplace le simple drapeau ``actif``."""
+        if not self.facturation_active or not self.est_actif(today):
             return False
         return (today or timezone.localdate()) >= self.prochaine_facturation()
 
