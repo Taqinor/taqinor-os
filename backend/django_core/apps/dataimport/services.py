@@ -971,9 +971,13 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 created += 1
 
         # FG14 — Équipements : résolution produit par SKU, installation par réf.
+        # AUD517 — l'ÉCRITURE est déléguée à ``apps.sav.services``
+        # (``creer_equipement_import``), jamais ``apps.sav.models`` : c'est là
+        # que les garanties sont recalculées, le jeton QR posé, et la garde de
+        # doublon alignée sur la contrainte DB (company, numero_serie).
         elif target == 'equipements':
             import datetime
-            from apps.sav.models import Equipement
+            from apps.sav.services import creer_equipement_import
             from apps.stock.models import Produit
             from apps.installations.models import Installation
             for i, row in enumerate(rows, 1):
@@ -999,14 +1003,9 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 except Installation.DoesNotExist:
                     skipped.append({'ligne': i, 'raison': f'installation inconnue : {install_ref}'})
                     continue
-                # Numéro de série : doublon par (produit, installation, numero_serie).
-                numero_serie = f.get('numero_serie')
-                if numero_serie and Equipement.objects.filter(
-                        company=company, produit=produit,
-                        installation=installation,
-                        numero_serie=numero_serie).exists():
-                    skipped.append({'ligne': i, 'raison': 'doublon (série existe)'})
-                    continue
+                # AUD517 — la garde de doublon vit désormais DANS le service
+                # sav (alignée sur la contrainte DB réelle : company +
+                # numero_serie, plus étroite que l'ancien quadruplet).
                 # Normalisation date_pose.
                 if 'date_pose' in f:
                     raw_date = f['date_pose']
@@ -1022,10 +1021,16 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                                 pass
                         else:
                             f.pop('date_pose')
-                Equipement.objects.create(
-                    company=company, produit=produit,
-                    installation=installation, created_by=user, **f)
-                created += 1
+                statut, message = creer_equipement_import(
+                    company, f, produit=produit, installation=installation,
+                    user=user)
+                if statut == 'cree':
+                    created += 1
+                elif statut == 'doublon':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'doublon (série existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
         # XFLT22 — Véhicules du parc flotte : écriture déléguée à
         # ``apps.flotte.services`` (jamais les models flotte directement).

@@ -29,6 +29,71 @@ def create_equipement_from_serial(*, company, produit, installation,
     return equip
 
 
+def creer_equipement_import(company, champs, *, produit, installation,
+                            user=None):
+    """AUD517 — point d'entrée d'ÉCRITURE de l'import de parc (dataimport).
+
+    Le bloc ``equipements`` de ``apps.dataimport.services`` faisait
+    ``Equipement.objects.create(...)`` en important ``apps.sav.models``
+    directement. Trois conséquences mesurées :
+
+    * ``recompute_garanties()`` n'était jamais appelé → ``date_fin_garantie``
+      restait NULL et TOUT le parc importé était classé hors garantie ;
+    * ``equipement_token`` (QR FG85) n'était jamais posé → le parc importé
+      était invisible au scan QR du SAV ;
+    * la pré-vérification de doublon portait sur
+      ``(company, produit, installation, numero_serie)`` alors que la
+      contrainte DB réelle est ``(company, numero_serie)`` — plus étroite :
+      deux lignes de même série sur des produits/chantiers différents
+      passaient la garde puis levaient un ``IntegrityError`` capable
+      d'annuler TOUT le lot déjà importé.
+
+    Cette fonction fait les trois : garde de doublon ALIGNÉE sur la contrainte
+    DB, création + garanties + jeton QR dans UNE transaction, et
+    ``IntegrityError`` capturé (course entre deux lignes du même lot) rendu
+    comme un ``'doublon'`` de LIGNE — jamais une explosion du lot.
+
+    ``champs`` = colonnes déjà mappées/nettoyées (numero_serie, date_pose…).
+    Retourne ``('cree'|'doublon'|'erreur', message|None)`` — même contrat que
+    ``creer_vehicule_import``/``creer_contrat_import`` (ARC13/XFLT22)."""
+    from django.db import IntegrityError, transaction
+
+    from .models import Equipement
+
+    champs = dict(champs or {})
+    numero_serie = (champs.get('numero_serie') or '').strip() \
+        if isinstance(champs.get('numero_serie'), str) \
+        else champs.get('numero_serie')
+
+    # Garde alignée sur la contrainte DB réelle (company, numero_serie).
+    if numero_serie and Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).exists():
+        return 'doublon', None
+
+    try:
+        with transaction.atomic():
+            equipement = Equipement.objects.create(
+                company=company, produit=produit, installation=installation,
+                created_by=user if getattr(user, 'pk', None) else None,
+                **champs)
+            equipement.recompute_garanties()
+            # FG85 — même valeur que ``Equipement.set_token`` ; posée ici dans
+            # la MÊME écriture que les garanties (une seule sauvegarde).
+            equipement.equipement_token = f'EQUIP:{equipement.pk}'
+            equipement.save(update_fields=[
+                'date_fin_garantie', 'date_fin_garantie_production',
+                'equipement_token'])
+    except IntegrityError:
+        # Course entre deux lignes du MÊME lot (la garde ci-dessus a lu avant
+        # l'insertion de la précédente) : la ligne est un doublon, le lot
+        # continue — le savepoint annule cette ligne seule.
+        return 'doublon', None
+    except Exception as exc:  # pragma: no cover - défensif
+        return 'erreur', str(exc)
+
+    return 'cree', None
+
+
 def ensure_equipement_for_bom_line(*, company, produit, installation,
                                    date_pose, created_by):
     """FG70 — garantit qu'AU MOINS UN Equipement (sans n° de série) existe au
