@@ -778,9 +778,16 @@ class Paiement(models.Model):
         blank=True,
         related_name='paiements',
     )
+    # AUD103 (FICHE-DEL) — on_delete: PROTECT. C'était CASCADE : supprimer une
+    # facture effaçait EN SILENCE les MAD réellement encaissés, pendant que
+    # l'écriture au grand livre (non liée par FK) survivait en orphelin. Un
+    # paiement est de l'argent : il ne disparaît jamais avec son document. Le
+    # viewset ne laisse de toute façon plus supprimer qu'un BROUILLON sans
+    # aucun paiement ; ce PROTECT est le filet côté MODÈLE, qui couvre aussi
+    # l'admin Django, le shell et tout futur appelant.
     facture = models.ForeignKey(
         Facture,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='paiements',
         null=True,
         blank=True,

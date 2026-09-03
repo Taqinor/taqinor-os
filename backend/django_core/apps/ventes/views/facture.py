@@ -28,6 +28,7 @@ from ..serializers import (  # noqa: F401
     RelanceLogSerializer,
     DevisActivitySerializer,
 )
+from rest_framework.permissions import BasePermission  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -122,6 +123,21 @@ def _company_qs(qs, user):
     return qs.none()
 
 
+class IsSuperuserOnly(BasePermission):
+    """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
+
+    ``IsAdminRole`` était trop large pour un geste destructeur : il passe pour
+    TOUT rôle portant la permission ``roles_gerer``
+    (``authentication/models.py`` ``is_admin_role``) — un « Directeur » ou un
+    « Admin adjoint » entrait donc, alors que la suppression d'une facture
+    emporte ses encaissements. Le texte « admin uniquement » était vrai au sens
+    du décorateur, faux au sens de qui peut réellement le faire."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.is_superuser)
+
+
 class _DatedDocument:
     """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
     ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
@@ -179,8 +195,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'remettre_brouillon', 'encaissement_groupe',
         ]:
             return [IsResponsableOrAdmin()]
+        # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
+        # geste qui emporte les encaissements en cascade. Réservé au
+        # superutilisateur, jamais au palier « admin » élargi (tout rôle
+        # portant ``roles_gerer``).
+        elif self.action == 'destroy':
+            return [IsSuperuserOnly()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        elif self.action in ['destroy', 'annuler']:
+        elif self.action == 'annuler':
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -262,6 +284,53 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             Facture, company, 'facture',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
+
+    def perform_destroy(self, instance):
+        """AUD103 (FICHE-DEL) — la suppression d'une facture cesse d'emporter
+        les encaissements en cascade.
+
+        Le viewset ne surchargeait NI ``destroy`` NI ``perform_destroy`` : DRF
+        appelait donc ``instance.delete()`` nu. Une facture ÉMISE, EN_RETARD ou
+        PAYÉE se supprimait aussi bien qu'un brouillon — alors que ``annuler``
+        REFUSE explicitement une facture payée : la suppression contournait la
+        garde métier de l'annulation. Aucun verrou de période non plus (la
+        garde YLEDG3 était câblée en sept points, jamais sur ``destroy``). Et
+        la cascade emportait ``Paiement`` : des MAD réellement encaissés
+        partaient en silence, pendant que l'écriture au grand livre — qui
+        n'est PAS liée par FK (compta la retrouve par ``source_type``/
+        ``source_id``) — SURVIVAIT en orphelin, faisant diverger le GL du
+        registre des ventes définitivement.
+
+        Trois gardes, plus une traduction :
+          1. seul un BROUILLON est supprimable (tout le reste s'ANNULE) ;
+          2. aucun paiement, même rejeté (piste d'audit) ;
+          3. verrou de période comptable ;
+          4. ``ProtectedError`` (avoir, note de débit, intention de paiement
+             portail) devient un 400 français, plus une 500 non traduite.
+        """
+        from django.db.models import ProtectedError
+
+        if instance.statut != Facture.Statut.BROUILLON:
+            raise ValidationError({'detail': (
+                'Seule une facture brouillon peut être supprimée. Une facture '
+                'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
+                'légal et, le cas échéant, des encaissements).'
+            )})
+        if instance.paiements.exists():
+            raise ValidationError({'detail': (
+                'Cette facture porte au moins un paiement : la supprimer '
+                'effacerait des encaissements réels. Annulez-la ou rejetez '
+                'd\'abord ses paiements.'
+            )})
+        self._guard_periode_verrouillee(instance)
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError({'detail': (
+                'Suppression impossible : cette facture est référencée par un '
+                'avoir, une note de débit ou un paiement du portail client. '
+                'Annulez-la plutôt que de la supprimer.'
+            )})
 
     def perform_update(self, serializer):
         # YLEDG3 — un document daté dans une période comptable CLÔTURÉE ne
