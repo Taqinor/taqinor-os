@@ -63,8 +63,11 @@ class _Base(TestCase):
             ],
             journal=journal_od)
         # AUD169 — le bilan borne son résultat à l'exercice couvrant la date :
-        # l'API refuse d'éditer un bilan hors de tout exercice.
-        ExerciceComptable.objects.get_or_create(
+        # l'API refuse d'éditer un bilan hors de tout exercice. L'exercice est
+        # gardé sur `self` : les deux tests de LIASSE en ont besoin et le
+        # recréaient, ce qui violait l'unicité
+        # (company, date_debut, date_fin) — un exercice par période, un seul.
+        self.exercice, _ = ExerciceComptable.objects.get_or_create(
             company=self.company, date_debut=date(2026, 1, 1),
             date_fin=date(2026, 12, 31), defaults={'libelle': '2026'})
         self.user = make_user(self.company, 'zacc1-admin')
@@ -110,9 +113,7 @@ class TestHtmlRendering(_Base):
         self.assertIn('Balance âgée', html)
 
     def test_liasse_html_assemble_bilan_et_cpc(self):
-        exercice = ExerciceComptable.objects.create(
-            company=self.company, libelle='2026',
-            date_debut=date(2026, 1, 1), date_fin=date(2026, 12, 31))
+        exercice = self.exercice
         data = selectors.liasse_fiscale(self.company, exercice)
         html = render_liasse_html(data, None, exercice=exercice)
         self.assertIn('Liasse fiscale', html)
@@ -151,9 +152,7 @@ class TestEndpointExportPdf(_Base):
         self.assertIn(resp.status_code, (200, 503))
 
     def test_liasse_fiscale_export_pdf_ou_503(self):
-        exercice = ExerciceComptable.objects.create(
-            company=self.company, libelle='2026',
-            date_debut=date(2026, 1, 1), date_fin=date(2026, 12, 31))
+        exercice = self.exercice
         resp = self.api.get(
             f'/api/django/compta/etats/liasse-fiscale/'
             f'?exercice={exercice.pk}&export=pdf')
