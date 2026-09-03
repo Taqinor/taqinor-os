@@ -269,12 +269,21 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
     Fonction FINE sanctionnée pour ``gestion_projet.services`` (frontière
     cross-app, CLAUDE.md) : reçoit le montant HT DÉJÀ calculé de la PÉRIODE
     (cumulé − antérieur, agrégé côté appelant sur toutes les lignes de la
-    situation) et une retenue de garantie optionnelle DÉDUITE du montant
-    facturé (le taux, pas le suivi de sa libération — qui vit dans
-    ``contrats``, jamais importé ici). Statut BROUILLON + ``type_facture``
-    ACOMPTE (chaîne standard devis→factures, réutilisée ici sans devis source).
-    Numérotation via ``apps/ventes/utils/references.py`` (jamais
-    ``count()+1``). Renvoie la ``Facture`` créée.
+    situation) et une retenue de garantie optionnelle (le taux, pas le suivi de
+    sa libération — qui vit dans ``contrats``, jamais importé ici). Statut
+    BROUILLON + ``type_facture`` ACOMPTE (chaîne standard devis→factures,
+    réutilisée ici sans devis source). Numérotation via
+    ``apps/ventes/utils/references.py`` (jamais ``count()+1``). Renvoie la
+    ``Facture`` créée.
+
+    AUD180 — DÉCISION FONDATEUR du 03/09/2026 : l'ASSIETTE est le
+    ``montant_periode`` COMPLET. La retenue de garantie est une modalité de
+    PAIEMENT (un montant retenu sur le RÈGLEMENT), pas une réduction de
+    l'assiette taxable : ni ``montant_ht`` ni ``montant_tva`` ne sont diminués
+    du pourcentage retenu. Auparavant la retenue était déduite du HT ET servait
+    de base à la TVA (``montant_ht_net``), ce qui sous-déclarait la TVA.
+    Elle est désormais tracée dans ``conditions_paiement``, seul endroit où
+    elle a sa place ; à contre-valider par le comptable, sans bloquer.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
@@ -284,10 +293,16 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
     rg_pct = Decimal(retenue_garantie_pct or 0)
     montant_rg = (montant_periode_ht * rg_pct / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ht_net = montant_periode_ht - montant_rg
-    montant_tva = (montant_ht_net * taux_tva / 100).quantize(
+    # Assiette = période COMPLÈTE (la RG ne la réduit jamais).
+    montant_tva = (montant_periode_ht * taux_tva / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ttc = montant_ht_net + montant_tva
+    montant_ttc = montant_periode_ht + montant_tva
+    conditions_paiement = ''
+    if montant_rg > 0:
+        conditions_paiement = (
+            f'Retenue de garantie de {rg_pct.normalize():f} % '
+            f'({montant_rg} MAD) retenue sur le règlement — '
+            'sans effet sur la base taxable.')
 
     def _create(ref):
         return Facture.objects.create(
@@ -297,18 +312,19 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
             statut=Facture.Statut.BROUILLON,
             type_facture=Facture.TypeFacture.ACOMPTE,
             taux_tva=taux_tva,
-            montant_ht=montant_ht_net,
+            montant_ht=montant_periode_ht,
             montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             libelle=libelle,
+            conditions_paiement=conditions_paiement,
             created_by=user,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
     logger.info(
         'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
-        'net %s, RG %s%%)',
-        facture.reference, company.id, montant_ht_net, rg_pct)
+        '%s, RG %s%% = %s retenue au règlement)',
+        facture.reference, company.id, montant_periode_ht, rg_pct, montant_rg)
     return facture
 
 

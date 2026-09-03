@@ -111,7 +111,13 @@ class SituationServiceTests(TestCase):
         self.assertEqual(
             Facture.objects.filter(company=self.co).count(), 1)
 
-    def test_retenue_garantie_deduite(self):
+    def test_retenue_garantie_ne_reduit_pas_l_assiette(self):
+        """AUD180 (décision fondateur 03/09/2026) — assiette = période COMPLÈTE.
+
+        La retenue de garantie est une modalité de PAIEMENT, pas une réduction
+        de la base taxable : ni le HT ni la TVA ne sont diminués du pourcentage
+        retenu (auparavant : HT net 27 000 et TVA calculée sur 27 000).
+        """
         s1 = services.creer_situation(
             self.projet, periode=date(2026, 1, 1),
             retenue_garantie_pct=Decimal('10'))
@@ -120,8 +126,24 @@ class SituationServiceTests(TestCase):
             avancement_cumule_pct=Decimal('30'))
         s1 = services.valider_situation(s1, user=self.user)
         facture = Facture.objects.get(id=s1.facture_id)
-        # 30000 HT, RG 10% => 3000 déduits => 27000 HT net.
-        self.assertEqual(facture.montant_ht, Decimal('27000.00'))
+        # 30 000 HT de période, RG 10 % : l'assiette reste 30 000.
+        self.assertEqual(facture.montant_ht, Decimal('30000.00'))
+        self.assertEqual(facture.montant_tva, Decimal('6000.00'))
+        self.assertEqual(facture.montant_ttc, Decimal('36000.00'))
+        # La retenue n'apparaît QUE comme modalité de règlement.
+        self.assertIn('3000.00', facture.conditions_paiement)
+        self.assertIn('Retenue de garantie', facture.conditions_paiement)
+
+    def test_sans_retenue_garantie_aucune_modalite(self):
+        s1 = services.creer_situation(self.projet, periode=date(2026, 1, 1))
+        services.ajouter_ligne_situation(
+            s1, libelle='Terrassement', montant_marche_ht=Decimal('100000'),
+            avancement_cumule_pct=Decimal('30'))
+        s1 = services.valider_situation(s1, user=self.user)
+        facture = Facture.objects.get(id=s1.facture_id)
+        self.assertEqual(facture.montant_ht, Decimal('30000.00'))
+        self.assertEqual(facture.montant_tva, Decimal('6000.00'))
+        self.assertEqual(facture.conditions_paiement, '')
 
     def test_valider_sans_ligne_refuse(self):
         s1 = services.creer_situation(self.projet, periode=date(2026, 1, 1))
