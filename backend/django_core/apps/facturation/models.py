@@ -464,6 +464,43 @@ class Facture(models.Model):
         return self.total_ht + self.total_tva
 
     @property
+    def totaux_affichage(self):
+        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, ht_net,
+        tva_par_taux, ttc}``, seule source des documents client.
+
+        Le gabarit ``templates/pdf/facture.html`` imprimait « Sous-total HT »
+        = ``facture.total_ht`` puis « Remise globale (X %) » =
+        ``total_ht × remise / 100``. Or depuis QX1 ``total_ht`` EST le HT NET
+        dès que ``remise_globale > 0`` : le document affichait un net étiqueté
+        « Sous-total », puis lui appliquait le pourcentage une SECONDE fois —
+        double décompte, et une chaîne imprimée qui ne retombait sur aucun
+        total de la page. Le correctif QX1/QX2 avait pourtant été appliqué
+        partout ailleurs (PDF bon de commande, export UBL) : seul le document
+        CLIENT le plus imprimé avait été oublié.
+
+        Un gabarit ne recalcule JAMAIS un pourcentage : il lit ces trois
+        valeurs. Sans remise globale active (défaut, et toute facture de
+        tranche à montants figés), ``ht_brut == ht_net`` et ``remise`` vaut 0
+        — rendu strictement inchangé."""
+        from decimal import Decimal
+        if self._remise_globale_active:
+            from apps.ventes.selectors import _canonical_totaux
+            totaux = _canonical_totaux(
+                self.lignes.all(),
+                remise_globale_pct=self.remise_globale,
+                fallback_taux=self.taux_tva)
+            return {
+                'ht_brut': totaux['ht_brut'], 'remise': totaux['remise'],
+                'ht_net': totaux['ht_net'],
+                'tva_par_taux': totaux['tva_par_taux'], 'ttc': totaux['ttc'],
+            }
+        ht = self.total_ht
+        return {
+            'ht_brut': ht, 'remise': Decimal('0'), 'ht_net': ht,
+            'tva_par_taux': self.tva_par_taux, 'ttc': self.total_ttc,
+        }
+
+    @property
     def montant_paye(self):
         """Somme des paiements enregistrés sur cette facture.
 
