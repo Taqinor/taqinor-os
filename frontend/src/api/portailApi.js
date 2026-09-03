@@ -37,6 +37,14 @@ const portailApi = {
   // installations.livraisons_client_portail).
   livraisons: {
     liste: () => api.get('/portail/mes-livraisons/'),
+    // AUD147/AUD301 — la preuve de livraison (POD) se LIT par l'API portail
+    // scopée au client connecté. L'écran ne rend plus `pod_url` en lien brut :
+    // ce chemin renvoie un DOCUMENT (signataire, tracé de signature,
+    // horodatage, photo), pas un fichier — un `<a href>` n'affichait que du
+    // JSON. L'ancien lien pointait, lui, l'endpoint INTERNE
+    // `/installations/preuves-livraison/<id>/` (403 garanti hors portée
+    // interne).
+    preuve: (id) => api.get(`/portail/mes-livraisons/${id}/preuve/`),
   },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
