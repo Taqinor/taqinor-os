@@ -744,6 +744,17 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='ID de la Facture ventes générée depuis ce ticket (XFSM1).')
 
+    # ── AUD529 — Escalade SAV → réclamation formelle (apps.litiges) ─────────
+    # Lien de RETOUR vers la ``litiges.Reclamation`` ouverte depuis ce ticket,
+    # en LOOSE FK entier (même patron que ``facture_id_ext``/``lead_id`` :
+    # jamais un import cross-app des modèles litiges). NULL = ticket jamais
+    # escaladé — comportement historique inchangé. Sert aussi de garde
+    # d'idempotence : un second appel renvoie la réclamation existante.
+    reclamation_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID de la litiges.Reclamation ouverte depuis ce ticket '
+                  '(escalade AUD529).')
+
     # ── XFSM15 — Suivi des récidives (callbacks / retour sur panne) ─────────
     # Un ticket causé par une intervention ratée récente sur le MÊME chantier.
     # `intervention_origine_id` référence `installations.Intervention` en

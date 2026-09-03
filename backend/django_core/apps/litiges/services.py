@@ -64,3 +64,23 @@ def creer_dossier_recouvrement(*, company, source_type, source_id, objet,
         created_by=user if (
             user and getattr(user, 'is_authenticated', False)) else None,
     )
+
+
+def journaliser_note(reclamation, message, *, user=None):
+    """AUD529 — pose une NOTE au chatter d'une réclamation.
+
+    Point d'entrée services (comme ``creer_reclamation``) pour qu'une autre
+    app — ``apps.sav`` quand elle escalade un ticket — puisse tracer
+    l'événement côté litiges SANS importer ``apps.litiges.models``. La
+    société et l'auteur sont posés côté serveur, jamais lus d'un corps de
+    requête. Renvoie l'activité créée."""
+    from .models import ReclamationActivity
+
+    return ReclamationActivity.objects.create(
+        company=reclamation.company,
+        reclamation=reclamation,
+        type=ReclamationActivity.Kind.NOTE,
+        message=message or '',
+        auteur=user if (
+            user and getattr(user, 'is_authenticated', False)) else None,
+    )

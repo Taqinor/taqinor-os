@@ -879,6 +879,91 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
     return 'ticket_cree', ticket
 
 
+# ── AUD529 — Escalade d'un ticket SAV en réclamation formelle (litiges) ────
+# `docs/module-map.md` documente `apps.litiges` comme l'équivalent « escalade
+# Helpdesk » de SAV, mais AUCUNE référence n'existait entre les deux apps : un
+# ticket grave ne pouvait devenir une réclamation qu'à la re-saisie manuelle.
+# Ce service est le pont, dans le sens sav → litiges, via la frontière
+# `apps.litiges.services` (jamais un import de ses models).
+
+class TicketNonEscaladableError(Exception):
+    """Le ticket ne peut pas être escaladé en réclamation (ticket annulé)."""
+
+
+def escalader_ticket_en_reclamation(*, ticket, user=None,
+                                    type_reclamation=None, gravite=None,
+                                    objet=None, description=None,
+                                    montant_conteste=None):
+    """AUD529 — ouvre une ``litiges.Reclamation`` liée à CE ticket SAV.
+
+    IDEMPOTENT : un ticket déjà escaladé (``reclamation_id_ext`` posé) renvoie
+    ``(reclamation_existante, False)`` sans rien créer — un double clic
+    n'ouvre jamais deux dossiers.
+
+    Statuts éligibles : tous SAUF un ticket ANNULÉ (il n'y a plus de grief à
+    formaliser). Un ticket résolu/clôturé reste escaladable : une réclamation
+    formelle arrive très souvent APRÈS la clôture de l'intervention.
+
+    Le lien est posé des deux côtés — ``Reclamation.source_type='ticket'`` +
+    ``source_id`` côté litiges, ``Ticket.reclamation_id_ext`` côté SAV — et
+    l'événement est tracé dans LES DEUX chatters. ``bloque_relances=False``
+    par défaut : une réclamation qualité issue du SAV ne doit pas suspendre
+    les relances de facturation (contrairement à un litige financier).
+
+    Renvoie ``(reclamation, cree)``."""
+    from apps.litiges import services as litiges_services
+    from . import activity
+
+    if ticket.annule:
+        raise TicketNonEscaladableError(
+            "Ticket annulé : rien à escalader en réclamation.")
+
+    if ticket.reclamation_id_ext:
+        from apps.litiges.selectors import reclamation_scoped
+        existante = reclamation_scoped(
+            ticket.company, ticket.reclamation_id_ext)
+        if existante is not None:
+            return existante, False
+
+    gravites = {'urgente': 'elevee', 'haute': 'elevee', 'normale': 'moyenne',
+                'basse': 'faible'}
+    objet_final = (objet or '').strip() or (
+        f'Réclamation issue du ticket SAV {ticket.reference}')
+    description_finale = (description or '').strip() or (
+        f'Escalade du ticket SAV {ticket.reference} '
+        f'(statut « {ticket.get_statut_display()} »).\n\n'
+        f'{ticket.description or ""}').strip()
+
+    reclamation = litiges_services.creer_reclamation(
+        company=ticket.company,
+        type_reclamation=type_reclamation or 'qualite',
+        source_type='ticket',
+        source_id=ticket.pk,
+        objet=objet_final[:255],
+        description=description_finale,
+        montant_conteste=montant_conteste,
+        gravite=gravite or gravites.get(ticket.priorite, 'moyenne'),
+        # Une réclamation qualité issue du SAV ne suspend PAS les relances de
+        # facturation (contrairement à un litige financier, LITIGE3).
+        bloque_relances=False,
+        user=user,
+    )
+
+    ticket.reclamation_id_ext = reclamation.pk
+    ticket.save(update_fields=['reclamation_id_ext'])
+
+    activity.log_note(
+        ticket, user,
+        f'Escaladé en réclamation #{reclamation.pk} — '
+        f'« {reclamation.objet} ».')
+    litiges_services.journaliser_note(
+        reclamation,
+        f'Ouverte par escalade du ticket SAV {ticket.reference} '
+        f'(#{ticket.pk}).',
+        user=user)
+    return reclamation, True
+
+
 # ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ─────────────────
 
 class PretEquipementError(Exception):

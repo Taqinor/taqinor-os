@@ -1616,6 +1616,44 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'ticket_statut': ticket.statut,
         }, status=201)
 
+    @action(detail=True, methods=['post'], url_path='escalader-reclamation',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def escalader_reclamation(self, request, pk=None):
+        """AUD529 — escalade CE ticket en réclamation formelle (litiges).
+
+        POST /sav/tickets/{id}/escalader-reclamation/
+        body optionnel : {type_reclamation, gravite, objet, description,
+                          montant_conteste}
+
+        Ouvre une ``litiges.Reclamation`` liée (source_type='ticket'), pose le
+        lien de retour sur le ticket et trace l'événement dans LES DEUX
+        chatters. IDEMPOTENT : un ticket déjà escaladé renvoie 200 avec la
+        réclamation existante (jamais un second dossier). Un ticket annulé
+        est refusé (400). La société n'est jamais lue du corps."""
+        ticket = self.get_object()
+        from .services import (
+            TicketNonEscaladableError, escalader_ticket_en_reclamation,
+        )
+        try:
+            reclamation, cree = escalader_ticket_en_reclamation(
+                ticket=ticket, user=request.user,
+                type_reclamation=request.data.get('type_reclamation'),
+                gravite=request.data.get('gravite'),
+                objet=request.data.get('objet'),
+                description=request.data.get('description'),
+                montant_conteste=request.data.get('montant_conteste'))
+        except TicketNonEscaladableError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({
+            'reclamation_id': reclamation.pk,
+            'reference': reclamation.reference,
+            'objet': reclamation.objet,
+            'statut': reclamation.statut,
+            'type_reclamation': reclamation.type_reclamation,
+            'gravite': reclamation.gravite,
+            'cree': cree,
+        }, status=201 if cree else 200)
+
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def prets_equipement(self, request, pk=None):

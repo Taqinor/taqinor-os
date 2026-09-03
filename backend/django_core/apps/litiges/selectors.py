@@ -7,6 +7,20 @@ dépendances cycliques et respecter les contrats d'import CI-enforced.
 from decimal import Decimal
 
 
+def reclamation_scoped(company, reclamation_id):
+    """AUD529 — ``Reclamation`` de CETTE société par son id, ou None.
+
+    Point d'entrée LECTURE pour les autres apps (``apps.sav`` résout ainsi la
+    réclamation déjà liée à un ticket sans importer ``apps.litiges.models``).
+    Scopé société : un id d'une autre société renvoie None, jamais l'objet."""
+    from .models import Reclamation
+
+    if not reclamation_id or company is None:
+        return None
+    return Reclamation.objects.filter(
+        pk=reclamation_id, company=company).first()
+
+
 def relances_suspendues_pour_facture(facture_id: int, company) -> bool:
     """Retourne True si au moins un litige ouvert bloque les relances pour
     cette facture.
