@@ -150,6 +150,12 @@ class TenantConsoleCreateView(APIView):
         # XPLT19 — la société d'attache est aussi la première société autorisée.
         admin.societes_autorisees.add(company)
 
+        # SOL10 — même gabarit « Solaire » que le signup public (modules rares
+        # éteints SOL8, plan de licence SOL9, rôles types, structure de
+        # catalogue, cartes de tableau de bord). Chemin de CRÉATION uniquement.
+        from .tenant_templates import appliquer_gabarit_solaire
+        appliquer_gabarit_solaire(company, user=admin)
+
         # SCA20 — hooks « nouvelle société » (best-effort, isolés).
         from core.signup_hooks import run_signup_hooks
         run_signup_hooks(company, user=admin)

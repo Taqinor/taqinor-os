@@ -63,24 +63,34 @@ class PnlSelectorTests(TestCase):
             categorie=LigneBudgetProjet.Categorie.MAIN_OEUVRE,
             libelle='MO', montant_prevu=Decimal('5000'))
 
-    def test_cout_reel_additionne_affectations_et_timesheets(self):
+    def test_cout_reel_ne_double_compte_pas_une_ressource_pointee(self):
+        """AUD329 — mise à jour : l'addition systématique double-comptait.
+
+        Attendu HISTORIQUE : 800 + 300 = 1100. La même ressource était comptée
+        une fois pour son allocation PLANIFIÉE (affectation) et une fois pour
+        ses heures RÉELLES (timesheet). Le pointage fait désormais foi pour
+        elle : 800 − 800 + 300 = 300.
+        """
         tache = Tache.objects.create(
             company=self.co, projet=self.projet, libelle='T', ordre=1)
         ressource = RessourceProfil.objects.create(
             company=self.co, nom='R', cout_horaire=Decimal('100'))
-        # Affectation : 1 j × 8h × 100 = 800.
+        # Affectation : 1 j × 8h × 100 = 800 (allocation planifiée).
         AffectationRessource.objects.create(
             company=self.co, tache=tache, ressource=ressource,
             date_debut=date(2026, 1, 1), date_fin=date(2026, 1, 2),
             charge_jours=Decimal('1'))
-        # Timesheet : coût figé 300.
+        # Timesheet : coût figé 300 (heures réellement pointées).
         Timesheet.objects.create(
             company=self.co, projet=self.projet, ressource=ressource,
             date=date(2026, 1, 1), heures=Decimal('3'), cout=Decimal('300'))
         data = selectors.pnl_projet(self.co, self.projet)
+        # Les deux sources brutes restent exposées telles quelles…
         self.assertEqual(data['cout_reel_affectations'], Decimal('800.00'))
         self.assertEqual(data['cout_reel_timesheets'], Decimal('300'))
-        self.assertEqual(data['cout_reel'], Decimal('1100.00'))
+        # …et la déduction rend la somme réconciliable.
+        self.assertEqual(data['cout_reel_mo_deja_pointee'], Decimal('800.00'))
+        self.assertEqual(data['cout_reel'], Decimal('300.00'))
         self.assertEqual(data['cout_budget'], Decimal('5000'))
 
     def test_marge_pct_none_si_revenu_nul(self):

@@ -51,9 +51,10 @@ class SansCleApiNoOpTests(TestCase):
 
     @override_settings(
         WOOCOMMERCE_CONSUMER_KEY='', WOOCOMMERCE_CONSUMER_SECRET='')
-    def test_webhook_signature_false_sans_secret(self):
-        self.assertFalse(
-            woocommerce.verify_webhook_signature(b'{}', 'peu-importe'))
+    def test_aucune_connexion_signataire_sans_secret(self):
+        # AUD212 — aucune connexion (donc aucun secret) : jamais d'acceptation.
+        self.assertIsNone(
+            woocommerce.connexion_signataire(b'{}', 'peu-importe'))
 
     @override_settings(
         WOOCOMMERCE_CONSUMER_KEY='', WOOCOMMERCE_CONSUMER_SECRET='')
@@ -114,19 +115,28 @@ class SyncCatalogueTests(TestCase):
         self.assertEqual(self.mapping.dernier_statut, ProduitSync.Statut.ERREUR)
 
 
-class VerifyWebhookSignatureTests(TestCase):
-    @override_settings(WOOCOMMERCE_WEBHOOK_SECRET='secret-woo-test')
-    def test_signature_valide_acceptee(self):
+class ConnexionSignataireTests(TestCase):
+    """AUD212 — le secret PROPRE de la connexion valide (et désigne le tenant)."""
+
+    def setUp(self):
+        self.company = _company()
+        self.connexion = ConnexionEcommerce.objects.create(
+            company=self.company,
+            plateforme=ConnexionEcommerce.Plateforme.WOOCOMMERCE,
+            boutique_url='https://ma-boutique-woo-test.example.com', actif=True,
+            webhook_secret='secret-woo-test')
+
+    def test_signature_valide_resout_la_connexion(self):
         body = b'{"id": 1}'
         digest = hmac.new(b'secret-woo-test', body, hashlib.sha256).digest()
         header = base64.b64encode(digest).decode('utf-8')
 
-        self.assertTrue(woocommerce.verify_webhook_signature(body, header))
+        self.assertEqual(
+            woocommerce.connexion_signataire(body, header), self.connexion)
 
-    @override_settings(WOOCOMMERCE_WEBHOOK_SECRET='secret-woo-test')
     def test_signature_invalide_rejetee(self):
-        self.assertFalse(
-            woocommerce.verify_webhook_signature(b'{"id": 1}', 'faux'))
+        self.assertIsNone(
+            woocommerce.connexion_signataire(b'{"id": 1}', 'faux'))
 
 
 @override_settings(
@@ -137,7 +147,8 @@ class TraiterWebhookCommandeTests(TestCase):
         self.connexion = ConnexionEcommerce.objects.create(
             company=self.company,
             plateforme=ConnexionEcommerce.Plateforme.WOOCOMMERCE,
-            boutique_url='https://ma-boutique-woo-test.example.com', actif=True)
+            boutique_url='https://ma-boutique-woo-test.example.com', actif=True,
+            webhook_secret='secret-e2e-woo')
         self.client_crm = Client.objects.create(
             company=self.company, nom='Idrissi', email='woo-client@example.com')
         self.produit = Produit.objects.create(
@@ -184,17 +195,20 @@ class TraiterWebhookCommandeTests(TestCase):
     def test_endpoint_webhook_signature_bout_en_bout(self):
         payload = {
             'id': 'WOO-4004', 'total': '100.00',
+            # AUD202 — `status` est désormais LU : `order.updated` se déclenche
+            # à chaque transition, seuls `processing`/`completed` sont payés.
+            'status': 'completed',
             'billing': {'email': 'woo-client@example.com'}, 'line_items': [],
         }
         body = json.dumps(payload).encode('utf-8')
-        with override_settings(WOOCOMMERCE_WEBHOOK_SECRET='secret-e2e-woo'):
-            digest = hmac.new(b'secret-e2e-woo', body, hashlib.sha256).digest()
-            header = base64.b64encode(digest).decode('utf-8')
-            resp = self.client.post(
-                '/api/django/ecommerce-connect/woocommerce/webhook/commande/',
-                data=body, content_type='application/json',
-                HTTP_X_WC_WEBHOOK_SIGNATURE=header,
-                HTTP_X_WC_WEBHOOK_SOURCE='ma-boutique-woo-test.example.com')
+        digest = hmac.new(b'secret-e2e-woo', body, hashlib.sha256).digest()
+        header = base64.b64encode(digest).decode('utf-8')
+        resp = self.client.post(
+            '/api/django/ecommerce-connect/woocommerce/webhook/commande/',
+            data=body, content_type='application/json',
+            HTTP_X_WC_WEBHOOK_SIGNATURE=header,
+            # AUD212 — en-tête conservé pour prouver qu'il n'est plus lu.
+            HTTP_X_WC_WEBHOOK_SOURCE='ma-boutique-woo-test.example.com')
 
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
@@ -204,11 +218,10 @@ class TraiterWebhookCommandeTests(TestCase):
 
     def test_endpoint_webhook_signature_invalide_401(self):
         body = json.dumps({'id': 'WOO-5005'}).encode('utf-8')
-        with override_settings(WOOCOMMERCE_WEBHOOK_SECRET='secret-e2e-woo'):
-            resp = self.client.post(
-                '/api/django/ecommerce-connect/woocommerce/webhook/commande/',
-                data=body, content_type='application/json',
-                HTTP_X_WC_WEBHOOK_SIGNATURE='signature-invalide')
+        resp = self.client.post(
+            '/api/django/ecommerce-connect/woocommerce/webhook/commande/',
+            data=body, content_type='application/json',
+            HTTP_X_WC_WEBHOOK_SIGNATURE='signature-invalide')
 
         self.assertEqual(resp.status_code, 401)
         self.assertFalse(

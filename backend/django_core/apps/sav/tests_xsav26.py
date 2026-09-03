@@ -14,6 +14,8 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_xsav26 -v 2
 """
+import hashlib
+import hmac
 import json
 from unittest import mock
 
@@ -33,13 +35,21 @@ def make_company(slug='sav-xsav26', nom='Sav Co XSAV26'):
 
 
 def _post_payload(payload_dict, env_overrides=None):
+    # QJR414 (DR3) — le webhook BSP est FAIL-CLOSED : sans secret
+    # d'application tout POST est refusé (403). Ces tests portent sur le
+    # routage SAV du message entrant, pas sur la signature : ils posent donc
+    # un secret de test et signent leur corps.
     from apps.notifications.views_whatsapp_bsp import WhatsAppBspWebhookView
     factory = RequestFactory()
     body = json.dumps(payload_dict).encode()
+    env = dict(env_overrides or {})
+    env.setdefault('WHATSAPP_BSP_APP_SECRET', 'secret-sav')
+    signature = 'sha256=' + hmac.new(
+        env['WHATSAPP_BSP_APP_SECRET'].encode(), body,
+        hashlib.sha256).hexdigest()
     request = factory.post(
-        '/fake/webhook/', body, content_type='application/json')
-    env = env_overrides or {}
-    env.setdefault('WHATSAPP_BSP_APP_SECRET', '')
+        '/fake/webhook/', body, content_type='application/json',
+        HTTP_X_HUB_SIGNATURE_256=signature)
     with mock.patch.dict('os.environ', env, clear=False):
         return WhatsAppBspWebhookView.as_view()(request)
 

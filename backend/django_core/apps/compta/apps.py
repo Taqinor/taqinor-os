@@ -7,6 +7,7 @@ class ComptaConfig(AppConfig):
     verbose_name = 'Comptabilité générale'
     module_manifest = {
         'key': 'compta',
+        'sku': 'generic',
         'label': 'Comptabilité',
         'icone': 'calculator',
         'depends': [],

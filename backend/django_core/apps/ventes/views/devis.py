@@ -1613,54 +1613,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         created = []
         from decimal import Decimal, ROUND_HALF_UP
-        # QJR202 — CE CHEMIN DE COPIE PASSE PAR LE MÊME FILTRE QUE LES TROIS
-        # AUTRES. Il recopiait ``etude_params`` VERBATIM sur des devis dont il
-        # venait de multiplier les quantités par 0,8 / 1,2 : la copie publiait
-        # donc la production, les économies et l'étude horaire d'une AUTRE
-        # taille d'installation, jusque dans le PDF client (classe CS4-CS6,
-        # fermée par QJR117 sur les trois chemins du domaine — celui-ci était
-        # resté dehors).
-        from ..domain.etudes import etude_params_pour_copie
-        from ..services import rafraichir_etudes_du_devis
+        # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
+        # Cette boucle réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
+        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
+        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
+        # ``entite``, ``custom_data`` — une variante perdait l'échéancier
+        # NÉGOCIÉ et l'acompte de l'original. Elle créait en outre le devis
+        # HORS transaction avant de cloner ses lignes (S5-4). La
+        # réimplémentation est SUPPRIMÉE (règle permanente 2).
+        #
+        # L'ÉCHELLE reste propre à cette vue — c'est la seule chose que ce
+        # chemin a de particulier, et elle passe par ``remplacements``.
+        # QJR84 conservé mot pour mot : ``quantite_manuelle`` NE se recopie
+        # PAS — la quantité vient d'être mise à l'échelle, elle n'est plus
+        # celle que le commercial avait tapée. QJR202 (purge des clés dérivées
+        # + rafraîchissement FORCÉ des études sur la taille RÉELLE de la copie)
+        # est porté par le cloneur, pour les quatre chemins à la fois.
+        from ..domain.creation import cloner_devis
 
         for scale in scales:
             variant_note = _label_for(scale)
-            holder = {}
 
-            def _save(ref, _scale=scale, _note=variant_note):
-                obj = Devis.objects.create(
-                    company=company, reference=ref,
-                    client=source.client, lead=source.lead,
-                    statut=Devis.Statut.BROUILLON,
-                    taux_tva=source.taux_tva,
-                    remise_globale=source.remise_globale,
-                    note=(f'[Variante {_note}] ' + (source.note or '')).strip(),
-                    mode_installation=source.mode_installation,
-                    etude_params=etude_params_pour_copie(source.etude_params),
-                    prix_cible_kwc=source.prix_cible_kwc,
-                    created_by=request.user,
-                    # Groupe : version_parent = racine, version incrémentée,
-                    # is_active=True (alternative, pas remplacement).
-                    version=source.version + len(created) + 1,
-                    version_parent=root,
-                    is_active=True,
-                )
-                holder['obj'] = obj
-                return obj
-
-            create_numbered(Devis, company, 'devis', _save)
-            nd = holder['obj']
-
-            # QJR224 — LA COPIE DES CHAMPS PASSE PAR LE CLONEUR UNIQUE.
-            # Cette boucle recopiait à la main SA liste de champs et divergeait
-            # déjà de ``CHAMPS_CLONES`` en oubliant ``lot`` : une variante d'un
-            # devis à lots perdait ses lots. L'ÉCHELLE, elle, reste propre à
-            # cette vue — c'est la seule chose que ce chemin a de particulier,
-            # et elle passe par ``remplacements``.
-            #
-            # QJR84 conservé mot pour mot : ``quantite_manuelle`` NE se recopie
-            # PAS — la quantité vient d'être mise à l'échelle, elle n'est plus
-            # celle que le commercial avait tapée.
             def _echelle(ligne, _scale=scale):
                 brute = ligne.quantite * Decimal(str(_scale))
                 qty = brute.quantize(Decimal('0.01'),
@@ -1668,13 +1641,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 return {'quantite': max(qty, Decimal('0.01')),
                         'quantite_manuelle': False}
 
-            cloner_lignes(source, nd, remplacements=_echelle)
-            # QJR202 — RAFRAÎCHISSEMENT FORCÉ, comme les trois chemins du
-            # domaine (``creation.py:223``, ``cycle_vie.py:1763``,
-            # ``gammes.py:209``) : les clés dérivées viennent d'être purgées,
-            # l'étude est recalculée pour la taille RÉELLE de la copie. Sans
-            # cet appel, la copie repartirait simplement SANS étude.
-            rafraichir_etudes_du_devis(nd, force=True)
+            nd = cloner_devis(
+                source, user=request.user,
+                note=(f'[Variante {variant_note}] '
+                      + (source.note or '')).strip(),
+                # Groupe : version_parent = racine, version incrémentée,
+                # is_active=True (alternative, pas remplacement).
+                version=source.version + len(created) + 1,
+                version_parent=root,
+                remplacements=_echelle)
             created.append(nd)
 
         return Response(
@@ -1848,30 +1823,23 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         pointe vers sa remplaçante (lecture seule côté UI). Les liens lead/client
         et le schéma de numérotation sont préservés. Additif, sans perte."""
         old = self.get_object()
-        company = old.company
-        root = old.version_parent or old
-        new_devis = {}
-
-        def _save(ref):
-            new_devis['obj'] = Devis.objects.create(
-                company=company, reference=ref, client=old.client, lead=old.lead,
-                statut=Devis.Statut.BROUILLON, taux_tva=old.taux_tva,
-                remise_globale=old.remise_globale, note=old.note,
-                mode_installation=old.mode_installation,
-                etude_params=old.etude_params, prix_cible_kwc=old.prix_cible_kwc,
-                created_by=request.user, version=old.version + 1,
-                version_parent=root, is_active=True)
-            return new_devis['obj']
-
-        create_numbered(Devis, company, 'devis', _save)
-        nd = new_devis['obj']
-        # QJR224 — LE CLONEUR UNIQUE, comme les trois chemins du domaine. Cette
-        # boucle recopiait à la main SA liste de champs et divergeait déjà de
-        # ``CHAMPS_CLONES`` en oubliant ``lot`` : une révision d'un devis à lots
-        # perdait ses lots. QJR84 est conservé intégralement — une RÉVISION
-        # repart du devis TEL QU'IL EST, marqueurs de saisie manuelle (D12)
-        # compris : c'est exactement ce que ``CHAMPS_CLONES`` recopie.
-        cloner_lignes(old, nd)
+        # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
+        # Cette vue réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
+        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
+        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
+        # ``entite``, ``custom_data``. Une révision perdait donc l'échéancier
+        # NÉGOCIÉ et l'acompte du devis d'origine. Elle assignait en outre
+        # ``etude_params`` PAR RÉFÉRENCE (aliasing, S5-2) et créait le devis
+        # HORS transaction avant de cloner ses lignes (S5-4). La
+        # réimplémentation est SUPPRIMÉE (règle permanente 2) ; le clonage des
+        # LIGNES reste celui de QJR224 (``cloner_lignes``, appelé par le
+        # cloneur) — QJR84 compris : une RÉVISION repart du devis TEL QU'IL
+        # EST, marqueurs de saisie manuelle (D12) compris.
+        from ..domain.creation import cloner_devis
+        nd = cloner_devis(
+            old, user=request.user, note=old.note,
+            version=old.version + 1,
+            version_parent=old.version_parent or old)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])

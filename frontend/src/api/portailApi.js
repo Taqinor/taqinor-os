@@ -60,6 +60,13 @@ const portailApi = {
       patch: (id, payload) => api.patch(`/portail/comptes-portail/${id}/`, payload),
       provisionnerAcces: (id) =>
         api.post(`/portail/comptes-portail/${id}/provisionner-acces/`, {}),
+      // AUD141 — le jeton d'accès ne figure plus dans le payload de liste
+      // (seul un aperçu `token_apercu`). Le lien complet se DEMANDE, par une
+      // action POST réservée à l'administrateur et journalisée côté serveur ;
+      // `regenererJeton` invalide l'ancien lien en cas de fuite.
+      lienAcces: (id) => api.post(`/portail/comptes-portail/${id}/lien-acces/`, {}),
+      regenererJeton: (id) =>
+        api.post(`/portail/comptes-portail/${id}/regenerer-jeton/`, {}),
     },
     acceptationsDevis: {
       liste: (params) => api.get('/portail/acceptations-devis-portail/', { params }),

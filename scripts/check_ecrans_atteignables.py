@@ -166,6 +166,54 @@ PAGES = FRONT_SRC / "pages"
 ENTRY = FRONT_SRC / "main.jsx"
 BASELINE_PATH = ROOT / "scripts" / "ecrans_atteignables_allow.txt"
 
+# ---------------------------------------------------------------------------
+# SOL6 — PERIMETRE PAR EDITION
+# ---------------------------------------------------------------------------
+# En edition `solar`, six verticaux sortent du BUILD : leurs TROIS arbres
+# (`features/<x>`, `pages/<x>`, `components/<x>`) disparaissent ENSEMBLE du dist.
+# Analyser ce perimetre-la avec l'inventaire de l'edition complete signalerait
+# des dizaines d'ecrans « inatteignables » qui sont simplement HORS BUILD — et,
+# pire, exclure `features/<x>` sans `pages/<x>` laisserait des ecrans orphelins
+# parfaitement legitimes. D'ou une exclusion des trois arbres EN BLOC.
+#
+# Defaut = edition complete → ensemble VIDE → comportement byte-identique a
+# l'existant (la gate PR ne bouge pas d'un pouce).
+ARBRES_EDITION = ("features", "pages", "components")
+_VERTICAUX_PARQUES: tuple = ()
+
+
+def _verticaux_parques_de(edition: str) -> tuple:
+    """Verticaux parques par `edition`, lus dans le registre frontend.
+
+    Source UNIQUE : `frontend/src/lib/editions.js` (le meme fichier que lisent
+    vite.config.js, vitest.config.js, eslint.config.js et
+    `frontend/scripts/check_dist_edition.mjs`) — jamais une liste recopiee ici,
+    qui divergerait au premier vertical ajoute ou retire.
+    """
+    if edition == "full":
+        return ()
+    source = (FRONT_SRC / "lib" / "editions.js").read_text(encoding="utf-8")
+    bloc = re.search(
+        r"\[EDITION_SOLAR\]:\s*\[(?P<corps>[^\]]*)\]", source, re.S)
+    if not bloc:
+        raise SystemExit(
+            "check_ecrans_atteignables: impossible de lire VERTICAUX_PARQUES "
+            "dans frontend/src/lib/editions.js (registre SOL6).")
+    return tuple(re.findall(r"'([a-z_]+)'", bloc.group("corps")))
+
+
+def _est_parque(path: Path) -> bool:
+    """Vrai si `path` vit dans l'un des trois arbres d'un vertical parque."""
+    if not _VERTICAUX_PARQUES:
+        return False
+    chemin = path.resolve().as_posix()
+    for arbre in ARBRES_EDITION:
+        for vertical in _VERTICAUX_PARQUES:
+            if f"/src/{arbre}/{vertical}/" in chemin:
+                return True
+    return False
+
+
 # Extensions qu'un specificateur relatif peut designer sans etre ecrit.
 # ``.tsx`` (PACT149) : aucun fichier de ce type n'existe encore au 07/08/2026
 # dans le depot — ajoute par anticipation pour qu'un futur ecran TypeScript
@@ -651,7 +699,14 @@ def routes_sans_nav(configs: list, vus: set) -> list:
 
 def atteignables() -> tuple:
     """(fichiers atteignables, configs lues)."""
-    configs = [ConfigModule(p) for p in sorted(FEATURES.glob("*/module.config.jsx"))]
+    # SOL6 — un `module.config.jsx` d'un vertical PARQUE n'est pas charge par
+    # le registre de l'edition analysee : ne pas le lire ici non plus, sinon
+    # ses `routes:` credit(erai)ent des ecrans qui ne sont plus dans le build.
+    configs = [
+        ConfigModule(p)
+        for p in sorted(FEATURES.glob("*/module.config.jsx"))
+        if not _est_parque(p)
+    ]
     racines = set()
     # PACT173 : un `module.config.jsx` NON opaque reste marque « vu » (le
     # scan de nav de PACT150 en depend) mais n'entre JAMAIS dans `racines` —
@@ -692,6 +747,10 @@ def _ecrans_sous(dossier: Path) -> list:
     for extension in (".jsx", ".tsx"):
         for path in sorted(dossier.rglob(f"*{extension}")):
             if est_test(path) or path.name == "module.config.jsx":
+                continue
+            # SOL6 — hors perimetre de l'edition analysee (les trois arbres du
+            # vertical sortent ensemble ; cf. _est_parque).
+            if _est_parque(path):
                 continue
             ecrans.append(path.resolve())
     return sorted(set(ecrans))
@@ -873,7 +932,20 @@ def main(argv=None) -> int:
                         help="retire de la base les ecrans desormais branches")
     parser.add_argument("--autoriser-croissance", action="store_true",
                         help="FONDATEUR UNIQUEMENT : autorise l'ajout de dettes")
+    parser.add_argument("--edition", default="full", choices=("full", "solar"),
+                        help="SOL6 : perimetre d'edition analyse. `solar` "
+                             "exclut EN BLOC les trois arbres (features/, "
+                             "pages/, components/) de chaque vertical parque. "
+                             "Defaut `full` = comportement historique.")
     args = parser.parse_args(argv)
+
+    global _VERTICAUX_PARQUES
+    _VERTICAUX_PARQUES = _verticaux_parques_de(args.edition)
+    if _VERTICAUX_PARQUES:
+        print(f"Edition '{args.edition}' : {len(_VERTICAUX_PARQUES)} vertical(aux) "
+              f"parque(s) hors perimetre — "
+              f"{', '.join(_VERTICAUX_PARQUES)} (arbres "
+              f"{'/'.join(ARBRES_EDITION)}).")
 
     constats, stats = analyse()
 

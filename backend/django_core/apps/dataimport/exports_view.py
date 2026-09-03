@@ -8,18 +8,28 @@ from authentication.permissions import IsAnyRole
 from apps.crm.exports import build_xlsx_response
 
 
-def _co_qs(model, user):
+def _co_qs(model, user, company_id=None):
+    """Queryset borné à UNE société — jamais « toutes » (AUD315).
+
+    La branche superutilisateur renvoyait auparavant le queryset NON filtré :
+    un export lancé par un superutilisateur sans société mélangeait
+    silencieusement toutes les sociétés dans un seul fichier. Désormais ce
+    profil doit DÉSIGNER la société exportée (``company`` dans le corps) ;
+    sans sélecteur explicite, on ne renvoie rien (fail-closed).
+    """
     qs = model.objects.all()
     if user.company_id:
         return qs.filter(company=user.company)
     if user.is_superuser:
-        return qs
+        if not company_id:
+            return qs.none()
+        return qs.filter(company_id=company_id)
     return qs.none()
 
 
-def _devis_rows(user, ids):
+def _devis_rows(user, ids, company_id=None):
     from apps.ventes.models import Devis
-    qs = _co_qs(Devis, user).select_related('client')
+    qs = _co_qs(Devis, user, company_id).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Total TTC', 'Créé le', 'Validité']
@@ -32,9 +42,9 @@ def _devis_rows(user, ids):
     return 'devis.xlsx', headers, rows, 'Devis'
 
 
-def _factures_rows(user, ids):
+def _factures_rows(user, ids, company_id=None):
     from apps.ventes.models import Facture
-    qs = _co_qs(Facture, user).select_related('client')
+    qs = _co_qs(Facture, user, company_id).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Échéance', 'Créée le']
@@ -46,9 +56,9 @@ def _factures_rows(user, ids):
     return 'factures.xlsx', headers, rows, 'Factures'
 
 
-def _chantiers_rows(user, ids):
+def _chantiers_rows(user, ids, company_id=None):
     from apps.installations.models import Installation
-    qs = _co_qs(Installation, user).select_related('client')
+    qs = _co_qs(Installation, user, company_id).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Pose prévue', 'Mise en service']
@@ -60,9 +70,9 @@ def _chantiers_rows(user, ids):
     return 'chantiers.xlsx', headers, rows, 'Chantiers'
 
 
-def _equipements_rows(user, ids):
+def _equipements_rows(user, ids, company_id=None):
     from apps.sav.models import Equipement
-    qs = _co_qs(Equipement, user).select_related('produit')
+    qs = _co_qs(Equipement, user, company_id).select_related('produit')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['N° série', 'Produit', 'Pose', 'Fin garantie', 'Statut']
@@ -75,9 +85,9 @@ def _equipements_rows(user, ids):
     return 'equipements.xlsx', headers, rows, 'Équipements'
 
 
-def _tickets_rows(user, ids):
+def _tickets_rows(user, ids, company_id=None):
     from apps.sav.models import Ticket
-    qs = _co_qs(Ticket, user).select_related('client')
+    qs = _co_qs(Ticket, user, company_id).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Type', 'Statut', 'Ouverture', 'Résolution']
@@ -100,10 +110,24 @@ _BUILDERS = {
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def export_list(request, entity):
-    """POST /imports/export/<entity>/ {ids?: [...]} → .xlsx (société courante)."""
+    """POST /imports/export/<entity>/ {ids?: [...]} → .xlsx (société courante).
+
+    AUD315 — un superutilisateur SANS société doit joindre ``company`` (id de
+    la société à exporter) : sans ce sélecteur, la requête est refusée en 400
+    au lieu de produire un fichier mélangeant tous les tenants. Pour tout autre
+    compte, la société reste celle de l'utilisateur et ``company`` est ignoré.
+    """
     builder = _BUILDERS.get(entity)
     if builder is None:
         return Response({'detail': 'Entité inconnue.'}, status=400)
+    company_id = None
+    if not request.user.company_id and request.user.is_superuser:
+        company_id = request.data.get('company')
+        if not company_id:
+            return Response(
+                {'company': 'Sélecteur de société obligatoire : un compte sans '
+                            'société doit désigner la société à exporter.'},
+                status=400)
     ids = request.data.get('ids') or []
-    filename, headers, rows, title = builder(request.user, ids)
+    filename, headers, rows, title = builder(request.user, ids, company_id)
     return build_xlsx_response(filename, headers, rows, sheet_title=title)

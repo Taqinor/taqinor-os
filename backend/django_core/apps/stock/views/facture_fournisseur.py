@@ -90,22 +90,40 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        from ..services import check_periode_comptable_ouverte
+
         company = self.request.user.company
+        # AUD232 — garde de période comptable EN AMONT : sans elle, une
+        # facture antidatée dans un mois clos passait (toggle écritures OFF)
+        # ou levait une ValidationError non traduite APRÈS création (toggle
+        # ON), laissant une facture orpheline.
+        try:
+            check_periode_comptable_ouverte(
+                company, serializer.validated_data.get('date_facture'),
+                document='Cette facture fournisseur')
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
 
         def _save(ref):
             return serializer.save(
                 reference=ref, company=company,
                 created_by=self.request.user,
             )
-        facture = create_with_reference(
-            FactureFournisseur, 'FF', company, _save)
-        # YLEDG2/YPROC3 — événement documentaire à la création d'une facture
-        # fournisseur. Contrat UNIFIÉ (core/events.py) : instance, company,
-        # user — compta pose l'écriture, installations lettre les GR/IR.
-        from core.events import facture_fournisseur_creee
-        facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=facture,
-            company=company, user=self.request.user)
+        # AUD232 — création + événement dans UNE transaction : un abonné qui
+        # échoue ne peut plus laisser la facture committée toute seule
+        # (`ATOMIC_REQUESTS` est absent des settings).
+        with transaction.atomic():
+            facture = create_with_reference(
+                FactureFournisseur, 'FF', company, _save)
+            # YLEDG2/YPROC3 — événement documentaire à la création d'une
+            # facture fournisseur. Contrat UNIFIÉ (core/events.py) :
+            # instance, company, user — compta pose l'écriture,
+            # installations lettre les GR/IR.
+            from core.events import facture_fournisseur_creee
+            facture_fournisseur_creee.send(
+                sender=FactureFournisseur, instance=facture,
+                company=company, user=self.request.user)
 
     def create(self, request, *args, **kwargs):
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
@@ -301,6 +319,16 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             data={**request.data, 'facture': facture.id},
             context={'request': request})
         serializer.is_valid(raise_exception=True)
+        # AUD232 — un règlement ne s'enregistre pas dans une période close.
+        from ..services import check_periode_comptable_ouverte
+        try:
+            check_periode_comptable_ouverte(
+                request.user.company,
+                serializer.validated_data.get('date_paiement'),
+                document='Ce règlement fournisseur')
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             from ..services import (
                 recompute_facture_fournisseur_statut, compute_ras_tva,

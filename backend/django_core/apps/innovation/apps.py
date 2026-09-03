@@ -7,6 +7,7 @@ class InnovationConfig(AppConfig):
     verbose_name = 'Innovation'
     module_manifest = {
         'key': 'innovation',
+        'sku': 'generic',
         'label': 'Innovation',
         'icone': 'lightbulb',
         'depends': [],

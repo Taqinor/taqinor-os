@@ -30,6 +30,7 @@ class VeilleAoConfig(AppConfig):
         # (`api/django/veille_ao/`), sinon il faudrait une entrée
         # ``core/permissions.PREFIX_TO_MODULE``.
         'key': 'veille_ao',
+        'sku': 'solar_core',
         'label': "Veille appels d'offres",
         'icone': 'radar',
         # La veille ALIMENTE le module Appels d'offres : « retenir » un avis y

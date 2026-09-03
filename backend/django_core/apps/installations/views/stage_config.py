@@ -9,7 +9,10 @@ Multi-tenant : la société est TOUJOURS posée côté serveur ; le queryset est
 scopé à la société du demandeur. Une étape SYSTÈME (protégée) ne se supprime
 pas — elle se désactive (même règle que les checklists/shot-list).
 """
+from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission
+from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
@@ -48,8 +51,14 @@ class IsDirecteur(BasePermission):
 
 class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """CH5 — étapes/gates configurables (Paramètres → Chantiers). Lecture tout
-    rôle ; écriture Directeur uniquement. Amorce le cycle PV international de la
-    société à la première consultation.
+    rôle ; écriture Directeur uniquement.
+
+    AUD313 — la LECTURE n'amorce plus rien. Le cycle PV international
+    s'amorce uniquement par l'action d'écriture explicite
+    `POST /etapes-chantier/amorcer/`, réservée au Directeur : un GET (ouvert à
+    tout rôle, y compris depuis l'onglet « Jalons » d'une fiche chantier) ne
+    peut plus activer les 4 gates BLOQUANTS du cycle par défaut pour toute la
+    société.
     VX241(b) — la suppression effective écrit désormais une ligne AuditLog
     (UsageGuardedDestroyMixin) : StageModele n'est pas dans TRACKED_MODELS."""
     queryset = StageModele.objects.all()
@@ -60,10 +69,27 @@ class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsDirecteur()]
 
-    def list(self, request, *args, **kwargs):
-        if request.user.company_id:
-            seed_stages(request.user.company)
-        return super().list(request, *args, **kwargs)
+    @action(detail=False, methods=['post'], url_path='amorcer')
+    def amorcer(self, request):
+        """AUD313 — amorce le cycle de vie PV international de la société.
+
+        SEUL point d'entrée de `seed_stages` côté API, réservé au Directeur
+        (via `get_permissions`). Idempotent et additif : ne touche jamais une
+        étape existante (libellés, ordre, drapeaux et exigences édités par le
+        Directeur sont préservés)."""
+        company = request.user.company
+        if company is None:
+            return Response({'detail': 'Aucune société sur le compte.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        crees = seed_stages(company)
+        stages = StageModele.objects.filter(
+            company=company).order_by('ordre', 'id')
+        return Response(
+            {
+                'crees': len(crees),
+                'etapes': StageModeleSerializer(stages, many=True).data,
+            },
+            status=status.HTTP_201_CREATED)
 
     def destroy_guard_message(self, stage):
         if stage.protege:

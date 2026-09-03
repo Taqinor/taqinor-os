@@ -79,7 +79,6 @@ backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a5
 
 # --- backend/django_core/apps/ventes/quote_engine/builder.py
 backend/django_core/apps/ventes/quote_engine/builder.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.
-backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::56d1c0aaf98f | Arrondi d'AFFICHAGE du prix unitaire HT d'une ligne (moteur vendore, regle #4) ; le montant persiste passe par les modeles.
 backend/django_core/apps/ventes/quote_engine/builder.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::ff3b5101251f | Ratio d'AFFICHAGE : retour sur investissement en annees (total de reference / economie annuelle).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::cdfb2513215b | Ratio d'AFFICHAGE : prix au kWc (QJR160 -- total et kWc de la MEME branche).
@@ -145,6 +144,7 @@ backend/django_core/apps/ventes/public_views.py::_variant_summaries::d9ea0585d95
 backend/django_core/apps/ventes/public_views.py::_gammes_public::843ba953c327 | ELARGISSEMENT QJR4 : arrondi d'affichage du total rendu par display_totals() pour la gamme soeur.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::52b70f6bdf9c | ELARGISSEMENT QJR4 : meme arrondi d'affichage pour le total de la gamme courante.
 backend/django_core/apps/ventes/public_views.py::_gammes_public::363a93bf620d | ELARGISSEMENT QJR4 : ecart d'AFFICHAGE entre les deux gammes (difference des deux totaux deja arrondis ci-dessus).
+backend/django_core/apps/ventes/public_views.py::_monthly_consumption._kwh::016f23b2fff9 | pas un montant : kWh mensuels ENTIERS derives d'une facture MAD (QJR405 a bascule l'inversion sur facture_totale=True) — grandeur physique d'AFFICHAGE de la courbe de consommation, jamais persistee ; l'argent est en amont dans kwh_from_bill (deja allowliste).
 
 # --- backend/django_core/apps/ventes/offres_tailles.py
 backend/django_core/apps/ventes/offres_tailles.py::_payback::aa407a28ffac | ELARGISSEMENT QJR4 : payback en ANNEES (cout / economie), un ratio, pas un montant.

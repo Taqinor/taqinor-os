@@ -122,9 +122,16 @@ export default function PanneauAgricole({
         </div>
 
         {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
-        {/* Encouragées : elles permettent au PDF de dimensionner et chiffrer
-            sur les données réelles du fermier (besoin en eau FAO-56, économies
-            vs carburant). Aucune n'est obligatoire — chacune a un défaut. */}
+        {/* Encouragées : le besoin en eau FAO-56 qu'elles permettent d'estimer
+            alimente bien le dimensionnement pompage du PDF (cartes HMT /
+            Débit / Eau-par-jour du one-page). QJR428 (02/09/2026) — la
+            donnée carburant (current_fuel / fuel_spend_current) reste
+            conservée pour l'étude, mais aucune promesse de chiffre dans le
+            PDF : le renderer agricole premium qui publiait un comparatif
+            solaire-vs-carburant a été supprimé par QJR236, et le one-page
+            qui sert aujourd'hui ce marché ne le lit pas (preuve exécutée :
+            apps/ventes/tests/test_qjr428_promesse_carburant_agricole.py).
+            Aucune donnée n'est obligatoire — chacune a un défaut. */}
         <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 sm:p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Sprout className="size-4 text-success" aria-hidden="true" />

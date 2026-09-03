@@ -7,6 +7,7 @@ class PortailConfig(AppConfig):
     verbose_name = 'Portail self-service client'
     module_manifest = {
         'key': 'portail',
+        'sku': 'generic',
         'label': 'Portail client',
         'icone': 'user-circle',
         'depends': ['ventes', 'crm', 'sav'],

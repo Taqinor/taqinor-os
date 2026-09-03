@@ -7,6 +7,7 @@ class OfflinesyncConfig(AppConfig):
     verbose_name = 'Synchronisation hors-ligne'
     module_manifest = {
         'key': 'offlinesync',
+        'sku': 'generic',
         'label': 'Synchronisation hors-ligne',
         'icone': 'refresh-cw-off',
         'depends': [],

@@ -58,7 +58,18 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def lignes(self, request, pk=None):
         """Crée ou met à jour (upsert par produit) le prix d'un produit dans
-        cette liste."""
+        cette liste.
+
+        CRX18 — le produit est résolu dans la société de l'utilisateur (parité
+        exacte avec ``prix_applicable_view`` ci-dessous, via le SÉLECTEUR de
+        l'app stock — jamais un import de ses modèles). Avant, ``produit_id``
+        était posé tel quel : un id d'une AUTRE société créait une ligne liée à
+        son produit, et la réponse renvoyait immédiatement son ``produit_nom``
+        (fuite en un seul appel). Un id hors société répond 404, exactement
+        comme un id inexistant — aucun oracle d'existence.
+        """
+        from apps.stock.selectors import get_produit_scoped
+
         liste = self.get_object()
         produit_id = request.data.get('produit')
         prix_unitaire = request.data.get('prix_unitaire')
@@ -69,8 +80,15 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         except InvalidOperation:
             raise ValidationError('prix_unitaire invalide.')
 
+        try:
+            produit = get_produit_scoped(liste.company_id, produit_id)
+        except (ValueError, TypeError):
+            raise NotFound('Produit introuvable.')
+        if produit is None:
+            raise NotFound('Produit introuvable.')
+
         ligne, _ = LignePrixListe.objects.update_or_create(
-            liste=liste, produit_id=produit_id,
+            liste=liste, produit=produit,
             defaults={'prix_unitaire': prix_unitaire},
         )
         return Response(

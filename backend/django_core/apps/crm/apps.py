@@ -1,4 +1,31 @@
 from django.apps import AppConfig
+from django.core.checks import Warning as DjangoWarning, register
+
+
+@register()
+def _qjr414_meta_lead_ads_app_secret_check(app_configs, **kwargs):
+    """QJR414 (DR3) — avertit BRUYAMMENT tant que ``META_LEAD_ADS_APP_SECRET``
+    manque : le webhook Meta Lead Ads est alors FAIL-CLOSED et refuse tout POST.
+
+    Le secret est posé par le fondateur au moment du deploy, jamais par un run.
+    Tant qu'il manque, la synchronisation entrante reste EN PAUSE — c'est la
+    décision DR3, pas une panne. Cet avertissement existe pour que cet état
+    soit VISIBLE au démarrage plutôt que découvert par des leads manquants.
+
+    Avertissement, jamais une erreur bloquante : un environnement qui n'utilise
+    pas ce webhook démarre exactement comme avant.
+    """
+    from django.conf import settings
+
+    if (getattr(settings, 'META_LEAD_ADS_APP_SECRET', '') or '').strip():
+        return []
+    return [DjangoWarning(
+        'META_LEAD_ADS_APP_SECRET n\'est pas configuré : le webhook Meta '
+        'Lead Ads est FAIL-CLOSED (DR3) et refuse tout POST (403). La '
+        'synchronisation entrante des leads Meta reste EN PAUSE.',
+        hint='Poser META_LEAD_ADS_APP_SECRET dans le .env du serveur au '
+             'prochain deploy (voir .env.example).',
+        id='crm.W010')]
 
 
 class CrmConfig(AppConfig):
@@ -7,6 +34,7 @@ class CrmConfig(AppConfig):
     verbose_name = 'CRM'
     module_manifest = {
         'key': 'crm',
+        'sku': 'solar_core',
         'label': 'CRM',
         'icone': 'users',
         'depends': [],

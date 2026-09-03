@@ -19,6 +19,7 @@ class AdsengineConfig(AppConfig):
     # frontend features/adsengine/module.config.jsx). Satellite OFF par défaut.
     module_manifest = {
         'key': 'adsengine',
+        'sku': 'generic',
         'label': 'Publicité',
         'icone': 'megaphone',
         'depends': [],

@@ -822,13 +822,31 @@ def plan_de_charge(company, debut, fin, heures_par_jour=None,
             date_fin__gte=debut,
         ).select_related('ressource', 'equipe'))
 
+    # AUD325 — indisponibilités préchargées en UNE requête, indexées par
+    # ressource. La boucle appelait `indisponibilites_sur_periode(ressource,
+    # …)` par ressource : 60 profils = 60 requêtes SQL supplémentaires à chaque
+    # ouverture de l'écran Ressources ou du bouton « Nivellement » (qui hérite
+    # de ce coût via `nivellement_charge`). Même stratégie que les affectations
+    # juste au-dessus. Mêmes bornes INCLUSIVES et même ordre
+    # (`date_debut`, `id`) que le sélecteur unitaire, qui reste inchangé pour
+    # ses autres appelants.
+    indispos_par_ressource = {}
+    for indispo in Indisponibilite.objects.filter(
+            company=company,
+            ressource_id__in=[r.id for r in ressources],
+            date_debut__lte=fin,
+            date_fin__gte=debut,
+    ).order_by('date_debut', 'id'):
+        indispos_par_ressource.setdefault(
+            indispo.ressource_id, []).append(indispo)
+
     lignes = []
     nb_surcharges = 0
     for ressource in ressources:
         capacite_brute = _jours_ouvres_periode(debut, fin, jours_ouvres)
         # Retrancher les jours ouvrés couverts par une indisponibilité.
         jours_indispo = 0
-        for indispo in indisponibilites_sur_periode(ressource, debut, fin):
+        for indispo in indispos_par_ressource.get(ressource.id, ()):
             chev = _chevauchement_inclusif(
                 indispo.date_debut, indispo.date_fin, debut, fin)
             if chev is not None:
@@ -2248,6 +2266,45 @@ def _revenu_projet_cross_app(projet):
     return Decimal('0'), note
 
 
+def _mo_affectations_deja_pointee(projet):
+    """AUD329 — part de la MO des AFFECTATIONS déjà couverte par des timesheets.
+
+    ``_mo_reelle`` (PROJ22) valorise l'allocation PLANIFIÉE
+    (``charge_jours × 8 h × cout_horaire``) tandis que les timesheets (PROJ24)
+    valorisent les heures RÉELLEMENT pointées. Pour une ressource qui est à la
+    fois AFFECTÉE et POINTÉE sur le projet — le parcours normal des deux écrans
+    (``RessourcesPage`` affecte, ``TempsPage`` pointe sur la même tâche) — les
+    additionner compte DEUX FOIS le même travail.
+
+    Cette aide renvoie le montant à DÉDUIRE : la MO planifiée des affectations
+    dont la ressource porte au moins une feuille de temps sur ce projet. Le
+    pointage devient alors la source de vérité POUR CETTE RESSOURCE, et les
+    ressources non pointées gardent leur valorisation planifiée (repli).
+    Lecture seule, scopée société via le projet.
+    """
+    ressources_pointees = set(
+        Timesheet.objects.filter(
+            projet=projet, company=projet.company, ressource__isnull=False,
+        ).values_list('ressource_id', flat=True))
+    if not ressources_pointees:
+        return Decimal('0.00')
+    total = Decimal('0')
+    heures_jour = Decimal(_HEURES_PAR_JOUR_DEFAUT)
+    affectations = AffectationRessource.objects.filter(
+        company=projet.company,
+        tache__projet=projet,
+        ressource_id__in=ressources_pointees,
+        charge_jours__isnull=False,
+    ).select_related('ressource')
+    for aff in affectations:
+        charge = aff.charge_jours or Decimal('0')
+        cout_horaire = (
+            aff.ressource.cout_horaire
+            if aff.ressource.cout_horaire is not None else Decimal('0'))
+        total += charge * heures_jour * cout_horaire
+    return total.quantize(Decimal('0.01'))
+
+
 def pnl_projet(company, projet):
     """Compte de résultat (P&L) CONSOLIDÉ d'un projet (PROJ26 — interne/admin).
 
@@ -2260,7 +2317,10 @@ def pnl_projet(company, projet):
       • ``cout_reel``   — réel consolidé : main-d'œuvre des affectations
         (PROJ22) + coût figé des timesheets (PROJ24) + matériel/sous-traitance
         des liens de dépense (dégradés à 0 tant qu'aucun sélecteur cross-app
-        n'expose le montant).
+        n'expose le montant). AUD329 — la MO planifiée des ressources DÉJÀ
+        pointées est déduite (``cout_reel_mo_deja_pointee``) : sans cela, une
+        ressource affectée ET pointée sur la même tâche voyait son travail
+        compté deux fois.
       • ``marge_prev``  = revenu − cout_budget ; ``marge_reelle`` = revenu −
         cout_reel ; ``marge_pct_reelle`` = marge_reelle / revenu × 100 (None si
         revenu == 0 — garde division-par-zéro).
@@ -2279,9 +2339,15 @@ def pnl_projet(company, projet):
     synthese_ts = synthese_temps_projet(projet)
     cout_timesheets = synthese_ts['total_cout']
 
-    # Le réel consolidé additionne affectations (PROJ22) et timesheets (PROJ24) :
-    # ce sont deux sources INTERNES distinctes de main-d'œuvre réelle.
-    cout_reel = cout_reel_affectations + cout_timesheets
+    # AUD329 — les deux sources se RECOUVRENT dès qu'une ressource est à la
+    # fois affectée (PROJ22, allocation PLANIFIÉE valorisée
+    # `charge_jours × 8 h × cout_horaire`) et pointée (PROJ24, heures RÉELLES)
+    # sur le projet — le parcours normal des deux écrans. Les additionner
+    # comptait DEUX FOIS le même travail. On déduit donc la MO planifiée des
+    # ressources déjà pointées : le pointage fait foi pour elles, l'affectation
+    # reste le repli pour les ressources non pointées.
+    mo_deja_pointee = _mo_affectations_deja_pointee(projet)
+    cout_reel = cout_reel_affectations - mo_deja_pointee + cout_timesheets
 
     marge_prev = revenu - cout_budget
     marge_reelle = revenu - cout_reel
@@ -2298,6 +2364,10 @@ def pnl_projet(company, projet):
         'cout_reel': cout_reel,
         'cout_reel_affectations': cout_reel_affectations,
         'cout_reel_timesheets': cout_timesheets,
+        # AUD329 — montant déduit pour ne pas compter deux fois le travail des
+        # ressources à la fois affectées et pointées : la somme se réconcilie
+        # (affectations − déjà_pointée + timesheets == cout_reel).
+        'cout_reel_mo_deja_pointee': mo_deja_pointee,
         'marge_prev': marge_prev,
         'marge_reelle': marge_reelle,
         'marge_pct_reelle': marge_pct_reelle,

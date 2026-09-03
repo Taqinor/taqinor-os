@@ -106,8 +106,16 @@ def _append_transcript(session, auteur, texte):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicChatRateThrottle])
 def open_chat_session(request):
-    """Ouvre une nouvelle session livechat pour un visiteur anonyme."""
+    """Ouvre une nouvelle session livechat pour un visiteur anonyme.
+
+    CRX29 — LA SEULE VUE PUBLIQUE DU LOT QUI N'ÉTAIT PAS LIMITÉE EN DÉBIT.
+    Ses deux sœurs (``post_chat_message``, ``get_chat_session``) portaient
+    déjà ``PublicChatRateThrottle`` ; celle-ci, qui CRÉE une ligne en base à
+    chaque appel anonyme, ne portait rien — un simple bouclage remplissait la
+    table ``ChatSessionPublique``. Même limiteur que ses sœurs (par IP ; sans
+    jeton d'URL, le seau est celui de l'appelant)."""
     company = _resolve_company()
     if company is None:
         return Response(

@@ -5,6 +5,11 @@ Avant QX7d, ``_monthly_consumption`` divisait la facture par
 kWh via le barème progressif du distributeur (~1,20 en tranche moyenne) : deux
 prix contradictoires sur la MÊME proposition. Ce test verrouille l'unification :
 la conversion passe désormais par ``pricing.kwh_from_bill`` (mêmes tranches).
+
+QJR405 (DR7) — la facture saisie par le lead est le TOTAL de son papier
+(lignes fixes + TPPAN comprises) : l'inversion passe donc en mode
+``facture_totale=True``. Les attendus restent DÉRIVÉS du barème, jamais
+épinglés en dur ; seule la variante d'inversion change.
 """
 from unittest import mock
 
@@ -26,7 +31,8 @@ class MonthlyConsumptionQX7dTests(SimpleTestCase):
         out = self._run(bills)
         self.assertEqual(len(out), 12)
         expected = round(
-            pricing.kwh_from_bill(800.0, utility='onee').get('kwh_mensuel') or 0)
+            pricing.kwh_from_bill(800.0, utility='onee', facture_totale=True)
+            .get('kwh_mensuel') or 0)
         self.assertTrue(all(v == expected for v in out))
         # Doit différer du vieux prix plat 1,75 (sinon la régression est revenue).
         self.assertNotEqual(expected, round(800.0 / 1.75))
@@ -35,9 +41,11 @@ class MonthlyConsumptionQX7dTests(SimpleTestCase):
         bills = {'facture_hiver': 900.0, 'facture_ete': 400.0,
                  'ete_differente': True, 'distributeur': 'onee'}
         out = self._run(bills)
-        ete = round(pricing.kwh_from_bill(400.0, utility='onee')
+        ete = round(pricing.kwh_from_bill(400.0, utility='onee',
+                                          facture_totale=True)
                     .get('kwh_mensuel') or 0)
-        hiver = round(pricing.kwh_from_bill(900.0, utility='onee')
+        hiver = round(pricing.kwh_from_bill(900.0, utility='onee',
+                                            facture_totale=True)
                       .get('kwh_mensuel') or 0)
         # Index 0=Jan ; été = Mai→Oct (indices 4..9).
         self.assertEqual(out[0], hiver)

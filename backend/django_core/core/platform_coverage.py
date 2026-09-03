@@ -222,12 +222,48 @@ def new_drift(manifests=None):
     return all_drift(manifests) - BASELINE_DRIFT
 
 
+def _apps_hors_edition():
+    """Labels d'app absents de l'ÉDITION COURANTE (SOL15).
+
+    Une baseline est une liste d'`app.model` : en édition solaire, les apps
+    PARQUÉES ne sont pas chargées, donc leurs entrées ne peuvent plus
+    apparaître dans `all_drift()` — elles deviendraient toutes « périmées »
+    d'un coup et feraient rougir la garde pour la MAUVAISE raison. Elles ne
+    sont pas périmées : elles sont HORS PÉRIMÈTRE, et redeviendront vraies
+    dès que l'édition complète est rechargée.
+
+    Défaut (édition complète) : ensemble vide → comportement byte-identique.
+    """
+    try:
+        from django.conf import settings
+        from erp_agentique.settings import editions
+        edition = getattr(
+            settings, 'TAQINOR_EDITION', editions.DEFAULT_EDITION)
+        return {
+            chemin.rsplit('.', 1)[-1]
+            for chemin in editions.apps_parquees(edition)
+        }
+    except Exception:  # pragma: no cover - jamais casser la garde
+        return set()
+
+
 def stale_baseline(manifests=None):
     """Entrées ``BASELINE_DRIFT`` qui ne sont PLUS des incohérences réelles.
 
     Une entrée gelée dont la surface manquante a été câblée doit être RETIRÉE de
-    la baseline — sinon elle ment. Le test échoue tant qu'elle traîne."""
-    return BASELINE_DRIFT - all_drift(manifests)
+    la baseline — sinon elle ment. Le test échoue tant qu'elle traîne.
+
+    SOL15 — les entrées d'une app PARQUÉE par l'édition courante sont
+    ignorées : leur app n'est pas chargée, l'incohérence ne peut donc ni être
+    observée ni être corrigée depuis cette édition."""
+    hors_edition = _apps_hors_edition()
+    perimees = BASELINE_DRIFT - all_drift(manifests)
+    if not hors_edition:
+        return perimees
+    return {
+        (model, code) for (model, code) in perimees
+        if model.split('.', 1)[0] not in hors_edition
+    }
 
 
 def platform_matrix(manifests=None):

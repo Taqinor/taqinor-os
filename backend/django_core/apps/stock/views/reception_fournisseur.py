@@ -86,7 +86,11 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
                 # NTWMS34 — la saisie du verdict qualité est une ÉCRITURE.
                 'controle_qualite',
                 # NTWMS37 — la saisie d'un relevé réel est une ÉCRITURE.
-                'pesee_ligne']:
+                'pesee_ligne',
+                # AUD226 — le rapprochement des écarts de pesée pose un
+                # ajustement de stock : ÉCRITURE (ce get_permissions prime sur
+                # le permission_classes de l'@action, d'où ce cas explicite).
+                'rapprocher_pesees']:
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
             # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
             # par défaut) — bug préexistant attrapé par le test P2P YTEST6.
@@ -251,6 +255,15 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
                 child=serializers.IntegerField()),
             'lignes_ignorees': serializers.ListField(
                 child=serializers.IntegerField()),
+            # AUD221 — un colis par vague servie + ce que les vagues
+            # n'attendaient pas (à ranger normalement, NTWMS2).
+            'unites_logistiques': serializers.ListField(
+                child=serializers.IntegerField()),
+            'reliquats': serializers.ListField(
+                child=inline_serializer('StockReceptionCrossDockReliquat', {
+                    'ligne_id': serializers.IntegerField(),
+                    'quantite': serializers.IntegerField(),
+                })),
             'reception_entierement_cross_dockee': serializers.BooleanField(),
         }),
         400: inline_serializer('StockReceptionCrossDockErreur', {

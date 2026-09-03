@@ -21,7 +21,8 @@ Couverture :
       - 403 si WHATSAPP_BSP_APP_SECRET configure et signature absente.
       - 403 si WHATSAPP_BSP_APP_SECRET configure et signature incorrecte.
       - 200 si WHATSAPP_BSP_APP_SECRET configure et signature correcte.
-      - 200 (avec warning) si WHATSAPP_BSP_APP_SECRET non configure (scaffold).
+      - 403 si WHATSAPP_BSP_APP_SECRET NON configure (QJR414/DR3, fail-closed —
+        remplace l'ancien 200 « scaffold non securise »).
 
   (f) Webhook POST — parsing de statuts :
       - Un payload delivered/read met a jour WhatsAppMessageLog (no live call).
@@ -286,11 +287,17 @@ class WebhookPostSignatureTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-    def test_post_returns_200_when_no_secret_configured(self):
-        """Sans WHATSAPP_BSP_APP_SECRET, le webhook accepte (scaffold non securise)."""
+    def test_post_returns_403_when_no_secret_configured(self):
+        """QJR414 (DR3) — FAIL-CLOSED : sans WHATSAPP_BSP_APP_SECRET, le
+        webhook REFUSE (403) au lieu d'accepter avec un warning.
+
+        Remplace ``test_post_returns_200_when_no_secret_configured`` : le
+        comportement « scaffold non securise » etait la decision inverse. Tant
+        que le secret n'est pas pose au deploy, la synchronisation entrante
+        reste en pause — c'est VOULU."""
         body = b'{"entry": []}'
         resp = self._post(body, env_overrides={"WHATSAPP_BSP_APP_SECRET": ""})
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 403)
 
 
 # ---------------------------------------------------------------------------
@@ -305,12 +312,19 @@ class WebhookPostStatusParsingTests(TestCase):
         self.company = _make_company("WebhookCo")
 
     def _post_payload(self, payload_dict, env_overrides=None):
+        # QJR414 (DR3) — le webhook est FAIL-CLOSED : ces tests-ci portent sur
+        # le PARSING des statuts, pas sur la signature ; ils signent donc leur
+        # corps avec un secret de test (la signature elle-meme est couverte par
+        # WebhookPostSignatureTests).
         from .views_whatsapp_bsp import WhatsAppBspWebhookView
         body = json.dumps(payload_dict).encode()
+        env = dict(env_overrides or {})
+        env.setdefault("WHATSAPP_BSP_APP_SECRET", "secret-parsing")
         request = self.factory.post(
-            "/fake/webhook/", body, content_type="application/json"
+            "/fake/webhook/", body, content_type="application/json",
+            HTTP_X_HUB_SIGNATURE_256=_sign_body(
+                body, env["WHATSAPP_BSP_APP_SECRET"]),
         )
-        env = env_overrides or {"WHATSAPP_BSP_APP_SECRET": ""}
         with mock.patch.dict("os.environ", env):
             resp = WhatsAppBspWebhookView.as_view()(request)
         return resp
@@ -390,11 +404,16 @@ class WebhookPostStatusParsingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_invalid_json_returns_400(self):
+        # QJR414 (DR3) — corps SIGNE : sans signature le webhook refuserait
+        # en 403 avant d'atteindre le parsing JSON, et ce test ne prouverait
+        # plus rien.
         from .views_whatsapp_bsp import WhatsAppBspWebhookView
         request = self.factory.post(
-            "/fake/webhook/", b"not-json", content_type="application/json"
+            "/fake/webhook/", b"not-json", content_type="application/json",
+            HTTP_X_HUB_SIGNATURE_256=_sign_body(b"not-json", "secret-parsing"),
         )
-        with mock.patch.dict("os.environ", {"WHATSAPP_BSP_APP_SECRET": ""}):
+        with mock.patch.dict(
+                "os.environ", {"WHATSAPP_BSP_APP_SECRET": "secret-parsing"}):
             resp = WhatsAppBspWebhookView.as_view()(request)
         self.assertEqual(resp.status_code, 400)
 

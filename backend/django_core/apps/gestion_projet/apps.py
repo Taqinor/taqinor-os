@@ -7,6 +7,7 @@ class GestionProjetConfig(AppConfig):
     verbose_name = 'Gestion de projet'
     module_manifest = {
         'key': 'gestion_projet',
+        'sku': 'solar_core',
         'label': 'Gestion de projet',
         'icone': 'kanban',
         'depends': [],

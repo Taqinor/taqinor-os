@@ -288,6 +288,35 @@ def _statut_couple_panneau(panneau, onduleurs):
     return pire[1], pire[2]
 
 
+# ── QJR403 — LES QUANTITÉS QUI SUIVENT LE COMPTE DE PANNEAUX ────────────────
+#
+# Elles n'étaient écrites qu'ICI, au fil de la composition (``ajouter(role_
+# structure, structure, nb)`` / ``ajouter('socle', ..., nb * 2)``). Or le chemin
+# MODE_ECRIRE réécrit la quantité de la ligne panneau DOMINANTE
+# (``pipeline._appliquer_preseance_quantite``, depuis ``taille.nb_panneaux``)
+# SANS toucher à ses sœurs : le devis sortait avec N' panneaux montés sur N
+# structures et N×2 socles — une nomenclature fausse ET un prix faux.
+#
+# La règle est donc DÉCLARÉE ICI, une seule fois, et le pipeline l'IMPORTE : il
+# re-dérive, il ne recalcule pas selon une seconde formule.
+
+
+def quantites_derivees_du_compte(nb_panneaux) -> dict:
+    """``{'structure': N, 'socle': N × 2}`` pour ``N`` panneaux.
+
+    LA définition de ces rapports — la composition la consomme comme le
+    pipeline. Les clés sont celles de ``catalogue.classer_produit`` (le
+    classifieur unique), pour qu'un appelant puisse apparier une ligne à sa
+    quantité dérivée sans réécrire, lui non plus, une seconde classification.
+    """
+    try:
+        nb = int(nb_panneaux or 0)
+    except (TypeError, ValueError):
+        return {'structure': 0, 'socle': 0}
+    nb = max(0, nb)
+    return {'structure': nb, 'socle': nb * 2}
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               taux_tva=Decimal('20'), avertissements=None,
@@ -415,9 +444,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # QJR-OFFGRID — un site ISOLÉ n'a qu'UNE composition possible : onduleur
     # autonome + stockage. La forme deux options (réseau / hybride) n'a alors
     # aucun sens et le drapeau batterie n'est plus une question.
+    # QJR400 — LA RÈGLE VIENT DU NOYAU (``utils.options.deux_options_composables``),
+    # elle n'est plus écrite ici : c'est le MÊME propriétaire que le prédicat
+    # « devis à deux options » du document.
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        deux_options = False
         avec_batterie = True
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
@@ -986,8 +1019,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     if veut_batterie:
         ajouter('batterie', bat5, nb5)
         ajouter('batterie', bat10, nb10)
-    ajouter(role_structure, structure, nb)
-    ajouter('socle', premier('socle'), nb * 2)
+    # QJR403 — LES QUANTITÉS DÉRIVÉES DU COMPTE DE PANNEAUX PASSENT PAR LEUR
+    # DÉFINITION UNIQUE (:func:`quantites_derivees_du_compte`), pour que le
+    # chemin MODE_ECRIRE puisse les RE-DÉRIVER sans écrire une seconde formule.
+    _derivees = quantites_derivees_du_compte(nb)
+    ajouter(role_structure, structure, _derivees['structure'])
+    ajouter('socle', premier('socle'), _derivees['socle'])
     # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))

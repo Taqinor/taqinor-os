@@ -828,6 +828,12 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'cout_reel': str(data['cout_reel']),
             'cout_reel_affectations': str(data['cout_reel_affectations']),
             'cout_reel_timesheets': str(data['cout_reel_timesheets']),
+            # AUD329 — sans cette clé, les deux sources exposées ci-dessus ne
+            # se réconcilient plus avec `cout_reel` (la MO planifiée des
+            # ressources déjà pointées en est déduite pour ne pas compter deux
+            # fois le même travail).
+            'cout_reel_mo_deja_pointee': str(
+                data['cout_reel_mo_deja_pointee']),
             'marge_prev': str(data['marge_prev']),
             'marge_reelle': str(data['marge_reelle']),
             'marge_pct_reelle': (

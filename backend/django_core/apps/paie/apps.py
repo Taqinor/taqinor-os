@@ -7,6 +7,7 @@ class PaieConfig(AppConfig):
     verbose_name = 'Paie'
     module_manifest = {
         'key': 'paie',
+        'sku': 'optional',
         'label': 'Paie',
         'icone': 'banknote',
         'depends': ['rh'],

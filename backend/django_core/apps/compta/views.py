@@ -16,7 +16,7 @@ from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -46,7 +46,7 @@ from .models import (
     ChargeConstateeAvance,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DemandeApprobationRib,
-    DotationAmortissement, ECatalogue, EcritureComptable, Effet,
+    DotationAmortissement, ECatalogue, EcritureComptable, LigneEcriture, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
     ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
@@ -311,6 +311,36 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def perform_destroy(self, instance):
+        """AUD170 — une écriture VALIDÉE (ou scellée) ne se supprime pas.
+
+        Le ViewSet était un ``ModelViewSet`` complet sans aucun
+        ``perform_destroy`` : un ``DELETE`` sur une écriture de vente validée
+        de 250 000 MAD dans un mois non clôturé renvoyait 204 et effaçait
+        l'écriture, ses lignes et son maillon d'audit (CASCADE), faisant
+        baisser le CA du mois sans trace. La doctrine COMPTA11 est pourtant
+        écrite noir sur blanc dans ``services`` : « on NE SUPPRIME JAMAIS une
+        écriture validée : on passe une écriture inverse ».
+        """
+        if instance.statut == EcritureComptable.Statut.VALIDEE:
+            raise DjangoValidationError(
+                "Une écriture VALIDÉE ne se supprime pas (COMPTA11) : passez "
+                "une contre-passation via l'action « extourner ».")
+        if getattr(instance, 'piste_audit', None) is not None:
+            raise DjangoValidationError(
+                "Cette écriture est scellée dans la piste d'audit "
+                "(append-only) : elle ne peut plus être supprimée. Utilisez "
+                "l'action « extourner ».")
+        super().perform_destroy(instance)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_409_CONFLICT)
+
     @action(detail=True, methods=['post'])
     def extourner(self, request, pk=None):
         """COMPTA11 — Passe l'écriture d'extourne (contre-passation).
@@ -319,7 +349,16 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         Idempotent. Corps optionnel : ``{'date_extourne': 'YYYY-MM-DD'}``.
         """
         ecriture = self.get_object()
-        date_extourne = request.data.get('date_extourne') or None
+        # AUD168 — la date brute du corps JSON n'est PAS typée : la laisser
+        # passer en chaîne rendait le garde de période fail-open.
+        brut = request.data.get('date_extourne') or None
+        try:
+            date_extourne = _parse_date(brut) if brut else None
+        except ValueError:
+            return Response(
+                {'detail': "Date d'extourne invalide (format attendu : "
+                           'AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             extourne = services.extourner_ecriture(
                 ecriture, date_extourne=date_extourne, user=request.user)
@@ -436,6 +475,33 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'date_debut_n1': params.get('date_debut_n1') or None,
             'date_fin_n1': params.get('date_fin_n1') or None,
         }
+
+    def _debut_exercice_du_bilan(self, request, date_fin):
+        """AUD169 — borne basse du bilan = début de l'exercice couvrant ``date_fin``.
+
+        Renvoie ``(date_debut, None)`` ou ``(None, Response 400)``. Aucun
+        exercice couvrant la date → REFUS explicite : cumuler silencieusement
+        tous les exercices produit un « Résultat de l'exercice » faux sur un
+        état de synthèse déposable, et c'est exactement ce que rien ne signalait.
+        """
+        try:
+            fin = _parse_date(date_fin) if date_fin else timezone.localdate()
+        except ValueError:
+            return None, Response(
+                {'detail': "'date_fin' invalide (format attendu : AAAA-MM-JJ)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=request.user.company,
+            date_debut__lte=fin, date_fin__gte=fin,
+        ).order_by('-date_debut').first()
+        if exercice is None:
+            return None, Response(
+                {'detail': "Aucun exercice comptable ne couvre le "
+                           f"{fin.isoformat()} : créez-le avant d'éditer le "
+                           'bilan (le résultat serait sinon le cumul de tous '
+                           'les exercices).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return exercice.date_debut, None
 
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
@@ -643,10 +709,22 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     def bilan(self, request):
         periode = self._periode(request)
         comparatif = self._comparatif_kwargs(request)
+        # AUD169 — le « Résultat de l'exercice » d'un état de synthèse
+        # déposable doit être celui de l'EXERCICE, pas le cumul depuis la
+        # première écriture. La borne basse vient de l'exercice couvrant
+        # ``date_fin`` ; à défaut on REFUSE plutôt que de cumuler en silence.
+        date_debut = periode['date_debut']
+        if date_debut is None:
+            date_debut, err = self._debut_exercice_du_bilan(
+                request, periode['date_fin'])
+            if err is not None:
+                return err
         data = selectors.bilan(
-            request.user.company, date_fin=periode['date_fin'],
+            request.user.company, date_debut=date_debut,
+            date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'],
             comparer=comparatif['comparer'],
+            date_debut_n1=comparatif.get('date_debut_n1'),
             date_fin_n1=comparatif['date_fin_n1'])
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_bilan_pdf
@@ -1501,8 +1579,10 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         date_debut = exercice.date_debut.isoformat()
         date_fin = exercice.date_fin.isoformat()
 
+        # AUD169 — bilan borné à l'exercice, comme le CPC juste en dessous.
         bilan = selectors.bilan(
-            company, date_fin=date_fin, validees_seulement=validees)
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
         cpc_data = selectors.cpc(
             company, date_debut=date_debut, date_fin=date_fin,
             validees_seulement=validees)
@@ -1897,12 +1977,27 @@ class LettrageViewSet(viewsets.ViewSet):
                     {'detail': "'code' ou 'compte' (pour en générer un) "
                                'requis.'},
                     status=status.HTTP_400_BAD_REQUEST)
+            # AUD166 — le compte servant à générer le code doit être CELUI des
+            # lignes : sinon le code séquentiel est tiré d'un compte qui n'a
+            # jamais été confronté aux lignes réellement lettrées.
+            comptes_reels = set(
+                LigneEcriture.objects
+                .filter(company=company, id__in=ligne_ids)
+                .values_list('compte_id', flat=True))
+            if comptes_reels and comptes_reels != {compte.pk}:
+                return Response(
+                    {'detail': "Le compte fourni ne correspond pas à celui "
+                               'des lignes à lettrer.'},
+                    status=status.HTTP_400_BAD_REQUEST)
             code = selectors.prochain_code_lettrage(company, compte)
         try:
-            nb = selectors.lettrer(company, ligne_ids, code)
-        except ValueError as exc:
+            # AUD167 — lettrer/délettrer sont des ÉCRITURES : elles vivent dans
+            # ``services`` et y portent le verrou de période.
+            nb = services.lettrer(company, ligne_ids, code)
+        except (ValueError, DjangoValidationError) as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_lettrees': nb})
 
     @action(detail=False, methods=['post'])
@@ -1912,7 +2007,12 @@ class LettrageViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': "'code' requis."},
                 status=status.HTTP_400_BAD_REQUEST)
-        nb = selectors.delettrer(request.user.company, code)
+        try:
+            nb = services.delettrer(request.user.company, code)
+        except (ValueError, DjangoValidationError) as exc:
+            return Response(
+                {'detail': (getattr(exc, 'messages', None) or [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response({'code': code, 'lignes_delettrees': nb})
 
 
@@ -2062,9 +2162,18 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
                 'credit': lig.get('credit') or 0,
                 'libelle': lig.get('libelle', '') or '',
             })
+        # AUD168 — date typée AVANT le service : une chaîne rendait les deux
+        # gardes de période fail-open (l'écriture atterrissait dans un mois
+        # clôturé en 201).
+        try:
+            date_ecriture = _parse_date(data.get('date_ecriture'))
+        except ValueError:
+            return Response(
+                {'detail': "'date_ecriture' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             ecriture = services.creer_ecriture_od(
-                company, data.get('date_ecriture'),
+                company, date_ecriture,
                 data.get('libelle', '') or 'Régularisation', lignes,
                 reference=data.get('reference', '') or '',
                 created_by=request.user)
@@ -4267,7 +4376,9 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             date_fin=vd['date_fin'],
             regime=vd.get('regime') or DeclarationTVA.Regime.MENSUEL,
             methode=vd.get('methode') or DeclarationTVA.Methode.DEBIT,
-            credit_anterieur=vd.get('credit_anterieur') or 0,
+            # AUD164 — absent du corps = DÉRIVÉ de la dernière déclaration
+            # déposée (jamais un forfait 0) ; une valeur saisie garde la main.
+            credit_anterieur=vd.get('credit_anterieur'),
             libelle=vd.get('libelle', '') or '',
             validees_seulement=request.query_params.get('validees') == '1',
             user=request.user)
@@ -6980,7 +7091,29 @@ def _portail_not_found():
 
 
 def _resoudre_compte_portail(token):
-    return selectors.compte_portail_par_token(token)
+    """Résout le compte portail d'un lien tokenisé, et HORODATE l'accès.
+
+    AUD148 (a) — ``ComptePortailClient.derniere_connexion`` n'était écrite par
+    AUCUN code (grep : le modèle et le serializer en lecture seule), alors que
+    l'écran ERP affiche la colonne : la piste d'audit d'accès était vide. On la
+    pose ici, au point d'entrée COMMUN des surfaces tokenisées de compta
+    (relevé, relevé PDF, contestation de facture), via le service portail —
+    jamais un import de ``apps.portail.models``.
+
+    LIMITE ASSUMÉE : ``apps.contrats`` (XCTR14) appelle
+    ``selectors.compte_portail_par_token`` DIRECTEMENT et n'est donc pas
+    couvert. Le poser dans le sélecteur lui-même couvrirait les deux, mais
+    ``apps/compta/selectors.py`` n'appartient pas à cette lane.
+    """
+    compte = selectors.compte_portail_par_token(token)
+    if compte is not None:
+        try:
+            from apps.portail.services import enregistrer_connexion_portail
+            enregistrer_connexion_portail(
+                compte.id, compte.derniere_connexion)
+        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+            pass
+    return compte
 
 
 @api_view(['GET'])
@@ -7512,36 +7645,96 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
 
 
 class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
-    """Acceptations / e-signatures de devis depuis le portail (FG229). La
-    société est posée côté serveur ; l'action ``signer`` horodate la signature
-    et capture l'IP (preuve légère, loi 53-05)."""
+    """Acceptations / e-signatures de devis depuis le portail (FG229).
+
+    AUD140 — LECTURE SEULE côté ERP. Cette ligne EST la preuve d'acceptation
+    électronique (signataire, IP, horodatage — loi 53-05) : son propre modèle
+    justifie le ``PROTECT`` sur ``devis`` par cet argument, mais l'API la
+    laissait créer, réécrire et SUPPRIMER par tout Responsable, sans
+    ``created_by``, sans chatter et sans soft-delete — un devis contesté et sa
+    preuve effacée sans qu'aucune trace ne dise par qui.
+
+    La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesDevisPortailViewSet.accepter``, qui signe
+    au nom du CLIENT connecté). L'action ``signer`` — qui posait
+    ``nom_signataire`` depuis le corps et l'IP de l'utilisateur ERP, c'est-à-dire
+    une signature client fabriquée depuis l'ERP — est RETIRÉE ; le service
+    ``compta.services.signer_acceptation_devis`` qu'elle appelait reste utilisé
+    par le chemin portail. Une saisie ERP délibérée devra être explicite,
+    tracée (``created_by``, chatter) et marquée comme telle — jamais réintroduite
+    sous le nom « signer ».
+    """
     queryset = AcceptationDevisPortail.objects.all()
     serializer_class = AcceptationDevisPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'signe_le']
-
-    @action(detail=True, methods=['post'])
-    def signer(self, request, pk=None):
-        acceptation = self.get_object()
-        nom = request.data.get('nom_signataire') or None
-        ip = request.META.get('REMOTE_ADDR')
-        services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
-        return Response(self.get_serializer(acceptation).data)
+    #: AUD140 — POST/PUT/PATCH/DELETE répondent 405 (aucune action d'écriture
+    #: ne subsiste sur cette ressource : on peut fermer le verbe entier).
+    http_method_names = ['get', 'head', 'options']
 
 
 class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
     """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
-    La société est posée côté serveur ; ``initier`` pose une référence (NO-OP
-    tant que CMI est OFF) et ``rapprocher`` marque le paiement comme payé
-    (rapprochement auto webhook CMI ou manuel virement)."""
+
+    AUD140 — LECTURE SEULE côté ERP, à l'exception de ``rapprocher`` (le SEUL
+    workflow serveur : il confirme la réception d'un virement). La ligne porte
+    un montant MAD réel et parfois un statut ``paye`` ; elle était pourtant
+    créable, modifiable et SUPPRIMABLE par tout Responsable, sans trace
+    d'auteur. La création reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesFacturesPortailViewSet.payer``), qui appelle
+    ``services.initier_paiement_facture``.
+
+    ``http_method_names`` ne convient pas ici (il fermerait aussi ``rapprocher``,
+    qui est un POST) : on ferme donc les quatre méthodes d'écriture du CRUD
+    une par une.
+    """
     queryset = PaiementFacturePortail.objects.all()
     serializer_class = PaiementFacturePortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'paye_le']
 
-    def perform_create(self, serializer):
-        paiement = serializer.save(company=self.request.user.company)
-        services.initier_paiement_facture(paiement)
+    def get_queryset(self):
+        """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
+
+        L'écran appelle `GET /portail/paiements-facture-portail/?statut=initie`
+        (filtre par défaut). Ce ViewSet ne déclare que `OrderingFilter`, sans
+        `filterset_fields` ni `get_queryset`, et les backends globaux
+        (`settings/base.py`) sont `OrderingFilter` + `SearchFilter` — il n'y a
+        PAS de `DjangoFilterBackend` : le paramètre était silencieusement
+        ignoré et la file affichait TOUS les statuts. L'opérateur croyait voir
+        les virements à rapprocher, y comptait des lignes déjà rapprochées ou
+        abandonnées, et rapprochait deux fois.
+
+        Une valeur inconnue est REFUSÉE (400) plutôt qu'ignorée : rendre la
+        liste entière sur un filtre incompris est exactement le défaut.
+        """
+        qs = super().get_queryset()
+        statut = (self.request.query_params.get('statut') or '').strip()
+        if not statut:
+            return qs
+        if statut not in PaiementFacturePortail.Statut.values:
+            raise ValidationError({'statut': 'Statut de paiement inconnu.'})
+        return qs.filter(statut=statut)
+
+    def _refus_lecture_seule(self, request):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Une intention de paiement portail ne se crée, ne se "
+                    "modifie et ne se supprime pas depuis l'ERP : elle est "
+                    "posée par le client depuis son portail. Seule l'action "
+                    "« rapprocher » est disponible."))
+
+    def create(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def destroy(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
 
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):
@@ -8311,15 +8504,30 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     scopé société côté serveur."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @staticmethod
+    def _dates_provision(data):
+        """AUD168 — dates typées avant tout appel de service (jamais une chaîne
+        brute, qui rendait le garde de période fail-open)."""
+        periode = _parse_date(data.get('date_periode'))
+        brut_extourne = data.get('date_extourne') or None
+        extourne = _parse_date(brut_extourne) if brut_extourne else None
+        return periode, extourne
+
     @action(detail=False, methods=['post'], url_path='generer-fnp')
     def generer_fnp(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fnp(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:
@@ -8332,11 +8540,17 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
     def generer_fae(self, request):
         data = request.data
         try:
+            date_periode, date_extourne = self._dates_provision(data)
+        except ValueError:
+            return Response(
+                {'detail': "'date_periode' requise et au format AAAA-MM-JJ."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
             resultats = services.generer_provisions_fae(
                 request.user.company,
-                date_periode=data.get('date_periode'),
+                date_periode=date_periode,
                 items=data.get('items') or [],
-                date_extourne=data.get('date_extourne'),
+                date_extourne=date_extourne,
                 user=request.user,
             )
         except DjangoValidationError as exc:

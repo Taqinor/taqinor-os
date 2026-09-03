@@ -1063,6 +1063,16 @@ class LotEntrepot(models.Model):
             models.Index(fields=['company', 'date_peremption'],
                          name='idx_lotent_co_peremption'),
         ]
+        # AUD218 — `alimenter_lot_entrepot` fait un
+        # `get_or_create(company, produit, numero_lot)` : sans contrainte
+        # correspondante, deux réceptions concurrentes du MÊME lot créaient
+        # deux `LotEntrepot` distincts (course documentée de `get_or_create`)
+        # et la traçabilité lot se scindait en silence.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit', 'numero_lot'],
+                name='lotentrepot_unique_company_produit_lot'),
+        ]
 
     def __str__(self):
         return f'{self.numero_lot} ({self.produit_id}) — {self.quantite_restante}'

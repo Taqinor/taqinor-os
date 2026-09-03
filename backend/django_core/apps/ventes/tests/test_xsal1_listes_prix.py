@@ -18,6 +18,24 @@ from testkit.factories import (
 )
 
 
+def _sans_request_id(donnees):
+    """Corps d'erreur privé de son ``request_id``.
+
+    L'enveloppe d'erreur maison pose un ``request_id`` de CORRÉLATION, unique
+    par requête : il ne dit rien de l'existence de la ressource et ne peut donc
+    pas servir d'oracle. Deux réponses ne sont comparables qu'une fois ce
+    champ volatil écarté.
+    """
+    if not isinstance(donnees, dict):
+        return donnees
+    copie = dict(donnees)
+    erreur = copie.get('error')
+    if isinstance(erreur, dict):
+        copie['error'] = {c: v for c, v in erreur.items() if c != 'request_id'}
+    copie.pop('request_id', None)
+    return copie
+
+
 class TestPrixApplicableResolution(TestCase):
     """XSAL1 — service `prix_applicable` (résolution liste client)."""
 
@@ -130,3 +148,50 @@ class TestListePrixViewSetTenantIsolation(TestCase):
             LignePrixListe.objects.filter(
                 liste=self.liste, produit=produit,
                 prix_unitaire=Decimal('420.00')).exists())
+
+    # ── CRX18 — le produit d'une ligne de liste de prix est scopé société ────
+
+    def test_lignes_refuse_un_produit_d_une_autre_societe(self):
+        """``produit_id`` était posé tel quel : un id d'une AUTRE société
+        créait la ligne ET la réponse renvoyait son ``produit_nom`` — une fuite
+        en un seul appel. 404, exactement comme un id inexistant."""
+        autre_company, _ = another_tenant()
+        produit_voisin = ProduitFactory(
+            company=autre_company, nom='Onduleur du voisin',
+            prix_vente=Decimal('900'))
+        api = self._api_for(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
+            {'produit': produit_voisin.id, 'prix_unitaire': '420.00'})
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+        self.assertNotIn('Onduleur du voisin', resp.content.decode())
+        self.assertFalse(
+            LignePrixListe.objects.filter(
+                liste=self.liste, produit=produit_voisin).exists())
+
+    def test_lignes_produit_inexistant_repond_comme_un_produit_voisin(self):
+        """Même code ET même message qu'un produit d'une autre société :
+        aucun oracle d'existence inter-société."""
+        autre_company, _ = another_tenant()
+        produit_voisin = ProduitFactory(
+            company=autre_company, prix_vente=Decimal('900'))
+        api = self._api_for(self.admin)
+        url = f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/'
+        voisin = api.post(
+            url, {'produit': produit_voisin.id, 'prix_unitaire': '1'})
+        absent = api.post(url, {'produit': 999_999_999, 'prix_unitaire': '1'})
+        self.assertEqual(voisin.status_code, absent.status_code)
+        # Tout SAUF le ``request_id`` (identifiant de corrélation, unique par
+        # requête par construction) : c'est le code + le message + les champs
+        # qui ne doivent pas distinguer « existe ailleurs » de « n'existe pas ».
+        self.assertEqual(_sans_request_id(voisin.data),
+                         _sans_request_id(absent.data))
+        self.assertEqual(str(voisin.data['detail']),
+                         str(absent.data['detail']))
+
+    def test_lignes_produit_non_numerique_ne_leve_pas_500(self):
+        api = self._api_for(self.admin)
+        resp = api.post(
+            f'/api/django/ventes/listes-prix/{self.liste.id}/lignes/',
+            {'produit': 'abc', 'prix_unitaire': '1'})
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))

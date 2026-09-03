@@ -28,7 +28,7 @@ JAMAIS lue du corps. Une cible (intervention/chantier) hors-société est rejet�
 proprement (l'op échoue mais ne casse pas le lot). Additif — la machine à états
 de l'intervention n'est jamais touchée (séparée du chantier et de STAGES.py).
 """
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -217,6 +217,38 @@ def _h_signer_client(company, user, payload):
     return {'intervention': iv.id, 'signe_le': iv.signe_le.isoformat()}
 
 
+def _h_terminer(company, user, payload):
+    """AUD317 — CLÔTURE une intervention depuis la synchro terrain hors-ligne.
+
+    Trou refermé : AUCUN des op_types existants n'écrivait
+    `Intervention.statut`. Un technicien qui terminait et faisait signer le
+    client dans une zone blanche voyait, au retour en ligne, sa signature et
+    ses photos remonter… mais le statut rester « Sur site » à jamais — donc ni
+    `intervention_completed` (le ticket SAV lié ne se résolvait pas), ni le
+    jeton du compte-rendu signé (ZFSM2), ni la facturation (ZFSM4).
+
+    Passe par le service unique `changer_statut_intervention` : MÊMES gardes
+    (F5/F8 — une photo obligatoire manquante refuse la clôture, exactement
+    comme en ligne) et MÊME cascade que le PATCH. Statut par défaut
+    « Terminée » ; `payload['statut']` accepte « validee ».
+    Un refus de garde devient une `FieldOpError` — l'op n'est PAS mémorisée,
+    le terminal peut la rejouer après avoir téléversé la photo manquante."""
+    from .services import TransitionRefusee, changer_statut_intervention
+
+    iv = _intervention(company, payload)
+    statut = (payload.get('statut') or Intervention.Statut.TERMINEE)
+    if statut not in Intervention.Statut.values:
+        raise FieldOpError('Statut inconnu.')
+    try:
+        recu = changer_statut_intervention(iv, statut, user)
+    except TransitionRefusee as exc:
+        raise FieldOpError(' ; '.join(exc.raisons))
+    intervention_activity.log_note(
+        iv, user, 'Intervention clôturée (synchro hors-ligne).')
+    return {'intervention': iv.id, 'statut': iv.statut,
+            'ancien_statut': recu['ancien']}
+
+
 def _h_cocher_checklist(company, user, payload):
     """N91 — coche/décoche une étape de la checklist CHANTIER (last-write-wins).
     Ne fait PAS la capture de série ici (les séries passent par op `serial`)."""
@@ -246,8 +278,22 @@ FIELD_OP_HANDLERS = {
     'intervention.reserve': (_h_reserve, 'intervention', 'intervention'),
     'intervention.cocher_safety': (_h_cocher_safety, 'intervention', 'intervention'),
     'intervention.signer_client': (_h_signer_client, 'intervention', 'intervention'),
+    # AUD317 — le 12e op_type : clôturer l'intervention au retour en ligne.
+    # Sans lui, AUCUN op_type n'écrivait `Intervention.statut` et une
+    # intervention terminée hors-ligne restait « Sur site » à jamais.
+    'intervention.terminer': (_h_terminer, 'intervention', 'intervention'),
     'chantier.cocher_checklist': (_h_cocher_checklist, 'chantier', 'chantier'),
 }
+
+
+def _fieldop_memorise(company, op_id):
+    """Journal de dédup : le ``FieldOp`` déjà appliqué pour cette clé, ou None.
+
+    UN SEUL point de lecture, partagé par le test de rejeu (avant application)
+    ET par la reprise sur collision d'unicité (AUD319, après application) — les
+    deux doivent voir exactement la même chose."""
+    return FieldOp.objects.filter(
+        company=company, client_op_id=op_id, ok=True).first()
 
 
 def _apply_one(company, user, op):
@@ -267,8 +313,7 @@ def _apply_one(company, user, op):
 
     # REJEU : la même clé d'un même locataire ne s'applique qu'une fois → on
     # renvoie le résultat mémorisé SANS rejouer l'effet (no-op idempotent).
-    existing = FieldOp.objects.filter(
-        company=company, client_op_id=op_id, ok=True).first()
+    existing = _fieldop_memorise(company, op_id)
     if existing is not None:
         return {'client_op_id': op_id, 'op_type': existing.op_type,
                 'status': 'replayed', 'result': existing.result}
@@ -291,6 +336,30 @@ def _apply_one(company, user, op):
         # n'est pas mémorisée → rejouable. Le lot CONTINUE.
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'error', 'error': str(exc)}
+    except IntegrityError:
+        # AUD319 — COURSE sur la clé d'idempotence. Le test d'existence
+        # ci-dessus est fait HORS de tout verrou (TOCTOU) : deux onglets/
+        # appareils du même technicien (ou un retry réseau) postant le même
+        # `client_op_id` passaient tous deux la lecture, et la seconde
+        # transaction violait `UniqueConstraint(company, client_op_id)`. Seule
+        # `FieldOpError` était catchée : l'`IntegrityError` remontait à travers
+        # `apply_batch` et `FieldSyncView.post` (qui ne catche que
+        # `ValueError`) → 500 générique, alors que les opérations PRÉCÉDENTES
+        # du même lot étaient déjà committées et que le terminal ne savait plus
+        # ce qui avait réellement été appliqué.
+        # La transaction interne est déjà annulée : on relit le `FieldOp` créé
+        # entre-temps par le gagnant de la course et on renvoie son résultat
+        # mémorisé, exactement comme un rejeu ordinaire.
+        gagnant = _fieldop_memorise(company, op_id)
+        if gagnant is not None:
+            return {'client_op_id': op_id, 'op_type': gagnant.op_type,
+                    'status': 'replayed', 'result': gagnant.result}
+        # Collision d'intégrité SANS FieldOp concurrent : c'est une contrainte
+        # métier violée par le handler lui-même — le lot continue, l'op reste
+        # rejouable après correction (jamais un 500 opaque).
+        return {'client_op_id': op_id, 'op_type': op_type,
+                'status': 'error',
+                'error': "Conflit d'intégrité — opération non appliquée."}
 
 
 def apply_batch(company, user, ops):

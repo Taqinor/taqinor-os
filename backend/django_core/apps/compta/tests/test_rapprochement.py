@@ -308,6 +308,51 @@ class RapprochementServiceTests(TestCase):
         pointables = selectors.lignes_gl_pointables(rap)
         self.assertTrue(pointables[0]['pointee'])
 
+    # ── AUD174 — anti double-pointage d'une même ligne GL ───────────────────
+
+    def _deux_rapprochements_sur_la_meme_ligne_gl(self):
+        ecr = _ecriture(self.co, 'BNK', [
+            ('5141', '300', '0'),
+            ('3421', '0', '300'),
+        ], jour=date(2026, 1, 12))
+        self.gl = ligne_gl(ecr, '5141')
+        self.rap_a = services.creer_rapprochement(
+            self.co, self.banque, date_debut=date(2026, 1, 1),
+            date_fin=date(2026, 1, 31), solde_releve=Decimal('1300'))
+        self.rap_b = services.creer_rapprochement(
+            self.co, self.banque, date_debut=date(2026, 1, 1),
+            date_fin=date(2026, 2, 28), solde_releve=Decimal('1300'))
+        ligne_a = services.ajouter_ligne_releve(
+            self.rap_a, date_operation=date(2026, 1, 12),
+            libelle='Virement (relevé A)', montant=Decimal('300'))
+        services.pointer_ligne_releve(ligne_a, [self.gl.id])
+        return services.ajouter_ligne_releve(
+            self.rap_b, date_operation=date(2026, 1, 12),
+            libelle='Virement (relevé B, doublon)', montant=Decimal('300'))
+
+    def test_aud174_double_pointage_refuse_proprement(self):
+        """La MÊME ligne GL ne peut pas être concordante dans deux campagnes."""
+        ligne_b = self._deux_rapprochements_sur_la_meme_ligne_gl()
+        with self.assertRaises(ValidationError):
+            services.pointer_ligne_releve(ligne_b, [self.gl.id])
+        # Le pointage d'origine est intact, aucun second pointage créé.
+        self.assertEqual(
+            PointageReleve.objects.filter(ligne_gl=self.gl).count(), 1)
+
+    def test_aud174_ligne_deja_pointee_ailleurs_signalee_et_non_suggeree(self):
+        self._deux_rapprochements_sur_la_meme_ligne_gl()
+        pointables = selectors.lignes_gl_pointables(self.rap_b)
+        cible = next(p for p in pointables if p['id'] == self.gl.id)
+        self.assertTrue(
+            cible['pointee'],
+            "La ligne GL est rapprochée ailleurs : elle ne doit plus être "
+            "offerte comme libre dans B.")
+        suggestions = selectors.suggestions_rapprochement(self.rap_b)
+        candidats = [
+            c['ligne_gl_id']
+            for bloc in suggestions for c in bloc['candidats']]
+        self.assertNotIn(self.gl.id, candidats)
+
 
 class RapprochementIsolationTests(TestCase):
     def setUp(self):

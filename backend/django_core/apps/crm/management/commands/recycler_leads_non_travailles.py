@@ -123,8 +123,11 @@ def _escalate(lead, seuil, now):
         recipients = lead_notification_recipients(lead)
         for recipient in recipients:
             nom = (lead.nom or '').strip() or 'Lead'
+            # CRX27 — TYPE DÉDIÉ (même raison que la dormance) : l'escalade
+            # SLA « lead non contacté » empruntait la clé ``lead_assigned``,
+            # donc couper les notifications d'assignation la coupait aussi.
             notify(
-                recipient, 'lead_assigned',
+                recipient, 'lead_non_contacte',
                 f'Lead non contacté : {nom}',
                 body=f'{nom} dépasse le SLA de première prise de contact.',
                 link=f'/crm/leads?lead={lead.pk}',

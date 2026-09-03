@@ -5,6 +5,7 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 (calendar), avec recadrage du jour pour les fins de mois (ex. 31 jan + 1 mois
 → 28/29 fév). Sert au calcul des dates de fin de garantie des équipements.
 """
+from django.db import transaction
 from django.utils import timezone
 
 from .dateutils import add_months  # noqa: F401  (ré-export rétrocompat)
@@ -394,43 +395,140 @@ def contrats_maintenance_dus_facturation(company, today=None):
     ]
 
 
-def facturer_contrat_maintenance_beat(contrat, *, user=None):
-    """Facture UN ``ContratMaintenance`` dû, pour le beat quotidien — YSUBS1.
+class FacturationContratError(Exception):
+    """AUD149 — la facturation récurrente d'un contrat de maintenance est
+    refusée (contrat introuvable, hors société, ou non dû)."""
 
-    Même effet que l'action ``facturer`` de ``ContratMaintenanceViewSet``
-    (``maintenance.py``) : émet la ``Facture`` via
-    ``apps.ventes.services.creer_facture_contrat`` puis avance
-    ``derniere_facturation``, et journalise le cycle dans
-    ``apps.contrats.services.enregistrer_cycle`` (best-effort, jamais
-    bloquant). Renvoie la ``Facture`` créée ; lève ``ValueError`` si la
-    facturation échoue (prix manquant…) — l'appelant (le beat) capture
-    l'exception PAR contrat pour ne jamais bloquer les suivants.
 
-    XCTR16 — si le contrat renseigne ``tarif_usage``, ajoute une ligne
-    dédiée « facturation à l'usage » (voir ``calculer_ligne_usage_contrat``)
-    APRÈS la création de la facture (best-effort, ne bloque jamais l'émission
-    de la facture forfaitaire elle-même)."""
+class FacturationContratDoublonError(FacturationContratError):
+    """AUD149 — cette période est DÉJÀ facturée pour ce contrat.
+
+    Traduite en 409 par l'action ``facturer`` du viewset : c'est le signal
+    d'un double-clic ou d'une collision avec le beat quotidien, jamais une
+    erreur à avaler."""
+
+
+@transaction.atomic
+def facturer_contrat_maintenance(contrat, *, user=None, company=None,
+                                 today=None, periode=None):
+    """AUD149/AUD151 — CHEMIN UNIQUE de facturation d'un ``ContratMaintenance``,
+    partagé par l'action manuelle ``facturer`` et par le beat quotidien.
+
+    AUD149 — l'ordre des opérations est le correctif : la période est
+    RÉSERVÉE d'abord (``contrats.services.enregistrer_cycle`` en statut
+    ``genere``, qui lève ``RejeuError`` si un cycle ``genere`` existe déjà
+    pour ``(sav_maintenance, contrat, periode)``), DANS LA MÊME TRANSACTION
+    ATOMIQUE, et la ``Facture`` n'est créée QUE si la réservation a réussi —
+    jamais l'inverse. Avant, les deux appelants créaient la facture PUIS
+    journalisaient, la journalisation étant de surcroît enveloppée dans un
+    ``except Exception: pass`` qui avalait précisément le signal de doublon :
+    deux clics sur « Facturer », ou un clic le jour du passage du beat,
+    produisaient DEUX factures d'abonnement pour le même mois sans qu'aucune
+    trace ne le signale. S'y ajoutent un ``select_for_update()`` sur le
+    contrat (deux requêtes simultanées sérialisées) et le contrôle explicite
+    ``contrat.facturation_due(today)``.
+
+    AUD151 — la ligne de facturation à l'usage (XCTR16) est ajoutée ICI, donc
+    SYSTÉMATIQUEMENT : elle n'était appelée que par le chemin beat, si bien
+    qu'un contrat à tarif d'usage facturé à la main (rattrapage, beat en
+    panne) partait au client sans sa ligne d'usage — le revenu variable de la
+    période était perdu, définitivement et en silence.
+
+    Renvoie la ``Facture`` créée. Lève ``FacturationContratDoublonError``
+    (période DÉJÀ facturée : échéance non encore atteinte, ou cycle ``genere``
+    existant → 409), ``FacturationContratError`` (contrat introuvable pour la
+    société, ou facturation récurrente désactivée → 400) ou ``ValueError``
+    (autres pré-conditions FG40, dont le prix absent → 400).
+    """
     from django.utils import timezone as _timezone
 
+    from apps.contrats import services as contrats_services
+    from apps.contrats.models import CycleFacturationLog
     from apps.ventes.services import creer_facture_contrat
 
-    periode = _timezone.localdate().strftime('%Y-%m')
-    try:
-        facture = creer_facture_contrat(
-            contrat=contrat, user=user, company=contrat.company)
-    except ValueError:
-        _journaliser_cycle_maintenance_beat(
-            contrat.company, contrat.pk, periode, statut_echec=True)
-        raise
+    from .models import ContratMaintenance
 
+    company = company or contrat.company
+    today = today or _timezone.localdate()
+    periode = periode or today.strftime('%Y-%m')
+
+    # Verrou de ligne : deux « Facturer » simultanés (ou un clic pendant le
+    # beat) sont sérialisés, jamais évalués en parallèle sur le même contrat.
+    verrouille = (ContratMaintenance.objects
+                  .select_for_update()
+                  .filter(pk=contrat.pk, company=company)
+                  .first())
+    if verrouille is None:
+        raise FacturationContratError(
+            "Contrat de maintenance introuvable pour cette société.")
+    contrat = verrouille
+
+    # `facturation_due()` est fausse pour DEUX raisons très différentes, à ne
+    # jamais confondre (FG40 vs AUD149) :
+    #   * la facturation récurrente du contrat est ÉTEINTE (ou le contrat est
+    #     inactif) — une pré-condition métier FG40, refusée en 400 comme un
+    #     prix absent. Ce n'est pas un doublon : rien n'a jamais été facturé.
+    #   * l'échéance n'est pas encore atteinte — c'est LE signal de la période
+    #     déjà facturée (double-clic, collision avec le beat) : 409.
+    if not contrat.facturation_active or not contrat.actif:
+        raise FacturationContratError(
+            "La facturation récurrente de ce contrat est désactivée.")
+    if not contrat.facturation_due(today=today):
+        raise FacturationContratDoublonError(
+            "La facturation de ce contrat n'est pas due "
+            f'({contrat.prochaine_facturation()} au plus tôt) — refus de '
+            'double-facturation.')
+
+    # GARDE D'ABORD : la période est réservée AVANT toute création.
+    try:
+        cycle = contrats_services.enregistrer_cycle(
+            company,
+            source_type=CycleFacturationLog.SourceType.SAV_MAINTENANCE,
+            source_id=contrat.pk,
+            periode=periode,
+            statut=CycleFacturationLog.Statut.GENERE,
+        )
+    except contrats_services.RejeuError as exc:
+        raise FacturationContratDoublonError(str(exc))
+
+    facture = creer_facture_contrat(
+        contrat=contrat, user=user, company=company)
+
+    # AUD151 — ligne d'usage systématique (les deux appelants la reçoivent).
     motif_usage = ''
     if contrat.tarif_usage is not None:
         motif_usage = _ajouter_ligne_usage_contrat(contrat, facture)
 
-    _journaliser_cycle_maintenance_beat(
-        contrat.company, contrat.pk, periode, statut_echec=False,
-        facture_id=facture.id, motif=motif_usage)
+    contrats_services.attacher_facture_au_cycle(
+        cycle, facture_id=facture.id, motif=motif_usage)
     return facture
+
+
+def facturer_contrat_maintenance_beat(contrat, *, user=None):
+    """Facture UN ``ContratMaintenance`` dû, pour le beat quotidien — YSUBS1.
+
+    Enveloppe fine du chemin unique ``facturer_contrat_maintenance``
+    (AUD149) : même garde anti-doublon, même verrou, même ligne d'usage
+    XCTR16 que l'action manuelle. Ne subsiste ici que la journalisation de
+    l'ÉCHEC, qui doit survivre au rollback de la transaction annulée.
+    Renvoie la ``Facture`` créée ; re-lève ``ValueError`` (prix manquant…) et
+    ``FacturationContratError`` — l'appelant (le beat) capture l'exception
+    PAR contrat pour ne jamais bloquer les suivants."""
+    from django.utils import timezone as _timezone
+
+    periode = _timezone.localdate().strftime('%Y-%m')
+    try:
+        return facturer_contrat_maintenance(
+            contrat, user=user, company=contrat.company, periode=periode)
+    except FacturationContratDoublonError:
+        # Doublon réel : plus jamais avalé, et surtout pas re-journalisé en
+        # échec (le cycle « genere » de la période existe déjà).
+        raise
+    except ValueError as exc:
+        _journaliser_cycle_maintenance_beat(
+            contrat.company, contrat.pk, periode, statut_echec=True,
+            motif=str(exc))
+        raise
 
 
 # ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────────
@@ -478,7 +576,16 @@ def _ajouter_ligne_usage_contrat(contrat, facture):
     ``ventes`` (``ajouter_lignes_frais_refactures`` — même mécanisme que
     ``apps.compta`` pour les frais refacturés, aucun nouveau couplage).
     Renvoie le motif (chaîne vide si une ligne a bien été ajoutée) destiné au
-    journal XCTR5."""
+    journal XCTR5.
+
+    AUD151 — le FORFAIT est matérialisé en ligne AVANT l'usage lorsqu'il n'en
+    a pas. ``creer_facture_contrat`` fabrique une facture à montants FIGÉS et
+    SANS aucune ``LigneFacture`` ; or ``ajouter_lignes_frais_refactures``
+    recalcule les totaux DEPUIS LES LIGNES. Ajouter la seule ligne d'usage
+    aurait donc écrasé le forfait de la période (une facture de 3 000 MAD
+    serait retombée au montant de l'usage seul). Les deux lignes sont donc
+    posées d'un même geste : forfait (libellé de la facture, montant HT figé)
+    puis usage — le total recalculé vaut exactement forfait + usage."""
     periode_debut = facture.periode_service_debut
     periode_fin = facture.periode_service_fin
     if periode_debut is None or periode_fin is None:
@@ -491,10 +598,15 @@ def _ajouter_ligne_usage_contrat(contrat, facture):
 
     from apps.ventes.services import ajouter_lignes_frais_refactures
 
-    ajouter_lignes_frais_refactures(
-        facture=facture,
-        lignes=[{'designation': description, 'montant_ht': montant}],
-    )
+    lignes = []
+    forfait_ht = facture.montant_ht
+    if not facture.lignes.exists() and forfait_ht:
+        lignes.append({
+            'designation': facture.libelle or 'Forfait de maintenance',
+            'montant_ht': forfait_ht,
+        })
+    lignes.append({'designation': description, 'montant_ht': montant})
+    ajouter_lignes_frais_refactures(facture=facture, lignes=lignes)
     return ''
 
 
@@ -508,7 +620,14 @@ def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
 
     XCTR16 — ``motif`` trace la ligne d'usage omise (aucune lecture
     disponible) même quand la facture forfaitaire, elle, a bien été générée
-    (le statut reste ``GENERE`` — seule la ligne d'usage est absente)."""
+    (le statut reste ``GENERE`` — seule la ligne d'usage est absente).
+
+    AUD149 — ``RejeuError`` n'est PLUS avalée : elle signale un doublon réel
+    (deux factures pour la même période) et doit remonter. Le reste demeure
+    best-effort — une panne de journalisation ne doit pas masquer l'erreur
+    métier que l'appelant est en train de propager."""
+    from apps.contrats.services import RejeuError
+
     try:
         from apps.contrats import services as contrats_services
         from apps.contrats.models import CycleFacturationLog
@@ -525,6 +644,8 @@ def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
             facture_id=facture_id,
             motif=motif or '',
         )
+    except RejeuError:
+        raise
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
 

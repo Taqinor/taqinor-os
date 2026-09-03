@@ -7,6 +7,7 @@ class GedConfig(AppConfig):
     verbose_name = 'Gestion documentaire (GED)'
     module_manifest = {
         'key': 'ged',
+        'sku': 'generic',
         'label': 'GED',
         'icone': 'folder',
         'depends': [],

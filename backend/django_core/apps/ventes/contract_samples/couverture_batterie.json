@@ -15,6 +15,7 @@
     "couverture_batterie": {
       "capacite_utile_pack_kwh": 4.6,
       "rendement": 0.9,
+      "rendement_source": "hypothese:pricing.BATTERY_ROUNDTRIP",
       "conso_annuelle_kwh": 10289.0,
       "mois_jours_types": [1, 4, 7, 11],
       "nb_packs_max": 6,
@@ -283,6 +284,7 @@
     "couverture_batterie": {
       "capacite_utile_pack_kwh": 4.6,
       "rendement": 0.9,
+      "rendement_source": "hypothese:pricing.BATTERY_ROUNDTRIP",
       "conso_annuelle_kwh": 10289.0,
       "mois_jours_types": [1, 4, 7, 11],
       "nb_packs_max": 6,

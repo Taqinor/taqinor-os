@@ -387,6 +387,65 @@ ALL_PERMISSIONS = [
     'transport_responsable',
 ]
 
+# ───────────────────────────────────────────────────────────────────────────
+# SOL12 — MODULE PROPRIÉTAIRE d'un code de permission (affichage seulement)
+# ───────────────────────────────────────────────────────────────────────────
+# Le préfixe d'un code ne suffit PAS à retrouver son module : `installation_*`
+# appartient à `installations`, `equipement_*` à `sav`, `projet_*` à
+# `gestion_projet`, `btp_*` à `btp_chantier`. D'où cette table EXPLICITE, écrite
+# une fois, ici — au plus près des codes.
+#
+# À quoi elle sert : l'éditeur de rôles montrait les cases `<app>_voir` /
+# `<app>_gerer` d'apps que la société n'a PAS (module désactivé, hors plan de
+# licence, ou vertical parqué par l'édition). L'admin cochait des droits sans
+# effet, sur des écrans qui n'existent pas chez lui.
+#
+# PORTÉE : AFFICHAGE UNIQUEMENT. Le backend continue de servir TOUS les codes
+# (`ALL_PERMISSIONS` est inchangé) et un rôle qui porte déjà un code d'un module
+# désactivé le CONSERVE — réactiver le module doit rendre le droit intact. Ce
+# n'est pas une frontière de sécurité : le gating serveur par viewset reste seul
+# juge. Un code ABSENT de cette table n'est jamais masqué (fondation, données
+# sensibles, portée d'enregistrements…).
+PERMISSION_MODULE = {
+    **{c: 'stock' for c in ALL_PERMISSIONS if c.startswith('stock_')},
+    **{c: 'crm' for c in ALL_PERMISSIONS if c.startswith('crm_')},
+    **{c: 'ventes' for c in ALL_PERMISSIONS if c.startswith('ventes_')},
+    'installation_voir': 'installations',
+    'installation_gerer': 'installations',
+    'installation_export': 'installations',
+    'intervention_gerer': 'installations',
+    'technicien_assign': 'installations',
+    'equipement_voir': 'sav',
+    'equipement_gerer': 'sav',
+    **{c: 'sav' for c in ALL_PERMISSIONS if c.startswith('sav_')},
+    **{c: 'reporting' for c in ALL_PERMISSIONS if c.startswith('reporting_')},
+    **{c: 'compta' for c in ALL_PERMISSIONS if c.startswith('compta_')},
+    **{c: 'paie' for c in ALL_PERMISSIONS if c.startswith('paie_')},
+    'cout_non_qualite_voir': 'qhse',
+    **{c: 'adsengine' for c in ALL_PERMISSIONS if c.startswith('adsengine_')},
+    **{c: 'qhse' for c in ALL_PERMISSIONS if c.startswith('qhse_')},
+    'projet_voir': 'gestion_projet',
+    'projet_gerer': 'gestion_projet',
+    'contrat_voir': 'contrats',
+    'contrat_gerer': 'contrats',
+    'litige_voir': 'litiges',
+    'litige_gerer': 'litiges',
+    **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
+    **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
+    **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
+    **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},
+    **{c: 'ao' for c in ALL_PERMISSIONS if c.startswith('ao_')},
+    **{c: 'adminops' for c in ALL_PERMISSIONS if c.startswith('adminops_')},
+    **{c: 'veille_ao' for c in ALL_PERMISSIONS if c.startswith('veille_ao_')},
+    **{c: 'cpq' for c in ALL_PERMISSIONS if c.startswith('cpq_')},
+    **{c: 'scm' for c in ALL_PERMISSIONS if c.startswith('scm_')},
+    'btp_voir': 'btp_chantier',
+    'btp_gerer': 'btp_chantier',
+    **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
+    'douane_responsable': 'douane',
+    'transport_responsable': 'transport',
+}
+
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
 # l'une d'elles, le rôle voit tout (par société). Source unique de vérité.
 SCOPE_TEAM = 'records_scope_equipe'

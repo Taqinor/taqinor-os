@@ -125,6 +125,33 @@ class ModeleRapprochementServiceTests(TestCase):
             EcritureComptable.objects.filter(
                 company=self.co, source_type='modele_rapprochement').count(), 1)
 
+    def test_aud176_idempotent_avec_montant_fixe_non_concordant(self):
+        """AUD176 — le rejeu est un no-op même quand la ligne reste NON_POINTEE.
+
+        L'ancienne garde ne testait que ``statut == RAPPROCHEE``, or
+        ``pointer_ligne_releve`` ne pose ce statut que si le montant GL créé
+        égale EXACTEMENT celui du relevé : avec un ``montant_fixe`` (35 sur une
+        ligne de 32,50 — le cas d'usage nominal du champ), elle ne se
+        déclenchait jamais, et un double-clic rejouait l'action pour finir en
+        erreur technique.
+        """
+        self.modele.montant_fixe = Decimal('35')
+        self.modele.save(update_fields=['montant_fixe'])
+        ligne = services.ajouter_ligne_releve(
+            self.rap, date_operation=date(2026, 1, 25),
+            libelle='AGIOS FORFAIT', montant=Decimal('-32.50'))
+        a = services.appliquer_modele_rapprochement(ligne)
+        ligne.refresh_from_db()
+        # La ligne reste NON_POINTEE : l'écart 35 ≠ 32,50 est le cas nominal.
+        self.assertEqual(ligne.statut, LigneReleve.Statut.NON_POINTEE)
+        b = services.appliquer_modele_rapprochement(ligne)
+        self.assertEqual(a.id, b.id)
+        self.assertEqual(
+            EcritureComptable.objects.filter(
+                company=self.co, source_type='modele_rapprochement').count(), 1)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, LigneReleve.Statut.NON_POINTEE)
+
     def test_priorite_choisit_la_regle_la_plus_prioritaire(self):
         ModeleRapprochement.objects.create(
             company=self.co, libelle='Générique', motif='A',

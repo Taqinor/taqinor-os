@@ -597,6 +597,12 @@ REFUS = {
         ("LeadForm.jsx", "MIROIR_JS")],
     "frontend/src/features/gestion_projet/constants.jsx": [
         ("machine à états", "FORME")],
+    # SOL11 (02/09/2026) — le « miroir des sku/libellés » cite le REGISTRE des
+    # manifestes backend (module_manifest/editions.py), pas un champ choices=
+    # ni une liste littérale : rien de déclarable ; la cohérence tags↔registre
+    # est machine-vérifiée côté serveur par le test SOL1.
+    "frontend/src/lib/apps/useInstalledApps.js": [
+        ("miroir des `sku`", "SANS_SOURCE")],
     "frontend/src/features/installations/statuses.js": [
         ("recul côté UI", "COMPORTEMENT")],
     "frontend/src/features/paie/paieLogic.js": [
@@ -634,9 +640,21 @@ REFUS = {
         ("computeROI", "NOMBRES"),
         ("plafonds cumulatifs", "NOMBRES"),
         ("constants_82_21.py", "NOMBRES"),
-        ("injection_annuelle", "COMPORTEMENT")],
+        ("injection_annuelle", "COMPORTEMENT"),
+        # QJR402 (02/09/2026) — la phrase ne precede AUCUNE liste : elle donne
+        # la CONDITION d'application de QF9 (« seulement sur un devis dont
+        # l'alternative est DECLAREE »), miroir des predicats de bord
+        # `deux_options` / `alternative_declaree` du noyau. Le vocabulaire reel
+        # ('sans'/'avec') vient de `DevisLigne.Variante` et est lu ligne a
+        # ligne dans un `if`, pas rendu comme un choix a l'ecran.
+        ("deux_options`/`alternative_declaree", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.injection.test.mjs": [
         ("Valeurs", "TEST")],
+    # QJR402 (02/09/2026) — fichier de test : il CITE la regle QF9 du noyau
+    # (`_panier_sert_huawei` / `retirer_accessoires_huawei`) pour la rendre
+    # verifiable cote frontend ; il ne rend aucun choix a l'ecran.
+    "frontend/src/features/ventes/solarOptionTotaux.test.mjs": [
+        ("_panier_sert_huawei", "TEST")],
     "frontend/src/components/layout/ChatBell.jsx": [
         ("Icône de chat", "MIROIR_JS")],
     "frontend/src/components/layout/Sidebar.odx6.test.jsx": [

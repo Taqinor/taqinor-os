@@ -1,11 +1,13 @@
 """Tests for CRM feature gaps FG27–FG38 (FG30 Unified comm log, FG32 segments, FG33 bulk WA…)."""
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth import get_user_model
 
 from authentication.models import Company
+# CRX26 — la file de relance raisonne en date MAROCAINE : un test qui
+# poserait une échéance en date UTC rougirait une heure par nuit.
+from core.dates import aujourd_hui_local
 from apps.crm.models import Client, Lead, LeadActivity, MessageTemplate
 
 User = get_user_model()
@@ -204,7 +206,7 @@ class TestFG31RelanceQueue(TestCase):
         self.assertIn('results', resp.data)
 
     def test_relances_today(self):
-        today = timezone.localdate()
+        today = aujourd_hui_local()
         Lead.objects.create(company=self.company, nom='Relance Today',
                             relance_date=today)
         Lead.objects.create(company=self.company, nom='No Relance')
@@ -216,7 +218,7 @@ class TestFG31RelanceQueue(TestCase):
 
     def test_relances_overdue(self):
         import datetime
-        yesterday = timezone.localdate() - datetime.timedelta(days=1)
+        yesterday = aujourd_hui_local() - datetime.timedelta(days=1)
         Lead.objects.create(company=self.company, nom='Overdue Lead',
                             relance_date=yesterday)
         resp = self.api.get('/api/django/crm/leads/relances/?scope=overdue')
@@ -226,7 +228,7 @@ class TestFG31RelanceQueue(TestCase):
 
     def test_relances_week(self):
         import datetime
-        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
+        tomorrow = aujourd_hui_local() + datetime.timedelta(days=1)
         Lead.objects.create(company=self.company, nom='Next Week Lead',
                             relance_date=tomorrow)
         resp = self.api.get('/api/django/crm/leads/relances/?scope=week')
@@ -234,9 +236,65 @@ class TestFG31RelanceQueue(TestCase):
         noms = [r['nom'] for r in resp.data['results']]
         self.assertIn('Next Week Lead', noms)
 
+    def test_relances_week_exclut_un_retard_ancien(self):
+        """CRX28 — « cette semaine » n'avait pas de borne basse : un retard de
+        six mois y apparaissait, en doublon du scope ``overdue`` qui existe
+        précisément pour montrer les retards."""
+        import datetime
+        today = aujourd_hui_local()
+        Lead.objects.create(
+            company=self.company, nom='Vieux Retard',
+            relance_date=today - datetime.timedelta(days=180))
+        Lead.objects.create(
+            company=self.company, nom='Retard Hier',
+            relance_date=today - datetime.timedelta(days=1))
+        Lead.objects.create(
+            company=self.company, nom='Relance Semaine',
+            relance_date=today + datetime.timedelta(days=3))
+
+        resp = self.api.get('/api/django/crm/leads/relances/?scope=week')
+
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in resp.data['results']]
+        self.assertIn('Relance Semaine', noms)
+        self.assertNotIn('Vieux Retard', noms)
+        self.assertNotIn('Retard Hier', noms)
+
+    def test_relances_week_inclut_les_deux_bornes(self):
+        """Aujourd'hui et J+6 sont DANS la semaine ; J+7 n'y est pas."""
+        import datetime
+        today = aujourd_hui_local()
+        Lead.objects.create(company=self.company, nom='Borne Basse',
+                            relance_date=today)
+        Lead.objects.create(company=self.company, nom='Borne Haute',
+                            relance_date=today + datetime.timedelta(days=6))
+        Lead.objects.create(company=self.company, nom='Hors Semaine',
+                            relance_date=today + datetime.timedelta(days=7))
+
+        resp = self.api.get('/api/django/crm/leads/relances/?scope=week')
+
+        noms = [r['nom'] for r in resp.data['results']]
+        self.assertIn('Borne Basse', noms)
+        self.assertIn('Borne Haute', noms)
+        self.assertNotIn('Hors Semaine', noms)
+
+    def test_relances_overdue_garde_les_retards_anciens(self):
+        """Le retard n'est pas PERDU par la borne basse : il reste dans son
+        propre scope."""
+        import datetime
+        today = aujourd_hui_local()
+        Lead.objects.create(
+            company=self.company, nom='Vieux Retard',
+            relance_date=today - datetime.timedelta(days=180))
+
+        resp = self.api.get('/api/django/crm/leads/relances/?scope=overdue')
+
+        noms = [r['nom'] for r in resp.data['results']]
+        self.assertIn('Vieux Retard', noms)
+
     def test_relances_scoped_to_company(self):
         other = make_company('fg31-other', 'Other31')
-        today = timezone.localdate()
+        today = aujourd_hui_local()
         Lead.objects.create(company=other, nom='Other Relance', relance_date=today)
         resp = self.api.get('/api/django/crm/leads/relances/')
         noms = [r['nom'] for r in resp.data['results']]

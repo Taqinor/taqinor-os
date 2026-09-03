@@ -23,6 +23,7 @@ class DouaneConfig(AppConfig):
     verbose_name = 'Douane & Import-Export'
     module_manifest = {
         'key': 'douane',
+        'sku': 'optional',
         'label': 'Douane',
         'icone': 'ship',
         'depends': [],

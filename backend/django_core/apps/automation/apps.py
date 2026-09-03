@@ -8,6 +8,7 @@ class AutomationConfig(AppConfig):
     verbose_name = 'Automatisations'
     module_manifest = {
         'key': 'automation',
+        'sku': 'generic',
         'label': 'Automatisations',
         'icone': 'zap',
         'depends': [],

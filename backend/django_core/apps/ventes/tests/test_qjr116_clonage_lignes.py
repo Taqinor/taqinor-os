@@ -48,6 +48,18 @@ CHEMINS_DE_COPIE = (
     ('domain/cycle_vie.py', 'renouveler_devis'),
 )
 
+#: QJR407 (02/09/2026) — LE CLONEUR DE DEVIS DU DOMAINE, seule délégation
+#: admise. Un chemin de copie satisfait l'invariant « un seul cloneur de
+#: lignes » de DEUX façons : il appelle ``cloner_lignes`` lui-même, ou il
+#: délègue TOUT son corps à ``cloner_devis`` — qui, lui, est tenu par la même
+#: garde (``test_le_cloneur_delegue_clone_bien_les_lignes`` ci-dessous, sans
+#: quoi la délégation serait un trou). C'est exactement ce que QJR407 a fait de
+#: ``dupliquer_devis`` : la liste de champs n'y est plus écrite du tout.
+#:
+#: UN SEUL niveau de délégation : la chaîne reste vérifiable d'un coup d'œil,
+#: et un chemin qui déléguerait à un quatrième intermédiaire échoue ici.
+CLONEUR_DELEGUE = ('domain/creation.py', 'cloner_devis')
+
 
 def _appels_de(chemin, nom_fonction):
     """Les noms de fonctions appelées à l'intérieur de ``nom_fonction``.
@@ -80,19 +92,37 @@ def _appels_de(chemin, nom_fonction):
 class UnSeulCloneurDeLignes(SimpleTestCase):
     """La garde STATIQUE : aucune des trois copies ne re-tape sa liste."""
 
+    def test_le_cloneur_delegue_clone_bien_les_lignes(self):
+        """QJR407 — LE PIED DE LA CHAÎNE. Sans cette assertion, déléguer à
+        ``cloner_devis`` suffirait à verdir le test suivant même si le cloneur
+        avait cessé d'appeler ``cloner_lignes``."""
+        chemin, fonction = CLONEUR_DELEGUE
+        self.assertIn(
+            'cloner_lignes', _appels_de(chemin, fonction),
+            '%s.%s — le cloneur du domaine ne clone plus les lignes par '
+            'domain/lignes.cloner_lignes : la délégation admise par '
+            'CLONEUR_DELEGUE est devenue un trou.' % (chemin, fonction))
+
     def test_les_trois_chemins_passent_par_cloner_lignes(self):
         for chemin, fonction in CHEMINS_DE_COPIE:
             with self.subTest(chemin=chemin, fonction=fonction):
-                self.assertIn(
-                    'cloner_lignes', _appels_de(chemin, fonction),
-                    '%s.%s ne clone plus par domain/lignes.cloner_lignes : '
-                    'un quatrième jeu de champs maintenu à la main est '
-                    'réapparu.' % (chemin, fonction))
+                appels = _appels_de(chemin, fonction)
+                self.assertTrue(
+                    'cloner_lignes' in appels
+                    or CLONEUR_DELEGUE[1] in appels,
+                    '%s.%s ne clone plus par domain/lignes.cloner_lignes, ni '
+                    'directement ni en déléguant à %s : un quatrième jeu de '
+                    'champs maintenu à la main est réapparu.'
+                    % (chemin, fonction, CLONEUR_DELEGUE[1]))
 
     def test_aucun_chemin_de_copie_ne_cree_de_ligne_lui_meme(self):
         """``creer_ligne`` reste l'écrivain unique, mais une COPIE ne
-        l'appelle plus directement : elle passerait à côté d'un champ."""
-        for chemin, fonction in CHEMINS_DE_COPIE:
+        l'appelle plus directement : elle passerait à côté d'un champ.
+
+        QJR407 — le cloneur DÉLÉGUÉ subit la même règle : sans lui dans la
+        liste, un chemin pourrait déplacer sa liste de champs d'un cran.
+        """
+        for chemin, fonction in CHEMINS_DE_COPIE + (CLONEUR_DELEGUE,):
             with self.subTest(chemin=chemin, fonction=fonction):
                 self.assertNotIn(
                     'creer_ligne', _appels_de(chemin, fonction),
@@ -114,8 +144,19 @@ class _DevisADeuxOptimumsDivergents(TestCase):
     slug = 'qjr116'
 
     #: Ce que chaque option doit valoir en HT, avant comme après une copie.
-    #: 8 × 1100 + 9000 + 500 = 18 300 · 14 × 1100 + 20 000 + 500 = 35 900.
-    #: L'add-on optionnel (7 000) n'entre dans AUCUN des deux.
+    #: 8 × 1100 + 9000 + 500 = 18 300 · 14 × 1100 + 11 000 + 9 000 + 500
+    #: = 35 900. L'add-on optionnel (7 000) n'entre dans AUCUN des deux.
+    #:
+    #: QJR400 (02/09/2026) — LES DEUX MONTANTS SONT INCHANGÉS AU CENTIME ;
+    #: seule la COMPOSITION du panier « avec » a été rendue servable. Le noyau
+    #: exige désormais que la variante remplace la DÉCLARATION, jamais la
+    #: SERVABILITÉ (:func:`familles_servables`) : un panier « avec » n'existe
+    #: qu'avec un onduleur HYBRIDE (ou autonome) **et** une batterie réelle.
+    #: L'ancien montage — batterie seule à 20 000, aucun onduleur hybride —
+    #: décrivait un devis que le document n'aurait jamais rendu ; le noyau le
+    #: voyait donc mono-option et servait la somme des deux paniers (53 700).
+    #: Les 20 000 du panier « avec » sont simplement redécoupés en
+    #: 11 000 (onduleur hybride) + 9 000 (batterie).
     HT_SANS = Decimal('18300.00')
     HT_AVEC = Decimal('35900.00')
 
@@ -147,8 +188,11 @@ class _DevisADeuxOptimumsDivergents(TestCase):
         # re-tarife réellement (sa raison d'être) sans déplacer les totaux,
         # donc l'écart mesuré ne peut venir que du découpage en options.
         self.panneau = _produit('Panneau Jinko 550W', 'PAN', '1100')
-        self.batterie = _produit('Batterie LiFePO4 16 kWh', 'BAT', '20000')
+        self.batterie = _produit('Batterie LiFePO4 16 kWh', 'BAT', '9000')
         self.onduleur = _produit('Onduleur réseau 8 kW', 'OND', '9000')
+        # QJR400 — l'option « avec » a besoin de SON onduleur hybride pour être
+        # servable (sans lui, le noyau la refuse et sert la somme des deux).
+        self.hybride = _produit('Onduleur hybride 8 kW', 'ONDH', '11000')
         self.cable = _produit('Câble solaire 6 mm²', 'CAB', '500')
         self.addon = _produit('Supervision à distance', 'SUP', '7000')
 
@@ -169,11 +213,12 @@ class _DevisADeuxOptimumsDivergents(TestCase):
         self.pan_sans = _ligne(self.panneau, 8, variante='sans', ordre=1)
         self.pan_avec = _ligne(self.panneau, 14, variante='avec', ordre=2)
         self.l_onduleur = _ligne(self.onduleur, 1, variante='sans', ordre=3)
-        self.l_batterie = _ligne(self.batterie, 1, variante='avec', ordre=4)
+        self.l_hybride = _ligne(self.hybride, 1, variante='avec', ordre=4)
+        self.l_batterie = _ligne(self.batterie, 1, variante='avec', ordre=5)
         # Ligne COMMUNE (aucune variante) : elle appartient aux deux paniers.
-        self.l_cable = _ligne(self.cable, 1, ordre=5)
+        self.l_cable = _ligne(self.cable, 1, ordre=6)
         # Add-on FACULTATIF : hors totaux tant qu'il n'est pas activé.
-        self.l_addon = _ligne(self.addon, 1, optionnelle=True, ordre=6)
+        self.l_addon = _ligne(self.addon, 1, optionnelle=True, ordre=7)
 
     @staticmethod
     def _totaux_des_deux_options(devis):

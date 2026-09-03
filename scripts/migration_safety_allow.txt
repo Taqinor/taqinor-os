@@ -88,3 +88,6 @@ backend/django_core/core/migrations/0035_ydata12_processedwebhookevent.py
 backend/django_core/core/migrations/0036_yapic9_idempotencyrecord.py
 backend/django_core/core/migrations/0037_ntsec21_sharingrule.py
 backend/django_core/core/migrations/0038_ntsec23_fieldpermissionrule.py
+# REVUE 03/09/2026 — ck_paiement_montant_positif posée par 0005 puis RETIRÉE par 0006
+# (FG50 : contre-passation négative VOULUE) ; nom absent de Meta par construction.
+backend/django_core/apps/facturation/migrations/0005_aud188_contraintes_argent.py

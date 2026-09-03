@@ -22,6 +22,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -176,7 +177,14 @@ class LigneVenteComptoir(models.Model):
         related_name='lignes_vente_comptoir',
     )
     designation = models.CharField(max_length=255)
-    quantite = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    # AUD205 — quantité TOUJOURS strictement positive : une quantité nulle ou
+    # négative encaisse un montant négatif ET crée, à la validation, une
+    # « sortie » de stock au signe inversé (donc une entrée déguisée en
+    # vente). Le sens d'un mouvement est porté par son `type_mouvement`,
+    # jamais par le signe de la quantité.
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1,
+        validators=[MinValueValidator(Decimal('0.01'))])
     # Prix 100 % TTC (écran caisse) — la ligne facture recalculera le HT.
     prix_unitaire_ttc = models.DecimalField(max_digits=10, decimal_places=2)
     remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
@@ -192,6 +200,14 @@ class LigneVenteComptoir(models.Model):
     class Meta:
         verbose_name = 'Ligne de vente comptoir'
         verbose_name_plural = 'Lignes de vente comptoir'
+        constraints = [
+            # AUD205 — dernier rempart en base : aucun chemin (vue, service,
+            # admin, shell, import) ne peut poser une quantité <= 0.
+            models.CheckConstraint(
+                check=models.Q(quantite__gt=0),
+                name='pos_lignevente_quantite_positive',
+            ),
+        ]
 
     @property
     def total_ttc(self):

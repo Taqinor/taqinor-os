@@ -213,6 +213,13 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     # Total d'AFFICHAGE canonique : pour un devis à deux options, le total de
     # l'option 1 (remise incluse) — jamais la somme des deux options.
+    #
+    # QJR401 / DR1 (02/09/2026) — APRÈS SIGNATURE, C'EST LE TOTAL DE L'OPTION
+    # SIGNÉE. Le correctif est ENTIÈREMENT à la source (``builder`` :
+    # ``display_total`` lit désormais ``Devis.option_acceptee``) : ce champ,
+    # le Kanban, le « CA signé » du tableau de bord, la page publique des
+    # gammes et la salle de vente publique en héritent SANS être touchés —
+    # ils lisent tous ``display_totals``.
     total_affiche = serializers.SerializerMethodField()
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)

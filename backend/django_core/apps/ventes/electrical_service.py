@@ -180,13 +180,15 @@ def _lignes_du_devis(devis):
 def _blob_ligne(ligne):
     """Texte classifiable d'une ligne — désignation ET nom du produit lié.
 
-    Même patron que ``quote_engine.builder._blob_item`` : une désignation
-    éditée à la main ne casse pas silencieusement la classification.
+    QJR424 — adaptateur ``LigneDevis`` de la SEULE définition du texte de
+    classement (QJR301, ``apps.ventes.utils.options.texte_classement``) :
+    même patron que son propre adaptateur ``_blob``. Byte-identique à
+    l'ancienne définition locale (désignation + nom du produit, séparés par
+    un espace).
     """
+    from apps.ventes.utils.options import texte_classement
     produit = getattr(ligne, "produit", None)
-    designation = ligne.designation or ""
-    nom = getattr(produit, "nom", "") or ""
-    return "%s %s" % (designation, nom)
+    return texte_classement(ligne.designation, getattr(produit, "nom", ""))
 
 
 def _quantite_ligne(ligne):

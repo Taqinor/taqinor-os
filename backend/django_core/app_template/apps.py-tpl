@@ -17,6 +17,11 @@ class {{ camel_case_app_name }}Config(AppConfig):
     module_manifest = {
         # Clé ``ModuleToggle`` (unique dans tout le dépôt, obligatoire).
         'key': '{{ app_label }}',
+        # SOL1 — appartenance à l'édition : solar_core (cœur métier solaire) /
+        # generic (ERP transverse) / optional (ModuleToggle off à la création
+        # d'un tenant) / vertical_<x> (sorti du build de l'édition solaire —
+        # à inscrire AUSSI dans erp_agentique/settings/editions.py).
+        'sku': 'generic',
         'label': '{{ camel_case_app_name }}',
         'icone': '',
         'depends': [],

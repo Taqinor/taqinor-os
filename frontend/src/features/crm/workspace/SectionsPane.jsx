@@ -142,7 +142,14 @@ export default function SectionsPane({
      DERNIER, donc ni un dépli qu'elle a persisté ne se referme, ni un repli
      qu'elle a choisi ne s'ouvre ; et l'auto-repli n'ÉCRIT PAS dans
      localStorage — c'est un état d'ouverture, pas une préférence. */
-  const [collapsed, setCollapsed] = useState(() => {
+  /* CRX36 — « à l'ouverture » veut dire À L'OUVERTURE D'UN LEAD, pas au
+     montage du composant. Le workspace ne se démonte PAS quand on passe d'un
+     lead à l'autre (c'est tout l'intérêt du shell) : l'initialiseur paresseux
+     ne s'exécutait donc qu'une fois par session, et le deuxième lead héritait
+     du repli calculé sur les données du PREMIER — une section vide restait
+     dépliée, une section pleine restait repliée. Le calcul est extrait ici
+     pour être rejoué au CHANGEMENT DE LEAD, et à ce moment-là seulement. */
+  const calculerRepliAuto = () => {
     const stored = readCollapsed()
     // « Origine web » et « Réponses du questionnaire web » repliées par
     // défaut (blueprint + décision fondateur 2026-08-18) : deux sections de
@@ -155,7 +162,18 @@ export default function SectionsPane({
       }
     }
     return { ...auto, ...stored }
-  })
+  }
+  const [collapsed, setCollapsed] = useState(calculerRepliAuto)
+  // Recalcul au CHANGEMENT DE LEAD uniquement (pendant le rendu, jamais un
+  // setState synchrone en effet — lint v7 ; même motif que la remise à zéro
+  // du résumé multi-touch de `TimelineTab`). Le repli n'est donc JAMAIS
+  // recalculé pendant qu'on travaille sur le MÊME lead : replier une section
+  // sous les doigts de l'utilisatrice reste pire que ne rien faire.
+  const [repliPourLead, setRepliPourLead] = useState(state.leadId)
+  if (repliPourLead !== state.leadId) {
+    setRepliPourLead(state.leadId)
+    setCollapsed(calculerRepliAuto())
+  }
 
   const toggle = useCallback((id) => {
     setCollapsed((prev) => {

@@ -202,8 +202,23 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='permissions-disponibles')
     def permissions_disponibles(self, request):
-        """Retourne la liste de toutes les permissions disponibles."""
-        return Response({'permissions': ALL_PERMISSIONS})
+        """Retourne la liste de toutes les permissions disponibles.
+
+        SOL12 — champ ADDITIF ``modules`` : le module PROPRIÉTAIRE de chaque
+        code (``{code: clé_de_module}``, seulement pour les codes qui en ont
+        un). L'éditeur de rôles s'en sert pour ne PAS afficher les cases d'une
+        app que la société n'a pas (module désactivé, hors plan de licence, ou
+        vertical parqué). ``permissions`` est INCHANGÉ : le backend continue de
+        servir TOUS les codes — le filtrage est purement un choix d'affichage,
+        jamais une frontière de sécurité, et un rôle qui porte déjà un code
+        d'un module éteint le conserve intact.
+        """
+        from .models import PERMISSION_MODULE
+
+        return Response({
+            'permissions': ALL_PERMISSIONS,
+            'modules': PERMISSION_MODULE,
+        })
 
     @action(detail=False, methods=['get'], url_path='permission-catalog')
     def permission_catalog(self, request):

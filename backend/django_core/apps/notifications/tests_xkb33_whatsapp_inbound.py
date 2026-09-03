@@ -12,6 +12,8 @@ Couverture :
     capture, ET poste dans la conversation Discuss dediee.
   - toujours 200, jamais de crash sur payload malforme.
 """
+import hashlib
+import hmac
 import json
 from unittest import mock
 
@@ -30,13 +32,21 @@ def _make_company(name="InboundCo"):
 
 
 def _post_payload(payload_dict, env_overrides=None):
+    # QJR414 (DR3) — le webhook BSP est FAIL-CLOSED : sans secret d'application
+    # tout POST est refuse (403). Ces tests portent sur la CAPTURE entrante,
+    # pas sur la signature : ils posent donc un secret de test et signent leur
+    # corps (la signature elle-meme est couverte par tests_whatsapp_bsp).
     from .views_whatsapp_bsp import WhatsAppBspWebhookView
     factory = RequestFactory()
     body = json.dumps(payload_dict).encode()
+    env = dict(env_overrides or {})
+    env.setdefault("WHATSAPP_BSP_APP_SECRET", "secret-inbound")
+    signature = "sha256=" + hmac.new(
+        env["WHATSAPP_BSP_APP_SECRET"].encode(), body,
+        hashlib.sha256).hexdigest()
     request = factory.post(
-        "/fake/webhook/", body, content_type="application/json")
-    env = env_overrides or {}
-    env.setdefault("WHATSAPP_BSP_APP_SECRET", "")
+        "/fake/webhook/", body, content_type="application/json",
+        HTTP_X_HUB_SIGNATURE_256=signature)
     with mock.patch.dict("os.environ", env, clear=False):
         return WhatsAppBspWebhookView.as_view()(request)
 

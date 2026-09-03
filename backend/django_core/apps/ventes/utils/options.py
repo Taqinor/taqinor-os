@@ -21,12 +21,26 @@ from __future__ import annotations
 
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
 from apps.ventes.quote_engine.builder import (
-    _is_battery, _is_hybrid_inverter, _is_inverter, _is_reseau_inverter,
-    _is_smart_meter, _is_wifi_dongle,
+    _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
+    _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
 )
 
 SANS_BATTERIE = 'sans_batterie'
 AVEC_BATTERIE = 'avec_batterie'
+
+#: QJR400 — LES TROIS LIBELLÉS QUI DÉCLARENT UNE ALTERNATIVE COMMERCIALE.
+#: Ce tuple vivait DEUX fois : ici (``deux_options_declarees``) et dans le
+#: moteur PDF (``builder._valid_choices``). Il n'y en a plus qu'un ; le moteur
+#: l'IMPORTE.
+SCENARIOS_ALTERNATIVE = ('Sans batterie', 'Avec batterie',
+                         'Les deux (Sans + Avec)')
+
+#: QJR400 — LES DEUX LIBELLÉS **MONO** et l'option qu'ils désignent. Un
+#: scénario mono RESTREINT le document à une seule option (règle QF6 du moteur
+#: PDF) : c'est ici que la correspondance libellé → option est déclarée, une
+#: seule fois, pour que l'argent du noyau suive l'option que le document titre.
+SCENARIOS_MONO = {'Sans batterie': SANS_BATTERIE,
+                  'Avec batterie': AVEC_BATTERIE}
 
 
 # ── QJR301 — UNE SEULE CONVENTION DE TEXTE POUR CLASSER UNE LIGNE ───────────
@@ -167,6 +181,34 @@ def retirer_accessoires_huawei(rows, classement=None, marque=None):
     return [r for r in rows if not est_accessoire_huawei(classement(r))]
 
 
+# ── QJR400 — L'ENSEMBLE D'EXCLUSION DES DEUX PANIERS, DÉCLARÉ UNE FOIS ──────
+#
+# S8-F5 (CORRIGÉ ICI). ``_garder_dans_sans`` excluait batterie + hybride mais
+# **PAS l'off-grid**, là où le moteur PDF (``builder._repartir_options``) exclut
+# les TROIS depuis QJR-OFFGRID. Tant que les deux portes « devis à deux
+# options » divergeaient, le trou restait latent ; il devient une divergence
+# per-option ACTIVE au moment exact où elles s'alignent — d'où sa correction
+# dans le MÊME commit.
+#
+# Les deux fonctions ci-dessous sont LA définition ; ``builder._repartir_options``
+# les IMPORTE (il ne les recopie plus).
+
+
+def blob_va_dans_sans(blob) -> bool:
+    """Le texte de classement ``blob`` appartient-il au panier « sans » ?
+
+    Ni batterie, ni onduleur hybride, ni onduleur AUTONOME (une option « sans
+    batterie » sur un système de site isolé n'existe pas).
+    """
+    return (not _is_battery(blob) and not _is_hybrid_inverter(blob)
+            and not _is_offgrid_inverter(blob))
+
+
+def blob_va_dans_avec(blob) -> bool:
+    """Miroir de :func:`blob_va_dans_sans` : tout sauf l'onduleur RÉSEAU."""
+    return not _is_reseau_inverter(blob)
+
+
 def _garder_dans_sans(li) -> bool:
     """True si ``li`` appartient au panier « sans batterie ».
 
@@ -182,7 +224,7 @@ def _garder_dans_sans(li) -> bool:
         return False
     if v == VARIANTE_SANS:
         return True
-    return not _is_battery(_blob(li)) and not _is_hybrid_inverter(_blob(li))
+    return blob_va_dans_sans(_blob(li))
 
 
 def _garder_dans_avec(li) -> bool:
@@ -193,7 +235,7 @@ def _garder_dans_avec(li) -> bool:
         return False
     if v == VARIANTE_AVEC:
         return True
-    return not _is_reseau_inverter(_blob(li))
+    return blob_va_dans_avec(_blob(li))
 
 
 def filter_lines_for_option(lignes, option):
@@ -289,11 +331,23 @@ def option_effective(devis) -> str:
     l'option vide le court-circuitait). QJR55 a ramené ce prédicat à UNE règle
     LÉGÈRE (:func:`deux_options_declarees`, deux requêtes, aucun rendu) : la
     lecture de l'argent d'un devis ne traverse plus le moteur PDF.
+
+    QJR400 (02/09/2026) — UN SCÉNARIO **MONO** DÉCLARÉ DÉCIDE, ET IL EST LU
+    ICI. Le moteur PDF rétrécit depuis toujours le document à UNE option quand
+    ``scenario`` vaut « Sans batterie » / « Avec batterie » (règle QF6) et
+    imprime alors le total de CETTE option. Le noyau, lui, servait
+    invariablement l'option AVEC : sur un devis titré « Sans batterie » le
+    client lisait un prix et l'ERP en facturait un autre. La correspondance
+    libellé → option est déclarée UNE fois (:data:`SCENARIOS_MONO`) et le
+    moteur PDF l'importe : les deux moitiés ne peuvent plus diverger.
     """
     acceptee = getattr(devis, 'option_acceptee', '') or ''
     if acceptee:
         return acceptee
-    return AVEC_BATTERIE if has_two_options(devis) else ''
+    if not has_two_options(devis):
+        return ''
+    return (option_du_scenario_mono(scenario_declare(devis))
+            or AVEC_BATTERIE)
 
 
 def option_lines(devis, option=None):
@@ -417,26 +471,132 @@ def deux_options_declarees(devis) -> bool:
     Python » désignent exactement les mêmes lignes. Sans prefetch, c'est une
     requête comme avant (un SELECT complet au lieu d'un ``EXISTS`` — les
     lignes sont de toute façon relues juste après par l'appelant).
+
+    QJR400 (02/09/2026) — CE PRÉDICAT EST LE SEUL PROPRIÉTAIRE, ET IL A CESSÉ
+    DE CONTREDIRE LE DOCUMENT. Trois écarts prouvés le séparaient de
+    ``build_quote_data`` et sont fermés ici :
+
+    * **l'off-grid** — le document sert l'option « avec » depuis un onduleur
+      hybride **OU AUTONOME** (QJR-OFFGRID) ; ce prédicat exigeait un hybride,
+      donc un devis de site isolé déclaré deux options rendait deux options au
+      PDF et une seule au noyau (deux prix pour la même vente) ;
+    * **le scénario du REGISTRE** — le document résout ``scenario`` par
+      ``overrides.effectif`` (décision fondateur D12) ; ce prédicat ne lisait
+      que ``etude_params``, si bien qu'un scénario posé par l'**endpoint de
+      surcharges livré** n'était jamais relu ici. C'est cet axe qui a fait
+      monter le constat de medium à HAUT ;
+    * **le court-circuit variante** — il rendait ``True`` sans regarder les
+      familles, alors que le document ne rend jamais une option dépourvue
+      d'onduleur (règle dure). La variante remplace désormais la DÉCLARATION
+      (c'est sa raison d'être : la composition a déjà distingué les deux
+      options), jamais la SERVABILITÉ.
+
+    Le moteur PDF consomme les mêmes fonctions (:func:`familles_servables`,
+    :func:`deux_options_depuis_paniers`, :func:`scenario_declare`) : ses
+    recalculs ont été SUPPRIMÉS dans le même commit (règle permanente 2).
     """
     try:
-        if devis is not None and any(
-                _variante(li) for li in devis.lignes.all()):
-            return True
+        lignes = [li for li in lignes_avec_produit(devis)
+                  if li.compte_dans_totaux]
     except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
-        pass
-    scenario = (getattr(devis, 'etude_params', None) or {}).get('scenario')
-    if scenario not in ('Sans batterie', 'Avec batterie',
-                        'Les deux (Sans + Avec)'):
         return False
+    scenario = scenario_declare(devis)
+    familles = familles_des_lignes(lignes)
+    sans_ok, avec_ok = familles_servables(**familles)
+    return deux_options_depuis_paniers(
+        sans_ok, avec_ok,
+        alternative_declaree=est_alternative_declaree(scenario),
+        variantes=any(_variante(li) for li in lignes))
+
+
+# ── QJR400 — LES BRIQUES PARTAGÉES AVEC LE MOTEUR PDF ────────────────────────
+#
+# Le moteur PDF les IMPORTE (``builder.build_quote_data``) au lieu de les
+# recalculer : c'est ce qui rend la contradiction structurellement impossible.
+
+
+def est_alternative_declaree(scenario) -> bool:
+    """Le scénario ``scenario`` DÉCLARE-t-il une alternative commerciale ?"""
+    return scenario in SCENARIOS_ALTERNATIVE
+
+
+def option_du_scenario_mono(scenario) -> str:
+    """L'option que le scénario RESTREINT le document à servir, ``''`` sinon.
+
+    « Sans batterie » / « Avec batterie » titrent UNE offre : le document ne
+    rend que celle-là (règle QF6) et l'argent doit la suivre.
+    """
+    return SCENARIOS_MONO.get(scenario, '')
+
+
+def scenario_declare(devis):
+    """Le scénario qui FAIT FOI pour ce devis — registre d'abord.
+
+    Décision fondateur D12 : ``scenario`` est un chemin du REGISTRE de
+    surcharges ; une déclaration humaine survit à tout recalcul aval, y compris
+    à celui qui a écrit ``etude_params`` en dernier. Aucun override posé ⇒ la
+    valeur stockée, à l'octet. Ne lève jamais (un registre illisible ne décide
+    rien).
+    """
+    stocke = (getattr(devis, 'etude_params', None) or {}).get('scenario')
     try:
-        blobs = [_blob(li)
-                 for li in lignes_avec_produit(devis)
-                 if li.compte_dans_totaux]
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
-        return False
-    return (any(_is_reseau_inverter(b) for b in blobs)
-            and any(_is_hybrid_inverter(b) for b in blobs)
-            and any(_is_battery(b) for b in blobs))
+        from apps.ventes.domain.overrides import effectif
+        impose, source = effectif(devis, 'scenario', stocke)
+        if source != 'auto' and impose:
+            return impose
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+        pass
+    return stocke
+
+
+def familles_des_lignes(lignes) -> dict:
+    """Les quatre familles d'équipement présentes dans ``lignes``.
+
+    Une ligne de quantité nulle ne compte pas (même règle que le moteur PDF,
+    ``builder._has_qty``) : elle n'équipe rien.
+    """
+    blobs = [_blob(li) for li in lignes
+             if float(getattr(li, 'quantite', 0) or 0) > 0]
+    return {
+        'has_reseau': any(_is_reseau_inverter(b) for b in blobs),
+        'has_hybride': any(_is_hybrid_inverter(b) for b in blobs),
+        'has_offgrid': any(_is_offgrid_inverter(b) for b in blobs),
+        'has_batterie': any(_is_battery(b) for b in blobs),
+    }
+
+
+def familles_servables(*, has_reseau, has_hybride, has_offgrid,
+                       has_batterie) -> tuple:
+    """``(sans_ok, avec_ok)`` — ce que l'ÉQUIPEMENT permet de servir.
+
+    « sans » a besoin d'un onduleur RÉSEAU ; « avec » d'un onduleur HYBRIDE ou
+    AUTONOME (QJR-OFFGRID) **et** d'une batterie RÉELLE (Z1 : sans batterie
+    chiffrée, jamais d'option « avec »).
+    """
+    return (bool(has_reseau),
+            bool((has_hybride or has_offgrid) and has_batterie))
+
+
+def deux_options_depuis_paniers(sans_ok, avec_ok, *, alternative_declaree,
+                                variantes=False) -> bool:
+    """Deux VRAIES options : les deux paniers sont servables ET l'alternative
+    est déclarée — par ``etude_params['scenario']`` / le registre, ou par des
+    lignes VARIANTÉES (la composition a déjà distingué les deux options, une
+    preuve plus forte que la déclaration)."""
+    return (bool(sans_ok) and bool(avec_ok)
+            and bool(alternative_declaree or variantes))
+
+
+def deux_options_composables(deux_options, hors_reseau) -> bool:
+    """QJR400 — un site HORS RÉSEAU n'a JAMAIS deux options.
+
+    Une seule composition y est possible (onduleur autonome + stockage) : la
+    forme deux options n'a aucun sens. La règle vivait DEUX fois, à la
+    composition et à la création ; elle vit ici, et c'est le pendant amont de
+    :func:`familles_servables` (sans onduleur réseau, ``sans_ok`` est faux et
+    aucun document à deux options ne peut sortir).
+    """
+    return bool(deux_options) and not bool(hors_reseau)
 
 
 def totaux_affichage_repli(devis) -> dict:
@@ -458,6 +618,12 @@ def totaux_affichage_repli(devis) -> dict:
     Le jour où le moteur lève, la liste passait donc silencieusement d'un
     total à l'autre. Repli sur « sans » gardé quand « avec » n'a pas de total
     lisible — jamais rien d'inventé.
+
+    QJR400 (02/09/2026) — ``nb_options`` DIT CE QUE LE DOCUMENT REND. Un
+    scénario MONO déclaré rétrécit le document à une seule option (QF6) : le
+    repli annonçait pourtant « 2 » et servait le total de l'option AVEC, y
+    compris sur un devis titré « Sans batterie ». Il suit désormais
+    :func:`option_du_scenario_mono`, le MÊME propriétaire que le moteur PDF.
     """
     if not deux_options_declarees(devis):
         return {'total': float(devis.total_ttc), 'nb_options': 1}
@@ -466,6 +632,15 @@ def totaux_affichage_repli(devis) -> dict:
         devis, filter_lines_for_option(lignes, SANS_BATTERIE))
     avec = _totaux_canoniques(
         devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
+    # QJR401 / DR1 — le repli suit lui aussi l'option SIGNÉE : sans cela, le
+    # jour où le moteur lève, la liste réafficherait le prix de l'option NON
+    # signée sur un devis déjà accepté.
+    mono = (getattr(devis, 'option_acceptee', '') or ''
+            or option_du_scenario_mono(scenario_declare(devis)))
+    if mono == SANS_BATTERIE:
+        return {'total': float(sans['ttc']), 'nb_options': 1}
+    if mono == AVEC_BATTERIE:
+        return {'total': float(avec['ttc']), 'nb_options': 1}
     return {
         'total': float(avec['ttc'] if avec.get('ttc') else sans['ttc']),
         'nb_options': 2,

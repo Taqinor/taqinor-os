@@ -59,9 +59,14 @@ NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/ventes/models.py:697",
     "backend/django_core/apps/facturation/models.py:113",
-    "backend/django_core/apps/facturation/models.py:917",
-    "backend/django_core/apps/facturation/models.py:1101",
-    "backend/django_core/apps/ventes/models.py:1157",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08), même champ date-ancre relu
+    # Remappés 917->945 (Avoir.date_emission) et 1101->1155 (RelanceLog.date)
+    # par AUD188 : les CheckConstraint d'argent ajoutées sur Facture,
+    # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
+    # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
+    # avant/après (vérifiée contre 024a132c). Bug-class #34.
+    "backend/django_core/apps/facturation/models.py:951",
+    "backend/django_core/apps/facturation/models.py:1161",
+    "backend/django_core/apps/ventes/models.py:1180",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -96,7 +101,13 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # index insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
     # identique avant/après (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`, vérifié contre 1d6f4c29). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2402",  # CommissionPartenaire.paye_le (recale +8, Raccordement.AUCUN 01/09)
+    # Remappé 2402->2441 (lane CRX 02/09 : +39 lignes insérées AVANT
+    # CommissionPartenaire dans crm/models.py — contrainte CI e-mail CRX24,
+    # champ Lead.score_ajustement CRX22, retrait de Playbook.bloquant CRX35).
+    # MÊME champ, déclaration identique avant/après (vérifié contre e17ef026 :
+    # `paye_le = models.DateField(null=True, blank=True,
+    # verbose_name='Payée le')`). Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2457",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

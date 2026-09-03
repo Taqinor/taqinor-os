@@ -10,8 +10,12 @@ reste une couche fondation) et n'appelle ``apps.tiers.services`` que par un
 import FONCTION-LOCAL (motif d'évitement de cycle sanctionné). Best-effort :
 un échec du miroir ne fait JAMAIS échouer la sauvegarde du Client.
 """
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+
+logger = logging.getLogger(__name__)
 
 
 def _type_tiers_pour_client(client):
@@ -50,8 +54,17 @@ def mirror_client_to_tiers(sender, instance, **kwargs):
         if client.tiers_id != tiers.id:
             sender.objects.filter(pk=client.pk).update(tiers=tiers)
     except Exception:
-        # Le pont ne doit jamais casser une écriture Client existante.
-        pass
+        # Le pont ne doit jamais casser une écriture Client existante — mais
+        # CRX40 : il ne doit pas non plus échouer EN SILENCE. Le `pass` nu
+        # rendait un miroir cassé strictement invisible : le répertoire unifié
+        # divergeait du CRM sans qu'aucune trace n'existe nulle part, et le
+        # premier symptôme était un `Tiers` manquant des mois plus tard.
+        # `logger.exception` conserve la pile ; le comportement, lui, ne change
+        # pas d'un iota (l'exception reste avalée).
+        logger.exception(
+            'ARC18: miroir Client → Tiers échoué (client #%s, société #%s) — '
+            'le répertoire unifié peut diverger du CRM.',
+            getattr(client, 'pk', None), client.company_id)
 
 
 def connect():

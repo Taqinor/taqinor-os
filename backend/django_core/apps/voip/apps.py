@@ -7,6 +7,7 @@ class VoipConfig(AppConfig):
     verbose_name = 'Softphone VoIP'
     module_manifest = {
         'key': 'voip',
+        'sku': 'generic',
         'label': 'Téléphonie',
         'icone': 'phone-call',
         'depends': [],

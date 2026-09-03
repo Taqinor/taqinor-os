@@ -494,6 +494,14 @@ jobs:
         run: python scripts/check_read_modify_write.py
       - name: Test the read-modify-write checker itself (YDATA16)
         run: python -m unittest scripts.tests.test_check_read_modify_write -v
+      # AUD223 — un MouvementStock ne se crée QUE par
+      # apps.stock.services.record_stock_movement (seul émetteur du miroir
+      # comptable d'inventaire permanent et de l'alerte seuil-bas). Fails on a
+      # NEW direct create not in scripts/mouvement_stock_service_allow.txt.
+      - name: Check MouvementStock passe par son service unique (AUD223)
+        run: python scripts/check_mouvement_stock_service.py
+      - name: Test the MouvementStock-service checker itself (AUD223)
+        run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
       # YDATA18 — business unique=True must be company-scoped; a unique on a
       # soft-delete model must be a partial index. Fails on a NEW unscoped
       # business unique not in scripts/unique_scoping_allow.txt.
@@ -855,7 +863,12 @@ jobs:
         # n'est pas scindee ».
         shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 02/09/2026 — 15 → 45 : couvre le replay froid des migrations quand le
+    # dump WOW8 est évicté du cache (LRU, journée à forte activité CI — run
+    # 33668521748 : les 6 shards tués à 15:03 pile, e2e à ~19 min, rls à 30:07,
+    # AUCUN n'a atteint ses tests). Le chemin cache-HIT reste ~6-10 min ; le
+    # push du merge re-sauve le dump et rend le plafond théorique.
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: read
@@ -1215,6 +1228,85 @@ jobs:
       - name: All frontend lanes passed (or were skipped)
         run: echo "frontend-static=${{ needs.frontend-static.result }} frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }} — gate OK."
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SOL15 — ÉDITION SOLAIRE : job de fumée RAPIDE.
+  # ───────────────────────────────────────────────────────────────────────────
+  # LA GATE PR NE CHANGE PAS : toute la suite (backend-tests, e2e, openapi,
+  # baselines) continue de tourner en édition COMPLÈTE, donc zéro churn de
+  # schéma et zéro baseline à recalibrer. Ce job AJOUTE la seule chose que
+  # l'édition complète ne peut pas prouver : que l'édition SOLAIRE démarre et
+  # que les verticaux parqués en sortent réellement.
+  #
+  # Ce qu'il vérifie, sans base de données (donc en quelques minutes) :
+  #   • `manage.py check` en édition solaire — le boot complet ;
+  #   • `manage.py verifier_edition` — apps parquées absentes d'INSTALLED_APPS,
+  #     ABSENTES DE L'ARBRE D'URLS (c'est le « 404 des urls parquées » : une
+  #     route non montée ne peut pas répondre autre chose), absentes du beat et
+  #     des overrides d'énumération ;
+  #   • le build frontend solaire + `check_dist_edition` : aucun écran d'un
+  #     vertical parqué dans le dist (le tree-shake échoue en SILENCE, cette
+  #     garde le rend bruyant) ;
+  #   • `check_editions_decouplage` : aucune arête gardé → parqué.
+  #
+  # CE QUI N'EST PAS ICI, ET POURQUOI : le `migrate` sur base VIERGE. Il rejoue
+  # ~850 migrations — mesuré 97 % du temps d'un shard backend, ~37 min. Le
+  # mettre sur chaque PR coûterait plus cher que toute la gate actuelle pour
+  # une information que `check_editions_decouplage` donne déjà à chaque PR en
+  # deux secondes (il refuse toute dépendance de migration vers une app
+  # parquée). Le `migrate` réel tourne donc dans le job HEBDOMADAIRE
+  # `.github/workflows/editions.yml`.
+  solar-boot:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TAQINOR_EDITION: solar
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements.txt
+      - name: Install backend requirements
+        run: pip install -r backend/django_core/requirements.txt
+      # SOL4 — la garde de clôture : aucune app gardée n'importe, ne référence
+      # ni ne fait dépendre une migration d'une app parquée. Pur AST, ~2 s.
+      - name: Anti-recouplage des éditions (SOL4)
+        run: python scripts/check_editions_decouplage.py --edition solar
+      - name: Boot + cohérence de l'édition solaire (SOL3)
+        working-directory: backend/django_core
+        run: python manage.py verifier_edition
+      # Non-régression : l'édition COMPLÈTE doit rester cohérente elle aussi.
+      - name: Boot + cohérence de l'édition complète
+        working-directory: backend/django_core
+        env:
+          TAQINOR_EDITION: full
+        run: python manage.py verifier_edition
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend — édition solaire
+        working-directory: frontend
+        env:
+          VITE_EDITION: solar
+        run: npx vite build --outDir dist-solar
+      # SOL6 — la garde qui rend le tree-shake VÉRIFIABLE : aucune route ni
+      # aucun chunk d'un vertical parqué dans le dist, et un contrôle POSITIF
+      # (les routes gardées y sont) pour qu'un dist vide ne passe pas.
+      - name: Aucun vertical parqué dans le dist solaire (SOL6)
+        working-directory: frontend
+        run: node scripts/check_dist_edition.mjs --edition solar --dist dist-solar
+
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
     # docs/plan changes (plan fingerprint), on STAGES.py, and on any structural
@@ -1380,6 +1472,21 @@ jobs:
         run: python scripts/check_build_order.py
       - name: Test the BUILD_ORDER.yml checker itself (SCA5)
         run: python -m unittest scripts.tests.test_check_build_order -v
+      # REGLE #1 MACHINE-VERIFIEE (CRX11). « Toute ecriture Odoo passe par
+      # l'API JSON-2, jamais de SQL » n'etait tenue que par la discipline,
+      # alors que le depot porte TROIS transports Odoo dont deux savent
+      # ecrire — et que `apps/crm/odoo_sync.odoo_call` est ENTIEREMENT
+      # generique (`model` et `method` sont des parametres : rien n'empechait
+      # un appelant futur d'ecrire n'importe quoi dans la base du fondateur).
+      # La garde exige que chaque appel Odoo soit une LECTURE ou une exception
+      # ECRITE avec sa raison, refuse tout nouveau transport non declare, et
+      # verifie que l'allowlist d'execution `_WRITE_ALLOWED` dit exactement la
+      # meme chose. Stdlib pure, sans base ni dependance, comme les autres
+      # check_*.py de ce job.
+      - name: Check écritures Odoo (règle #1 — lecture, ou exception déclarée)
+        run: python scripts/check_odoo_writes.py
+      - name: Test the Odoo-writes checker itself (CRX11)
+        run: python -m unittest scripts.tests.test_check_odoo_writes -v
       - name: Test the testdb-cache safety guard itself (WOW8 — a wrong DELTA verdict false-greens a stale schema)
         run: python -m unittest scripts.tests.test_ci_testdb_manifest_diff -v
       # WOW-CI2 — le decoupage des tests backend decide QUELS tests tournent.
@@ -1492,7 +1599,11 @@ jobs:
       matrix:
         shard: [1, 2]
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    # 03/09/2026 — 60 → 240 (marge REELLE au-dessus du pire cas, pas au milieu de l estimation) : le dump WOW8 restauré est DISCARDÉ à raison
+    # (SOL2 a réécrit qhse/0057, garde byte-identique) → replay froid COMPLET
+    # obligatoire une fois, et la chaîne dépasse largement 60 min aujourd'hui
+    # (~1500 migrations). Le push du merge re-sauve le dump ; hit-path inchangé.
+    timeout-minutes: 240
     services:
       # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
       # Il est remplacé par un serveur local que `backend-env` démarre DANS le
@@ -1756,7 +1867,13 @@ jobs:
     needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # 02/09/2026 — 12 → 30 : aligné sur les shards backend. Un lot riche en
+    # migrations + éviction du dump WOW8 (LRU, journée à forte activité CI)
+    # force un replay froid qui dépasse largement 12 min (run 33666097975 :
+    # replay complet depuis admin.0001, tué au plafond, shards annulés en
+    # cascade). Le chemin cache-HIT reste ~6-8 min ; le plafond ne borne que
+    # le pire cas froid.
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: read
@@ -1867,6 +1984,10 @@ jobs:
       - web-build-test
       - e2e-shard
       - e2e
+      # SOL15 — l'édition solaire doit démarrer et rester propre. Ajouté aux
+      # `needs` de l'AGRÉGAT seulement : la protection de branche (ses quatre
+      # checks requis) n'est pas touchée.
+      - solar-boot
     runs-on: ubuntu-latest
     steps:
       - name: Report job results
@@ -1885,6 +2006,7 @@ jobs:
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
           echo "e2e=${{ needs.e2e.result }}"
+          echo "solar-boot=${{ needs.solar-boot.result }}"
       - name: Fail if any required job failed or was cancelled
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |

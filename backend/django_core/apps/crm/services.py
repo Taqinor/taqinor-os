@@ -18,11 +18,18 @@ resolved automatically, without ever creating duplicates:
 The resolved link is persisted on the lead, so every later quote from the
 same lead reuses the same client. Everything stays tenant-scoped.
 """
+import contextlib
+import hashlib as _hashlib
 import logging
 import re as _re
 
 from django.apps import apps as django_apps
 from django.utils import timezone
+
+# CRX26 — LA date MÉTIER (Africa/Casablanca). ``timezone.localdate()`` rendrait
+# la date UTC (``settings.TIME_ZONE = 'UTC'``) : une heure par nuit, elle est
+# en retard d'un jour entier sur le terrain marocain.
+from core.dates import aujourd_hui_local
 
 from . import activity, stages
 from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtape
@@ -103,6 +110,35 @@ def _emit_stage_changed(lead, old_stage, new_stage, user=None):
             getattr(lead, 'pk', '?'), exc_info=True)
 
 
+def appliquer_stage_lead(lead, nouveau_stage, *, user=None):
+    """CRX20 — Point de passage CANONIQUE de toute écriture de ``Lead.stage``.
+
+    Écrit l'étape (``save(update_fields=['stage'])``) PUIS émet
+    ``core.events.lead_stage_changed`` via :func:`_emit_stage_changed`, de
+    sorte qu'aucun chemin ne puisse plus déplacer un lead « en muet » (les
+    récepteurs playbook NTCRM12 et séquences compta XMKT1 s'abonnent à ce
+    signal — un chemin muet les prive silencieusement de leur déclencheur).
+
+    Ne journalise RIEN dans le chatter : chaque appelant garde sa propre
+    écriture d'historique (note système, ``activity.log_bulk_change``…), qui
+    diffère d'un point d'entrée à l'autre.
+
+    ``nouveau_stage`` doit être une clé canonique de STAGES.py — jamais un
+    littéral inventé. No-op si l'étape ne change pas.
+
+    Renvoie ``True`` si l'étape a effectivement changé, ``False`` sinon.
+    Point d'entrée PUBLIC : ``apps.ventes`` l'appelle pour l'expiration des
+    devis (jamais un import des models crm depuis ventes).
+    """
+    ancien_stage = lead.stage
+    if ancien_stage == nouveau_stage:
+        return False
+    lead.stage = nouveau_stage
+    lead.save(update_fields=['stage'])
+    _emit_stage_changed(lead, ancien_stage, nouveau_stage, user=user)
+    return True
+
+
 def _playbook_correspond_au_lead(playbook, lead):
     """NTCRM26 — ``playbook.condition`` matche-t-il ce lead ? ``None``/vide =
     playbook universel (comportement historique) — toujours ``True``.
@@ -173,16 +209,42 @@ def detecter_signal_interet_salle_vente(salle):
     (JAMAIS un changement de stage automatique) et émet
     ``core.events.salle_vente_signal_interet``. Idempotent PAR JOUR : une
     nouvelle vue au-delà du seuil le même jour ne duplique pas la note.
-    Best-effort — appelé depuis la vue publique, ne doit jamais lever."""
+    Best-effort — appelé depuis la vue publique, ne doit jamais lever.
+
+    CRX31 — le comptage est DÉDUPLIQUÉ PAR APPAREIL ET PAR JOUR. Il portait sur
+    les vues BRUTES : trois rechargements de la page par le MÊME visiteur dans
+    la même minute déclenchaient « signal d'intérêt fort », et le commercial
+    rappelait un client qui n'avait rien fait de plus qu'appuyer sur F5. On
+    compte désormais les couples DISTINCTS (empreinte de visiteur, jour local) —
+    donc des visites RÉELLEMENT distinctes. Les vues sans empreinte exploitable
+    (IP illisible) partagent la clé vide : elles comptent pour UNE, jamais pour
+    trois — sous-compter est le bon sens du doute, sur-compter ne l'est pas.
+    """
+    from django.db.models.functions import TruncDate
+
+    from core.dates import TZ_METIER
+
     try:
         lead = getattr(salle, 'lead', None)
         if lead is None or lead.stage != stages.QUOTE_SENT:
             return None
         depuis = timezone.now() - timezone.timedelta(hours=FENETRE_SIGNAL_INTERET_HEURES)
-        nb_vues = salle.vues.filter(created_at__gte=depuis).count()
+        vues_fenetre = salle.vues.filter(created_at__gte=depuis)
+        # Jour LOCAL (Africa/Casablanca, CRX26) : le découpage journalier du
+        # signal doit être celui du terrain, pas celui d'UTC.
+        # `.order_by()` OBLIGATOIRE : ``SalleVenteVue.Meta.ordering`` vaut
+        # ``['-created_at']``, et Django ajoute les colonnes de tri au SELECT
+        # d'un `.distinct()` — chaque vue redeviendrait alors « distincte » et
+        # la déduplication serait un no-op silencieux.
+        nb_vues = (vues_fenetre
+                   .annotate(jour=TruncDate('created_at', tzinfo=TZ_METIER))
+                   .order_by()
+                   .values('ip_hash', 'jour')
+                   .distinct()
+                   .count())
         if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
             return None
-        aujourd_hui = timezone.now().date()
+        aujourd_hui = aujourd_hui_local()
         deja_note = LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.NOTE,
             body__startswith='signal d\'intérêt fort',
@@ -194,8 +256,9 @@ def detecter_signal_interet_salle_vente(salle):
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
             body=(
-                f"signal d'intérêt fort — {nb_vues} consultations en "
-                f"{FENETRE_SIGNAL_INTERET_HEURES}h (salle de vente « {salle.titre} »)"
+                f"signal d'intérêt fort — {nb_vues} consultations distinctes "
+                f"en {FENETRE_SIGNAL_INTERET_HEURES}h "
+                f"(salle de vente « {salle.titre} »)"
             ),
         )
         try:
@@ -500,7 +563,7 @@ def initialiser_plan_relance(lead, user, *, depart=None):
     if not cadence:
         return []
 
-    depart = depart or timezone.localdate()
+    depart = depart or aujourd_hui_local()
     etapes = []
     for gabarit in cadence:
         etapes.append(RelanceEtape(
@@ -557,32 +620,6 @@ def marquer_etape_relance(etape, user, statut, note=''):
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
     return etape
-
-
-def _next_round_robin_owner_for_new_lead(company):
-    """QW6 — Round-robin parmi les commerciaux actifs d'une société, quand
-    AUCUN responsable par défaut n'est configuré (``CompanyProfile.
-    responsable_defaut_leads``).
-
-    Distinct de ``_next_round_robin_commercial`` (XMKT21, départagé par
-    ``mql_assigned_at``, réservé au franchissement du seuil MQL) : ici on
-    départage par le nombre TOTAL de leads déjà assignés (tous statuts), pour
-    répartir la charge entrante générale — pas seulement les MQL. Renvoie
-    None si aucun commercial actif (no-op : le lead reste sans owner, comme
-    aujourd'hui).
-    """
-    from django.contrib.auth import get_user_model
-    from django.db.models import Count
-
-    User = get_user_model()
-    candidats = list(
-        User.objects.filter(
-            company=company, is_active=True, role__nom='Commercial',
-        ).annotate(
-            nb_leads=Count('leads_assignes'),
-        ).order_by('nb_leads', 'id')
-    )
-    return candidats[0] if candidats else None
 
 
 def _leads_ouverts_count(commercial):
@@ -1024,6 +1061,12 @@ def merge_leads(survivor, others, user):
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
         survivor.save()
+    # CRX33 — l'étape 6 complète les champs VIDES du survivant depuis les
+    # absorbés (téléphone, e-mail, ville, facture, orientation…) : autant de
+    # composantes du score. Sans ce recalcul, le survivant gardait le score
+    # d'AVANT la fusion — une fiche enrichie restait « froide », et le badge
+    # comme le tri mentaient jusqu'à la prochaine édition manuelle.
+    recompute_lead_score(survivor)
     return survivor
 
 
@@ -1043,6 +1086,55 @@ def recompute_lead_score(lead) -> int:
         return score
     except Exception:
         return 0
+
+
+#: CRX22 — un lead édité aujourd'hui a déjà son score à jour (le PATCH appelle
+#: ``recompute_lead_score``) : le passage nocturne ne s'occupe QUE des autres.
+DELAI_SCORE_OBSOLETE_JOURS = 1
+
+
+def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
+    """CRX22 — rafraîchit le score des leads que PERSONNE n'a touchés.
+
+    ``Lead.score`` n'était (re)calculé qu'à la création et à l'édition. Or la
+    composante de RÉCENCE décroît avec le temps (12 pts le premier jour, 1 pt
+    au-delà de 90 jours) : un lead jamais rouvert gardait éternellement le
+    score de son premier jour. Le tri « par score » remontait donc des leads
+    vieux de six mois au-dessus de leads du jour, et le badge affichait une
+    chaleur qui n'existait plus.
+
+    Ce passage quotidien recalcule les leads dont ``date_modification`` a plus
+    de :data:`DELAI_SCORE_OBSOLETE_JOURS` jour(s) et n'écrit QUE ceux dont la
+    valeur bouge réellement. Il passe par ``recompute_lead_score`` — l'unique
+    propriétaire de l'écriture du score — plutôt que par un ``update()`` en
+    masse : une seule fonction décide de la valeur, ici comme à l'édition.
+
+    ``save(update_fields=['score'])`` ne touche PAS ``date_modification``
+    (``auto_now`` n'est rafraîchi que si le champ figure dans
+    ``update_fields``) : le passage nocturne ne fait donc jamais passer un
+    lead dormant pour un lead fraîchement édité.
+
+    Renvoie ``{'examines': int, 'mis_a_jour': int}``.
+    """
+    from datetime import timedelta
+
+    from .scoring import compute_score
+
+    seuil = timezone.now() - timedelta(days=DELAI_SCORE_OBSOLETE_JOURS)
+    examines = 0
+    mis_a_jour = 0
+    queryset = (Lead.objects.filter(date_modification__lt=seuil)
+                .order_by('pk').iterator(chunk_size=taille_lot))
+    for lead in queryset:
+        examines += 1
+        if compute_score(lead) == lead.score:
+            continue
+        recompute_lead_score(lead)
+        mis_a_jour += 1
+    logger.info(
+        'CRX22 recalculer_scores_obsoletes: %d lead(s) examiné(s), '
+        '%d score(s) rafraîchi(s)', examines, mis_a_jour)
+    return {'examines': examines, 'mis_a_jour': mis_a_jour}
 
 
 # ── XMKT21 — Passage MQL automatique sur seuil de score ──────────────────────
@@ -1269,9 +1361,40 @@ def dupliquer_client(client: Client, *, user) -> Client:
     return copie
 
 
-def resolve_client_for_lead(lead: Lead) -> Client:
-    from django.db import IntegrityError, transaction
+@contextlib.contextmanager
+def _verrou_client_par_telephone(company_id, cle_telephone):
+    """CRX24 — sérialise la résolution de client du chemin SANS e-mail.
 
+    Le chemin e-mail est arbitré par la base (contrainte unique
+    ``crx24_client_email_unique_ci``, insensible à la casse) : deux créations
+    concurrentes ⇒ ``IntegrityError`` rattrapée, puis relecture. Le repli
+    TÉLÉPHONE (QX17) n'a AUCUNE contrainte équivalente — ``Client`` ne porte
+    pas de colonne normalisée — donc deux devis générés en même temps pour le
+    même prospect sans e-mail créaient DEUX fiches client, silencieusement.
+
+    Verrou consultatif PostgreSQL porté par la transaction
+    (``pg_advisory_xact_lock``) : il ne bloque aucune ligne, se libère tout
+    seul à la fin de la transaction (même en cas d'erreur), et ne sérialise
+    QUE les résolutions visant le même (société, téléphone normalisé). Sur un
+    moteur sans verrou consultatif, ou sans clé téléphone exploitable, le
+    contexte est un no-op : comportement strictement inchangé.
+    """
+    from django.db import connection, transaction
+
+    if not cle_telephone or connection.vendor != 'postgresql':
+        yield False
+        return
+    empreinte = _hashlib.blake2b(
+        f'crm.resolve_client:{company_id}:{cle_telephone}'.encode('utf-8'),
+        digest_size=8).digest()
+    verrou = int.from_bytes(empreinte, 'big', signed=True)
+    with transaction.atomic():
+        with connection.cursor() as curseur:
+            curseur.execute('SELECT pg_advisory_xact_lock(%s)', [verrou])
+        yield True
+
+
+def resolve_client_for_lead(lead: Lead) -> Client:
     if lead.client_id:
         # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
         # jamais modifier la résolution existante ni un champ de nom.
@@ -1301,6 +1424,38 @@ def resolve_client_for_lead(lead: Lead) -> Client:
             if normalize_phone(candidate.telephone) == lead_phone:
                 return candidate
         return None
+
+    # CRX24 — le chemin SANS e-mail (repli téléphone QX17) n'a aucune
+    # contrainte d'unicité en base pour l'arbitrer : on le sérialise par
+    # (société, téléphone normalisé) le temps du « chercher puis créer ». Le
+    # chemin e-mail garde son arbitrage par la base (contrainte unique
+    # insensible à la casse + relecture) et le verrou y est un no-op.
+    cle_verrou = '' if lead.email else normalize_phone(lead.telephone)
+    with _verrou_client_par_telephone(lead.company_id, cle_verrou):
+        client = _resoudre_ou_creer_client(lead, _find_existing)
+
+    lead.client = client
+    lead.save(update_fields=['client'])
+    # Trace la résolution/création du client dans le chatter du lead (geste
+    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
+    # (résolution déclenchée par le générateur de devis) → entrée système.
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Client lié : {nom_client}")
+    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
+    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
+    # nom du lead n'est touché (QW7).
+    attacher_tiers_au_lead(lead, client)
+    return client
+
+
+def _resoudre_ou_creer_client(lead, _find_existing):
+    """Cœur « chercher, sinon créer » de :func:`resolve_client_for_lead`,
+    extrait pour tenir sous le verrou CRX24 sans dupliquer une ligne de sa
+    logique. Aucun changement de comportement."""
+    from django.db import IntegrityError, transaction
 
     client = _find_existing()
 
@@ -1337,24 +1492,14 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     langue_document=langue_document,
                 )
         except IntegrityError:
+            # CRX24 — attrape AUSSI la contrainte insensible à la casse
+            # ``crx24_client_email_unique_ci`` : ``_find_existing`` cherche en
+            # ``email__iexact``, donc la relecture retrouve bien le gagnant de
+            # la course, quelle que soit la casse qu'il a écrite.
             client = _find_existing()
             if client is None:
                 raise
 
-    lead.client = client
-    lead.save(update_fields=['client'])
-    # Trace la résolution/création du client dans le chatter du lead (geste
-    # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
-    # (résolution déclenchée par le générateur de devis) → entrée système.
-    nom_client = f"{client.nom} {client.prenom or ''}".strip()
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
-        kind=LeadActivity.Kind.NOTE,
-        body=f"Client lié : {nom_client}")
-    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
-    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
-    # nom du lead n'est touché (QW7).
-    attacher_tiers_au_lead(lead, client)
     return client
 
 
@@ -1441,7 +1586,7 @@ def appliquer_plan_activite(*, lead, plan, user):
     from apps.records.models import Activity
 
     ct = ContentType.objects.get_for_model(Lead)
-    today = timezone.now().date()
+    today = aujourd_hui_local()
     resultats = []
     for etape in plan.etapes.select_related(
             'activity_type', 'assigne_par_defaut').order_by('ordre', 'delai_jours'):
@@ -1810,12 +1955,27 @@ def create_lead_from_meta_lead_ads(
     ce ``leadgen_id`` — seuls des champs connus (nom/email/téléphone/ville)
     sont lus.
 
-    Dédup (QJ8) — DEUX couches, dans l'ordre :
+    Dédup — D-CRX1 (décision fondateur du 02/09/2026) : UNE SEULE couche.
       1. même ``leadgen_id`` déjà traité (idempotence webhook — retries Meta)
-         → renvoie le lead existant sans le modifier ;
-      2. sinon, téléphone/email connu dans la société (visiteur/prospect déjà
-         en base, ex. venu par un autre canal) → absorbe la nouvelle touche
-         dans le lead existant (complète sans écraser), comme le webhook site.
+         → renvoie le lead existant, enrichi (backfill) depuis le formulaire.
+
+    L'ancienne « Couche 2 (QJ8) » — téléphone/e-mail connu dans la société ⇒
+    ABSORPTION de la touche dans le lead existant — est SUPPRIMÉE. Chaque
+    touche Meta est une nouvelle demande et crée un NOUVEAU lead, exactement
+    comme une soumission du site (règle fondateur du 18/08/2026, étendue à Meta
+    le 02/09/2026). Aucun lead existant n'est plus écrit par ce chemin : le
+    rapprochement se fait EN VISIBILITÉ, avec les deux mêmes primitives que le
+    webhook site (aucune seconde implémentation) —
+      • ``webhooks._flag_possible_duplicates`` pose UNE note chatter de doublon
+        sur le NOUVEAU lead (les archivés y sont mentionnés, cf. QW11) ;
+      • ``webhooks._pick_owner_from_duplicates`` fait HÉRITER le commercial du
+        doublon le plus pertinent (parité QW11), pour qu'un même client ne soit
+        jamais rappelé par deux commerciaux différents.
+    Conséquence VOULUE : un contact connu mais ARCHIVÉ donne lui aussi un
+    NOUVEAU lead — il est signalé dans la note sans transmettre son owner
+    (l'absorption, elle, ressuscitait silencieusement la fiche au rebut).
+    L'attribution (canal/utm/meta_ids) et ``external_system``/``external_id``
+    se posent donc TOUJOURS sur le lead nouvellement créé.
 
     Attribution (ADSENG1) : ``canal=META_ADS``, ``utm_source='facebook'``.
     Meta ne pousse JAMAIS campaign_name/adset_name dans le webhook leadgen ; il
@@ -1873,14 +2033,16 @@ def create_lead_from_meta_lead_ads(
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
 
-    # ── Couche 2 (QJ8) : dédup société par téléphone/email ──────────────────
-    absorbed = None
+    # ── D-CRX1 : plus AUCUNE absorption ─────────────────────────────────────
+    # Les doublons sont cherchés ICI, AVANT la création, pour DEUX usages
+    # strictement en lecture : (a) l'héritage du commercial (QW11) qui doit
+    # être décidé avant le round-robin, (b) la note de signalement posée après
+    # la création. Aucun lead existant n'est modifié sur ce chemin. Une seule
+    # requête, réutilisée par les deux (jamais deux fois la même).
+    dupes = []
     if telephone or email:
         dupes = find_duplicates_by_contact(
             company, phone=telephone or None, email=email or None)
-        if dupes:
-            absorbed = sorted(
-                dupes, key=lambda d: d.date_creation, reverse=True)[0]
 
     # ADSENG1 — identifiants Meta natifs (clés de jointure stables) + noms
     # résolus via les miroirs adsengine (jamais un import des modèles adsengine).
@@ -1900,87 +2062,73 @@ def create_lead_from_meta_lead_ads(
     meta_campaign_id = (names.get('campaign_id') or '')[:64] or None
     meta_form_id = form_id[:64] or None
 
-    if absorbed is not None:
-        lead = absorbed
-        for field_name, value in (
-            ('email', email), ('telephone', telephone),
-            ('ville', fields.get('ville')),
-        ):
-            if value and not getattr(lead, field_name, None):
-                setattr(lead, field_name, value)
-        # first-touch UTM/attribution préservée si déjà posée.
-        if not lead.utm_source:
-            lead.utm_source = utm_source
-        if not lead.utm_campaign:
-            lead.utm_campaign = utm_campaign
-        if not lead.utm_content:
-            lead.utm_content = utm_content
-        # Identifiants Meta natifs : posés seulement si absents (first-touch).
-        if not lead.meta_ad_id:
-            lead.meta_ad_id = meta_ad_id
-        if not lead.meta_adset_id:
-            lead.meta_adset_id = meta_adset_id
-        if not lead.meta_campaign_id:
-            lead.meta_campaign_id = meta_campaign_id
-        if not lead.meta_form_id:
-            lead.meta_form_id = meta_form_id
-        if not lead.external_system:
-            lead.external_system = _META_LEAD_ADS_SYSTEM
-            lead.external_id = str(leadgen_id)
-        # Réponses métier du formulaire : complètent le lead absorbé sans
-        # jamais écraser une valeur existante.
-        _apply_meta_form_extras(lead, extras)
-        lead.save()
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
-                  f'absorbée dans ce lead existant.'))
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # QW11 (parité site) — l'héritage du commercial se décide AVANT le
+    # round-robin : un lead qui EST un doublon n'entre pas dans l'attribution
+    # normale, il revient au commercial qui suit déjà ce contact. Les deux
+    # filtres d'éligibilité (doublon non archivé, owner actif+habilité) sont
+    # DANS ``_pick_owner_from_duplicates`` — jamais redécidés ici.
+    from .webhooks import _flag_possible_duplicates, _pick_owner_from_duplicates
+
+    extra = {}
+    inherited_owner, inherited_from = _pick_owner_from_duplicates(
+        dupes, telephone=telephone, email=email, company=company)
+    if inherited_owner is not None:
+        extra['owner'] = inherited_owner
     else:
-        extra = {}
         default = default_responsable_for(company)
         if default is not None:
             extra['owner'] = default
-        # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
-        # normale ou basse) ; en enrichissement (leads existants), seule la
-        # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
-        if extras.get('priorite'):
-            extra['priorite'] = extras['priorite']
-        lead = Lead.objects.create(
-            company=company,
-            nom=nom,
-            email=email or None,
-            telephone=telephone or None,
-            ville=fields.get('ville') or None,
-            source=Lead.Source.META_LEAD_ADS,
-            canal=Lead.Canal.META_ADS,
-            utm_source=utm_source,
-            utm_campaign=utm_campaign,
-            utm_content=utm_content,
-            meta_ad_id=meta_ad_id,
-            meta_adset_id=meta_adset_id,
-            meta_campaign_id=meta_campaign_id,
-            meta_form_id=meta_form_id,
-            external_system=_META_LEAD_ADS_SYSTEM,
-            external_id=str(leadgen_id),
-            **extra,
-        )
-        # Réponses métier du formulaire → champs structurés (facture hiver,
-        # type d'installation, priorité selon le délai déclaré, wa.me).
-        changed = _apply_meta_form_extras(lead, extras)
-        if changed:
-            lead.save(update_fields=changed)
-        activity.log_creation(lead, None)
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
-        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
-        try:
-            notify_new_lead(lead)
-        except Exception:  # noqa: BLE001 — best-effort
-            pass
+    # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
+    # normale ou basse) ; en enrichissement (leads existants), seule la
+    # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
+    if extras.get('priorite'):
+        extra['priorite'] = extras['priorite']
+    lead = Lead.objects.create(
+        company=company,
+        nom=nom,
+        email=email or None,
+        telephone=telephone or None,
+        ville=fields.get('ville') or None,
+        source=Lead.Source.META_LEAD_ADS,
+        canal=Lead.Canal.META_ADS,
+        utm_source=utm_source,
+        utm_campaign=utm_campaign,
+        utm_content=utm_content,
+        meta_ad_id=meta_ad_id,
+        meta_adset_id=meta_adset_id,
+        meta_campaign_id=meta_campaign_id,
+        meta_form_id=meta_form_id,
+        external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id),
+        **extra,
+    )
+    # Réponses métier du formulaire → champs structurés (facture hiver,
+    # type d'installation, priorité selon le délai déclaré, wa.me).
+    changed = _apply_meta_form_extras(lead, extras)
+    if changed:
+        lead.save(update_fields=changed)
+    activity.log_creation(lead, None)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+    _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
+    # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
+    # calculés (jamais une 2e requête). Best-effort, comme côté site : un
+    # rapprochement en échec ne remet jamais la capture du lead en cause.
+    try:
+        _flag_possible_duplicates(
+            lead, telephone=telephone, email=email, dupes=dupes,
+            inherited_owner=inherited_owner, inherited_from=inherited_from)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'create_lead_from_meta_lead_ads: note de doublon échouée '
+            '(lead #%s) : %s', lead.pk, _exc)
+    try:
+        notify_new_lead(lead)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
 
     recompute_lead_score(lead)
     return lead
@@ -2090,19 +2238,27 @@ def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - résea
     nœud lead Meta via le Graph API officiel, pour le backfill.
 
     Isolé en fonction module (jamais dans ``webhooks.py`` — inchangé hors
-    mapping) pour rester simulable en test (monkeypatch). Utilise la version
-    courante de l'API (v25 — jamais la v19 expirée). Renvoie le dict brut ou
-    lève sur échec (capté par l'appelant, best-effort par lead).
+    mapping) pour rester simulable en test (monkeypatch). Renvoie le dict brut
+    ou lève sur échec (capté par l'appelant, best-effort par lead).
+
+    CRX5 — la version de l'API vient de la SOURCE UNIQUE partagée
+    (``apps.adsengine.api_version.GRAPH_BASE_URL``), jamais d'un littéral :
+    la « v25.0 » codée en dur ici était la dernière copie divergente du
+    dépôt, et c'est exactement de cette façon que la v19.0 du webhook est
+    restée morte en production pendant des mois (ADSENG2). Constante plain —
+    aucun modèle adsengine n'est importé.
     """
     import json
     import urllib.parse
     import urllib.request
 
+    from apps.adsengine.api_version import GRAPH_BASE_URL
+
     qs = urllib.parse.urlencode({
         'fields': 'ad_id,adgroup_id,form_id',
         'access_token': access_token,
     })
-    url = f'https://graph.facebook.com/v25.0/{leadgen_id}?{qs}'
+    url = f'{GRAPH_BASE_URL}/{leadgen_id}?{qs}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))
 
@@ -2115,7 +2271,10 @@ def backfill_meta_lead_attribution(
     Pour chaque ``Lead`` de source ``meta_lead_ads`` dont ``meta_ad_id`` est
     encore vide, récupère ses identifiants natifs (ad_id/adgroup_id/form_id)
     depuis le nœud lead Meta via ``fetch_fn(leadgen_id, access_token)`` (défaut :
-    ``webhooks.fetch_meta_lead_node`` — injectable/simulable en test), les
+    ``services.fetch_meta_lead_node``, juste au-dessus — CRX5 : la docstring
+    nommait ``webhooks.fetch_meta_lead_node``, qui n'a jamais existé et
+    envoyait le lecteur chercher dans le mauvais module ; injectable/simulable
+    en test), les
     stocke, résout les noms via les miroirs adsengine, et remplit ``utm_content``
     = ``ad-<ad_id>`` + ``utm_campaign`` = nom de campagne résolu.
 
@@ -2317,8 +2476,9 @@ def avancer_stage_sur_ouverture_devis(lead) -> bool:
         return False  # déjà à FOLLOW_UP ou plus avancé (jamais en arrière).
 
     ancien_stage = lead.stage
-    lead.stage = cible
-    lead.save(update_fields=['stage'])
+    # CRX20 — chemin canonique : écrit ET émet ``lead_stage_changed`` (ce
+    # point d'entrée était muet, les playbooks/séquences ne partaient pas).
+    appliquer_stage_lead(lead, cible, user=None)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.MODIFICATION,
@@ -3079,8 +3239,10 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                     skip(lead, "étape déjà atteinte ou recul non autorisé")
                     continue
                 old = lead.stage
-                lead.stage = target_stage
-                lead.save(update_fields=['stage'])
+                # CRX20 — chemin canonique : le bulk émet enfin
+                # ``lead_stage_changed`` (playbooks NTCRM12 + séquences compta
+                # XMKT1 partaient pour un PATCH unitaire, jamais pour un bulk).
+                appliquer_stage_lead(lead, target_stage, user=user)
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
                 # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
                 # (pas de devis accepté associé ni d'attribution UTM disponible).
@@ -3467,6 +3629,42 @@ def resolve_booking_link(token):
     return link
 
 
+#: CRX23 — horizon maximal d'une réservation PUBLIQUE, en jours. Sert de
+#: borne haute de bon sens : un visiteur (ou un script) ne réserve pas une
+#: visite en l'an 9999. Constante de module pour que les tests la patchent.
+BOOKING_HORIZON_JOURS = 365
+
+
+def _valider_creneau_public(scheduled_at):
+    """CRX23 — bornes d'un créneau réservé PUBLIQUEMENT.
+
+    Le corps public arrive de ``parse_datetime`` : il rend un datetime NAÏF
+    quand la chaîne ne porte pas d'offset, et accepte n'importe quelle année.
+    Un naïf serait stocké tel quel (interprétation de fuseau indéterminée) et
+    une année absurde polluerait durablement le calendrier du commercial.
+
+    Lève ``ValueError`` (traduit en 400 par la vue publique) si le créneau
+    est absent, naïf, déjà passé, ou au-delà de :data:`BOOKING_HORIZON_JOURS`.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+
+    if scheduled_at is None:
+        raise ValueError('Date/heure de créneau manquante.')
+    if _timezone.is_naive(scheduled_at):
+        raise ValueError(
+            'Le créneau doit porter son fuseau horaire (date/heure naïve '
+            'refusée).')
+    now = _timezone.now()
+    if scheduled_at <= now:
+        raise ValueError('Le créneau demandé est déjà passé.')
+    if scheduled_at > now + timedelta(days=BOOKING_HORIZON_JOURS):
+        raise ValueError(
+            'Le créneau demandé est trop lointain '
+            f'(au-delà de {BOOKING_HORIZON_JOURS} jours).')
+
+
 def reserver_creneau_public(token, *, scheduled_at, notes=None):
     """XSAL17 — Réservation PUBLIQUE d'un créneau via un jeton
     ``BookingLink`` : crée l'``Appointment`` (via ``book_appointment``,
@@ -3475,15 +3673,43 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
     UTILISÉ (idempotent : un second appel avec le même jeton lève
     :class:`BookingLinkUnavailable`, jamais un second rendez-vous).
     Le lead atterrit toujours sur SON lead d'origine (booking-to-lead) —
-    jamais un autre, jamais choisi par le visiteur."""
+    jamais un autre, jamais choisi par le visiteur.
+
+    CRX23 — l'idempotence est désormais VRAIE sous concurrence. Avant, deux
+    requêtes simultanées passaient toutes les deux le ``resolve_booking_link``
+    (``used_at`` encore nul pour les deux), créaient DEUX rendez-vous sur le
+    même lien, et la seconde écrasait ``link.appointment`` : le commercial
+    voyait deux visites pour un seul créneau réservé. Le lien est maintenant
+    RÉCLAMÉ par un UPDATE conditionnel (``used_at__isnull=True`` → nombre de
+    lignes touchées) DANS la transaction : exactement une requête gagne, la
+    perdante reçoit :class:`BookingLinkUnavailable` (410). Le rendez-vous est
+    créé APRÈS la réclamation, dans la même transaction — un échec de création
+    annule la réclamation (le lien reste utilisable), jamais un lien brûlé
+    pour rien.
+    """
+    from django.db import transaction
     from django.utils import timezone as _timezone
 
+    from .models import BookingLink
+
+    # Le jeton d'abord (404/410 honnête, lecture seule), puis les bornes du
+    # créneau — AVANT toute écriture : un créneau invalide ne doit pas
+    # consommer le lien (le visiteur doit pouvoir corriger et réessayer).
     link = resolve_booking_link(token)
-    appointment = book_appointment(
-        lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
-    link.used_at = _timezone.now()
+    _valider_creneau_public(scheduled_at)
+
+    with transaction.atomic():
+        maintenant = _timezone.now()
+        reclame = BookingLink.objects.filter(
+            pk=link.pk, used_at__isnull=True).update(used_at=maintenant)
+        if not reclame:
+            raise BookingLinkUnavailable('Ce créneau a déjà été réservé.')
+        appointment = book_appointment(
+            lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
+        BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
+
+    link.used_at = maintenant
     link.appointment = appointment
-    link.save(update_fields=['used_at', 'appointment'])
     return appointment
 
 
@@ -3717,7 +3943,7 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
 
 def enregistrer_consentement_lead(
         lead, *, purpose, granted=True, source='', version_texte='',
-        ip_confirmation=None):
+        ip_confirmation=None, occurred_at=None):
     """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
 
     ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
@@ -3725,6 +3951,13 @@ def enregistrer_consentement_lead(
     ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
     ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
     de l'état courant prend toujours la ligne la plus récente.
+
+    CRX39 — ``occurred_at`` (additif, défaut ``now()`` : tout appelant existant
+    est inchangé) porte l'horodatage RÉEL du consentement quand on le connaît,
+    comme le champ le demande explicitement (« sur le consent_timestamp
+    existant côté métier »). Sans lui, le registre daterait le consentement du
+    moment où l'ERP l'a enregistré, pas de celui où la personne l'a donné —
+    une preuve CNDP fausse est pire qu'une preuve absente.
     """
     from core.models import ConsentRecord
 
@@ -3737,10 +3970,61 @@ def enregistrer_consentement_lead(
         purpose=purpose,
         granted=granted,
         source=source or '',
-        occurred_at=timezone.now(),
+        occurred_at=occurred_at or timezone.now(),
         version_texte=version_texte or '',
         ip_confirmation=ip_confirmation,
     )
+
+
+#: CRX39 — origine consignée dans ``ConsentRecord.source`` pour l'intake web.
+CONSENT_SOURCE_SITE_WEB = 'formulaire site web'
+
+
+def enregistrer_consentements_intake_web(lead):
+    """CRX39 (DRAFT165-57) — trace au REGISTRE le consentement recueilli par le
+    formulaire du site, FINALITÉ PAR FINALITÉ.
+
+    Jusqu'ici le consentement du visiteur ne vivait que sur la fiche
+    (``Lead.consent_timestamp`` / ``Lead.whatsapp_opt_in``) : le registre
+    ``core.ConsentRecord`` — celui qu'une demande CNDP interroge, celui que
+    lisent le DSR et les filtres marketing — restait VIDE pour la source de
+    leads n°1. Cette fonction est le pont, appelée à la CRÉATION du lead par
+    le webhook site.
+
+    Deux finalités, chacune écrite SEULEMENT si la donnée existe (jamais un
+    consentement supposé — règle « aucun chiffre/fait inventé ») :
+      • ``marketing`` — la case du formulaire, ACCORDÉE, datée du
+        ``consentTimestamp`` transmis par le site (pas de l'instant serveur) ;
+      • ``whatsapp`` — l'opt-in WhatsApp, accordé OU refusé selon la case
+        (``whatsapp_opt_in`` vaut ``None`` quand la question n'a pas été posée
+        : on n'écrit alors RIEN, un silence n'est pas un refus).
+
+    ``ip_confirmation`` reste vide À DESSEIN : ce champ est la preuve du clic
+    de confirmation d'un DOUBLE opt-in, que le formulaire du site ne pratique
+    pas — y verser l'IP de la soumission maquillerait un simple opt-in en
+    double opt-in. Idem ``version_texte`` : le site ne transmet aucune version
+    de texte de consentement aujourd'hui.
+
+    Renvoie la liste des entrées créées (vide si aucune donnée exploitable).
+    Ne lève pas sur un lead sans email ni téléphone (le point d'entrée unique
+    ``enregistrer_consentement_lead`` renvoie alors ``None``).
+    """
+    horodatage = getattr(lead, 'consent_timestamp', None)
+    creees = []
+    if horodatage:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='marketing', granted=True,
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage)
+        if entree is not None:
+            creees.append(entree)
+    opt_in = getattr(lead, 'whatsapp_opt_in', None)
+    if opt_in is not None:
+        entree = enregistrer_consentement_lead(
+            lead, purpose='whatsapp', granted=bool(opt_in),
+            source=CONSENT_SOURCE_SITE_WEB, occurred_at=horodatage or None)
+        if entree is not None:
+            creees.append(entree)
+    return creees
 
 
 # ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
@@ -3923,12 +4207,44 @@ def create_lead_from_public_api(*, company, fields):
     return lead
 
 
+#: CRX21 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10). Sans
+#: elles dans ``update_fields``, un changement de téléphone/email n'est PAS
+#: répercuté sur les colonnes indexées de dédup : le lead reste trouvable par
+#: son ANCIEN numéro et invisible sous le nouveau. Même table que
+#: ``LeadViewSet.COLONNES_DERIVEES`` (views.py) — la parité est le sujet de la
+#: tâche : l'API publique écrit les mêmes leads que l'écran.
+PUBLIC_LEAD_COLONNES_DERIVEES = {'telephone': 'phone_normalise',
+                                 'email': 'email_normalise'}
+
+
 def update_lead_from_public_api(*, company, lead_id, fields):
     """XPLT5 — met à jour un lead EXISTANT DE CETTE SOCIÉTÉ depuis l'API
     publique en écriture. Lève ``Lead.DoesNotExist`` si le lead n'appartient
     pas (ou plus) à ``company`` — jamais de fuite cross-tenant. Champs
     filtrés à la même liste blanche que la création ; ``stage`` validé contre
-    STAGES.py. Journalise chaque champ changé (chatter, acteur système)."""
+    STAGES.py. Journalise chaque champ changé (chatter, acteur système).
+
+    CRX21 — PARITÉ avec le PATCH de l'écran (``LeadViewSet.perform_update``),
+    qui manquait entièrement à ce chemin :
+
+    * **verrou du lead perdu** — un lead marqué perdu ne change pas d'étape,
+      pas même par une intégration (le ``LeadSerializer`` refuse déjà, et ce
+      verrou PRÉCÈDE toute échappatoire) ;
+    * **garde funnel** ``_bulk_stage_allowed`` — une intégration ne recule ni
+      ne rouvre un pipeline. Il n'y a PAS ici l'échappatoire ``confirme_recul``
+      de l'écran : elle suppose une confirmation HUMAINE devant un lead nommé,
+      qu'aucun appel machine ne peut donner ;
+    * **les 4 effets internes** de ``perform_update`` : émission de
+      ``lead_stage_changed``, ``first_contacted_at`` (FG28), recalcul du score
+      (QJ6) et synchronisation de l'activité de relance ;
+    * **colonnes dérivées** (``phone_normalise``/``email_normalise``) ajoutées
+      à ``update_fields`` quand leur source change — sinon la dédup indexée
+      devient aveugle après un changement de téléphone (chemins publicapi bulk
+      ET PATCH unitaire).
+
+    Lève ``ValueError`` (traduit en 400 par les vues publiques) sur une étape
+    inconnue, un lead perdu, ou un recul de funnel.
+    """
     lead = Lead.objects.get(company=company, pk=lead_id)
     clean = {k: v for k, v in (fields or {}).items()
              if k in PUBLIC_LEAD_WRITABLE_FIELDS}
@@ -3936,6 +4252,11 @@ def update_lead_from_public_api(*, company, lead_id, fields):
     if stage is not None and stage not in stages.STAGES:
         raise ValueError(
             f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    if stage is not None and stage != lead.stage:
+        if lead.perdu:
+            raise ValueError('Lead perdu — étape non modifiable.')
+        if not _bulk_stage_allowed(lead.stage, stage):
+            raise ValueError("On ne recule pas une étape.")
     old = Lead.objects.get(pk=lead.pk)
     changed_fields = []
     for field, value in clean.items():
@@ -3945,8 +4266,19 @@ def update_lead_from_public_api(*, company, lead_id, fields):
             setattr(lead, field, value)
             changed_fields.append(field)
     if changed_fields:
-        lead.save(update_fields=changed_fields)
+        ecrits = list(changed_fields)
+        for source, derivee in PUBLIC_LEAD_COLONNES_DERIVEES.items():
+            if source in changed_fields:
+                ecrits.append(derivee)
+        lead.save(update_fields=ecrits)
         activity.log_changes(old, lead, None)
+        # Les 4 effets du PATCH de l'écran, dans le même ordre. Tous sont
+        # best-effort par construction (chacun catche pour son compte) : une
+        # intégration ne doit jamais échouer sur un effet secondaire.
+        sync_relance_activity(lead, None)
+        maybe_set_first_contacted_at(old, lead)
+        recompute_lead_score(lead)
+        _emit_stage_changed(lead, old.stage, lead.stage, user=None)
     return lead
 
 

@@ -60,6 +60,12 @@ const COLUMNS = {
     { id: 'regime', header: 'Régime', accessor: (r) => r.regime_display || r.regime || '—' },
     { id: 'periode', header: 'Période', accessor: (r) => `${r.date_debut || ''} → ${r.date_fin || ''}`,
       searchable: false },
+    // AUD164 — le crédit de TVA reporté était invisible (et valait toujours 0
+    // par l'application) : on l'affiche, c'est lui qui explique l'écart entre
+    // collectée − déductible et le montant réellement à déclarer.
+    { id: 'credit_anterieur', header: 'Crédit reporté',
+      accessor: (r) => Number(r.credit_anterieur) || 0,
+      align: 'right', numeric: true, searchable: false, cell: money },
     { id: 'a_declarer', header: 'TVA à déclarer', accessor: (r) => Number(r.tva_a_declarer) || 0,
       align: 'right', numeric: true, searchable: false, cell: money },
     { id: 'statut', header: 'Statut', accessor: (r) => r.statut, searchable: false,
@@ -100,6 +106,11 @@ const FIELDS = {
     ] },
     { name: 'tva_collectee', label: 'TVA collectée', type: 'number' },
     { name: 'tva_deductible', label: 'TVA déductible', type: 'number' },
+    // AUD164 — le champ n'existait pas dans le formulaire : le crédit de TVA
+    // était donc INSAISISSABLE et valait toujours 0. Laissé VIDE, le serveur
+    // le dérive de la dernière déclaration déposée ; une valeur saisie prime.
+    { name: 'credit_anterieur', label: 'Crédit de TVA antérieur (vide = reporté automatiquement)',
+      type: 'number' },
   ],
   retenuesSource: [
     { name: 'piece', label: 'Pièce', required: true },

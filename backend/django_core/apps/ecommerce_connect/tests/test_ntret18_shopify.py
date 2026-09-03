@@ -46,8 +46,9 @@ class SansCleApiNoOpTests(TestCase):
         mock_put.assert_not_called()
 
     @override_settings(SHOPIFY_ADMIN_TOKEN='')
-    def test_webhook_hmac_false_sans_secret(self):
-        self.assertFalse(shopify.verify_webhook_hmac(b'{}', 'peu-importe'))
+    def test_aucune_connexion_signataire_sans_secret(self):
+        # AUD212 — aucune connexion (donc aucun secret) : jamais d'acceptation.
+        self.assertIsNone(shopify.connexion_signataire(b'{}', 'peu-importe'))
 
     @override_settings(SHOPIFY_ADMIN_TOKEN='')
     def test_endpoint_webhook_503_sans_cle(self):
@@ -115,19 +116,37 @@ class SyncCatalogueTests(TestCase):
         self.assertEqual(self.mapping.dernier_statut, ProduitSync.Statut.ERREUR)
 
 
-class VerifyWebhookHmacTests(TestCase):
-    @override_settings(SHOPIFY_WEBHOOK_SECRET='secret-de-test')
-    def test_signature_valide_acceptee(self):
+class ConnexionSignataireTests(TestCase):
+    """AUD212 — le secret PROPRE de la connexion valide (et désigne le tenant)."""
+
+    def setUp(self):
+        self.company = _company()
+        self.connexion = ConnexionEcommerce.objects.create(
+            company=self.company,
+            plateforme=ConnexionEcommerce.Plateforme.SHOPIFY,
+            boutique_url='https://ma-boutique-test.myshopify.com', actif=True,
+            webhook_secret='secret-de-test')
+
+    def test_signature_valide_resout_la_connexion(self):
         body = b'{"id": 1}'
         digest = hmac.new(
             b'secret-de-test', body, hashlib.sha256).digest()
         header = base64.b64encode(digest).decode('utf-8')
 
-        self.assertTrue(shopify.verify_webhook_hmac(body, header))
+        self.assertEqual(
+            shopify.connexion_signataire(body, header), self.connexion)
 
-    @override_settings(SHOPIFY_WEBHOOK_SECRET='secret-de-test')
     def test_signature_invalide_rejetee(self):
-        self.assertFalse(shopify.verify_webhook_hmac(b'{"id": 1}', 'faux'))
+        self.assertIsNone(shopify.connexion_signataire(b'{"id": 1}', 'faux'))
+
+    def test_connexion_sans_secret_nacceptera_jamais(self):
+        self.connexion.webhook_secret = ''
+        self.connexion.save(update_fields=['webhook_secret'])
+        body = b'{"id": 1}'
+        header = base64.b64encode(
+            hmac.new(b'', body, hashlib.sha256).digest()).decode('utf-8')
+
+        self.assertIsNone(shopify.connexion_signataire(body, header))
 
 
 @override_settings(SHOPIFY_ADMIN_TOKEN='fake-test-token-never-real')
@@ -137,7 +156,8 @@ class TraiterWebhookCommandeTests(TestCase):
         self.connexion = ConnexionEcommerce.objects.create(
             company=self.company,
             plateforme=ConnexionEcommerce.Plateforme.SHOPIFY,
-            boutique_url='https://ma-boutique-test.myshopify.com', actif=True)
+            boutique_url='https://ma-boutique-test.myshopify.com', actif=True,
+            webhook_secret='secret-e2e')
         self.client_crm = Client.objects.create(
             company=self.company, nom='Alaoui', email='client@example.com')
         self.produit = Produit.objects.create(
@@ -184,17 +204,23 @@ class TraiterWebhookCommandeTests(TestCase):
     def test_endpoint_webhook_signature_hmac_bout_en_bout(self):
         payload = {
             'id': 'SHOP-4004', 'total_price': '100.00',
+            # AUD202 — `financial_status` est désormais LU : un vrai webhook
+            # Shopify « orders/paid » le porte toujours ; sans lui, le
+            # traitement est refusé (fail-closed).
+            'financial_status': 'paid',
             'email': 'client@example.com', 'line_items': [],
         }
         body = json.dumps(payload).encode('utf-8')
-        with override_settings(SHOPIFY_WEBHOOK_SECRET='secret-e2e'):
-            digest = hmac.new(b'secret-e2e', body, hashlib.sha256).digest()
-            header = base64.b64encode(digest).decode('utf-8')
-            resp = self.client.post(
-                '/api/django/ecommerce-connect/shopify/webhook/commande/',
-                data=body, content_type='application/json',
-                HTTP_X_SHOPIFY_HMAC_SHA256=header,
-                HTTP_X_SHOPIFY_SHOP_DOMAIN='ma-boutique-test.myshopify.com')
+        digest = hmac.new(b'secret-e2e', body, hashlib.sha256).digest()
+        header = base64.b64encode(digest).decode('utf-8')
+        resp = self.client.post(
+            '/api/django/ecommerce-connect/shopify/webhook/commande/',
+            data=body, content_type='application/json',
+            HTTP_X_SHOPIFY_HMAC_SHA256=header,
+            # AUD212 — en-tête volontairement conservé dans la requête pour
+            # prouver qu'il n'est PLUS lu : c'est le secret qui résout le
+            # tenant.
+            HTTP_X_SHOPIFY_SHOP_DOMAIN='ma-boutique-test.myshopify.com')
 
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
@@ -204,11 +230,10 @@ class TraiterWebhookCommandeTests(TestCase):
 
     def test_endpoint_webhook_signature_invalide_401(self):
         body = json.dumps({'id': 'SHOP-5005'}).encode('utf-8')
-        with override_settings(SHOPIFY_WEBHOOK_SECRET='secret-e2e'):
-            resp = self.client.post(
-                '/api/django/ecommerce-connect/shopify/webhook/commande/',
-                data=body, content_type='application/json',
-                HTTP_X_SHOPIFY_HMAC_SHA256='signature-invalide')
+        resp = self.client.post(
+            '/api/django/ecommerce-connect/shopify/webhook/commande/',
+            data=body, content_type='application/json',
+            HTTP_X_SHOPIFY_HMAC_SHA256='signature-invalide')
 
         self.assertEqual(resp.status_code, 401)
         self.assertFalse(

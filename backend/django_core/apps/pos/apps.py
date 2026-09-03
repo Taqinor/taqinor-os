@@ -7,6 +7,7 @@ class PosConfig(AppConfig):
     verbose_name = 'Vente comptoir (POS)'
     module_manifest = {
         'key': 'pos',
+        'sku': 'optional',
         'label': 'Vente comptoir',
         'icone': 'shopping-cart',
         'depends': ['stock'],

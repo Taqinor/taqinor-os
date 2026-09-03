@@ -36,7 +36,11 @@ from apps.compta.services import (  # noqa: F401
 #     part uniquement par email au client (backend console en local, SendGrid
 #     gated en prod — no-op silencieux sans clé). Le compte est créé avec
 #     ``must_change_password=True`` (N96) : le client DOIT le changer à sa
-#     première session.
+#     première session. AUD139 — cette garantie est désormais APPLIQUÉE côté
+#     serveur : ``roles.permissions.exiger_mot_de_passe_change`` refuse toute
+#     route portail (403, code ``mot_de_passe_a_changer``) tant que le mot de
+#     passe temporaire n'est pas remplacé ; seuls ``/auth/me/``,
+#     ``/auth/logout/`` et ``/auth/change-password/`` restent joignables.
 #   * Idempotent SANS effet de bord : re-provisionner ne réinitialise pas le mot
 #     de passe et NE RÉACTIVE JAMAIS un compte désactivé (révoqué). Réactiver
 #     silencieusement un accès retiré serait un élargissement d'accès non
@@ -187,3 +191,110 @@ def provisionner_compte_portail_client(company, client_id):
 
     _envoyer_identifiants_portail(user, mot_de_passe, company)
     return user, True
+
+
+# ── AUD138 — Révocation RÉELLE de l'accès portail d'un client ───────────────
+#
+# Avant AUD138, « révoquer » un compte portail ne posait que
+# ``ComptePortailClient.actif = False``. Or ce drapeau n'était lu QUE par le
+# chemin magic-link tokenisé (``compta.selectors.compte_portail_par_token``) :
+# le mécanisme d'accès PRIMAIRE depuis NTPRT2 est le ``CustomUser``
+# ``portee=portail_client`` + JWT, dont la garde ne le lisait jamais. Un client
+# « révoqué » continuait donc de consulter ses devis et ses factures avec le
+# jeton déjà émis.
+#
+# La révocation est désormais UNE action serveur qui, dans une transaction,
+# ferme les DEUX portes : le drapeau ``actif`` (magic-link) ET
+# ``CustomUser.is_active`` (JWT — SimpleJWT refuse un utilisateur inactif dès
+# l'authentification, y compris sur un jeton déjà distribué). La réactivation
+# est SYMÉTRIQUE et EXPLICITE : elle n'a lieu que sur cet appel-là, jamais en
+# effet de bord d'un re-provisionnement (cf. la politique ci-dessus).
+
+
+def _basculer_acces_portail_client(company, client_id, *, actif):
+    """Pose ``actif`` sur le compte portail ET ``is_active`` sur ses comptes
+    utilisateur portail, atomiquement. Renvoie ``(compte, nb_utilisateurs)``."""
+    from django.db import transaction
+
+    from authentication.models import CustomUser
+
+    from .models import ComptePortailClient
+
+    if company is None or not client_id:
+        return None, 0
+
+    with transaction.atomic():
+        compte = (
+            ComptePortailClient.objects
+            .select_for_update()
+            .filter(company=company, client_id=client_id)
+            .first()
+        )
+        if compte is not None and compte.actif != actif:
+            compte.actif = actif
+            compte.save(update_fields=['actif'])
+        nb = CustomUser.objects.filter(
+            company=company,
+            portee=CustomUser.PORTEE_PORTAIL_CLIENT,
+            portail_client_id=client_id,
+        ).update(is_active=actif)
+    return compte, nb
+
+
+# ── AUD148 (a) — ``derniere_connexion`` n'était écrite par AUCUN code ───────
+#
+# La colonne existe (``portail/models.py``), l'écran ERP l'affiche, et grep sur
+# ``backend/django_core`` ne rendait que le modèle et le serializer en lecture
+# seule : ni le chemin tokenisé ni le login JWT ne la posaient. La colonne
+# d'audit d'accès était donc vide le jour où l'on cherche qui a consulté quoi —
+# alors que le patron existe déjà dans le dépôt (``education/public_views.py``
+# met bien à jour SON équivalent).
+#
+# On écrit au plus une fois par PÉRIODE : une écriture par requête portail
+# transformerait chaque GET en UPDATE (et « dernière connexion » n'a pas besoin
+# d'une précision à la seconde).
+
+#: Granularité de l'horodatage de connexion portail.
+PERIODE_HORODATAGE_CONNEXION = 3600  # secondes
+
+
+def enregistrer_connexion_portail(compte_id, derniere_connexion=None,
+                                  maintenant=None):
+    """AUD148 — Horodate ``derniere_connexion``, au plus une fois par période.
+
+    ``compte_id`` / ``derniere_connexion`` viennent d'une lecture DÉJÀ faite
+    par l'appelant (``selectors.etat_compte_portail_client``, ou le compte
+    résolu par token) : cette fonction n'ajoute JAMAIS de SELECT, seulement un
+    UPDATE ciblé quand il est utile. Renvoie l'horodatage posé, ou ``None``.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import ComptePortailClient
+
+    if not compte_id:
+        return None
+    maintenant = maintenant or timezone.now()
+    if derniere_connexion is not None and (
+            maintenant - derniere_connexion
+            < timedelta(seconds=PERIODE_HORODATAGE_CONNEXION)):
+        return None
+    (ComptePortailClient.objects
+     .filter(pk=compte_id)
+     .update(derniere_connexion=maintenant))
+    return maintenant
+
+
+def revoquer_acces_client(company, client_id):
+    """AUD138 — Ferme l'accès portail d'un client : magic-link ET compte JWT."""
+    return _basculer_acces_portail_client(company, client_id, actif=False)
+
+
+def reactiver_acces_client(company, client_id):
+    """AUD138 — Rouvre l'accès portail d'un client (action ADMIN explicite).
+
+    Symétrique de ``revoquer_acces_client`` : c'est le SEUL chemin qui
+    réactive un accès retiré — jamais un re-provisionnement silencieux.
+    """
+    return _basculer_acces_portail_client(company, client_id, actif=True)

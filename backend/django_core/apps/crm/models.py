@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.functions import Lower
 
 from core.models import SoftDeleteModel, TenantModel
 
@@ -203,6 +204,25 @@ class Client(models.Model):
         verbose_name = "Client"
         verbose_name_plural = "Clients"
         unique_together = [('company', 'email')]
+        constraints = [
+            # CRX24 — unicité de l'e-mail INSENSIBLE À LA CASSE. Le
+            # ``unique_together`` ci-dessus est sensible à la casse, alors que
+            # toutes les recherches de client se font en ``email__iexact``
+            # (``services.resolve_client_for_lead``) : « A@x.ma » et « a@x.ma »
+            # étaient donc DEUX lignes que le code traitait comme une seule —
+            # le doublon naissait à la création, la lecture n'en voyait qu'un,
+            # et les devis se répartissaient entre les deux fiches.
+            # Index fonctionnel partiel : les e-mails vides/NULL restent
+            # multiples (un client sans e-mail est légitime et fréquent).
+            models.UniqueConstraint(
+                'company', Lower('email'),
+                name='crx24_client_email_unique_ci',
+                condition=models.Q(email__isnull=False) & ~models.Q(email=''),
+                violation_error_message=(
+                    "Un client de cette société porte déjà cet e-mail "
+                    "(la casse ne compte pas)."),
+            ),
+        ]
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
@@ -270,7 +290,12 @@ class Lead(SoftDeleteModel):
 
     class Source(models.TextChoices):
         OS_NATIVE = 'os_native', 'Créé dans TAQINOR'
-        ODOO_IMPORT_TEST = 'odoo_import_test', 'Import test Odoo'
+        # CRX35 — la VALEUR en base reste 'odoo_import_test' (des milliers de
+        # lignes la portent, un renommage serait une migration de données pour
+        # rien) ; seul le LIBELLÉ est corrigé : la synchronisation Odoo→ERP
+        # n'est plus un test depuis le 01/09/2026, elle est le miroir de
+        # production. « test » induisait en erreur dans les filtres et exports.
+        ODOO_IMPORT_TEST = 'odoo_import_test', 'Import Odoo'
         SITE_WEB = 'site_web', 'Site web'
         # XMKT32 — lead créé depuis un formulaire Meta Lead Ads (Facebook/
         # Instagram), via l'API officielle (jamais de scraping).
@@ -971,6 +996,20 @@ class Lead(SoftDeleteModel):
         help_text='Score 0–100 calculé automatiquement (voir scoring.py).',
     )
 
+    # CRX22 — ajustement PERSISTANT du score, additif au calcul.
+    # Avant, une automatisation qui écrivait ``score`` directement voyait son
+    # delta effacé au premier ``recompute_lead_score`` (édition du lead, job
+    # nocturne…). Le delta vit maintenant dans SA propre colonne, appliquée
+    # PAR le calcul (``scoring.compute_score``) : il survit à tout recalcul.
+    # NULL = aucun ajustement (comportement historique strictement inchangé) ;
+    # colonne nullable sans défaut → aucune réécriture des lignes existantes.
+    score_ajustement = models.SmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Ajustement du score',
+        help_text="Delta (positif ou négatif) ajouté au score calculé. "
+                  "Survit aux recalculs. Vide = aucun ajustement.",
+    )
+
     # XMKT21 — horodatage de l'assignation automatique MQL (franchissement du
     # seuil de score société). NULL tant que le lead n'a jamais franchi le
     # seuil : marqueur d'idempotence (une seule assignation+notification par
@@ -1072,13 +1111,28 @@ class Lead(SoftDeleteModel):
 
 
 class WebsiteLeadPayload(models.Model):
-    """Charge utile BRUTE reçue du site web — stockée AVANT tout mapping.
+    """Charge utile BRUTE reçue d'une source d'intake — stockée AVANT tout
+    mapping.
 
     Garantie « jamais perdre un lead » : même si le mapping vers Lead échoue
-    (payload inattendu, bug), la donnée d'origine est conservée telle quelle
-    et rejouable. Aucune logique métier ici.
+    (payload inattendu, bug, panne du Graph API), la donnée d'origine est
+    conservée telle quelle et rejouable. Aucune logique métier ici.
+
+    CRX2 — le modèle sert désormais LES DEUX intakes (le nom historique est
+    conservé : renommer la table coûterait plus qu'il ne rapporte). ``source``
+    dit lequel, et pilote le chemin de rejeu choisi par l'action ``replay``
+    (``webhooks.replay_website_lead_payload`` / ``replay_meta_lead_payload``).
     """
 
+    class Source(models.TextChoices):
+        WEBSITE = 'website', 'Site web'
+        META_LEAD_ADS = 'meta_lead_ads', 'Meta Lead Ads'
+
+    #: Intake d'origine. Défaut ``website`` : toutes les lignes existantes
+    #: viennent du webhook site (seul émetteur avant CRX2).
+    source = models.CharField(
+        max_length=32, choices=Source.choices, default=Source.WEBSITE,
+        db_index=True)
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1096,12 +1150,13 @@ class WebsiteLeadPayload(models.Model):
         related_name='website_payloads')
 
     class Meta:
-        verbose_name = 'Payload lead site web'
-        verbose_name_plural = 'Payloads leads site web'
+        verbose_name = 'Payload lead entrant'
+        verbose_name_plural = 'Payloads leads entrants'
         ordering = ['-received_at']
 
     def __str__(self):
-        return f"payload #{self.pk} ({'ok' if self.processed else 'brut'})"
+        return (f"payload #{self.pk} [{self.source}] "
+                f"({'ok' if self.processed else 'brut'})")
 
 
 class LeadActivity(models.Model):
@@ -2292,11 +2347,11 @@ class Partenaire(models.Model):
     @property
     def certification_expiree(self):
         """La certification est-elle échue ? (Faux si aucune échéance posée.)"""
-        from django.utils import timezone
+        from core.dates import aujourd_hui_local
 
         if not self.date_expiration_certification:
             return False
-        return self.date_expiration_certification < timezone.localdate()
+        return self.date_expiration_certification < aujourd_hui_local()
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_partenaire_display()})'
@@ -2706,11 +2761,12 @@ class Playbook(TenantModel):
         related_name='playbooks')
     nom = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
-    # Configuration STRICTE optionnelle : un changement de stage avec tâches
-    # obligatoires non cochées reste TOUJOURS possible (avertissement
-    # seulement) SAUF si ce playbook est marqué bloquant=True — cohérent avec
-    # « never auto-move »/jamais un blocage dur par défaut.
-    bloquant = models.BooleanField(default=False)
+    # CRX35 — le drapeau ``bloquant`` a été RETIRÉ (migration 0088) : aucun
+    # code ne le lisait, donc un playbook « bloquant » ne bloquait rien. Un
+    # changement d'étape reste TOUJOURS possible même avec des tâches
+    # obligatoires non cochées (avertissement seulement) — « never auto-move »,
+    # jamais un blocage dur. Le rétablir supposerait d'écrire la garde, pas
+    # seulement la colonne.
     # NTCRM26 — critère de sélection optionnel (arbre core.rules FG367, évalué
     # contre {type_installation, canal} du lead). ``None`` = playbook
     # universel (comportement historique, s'applique à tout lead) ; renseigné

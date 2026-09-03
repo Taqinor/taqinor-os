@@ -1,0 +1,12 @@
+# AUD223 — exceptions ASSUMÉES à « un seul endroit crée un MouvementStock ».
+# Une ligne = un chemin relatif au dépôt. Toute addition est un choix explicite,
+# revu comme du code (voir scripts/check_mouvement_stock_service.py).
+
+# LE service lui-même : c'est lui l'unique point de passage.
+backend/django_core/apps/stock/services.py
+
+# Seeders de DÉMONSTRATION : ils fabriquent un historique fictif pour une
+# société de démo (jamais une chaîne de stock réelle), avant même qu'une
+# comptabilité existe pour la société créée.
+backend/django_core/authentication/management/commands/seed_demo.py
+backend/django_core/authentication/management/commands/seed_demo_company.py

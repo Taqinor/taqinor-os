@@ -1,4 +1,10 @@
+from decimal import Decimal
+
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.forms.models import BaseInlineFormSet
+
+from core.admin_scoping import CompanyScopedAdminMixin
 
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
@@ -13,15 +19,36 @@ from .models import (
 )
 
 
+# ── AUD185 (F10) — scope société de TOUTE l'administration comptable ────────
+# Aucun `admin.py` du dépôt ne surchargeait `get_queryset` : un compte
+# `is_staff` d'une société listait les écritures, comptes de trésorerie et
+# journaux de toutes les autres. Base commune posée ici, PARTAGÉE avec
+# `apps/ventes/admin.py` (et `apps/stock/admin.py`, AUD215) via `core`.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
+# Messages (français) des deux verrous d'intégrité de la piste comptable.
+SUPPRESSION_ECRITURE_VALIDEE_INTERDITE = (
+    "Suppression refusée : cette écriture est VALIDÉE. Une pièce comptable "
+    "validée fait partie de la piste d'audit — contre-passez-la (extourne) "
+    "au lieu de la supprimer."
+)
+ECRITURE_DESEQUILIBREE_INTERDITE = (
+    "Écriture déséquilibrée : la somme des débits doit égaler la somme des "
+    "crédits. La modification a été annulée."
+)
+
+
 @admin.register(PlanComptable)
-class PlanComptableAdmin(admin.ModelAdmin):
+class PlanComptableAdmin(CompanyScopedAdmin):
     list_display = ('code', 'libelle', 'company', 'actif')
     list_filter = ('actif',)
     search_fields = ('code', 'libelle')
 
 
 @admin.register(CompteComptable)
-class CompteComptableAdmin(admin.ModelAdmin):
+class CompteComptableAdmin(CompanyScopedAdmin):
     list_display = ('numero', 'intitule', 'classe', 'company', 'est_tiers',
                     'lettrable', 'actif')
     list_filter = ('classe', 'est_tiers', 'lettrable', 'actif')
@@ -29,37 +56,130 @@ class CompteComptableAdmin(admin.ModelAdmin):
 
 
 @admin.register(Journal)
-class JournalAdmin(admin.ModelAdmin):
+class JournalAdmin(CompanyScopedAdmin):
     list_display = ('code', 'libelle', 'type_journal', 'company', 'actif')
     list_filter = ('type_journal', 'actif')
     search_fields = ('code', 'libelle')
 
 
+# ── AUD185 (F4) — l'équilibre est revérifié APRÈS le formset enfant ────────
+# `EcritureComptable.clean()` (models.py) s'exécute sur le formulaire PARENT,
+# AVANT que le formset des lignes ne sauvegarde : il relit donc les lignes
+# telles qu'elles étaient EN BASE. `LigneEcriture.clean()` (models.py), lui, ne
+# regarde qu'une ligne isolée. Résultat : le chemin le plus court — MODIFIER un
+# montant (1000 → 900) sur une écriture validée — passait sans un mot. Ce
+# formset resomme les lignes RÉELLEMENT soumises (créations, modifications,
+# suppressions comprises) et refuse le déséquilibre avant toute écriture en
+# base.
+class LigneEcritureInlineFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        debit = Decimal('0')
+        credit = Decimal('0')
+        lignes = 0
+        for form in self.forms:
+            cleaned = getattr(form, 'cleaned_data', None)
+            if not cleaned or cleaned.get('DELETE'):
+                continue
+            debit += cleaned.get('debit') or Decimal('0')
+            credit += cleaned.get('credit') or Decimal('0')
+            lignes += 1
+        # Tolère 0 ligne (écriture en cours de saisie) — même contrat que
+        # `EcritureComptable.clean()`.
+        if lignes and debit != credit:
+            raise ValidationError(
+                f"{ECRITURE_DESEQUILIBREE_INTERDITE} "
+                f"(Σ débit {debit} ≠ Σ crédit {credit})")
+
+
 class LigneEcritureInline(admin.TabularInline):
     model = LigneEcriture
+    formset = LigneEcritureInlineFormSet
     extra = 0
-    fields = ('compte', 'libelle', 'debit', 'credit', 'lettrage')
+    # AUD185 (F11) — `company` est un FK NOT NULL du modèle : l'omettre du
+    # formulaire faisait lever une IntegrityError BRUTE à l'ajout d'une ligne.
+    # Affiché en lecture seule et pré-rempli depuis l'écriture parente par
+    # `EcritureComptableAdmin.save_formset` (jamais saisi à la main : une ligne
+    # ne peut pas appartenir à une autre société que son écriture).
+    fields = ('company', 'compte', 'libelle', 'debit', 'credit', 'lettrage')
+    readonly_fields = ('company',)
 
 
 @admin.register(EcritureComptable)
-class EcritureComptableAdmin(admin.ModelAdmin):
+class EcritureComptableAdmin(CompanyScopedAdmin):
     list_display = ('id', 'journal', 'date_ecriture', 'libelle', 'reference',
                     'statut', 'company')
     list_filter = ('statut', 'journal__type_journal')
     search_fields = ('libelle', 'reference')
     inlines = [LigneEcritureInline]
+    # AUD185 (F8) — séparation des tâches COMPTA40 : seul
+    # `services.valider_ecriture` pose ces trois champs (il refuse notamment
+    # que le saisisseur se valide lui-même). Les laisser en écriture libre
+    # dans /admin/ contournait tout le second regard.
+    readonly_fields = ('statut', 'valide_par', 'date_validation')
+
+    def save_formset(self, request, form, formset, change):
+        """Pré-remplit `company` (F11) puis REVÉRIFIE l'équilibre (F4).
+
+        Le contrôle d'équilibre principal vit dans
+        `LigneEcritureInlineFormSet.clean()` (refus lisible, rien n'est écrit).
+        Celui-ci est le verrou de dernier recours, posé APRÈS la sauvegarde des
+        lignes : l'admin enveloppe tout le POST dans une transaction, donc
+        lever ici annule l'ensemble.
+        """
+        if formset.model is not LigneEcriture:
+            super().save_formset(request, form, formset, change)
+            return
+        instances = formset.save(commit=False)
+        for obsolete in formset.deleted_objects:
+            obsolete.delete()
+        for instance in instances:
+            if instance.company_id is None:
+                instance.company = form.instance.company
+            instance.save()
+        formset.save_m2m()
+        lignes = list(LigneEcriture.objects.filter(ecriture=form.instance))
+        if not lignes:
+            return
+        debit = sum((lig.debit for lig in lignes), Decimal('0'))
+        credit = sum((lig.credit for lig in lignes), Decimal('0'))
+        if debit != credit:
+            raise PermissionDenied(ECRITURE_DESEQUILIBREE_INTERDITE)
+
+    # ── Garde anti-suppression d'une pièce validée ─────────────────────────
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and obj.statut == EcritureComptable.Statut.VALIDEE:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def delete_model(self, request, obj):
+        if obj.statut == EcritureComptable.Statut.VALIDEE:
+            raise PermissionDenied(SUPPRESSION_ECRITURE_VALIDEE_INTERDITE)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        if queryset.filter(
+                statut=EcritureComptable.Statut.VALIDEE).exists():
+            raise PermissionDenied(SUPPRESSION_ECRITURE_VALIDEE_INTERDITE)
+        super().delete_queryset(request, queryset)
 
 
 @admin.register(CompteTresorerie)
-class CompteTresorerieAdmin(admin.ModelAdmin):
+class CompteTresorerieAdmin(CompanyScopedAdmin):
     list_display = ('libelle', 'type_compte', 'banque', 'devise', 'company',
                     'actif')
     list_filter = ('type_compte', 'actif')
-    search_fields = ('libelle', 'banque', 'rib', 'iban')
+    # AUD185 (F10) — `rib`/`iban` retirés de la recherche : une coordonnée
+    # bancaire ne se cherche pas depuis une barre de recherche d'admin (elle
+    # transite en clair dans l'URL et les journaux d'accès). Le libellé et la
+    # banque suffisent pour retrouver un compte.
+    search_fields = ('libelle', 'banque')
 
 
 @admin.register(ExerciceComptable)
-class ExerciceComptableAdmin(admin.ModelAdmin):
+class ExerciceComptableAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'date_debut', 'date_fin', 'statut',
                     'an_reporte', 'company')
     list_filter = ('statut', 'an_reporte')
@@ -67,15 +187,21 @@ class ExerciceComptableAdmin(admin.ModelAdmin):
 
 
 @admin.register(PeriodeComptable)
-class PeriodeComptableAdmin(admin.ModelAdmin):
+class PeriodeComptableAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'type_periode', 'date_debut', 'date_fin',
                     'verrouillee', 'company')
     list_filter = ('type_periode', 'verrouillee')
     search_fields = ('libelle',)
+    # AUD185 (F9) — le verrou de période est le socle de l'immutabilité
+    # (FG115) : seuls `services.verrouiller_periode` / `rouvrir_periode` le
+    # posent, et c'est `rouvrir_periode` qui refuse la réouverture d'une
+    # période appartenant à un exercice CLÔTURÉ. Trois cases à cocher dans
+    # /admin/ contournaient ce garde.
+    readonly_fields = ('verrouillee', 'date_verrouillage', 'verrouillee_par')
 
 
 @admin.register(Immobilisation)
-class ImmobilisationAdmin(admin.ModelAdmin):
+class ImmobilisationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'categorie', 'cout', 'taux_tva',
                     'date_acquisition', 'company', 'actif')
     list_filter = ('categorie', 'actif')
@@ -89,7 +215,7 @@ class LigneReleveInline(admin.TabularInline):
 
 
 @admin.register(RapprochementBancaire)
-class RapprochementBancaireAdmin(admin.ModelAdmin):
+class RapprochementBancaireAdmin(CompanyScopedAdmin):
     list_display = ('id', 'compte_tresorerie', 'date_debut', 'date_fin',
                     'solde_releve', 'statut', 'company')
     list_filter = ('statut',)
@@ -98,7 +224,7 @@ class RapprochementBancaireAdmin(admin.ModelAdmin):
 
 
 @admin.register(LigneReleve)
-class LigneReleveAdmin(admin.ModelAdmin):
+class LigneReleveAdmin(CompanyScopedAdmin):
     list_display = ('id', 'rapprochement', 'date_operation', 'libelle',
                     'montant', 'statut', 'company')
     list_filter = ('statut',)
@@ -113,7 +239,7 @@ class MouvementCaisseInline(admin.TabularInline):
 
 
 @admin.register(Caisse)
-class CaisseAdmin(admin.ModelAdmin):
+class CaisseAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'compte_tresorerie', 'solde_initial',
                     'actif', 'company')
     list_filter = ('actif',)
@@ -122,7 +248,7 @@ class CaisseAdmin(admin.ModelAdmin):
 
 
 @admin.register(MouvementCaisse)
-class MouvementCaisseAdmin(admin.ModelAdmin):
+class MouvementCaisseAdmin(CompanyScopedAdmin):
     list_display = ('id', 'caisse', 'date_mouvement', 'sens', 'montant',
                     'motif', 'posted', 'company')
     list_filter = ('sens', 'posted')
@@ -130,14 +256,14 @@ class MouvementCaisseAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClotureCaisse)
-class ClotureCaisseAdmin(admin.ModelAdmin):
+class ClotureCaisseAdmin(CompanyScopedAdmin):
     list_display = ('id', 'caisse', 'date_cloture', 'solde_theorique',
                     'solde_compte', 'ecart', 'company')
     search_fields = ('commentaire',)
 
 
 @admin.register(VirementInterne)
-class VirementInterneAdmin(admin.ModelAdmin):
+class VirementInterneAdmin(CompanyScopedAdmin):
     list_display = ('id', 'compte_source', 'compte_destination', 'montant',
                     'date_virement', 'posted', 'company')
     list_filter = ('posted',)
@@ -145,7 +271,7 @@ class VirementInterneAdmin(admin.ModelAdmin):
 
 
 @admin.register(LignePrevisionnelTresorerie)
-class LignePrevisionnelTresorerieAdmin(admin.ModelAdmin):
+class LignePrevisionnelTresorerieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'categorie', 'date_prevue', 'montant',
                     'recurrence', 'company')
     list_filter = ('categorie', 'recurrence')
@@ -153,7 +279,7 @@ class LignePrevisionnelTresorerieAdmin(admin.ModelAdmin):
 
 
 @admin.register(Effet)
-class EffetAdmin(admin.ModelAdmin):
+class EffetAdmin(CompanyScopedAdmin):
     list_display = ('id', 'sens', 'type_effet', 'numero', 'montant',
                     'date_echeance', 'statut', 'company')
     list_filter = ('sens', 'type_effet', 'statut')
@@ -161,7 +287,7 @@ class EffetAdmin(admin.ModelAdmin):
 
 
 @admin.register(BordereauRemise)
-class BordereauRemiseAdmin(admin.ModelAdmin):
+class BordereauRemiseAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'compte_tresorerie', 'date_remise',
                     'total', 'statut', 'posted', 'company')
     list_filter = ('statut', 'posted')
@@ -169,7 +295,7 @@ class BordereauRemiseAdmin(admin.ModelAdmin):
 
 
 @admin.register(Rapprochement)
-class RapprochementAdmin(admin.ModelAdmin):
+class RapprochementAdmin(CompanyScopedAdmin):
     list_display = ('id', 'bon_commande', 'statut', 'montant_commande',
                     'montant_recu', 'montant_facture', 'ecart',
                     'date_evaluation', 'company')
@@ -185,7 +311,7 @@ class PaymentRunLineInline(admin.TabularInline):
 
 
 @admin.register(PaymentRun)
-class PaymentRunAdmin(admin.ModelAdmin):
+class PaymentRunAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'mode_paiement', 'compte_tresorerie',
                     'date_paiement', 'total', 'statut', 'posted', 'company')
     list_filter = ('mode_paiement', 'statut', 'posted')
@@ -194,14 +320,14 @@ class PaymentRunAdmin(admin.ModelAdmin):
 
 
 @admin.register(PaymentRunLine)
-class PaymentRunLineAdmin(admin.ModelAdmin):
+class PaymentRunLineAdmin(CompanyScopedAdmin):
     list_display = ('id', 'payment_run', 'beneficiaire', 'reference', 'montant',
                     'date_echeance', 'company')
     search_fields = ('beneficiaire', 'reference')
 
 
 @admin.register(NoteFrais)
-class NoteFraisAdmin(admin.ModelAdmin):
+class NoteFraisAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'employe', 'date_frais', 'categorie',
                     'montant', 'statut', 'date_remboursement', 'company')
     list_filter = ('statut', 'categorie', 'mode_remboursement')
@@ -209,7 +335,7 @@ class NoteFraisAdmin(admin.ModelAdmin):
 
 
 @admin.register(BaremeIndemnite)
-class BaremeIndemniteAdmin(admin.ModelAdmin):
+class BaremeIndemniteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'taux_km', 'per_diem', 'defaut', 'actif',
                     'company')
     list_filter = ('defaut', 'actif')
@@ -217,7 +343,7 @@ class BaremeIndemniteAdmin(admin.ModelAdmin):
 
 
 @admin.register(IndemniteChantier)
-class IndemniteChantierAdmin(admin.ModelAdmin):
+class IndemniteChantierAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'employe', 'date_deplacement',
                     'libelle_chantier', 'distance_km', 'montant_total',
                     'statut', 'company')
@@ -226,7 +352,7 @@ class IndemniteChantierAdmin(admin.ModelAdmin):
 
 
 @admin.register(DeclarationTVA)
-class DeclarationTVAAdmin(admin.ModelAdmin):
+class DeclarationTVAAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'date_debut', 'date_fin', 'regime',
                     'methode', 'tva_collectee', 'tva_deductible',
                     'tva_a_declarer', 'statut', 'company')
@@ -235,7 +361,7 @@ class DeclarationTVAAdmin(admin.ModelAdmin):
 
 
 @admin.register(RetenueSource)
-class RetenueSourceAdmin(admin.ModelAdmin):
+class RetenueSourceAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'date_piece', 'type_prestation',
                     'tiers_nom', 'base', 'taux', 'montant', 'statut', 'company')
     list_filter = ('type_prestation', 'statut')
@@ -243,7 +369,7 @@ class RetenueSourceAdmin(admin.ModelAdmin):
 
 
 @admin.register(TimbreFiscal)
-class TimbreFiscalAdmin(admin.ModelAdmin):
+class TimbreFiscalAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'date_encaissement', 'facture_ref',
                     'tiers_nom', 'base', 'taux', 'minimum', 'montant', 'statut',
                     'company')
@@ -252,7 +378,7 @@ class TimbreFiscalAdmin(admin.ModelAdmin):
 
 
 @admin.register(RetenueGarantie)
-class RetenueGarantieAdmin(admin.ModelAdmin):
+class RetenueGarantieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'marche_ref', 'tiers_nom', 'base',
                     'taux', 'montant', 'date_constitution', 'date_levee_prevue',
                     'statut', 'company')
@@ -261,7 +387,7 @@ class RetenueGarantieAdmin(admin.ModelAdmin):
 
 
 @admin.register(CautionBancaire)
-class CautionBancaireAdmin(admin.ModelAdmin):
+class CautionBancaireAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'type_caution', 'marche_ref',
                     'tiers_nom', 'banque', 'montant', 'date_emission',
                     'date_echeance', 'statut', 'company')
@@ -270,7 +396,7 @@ class CautionBancaireAdmin(admin.ModelAdmin):
 
 
 @admin.register(ContratAvancement)
-class ContratAvancementAdmin(admin.ModelAdmin):
+class ContratAvancementAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'libelle', 'chantier_ref', 'methode',
                     'revenu_total', 'cout_total_estime', 'statut', 'company')
     list_filter = ('methode', 'statut')
@@ -279,7 +405,7 @@ class ContratAvancementAdmin(admin.ModelAdmin):
 
 
 @admin.register(AvancementRevenu)
-class AvancementRevenuAdmin(admin.ModelAdmin):
+class AvancementRevenuAdmin(CompanyScopedAdmin):
     list_display = ('id', 'contrat', 'date_arrete', 'pourcentage',
                     'revenu_cumule', 'revenu_periode', 'ecriture_id', 'company')
     list_filter = ('date_arrete',)
@@ -287,7 +413,7 @@ class AvancementRevenuAdmin(admin.ModelAdmin):
 
 
 @admin.register(TravauxEnCours)
-class TravauxEnCoursAdmin(admin.ModelAdmin):
+class TravauxEnCoursAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'nature', 'libelle', 'montant',
                     'date_arrete', 'statut', 'company')
     list_filter = ('nature', 'statut')
@@ -301,7 +427,7 @@ class CommissionPayoutLineInline(admin.TabularInline):
 
 
 @admin.register(CommissionPayoutRun)
-class CommissionPayoutRunAdmin(admin.ModelAdmin):
+class CommissionPayoutRunAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'periode', 'date_run', 'statut',
                     'total', 'ecriture_id', 'company')
     list_filter = ('statut',)
@@ -316,7 +442,7 @@ class BudgetLigneInline(admin.TabularInline):
 
 
 @admin.register(Budget)
-class BudgetAdmin(admin.ModelAdmin):
+class BudgetAdmin(CompanyScopedAdmin):
     list_display = ('id', 'annee', 'libelle', 'statut', 'company')
     list_filter = ('annee', 'statut')
     search_fields = ('libelle',)
@@ -324,14 +450,14 @@ class BudgetAdmin(admin.ModelAdmin):
 
 
 @admin.register(CentreCout)
-class CentreCoutAdmin(admin.ModelAdmin):
+class CentreCoutAdmin(CompanyScopedAdmin):
     list_display = ('id', 'code', 'libelle', 'axe', 'actif', 'company')
     list_filter = ('axe', 'actif')
     search_fields = ('code', 'libelle')
 
 
 @admin.register(ProvisionCreance)
-class ProvisionCreanceAdmin(admin.ModelAdmin):
+class ProvisionCreanceAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'tiers_nom', 'base', 'taux',
                     'dotation', 'date_dotation', 'statut', 'company')
     list_filter = ('statut',)
@@ -339,7 +465,7 @@ class ProvisionCreanceAdmin(admin.ModelAdmin):
 
 
 @admin.register(EntiteConsolidation)
-class EntiteConsolidationAdmin(admin.ModelAdmin):
+class EntiteConsolidationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'company', 'entite', 'pourcentage_interet',
                     'methode', 'actif')
     list_filter = ('methode', 'actif')

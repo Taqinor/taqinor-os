@@ -7,6 +7,7 @@ class AdminopsConfig(AppConfig):
     verbose_name = 'Administration enterprise (health score, sandbox, licences)'
     module_manifest = {
         'key': 'adminops',
+        'sku': 'generic',
         'label': 'Administration',
         'icone': 'shield-check',
         'depends': [],

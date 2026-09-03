@@ -5,6 +5,9 @@ import { dirname, resolve as resolvePath } from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+// SOL6 — registre STATIQUE des éditions (JS pur, partagé avec vitest, eslint,
+// le code applicatif et la garde `scripts/check_dist_edition.mjs`).
+import { normaliserEdition, verticauxParques } from './src/lib/editions.js'
 
 // Racine du repo (frontend/.. → taqinor-os). Sert à IMPORTER le builder 3D
 // vivant du site public (apps/web/src/scripts/roof-tool-pro11.ts) DANS l'ERP
@@ -112,8 +115,82 @@ const E2E_BUILD = process.env.VITE_E2E === '1'
 const E2E_PROXY = process.env.E2E_PROXY === '1'
 const E2E_API_TARGET = process.env.E2E_API_TARGET || 'http://127.0.0.1:8000'
 
+// ── SOL6 — Édition au BUILD ────────────────────────────────────────────────
+// `VITE_EDITION` (défaut `full`) est lue ICI, une seule fois, et figée en
+// CONSTANTES LITTÉRALES injectées par `define` ci-dessous. Le code applicatif
+// écrit alors des conditions résolues À LA COMPILATION (`__EDITION_SOLAIRE__ ?
+// … : …`) que Rollup élimine avec leurs imports — c'est ce qui fait
+// DISPARAÎTRE du dist les six verticaux parqués (features + pages +
+// components). Une condition à l'exécution ne tree-shakerait rien.
+// Une valeur inconnue LÈVE : jamais un repli silencieux sur l'édition complète.
+const EDITION = normaliserEdition(process.env.VITE_EDITION)
+const VERTICAUX_HORS_BUILD = verticauxParques(EDITION)
+const EST_SOLAIRE = EDITION === 'solar'
+
+// Préfixe d'ID VIRTUEL des modules d'un vertical PARQUÉ (même convention que
+// `RB_PREFIX` ci-dessus : un id commençant par `\0` n'est jamais écrit sur
+// disque et n'est jamais lu par un autre plugin).
+const EP_PREFIX = '\0edition-parquee:'
+
+/* SOL6 — MISE AU PARC des trois arbres d'un vertical, au niveau de la
+   RÉSOLUTION. Pourquoi un plugin en plus des conditions littérales :
+
+   la condition littérale (`__EDITION_SOLAIRE__ ? … : …` dans
+   `src/router/moduleRoutes.jsx`) exprime l'intention et supprime bien la
+   BRANCHE morte — mais `import.meta.glob(..., { eager: true })` est transformé
+   par Vite en `import * as … from …` HISSÉS en tête de module, hors du
+   ternaire. Rollup considère par défaut que tout module peut avoir des effets
+   de bord, donc il CONSERVE ces imports : mesuré, le dist solaire contenait
+   encore OrdresFabricationPage, BauxPage, PatrimoineTree… Le tree-shake seul
+   ne suffit donc pas, et un `.filter()` à l'exécution encore moins.
+
+   Ce plugin ferme la porte au bon endroit : tout module résolu sous
+   `src/{features,pages,components}/<vertical parqué>/` devient un module VIDE.
+   Les `module.config.jsx` parqués n'exportent donc plus rien (le registre les
+   ignore déjà via `.filter(Boolean)`) et, n'ayant plus de corps, ils ne portent
+   plus aucun `lazy(() => import('../../pages/<x>/…'))` — les écrans du vertical
+   ne sont jamais émis. INERTE en édition complète (aucun vertical parqué → le
+   plugin n'est même pas installé, build byte-identique à l'existant). */
+function editionParkingPlugin(verticaux) {
+  if (verticaux.length === 0) return null
+  const RE_PARQUE = new RegExp(
+    `/src/(?:features|pages|components)/(?:${verticaux.join('|')})(?:/|$)`)
+  return {
+    name: 'taqinor-edition-parking',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (source.startsWith(EP_PREFIX)) return source
+      const resolved = await this.resolve(
+        source, importer, { ...options, skipSelf: true })
+      if (resolved && RE_PARQUE.test(resolved.id.replace(/\\/g, '/'))) {
+        return EP_PREFIX + resolved.id
+      }
+      return null
+    },
+    load(id) {
+      if (!id.startsWith(EP_PREFIX)) return null
+      // Export par défaut ABSENT (`undefined`) : `moduleRoutes` filtre déjà
+      // `.filter(Boolean)`. Un import NOMMÉ depuis une surface gardée casserait
+      // bruyamment le build — c'est voulu : ce serait un vrai recouplage.
+      return 'export default undefined\n'
+    },
+  }
+}
+
 export default defineConfig({
+  // SOL6 — constantes LITTÉRALES d'édition (cf. bloc EDITION ci-dessus).
+  // `__EDITION_SOLAIRE__` pilote le glob des module.config (router/
+  // moduleRoutes.jsx) ; `__EDITION_A_MRP__` pilote la seule surface mrp
+  // incrustée hors de son module (la carte Production du Dashboard).
+  // Mêmes valeurs déclarées dans `vitest.config.js` (édition complète).
+  define: {
+    __TAQINOR_EDITION__: JSON.stringify(EDITION),
+    __EDITION_SOLAIRE__: JSON.stringify(EST_SOLAIRE),
+    __EDITION_A_MRP__: JSON.stringify(!VERTICAUX_HORS_BUILD.includes('mrp')),
+  },
   plugins: [
+    // SOL6 — AVANT tout le reste : la mise au parc se décide à la résolution.
+    editionParkingPlugin(VERTICAUX_HORS_BUILD),
     roofBuilderTsPlugin(),
     react(),
     tailwindcss(),

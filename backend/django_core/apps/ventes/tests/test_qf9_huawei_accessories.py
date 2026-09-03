@@ -168,9 +168,13 @@ class TestQF9PdfRender(TestCase):
         self.assertIn('Wifi Dongle', html)
 
     def test_guard_drops_stale_line_defense_in_depth(self):
-        """Even if a stale Smart Meter line reaches the engine's data dict on a
-        Deye option, the engine-level guard removes it."""
-        from apps.ventes.quote_engine import generate_devis_premium as G
+        """QJR408 — la SECONDE passe du moteur de rendu a été supprimée (elle
+        reclassait sur la désignation SEULE, après le retrait de la clé
+        ``_produit_nom``). La règle QF9 garde UN propriétaire, le noyau, que le
+        builder applique aux deux paniers d'un document à deux options : c'est
+        LUI qui est épinglé ici, avec les adaptateurs d'item du moteur."""
+        from apps.ventes.quote_engine import builder as B
+        from apps.ventes.utils.options import retirer_accessoires_huawei
         items = [
             {'designation': 'Onduleur hybride Deye 5kW', 'marque': 'Deye',
              'quantite': 1, 'prix_unit_ht': 20000, 'prix_unit_ttc': 24000,
@@ -178,7 +182,8 @@ class TestQF9PdfRender(TestCase):
             {'designation': 'Smart Meter', 'marque': '', 'quantite': 1,
              'prix_unit_ht': 1500, 'prix_unit_ttc': 1800, 'taux_tva': 20.0},
         ]
-        guarded = G._guard_huawei_accessories(items)
+        guarded = retirer_accessoires_huawei(
+            items, classement=B._item_classement, marque=B._item_marque)
         desigs = [it['designation'] for it in guarded]
         self.assertNotIn('Smart Meter', desigs)
         self.assertIn('Onduleur hybride Deye 5kW', desigs)

@@ -7,6 +7,7 @@ class InstallationsConfig(AppConfig):
     verbose_name = 'Chantiers / Installations'
     module_manifest = {
         'key': 'installations',
+        'sku': 'solar_core',
         'label': 'Chantiers',
         'icone': 'hard-hat',
         'depends': ['ventes'],

@@ -19,6 +19,7 @@ class SanteConfig(AppConfig):
 
     module_manifest = {
         'key': 'sante',
+        'sku': 'vertical_sante',
         'label': 'Santé',
         'icone': 'stethoscope',
         'depends': [],

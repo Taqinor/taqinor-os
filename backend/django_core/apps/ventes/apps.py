@@ -37,6 +37,7 @@ class VentesConfig(AppConfig):
     verbose_name = 'Ventes'
     module_manifest = {
         'key': 'ventes',
+        'sku': 'solar_core',
         'label': 'Ventes',
         'icone': 'file-text',
         'depends': ['crm'],

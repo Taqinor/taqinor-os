@@ -125,6 +125,77 @@ un identifiant déclaré mais absent du code de la surface).
 
 ---
 
+## Éditions — parquer / réactiver un module (groupe SOL, 02/09/2026)
+
+TAQINOR OS se vend comme **ERP spécialisé solaire**. Deux niveaux, et ils ne se
+mélangent jamais :
+
+| | Décidé par | Grain | Effet |
+|---|---|---|---|
+| **ÉDITION** (build) | `TAQINOR_EDITION` / `VITE_EDITION` | tout le déploiement | l'app n'est PAS chargée : ni `INSTALLED_APPS`, ni urls, ni beat, ni bundle |
+| **MODULE OFF** (runtime) | `ModuleToggle` + `PlanLicence` | par société | l'app est chargée mais 404 pour CETTE société, et masquée de son UI |
+
+**Rien n'est jamais supprimé.** Une app parquée garde ses tables, ses données et
+sa chaîne de migrations. Réactiver = re-flipper la variable, c'est tout.
+
+### Le registre, source unique
+
+`backend/django_core/erp_agentique/settings/editions.py` (Python pur, aucun
+Django) liste les apps parquées par édition **avec un libellé FR figé** — figé
+parce qu'une app parquée n'a plus d'`AppConfig` : plus personne ne peut lire son
+manifeste pour la nommer. Miroir frontend : `frontend/src/lib/editions.js`
+(`VERTICAUX_PARQUES`), lu par `vite.config.js`, `vitest.config.js`,
+`eslint.config.js` et la garde de dist.
+
+### Parquer un module
+
+1. **Tagger le manifeste** — `module_manifest['sku'] = 'vertical_<x>'`
+   (vocabulaire : `solar_core` / `generic` / `optional` / `vertical_<x>`).
+2. **Inscrire l'app** dans `PARKED_APPS[EDITION_SOLAR]` (backend) et dans
+   `VERTICAUX_PARQUES` (frontend) avec son libellé FR.
+3. **Découpler les arêtes** — aucune app gardée ne doit importer l'app, la
+   référencer en chaîne (`'sante.Modele'`), ni faire dépendre une migration de
+   la sienne. Le patron éprouvé : remplacer une FK cross-app par une
+   **référence non contrainte sur la MÊME colonne** (`<champ>_id` en
+   `IntegerField`) — données conservées, appelants inchangés, aucun drop.
+4. **Rendre les urls conditionnelles** — `*_si_active('<route>/',
+   '<app.urls>')` dans `erp_agentique/urls.py`. Le helper décide AVANT
+   d'appeler `include()`, qui importerait l'app.
+5. **Frontend** — motif négatif dans le glob de `router/moduleRoutes.jsx` ; les
+   trois arbres `features/<x>`, `pages/<x>`, `components/<x>` sortent ENSEMBLE.
+6. **Vérifier** — `python scripts/check_editions_decouplage.py` (aucune arête),
+   `manage.py verifier_edition` sous les deux éditions, et le build solaire +
+   `frontend/scripts/check_dist_edition.mjs`.
+
+### Ce qui ne suffit PAS (mesuré, pas supposé)
+
+Une condition littérale `__EDITION_SOLAIRE__ ? … : …` autour d'un
+`import.meta.glob(..., { eager: true })` **ne tree-shake pas** : Vite hisse les
+`import * as` hors du ternaire et Rollup les conserve (effets de bord de
+module). Le dist solaire contenait encore `OrdresFabricationPage`, `BauxPage`,
+`PatrimoineTree`… D'où le plugin `taqinor-edition-parking` (`vite.config.js`)
+qui ferme la porte **à la résolution** : tout module d'un arbre parqué devient
+un module vide. La condition littérale exprime l'intention ; le plugin la rend
+vraie ; `check_dist_edition.mjs` le prouve.
+
+### La règle toggle ↔ beat ↔ KPI (SOL14)
+
+Un `ModuleToggle` gate **trois** choses, et trois seulement : l'accès HTTP (404
+du middleware, sur `api/django/` **et** `api/v1/`), les **tâches planifiées**
+(`core.feature_flags.societes_avec_module` filtre la boucle par société) et
+l'**affichage** (tuiles KPI, grille d'événements de notification, grille
+d'apps). Il ne gate JAMAIS la sémantique interne d'un service : un service
+appelé directement fait ce qu'il a toujours fait — sinon un module éteint
+corromprait des calculs que personne n'a demandé de changer.
+
+### Bascule en production
+
+`manage.py preflight_edition` (LECTURE SEULE) imprime d'abord ce que la bascule
+rendra inaccessible : données par société, tâches beat retirées, jobs en file,
+`ModuleToggle`/permissions/notifications concernés. Voir `docs/production.md`.
+
+---
+
 ## Surfaces via les primitives core
 
 - **Chatter / records** : `ChatterViewSetMixin` (`apps/records/views.py`) donne à

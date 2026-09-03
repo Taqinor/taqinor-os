@@ -11,7 +11,9 @@ marocaines (BMCE, Attijari…). Il s'articule autour de tags :
 
 ``parser_mt940(file_bytes) -> list[dict]`` renvoie une liste de dicts
 ``{date_operation, libelle, montant, reference}`` — un par tag ``:61:`` — avec
-``montant`` SIGNÉ (crédit ``C`` = positif, débit ``D`` = négatif). Par
+``montant`` SIGNÉ : crédit ``C`` = positif, débit ``D`` = négatif, et les
+CONTRE-PASSATIONS s'inversent — ``RD`` (annulation d'un débit, la banque rend
+les fonds) = positif, ``RC`` (annulation d'un crédit) = négatif. Par
 construction, la somme des montants signés égale ``solde_clôture − solde_ouverture``
 (tags ``:62F:``/``:60F:``).
 """
@@ -30,6 +32,19 @@ _RE_61 = re.compile(
     r'(?P<amount>[\d,]+)'
     r'(?P<rest>.*)$'
 )
+
+
+# AUD173 — le signe suit la marque COMPLÈTE, jamais son dernier caractère.
+# ``R`` = contre-passation (reversal) : RD annule un DÉBIT, la banque REND donc
+# les fonds (+) ; RC annule un CRÉDIT, elle les REPREND (−). Tester
+# ``.endswith('D')`` inversait les deux et violait l'invariant du module
+# (Σ signés = :62F: − :60F:) de 2× le montant sur chaque contre-passation.
+_SIGNES = {
+    'C': Decimal('1'),
+    'D': Decimal('-1'),
+    'RC': Decimal('-1'),
+    'RD': Decimal('1'),
+}
 
 
 def _montant(brut):
@@ -91,7 +106,7 @@ def parser_mt940(file_bytes):
             if not m:
                 raise ValueError(
                     "Ligne :61: MT940 illisible : « %s »." % valeur[:40])
-            signe = Decimal('-1') if m.group('mark').endswith('D') else Decimal('1')
+            signe = _SIGNES[m.group('mark')]
             resultats.append({
                 'date_operation': _date_valeur(m.group('vdate')),
                 'libelle': '',

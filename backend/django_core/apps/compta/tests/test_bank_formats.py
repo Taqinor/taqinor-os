@@ -116,6 +116,43 @@ class Mt940ParserTests(TestCase):
         with self.assertRaises(ValueError):
             parser_mt940(':61:PASUNEDATE\n')
 
+    # ── AUD173 — contre-passations RC/RD ────────────────────────────────────
+    # Aucune fixture RC/RD n'existait dans le dépôt : le parseur n'admettait le
+    # préfixe R que dans sa regex, et calculait le signe sur le DERNIER
+    # caractère de la marque — RD (annulation d'un débit, la banque REND les
+    # fonds) comptait donc en négatif et RC en positif, doublant l'écart de
+    # rapprochement au lieu de le résorber.
+    FICHIER_CONTREPASSATION = (
+        ':20:RELEVE-002\n'
+        ':25:007780000123456789\n'
+        ':28C:00002/001\n'
+        ':60F:C260601MAD1000,00\n'
+        ':61:2606050605D300,00NCHGCHEQUE//BK1\n'
+        ':86:CHEQUE PRESENTE\n'
+        ':61:2606060606RD300,00NRTIIMPAYE//BK2\n'
+        ':86:ANNULATION CHEQUE IMPAYE\n'
+        ':61:2606100610C500,00NTRFNONREF//BK3\n'
+        ':86:VIREMENT RECU\n'
+        ':61:2606110611RC500,00NRTIREJET//BK4\n'
+        ':86:ANNULATION VIREMENT\n'
+        ':62F:C260630MAD1000,00\n'
+        '-\n'
+    )
+
+    def test_aud173_rd_contribue_positivement_et_rc_negativement(self):
+        res = parser_mt940(self.FICHIER_CONTREPASSATION)
+        self.assertEqual(len(res), 4)
+        self.assertEqual(res[0]['montant'], Decimal('-300.00'))   # D
+        self.assertEqual(res[1]['montant'], Decimal('300.00'))    # RD
+        self.assertEqual(res[2]['montant'], Decimal('500.00'))    # C
+        self.assertEqual(res[3]['montant'], Decimal('-500.00'))   # RC
+
+    def test_aud173_invariant_tient_avec_contrepassation(self):
+        res = parser_mt940(self.FICHIER_CONTREPASSATION)
+        somme = sum(mvt['montant'] for mvt in res)
+        # :62F: 1000,00 − :60F: 1000,00 = 0 (les deux paires s'annulent).
+        self.assertEqual(somme, Decimal('1000.00') - Decimal('1000.00'))
+
 
 class Camt053ParserTests(TestCase):
     def _fichier(self):

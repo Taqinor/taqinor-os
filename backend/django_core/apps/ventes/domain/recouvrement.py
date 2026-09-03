@@ -929,9 +929,16 @@ def _advance_lead_on_expiry(lead, today):
 
     Ne recule JAMAIS. Ignore les leads perdus. Utilise les clés STAGES.py.
     Renvoie (moved_to_followup: bool, moved_to_cold: bool).
+
+    CRX20 — les deux écritures passent par ``apps.crm.services.
+    appliquer_stage_lead`` (chemin canonique qui émet ``lead_stage_changed``)
+    et les clés d'étape viennent d'``apps.crm.stages`` (donc de la STAGES.py
+    racine, règle #2) — plus aucun littéral d'étape ici.
     """
     from datetime import timedelta
+    from apps.crm import stages
     from apps.crm.models import LeadActivity
+    from apps.crm.services import appliquer_stage_lead
 
     if lead.perdu:
         return False, False
@@ -939,25 +946,24 @@ def _advance_lead_on_expiry(lead, today):
     moved_fup = False
     moved_cold = False
 
-    if lead.stage == 'QUOTE_SENT':
+    if lead.stage == stages.QUOTE_SENT:
         # Only advance if lead is not already further.
         from apps.crm.services import _rang_funnel
-        if _rang_funnel(lead.stage) < _rang_funnel('FOLLOW_UP'):
+        if _rang_funnel(lead.stage) < _rang_funnel(stages.FOLLOW_UP):
             ancien = lead.stage
-            lead.stage = 'FOLLOW_UP'
-            lead.save(update_fields=['stage'])
-            from apps.crm import activity as crm_activity
-            # Pass raw stage keys; _display resolves choices labels.
-            crm_activity.log_bulk_change(
-                lead, user=None,
-                field='stage',
-                old_val=ancien,
-                new_val='FOLLOW_UP',
-            )
-            moved_fup = True
+            moved_fup = appliquer_stage_lead(lead, stages.FOLLOW_UP, user=None)
+            if moved_fup:
+                from apps.crm import activity as crm_activity
+                # Pass raw stage keys; _display resolves choices labels.
+                crm_activity.log_bulk_change(
+                    lead, user=None,
+                    field='stage',
+                    old_val=ancien,
+                    new_val=stages.FOLLOW_UP,
+                )
         return moved_fup, False
 
-    if lead.stage == 'FOLLOW_UP':
+    if lead.stage == stages.FOLLOW_UP:
         # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
         cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
         recent_activity = LeadActivity.objects.filter(
@@ -967,16 +973,15 @@ def _advance_lead_on_expiry(lead, today):
         if recent_activity:
             return False, False
         ancien = lead.stage
-        lead.stage = 'COLD'
-        lead.save(update_fields=['stage'])
-        from apps.crm import activity as crm_activity
-        crm_activity.log_bulk_change(
-            lead, user=None,
-            field='stage',
-            old_val=ancien,
-            new_val='COLD',
-        )
-        moved_cold = True
+        moved_cold = appliquer_stage_lead(lead, stages.COLD, user=None)
+        if moved_cold:
+            from apps.crm import activity as crm_activity
+            crm_activity.log_bulk_change(
+                lead, user=None,
+                field='stage',
+                old_val=ancien,
+                new_val=stages.COLD,
+            )
         return False, moved_cold
 
     return False, False

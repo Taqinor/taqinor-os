@@ -100,7 +100,10 @@ UNGUARDED_ACTION_BASELINE = {
     # Remaining 113 = dette restante, follow-up possible.
     # WIR175 (2026-08-26) a gardé create/update/destroy/extourner des écritures
     # via get_permissions -> le réel est descendu à 111 ; le cliquet suit.
-    "compta": 111,
+    # Vague AUD (2026-09-03) : une @action compta de plus est passée sous garde
+    # explicite -> réel 110. Le cliquet se resserre d'un cran (mesuré par
+    # `core.action_permission_scan.unguarded_counts()`, jamais estimé).
+    "compta": 110,
     "contrats": 56,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``

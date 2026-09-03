@@ -106,6 +106,8 @@ const PortailClientAccueil = lazy(() => import('../features/portail/client/Porta
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
 const PortailClientLivraisons = lazy(() => import('../features/portail/client/PortailClientLivraisons'))
+// AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
+const PortailClientMotDePasse = lazy(() => import('../features/portail/client/PortailClientMotDePasse'))
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
@@ -194,11 +196,29 @@ const authLoader = async ({ request }) => {
 // Un interne y est renvoyé sur /dashboard ; un compte portail d'une AUTRE
 // portée (fournisseur sur l'espace client) est renvoyé sur SON portail —
 // jamais toléré « parce qu'il est portail ».
+// AUD139 — écran de rotation FORCÉE du mot de passe temporaire, par portée.
+// Seul le portail CLIENT en a un aujourd'hui : une portée sans écran déclaré
+// n'est jamais redirigée (mieux vaut l'ancien comportement qu'une boucle vers
+// une route inexistante) — ajouter l'entrée ici en même temps que l'écran.
+const CHEMIN_MOT_DE_PASSE_PORTAIL = {
+  [PORTEE_CLIENT]: '/portail/client/mot-de-passe',
+}
+
 const portalLoader = (portee) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (!user) return buildLoginRedirect(request)
-  if (peutEntrerDansPortail(user, portee)) return null
-  return redirectSiPortail(user) || redirect('/dashboard')
+  if (!peutEntrerDansPortail(user, portee)) {
+    return redirectSiPortail(user) || redirect('/dashboard')
+  }
+  // AUD139 — le serveur refuse toute route portail (403
+  // `mot_de_passe_a_changer`) tant que le mot de passe temporaire n'est pas
+  // remplacé : on amène le client au formulaire au lieu d'un écran mort.
+  const versMotDePasse = CHEMIN_MOT_DE_PASSE_PORTAIL[portee]
+  if (versMotDePasse && user.must_change_password
+      && new URL(request.url).pathname !== versMotDePasse) {
+    return redirect(versMotDePasse)
+  }
+  return null
 }
 
 // Catch-all (VX78) : la route 404 n'a volontairement AUCUN loader (un visiteur
@@ -416,6 +436,14 @@ const router = createBrowserRouter([
     path: '/portail/client/livraisons',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientLivraisons /></WithPortal>,
+  },
+  // AUD139 — rotation FORCÉE du mot de passe temporaire. Même `portalLoader`
+  // (donc même garde de portée) : le loader ne redirige PAS vers cette route
+  // quand on y est déjà, il n'y a donc aucune boucle.
+  {
+    path: '/portail/client/mot-de-passe',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientMotDePasse /></WithPortal>,
   },
   // NTPRT20 — PORTAIL FOURNISSEUR : garde SYMÉTRIQUE (portée exacte
   // `portail_fournisseur`), shell dédié, jamais la coquille ERP.

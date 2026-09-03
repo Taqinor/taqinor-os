@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -17,7 +18,7 @@ from authentication.models import Company
 
 from apps.compta import selectors, services
 from apps.compta.models import (
-    AxeAnalytique, CentreCout, ImputationAxe, Journal,
+    AxeAnalytique, CentreCout, ExerciceComptable, ImputationAxe, Journal,
     ReferentielComptable,
 )
 
@@ -90,6 +91,110 @@ class ReferentielTests(TestCase):
         self.assertEqual(charge_cgnc, Decimal('1000'))
         # Le livre IFRS ne voit QUE son ajustement de 300.
         self.assertEqual(charge_ifrs, Decimal('300'))
+
+    def test_aud160_ajustement_gaap_hors_des_six_etats_statutaires(self):
+        """AUD160 — un retraitement IFRS n'entre dans AUCUN état statutaire.
+
+        Balance générale, CPC, bilan, grand livre, FEC et déclaration de TVA
+        ne portent QUE le livre principal ; seule ``balance_par_referentiel``
+        du livre parallèle voit l'ajustement.
+        """
+        services.seed_referentiel_principal(self.company)
+        ifrs = ReferentielComptable.objects.create(
+            company=self.company, code=ReferentielComptable.Code.IFRS,
+            libelle='IFRS', est_principal=False)
+        journal = services._journal(
+            self.company, Journal.Type.OPERATIONS_DIVERSES)
+        aujourd_hui = timezone.now().date()
+        debut = date(aujourd_hui.year, 1, 1)
+        fin = date(aujourd_hui.year, 12, 31)
+        exercice = ExerciceComptable.objects.create(
+            company=self.company, libelle=str(aujourd_hui.year),
+            date_debut=debut, date_fin=fin)
+        # Écriture CGNC statutaire : vente 12 000 HT + TVA collectée 2 400.
+        services.creer_ecriture(
+            self.company, journal, aujourd_hui, 'Vente CGNC', [
+                {'compte': services.get_compte(self.company, '3421'),
+                 'debit': Decimal('14400'), 'credit': Decimal('0')},
+                {'compte': services.get_compte(self.company, '7111'),
+                 'debit': Decimal('0'), 'credit': Decimal('12000')},
+                {'compte': services.get_compte(self.company, '4455'),
+                 'debit': Decimal('0'), 'credit': Decimal('2400')},
+            ], statut='validee')
+
+        def etats():
+            bal = selectors.balance_generale(
+                self.company, date_debut=debut, date_fin=fin)
+            gl = selectors.grand_livre(
+                self.company, date_debut=debut, date_fin=fin)
+            return {
+                'balance': bal['total_debit'],
+                'cpc': selectors.cpc(
+                    self.company, date_debut=debut,
+                    date_fin=fin)['resultat'],
+                'bilan': selectors.bilan(
+                    self.company, date_fin=fin)['total_actif'],
+                'grand_livre': sum(
+                    len(b['lignes']) for b in gl),
+                'fec': selectors.export_fec(
+                    self.company, exercice)['nb_lignes'],
+                'tva': selectors.preparer_declaration_tva(
+                    self.company, date_debut=debut,
+                    date_fin=fin)['tva_collectee'],
+            }
+
+        avant = etats()
+        # Retraitement IFRS de 400 000 sur des comptes statutaires (charge +
+        # dette) — le scénario exact du constat.
+        services.poster_ajustement_gaap(
+            self.company, ifrs, [
+                {'compte': services.get_compte(self.company, '6193'),
+                 'debit': Decimal('400000'), 'credit': Decimal('0')},
+                {'compte': services.get_compte(self.company, '4455'),
+                 'debit': Decimal('0'), 'credit': Decimal('400000')},
+            ], 'Retraitement IFRS 16')
+        apres = etats()
+        self.assertEqual(
+            apres, avant,
+            "Un ajustement GAAP a bougé un état statutaire (AUD160).")
+        # Et le livre IFRS, lui, le voit bien.
+        bal_ifrs = selectors.balance_par_referentiel(self.company, ifrs)
+        charge_ifrs = next(
+            (li['debit'] for li in bal_ifrs['lignes']
+             if li['numero'] == '6193'), Decimal('0'))
+        self.assertEqual(charge_ifrs, Decimal('400000'))
+
+    def test_aud161_extourne_reste_dans_le_livre_parallele(self):
+        """AUD161 — l'extourne d'un ajustement IFRS est postée DANS le livre IFRS."""
+        principal = services.seed_referentiel_principal(self.company)
+        ifrs = ReferentielComptable.objects.create(
+            company=self.company, code=ReferentielComptable.Code.IFRS,
+            libelle='IFRS', est_principal=False)
+        avant_cgnc = selectors.balance_par_referentiel(
+            self.company, principal)['total_debit']
+        ajustement = services.poster_ajustement_gaap(
+            self.company, ifrs, [
+                {'compte': services.get_compte(self.company, '6193'),
+                 'debit': Decimal('400000'), 'credit': Decimal('0')},
+                {'compte': services.get_compte(self.company, '4411'),
+                 'debit': Decimal('0'), 'credit': Decimal('400000')},
+            ], 'Retraitement IFRS 16')
+        services.extourner_ecriture(ajustement.ecriture)
+        # Le livre IFRS retombe à zéro (l'ajustement et son inverse s'annulent).
+        bal_ifrs = selectors.balance_par_referentiel(self.company, ifrs)
+        solde_ifrs = next(
+            (li['solde_debiteur'] - li['solde_crediteur']
+             for li in bal_ifrs['lignes'] if li['numero'] == '6193'),
+            Decimal('0'))
+        self.assertEqual(solde_ifrs, Decimal('0'))
+        # Et AUCUNE contre-passation fantôme n'a atterri en CGNC.
+        self.assertEqual(
+            selectors.balance_par_referentiel(
+                self.company, principal)['total_debit'],
+            avant_cgnc)
+        self.assertEqual(
+            selectors.balance_generale(self.company)['total_debit'],
+            avant_cgnc)
 
 
 class AxesAnalytiquesTests(TestCase):

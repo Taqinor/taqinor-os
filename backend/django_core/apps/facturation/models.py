@@ -348,6 +348,19 @@ class Facture(models.Model):
                 fields=['company', 'date_emission'],
                 name='ventes_fact_co_dateemis_idx'),
         ]
+        # AUD188 — backstop DB des invariants d'argent (`QuerySet.update`,
+        # `bulk_create` et le SQL brut contournent tout garde Python).
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(remise_globale__gte=0)
+                & models.Q(remise_globale__lte=100),
+                name='ck_facture_remise_globale_0_100'),
+            models.CheckConstraint(
+                condition=models.Q(montant_ht__gte=0)
+                & models.Q(montant_tva__gte=0)
+                & models.Q(montant_ttc__gte=0),
+                name='ck_facture_montants_positifs'),
+        ]
 
     def __str__(self):
         return self.reference
@@ -712,6 +725,16 @@ class LigneFacture(models.Model):
         verbose_name = 'Ligne de Facture'
         verbose_name_plural = 'Lignes de Facture'
         db_table = 'ventes_lignefacture'
+        # AUD188 — backstop DB des invariants de ligne.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantite__gte=0)
+                & models.Q(prix_unitaire__gte=0),
+                name='ck_lignefacture_montants_positifs'),
+            models.CheckConstraint(
+                condition=models.Q(remise__gte=0) & models.Q(remise__lte=100),
+                name='ck_lignefacture_remise_0_100'),
+        ]
 
     @property
     def total_ht(self):
@@ -860,6 +883,17 @@ class Paiement(models.Model):
                 & ~models.Q(idempotency_key=''),
                 name='uniq_paiement_idempotency_par_societe',
             ),
+            # AUD188 — PAS DE CONTRAINTE DE SIGNE SUR ``montant``, et c'est
+            # DÉLIBÉRÉ (retirée par 0006). La première écriture d'AUD188
+            # posait ``montant >= 0`` en partant de « un remboursement est un
+            # avoir, pas un paiement de signe inverse ». C'est faux DANS CE
+            # DÉPÔT : FG50 (annulation d'une facture d'acompte, action
+            # « rembourser », apps/ventes/views/facture.py) écrit une
+            # CONTRE-PASSATION — un ``Paiement`` négatif qui ramène le net
+            # encaissé à zéro pour que l'acompte ne reste pas « coincé » sur
+            # une facture morte. La contrainte rendait cet appel 500 en
+            # production. Les huit autres contraintes d'AUD188 (Facture,
+            # LigneFacture, Avoir, LigneAvoir) restent en place.
         ]
 
     def __str__(self):
@@ -944,6 +978,22 @@ class Avoir(models.Model):
         db_table = 'ventes_avoir'
         ordering = ['-date_emission', '-id']
         unique_together = [('company', 'reference')]
+        # AUD188 — `Avoir` n'avait NI `clean()` NI `save()` NI contrainte : un
+        # `Avoir.objects.filter(pk=x).update(montant_ttc=-500)` posait une note
+        # de crédit négative qu'aucune contrainte DB ni aucun outil d'audit ne
+        # détectait (le registre `docs/db-invariants-gap.md` avait lui-même un
+        # angle mort sur ce modèle).
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(remise_globale__gte=0)
+                & models.Q(remise_globale__lte=100),
+                name='ck_avoir_remise_globale_0_100'),
+            models.CheckConstraint(
+                condition=models.Q(montant_ht__gte=0)
+                & models.Q(montant_tva__gte=0)
+                & models.Q(montant_ttc__gte=0),
+                name='ck_avoir_montants_positifs'),
+        ]
 
     def __str__(self):
         return self.reference
@@ -997,6 +1047,16 @@ class LigneAvoir(models.Model):
         verbose_name = 'Ligne d\'avoir'
         verbose_name_plural = 'Lignes d\'avoir'
         db_table = 'ventes_ligneavoir'
+        # AUD188 — backstop DB des invariants de ligne (miroir LigneFacture).
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantite__gte=0)
+                & models.Q(prix_unitaire__gte=0),
+                name='ck_ligneavoir_montants_positifs'),
+            models.CheckConstraint(
+                condition=models.Q(remise__gte=0) & models.Q(remise__lte=100),
+                name='ck_ligneavoir_remise_0_100'),
+        ]
 
     def clean(self):
         # DC10 — lien produit RENFORCÉ : une NOUVELLE ligne d'avoir doit porter

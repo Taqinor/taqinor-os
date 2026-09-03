@@ -245,6 +245,11 @@ services:
         # ODY30 — kill-switch coquille "apps" (défaut ON = 1). OFF (0) = repli
         # legacy, smoke d'urgence uniquement ; retrait planifié en ODY33.
         VITE_APPS_SHELL: ${VITE_APPS_SHELL:-1}
+        # SOL6 — édition au BUILD (`full` par défaut, `solar` = installateur).
+        # DOIT rester cohérente avec TAQINOR_EDITION côté django_core : un
+        # backend solaire servi par un frontend complet afficherait des écrans
+        # dont les routes n'existent plus.
+        VITE_EDITION: ${VITE_EDITION:-full}
     expose:
       - "80"
     depends_on:
