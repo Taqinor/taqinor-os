@@ -387,13 +387,27 @@ def solde_devis(devis):
     QJR24/D9 — AVANT acceptation, un devis à deux options suit le TOTAL
     AFFICHÉ (l'option recommandée / AVEC, cf. ``options.option_effective``) et
     plus jamais la somme des deux paniers : le solde décrivait une vente qui
-    n'existe pas."""
+    n'existe pas.
+
+    AUD104 (FICHE-SOLDE, 03/09/2026) — LE « PAYÉ » N'EST PLUS RECALCULÉ ICI.
+    Ce site sommait ``p.montant`` sur ``f.paiements.all()`` avec sa PROPRE
+    formule et divergeait de la référence canonique ``Facture.montant_paye``
+    sur TROIS termes : elle EXCLUT les paiements rejetés (YLEDG5), AJOUTE les
+    escomptes (XFAC12) et AJOUTE les avances ventilées (XFAC1). Trois écarts
+    réels en découlaient — un chèque impayé restait compté côté devis alors
+    que la facture était correctement rouverte, un devis soldé par escompte
+    affichait un restant fantôme, et un devis soldé par une avance ventilée
+    affichait « restant = total ». Les avoirs, eux, étaient déjà traités
+    ci-dessous : ce n'était pas un oubli global mais une ré-implémentation
+    partielle, d'autant plus trompeuse qu'elle est servie sur l'écran devis
+    (``serializers.py``), donc potentiellement sous les yeux du client. On LIT
+    désormais la propriété — les trois divergences se ferment d'un coup."""
     from apps.ventes.utils.options import option_totaux
     actives = factures_actives(devis)
     total = Decimal(str(option_totaux(devis)['ttc']))
     facture = sum((Decimal(str(f.total_ttc)) for f in actives), Decimal('0'))
     paye = sum(
-        (Decimal(str(p.montant)) for f in actives for p in f.paiements.all()),
+        (Decimal(str(f.montant_paye)) for f in actives),
         Decimal('0'),
     )
     # Avoirs (notes de crédit) actifs : réduisent le restant dû. Aucun avoir

@@ -481,7 +481,14 @@ class Facture(models.Model):
         YLEDG5 — un paiement ``rejete`` (chèque impayé/virement rejeté) sort
         de ce total : la facture redevient ouverte/en retard exactement
         comme si le règlement n'avait jamais eu lieu (jamais supprimé —
-        piste d'audit conservée)."""
+        piste d'audit conservée).
+
+        AUD104 (résidu PAY-2) — le terme ``via_affectation`` ne filtrait PAS
+        le statut du paiement SOURCE : une avance ventilée puis REJETÉE
+        (chèque d'acompte impayé) continuait de solder les factures qu'elle
+        avait servies, alors qu'un paiement rejeté posé directement en sortait
+        bien. ``select_related('paiement')`` charge le statut avec
+        l'affectation — une requête, jamais un N+1 par ligne."""
         from decimal import Decimal
         actifs = [p for p in self.paiements.all()
                   if p.statut != Paiement.Statut.REJETE]
@@ -490,7 +497,10 @@ class Facture(models.Model):
             (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
         via_affectation = sum(
-            (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
+            (a.montant
+             for a in self.affectations_paiement.select_related('paiement')
+             if a.paiement.statut != Paiement.Statut.REJETE),
+            Decimal('0'))
         return direct + escomptes + via_affectation
 
     @property
