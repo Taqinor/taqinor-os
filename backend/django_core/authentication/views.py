@@ -914,6 +914,43 @@ def _run_demo_reset(slug):
     call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
 
 
+class EstSaPropreSocieteOuOperateurPlateforme(permissions.BasePermission):
+    """AUD186 — cloisonnement multi-tenant du registre des sociétés.
+
+    ``CompanyViewSet`` servait ``Company.objects.all()`` sous le seul garde
+    ``IsAdminUser`` (donc ``is_staff``) : tout compte ``is_staff`` — y compris
+    le PROPRIÉTAIRE d'une société cliente, que ``recover_owner`` promouvait
+    lui-même — lisait ET écrivait les métadonnées de TOUTES les sociétés de la
+    plateforme. Un administrateur métier n'atteint désormais que la SIENNE ;
+    seul l'opérateur plateforme (``is_superuser``) voit le registre entier.
+
+    403 et non 404 : c'est la réponse attendue par le contrat de ce endpoint
+    (déjà verrouillée par les tests NTDMO7/NTDMO22 qui visent une société
+    autre que celle du compte agissant), et la surface est de toute façon
+    fermée aux non-``is_staff`` en amont — elle n'énumère donc rien.
+    """
+
+    message = "Cette société n'est pas la vôtre."
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if getattr(user, 'is_superuser', False):
+            return True
+        return obj.pk == getattr(user, 'company_id', None)
+
+
+class EstOperateurPlateforme(permissions.BasePermission):
+    """AUD186 — créer ou supprimer une SOCIÉTÉ est une opération de
+    plateforme, jamais une action d'administrateur métier : ``is_staff`` seul
+    ne suffit plus (aucun appelant applicatif ne le faisait — ni le frontend,
+    ni un test : vérifié par grep avant le resserrage)."""
+
+    message = "Réservé à l'opérateur de la plateforme."
+
+    def has_permission(self, request, view):
+        return bool(getattr(request.user, 'is_superuser', False))
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
@@ -926,7 +963,36 @@ class CompanyViewSet(viewsets.ModelViewSet):
     # ajouter ici (« jamais une nouvelle permission redondante », NTDMO33).
     # Verrouillé par test de régression (voir
     # test_ntdmo33_technicien_ne_peut_pas.py).
-    permission_classes = [permissions.IsAdminUser]
+    # AUD186 — ``is_staff`` reste la porte d'entrée, mais il ne donne plus
+    # accès qu'à SA PROPRE société (cf. les deux classes ci-dessus).
+    permission_classes = [permissions.IsAdminUser,
+                          EstSaPropreSocieteOuOperateurPlateforme]
+
+    def get_permissions(self):
+        # AUD186 — création/suppression d'une société = opérateur plateforme.
+        # Aucune @action de ce ViewSet ne déclare ses propres
+        # ``permission_classes`` (vérifié) : cette surcharge n'en neutralise
+        # donc aucune.
+        if self.action in ('create', 'destroy'):
+            return [permissions.IsAdminUser(), EstOperateurPlateforme()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        """AUD186 — la LISTE ne montre que la société du compte connecté.
+
+        Le détail et les écritures sont bornés par
+        ``EstSaPropreSocieteOuOperateurPlateforme`` (403), qui s'applique
+        APRÈS la résolution de l'objet — d'où un queryset non filtré hors
+        ``list`` : sans lui, une société étrangère répondrait 404 et
+        contredirait le contrat 403 déjà testé (NTDMO7/NTDMO22)."""
+        qs = super().get_queryset()
+        user = getattr(self.request, 'user', None)
+        if getattr(user, 'is_superuser', False):
+            return qs
+        if self.action == 'list':
+            company_id = getattr(user, 'company_id', None)
+            return qs.filter(pk=company_id) if company_id else qs.none()
+        return qs
 
     def perform_update(self, serializer):
         # NTDMO10 — le mode présentation ne peut être activé/modifié QUE sur une
