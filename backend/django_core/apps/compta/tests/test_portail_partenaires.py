@@ -55,6 +55,25 @@ def auth(user):
     return api
 
 
+def _portal_client_user(company, username, client_id):
+    """AUD525 — compte PORTAIL CLIENT réel (portée + client rattaché), le seul
+    type de compte que la surface client accepte (``IsPortalClientUser``)."""
+    from apps.roles.models import (
+        PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
+    )
+    role, _ = Role.objects.get_or_create(
+        company=company, nom=ROLE_PORTAIL_CLIENT,
+        defaults={'permissions': list(PORTAIL_CLIENT_PERMISSIONS),
+                  'est_systeme': True})
+    user = User.objects.create_user(
+        username=username, password='motdepasse-test-1234',
+        company=company, role=role)
+    user.portee = User.PORTEE_PORTAIL_CLIENT
+    user.portail_client_id = client_id
+    user.save()
+    return user
+
+
 # ── FG229 — Acceptation / e-signature de devis (portail) ───────────────────
 
 class AcceptationDevisPortailTests(TestCase):
@@ -291,10 +310,26 @@ class DemandeTicketPortailTests(TestCase):
 # ── XSAV22 — Déflection KB sur le formulaire d'ouverture de ticket ─────────
 
 class Xsav22KbDeflectionActionsTests(TestCase):
+    """AUD525 — la déflection KB a DÉMÉNAGÉ sur la surface CLIENT.
+
+    Ces actions vivaient sur ``demandes-ticket-portail`` (garde INTERNE
+    ``IsResponsableOrAdmin``) : aucun compte portail ne pouvait les appeler,
+    donc la déflection n'était jamais exercée par un vrai client. Elles sont
+    désormais servies UNIQUEMENT par ``/portail/mes-demandes-sav/…``
+    (``IsPortalClientUser``) — mêmes assertions, vraie surface. Le détail de
+    la création de demande côté client est couvert par
+    ``apps/portail/tests/test_aud525_demandes_sav_client.py``.
+    """
+
     def setUp(self):
+        from apps.crm.models import Client
         from apps.kb.models import KbArticle
         self.co = make_company('xsav22', 'XSAV22')
-        self.user = make_user(self.co, 'xsav22-user')
+        self.client_crm = Client.objects.create(
+            company=self.co, nom='Client', prenom='XSAV22',
+            email='xsav22-client@example.invalid')
+        self.user = _portal_client_user(
+            self.co, 'xsav22-portail', self.client_crm.id)
         self.article = KbArticle.objects.create(
             company=self.co, titre='Onduleur en défaut — que faire ?',
             corps='Vérifiez le code erreur.',
@@ -306,26 +341,28 @@ class Xsav22KbDeflectionActionsTests(TestCase):
     def test_suggestions_kb_returns_only_flagged_articles(self):
         api = auth(self.user)
         resp = api.get(
-            '/api/django/portail/demandes-ticket-portail/suggestions-kb/'
-            '?q=onduleur')
+            '/api/django/portail/mes-demandes-sav/suggestions-kb/?q=onduleur')
         self.assertEqual(resp.status_code, 200, resp.content)
         ids = {s['id'] for s in resp.data['suggestions']}
         self.assertEqual(ids, {self.article.id})
 
     def test_suggestions_kb_isolated_by_company(self):
+        from apps.crm.models import Client
         autre = make_company('xsav22-b', 'XSAV22B')
-        autre_user = make_user(autre, 'xsav22-b-user')
+        autre_client = Client.objects.create(
+            company=autre, nom='Autre', prenom='XSAV22B',
+            email='xsav22b-client@example.invalid')
+        autre_user = _portal_client_user(
+            autre, 'xsav22-b-portail', autre_client.id)
         api = auth(autre_user)
         resp = api.get(
-            '/api/django/portail/demandes-ticket-portail/suggestions-kb/'
-            '?q=onduleur')
+            '/api/django/portail/mes-demandes-sav/suggestions-kb/?q=onduleur')
         self.assertEqual(resp.data['suggestions'], [])
 
     def test_consulter_article_kb_increments_counter(self):
         api = auth(self.user)
         resp = api.post(
-            '/api/django/portail/demandes-ticket-portail/'
-            'consulter-article-kb/',
+            '/api/django/portail/mes-demandes-sav/consulter-article-kb/',
             {'article_id': self.article.id}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(resp.data['enregistre'])
@@ -335,9 +372,18 @@ class Xsav22KbDeflectionActionsTests(TestCase):
     def test_consulter_article_kb_requires_article_id(self):
         api = auth(self.user)
         resp = api.post(
-            '/api/django/portail/demandes-ticket-portail/'
-            'consulter-article-kb/', {}, format='json')
+            '/api/django/portail/mes-demandes-sav/consulter-article-kb/', {},
+            format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_actions_kb_retirees_de_l_ecran_staff(self):
+        """La déflection n'est plus servie par l'écran INTERNE."""
+        staff = make_user(self.co, 'xsav22-staff')
+        api = auth(staff)
+        resp = api.get(
+            '/api/django/portail/demandes-ticket-portail/suggestions-kb/'
+            '?q=onduleur')
+        self.assertEqual(resp.status_code, 404, resp.content)
 
 
 # ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
