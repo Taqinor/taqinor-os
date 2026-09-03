@@ -5866,9 +5866,18 @@ def calculer_regularisation_ir(bulletin):
         nombre += 1
         ir_retenu_annuel += Decimal(b.ir or 0)
         if bareme and parametre:
+            # AUD709 — MIROIR EXACT de ``calculer_bulletin`` (XPAI18) : la
+            # base IR d'un mois est le net imposable MOINS la fraction
+            # exonérée par le régime (stagiaire/ANAPEC/TAHFIZ), figée sur le
+            # bulletin. Recalculer l'IR théorique sur le net imposable BRUT
+            # survalorisait l'IR dû de ces profils protégés et générait un
+            # rappel IR-REGUL indu.
+            base_ir_mois = (Decimal(b.net_imposable or 0)
+                            - Decimal(b.montant_exonere_regime or 0))
+            if base_ir_mois < 0:
+                base_ir_mois = Decimal('0')
             ir_du_mois = compute_ir(
-                Decimal(b.net_imposable or 0), bareme, parametre,
-                b.personnes_a_charge)
+                base_ir_mois, bareme, parametre, b.personnes_a_charge)
         else:
             ir_du_mois = Decimal(b.ir or 0)
         ir_du_annuel += _q(ir_du_mois)
