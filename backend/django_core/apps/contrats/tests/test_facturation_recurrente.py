@@ -141,6 +141,66 @@ class FacturationApiTests(TestCase):
         self.assertEqual(res.status_code, 403)
 
 
+class LigneFactureEcheanceTests(TestCase):
+    """AUD184 — une facture d'échéance porte UNE ligne, donc reste exportable.
+
+    `facturer_ligne_echeance` ne posait que les montants d'en-tête : la facture
+    était invisible de tout consommateur qui itère `facture.lignes`, au premier
+    rang `ventes.exports.export_journal_ventes` qui OMETTAIT totalement les
+    factures header-only et SOUS-DÉCLARAIT donc le CA (douze échéances
+    mensuelles n'apparaissaient dans aucun export ligne-à-ligne de l'année).
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-ligne", "FacRecLigne")
+        self.user = make_user(self.co, "facrec-ligne-admin", role="admin")
+
+    def test_facture_porte_une_ligne_nommant_l_echeance(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        lignes = list(facture.lignes.all())
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("Échéance n°1", lignes[0].designation)
+        self.assertEqual(lignes[0].quantite, Decimal("1.00"))
+        self.assertEqual(lignes[0].prix_unitaire, Decimal("1000.00"))
+        self.assertEqual(lignes[0].total_ht, Decimal("1000.00"))
+        self.assertEqual(lignes[0].taux_tva, Decimal("20.00"))
+
+    def test_totaux_ttc_strictement_identiques(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        # Aucune double-comptabilisation entre l'en-tête et la ligne.
+        self.assertEqual(facture.montant_ht, Decimal("1000.00"))
+        self.assertEqual(facture.montant_tva, Decimal("200.00"))
+        self.assertEqual(facture.montant_ttc, Decimal("1200.00"))
+        self.assertEqual(
+            sum(li.total_ht for li in facture.lignes.all()),
+            facture.montant_ht)
+
+    def test_facture_apparait_dans_export_journal_ventes(self):
+        from datetime import timedelta as _td
+        from apps.ventes.exports import export_journal_ventes
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        debut = facture.date_emission
+        fin = debut + _td(days=1)
+        wb = export_journal_ventes(self.co, debut, fin)
+        ws = wb['Journal des ventes']
+        references = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)
+                      if row and row[0]]
+        self.assertIn(facture.reference, references)
+
+    def test_produit_de_service_reutilise_une_seule_fois(self):
+        from apps.stock.models import Produit
+        _, ech, ligne1 = make_setup(self.co, montant="1200")
+        services.facturer_ligne_echeance(ligne1, user=self.user)
+        ligne2 = services.ajouter_ligne_echeance(
+            ech, date_echeance=timezone.localdate(), montant=Decimal("1200"))
+        services.facturer_ligne_echeance(ligne2, user=self.user)
+        self.assertEqual(
+            Produit.objects.filter(company=self.co, sku='CTR-ECH').count(), 1)
+
+
 class IdempotenceVerrouLigneTests(TestCase):
     """AUD183 — clé d'idempotence : verrou en base sur la LigneEcheance.
 

@@ -109,6 +109,7 @@ SURFACE_PUBLIQUE = (
     "activate_optional_line",
     "affecter_encaissement_groupe",
     "aire_contour_m2",
+    "ajouter_ligne_echeance_contrat",
     "ajouter_lignes_boq_electrique",
     "ajouter_lignes_frais_refactures",
     "anomalies_emission_facture",

@@ -165,6 +165,9 @@ calculer_date_echeance = _facturation_ops.calculer_date_echeance
 get_facture_or_none = _facturation_ops.get_facture_or_none
 facturables_pour_devis = _facturation_ops.facturables_pour_devis
 _main_oeuvre_produit = _facturation_ops._main_oeuvre_produit
+# AUD184 — porte d'entrée de `contrats` pour poser la ligne d'une facture
+# d'échéance (les factures header-only étaient invisibles des exports).
+ajouter_ligne_echeance_contrat = _facturation_ops.ajouter_ligne_echeance_contrat
 generer_facture_ticket_sav = _facturation_ops.generer_facture_ticket_sav
 generer_facture_intervention = _facturation_ops.generer_facture_intervention
 
@@ -565,6 +568,7 @@ __all__ = [
     'activate_optional_line',
     'affecter_encaissement_groupe',
     'aire_contour_m2',
+    'ajouter_ligne_echeance_contrat',
     'ajouter_lignes_boq_electrique',
     'ajouter_lignes_frais_refactures',
     'anomalies_emission_facture',

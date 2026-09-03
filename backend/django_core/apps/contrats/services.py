@@ -2520,6 +2520,18 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
 
     facture = create_with_reference(Facture, 'FAC', echeancier.company, _create)
 
+    # AUD184 — la facture porte UNE ligne (libellé de l'échéance) : sans elle,
+    # elle était header-only et donc INVISIBLE de tout consommateur qui itère
+    # `facture.lignes`, au premier rang `ventes.exports.export_journal_ventes`
+    # qui l'OMETTAIT et sous-déclarait le CA. `quantite=1` × `montant_ht` =>
+    # total TTC STRICTEMENT identique, aucune double-comptabilisation.
+    # Frontière cross-app : fonction FINE sanctionnée de `ventes.services`,
+    # jamais un import de `ventes.models`/`stock.models` ici.
+    from apps.ventes.services import ajouter_ligne_echeance_contrat
+    ajouter_ligne_echeance_contrat(
+        facture, designation=libelle, montant_ht=montant_ht,
+        taux_tva=tva_pct)
+
     # Lien LÂCHE retour (id seul) + garde d'idempotence.
     ligne.facture_id = facture.id
     ligne.save(update_fields=['facture_id'])

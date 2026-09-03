@@ -267,6 +267,58 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
+# ── AUD184 — Ligne de service porteuse d'une échéance de contrat ─────────────
+# `apps.contrats` ne peut PAS importer `apps.ventes.models` ni `apps.stock.
+# models` pour poser sa ligne : cette fonction FINE est son unique porte
+# d'entrée, sur le patron déjà éprouvé de `_main_oeuvre_produit` (XFSM1).
+
+def _echeance_contrat_produit(company):
+    """Produit catalogue (service, non stocké) porteur des lignes d'échéance
+    de contrat — get-or-create idempotent, un seul par société. Jamais
+    décrémenté (aucun mouvement de stock ne le référence)."""
+    from apps.stock.models import Produit
+    produit, _created = Produit.objects.get_or_create(
+        company=company, sku='CTR-ECH', defaults={
+            'nom': 'Échéance de contrat',
+            'prix_vente': Decimal('0'),
+            'quantite_stock': 0,
+        })
+    return produit
+
+
+def ajouter_ligne_echeance_contrat(facture, *, designation, montant_ht,
+                                   taux_tva):
+    """AUD184 — pose LA ligne unique d'une facture d'échéance de contrat.
+
+    Les factures d'échéance ne portaient QUE des montants d'en-tête : aucune
+    ``LigneFacture`` n'était créée, si bien qu'elles étaient invisibles de tout
+    consommateur qui itère ``facture.lignes`` — au premier rang
+    ``ventes.exports.export_journal_ventes``, qui OMET les factures
+    header-only et SOUS-DÉCLARE donc le CA (douze échéances mensuelles
+    n'apparaissaient dans aucun export comptable ligne-à-ligne de l'année).
+
+    Le mode header-only lui-même reste LÉGITIME (documenté, rendu au PDF,
+    toléré par le contrôle art. 145, consommé en compta par les totaux
+    d'en-tête) : seules les factures d'échéance changent.
+
+    La ligne porte ``quantite=1`` et ``prix_unitaire=montant_ht``, donc son
+    ``total_ht`` égale EXACTEMENT le ``montant_ht`` d'en-tête : les totaux TTC
+    de la facture sont inchangés au centime et il n'y a AUCUNE
+    double-comptabilisation entre l'en-tête et la ligne. Renvoie la ligne.
+    """
+    from apps.ventes.models import LigneFacture
+
+    return LigneFacture.objects.create(
+        facture=facture,
+        produit=_echeance_contrat_produit(facture.company),
+        designation=(designation or 'Échéance de contrat')[:255],
+        quantite=Decimal('1'),
+        prix_unitaire=Decimal(montant_ht),
+        remise=Decimal('0'),
+        taux_tva=taux_tva,
+    )
+
+
 # ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
 
 def creer_facture_acompte_situation(*, company, client, user, libelle,
