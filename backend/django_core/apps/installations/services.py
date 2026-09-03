@@ -174,10 +174,20 @@ def ensure_checklist_items(installation):
     auto-sélectionné par son type d'installation (N74) — création paresseuse,
     sans doublon. À défaut de template typé, c'est le template « Défaut » (donc
     les étapes d'aujourd'hui) : comportement préservé. Renvoie la liste
-    ordonnée des items du chantier."""
+    ordonnée des items du chantier.
+
+    AUD323 (suite) — les lectures passent par le MANAGER, jamais par
+    ``installation.checklist.all()`` : depuis que ``InstallationViewSet``
+    précharge ``'checklist'``, ce descripteur sert un cache de prefetch FIGÉ au
+    moment du ``get_object()``. Cette fonction matérialise justement les items
+    APRÈS ce moment-là : lue via le cache, elle renvoyait une liste vide (0
+    étape au lieu de 8) et, rappelée dans la même requête (plusieurs gates
+    ``exige_*`` de l'écran « étapes »), croyait devoir tout recréer — violation
+    de l'unicité ``(installation, cle)`` → 500. Le manager interroge la base."""
     company = installation.company
     template = template_for_installation(installation)
-    existing = {it.cle for it in installation.checklist.all()}
+    a_jour = ChantierChecklistItem.objects.filter(installation=installation)
+    existing = set(a_jour.values_list('cle', flat=True))
     modeles = ChecklistEtapeModele.objects.filter(
         company=company, actif=True)
     if template is not None:
@@ -187,7 +197,9 @@ def ensure_checklist_items(installation):
             ChantierChecklistItem.objects.create(
                 company=company, installation=installation, cle=m.cle,
                 libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie)
-    return list(installation.checklist.all())
+    # `Meta.ordering = ['ordre', 'id']` — même ordre que le related manager.
+    return list(ChantierChecklistItem.objects.filter(
+        installation=installation))
 
 
 def _devis_bon_commande(devis):
