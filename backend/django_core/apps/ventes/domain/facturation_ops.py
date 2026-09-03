@@ -217,7 +217,7 @@ def creer_facture_contrat(*, contrat, user, company):
 # ── XPRJ3 — Facturation en régie (T&M) depuis gestion_projet ─────────────────
 
 def creer_facture_regie(*, company, client, user, libelle, montant_ht,
-                        taux_tva=Decimal('20')):
+                        taux_tva=None):
     """XPRJ3 — Crée une Facture BROUILLON « en régie » (temps & matériel).
 
     Fonction FINE sanctionnée pour ``gestion_projet.services.facturer_temps_
@@ -231,10 +231,20 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     directement) : une facture de régie doit rester éditable/relisible avant
     envoi. Numérotation via ``apps/ventes/utils/references.py`` (jamais
     ``count()+1``). Renvoie la ``Facture`` créée.
+
+    AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
+    KNOB SOCIÉTÉ ``CompanyProfile.tva_standard`` comme le font déjà les deux
+    fonctions frères de ce module : un tenant réglé à 14 % ne voyait 14 % que
+    sur ses factures SAV, et 20 % sur sa régie. Le défaut du knob reste 20 %,
+    donc le comportement est inchangé tant que rien n'est édité.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_ht = Decimal(montant_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     montant_tva = (montant_ht * taux_tva / 100).quantize(
@@ -263,37 +273,111 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
+# ── AUD184 — Ligne de service porteuse d'une échéance de contrat ─────────────
+# `apps.contrats` ne peut PAS importer `apps.ventes.models` ni `apps.stock.
+# models` pour poser sa ligne : cette fonction FINE est son unique porte
+# d'entrée, sur le patron déjà éprouvé de `_main_oeuvre_produit` (XFSM1).
+
+def _echeance_contrat_produit(company):
+    """Produit catalogue (service, non stocké) porteur des lignes d'échéance
+    de contrat — get-or-create idempotent, un seul par société. Jamais
+    décrémenté (aucun mouvement de stock ne le référence)."""
+    from apps.stock.models import Produit
+    produit, _created = Produit.objects.get_or_create(
+        company=company, sku='CTR-ECH', defaults={
+            'nom': 'Échéance de contrat',
+            'prix_vente': Decimal('0'),
+            'quantite_stock': 0,
+        })
+    return produit
+
+
+def ajouter_ligne_echeance_contrat(facture, *, designation, montant_ht,
+                                   taux_tva):
+    """AUD184 — pose LA ligne unique d'une facture d'échéance de contrat.
+
+    Les factures d'échéance ne portaient QUE des montants d'en-tête : aucune
+    ``LigneFacture`` n'était créée, si bien qu'elles étaient invisibles de tout
+    consommateur qui itère ``facture.lignes`` — au premier rang
+    ``ventes.exports.export_journal_ventes``, qui OMET les factures
+    header-only et SOUS-DÉCLARE donc le CA (douze échéances mensuelles
+    n'apparaissaient dans aucun export comptable ligne-à-ligne de l'année).
+
+    Le mode header-only lui-même reste LÉGITIME (documenté, rendu au PDF,
+    toléré par le contrôle art. 145, consommé en compta par les totaux
+    d'en-tête) : seules les factures d'échéance changent.
+
+    La ligne porte ``quantite=1`` et ``prix_unitaire=montant_ht``, donc son
+    ``total_ht`` égale EXACTEMENT le ``montant_ht`` d'en-tête : les totaux TTC
+    de la facture sont inchangés au centime et il n'y a AUCUNE
+    double-comptabilisation entre l'en-tête et la ligne. Renvoie la ligne.
+    """
+    from apps.ventes.models import LigneFacture
+
+    return LigneFacture.objects.create(
+        facture=facture,
+        produit=_echeance_contrat_produit(facture.company),
+        designation=(designation or 'Échéance de contrat')[:255],
+        quantite=Decimal('1'),
+        prix_unitaire=Decimal(montant_ht),
+        remise=Decimal('0'),
+        taux_tva=taux_tva,
+    )
+
+
 # ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
 
 def creer_facture_acompte_situation(*, company, client, user, libelle,
                                     montant_periode_ht,
                                     retenue_garantie_pct=None,
-                                    taux_tva=Decimal('20')):
+                                    taux_tva=None):
     """XPRJ4 — Crée une Facture BROUILLON d'ACOMPTE pour une situation de
     travaux (décompte progressif BTP).
 
     Fonction FINE sanctionnée pour ``gestion_projet.services`` (frontière
     cross-app, CLAUDE.md) : reçoit le montant HT DÉJÀ calculé de la PÉRIODE
     (cumulé − antérieur, agrégé côté appelant sur toutes les lignes de la
-    situation) et une retenue de garantie optionnelle DÉDUITE du montant
-    facturé (le taux, pas le suivi de sa libération — qui vit dans
-    ``contrats``, jamais importé ici). Statut BROUILLON + ``type_facture``
-    ACOMPTE (chaîne standard devis→factures, réutilisée ici sans devis source).
-    Numérotation via ``apps/ventes/utils/references.py`` (jamais
-    ``count()+1``). Renvoie la ``Facture`` créée.
+    situation) et une retenue de garantie optionnelle (le taux, pas le suivi de
+    sa libération — qui vit dans ``contrats``, jamais importé ici). Statut
+    BROUILLON + ``type_facture`` ACOMPTE (chaîne standard devis→factures,
+    réutilisée ici sans devis source). Numérotation via
+    ``apps/ventes/utils/references.py`` (jamais ``count()+1``). Renvoie la
+    ``Facture`` créée.
+
+    AUD180 — DÉCISION FONDATEUR du 03/09/2026 : l'ASSIETTE est le
+    ``montant_periode`` COMPLET. La retenue de garantie est une modalité de
+    PAIEMENT (un montant retenu sur le RÈGLEMENT), pas une réduction de
+    l'assiette taxable : ni ``montant_ht`` ni ``montant_tva`` ne sont diminués
+    du pourcentage retenu. Auparavant la retenue était déduite du HT ET servait
+    de base à la TVA (``montant_ht_net``), ce qui sous-déclarait la TVA.
+    Elle est désormais tracée dans ``conditions_paiement``, seul endroit où
+    elle a sa place ; à contre-valider par le comptable, sans bloquer.
+
+    AUD181 — ``taux_tva=None`` résout le knob société ``tva_standard`` (défaut
+    20 %) au lieu de figer 20 %, comme les deux fonctions frères de ce module.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_periode_ht = Decimal(montant_periode_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     rg_pct = Decimal(retenue_garantie_pct or 0)
     montant_rg = (montant_periode_ht * rg_pct / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ht_net = montant_periode_ht - montant_rg
-    montant_tva = (montant_ht_net * taux_tva / 100).quantize(
+    # Assiette = période COMPLÈTE (la RG ne la réduit jamais).
+    montant_tva = (montant_periode_ht * taux_tva / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ttc = montant_ht_net + montant_tva
+    montant_ttc = montant_periode_ht + montant_tva
+    conditions_paiement = ''
+    if montant_rg > 0:
+        conditions_paiement = (
+            f'Retenue de garantie de {rg_pct.normalize():f} % '
+            f'({montant_rg} MAD) retenue sur le règlement — '
+            'sans effet sur la base taxable.')
 
     def _create(ref):
         return Facture.objects.create(
@@ -303,18 +387,19 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
             statut=Facture.Statut.BROUILLON,
             type_facture=Facture.TypeFacture.ACOMPTE,
             taux_tva=taux_tva,
-            montant_ht=montant_ht_net,
+            montant_ht=montant_periode_ht,
             montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             libelle=libelle,
+            conditions_paiement=conditions_paiement,
             created_by=user,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
     logger.info(
         'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
-        'net %s, RG %s%%)',
-        facture.reference, company.id, montant_ht_net, rg_pct)
+        '%s, RG %s%% = %s retenue au règlement)',
+        facture.reference, company.id, montant_periode_ht, rg_pct, montant_rg)
     return facture
 
 
