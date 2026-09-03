@@ -172,7 +172,7 @@ def equipement_public_signaler(request, token):
         return _not_found()
     try:
         equipement = Equipement.objects.select_related(
-            'installation', 'installation__client',
+            'installation', 'installation__client', 'client_vente',
         ).get(public_token=token)
     except Equipement.DoesNotExist:
         return _not_found()
@@ -192,10 +192,17 @@ def equipement_public_signaler(request, token):
     telephone = (request.data.get('telephone') or '').strip()[:40]
 
     installation = equipement.installation
-    client = getattr(installation, 'client', None)
+    # AUD520 — un équipement vendu au comptoir (XPOS9 : `installation` vide,
+    # `client_vente` renseigné) porte son client sur `client_vente`. Avant ce
+    # correctif, le client n'était résolu QUE via `installation.client` : tout
+    # le parc vendu au comptoir renvoyait 404 au scan de son QR — alors que
+    # les actions `etiquettes`/`partage_qr` génèrent bien cette étiquette
+    # publique pour lui.
+    client = (getattr(installation, 'client', None)
+              if installation is not None else equipement.client_vente)
     if client is None:
-        # Défense en profondeur : un équipement doit toujours avoir un
-        # chantier avec client (FK obligatoires) — filet de sécurité.
+        # Défense en profondeur : un équipement sans chantier NI client de
+        # vente n'a personne à qui rattacher le ticket — filet de sécurité.
         return _noindex(Response(
             {'detail': 'Équipement introuvable.'}, status=status.HTTP_404_NOT_FOUND))
 
