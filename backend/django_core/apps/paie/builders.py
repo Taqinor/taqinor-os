@@ -68,14 +68,11 @@ def _libelle_periode(periode):
 
 # ── PAIE34 — Bulletin de paie PDF ──────────────────────────────────────────
 
-_LIGNE_TPL = (
-    '<tr><td>{code}</td><td>{libelle}</td>'
-    '<td style="text-align:right">{montant}</td></tr>'
-)
-
 # AUD701 — le corps du bulletin porte désormais le TYPE et le SIGNE de chaque
 # ligne : sans eux, une retenue (stockée en positif) s'imprimait exactement
-# comme un gain.
+# comme un gain. (L'ancien ``_LIGNE_TPL`` à trois colonnes, sans type ni
+# signe, n'a plus d'appelant depuis que le reçu STC passe lui aussi par les
+# trois blocs — AUD702.)
 _LIGNE_TPL_DETAIL = (
     '<tr><td>{code}</td><td>{libelle}</td><td>{type_libelle}</td>'
     '<td style="text-align:right">{montant_signe}</td></tr>'
@@ -382,57 +379,133 @@ def render_attestation_pdf(attestation_type, profil, *, bulletin=None,
 
 # ── XPAI1 — Reçu pour solde de tout compte (STC) ────────────────────────────
 
-def render_stc_html(bulletin, *, today=None):
+def stc_est_definitif(bulletin):
+    """AUD702 — un reçu STC n'est DÉFINITIF que sur un bulletin VALIDÉ.
+
+    Tant que le bulletin est en brouillon, ``generer_bulletin_stc`` supprime et
+    recrée toutes ses lignes à chaque appel : le montant d'un reçu signé
+    aujourd'hui peut ne plus correspondre à rien en base demain. Un reçu servi
+    depuis un brouillon est donc un PROJET — sans clause de quittance ni bloc
+    de signature.
+    """
+    from .models import BulletinPaie
+
+    return getattr(bulletin, 'statut', None) == BulletinPaie.STATUT_VALIDE
+
+
+# AUD702 — mentions protectrices du reçu pour solde de tout compte. Le délai
+# de forclusion de SOIXANTE JOURS, la remise en DEUX EXEMPLAIRES et le
+# récapitulatif détaillé des sommes sont les trois mentions dont l'ABSENCE
+# était prouvée par lecture du gabarit. La FORMULATION exacte reste à
+# contre-valider par le conseil juridique — aucun article de loi n'est cité
+# ici, et aucun délai autre que celui posé par la tâche n'est inventé.
+_STC_MENTIONS_LEGALES = (
+    '<div class="mentions">'
+    '<p><strong>Mentions</strong></p>'
+    '<ul>'
+    '<li>Le présent reçu peut être dénoncé par le salarié dans un délai de '
+    '<strong>soixante (60) jours</strong> à compter de sa signature.</li>'
+    '<li>Il est établi en <strong>deux exemplaires</strong>, dont un remis au '
+    'salarié.</li>'
+    '<li>Le détail des sommes composant le total ci-dessus figure dans les '
+    'tableaux Gains et Retenues salariales de ce document.</li>'
+    '</ul></div>'
+)
+
+
+def render_stc_html(bulletin, *, today=None, definitif=None):
     """Construit le HTML du reçu pour solde de tout compte (XPAI1).
 
     Reprend le contexte du bulletin (``bulletin_context``) et affiche en plus
     les lignes d'indemnités de fin de contrat déjà matérialisées sur le
     bulletin STC (préfixe ``STC_`` des codes de ligne).
+
+    AUD702 — le détail est rendu en TROIS BLOCS (Gains / Retenues salariales
+    avec sous-total / charges patronales informatives), comme le bulletin
+    (AUD701) : le reçu n'affichait auparavant aucune cotisation salariale.
+    ``definitif`` (déduit du statut du bulletin par défaut) commande la clause
+    de quittance et les signatures : un bulletin NON validé produit un PROJET
+    filigrané, sans quittance ni bloc de signature.
     """
     if today is None:
         today = date.today()
+    if definitif is None:
+        definitif = stc_est_definitif(bulletin)
     ctx = bulletin_context(bulletin)
-    lignes_html = ''.join(
-        _LIGNE_TPL.format(**ligne) for ligne in ctx['lignes'])
+    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    retenues_html = _bloc_lignes_html(
+        'Retenues salariales', ctx['retenues'],
+        sous_total=f"-{ctx['total_retenues']}",
+        libelle_sous_total='Total des retenues salariales')
+    patronal_html = _bloc_lignes_html(
+        'Charges patronales — information, NON déduites du net',
+        ctx['patronal'])
     date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
     motif = escape(getattr(bulletin, 'motif', '') or '')
+    if definitif:
+        filigrane = ''
+        cloture = f"""
+  <p>Je soussigné(e) {ctx['employe']}, reconnais avoir reçu de mon employeur la
+  somme ci-dessus au titre du solde de tout compte, et lui donne quittance,
+  sans réserve ni restriction, pour raison de salaire, indemnités et
+  accessoires de toute nature.</p>
+  {_STC_MENTIONS_LEGALES}
+  <div class="signature">
+    <span>Signature de l'employeur</span>
+    <span>Signature du salarié (précédée de la mention « pour solde de tout
+    compte »)</span>
+  </div>"""
+    else:
+        filigrane = (
+            '<div class="filigrane">PROJET</div>'
+            '<p class="bandeau">PROJET — sans valeur juridique. Ce document '
+            'est établi depuis un bulletin non validé : ses montants peuvent '
+            'encore changer. Il ne donne aucune quittance et ne doit pas être '
+            'signé.</p>')
+        cloture = (
+            '<p class="bandeau">Le reçu DÉFINITIF, portant la clause de '
+            'quittance, les mentions protectrices et les signatures, ne sera '
+            'délivré qu\'après validation du bulletin de solde de tout '
+            'compte.</p>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>
   body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
   h1 {{ font-size: 18px; text-align: center; }}
-  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  h2 {{ font-size: 13px; margin: 14px 0 2px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 4px; }}
   th, td {{ border: 1px solid #ccc; padding: 4px 6px; }}
+  .sous-total td {{ font-weight: bold; background: #f4f4f4; }}
   .total {{ font-weight: bold; font-size: 13px; margin-top: 10px; }}
   .date {{ text-align: right; margin-top: 40px; }}
   .signature {{ margin-top: 60px; display: flex; justify-content: space-between; }}
+  .mentions {{ margin-top: 14px; border: 1px solid #999; padding: 6px 8px; }}
+  .mentions ul {{ margin: 4px 0 0 16px; padding: 0; }}
+  .bandeau {{ border: 2px solid #b00; color: #b00; font-weight: bold;
+             padding: 6px 8px; text-align: center; }}
+  .filigrane {{ position: fixed; top: 40%; left: 0; width: 100%;
+               text-align: center; font-size: 72px; font-weight: bold;
+               color: #b00; opacity: 0.12; transform: rotate(-25deg); }}
 </style></head><body>
-  <h1>Reçu pour solde de tout compte</h1>
+  {filigrane}
+  <h1>Reçu pour solde de tout compte{'' if definitif else ' — PROJET'}</h1>
   <p><strong>Salarié :</strong> {ctx['employe']}
      &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
      &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
   <p><strong>Période de sortie :</strong> {ctx['periode']}</p>
   {f'<p><strong>Motif :</strong> {motif}</p>' if motif else ''}
-  <table>
-    <thead><tr><th>Code</th><th>Libellé</th><th>Montant (MAD)</th></tr></thead>
-    <tbody>{lignes_html}</tbody>
-  </table>
+  {gains_html}
+  {retenues_html}
+  {patronal_html}
   <p class="total">Net à payer (solde de tout compte) : {ctx['net_a_payer']} MAD</p>
-  <p>Je soussigné(e) {ctx['employe']}, reconnais avoir reçu de mon employeur la
-  somme ci-dessus au titre du solde de tout compte, et lui donne quittance,
-  sans réserve ni restriction, pour raison de salaire, indemnités et
-  accessoires de toute nature.</p>
-  <div class="signature">
-    <span>Signature de l'employeur</span>
-    <span>Signature du salarié (précédée de la mention « pour solde de tout
-    compte »)</span>
-  </div>
+  {cloture}
   <p class="date">Fait le {escape(date_txt)}.</p>
 </body></html>"""
 
 
-def render_stc_pdf(bulletin, *, today=None):
+def render_stc_pdf(bulletin, *, today=None, definitif=None):
     """Reçu pour solde de tout compte → octets PDF (XPAI1)."""
-    return _html_to_pdf(render_stc_html(bulletin, today=today))
+    return _html_to_pdf(
+        render_stc_html(bulletin, today=today, definitif=definitif))
 
 
 # ── XPAI26 — Registres d'inspection du travail ─────────────────────────────

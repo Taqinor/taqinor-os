@@ -8,6 +8,7 @@ Couvre (au niveau HTML, indépendant de WeasyPrint) :
 * ``_fmt`` — formatage des montants avec séparateur de milliers.
 * Multi-tenant — les helpers ne lisent que des champs publics.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase
@@ -18,6 +19,7 @@ from apps.paie.models import PeriodePaie, ProfilPaie
 from apps.paie.services import (
     ensure_defaults,
     generer_bulletin,
+    generer_bulletin_stc,
     valider_bulletin,
 )
 from apps.rh.models import DossierEmploye
@@ -175,3 +177,63 @@ class BulletinRetenuesSalarialesTests(TestCase):
         self.assertFalse(par_code['SB']['montant_signe'].startswith('-'))
         self.assertTrue(par_code['CNSS_SAL']['montant_signe'].startswith('-'))
         self.assertTrue(par_code['IR']['montant_signe'].startswith('-'))
+
+
+class RecuStcTests(TestCase):
+    """AUD702 — le reçu de solde de tout compte.
+
+    ÉTAT AVANT LE FIX : ``stc_pdf`` documentait lui-même servir « le dernier
+    bulletin STC… brouillon consultable avant validation, comme un aperçu »
+    sans filtrer sur le statut, et ``render_stc_html`` imprimait pourtant « Je
+    soussigné(e)… lui donne quittance, sans réserve ni restriction » avec deux
+    blocs de signature, SANS aucune marque de projet — alors que
+    ``generer_bulletin_stc`` supprime et recrée toutes les lignes tant que le
+    bulletin est brouillon. Aucune mention protectrice (forclusion de soixante
+    jours, deux exemplaires, récapitulatif détaillé) n'apparaissait dans le
+    gabarit, et aucune cotisation salariale n'était détaillée.
+    """
+
+    def setUp(self):
+        self.co = make_company('stc-pdf')
+        ensure_defaults(self.co)
+        self.dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='STC1', nom='Sortant', prenom='Test',
+            date_embauche=date(2020, 1, 1))
+        self.profil = ProfilPaie.objects.create(
+            company=self.co, employe=self.dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('10000'),
+            numero_cnss='55667788', affilie_cnss=True, affilie_amo=True)
+        self.periode = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=7)
+        self.bulletin = generer_bulletin_stc(
+            self.profil, self.periode, motif='Démission')
+
+    def test_brouillon_est_un_projet_sans_quittance(self):
+        self.assertEqual(self.bulletin.statut, 'brouillon')
+        self.assertFalse(builders.stc_est_definitif(self.bulletin))
+        html = builders.render_stc_html(self.bulletin)
+        self.assertIn('PROJET', html)
+        self.assertIn('sans valeur juridique', html)
+        # Le cœur du constat : ni quittance, ni signature, sur un brouillon.
+        self.assertNotIn('donne quittance', html)
+        self.assertNotIn("Signature du salarié", html)
+
+    def test_valide_porte_quittance_et_mentions(self):
+        valider_bulletin(self.bulletin)
+        self.bulletin.refresh_from_db()
+        self.assertTrue(builders.stc_est_definitif(self.bulletin))
+        html = builders.render_stc_html(self.bulletin)
+        self.assertIn('donne quittance', html)
+        self.assertIn("Signature du salarié", html)
+        # Mentions protectrices, absentes du gabarit avant AUD702.
+        self.assertIn('soixante (60) jours', html)
+        self.assertIn('deux exemplaires', html)
+        self.assertNotIn('sans valeur juridique', html)
+
+    def test_recu_detaille_les_retenues(self):
+        """Le reçu hérite du fix AUD701 : les retenues sont détaillées."""
+        html = builders.render_stc_html(self.bulletin)
+        self.assertIn('Retenues salariales', html)
+        self.assertIn('CNSS (part salariale)', html)
+        self.assertIn('Total des retenues salariales', html)

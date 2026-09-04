@@ -396,8 +396,13 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     def stc_pdf(self, request, pk=None):
         """Reçu pour solde de tout compte au format PDF (XPAI1).
 
-        Sert le dernier bulletin STC du profil (peu importe son statut —
-        brouillon consultable avant validation, comme un aperçu).
+        Sert le dernier bulletin STC du profil. AUD702 — le reçu DÉFINITIF
+        (clause de quittance signable + mentions protectrices + signatures)
+        n'est rendu QUE depuis un bulletin VALIDÉ ; un bulletin en brouillon
+        produit un PROJET filigrané, sans quittance ni bloc de signature.
+        Tant que le bulletin est en brouillon, ``generer_bulletin_stc``
+        supprime et recrée ses lignes à chaque appel : un reçu signé sur cette
+        base pourrait ne plus correspondre à rien en base le lendemain.
         """
         profil = self.get_object()
         bulletin = (
@@ -411,13 +416,16 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             return Response(
                 {'detail': 'Aucun bulletin STC pour ce profil.'},
                 status=status.HTTP_404_NOT_FOUND)
+        definitif = builders.stc_est_definitif(bulletin)
         try:
-            pdf = builders.render_stc_pdf(bulletin)
+            pdf = builders.render_stc_pdf(bulletin, definitif=definitif)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return _pdf_response(pdf, f'stc_{profil.id}.pdf')
+        nom = f'stc_{profil.id}.pdf' if definitif \
+            else f'stc_projet_{profil.id}.pdf'
+        return _pdf_response(pdf, nom)
 
     @action(detail=True, methods=['get'], url_path='simulation')
     def simulation(self, request, pk=None):
