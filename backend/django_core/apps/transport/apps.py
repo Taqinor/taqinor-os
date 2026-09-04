@@ -12,6 +12,7 @@ class TransportConfig(AppConfig):
     verbose_name = 'Transport'
     module_manifest = {
         'key': 'transport',
+        'sku': 'optional',
         'label': 'Transport',
         'icone': 'truck',
         'depends': [],

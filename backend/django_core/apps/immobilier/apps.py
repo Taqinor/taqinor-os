@@ -7,6 +7,7 @@ class ImmobilierConfig(AppConfig):
     verbose_name = 'Immobilier'
     module_manifest = {
         'key': 'immobilier',
+        'sku': 'vertical_immobilier',
         'label': 'Immobilier',
         'icone': 'building',
         'depends': [],

@@ -45,6 +45,17 @@ class Company(models.Model):
     # champ (voir NTDATA46) au lieu de re-modéliser le consentement.
     benchmarking_opt_in = models.BooleanField(
         'Consentement benchmarking anonymisé', default=False)
+    # SOL8 — PAYS du tenant (ISO 3166-1 alpha-2). Additif, défaut ``MA`` : TOUTES
+    # les sociétés existantes restent marocaines, donc AUCUN comportement ne
+    # change (le « pack pays » ci-dessous ne se déclenche que hors Maroc).
+    # Sert au semis des modules off par défaut à la CRÉATION d'un tenant
+    # (`authentication.module_seeds`) : facturation électronique DGI, calendrier
+    # fiscal marocain et paie CNSS/AMO/IR n'ont aucun sens hors du Maroc — ils
+    # restent LIVRÉS et réactivables en un clic, simplement éteints au départ.
+    pays = models.CharField(
+        'Pays (ISO 3166-1 alpha-2)', max_length=2, default='MA',
+        help_text="Code pays ISO du tenant (MA = Maroc). Détermine le « pack "
+                  "pays » éteint au démarrage : einvoice, fiscal, paie.")
     # ── NTDMO8 — Démo & mode présentation (additifs, défaut False) ──────────
     # ``est_demo`` : True pour un tenant de DÉMONSTRATION créé par
     # ``seed_demo_company`` (NTDMO1). Jamais posé via l'API publique — gate des

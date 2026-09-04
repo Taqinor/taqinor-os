@@ -113,6 +113,105 @@ class PreparerDeclarationSelectorTests(TestCase):
             credit_anterieur=Decimal('250'))
         self.assertEqual(calc['tva_a_declarer'], Decimal('750'))
 
+    # ── AUD164 — chaînage réel du crédit de TVA ─────────────────────────────
+
+    def _declaration_deposee(self, *, debut, fin, credit_reportable,
+                             reference='TVA-202602-0001'):
+        return DeclarationTVA.objects.create(
+            company=self.co, reference=reference,
+            date_debut=debut, date_fin=fin,
+            tva_collectee=Decimal('10000'), tva_deductible=Decimal('40000'),
+            credit_anterieur=Decimal('0'), tva_a_declarer=Decimal('0'),
+            credit_reportable=Decimal(credit_reportable),
+            statut=DeclarationTVA.Statut.DEPOSEE)
+
+    def test_aud164_credit_anterieur_derive_de_la_declaration_precedente(self):
+        """AUD164 — `credit_reportable` était calculé, stocké, exporté… et
+        relu par PERSONNE : le crédit valait TOUJOURS 0 par l'application.
+
+        Février à crédit 30 000, mars 90 000 collectée / 20 000 déductible →
+        40 000 à déclarer, pas 70 000 (30 000 MAD payés en trop à la DGI).
+        """
+        self._declaration_deposee(
+            debut=date(2026, 2, 1), fin=date(2026, 2, 28),
+            credit_reportable='30000')
+        _vente_ttc(self.co, '450000', '90000', jour=date(2026, 3, 10))
+        _achat_ttc(self.co, '100000', '20000', jour=date(2026, 3, 12))
+        calc = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 3, 1), date_fin=date(2026, 3, 31))
+        self.assertEqual(calc['credit_anterieur'], Decimal('30000'))
+        self.assertEqual(calc['tva_a_declarer'], Decimal('40000'))
+        # La source est TRACÉE (jamais un nombre orphelin).
+        source = calc['credit_anterieur_source']
+        self.assertIsNotNone(source)
+        self.assertEqual(source['reference'], 'TVA-202602-0001')
+        self.assertEqual(source['date_fin'], date(2026, 2, 28))
+        self.assertIn('30000', source['libelle'])
+
+    def test_aud164_valeur_explicite_prime_sur_la_derivation(self):
+        self._declaration_deposee(
+            debut=date(2026, 2, 1), fin=date(2026, 2, 28),
+            credit_reportable='30000')
+        _vente_ttc(self.co, '450000', '90000', jour=date(2026, 3, 10))
+        calc = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 3, 1), date_fin=date(2026, 3, 31),
+            credit_anterieur=Decimal('0'))
+        self.assertEqual(calc['credit_anterieur'], Decimal('0'))
+        self.assertIsNone(calc['credit_anterieur_source'])
+        self.assertEqual(calc['tva_a_declarer'], Decimal('90000'))
+
+    def test_aud164_declaration_non_deposee_ne_reporte_rien(self):
+        """Seule une déclaration DÉPOSÉE établit un report."""
+        decl = self._declaration_deposee(
+            debut=date(2026, 2, 1), fin=date(2026, 2, 28),
+            credit_reportable='30000')
+        decl.statut = DeclarationTVA.Statut.PREPAREE
+        decl.save(update_fields=['statut'])
+        _vente_ttc(self.co, '450000', '90000', jour=date(2026, 3, 10))
+        calc = selectors.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 3, 1), date_fin=date(2026, 3, 31))
+        self.assertEqual(calc['credit_anterieur'], Decimal('0'))
+        self.assertIsNone(calc['credit_anterieur_source'])
+
+    def test_aud164_solde_impute_le_credit_et_apure_le_3455(self):
+        """AUD164 — l'écriture de solde poste le net DÉCLARÉ et apure 3455.
+
+        `solder_tva_periode` ne transmettait pas `credit_anterieur` (défaut 0)
+        et créditait le net BRUT au 44552 : 70 000 au lieu de 40 000, et
+        44552/3455 accumulaient des résiduels de sens opposé que rien
+        n'apurait.
+        """
+        # Le crédit de février vit dans 3455 (débit résiduel de 30 000).
+        _achat_ttc(self.co, '150000', '30000', jour=date(2026, 2, 20))
+        self._declaration_deposee(
+            debut=date(2026, 2, 1), fin=date(2026, 2, 28),
+            credit_reportable='30000')
+        _vente_ttc(self.co, '450000', '90000', jour=date(2026, 3, 10))
+        _achat_ttc(self.co, '100000', '20000', jour=date(2026, 3, 12))
+        declaration = services.preparer_declaration_tva(
+            self.co, date_debut=date(2026, 3, 1), date_fin=date(2026, 3, 31))
+        self.assertEqual(declaration.credit_anterieur, Decimal('30000'))
+        self.assertEqual(declaration.tva_a_declarer, Decimal('40000'))
+        periode = services.creer_periode(
+            self.co, date(2026, 3, 1), date(2026, 3, 31), libelle='Mars 2026')
+        ecriture = services.solder_tva_periode(periode)
+        self.assertIsNotNone(ecriture)
+        self.assertTrue(ecriture.est_equilibree)
+        self.assertEqual(
+            ecriture.lignes.get(compte__numero='44552').credit,
+            Decimal('40000'))
+        self.assertEqual(
+            ecriture.lignes.get(compte__numero='4455').debit,
+            Decimal('90000'))
+        # 3455 est crédité de déductible (20 000) + crédit reporté (30 000).
+        self.assertEqual(
+            ecriture.lignes.get(compte__numero='3455').credit,
+            Decimal('50000'))
+        # Résiduel 3455 apuré : 30 000 (février) + 20 000 (mars) − 50 000 = 0.
+        compte_3455 = services.get_compte(self.co, '3455')
+        self.assertEqual(
+            selectors.solde_compte(self.co, compte_3455), Decimal('0'))
+
     def test_bornee_a_la_periode(self):
         # Une vente en janvier ne compte pas dans la déclaration de février.
         _vente_ttc(self.co, '5000', '1000', jour=date(2026, 1, 20))

@@ -6,6 +6,11 @@
 // dans l'ERP. Trou (c) à respecter : le statut `echoue` existe dans le
 // modèle mais n'est posé par AUCUN code serveur — cet écran ne propose donc
 // QUE « Rapprocher », jamais un bouton « Rejeter » sans service derrière.
+// AUD146 — le `?statut=` envoyé ci-dessous était IGNORÉ par le serveur (aucun
+// `DjangoFilterBackend`, aucun `get_queryset`) : la file « À rapprocher »
+// affichait en réalité tous les statuts. L'écran était déjà correct ; c'est
+// `PaiementFacturePortailViewSet.get_queryset` qui honore désormais le
+// paramètre (et refuse en 400 une valeur inconnue plutôt que de tout rendre).
 import { useCallback, useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { Check, Banknote } from 'lucide-react'

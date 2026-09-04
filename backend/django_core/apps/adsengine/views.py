@@ -2404,7 +2404,14 @@ class MetricsDashboardView(APIView):
                     signatures = odoo['signatures']
                     signatures_source = 'odoo'
         except Exception:  # noqa: BLE001 — le dashboard ne casse jamais sur Odoo
-            pass
+            # CRX40 — le comportement ne change pas (l'exception reste avalée),
+            # mais elle cesse d'être INVISIBLE : sans trace, un connecteur Odoo
+            # en panne se manifestait uniquement par un héro-chiffre qui
+            # retombait silencieusement sur le CRM — indiscernable d'un « 0
+            # signature » légitime.
+            logger.exception(
+                'ADSENG-ODOO: coût par signature Odoo indisponible '
+                '(société #%s) — repli sur le CRM.', getattr(company, 'pk', None))
         ct = ContentType.objects.get_for_model(AdCampaignMirror)
         debut = _adseng_parse_date(request.query_params.get('debut'))
         fin = _adseng_parse_date(request.query_params.get('fin'))
@@ -2502,7 +2509,15 @@ class MetricsLeadsView(APIView):
                             'source': 'odoo',
                         })
             except Exception:  # noqa: BLE001 — le drill ne casse jamais sur Odoo
-                pass
+                # CRX40 — même correctif que ci-dessus : la liste retombe sur
+                # les seuls leads CRM, ce qui ressemble EXACTEMENT à « aucun
+                # deal signé ». Sans cette trace, le symptôme (« Voir les
+                # leads » vide sous un héro-chiffre non nul) restait
+                # inexplicable côté serveur.
+                logger.exception(
+                    'ADSENG-ODOO: deals signés Odoo indisponibles pour le '
+                    'drill (métrique %s) — seuls les leads CRM sont listés.',
+                    metric or 'signature')
         return Response(leads)
 
 

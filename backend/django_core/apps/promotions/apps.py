@@ -7,6 +7,7 @@ class PromotionsConfig(AppConfig):
     verbose_name = 'Promotions panier'
     module_manifest = {
         'key': 'promotions',
+        'sku': 'optional',
         'label': 'Promotions',
         'icone': 'percent',
         'depends': ['pos'],

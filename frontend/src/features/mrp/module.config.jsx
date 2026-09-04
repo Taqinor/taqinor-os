@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { Activity, Calculator, Factory, Gauge, Wand2, Wrench } from 'lucide-react'
+import { Activity, Calculator, Factory, Gauge, Settings, Wand2, Wrench } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -29,6 +29,15 @@ const AssistantCreationOF = lazy(() => import('../../pages/mrp/AssistantCreation
 const AssistantCreationGamme = lazy(() => import('../../pages/mrp/AssistantCreationGamme'))
 // NTMFG28 — assistant de clôture d'OF avec saisie qualité groupée.
 const AssistantClotureOF = lazy(() => import('../../pages/mrp/AssistantClotureOF'))
+// NTMFG29 — Paramètres > Atelier MRP (`mrp.ParametresMRP`, singleton par
+// société) : horizon MRP (NTMFG5), stock de sécurité par défaut, tolérance de
+// surcharge poste (NTMFG7), motif QC obligatoire (NTMFG13), kanban production
+// (NTMFG17). Admin UNIQUEMENT côté backend (`mrp.permissions.EstAdminMRP`).
+// SOL5 — déclaré ICI (et non plus dans `features/parametres`) : le module
+// PROPRIÉTAIRE porte sa page de réglages, donc `moduleLoader('mrp')` la gate
+// comme les autres écrans mrp et l'édition la retire avec le module. Le
+// CHEMIN reste `/parametres/mrp` (aucun lien ni marque-page cassé).
+const ParametresMrpPage = lazy(() => import('../../pages/mrp/ParametresMRP'))
 
 // 'normal' couvre le rôle Technicien de base (pas de rôle fin dédié dans le
 // vocabulaire existant, cf. `installations/module.config.jsx`) — le terminal
@@ -56,6 +65,8 @@ const config = {
       { to: '/mrp/oee', label: 'TRS / OEE', icon: <Activity size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       // NTMFG11 — coût interne, jamais visible du rôle limité.
       { to: '/mrp/analyse-couts', label: 'Analyse des coûts', icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_ADMIN },
+      // NTMFG29 (déplacé par SOL5) — réglages atelier, admin uniquement.
+      { to: '/parametres/mrp', label: 'Paramètres atelier', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
     ],
   },
   titles: [
@@ -80,6 +91,9 @@ const config = {
     { path: '/mrp/terminal', component: TerminalAtelier, roles: ROLES },
     { path: '/mrp/oee', component: OeePage, roles: ROLES },
     { path: '/mrp/analyse-couts', component: AnalyseCoutsPage, roles: ROLES_ADMIN },
+    // NTMFG29 (déplacé par SOL5) — chemin INCHANGÉ, désormais gaté par
+    // `moduleLoader('mrp')` comme le reste du module.
+    { path: '/parametres/mrp', component: ParametresMrpPage, roles: ['admin'] },
   ],
 }
 

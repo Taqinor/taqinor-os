@@ -1,7 +1,16 @@
 """NTCRM27 — Signal d'intérêt automatique depuis la salle de vente.
 
-3 vues simulées en moins de 48h génèrent la note automatiquement ; une 4e vue
-ne duplique pas la note du jour. Jamais un changement de stage automatique.
+3 consultations DISTINCTES en moins de 48h génèrent la note automatiquement ;
+une 4e ne duplique pas la note du jour. Jamais un changement de stage
+automatique.
+
+CRX31 (02/09/2026) — « distinctes » n'était pas vérifié : le comptage portait
+sur les vues BRUTES, si bien que trois rechargements de la page par le MÊME
+visiteur déclenchaient « signal d'intérêt fort » et faisaient rappeler un
+client qui n'avait fait qu'appuyer sur F5. Le comptage est désormais
+dédupliqué par (empreinte de visiteur, jour local) — ce fichier porte les deux
+moitiés du contrat : trois visiteurs distincts déclenchent, trois
+rechargements d'un seul ne déclenchent pas.
 """
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -20,9 +29,14 @@ class SignalInteretServiceTests(TestCase):
         self.salle = SalleVente.objects.create(
             company=self.company, lead=self.lead, titre='Salle NTCRM27')
 
-    def test_3_vues_en_48h_generent_la_note(self):
-        for _ in range(3):
-            SalleVenteVue.objects.create(salle=self.salle)
+    def _vues(self, empreintes, salle=None):
+        """Une vue par empreinte de visiteur (``ip_hash``)."""
+        for empreinte in empreintes:
+            SalleVenteVue.objects.create(
+                salle=salle or self.salle, ip_hash=empreinte)
+
+    def test_3_visiteurs_distincts_en_48h_generent_la_note(self):
+        self._vues(['visiteur-a', 'visiteur-b', 'visiteur-c'])
         note = detecter_signal_interet_salle_vente(self.salle)
         self.assertIsNotNone(note)
         self.assertEqual(note.kind, LeadActivity.Kind.NOTE)
@@ -33,16 +47,29 @@ class SignalInteretServiceTests(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
 
+    def test_3_rechargements_du_meme_appareil_ne_declenchent_rien(self):
+        """CRX31 — le cas qui faisait rappeler un client pour trois F5."""
+        self._vues(['visiteur-a', 'visiteur-a', 'visiteur-a'])
+        note = detecter_signal_interet_salle_vente(self.salle)
+        self.assertIsNone(note)
+        self.assertFalse(LeadActivity.objects.filter(lead=self.lead).exists())
+
+    def test_vues_sans_empreinte_comptent_pour_une(self):
+        """Empreinte vide (IP illisible) : indistinguables, donc UNE seule
+        consultation — sous-compter, jamais sur-compter."""
+        self._vues(['', '', ''])
+        self.assertIsNone(detecter_signal_interet_salle_vente(self.salle))
+
     def test_4e_vue_meme_jour_ne_duplique_pas_la_note(self):
-        for _ in range(4):
-            SalleVenteVue.objects.create(salle=self.salle)
+        for empreinte in ('visiteur-a', 'visiteur-b', 'visiteur-c',
+                          'visiteur-d'):
+            self._vues([empreinte])
             detecter_signal_interet_salle_vente(self.salle)
         self.assertEqual(
             LeadActivity.objects.filter(lead=self.lead, kind=LeadActivity.Kind.NOTE).count(), 1)
 
     def test_moins_de_3_vues_ne_genere_rien(self):
-        SalleVenteVue.objects.create(salle=self.salle)
-        SalleVenteVue.objects.create(salle=self.salle)
+        self._vues(['visiteur-a', 'visiteur-b'])
         note = detecter_signal_interet_salle_vente(self.salle)
         self.assertIsNone(note)
         self.assertFalse(LeadActivity.objects.filter(lead=self.lead).exists())
@@ -50,15 +77,14 @@ class SignalInteretServiceTests(TestCase):
     def test_lead_pas_en_quote_sent_ne_genere_rien(self):
         self.lead.stage = stages.NEW
         self.lead.save(update_fields=['stage'])
-        for _ in range(3):
-            SalleVenteVue.objects.create(salle=self.salle)
+        self._vues(['visiteur-a', 'visiteur-b', 'visiteur-c'])
         note = detecter_signal_interet_salle_vente(self.salle)
         self.assertIsNone(note)
 
     def test_salle_sans_lead_ne_leve_jamais(self):
         salle_client = SalleVente.objects.create(company=self.company, titre='Sans lead')
-        for _ in range(3):
-            SalleVenteVue.objects.create(salle=salle_client)
+        self._vues(['visiteur-a', 'visiteur-b', 'visiteur-c'],
+                   salle=salle_client)
         note = detecter_signal_interet_salle_vente(salle_client)
         self.assertIsNone(note)
 
@@ -72,10 +98,24 @@ class SignalInteretEndpointTests(TestCase):
         self.salle = SalleVente.objects.create(
             company=self.company, lead=self.lead, titre='Salle NTCRM27 API')
 
-    def test_3_visites_publiques_generent_la_note_via_endpoint(self):
+    def test_3_visiteurs_distincts_generent_la_note_via_endpoint(self):
         anon = APIClient()
-        for _ in range(3):
-            resp = anon.get(f'/api/django/crm/salle-vente/{self.salle.token}/')
+        for ip in ('203.0.113.11', '203.0.113.12', '203.0.113.13'):
+            resp = anon.get(
+                f'/api/django/crm/salle-vente/{self.salle.token}/',
+                HTTP_X_FORWARDED_FOR=ip)
             self.assertEqual(resp.status_code, 200)
         self.assertEqual(
             LeadActivity.objects.filter(lead=self.lead, kind=LeadActivity.Kind.NOTE).count(), 1)
+
+    def test_3_rechargements_du_meme_visiteur_ne_generent_rien(self):
+        """CRX31 de bout en bout : le même appareil qui recharge trois fois
+        n'invente plus un signal d'intérêt."""
+        anon = APIClient()
+        for _ in range(3):
+            resp = anon.get(
+                f'/api/django/crm/salle-vente/{self.salle.token}/',
+                HTTP_X_FORWARDED_FOR='203.0.113.99')
+            self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.lead, kind=LeadActivity.Kind.NOTE).count(), 0)

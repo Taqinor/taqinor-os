@@ -7,6 +7,7 @@ class EinvoiceConfig(AppConfig):
     verbose_name = 'Facturation électronique DGI'
     module_manifest = {
         'key': 'einvoice',
+        'sku': 'optional',
         'label': 'E-invoicing DGI',
         'icone': 'file-signature',
         'depends': [],

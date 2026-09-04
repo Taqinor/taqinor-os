@@ -21,6 +21,11 @@ import AppIcon from '../../ui/AppIcon'
 import useInstalledApps, {
   appVisibilityPermission, isAppVisibilityPermission,
 } from '../../lib/apps/useInstalledApps'
+// SOL12 — ne proposer que les permissions des modules que la société a
+// réellement (règle PURE, testée à part).
+import { useSelector } from 'react-redux'
+import { selectModulesDesactives } from '../../router/moduleGating'
+import { filtrerCodesAffichables } from '../../features/admin/permissionModules'
 // VX132 — anti-scintillement propagé : ce Spinner + Skeleton s'affichaient
 // SIMULTANÉMENT (l'anti-pattern que useDelayedLoading existe pour éviter —
 // voir InstallationsPage.jsx, déjà migrée).
@@ -140,6 +145,8 @@ const PERMISSION_GROUPS = [
 ]
 
 const EMPTY_FORM = { nom: '', permissions: [] }
+// Référence stable (évite un nouvel objet à chaque rendu dans les mémos SOL12).
+const EMPTY_MODULES = {}
 
 // Construit la grille de groupes à partir des codes RÉELS du backend : on garde
 // l'ordre/les libellés connus puis on ajoute un groupe « Autres » pour tout code
@@ -178,6 +185,10 @@ export default function RolesManagement() {
   const [formError, setFormError] = useState(null)
   // Catalogue de permissions chargé depuis le backend (source de vérité).
   const [availableCodes, setAvailableCodes] = useState([])
+  // SOL12 — module PROPRIÉTAIRE de chaque code, servi par le même endpoint
+  // (`modules`). Sert UNIQUEMENT à ne pas afficher les cases d'une app que la
+  // société n'a pas ; jamais à retirer un droit.
+  const [modulesParCode, setModulesParCode] = useState(EMPTY_MODULES)
   // Ligne « Utilisateurs » dépliée (id du rôle) — tâche RBAC.
   const [expandedUsers, setExpandedUsers] = useState(null)
   // Dialogue de réassignation après une suppression bloquée.
@@ -187,15 +198,27 @@ export default function RolesManagement() {
   // par ligne (même AlertDialog, même comportement — VX234 le teste).
   const [pendingDelete, setPendingDelete] = useState(null) // role | null
 
-  const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
+  // SOL12 — les codes RÉELLEMENT proposés : ceux des modules que la société a.
+  // Un code déjà porté par le rôle en cours d'édition reste affiché (sinon
+  // enregistrer le formulaire le supprimerait en silence).
+  const modulesDesactives = useSelector(selectModulesDesactives)
+  const codesAffichables = useMemo(
+    () => filtrerCodesAffichables(
+      availableCodes, modulesParCode, modulesDesactives, form.permissions),
+    [availableCodes, modulesParCode, modulesDesactives, form.permissions],
+  )
+
+  const groups = useMemo(() => buildGroups(codesAffichables), [codesAffichables])
   const viewCodes = useMemo(
     // ODY26 — le préréglage « Lecture seule » ne coche QUE des codes d'action
     // métier : un code `app_<clé>_voir` finit aussi par `_voir` mais il
     // RESTREINT (liste blanche d'apps), il n'accorde rien. L'inclure ferait
     // basculer le rôle en visibilité restreinte à son insu.
-    () => availableCodes.filter(
+    // SOL12 — le préréglage part des codes AFFICHABLES : il ne doit pas cocher
+    // en masse des droits d'apps que la société n'a pas.
+    () => codesAffichables.filter(
       c => c.endsWith('_voir') && !isAppVisibilityPermission(c)),
-    [availableCodes],
+    [codesAffichables],
   )
 
   /* ── ODY26 — L'axe « App visible », dans la MÊME matrice que les actions ──
@@ -248,6 +271,9 @@ export default function RolesManagement() {
       ])
       setRoles(rolesRes.data.results ?? rolesRes.data)
       setAvailableCodes(permsRes.data.permissions ?? [])
+      // SOL12 — champ additif ; un backend plus ancien ne le sert pas, la
+      // matrice reste alors complète (aucune régression).
+      setModulesParCode(permsRes.data.modules ?? EMPTY_MODULES)
     } catch {
       setError('Impossible de charger les rôles.')
     } finally {

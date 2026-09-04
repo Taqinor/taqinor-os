@@ -2,7 +2,10 @@
 // ----------------------------------------------------------------------------
 // Séparé de `pages/home/HomeMenu.jsx` pour deux raisons : la règle fast-refresh
 // interdit d'exporter des non-composants à côté d'un composant, et cette
-// logique se teste sans React (ni jsdom, ni store). Aucune dépendance.
+// logique se teste sans React (ni jsdom, ni store).
+//
+// SOL11 — seule dépendance : la constante de sku (données pures, pas de React).
+import { SKU_OPTIONAL } from './appSkus'
 
 /* normalise — comparaison insensible à la casse ET aux accents : « devis »
    trouve « Devis », « appro » trouve « Approvisionnement », « humaines »
@@ -50,9 +53,19 @@ export function grouperApps(apps, { query = '', pinned = [], recent = [] } = {})
     .filter((a) => a && !pris.has(a.key))
   recents.forEach((a) => pris.add(a.key))
   const reste = filtrees.filter((a) => !pris.has(a.key))
+  // SOL11 — les modules `optional` (livrés mais ÉTEINTS à la création d'un
+  // tenant : caisse, promotions, douane, transport, planification supply…)
+  // sortent de la liste principale et forment leur propre section
+  // « Extensions ». Un installateur solaire voit ainsi son métier d'abord, et
+  // ce qu'il PEUT activer ensuite — au lieu d'une grille de 40 tuiles à plat.
+  // `sku` est posé par `buildInstalledApps` ; une app sans `sku` (surface hors
+  // manifeste) reste dans la liste principale, comme avant.
+  const extensions = reste.filter((a) => a.sku === SKU_OPTIONAL)
+  const principales = reste.filter((a) => a.sku !== SKU_OPTIONAL)
   return [
     { id: 'favoris', titre: 'Favoris', apps: favoris },
     { id: 'recents', titre: 'Récents', apps: recents },
-    { id: 'toutes', titre: 'Toutes les applications', apps: reste },
+    { id: 'toutes', titre: 'Toutes les applications', apps: principales },
+    { id: 'extensions', titre: 'Extensions', apps: extensions },
   ].filter((s) => s.apps.length > 0)
 }

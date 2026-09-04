@@ -2,7 +2,46 @@
 
 FG368 — forme de sortie des jobs planifiés (lecture seule, infra globale).
 FG369 — forme de sortie des modèles de workflow installables (catalogue).
+
+CRX12 — champ de relation AUTO-SCOPÉ société (primitive plateforme)
+--------------------------------------------------------------------
+
+Constat de l'audit CRM (L3, 02/09/2026) : un ``PrimaryKeyRelatedField`` NU
+(queryset non scopé, ex. ``Lead.objects.all()``) laisse un client rattacher son
+objet à une ligne d'une AUTRE société — et, pire, sert d'ORACLE D'EXISTENCE
+(l'erreur « objet inexistant » vs « ok » révèle si l'id existe chez le voisin).
+``TenantMixin`` scope le queryset de la VUE, jamais celui des relations
+DÉCLARÉES dans le sérialiseur : le trou est structurel, pas ponctuel.
+
+Trois pièces, à composer selon le besoin :
+
+* :class:`CompanyScopedPrimaryKeyRelatedField` — un ``PrimaryKeyRelatedField``
+  dont ``get_queryset()`` est re-filtré sur ``request.user.company`` DÈS LORS que
+  le modèle cible porte un champ de relation ``company``. Un id hors société
+  devient donc un ``ValidationError`` « objet inexistant » standard — le même
+  message que pour un id réellement inexistant, donc AUCUN oracle. Utilisable
+  seul, y compris avec ``many=True`` (le ``ManyRelatedField`` de DRF délègue au
+  ``child_relation``, qui est bien notre classe).
+* :func:`scope_related_field` — promeut SUR PLACE un ``PrimaryKeyRelatedField``
+  déjà construit (ou le ``child_relation`` d'un ``ManyRelatedField``) en sa
+  version scopée. Utile pour re-scoper un champ déclaré à la main sans réécrire
+  ses arguments.
+* :class:`CompanyScopedRelationsMixin` /
+  :class:`CompanyScopedModelSerializer` — base-serializer OPTIONNELLE :
+  ``serializer_related_field`` pointe la classe scopée (donc toutes les
+  relations AUTO-CONSTRUITES depuis ``Meta.fields`` le sont) ET ``get_fields``
+  promeut les relations DÉCLARÉES à la main. Un champ déjà spécialisé (sous-
+  classe métier de ``PrimaryKeyRelatedField``) n'est JAMAIS touché.
+
+Non-régression : sans requête dans le contexte (rendu serveur/interne, shell,
+tâche Celery) ou pour un superuser SANS société (acteur plateforme supporté, cf.
+``core.mixins.TenantMixin``), le queryset est renvoyé INCHANGÉ — comportement
+byte-identique à un ``PrimaryKeyRelatedField`` nu. Un superuser AVEC société est
+scopé, exactement comme le fait ``TenantMixin`` pour les listes.
+
+``core`` reste FONDATION : aucun import d'app métier ici.
 """
+from django.core.exceptions import FieldDoesNotExist
 from rest_framework import serializers
 
 from .models import (
@@ -26,6 +65,151 @@ from .models import (
     WorkflowDefinition,
     WorkflowStepDefinition,
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRX12 — Relations auto-scopées société
+# ─────────────────────────────────────────────────────────────────────────────
+
+def model_is_company_scoped(model) -> bool:
+    """Vrai si ``model`` porte une RELATION ``company`` (modèle multi-tenant).
+
+    Un simple champ texte nommé ``company`` (cas théorique) n'est pas une
+    frontière tenant : on exige ``is_relation``.
+    """
+    if model is None:
+        return False
+    try:
+        field = model._meta.get_field('company')
+    except (FieldDoesNotExist, AttributeError):
+        return False
+    return bool(getattr(field, 'is_relation', False))
+
+
+def request_company_id(context):
+    """Id de société de l'utilisateur de la requête, ou ``None``.
+
+    ``None`` signifie « ne rien scoper » : pas de requête (rendu interne,
+    shell, tâche de fond), utilisateur anonyme, ou superuser plateforme SANS
+    société — les trois acteurs pour lesquels ``TenantMixin`` ne restreint pas
+    non plus.
+    """
+    request = (context or {}).get('request')
+    user = getattr(request, 'user', None) if request is not None else None
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    return getattr(user, 'company_id', None)
+
+
+class CompanyScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """``PrimaryKeyRelatedField`` re-scopé sur la société de la requête.
+
+    Le queryset déclaré est filtré par ``company_id=request.user.company_id``
+    quand — et seulement quand — le modèle cible porte une relation
+    ``company``. Un id appartenant à une autre société est alors REFUSÉ avec le
+    message d'erreur standard « objet inexistant » de DRF : indiscernable d'un
+    id qui n'existe pas, donc aucun oracle d'existence inter-tenant.
+
+    Fonctionne à l'identique en ``many=True`` : ``many_init`` de DRF construit
+    un ``ManyRelatedField`` dont le ``child_relation`` est une instance de cette
+    classe, et c'est lui qui résout chaque id.
+    """
+
+    def __init__(self, **kwargs):
+        # DRF n'exige un ``queryset`` que si ``get_queryset`` n'est PAS
+        # surchargé (``relations.method_overridden``). Comme on le surcharge,
+        # l'assertion d'origine est désactivée : on la ré-affirme ici pour ne
+        # pas perdre le garde-fou (un champ inscriptible sans queryset échouerait
+        # sinon très tard, avec un message obscur).
+        super().__init__(**kwargs)
+        assert self.queryset is not None or kwargs.get('read_only'), (
+            'CompanyScopedPrimaryKeyRelatedField exige un argument `queryset` '
+            '(ou read_only=True).'
+        )
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if queryset is None:
+            return queryset
+        company_id = request_company_id(self.context)
+        if company_id is None:
+            return queryset
+        if not model_is_company_scoped(queryset.model):
+            return queryset
+        return queryset.filter(company_id=company_id)
+
+
+def scope_related_field(field):
+    """Promeut SUR PLACE un champ de relation en sa version scopée société.
+
+    Accepte un ``PrimaryKeyRelatedField`` ou un ``ManyRelatedField`` (dont le
+    ``child_relation`` est alors promu). Renvoie ``True`` si une promotion a eu
+    lieu.
+
+    Prudence VOLONTAIRE : seul un champ dont le type est EXACTEMENT
+    ``PrimaryKeyRelatedField`` est promu. Une sous-classe métier (validation
+    propre, ``get_queryset`` maison, champ déjà scopé…) est laissée intacte —
+    on ne remplace jamais un comportement écrit à la main. La promotion se fait
+    par réaffectation de ``__class__`` : la classe cible est une sous-classe
+    directe qui n'ajoute AUCUN attribut d'instance, donc l'objet (queryset,
+    ``source``, ``required``, messages d'erreur, liaison au parent) est conservé
+    tel quel — c'est la seule façon de re-scoper un champ déjà construit sans
+    ré-inventer ses arguments d'origine.
+    """
+    child = getattr(field, 'child_relation', None)
+    if child is not None:
+        return scope_related_field(child)
+    if type(field) is not serializers.PrimaryKeyRelatedField:
+        return False
+    if getattr(field, 'read_only', False) or field.queryset is None:
+        return False
+    if not model_is_company_scoped(field.queryset.model):
+        return False
+    field.__class__ = CompanyScopedPrimaryKeyRelatedField
+    return True
+
+
+class CompanyScopedRelationsMixin:
+    """Re-scope automatiquement les relations inscriptibles du sérialiseur.
+
+    Deux leviers complémentaires :
+
+    * ``serializer_related_field`` — les relations AUTO-CONSTRUITES par
+      ``ModelSerializer`` depuis ``Meta.fields`` naissent déjà scopées ;
+    * ``get_fields()`` — les relations DÉCLARÉES à la main
+      (``x = serializers.PrimaryKeyRelatedField(queryset=...)``) sont promues
+      via :func:`scope_related_field`.
+
+    Seules les relations dont le modèle cible porte ``company`` sont touchées ;
+    ``company_scoped_relations_exclude`` permet d'exempter nommément un champ
+    (cas rare et documenté : une relation VOLONTAIREMENT inter-société, comme un
+    référentiel global).
+    """
+
+    serializer_related_field = CompanyScopedPrimaryKeyRelatedField
+
+    #: Noms de champs à NE PAS re-scoper (exemption nommée, à documenter).
+    company_scoped_relations_exclude: tuple = ()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        exclude = set(self.company_scoped_relations_exclude or ())
+        for name, field in fields.items():
+            if name in exclude:
+                continue
+            scope_related_field(field)
+        return fields
+
+
+class CompanyScopedModelSerializer(CompanyScopedRelationsMixin,
+                                   serializers.ModelSerializer):
+    """``ModelSerializer`` dont toutes les relations sont scopées société.
+
+    Base OPTIONNELLE (CRX12) : un sérialiseur existant peut soit en hériter,
+    soit poser le mixin, soit n'utiliser que
+    :class:`CompanyScopedPrimaryKeyRelatedField` champ par champ. Les trois
+    voies donnent la même garantie ; le choix dépend du volume de relations.
+    """
 
 
 class ScheduledJobSerializer(serializers.Serializer):

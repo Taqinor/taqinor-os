@@ -80,9 +80,17 @@ class FactureElectroniqueViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='regenerer')
     def regenerer_action(self, request, pk=None):
         """NTMAR9 — recalcule le XML et crée une NOUVELLE version (jamais
-        d'écrasement) ; le contenu original reste téléchargeable."""
+        d'écrasement) ; le contenu original reste téléchargeable.
+
+        AUD154 — renvoie 204 (no-op) si ``EINVOICE_ENABLED`` est désactivé :
+        ``regenerer`` renvoie alors ``None``, et sérialiser ``None`` produisait
+        un 201 portant un objet vide (un succès annoncé pour une régénération
+        qui n'a jamais eu lieu). Même contrat que ``generer_action``.
+        """
         fe = self.get_object()
         nouvelle = regenerer(fe, user=request.user)
+        if nouvelle is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(
             FactureElectroniqueSerializer(nouvelle).data,
             status=status.HTTP_201_CREATED)
@@ -112,9 +120,15 @@ class FactureElectroniqueViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='transmettre')
     def transmettre_action(self, request, pk=None):
         """NTMAR7 — enregistre l'intention de transmission (no-op sans clé/URL
-        DGI configurée)."""
+        DGI configurée).
+
+        AUD154 — 204 (no-op) si ``EINVOICE_ENABLED`` est désactivé : le service
+        renvoie ``None`` et n'écrit rien, exactement comme ``generer_action``.
+        """
         fe = self.get_object()
         transmission = transmettre(fe)
+        if transmission is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(
             TransmissionDGISerializer(transmission).data,
             status=status.HTTP_201_CREATED)

@@ -7,6 +7,7 @@ class BtpChantierConfig(AppConfig):
     verbose_name = 'BTP / Chantier'
     module_manifest = {
         'key': 'btp_chantier',
+        'sku': 'solar_core',
         'label': 'BTP Chantier',
         'icone': 'hard-hat',
         'depends': [],

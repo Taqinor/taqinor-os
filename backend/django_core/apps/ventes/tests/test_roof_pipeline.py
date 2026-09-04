@@ -421,9 +421,12 @@ class TestProposalMonthlyArrays(TestCase):
         # Tous les mois identiques (été non différent). M10 (audit du
         # 19/08/2026) — la conversion MAD→kWh n'est servie QUE sur un barème
         # RÉEL : le lead porte donc son distributeur, et 875 MAD se lisent au
-        # barème national par tranches (539 kWh), plus par une division par un
-        # forfait de 1,20 MAD/kWh présentée comme une mesure.
-        self.assertTrue(all(v == 539 for v in conso))
+        # barème national par tranches, plus par une division par un forfait de
+        # 1,20 MAD/kWh présentée comme une mesure. QJR405 (DR7) — 875 MAD est
+        # la facture TOTALE du client (lignes fixes + TPPAN comprises) : elle
+        # s'inverse au barème COMPLET (510 kWh), plus au modèle énergie-seule
+        # qui attribuait ces ~40 MAD fixes à de la consommation (539 kWh).
+        self.assertTrue(all(v == 510 for v in conso))
 
     def test_monthly_consumption_summer_split(self):
         from apps.crm.models import Lead
@@ -437,15 +440,16 @@ class TestProposalMonthlyArrays(TestCase):
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
         # M10 — barème RÉEL exigé (le lead porte son distributeur), donc
-        # conversion par tranches : 1200 MAD → 739 kWh, 600 MAD → 434 kWh.
-        # (QJR26/D5 : T5 = 1,381704 prouvé facture — 600 MAD tombe dans cette
-        # tranche sélective : 600 / 1,381704 = 434,2 → 434 ; l'ancienne
-        # extrapolation 1,405116 donnait 427. 1200 MAD traverse d'autres
-        # tranches, inchangées, d'où 739 stable.)
+        # conversion par tranches. QJR405 (DR7) — les deux montants sont des
+        # factures TOTALES (lignes fixes + TPPAN comprises) et s'inversent au
+        # barème COMPLET (``bareme.kwh_depuis_facture_mad``) :
+        # 1200 MAD → 653 kWh, 600 MAD → 364 kWh. L'ancien modèle énergie-seule
+        # attribuait les ~40 MAD de lignes fixes et la TPPAN à de la
+        # consommation et lisait 739 / 434 kWh.
         # Ce que ce test protège est la MÉCANIQUE de répartition, pas le
         # tarif : un mois d'été (index 5 = Juin) reste sous un mois d'hiver.
-        self.assertEqual(conso[0], 739)
-        self.assertEqual(conso[5], 434)
+        self.assertEqual(conso[0], 653)
+        self.assertEqual(conso[5], 364)
         self.assertLess(conso[5], conso[0])
 
     def test_consumption_resolves_via_client_when_no_direct_lead(self):
@@ -460,8 +464,14 @@ class TestProposalMonthlyArrays(TestCase):
         self.assertEqual(len(conso), 12)
         # M10 — ce que ce test protège est la RÉSOLUTION du lead via le
         # client, pas le tarif : le lead porte son distributeur, donc 1000 MAD
-        # se lisent au barème national par tranches (616 kWh).
-        self.assertEqual(conso[0], 616)
+        # se lisent au barème national par tranches. QJR405 (DR7) — 1000 MAD
+        # est la facture TOTALE du client (lignes fixes + TPPAN comprises) et
+        # s'inverse au barème COMPLET (``bareme.kwh_depuis_facture_mad``) :
+        # 535 kWh. L'ancien modèle énergie-seule attribuait les ~40 MAD de
+        # lignes fixes et la TPPAN à de la consommation et lisait 616 kWh.
+        # C'est la MÊME correction que les deux tests ci-dessus (875 → 510,
+        # 1200 → 653, 600 → 364) ; cette troisième assertion avait été omise.
+        self.assertEqual(conso[0], 535)
 
 
 class _Q7ProposalAcceptBase(TestCase):

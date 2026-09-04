@@ -26,6 +26,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from core.throttling import IdentIpPartageeMixin
+
 from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
@@ -55,8 +57,14 @@ LINK_EXPIRED_MESSAGE = (
 )
 
 
-class PublicLinkRateThrottle(SimpleRateThrottle):
+class PublicLinkRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
     """Limite le débit des liens publics par IP + jeton (cache-based).
+
+    QJR416 — l'identifiant du seau vient de la primitive partagée
+    (``core.throttling.IdentIpPartageeMixin``) : le ``get_ident`` de DRF lit le
+    PREMIER saut de ``X-Forwarded-For`` quand ``NUM_PROXIES`` est absent, ce qui
+    rendait le seau ADRESSABLE par l'appelant — donc la limite contournable en
+    changeant un en-tête.
 
     Pas de dépendance externe : on s'appuie sur le throttle DRF intégré et le
     cache du projet. Le taux est fixé ici (pas de réglage settings nécessaire)
@@ -98,6 +106,56 @@ def _not_found():
         {'detail': LINK_EXPIRED_MESSAGE},
         status=status.HTTP_404_NOT_FOUND,
     ))
+
+
+def _texte_du_corps(request, *cles, defaut=''):
+    """QJR413 (b) — UN champ de corps JSON public lu comme du TEXTE.
+
+    Renvoie ``(texte, None)`` en succès, ``(None, <Response 400>)`` en refus —
+    l'appelant fait ``if refus is not None: return refus``.
+
+    LE DÉFAUT QUE CECI FERME. Ces endpoints sont ``AllowAny`` et lisaient leur
+    corps en écrivant ``(request.data.get('x') or '').strip()`` : un corps JSON
+    dont le champ vaut un NOMBRE, un OBJET, une LISTE ou un ``null`` EXPLICITE
+    faisait lever un ``AttributeError``/``TypeError`` non intercepté, donc un
+    **HTTP 500 non authentifié** — la même racine que le ``compare_digest`` en
+    chaînes du (a) : « une entrée hostile fait planter un endpoint public au
+    lieu de se faire refuser ».
+
+    RÈGLES, et il n'y en a que trois :
+
+    * la **première** des ``cles`` PRÉSENTE dans le corps décide (les suivantes
+      ne sont consultées que si la précédente est absente ou vide) ;
+    * une valeur qui n'est **pas une chaîne** — nombre, booléen, objet, liste,
+      ``null`` explicite — est REFUSÉE par un **400 propre** qui nomme le champ
+      et ne renvoie **jamais** la valeur reçue ;
+    * une clé **absente** vaut le ``defaut`` : le comportement d'aujourd'hui,
+      byte-identique, pour tout client qui omet un champ facultatif (le
+      client réel omet ces champs, il ne les envoie jamais à ``null`` — voir
+      ``apps/web/src/lib/proposition.ts buildAcceptBodyRich``).
+
+    Un corps JSON qui n'est même pas un objet (tableau, scalaire) est refusé de
+    la même façon : ``request.data.get`` y levait aussi.
+    """
+    if not hasattr(request.data, 'get'):
+        return None, _noindex(Response(
+            {'detail': 'Le corps de la requête doit être un objet JSON.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    for cle in cles:
+        if cle not in request.data:
+            continue
+        valeur = request.data.get(cle)
+        if not isinstance(valeur, str):
+            return None, _noindex(Response(
+                {'detail': 'Le champ « %s » doit être du texte.' % cle},
+                status=status.HTTP_400_BAD_REQUEST))
+        # La bascule de clé se fait sur la valeur BRUTE, exactement comme le
+        # ``a or b or ''`` d'avant : une chaîne d'espaces reste une valeur
+        # fournie (elle rend '' après strip et NE bascule PAS sur la clé
+        # suivante) — comportement d'aujourd'hui, byte-identique.
+        if valeur:
+            return valeur.strip(), None
+    return defaut, None
 
 
 _CONFIDENTIAL_KEY_MARKERS = ('prix_achat', 'achat', 'marge', 'revendeur')
@@ -505,6 +563,22 @@ def public_document(request, token):
     if link.devis_id and not _section_servie(link, 'pdf'):
         return _not_found()
 
+    # ── QJR417 (DR2, lectures) — LA FENÊTRE OUVERTE À CÔTÉ DE LA PORTE FERMÉE.
+    # ``proposal_data``, ``proposal_pdf`` (deux sites) et ``proposal_accept``
+    # consultaient déjà ``otp_lecture_verified`` ; CE flux servait le PDF
+    # CLIENT COMPLET avec le MÊME jeton ShareLink sans jamais la consulter —
+    # le code d'accès posé sur le lien (L-NIV/QJR132) ne protégeait donc que
+    # la page, pas le document. DR2 tranche : la garde couvre LES 4 LECTURES.
+    # C'est la garde EXISTANTE, appelée telle quelle (aucun second helper,
+    # règle permanente 2), posée AVANT tout effet de bord (stamp de vue) :
+    # une tentative non vérifiée ne compte pas comme une consultation.
+    # L-INTPREV — le jeton interne dispense de l'OTP (c'est le commercial),
+    # exactement comme sur les trois autres lectures.
+    from .services import otp_lecture_verified
+    if not via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
     # de stamp/notification via le jeton interne (via_interne=True → toujours
     # False, voir _stamp_view_si_public).
@@ -622,8 +696,18 @@ def public_bcf_document(request, token):
 # qu'un seul devis d'une seule société). Aucun login : le jeton AUTHENTIFIE.
 
 def _client_ip(request):
-    fwd = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    return (fwd.split(',')[0].strip() or request.META.get('REMOTE_ADDR') or '')
+    """QJR416 — l'IP de PREUVE, lue par LA primitive partagée.
+
+    Cette valeur part dans le registre IMMUABLE de signature électronique
+    (loi 53-05) : c'est un champ de preuve. Elle lisait le PREMIER saut de
+    ``X-Forwarded-For`` — donc une valeur **choisie par l'attaquant**, qui
+    pouvait écrire l'adresse opposée plus tard à un signataire. Elle délègue
+    désormais à :func:`core.throttling.ip_de_requete`, qui lit le DERNIER saut
+    de confiance. Aucune seconde lecture d'IP dans le dépôt.
+    """
+    from core.throttling import ip_de_requete
+
+    return ip_de_requete(request)
 
 
 def _parse_client_ts(value):
@@ -763,7 +847,9 @@ def _monthly_consumption(devis) -> list:
     (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
     distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
     figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même
-    proposition. Facture d'hiver toute l'année, ou hiver+été quand
+    proposition. QJR405 — l'inversion se fait en mode ``facture_totale``
+    (le lead saisit le TOTAL de sa facture : lignes fixes et TPPAN
+    comprises). Facture d'hiver toute l'année, ou hiver+été quand
     ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → [] (la page masque
     alors le graphe)."""
     depuis_etude = _monthly_consumption_etude(devis)
@@ -789,14 +875,27 @@ def _monthly_consumption(devis) -> list:
     # division de la facture par un forfait, présentée comme une mesure. Le
     # drapeau décide maintenant : estimation ⇒ série vide ⇒ la page masque le
     # graphe (elle le fait déjà pour un devis sans facture).
-    _sonde = kwh_from_bill(hiver_mad, utility=utility)
+    #
+    # ── QJR405 (DR7, moitié ERP) — ON INVERSE UNE FACTURE **TOTALE**. Les
+    # champs ``facture_hiver`` / ``facture_ete`` du lead viennent de l'écran
+    # « Votre facture d'électricité mensuelle (MAD) » : c'est le TOTAL que le
+    # client lit sur son papier — lignes fixes (location compteur + entretien)
+    # et TPPAN comprises. Les inverser avec le modèle ÉNERGIE SEULE attribuait
+    # ces ~40 MAD fixes + la TPPAN à de la consommation et SURESTIMAIT la
+    # courbe « votre consommation » publiée (facture de référence : 592,77 MAD
+    # ⇒ 429 kWh/mois au lieu de 359, soit +19,5 %). ``facture_totale=True``
+    # route l'inversion sur ``bareme.kwh_depuis_facture_mad``, l'inverse EXACT
+    # de ``bareme.facture_mad`` (chaîne principale) : lignes fixes retranchées
+    # d'abord, TPPAN résolue par la dichotomie sur la facture COMPLÈTE.
+    _sonde = kwh_from_bill(hiver_mad, utility=utility, facture_totale=True)
     if _sonde.get('estimation'):
         return []
 
     def _kwh(mad):
         if mad not in _cache:
             _cache[mad] = round(
-                kwh_from_bill(mad, utility=utility).get('kwh_mensuel') or 0)
+                kwh_from_bill(mad, utility=utility, facture_totale=True)
+                .get('kwh_mensuel') or 0)
         return _cache[mad]
 
     out = []
@@ -1975,9 +2074,41 @@ def _estimation_conso_publique(devis):
         return None
 
 
+def _jour_reference_publique(devis):
+    """QJR406 — LA date de référence du devis, pour les surfaces PUBLIQUES.
+
+    Les blocs ``jours_types`` et ``couverture_batterie`` rejouent les douze
+    jours types (``etude_horaire.jours_types_annee``), dont la forme dépend de
+    la fenêtre RAMADAN, donc d'une DATE. QJR164 a câblé le paramètre
+    ``jour_reference`` dans les deux fonctions publiques, mais AUCUN des deux
+    appelants de production ne le passait : les deux surfaces retombaient sur
+    l'horloge du serveur (``timezone.localdate()``, au fond de
+    ``jours_types_annee``) pendant que le devis persisté, lui, porte SON jour
+    de référence — le client qui rouvrait son lien voyait une journée type qui
+    n'était pas celle de son devis (écart visible autour du Ramadan).
+
+    Source UNIQUE : ``domain.entrees.jour_reference_du_devis`` (QJR232) —
+    surcharge D12 ``etude.jour_reference``, sinon la date du devis, sinon
+    « aujourd'hui ». Aucune seconde règle de résolution.
+
+    ``None`` best-effort : une résolution impossible rend l'ancien
+    comportement (repli d'horloge posé au fond de ``jours_types_annee``,
+    inchangé) plutôt que de faire tomber un bloc d'affichage additif.
+    """
+    try:
+        from .domain.entrees import jour_reference_du_devis
+        return jour_reference_du_devis(devis)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('jour_reference indisponible', exc_info=True)
+        return None
+
+
 def _jours_types_publique(devis):
     """L-BACK T4 — bloc ``jours_types`` (contrat public, voir
-    ``etude_horaire.jours_types_publics``). ``None`` best-effort."""
+    ``etude_horaire.jours_types_publics``). ``None`` best-effort.
+
+    QJR406 — la date de référence du DEVIS est transmise (voir
+    :func:`_jour_reference_publique`), jamais l'horloge du rendu."""
     try:
         from .etude_horaire import jours_types_publics
         kwc, conso, ville, lat, lon, occupation, equipements = (
@@ -1986,7 +2117,8 @@ def _jours_types_publique(devis):
             return None
         return jours_types_publics(
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
-            lon=lon, occupation=occupation, equipements=equipements)
+            lon=lon, occupation=occupation, equipements=equipements,
+            jour_reference=_jour_reference_publique(devis))
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
         logger.warning('jours_types indisponible', exc_info=True)
         return None
@@ -2402,7 +2534,10 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
             nb_packs_plancher=banque['nb_packs'],
             ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
-            puissances_par_pack=banque)
+            puissances_par_pack=banque,
+            # QJR406 — les mêmes douze jours types que l'étude persistée :
+            # la date vient du DEVIS, jamais de l'horloge du rendu.
+            jour_reference=_jour_reference_publique(devis))
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
@@ -3503,7 +3638,10 @@ def proposal_verify_otp_lecture(request, token):
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from .services import validate_otp_lecture
-    otp_code = (request.data.get('otp_code') or '').strip()
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    otp_code, refus = _texte_du_corps(request, 'otp_code')
+    if refus is not None:
+        return refus
     err = validate_otp_lecture(link, otp_code)
     if err:
         return _noindex(Response(
@@ -3766,12 +3904,17 @@ def proposal_accept(request, token):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
-    nom = (request.data.get('nom') or request.data.get('name') or '').strip()
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    nom, refus = _texte_du_corps(request, 'nom', 'name')
+    if refus is not None:
+        return refus
     if not nom:
         return _noindex(Response(
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
-    option = (request.data.get('option') or '').strip()
+    option, refus = _texte_du_corps(request, 'option')
+    if refus is not None:
+        return refus
     # QX9 — consentement explicite requis (loi 43-20). Le front envoie
     # ``consent_esign`` (booléen) ; on accepte aussi l'ancien ``consentement``
     # en repli. Le consentement ne défaute PLUS silencieusement à True : une
@@ -3790,9 +3933,15 @@ def proposal_accept(request, token):
     signature_image = (request.data.get('signature_data_url') or '')
     signed_at_client = _parse_client_ts(
         request.data.get('signed_at_client'))
-    on_behalf_of = (request.data.get('on_behalf_of') or '').strip()[:150]
+    # QJR413 (b) — gardes de type sur le corps public (voir _texte_du_corps).
+    on_behalf_of, refus = _texte_du_corps(request, 'on_behalf_of')
+    if refus is not None:
+        return refus
+    on_behalf_of = on_behalf_of[:150]
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
-    otp_code = (request.data.get('otp_code') or '').strip()
+    otp_code, refus = _texte_du_corps(request, 'otp_code')
+    if refus is not None:
+        return refus
     from .services import accept_devis, AcceptError, validate_esign_otp
     # QJ11 — validation OTP avant l'acceptation (no-op quand toggle OFF).
     otp_err = validate_esign_otp(link=link, otp_code=otp_code)
@@ -3860,6 +4009,22 @@ def proposal_activate_option(request, token):
     # décision du client, jamais un geste d'aperçu.
     if link.via_interne:
         return _refus_apercu_interne()
+    # ── QJR418 (DR2, actions) — SIGNER EST AU MOINS AUSSI GARDÉ QUE LIRE, ET
+    # ACTIVER UNE OPTION PAYANTE AUSSI. Ce endpoint ne consultait JAMAIS
+    # ``otp_lecture_verified`` : quiconque détenait le jeton pouvait CHANGER LE
+    # PÉRIMÈTRE FACTURÉ d'un devis sans franchir la garde que la lecture, elle,
+    # exige (QJR132/QJR417). Le raisonnement de QJR132 ne leur avait jamais été
+    # appliqué. DR2 tranche : la garde couvre les actions clientes,
+    # ``activate_option`` étant le minimum absolu.
+    # C'est LA garde de QJR417, jamais une seconde formulation, posée AVANT
+    # toute mutation (et même avant la lecture du corps). NO-OP sur un lien
+    # sans OTP de lecture : la garde répond True — aucun lien d'aujourd'hui ne
+    # change. Même contrat de refus que les lectures (403 ``otp_required``)
+    # pour que l'écran client sache redemander le code.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     try:
         ligne_id = int(request.data.get('ligne_id'))
     except (TypeError, ValueError):
@@ -3954,9 +4119,20 @@ def suivi_public(request, token):
     celui du lien déjà résolu (le MÊME document), sans lui apprendre un second
     espace de jetons."""
     from .selectors import devis_milestones
-    link, _via_interne = _resolve_share_link_by_token(token)
+    link, via_interne = _resolve_share_link_by_token(token)
     if link is None or not link.devis_id:
         return _not_found()
+
+    # ── QJR417 (DR2, lectures) — L'ORPHELIN. Cette lecture publique servait le
+    # suivi post-signature du client (jalons, dates, avancement) avec le MÊME
+    # jeton ShareLink sans jamais consulter la garde OTP que les trois autres
+    # lectures exigent. DR2 tranche : la garde couvre LES 4 LECTURES. Même
+    # fonction partagée, même ordre (garde d'abord) — aucun second helper.
+    from .services import otp_lecture_verified
+    if not via_interne and not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     data = devis_milestones(link.token)
     if data is None:
         return _not_found()
@@ -4143,7 +4319,11 @@ def ecatalogue_demander_devis(request, token):
         return _not_found()
 
     # Honeypot — un bot qui remplit ce champ caché voit un succès factice.
-    if (request.data.get('site_web') or '').strip():
+    # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
+    site_web, refus = _texte_du_corps(request, 'site_web')
+    if refus is not None:
+        return refus
+    if site_web:
         return _noindex(Response(
             {'detail': 'Votre demande a bien été transmise. Merci.'},
             status=status.HTTP_201_CREATED))

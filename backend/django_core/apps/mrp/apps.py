@@ -19,6 +19,7 @@ class MrpConfig(AppConfig):
     verbose_name = 'Production (MRP)'
     module_manifest = {
         'key': 'mrp',
+        'sku': 'vertical_manufacturing',
         'label': 'Production (MRP)',
         'icone': 'wrench',
         'depends': [],

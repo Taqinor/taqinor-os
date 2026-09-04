@@ -113,44 +113,23 @@ def suffixe_jeton(token) -> str:
 def ip_de_requete(request) -> str:
     """IP du VISITEUR, lue CÔTÉ SERVEUR — jamais acceptée d'un corps de requête.
 
-    POURQUOI L'ORDRE COMPTE (revue critique 25/08/2026, finding #8). Une
-    proposition est ouverte par le rendu SSR du Worker : la connexion qui
-    atteint l'ERP part alors du WORKER, pas du client. Sans en-tête transmis,
-    ``REMOTE_ADDR`` vaut la MÊME sortie pour TOUS les visiteurs — et la branche
-    IP de :func:`detecter_concurrent` rapprocherait deux clients sans le
-    moindre rapport dès la deuxième proposition ouverte.
+    QJR416 — CETTE FONCTION N'EST PLUS QU'UNE DÉLÉGATION. Le dépôt n'a plus
+    qu'UNE lecture d'adresse IP : :func:`core.throttling.ip_de_requete`, la
+    primitive de FONDATION partagée par la preuve légale de signature, les
+    throttles publics et le journal de consultation. Sa version d'ici prenait
+    le PREMIER saut non vide de ``X-Forwarded-For`` — une valeur **choisie par
+    l'appelant** — et honorait ``CF-Connecting-IP`` sans condition ; la
+    primitive lit le DERNIER saut de confiance (``NUM_PROXIES``), le seul que
+    l'appelant ne peut pas forger. Le corps local est SUPPRIMÉ, pas doublé
+    (règle permanente 2).
 
-    Ordre de résolution, du plus SPÉCIFIQUE au plus générique :
-
-    1. ``CF-Connecting-IP`` — UNE adresse, celle du visiteur, posée
-       explicitement par Cloudflare/le Worker. C'est déjà l'ordre que suit le
-       site lui-même (``apps/web/src/lib/rateLimit.ts``) ;
-    2. ``X-Forwarded-For`` — chaîne de sauts ; on lit le PREMIER saut NON VIDE
-       (un proxy peut poser une entrée vide en tête, auquel cas la première
-       adresse réelle est la suivante — la lecture naïve retombait alors sur
-       ``REMOTE_ADDR``, donc sur le proxy) ;
-    3. ``REMOTE_ADDR`` — le pair TCP direct, dernier recours.
-
-    Ces en-têtes sont déclaratifs : le point qui les lit est déjà authentifié
-    (secret du webhook) ou porte un jeton public, et l'IP ne sert JAMAIS à
-    affirmer une identité — seulement à étayer un soupçon, avec la garde de
+    Ces en-têtes restent déclaratifs : l'IP ne sert JAMAIS à affirmer une
+    identité — seulement à étayer un soupçon, avec la garde de
     :func:`detecter_concurrent` par-dessus.
     """
-    if request is None:
-        return ''
-    try:
-        meta = request.META
-        cloudflare = _texte(meta.get('HTTP_CF_CONNECTING_IP'), MAX_IP)
-        if cloudflare:
-            return cloudflare
-        transmise = (meta.get('HTTP_X_FORWARDED_FOR', '') or '')
-        for saut in transmise.split(','):
-            saut = _texte(saut, MAX_IP)
-            if saut:
-                return saut
-        return _texte(meta.get('REMOTE_ADDR'), MAX_IP)
-    except Exception:  # noqa: BLE001 — défensif
-        return ''
+    from core.throttling import ip_de_requete as _ip_partagee
+
+    return _texte(_ip_partagee(request), MAX_IP)
 
 
 def user_agent_de_requete(request) -> str:

@@ -20,6 +20,16 @@ apps/crm/management/commands/import_odoo_leads.py
 apps/crm/migrations/0003_lead.py
 apps/crm/migrations/0006_lead_bill_range_bucket_lead_consent_timestamp_and_more.py
 apps/crm/migrations/0036_xmkt32_lead_source_meta_lead_ads.py
+# CRX35 (02/09/2026) — QUATRIÈME migration de la MÊME famille que les trois
+# ci-dessus, et pour la MÊME raison mécanique : un `AlterField` sur
+# `Lead.source` fait sérialiser par Django la liste COMPLÈTE des choix, dont
+# le libellé PRÉEXISTANT « Créé dans TAQINOR » de `Source.OS_NATIVE` — que
+# cette migration ne touche pas (elle ne corrige que le libellé de
+# ODOO_IMPORT_TEST, valeur DB inchangée). Aucune marque NOUVELLE n'est
+# introduite ici, et un fichier de migration n'est pas une surface client
+# white-label. L'entrée deviendra inerte le jour où OS_NATIVE tirera son
+# libellé de CompanyProfile/TenantTheme.
+apps/crm/migrations/0088_crx35_retrait_playbook_bloquant.py
 apps/crm/models.py
 apps/crm/public_chat_views.py
 apps/crm/webhooks.py

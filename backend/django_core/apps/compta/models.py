@@ -19,6 +19,7 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Aucun comportement existant n'est modifié — ce
 module est entièrement additif.
 """
+import datetime
 from decimal import Decimal
 
 from django.conf import settings
@@ -413,6 +414,16 @@ class LigneEcriture(models.Model):
         verbose_name = "Ligne d'écriture"
         verbose_name_plural = "Lignes d'écriture"
         ordering = ['id']
+        # AUD188 — backstop DB des règles de ``clean()`` : `bulk_create`,
+        # `QuerySet.update` et le SQL brut contournent tout garde Python.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(debit__gte=0) & models.Q(credit__gte=0),
+                name='ck_ligneecriture_montants_positifs'),
+            models.CheckConstraint(
+                condition=~(models.Q(debit__gt=0) & models.Q(credit__gt=0)),
+                name='ck_ligneecriture_pas_debit_et_credit'),
+        ]
 
     def __str__(self):
         return f'{self.compte.numero} D:{self.debit} C:{self.credit}'
@@ -851,12 +862,28 @@ class PeriodeComptable(models.Model):
 
         Point d'appui de l'immutabilité (FG115) : une seule requête, scopée
         société, qui répond « cette date est-elle figée ? ». ``une_date`` peut
-        être une ``date`` ou un ``datetime`` (on prend sa partie date).
+        être une ``date``, un ``datetime`` (on prend sa partie date) ou une
+        CHAÎNE ISO.
+
+        AUD168 — une chaîne était auparavant traitée comme « non verrouillée »
+        (``return False`` avant toute requête) : un fail-OPEN. Django ne
+        convertit la valeur brute du corps JSON qu'au ``get_prep_value`` SQL,
+        si bien qu'un POST portant ``"date_ecriture": "2026-03-31"`` traversait
+        les DEUX gardes (``creer_ecriture_od`` puis ``save()``) et créait une
+        écriture dans un mois clôturé. Une chaîne est désormais PARSÉE ; une
+        chaîne illisible est traitée comme VERROUILLÉE (fail-closed), jamais
+        comme une autorisation.
         """
         if une_date is None or company_id is None:
             return False
         if isinstance(une_date, str):
-            return False
+            texte = une_date.strip()
+            if not texte:
+                return False
+            try:
+                une_date = datetime.date.fromisoformat(texte[:10])
+            except ValueError:
+                return True
         # ``datetime`` est une sous-classe de ``date`` : on prend sa partie date.
         d = une_date.date() if hasattr(une_date, 'hour') else une_date
         return cls.objects.filter(
@@ -1414,6 +1441,15 @@ class PointageReleve(models.Model):
     Matérialise un POINTAGE : on coche qu'une ligne de relevé correspond à une
     ligne d'écriture du grand livre. Unicité ``(ligne_releve, ligne_gl)`` : on
     ne pointe pas deux fois le même couple.
+
+    AUD174 — unicité AUSSI sur ``ligne_gl`` seule : un mouvement bancaire est
+    UNIQUE au grand livre, il ne peut donc être déclaré concordant que par UNE
+    ligne de relevé. Sans elle, la même ligne GL se pointait dans deux
+    rapprochements ouverts sur le même compte, masquant l'anomalie réelle
+    (relevé dupliqué, ligne bancaire manquante) exactement là où le contrôle
+    devait la révéler. Les pointages étant remplacés par SUPPRESSION puis
+    recréation (``pointer_ligne_releve``), un pointage en base est toujours
+    ACTIF : l'unicité simple suffit, aucune condition n'est nécessaire.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -1444,6 +1480,11 @@ class PointageReleve(models.Model):
             models.UniqueConstraint(
                 fields=['ligne_releve', 'ligne_gl'],
                 name='uniq_pointage_releve_gl',
+            ),
+            # AUD174 — un seul pointage actif par ligne du grand livre.
+            models.UniqueConstraint(
+                fields=['ligne_gl'],
+                name='uniq_pointage_par_ligne_gl',
             ),
         ]
 
@@ -4988,7 +5029,9 @@ class PisteAuditComptable(models.Model):
     # L'écriture couverte par ce maillon (une seule par écriture — idempotent).
     ecriture = models.OneToOneField(
         EcritureComptable,
-        on_delete=models.CASCADE,
+        # AUD170 — PROTECT, pas CASCADE : une chaîne décrite « INALTÉRABLE » et
+        # « append-only » ne peut pas s'effacer avec l'écriture qu'elle scelle.
+        on_delete=models.PROTECT,
         related_name='piste_audit',
         verbose_name='Écriture',
     )

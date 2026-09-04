@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 class EventType(models.TextChoices):
     """Événements métier déclencheurs de notification (clé EN, libellé FR)."""
     LEAD_ASSIGNED = 'lead_assigned', 'Nouveau lead assigné'
+    # CRX27 — DEUX ÉVÉNEMENTS DÉDIÉS, qui empruntaient jusqu'ici la clé
+    # ``lead_assigned``. Le défaut du partage : couper « Nouveau lead assigné »
+    # dans ses préférences coupait AUSSI, sans le savoir, la détection des
+    # comptes dormants et l'escalade des leads non contactés — deux alertes
+    # d'un tout autre propos. Chacune a désormais sa clé, son libellé FR et sa
+    # préférence propre (défauts génériques : in-app ON, push ON).
+    COMPTE_A_REACTIVER = 'compte_a_reactiver', 'Compte à réactiver'
+    LEAD_NON_CONTACTE = 'lead_non_contacte', 'Lead non contacté (SLA)'
     # QJ2 — speed-to-lead : nouveau lead entrant (webhook site web).
     LEAD_NEW = 'lead_new', 'Nouveau lead site web'
     DEVIS_ACCEPTED = 'devis_accepted', 'Devis accepté'

@@ -27,7 +27,14 @@ const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKp
 // (lazy + ErrorBoundary + gate `profile === 'directeur'`), appel direct
 // `mrp/tableau-bord/` (PAS la fédération kpi_providers — NTMFG40 s'en
 // chargera séparément).
-const ProductionKpiCard = lazy(() => import('../features/mrp/ProductionKpiCard'))
+// SOL6 — SEULE surface d'un vertical parqué importée hors de son module.
+// `__EDITION_A_MRP__` est un LITTÉRAL injecté à la compilation (`define` de
+// vite.config.js) : en édition solaire le ternaire vaut `null` et Rollup
+// supprime l'import dynamique — `features/mrp` sort entièrement du dist.
+const ProductionKpiCard = __EDITION_A_MRP__
+  // eslint-disable-next-line no-restricted-syntax -- SOL6 : import d'un vertical parqué autorisé ICI, et ICI SEULEMENT, parce qu'il est sous condition LITTÉRALE build-time (`__EDITION_A_MRP__` vaut `false` en édition solaire, Rollup supprime alors l'import et le chunk).
+  ? lazy(() => import('../features/mrp/ProductionKpiCard'))
+  : null
 import { useDispatch, useSelector } from 'react-redux'
 import { Navigate, useNavigate } from 'react-router-dom'
 // NTMOB6 — sélecteur de démarrage par rôle : Dashboard est le SEUL point
@@ -35,6 +42,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
 import { useIsMobile } from '../ui/ResponsiveDialog'
+// SOL5 — gating par module actif des surfaces incrustées venues d'une AUTRE app.
+import { useModuleActif } from '../hooks/useModuleActif'
 import { defaultMobileHomeRoute } from '../features/offlinesync/mobile/mobileHome'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
@@ -485,6 +494,11 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const profile = cockpitProfile({ roleNom, roleTier })
+  // SOL5 — le Dashboard est l'atterrissage GÉNÉRIQUE : une carte appartenant à
+  // un autre module ne doit s'afficher que si ce module est actif pour la
+  // société (sinon elle appelle une route coupée en 404, ou inexistante quand
+  // le module est parqué par l'édition).
+  const mrpActif = useModuleActif('mrp')
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
   // que rien n'est décidé, '' = opt-out explicite via Mes préférences, sinon
@@ -1110,8 +1124,11 @@ export function Component() {
           )}
 
           {/* NTMFG22 — carte Production (Atelier MRP), drill-down
-              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide). */}
-          {profile === 'directeur' && (
+              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide).
+              SOL5 — masquée quand le module mrp est désactivé pour la société.
+              SOL6 — `ProductionKpiCard` vaut `null` (littéral build-time) dans
+              l'édition solaire : la carte n'existe alors même plus. */}
+          {profile === 'directeur' && mrpActif && ProductionKpiCard && (
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <ProductionKpiCard />

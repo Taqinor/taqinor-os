@@ -101,7 +101,19 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         if vente.statut != VenteComptoir.Statut.BROUILLON:
             raise ValidationError('Vente déjà validée.')
         produit_id = request.data.get('produit')
-        quantite = request.data.get('quantite', 1)
+        # AUD205 — la quantité est validée AVANT toute création : une quantité
+        # nulle/négative encaissait un montant négatif ET produisait à la
+        # validation une « sortie » de stock au signe inversé (entrée déguisée
+        # en vente). Le sens du mouvement est porté par `type_mouvement`.
+        quantite_brute = request.data.get('quantite', 1)
+        try:
+            quantite = Decimal(str(
+                1 if quantite_brute is None else quantite_brute))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({'quantite': 'Quantité invalide.'})
+        if quantite <= 0:
+            raise ValidationError(
+                {'quantite': 'La quantité doit être strictement positive.'})
         prix = request.data.get('prix_unitaire_ttc')
         from apps.stock.selectors import get_produit_scoped
         produit = get_produit_scoped(vente.company, produit_id)
@@ -162,9 +174,16 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
     def valider(self, request, pk=None):
         vente = self.get_object()
         paiements = request.data.get('paiements') or []
+        # AUD204 — le coupon saisi à l'écran est transmis à la validation :
+        # c'est là que sa remise est réellement soustraite du total exigé et
+        # que le coupon est consommé, une seule fois, dans la même
+        # transaction que la facture.
+        coupon_code = request.data.get('coupon') or request.data.get(
+            'coupon_code')
         try:
             services.valider_vente(
-                vente=vente, paiements=paiements, user=request.user)
+                vente=vente, paiements=paiements, user=request.user,
+                coupon_code=coupon_code)
         except services.VenteComptoirError as exc:
             raise ValidationError(str(exc))
         return Response(VenteComptoirSerializer(vente).data)
@@ -187,13 +206,17 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='coupon')
     def coupon(self, request, pk=None):
-        """NTRET13 — Applique (consomme) un coupon à code unique saisi à
-        l'écran caisse."""
+        """NTRET13 / AUD204 — Valide un coupon à code unique saisi à l'écran
+        caisse et renvoie la remise qu'il ouvre sur ce panier, SANS le
+        consommer. Le coupon n'est brûlé qu'à ``valider/`` (passer le code en
+        ``coupon``), au moment où la remise est réellement soustraite du total
+        payé — avant, cette action consommait le coupon et rien ne l'appliquait
+        : le client payait plein tarif et perdait son coupon."""
         vente = self.get_object()
         code = request.data.get('code')
         try:
-            coupon, montant = services.appliquer_coupon(
-                vente=vente, code=code, user=request.user)
+            coupon, montant = services.previsualiser_coupon(
+                vente=vente, code=code)
         except services.CouponPosError as exc:
             raise ValidationError(str(exc))
         return Response({'code': coupon.code, 'montant_remise': str(montant)})
@@ -324,8 +347,11 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='emettre-carte-cadeau',
             permission_classes=[IsResponsableOrAdmin])
     def emettre_carte_cadeau(self, request):
-        """NTRET15 — Émet une carte cadeau au comptoir (encaissée comme une
-        vente normale, sans ligne de stock)."""
+        """NTRET15 — Émet une carte cadeau au comptoir (encaissée, sans ligne
+        de stock). AUD203 — l'émission ne produit AUCUNE facture de vente :
+        elle constate une dette envers le porteur, soldée à l'usage par la
+        facture des biens réellement vendus. ``facture`` reste donc null dans
+        la réponse."""
         company = request.user.company
         client = None
         client_id = request.data.get('client')
@@ -358,7 +384,7 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         return Response({
             'code': carte.code,
             'solde': str(carte.solde),
-            'facture': facture.reference,
+            'facture': facture.reference if facture is not None else None,
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='payer-carte-cadeau')

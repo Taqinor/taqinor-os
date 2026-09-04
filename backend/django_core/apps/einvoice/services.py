@@ -164,7 +164,21 @@ def transmettre(fe):
     """NTMAR7 — étend G14 : file d'attente de transmission Simpl, INERTE tant
     que ``DGI_TRANSMISSION_ENABLED`` est OFF (défaut) ou que l'URL/clé DGI
     n'est pas configurée. N'émet AUCUNE requête réseau dans ce cas — enregistre
-    seulement l'intention (``statut=en_attente``)."""
+    seulement l'intention (``statut=en_attente``).
+
+    AUD154 — le flag MAÎTRE prime. ``EINVOICE_ENABLED`` OFF → ``None``, aucune
+    écriture : c'est le contrat annoncé par le module (« app entièrement
+    inerte tant que le flag n'est pas posé »), que ``generer`` respectait mais
+    pas cette fonction. Elle ne testait que ``DGI_TRANSMISSION_ENABLED`` — un
+    flag DISTINCT — et faisait de surcroît son ``get_or_create``
+    (écriture DB) AVANT même ce test. Conséquence : une e-facture créée quand
+    le flag maître était actif restait transmissible après sa désactivation,
+    et le fondateur qui coupait la facturation électronique voyait quand même
+    partir une transmission vers la DGI.
+    """
+    if not is_einvoice_enabled(fe.company):
+        return None
+
     transmission, _created = TransmissionDGI.objects.get_or_create(
         company=fe.company, einvoice=fe,
         defaults={'statut': TransmissionDGI.Statut.EN_ATTENTE})

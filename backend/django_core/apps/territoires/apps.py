@@ -7,6 +7,7 @@ class TerritoiresConfig(AppConfig):
     verbose_name = 'Territoires commerciaux'
     module_manifest = {
         'key': 'territoires',
+        'sku': 'generic',
         'label': 'Territoires commerciaux',
         'icone': 'map',
         'depends': ['crm'],

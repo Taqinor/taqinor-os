@@ -117,12 +117,13 @@ def deplacer_vers_casier_retours(company, user, *, produit, quantite,
     on ne pose AUCUN mouvement — comportement historique intact.
     """
     from .models import MouvementStock
+    from .services import record_stock_movement
 
     destination = casier_retours_fournisseur(company)
     if destination is None:
         return None
     qte_avant = produit.quantite_stock
-    mouvement = MouvementStock.objects.create(
+    mouvement = record_stock_movement(
         company=company, produit=produit,
         type_mouvement=MouvementStock.TypeMouvement.TRANSFERT,
         quantite=quantite, quantite_avant=qte_avant,
@@ -130,7 +131,10 @@ def deplacer_vers_casier_retours(company, user, *, produit, quantite,
         reference=reference or '',
         note='NTWMS41 — mise en zone de départs fournisseur.',
         bin_source_id=bin_source, bin_destination=destination,
-        created_by=user)
+        created_by=user,
+        # Transfert interne : le total ne bouge pas, on ne réécrit pas le
+        # produit (comportement historique de ce chemin).
+        save_produit=False)
     logger.info('NTWMS41 deplacement produit=%s vers casier=%s',
                 produit.id, destination.id)
     return mouvement

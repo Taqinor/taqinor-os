@@ -1972,10 +1972,19 @@ def demandes_achat_en_attente(company):
     Sélecteur company-wide LECTURE SEULE utilisé par l'agrégateur
     d'approbations cross-app (``apps/reporting``). « En attente » = statut
     ``SOUMISE`` (seul statut approuvable, cf. ``DemandeAchatViewSet.approuver``).
+
+    AUD312 — les demandes portant un plan d'approbation NTP2P2 encore en
+    cours (au moins une ``EtapeApprobationAchat`` ``en_attente``) sont EXCLUES :
+    elles ne se décident que par « approuver-etape », étape par étape. Les
+    lister ici proposait une décision en un coup que le service refuse
+    désormais — et faisait perdre le nombre d'approbations exigé ainsi que la
+    séparation des tâches.
     """
-    from .models import DemandeAchat
+    from .models import DemandeAchat, EtapeApprobationAchat
     return (DemandeAchat.objects
             .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
+            .exclude(etapes_approbation__statut=(
+                EtapeApprobationAchat.Statut.EN_ATTENTE))
             .select_related('chantier', 'programme')
             .order_by('date_besoin', 'id'))
 
@@ -2017,11 +2026,64 @@ def livraisons_client_portail(company, client_id):
                 for ligne in liv.lignes.all()
             ],
             'pod_disponible': preuve is not None,
+            # AUD301 — ce lien pointait vers l'endpoint INTERNE
+            # `/installations/preuves-livraison/<id>/` (`PreuveLivraisonViewSet`,
+            # `IsAnyRole`), dont `authentication.permissions` exclut
+            # explicitement `portee != 'interne'` : un compte
+            # `portee=portail_client` obtenait 403 à CHAQUE clic sur « Voir la
+            # preuve de livraison », depuis l'introduction de la fonctionnalité
+            # — et même en interne, la réponse était du JSON brut (la photo = un
+            # id d'Attachment), pas un document consultable. Le lien pointe
+            # désormais vers la route PORTAIL, scopée au client connecté.
             'pod_url': (
-                f'/api/django/installations/preuves-livraison/'
-                f'{preuve.id}/' if preuve is not None else None),
+                f'/api/django/portail/mes-livraisons/{liv.id}/preuve/'
+                if preuve is not None else None),
         })
     return out
+
+
+def preuve_livraison_client_portail(company, client_id, livraison_id):
+    """AUD301 — la preuve de livraison (FG330) d'UNE livraison, scopée au
+    client du compte portail connecté. ``None`` si la livraison n'est pas la
+    sienne, n'existe pas, ou n'a pas encore de preuve.
+
+    Renvoie un document CONSULTABLE (et non le JSON brut du serializer
+    interne) : nom du signataire, tracé de signature, horodatage, position
+    GPS, note, et l'ID de la pièce jointe photo — que la vue portail sert
+    elle-même en flux (l'endpoint générique `records/attachments/<id>/download/`
+    est `IsAnyRole`, donc fermé aux comptes portail).
+
+    N'expose JAMAIS ``cout_transport`` ni un prix d'achat — même contrat
+    client-safe que ``livraisons_client_portail``."""
+    from .models import Livraison
+
+    if client_id is None or livraison_id is None:
+        return None
+    liv = (Livraison.objects
+           .filter(company=company, id=livraison_id,
+                   installation__client_id=client_id)
+           .select_related('preuve', 'preuve__photo')
+           .first())
+    if liv is None:
+        return None
+    preuve = getattr(liv, 'preuve', None)
+    if preuve is None:
+        return None
+    photo = preuve.photo
+    return {
+        'livraison_id': liv.id,
+        'livraison_reference': liv.reference,
+        'signataire_nom': preuve.signataire_nom or None,
+        'signature_image': preuve.signature_data or None,
+        'horodatage': preuve.horodatage,
+        'note': preuve.note or None,
+        'gps_lat': preuve.gps_lat,
+        'gps_lng': preuve.gps_lng,
+        'photo_attachment_id': photo.id if photo is not None else None,
+        'photo_url': (
+            f'/api/django/portail/mes-livraisons/{liv.id}/preuve-photo/'
+            if photo is not None else None),
+    }
 
 
 # ── XMFG15 — Analyse d'écarts par ordre + tableau de bord atelier ────────────

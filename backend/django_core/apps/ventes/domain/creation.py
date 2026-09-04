@@ -142,20 +142,44 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
     return devis
 
 
-def dupliquer_devis(devis, *, user):
-    """NTUX13 — Duplique ``devis`` en un devis BROUILLON totalement
-    INDÉPENDANT (nouveau numéro, jamais le statut de la source — même un
-    devis ``accepte``/``envoye`` redémarre en ``brouillon``).
+def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
+                 remplacements=None):
+    """QJR407 — LE CLONEUR DU DOMAINE : le SEUL endroit où la liste des champs
+    qu'une copie de devis porte est écrite.
 
-    À la différence de ``dupliquer-variante`` (QJ15, ``views/devis.py``) qui
-    groupe ses copies avec l'original via ``version_parent``/``version`` pour
-    une comparaison côte-à-côte, CE duplicata est délibérément SANS lien de
-    version : ``version=1``, ``version_parent=None``. Aucun chantier/
-    BonCommande/Facture n'est jamais copié — ces objets naissent en aval d'un
-    devis ACCEPTÉ (rule #4) et ne sont référencés nulle part sur ``Devis``
-    lui-même, donc un brouillon frais n'en hérite jamais.
+    Trois chemins produisent une copie de devis : la duplication
+    (:func:`dupliquer_devis`), la RÉVISION et la DUPLICATION EN VARIANTES
+    (``views/devis.py``). Les deux derniers réimplémentaient
+    ``Devis.objects.create(...)`` à la main et OMETTAIENT les sept champs que
+    ce cloneur porte explicitement depuis QJR146(a) — ``devise``,
+    ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
+    ``entite``, ``custom_data``. Un devis dont l'échéancier avait été NÉGOCIÉ
+    repartait donc sur l'échéancier par DÉFAUT de la société, et c'est la
+    première tranche de cet échéancier que l'email de confirmation annonce au
+    client comme acompte.
 
-    Les lignes sont clonées à l'identique (mêmes quantités/prix/sections)."""
+    Ce qui DIFFÈRE d'un chemin à l'autre — et seulement cela — est paramétré :
+
+    * ``note`` — le préfixe éditorial de la copie (``None`` ⇒ la note de la
+      source, telle quelle) ;
+    * ``version`` / ``version_parent`` — le duplicata est SANS lien de version
+      (1 / ``None``), la révision et la variante sont GROUPÉES sur la racine ;
+    * ``remplacements`` — la mise à l'échelle des quantités, propre à la
+      duplication en variantes (passée telle quelle à ``cloner_lignes``).
+
+    ATOMICITÉ (S5-4) : la création du devis ET le clonage de ses lignes se font
+    dans UNE transaction. Les deux vues créaient le devis PUIS clonaient ses
+    lignes hors transaction : un incident entre les deux étapes laissait un
+    brouillon ORPHELIN sans lignes, visible dans la liste et chiffrable à zéro.
+
+    ALIASING (S5-2) : ``etude_params`` passe TOUJOURS par
+    ``etude_params_pour_copie`` — la copie ne partage plus l'objet de la source
+    et ne publie plus les chiffres dérivés d'une AUTRE taille d'installation.
+    Les études de la copie sont ensuite recalculées sur SES lignes
+    (``force=True``), comme sur les trois chemins du domaine.
+    """
+    from django.db import transaction
+
     from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
@@ -169,7 +193,7 @@ def dupliquer_devis(devis, *, user):
             statut=Devis.Statut.BROUILLON,
             taux_tva=devis.taux_tva,
             remise_globale=devis.remise_globale,
-            note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
+            note=(devis.note if note is None else note),
             mode_installation=devis.mode_installation,
             # QJR117 — la CONFIGURATION du source, jamais ses chiffres
             # dérivés : sans ``roof_layout``, le recalage qui les rendait
@@ -180,14 +204,6 @@ def dupliquer_devis(devis, *, user):
             devise=devis.devise,
             taux_change=devis.taux_change,
             # ── QJR146 (a) — LES CONDITIONS DE PAIEMENT SUIVENT LA COPIE ────
-            # Un duplicata est une copie EXACTE : sans ces champs, un devis
-            # portant un échéancier NÉGOCIÉ repartait sur l'échéancier par
-            # DÉFAUT de la société (``utils/echeancier.tranches_normalisees``
-            # retombe sur ``payment_terms_for`` dès que ``echeancier`` est
-            # vide) — et c'est cette première tranche que l'email de
-            # confirmation annonce au client comme acompte. ``renouveler_devis``
-            # copiait déjà ``echeancier`` et ``entite`` : la preuve que c'était
-            # un oubli, pas une décision.
             # Les deux JSONField sont COPIÉS, jamais partagés par référence
             # (le piège que QJR117 a fermé pour ``etude_params``).
             echeancier=(list(devis.echeancier)
@@ -200,29 +216,56 @@ def dupliquer_devis(devis, *, user):
                          if isinstance(devis.custom_data, dict)
                          else devis.custom_data),
             created_by=user,
-            # Duplicata indépendant : jamais de groupe de version (à la
-            # différence de dupliquer-variante, QJ15).
-            version=1, version_parent=None, is_active=True,
+            version=version, version_parent=version_parent, is_active=True,
         )
         holder['obj'] = obj
         return obj
 
-    create_numbered(Devis, company, 'devis', _save)
-    copie = holder['obj']
-
-    # QJR116 — UN SEUL cloneur pour les trois chemins de copie
-    # (``domain/lignes.cloner_lignes``) : la liste de champs n'est plus
-    # maintenue à la main ici, donc elle ne peut plus diverger de celle du
-    # renouvellement ou de la gamme sœur. Elle reprend le jeu COMPLET —
-    # y compris le rattachement au LOT, qui manquait aux trois.
-    cloner_lignes(devis, copie)
+    with transaction.atomic():
+        create_numbered(Devis, company, 'devis', _save)
+        copie = holder['obj']
+        # QJR116 — UN SEUL cloneur de LIGNES pour tous les chemins de copie
+        # (``domain/lignes.cloner_lignes``) : la liste de champs n'est plus
+        # maintenue à la main, elle ne peut donc plus diverger. Elle reprend le
+        # jeu COMPLET — y compris le rattachement au LOT.
+        cloner_lignes(devis, copie, remplacements=remplacements)
     # QJR117 — les études de la COPIE sont recalculées sur SES lignes, en
     # ``force`` : sans lui, le dimensionnement se court-circuite sur empreinte
     # concordante et l'édition de ligne ne rattrape jamais. Best-effort — aucun
     # rafraîchisseur ne lève, aucun ne touche statut/lignes/totaux (règle #4).
+    # HORS transaction : un rafraîchissement raté n'annule jamais une copie.
     rafraichir_etudes_du_devis(copie, force=True)
+    return copie
+
+
+def dupliquer_devis(devis, *, user):
+    """NTUX13 — Duplique ``devis`` en un devis BROUILLON totalement
+    INDÉPENDANT (nouveau numéro, jamais le statut de la source — même un
+    devis ``accepte``/``envoye`` redémarre en ``brouillon``).
+
+    À la différence de ``dupliquer-variante`` (QJ15, ``views/devis.py``) qui
+    groupe ses copies avec l'original via ``version_parent``/``version`` pour
+    une comparaison côte-à-côte, CE duplicata est délibérément SANS lien de
+    version : ``version=1``, ``version_parent=None``. Aucun chantier/
+    BonCommande/Facture n'est jamais copié — ces objets naissent en aval d'un
+    devis ACCEPTÉ (rule #4) et ne sont référencés nulle part sur ``Devis``
+    lui-même, donc un brouillon frais n'en hérite jamais.
+
+    Les lignes sont clonées à l'identique (mêmes quantités/prix/sections).
+
+    QJR407 — LE CORPS EST CELUI DU CLONEUR (:func:`cloner_devis`) : la
+    liste des champs n'est plus écrite ici. Ce chemin ne garde que ce qui
+    lui est propre — le préfixe de note et l'absence de lien de version.
+    """
+    copie = cloner_devis(
+        devis, user=user,
+        note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
+        # Duplicata indépendant : jamais de groupe de version (à la
+        # différence de dupliquer-variante, QJ15).
+        version=1, version_parent=None)
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
-                devis.reference, copie.reference, getattr(company, 'id', '?'))
+                devis.reference, copie.reference,
+                getattr(devis.company, 'id', '?'))
     return copie
 
 
@@ -566,9 +609,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     avec_batterie = demande == 'avec'
     deux_options = demande not in ('avec', 'sans')
     # QJR-OFFGRID — un site ISOLÉ n'a qu'une composition : autonome + batterie.
+    # QJR400 — la règle « hors réseau ⇒ jamais deux options » vient du NOYAU
+    # (``utils.options.deux_options_composables``), elle n'est plus recopiée.
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        avec_batterie, deux_options = True, False
+        avec_batterie = True
 
     # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
     # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
@@ -816,9 +863,13 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # AUTONOME + batterie, en option unique — et il REFUSE (étape 4 ci-dessous)
     # plutôt que de coter un hybride que ce client ne pourra pas raccorder.
     from apps.ventes.compatibilites import est_site_isole
+    # QJR400 — même propriétaire unique que ci-dessus pour « hors réseau ⇒
+    # jamais deux options ».
+    from apps.ventes.utils.options import deux_options_composables
     hors_reseau = est_site_isole(getattr(lead, 'raccordement', None))
+    deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
-        wants_battery, deux_options = True, False
+        wants_battery = True
 
     # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
     # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au

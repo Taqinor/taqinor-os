@@ -41,6 +41,8 @@ vi.mock('../../../api/crmApi', () => ({
     // pas non plus chatter_recent ici (délibéré — hors sujet de CE test).
     getLead: vi.fn((id) => Promise.resolve({ data: { id, nom: id === 1 ? 'Ali' : 'Sara', stage: 'NEW', is_archived: false } })),
     getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
+    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
+    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   },
 }))
 vi.mock('../../../api/axios', () => ({

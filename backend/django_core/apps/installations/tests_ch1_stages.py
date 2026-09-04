@@ -105,7 +105,10 @@ class SeedStagesTests(TestCase):
         self.assertEqual(stage.ordre, 42)
         self.assertTrue(stage.bloquant)
 
-    def test_stages_actifs_amorce_puis_filtre_les_inactives(self):
+    def test_stages_actifs_filtre_les_inactives(self):
+        # AUD313 — `stages_actifs` est une LECTURE PURE : elle n'amorce plus.
+        self.assertEqual(stages_actifs(self.company), [])
+        seed_stages(self.company)
         stages = stages_actifs(self.company)
         self.assertEqual(len(stages), len(DEFAULT_LIFECYCLE_GATES))
         StageModele.objects.filter(

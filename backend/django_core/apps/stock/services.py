@@ -147,16 +147,20 @@ def apply_inventory_count(*, company, user, motif, lignes):
             if compte == avant:
                 result['inchanges'] += 1
                 continue
-            MouvementStock.objects.create(
+            # AUD227 — `quantite` porte l'ÉCART, pas le niveau compté : c'est
+            # la sémantique de ses deux fonctions sœurs
+            # (`appliquer_ecarts_comptage`, `valider_inventaire_session`) et
+            # celle qu'affiche la colonne « Quantité » d'
+            # `export_mouvements_xlsx`.
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=compte, quantite_avant=avant, quantite_apres=compte,
+                quantite=abs(compte - avant),
+                quantite_avant=avant, quantite_apres=compte,
                 reference='INVENTAIRE',
                 note=f'Inventaire — comptage {compte} (écart {compte - avant})'
                      + (f' · {motif}' if motif else ''),
                 created_by=user)
-            produit.quantite_stock = compte
-            produit.save(update_fields=['quantite_stock'])
             result['ajustes'] += 1
             result['mouvements'].append({
                 'produit': produit.id, 'avant': avant, 'apres': compte})
@@ -443,6 +447,42 @@ def affecter_livraison_directe_chantier(
 # le prix d'achat catalogue. Valorisation = quantité par emplacement × coût
 # moyen. INTERNE uniquement (les prix d'achat ne sont jamais client-facing).
 
+def _annoter_date_entree_stock(qs):
+    """AUD210 — annote des lignes de BCF avec leur DATE D'ENTRÉE EN STOCK RÉELLE.
+
+    Une unité pèse sur le coût du stock à partir du jour où elle est
+    RÉCEPTIONNÉE, pas du jour où le bon de commande a été saisi : un BCF créé
+    en janvier et réceptionné en mars n'était pas en stock en février. On prend
+    donc la dernière `ReceptionFournisseur.date_reception` CONFIRMÉE couvrant
+    la ligne ; à défaut (réception directe par l'action `recevoir` du BCF, sans
+    document de réception) on retombe sur la date de création du BCF —
+    comportement strictement inchangé pour tout BCF sans réception documentée.
+
+    L'annotation `date_entree_stock` est une DATE (jamais un datetime) : toutes
+    les comparaisons de ce module sont ramenées au jour. INTERNE."""
+    from django.db.models import DateField, Max, Q
+    from django.db.models.functions import Coalesce, TruncDate
+    from .models import ReceptionFournisseur
+    return qs.annotate(
+        date_entree_stock=Coalesce(
+            Max('lignes_reception__reception__date_reception',
+                filter=Q(lignes_reception__reception__statut=(
+                    ReceptionFournisseur.Statut.CONFIRME))),
+            TruncDate('bon_commande__date_creation'),
+            output_field=DateField()))
+
+
+def _jour(valeur):
+    """Ramène un datetime (aware ou naïf) ou une date au JOUR local."""
+    from django.utils import timezone
+    if valeur is None:
+        return None
+    if hasattr(valeur, 'hour'):
+        return (timezone.localdate(valeur) if timezone.is_aware(valeur)
+                else valeur.date())
+    return valeur
+
+
 def average_cost_with_source(produit):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
@@ -470,8 +510,9 @@ def average_cost_with_source(produit):
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, quantite_recue__gt=0)
     if revalo is not None and revalo.date_validation is not None:
-        lignes_qs = lignes_qs.filter(
-            bon_commande__date_creation__gt=revalo.date_validation)
+        # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
+        lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
+            date_entree_stock__gt=_jour(revalo.date_validation))
     lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
     total_q, total_v = 0, Decimal('0')
@@ -538,9 +579,12 @@ def fifo_cost_with_source(produit):
     from .models import LigneBonCommandeFournisseur
     # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
     # les dernières entrées). On valorise au coût débarqué unitaire.
-    lignes = (LigneBonCommandeFournisseur.objects
-              .filter(produit=produit, quantite_recue__gt=0)
-              .order_by('-bon_commande__date_creation', '-id'))
+    # AUD210 — couches ordonnées par ENTRÉE EN STOCK réelle (date de réception),
+    # pas par date de saisie du bon de commande.
+    lignes = (_annoter_date_entree_stock(
+        LigneBonCommandeFournisseur.objects
+        .filter(produit=produit, quantite_recue__gt=0))
+        .order_by('-date_entree_stock', '-id'))
     restant = produit.quantite_stock or 0
     if restant <= 0:
         return (produit.prix_achat or Decimal('0')), 'catalogue'
@@ -615,11 +659,21 @@ def stock_valuation_by_location(company):
     Renvoie {par_emplacement:[{emplacement_id, emplacement_nom, is_principal,
     quantite, valeur}], total, lignes:[{produit_id, sku, designation,
     emplacement_nom, quantite, cout_moyen, valeur}]}. INTERNE — ne jamais
-    exposer dans un contexte client."""
+    exposer dans un contexte client.
+
+    NTWMS19 / AUD211 — la marchandise posée sur un emplacement DE_TIERS
+    (dépôt-vente : elle est dans nos murs mais appartient à un tiers) est
+    EXCLUE, exactement comme le fait déjà `valorisation_a_date` : elle n'est
+    jamais un actif de la société. Sans emplacement DE_TIERS (le cas de toutes
+    les sociétés existantes), le résultat est strictement inchangé."""
     from .models import Produit, EmplacementStock
     ensure_emplacements(company)
     emplacements = list(EmplacementStock.objects.filter(
         company=company, archived=False))
+    de_tiers_ids = {
+        e.id for e in emplacements
+        if e.type_proprietaire == EmplacementStock.TypeProprietaire.DE_TIERS}
+    emplacements = [e for e in emplacements if e.id not in de_tiers_ids]
     totals = {e.id: {'emplacement_id': e.id, 'emplacement_nom': e.nom,
                      'is_principal': e.is_principal, 'quantite': 0,
                      'valeur': Decimal('0')} for e in emplacements}
@@ -633,7 +687,7 @@ def stock_valuation_by_location(company):
     for p in produits:
         cout, source = valuation_cost_with_source(p, method=method)
         for b in stock_breakdown(p):
-            if b['quantite'] == 0:
+            if b['quantite'] == 0 or b['emplacement_id'] in de_tiers_ids:
                 continue
             valeur = (cout * b['quantite']).quantize(Decimal('0.01'))
             t = totals.get(b['emplacement_id'])
@@ -724,16 +778,18 @@ def _quantite_produit_a_date(produit, date):
 
 
 def _cout_moyen_produit_a_date(produit, date):
-    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les
-    réceptions de BCF dont le bon de commande est daté <= date (cf.
+    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les lignes de
+    BCF RÉELLEMENT ENTRÉES EN STOCK au plus tard à `date` (AUD210 : date de
+    réception, pas date de création du bon de commande ; cf.
     `average_cost_with_source`, borné dans le temps). Repli catalogue si
     aucun achat reçu avant cette date."""
     from .models import LigneBonCommandeFournisseur
-    lignes = (LigneBonCommandeFournisseur.objects
-              .filter(produit=produit, quantite_recue__gt=0,
-                      bon_commande__date_creation__date__lte=date)
-              .values_list('quantite_recue', 'prix_achat_unitaire',
-                           'quantite', 'frais_annexes'))
+    lignes = (_annoter_date_entree_stock(
+        LigneBonCommandeFournisseur.objects
+        .filter(produit=produit, quantite_recue__gt=0))
+        .filter(date_entree_stock__lte=_jour(date))
+        .values_list('quantite_recue', 'prix_achat_unitaire',
+                     'quantite', 'frais_annexes'))
     total_q, total_v = 0, Decimal('0')
     for q_recue, pu, q_ligne, frais in lignes:
         pu = pu or Decimal('0')
@@ -927,6 +983,38 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
             'opération ferait passer le stock sous zéro.')
 
 
+def check_periode_comptable_ouverte(company, une_date, *,
+                                    document='Ce document'):
+    """AUD232 — refuse un DOCUMENT d'achat daté dans une période comptable
+    VERROUILLÉE (FG115).
+
+    Le refus n'existait qu'au fond de la pile (``EcritureComptable.save``) et
+    seulement quand ``COMPTA_AUTO_ECRITURES`` est actif (défaut OFF) : sans
+    écriture, une facture ou un paiement fournisseur pouvait être ANTIDATÉ
+    dans un mois clos sans que rien ne bronche ; avec le toggle ON, il partait
+    en ``ValidationError`` non traduite APRÈS la création du document (facture
+    orpheline). La garde est donc posée EN AMONT, sur le document lui-même —
+    même patron que ``compta.services.verifier_facture_modifiable`` côté
+    ventes : import function-local du SERVICE compta, jamais de son modèle.
+
+    ``compta`` absente, société inconnue, date vide ou aucune période
+    verrouillée = no-op strict (comportement historique). Lève ``ValueError``
+    (les vues la traduisent en 400 métier).
+    """
+    if company is None or une_date is None:
+        return
+    try:
+        from apps.compta.services import periode_verrouillee_pour
+    except Exception:  # noqa: BLE001 — compta absent = garde silencieuse
+        return
+    periode = periode_verrouillee_pour(company, une_date)
+    if periode is not None:
+        raise ValueError(
+            f'Période comptable clôturée : {document.lower()} daté du '
+            f'{une_date} tombe dans une période verrouillée '
+            f'({periode.date_debut} → {periode.date_fin}).')
+
+
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def _reouvrir_quantite_recue_bcf(bc, produit_id, quantite_retournee):
@@ -988,7 +1076,7 @@ def apply_retour_fournisseur(retour, user):
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
             check_negative_stock_guard(retour.company, qte_avant, qte_apres)
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=retour.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                 quantite=ligne.quantite, quantite_avant=qte_avant,
@@ -996,8 +1084,6 @@ def apply_retour_fournisseur(retour, user):
                 note=f'Retour fournisseur {retour.reference}'
                      + (f' — {ligne.motif}' if ligne.motif else ''),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
@@ -1081,7 +1167,7 @@ def confirm_reception_fournisseur(reception, user):
             produit.refresh_from_db()
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + qte
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=reception.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=qte_avant,
@@ -1089,8 +1175,6 @@ def confirm_reception_fournisseur(reception, user):
                 note=f'Réception {reception.reference}'
                      + (f' (BCF {bc.reference})' if bc else ''),
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             ligne_cmd.quantite_recue += qte
             ligne_cmd.save(update_fields=['quantite_recue'])
             # N17 — mémorise le prix d'achat (interne) chez ce fournisseur.
@@ -1202,7 +1286,7 @@ def annuler_reception_confirmee(reception, user):
             qte_sortie = min(qte, qte_avant) if qte_avant > 0 else 0
             qte_apres = qte_avant - qte_sortie
             if qte_sortie > 0:
-                MouvementStock.objects.create(
+                record_stock_movement(
                     company=reception.company, produit=produit,
                     type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                     quantite=qte_sortie, quantite_avant=qte_avant,
@@ -1211,8 +1295,6 @@ def annuler_reception_confirmee(reception, user):
                     note=(f'Contre-passation annulation réception '
                           f'{reception.reference}'),
                     created_by=user)
-                produit.quantite_stock = qte_apres
-                produit.save(update_fields=['quantite_stock'])
             ligne_cmd = ligne.ligne_commande
             if ligne_cmd is not None:
                 ligne_cmd.refresh_from_db()
@@ -1248,24 +1330,33 @@ def alimenter_lot_entrepot(
         reference_reception, emplacement=None, user=None):
     """XSTK6 — crée (ou incrémente si le MÊME lot existe déjà pour ce
     produit) une entrée de `LotEntrepot`. Jamais appelée pour une ligne sans
-    ``numero_lot`` (comportement historique inchangé)."""
+    ``numero_lot`` (comportement historique inchangé).
+
+    AUD218 — le `get_or_create` est VERROUILLÉ (`select_for_update`) et adossé
+    à la `UniqueConstraint(company, produit, numero_lot)` du modèle : deux
+    réceptions concurrentes du même lot s'additionnent sur UNE seule ligne au
+    lieu d'en créer deux (même patron que `StockEmplacement`)."""
+    from django.db import transaction
     from .models import LotEntrepot
-    lot, created = LotEntrepot.objects.get_or_create(
-        company=company, produit=produit, numero_lot=numero_lot,
-        defaults={
-            'date_peremption': date_peremption,
-            'emplacement': emplacement,
-            'quantite_recue': 0,
-            'quantite_restante': 0,
-            'reference_reception': reference_reception,
-            'created_by': user,
-        })
-    if not created and date_peremption and not lot.date_peremption:
-        lot.date_peremption = date_peremption
-    lot.quantite_recue += quantite
-    lot.quantite_restante += quantite
-    lot.save(update_fields=[
-        'quantite_recue', 'quantite_restante', 'date_peremption'])
+    # `atomic` imbriqué (savepoint) : l'appelant réel est déjà dans une
+    # transaction, mais le verrou doit rester légal pour tout futur appelant.
+    with transaction.atomic():
+        lot, created = LotEntrepot.objects.select_for_update().get_or_create(
+            company=company, produit=produit, numero_lot=numero_lot,
+            defaults={
+                'date_peremption': date_peremption,
+                'emplacement': emplacement,
+                'quantite_recue': 0,
+                'quantite_restante': 0,
+                'reference_reception': reference_reception,
+                'created_by': user,
+            })
+        if not created and date_peremption and not lot.date_peremption:
+            lot.date_peremption = date_peremption
+        lot.quantite_recue += quantite
+        lot.quantite_restante += quantite
+        lot.save(update_fields=[
+            'quantite_recue', 'quantite_restante', 'date_peremption'])
     return lot
 
 
@@ -1474,6 +1565,9 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
         raise ValueError('Le montant du paiement doit être positif.')
     if montant_dec > facture.solde_du:
         raise ValueError('Le paiement dépasse le reste à payer.')
+    # AUD232 — garde de période comptable EN AMONT du document.
+    check_periode_comptable_ouverte(
+        company, date_paiement, document='Ce règlement sous-traitant')
     with transaction.atomic():
         paiement = PaiementFournisseur.objects.create(
             company=company, facture=facture, montant=montant_dec,
@@ -1759,7 +1853,8 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
                           created_by, save_produit=True, emplacement_source=None,
-                          bin_source=None, bin_destination=None):
+                          bin_source=None, bin_destination=None,
+                          bin_source_id=None, motif_rebut=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1776,8 +1871,21 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     plafonnée à 0 par ERR94). Un `emplacement_source` PRINCIPAL est un no-op
     (le principal est déjà dérivé, jamais stocké). Ne s'applique qu'aux
     mouvements SORTIE (une ENTREE avec emplacement passe par
-    `credit_emplacement_destination`, jamais dupliquée ici)."""
+    `credit_emplacement_destination`, jamais dupliquée ici).
+
+    AUD223 — ``motif_rebut`` (mouvements REBUT, XMFG11/XSTK10) et
+    ``bin_source_id`` (casier connu par son ID au scan) sont des passe-plats
+    additifs : ils existent pour que les chemins qui posaient un
+    ``MouvementStock`` en direct puissent converger ici SANS perdre une seule
+    colonne. Absents = comportement historique strictement inchangé."""
     from .models import MouvementStock, StockEmplacement
+    # NTWMS5 — casiers source/destination du poste scanner. None partout
+    # ailleurs : comportement historique strictement inchangé.
+    casiers = {'bin_destination': bin_destination}
+    if bin_source_id is not None:
+        casiers['bin_source_id'] = bin_source_id
+    else:
+        casiers['bin_source'] = bin_source
     mouvement = MouvementStock.objects.create(
         company=company,
         produit=produit,
@@ -1788,10 +1896,8 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         reference=reference,
         note=note,
         created_by=created_by,
-        # NTWMS5 — casiers source/destination du poste scanner. None partout
-        # ailleurs : comportement historique strictement inchangé.
-        bin_source=bin_source,
-        bin_destination=bin_destination,
+        motif_rebut=motif_rebut,
+        **casiers,
     )
     if save_produit:
         produit.quantite_stock = quantite_apres
@@ -1817,8 +1923,14 @@ def _emit_mouvement_stock_enregistre(mouvement, company):
     ``compta.services.poster_mouvement_stock`` (inventaire permanent) était
     défini et testé mais n'avait AUCUN appelant de production, et aucun
     événement « mouvement de stock » n'existait sur le bus : l'écriture
-    automatique ne partait jamais. Ce point d'émission — le SEUL endroit du
-    dépôt qui crée un ``MouvementStock`` — le branche.
+    automatique ne partait jamais. Ce point d'émission le branche.
+
+    AUD223 — l'affirmation historique « le SEUL endroit du dépôt qui crée un
+    ``MouvementStock`` » était FAUSSE : 22 sites de production en créaient un
+    en direct et échappaient donc à ce miroir comptable comme à l'alerte
+    seuil-bas. Ils convergent désormais tous vers ``record_stock_movement``, et
+    ``scripts/check_mouvement_stock_service.py`` (garde CI sémantique) refuse
+    tout nouveau ``MouvementStock.objects.create`` hors de ce service.
 
     ``stock`` n'importe jamais ``apps.compta`` : l'instance transite par le
     signal. Best-effort strict : un abonné qui échoue ne doit JAMAIS faire
@@ -1948,14 +2060,12 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
         avant = p.quantite_stock
         qte_sortie = min(quantite, avant) if avant > 0 else 0
         apres = avant - qte_sortie
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
             quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, motif_rebut=motif,
             created_by=user)
-        p.quantite_stock = apres
-        p.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -1988,14 +2098,12 @@ def rebuter_produit(
         avant = p.quantite_stock
         apres = avant - quantite
         check_negative_stock_guard(company, avant, apres)
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference_chantier or 'REBUT', note=note,
             motif_rebut=motif, created_by=user)
-        p.quantite_stock = apres
-        p.save(update_fields=['quantite_stock'])
         if emplacement is not None and not emplacement.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
                 produit=p, emplacement=emplacement,
@@ -2104,13 +2212,11 @@ def decrementer_stock_dotation_epi(*, company, produit_id, quantite,
             raise ValueError(
                 'Stock insuffisant pour cette dotation EPI '
                 f'({avant} disponible, {quantite} demandé).')
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=produit,
             type_mouvement=MouvementStock.TypeMouvement.SORTIE,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note='Dotation EPI', created_by=user)
-        produit.quantite_stock = apres
-        produit.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -2134,13 +2240,11 @@ def reintegrer_stock_restitution_epi(*, company, produit_id, quantite,
             return None
         avant = produit.quantite_stock
         apres = avant + quantite
-        mouvement = MouvementStock.objects.create(
+        mouvement = record_stock_movement(
             company=company, produit=produit,
             type_mouvement=MouvementStock.TypeMouvement.ENTREE,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note='Restitution EPI', created_by=user)
-        produit.quantite_stock = apres
-        produit.save(update_fields=['quantite_stock'])
     return mouvement
 
 
@@ -2830,9 +2934,15 @@ def rotation_report(company, jours=180):
     """Rapport de rotation des produits (dead-stock / immobile).
 
     Retourne une liste de dicts avec : produit_id, nom, sku, quantite_stock,
-    valeur_stock (prix_achat × qte, INTERNE), derniere_sortie (date ou null),
+    valeur_stock (INTERNE), derniere_sortie (date ou null),
     jours_sans_mouvement (int ou null), bucket ('actif'|'ralenti'|'immobile').
     Admin-only ; prix d'achat interne jamais client-facing.
+
+    AUD225 / DC28 — `valeur_stock` passe par l'accesseur de coût UNIQUE
+    (`valuation_cost_with_source`, celui de `stock_valuation_by_location`) au
+    lieu de recalculer une TROISIÈME valeur du stock sur le `prix_achat`
+    catalogue brut, et exclut la marchandise DE_TIERS (NTWMS19) : les deux
+    écrans ne peuvent plus diverger structurellement pour un même produit.
     """
     from django.utils import timezone
     from .models import Produit, MouvementStock
@@ -2840,7 +2950,11 @@ def rotation_report(company, jours=180):
     today = timezone.now().date()
     produits = (Produit.objects
                 .filter(company=company, is_archived=False, quantite_stock__gt=0)
-                .only('id', 'nom', 'sku', 'quantite_stock', 'prix_achat'))
+                .only('id', 'nom', 'sku', 'quantite_stock', 'prix_achat',
+                      'company'))
+    # Méthode société et carte du stock de tiers résolues une seule fois.
+    method = stock_valuation_method(company)
+    de_tiers = quantite_de_tiers(company)
 
     result = []
     for p in produits:
@@ -2861,12 +2975,15 @@ def rotation_report(company, jours=180):
         else:
             bucket = 'actif'
 
+        cout, _source = valuation_cost_with_source(p, method=method)
+        quantite_propre = max(p.quantite_stock - de_tiers.get(p.id, 0), 0)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
             'sku': p.sku,
             'quantite_stock': p.quantite_stock,
-            'valeur_stock': str(p.prix_achat * p.quantite_stock),
+            'valeur_stock': str(
+                (cout * quantite_propre).quantize(Decimal('0.01'))),
             'derniere_sortie': derniere.date().isoformat() if derniere else None,
             'jours_sans_mouvement': jours_sans,
             'bucket': bucket,
@@ -3060,15 +3177,19 @@ def valider_inventaire_session(session, user):
                 inchanges += 1
                 continue
 
-            # Ajustement : on pose la nouvelle valeur directement.
+            # AUD206 — Ajustement en DELTA, jamais en remplacement : entre le
+            # snapshot (quantite_theorique, potentiellement figé des mois plus
+            # tôt par `generer_comptages_tournants`) et cette validation, des
+            # mouvements légitimes ont pu passer. On applique donc l'écart
+            # constaté à la quantité LIVE verrouillée, ce qui les préserve.
             produit = ligne.produit
             # Verrou anti-concurrence
             from .models import Produit
             produit = Produit.objects.select_for_update().get(pk=produit.pk)
             qte_avant = produit.quantite_stock
-            qte_apres = ligne.quantite_comptee  # on remplace par le comptage
+            qte_apres = qte_avant + ecart
 
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=session.company,
                 produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
@@ -3078,9 +3199,6 @@ def valider_inventaire_session(session, user):
                 reference=session.reference,
                 note=f'Inventaire {session.reference} — écart {ecart:+d}',
                 created_by=user)
-
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
             ajustes += 1
 
         session.statut = InventaireSession.Statut.VALIDE
@@ -6553,6 +6671,7 @@ from .services_wms import (  # noqa: E402,F401
     creer_retour_client,
     creer_unite_logistique,
     declarer_mouvement_rebut,
+    decrementer_stock_expedition,
     deplacer_unite_logistique,
     creer_vague_depuis_besoins,
     enregistrer_arrivee_chauffeur,
@@ -6577,6 +6696,7 @@ from .services_wms import (  # noqa: E402,F401
     rapport_pertes_entrepot,
     reception_est_cross_dock,
     recalculer_parcours_vague,
+    reference_sortie_expedition,
     receptionner_retour_client,
     resoudre_token_portail_tiers,
     sceller_unite_logistique,

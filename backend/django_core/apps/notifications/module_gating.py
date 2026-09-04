@@ -19,6 +19,10 @@ from .models import EventType
 EVENT_MODULE = {
     # crm
     EventType.LEAD_ASSIGNED: 'crm',
+    # CRX27 — parité avec la clé qu'ils empruntaient : ces deux alertes
+    # restent gatées sur le module ``crm``, comme avant leur séparation.
+    EventType.COMPTE_A_REACTIVER: 'crm',
+    EventType.LEAD_NON_CONTACTE: 'crm',
     EventType.LEAD_NEW: 'crm',
     EventType.HOT_LEAD_UNREAD: 'crm',
     EventType.LEAD_CALLBACK_REQUESTED: 'crm',

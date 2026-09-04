@@ -7,6 +7,7 @@ class FiscalConfig(AppConfig):
     verbose_name = 'Conformité fiscale Maroc'
     module_manifest = {
         'key': 'fiscal',
+        'sku': 'optional',
         'label': 'Conformité fiscale',
         'icone': 'calendar-check',
         'depends': [],

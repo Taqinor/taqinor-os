@@ -15,9 +15,11 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from apps.crm import odoo_sync, stages
-from apps.crm.management.commands.import_odoo_leads import _map_stage
+from apps.crm.management.commands.import_odoo_leads import (
+    _map_stage, _map_stage_connu)
 from apps.crm.models import Lead, LeadActivity
 from authentication.models import Company
+from core.events import lead_stage_changed
 
 ENV = {'ODOO_SYNC_URL': 'https://odoo.example.test',
        'ODOO_SYNC_API_KEY': 'cle-de-test'}
@@ -134,6 +136,12 @@ class TestStageMap(TestCase):
         for intitule, cle in attendus.items():
             self.assertEqual(_map_stage(intitule), cle, intitule)
 
+    def test_unknown_stage_none_for_alignment_but_new_for_creation(self):
+        # CRX8/D-CRX3 — le repli NEW ne survit que pour la CRÉATION.
+        for inconnu in ('Colonne Maison Inconnue', '', None, '   '):
+            self.assertIsNone(_map_stage_connu(inconnu), repr(inconnu))
+            self.assertEqual(_map_stage(inconnu), stages.NEW, repr(inconnu))
+
 
 class TestBuildRows(TestCase):
     def setUp(self):
@@ -181,7 +189,7 @@ class TestSyncCommand(OdooSyncBase):
         sortie = self._sync()
         self.assertEqual(
             Lead.objects.filter(company=self.company).count(), 3)
-        self.assertIn('0 déplacé(s)', sortie)
+        self.assertIn('0 avancé(s)', sortie)
 
     def test_aligns_existing_manual_lead_with_chatter_trace(self):
         manuel = Lead.objects.create(
@@ -189,12 +197,17 @@ class TestSyncCommand(OdooSyncBase):
             email='beta@example.test', stage=stages.NEW)
         self._sync()
         manuel.refresh_from_db()
-        # Rapproché par email → clé technique posée + étape miroir Odoo.
+        # Rapproché par email → clé technique posée + étape avancée sur Odoo.
         self.assertEqual(manuel.external_id, '12')
         self.assertEqual(manuel.stage, stages.FOLLOW_UP)
+        # CRX8 — trace écrite par la façade `activity` (chemin canonique),
+        # plus par un LeadActivity artisanal : une MODIFICATION d'étape…
         self.assertTrue(LeadActivity.objects.filter(
             lead=manuel, kind=LeadActivity.Kind.MODIFICATION,
-            field='stage',
+            field='stage', bulk=True).exists())
+        # …et une note de provenance.
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=manuel, kind=LeadActivity.Kind.NOTE,
             body='auto — alignement sur le pipeline Odoo').exists())
 
     def test_dry_run_writes_nothing(self):
@@ -208,6 +221,206 @@ class TestSyncCommand(OdooSyncBase):
                         {'ODOO_SYNC_URL': '', 'ODOO_SYNC_API_KEY': ''}):
             self._sync()
         self.assertEqual(Lead.objects.count(), 0)
+
+
+class TestAlignementAvanceSeulement(OdooSyncBase):
+    """CRX8 / D-CRX3 — Odoo → ERP AVANCE seulement, et rapporte le reste.
+
+    Avant : l'alignement était un MIROIR — un pipeline Odoo tenu à la main
+    pouvait faire RECULER le funnel de l'ERP, et une colonne Odoo hors table
+    ramenait le lead à « Nouveau » (défaut de ``_map_stage``). L'écriture
+    passait par un ``LeadActivity`` artisanal MUET : ni playbook ni séquence
+    ne se déclenchait sur un mouvement venu d'Odoo.
+    """
+
+    def _lead(self, **kwargs):
+        return Lead.objects.create(company=self.company, **kwargs)
+
+    def _align(self, rows, apply_changes=True):
+        return odoo_sync.align_stages_from_rows(
+            self.company, rows, apply_changes=apply_changes)
+
+    def _capturer_evenements(self):
+        recus = []
+
+        def _capture(sender, **kwargs):
+            recus.append((kwargs['lead'].pk, kwargs['old_stage'],
+                          kwargs['new_stage'], kwargs.get('user')))
+
+        lead_stage_changed.connect(_capture, weak=False)
+        self.addCleanup(lead_stage_changed.disconnect, _capture)
+        return recus
+
+    def test_advance_goes_through_canonical_path_and_emits_event(self):
+        lead = self._lead(nom='À Avancer', external_system='odoo',
+                          external_id='80', stage=stages.NEW)
+        recus = self._capturer_evenements()
+
+        rapport = self._align([{'id': 80, 'stage': 'Quote Discussed'}])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(rapport.moves[(stages.NEW, stages.FOLLOW_UP)], 1)
+        self.assertEqual(rapport.regressions, [])
+        # L'événement canonique part enfin (playbooks + séquences compta).
+        self.assertEqual(
+            recus, [(lead.pk, stages.NEW, stages.FOLLOW_UP, None)])
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='stage', bulk=True).exists())
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body='auto — alignement sur le pipeline Odoo').exists())
+
+    def test_regression_is_reported_with_zero_write(self):
+        lead = self._lead(nom='Plus Avancé', external_system='odoo',
+                          external_id='78', stage=stages.SIGNED)
+        recus = self._capturer_evenements()
+
+        rapport = self._align([{'id': 78, 'stage': 'Quote Discussed'}])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.SIGNED)       # zéro écriture
+        self.assertEqual(sum(rapport.moves.values()), 0)
+        self.assertEqual(
+            rapport.regressions,
+            [(lead.pk, 'Plus Avancé', stages.SIGNED, 'Quote Discussed',
+              stages.FOLLOW_UP)])
+        self.assertEqual(recus, [])
+        self.assertFalse(LeadActivity.objects.filter(lead=lead).exists())
+
+    def test_cold_never_pulls_an_active_lead_backwards(self):
+        # « Froid » est un PARKING classé SOUS « Nouveau » (rang -1) : Odoo ne
+        # peut pas refroidir un lead que le commercial a fait avancer.
+        lead = self._lead(nom='Actif', external_system='odoo',
+                          external_id='79', stage=stages.CONTACTED)
+
+        rapport = self._align([{'id': 79, 'stage': 'Cold Lead'}])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertEqual(sum(rapport.moves.values()), 0)
+        self.assertEqual(len(rapport.regressions), 1)
+        self.assertEqual(rapport.regressions[0][2:], (
+            stages.CONTACTED, 'Cold Lead', stages.COLD))
+
+    def test_cold_lead_is_still_reactivated_forward(self):
+        # L'inverse reste vrai : depuis « Froid », toute étape active AVANCE.
+        lead = self._lead(nom='Froid', external_system='odoo',
+                          external_id='81', stage=stages.COLD)
+
+        rapport = self._align([{'id': 81, 'stage': 'Lead Qualified'}])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)
+        self.assertEqual(rapport.moves[(stages.COLD, stages.CONTACTED)], 1)
+
+    def test_unknown_odoo_stage_leaves_the_lead_untouched(self):
+        lead = self._lead(nom='Colonne Maison', external_system='odoo',
+                          external_id='82', stage=stages.CONTACTED)
+        recus = self._capturer_evenements()
+
+        rapport = self._align([
+            {'id': 82, 'stage': 'Colonne Maison Jamais Vue'},
+        ])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.CONTACTED)   # pas de repli NEW
+        self.assertEqual(rapport.inconnus, 1)
+        self.assertEqual(sum(rapport.moves.values()), 0)
+        self.assertEqual(rapport.regressions, [])
+        self.assertEqual(recus, [])
+        self.assertFalse(LeadActivity.objects.filter(lead=lead).exists())
+
+    def test_dry_run_counts_the_advance_but_writes_nothing(self):
+        lead = self._lead(nom='À Blanc', external_system='odoo',
+                          external_id='83', stage=stages.NEW)
+        recus = self._capturer_evenements()
+
+        rapport = self._align([{'id': 83, 'stage': 'Quote Discussed'}],
+                              apply_changes=False)
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.NEW)
+        self.assertEqual(rapport.moves[(stages.NEW, stages.FOLLOW_UP)], 1)
+        self.assertEqual(recus, [])
+
+    def test_two_odoo_rows_on_the_same_erp_lead_are_counted(self):
+        # CRX10 — le doublon INTERNE au pipeline Odoo était sauté en silence.
+        lead = self._lead(nom='Un Seul', external_system='odoo',
+                          external_id='90', email='dup@example.test',
+                          stage=stages.NEW)
+
+        rapport = self._align([
+            {'id': 90, 'stage': 'Quote Discussed'},
+            {'id': 91, 'stage': 'New', 'email': 'dup@example.test'},
+        ])
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)   # la 1re ligne gagne
+        self.assertEqual(rapport.doublons_odoo, 1)
+
+    def test_regression_reaches_the_command_report(self):
+        # Le lead 12 d'Odoo est en « Quote Discussed » (FOLLOW_UP) ; côté ERP
+        # il est déjà SIGNED — la sync le SIGNALE au lieu de le reculer.
+        avance = Lead.objects.create(
+            company=self.company, nom='Signé Chez Nous',
+            email='beta@example.test', stage=stages.SIGNED)
+
+        sortie = self._sync()
+
+        avance.refresh_from_db()
+        self.assertEqual(avance.stage, stages.SIGNED)
+        self.assertIn('Régression NON appliquée', sortie)
+        self.assertIn('ERP SIGNED / Odoo « Quote Discussed »', sortie)
+        self.assertIn('1 régression(s) signalée(s)', sortie)
+
+
+class TestAllowlistEcrituresOdoo(TestCase):
+    """CRX11 — règle #1 : `odoo_call` refuse toute écriture non déclarée.
+
+    Ce transport est GÉNÉRIQUE (`model` et `method` sont des paramètres) :
+    sans cette garde, n'importe quel appelant futur pouvait écrire ce qu'il
+    voulait dans la base Odoo du fondateur. Le refus tombe AVANT le réseau.
+    """
+
+    def setUp(self):
+        self.config = odoo_sync.OdooConfig(
+            url='https://odoo.example.test', api_key='cle-de-test')
+
+    def test_only_one_write_is_allowed_in_the_whole_repo(self):
+        self.assertEqual(odoo_sync._WRITE_ALLOWED,
+                         frozenset({('crm.lead', 'write')}))
+
+    def test_undeclared_write_is_refused_before_any_http(self):
+        with patch('urllib.request.urlopen') as reseau:
+            for model, method in (('crm.lead', 'unlink'),
+                                  ('crm.lead', 'create'),
+                                  ('res.partner', 'write'),
+                                  ('account.move', 'create')):
+                with self.assertRaises(odoo_sync.OdooSyncError) as ctx:
+                    odoo_sync.odoo_call(self.config, model, method, {})
+                self.assertIn('allowlist', str(ctx.exception))
+            reseau.assert_not_called()
+
+    def test_reads_and_the_single_declared_write_reach_the_transport(self):
+        class _Reponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'[]'
+
+        with patch('urllib.request.urlopen',
+                   return_value=_Reponse()) as reseau:
+            odoo_sync.odoo_call(self.config, 'crm.lead', 'search_read', {})
+            odoo_sync.odoo_call(self.config, 'crm.stage', 'search_read', {})
+            odoo_sync.odoo_call(self.config, 'crm.lead', 'write',
+                                {'ids': [1], 'vals': {'stage_id': 2}})
+        self.assertEqual(reseau.call_count, 3)
 
 
 class TestPushCommand(OdooSyncBase):

@@ -332,6 +332,10 @@ def warranties_for(d):
     sans donnée produit rend EXACTEMENT la constante d'aujourd'hui."""
     try:
         from .. import builder
+        # QJR424 — SEULE définition du texte de classement (QJR301,
+        # ``apps.ventes.utils.options.texte_classement``), importée au lieu
+        # d'être recopiée ici.
+        from apps.ventes.utils.options import texte_classement
     except Exception:  # noqa: BLE001 — jamais casser le rendu d'un PDF
         return list(WARRANTIES)
     rows = _composition_rows(d)
@@ -339,7 +343,7 @@ def warranties_for(d):
         return list(WARRANTIES)
 
     def _nom(it):
-        return f"{it.get('designation', '')} {it.get('_produit_nom', '')}"
+        return texte_classement(it.get('designation', ''), it.get('_produit_nom', ''))
 
     def _est_panneau(it):
         return builder._is_panel(it.get("designation", "") or "",

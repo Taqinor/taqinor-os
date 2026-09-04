@@ -120,6 +120,38 @@ def _compute_taux_service_scm(company):
     return Decimal(str(taux)) if taux is not None else None
 
 
+# SOL14 — module PROPRIÉTAIRE d'un KPI, quand il en a un. Un KPI dont le
+# module est éteint pour la société DÉGRADE PROPREMENT : valeur `None`, donc
+# aucun franchissement, aucune notification, et la tuile disparaît de l'écran
+# (l'UI n'affiche pas un KPI sans valeur) — au lieu d'appeler un sélecteur
+# d'app coupée et de rendre un 0 trompeur. Les KPI transverses (DSO, encours,
+# valeur de stock) n'ont pas d'entrée : ils ne sont jamais masqués.
+KPI_MODULE = {
+    KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: 'douane',
+    KpiAlerte.Kpi.TAUX_SERVICE_SCM: 'scm',
+}
+
+
+def kpi_disponible(company, kpi):
+    """Vrai si ce KPI est calculable pour cette société (module actif)."""
+    module = KPI_MODULE.get(kpi)
+    if not module:
+        return True
+    from core.feature_flags import module_actif
+    try:
+        return module_actif(company, module)
+    except Exception:  # pragma: no cover - jamais masquer sur une erreur
+        return True
+
+
+def kpis_disponibles(company):
+    """Clés de KPI proposables à cette société (pour l'UI et les tests)."""
+    return [
+        valeur for valeur, _libelle in KpiAlerte.Kpi.choices
+        if kpi_disponible(company, valeur)
+    ]
+
+
 _KPI_COMPUTERS = {
     KpiAlerte.Kpi.DSO: lambda company, user: _compute_dso(company),
     KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL: lambda company, user:
@@ -157,6 +189,12 @@ def evaluate_kpi_alerte(alerte, *, now=None):
 
     computer = _KPI_COMPUTERS.get(alerte.kpi)
     if computer is None:
+        return None, False, False
+
+    # SOL14 — module du KPI éteint pour cette société : dégradation propre
+    # (aucune valeur, donc aucun franchissement ni notification, et la tuile
+    # disparaît). On n'appelle SURTOUT pas le sélecteur d'une app coupée.
+    if not kpi_disponible(alerte.company, alerte.kpi):
         return None, False, False
 
     user = _resolve_representative_user(alerte.company)

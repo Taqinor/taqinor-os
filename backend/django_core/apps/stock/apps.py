@@ -7,6 +7,7 @@ class StockConfig(AppConfig):
     verbose_name = 'Gestion de Stock'
     module_manifest = {
         'key': 'stock',
+        'sku': 'solar_core',
         'label': 'Stock',
         'icone': 'package',
         'depends': [],

@@ -221,6 +221,14 @@ class Installation(models.Model):
     date_mise_en_service = models.DateField(null=True, blank=True)
     date_reception = models.DateField(null=True, blank=True)
     date_cloture = models.DateField(null=True, blank=True)
+    # AUD326 — « Clôturé » est un ÉTAT GELÉ. Le drapeau est posé côté serveur
+    # à l'entrée en CLOTURE (jamais lu du corps : `read_only_fields`) ; tant
+    # qu'il est vrai, un recul de statut exige un motif ET le rôle Directeur,
+    # et est journalisé distinctement au chatter. Sans lui, un chantier clos
+    # (situation soldée, garantie démarrée) repassait « En cours » par un
+    # simple PATCH de n'importe quel Responsable, sans résistance des gates
+    # CH2 (`verifier_transition_statut` ne garde JAMAIS un recul).
+    cloture_verrouillee = models.BooleanField(default=False)
 
     # ── Mise en service (commissioning) ──
     mes_pv_notes = models.TextField(blank=True, null=True)

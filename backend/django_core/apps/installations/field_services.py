@@ -311,15 +311,22 @@ def display_filename(att):
     return name
 
 
-def missing_required_shots(intervention):
+def missing_required_shots(intervention, slots=None):
     """F8 — créneaux OBLIGATOIRES (actifs) sans aucune photo pour cette
-    intervention. Renvoie la liste des ShotListSlot manquants."""
+    intervention. Renvoie la liste des ShotListSlot manquants.
+
+    AUD324 — `slots` permet à un appelant qui sérialise N interventions de
+    passer la shot-list DÉJÀ chargée (une requête `ShotListSlot` par appel de
+    liste au lieu d'une par intervention). Et la carte des photos n'est plus
+    chargée du tout quand la société n'a AUCUN créneau obligatoire : il n'y
+    avait alors rien à comparer, la requête `Attachment` était pure perte."""
+    if slots is None:
+        slots = active_shotlist(intervention.company)
+    obligatoires = [s for s in slots if s.obligatoire]
+    if not obligatoires:
+        return []
     by_slot = photos_by_slot(intervention)
-    missing = []
-    for slot in active_shotlist(intervention.company):
-        if slot.obligatoire and not by_slot.get(slot.cle):
-            missing.append(slot)
-    return missing
+    return [slot for slot in obligatoires if not by_slot.get(slot.cle)]
 
 
 # ── ZFSM1 — gabarit de fiche d'intervention configurable par type ────────────

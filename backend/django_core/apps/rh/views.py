@@ -5054,10 +5054,15 @@ class NoteDeFraisViewSet(_RhBaseViewSet):
     Filtres : ``?employe=<id>``, ``?categorie=...``,
     ``?statut=soumise|approuvee|remboursee|refusee``.
 
+    Le cycle de vie est ORDONNÉ (AUD155) : ``soumise → approuvée → remboursée``
+    ou ``soumise → refusée``. Toute transition hors cycle est refusée en 400 ;
+    re-poser le même statut reste idempotent (200, aucune écriture).
+
     Actions :
-    * ``POST .../{id}/approuver/`` — ``statut=approuvee``. Idempotent.
-    * ``POST .../{id}/refuser/`` — ``statut=refusee``. Idempotent.
-    * ``POST .../{id}/marquer-remboursee/`` — ``statut=remboursee``. Idempotent.
+    * ``POST .../{id}/approuver/`` — ``statut=approuvee`` (exige ``soumise``).
+    * ``POST .../{id}/refuser/`` — ``statut=refusee`` (exige ``soumise``).
+    * ``POST .../{id}/marquer-remboursee/`` — ``statut=remboursee`` (exige
+      ``approuvee``).
     """
     queryset = NoteDeFrais.objects.select_related('employe').all()
     serializer_class = NoteDeFraisSerializer
@@ -5078,9 +5083,44 @@ class NoteDeFraisViewSet(_RhBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    # ── AUD155 — ordre des transitions du cycle de vie (FG199 / ODX15) ──────
+    # `_set_statut` posait le statut demandé SANS jamais regarder l'état
+    # courant : une note REFUSÉE pouvait être marquée « remboursée » d'un appel
+    # direct, sans avoir jamais été approuvée — et l'argent sortait. Le cycle
+    # documenté (docs/module-map.md §ODX15) est
+    # « soumise → approuvée → remboursée / refusée », et le jumeau
+    # `frais.NoteFrais` vérifie déjà strictement l'état précédent à chaque
+    # étape (apps/compta/services.py:4841, :4898, :4921). Même garde légère,
+    # même forme de message, ici.
+    _PREDECESSEURS_STATUT = {
+        NoteDeFrais.Statut.APPROUVEE: (
+            (NoteDeFrais.Statut.SOUMISE,),
+            'Seule une note soumise peut être approuvée.',
+        ),
+        NoteDeFrais.Statut.REFUSEE: (
+            (NoteDeFrais.Statut.SOUMISE,),
+            'Seule une note soumise peut être refusée.',
+        ),
+        NoteDeFrais.Statut.REMBOURSEE: (
+            (NoteDeFrais.Statut.APPROUVEE,),
+            'Seule une note approuvée peut être marquée remboursée.',
+        ),
+    }
+
     def _set_statut(self, request, pk, nouveau):
         note = self.get_object()
+        # Idempotence préservée : re-poser le MÊME statut reste un 200 sans
+        # écriture (contrat annoncé par les trois actions).
         if note.statut != nouveau:
+            autorises, message = self._PREDECESSEURS_STATUT[nouveau]
+            if note.statut not in autorises:
+                return Response(
+                    {'detail': (
+                        f'{message} Cette note est « '
+                        f'{note.get_statut_display()} » — le cycle est '
+                        'soumise → approuvée → remboursée (ou refusée).'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST)
             note.statut = nouveau
             note.save(update_fields=['statut', 'date_modification'])
         return Response(
@@ -5088,17 +5128,21 @@ class NoteDeFraisViewSet(_RhBaseViewSet):
 
     @action(detail=True, methods=['post'], url_path='approuver')
     def approuver(self, request, pk=None):
-        """Approuve la note de frais (FG199). Idempotent, 404 autre tenant."""
+        """Approuve la note de frais (FG199). Exige ``soumise`` (400 sinon,
+        AUD155). Idempotent, 404 autre tenant."""
         return self._set_statut(request, pk, NoteDeFrais.Statut.APPROUVEE)
 
     @action(detail=True, methods=['post'], url_path='refuser')
     def refuser(self, request, pk=None):
-        """Refuse la note de frais (FG199). Idempotent, 404 autre tenant."""
+        """Refuse la note de frais (FG199). Exige ``soumise`` (400 sinon,
+        AUD155). Idempotent, 404 autre tenant."""
         return self._set_statut(request, pk, NoteDeFrais.Statut.REFUSEE)
 
     @action(detail=True, methods=['post'], url_path='marquer-remboursee')
     def marquer_remboursee(self, request, pk=None):
-        """Marque la note remboursée (FG199). Idempotent, 404 autre tenant."""
+        """Marque la note remboursée (FG199). Exige ``approuvee`` (400 sinon,
+        AUD155 — une note refusée ne peut pas être remboursée). Idempotent,
+        404 autre tenant."""
         return self._set_statut(request, pk, NoteDeFrais.Statut.REMBOURSEE)
 
 

@@ -70,7 +70,15 @@ def public_booking_reserve(request, token):
 
     Corps : ``scheduled_at`` (ISO 8601, requis), ``notes`` (optionnel). Un
     jeton invalide/expiré/déjà utilisé renvoie une réponse honnête (404 pour
-    invalide, 410 pour expiré/déjà utilisé) — jamais un faux succès."""
+    invalide, 410 pour expiré/déjà utilisé) — jamais un faux succès.
+
+    CRX23 — ``scheduled_at`` est BORNÉ côté service
+    (``services._valider_creneau_public``) : illisible, naïf (sans fuseau —
+    ``parse_datetime`` en rend un dès que la chaîne n'a pas d'offset), déjà
+    passé, ou au-delà de l'horizon de réservation ⇒ 400, et le lien n'est PAS
+    consommé (le visiteur corrige et réessaie). Deux réservations SIMULTANÉES
+    sur le même jeton ne créent plus deux rendez-vous : le service réclame le
+    lien par un UPDATE conditionnel, la perdante ressort en 410."""
     from django.utils.dateparse import parse_datetime
 
     raw = request.data.get('scheduled_at')

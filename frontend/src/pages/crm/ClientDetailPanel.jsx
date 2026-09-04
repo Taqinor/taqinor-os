@@ -20,7 +20,8 @@ import PlanComptePage from './comptes/PlanComptePage'
 // PACT129 — Prix contractuels négociés par client (NTCPQ5) : un onglet plus
 // cohérent qu'un écran autonome (la fiche a déjà des onglets).
 import ClientPrixContractuelsTab from './ClientPrixContractuelsTab'
-import { formatMAD } from '../../lib/format'
+// CRX36 — un seul formateur de date dans l'application (lib/format).
+import { formatDate, formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
 
 // Panneau détail client (L4) — lecture seule : devis, factures et chantiers
@@ -28,7 +29,6 @@ import { telHref, waHref } from '../../lib/contactLinks'
 // uniquement, jamais de prix d'achat ni de marge). Source : l'endpoint scopé
 // société GET /crm/clients/<id>/documents/.
 
-const formatDateFR = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
 
 function DocTable({ titre, rows, withTotal, withDate, emptyLabel, renderActions }) {
   // VX152 — un seul moteur de table : la fiche client rejoint le primitif `Table`
@@ -36,7 +36,7 @@ function DocTable({ titre, rows, withTotal, withDate, emptyLabel, renderActions 
   const columns = [
     { key: 'reference', header: 'Référence', cellClassName: 'font-medium', cell: (r) => r.reference || '—' },
     { key: 'statut', header: 'Statut', cell: (r) => <Badge tone="neutral">{r.statut || '—'}</Badge> },
-    ...(withDate ? [{ key: 'date', header: 'Date', cell: (r) => formatDateFR(r.date) }] : []),
+    ...(withDate ? [{ key: 'date', header: 'Date', cell: (r) => formatDate(r.date) }] : []),
     ...(withTotal ? [{ key: 'total', header: 'Total TTC', align: 'right', cell: (r) => formatMAD(r.total_ttc) }] : []),
     // VX245(c) — colonne actions OPTIONNELLE (factures uniquement, pour
     // « Relancer par WhatsApp ») — jamais sur devis/chantiers.

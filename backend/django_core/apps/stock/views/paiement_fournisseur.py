@@ -105,9 +105,21 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
         from ..services import (
             recompute_facture_fournisseur_statut, compute_ras_tva,
+            check_periode_comptable_ouverte,
         )
+        # AUD232 — garde de période comptable EN AMONT du document : le refus
+        # ne vivait qu'au fond de la pile (EcritureComptable.save) et
+        # seulement si COMPTA_AUTO_ECRITURES est actif (défaut OFF).
+        try:
+            check_periode_comptable_ouverte(
+                self.request.user.company,
+                serializer.validated_data.get('date_paiement'),
+                document='Ce règlement fournisseur')
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
         with transaction.atomic():
             facture = serializer.validated_data['facture']
             montant = serializer.validated_data['montant']

@@ -7,6 +7,7 @@ class AgentConfig(AppConfig):
     verbose_name = 'Agent (catalogue d\'actions agentiques)'
     module_manifest = {
         'key': 'agent',
+        'sku': 'generic',
         'label': 'Agent',
         'icone': 'cpu',
         'depends': [],

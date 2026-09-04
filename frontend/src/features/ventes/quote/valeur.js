@@ -19,12 +19,19 @@
 //     défaut forfaitaire, jamais un 0 déguisé (règle fondateur « zéro chiffre
 //     inventé », CLAUDE.md règle #4).
 //
-// LE SEUL DÉBALLEUR EST `unwrap`, l'aide de rendu : elle refuse un nombre nu
-// (TypeError) — c'est ce refus qui rend la règle exécutable au lieu d'être une
-// convention de revue. Rien d'autre ne lit `.valeur` directement.
+// `unwrap` EST LE DÉBALLEUR DE RENDU : elle refuse un nombre nu (TypeError) —
+// c'est ce refus qui rend la règle exécutable au lieu d'être une convention de
+// revue. QJR426 (relecture honnêteté, 02/09/2026) — elle N'EST PAS le SEUL
+// code qui lit `.valeur` : `paireDimensionnement.js` lit `mSans.valeur` /
+// `mAvec.valeur` directement APRÈS avoir vérifié `estFait` (une garde
+// équivalente, écrite à la main plutôt que via `unwrap`) — c'est un second
+// débaleur, pas un contournement de la règle « aucun nombre nu » (la garde
+// `estFait` y joue le même rôle), mais l'en-tête ne doit pas prétendre
+// qu'`unwrap` est seul à le faire.
 //
-// Module AJOUTÉ TESTÉ, IMPORTÉ PAR PERSONNE (vague M4) : la bascule des
-// écrans dessus est une tâche ultérieure (QJR99+).
+// Module IMPORTÉ (QJR426, 02/09/2026) : `generator/CarteMetrique.jsx` (le
+// déballeur de rendu), `paireDimensionnement.js` (ci-dessus) et
+// `DevisGenerator.jsx` (signe les 13 cartes de métrique de l'écran).
 
 /** Puce affichée À CÔTÉ d'une valeur d'aperçu — jamais à la place. */
 export const PUCE_APERCU = "estimation d'exemple"

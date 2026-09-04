@@ -8,6 +8,7 @@ class RecordsConfig(AppConfig):
     verbose_name = 'Activités & pièces jointes'
     module_manifest = {
         'key': 'records',
+        'sku': 'generic',
         'label': 'Activités & pièces jointes',
         'icone': 'paperclip',
         'depends': [],

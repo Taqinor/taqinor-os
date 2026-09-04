@@ -1310,8 +1310,15 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # a plus rien à deviner.
         detection_sure = True
         try:
-            from apps.ventes.quote_engine.builder import build_quote_data
-            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            # QJR421 — POINT DE SAUVEGARDE. Cf. le commentaire du bloc
+            # ``_persist_attribution`` plus bas : sans ``atomic()`` imbriqué,
+            # une erreur BASE levée ici marquerait la transaction entière comme
+            # non validable, et l'``except`` ci-dessous n'absorberait qu'une
+            # apparence d'incident. UN savepoint pour tout le bloc (jamais un
+            # par ligne de devis).
+            with transaction.atomic():
+                from apps.ventes.quote_engine.builder import build_quote_data
+                qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
             nb_options = qd.get('nb_options', 1)
             scenario = qd.get('scenario', '')
         except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
@@ -1389,7 +1396,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # chaque appelé requête comme avant — jamais une acceptation cassée
         # pour une optimisation.
         try:
-            lignes_devis = list(devis.lignes.select_related('produit').all())
+            # QJR421 — POINT DE SAUVEGARDE (même raison que ci-dessous).
+            with transaction.atomic():
+                lignes_devis = list(devis.lignes.select_related('produit').all())
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             lignes_devis = None
 
@@ -1407,7 +1416,25 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # etude_params du devis pour que l'attribution reste lossless même si
         # le lead est fusionné.
         try:
-            _persist_attribution(devis=devis)
+            # ── QJR421 / QJR4-04 — UN POINT DE SAUVEGARDE PAR ÉCRITURE ──────
+            #
+            # CE QUI ÉTAIT FAUX. Ce ``try/except`` vivait NU à l'intérieur du
+            # ``with transaction.atomic()`` ouvert plus haut. Or en base, une
+            # requête en échec marque la transaction ENTIÈRE comme non
+            # validable : l'``except`` CROYAIT absorber l'incident, mais tout
+            # ce qui suivait — l'effondrement des sœurs, la publication de
+            # ``devis_accepted``, et le passage du devis à l'état signé
+            # lui-même — échouait au commit. Un « best-effort » qui fait tomber
+            # l'essentiel n'est pas du best-effort.
+            #
+            # LA RÈGLE. Chaque écriture best-effort de cette transaction prend
+            # son PROPRE ``atomic()`` imbriqué : la base ouvre un point de
+            # sauvegarde, l'échec y revient, et la transaction principale reste
+            # validable. La journalisation ne change pas (on n'avale jamais
+            # l'incident en silence) et le coût est CONSTANT — un savepoint par
+            # bloc best-effort, jamais un par ligne de devis.
+            with transaction.atomic():
+                _persist_attribution(devis=devis)
         except Exception as exc:  # noqa: BLE001 — best-effort
             logger.warning(
                 'QJ9: _persist_attribution échoué pour devis %s : %s',

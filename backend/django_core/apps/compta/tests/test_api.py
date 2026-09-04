@@ -51,6 +51,15 @@ class ComptaApiTests(TestCase):
         services.seed_journaux(self.co_a)
         services.seed_plan_comptable(self.co_b)
         services.seed_journaux(self.co_b)
+        # AUD169 — le bilan refuse (400) toute date hors de tout
+        # ExerciceComptable : chaque société du fixture porte son exercice.
+        from datetime import date
+        from apps.compta.models import ExerciceComptable
+        annee = date.today().year
+        for co in (self.co_a, self.co_b):
+            ExerciceComptable.objects.get_or_create(
+                company=co, date_debut=date(annee, 1, 1),
+                date_fin=date(annee, 12, 31), defaults={'libelle': str(annee)})
 
     def test_seed_action_idempotent(self):
         co = make_company('api-seed', 'API Seed')

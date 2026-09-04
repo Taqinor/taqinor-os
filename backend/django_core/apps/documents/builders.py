@@ -16,6 +16,7 @@ déléguée au service partagé ``core.pdf.render_pdf`` ; les gabarits Django
 (``get_template(...).render(ctx)``) restent STRICTEMENT identiques, donc le
 rendu est inchangé à l'octet près.
 """
+import hashlib
 from datetime import date, datetime
 
 from django.template.loader import get_template
@@ -240,11 +241,47 @@ def _base_context(chantier):
 
 # ── Générateurs publics ──────────────────────────────────────────────────────
 
+def empreinte_signature(chantier):
+    """AUD306 — empreinte SHA-256 (16 hex) de l'ÉTAT SIGNÉ d'un chantier.
+
+    Elle ne dépend que des données PERSISTÉES au moment de la remise réelle
+    (référence du chantier, nom du signataire, horodatage `signe_le`, trait de
+    signature) — jamais de l'instant du rendu. Deux téléchargements du même PV
+    signé portent donc la MÊME empreinte, et toute modification de l'état
+    signé en produit une autre : c'est ce qui distingue « la version signée »
+    d'une simple régénération à la volée depuis l'état LIVE du chantier.
+    """
+    signe_le = getattr(chantier, 'signe_le', None)
+    graine = '|'.join([
+        str(getattr(chantier, 'reference', '') or ''),
+        str(getattr(chantier, 'signataire_nom', '') or ''),
+        signe_le.isoformat() if signe_le is not None else '',
+        str(getattr(chantier, 'signature_client', '') or ''),
+    ])
+    return hashlib.sha256(graine.encode('utf-8')).hexdigest()[:16]
+
+
 def generate_pv_reception(chantier):
-    """N21 — Procès-verbal de réception des travaux."""
+    """N21 — Procès-verbal de réception des travaux.
+
+    AUD306 — le PV réutilise désormais le patron de `generate_bon_livraison`
+    (NTMOB16) : le trait de signature client capturé par l'action
+    `signer-client` est injecté QUAND IL EXISTE, accompagné de l'horodatage
+    PERSISTÉ `signe_le` et d'une empreinte de l'état signé. Auparavant le
+    gabarit n'affichait qu'une mention manuscrite statique : l'ERP ne pouvait
+    ni montrer si/quand le PV avait été signé, ni distinguer deux
+    téléchargements faits à des moments différents (le document est régénéré
+    à la volée depuis l'état LIVE du chantier). Un chantier NON signé garde
+    un contexte strictement identique à avant cette tâche.
+    """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
     ctx['checklist'] = _checklist_summary(chantier)
+    if chantier.signature_client:
+        ctx['signature_client'] = chantier.signature_client
+        ctx['signataire_nom'] = chantier.signataire_nom or None
+        ctx['signe_le'] = chantier.signe_le
+        ctx['empreinte_signature'] = empreinte_signature(chantier)
     html = get_template('document_pv_reception.html').render(ctx)
     return _html_to_pdf(html)
 
@@ -285,11 +322,54 @@ def generate_bon_livraison(chantier):
     return _html_to_pdf(html)
 
 
+def _handover_pack_summary(chantier):
+    """AUD307 — pièces du pack de remise CH4 (`installations.HandoverPack`).
+
+    Même patron défensif que `_checklist_summary` : ``None`` quand le chantier
+    n'a pas encore de pack persisté (l'accesseur inverse OneToOne lève une
+    exception qui hérite d'``AttributeError``, donc ``getattr(..., None)``
+    suffit), et chaque pièce dégrade proprement — une entrée malformée est
+    ignorée plutôt que de casser la génération du document client.
+    """
+    pack = getattr(chantier, 'handover_pack', None)
+    if pack is None:
+        return None
+    pieces = []
+    for piece in (pack.pieces or []):
+        if not isinstance(piece, dict):
+            continue
+        pieces.append({
+            'libelle': (
+                piece.get('libelle') or piece.get('type') or '—'),
+            'reference': piece.get('reference') or '',
+            'present': bool(piece.get('present')),
+        })
+    return {
+        'pieces': pieces,
+        'complet': bool(pack.complet),
+        'presentes': sum(1 for p in pieces if p['present']),
+        'total': len(pieces),
+        'monitoring_acces': pack.monitoring_acces or '',
+    }
+
+
 def generate_dossier_remise(chantier):
-    """N23 — Dossier de remise (handover pack)."""
+    """N23 — Dossier de remise (handover pack).
+
+    AUD307 — le PDF LIT désormais le `HandoverPack` (CH4) qui gate la remise.
+    Avant, il se construisait uniquement depuis `_composants` + un texte
+    statique : une équipe pouvait confirmer `pack_remise.complet=True` puis
+    remettre au client un PDF ne contenant AUCUNE des pièces validées par CH4
+    (ni certificat de recette IEC 62446-1, ni dossier 82-21, ni accès
+    monitoring). Un chantier SANS pack persisté garde un contexte
+    strictement identique à avant cette tâche.
+    """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
     ctx['guidance'] = DEFAULT_OPERATING_GUIDANCE
+    pack = _handover_pack_summary(chantier)
+    if pack is not None:
+        ctx['pack_remise'] = pack
     html = get_template('document_dossier_remise.html').render(ctx)
     return _html_to_pdf(html)
 

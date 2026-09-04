@@ -66,3 +66,12 @@ backend/django_core/apps/portail/migrations/0003_wir95_fk_references.py
 # the codebase (sweep verified). Reversible via migration reversal (restores
 # the column with its default of 8) — no companion data plan needed.
 backend/django_core/apps/parametres/migrations/0080_remove_companyprofile_panneaux_par_900mad.py
+
+# CRX35 (audit L3 CRM du 02/09/2026) — RemoveField reviewed: `Playbook.bloquant`
+# promised a hard block on stage changes with unchecked mandatory tasks, but NO
+# code ever read the column (verified twice by the audit, and again by a repo
+# sweep here: only the model declaration and the serializer field list). A UI
+# promise with no enforcement is worse than no feature. Reversible via migration
+# reversal (restores the column with its default of False) — no companion data
+# plan needed, the column carried no decision anywhere.
+backend/django_core/apps/crm/migrations/0088_crx35_retrait_playbook_bloquant.py

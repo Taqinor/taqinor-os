@@ -20,6 +20,7 @@ class ScmConfig(AppConfig):
     verbose_name = 'Planification supply chain'
     module_manifest = {
         'key': 'scm',
+        'sku': 'optional',
         'label': 'Planification supply chain',
         'icone': 'trending-up',
         'depends': ['stock'],

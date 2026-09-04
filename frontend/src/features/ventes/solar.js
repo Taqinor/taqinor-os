@@ -1407,6 +1407,50 @@ export function comptePanneauxOption(lines, option) {
   }, 0)
 }
 
+// ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
+// Miroir exact de `apps/ventes/utils/options.py` `_panier_sert_huawei` /
+// `retirer_accessoires_huawei` (QJR200/QF9), déclarée backend-only jusqu'ici :
+// un panier dont l'onduleur n'est PAS de marque Huawei perd ses accessoires
+// propres à Huawei (Smart Meter, clé Wi-Fi/dongle) — sans quoi le total
+// affiché au vendeur compte un accessoire que ni le noyau monnaie ni le PDF
+// ne facturent sur cette option (divergence atteinte via `autoFillLines`,
+// dont la garde Huawei :2043-2047 raisonne sur le devis ENTIER, jamais
+// panier par panier).
+export const isSmartMeter = (d) => _norm(d).includes('smart meter')
+// Miroir exact de `_WIFI_RE` (options.py) : « Wi-Fi » s'écrit de plusieurs
+// façons, un simple `includes('wifi')` rate « Wi-Fi » avec trait d'union.
+const _WIFI_RE = /wi[\s\-_.]*fi/
+export const isWifiDongle = (d) => {
+  const n = _norm(d)
+  return n.includes('dongle') || _WIFI_RE.test(n)
+}
+const _estAccessoireHuawei = (d) => isSmartMeter(d) || isWifiDongle(d)
+
+// True quand le panier `rows` est servi par un onduleur Huawei — miroir exact
+// de `_panier_sert_huawei` : sans onduleur identifiable → False (on n'affiche
+// pas ces accessoires par défaut) ; le moindre onduleur non-Huawei dans le
+// panier suffit à les retirer (conservateur).
+function _panierSertHuawei(rows) {
+  const onduleurs = rows.filter(l => isAnyInverter(l?.designation))
+  if (onduleurs.length === 0) return false
+  let huaweiVu = false
+  for (const l of onduleurs) {
+    if (_norm(l?.designation).includes('huawei')) {
+      huaweiVu = true
+    } else {
+      return false
+    }
+  }
+  return huaweiVu
+}
+
+// `rows` privé de ses accessoires Huawei orphelins — miroir exact de
+// `retirer_accessoires_huawei`.
+function _retirerAccessoiresHuawei(rows) {
+  if (_panierSertHuawei(rows)) return rows
+  return rows.filter(l => !_estAccessoireHuawei(l?.designation))
+}
+
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
@@ -1417,16 +1461,31 @@ export function optionTotalsTTC(lines, discountPct) {
   // miroir exact de builder.py `_repartir_options` et de
   // `apps/ventes/utils/options.py`). Une ligne SANS `variante` retombe sur
   // les mots-clés, mot pour mot comme avant.
-  const totalSansBrut = lines
-    .filter(appartientAuPanierSans)
-    .reduce((s, l) => s + ttc(l), 0)
-  const totalAvecBrut = lines
-    .filter(appartientAuPanierAvec)
-    .reduce((s, l) => s + ttc(l), 0)
+  let linesSans = lines.filter(appartientAuPanierSans)
+  let linesAvec = lines.filter(appartientAuPanierAvec)
+  // QJR402/QJR300 — QF9 ne s'applique QUE sur un VRAI devis à deux options
+  // DÉCLARÉES (miroir de `deux_options`/`alternative_declaree` au noyau) :
+  // la seule trace, côté lignes, d'une alternative déclarée est `variante`
+  // ('sans'/'avec'), posée uniquement par `fusionnerVariantes` pour un
+  // scénario « Les deux ». Un devis SANS aucune ligne variantée (mono-
+  // composition, y compris l'artefact « deux onduleurs non déclarés ») garde
+  // TOUTES ses lignes, comportement historique strictement inchangé.
+  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')) {
+    linesSans = _retirerAccessoiresHuawei(linesSans)
+    linesAvec = _retirerAccessoiresHuawei(linesAvec)
+  }
+  const totalSansBrut = linesSans.reduce((s, l) => s + ttc(l), 0)
+  const totalAvecBrut = linesAvec.reduce((s, l) => s + ttc(l), 0)
 
+  // QJR402 — arrondi au CENTIME, jamais au dirham entier, et JAMAIS
+  // conditionnel à la présence d'une remise (avant ce correctif, un devis
+  // remisé était arrondi à l'entier tandis qu'un devis non remisé gardait ses
+  // centimes : deux règles pour la même chaîne, jusqu'à 0,50 MAD d'écart avec
+  // la liste/le PDF/la facture, qui restent « au centime » comme le noyau —
+  // `apps/ventes/utils/options.py` `_totaux_canoniques`).
   const pct = parseFloat(discountPct) || 0
-  const totalSans = pct > 0 ? Math.round(totalSansBrut * (1 - pct / 100)) : totalSansBrut
-  const totalAvec = pct > 0 ? Math.round(totalAvecBrut * (1 - pct / 100)) : totalAvecBrut
+  const totalSans = Math.round(totalSansBrut * (1 - pct / 100) * 100) / 100
+  const totalAvec = Math.round(totalAvecBrut * (1 - pct / 100) * 100) / 100
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 

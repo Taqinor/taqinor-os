@@ -8,6 +8,7 @@ class AuditConfig(AppConfig):
     verbose_name = "Journal d'activité"
     module_manifest = {
         'key': 'audit',
+        'sku': 'generic',
         'label': "Journal d'activité",
         'icone': 'history',
         'depends': [],

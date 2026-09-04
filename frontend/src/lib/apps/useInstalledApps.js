@@ -41,6 +41,9 @@ import { moduleConfigs } from '../../router/moduleRoutes'
 import {
   selectModulesDesactives, isModuleDisabled, estAutoriseEntree,
 } from '../../router/moduleGating'
+// SOL11 — miroir des `sku`/libellés des manifestes backend : sert le TRI
+// « solaire d'abord » et la section « Extensions ».
+import { libelleManifeste, rangDe, skuDe } from './appSkus'
 
 const EMPTY_PERMISSIONS = []
 
@@ -129,6 +132,14 @@ export function buildInstalledApps(
   return (configs ?? [])
     // routes-only (comme `admin`) ou sans écran (comme `ao`) : jamais une "app".
     .filter((c) => c?.nav?.items?.length > 0)
+    // SOL11 — les verticaux PARQUÉS sont absents de la grille SANS filtre ici,
+    // et c'est volontaire : en édition solaire leur `module.config.jsx` n'est
+    // pas dans le bundle (SOL6, glob conditionnel + mise au parc à la
+    // résolution), et en édition complète servie à un tenant sur le plan
+    // « Solaire » ils arrivent déjà dans `modules_desactives` (SOL9) — donc
+    // retirés par le filtre ci-dessous. Un filtre supplémentaire ici serait
+    // soit redondant, soit FAUX (il masquerait mrp/sante… à un tenant de
+    // l'édition complète qui y a légitimement droit).
     // désactivée pour la société (ODX6).
     .filter((c) => !isModuleDisabled(disabledModules, c.key))
     // masquée pour CE rôle (ODY26) — après le gating société, avant le gating
@@ -141,6 +152,15 @@ export function buildInstalledApps(
       return {
         key: c.key,
         label: c.nav.label,
+        // SOL11 — appartenance produit (manifeste backend, miroir `appSkus`) :
+        // `solar_core` / `generic` / `optional`. Sert au TRI et à la section
+        // « Extensions » de la grille Applications.
+        sku: skuDe(c.key),
+        // Libellé FR COURT du manifeste (source unique côté serveur), pour les
+        // surfaces qui veulent un intitulé de produit plutôt que le libellé de
+        // SECTION de nav (souvent en capitales). `null` si la clé n'a pas de
+        // manifeste backend — l'appelant retombe alors sur `label`.
+        libelleManifeste: libelleManifeste(c.key),
         // APX1 — un module PEUT déclarer son icône d'app (`nav.icon`) : le
         // glyphe devient alors indépendant de l'ORDRE de ses items. Sans ce
         // champ (cas de tous les autres modules aujourd'hui), repli EXACT sur
@@ -155,6 +175,13 @@ export function buildInstalledApps(
       }
     })
     .filter(Boolean)
+    // SOL11 — ORDRE PRODUIT : le cœur métier solaire d'abord, puis le socle
+    // générique, puis les extensions optionnelles. Tri STABLE (à rang égal,
+    // l'ordre du registre — `order` puis `key` — est conservé), pour que la
+    // grille reste prévisible d'un build à l'autre.
+    .map((app, index) => [app, index])
+    .sort((a, b) => rangDe(a[0].key) - rangDe(b[0].key) || a[1] - b[1])
+    .map(([app]) => app)
 }
 
 /**

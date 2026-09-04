@@ -14,6 +14,7 @@ la liste/le Kanban) : remise globale honorée, et sur un devis à deux options,
 JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 """
 import hashlib
+import hmac
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
@@ -21,6 +22,8 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
+
+from core.throttling import IdentIpPartageeMixin
 
 from .models import SalleVente, SalleVenteItem, SalleVenteVue
 
@@ -35,6 +38,17 @@ _SALLE_VENTE_RESPONSE = inline_serializer('PublicSalleVente', {
             'ordre': drf_serializers.IntegerField(),
             'reference': drf_serializers.CharField(allow_null=True),
         })),
+})
+
+# QJR420 — le mot de passe a quitté la chaîne de requête : il ne se transmet
+# plus que dans le CORPS d'un POST. Sans corps déclaré, drf-spectacular ne
+# savait pas deviner de sérialiseur pour l'opération POST (« unable to guess
+# serializer », avertissement bloquant de la garde de schéma).
+_SALLE_VENTE_ACCES_REQUEST = inline_serializer('PublicSalleVenteAcces', {
+    'mot_de_passe': drf_serializers.CharField(
+        required=False, allow_blank=True,
+        help_text="Requis uniquement si la salle est protégée par mot de "
+                  "passe. Jamais transmis dans l'URL."),
 })
 
 _APPORTEUR_DEALS_RESPONSE = inline_serializer('PublicApporteurMesDeals', {
@@ -52,9 +66,13 @@ _APPORTEUR_DEALS_RESPONSE = inline_serializer('PublicApporteurMesDeals', {
 })
 
 
-class PublicSalleVenteRateThrottle(SimpleRateThrottle):
+class PublicSalleVenteRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
     """Débit limité par IP + jeton — même patron que
-    ``PublicBookingRateThrottle``."""
+    ``PublicBookingRateThrottle``.
+
+    QJR416 — l'identifiant du seau vient de la primitive partagée : le
+    ``get_ident`` de DRF lisait le PREMIER saut de ``X-Forwarded-For``, donc un
+    seau ADRESSABLE par l'appelant."""
     scope = 'public_salle_vente'
     rate = '30/minute'
 
@@ -74,14 +92,65 @@ def _resolve_salle(token):
     return SalleVente.objects.select_related('company').filter(token=token).first()
 
 
-def _hash_ip(request):
-    ip = request.META.get('REMOTE_ADDR', '') or ''
+def _hash_ip(request, salle=None):
+    """QJR416 (QJR4-11, requalifié « qualité de données ») — identifiant de
+    VISITEUR, salé PAR LIEN.
+
+    DEUX DÉFAUTS, UN SEUL CORRECTIF.
+
+    * L'adresse lue était ``REMOTE_ADDR`` : derrière le proxy, elle vaut la
+      MÊME valeur pour TOUS les visiteurs, donc le journal de consultation
+      NTCRM18 ne distinguait plus personne (tout le monde partageait une
+      empreinte unique). On lit désormais LA primitive partagée
+      (``core.throttling.ip_de_requete``, dernier saut de confiance).
+    * Le hachage était un SHA-256 NU : la même IP produit la même empreinte sur
+      TOUS les liens du dépôt, ce qui permet de recouper les consultations d'un
+      même visiteur d'une salle à l'autre — et un dictionnaire d'IPv4 le
+      renverse en quelques minutes. Le hachage est désormais SALÉ PAR LIEN
+      (jeton de la salle) : deux visiteurs distincts d'un même lien produisent
+      deux identifiants, et un même visiteur sur deux liens en produit deux
+      DIFFÉRENTS.
+
+    CRX31 — le sel par lien ne suffisait pas : le jeton de la salle est connu de
+    quiconque DÉTIENT le lien (le destinataire du devis, et toute personne à qui
+    il l'a transféré). Cette personne pouvait donc reconstruire la table des
+    empreintes de l'espace IPv4 pour CE lien et ré-identifier chaque visiteur.
+    L'empreinte est désormais un **HMAC-SHA256 clavé par ``SECRET_KEY``** : sans
+    la clé du serveur, la table n'est plus calculable. Le sel par lien est
+    CONSERVÉ à l'intérieur du message (le décloisonnement inter-liens reste
+    fermé) ; la sortie reste 64 caractères hexadécimaux, la colonne ne bouge pas.
+
+    Aucune IP en clair n'est persistée — seulement cette empreinte.
+    """
+    from django.conf import settings
+
+    from core.throttling import ip_de_requete
+
+    ip = ip_de_requete(request)
     if not ip:
         return ''
-    return hashlib.sha256(ip.encode('utf-8')).hexdigest()
+    sel = str(getattr(salle, 'token', '') or '')
+    cle = str(getattr(settings, 'SECRET_KEY', '') or '').encode('utf-8')
+    return hmac.new(
+        cle, ('%s|%s' % (sel, ip)).encode('utf-8'), hashlib.sha256).hexdigest()
 
 
 def _item_payload(item):
+    """QJR419 (QJR4-10) — la charge utile publique ne remet plus au visiteur un
+    chemin INTERNE qu'il ne peut pas ouvrir.
+
+    ``proposal_path`` valait ``/api/django/ventes/devis/<pk>/proposal/`` : un
+    lien vers un endpoint AUTHENTIFIÉ, servi par un endpoint ``AllowAny``. Deux
+    défauts d'un coup — il était inutilisable pour son destinataire (le
+    visiteur anonyme n'a pas de session), et il DIVULGUAIT la clé primaire
+    interne du devis. On sert désormais LE LIEN PUBLIC (la page tokenisée du
+    site, construite par le builder unique ``ventes.utils.client_links`` —
+    jamais une URL forgée à la main), c'est-à-dire celui qui fonctionne
+    réellement pour un visiteur. Aucune clé primaire, aucun ``/api/django/``.
+
+    Le nom de clé ``proposal_path`` est CONSERVÉ : c'est le contrat de l'écran
+    qui le consomme, et cette tâche ne touche pas d'écran.
+    """
     payload = {
         'id': item.id, 'type': item.type, 'titre': item.titre,
         'ordre': item.ordre,
@@ -96,14 +165,24 @@ def _item_payload(item):
         # Kanban) : chaîne canonique par option, remise honorée, jamais la
         # somme des deux options d'un devis à deux options (D2/D9).
         from apps.ventes.quote_engine.builder import display_totals
+        # QJR419 — builder UNIQUE des URLs client-facing (QX13) : jamais un
+        # chemin reconstruit à la main. Utilitaire pur, aucun import de
+        # ``ventes.models``.
+        from apps.ventes.utils.client_links import url_proposition
         devis = get_devis_by_pk(item.reference)
         if devis is not None and str(devis.company_id) == str(item.salle.company_id):
             payload.update({
                 'reference': devis.reference,
                 'statut': devis.statut,
                 'total_ttc': str(display_totals(devis)['total']),
-                'proposal_path': f'/api/django/ventes/devis/{devis.pk}/proposal/',
             })
+            # Le lien public est OMIS plutôt que fabriqué si sa résolution
+            # échoue : mieux vaut aucune clé qu'un lien mort (Done « ou rien
+            # du tout »).
+            try:
+                payload['proposal_path'] = url_proposition(devis)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                pass
         else:
             payload['reference'] = None
     else:
@@ -111,29 +190,47 @@ def _item_payload(item):
     return payload
 
 
-@extend_schema(responses={200: _SALLE_VENTE_RESPONSE})
-@api_view(['GET'])
+@extend_schema(methods=['GET'], request=None,
+               responses={200: _SALLE_VENTE_RESPONSE})
+@extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
+               responses={200: _SALLE_VENTE_RESPONSE})
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
 def public_salle_vente(request, token):
     """NTCRM17/18 — Détail public d'une salle de vente. Journalise une
     ``SalleVenteVue`` à CHAQUE consultation réussie (NTCRM18/19), IP hachée
-    uniquement."""
+    uniquement.
+
+    QJR420 (QJR4-06) — LE MOT DE PASSE A QUITTÉ LA CHAÎNE DE REQUÊTE. Il était
+    lu dans ``request.query_params`` (le corps n'étant consulté qu'à défaut) :
+    un secret atterrissait donc dans les **journaux d'accès du serveur**,
+    l'**historique du navigateur** et l'en-tête **Referer** envoyé à tout
+    tiers. Il se transmet désormais **UNIQUEMENT dans le corps d'un POST** ; la
+    lecture depuis la chaîne de requête est **SUPPRIMÉE**, pas laissée en repli
+    (règle permanente 2 : un repli qui accepte encore le secret en clair dans
+    l'URL ne corrige rien).
+
+    Le GET reste servi à l'identique pour une salle SANS mot de passe — c'est
+    le cas courant, il ne change pas ; une salle protégée exige un POST.
+    """
     salle = _resolve_salle(token)
     if salle is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
     if not salle.is_accessible:
         return Response(status=status.HTTP_410_GONE)
     if salle.has_password:
-        mot_de_passe = request.query_params.get('mot_de_passe') or ''
-        if not mot_de_passe and request.data:
-            mot_de_passe = request.data.get('mot_de_passe', '')
+        corps = request.data if hasattr(request.data, 'get') else {}
+        mot_de_passe = corps.get('mot_de_passe') or ''
+        if not isinstance(mot_de_passe, str):
+            mot_de_passe = ''
         if not salle.check_password(mot_de_passe):
             return Response(
                 {'detail': 'Mot de passe requis ou invalide.'},
                 status=status.HTTP_403_FORBIDDEN)
 
-    SalleVenteVue.objects.create(salle=salle, ip_hash=_hash_ip(request))
+    SalleVenteVue.objects.create(
+        salle=salle, ip_hash=_hash_ip(request, salle))
     try:
         # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
         from .services import detecter_signal_interet_salle_vente
@@ -156,7 +253,8 @@ def public_salle_vente(request, token):
 # autre) et n'expose du client que nom/ville (jamais téléphone/email/adresse
 # complète — cf. `AUTH`).
 
-class PublicApporteurRateThrottle(SimpleRateThrottle):
+class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
+    # QJR416 — même primitive d'identifiant que les autres throttles publics.
     scope = 'public_apporteur_portail'
     rate = '30/minute'
 

@@ -32,6 +32,11 @@ import {
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question qu'au board avant un recul.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
 import { formatDate } from '../../../../lib/format'
+// CRX36 — telHref/waHref étaient recopiés À L'IDENTIQUE ici alors que
+// `lib/contactLinks` (VX108) les porte déjà pour tout écran affichant un
+// numéro : deux copies d'une même règle de nettoyage finissent toujours
+// par diverger.
+import { telHref, waHref } from '../../../../lib/contactLinks'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
 import ExternalLink from '../../../../ui/ExternalLink'
@@ -162,18 +167,6 @@ const fullName = (l) => `${l.nom ?? ''} ${l.prenom ?? ''}`.trim()
 // QX25 — la colonne Téléphone est masquée sur mobile (`m-hide`, ≤768px) sans
 // aucun repli tap-to-call : on pose des icônes compactes tel:/wa.me dans la
 // cellule « Lead » (jamais masquée) pour que le mobile reste appelable.
-const telHref = (raw) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const cleaned = s.replace(/[^\d+]/g, '')
-  return cleaned ? `tel:${cleaned}` : null
-}
-const waHref = (raw) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const digits = s.replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
-}
 
 // Comparateurs ascendants par colonne triable.
 const SORTERS = {
@@ -202,11 +195,6 @@ const todayISO = () => {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const j = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${m}-${j}`
-}
-
-const formatDateFR = (iso) => {
-  const d = new Date(`${iso}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
 function SortableTh({ col, label, sort, onSort, className, help }) {
@@ -448,7 +436,7 @@ const ListRow = memo(function ListRow({
           disabled={!onInlineSave}
           display={lead.relance_date ? (
             <span className={enRetard ? 'lv-relance-late' : undefined}>
-              {formatDateFR(lead.relance_date)}
+              {formatDate(lead.relance_date)}
             </span>
           ) : null}
           onSave={(v) => onInlineSave(lead, 'relance_date', v)}
@@ -462,7 +450,7 @@ const ListRow = memo(function ListRow({
               ? 'lv-relance-late' : undefined}
             title={lead.next_activity.summary || undefined}
           >
-            {formatDateFR(lead.next_activity.due_date)}
+            {formatDate(lead.next_activity.due_date)}
             {lead.next_activity.summary
               ? ` · ${lead.next_activity.summary}` : ''}
           </span>

@@ -60,7 +60,17 @@ test('QJR35 — CarteMetrique accepte un prop `badge` et le rend À CÔTÉ de la
   assert.match(bloc, /data-testid="gen-metric-motif"/)
 })
 
-test('QJR35 — les 4 cartes Économies/ROI (Sans + Avec batterie) reçoivent le badge conditionnel, jamais les cartes Coût', () => {
+test('QJR35/QJR426 — les 4 cartes Économies/ROI (Sans + Avec batterie) portent le discriminant conditionnel `signerEcoOuRoi`, jamais les cartes Coût', () => {
+  // QJR426 (DR5) — le littéral `badge={apercuEstimationExemple ? '...' :
+  // null}` a été remplacé par la valeur SIGNÉE `signerEcoOuRoi(v)`
+  // (`apercuEstimationExemple ? apercu(v) : moteur(v)`, défini une seule
+  // fois près de `apercuEstimationExemple`) : `apercu()` porte la MÊME puce
+  // `PUCE_APERCU` (« estimation d'exemple », texte inchangé) que l'ancien
+  // littéral, `moteur()` n'en porte aucune — rendu byte-identique.
+  assert.match(DG,
+    /const signerEcoOuRoi = \(v\) => \(apercuEstimationExemple \? apercu\(v\) : moteur\(v\)\)/,
+    'le discriminant signerEcoOuRoi doit exister, dérivé de apercuEstimationExemple')
+
   const titleIdxs = []
   let from = 0
   while (true) {
@@ -72,26 +82,28 @@ test('QJR35 — les 4 cartes Économies/ROI (Sans + Avec batterie) reçoivent le
   assert.equal(titleIdxs.length, 2, 'les deux colonnes gen-compare-col-title (Sans/Avec) sont introuvables')
 
   // Colonne "Sans batterie" (1ʳᵉ occurrence).
-  const sansBloc = DG.slice(titleIdxs[0], titleIdxs[0] + 900)
+  const sansBloc = DG.slice(titleIdxs[0], titleIdxs[0] + 1700)
   assert.match(sansBloc, /Sans batterie/)
-  assert.match(sansBloc, /<CarteMetrique label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
-  assert.match(sansBloc, /<CarteMetrique label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  assert.match(sansBloc, /<CarteMetrique label="Économies"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
+  assert.match(sansBloc, /<CarteMetrique label="ROI"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
   // La carte Coût (chiffre réel du devis, jamais dérivé du miroir local ROI)
-  // ne doit PAS recevoir ce badge.
+  // ne doit PAS recevoir ce discriminant — `moteur()` inconditionnel.
   const coutSansIdx = sansBloc.indexOf('<CarteMetrique label="Coût"')
   assert.ok(coutSansIdx > -1)
   const coutSansBloc = sansBloc.slice(coutSansIdx, coutSansIdx + 200)
-  assert.doesNotMatch(coutSansBloc, /badge=/)
+  assert.doesNotMatch(coutSansBloc, /signerEcoOuRoi/)
+  assert.match(coutSansBloc, /valeur=\{moteur\(/)
 
   // Colonne "Avec batterie" (2ᵉ occurrence).
-  const avecBloc = DG.slice(titleIdxs[1], titleIdxs[1] + 1900)
+  const avecBloc = DG.slice(titleIdxs[1], titleIdxs[1] + 2000)
   assert.match(avecBloc, /Avec batterie/)
-  assert.match(avecBloc, /<CarteMetrique label="Économies"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
-  assert.match(avecBloc, /<CarteMetrique label="ROI"[\s\S]*?badge=\{apercuEstimationExemple \? 'estimation d\\'exemple' : null\} \/>/)
+  assert.match(avecBloc, /<CarteMetrique label="Économies"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
+  assert.match(avecBloc, /<CarteMetrique label="ROI"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
   const coutAvecIdx = avecBloc.indexOf('<CarteMetrique label="Coût"')
   assert.ok(coutAvecIdx > -1)
   const coutAvecBloc = avecBloc.slice(coutAvecIdx, coutAvecIdx + 200)
-  assert.doesNotMatch(coutAvecBloc, /badge=/)
+  assert.doesNotMatch(coutAvecBloc, /signerEcoOuRoi/)
+  assert.match(coutAvecBloc, /valeur=\{moteur\(/)
 })
 
 test('QJR35 — rejoué : au montage (aucune facture saisie, aucune étude serveur) la puce est due ; dès qu\'une facture réelle ou l\'étude serveur existe, elle disparaît', () => {

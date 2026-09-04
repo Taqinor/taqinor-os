@@ -811,3 +811,212 @@ class TestLeadLanguePreferee(TestCase):
             {'devis_ids': [self.devis.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('FR-MARKER', resp.data['message'])
+
+
+class TestLeadSoftDeleteVerrouille(TestCase):
+    """CRX15 — le triplet de soft-delete (`is_deleted`/`deleted_at`/
+    `deleted_by`) ne se pilote QUE par la suppression, jamais par un PATCH.
+
+    Écrivable, `is_deleted: true` faisait DISPARAÎTRE le lead des listes
+    (``Lead.objects`` masque les supprimés) sans écrire de ``DeletionRecord``
+    — donc sans corbeille ni annulation — et en contournant la garde 409 qui
+    refuse de supprimer un lead porteur de devis. Parité exacte avec
+    `is_archived`, déjà verrouillé (« jamais par un PATCH direct »).
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='crx15-co', nom='CRX15 Co')
+        self.user = User.objects.create_user(
+            username='crx15_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Lead CRX15')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _deletion_records(self):
+        from core.models import DeletionRecord
+        return DeletionRecord.objects.count()
+
+    def test_patch_is_deleted_est_ignore(self):
+        records_avant = self._deletion_records()
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertFalse(
+            self.lead.is_deleted,
+            'Un PATCH a pu poser is_deleted : le lead disparaît des listes '
+            'sans corbeille ni undo.')
+        # Le lead reste visible du manager par défaut (corbeille masquée).
+        self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())
+        # …et aucune entrée de corbeille n'a été créée (la disparition
+        # silencieuse est précisément ce que CRX15 tue).
+        self.assertEqual(self._deletion_records(), records_avant)
+
+    def test_patch_deleted_at_et_deleted_by_sont_ignores(self):
+        from django.utils import timezone
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/',
+            {'deleted_at': timezone.now().isoformat(),
+             'deleted_by': self.user.pk})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.deleted_at)
+        self.assertIsNone(self.lead.deleted_by_id)
+
+    def test_le_triplet_est_declare_en_lecture_seule(self):
+        from apps.crm.serializers import LeadSerializer
+        fields = LeadSerializer().fields
+        for name in ('is_deleted', 'deleted_at', 'deleted_by'):
+            self.assertTrue(
+                fields[name].read_only,
+                f'LeadSerializer.{name} doit rester en lecture seule (CRX15).')
+
+    def test_patch_ne_contourne_pas_la_garde_409_devis(self):
+        """Un lead porteur de devis ne peut pas être « supprimé » par un PATCH :
+        la suppression réelle, elle, reste bloquée en 409."""
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client CRX15')
+        Devis.objects.create(company=self.company, reference='CRX15-D1',
+                             lead=self.lead, client=client)
+
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_deleted)
+        self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())
+
+
+class TestLeadPatchEcritureBornee(TestCase):
+    """CRX25 — un PATCH n'écrit QUE les champs qu'il porte.
+
+    ``ModelSerializer.update()`` finissait par un ``instance.save()`` NU :
+    toutes les colonnes étaient réécrites depuis la copie en mémoire. Deux
+    requêtes concurrentes sur des champs DISJOINTS (le commercial change la
+    ville pendant que l'assistante corrige le nom) se révertaient donc l'une
+    l'autre — la dernière écriture gagnait sur TOUT le lead, pas seulement sur
+    son champ.
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='crx25-co', nom='CRX25 Co')
+        self.user = User.objects.create_user(
+            username='crx25_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Avant', ville='Casablanca',
+            telephone='0611111111', email='avant@example.com')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _perform_update_avec_instance(self, instance, data, user):
+        """Rejoue le ``perform_update`` de la vue sur une instance DONNÉE.
+
+        C'est la seule façon déterministe de simuler la concurrence : en HTTP,
+        le serveur relit l'objet à chaque requête, donc deux PATCH séquentiels
+        ne se marchent jamais dessus. La vraie course est « A a lu, B a écrit,
+        A écrit à son tour depuis sa copie périmée » — reproduite ici.
+        """
+        from rest_framework.test import APIRequestFactory
+        from apps.crm.serializers import LeadSerializer
+        from apps.crm.views import LeadViewSet
+
+        request = APIRequestFactory().patch('/x/', data, format='json')
+        request.user = user
+        vue = LeadViewSet()
+        vue.request = request
+        vue.format_kwarg = None
+        serializer = LeadSerializer(
+            instance, data=data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        vue.perform_update(serializer)
+
+    def test_deux_patch_concurrents_sur_champs_disjoints_survivent(self):
+        # A lit le lead (copie périmée dès que B écrit).
+        copie_de_a = Lead.objects.get(pk=self.lead.pk)
+        # B écrit la ville (requête concurrente, déjà commitée).
+        Lead.objects.filter(pk=self.lead.pk).update(ville='Rabat')
+        # A écrit son champ à lui.
+        self._perform_update_avec_instance(
+            copie_de_a, {'nom': 'Après'}, self.user)
+
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.nom, 'Après')
+        self.assertEqual(
+            self.lead.ville, 'Rabat',
+            "Le PATCH de A a réécrit la ville depuis sa copie périmée : "
+            "l'écriture concurrente de B est perdue (lost update).")
+
+    def test_patch_normal_ecrit_toujours_son_champ(self):
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Agadir'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.ville, 'Agadir')
+        self.assertEqual(self.lead.nom, 'Avant')
+
+    def test_updated_by_est_pose_par_le_serveur(self):
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Fès'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.updated_by_id, self.user.id)
+
+    def test_colonnes_derivees_suivent_un_changement_de_telephone(self):
+        """QW10 — sans ``phone_normalise`` dans update_fields, la colonne
+        INDEXÉE de dédup resterait sur l'ancien numéro et la déduplication
+        deviendrait aveugle."""
+        from apps.crm.services import normalize_phone
+        ancien = self.lead.phone_normalise
+        self.assertTrue(ancien)
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/',
+            {'telephone': '0622222222'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertNotEqual(self.lead.phone_normalise, ancien)
+        self.assertEqual(self.lead.phone_normalise,
+                         normalize_phone(self.lead.telephone) or '')
+
+    def test_colonnes_derivees_suivent_un_changement_d_email(self):
+        from apps.crm.services import normalize_email
+        ancien = self.lead.email_normalise
+        self.assertTrue(ancien)
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/',
+            {'email': 'apres@example.com'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertNotEqual(self.lead.email_normalise, ancien)
+        self.assertEqual(self.lead.email_normalise,
+                         normalize_email(self.lead.email) or '')
+
+    def test_les_champs_ecrivables_excluent_les_noms_inconnus(self):
+        """``update_fields`` refuse un nom inconnu ou un M2M (ValueError) —
+        le filtre sur le méta du modèle est ce qui l'empêche."""
+        from apps.crm.views import LeadViewSet
+        champs = LeadViewSet._champs_ecrivables(
+            {'nom', 'ville', 'company', 'updated_by', 'champ_inexistant',
+             'activites'})
+        self.assertIn('nom', champs)
+        self.assertIn('company', champs)
+        self.assertIn('updated_by', champs)
+        self.assertNotIn('champ_inexistant', champs)
+        self.assertNotIn('activites', champs)  # relation INVERSE
+        # Django ne rafraîchit un champ auto_now que s'il est DANS
+        # update_fields : sans lui, la fraîcheur du lead se figerait.
+        self.assertIn('date_modification', champs)
+
+    def test_la_date_de_modification_avance_toujours(self):
+        avant = Lead.objects.get(pk=self.lead.pk).date_modification
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Tanger'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertGreater(
+            self.lead.date_modification, avant,
+            "date_modification (auto_now) ne bouge plus : le champ manque "
+            "dans update_fields.")

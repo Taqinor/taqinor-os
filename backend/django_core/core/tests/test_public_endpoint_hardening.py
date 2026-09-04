@@ -24,7 +24,9 @@ THROTTLE_EXEMPT = {
     # Clé VAPID statique (aucune surface de brute-force).
     "notifications/views.py::vapid_public_key",
     # Jetons signés / opaques — dette de throttle à ajouter (suivi YRBAC9).
-    "crm/public_chat_views.py::open_chat_session",
+    # (``crm/public_chat_views.py::open_chat_session`` a QUITTÉ cette liste :
+    # il porte désormais ``@throttle_classes([PublicChatRateThrottle])`` — le
+    # ratchet ne fait que décroître, une exemption résorbée se retire.)
     "gestion_projet/public_views.py::portail_avancement",
     "gestion_projet/public_views.py::evaluation_projet",
     "installations/public_views.py::RFQConsultationPublicView",

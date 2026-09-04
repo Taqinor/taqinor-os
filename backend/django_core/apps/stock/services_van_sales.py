@@ -67,7 +67,7 @@ def charger_vehicule(*, company, user, actif_flotte_id, lignes):
     from django.db import transaction
 
     from .models import MouvementStock, Produit, StockVehicule
-    from .services import check_negative_stock_guard
+    from .services import check_negative_stock_guard, record_stock_movement
 
     normalisees = _normaliser_lignes(lignes)
     resultats = []
@@ -81,7 +81,7 @@ def charger_vehicule(*, company, user, actif_flotte_id, lignes):
             qte_apres = qte_avant - quantite
             check_negative_stock_guard(company, qte_avant, qte_apres)
 
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
                 quantite=quantite, quantite_avant=qte_avant,
@@ -89,8 +89,6 @@ def charger_vehicule(*, company, user, actif_flotte_id, lignes):
                 reference=f'VAN-CHARGE-{actif_flotte_id}',
                 note='Chargement véhicule (tournée de vente).',
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
 
             ligne, _ = StockVehicule.objects.select_for_update().get_or_create(
                 company=company, actif_flotte_id=actif_flotte_id,
@@ -108,6 +106,7 @@ def decharger_vehicule(*, company, user, actif_flotte_id, lignes):
     from django.db import transaction
 
     from .models import MouvementStock, Produit, StockVehicule
+    from .services import record_stock_movement
 
     normalisees = _normaliser_lignes(lignes)
     resultats = []
@@ -128,7 +127,7 @@ def decharger_vehicule(*, company, user, actif_flotte_id, lignes):
 
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + quantite
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=quantite, quantite_avant=qte_avant,
@@ -136,8 +135,6 @@ def decharger_vehicule(*, company, user, actif_flotte_id, lignes):
                 reference=f'VAN-DECHARGE-{actif_flotte_id}',
                 note='Déchargement véhicule (reliquat de tournée).',
                 created_by=user)
-            produit.quantite_stock = qte_apres
-            produit.save(update_fields=['quantite_stock'])
 
             ligne.quantite_embarquee -= quantite
             ligne.save(update_fields=['quantite_embarquee'])

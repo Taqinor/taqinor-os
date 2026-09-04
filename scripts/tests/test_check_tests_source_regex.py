@@ -101,6 +101,52 @@ class CheckTestsSourceRegexTests(unittest.TestCase):
         for rel, raison in guard.ALLOWLIST.items():
             self.assertTrue(raison and raison.strip(), f"{rel} sans raison")
 
+    # ── QJR427 : la liste blanche cesse de grossir en silence ───────────────
+    def test_nouvelle_entree_allowlist_sans_raison_datee_rougit(self):
+        # Cas negatif EXECUTE (Done de QJR427) : une entree AJOUTEE (hors du
+        # socle gele) sans date ni identifiant de tache fait rougir la garde.
+        fake_allowlist = dict(guard.ALLOWLIST)
+        fake_allowlist[
+            "frontend/src/pages/ventes/DevisGeneratorFake.test.mjs"
+        ] = "raison sans date ni tache attribuee"
+        offenders = guard.check_allowlist_reasons(fake_allowlist)
+        self.assertEqual(len(offenders), 1, offenders)
+        self.assertIn("DevisGeneratorFake.test.mjs", offenders[0])
+        self.assertIn("QJR427", offenders[0])
+
+    def test_nouvelle_entree_allowlist_datee_et_attribuee_ne_rougit_pas(self):
+        fake_allowlist = dict(guard.ALLOWLIST)
+        fake_allowlist[
+            "frontend/src/pages/ventes/DevisGeneratorFake.test.mjs"
+        ] = "QJR999 (2026-09-02) - raison correctement datee et attribuee."
+        offenders = guard.check_allowlist_reasons(fake_allowlist)
+        self.assertEqual(offenders, [])
+
+    def test_nouvelle_entree_attribuee_par_pr_sans_id_de_tache_ne_rougit_pas(self):
+        # L'attribution accepte aussi "PR #NNN" (cas de l'entree OFFGRID,
+        # qui ne porte pas d'identifiant de tache numerote).
+        fake_allowlist = dict(guard.ALLOWLIST)
+        fake_allowlist[
+            "frontend/src/pages/ventes/DevisGeneratorFake.test.mjs"
+        ] = "FAKE PR #999 (2026-09-02) - raison attribuee via PR."
+        offenders = guard.check_allowlist_reasons(fake_allowlist)
+        self.assertEqual(offenders, [])
+
+    def test_socle_actuel_reste_gele_aucune_retro_datation_exigee(self):
+        # Les 21 entrees historiques (dont OFFGRID, desormais documentee par
+        # QJR427) ne sont jamais retro-datees de force : le socle actuel du
+        # vrai depot doit rester propre.
+        self.assertEqual(guard.check_allowlist_reasons(), [])
+
+    def test_entree_offgrid_est_desormais_datee_et_attribuee(self):
+        raison = guard.ALLOWLIST[
+            "frontend/src/pages/ventes/DevisGeneratorOffgrid.test.mjs"]
+        self.assertRegex(raison, guard.REASON_DATE_RE)
+        self.assertRegex(raison, guard.REASON_ATTRIBUTION_RE)
+
+    def test_main_sur_le_vrai_depot_est_vert(self):
+        self.assertEqual(guard.main(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

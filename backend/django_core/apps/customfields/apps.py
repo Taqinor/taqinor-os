@@ -6,6 +6,7 @@ class CustomfieldsConfig(AppConfig):
     name = 'apps.customfields'
     module_manifest = {
         'key': 'customfields',
+        'sku': 'generic',
         'label': 'Champs personnalisés',
         'icone': 'sliders',
         'depends': [],

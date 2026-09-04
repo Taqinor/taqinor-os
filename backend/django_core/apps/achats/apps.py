@@ -7,6 +7,7 @@ class AchatsConfig(AppConfig):
     verbose_name = 'Achats'
     module_manifest = {
         'key': 'achats',
+        'sku': 'solar_core',
         'label': 'Achats',
         'icone': 'shopping-cart',
         'depends': ['stock'],

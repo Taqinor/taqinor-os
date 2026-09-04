@@ -1372,12 +1372,23 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         if ligne is None:
             continue
         if plafond_atteint:
+            # QJR411 (DR4, 31/08/2026) — LE PLAFOND EST GARDÉ (voir
+            # MAX_PANNEAUX_BALAYAGE ci-dessus, VOULU, jamais déplacé) ; seul le
+            # DISCOURS change. Un consommateur au-delà de ~9 000 kWh/mois est
+            # PARFAITEMENT légitime — ce n'était pas une facture douteuse
+            # (« anormalement élevée », « vérifier la facture »), mais un
+            # profil hors résidentiel. ``plafond_panneaux_atteint`` est un
+            # champ STRUCTURÉ (pas un texte à reconnaître) : c'est lui, pas ce
+            # message, que :func:`choisir_recommandation` lit pour ne plus
+            # présenter ce résultat tronqué comme LA recommandation — il reste
+            # affiché ici, il cesse seulement d'être étiqueté « recommandé ».
             message = (
-                'Balayage plafonné à %d panneaux : la consommation déduite est '
-                'anormalement élevée — vérifier la facture saisie.'
+                'Balayage plafonné à %d panneaux : profil au-delà du '
+                'dimensionnement résidentiel — étude sur mesure.'
                 % MAX_PANNEAUX_BALAYAGE)
             if message not in ligne['avertissements']:
                 ligne['avertissements'].insert(0, message)
+            ligne['plafond_panneaux_atteint'] = True
         tableau.append(ligne)
 
     return tableau
@@ -1507,8 +1518,21 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
 
     # Éligibilité : voir :func:`tailles_eligibles` (extraite le 26/08/2026 pour
     # que ``offres_tailles`` lise la MÊME règle, jamais une seconde copie).
-    eligibles = tailles_eligibles(tableau)
+    tous_eligibles = tailles_eligibles(tableau)
+    # QJR411 (DR4) — un profil qui a fait plafonner le balayage
+    # (:data:`MAX_PANNEAUX_BALAYAGE`, gardé tel quel) n'a PAS de recommandation
+    # honnête dans ce tableau tronqué : chaque taille qu'il contient s'arrête
+    # avant la taille réellement nécessaire. On ne choisit donc plus DEDANS —
+    # le tableau reste affiché (rien n'est retiré, rien n'est renommé), seul
+    # le VERDICT change : pas de ligne étiquetée « recommandée ».
+    eligibles = [x for x in tous_eligibles if not x.get('plafond_panneaux_atteint')]
     if not eligibles:
+        if any(ligne.get('plafond_panneaux_atteint') for ligne in (tableau or ())):
+            return None, (
+                'profil au-delà du dimensionnement résidentiel (plafond de '
+                '%d panneaux atteint) — étude sur mesure'
+                % MAX_PANNEAUX_BALAYAGE
+            )
         return None, (
             'aucune taille recommandable : le catalogue ne compose aucune '
             'variante chiffrable et électriquement conforme pour ce profil'

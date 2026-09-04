@@ -74,7 +74,31 @@ test('la route /portail/client exige la portée EXACTE portail_client', () => {
     /const portalLoader = \(portee\) => async \(\{ request \}\) => \{[\s\S]*?\n\}/,
   )
   assert.ok(bloc, 'portalLoader doit exister')
-  assert.match(bloc[0], /if \(peutEntrerDansPortail\(user, portee\)\) return null/)
+  // AUD139 a INVERSÉ la garde : le loader ne dit plus « si la portée
+  // correspond, laisse passer » (il a désormais un second contrôle à faire
+  // après), il RENVOIE tout ce qui ne correspond pas exactement. L'intention
+  // verrouillée est identique — la portée doit être EXACTE — et l'on épingle
+  // en plus la destination du refus, ce que l'ancienne regex ne couvrait pas.
+  assert.match(
+    bloc[0],
+    /if \(!peutEntrerDansPortail\(user, portee\)\) \{[\s\S]*?return redirectSiPortail\(user\) \|\| redirect\('\/dashboard'\)/,
+    'une portée non conforme doit être renvoyée, jamais laissée entrer',
+  )
+})
+
+test('AUD139 — un mot de passe temporaire non remplacé mène au formulaire', () => {
+  // Le serveur refuse toute route portail (403 `mot_de_passe_a_changer`) tant
+  // que le mot de passe temporaire n'est pas remplacé : le loader doit amener
+  // le client au formulaire, jamais le laisser sur un écran mort.
+  const bloc = routerSrc.match(
+    /const portalLoader = \(portee\) => async \(\{ request \}\) => \{[\s\S]*?\n\}/,
+  )
+  assert.ok(bloc, 'portalLoader doit exister')
+  assert.match(
+    bloc[0],
+    /if \(versMotDePasse && user\.must_change_password[\s\S]*?return redirect\(versMotDePasse\)/,
+    'la bascule mot de passe doit vivre dans portalLoader',
+  )
 })
 
 test('le shell portail n’est PAS le shell ERP (pas de WithLayout)', () => {

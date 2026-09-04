@@ -1511,6 +1511,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from authentication.models import Company
         from apps.stock.models import Categorie, Produit, MouvementStock
+        # AUD223 — le stock d'ouverture du seeder passe par le service unique
+        # (miroir comptable + alerte seuil-bas), jamais par un create direct.
+        from apps.stock.services import record_stock_movement
 
         slug = options['company_slug']
         try:
@@ -1555,13 +1558,16 @@ class Command(BaseCommand):
                 seuil_alerte=seuil,
                 tva=taux,
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company,
                 produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (catalogue simulateur)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 
@@ -1584,12 +1590,15 @@ class Command(BaseCommand):
                 hmt_m=Decimal(hmt) if hmt else None,
                 debit_m3j=Decimal(debit) if debit else None,
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (catalogue pompage)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 
@@ -1611,12 +1620,15 @@ class Command(BaseCommand):
                 pompe_kw=Decimal(kw) if kw else None,
                 tension_v=tension,
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=20, quantite_avant=0, quantite_apres=20,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (variateurs VEICHI)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 
@@ -1643,12 +1655,15 @@ class Command(BaseCommand):
                 hmt_m=Decimal(str(hmt_curve[0])),
                 courbe_pompe={'debits_m3h': OSP_DEBITS_M3H, 'hmt_m': hmt_curve},
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=20, quantite_avant=0, quantite_apres=20,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (pompes OSP — prix à renseigner)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 
@@ -1670,12 +1685,15 @@ class Command(BaseCommand):
                 quantite_stock=qte, seuil_alerte=seuil,
                 tva=Decimal('20.00'),
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (câbles/protections — prix à renseigner)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 
@@ -1709,12 +1727,15 @@ class Command(BaseCommand):
                 tva=Decimal('20.00'),
                 unite_stock='tranche',
             )
-            MouvementStock.objects.create(
+            record_stock_movement(
                 company=company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (batterie Dyness haute tension — 16 kWh)',
+                # Le produit est créé DÉJÀ à sa quantité : on trace
+                # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
             )
             created.append(nom)
 

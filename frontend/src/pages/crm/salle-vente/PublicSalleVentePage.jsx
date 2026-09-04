@@ -28,12 +28,19 @@ export default function PublicSalleVentePage() {
   const [motDePasse, setMotDePasse] = useState('')
   const [error, setError] = useState(null)
 
+  // QJR420 — LE MOT DE PASSE NE PASSE PLUS PAR L'URL. Il partait en
+  // `params` (chaîne de requête) : le secret atterrissait dans les journaux
+  // d'accès du serveur, l'historique du navigateur et l'en-tête Referer
+  // envoyé à tout tiers. Il part désormais dans le CORPS d'un POST, et le
+  // serveur ne lit plus du tout la chaîne de requête (aucun repli).
+  // Sans mot de passe, la lecture reste un GET — inchangée.
   const charger = (pwd) => {
     setStatus('loading')
     setError(null)
-    api.get(`/crm/salle-vente/${token}/`, {
-      params: pwd ? { mot_de_passe: pwd } : {},
-    })
+    const requete = pwd
+      ? api.post(`/crm/salle-vente/${token}/`, { mot_de_passe: pwd })
+      : api.get(`/crm/salle-vente/${token}/`)
+    requete
       .then((res) => {
         setSalle(res.data)
         setStatus('ready')

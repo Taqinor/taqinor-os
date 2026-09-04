@@ -7,6 +7,7 @@ class FacturationConfig(AppConfig):
     verbose_name = 'Facturation'
     module_manifest = {
         'key': 'facturation',
+        'sku': 'solar_core',
         'label': 'Facturation',
         'icone': 'receipt',
         'depends': ['ventes', 'crm'],

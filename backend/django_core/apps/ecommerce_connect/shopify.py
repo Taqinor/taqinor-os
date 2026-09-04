@@ -105,26 +105,52 @@ def sync_catalogue(company):
     return {'skipped': False, 'pushed': pushed, 'errors': errors}
 
 
-def verify_webhook_hmac(raw_body: bytes, hmac_header: str) -> bool:
-    """Vérifie la signature ``X-Shopify-Hmac-Sha256`` (base64, HMAC-SHA256).
+def connexion_signataire(raw_body: bytes, hmac_header: str):
+    """AUD212 — ``ConnexionEcommerce`` Shopify dont le secret PROPRE valide la
+    signature ``X-Shopify-Hmac-Sha256``, ou ``None``.
 
-    ``False`` sans secret configuré (jamais d'acceptation par défaut) OU sans
-    en-tête fourni."""
-    secret = getattr(settings, 'SHOPIFY_WEBHOOK_SECRET', '') or ''
-    return common.verify_hmac_base64(secret, raw_body, hmac_header)
+    Remplace l'ancien couple « ``verify_webhook_hmac`` contre le secret `.env`
+    GLOBAL + société déduite de l'en-tête ``X-Shopify-Shop-Domain`` », qui
+    rendait un webhook forgeable d'un tenant vers un autre. Le tenant est
+    désormais celui de la connexion retournée — jamais un en-tête client."""
+    return common.connexion_par_signature(PLATEFORME, raw_body, hmac_header)
 
 
-def traiter_webhook_commande(*, company, external_order_id, montant_ttc,
-                             email_client='', libelle='', lignes=None,
-                             user=None, payload_brut=None):
+# AUD202 — `financial_status` Shopify : SEUL `paid` vaut « encaissé ».
+# `pending`/`authorized`/`partially_paid` ne sont pas des encaissements, et
+# `refunded`/`partially_refunded`/`voided` sont des SORTIES d'argent : aucun
+# de ces états ne doit produire une Facture émise + un Paiement + une sortie
+# de stock. Un statut ABSENT est traité comme non payé (fail-closed, même
+# doctrine que la signature HMAC : jamais d'acceptation par défaut).
+FINANCIAL_STATUS_PAYES = frozenset({'paid'})
+
+
+def commande_est_payee(payload) -> bool:
+    """``True`` si le payload Shopify décrit une commande RÉELLEMENT encaissée
+    (``financial_status == 'paid'``) — AUD202. Fail-closed."""
+    statut = str((payload or {}).get('financial_status') or '').strip().lower()
+    return statut in FINANCIAL_STATUS_PAYES
+
+
+def traiter_webhook_commande(*, connexion=None, company=None, external_order_id,
+                             montant_ttc, email_client='', libelle='',
+                             lignes=None, user=None, payload_brut=None):
     """NTRET18 — traite une commande Shopify PAYÉE (webhook), IDEMPOTENT.
 
     Normalise les arguments Shopify puis délègue le mapping commande→facture
     (création Facture + Paiement + décrément stock) à
     ``common.traiter_commande_payee`` — logique PARTAGÉE avec
     ``woocommerce.traiter_webhook_commande`` (NTRET19), jamais dupliquée.
+
+    AUD212 — ``connexion`` (celle dont le secret a validé la signature) est la
+    SOURCE DE VÉRITÉ du tenant : c'est le seul argument que passe le webhook
+    public. ``company`` reste accepté pour les appelants INTERNES déjà scopés
+    (jamais une valeur issue d'une requête externe) et résout la connexion
+    active de la plateforme.
     """
-    connexion = common.connexion_active(company, PLATEFORME)
+    if connexion is None:
+        connexion = (common.connexion_active(company, PLATEFORME)
+                     if company is not None else None)
     if connexion is None:
         return None
     return common.traiter_commande_payee(

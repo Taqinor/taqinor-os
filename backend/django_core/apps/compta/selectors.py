@@ -44,9 +44,48 @@ def _as_date(value):
     return date.fromisoformat(str(value))
 
 
-def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def _referentiel_principal(company):
+    """Le référentiel comptable PRINCIPAL de la société (ou None)."""
+    return ReferentielComptable.objects.filter(
+        company=company, est_principal=True).first()
+
+
+def _filtre_referentiel(qs, company, referentiel=None):
+    """Restreint un queryset de ``LigneEcriture`` à UN livre comptable (NTFIN14).
+
+    ``referentiel`` = instance ``ReferentielComptable``, ou ``None`` pour le
+    livre PRINCIPAL. Le principal agrège les lignes taguées ``referentiel``
+    NULL (comportement historique) PLUS celles explicitement taguées principal ;
+    un livre parallèle (IFRS…) n'agrège QUE ses propres lignes.
+
+    AUD160 — point de filtrage UNIQUE : tous les états statutaires (grand
+    livre, balance, CPC, bilan, FEC, déclaration TVA) le traversent, faute de
+    quoi un retraitement IFRS entre dans la liasse déposée à la DGI.
+    """
+    principal = _referentiel_principal(company)
+    ref_id = referentiel.id if referentiel is not None else (
+        principal.id if principal else None)
+    est_principal = (referentiel is None) or (
+        principal is not None and ref_id == principal.id)
+    if est_principal:
+        cond = Q(referentiel__isnull=True)
+        if principal is not None:
+            cond |= Q(referentiel_id=principal.id)
+        return qs.filter(cond)
+    return qs.filter(referentiel_id=ref_id)
+
+
+def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+               referentiel=None):
+    # AUD171 — ``'ecriture__journal'`` est indispensable : ``grand_livre`` lit
+    # ``ligne.ecriture.journal.code`` sur CHAQUE ligne (:106) et
+    # ``releve_fournisseur`` fait de même — soit une requête unitaire par ligne
+    # sur un grand livre non filtré (≈40 000 lignes sur un exercice).
     qs = LigneEcriture.objects.filter(company=company).select_related(
-        'compte', 'ecriture')
+        'compte', 'ecriture', 'ecriture__journal')
+    # AUD160 — livre comptable : par DÉFAUT le principal (les livres parallèles
+    # IFRS/multi-GAAP sortent de tous les états statutaires).
+    qs = _filtre_referentiel(qs, company, referentiel)
     if date_debut:
         qs = qs.filter(ecriture__date_ecriture__gte=date_debut)
     if date_fin:
@@ -359,6 +398,8 @@ def export_fec(company, exercice, *, validees_seulement=False):
         ecriture__date_ecriture__gte=exercice.date_debut,
         ecriture__date_ecriture__lte=exercice.date_fin,
     ).select_related('compte', 'ecriture', 'ecriture__journal')
+    # AUD160 — le FEC déposé à la DGI ne porte QUE le livre principal.
+    qs = _filtre_referentiel(qs, company)
     if validees_seulement:
         qs = qs.filter(ecriture__statut='validee')
     # Ordre auditable : date d'écriture, puis pièce (numéro d'écriture stable =
@@ -443,22 +484,6 @@ def encours_tiers(company, compte):
     return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
 
 
-def lettrer(company, ligne_ids, code):
-    """Pose un code de lettrage sur un lot de lignes SSI elles s'équilibrent.
-
-    Renvoie le nombre de lignes lettrées, ou lève ``ValueError`` si le lot ne
-    solde pas (Σ débit ≠ Σ crédit) — on ne lettre jamais un appariement bancal.
-    """
-    qs = LigneEcriture.objects.filter(company=company, id__in=ligne_ids)
-    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
-    debit = agg['debit'] or Decimal('0')
-    credit = agg['credit'] or Decimal('0')
-    if debit != credit:
-        raise ValueError(
-            f"Lettrage impossible : Σ débit ({debit}) ≠ Σ crédit ({credit}).")
-    return qs.update(lettrage=code)
-
-
 def prochain_code_lettrage(company, compte):
     """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
     compte lettrable donné (jamais réutilisé, même après délettrage — le
@@ -484,17 +509,6 @@ def prochain_code_lettrage(company, compte):
     valides = [c for c in codes if c and c.isalpha() and c.isupper()]
     dernier_rang = max((_rang(c) for c in valides), default=0)
     return _code(dernier_rang + 1)
-
-
-def delettrer(company, code):
-    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
-    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
-    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
-    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
-    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
-    d'une écriture validée)."""
-    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
-    return qs.update(lettrage='')
 
 
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
@@ -573,14 +587,22 @@ def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False,
 
 # ── FG114 / COMPTA28 — Bilan (format CGNC) ─────────────────────────────────
 
-def bilan(company, *, date_fin=None, validees_seulement=False,
-          comparer=False, date_fin_n1=None):
+def bilan(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+          comparer=False, date_debut_n1=None, date_fin_n1=None):
     """Bilan : actif (classes 2,3,5) / passif (classes 1,4) depuis les soldes.
 
     Le résultat de l'exercice (CPC) est porté au passif pour équilibrer
     (équation comptable : Actif = Passif + Résultat). Renvoie
     ``{'actif', 'total_actif', 'passif', 'total_passif', 'resultat',
     'equilibre'}``.
+
+    AUD169 — ``date_debut`` BORNE le CPC interne à l'exercice. Sans lui, le
+    « Résultat de l'exercice » imprimé sur un état de synthèse déposable est le
+    CUMUL de tous les exercices depuis la première écriture (2025 à 300 000
+    puis 2026 à 200 000 → « Résultat : 500 000 » au 31/12/2026). Le résultat
+    ANTÉRIEUR reste porté par le report à nouveau (AUD162). Défaut ``None`` =
+    comportement historique intact ; c'est la vue qui remplit ``date_debut``
+    depuis l'``ExerciceComptable`` couvrant ``date_fin``.
 
     ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
     sur chaque poste d'actif/passif, calculés à ``date_fin_n1`` (défaut :
@@ -613,7 +635,7 @@ def bilan(company, *, date_fin=None, validees_seulement=False,
             total_passif += -solde
             passif.append(item)
     resultat_exercice = cpc(
-        company, date_fin=date_fin,
+        company, date_debut=date_debut, date_fin=date_fin,
         validees_seulement=validees_seulement)['resultat']
     out = {
         'actif': actif,
@@ -624,8 +646,9 @@ def bilan(company, *, date_fin=None, validees_seulement=False,
         'equilibre': total_actif == (total_passif + resultat_exercice),
     }
     if comparer:
-        _, fin_n1 = _periode_n1(None, date_fin, None, date_fin_n1)
-        n1 = bilan(company, date_fin=fin_n1,
+        deb_n1, fin_n1 = _periode_n1(
+            date_debut, date_fin, date_debut_n1, date_fin_n1)
+        n1 = bilan(company, date_debut=deb_n1, date_fin=fin_n1,
                    validees_seulement=validees_seulement)
         n1_actif = {li['numero']: li['montant'] for li in n1['actif']}
         n1_passif = {li['numero']: li['montant'] for li in n1['passif']}
@@ -1179,6 +1202,33 @@ def _solde_groupe(company, numeros, *, date_fin=None, validees_seulement=False):
     return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
 
 
+# AUD175 — devise unique tenue par le socle (docs/money-convention.md).
+DEVISE_PIVOT = 'MAD'
+
+
+class DevisesHeterogenes(ValueError):
+    """Agrégat de trésorerie impossible : plusieurs devises, aucune conversion."""
+
+
+def _refuser_devises_heterogenes(treso_qs):
+    """Refuse d'agréger des comptes de trésorerie de devises différentes.
+
+    ``CompteTresorerie.devise`` était librement éditable par l'API et n'était
+    honoré par AUCUN calcul : ``position_tresorerie`` sommait tous les comptes
+    actifs sans consulter ``TauxDevise``, et le biais se propageait au
+    prévisionnel 13 semaines puis à la projection nette.
+    """
+    devises = {
+        (treso.devise or DEVISE_PIVOT).strip().upper()
+        for treso in treso_qs
+    }
+    if len(devises) > 1:
+        raise DevisesHeterogenes(
+            "Agrégat de trésorerie impossible : les comptes portent plusieurs "
+            f"devises ({', '.join(sorted(devises))}) et aucune conversion "
+            f"n'est définie. Le socle est mono-devise {DEVISE_PIVOT}.")
+
+
 def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     """Position de trésorerie consolidée : solde par compte/caisse + total.
 
@@ -1190,12 +1240,21 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
     'mouvements', 'solde'}``. ``encours_emprunts`` (XACC14) est le capital
     restant dû cumulé de TOUS les emprunts/leasings de la société — ajouté en
     lecture seule, n'affecte pas ``total``. Lecture seule, scopée société.
+
+    AUD175 — doctrine MONO-DEVISE MAD (docs/money-convention.md) : tant
+    qu'aucune conversion n'existe (le grand livre n'a même pas de colonne
+    devise, et ``TauxDevise`` n'est consulté par aucun de ces calculs),
+    additionner des comptes de devises différentes produirait un « total » qui
+    n'est ni des MAD ni rien de convertible. On lève une erreur EXPLICITE
+    plutôt que d'afficher un nombre mixte en solde consolidé du cockpit. Une
+    société 100 % MAD est strictement inchangée.
     """
     comptes = []
     total = Decimal('0')
     treso_qs = CompteTresorerie.objects.filter(
         company=company, actif=True).select_related('compte_comptable').order_by(
         'type_compte', 'libelle')
+    _refuser_devises_heterogenes(treso_qs)
     for treso in treso_qs:
         mouvements = solde_compte(
             company, treso.compte_comptable, date_fin=date_fin,
@@ -1391,16 +1450,35 @@ def solde_gl_compte_tresorerie(rapprochement):
     return (treso.solde_initial or Decimal('0')) + mouvements
 
 
+def _lignes_gl_deja_pointees(rapprochement):
+    """AUD174 — ids des lignes GL déjà pointées sur CE compte de trésorerie.
+
+    Le filtre historique était scopé au seul ``rapprochement`` courant : une
+    ligne GL rapprochée dans la campagne A restait proposée « libre » dans la
+    campagne B ouverte sur le même compte, et pouvait y être déclarée
+    concordante une seconde fois.
+    """
+    from .models import PointageReleve
+
+    return set(
+        PointageReleve.objects
+        .filter(company=rapprochement.company,
+                ligne_releve__rapprochement__compte_tresorerie_id=(
+                    rapprochement.compte_tresorerie_id))
+        .values_list('ligne_gl_id', flat=True))
+
+
 def lignes_gl_pointables(rapprochement):
     """Lignes du grand livre du compte de trésorerie sur la période (FG123).
 
     Restitue les ``LigneEcriture`` du compte comptable (classe 5) du compte de
     trésorerie dont l'écriture tombe dans ``[date_debut ; date_fin]``, avec un
-    drapeau ``pointee`` indiquant si la ligne est déjà appariée dans CE
-    rapprochement. Sert à présenter le côté GL face au relevé. Lecture seule.
+    drapeau ``pointee`` indiquant si la ligne est déjà appariée — AUD174 : sur
+    N'IMPORTE QUEL rapprochement du même compte de trésorerie, pas seulement
+    celui-ci ; un mouvement bancaire est unique, il ne peut pas être « libre »
+    ici et déjà rapproché ailleurs. Sert à présenter le côté GL face au relevé.
+    Lecture seule.
     """
-    from .models import LigneReleve
-
     treso = rapprochement.compte_tresorerie
     qs = LigneEcriture.objects.filter(
         company=rapprochement.company,
@@ -1409,10 +1487,7 @@ def lignes_gl_pointables(rapprochement):
         ecriture__date_ecriture__lte=rapprochement.date_fin,
     ).select_related('ecriture', 'ecriture__journal').order_by(
         'ecriture__date_ecriture', 'id')
-    # IDs des lignes GL déjà pointées dans ce rapprochement.
-    pointees = set(
-        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
-            'lignes_gl__id', flat=True))
+    pointees = _lignes_gl_deja_pointees(rapprochement)
     resultat = []
     for ligne in qs:
         resultat.append({
@@ -1490,9 +1565,8 @@ def suggestions_rapprochement(rapprochement):
         ecriture__date_ecriture__lte=rapprochement.date_fin
         + timedelta(days=SUGGESTION_FENETRE_JOURS),
     ).select_related('ecriture', 'ecriture__journal'))
-    deja_pointees = set(
-        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
-            'lignes_gl__id', flat=True))
+    # AUD174 — élargi à TOUS les rapprochements du même compte de trésorerie.
+    deja_pointees = _lignes_gl_deja_pointees(rapprochement)
     lignes_releve = rapprochement.lignes_releve.filter(
         statut=LigneReleve.Statut.NON_POINTEE).order_by('date_operation', 'id')
     resultat = []
@@ -2116,6 +2190,9 @@ def releve_fournisseur(company, tiers_id, *, tiers_type='fournisseur',
 # aux fournisseurs) est un ACTIF (classe 3455…) : elle naît au DÉBIT.
 _COMPTES_TVA_COLLECTEE = ('4455', '44552')      # TVA facturée / due (passif).
 _COMPTES_TVA_DEDUCTIBLE = ('3455', '34552')     # TVA récupérable (actif).
+# AUD163 — écriture de clôture TVA (``solder_tva_periode``) : elle ne doit
+# jamais rentrer dans l'agrégation qui la produit.
+_SOURCE_SOLDE_TVA = 'solde_tva'
 
 
 def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
@@ -2125,16 +2202,78 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
     À la différence de ``_solde_groupe`` (solde cumulé à une date), on agrège
     les MOUVEMENTS de la période ``[date_debut ; date_fin]`` — c'est ce qu'exige
     une déclaration périodique de TVA (la TVA du mois/trimestre, pas le cumul).
+
+    AUD163 — l'écriture de solde TVA de la période (``source_type='solde_tva'``,
+    datée ``periode.date_fin``, donc DANS la fenêtre) est EXCLUE : elle solde
+    4455/3455 et recrédite le net au 44552, ce qui laisse le total juste mais
+    fausse les DEUX cases que le formulaire DGI exige séparément (collectée /
+    déductible). Même logique de séparation que ``source_type='abonnement'``.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
-        compte__numero__in=numeros)
+        compte__numero__in=numeros).exclude(
+        ecriture__source_type=_SOURCE_SOLDE_TVA)
     agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
     return (agg['debit'] or Decimal('0'), agg['credit'] or Decimal('0'))
 
 
+# AUD164 — sentinelle « non fourni » : le crédit antérieur est alors DÉRIVÉ de
+# la dernière déclaration déposée, jamais un forfait 0 silencieux. Un appelant
+# qui passe explicitement une valeur (y compris 0) garde la main.
+CREDIT_ANTERIEUR_AUTO = object()
+
+
+def credit_anterieur_reporte(company, date_debut):
+    """AUD164 — crédit de TVA reporté de la dernière déclaration DÉPOSÉE.
+
+    Renvoie ``(montant, declaration_source)``. ``credit_reportable`` était
+    calculé, stocké sur la ``DeclarationTVA`` et exporté, mais AUCUN code ne le
+    relisait : la seule source de ``credit_anterieur`` était le corps de requête
+    (défaut 0) et le champ n'existait même pas dans le formulaire — par
+    l'application, le crédit valait TOUJOURS 0. Février à crédit 30 000 puis
+    mars collectée 90 000 / déductible 20 000 faisait déclarer 70 000 au lieu de
+    40 000 : 30 000 MAD payés en trop à la DGI.
+    """
+    from .models import DeclarationTVA
+
+    debut = _as_date(date_debut)
+    if debut is None:
+        return Decimal('0'), None
+    precedente = (DeclarationTVA.objects
+                  .filter(company=company,
+                          statut=DeclarationTVA.Statut.DEPOSEE,
+                          date_fin__lt=debut)
+                  .order_by('-date_fin', '-id')
+                  .first())
+    if precedente is None:
+        return Decimal('0'), None
+    montant = Decimal(precedente.credit_reportable or 0)
+    if montant <= 0:
+        return Decimal('0'), None
+    return montant, precedente
+
+
+def _source_credit_anterieur(declaration, montant):
+    """Bloc d'affichage TRACÉ du crédit reporté (jamais un nombre orphelin)."""
+    if declaration is None:
+        return None
+    return {
+        'declaration_id': declaration.id,
+        'reference': declaration.reference or '',
+        'date_debut': declaration.date_debut,
+        'date_fin': declaration.date_fin,
+        'montant': montant,
+        'libelle': (
+            f'Crédit reporté de {declaration.date_debut} → '
+            f'{declaration.date_fin} : {montant} MAD'
+            + (f' (déclaration {declaration.reference})'
+               if declaration.reference else '')),
+    }
+
+
 def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
-                             methode='debit', credit_anterieur=Decimal('0'),
+                             methode='debit',
+                             credit_anterieur=CREDIT_ANTERIEUR_AUTO,
                              validees_seulement=False, comparer=False,
                              date_debut_m1=None, date_fin_m1=None):
     """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
@@ -2168,7 +2307,15 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     if deductible < 0:
         deductible = Decimal('0')
 
-    anterieur = credit_anterieur or Decimal('0')
+    # AUD164 — crédit antérieur : dérivé de la dernière déclaration déposée
+    # quand l'appelant n'en fournit pas, jamais un forfait 0 silencieux.
+    source_credit = None
+    if credit_anterieur is CREDIT_ANTERIEUR_AUTO:
+        anterieur, declaration_source = credit_anterieur_reporte(
+            company, date_debut)
+        source_credit = _source_credit_anterieur(declaration_source, anterieur)
+    else:
+        anterieur = Decimal(str(credit_anterieur or 0))
     net = collectee - deductible - anterieur
     a_declarer = net if net >= 0 else Decimal('0')
     reportable = -net if net < 0 else Decimal('0')
@@ -2180,6 +2327,7 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_collectee': collectee,
         'tva_deductible': deductible,
         'credit_anterieur': anterieur,
+        'credit_anterieur_source': source_credit,
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }
@@ -2912,8 +3060,12 @@ def liasse_fiscale(company, exercice, *, validees_seulement=False):
     date_debut = exercice.date_debut
     date_fin = exercice.date_fin
     # On RÉUTILISE les sélecteurs existants — aucun recalcul ad hoc ici.
+    # AUD169 — le bilan reçoit la MÊME borne basse que le CPC : sans elle, la
+    # liasse affichait deux résultats contradictoires (``resultat`` borné à
+    # l'exercice vs ``bilan.resultat`` cumulé depuis la première écriture).
     etat_bilan = bilan(
-        company, date_fin=date_fin, validees_seulement=validees_seulement)
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
     etat_cpc = cpc(
         company, date_debut=date_debut, date_fin=date_fin,
         validees_seulement=validees_seulement)
@@ -4536,21 +4688,14 @@ def balance_par_referentiel(company, referentiel, *, date_debut=None,
     (IFRS…) n'agrège QUE ses propres lignes. Renvoie la même forme que
     ``balance_generale`` (débit/crédit/solde par compte + totaux).
     """
+    # AUD160 — le filtrage vit désormais dans ``_filtre_referentiel``, appliqué
+    # par ``_lignes_qs`` : un seul point de vérité pour les six états.
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
-                    validees_seulement=validees_seulement)
-    principal = ReferentielComptable.objects.filter(
-        company=company, est_principal=True).first()
+                    validees_seulement=validees_seulement,
+                    referentiel=referentiel)
+    principal = _referentiel_principal(company)
     ref_id = referentiel.id if referentiel is not None else (
         principal.id if principal else None)
-    est_principal = (referentiel is None) or (
-        principal is not None and ref_id == principal.id)
-    if est_principal:
-        cond = Q(referentiel__isnull=True)
-        if principal is not None:
-            cond |= Q(referentiel_id=principal.id)
-        qs = qs.filter(cond)
-    else:
-        qs = qs.filter(referentiel_id=ref_id)
     agg = qs.values(
         'compte__numero', 'compte__intitule', 'compte__classe',
     ).annotate(debit=Sum('debit'), credit=Sum('credit')).order_by(

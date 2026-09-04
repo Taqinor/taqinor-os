@@ -7,6 +7,7 @@ class ReportingConfig(AppConfig):
     verbose_name = 'Reporting'
     module_manifest = {
         'key': 'reporting',
+        'sku': 'generic',
         'label': 'Rapports',
         'icone': 'bar-chart',
         'depends': [],

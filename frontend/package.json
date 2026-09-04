@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check-dist-edition": "node scripts/check_dist_edition.mjs",
     "lint": "eslint . && node scripts/check_no_danger.mjs",
     "check-no-danger": "node scripts/check_no_danger.mjs",
     "preview": "vite preview",

@@ -96,21 +96,51 @@ PREFIX_TO_MODULE = {
     'ecommerce-connect': 'ecommerce_connect',
 }
 
-# Racine commune de toutes les routes de l'API Django.
+# Racine HISTORIQUE des routes de l'API Django (conservée : plusieurs modules
+# et tests s'y réfèrent).
 _API_ROOT = 'api/django/'
+
+# SOL7 — LES DEUX RACINES INTERNES. `erp_agentique/urls.py` monte la MÊME liste
+# `_APP_URLS` sous `api/django/` (préfixe historique) ET sous `api/v1/`
+# (YAPIC7) : mêmes vues, mêmes ViewSets, mêmes données. Le gating ne matchait
+# que la première — un tenant dont le module `pos` était désactivé recevait bien
+# un 404 sur `/api/django/pos/…` mais était SERVI NORMALEMENT sur
+# `/api/v1/pos/…`. Le miroir doit être gardé exactement comme l'original : même
+# extraction du 2ᵉ segment, MÊMES `EXEMPT_PREFIXES`, même `PREFIX_TO_MODULE`.
+#
+# Audit des exemptions `public` / `publicapi` (demandé par SOL7) :
+#   * `public` — les routes publiques tokenisées (`api/django/public/…`,
+#     `api/django/public/sav/…`, `…/pos/…`, `…/contrats/…`, `…/education/…`)
+#     sont montées à la RACINE de l'urlconf, HORS de `_APP_URLS` : elles n'ont
+#     donc AUCUN jumeau `api/v1/public/…`. L'exemption reste juste et son
+#     élargissement au second préfixe n'ouvre rien (le chemin n'existe pas).
+#     Elle doit rester : un lien PDF client envoyé par WhatsApp ne porte pas de
+#     société résolue et ne doit jamais dépendre d'un ModuleToggle.
+#   * `publicapi` — `apps.publicapi.urls` EST dans `_APP_URLS`, donc servi sous
+#     les deux préfixes ; c'est l'écran d'administration des clés API, gardé par
+#     l'authentification interne. Son manifeste porte `installable=False`, donc
+#     `_installable()` ne l'aurait de toute façon jamais bloqué : l'exemption
+#     est redondante mais exacte, on la garde pour l'intention. L'API publique
+#     PAR CLÉ vit ailleurs (`api/public/…`) et ne matche aucune des deux
+#     racines — elle reste hors périmètre, gardée par ses propres clés.
+_API_ROOTS = (_API_ROOT, 'api/v1/')
 
 
 def _module_key_for_path(path):
     """Renvoie la clé de module gérant ``path``, ou ``None`` si exempté.
 
     ``path`` est le chemin de la requête (``request.path``). On extrait le 2ᵉ
-    segment après ``api/django/``. Toute route hors ``api/django/`` ou dans les
-    préfixes exemptés renvoie ``None`` (jamais bloquée).
+    segment après ``api/django/`` **ou** ``api/v1/`` (les deux montages de la
+    même liste de routes internes — SOL7). Toute route hors de ces racines, ou
+    dans les préfixes exemptés, renvoie ``None`` (jamais bloquée).
     """
     p = path.lstrip('/')
-    if not p.startswith(_API_ROOT):
+    for racine in _API_ROOTS:
+        if p.startswith(racine):
+            reste = p[len(racine):]
+            break
+    else:
         return None
-    reste = p[len(_API_ROOT):]
     segment = reste.split('/', 1)[0]
     if segment in EXEMPT_PREFIXES:
         return None

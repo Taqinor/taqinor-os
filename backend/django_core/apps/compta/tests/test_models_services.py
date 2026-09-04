@@ -270,7 +270,7 @@ class EtatsTests(TestCase):
         lignes = selectors.lignes_non_lettrees(self.co, clients)
         ids = [lig.id for lig in lignes]
         # Les deux lignes 3421 (débit 120 / crédit 120) soldent → lettrables.
-        n = selectors.lettrer(self.co, ids, 'A')
+        n = services.lettrer(self.co, ids, 'A')
         self.assertEqual(n, 2)
         self.assertEqual(selectors.encours_tiers(self.co, clients), Decimal('0'))
 
@@ -279,7 +279,7 @@ class EtatsTests(TestCase):
         lignes = selectors.lignes_non_lettrees(self.co, clients)
         # Une seule ligne (débit 120) ne solde pas → refus.
         with self.assertRaises(ValueError):
-            selectors.lettrer(self.co, [lignes[0].id], 'B')
+            services.lettrer(self.co, [lignes[0].id], 'B')
 
 
 class CompanyIsolationModelTests(TestCase):

@@ -101,7 +101,13 @@ def _check_signature(request, secret):
     expected = "sha256=" + hmac.new(
         secret.encode(), request.body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(sig_header, expected)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans ``X-Hub-Signature-256`` rendait
+    # un HTTP 500 NON AUTHENTIFIÉ, dont la trame d'erreur portait la valeur
+    # ATTENDUE en clair. Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(str(sig_header).encode("utf-8"),
+                               expected.encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +132,10 @@ class WhatsAppBspWebhookView(View):
 
         if mode != "subscribe":
             return HttpResponse("Mode invalide.", status=403)
-        if not hmac.compare_digest(token, verify_token):
+        # QJR413 (a) — comparaison en BYTES (voir ``_check_signature``) : un
+        # ``hub.verify_token`` non-ASCII rendait un 500 public.
+        if not hmac.compare_digest(str(token).encode("utf-8"),
+                                   verify_token.encode("utf-8")):
             return HttpResponse("Verify token incorrect.", status=403)
         # Renvoie le challenge en texte brut (Meta l'exige).
         return HttpResponse(challenge, content_type="text/plain", status=200)
@@ -136,25 +145,35 @@ class WhatsAppBspWebhookView(View):
     def post(self, request):
         secret = _app_secret()
 
-        if secret:
-            sig_ok = _check_signature(request, secret)
-            if sig_ok is None:
-                # Secret configuré mais signature absente.
-                logger.warning(
-                    "Webhook BSP WhatsApp : signature absente (app_secret configuré)."
-                )
-                return HttpResponse("Signature manquante.", status=403)
-            if not sig_ok:
-                logger.warning(
-                    "Webhook BSP WhatsApp : signature invalide."
-                )
-                return HttpResponse("Signature invalide.", status=403)
-        else:
-            # Secret non configuré : on accepte mais on avertit.
-            logger.warning(
-                "Webhook BSP WhatsApp : WHATSAPP_BSP_APP_SECRET non configuré — "
-                "webhook accepté sans vérification de signature (scaffold non sécurisé)."
+        # ── QJR414 (DÉCISION FONDATEUR DR3) — FAIL-CLOSED. Ce webhook portait
+        # le motif IDENTIQUE à son jumeau Meta Lead Ads (apps/crm/webhooks.py) :
+        # secret absent ⇒ avertissement PUIS traitement du payload. Comme
+        # ``WHATSAPP_BSP_APP_SECRET`` n'était documenté dans AUCUN
+        # ``.env.example``, le déploiement par défaut était OUVERT *et*
+        # SILENCIEUX. DR3 tranche — secret absent ⇒ requête REFUSÉE (403),
+        # jamais traitée, AVANT tout effet de bord.
+        # CONSÉQUENCE VOULUE ET ACCEPTÉE : la synchronisation entrante reste EN
+        # PAUSE tant que le secret n'est pas posé au deploy.
+        if not secret:
+            logger.error(
+                "Webhook BSP WhatsApp : WHATSAPP_BSP_APP_SECRET non configuré "
+                "— requête REFUSÉE (DR3, fail-closed). La synchronisation "
+                "entrante reste en pause tant que le secret n'est pas posé."
             )
+            return HttpResponse("Signature requise.", status=403)
+
+        sig_ok = _check_signature(request, secret)
+        if sig_ok is None:
+            # Secret configuré mais signature absente.
+            logger.warning(
+                "Webhook BSP WhatsApp : signature absente (app_secret configuré)."
+            )
+            return HttpResponse("Signature manquante.", status=403)
+        if not sig_ok:
+            logger.warning(
+                "Webhook BSP WhatsApp : signature invalide."
+            )
+            return HttpResponse("Signature invalide.", status=403)
 
         try:
             payload = json.loads(request.body or b"{}")

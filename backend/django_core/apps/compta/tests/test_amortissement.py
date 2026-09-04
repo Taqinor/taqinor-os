@@ -190,6 +190,48 @@ class IdempotenceTests(TestCase):
         self.assertTrue(dot.posted)
         self.assertEqual(dot.ecriture_id, ecriture_id)
 
+    def test_aud165_duree_raccourcie_apres_posting_solde_la_base(self):
+        """AUD165 — Σ(postés + nouveaux) == base même après re-paramétrage.
+
+        10 000 sur 5 ans, année 1 postée à 2 000, durée corrigée à 4 ans :
+        l'ancien calcul repartait de la base ENTIÈRE sur la nouvelle durée
+        (2 500 × 3 nouvelles annuités) et affichait une VNC de 0 alors que
+        500 MAD n'auraient jamais été amortis.
+        """
+        immo = make_immo(self.co, cout=Decimal('10000'))
+        plan = services.generer_plan_amortissement(
+            immo, mode='lineaire', duree_annees=5)
+        premiere = plan.dotations.order_by('annee').first()
+        self.assertEqual(premiere.montant, Decimal('2000.00'))
+        services.poster_dotation(premiere)
+        plan = services.generer_plan_amortissement(
+            immo, mode='lineaire', duree_annees=4)
+        dotations = list(plan.dotations.order_by('annee'))
+        total = sum((d.montant for d in dotations), Decimal('0'))
+        self.assertEqual(total, Decimal('10000.00'))
+        self.assertEqual(dotations[-1].valeur_nette, Decimal('0.00'))
+        self.assertEqual(dotations[-1].cumul, Decimal('10000.00'))
+        # La dotation postée n'a pas bougé.
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.montant, Decimal('2000.00'))
+        self.assertTrue(premiere.posted)
+
+    def test_aud165_duree_allongee_ne_depasse_jamais_la_base(self):
+        """AUD165 — cas symétrique : aucune dotation ne fait dépasser la base."""
+        immo = make_immo(self.co, cout=Decimal('10000'))
+        plan = services.generer_plan_amortissement(
+            immo, mode='lineaire', duree_annees=5)
+        premiere = plan.dotations.order_by('annee').first()
+        services.poster_dotation(premiere)
+        plan = services.generer_plan_amortissement(
+            immo, mode='lineaire', duree_annees=6)
+        dotations = list(plan.dotations.order_by('annee'))
+        total = sum((d.montant for d in dotations), Decimal('0'))
+        self.assertEqual(total, Decimal('10000.00'))
+        self.assertEqual(dotations[-1].valeur_nette, Decimal('0.00'))
+        for dot in dotations:
+            self.assertGreaterEqual(dot.valeur_nette, Decimal('0.00'))
+
     def test_reduire_duree_purge_dotations_non_postees(self):
         immo = make_immo(self.co, cout=Decimal('50000'))
         services.generer_plan_amortissement(

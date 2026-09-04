@@ -141,6 +141,30 @@ FIELD_MAPS = {
 }
 
 
+# SOL2(b) — cible d'import → clé de module PROPRIÉTAIRE, pour les seules cibles
+# dont le mapping d'en-têtes vit ici (``FIELD_MAPS``) alors que l'ÉCRITURE est
+# déléguée à une app susceptible d'être parquée par l'édition (registre
+# ``erp_agentique/settings/editions.py``). Les cibles déclarées uniquement par
+# le registre plateforme n'ont pas besoin d'entrée : l'app parquée n'étant pas
+# chargée, son ``platform.py`` ne déclare plus rien.
+CIBLES_MODULE_PROPRIETAIRE = {
+    # NTEDU36 — écrit via ``apps.education.services.creer_eleve_import``.
+    'eleves_education': 'education',
+}
+
+
+def cibles_parquees_par_edition(edition=None):
+    """Cibles d'import indisponibles parce que leur app est parquée."""
+    try:
+        from erp_agentique.settings import editions
+        parques = editions.modules_parques(edition)
+    except Exception:  # pragma: no cover - registre indisponible ⇒ rien de parqué
+        return frozenset()
+    return frozenset(
+        cible for cible, module in CIBLES_MODULE_PROPRIETAIRE.items()
+        if module in parques)
+
+
 # ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
 # (``core.platform.import_specs``) : chaque app propriétaire déclare ses cibles
 # dans son ``apps/<x>/platform.py`` (surface ``import_specs``), exactement comme
@@ -170,7 +194,13 @@ class _LazyTargets:
             cibles |= set(platform.import_specs(company=None))
         except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
             pass
-        return cibles
+        # SOL2(b) — une cible portée par une app PARQUÉE par l'édition courante
+        # disparaît du set : `FIELD_MAPS` la déclare littéralement ici (donc le
+        # registre plateforme ne suffit PAS à la faire disparaître), et sans ce
+        # retrait `_commit_raw` tenterait d'importer une app non chargée. Le
+        # refus est alors le refus HISTORIQUE « cible inconnue » (400 clair),
+        # jamais un ImportError.
+        return cibles - cibles_parquees_par_edition()
 
     def __contains__(self, item):
         return item in self._resolve()
@@ -945,14 +975,16 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 produit = Produit.objects.create(
                     company=company, quantite_stock=0, **f)
                 if opening > 0:
-                    produit.quantite_stock = opening
-                    produit.save(update_fields=['quantite_stock'])
-                    MouvementStock.objects.create(
+                    # AUD223 — le stock d'ouverture passe par le service
+                    # unique de mouvement (miroir comptable + alerte
+                    # seuil-bas), qui cale lui-même `quantite_stock`.
+                    from apps.stock.services import record_stock_movement
+                    record_stock_movement(
                         company=company, produit=produit,
                         type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                         quantite=opening, quantite_avant=0,
                         quantite_apres=opening, created_by=user,
-                        note='Stock initial (import)')
+                        reference='', note='Stock initial (import)')
                 created += 1
 
         # FG14 — Fournisseurs.

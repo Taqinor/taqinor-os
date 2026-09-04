@@ -27,10 +27,20 @@ TRACKED_FIELDS = {
     'art33_regularisation': 'Régularisation Article 33',
     'annule': 'Annulé',
     'motif_annulation': "Motif d'annulation",
+    # AUD305 — la signature client du bon de livraison (NTMOB16) est une PREUVE
+    # de livraison : une re-signature ou une correction devait apparaître dans
+    # l'Historique visible du chantier, or ces 3 champs n'étaient pas suivis.
+    'signature_client': 'Signature client (bon de livraison)',
+    'signataire_nom': 'Nom du signataire',
+    'signe_le': 'Date de signature',
 }
 
 _CHOICE_FIELDS = {'statut', 'raccordement', 'type_installation',
                   'regime_8221', 'dossier_statut'}
+# AUD305 — champs dont on ne journalise que la PRÉSENCE : `signature_client`
+# est une data-URL PNG en base64, recopier le blob dans `old_value`/`new_value`
+# gonflerait le chatter (et le renverrait dans la liste de l'Historique).
+_PRESENCE_ONLY_FIELDS = {'signature_client'}
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
 
 
@@ -38,6 +48,8 @@ def _display(inst: Installation, field: str, value):
     """Valeur lisible pour la timeline."""
     if value is None or value == '':
         return '—'
+    if field in _PRESENCE_ONLY_FIELDS:
+        return 'Signature enregistrée'
     if field in _CHOICE_FIELDS:
         choices = dict(Installation._meta.get_field(field).choices or [])
         return str(choices.get(value, value))

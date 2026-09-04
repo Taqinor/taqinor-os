@@ -71,13 +71,22 @@ def _lead_hit(obj) -> dict:
     }
 
 
-def own_data_search(company, q: str, *, limit: int = MAX_RESULTS) -> list[dict]:
+def own_data_search(company, q: str, *, limit: int = MAX_RESULTS,
+                    user=None) -> list[dict]:
     """Provider par défaut : recherche floue sur les données PROPRES de la
     société (clients + fournisseurs + leads), scopée à ``company``.
 
     Match insensible à la casse sur ``nom``/``societe``/``ice``. Retourne une
     liste de dicts normalisés (voir ``_*_hit``), dédupliquée grossièrement par
     (nom, ice) pour ne pas proposer trois fois la même entreprise.
+
+    CRX16 — ``user`` (optionnel) applique EN PLUS la PORTÉE DE VISIBILITÉ du
+    rôle, exactement comme les listes : ``scope_client_queryset`` pour les
+    clients (parité ``ClientViewSet.get_queryset``) et ``scope_queryset`` sur
+    ``owner`` pour les leads (parité ``LeadViewSet.get_queryset``). Sans cela,
+    l'autocomplete servait à un rôle restreint des noms, téléphones et emails
+    d'enregistrements qu'il ne peut pas ouvrir. ``user`` absent (appel interne,
+    script) ou portée « all » → résultat INCHANGÉ.
     """
     # Imports paresseux : company_search est une brique de bas niveau, on évite
     # d'importer les modèles au chargement du module (cycles / coût). Le
@@ -86,20 +95,25 @@ def own_data_search(company, q: str, *, limit: int = MAX_RESULTS) -> list[dict]:
     from django.db.models import Q
     from .models import Client, Lead
     from apps.stock.selectors import search_fournisseurs
+    from authentication.scoping import scope_client_queryset, scope_queryset
 
     q = (q or '').strip()
     if not q or company is None:
         return []
 
-    clients = list(
+    clients_qs = (
         Client.objects.filter(company=company)
-        .filter(Q(nom__icontains=q) | Q(ice__icontains=q))
-        .order_by('nom')[:limit])
-    fournisseurs = search_fournisseurs(company, q, limit=limit)
-    leads = list(
+        .filter(Q(nom__icontains=q) | Q(ice__icontains=q)))
+    leads_qs = (
         Lead.objects.filter(company=company)
-        .filter(Q(nom__icontains=q) | Q(societe__icontains=q))
-        .order_by('nom')[:limit])
+        .filter(Q(nom__icontains=q) | Q(societe__icontains=q)))
+    if user is not None:
+        clients_qs = scope_client_queryset(clients_qs, user)
+        leads_qs = scope_queryset(leads_qs, user, ['owner'])
+
+    clients = list(clients_qs.order_by('nom')[:limit])
+    fournisseurs = search_fournisseurs(company, q, limit=limit)
+    leads = list(leads_qs.order_by('nom')[:limit])
 
     hits = (
         [_client_hit(c) for c in clients]
@@ -123,12 +137,19 @@ def own_data_search(company, q: str, *, limit: int = MAX_RESULTS) -> list[dict]:
     return deduped
 
 
-def search_companies(company, q: str, *, provider=None, limit: int = MAX_RESULTS) -> list[dict]:
+def search_companies(company, q: str, *, provider=None, limit: int = MAX_RESULTS,
+                     user=None) -> list[dict]:
     """Point d'entrée unique de l'autocomplete entreprise (PROVIDER SEAM).
 
     ``provider`` est une fonction ``(company, q, *, limit) -> list[dict]`` ;
     par défaut ``own_data_search`` (données propres). QC2 branchera ici un
     provider registre-licencié derrière un flag, sans changer l'appelant.
+
+    ``user`` (CRX16) n'est transmis QU'AU provider par défaut : la SIGNATURE du
+    seam reste ``(company, q, *, limit)``, donc un provider externe déjà écrit
+    continue d'être appelé à l'identique (un registre licencié interroge une
+    source tierce, où la portée de rôle interne n'a pas de sens).
     """
-    provider = provider or own_data_search
+    if provider is None:
+        return own_data_search(company, q, limit=limit, user=user)
     return provider(company, q, limit=limit)

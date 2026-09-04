@@ -92,9 +92,13 @@ class SalleVenteTotalAfficheTests(TestCase):
         self.assertEqual(body['type'], SalleVenteItem.TypeItem.DEVIS)
         self.assertEqual(body['reference'], devis.reference)
         self.assertEqual(body['statut'], devis.statut)
-        self.assertEqual(
-            body['proposal_path'],
-            f'/api/django/ventes/devis/{devis.pk}/proposal/')
+        # QJR419 — le lien servi est désormais le LIEN PUBLIC du site (page
+        # tokenisée), plus le chemin interne `/api/django/ventes/devis/<pk>/`
+        # qui divulguait la clé primaire et qu'un visiteur anonyme ne pouvait
+        # pas ouvrir. La forme exacte est verrouillée par
+        # `test_qjr419_salle_vente_lien_public`.
+        self.assertNotIn('/api/django/', body['proposal_path'])
+        self.assertIn('/proposition/', body['proposal_path'])
 
     def test_devis_mono_option_sans_remise_inchange(self):
         """Un devis mono-option sans remise (chemin historique) sert le même

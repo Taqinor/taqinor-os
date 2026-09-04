@@ -7,6 +7,7 @@ class FlotteConfig(AppConfig):
     verbose_name = 'Gestion de flotte'
     module_manifest = {
         'key': 'flotte',
+        'sku': 'generic',
         'label': 'Flotte',
         'icone': 'truck',
         'depends': [],

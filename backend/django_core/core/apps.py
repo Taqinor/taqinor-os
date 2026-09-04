@@ -18,6 +18,7 @@ class CoreConfig(AppConfig):
     verbose_name = 'Fondation'
     module_manifest = {
         'key': 'core',
+        'sku': 'generic',
         'label': 'Fondation',
         'icone': 'layers',
         'depends': [],
@@ -27,6 +28,12 @@ class CoreConfig(AppConfig):
     }
 
     def ready(self):
+        # QJR423 / DR8 — contrôles système des réglages de PRODUCTION
+        # (DEBUG interdit, ALLOWED_HOSTS explicite exigé). L'import suffit :
+        # les contrôles s'enregistrent par décorateur. NO-OP TOTAL hors
+        # production — en dev et en CI (settings.dev), ils rendent [].
+        from . import checks  # noqa: F401
+
         # FG396 — supervision d'erreurs (Sentry), gardée par DSN. No-op total
         # sans ``SENTRY_DSN`` (aucune dépendance chargée, aucun appel réseau).
         from . import monitoring

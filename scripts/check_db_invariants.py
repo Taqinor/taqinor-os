@@ -6,8 +6,9 @@ quantities ``>= 0``) often live ONLY in a Python ``clean()``/``save()`` — whic
 ``CheckConstraint`` in ``Meta.constraints`` is the DB-level backstop.
 
 This ADVISORY, DB-free AST tool scans the money/quantity models
-(``Devis``, ``LigneDevis``, ``Facture``, ``LigneFacture``, ``MouvementStock``,
-``Paiement``) and, per model, lists the numeric invariants it can find in
+(``Devis``, ``LigneDevis``, ``BonCommande``, ``Facture``, ``LigneFacture``,
+``Avoir``, ``LigneAvoir``, ``MouvementStock``, ``Paiement``,
+``LigneEcriture``) and, per model, lists the numeric invariants it can find in
 ``clean()``/``save()`` that have NO matching ``CheckConstraint`` — plus the
 canonical money/quantity invariants that are absent from BOTH layers. It writes
 ``docs/db-invariants-gap.md`` (the gap register, to be closed later by targeted
@@ -30,16 +31,37 @@ GAP_DOC = ROOT / "docs" / "db-invariants-gap.md"
 
 # Target money/quantity models (model name -> app) and the canonical invariants
 # each SHOULD carry at the DB level.
+#
+# AUD188 — le registre avait un ANGLE MORT sur son propre périmètre : ni
+# ``Avoir``/``LigneAvoir`` (une note de crédit, document client d'argent, sans
+# ``clean()``, sans ``save()`` et sans la moindre contrainte) ni
+# ``BonCommande`` n'y figuraient. ``BonCommande`` ne porte AUCUN champ
+# monétaire (ses montants sont dérivés du devis) : son entrée relève de la
+# COUVERTURE du registre (axe statut/workflow), pas d'une contrainte de
+# montant — d'où une liste canonique vide, honnête plutôt qu'inventée.
 TARGET_MODELS = {
-    "Devis": ("ventes", ["remise in [0,100]", "total_ht >= 0", "total_ttc >= 0"]),
+    "Devis": ("ventes", ["remise_globale in [0,100]", "acompte_montant >= 0"]),
     "LigneDevis": ("ventes", ["remise in [0,100]", "quantite >= 0",
                               "prix_unitaire >= 0"]),
-    "Facture": ("facturation", ["remise in [0,100]", "total_ht >= 0",
-                                "total_ttc >= total_ht"]),
+    "BonCommande": ("ventes", []),
+    "Facture": ("facturation", ["remise_globale in [0,100]",
+                                "montant_ht >= 0", "montant_ttc >= 0"]),
     "LigneFacture": ("facturation", ["quantite >= 0", "prix_unitaire >= 0",
                                      "remise in [0,100]"]),
+    "Avoir": ("facturation", ["remise_globale in [0,100]", "montant_ht >= 0",
+                              "montant_ttc >= 0"]),
+    "LigneAvoir": ("facturation", ["quantite >= 0", "prix_unitaire >= 0",
+                                   "remise in [0,100]"]),
     "MouvementStock": ("stock", ["quantite >= 0"]),
-    "Paiement": ("facturation", ["montant >= 0"]),
+    # AUD188 (rectificatif) — ``montant >= 0`` N'EST PAS un invariant de ce
+    # modèle, et le réclamer était une erreur du registre : FG50 (annulation
+    # d'une facture d'acompte avec remboursement) écrit délibérément un
+    # ``Paiement`` NÉGATIF de contre-passation. La contrainte posée par la
+    # migration 0005 rendait cet appel HTTP 500 ; 0006 la retire. Restent les
+    # deux champs monétaires du modèle qui, eux, sont positifs par nature.
+    "Paiement": ("facturation", ["frais_rejet >= 0", "escompte_montant >= 0"]),
+    "LigneEcriture": ("compta", ["debit >= 0", "credit >= 0",
+                                 "debit exclusif du credit"]),
 }
 
 _REL_OPS = {ast.GtE: ">=", ast.LtE: "<=", ast.Gt: ">", ast.Lt: "<"}
@@ -183,7 +205,13 @@ def render_doc(rows):
             field = inv.split()[0]
             if field not in cc_fields:
                 missing.append(inv)
-        gap = "; ".join(missing) or "(all constrained)"
+        if not canonical:
+            # AUD188 — un modèle SANS champ monétaire (ex. BonCommande, dont
+            # les montants sont dérivés du devis) est listé pour la COUVERTURE
+            # du registre : dire « tout est contraint » y serait trompeur.
+            gap = "(aucun champ monétaire — couverture du registre)"
+        else:
+            gap = "; ".join(missing) or "(all constrained)"
         lines.append(f"| `{model}` | {app} | {py} | {cc} | {gap} |")
     lines.append("")
     lines.append("Legend: a field in *Python invariant fields* but absent from")

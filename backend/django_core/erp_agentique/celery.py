@@ -98,6 +98,16 @@ app.conf.beat_schedule = {
         'task': 'crm.appointment_reminders',
         'schedule': crontab(minute='*/15'),  # every 15 minutes
     },
+    # CRX22 — rafraîchissement quotidien du score des leads NON TOUCHÉS. Le
+    # score n'était recalculé qu'à l'édition : la décote de récence (12 pts le
+    # premier jour → 1 pt au-delà de 90 jours) ne s'appliquait jamais à un
+    # lead dormant, qui restait « chaud » pour toujours — et le tri par score
+    # remontait des leads de six mois au-dessus de leads du jour. Passage à
+    # 4 h 10, avant les relances et digests du matin, qui lisent ce score.
+    'crm-recalculer-scores-obsoletes': {
+        'task': 'crm.recalculer_scores_obsoletes',
+        'schedule': crontab(hour=4, minute=10),
+    },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
         'schedule': crontab(hour=7, minute=0),
@@ -929,6 +939,34 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=6, minute=15, day_of_month=3),
     },
 }
+
+
+def filtrer_beat_apps_parquees(schedule, edition=None):
+    """SOL2(c) — retire du beat les tâches des apps PARQUÉES par l'édition.
+
+    Le nom d'une tâche porte l'app en préfixe (``mrp.recalculer_besoins_nocturne``,
+    ``sante.alertes_prise_en_charge_expirant``…) : le filtrage se fait sur ce
+    préfixe, à partir du registre STATIQUE ``erp_agentique/settings/editions.py``.
+
+    Sans ce filtre, beat continuerait de PLANIFIER des tâches dont le module
+    n'est plus chargé : chaque tick produirait un ``NotRegistered`` bruyant et
+    une entrée en file que plus aucun worker ne peut consommer. En édition
+    complète (défaut), rien n'est parqué → le planning est renvoyé À
+    L'IDENTIQUE (aucune entrée retirée, aucun changement de comportement).
+    """
+    from erp_agentique.settings import editions
+
+    parques = editions.modules_parques(edition)
+    if not parques:
+        return schedule
+    prefixes = tuple(f'{cle}.' for cle in sorted(parques))
+    return {
+        nom: entree for nom, entree in schedule.items()
+        if not str(entree.get('task', '')).startswith(prefixes)
+    }
+
+
+app.conf.beat_schedule = filtrer_beat_apps_parquees(app.conf.beat_schedule)
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
 # l'endpoint /metrics. Enregistrés au niveau du signal Celery (pas Django) :

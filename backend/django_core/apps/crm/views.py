@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -61,6 +64,41 @@ from apps.compta.views import (  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+@contextmanager
+def _save_borne_aux_champs(instance, champs):
+    """CRX25 — force ``update_fields`` sur le prochain ``instance.save()``.
+
+    ``ModelSerializer.update()`` termine par un ``instance.save()`` NU, qui
+    réécrit TOUTES les colonnes depuis la copie en mémoire : deux requêtes
+    concurrentes touchant des champs DISJOINTS se révertent alors l'une
+    l'autre (lost update). DRF n'expose aucun crochet pour borner cette
+    écriture ; on remplace donc la méthode LIÉE le temps de l'appel, puis on la
+    restaure — le sérialiseur n'est pas modifié, les M2M (posés APRÈS le save
+    par DRF) ne sont pas concernés, et un appelant qui passerait déjà un
+    ``update_fields`` explicite garde le sien.
+
+    ``champs`` vide ⇒ aucune borne (un ``update_fields=[]`` ne ferait
+    strictement rien et perdrait l'écriture).
+    """
+    if not champs:
+        yield
+        return
+    original = instance.save
+
+    def _save(*args, **kwargs):
+        kwargs.setdefault('update_fields', champs)
+        return original(*args, **kwargs)
+
+    instance.save = _save
+    try:
+        yield
+    finally:
+        try:
+            del instance.save
+        except AttributeError:  # pragma: no cover — défense en profondeur
+            instance.save = original
 
 
 @api_view(['GET'])
@@ -211,7 +249,13 @@ class ClientViewSet(CompanyScopedModelViewSet):
         if_fiscal, rc, adresse, telephone, email}, …]}`` (≤ 12)."""
         from .company_search import search_companies
         q = (request.query_params.get('q') or '').strip()
-        results = search_companies(request.user.company, q) if q else []
+        # CRX16 — la portée de visibilité du rôle s'applique à l'autocomplete
+        # comme à la liste (``scope_client_queryset`` côté clients) : sans
+        # elle, un rôle restreint lisait ici les coordonnées d'enregistrements
+        # que sa propre liste lui masque.
+        results = (search_companies(request.user.company, q,
+                                    user=request.user)
+                   if q else [])
         return Response({'results': results})
 
     @action(detail=True, methods=['get'], url_path='documents',
@@ -735,15 +779,74 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
 
+    #: CRX25 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10) : sans
+    #: elles dans ``update_fields``, un changement de téléphone/email ne serait
+    #: pas répercuté sur les colonnes indexées de dédup. On ne les écrit QUE
+    #: quand leur source est dans le corps : les inclure systématiquement
+    #: réécrirait la dédup depuis une copie périmée.
+    COLONNES_DERIVEES = {'telephone': 'phone_normalise',
+                         'email': 'email_normalise'}
+
+    @staticmethod
+    def _champs_ecrivables(noms):
+        """Restreint ``noms`` aux champs LOCAUX CONCRETS de ``Lead``, en y
+        ajoutant TOUJOURS les horodatages ``auto_now``.
+
+        Deux pièges de ``update_fields`` :
+
+        * il refuse un M2M, une relation inverse ou un nom inconnu
+          (``ValueError``) — on filtre donc sur le méta du modèle plutôt que de
+          faire confiance aux clés du corps ;
+        * Django ne rafraîchit un champ ``auto_now`` que s'il figure DANS
+          ``update_fields``. Sans cet ajout, ``date_modification`` cesserait
+          d'avancer à chaque PATCH — la fraîcheur affichée mentirait.
+        """
+        concrets = set()
+        horodatages = set()
+        for f in Lead._meta.get_fields():
+            if (not getattr(f, 'concrete', False)
+                    or getattr(f, 'many_to_many', False)
+                    or getattr(f, 'primary_key', False)):
+                continue
+            concrets.add(f.name)
+            if getattr(f, 'auto_now', False):
+                horodatages.add(f.name)
+        return sorted({n for n in noms if n in concrets} | horodatages)
+
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
-        super().perform_update(serializer)
-        new_lead = serializer.instance
+        instance = serializer.instance
+
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
-        # alimente la puce de fraîcheur. Pattern archived_by.
-        new_lead.updated_by = self.request.user
-        new_lead.save(update_fields=['updated_by'])
+        # alimente la puce de fraîcheur. Pattern archived_by. CRX25 : posé
+        # AVANT l'écriture et inclus dans update_fields, au lieu d'un second
+        # save() (une écriture de moins, et jamais un lead sauvé deux fois).
+        instance.updated_by = self.request.user
+
+        # CRX25 — l'écriture est BORNÉE aux champs réellement touchés. Avant,
+        # DRF faisait un ``instance.save()`` COMPLET : deux PATCH concurrents
+        # sur des champs DISJOINTS (le commercial change la ville pendant que
+        # l'assistante corrige le nom) se révertaient l'un l'autre — le second
+        # save réécrivait TOUTES les colonnes depuis sa copie périmée.
+        ecrits = set(serializer.validated_data.keys())
+        if self.request.user.company_id:
+            ecrits.add('company')  # forcée côté serveur (TenantMixin)
+        ecrits.add('updated_by')
+        for source, derivee in self.COLONNES_DERIVEES.items():
+            if source in ecrits:
+                ecrits.add(derivee)
+        with _save_borne_aux_champs(instance, self._champs_ecrivables(ecrits)):
+            super().perform_update(serializer)
+
+        new_lead = serializer.instance
+        # CRX25 — l'instance en mémoire peut porter des valeurs PÉRIMÉES sur
+        # les champs NON écrits (une requête concurrente les a changés entre
+        # la lecture et l'écriture) : on relit avant de journaliser, sinon le
+        # chatter annoncerait un changement qui n'a jamais été persisté — et
+        # la réponse renverrait au client un état qui n'est pas celui de la
+        # base.
+        new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
         from .services import (
             _emit_stage_changed, maybe_set_first_contacted_at,
@@ -758,7 +861,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'duplicates',
+        if self.action in READ_ACTIONS + ['duplicates',
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
@@ -766,6 +869,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
             return [IsAnyRole()]
+        elif self.action in ('historique', 'jalons_devis'):
+            # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
+            # devis, qui sont le même historique vu côté ventes) exige
+            # ``crm_voir``. get_permissions() PRIME sur le permission_classes
+            # de l'@action : posée seulement là-bas, la garde fine était morte
+            # — `historique` retombait sur IsAnyRole (ouvert à TOUT porteur de
+            # rôle) et `jalons_devis`, absent de toutes les listes, sur le
+            # `return [IsAdminRole()]` final (403 pour la Commerciale).
+            return [HasPermissionOrLegacy('crm_voir')()]
         elif self.action in (
                 'merge', 'convertir_client', 'epingler', 'desepingler'):
             # VX199 — fusion / conversion de lead : permission ERP FINE
@@ -1103,7 +1215,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             LeadSerializer(survivor, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def historique(self, request, pk=None):
         """Timeline chatter du lead (auto + notes), du plus récent au plus ancien.
 
@@ -1111,14 +1223,39 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ``LeadActivitySerializer.get_user_nom``/``get_attachment_*`` retouchent
         chacune une FK PAR LIGNE (N+1 réel, recon 02 §5). ``order_by`` explicite
         (au lieu du tri implicite ``Meta.ordering`` du modèle) — LW28 : les
-        notes ÉPINGLÉES remontent en tête, hors chronologie."""
+        notes ÉPINGLÉES remontent en tête, hors chronologie.
+
+        CRX19 — deux corrections : la lecture exige ``crm_voir`` (elle était
+        ouverte à TOUT porteur de rôle, alors qu'elle sert l'historique
+        complet d'un lead), et le CONTEXTE est propagé au sérialiseur, sans
+        quoi le masquage PII du chatter ne s'appliquerait pas ici."""
         lead = self.get_object()
         activites = (
             lead.activites
             .select_related('user', 'attachment')
             .order_by('-pinned', '-created_at')
         )
-        return Response(LeadActivitySerializer(activites, many=True).data)
+        return Response(LeadActivitySerializer(
+            activites, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='jalons-devis',
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
+    def jalons_devis(self, request, pk=None):
+        """CRX37 — jalons du cycle de vie des devis du lead (envoyé / ouvert /
+        signé / refusé), pour fusion dans la timeline côté écran.
+
+        Surface HTTP MINIMALE du sélecteur ``selectors.lead_jalons_devis``, qui
+        lit ``apps.ventes.selectors.devis_events_for_lead`` (jamais un import
+        de ``apps.ventes.models``). Additive : ``historique`` garde sa forme à
+        l'octet, aucun mock existant n'est invalidé. Même permission que
+        ``historique`` (``crm_voir``) — c'est le même historique de lead.
+
+        Contrat : ``apps/crm/contract_samples/lead_jalons_devis.json``.
+        """
+        from .selectors import lead_jalons_devis
+
+        lead = self.get_object()
+        return Response({'results': lead_jalons_devis(lead)})
 
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
@@ -1627,8 +1764,31 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         except ValueError:
             return Response({'detail': 'Identifiant de lead invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        leads = (Lead.objects.filter(company=request.user.company, id__in=ids)
-                 .select_related('owner').order_by('id'))
+        # CRX16 — l'export passe par ``self.get_queryset()`` (parité
+        # ClientViewSet.export_xlsx) : la PORTÉE DE VISIBILITÉ du rôle
+        # s'applique enfin. Le filtre société brut d'origine exportait tous
+        # les leads de la société, y compris ceux qu'un rôle restreint ne peut
+        # même pas ouvrir dans la liste.
+        from django.db.models import Prefetch
+        from apps.ventes.models import Devis
+        leads = (
+            self.get_queryset()
+            .filter(id__in=ids)
+            # On remplace les prefetch de la LISTE par un prefetch ORDONNÉ :
+            # ``lead_row`` a besoin du DERNIER devis. Un prefetch nu ne suffit
+            # pas — ``lead.devis.order_by(...).first()`` re-requête et ignore
+            # le cache (1 requête PAR LIGNE, plus 1 par devis pour ses lignes
+            # via ``total_ttc``). Le tri vit donc DANS le prefetch, exposé sous
+            # ``devis_ordonnes`` (lu par ``exports.lead_row``) : O(1) requêtes
+            # quelle que soit la taille de la sélection.
+            .prefetch_related(None)
+            .select_related('owner')
+            .prefetch_related(Prefetch(
+                'devis',
+                queryset=Devis.objects.order_by(
+                    '-date_creation').prefetch_related('lignes'),
+                to_attr='devis_ordonnes'))
+            .order_by('id'))
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT,
@@ -1849,12 +2009,21 @@ class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     def replay(self, request, pk=None):
         """QX16 — rejoue ce payload à travers le mapping webhook standard.
 
+        CRX2 — le chemin de rejeu suit la SOURCE de la ligne : site web →
+        ``replay_website_lead_payload``, Meta Lead Ads →
+        ``replay_meta_lead_payload``. Chacun réutilise le mapping de SON
+        webhook (jamais une seconde implémentation).
+
         Renvoie 200 avec le lead résultant en cas de succès, 422 si le rejeu
         échoue encore (le payload reste rejouable — jamais supprimé)."""
-        from .webhooks import replay_website_lead_payload
+        from .webhooks import (
+            replay_meta_lead_payload, replay_website_lead_payload)
 
         payload = self.get_object()
-        ok, detail, lead = replay_website_lead_payload(payload)
+        if payload.source == WebsiteLeadPayload.Source.META_LEAD_ADS:
+            ok, detail, lead = replay_meta_lead_payload(payload)
+        else:
+            ok, detail, lead = replay_website_lead_payload(payload)
         payload.refresh_from_db()
         data = WebsiteLeadPayloadSerializer(payload).data
         if not ok:
@@ -2619,38 +2788,107 @@ class PlaybookViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class PlaybookEtapeViewSet(CompanyScopedModelViewSet):
+class _PlaybookEnfantViewSetMixin:
+    """CRX14 — socle des deux enfants de playbook (étapes, tâches).
+
+    ``PlaybookEtape`` et ``PlaybookTache`` N'ONT PAS de champ ``company`` : la
+    frontière société passe par le playbook parent. Le ``get_queryset`` de
+    ``TenantMixin`` (``qs.filter(company=…)``) levait donc un ``FieldError``
+    AVANT d'atteindre le re-scope ``playbook__company`` écrit juste après —
+    autrement dit ce re-scope était MORT et toute lecture/écriture d'un objet
+    existant (list, retrieve, update, destroy) répondait 500. On remplace
+    entièrement le filtrage par le chemin parent, en gardant la sémantique de
+    ``TenantMixin`` pour les trois acteurs : utilisateur d'une société →
+    scopé ; superuser SANS société (acteur plateforme) → tout ; ni l'un ni
+    l'autre → rien.
+
+    ``perform_create``/``perform_update`` valident en plus le PARENT désigné
+    par le corps : sans cela, un id de playbook (ou d'étape) d'une autre
+    société suffisait à y greffer — ou à y déplacer — une étape.
+    """
+
+    #: Chemin ORM du parent portant la société (ex. ``playbook__company_id``).
+    company_path = ''
+    #: Nom du champ de relation parent dans le corps de la requête.
+    parent_field = ''
+
+    def base_queryset(self):
+        raise NotImplementedError
+
+    def get_queryset(self):
+        qs = self.base_queryset()
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(**{self.company_path: user.company_id})
+        if user.is_superuser:
+            return qs
+        return qs.none()
+
+    def parent_company_id(self, parent):
+        raise NotImplementedError
+
+    def _valider_parent(self, serializer):
+        company_id = getattr(self.request.user, 'company_id', None)
+        if not company_id:
+            return
+        parent = serializer.validated_data.get(self.parent_field)
+        if parent is None:
+            # Absent d'un PATCH partiel : le parent existant a déjà été scopé
+            # par ``get_queryset``, rien à revalider.
+            if serializer.partial:
+                return
+            raise DRFValidationError(
+                {self.parent_field: 'Ce champ est obligatoire.'})
+        if self.parent_company_id(parent) != company_id:
+            raise DRFValidationError(
+                {self.parent_field: 'Élément hors de votre société.'})
+
+    def perform_create(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valider_parent(serializer)
+        serializer.save()
+
+
+class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
     queryset = PlaybookEtape.objects.select_related('playbook').prefetch_related('taches')
     serializer_class = PlaybookEtapeSerializer
+    company_path = 'playbook__company_id'
+    parent_field = 'playbook'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
-    def get_queryset(self):
-        return super().get_queryset().filter(
-            playbook__company=self.request.user.company)
+    def base_queryset(self):
+        return PlaybookEtape.objects.select_related(
+            'playbook').prefetch_related('taches')
 
-    def perform_create(self, serializer):
-        serializer.save()
+    def parent_company_id(self, parent):
+        return parent.company_id
 
 
-class PlaybookTacheViewSet(CompanyScopedModelViewSet):
+class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
+                           CompanyScopedModelViewSet):
     queryset = PlaybookTache.objects.select_related('etape__playbook')
     serializer_class = PlaybookTacheSerializer
+    company_path = 'etape__playbook__company_id'
+    parent_field = 'etape'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
-    def get_queryset(self):
-        return super().get_queryset().filter(
-            etape__playbook__company=self.request.user.company)
+    def base_queryset(self):
+        return PlaybookTache.objects.select_related('etape__playbook')
 
-    def perform_create(self, serializer):
-        serializer.save()
+    def parent_company_id(self, parent):
+        return parent.playbook.company_id
 
 
 @api_view(['GET', 'POST'])

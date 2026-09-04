@@ -53,13 +53,20 @@ def _is_configured():
 def _resolve_company():
     """Société cible, résolue CÔTÉ SERVEUR (jamais du corps de requête), au même
     patron que les autres webhooks Meta de l'ERP : ``WHATSAPP_CLOUD_COMPANY_ID``
-    si posé, sinon la 1re ``Company`` (scaffold mono-société)."""
-    from authentication.models import Company
+    si posé, sinon la 1re ``Company``.
 
-    company_id = getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', None)
-    if company_id:
-        return Company.objects.filter(pk=company_id).first()
-    return Company.objects.order_by('pk').first()
+    QJR415 — CE REPLI ÉTAIT MUET. Dans un ERP multi-tenant, retomber en silence
+    sur la première société range des conversations entrantes chez un autre
+    client sans qu'aucun signal ne soit émis. Il partage désormais LE motif
+    unique du dépôt (``apps.crm.webhooks.resoudre_company_avec_repli_bruyant``,
+    le garde-fou QXG5) : plus aucune variante muette. Import fonction-local —
+    jamais au chargement du module, jamais un import de ``crm.models``."""
+    from apps.crm.webhooks import resoudre_company_avec_repli_bruyant
+
+    return resoudre_company_avec_repli_bruyant(
+        getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', None),
+        reglage='WHATSAPP_CLOUD_COMPANY_ID',
+        contexte='adsengine.whatsapp_webhook._resolve_company')
 
 
 def _check_signature(request, secret):
@@ -70,7 +77,14 @@ def _check_signature(request, secret):
         return False
     expected = 'sha256=' + hmac.new(
         secret.encode(), request.body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig_header, expected)
+    # QJR413 (a) — COMPARER EN BYTES. ``compare_digest(str, str)`` lève un
+    # ``TypeError`` non intercepté dès qu'un opérande porte un caractère
+    # non-ASCII : un seul octet hostile dans l'en-tête rendait un HTTP 500
+    # NON AUTHENTIFIÉ, dont la trame d'erreur portait la valeur ATTENDUE en
+    # clair. En bytes, tout octet se compare et l'entrée hostile est
+    # simplement REFUSÉE. Même patron que ``ventes.domain.cycle_vie``.
+    return hmac.compare_digest(str(sig_header).encode('utf-8'),
+                               expected.encode('utf-8'))
 
 
 def _parse_ts(value):
@@ -150,7 +164,11 @@ class WhatsAppCloudWebhookView(View):
         mode = request.GET.get('hub.mode', '')
         token = request.GET.get('hub.verify_token', '')
         challenge = request.GET.get('hub.challenge', '')
-        if mode == 'subscribe' and hmac.compare_digest(token, _verify_token()):
+        # QJR413 (a) — comparaison en BYTES (voir ``_check_signature``) : un
+        # ``hub.verify_token`` non-ASCII rendait un 500 public.
+        if mode == 'subscribe' and hmac.compare_digest(
+                str(token).encode('utf-8'),
+                _verify_token().encode('utf-8')):
             return HttpResponse(
                 challenge, content_type='text/plain', status=200)
         return HttpResponse('Vérification refusée.', status=403)

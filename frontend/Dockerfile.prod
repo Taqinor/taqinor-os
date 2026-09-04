@@ -19,10 +19,17 @@ ARG VITE_CONTACT_FORM_ENABLED=0
 # changer sa valeur exige un rebuild d'image (docker compose build frontend).
 # OFF (0) = repli legacy, smoke d'urgence uniquement ; retrait planifie ODY33.
 ARG VITE_APPS_SHELL=1
+# SOL6 — edition au BUILD (`full` par defaut, `solar` = edition installateur).
+# Le bundle solaire ne contient AUCUN ecran des six verticaux parques. Sans ce
+# passage d'argument, poser VITE_EDITION dans le .env n'aurait aucun effet sur
+# l'image de prod : le backend basculerait sans le frontend, et l'UI afficherait
+# des ecrans dont les routes n'existent plus.
+ARG VITE_EDITION=full
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_IA_API_URL=$VITE_IA_API_URL
 ENV VITE_CONTACT_FORM_ENABLED=$VITE_CONTACT_FORM_ENABLED
 ENV VITE_APPS_SHELL=$VITE_APPS_SHELL
+ENV VITE_EDITION=$VITE_EDITION
 
 RUN npm run build
 

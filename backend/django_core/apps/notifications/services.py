@@ -608,15 +608,30 @@ def merged_preferences(user):
     """Liste des préférences effectives pour TOUS les événements (UI).
 
     Combine les défauts avec les lignes stockées de l'utilisateur. Ne crée
-    aucune ligne en base."""
+    aucune ligne en base.
+
+    SOL14 — AFFICHAGE : les événements d'un module que la société n'a pas
+    (désactivé, hors plan de licence, ou vertical parqué) ne sont plus
+    proposés. Régler des canaux pour une notification qui ne partira jamais
+    n'a aucun sens, et allongeait la grille sans raison. Les LIGNES déjà
+    enregistrées restent en base intactes : réactiver le module rend le
+    réglage tel quel. Un événement dont le module est incertain n'est jamais
+    masqué (cf. `module_map`)."""
     stored = {}
     try:
         for p in NotificationPreference.objects.filter(user=user):
             stored[p.event_type] = p
     except Exception:  # pragma: no cover - défensif
         stored = {}
+    try:
+        from .module_map import event_types_masques
+        masques = event_types_masques(getattr(user, 'company', None))
+    except Exception:  # pragma: no cover - jamais priver d'un réglage
+        masques = frozenset()
     out = []
     for value, label in EventType.choices:
+        if value in masques:
+            continue
         p = stored.get(value)
         if p is not None:
             out.append({

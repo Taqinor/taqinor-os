@@ -80,28 +80,62 @@ def suggestions_rangement_reception(reception):
 # NTWMS4 — Vagues de prélèvement multi-source, ordonnées par le parcours
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _casier_pour_ligne(produit, quantite):
-    """(bin, lot, ordre, zone, allée) résolus par la stratégie de picking du
-    produit (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le
-    tri zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; zone et
-    allée servent au parcours en serpentin (NTWMS28)."""
-    from .selectors_wms import resoudre_allocation_picking
+def _plan_casiers_pour_ligne(produit, quantite):
+    """AUD220 — plan de prélèvement COMPLET d'un besoin : une entrée par
+    lot/casier retenu par la stratégie du produit (NTWMS3), enrichie du rang de
+    parcours de son casier.
 
-    plan = resoudre_allocation_picking(produit, quantite)
-    if not plan:
-        return None, None, 1000, '', ''
-    tete = plan[0]
-    ordre, zone, allee = 1000, '', ''
-    if tete['bin_id']:
-        # Le rang de parcours vient du casier lui-même (jamais recalculé ici).
-        from .selectors_wms import localisation_casiers
-        for casier in localisation_casiers(produit):
-            if casier['bin_id'] == tete['bin_id']:
-                ordre = casier['ordre']
-                zone = casier['zone'] or ''
-                allee = casier['allee'] or ''
-                break
-    return tete['bin_id'], tete['lot_id'], ordre, zone, allee
+    Renvoie ``[{bin_id, lot_id, quantite, ordre, zone, allee}]``. Le tri
+    zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; ``zone`` et
+    ``allee`` servent au parcours en serpentin (NTWMS28).
+
+    Le défaut corrigé : seule la TÊTE du plan était retenue, si bien qu'un
+    besoin couvert par DEUX lots FEFO produisait une ligne unique portant le
+    premier lot — le lot enregistré ne représentait pas ce qui serait
+    réellement prélevé, et FEFO était contourné en pratique. Un reliquat que le
+    plan ne couvre pas (lots insuffisants) revient en une entrée SANS lot :
+    la vague demande toujours la quantité complète, comme avant.
+    """
+    from .selectors_wms import (
+        localisation_casiers, resoudre_allocation_picking,
+    )
+
+    plan = resoudre_allocation_picking(produit, quantite) or []
+    casiers = None
+    entrees, couvert = [], 0
+    for entree in plan:
+        try:
+            prise = int(entree.get('quantite') or 0)
+        except (TypeError, ValueError):
+            continue
+        if prise <= 0:
+            continue
+        ordre, zone, allee = 1000, '', ''
+        if entree['bin_id']:
+            # Le rang de parcours vient du casier lui-même (jamais recalculé).
+            if casiers is None:
+                casiers = localisation_casiers(produit)
+            for casier in casiers:
+                if casier['bin_id'] == entree['bin_id']:
+                    ordre = casier['ordre']
+                    zone = casier['zone'] or ''
+                    allee = casier['allee'] or ''
+                    break
+        couvert += prise
+        entrees.append({
+            'bin_id': entree['bin_id'], 'lot_id': entree['lot_id'],
+            'quantite': prise, 'ordre': ordre, 'zone': zone, 'allee': allee,
+        })
+
+    if not entrees:
+        return [{'bin_id': None, 'lot_id': None, 'quantite': quantite,
+                 'ordre': 1000, 'zone': '', 'allee': ''}]
+    reliquat = quantite - couvert
+    if reliquat > 0:
+        entrees.append({'bin_id': None, 'lot_id': None,
+                        'quantite': reliquat, 'ordre': 1000,
+                        'zone': '', 'allee': ''})
+    return entrees
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -237,14 +271,17 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             # Tout le stock de ce produit est sous quarantaine : la ligne
             # n'est pas servable tant que la levée n'est pas actée.
             continue
-        bin_id, lot_id, ordre, zone, allee = _casier_pour_ligne(
-            produit, quantite)
-        preparees.append({
-            'produit': produit, 'quantite': quantite, 'bin_id': bin_id,
-            'lot_id': lot_id, 'ordre': ordre, 'zone': zone, 'allee': allee,
-            'installation_id': besoin.get('installation_id'),
-            'bon_commande_id': besoin.get('bon_commande_id'),
-        })
+        # AUD220 — UNE ligne de picking par lot/casier du plan résolu : le lot
+        # porté par chaque ligne est bien celui qui sera prélevé.
+        for entree in _plan_casiers_pour_ligne(produit, quantite):
+            preparees.append({
+                'produit': produit, 'quantite': entree['quantite'],
+                'bin_id': entree['bin_id'], 'lot_id': entree['lot_id'],
+                'ordre': entree['ordre'], 'zone': entree['zone'],
+                'allee': entree['allee'],
+                'installation_id': besoin.get('installation_id'),
+                'bon_commande_id': besoin.get('bon_commande_id'),
+            })
 
     if not preparees:
         raise ValueError('Aucun besoin valide à regrouper dans cette vague.')
@@ -298,10 +335,18 @@ def prelever_ligne_picking(*, ligne, quantite, user=None):
     Refuse (``ValueError``) une quantité non positive, un dépassement du reste
     à prélever, ou une vague non LANCÉE. Clôture automatiquement la vague quand
     toutes ses lignes sont servies.
+
+    AUD219 — la ligne est chargée par la vue AVANT d'entrer en transaction :
+    deux scanners sur la MÊME ligne lisaient donc tous deux le même
+    ``quantite_prelevee`` et le second écrasait le premier (lost update). La
+    ligne est re-lue SOUS VERROU (``select_for_update``) à l'intérieur de la
+    transaction, et c'est cette copie fraîche qui décide du reste à prélever :
+    le second scan est refusé s'il dépasse, additionné sinon. Verrou distinct
+    de celui du produit (AUD216) : l'objet en course ici est la LignePicking.
     """
     from django.db import transaction
     from django.utils import timezone
-    from .models_wms import VaguePicking
+    from .models_wms import LignePicking, VaguePicking
 
     try:
         quantite = int(quantite)
@@ -313,12 +358,13 @@ def prelever_ligne_picking(*, ligne, quantite, user=None):
     if vague.statut != VaguePicking.Statut.LANCEE:
         raise ValueError(
             'La vague doit être lancée avant tout prélèvement.')
-    if quantite > ligne.reste_a_prelever:
-        raise ValueError(
-            f'Il ne reste que {ligne.reste_a_prelever} unité(s) à prélever '
-            f'sur cette ligne.')
 
     with transaction.atomic():
+        ligne = LignePicking.objects.select_for_update().get(pk=ligne.pk)
+        if quantite > ligne.reste_a_prelever:
+            raise ValueError(
+                f'Il ne reste que {ligne.reste_a_prelever} unité(s) à '
+                f'prélever sur cette ligne.')
         ligne.quantite_prelevee += quantite
         ligne.save(update_fields=['quantite_prelevee'])
         vague.refresh_from_db()
@@ -629,6 +675,81 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
         destination=destination or '', cout_reel=cout_reel)
 
 
+def reference_sortie_expedition(expedition):
+    """Référence du mouvement de SORTIE d'une expédition (AUD224).
+
+    Sert aussi de garde d'idempotence : une expédition déjà décomptée n'est
+    jamais re-décomptée."""
+    return f'EXP-{expedition.id}'
+
+
+def decrementer_stock_expedition(*, expedition, user=None):
+    """AUD224 — SORTIE du stock canonique au point de CONFIRMATION
+    d'expédition.
+
+    Le pipeline WMS picking → emballage → scellage → expédition ne décrémentait
+    JAMAIS ``Produit.quantite_stock`` : la marchandise partait physiquement du
+    quai sans jamais sortir du système. Tout ce qui en dépend s'en trouvait
+    faussé — la valorisation, le réappro, et jusqu'au théorique des comptages
+    tournants (``generer_comptages_tournants``).
+
+    La sortie est posée ICI, une seule fois, via ``record_stock_movement``
+    (donc miroir comptable et alerte seuil-bas inclus), sur le contenu de
+    l'unité expédiée ET de ses colis enfants s'il s'agit d'une palette.
+
+    PAS DE DOUBLE DÉCOMPTE SUR LE FLUX CHANTIER : une ligne de colis issue
+    d'une ligne de picking rattachée à une ``Installation`` est déjà consommée
+    par ``installations.services.consume_reservations`` au passage à INSTALLÉ
+    (``StockReservation.consomme``) — elle est ignorée ici. Seul le flux
+    e-commerce/B2B pur (sans chantier) est décompté.
+
+    Renvoie ``{mouvements, lignes_chantier_ignorees}``.
+    """
+    from django.db import transaction
+
+    from .models import MouvementStock
+    from .selectors import lock_produit
+    from .services import record_stock_movement
+
+    unite = expedition.unite_logistique
+    company = expedition.company
+    reference = reference_sortie_expedition(expedition)
+    if MouvementStock.objects.filter(
+            company=company, reference=reference).exists():
+        return {'mouvements': [], 'lignes_chantier_ignorees': 0}
+
+    mouvements, ignorees = [], 0
+    with transaction.atomic():
+        for colis in _unites_a_deplacer(unite):
+            for ligne in colis.lignes.select_related(
+                    'produit', 'ligne_picking').all():
+                if ligne.produit_id is None or (ligne.quantite or 0) <= 0:
+                    continue
+                picking = ligne.ligne_picking
+                if picking is not None and picking.installation_id:
+                    # Flux chantier : consommé à l'INSTALLÉ (N14).
+                    ignorees += 1
+                    continue
+                produit = lock_produit(ligne.produit_id)
+                avant = produit.quantite_stock
+                # ERR80 — plancher : on ne sort jamais plus que le stock en
+                # main (même garde que la consommation chantier).
+                sortie = min(ligne.quantite, avant) if avant > 0 else 0
+                if sortie <= 0:
+                    continue
+                mouvements.append(record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=sortie, quantite_avant=avant,
+                    quantite_apres=avant - sortie,
+                    reference=reference,
+                    note=(f'Expédition {colis.sscc}'
+                          + (f' — suivi {expedition.numero_suivi}'
+                             if expedition.numero_suivi else '')),
+                    created_by=user))
+    return {'mouvements': mouvements, 'lignes_chantier_ignorees': ignorees}
+
+
 def generer_etiquette_expedition(*, expedition, user=None):
     """Demande au connecteur son numéro de suivi + son étiquette PDF.
 
@@ -636,6 +757,10 @@ def generer_etiquette_expedition(*, expedition, user=None):
     intégration réelle si (et seulement si) elle est configurée et gated par
     une clé pour cette société, SINON le NoOp (étiquette interne, zéro appel
     réseau). Idempotent : une étiquette déjà générée n'est pas régénérée.
+
+    AUD224 — c'est LE point de confirmation d'expédition : la marchandise
+    quitte le quai, donc le stock canonique est décrémenté ici
+    (``decrementer_stock_expedition``, idempotent lui aussi).
     """
     from django.utils import timezone
 
@@ -659,6 +784,7 @@ def generer_etiquette_expedition(*, expedition, user=None):
     expedition.date_expedition = timezone.now()
     expedition.save(update_fields=[
         'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
+    decrementer_stock_expedition(expedition=expedition, user=user)
     return expedition
 
 
@@ -1039,8 +1165,18 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
     jamais par un casier. L'entrée en stock reste celle, inchangée, de la
     confirmation de réception.
 
-    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees}``.
-    Lève ``ValueError`` si aucune ligne ne matche ou si le colis est scellé.
+    AUD221 — la quantité reçue est VENTILÉE entre les vagues qui attendent ce
+    produit, chacune plafonnée à SON reste à prélever, la plus ancienne
+    d'abord : la totalité partait auparavant sur la PREMIÈRE vague, si bien
+    qu'une réception de 20 pour une vague qui n'en attendait que 5 servait 5
+    unités utiles, gonflait son colis de 15 unités qu'elle ne demandait pas, et
+    laissait la vague suivante bloquée alors que la marchandise était là. Ce
+    que les vagues n'attendent pas reste un RELIQUAT (jamais mis au colis) et
+    repart sur le rangement normal NTWMS2.
+
+    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees,
+    reliquats}``. Lève ``ValueError`` si aucune ligne ne matche ou si le colis
+    est scellé.
     """
     from django.db import transaction
 
@@ -1069,32 +1205,65 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
             company=company,
             id__in=[p['produit_id'] for p in propositions])
     }
-    affectees, ignorees = [], []
+    affectees, ignorees, reliquats = [], [], []
+    # Un colis PAR VAGUE servie (un colis est rattaché à SA vague) — sauf si
+    # l'appelant impose lui-même une unité, qui reçoit alors tout.
+    colis_par_vague, unites = {}, []
     colis = unite
     with transaction.atomic():
         for proposition in propositions:
             produit = produits.get(proposition['produit_id'])
-            quantite = proposition['quantite'] or 0
-            if produit is None or quantite <= 0:
+            restant = proposition['quantite'] or 0
+            if produit is None or restant <= 0:
                 ignorees.append(proposition['ligne_id'])
                 continue
-            tete = proposition['vagues'][0]
-            if colis is None:
-                vague = VaguePicking.objects.filter(
-                    id=tete['vague_id'], company=company).first()
-                colis = creer_unite_logistique(
-                    company=company, type_unite='colis', vague=vague)
-            ligne_picking = LignePicking.objects.filter(
-                id=tete['ligne_picking_id'], company=company).first()
-            ajouter_ligne_unite_logistique(
-                company=company, unite=colis, produit=produit,
-                quantite=quantite, ligne_picking=ligne_picking)
+            # AUD221 — ventilation vague par vague, plafonnée au reste à
+            # prélever de CHACUNE (la plus ancienne d'abord).
+            premiere_cible, cross_dockee = None, 0
+            for cible in proposition['vagues']:
+                if restant <= 0:
+                    break
+                part = min(restant, cible['reste_a_prelever'] or 0)
+                if part <= 0:
+                    continue
+                if unite is not None:
+                    cible_colis = unite
+                else:
+                    cible_colis = colis_par_vague.get(cible['vague_id'])
+                    if cible_colis is None:
+                        vague = VaguePicking.objects.filter(
+                            id=cible['vague_id'], company=company).first()
+                        cible_colis = creer_unite_logistique(
+                            company=company, type_unite='colis', vague=vague)
+                        colis_par_vague[cible['vague_id']] = cible_colis
+                        unites.append(cible_colis)
+                    if colis is None:
+                        colis = cible_colis
+                ligne_picking = LignePicking.objects.filter(
+                    id=cible['ligne_picking_id'], company=company).first()
+                ajouter_ligne_unite_logistique(
+                    company=company, unite=cible_colis, produit=produit,
+                    quantite=part, ligne_picking=ligne_picking)
+                if premiere_cible is None:
+                    premiere_cible = ligne_picking
+                restant -= part
+                cross_dockee += part
+            if cross_dockee <= 0:
+                # Les vagues n'attendent plus rien : rangement normal.
+                ignorees.append(proposition['ligne_id'])
+                continue
+            # UNE trace par ligne reçue (contrainte d'unicité NTWMS15 :
+            # ré-appeler le service ne duplique jamais le colis) portant la
+            # quantité RÉELLEMENT cross-dockée.
             AffectationCrossDock.objects.create(
                 company=company, reception=reception,
                 ligne_reception_id=proposition['ligne_id'], produit=produit,
-                quantite=quantite, unite_logistique=colis,
-                ligne_picking=ligne_picking)
+                quantite=cross_dockee, unite_logistique=colis,
+                ligne_picking=premiere_cible)
             affectees.append(proposition['ligne_id'])
+            if restant > 0:
+                reliquats.append({'ligne_id': proposition['ligne_id'],
+                                  'quantite': restant})
     logger.info(
         'NTWMS15 cross-dock : réception %s → colis %s (%s ligne(s))',
         getattr(reception, 'reference', reception.pk),
@@ -1102,8 +1271,14 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
     return {
         'unite_logistique': colis.id if colis is not None else None,
         'sscc': colis.sscc if colis is not None else '',
+        # AUD221 — tous les colis servis (un par vague ; l'unique colis imposé
+        # par l'appelant sinon).
+        'unites_logistiques': ([unite.id] if unite is not None
+                               else [u.id for u in unites]),
         'lignes_affectees': affectees,
         'lignes_ignorees': ignorees,
+        # AUD221 — ce que les vagues n'attendaient pas : à ranger normalement.
+        'reliquats': reliquats,
         'reception_entierement_cross_dockee': reception_est_cross_dock(
             reception),
     }

@@ -30,6 +30,7 @@ au portail (``auth/me``, ``auth/logout``, ``token``/``token/refresh``) restent
 sur ``IsAuthenticated``/``AllowAny`` et demeurent donc joignables par un compte
 portail — la frontière est nette.
 """
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 # Valeur canonique de ``CustomUser.portee`` pour un compte interne (défaut).
@@ -99,7 +100,11 @@ class IsPortalScopedUser(BasePermission):
     message = 'Accès réservé aux comptes du portail externe.'
 
     def has_permission(self, request, view):
-        return is_portal_user(getattr(request, 'user', None))
+        user = getattr(request, 'user', None)
+        if not is_portal_user(user):
+            return False
+        exiger_mot_de_passe_change(user)  # AUD139
+        return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -118,11 +123,81 @@ class IsPortalScopedUser(BasePermission):
 #       filtre ``.filter(client_id=None)`` — ou pire, un filtre oublié — devient
 #       une fuite silencieuse.
 
+# ── AUD139 — Rotation FORCÉE du mot de passe temporaire ─────────────────────
+#
+# ``provisionner_compte_portail_client`` crée le compte avec
+# ``must_change_password=True`` et sa docstring garantit que « le client DOIT
+# le changer à sa première session ». Le drapeau était pourtant INERTE :
+# aucune permission, aucun middleware, aucune vue ne le lisait — le mot de
+# passe temporaire, transmis EN CLAIR par email, restait valide indéfiniment.
+#
+# L'enforcement vit ici, dans les gardes portail, parce que c'est la SEULE
+# surface qu'un compte portail peut atteindre : les deux gardes internes
+# transverses (``core.ScopedPermission`` et ``authentication.IsAnyRole``)
+# excluent déjà ``portee != interne``. Restent joignables — VOLONTAIREMENT —
+# ``/auth/me/``, ``/auth/logout/`` et ``/auth/change-password/``, gardés par
+# ``IsAuthenticated`` : sans eux le client ne pourrait jamais SORTIR de l'état
+# « mot de passe à changer ».
+
+#: Code machine renvoyé dans le corps du 403 (le frontend s'y branche).
+CODE_MOT_DE_PASSE_A_CHANGER = 'mot_de_passe_a_changer'
+
+MESSAGE_MOT_DE_PASSE_A_CHANGER = (
+    'Vous devez définir un nouveau mot de passe avant d’accéder à votre '
+    'espace.'
+)
+
+
+def exiger_mot_de_passe_change(user):
+    """AUD139 — Lève 403 si ``user`` doit encore changer son mot de passe.
+
+    Le corps porte un CODE exploitable (``code``) en plus du message : un
+    écran ne doit pas avoir à reconnaître une phrase française pour router
+    l'utilisateur vers le formulaire de changement.
+    """
+    if getattr(user, 'must_change_password', False):
+        raise PermissionDenied({
+            'detail': MESSAGE_MOT_DE_PASSE_A_CHANGER,
+            'code': CODE_MOT_DE_PASSE_A_CHANGER,
+        })
+
+
+def acces_portail_revoque(user):
+    """AUD138 — Le compte portail CLIENT de ``user`` a-t-il été RÉVOQUÉ ?
+
+    Le drapeau ``ComptePortailClient.actif`` n'était lu que par le chemin
+    magic-link tokenisé : un client « révoqué » depuis l'écran ERP gardait un
+    accès complet par son ``CustomUser`` + JWT. On le lit donc aussi ici, en
+    COMPLÉMENT de la désactivation du compte utilisateur posée par
+    ``portail.services.revoquer_acces_client`` (ceinture et bretelles : la
+    garde reste juste même si un compte a été désactivé par un seul des deux
+    chemins).
+
+    Lecture via ``apps.portail.selectors`` (jamais ``apps.portail.models``) et
+    import FONCTION-LOCAL : ``apps.roles`` reste sans dépendance de démarrage.
+    Seule la portée ``portail_client`` porte un ``ComptePortailClient`` — les
+    portées fournisseur/partenaire ne sont donc jamais concernées.
+    """
+    if getattr(user, 'portee', PORTEE_INTERNE) != 'portail_client':
+        return False
+    from apps.portail.selectors import compte_portail_client_actif
+    etat = compte_portail_client_actif(
+        getattr(user, 'company_id', None),
+        getattr(user, 'portail_client_id', None),
+    )
+    # ``None`` = aucun compte portail enregistré : ce n'est PAS une révocation
+    # (cf. la docstring du sélecteur).
+    return etat is False
+
+
 class _IsPortalUserOfScope(BasePermission):
     """Base : compte portail de la portée EXACTE ``portee_requise``, rattaché."""
 
     portee_requise = None
     message = 'Accès réservé aux comptes du portail concerné.'
+    #: AUD138 — message servi quand l'accès a été explicitement révoqué.
+    message_revoque = ('Votre accès au portail a été révoqué. Contactez votre '
+                       'interlocuteur commercial.')
 
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)
@@ -130,7 +205,16 @@ class _IsPortalUserOfScope(BasePermission):
             return False
         if getattr(user, 'portee', PORTEE_INTERNE) != self.portee_requise:
             return False
-        return portal_scope_id(user) is not None
+        if portal_scope_id(user) is None:
+            return False
+        # AUD138 — un accès révoqué ne franchit plus AUCUN endpoint portail,
+        # même avec un JWT déjà émis.
+        if acces_portail_revoque(user):
+            self.message = self.message_revoque
+            return False
+        # AUD139 — un mot de passe temporaire non changé n'ouvre AUCUN écran.
+        exiger_mot_de_passe_change(user)
+        return True
 
 
 class IsPortalClientUser(_IsPortalUserOfScope):
@@ -179,11 +263,21 @@ class IsInternalWriterOrPortalClientOwner(BasePermission):
         if not (user and getattr(user, 'is_authenticated', False)):
             return False
         if is_portal_user(user):
-            return (
+            autorise = (
                 getattr(user, 'portee', PORTEE_INTERNE) == 'portail_client'
                 and portal_scope_id(user) is not None
                 and request.method in SAFE_METHODS
             )
+            if not autorise:
+                return False
+            # AUD138 / AUD139 — un accès révoqué, ou un mot de passe temporaire
+            # non changé, ne rouvre pas le PDF de son propre devis non plus.
+            if acces_portail_revoque(user):
+                self.message = ('Votre accès au portail a été révoqué. '
+                                'Contactez votre interlocuteur commercial.')
+                return False
+            exiger_mot_de_passe_change(user)
+            return True
         # Interne : strictement la garde historique de l'endpoint.
         return bool(getattr(user, 'is_responsable', False))
 

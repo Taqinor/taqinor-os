@@ -7,6 +7,7 @@ class KbConfig(AppConfig):
     verbose_name = 'Base de connaissances'
     module_manifest = {
         'key': 'kb',
+        'sku': 'generic',
         'label': 'Base de connaissances',
         'icone': 'book',
         'depends': [],

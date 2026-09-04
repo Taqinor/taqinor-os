@@ -8,6 +8,7 @@ class DocumentsConfig(AppConfig):
     verbose_name = 'Documents après-vente'
     module_manifest = {
         'key': 'documents',
+        'sku': 'generic',
         'label': 'Documents après-vente',
         'icone': 'file',
         'depends': ['sav'],

@@ -10,12 +10,16 @@ backstop.
 
 | Model | App | Python invariant fields (clean/save) | CheckConstraint fields | Canonical invariants still un-constrained |
 | --- | --- | --- | --- | --- |
-| `Devis` | ventes | — | — | remise in [0,100]; total_ht >= 0; total_ttc >= 0 |
-| `LigneDevis` | ventes | — | — | remise in [0,100]; quantite >= 0; prix_unitaire >= 0 |
-| `Facture` | facturation | — | — | remise in [0,100]; total_ht >= 0; total_ttc >= total_ht |
-| `LigneFacture` | facturation | — | — | quantite >= 0; prix_unitaire >= 0; remise in [0,100] |
+| `Devis` | ventes | — | acompte_montant, remise_globale | (all constrained) |
+| `LigneDevis` | ventes | — | prix_unitaire, quantite, remise | (all constrained) |
+| `BonCommande` | ventes | — | — | (aucun champ monétaire — couverture du registre) |
+| `Facture` | facturation | — | montant_ht, montant_ttc, montant_tva, remise_globale | (all constrained) |
+| `LigneFacture` | facturation | — | prix_unitaire, quantite, remise | (all constrained) |
+| `Avoir` | facturation | — | montant_ht, montant_ttc, montant_tva, remise_globale | (all constrained) |
+| `LigneAvoir` | facturation | — | prix_unitaire, quantite, remise | (all constrained) |
 | `MouvementStock` | stock | — | — | quantite >= 0 |
-| `Paiement` | facturation | — | — | montant >= 0 |
+| `Paiement` | facturation | — | — | frais_rejet >= 0; escompte_montant >= 0 |
+| `LigneEcriture` | compta | credit, debit | credit, debit | (all constrained) |
 
 Legend: a field in *Python invariant fields* but absent from
 *CheckConstraint fields* is a Python-only invariant (bypassable).

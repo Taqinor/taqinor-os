@@ -9,6 +9,7 @@ pose une note chatter ARC8 (``records.services.log_note``) sur le
 ``crm.Client`` lié au ticket, sans jamais importer ``apps.sav``.
 """
 import logging
+from urllib.parse import quote
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
@@ -190,14 +191,32 @@ def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_stat
     ``en_attente`` → ``converti`` (la récompense reste versée manuellement,
     hors périmètre ici). Même bus que l'avance de funnel ci-dessus — aucun
     import de ``ventes`` (le devis n'est manipulé qu'au travers des kwargs du
-    signal). No-op si le devis n'a pas de lead, si aucun Parrainage
-    ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
-    ``recompense_versee`` (jamais reculé)."""
-    if not getattr(devis, 'lead_id', None):
+    signal). No-op si le devis ne désigne ni lead ni client, si aucun
+    Parrainage ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
+    ``recompense_versee`` (jamais reculé).
+
+    CRX34 — LE FILLEUL DÉJÀ CONVERTI EN CLIENT ÉTAIT LAISSÉ DE CÔTÉ. Le
+    modèle ``Parrainage`` porte DEUX désignations du filleul (``filleul_lead``
+    ET ``filleul_client``) parce qu'un filleul peut arriver comme prospect,
+    comme client, ou devenir client entre-temps. Le récepteur, lui, ne
+    consultait que ``filleul_lead_id`` : un parrainage enregistré sur le seul
+    ``filleul_client`` restait ÉTERNELLEMENT « en attente » alors que la vente
+    était signée — et le parrain n'était jamais récompensé. On apparie
+    désormais sur l'une OU l'autre désignation."""
+    from django.db.models import Q
+
+    lead_id = getattr(devis, 'lead_id', None)
+    client_id = getattr(devis, 'client_id', None)
+    if not lead_id and not client_id:
         return
     from .models import Parrainage
+    appariement = Q(pk__in=[])
+    if lead_id:
+        appariement |= Q(filleul_lead_id=lead_id)
+    if client_id:
+        appariement |= Q(filleul_client_id=client_id)
     parrainage = Parrainage.objects.filter(
-        filleul_lead_id=devis.lead_id, company=devis.company,
+        appariement, company=devis.company,
         statut=Parrainage.Statut.EN_ATTENTE,
     ).first()
     if parrainage is None:
@@ -205,6 +224,96 @@ def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_stat
     parrainage.statut = Parrainage.Statut.CONVERTI
     parrainage.save(update_fields=['statut'])
     _suggerer_graine_pub_parrainage(parrainage, user)
+
+
+@receiver(devis_accepted, dispatch_uid="crm_lien_parrainage_on_devis_accepted")
+def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
+                                                ancien_statut, **kwargs):
+    """CRX38 — LE LIEN DE PARRAINAGE POST-SIGNATURE ATTEINT ENFIN QUELQU'UN.
+
+    ``ventes.services.installation_share_link`` (PUB69) existe, est testé, et
+    fabrique le lien « mon installation » d'un devis ACCEPTÉ — celui que le
+    client peut faire suivre, porteur des UTM ``parrainage_whatsapp`` qui
+    mesurent le bouche-à-oreille organique. Personne ne l'appelait : la
+    capacité était complète et ORPHELINE, donc le canal de parrainage
+    n'existait que sur le papier.
+
+    Au moment exact de l'enchantement — la signature — le commercial reçoit
+    donc le lien DÉJÀ PRÊT à envoyer en WhatsApp, plus le message tout fait.
+    Aucun envoi automatique au client : c'est un humain qui décide (même
+    doctrine que la suggestion de graine pub PUB65 ci-dessous).
+
+    FRONTIÈRE CROSS-APP : le lien est demandé à la porte publique de
+    ``ventes`` (``services.installation_share_link``), jamais à ses modèles.
+    Best-effort de bout en bout — ce câblage ne fait JAMAIS échouer une
+    acceptation : l'appel prend son propre point de sauvegarde (une erreur
+    base ne peut pas empoisonner la transaction d'acceptation, cf. QJR421) et
+    la notification part par ``transaction.on_commit`` (jamais un envoi
+    synchrone sous les verrous de l'acceptation, cf. QJR422)."""
+    from django.db import transaction
+
+    try:
+        from apps.ventes.services import installation_share_link
+        with transaction.atomic():
+            _, url = installation_share_link(devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CRX38 : lien de parrainage indisponible pour le devis %s',
+            getattr(devis, 'reference', '?'), exc_info=True)
+        return
+    if not url:
+        # Devis non accepté (garde PUB69) — rien à proposer.
+        return
+
+    destinataire = _commercial_du_devis(devis)
+    if destinataire is None:
+        return
+
+    reference = getattr(devis, 'reference', '') or ''
+    client_nom = (getattr(getattr(devis, 'client', None), 'nom', '')
+                  or '').strip()
+    message = (
+        f"Merci pour votre confiance {client_nom} ! Voici le lien de votre "
+        f"installation, à partager autour de vous : {url}").strip()
+    wa_url = 'https://wa.me/?text=' + quote(message)
+    corps = '\n'.join([
+        (f'Le devis {reference} de {client_nom} est signé.'
+         if client_nom else f'Le devis {reference} est signé.'),
+        'Lien « mon installation » à faire suivre au client :',
+        url,
+        f'Envoyer en WhatsApp : {wa_url}',
+    ])
+    company = getattr(devis, 'company', None)
+    lien_interne = f'/ventes/devis/{devis.pk}'
+
+    def _envoyer():
+        try:
+            from apps.notifications.services import notify
+            notify(
+                user=destinataire,
+                event_type='devis_accepted',
+                title=f'Lien de parrainage prêt — {reference}',
+                body=corps,
+                link=lien_interne,
+                company=company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'CRX38 : notification de lien de parrainage échouée '
+                'pour le devis %s', reference, exc_info=True)
+
+    transaction.on_commit(_envoyer)
+
+
+def _commercial_du_devis(devis):
+    """CRX38 — LE commercial à qui le lien est utile : le propriétaire du lead
+    d'origine, à défaut le créateur du devis. ``None`` si ni l'un ni l'autre —
+    on ne notifie alors personne plutôt que de choisir au hasard."""
+    lead = getattr(devis, 'lead', None)
+    owner = getattr(lead, 'owner', None) if lead is not None else None
+    if owner is not None:
+        return owner
+    return getattr(devis, 'created_by', None)
 
 
 def _suggerer_graine_pub_parrainage(parrainage, user):

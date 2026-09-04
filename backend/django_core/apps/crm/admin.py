@@ -94,12 +94,13 @@ class WebsiteLeadPayloadAdmin(admin.ModelAdmin):
     Le rejeu se fait via l'endpoint CRM dédié (ParrainageViewSet-like), pas
     depuis cet admin — cette vue est un tableau de bord, jamais un chemin
     d'écriture métier."""
-    list_display = ('id', 'company', 'processed', 'error', 'received_at', 'lead')
-    list_filter = ('company', 'processed')
+    list_display = ('id', 'company', 'source', 'processed', 'error',
+                    'received_at', 'lead')
+    list_filter = ('company', 'source', 'processed')
     search_fields = ('error', 'remote_addr')
     readonly_fields = (
-        'company', 'payload', 'remote_addr', 'received_at', 'processed',
-        'error', 'lead',
+        'company', 'source', 'payload', 'remote_addr', 'received_at',
+        'processed', 'error', 'lead',
     )
     date_hierarchy = 'received_at'
 

@@ -19,6 +19,17 @@ Scope note: this file documents structure only. No code changes. Model relocatio
 - **Target after ODX moves** — where the misplaced content ends up; "—" means no move
   is planned for this app.
 
+> **Éditions (groupe SOL, 02/09/2026) — à lire avant de se fier à cette carte.**
+> Cette carte décrit l'édition **complète**, qui reste celle du dev, des tests et
+> de la gate CI. L'édition **solaire** (`TAQINOR_EDITION=solar`, celle que vise la
+> production) en SORT sept verticaux — `agriculture`, `ecommerce_connect`,
+> `education`, `hospitality`, `immobilier`, `mrp`, `sante` : ils ne sont ni dans
+> `INSTALLED_APPS`, ni dans les urls, ni dans le bundle frontend. Ils restent
+> LIVRÉS et supportés (tables, données et migrations intactes ; suites de tests
+> jouées chaque semaine) — seul le déploiement solaire ne les charge pas.
+> La liste faisant foi est `erp_agentique/settings/editions.py` ; le « comment
+> parquer/réactiver » est dans `docs/module-playbook.md` § Éditions.
+
 ## Business-core domain apps
 
 | TAQINOR app | Odoo equivalent | Today (verified) | Target after ODX moves |
