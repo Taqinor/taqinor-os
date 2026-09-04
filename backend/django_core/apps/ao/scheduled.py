@@ -60,16 +60,25 @@ def rappeler_echeances():
     return {'rappels': total}
 
 
-#: AUD614 — statuts d'AO pour lesquels un échéancier a encore un sens. Un
-#: dossier gagné, perdu ou abandonné n'a plus d'échéance à tenir : lui en
-#: générer serait produire du bruit dans les rappels du matin.
-_STATUTS_VIVANTS_POUR_ECHEANCIER = (
-    'identifie', 'analyse_cps', 'releve', 'etude', 'chiffrage', 'dossier',
-    'pret_a_deposer', 'en_preparation', 'depose',
-)
-
 #: AUD614 — cadence de la relance PROACTIVE des pièces administratives.
 INTERVALLE_RELANCE_JOURS = 7
+
+
+def _statuts_vivants_pour_echeancier():
+    """Statuts d'AO pour lesquels un échéancier a encore un sens.
+
+    DÉRIVÉ de ``AppelOffre.Statut`` par EXCLUSION des états terminaux : un
+    dossier gagné, perdu ou abandonné n'a plus d'échéance à tenir, et lui en
+    générer produirait du bruit dans les rappels du matin. Dériver plutôt que
+    lister en dur garantit qu'une étape ajoutée demain sera traitée — une
+    liste figée l'aurait silencieusement ignorée.
+    """
+    from .models import AppelOffre
+
+    terminaux = {AppelOffre.Statut.GAGNE, AppelOffre.Statut.PERDU,
+                 AppelOffre.Statut.ABANDONNE}
+    return [statut for statut, _libelle in AppelOffre.Statut.choices
+            if statut not in terminaux]
 
 
 @shared_task(name='ao.generer_echeanciers')
@@ -97,9 +106,10 @@ def generer_echeanciers():
     from .services import generer_echeancier_ao
 
     resume = {'creees': 0, 'mises_a_jour': 0, 'inchangees': 0, 'dossiers': 0}
+    vivants = _statuts_vivants_pour_echeancier()
     for company in Company.objects.all():
         affaires = AppelOffre.objects.filter(
-            company=company, statut__in=_STATUTS_VIVANTS_POUR_ECHEANCIER)
+            company=company, statut__in=vivants)
         for affaire in affaires:
             try:
                 rapport = generer_echeancier_ao(affaire)
