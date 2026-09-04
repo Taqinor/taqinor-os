@@ -229,11 +229,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:126` | get_or_create | BaremeIR.objects | company, date_effet |
 | `backend/django_core/apps/paie/services.py:300` | get_or_create | Rubrique.objects | code, company |
 | `backend/django_core/apps/paie/services.py:373` | get_or_create | TypeEntreePonctuelle.objects | code, company |
-| `backend/django_core/apps/paie/services.py:2902` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
-| `backend/django_core/apps/paie/services.py:5147` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
-| `backend/django_core/apps/paie/services.py:5834` | get_or_create | StructurePaie.objects | code, company |
-| `backend/django_core/apps/paie/services.py:5844` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
-| `backend/django_core/apps/paie/services.py:5870` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
+| `backend/django_core/apps/paie/services.py:2935` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
+| `backend/django_core/apps/paie/services.py:5278` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
+| `backend/django_core/apps/paie/services.py:5968` | get_or_create | StructurePaie.objects | code, company |
+| `backend/django_core/apps/paie/services.py:5978` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
+| `backend/django_core/apps/paie/services.py:6004` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
 | `backend/django_core/apps/parametres/models_company.py:759` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:764` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
