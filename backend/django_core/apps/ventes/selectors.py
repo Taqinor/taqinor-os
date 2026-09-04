@@ -1579,7 +1579,13 @@ def factures_du_client_portail(company, client_id, *, limit=200):
 
     Mêmes règles : brouillons internes exclus, aucun champ de coût.
     ``montant_du`` est le reste à payer déjà calculé par le modèle (source
-    unique — jamais un recalcul local qui divergerait de l'écran interne).
+    unique — jamais un recalcul local qui divergerait de l'écran interne),
+    SAUF pour une facture ANNULÉE (AUD137) : ``Facture.montant_du`` ignore le
+    statut par construction et rend donc le TTC entier pour une annulation
+    sans paiement — l'agrégat portail compense ici en la figeant à '0.00'.
+    ``payable`` (AUD137) est le SEUL champ que l'écran doit lire pour décider
+    d'afficher « reste dû » et le bouton « Payer » : faux pour ANNULEE et
+    PAYEE, jamais dérivé côté client depuis ``statut``.
     """
     from .models import Facture
 
@@ -1597,8 +1603,11 @@ def factures_du_client_portail(company, client_id, *, limit=200):
         'date_emission': f.date_emission,
         'date_echeance': f.date_echeance,
         'montant_ttc': str(f.total_ttc),
-        'montant_du': str(f.montant_du),
+        'montant_du': ('0.00' if f.statut == Facture.Statut.ANNULEE
+                       else str(f.montant_du)),
         'payee': f.statut == Facture.Statut.PAYEE,
+        'payable': f.statut not in (
+            Facture.Statut.ANNULEE, Facture.Statut.PAYEE),
     } for f in qs]
 
 
@@ -1612,6 +1621,17 @@ def facture_du_client_portail(company, client_id, facture_id):
             .filter(company=company, client_id=client_id, pk=facture_id)
             .exclude(statut=Facture.Statut.BROUILLON)
             .first())
+
+
+def facture_est_payable_portail(facture):
+    """AUD137 — une facture ANNULÉE ou déjà PAYÉE n'est plus payable au
+    portail. Utilisé par ``portail.views_client.payer`` AVANT de créer/
+    réutiliser une intention de paiement — jamais un import de
+    ``apps.facturation.models`` côté portail (frontière cross-app)."""
+    from .models import Facture
+
+    return facture is not None and facture.statut not in (
+        Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
 
 
 # ── AOF164 — comparaison A/B du calepinage d'un devis (LECTURE SEULE) ───────
