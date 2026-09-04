@@ -2134,9 +2134,13 @@ class TicketWorksheet(models.Model):
     conditionnelle, `apps/sav/pdf.py`)."""
 
     company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — une feuille de maintenance
+        # n'existe pas hors de sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='ticket_worksheets')
     ticket = models.OneToOneField(
+        # on_delete: la feuille appartient au ticket (OneToOne) — elle n'a
+        # aucun sens sans lui.
         Ticket, on_delete=models.CASCADE, related_name='worksheet')
     modele = models.ForeignKey(
         WorksheetMaintenanceModele, on_delete=models.PROTECT,
