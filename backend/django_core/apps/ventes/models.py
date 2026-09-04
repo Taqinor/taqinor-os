@@ -2594,6 +2594,10 @@ from .models_regulatory import (  # noqa: E402,F401
     Regularisation8221,
 )
 
+# AUD121 — session d'import de relevé bancaire jetonnée (modèle déporté dans
+# models_releve.py ; ré-exporté ici pour la découverte Django).
+from .models_releve import ReleveImportSession  # noqa: E402,F401
+
 # FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
 # models_commissioning.py).
 from .models_commissioning import (  # noqa: E402,F401

@@ -421,11 +421,13 @@ const ventesApi = {
     form.append('file', file)
     return api.post('/ventes/paiements/import-releve/dry-run/', form)
   },
-  importReleveCommit: (file) => {
-    const form = new FormData()
-    form.append('file', file)
-    return api.post('/ventes/paiements/import-releve/commit/', form)
-  },
+  // AUD121 — le commit ne prend PLUS de fichier : il rejoue les décisions du
+  // dry-run, identifiées par son `token`. C'est ce qui garantit que l'import
+  // écrit exactement ce que l'opérateur a vu, une seule fois.
+  importReleveCommit: (token, lignes) => api.post(
+    '/ventes/paiements/import-releve/commit/',
+    lignes === undefined ? { token } : { token, lignes },
+  ),
 
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),
