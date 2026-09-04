@@ -10,7 +10,12 @@ CHAQUE cible future héritait du défaut du socle.
 
 Après correctif : palier responsable/admin par défaut (une cible peut déclarer
 sa propre garde via ``register_bulk_target(permission=…)``) et une opération
-appliquée émet ``core.events.bulk_edit_applied`` → UNE ligne ``AuditLog``.
+appliquée émet ``core.events.bulk_edit_applied``.
+
+La ligne ``AuditLog`` produite par cet événement est vérifiée dans
+``apps/audit/tests_aud8_journal.py`` : ``core`` est une couche de FONDATION et
+n'importe jamais ``apps.audit``, PAS MÊME depuis ses tests (contrat
+import-linter ``core-foundation-is-a-base-layer``).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -18,7 +23,6 @@ from rest_framework import status
 from rest_framework.permissions import BasePermission
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.audit.models import AuditLog
 from authentication.models import Company
 from core import bulk_edit
 from core.views import BulkEditViewSet
@@ -94,27 +98,44 @@ class Aud816BulkEditPalierTests(TestCase):
             'changes': {'is_active': False}})
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    # ── Traçabilité ───────────────────────────────────────────────────────
-    def test_lot_applique_produit_une_ligne_de_journal(self):
-        avant = AuditLog.objects.count()
+    # ── Émission de l'événement de traçabilité ────────────────────────────
+    def test_lot_applique_emet_bulk_edit_applied(self):
+        from core import events
+
+        recus = []
+        events.bulk_edit_applied.connect(
+            lambda sender, **kw: recus.append(kw),
+            dispatch_uid='aud816_test_spy')
+        self.addCleanup(
+            events.bulk_edit_applied.disconnect,
+            dispatch_uid='aud816_test_spy')
+
         n = bulk_edit.apply_bulk_edit(
             'aud816.utilisateurs', self.company, self.responsable,
             [self.cible.pk], {'is_active': False})
         self.assertEqual(n, 1)
-        self.assertEqual(AuditLog.objects.count(), avant + 1)
-        ligne = AuditLog.objects.order_by('-id').first()
-        self.assertEqual(ligne.action, AuditLog.Action.UPDATE)
-        self.assertEqual(ligne.company, self.company)
-        self.assertEqual(ligne.user, self.responsable)
-        self.assertIn('aud816.utilisateurs', ligne.detail)
-        self.assertIn('is_active', ligne.detail)
-        self.assertIn('1 ligne', ligne.detail)
+        self.assertEqual(len(recus), 1)
+        recu = recus[0]
+        self.assertEqual(recu['target'], 'aud816.utilisateurs')
+        self.assertEqual(recu['fields'], ['is_active'])
+        self.assertEqual(recu['count'], 1)
+        self.assertEqual(recu['company'], self.company)
+        self.assertEqual(recu['user'], self.responsable)
 
-    def test_lot_vide_ne_journalise_rien(self):
-        avant = AuditLog.objects.count()
+    def test_lot_vide_n_emet_rien(self):
+        from core import events
+
+        recus = []
+        events.bulk_edit_applied.connect(
+            lambda sender, **kw: recus.append(kw),
+            dispatch_uid='aud816_test_spy_vide')
+        self.addCleanup(
+            events.bulk_edit_applied.disconnect,
+            dispatch_uid='aud816_test_spy_vide')
+
         autre = Company.objects.create(nom='AUD816 Autre')
         n = bulk_edit.apply_bulk_edit(
             'aud816.utilisateurs', autre, self.responsable,
             [self.cible.pk], {'is_active': False})
         self.assertEqual(n, 0)
-        self.assertEqual(AuditLog.objects.count(), avant)
+        self.assertEqual(recus, [])

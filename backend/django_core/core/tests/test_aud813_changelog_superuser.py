@@ -13,15 +13,18 @@ Django (le même palier ``_IsSuperUser`` que ``TenantUsageSnapshotViewSet`` /
 ``OutboxEventViewSet`` / ``maintenance_toggle``), la lecture reste ouverte à
 tout utilisateur authentifié, et ``('core', 'ChangelogEntry')`` est suivi par
 le Journal d'activité (``TRACKED_MODELS``).
+
+La moitié « trace au Journal » est vérifiée dans
+``apps/audit/tests_aud8_journal.py`` : ``core`` est une couche de FONDATION et
+n'a pas le droit d'importer ``apps.audit``, PAS MÊME depuis ses tests (contrat
+import-linter ``core-foundation-is-a-base-layer``) — c'est le satellite qui
+teste sa propre trace.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.audit import recorder
-from apps.audit.models import AuditLog
-from apps.audit.signals import TRACKED_MODELS
 from authentication.models import Company
 from core.models import ChangelogEntry
 from core.views import ChangelogViewSet
@@ -94,23 +97,5 @@ class Aud813ChangelogEcritureSuperuserTests(TestCase):
         resp = ChangelogViewSet.as_view({'post': 'create'})(req)
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
-    # ── Trace au Journal d'activité ───────────────────────────────────────
-    def test_changelog_entry_est_suivi_par_le_journal(self):
-        self.assertIn(('core', 'ChangelogEntry'), TRACKED_MODELS)
-
-    def test_ecriture_produit_une_ligne_auditlog(self):
-        req = self.factory.post(
-            '/changelog/', {'titre': 'Tracée', 'publie': True}, format='json')
-        force_authenticate(req, user=self.editeur)
-        # Le recorder ne journalise QUE pendant une requête : on simule le
-        # middleware ``AuditActorMiddleware`` autour de l'appel de la vue.
-        recorder.begin_request(req)
-        try:
-            resp = ChangelogViewSet.as_view({'post': 'create'})(req)
-        finally:
-            recorder.end_request()
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(
-            AuditLog.objects.filter(
-                object_repr__icontains='Tracée',
-                action=AuditLog.Action.CREATE).exists())
+    # La trace au Journal (TRACKED_MODELS + ligne AuditLog) est vérifiée dans
+    # apps/audit/tests_aud8_journal.py — voir la docstring du module.
