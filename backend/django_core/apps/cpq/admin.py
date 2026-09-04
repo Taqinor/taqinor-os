@@ -33,6 +33,7 @@ class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
 #   * la journalisation d'audit NTCPQ46 de ce même prix négocié.
 # Ces trois garanties ne se re-codent pas dans l'admin : on ferme l'écriture.
 
+
 class AdminArgentLectureSeule(CompanyScopedAdminMixin, admin.ModelAdmin):
     """`ModelAdmin` scopé société ET strictement en lecture."""
 
