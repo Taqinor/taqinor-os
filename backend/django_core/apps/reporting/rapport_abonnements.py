@@ -218,10 +218,19 @@ def rendre_abonnement(abonnement):
     """
     from .models import RapportAbonnement
 
+    from .rapport_builder import _sans_colonnes_interdites
+
     rapport_def = abonnement.rapport_def
     rows, pivot = executer_definition(rapport_def)
     entetes, lignes = (_lignes_pivot(pivot) if pivot
                        else _lignes_plates(rows))
+    # AUD801 — le chemin E-MAIL n'appelait même pas le filtre de colonnes
+    # interdites que l'export téléchargé applique (NTEXT11) : un rapport
+    # abonné partait donc en pièce jointe avec ses colonnes internes. Le
+    # verrou principal est en amont (``core.data_explorer`` gated_fields, qui
+    # écarte déjà ``cout`` pour ``rapport_def.owner`` sans permission) ; ceci
+    # est la défense en profondeur du RENDU, alignée sur l'export manuel.
+    entetes, lignes = _sans_colonnes_interdites(entetes, lignes)
 
     base = rapport_def.titre or rapport_def.dataset or 'rapport'
     sur = ''.join(c for c in base if c.isalnum() or c in ('-', '_')) or 'rapport'

@@ -10,10 +10,17 @@ inverse : `core` reste fondation, `data_explorer` ne connaît jamais
 Dimensions : statut, priorité, type (correctif/préventif — `categorie` ZSAV2
 n'existe pas encore ; ce dataset sera étendu quand ce référentiel sera
 construit), technicien, mois d'ouverture. Mesures : nombre (count), coût
-interne (`cout`, gated `prix_achat_voir` — jamais renvoyé sans permission,
-masqué par l'APPELANT), délai de résolution (jours, annotation SQL
-`date_resolution − date(date_creation)`, NULL tant que non résolu — donc
-agrégeable par `avg`/`min`/`max` comme n'importe quel champ)."""
+interne (`cout`, gated `prix_achat_voir`), délai de résolution (jours,
+annotation SQL `date_resolution − date(date_creation)`, NULL tant que non
+résolu — donc agrégeable par `avg`/`min`/`max` comme n'importe quel champ).
+
+AUD801 — le masquage de `cout` n'est PLUS « la responsabilité de l'appelant » :
+aucun des huit consommateurs de `core.data_explorer.run_query` ne le faisait,
+et l'un d'eux (l'extrait planifié vers SFTP/S3) appelle même le moteur avec
+`user=None`. Le champ est donc déclaré `gated_fields` AU DATASET, et le moteur
+l'écarte de toutes les positions de la spec (select, filtres, group_by, tris,
+agrégats et projection par défaut) pour chaque lecteur sans
+`can_view_buy_prices`."""
 
 # Liste blanche des champs interrogeables (core.data_explorer._check_fields).
 DATASET_NAME = 'sav_tickets'
@@ -22,17 +29,20 @@ FIELDS = [
     'technicien_responsable__username', 'mois_ouverture', 'cout',
     'delai_resolution_jours',
 ]
+# AUD801 — champ -> attribut de permission du lecteur. `can_view_buy_prices`
+# est la propriété qui porte `prix_achat_voir` (avec le repli légacy documenté
+# côté `authentication.CustomUser`).
+GATED_FIELDS = {'cout': 'can_view_buy_prices'}
 
 
 def sav_tickets_queryset(company, user):
     """Queryset `sav.Ticket` DÉJÀ scopé société (la sécurité multi-tenant
     reste chez cette app, comme l'exige `register_dataset`).
 
-    Le coût interne (`cout`) N'EST PAS masqué au niveau du queryset : le
-    masquage est la responsabilité de l'APPELANT (vue/serializer), qui doit
-    vérifier `user.can_view_buy_prices` avant d'exposer ce champ — cohérent
-    avec le reste du repo (ex. `stock_report.valorisation_achat`, jamais
-    filtré côté requête mais jamais renvoyé sans permission)."""
+    Le coût interne (`cout`) reste dans le queryset : AUD801 le masque au
+    niveau du MOTEUR (`gated_fields`, cf. `GATED_FIELDS` ci-dessus), une seule
+    fois pour les huit consommateurs — et non plus « par l'appelant », ce que
+    personne ne faisait."""
     from django.db.models import F, ExpressionWrapper, DurationField
     from django.db.models.functions import Cast, TruncMonth
     from django.db.models.fields import DateField
@@ -60,4 +70,5 @@ def register_dataset():
     plusieurs fois, ex. tests, sans effet de bord)."""
     from core import data_explorer
     data_explorer.register_dataset(
-        DATASET_NAME, 'Tickets SAV', FIELDS, sav_tickets_queryset)
+        DATASET_NAME, 'Tickets SAV', FIELDS, sav_tickets_queryset,
+        gated_fields=GATED_FIELDS)
