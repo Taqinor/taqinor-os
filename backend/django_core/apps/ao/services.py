@@ -2413,9 +2413,7 @@ def creer_appel_offre_depuis_avis(company, avis, *, user=None):
     valeurs = {champ: avis[champ] for champ in CHAMPS_AVIS
                if champ in avis and avis[champ] is not None}
 
-    existant = AppelOffre.objects.filter(
-        company=company, reference_acheteur=reference_acheteur).first()
-    if existant is not None:
+    def _reporter(existant):
         modifies = []
         for champ, valeur in valeurs.items():
             # Un avis rectifié qui ne redit PAS une valeur ne doit pas
@@ -2435,7 +2433,28 @@ def creer_appel_offre_depuis_avis(company, avis, *, user=None):
             reference_acheteur=reference_acheteur,
             statut=AppelOffre.Statut.IDENTIFIE, **valeurs)
 
-    return (creer_appel_offre_avec_reference(company, _creer), True)
+    existant = AppelOffre.objects.filter(
+        company=company, reference_acheteur=reference_acheteur).first()
+    if existant is not None:
+        return _reporter(existant)
+
+    # AUD608 — « rien trouvé » ne suffit pas : deux imports du MÊME avis lancés
+    # ensemble lisent tous les deux « aucune affaire » et en créent DEUX, avec
+    # deux références AO consommées pour un seul marché. Aucune ligne d'affaire
+    # n'existe encore à verrouiller : on sérialise donc sur la ligne SOCIÉTÉ —
+    # uniquement sur le chemin de création (jamais sur le ré-import, qui est le
+    # cas courant) — puis on RELIT sous verrou avant de créer.
+    from django.db import transaction
+
+    from authentication.models import Company
+
+    with transaction.atomic():
+        Company.objects.select_for_update().filter(pk=company.pk).first()
+        existant = AppelOffre.objects.filter(
+            company=company, reference_acheteur=reference_acheteur).first()
+        if existant is not None:
+            return _reporter(existant)
+        return (creer_appel_offre_avec_reference(company, _creer), True)
 
 
 # ── PACT25 — LE MONTEUR : ce qui fournit enfin ses pièces à la fabrique ──────
