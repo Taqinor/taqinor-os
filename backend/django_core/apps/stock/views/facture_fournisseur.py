@@ -125,6 +125,24 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 sender=FactureFournisseur, instance=facture,
                 company=company, user=self.request.user)
 
+    def perform_destroy(self, instance):
+        """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une
+        migration additive a converti le CASCADE hérité) : sans ce garde-fou
+        EN AMONT, Django lèverait une brute `ProtectedError` (500) au lieu
+        d'un refus métier explicite. Même patron que l'action `annuler` de
+        `installations/views/facture_soustraitant.py` (vérifie
+        `facture.total_paye > 0` avant de permettre la suppression)."""
+        from rest_framework.exceptions import ValidationError
+        if instance.total_paye > 0:
+            raise ValidationError({
+                'detail': (
+                    'Cette facture fournisseur porte des paiements réels '
+                    '(total payé : ' + str(instance.total_paye) + ' MAD) : '
+                    'suppression refusée.'
+                ),
+            })
+        instance.delete()
+
     def create(self, request, *args, **kwargs):
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
         # même ref_fournisseur, ou même montant TTC ± 7 jours. La création

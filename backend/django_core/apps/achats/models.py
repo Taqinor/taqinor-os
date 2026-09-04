@@ -665,8 +665,13 @@ class PaiementFournisseur(models.Model):
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='paiements_fournisseur')
+    # AUD207 — PROTECT (était CASCADE) : une facture réellement réglée ne
+    # doit jamais pouvoir effacer silencieusement ses paiements à sa
+    # suppression. `FactureFournisseurViewSet.perform_destroy` refuse déjà
+    # en 400 explicite AVANT ce point (cette contrainte DB est le filet de
+    # sécurité pour tout autre chemin de suppression, y compris l'admin).
     facture = models.ForeignKey(
-        FactureFournisseur, on_delete=models.CASCADE, related_name='paiements')
+        FactureFournisseur, on_delete=models.PROTECT, related_name='paiements')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
     date_paiement = models.DateField(null=True, blank=True)
     mode = models.CharField(
