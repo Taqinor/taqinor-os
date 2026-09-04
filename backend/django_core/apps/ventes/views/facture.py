@@ -1689,9 +1689,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
         (virement global, chèque unique). Body : ``{client, montant, mode,
         date, reference, factures:[ids]}`` — répartition FIFO par échéance
-        (la plus ancienne d'abord) sur les factures listées ; un solde
-        éventuel non affecté n'est PAS créé ici (XFAC1 le gère séparément
-        s'il est présent — le montant excédentaire est simplement refusé)."""
+        (la plus ancienne d'abord) sur les factures listées.
+
+        AUD120 — comportement RÉEL des deux branches (l'ancien docstring
+        affirmait un refus qui n'existait pas) :
+          - ``repartition`` explicite : refusée en 400 si la somme des parts
+            dépasse le ``montant`` encaissé, ou si une part dépasse le reste
+            dû de sa facture (tolérance d'un centime) ;
+          - FIFO : ce que les factures listées n'absorbent pas devient une
+            avance XFAC1 explicite (Paiement sans facture, non affecté),
+            renvoyée dans la réponse — jamais abandonnée en silence.
+        """
         from decimal import Decimal, InvalidOperation
 
         from apps.crm.selectors import get_company_client

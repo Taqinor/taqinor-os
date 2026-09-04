@@ -143,3 +143,64 @@ class TestEncaissementGroupe(TestCase):
         self.f2.refresh_from_db()
         self.assertEqual(self.f1.montant_du, Decimal('2000.00'))
         self.assertEqual(self.f2.montant_du, Decimal('1000.00'))
+
+
+class TestAUD120BornesRepartition(TestEncaissementGroupe):
+    """AUD120 — la branche « répartition explicite » n'avait AUCUNE borne.
+
+    Trois cas, tous ROUGES avant le correctif :
+      1. la somme des parts dépasse le montant réellement encaissé ;
+      2. une part dépasse le reste dû de sa facture ;
+      3. en FIFO, le reliquat non affecté était abandonné en silence.
+    """
+
+    def test_repartition_superieure_au_montant_encaisse_refusee(self):
+        api = self._api(self.resp)
+        # Virement de 5 000 réparti en 3 000 + 4 000 = 7 000 : 2 000 MAD
+        # de paiements qui n'existent pas.
+        resp = api.post(
+            '/api/django/ventes/factures/encaissement-groupe/',
+            {'client': self.client_obj.id, 'montant': '5000',
+             'mode': 'virement', 'date': str(timezone.now().date()),
+             'factures': [self.f1.id, self.f2.id],
+             'repartition': {str(self.f1.id): '3000',
+                             str(self.f2.id): '4000'}},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(
+            Paiement.objects.filter(
+                facture__in=[self.f1, self.f2]).count(), 0)
+
+    def test_part_superieure_au_reste_du_refusee(self):
+        api = self._api(self.resp)
+        # f3 doit 2 000 ; une part de 3 000 la sur-paie de 1 000.
+        resp = api.post(
+            '/api/django/ventes/factures/encaissement-groupe/',
+            {'client': self.client_obj.id, 'montant': '3000',
+             'mode': 'virement', 'date': str(timezone.now().date()),
+             'factures': [self.f3.id],
+             'repartition': {str(self.f3.id): '3000'}},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Paiement.objects.filter(facture=self.f3).count(), 0)
+
+    def test_fifo_reliquat_devient_une_avance_tracee(self):
+        api = self._api(self.resp)
+        # 5 000 encaissés sur la seule f2 (3 000 dus) : le reliquat de
+        # 2 000 doit exister quelque part — avance XFAC1 non affectée.
+        resp = api.post(
+            '/api/django/ventes/factures/encaissement-groupe/',
+            {'client': self.client_obj.id, 'montant': '5000',
+             'mode': 'virement', 'date': str(timezone.now().date()),
+             'factures': [self.f2.id]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.f2.refresh_from_db()
+        self.assertEqual(self.f2.montant_du, Decimal('0'))
+        avances = Paiement.objects.filter(
+            company=self.company, client=self.client_obj, facture__isnull=True)
+        self.assertEqual(avances.count(), 1, 'reliquat abandonné en silence')
+        self.assertEqual(avances.first().montant, Decimal('2000.00'))
+        self.assertEqual(
+            avances.first().statut_affectation,
+            Paiement.StatutAffectation.NON_AFFECTE)

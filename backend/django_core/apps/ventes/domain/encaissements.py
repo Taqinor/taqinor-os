@@ -23,6 +23,11 @@ from decimal import Decimal
 
 from apps.stock.services import qr_svg_for
 
+# Tolérance d'arrondi partagée par toutes les gardes d'argent de ce module :
+# un centime, exactement comme le chemin unitaire (ERR72, `views/facture.py`)
+# et comme `ventiler_avance`. JAMAIS élargie sans décision fondateur.
+TOLERANCE_CENTIME = Decimal('0.01')
+
 
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
@@ -67,14 +72,27 @@ def affecter_encaissement_groupe(
     ``client`` (sinon ValueError — le viewset traduit en 400). Atomique :
     échec partiel = rollback total. Bascule le statut « Payée » sur toute
     facture intégralement soldée par ce geste (comportement identique à un
-    encaissement facture-par-facture)."""
+    encaissement facture-par-facture).
+
+    AUD120 — bornes de la répartition explicite. Cette branche n'avait
+    AUCUNE garde : ni la somme des parts contre le ``montant`` réellement
+    encaissé, ni chaque part contre le reste dû de sa facture — alors que
+    la branche FIFO plafonne déjà (``min(restant, reste_facture)``) et que
+    le chemin unitaire refuse le sur-paiement sous verrou (ERR72). Un
+    virement de 5 000 réparti en 3 000 + 4 000 créait 7 000 MAD de
+    paiements, dont 2 000 n'existaient pas. Les deux bornes sont
+    désormais posées (tolérance d'un centime, même formulation d'erreur
+    que le chemin unitaire), et le reliquat FIFO n'est plus abandonné en
+    silence : il devient une avance XFAC1 explicite, non affectée et
+    ventilable plus tard."""
     from decimal import Decimal
 
     from django.db import transaction
 
     from apps.ventes.models import Facture
+    from core.money import quantize_mad
 
-    montant = Decimal(str(montant))
+    montant = quantize_mad(montant)
     if montant <= 0:
         raise ValueError("Le montant doit être positif.")
     if not factures:
@@ -94,14 +112,31 @@ def affecter_encaissement_groupe(
         by_id = {f.id: f for f in locked}
 
         if isinstance(repartition, dict) and repartition:
-            # Répartition explicite fournie par l'appelant.
+            # Répartition explicite fournie par l'appelant. AUD120 — on
+            # VALIDE tout avant d'écrire quoi que ce soit : aucune facture
+            # ne doit voir un Paiement si une seule part est hors borne.
+            parts = []
             for fid, part in repartition.items():
                 facture = by_id.get(int(fid))
                 if facture is None:
                     raise ValueError(f"Facture {fid} inconnue dans ce lot.")
-                part = Decimal(str(part))
+                part = quantize_mad(part)
                 if part <= 0:
                     continue
+                parts.append((facture, part))
+            total_parts = quantize_mad(
+                sum((p for _, p in parts), Decimal('0')))
+            if total_parts - montant > TOLERANCE_CENTIME:
+                raise ValueError(
+                    f"La répartition ({total_parts:.2f} MAD) dépasse le "
+                    f"montant encaissé ({montant:.2f} MAD).")
+            for facture, part in parts:
+                reste_facture = facture.montant_du
+                if part - reste_facture > TOLERANCE_CENTIME:
+                    raise ValueError(
+                        f"Le paiement dépasse le reste à payer "
+                        f"({reste_facture:.2f} MAD).")
+            for facture, part in parts:
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
         else:
@@ -120,6 +155,18 @@ def affecter_encaissement_groupe(
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
                 restant -= part
+            # AUD120 — le reliquat n'est plus abandonné en silence : ce qui
+            # a été encaissé et que les factures listées n'absorbent pas
+            # devient une avance XFAC1 (Paiement sans facture, non affecté),
+            # ventilable plus tard par ``ventiler_avance``.
+            restant = quantize_mad(restant)
+            if restant > TOLERANCE_CENTIME:
+                paiements.append(enregistrer_avance(
+                    company=company, client=client, montant=restant,
+                    date_paiement=date_paiement, mode=mode,
+                    reference=reference,
+                    note="Reliquat d'encaissement groupé (XFAC1).",
+                    created_by=user))
 
         for facture in locked:
             facture.refresh_from_db()
