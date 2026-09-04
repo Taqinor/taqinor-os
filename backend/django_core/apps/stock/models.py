@@ -1511,8 +1511,13 @@ class AcompteFournisseur(models.Model):
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='acomptes_fournisseur')
+    # AUD207 — PROTECT (était CASCADE) : un BCF portant un acompte réellement
+    # versé ne doit jamais pouvoir l'effacer silencieusement à sa
+    # suppression. `BonCommandeFournisseurViewSet.perform_destroy` refuse
+    # déjà en 400 explicite AVANT ce point (cette contrainte DB est le filet
+    # de sécurité pour tout autre chemin de suppression, y compris l'admin).
     bon_commande = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.PROTECT,
         related_name='acomptes')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
     date_versement = models.DateField(null=True, blank=True)

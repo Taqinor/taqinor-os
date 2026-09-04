@@ -6,6 +6,7 @@ from rest_framework.decorators import action, api_view, permission_classes  # no
 from rest_framework.response import Response  # noqa: F401
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement, verrouiller_produit,
+    check_negative_stock_guard,
 )
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -193,7 +194,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                         Decimal('1'), rounding=ROUND_HALF_UP))
                     qte_avant = produit.quantite_stock
                     qte_apres = qte_avant - qte
-                    if qte_apres < 0:
+                    # AUD228 — route par la garde paramétrable (société)
+                    # plutôt qu'un blocage en dur : `stock_negatif_autorise`
+                    # (AchatsParametres) est désormais respecté ici aussi.
+                    # Message INCHANGÉ quand le réglage refuse (défaut).
+                    try:
+                        check_negative_stock_guard(
+                            bc.company, qte_avant, qte_apres)
+                    except ValueError:
                         return Response(
                             {'detail': (
                                 f'Stock insuffisant pour '
@@ -302,7 +310,12 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     Decimal('1'), rounding=ROUND_HALF_UP))
                 qte_avant = produit.quantite_stock - stock_reserve.get(produit.id, 0)
                 qte_apres = qte_avant - qte_entiere
-                if qte_apres < 0:
+                # AUD228 — la décision passe par le réglage société
+                # (`AchatsParametres.stock_negatif_autorise`, défaut False =
+                # comportement historique inchangé), jamais un blocage en dur.
+                try:
+                    check_negative_stock_guard(bc.company, qte_avant, qte_apres)
+                except ValueError:
                     return Response(
                         {'detail': (
                             f'Stock insuffisant pour « {produit.nom} » '

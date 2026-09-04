@@ -23,6 +23,7 @@ Run:
   docker compose exec django_core python manage.py seed_catalogue
   (options --company-slug, default: taqinor-demo ; --reappliquer-fiches)
 """
+import re
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
@@ -118,8 +119,32 @@ def ht(ttc):
 # batteries, structures, câbles, pompes, variateurs et toutes prestations).
 # Le TTC reste l'ancre : le HT stocké d'un panneau est dérivé à 10 %
 # (1 400 TTC → 1 272,73 HT) pour que le prix TTC affiché ne bouge JAMAIS.
+_PANNEAU_RE = re.compile(r'\bpanneau(x)?\b')
+
+# AUD201 (R2-31 doctrine, correctif 3) — même garde-fou "autre famille" que
+# ``OFFGRID_AUTRE_FAMILLE_KEYWORDS`` plus bas : une frontière de mot SEULE
+# laisserait encore passer "Panneau électrique"/"Nettoyage panneaux"
+# (prestations hors PV) vers la TVA 10 % — ces mots-clés désignent une AUTRE
+# famille que le panneau photovoltaïque, même quand "panneau(x)" apparaît en
+# toutes lettres dans le nom.
+PANNEAU_AUTRE_FAMILLE_KEYWORDS = (
+    'electrique', 'électrique', 'protection', 'comptage', 'distribution',
+    'signalisation', 'chantier', 'thermique', 'pose', 'nettoyage',
+    'structure', 'fixation', 'kit',
+)
+
+
 def is_panneau(nom):
-    return 'panneau' in (nom or '').lower()
+    """Panneau photovoltaïque (TVA 10 %) : le mot "panneau(x)" à FRONTIÈRE DE
+    MOT (jamais une sous-chaîne — "Tableau De Protection AC/DC" ne contient
+    pas "panneau" mais ce garde-fou existait déjà pour ``is_offgrid``, même
+    principe ici) ET aucun mot-clé d'une autre famille de produit/prestation
+    (sinon "Panneau électrique"/"Nettoyage panneaux" basculerait à tort en
+    TVA 10 %)."""
+    d = (nom or '').lower()
+    if not _PANNEAU_RE.search(d):
+        return False
+    return not any(k in d for k in PANNEAU_AUTRE_FAMILLE_KEYWORDS)
 
 
 #: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
@@ -419,6 +444,19 @@ CABLES_PROTECTIONS_VIDES = [
 BATTERIE_DEYE_HV = [
     ('Batterie Deye BOS-B Pro haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
 ]
+
+# AUD201 (R2-31, correctif 1) — SKU réellement SEMÉS par ce fichier : union de
+# tous les jeux de création (le SKU est toujours le 2ᵉ élément du tuple). Les
+# boucles de maintenance plus bas (réforme TVA, re-catégorisation, renommage)
+# ne doivent muter QUE ces produits — jamais un article saisi par le
+# fondateur, importé, ou créé par un autre module, même s'il porte un nom qui
+# ressemble à une entrée du catalogue.
+SKUS_SEMES = frozenset(
+    row[1] for row in (
+        *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
+        *CABLES_PROTECTIONS_VIDES, *BATTERIE_DEYE_HV,
+    )
+)
 
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)\n'
@@ -1868,30 +1906,64 @@ class Command(BaseCommand):
                 cat.ordre = ordre
                 cat.save(update_fields=['ordre'])
             taxo[nom_cat] = cat
+        # AUD201 (R2-31, correctif 1) — les trois boucles ci-dessous ne
+        # mutent QUE les SKU réellement semés par ce fichier (``SKUS_SEMES``).
+        # Un produit hors catalogue (saisi par le fondateur, importé, créé
+        # par un autre module) est RAPPORTÉ dans le résumé final mais jamais
+        # réécrit — avant ce correctif, ces trois boucles balayaient TOUS les
+        # produits de la société sans distinction.
         recategorises = 0
+        hors_catalogue_categorie = 0
         for produit in Produit.objects.filter(company=company):
             cible = taxo[classify_categorie(produit.nom)]
-            if produit.categorie_id != cible.id:
-                produit.categorie = cible
-                produit.save(update_fields=['categorie'])
-                recategorises += 1
+            if produit.categorie_id == cible.id:
+                continue
+            if produit.sku not in SKUS_SEMES:
+                hors_catalogue_categorie += 1
+                continue
+            produit.categorie = cible
+            produit.save(update_fields=['categorie'])
+            recategorises += 1
 
         # ── Correction de texte client (« pendent » → « pendant ») ──
         # Renomme le produit maintenance existant ; idempotent, ne touche
         # ni prix ni quantités. Les désignations des ANCIENNES lignes de
-        # devis (documents historiques) ne sont pas réécrites.
+        # devis (documents historiques) ne sont pas réécrites. Bornée aux
+        # SKU semés (AUD201) : un produit hors catalogue portant la même
+        # coquille dans son nom n'est que RAPPORTÉ.
+        hors_catalogue_renommage = 0
         for produit in Produit.objects.filter(
                 company=company, nom__contains='pendent 2 ans'):
+            if produit.sku not in SKUS_SEMES:
+                hors_catalogue_renommage += 1
+                continue
             produit.nom = produit.nom.replace('pendent 2 ans', 'pendant 2 ans')
             produit.save(update_fields=['nom'])
 
         tva_updated = 0
+        tva_refusee_vide = 0
+        hors_catalogue_tva = 0
         for produit in Produit.objects.filter(company=company):
+            if produit.sku not in SKUS_SEMES:
+                # AUD201 — bornage : rapporté (compté), jamais réécrit, pour
+                # tout produit que CE catalogue n'a pas lui-même semé.
+                if is_panneau(produit.nom):
+                    if produit.tva != Decimal('10.00'):
+                        hors_catalogue_tva += 1
+                elif produit.tva is None:
+                    hors_catalogue_tva += 1
+                continue
             if is_panneau(produit.nom):
                 if produit.tva == Decimal('10.00'):
                     continue
-                old_taux = produit.tva if produit.tva is not None else Decimal('20.00')
-                facteur = (Decimal(100) + old_taux) / Decimal(110)
+                if produit.tva is None:
+                    # AUD201 (R2-31, correctif 2) — REFUSER, jamais halluciner
+                    # un ancien taux (le repli « 20 % si TVA vide » inventait
+                    # un chiffre) : sans TVA connue, impossible de dériver le
+                    # HT en sécurité — rapporté, jamais converti.
+                    tva_refusee_vide += 1
+                    continue
+                facteur = (Decimal(100) + produit.tva) / Decimal(110)
                 produit.prix_vente = (produit.prix_vente * facteur).quantize(Decimal('0.01'))
                 produit.prix_achat = (produit.prix_achat * facteur).quantize(Decimal('0.01'))
                 produit.tva = Decimal('10.00')
@@ -1915,6 +1987,25 @@ class Command(BaseCommand):
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."
         ))
+        # AUD201 — rapport (lecture seule) des produits HORS catalogue que
+        # les trois boucles ci-dessus n'ont PLUS touchés, et des conversions
+        # panneau refusées faute de TVA connue : jamais un silence.
+        if hors_catalogue_categorie or hors_catalogue_renommage or hors_catalogue_tva:
+            self.stdout.write(self.style.WARNING(
+                "\nAUD201 — produits HORS catalogue NON modifiés (bornage aux "
+                f"SKU semés) : {hors_catalogue_categorie} auraient changé de "
+                f"catégorie, {hors_catalogue_renommage} auraient été "
+                f"renommés, {hors_catalogue_tva} auraient vu leur TVA/prix "
+                "touchés — vérifier manuellement si un rattachement au "
+                "catalogue est légitime."
+            ))
+        if tva_refusee_vide:
+            self.stdout.write(self.style.WARNING(
+                f"\nAUD201 — {tva_refusee_vide} produit(s) panneau à TVA "
+                "VIDE : conversion 10 % REFUSÉE (aucun ancien taux connu à "
+                "dériver, jamais un 20 % halluciné) — renseigner la TVA "
+                "manuellement puis relancer le seeder."
+            ))
         for nom in created:
             self.stdout.write(f"  + {nom}")
         if skipped:

@@ -225,6 +225,22 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         except Exception:  # noqa: BLE001
             pass
 
+    def perform_destroy(self, instance):
+        """AUD207 — `AcompteFournisseur.bon_commande` est désormais PROTECT
+        (une migration additive a converti le CASCADE hérité) : sans ce
+        garde-fou EN AMONT, Django lèverait une brute `ProtectedError` (500)
+        au lieu d'un refus métier explicite. Même patron que l'action
+        `annuler` de `installations/views/facture_soustraitant.py`."""
+        from rest_framework.exceptions import ValidationError
+        if instance.acomptes.filter(montant__gt=0).exists():
+            raise ValidationError({
+                'detail': (
+                    'Ce bon de commande fournisseur porte des acomptes '
+                    'réellement versés : suppression refusée.'
+                ),
+            })
+        instance.delete()
+
     def create(self, request, *args, **kwargs):
         # XPUR4 — refuse la création si le fournisseur est bloqué commandes
         # (ou total). No-op pour un fournisseur actif (comportement

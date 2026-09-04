@@ -1198,6 +1198,19 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
         # dû). Comparaison faite ici (object-level) car elle a besoin à la
         # fois de `facture` et de `montant`.
+        #
+        # AUD208 — cette lecture de `facture.solde_du` tourne HORS verrou,
+        # AVANT même que la vue n'ouvre sa transaction : c'est un refus
+        # RAPIDE (feedback immédiat, un seul paiement) mais PAS l'autorité
+        # finale — deux paiements concurrents, chacun inférieur au solde dû
+        # pris ISOLÉMENT mais dont la SOMME le dépasse, passeraient tous les
+        # deux cette garde (chacun lit le même solde dû de départ). L'AUTORITÉ
+        # réelle est `apps.stock.services.
+        # verrouiller_facture_fournisseur_et_verifier_solde` (select_for_update
+        # + re-vérification), appelée DANS la transaction.atomic() de
+        # `PaiementFournisseurViewSet.perform_create` et de l'action
+        # `FactureFournisseurViewSet.paiements` — ne pas supprimer ce contrôle
+        # ici en pensant qu'il fait double emploi.
         facture = attrs.get('facture')
         montant = attrs.get('montant')
         if facture is not None and montant is not None:
