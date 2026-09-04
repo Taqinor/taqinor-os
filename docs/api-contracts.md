@@ -677,7 +677,7 @@
 - frontend/src/api/paieApi.js :: affebdsRapprochement -> /api/django/paie/periodes/affebds-rapprochement
     en_trop:inconnu, manquants:inconnu, rapproches:inconnu
 - frontend/src/api/paieApi.js :: apercuBulletin -> /api/django/paie/periodes/<>/bulletin
-    allocations_familiales:inconnu, amo_patronale:inconnu, amo_salariale:inconnu, brut:inconnu, brut_imposable:inconnu, charges_patronales:inconnu, cimr_salariale:inconnu, cnss_patronale:inconnu, cnss_salariale:inconnu, detail:texte, formation_professionnelle:inconnu, frais_professionnels:inconnu, ir:inconnu, lignes:inconnu, montant_exonere_regime:inconnu, mutuelle_patronale:inconnu, mutuelle_salariale:inconnu, net_a_payer:inconnu, net_avant_saisie:inconnu, net_imposable:inconnu, prime_anciennete:inconnu, provision_conges:inconnu, retenues:inconnu
+    allocations_familiales:inconnu, amo_patronale:inconnu, amo_salariale:inconnu, avertissements:inconnu, brut:inconnu, brut_imposable:inconnu, charges_patronales:inconnu, cimr_salariale:inconnu, cnss_patronale:inconnu, cnss_salariale:inconnu, detail:texte, formation_professionnelle:inconnu, frais_professionnels:inconnu, ir:inconnu, lignes:inconnu, montant_exonere_regime:inconnu, mutuelle_patronale:inconnu, mutuelle_salariale:inconnu, net_a_payer:inconnu, net_avant_saisie:inconnu, net_imposable:inconnu, prime_anciennete:inconnu, provision_conges:inconnu, retenues:inconnu
 - frontend/src/api/paieApi.js :: appliquerStructure -> /api/django/paie/structures/<>/appliquer
     detail:texte, rattachees:inconnu
 - frontend/src/api/paieApi.js :: declarationCimr -> /api/django/paie/periodes/<>/declaration-cimr
@@ -705,7 +705,7 @@
 - frontend/src/api/paieApi.js :: journalDePaie -> /api/django/paie/periodes/<>/journal-de-paie
     detail:inconnu, ecriture_id:inconnu, reference:inconnu
 - frontend/src/api/paieApi.js :: journalVentile -> /api/django/paie/periodes/<>/journal-ventile
-    detail:texte, id:inconnu, reference:inconnu
+    detail:inconnu, id:inconnu, reference:inconnu
 - frontend/src/api/paieApi.js :: livreDePaie -> /api/django/paie/periodes/<>/livre-de-paie
     annee:inconnu, lignes:inconnu, mois:inconnu, nombre_salaries:nombre, totaux:inconnu
 - frontend/src/api/paieApi.js :: mouvementsCnss -> /api/django/paie/periodes/<>/mouvements-cnss
