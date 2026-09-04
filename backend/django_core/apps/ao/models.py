@@ -2258,11 +2258,19 @@ class SectionBordereau(TenantModel):
 
     @property
     def total_ht(self):
-        """Total HT de la section (lignes de la section uniquement)."""
+        """Total HT de la section (lignes de la section uniquement).
+
+        AUD602 — ``ROUND_HALF_UP`` EXPLICITE, comme ``BordereauPrix``
+        (cf. le commentaire d'arrondi au-dessus de ``sous_total_ht``). Sans cet
+        argument, ``quantize`` appliquait l'arrondi BANCAIRE (HALF_EVEN) du
+        contexte décimal par défaut : une section dont la somme tombe
+        exactement sur ``,xx5`` s'affichait un centime en dessous du bordereau
+        qui la contient — deux sous-totaux différents pour les mêmes lignes.
+        """
         total = Decimal('0.00')
         for ligne in self.lignes.all():
             total += ligne.montant_ht
-        return total.quantize(Decimal('0.01'))
+        return total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class LigneBordereau(TenantModel):
