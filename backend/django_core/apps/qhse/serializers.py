@@ -1069,6 +1069,8 @@ class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
     """
     type_conformite_display = serializers.CharField(
         source='get_type_conformite_display', read_only=True)
+    thematique_display = serializers.CharField(
+        source='get_thematique_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     statut_courant = serializers.SerializerMethodField()
@@ -1077,12 +1079,22 @@ class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
         model = ConformiteEnvironnementale
         fields = [
             'id', 'intitule', 'type_conformite', 'type_conformite_display',
+            # XQHS8 (AUDV14/DRAFT165-99) — généralisation du registre à toutes
+            # les thématiques ISO 45001/9001 + évaluation périodique de
+            # conformité légale. `date_derniere_evaluation`/
+            # `resultat_derniere_evaluation` restent en lecture seule au CRUD :
+            # seule l'action `evaluer/` les pose (date posée côté serveur).
+            'thematique', 'thematique_display',
+            'date_derniere_evaluation', 'resultat_derniere_evaluation',
             'statut', 'statut_display', 'statut_courant', 'autorite',
             'reference_dossier', 'chantier_id', 'date_obtention',
             'date_expiration', 'prealerte_jours', 'responsable', 'notes',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'date_creation', 'date_derniere_evaluation',
+            'resultat_derniere_evaluation',
+        ]
 
     def get_statut_courant(self, obj):
         return obj.statut_calcule()

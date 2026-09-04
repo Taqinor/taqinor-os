@@ -50,6 +50,11 @@ const {
   // AUDV13 — audits planifiés (instancier/relancer) + heatmap/readiness ISO.
   auditInstancier: vi.fn(() => Promise.resolve({ data: { id: 5, audit: 9 } })),
   auditsRelancer: vi.fn(() => Promise.resolve({ data: [] })),
+  // AUDV14 — trajectoire d'un objectif + relance des revues dues.
+  objectifTrajectoire: vi.fn(() => Promise.resolve({
+    data: { baseline: 10, cible: 2, echeance: '2027-01-01', points: [] },
+  })),
+  objectifsRelancer: vi.fn(() => Promise.resolve({ data: { total: 1, notifiees: 1 } })),
 }))
 
 const DECISION_ROW = {
@@ -118,6 +123,8 @@ vi.mock('../../api/qhseApi', () => ({
     objectifsQhse: {
       list: () => Promise.resolve({ data: [OBJECTIF_ROW] }),
       create: (...a) => objectifCreate(...a),
+      trajectoire: (...a) => objectifTrajectoire(...a),
+      relancerObjectifsRevueDue: (...a) => objectifsRelancer(...a),
     },
     revuesObjectif: { list: empty, create: (...a) => revueObjectifCreate(...a) },
   },
@@ -324,5 +331,24 @@ describe('IsoQhse — Objectifs QHSE (WIR276)', () => {
     await waitFor(() => expect(revueObjectifCreate).toHaveBeenCalledWith(
       expect.objectContaining({ objectif: 60, valeur_constatee: '1.5' }),
     ))
+  })
+
+  it('affiche la trajectoire d’un objectif (AUDV14)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Objectifs QHSE' }))
+    await user.click(await screen.findByRole('button', { name: 'Voir trajectoire' }))
+
+    await waitFor(() => expect(objectifTrajectoire).toHaveBeenCalledWith(60))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Baseline')
+  })
+
+  it('relance les objectifs en revue due (AUDV14)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(screen.getByRole('tab', { name: 'Objectifs QHSE' }))
+    await user.click(await screen.findByRole('button', { name: /Relancer les revues dues/ }))
+
+    await waitFor(() => expect(objectifsRelancer).toHaveBeenCalled())
   })
 })

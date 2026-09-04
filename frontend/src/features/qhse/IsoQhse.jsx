@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Wrench, PlayCircle, Bell, CheckCircle2, RefreshCw } from 'lucide-react'
+import {
+  Plus, Wrench, PlayCircle, Bell, CheckCircle2, RefreshCw, TrendingUp,
+} from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Dialog, DialogContent,
@@ -584,6 +586,43 @@ function CreerRevueObjectifDialog({ objectifs, onClose, onCreated }) {
   )
 }
 
+// AUDV14 (XQHS13) — trajectoire baseline→cible vs réel d'un objectif QHSE,
+// jusqu'ici sans aucun écran (`trajectoire_objectif` déjà câblé, sans appelant).
+function TrajectoireObjectifDialog({ objectif, data, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Trajectoire — {objectif.intitule}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-4 text-sm">
+            <span>Baseline : <strong>{data.baseline ?? '—'}</strong></span>
+            <span>Cible : <strong>{data.cible ?? '—'}</strong></span>
+            <span>Échéance : {formatDate(data.echeance)}</span>
+          </div>
+          {data.points?.length ? (
+            <ul className="flex flex-col gap-1">
+              {data.points.map((p, i) => (
+                <li key={i} className="flex items-center justify-between text-sm">
+                  <span>{p.periode || formatDate(p.date_revue)}</span>
+                  <span>
+                    {p.valeur ?? '—'}
+                    {p.atteint != null && (p.atteint ? ' — atteint' : ' — non atteint')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aucune revue enregistrée.</p>
+          )}
+          <div className="flex justify-end pt-1">
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function IsoQhse() {
   const [createKey, setCreateKey] = useState(null)
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -636,6 +675,27 @@ export default function IsoQhse() {
       bump()
     } catch {
       toast.error('Relance impossible.')
+    }
+  }
+
+  // AUDV14 — relance des objectifs QHSE en revue due + trajectoire d'un objectif.
+  const [trajectoireObjectif, setTrajectoireObjectif] = useState(null)
+
+  async function relancerObjectifs() {
+    try {
+      const res = await qhseApi.objectifsQhse.relancerObjectifsRevueDue()
+      toast.success(`${res?.data?.notifiees ?? 0} objectif(s) relancé(s).`)
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
+  async function voirTrajectoire(objectif) {
+    try {
+      const res = await qhseApi.objectifsQhse.trajectoire(objectif.id)
+      setTrajectoireObjectif({ objectif, data: res.data })
+    } catch {
+      toast.error('Trajectoire indisponible.')
     }
   }
 
@@ -898,10 +958,18 @@ export default function IsoQhse() {
             exportName="qhse-objectifs"
             deps={[reloadNonce]}
             actions={
-              <Button onClick={() => setCreateKey('objectif')}>
-                <Plus size={16} /> Nouvel objectif
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={relancerObjectifs}>
+                  <RefreshCw size={16} /> Relancer les revues dues
+                </Button>
+                <Button onClick={() => setCreateKey('objectif')}>
+                  <Plus size={16} /> Nouvel objectif
+                </Button>
+              </div>
             }
+            rowActions={(r) => [
+              { id: 'trajectoire', label: 'Voir trajectoire', icon: TrendingUp, onClick: () => voirTrajectoire(r) },
+            ]}
           />
           <QhseResourceList
             title="Revues d’objectif"
@@ -960,6 +1028,13 @@ export default function IsoQhse() {
           objectifs={objectifOptions}
           onClose={() => setCreateKey(null)}
           onCreated={bump}
+        />
+      )}
+      {trajectoireObjectif && (
+        <TrajectoireObjectifDialog
+          objectif={trajectoireObjectif.objectif}
+          data={trajectoireObjectif.data}
+          onClose={() => setTrajectoireObjectif(null)}
         />
       )}
     </>

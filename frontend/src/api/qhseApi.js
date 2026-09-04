@@ -206,6 +206,10 @@ const qhseApi = {
     ...crud('conformites-environnementales'),
     aRelancer: (params) =>
       api.get('/qhse/conformites-environnementales/a-relancer/', { params }),
+    // AUDV14 (XQHS8/DRAFT165-99) — enregistre l'évaluation périodique d'une
+    // exigence légale (date posée côté serveur). Corps { resultat, date? }.
+    evaluer: (id, data) =>
+      api.post(`/qhse/conformites-environnementales/${id}/evaluer/`, data),
   },
   bilansCarbone: crud('bilans-carbone'),
   lignesBilanCarbone: crud('lignes-bilan-carbone'),
@@ -454,6 +458,10 @@ qhseApi.objectifsQhse = {
   ...crud('objectifs'),
   revuesDues: () => api.get('/qhse/objectifs/revues-dues/'),
   trajectoire: (id) => api.get(`/qhse/objectifs/${id}/trajectoire/`),
+  // AUDV14 (DRAFT165-83) — relance des objectifs en revue due. Nommée
+  // spécifiquement (jamais `relancer` nu), même raison que
+  // `derogations.relancerDerogations` (ambiguïté par nom).
+  relancerObjectifsRevueDue: () => api.post('/qhse/objectifs/relancer/'),
 }
 qhseApi.revuesObjectif = crud('revues-objectif')
 

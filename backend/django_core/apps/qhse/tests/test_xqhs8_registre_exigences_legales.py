@@ -10,18 +10,34 @@ Couvre :
 """
 from io import StringIO
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
 from apps.qhse.models import ConformiteEnvironnementale
 from apps.qhse.services import enregistrer_evaluation_conformite
 
+User = get_user_model()
+
 
 def make_company(slug, nom):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
     return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class ThematiqueTests(TestCase):
@@ -71,6 +87,57 @@ class EnregistrerEvaluationConformiteTests(TestCase):
         enregistrer_evaluation_conformite(conf, 'Non conforme')
         conf.refresh_from_db()
         self.assertEqual(conf.statut, ConformiteEnvironnementale.Statut.CONFORME)
+
+
+class EvaluerActionApiTests(TestCase):
+    """AUDV14 (DRAFT165-99) — l'action REST manquante : les champs existaient
+    sur le modèle/service mais pas sur le serializer, rien ne pouvait les
+    poser depuis un écran (ni même un PATCH direct — read_only)."""
+    BASE = '/api/django/qhse/conformites-environnementales/'
+
+    def setUp(self):
+        self.co = make_company('co-xqhs8-eval-api', 'CoXqhs8EvalApi')
+        self.user = make_user(self.co, 'xqhs8-eval-api-user')
+
+    def test_evaluer_enregistre_le_resultat(self):
+        conf = ConformiteEnvironnementale.objects.create(
+            company=self.co, intitule='CSH trimestriel')
+        resp = auth(self.user).post(
+            f'{self.BASE}{conf.id}/evaluer/',
+            {'resultat': 'Conforme', 'date': '2026-06-01'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['resultat_derniere_evaluation'], 'Conforme')
+        self.assertEqual(resp.data['date_derniere_evaluation'], '2026-06-01')
+        conf.refresh_from_db()
+        self.assertEqual(conf.resultat_derniere_evaluation, 'Conforme')
+
+    def test_evaluer_resultat_requis(self):
+        conf = ConformiteEnvironnementale.objects.create(
+            company=self.co, intitule='CSH trimestriel')
+        resp = auth(self.user).post(f'{self.BASE}{conf.id}/evaluer/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_direct_ne_pose_pas_levaluation(self):
+        """`date_derniere_evaluation`/`resultat_derniere_evaluation` sont
+        read_only au CRUD — seule l'action `evaluer/` les pose."""
+        conf = ConformiteEnvironnementale.objects.create(
+            company=self.co, intitule='CSH trimestriel')
+        resp = auth(self.user).patch(
+            f'{self.BASE}{conf.id}/',
+            {'resultat_derniere_evaluation': 'Conforme'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        conf.refresh_from_db()
+        self.assertEqual(conf.resultat_derniere_evaluation, '')
+
+    def test_serializer_expose_thematique_et_evaluation(self):
+        conf = ConformiteEnvironnementale.objects.create(
+            company=self.co, intitule='Test',
+            thematique=ConformiteEnvironnementale.Thematique.TRAVAIL)
+        resp = auth(self.user).get(f'{self.BASE}{conf.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['thematique'], 'travail')
+        self.assertIn('date_derniere_evaluation', resp.data)
+        self.assertIn('resultat_derniere_evaluation', resp.data)
 
 
 class SeedExigencesMarocTests(TestCase):

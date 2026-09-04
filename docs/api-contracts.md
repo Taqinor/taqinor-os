@@ -816,6 +816,8 @@
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerObjectifsRevueDue -> /api/django/qhse/objectifs/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
     items:inconnu, notifiees:inconnu, sans_responsable:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: statistiquesTfTg -> /api/django/qhse/incidents/statistiques-tf-tg

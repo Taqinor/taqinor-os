@@ -128,6 +128,7 @@ from .services import (
     demarrer_workflow_cloture_ncr,
     diffuser_procedure,
     enregistrer_analyse_ncr,
+    enregistrer_evaluation_conformite,
     escalader_workflow_cloture_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
@@ -146,6 +147,7 @@ from .services import (
     relancer_etapes_at_en_retard,
     relancer_exercices_urgence,
     relancer_notifications_environnement,
+    relancer_objectifs_revue_due,
     rendre_analyse_ncr_pdf,
     resolve_lien_signalement_public,
     risques_opportunites_revue_due,
@@ -2375,6 +2377,25 @@ class ConformiteEnvironnementaleViewSet(_QhseBaseViewSet):
         digest = relancer_conformites(request.user.company)
         return Response(digest)
 
+    @action(detail=True, methods=['post'])
+    def evaluer(self, request, pk=None):
+        """Enregistre l'évaluation périodique de cette exigence légale
+        (``enregistrer_evaluation_conformite`` — XQHS8, DRAFT165-99 : les
+        champs ``date_derniere_evaluation``/``resultat_derniere_evaluation``
+        existaient sur le modèle mais étaient absents du serializer, rien ne
+        pouvait les poser). Corps : ``resultat`` (requis), ``date``
+        (optionnelle, ``localdate()`` par défaut). Ne touche pas ``statut``
+        (dérivé de ``statut_calcule``, distinct de cette trace périodique)."""
+        conformite = self.get_object()
+        resultat = request.data.get('resultat')
+        if not resultat:
+            return Response(
+                {'detail': 'resultat est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        enregistrer_evaluation_conformite(
+            conformite, resultat, date=request.data.get('date') or None)
+        return Response(self.get_serializer(conformite).data)
+
 
 class BilanCarboneViewSet(_QhseBaseViewSet):
     """Bilans carbone internes (scopes 1/2/3 — QHSE39).
@@ -3652,6 +3673,14 @@ class ObjectifQhseViewSet(_QhseBaseViewSet):
 
         qs = objectifs_revue_due(request.user.company)
         return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les objectifs QHSE en revue due (``relancer_objectifs_revue_due``
+        — DRAFT165-83, pattern ``capa/relancer-retards``). Notifications
+        best-effort, ne mute rien."""
+        digest = relancer_objectifs_revue_due(request.user.company)
+        return Response(digest)
 
     @action(detail=True, methods=['get'])
     def trajectoire(self, request, pk=None):
