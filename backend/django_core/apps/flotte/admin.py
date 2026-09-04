@@ -10,6 +10,8 @@ défaut au niveau modèle, la rendre lecture seule empêcherait toute création.
 """
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     BudgetFlotte,
     Conducteur,
@@ -19,8 +21,20 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(Conducteur)
-class ConducteurAdmin(admin.ModelAdmin):
+class ConducteurAdmin(CompanyScopedAdmin):
     list_display = (
         'id', 'nom', 'telephone', 'numero_permis', 'categorie_permis',
         'date_expiration', 'actif', 'company',
@@ -31,7 +45,7 @@ class ConducteurAdmin(admin.ModelAdmin):
 
 
 @admin.register(GarantieFlotte)
-class GarantieFlotteAdmin(admin.ModelAdmin):
+class GarantieFlotteAdmin(CompanyScopedAdmin):
     list_display = (
         'id', 'actif_flotte', 'composant', 'duree_mois', 'duree_km',
         'date_debut', 'fournisseur', 'company',
@@ -41,7 +55,7 @@ class GarantieFlotteAdmin(admin.ModelAdmin):
 
 
 @admin.register(BudgetFlotte)
-class BudgetFlotteAdmin(admin.ModelAdmin):
+class BudgetFlotteAdmin(CompanyScopedAdmin):
     list_display = (
         'id', 'annee', 'categorie', 'montant_budgete',
         'notifie_depassement', 'company',
@@ -52,7 +66,7 @@ class BudgetFlotteAdmin(admin.ModelAdmin):
 
 
 @admin.register(RemiseAccessoire)
-class RemiseAccessoireAdmin(admin.ModelAdmin):
+class RemiseAccessoireAdmin(CompanyScopedAdmin):
     list_display = (
         'id', 'actif_flotte', 'type_accessoire', 'conducteur',
         'date_remise', 'date_retour', 'company',
@@ -65,7 +79,7 @@ class RemiseAccessoireAdmin(admin.ModelAdmin):
 
 
 @admin.register(DemandeVehicule)
-class DemandeVehiculeAdmin(admin.ModelAdmin):
+class DemandeVehiculeAdmin(CompanyScopedAdmin):
     list_display = (
         'id', 'demandeur', 'besoin', 'date_debut_souhaitee',
         'date_fin_souhaitee', 'statut', 'vehicule_attribue', 'company',

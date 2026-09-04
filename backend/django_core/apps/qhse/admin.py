@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     ActionCorrectivePreventive, BilanCarbone, BordereauSuiviDechet,
     ConformiteEnvironnementale, ConsignationLoto,
@@ -15,8 +17,20 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(NonConformite)
-class NonConformiteAdmin(admin.ModelAdmin):
+class NonConformiteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'titre', 'gravite', 'statut',
                     'company', 'date_detection')
     list_filter = ('gravite', 'statut')
@@ -24,7 +38,7 @@ class NonConformiteAdmin(admin.ModelAdmin):
 
 
 @admin.register(ActionCorrectivePreventive)
-class ActionCorrectivePreventiveAdmin(admin.ModelAdmin):
+class ActionCorrectivePreventiveAdmin(CompanyScopedAdmin):
     list_display = ('id', 'non_conformite', 'type_action', 'statut',
                     'responsable', 'echeance', 'company')
     list_filter = ('type_action', 'statut')
@@ -32,14 +46,14 @@ class ActionCorrectivePreventiveAdmin(admin.ModelAdmin):
 
 
 @admin.register(PlanInspectionModele)
-class PlanInspectionModeleAdmin(admin.ModelAdmin):
+class PlanInspectionModeleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'code', 'nom', 'actif', 'company', 'date_creation')
     list_filter = ('actif',)
     search_fields = ('code', 'nom', 'description')
 
 
 @admin.register(PointControleModele)
-class PointControleModeleAdmin(admin.ModelAdmin):
+class PointControleModeleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'plan', 'ordre', 'intitule', 'phase',
                     'type_releve', 'hold_point', 'company')
     list_filter = ('type_releve', 'hold_point')
@@ -47,7 +61,7 @@ class PointControleModeleAdmin(admin.ModelAdmin):
 
 
 @admin.register(PlanInspectionChantier)
-class PlanInspectionChantierAdmin(admin.ModelAdmin):
+class PlanInspectionChantierAdmin(CompanyScopedAdmin):
     list_display = ('id', 'modele', 'chantier_id', 'statut',
                     'date_ouverture', 'company', 'date_creation')
     list_filter = ('statut',)
@@ -55,7 +69,7 @@ class PlanInspectionChantierAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReleveControle)
-class ReleveControleAdmin(admin.ModelAdmin):
+class ReleveControleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'plan_chantier', 'point', 'conforme',
                     'date_releve', 'releve_par', 'company')
     list_filter = ('conforme',)
@@ -63,14 +77,14 @@ class ReleveControleAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReleveCourbeIV)
-class ReleveCourbeIVAdmin(admin.ModelAdmin):
+class ReleveCourbeIVAdmin(CompanyScopedAdmin):
     list_display = ('id', 'string_id', 'chantier_id', 'voc', 'isc',
                     'pmpp', 'date_releve', 'releve_par', 'company')
     search_fields = ('string_id', 'notes')
 
 
 @admin.register(ProcedureQualite)
-class ProcedureQualiteAdmin(admin.ModelAdmin):
+class ProcedureQualiteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'titre', 'version', 'statut',
                     'date_application', 'auteur', 'company', 'date_creation')
     list_filter = ('statut',)
@@ -78,7 +92,7 @@ class ProcedureQualiteAdmin(admin.ModelAdmin):
 
 
 @admin.register(RetourClientQualite)
-class RetourClientQualiteAdmin(admin.ModelAdmin):
+class RetourClientQualiteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'note_satisfaction', 'chantier_id', 'client_id',
                     'canal', 'traite', 'date_retour', 'company',
                     'date_creation')
@@ -87,7 +101,7 @@ class RetourClientQualiteAdmin(admin.ModelAdmin):
 
 
 @admin.register(EvaluationRisque)
-class EvaluationRisqueAdmin(admin.ModelAdmin):
+class EvaluationRisqueAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'titre', 'statut', 'date_evaluation',
                     'chantier_id', 'evaluateur', 'company', 'date_creation')
     list_filter = ('statut',)
@@ -95,7 +109,7 @@ class EvaluationRisqueAdmin(admin.ModelAdmin):
 
 
 @admin.register(LigneEvaluationRisque)
-class LigneEvaluationRisqueAdmin(admin.ModelAdmin):
+class LigneEvaluationRisqueAdmin(CompanyScopedAdmin):
     list_display = ('id', 'evaluation', 'poste', 'activite', 'danger',
                     'gravite', 'probabilite', 'criticite', 'company')
     list_filter = ('gravite', 'probabilite')
@@ -103,7 +117,7 @@ class LigneEvaluationRisqueAdmin(admin.ModelAdmin):
 
 
 @admin.register(PermisTravail)
-class PermisTravailAdmin(admin.ModelAdmin):
+class PermisTravailAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'titre', 'type_permis', 'statut',
                     'chantier_id', 'date_debut', 'date_fin', 'company',
                     'date_creation')
@@ -113,7 +127,7 @@ class PermisTravailAdmin(admin.ModelAdmin):
 
 
 @admin.register(ConsignationLoto)
-class ConsignationLotoAdmin(admin.ModelAdmin):
+class ConsignationLotoAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'permis', 'equipement',
                     'point_consignation', 'consignateur', 'statut',
                     'verifie_absence_tension', 'date_consignation',
@@ -124,7 +138,7 @@ class ConsignationLotoAdmin(admin.ModelAdmin):
 
 
 @admin.register(InspectionSecurite)
-class InspectionSecuriteAdmin(admin.ModelAdmin):
+class InspectionSecuriteAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'titre', 'statut', 'resultat',
                     'chantier_id', 'date_prevue', 'date_realisee',
                     'inspecteur', 'ncr', 'company', 'date_creation')
@@ -133,7 +147,7 @@ class InspectionSecuriteAdmin(admin.ModelAdmin):
 
 
 @admin.register(Dechet)
-class DechetAdmin(admin.ModelAdmin):
+class DechetAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'code', 'categorie', 'mode_traitement',
                     'unite', 'actif', 'company', 'date_creation')
     list_filter = ('categorie', 'mode_traitement', 'actif')
@@ -141,7 +155,7 @@ class DechetAdmin(admin.ModelAdmin):
 
 
 @admin.register(BordereauSuiviDechet)
-class BordereauSuiviDechetAdmin(admin.ModelAdmin):
+class BordereauSuiviDechetAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'dechet', 'statut', 'chantier_id',
                     'quantite', 'date_emission', 'date_traitement',
                     'company', 'date_creation')
@@ -150,7 +164,7 @@ class BordereauSuiviDechetAdmin(admin.ModelAdmin):
 
 
 @admin.register(RecyclageModule)
-class RecyclageModuleAdmin(admin.ModelAdmin):
+class RecyclageModuleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'reference', 'marque', 'modele', 'nombre_modules',
                     'motif', 'statut', 'chantier_id', 'date_collecte',
                     'date_recyclage', 'company', 'date_creation')
@@ -159,7 +173,7 @@ class RecyclageModuleAdmin(admin.ModelAdmin):
 
 
 @admin.register(ConformiteEnvironnementale)
-class ConformiteEnvironnementaleAdmin(admin.ModelAdmin):
+class ConformiteEnvironnementaleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'intitule', 'type_conformite', 'statut',
                     'autorite', 'date_expiration', 'prealerte_jours',
                     'responsable', 'company', 'date_creation')
@@ -168,7 +182,7 @@ class ConformiteEnvironnementaleAdmin(admin.ModelAdmin):
 
 
 @admin.register(BilanCarbone)
-class BilanCarboneAdmin(admin.ModelAdmin):
+class BilanCarboneAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'annee', 'statut', 'company',
                     'date_creation')
     list_filter = ('statut', 'annee')
@@ -176,7 +190,7 @@ class BilanCarboneAdmin(admin.ModelAdmin):
 
 
 @admin.register(LigneBilanCarbone)
-class LigneBilanCarboneAdmin(admin.ModelAdmin):
+class LigneBilanCarboneAdmin(CompanyScopedAdmin):
     list_display = ('id', 'bilan', 'libelle', 'scope', 'categorie',
                     'quantite', 'unite', 'facteur_emission', 'company')
     list_filter = ('scope',)
@@ -184,7 +198,7 @@ class LigneBilanCarboneAdmin(admin.ModelAdmin):
 
 
 @admin.register(IndicateurESG)
-class IndicateurESGAdmin(admin.ModelAdmin):
+class IndicateurESGAdmin(CompanyScopedAdmin):
     list_display = ('id', 'code', 'libelle', 'pilier', 'valeur', 'cible',
                     'unite', 'annee', 'periode', 'company', 'date_creation')
     list_filter = ('pilier', 'annee')

@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     BaremeIR,
     BulletinPaie,
@@ -14,8 +16,20 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(ParametrePaie)
-class ParametrePaieAdmin(admin.ModelAdmin):
+class ParametrePaieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
                     'company', 'actif', 'valide_par_fondateur')
     list_filter = ('actif', 'valide_par_fondateur')
@@ -29,7 +43,7 @@ class TrancheIRInline(admin.TabularInline):
 
 
 @admin.register(BaremeIR)
-class BaremeIRAdmin(admin.ModelAdmin):
+class BaremeIRAdmin(CompanyScopedAdmin):
     list_display = ('id', 'libelle', 'date_effet', 'company', 'actif',
                     'valide_par_fondateur')
     list_filter = ('actif', 'valide_par_fondateur')
@@ -38,7 +52,7 @@ class BaremeIRAdmin(admin.ModelAdmin):
 
 
 @admin.register(TrancheIR)
-class TrancheIRAdmin(admin.ModelAdmin):
+class TrancheIRAdmin(CompanyScopedAdmin):
     list_display = ('id', 'bareme', 'ordre', 'borne_min', 'borne_max', 'taux',
                     'somme_a_deduire', 'company')
     list_filter = ('bareme',)
@@ -46,7 +60,7 @@ class TrancheIRAdmin(admin.ModelAdmin):
 
 
 @admin.register(Rubrique)
-class RubriqueAdmin(admin.ModelAdmin):
+class RubriqueAdmin(CompanyScopedAdmin):
     list_display = ('id', 'code', 'libelle', 'type', 'imposable',
                     'soumis_cnss', 'soumis_amo', 'soumis_cimr',
                     'avantage_nature', 'plafond_exoneration', 'compte',
@@ -57,7 +71,7 @@ class RubriqueAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProfilPaie)
-class ProfilPaieAdmin(admin.ModelAdmin):
+class ProfilPaieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'employe', 'type_remuneration', 'salaire_base',
                     'jours_travail_mensuel', 'heures_travail_mensuel',
                     'affilie_cnss', 'affilie_amo', 'affilie_cimr',
@@ -68,7 +82,7 @@ class ProfilPaieAdmin(admin.ModelAdmin):
 
 
 @admin.register(RubriqueEmploye)
-class RubriqueEmployeAdmin(admin.ModelAdmin):
+class RubriqueEmployeAdmin(CompanyScopedAdmin):
     list_display = ('id', 'profil', 'rubrique', 'montant', 'taux', 'actif',
                     'company')
     list_filter = ('actif',)
@@ -76,14 +90,14 @@ class RubriqueEmployeAdmin(admin.ModelAdmin):
 
 
 @admin.register(PeriodePaie)
-class PeriodePaieAdmin(admin.ModelAdmin):
+class PeriodePaieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'annee', 'mois', 'statut', 'date_paiement',
                     'date_cloture', 'company')
     list_filter = ('statut', 'annee')
 
 
 @admin.register(ElementVariable)
-class ElementVariableAdmin(admin.ModelAdmin):
+class ElementVariableAdmin(CompanyScopedAdmin):
     list_display = ('id', 'periode', 'profil', 'type', 'rubrique', 'quantite',
                     'montant', 'source', 'company')
     list_filter = ('type', 'source')
@@ -97,7 +111,7 @@ class LigneBulletinInline(admin.TabularInline):
 
 
 @admin.register(BulletinPaie)
-class BulletinPaieAdmin(admin.ModelAdmin):
+class BulletinPaieAdmin(CompanyScopedAdmin):
     list_display = ('id', 'periode', 'profil', 'statut', 'brut', 'net_a_payer',
                     'date_validation', 'company')
     list_filter = ('statut',)
@@ -106,7 +120,7 @@ class BulletinPaieAdmin(admin.ModelAdmin):
 
 
 @admin.register(LigneBulletin)
-class LigneBulletinAdmin(admin.ModelAdmin):
+class LigneBulletinAdmin(CompanyScopedAdmin):
     list_display = ('id', 'bulletin', 'ordre', 'code', 'libelle', 'type',
                     'montant', 'company')
     list_filter = ('type',)

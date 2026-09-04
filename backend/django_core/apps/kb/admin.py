@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import (
     BlocReutilisable,
     KbArticle,
@@ -17,8 +19,20 @@ from .models import (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(KbArticle)
-class KbArticleAdmin(admin.ModelAdmin):
+class KbArticleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'titre', 'categorie', 'statut', 'visibilite',
                     'parent', 'auteur', 'company', 'date_modification')
     list_filter = ('statut', 'categorie', 'visibilite')
@@ -26,7 +40,7 @@ class KbArticleAdmin(admin.ModelAdmin):
 
 
 @admin.register(KbArticleVersion)
-class KbArticleVersionAdmin(admin.ModelAdmin):
+class KbArticleVersionAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'version', 'titre', 'auteur', 'company',
                     'date_creation')
     list_filter = ('company',)
@@ -34,7 +48,7 @@ class KbArticleVersionAdmin(admin.ModelAdmin):
 
 
 @admin.register(KbArticleLien)
-class KbArticleLienAdmin(admin.ModelAdmin):
+class KbArticleLienAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'type_cible', 'cible_id', 'libelle',
                     'company', 'date_creation')
     list_filter = ('type_cible', 'company')
@@ -42,47 +56,47 @@ class KbArticleLienAdmin(admin.ModelAdmin):
 
 
 @admin.register(KbArticleAcl)
-class KbArticleAclAdmin(admin.ModelAdmin):
+class KbArticleAclAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'role', 'utilisateur', 'niveau',
                     'company', 'date_creation')
     list_filter = ('role', 'niveau', 'company')
 
 
 @admin.register(KbLecture)
-class KbLectureAdmin(admin.ModelAdmin):
+class KbLectureAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'utilisateur', 'company', 'lu_le')
     list_filter = ('company',)
 
 
 @admin.register(KbLectureObligatoire)
-class KbLectureObligatoireAdmin(admin.ModelAdmin):
+class KbLectureObligatoireAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'utilisateur', 'role_cible', 'echeance',
                     'company', 'date_creation')
     list_filter = ('role_cible', 'company')
 
 
 @admin.register(KbFavori)
-class KbFavoriAdmin(admin.ModelAdmin):
+class KbFavoriAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
 
 
 @admin.register(KbRechercheVide)
-class KbRechercheVideAdmin(admin.ModelAdmin):
+class KbRechercheVideAdmin(CompanyScopedAdmin):
     list_display = ('id', 'terme', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
     search_fields = ('terme',)
 
 
 @admin.register(PartageArticleKb)
-class PartageArticleKbAdmin(admin.ModelAdmin):
+class PartageArticleKbAdmin(CompanyScopedAdmin):
     list_display = ('id', 'article', 'actif', 'expires_at', 'consultations',
                     'company', 'date_creation')
     list_filter = ('actif', 'company')
 
 
 @admin.register(KbParcours)
-class KbParcoursAdmin(admin.ModelAdmin):
+class KbParcoursAdmin(CompanyScopedAdmin):
     list_display = ('id', 'nom', 'role_cible', 'metier', 'actif', 'company',
                     'date_creation')
     list_filter = ('actif', 'role_cible', 'company')
@@ -90,19 +104,19 @@ class KbParcoursAdmin(admin.ModelAdmin):
 
 
 @admin.register(KbParcoursArticle)
-class KbParcoursArticleAdmin(admin.ModelAdmin):
+class KbParcoursArticleAdmin(CompanyScopedAdmin):
     list_display = ('id', 'parcours', 'article', 'ordre', 'company')
     list_filter = ('company',)
 
 
 @admin.register(KbParcoursAssignation)
-class KbParcoursAssignationAdmin(admin.ModelAdmin):
+class KbParcoursAssignationAdmin(CompanyScopedAdmin):
     list_display = ('id', 'parcours', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
 
 
 @admin.register(BlocReutilisable)
-class BlocReutilisableAdmin(admin.ModelAdmin):
+class BlocReutilisableAdmin(CompanyScopedAdmin):
     list_display = ('id', 'nom', 'portee', 'created_by', 'company',
                     'date_creation')
     list_filter = ('portee', 'company')

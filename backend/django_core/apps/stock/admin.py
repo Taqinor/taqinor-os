@@ -4,6 +4,8 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import Produit, Categorie, Fournisseur, MouvementStock
 
 
@@ -86,14 +88,26 @@ SUPPRESSION_FOURNISSEUR_INTERDITE = (
 # Verrouillé par `apps/stock/test_admin_produit_delete_guard.py::
 # test_garde_cible_une_categorie_reste_supprimable` (une catégorie reste
 # supprimable après l'ajout du garde Produit).
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(Categorie)
-class CategorieAdmin(admin.ModelAdmin):
+class CategorieAdmin(CompanyScopedAdmin):
     list_display = ('nom', 'description')
     search_fields = ('nom',)
 
 
 @admin.register(Fournisseur)
-class FournisseurAdmin(admin.ModelAdmin):
+class FournisseurAdmin(CompanyScopedAdmin):
     list_display = ('nom', 'email', 'telephone', 'is_archived')
     list_filter = ('is_archived',)
     search_fields = ('nom', 'email')
@@ -201,7 +215,7 @@ class ProduitAdminForm(forms.ModelForm):
 
 
 @admin.register(Produit)
-class ProduitAdmin(admin.ModelAdmin):
+class ProduitAdmin(CompanyScopedAdmin):
     form = ProduitAdminForm
     list_display = ('nom', 'sku', 'prix_vente', 'quantite_stock', 'categorie', 'fournisseur')
     list_filter = ('categorie', 'fournisseur')
@@ -256,7 +270,7 @@ class ProduitAdmin(admin.ModelAdmin):
 
 
 @admin.register(MouvementStock)
-class MouvementStockAdmin(admin.ModelAdmin):
+class MouvementStockAdmin(CompanyScopedAdmin):
     list_display = ('produit', 'type_mouvement', 'quantite', 'quantite_avant', 'quantite_apres', 'date')
     list_filter = ('type_mouvement',)
     search_fields = ('produit__nom', 'reference')

@@ -4,6 +4,8 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import CustomUser, Company
 
 
@@ -108,8 +110,13 @@ class CompanyAdmin(admin.ModelAdmin):
         raise PermissionDenied(SUPPRESSION_SOCIETE_INTERDITE)
 
 
+# AUD417 — le répertoire des COMPTES est lui aussi borné à la société de
+# l'appelant : `CustomUser.company` est un FK, et cette liste expose e-mails,
+# noms et rôles. Le mixin s'insère AVANT `UserAdmin` pour que son
+# `get_queryset` filtre le queryset que `UserAdmin` construit (un compte sans
+# société — opérateur plateforme — n'est pas filtré, comportement inchangé).
 @admin.register(CustomUser)
-class CustomUserAdmin(UserAdmin):
+class CustomUserAdmin(CompanyScopedAdminMixin, UserAdmin):
     list_display = (
         'username', 'email', 'company', 'role_display',
         'is_staff', 'is_active',
