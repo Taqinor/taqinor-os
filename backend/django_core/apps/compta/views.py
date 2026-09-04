@@ -103,6 +103,8 @@ from .models import (
     Emprunt, EcheanceEmprunt, EtatPersonnalise,
     # AUDV06 / XACC17-XACC18 — devises.
     TauxDevise, ItemOuvertDevise, ReevaluationCloture,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputation,
 )
 from .serializers import (
     AcompteISSerializer, ConventionFiscaleSerializer,
@@ -197,6 +199,8 @@ from .serializers import (
     # AUDV06 / XACC17-XACC18 — devises.
     TauxDeviseSerializer, ItemOuvertDeviseSerializer,
     ReevaluationClotureSerializer,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputationSerializer,
 )
 
 
@@ -5780,6 +5784,57 @@ class BudgetViewSet(_ComptaBaseViewSet):
             return resp
         return Response(data)
 
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def reviser(self, request, pk=None):
+        """AUDV09 / XACC22 (DRAFT165-44) — fige la version courante, crée la V+1.
+
+        `services.reviser_budget` n'avait aucun appelant : un budget se
+        modifiait donc SUR PLACE, écrasant la version approuvée. Plus aucune
+        comparaison « prévu à l'approbation » vs « prévu aujourd'hui » n'était
+        possible, alors que c'est tout l'objet d'une révision budgétaire.
+
+        La version N devient `figee` (lecture seule POUR TOUJOURS, donc
+        toujours consultable) et la V+1 est une copie éditable de ses lignes.
+        Réviser une version déjà figée est refusé (400 français) : la révision
+        suivante part de la dernière version éditable, jamais d'un embranchement
+        silencieux. Corps optionnel : ``{'libelle': '...'}``.
+        """
+        budget = self.get_object()  # scopé société par TenantMixin.
+        try:
+            nouvelle = services.reviser_budget(
+                budget, nouveau_libelle=request.data.get('libelle') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(nouvelle).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='scenario-what-if',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def scenario_what_if(self, request, pk=None):
+        """AUDV09 / XACC22 (DRAFT165-45) — copie optimiste/pessimiste du budget.
+
+        `services.creer_scenario_what_if` n'avait aucun appelant : impossible
+        de chiffrer une hypothèse haute ou basse sans toucher au budget
+        officiel — donc, en pratique, on y touchait.
+
+        Le scénario est une COPIE INDÉPENDANTE : ni le contrôle d'engagement
+        (XACC21) ni le suivi budget-vs-réel (FG149) ne le consomment, tous deux
+        restant sur le scénario `engage`. Corps : ``{'scenario':
+        'optimiste'|'pessimiste'}`` — demander `engage` est refusé (400), ce
+        serait fabriquer un second budget officiel.
+        """
+        budget = self.get_object()  # scopé société par TenantMixin.
+        try:
+            scenario = services.creer_scenario_what_if(
+                budget, scenario=request.data.get('scenario'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(self.get_serializer(scenario).data,
+                        status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='generer-ligne-repartie',
             permission_classes=[IsResponsableOrAdmin])
     def generer_ligne_repartie(self, request, pk=None):
@@ -10615,6 +10670,60 @@ class ItemOuvertDeviseViewSet(_ComptaBaseViewSet):
         item.refresh_from_db()
         return Response(
             self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class RegleImputationViewSet(_ComptaBaseViewSet):
+    """Règles d'AUTO-imputation analytique (XACC20).
+
+    AUDV09 — la règle et son moteur (`_appliquer_regle_imputation_si_match`,
+    déjà appelé par `creer_ecriture`) existaient sans AUCUN ViewSet : aucune
+    règle ne pouvait être créée hors admin Django, si bien que le moteur
+    tournait à vide et que chaque écriture devait être ventilée à la main,
+    indéfiniment.
+
+    La création est ROUTÉE par `services.creer_regle_imputation`, qui EXIGE
+    une distribution sommant à 100 % : une distribution partielle imputerait
+    silencieusement une part de la charge nulle part — précisément le genre
+    d'erreur qu'une auto-imputation doit rendre impossible.
+    """
+    queryset = RegleImputation.objects.prefetch_related(
+        'distributions__centre_cout').all()
+    serializer_class = RegleImputationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'prefixe_compte']
+    ordering_fields = ['priorite', 'libelle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('true', 'false'):
+            qs = qs.filter(actif=(actif == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            regle = services.creer_regle_imputation(
+                request.user.company,
+                libelle=donnees['libelle'],
+                prefixe_compte=donnees['prefixe_compte'],
+                distributions=[dict(d)
+                               for d in donnees.get('distributions', [])],
+                tiers_id=donnees.get('tiers_id'),
+                produit_id=donnees.get('produit_id'),
+                priorite=donnees.get('priorite', 100),
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(regle).data, status=status.HTTP_201_CREATED)
 
 
 class ReevaluationClotureViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

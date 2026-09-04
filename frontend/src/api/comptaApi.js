@@ -362,8 +362,24 @@ const comptaApi = {
     // méthode tel quel, jamais un tiret.
     vsRealise: (id, params) =>
       api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
+    // AUDV09 / XACC22 — RÉVISION : fige la version courante (consultable pour
+    // toujours) et crée la V+1 éditable. Sans elle, un budget se modifiait SUR
+    // PLACE, écrasant la version approuvée — plus aucune comparaison possible.
+    reviser: (id, data) =>
+      api.post(`/compta/budgets/${id}/reviser/`, data || {}),
+    // AUDV09 / XACC22 — SCÉNARIO what-if : copie INDÉPENDANTE (optimiste ou
+    // pessimiste). Ni le contrôle d'engagement ni le suivi budget-vs-réel ne
+    // la consomment : ils restent sur le scénario `engage`.
+    scenarioWhatIf: (id, scenario) =>
+      api.post(`/compta/budgets/${id}/scenario-what-if/`, { scenario }),
   },
   centresCout: resource('centres-cout'),
+  // AUDV09 / XACC20 — règles d'AUTO-imputation analytique. Le moteur était
+  // déjà appelé par `creer_ecriture` mais aucune règle ne pouvait être créée
+  // hors admin Django : il tournait à vide. `distributions` est IMBRIQUÉE et
+  // doit sommer à 100 % (refus 400 sinon — une distribution partielle
+  // imputerait une part de la charge nulle part).
+  reglesImputation: resource('regles-imputation'),
   provisionsCreances: resource('provisions-creances'),
   comptesAuxiliaires: resource('comptes-auxiliaires'),
   mappingsCompte: resource('mappings-compte'),

@@ -83,6 +83,8 @@ from .models import (
     # change réalisés et runs de réévaluation de clôture.
     TauxDevise, ItemOuvertDevise, EcartChange, ReevaluationCloture,
     LigneReevaluation,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputation, LigneRegleImputation,
 )
 
 
@@ -3777,6 +3779,41 @@ class LigneReevaluationSerializer(serializers.ModelSerializer):
             'ecart',
         ]
         read_only_fields = fields
+
+
+class LigneRegleImputationSerializer(serializers.ModelSerializer):
+    """Part (%) d'une règle d'imputation affectée à un centre de coût (XACC20)."""
+    centre_cout_libelle = serializers.CharField(
+        source='centre_cout.libelle', read_only=True)
+
+    class Meta:
+        model = LigneRegleImputation
+        fields = ['id', 'centre_cout', 'centre_cout_libelle', 'pourcentage']
+        read_only_fields = ['id']
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class RegleImputationSerializer(serializers.ModelSerializer):
+    """Règle d'AUTO-imputation analytique (XACC20).
+
+    AUDV09 — la règle et son moteur d'application existaient sans aucun
+    ViewSet : chaque écriture devait être ventilée à la main, indéfiniment.
+    Les ``distributions`` sont acceptées IMBRIQUÉES ; la vue route la création
+    vers ``services.creer_regle_imputation``, qui EXIGE une somme de 100 % —
+    une distribution partielle imputerait silencieusement une partie de la
+    charge nulle part.
+    """
+    distributions = LigneRegleImputationSerializer(many=True, required=False)
+
+    class Meta:
+        model = RegleImputation
+        fields = [
+            'id', 'libelle', 'prefixe_compte', 'tiers_id', 'produit_id',
+            'priorite', 'actif', 'distributions', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class ReevaluationClotureSerializer(serializers.ModelSerializer):
