@@ -523,22 +523,31 @@ class BulkEditViewSet(viewsets.ViewSet):
 
 
 class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
-    """FG391 — flags de modules par société (activation/désactivation).
+    """FG391 — flags de modules par société — LECTURE SEULE (AUD815).
 
-    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
-    L'écriture est réservée au palier admin/responsable (paramétrage société) ;
-    la lecture est ouverte à tout utilisateur authentifié pour que la SPA sache
-    quels modules afficher. Aucune importation d'app domaine : ``module`` est
-    une clé libre.
+    Multi-tenant : ``TenantMixin`` filtre par société. La lecture est ouverte à
+    tout utilisateur authentifié pour que la SPA sache quels modules afficher.
+    Aucune importation d'app domaine : ``module`` est une clé libre.
+
+    AUD815 — ce ViewSet exposait un CRUD BRUT sur la table de bascule, à côté
+    du chemin nommé ``ModuleCatalogViewSet.activer``/``desactiver`` : un
+    ``PATCH {"actif": false}`` coupait un module dont d'autres dépendent sans
+    jamais évaluer ``feature_flags.DependencyError``, et sans émettre
+    ``module_toggled`` — donc sans une seule ligne au journal d'installation
+    ODY25 (``apps/records/receivers.py`` n'écoute que cet événement). Pire, un
+    DELETE de la ligne RÉACTIVAIT le module en silence (politique FG391 :
+    « absence de ligne = actif »). Toute mutation passe désormais
+    OBLIGATOIREMENT par ``/core/modules/{key}/activer|desactiver/``, seul
+    émetteur de l'événement et seul évaluateur de la fermeture de dépendances.
     """
     serializer_class = ModuleToggleSerializer
     queryset = ModuleToggle.objects.all()
     pagination_class = None
+    # AUD815 — aucune méthode d'écriture : POST/PUT/PATCH/DELETE → 405.
+    http_method_names = ['get', 'head', 'options']
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAuthenticated()]
 
 
 class ModuleCatalogViewSet(viewsets.ViewSet):

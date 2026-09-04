@@ -449,15 +449,22 @@ class DeletionRecordSerializer(serializers.ModelSerializer):
 
 
 class ModuleToggleSerializer(serializers.ModelSerializer):
-    """FG391 — activation/désactivation d'un module par société.
+    """FG391 — état d'activation d'un module par société (LECTURE SEULE).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+
+    AUD815 — TOUS les champs sont en lecture seule : la bascule d'un module
+    passe exclusivement par ``/core/modules/{key}/activer|desactiver/``
+    (``core.feature_flags``), seul chemin qui applique la fermeture de
+    dépendances et émette ``module_toggled`` (journal d'installation ODY25).
+    Ce sérialiseur ne sert donc plus qu'au rendu.
     """
     class Meta:
         model = ModuleToggle
         fields = ['id', 'module', 'actif', 'raison',
                   'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'module', 'actif', 'raison',
+                            'created_at', 'updated_at']
 
 
 class TenantThemeSerializer(serializers.ModelSerializer):
