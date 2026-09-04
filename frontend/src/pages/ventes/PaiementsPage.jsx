@@ -125,10 +125,12 @@ export default function PaiementsPage() {
   }
 
   const lancerImport = async () => {
-    if (!fichier) return
+    // AUD121 — l'import rejoue les décisions de l'aperçu : sans jeton de
+    // dry-run il n'y a rien à valider (le serveur refuserait en 400).
+    if (!apercu?.token) return
     setImportBusy(true); setImportErreur('')
     try {
-      const r = await ventesApi.importReleveCommit(fichier)
+      const r = await ventesApi.importReleveCommit(apercu.token)
       setBilan(r.data)
       // Les paiements créés doivent être VISIBLES sans recharger la page.
       setLoading(true)

@@ -1345,6 +1345,9 @@ export default function FactureList() {
   // EXPLIQUE la perte (mode, date et référence du règlement ne seront pas
   // enregistrés). Jamais une popup « êtes-vous sûr ? ».
   const [payeeSecheTarget, setPayeeSecheTarget] = useState(null)
+  // AUD124 — le marquage sec exige un MOTIF (le serveur refuse sans) : il est
+  // tracé dans le chatter de la facture avec son auteur.
+  const [payeeSecheMotif, setPayeeSecheMotif] = useState('')
   const openMarquerPayee = (f) => setPayeeSecheTarget(f)
   const fetchFacturePreviewBlob = useCallback(async () => {
     const f = previewFacture
@@ -1828,17 +1831,34 @@ export default function FactureList() {
           riche en échappatoire (« Encaisser » capture mode/date/référence). */}
       <ConfirmDialog
         open={!!payeeSecheTarget}
-        onOpenChange={(o) => { if (!o) setPayeeSecheTarget(null) }}
+        onOpenChange={(o) => { if (!o) { setPayeeSecheTarget(null); setPayeeSecheMotif('') } }}
         severity="medium"
         title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
         description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
         confirmLabel="Marquer payée quand même"
         onConfirm={() => {
           const f = payeeSecheTarget
+          const motif = payeeSecheMotif.trim()
           setPayeeSecheTarget(null)
-          if (f) doAction(marquerPayeeFacture, f.id)
+          setPayeeSecheMotif('')
+          if (!motif) {
+            toast.error('Motif obligatoire : dites pourquoi cette facture est soldée sans encaissement.')
+            return
+          }
+          if (f) doAction(marquerPayeeFacture, { id: f.id, motif })
         }}
-      />
+      >
+        {/* AUD124 — sans motif, ce geste faisait disparaître une créance de
+            la balance âgée sans que rien ne dise qui, quand ni pourquoi. */}
+        <FormField label="Motif (obligatoire)" htmlFor="motif-payee-seche">
+          <Input
+            id="motif-payee-seche"
+            value={payeeSecheMotif}
+            onChange={(e) => setPayeeSecheMotif(e.target.value)}
+            placeholder="Ex. : virement encaissé hors ERP, constaté au relevé"
+          />
+        </FormField>
+      </ConfirmDialog>
 
       {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
           l'encaissement dans les Encaissements, filtré sur ce client

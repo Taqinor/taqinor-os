@@ -39,6 +39,10 @@ from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+# AUD122 — garde de période comptable PARTAGÉE (voir utils/periode.py).
+from ..utils.periode import (  # noqa: F401
+    DatedDocument, guard_periode_date, guard_periode_verrouillee,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -123,6 +127,14 @@ def _company_qs(qs, user):
     return qs.none()
 
 
+# AUD122 — la garde de période et son adaptateur vivent désormais dans
+# ``apps/ventes/utils/periode.py`` (module partagé) : ils étaient dupliqués
+# ici et dans ``views/avoir.py``, et donc absents des 4 autres chemins qui
+# créent un Paiement à une date fournie par l'appelant. L'alias local garde
+# les appels existants de ce module inchangés au caractère près.
+_DatedDocument = DatedDocument
+
+
 class IsSuperuserOnly(BasePermission):
     """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
 
@@ -136,16 +148,6 @@ class IsSuperuserOnly(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and user.is_superuser)
-
-
-class _DatedDocument:
-    """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
-    ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
-    n'est pas ``Facture.date_emission`` (ex. la date d'un paiement)."""
-
-    def __init__(self, company, une_date):
-        self.company = company
-        self.date_emission = une_date
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -186,7 +188,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'emettre', 'marquer_payee', 'enregistrer_paiement',
+            'emettre', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
@@ -202,7 +204,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         elif self.action == 'destroy':
             return [IsSuperuserOnly()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        elif self.action == 'annuler':
+        # AUD124 — `marquer_payee` rejoint ce palier : faire disparaître une
+        # créance de la balance âgée sans encaissement est un geste comptable,
+        # pas de l'édition courante. (`destroy` reste sur IsSuperuserOnly —
+        # AUD103, plus strict.)
+        elif self.action in ['annuler', 'marquer_payee']:
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -210,19 +216,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @staticmethod
     def _guard_periode_verrouillee(document):
         """YLEDG3 — refuse (400) une mutation d'un document ventes daté dans
-        une période comptable CLÔTURÉE (FG115). Society/app compta absente ou
-        aucune période verrouillée = garde silencieuse (comportement actuel
-        inchangé). Import function-local de ``apps.compta.services`` — cross-
-        app services autorisé, jamais un import de ``apps.compta.models``."""
-        try:
-            from apps.compta.services import verifier_facture_modifiable
-        except Exception:  # noqa: BLE001 — compta absent = no-op
-            return
-        try:
-            verifier_facture_modifiable(document)
-        except DjangoValidationError as exc:
-            raise ValidationError({'detail': exc.messages[0]
-                                   if exc.messages else str(exc)})
+        une période comptable CLÔTURÉE (FG115). AUD122 — le corps est
+        désormais la fonction PARTAGÉE ``utils.periode`` : même garde, même
+        no-op silencieux quand compta est absente ou qu'aucune période n'est
+        verrouillée."""
+        guard_periode_verrouillee(document)
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -457,8 +455,31 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminRole])
     def marquer_payee(self, request, pk=None):
+        """Bascule MANUELLE en « payée » — resserrée par AUD124.
+
+        Le geste reste légitime (constater un règlement enregistré hors ERP,
+        solder un résiduel sous la tolérance société), mais il faisait
+        DISPARAÎTRE une créance sans aucune contrepartie : le recouvrement
+        filtre sur le STATUT (`ventes/recouvrement.py`
+        ``.exclude(statut__in=['payee', …])``) et ``jours_retard`` retombe à 0
+        dès que le statut vaut ``payee``, pendant que ``montant_du`` — dérivé
+        des paiements — continue d'afficher la totalité. Une créance de
+        40 000 MAD sortait de la balance âgée d'un clic, sans qu'aucun écran
+        ne dise qui, quand ni pourquoi.
+
+        Trois resserrages (le dépôt possédait déjà le geste correct :
+        ``abandonner-solde``, qui exige un motif, passe l'écriture d'abandon
+        et journalise) :
+          * MOTIF obligatoire ;
+          * un résiduel au-dessus de la tolérance société est REFUSÉ et
+            redirigé vers ``abandonner-solde`` — c'est lui qui sait passer
+            l'écriture d'abandon de créance ;
+          * trace ``FactureActivity`` systématique nommant l'auteur et le
+            motif, et permission dédiée (admin) distincte de l'édition
+            courante (responsable), comme ``annuler``.
+        """
         facture = self.get_object()
         if facture.statut not in [
             Facture.Statut.EMISE, Facture.Statut.EN_RETARD
@@ -468,6 +489,36 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'Seule une facture émise ou en retard '
                     'peut être marquée payée.'
                 )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        motif = ((request.data or {}).get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': (
+                    'Motif obligatoire : marquer une facture payée sans '
+                    'encaissement doit être justifié et tracé.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Résiduel réel vs tolérance société (XFAC13, défaut 0 = aucun
+        # résiduel toléré). Au-dessus, ce n'est pas un « marquer payée » :
+        # c'est un abandon de créance, qui a son propre geste et son écriture.
+        from decimal import Decimal
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        tolerance = getattr(
+            profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+        reste = facture.montant_du
+        if reste > tolerance:
+            return Response(
+                {'detail': (
+                    f'Cette facture a un reste dû de {reste:.2f} MAD, '
+                    f'au-dessus de la tolérance société '
+                    f'({tolerance:.2f} MAD). Utilisez « abandonner-solde » '
+                    f'pour l\'abandonner avec son écriture, ou enregistrez '
+                    f'l\'encaissement.'
+                ),
+                 'action_attendue': 'abandonner-solde'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # AUD102 (P1) — la bascule passe par LE service unique. ``force`` : un
@@ -480,6 +531,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             facture, montant=facture.total_ttc, user=request.user,
             source='marquer_payee_manuel', force=True)
         facture.refresh_from_db()
+        # AUD124 — trace systématique : qui, quand, pourquoi.
+        from .. import activity
+        activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -603,6 +657,26 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         )},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                # AUD125 — CE QUE LA CIBLE PEUT ABSORBER. Le transfert
+                # re-pointait les paiements sans jamais lire `cible.montant_du`
+                # ni le comparer au net transféré : un acompte de 30 000
+                # déplacé sur une facture de solde de 20 000 créait un
+                # trop-perçu de 10 000 INVISIBLE (aucune des deux factures ne
+                # le signale). La garde est la même que celle du chemin
+                # unitaire (ERR72) : tolérance d'un centime, lecture sous le
+                # verrou déjà pris sur la cible.
+                from core.money import quantize_mad
+                reste_cible = cible.montant_du
+                if quantize_mad(net_acompte) - reste_cible > Decimal('0.01'):
+                    return Response(
+                        {'detail': (
+                            f"L'acompte transféré "
+                            f"({quantize_mad(net_acompte):.2f} MAD) dépasse le "
+                            f"reste à payer de la facture cible "
+                            f"({reste_cible:.2f} MAD)."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 # Re-pointe les paiements vers la cible : les soldes des deux
                 # factures se redérivent (propriétés calculées).
                 nb = len(paiements)
@@ -615,6 +689,21 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     locked, request.user, cible, net_acompte, nb)
                 activity.log_facture_acompte_transfere_entree(
                     cible, request.user, locked, net_acompte, nb)
+                # AUD125 (moitié restante) — quand le transfert SOLDE la
+                # cible, elle doit basculer PAYÉE et émettre `facture_payee`,
+                # faute de quoi elle reste EMISE donc relancée bien
+                # qu'entièrement couverte. Cette bascule DOIT passer par le
+                # service unique `marquer_facture_soldee` d'AUD102 : le
+                # dépôt compte déjà neuf transitions concurrentes, en écrire
+                # une dixième ici est exactement ce qu'AUD125 interdit.
+                # AUD102 est sur cette base : bascule par LE service unique,
+                # sur la cible rafraîchie — jamais une 10e transition manuelle.
+                cible.refresh_from_db()
+                if cible.montant_du <= 0 and cible.statut != Facture.Statut.PAYEE:
+                    from ..domain.encaissements import marquer_facture_soldee
+                    marquer_facture_soldee(
+                        cible, montant=net_acompte, user=request.user,
+                        source='transfert_acompte')
                 facture = locked
 
             elif acompte_action == 'rembourser':
@@ -1143,9 +1232,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lignes = None if mode == 'contre_passation' \
             else request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
-        # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
+        # facture (TTC − avoirs actifs déjà émis). AUD126 — il est désormais
+        # mesuré SOUS LE VERROU de ligne, juste avant la création (voir le
+        # bloc atomique plus bas) : le lire ici, hors transaction, laissait
+        # deux requêtes concurrentes lire chacune l'ancien reste et passer
+        # toutes deux la garde.
         from decimal import Decimal, InvalidOperation
-        reste_creditable = facture.total_ttc - facture.avoirs_total
 
         # ERR34 — valider les lignes fournies AVANT toute création, et échouer
         # bruyamment (400) au lieu de les avaler en silence (l'ancien
@@ -1216,7 +1308,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
-        def _create(ref):
+        def _create(ref, source):
             avoir = Avoir.objects.create(
                 company=company, reference=ref, facture=facture,
                 client=facture.client, statut=Avoir.Statut.EMISE,
@@ -1231,7 +1323,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 for ligne in clean_lignes:
                     LigneAvoir.objects.create(avoir=avoir, **ligne)
             else:
-                f_lignes = list(facture.lignes.all())
+                f_lignes = list(source.lignes.all())
                 if f_lignes:
                     for ligne in f_lignes:
                         LigneAvoir.objects.create(
@@ -1242,48 +1334,62 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             remise=ligne.remise, taux_tva=ligne.taux_tva)
                 else:
                     # Facture de tranche sans lignes : montants figés.
-                    avoir.montant_ht = facture.total_ht
-                    avoir.montant_tva = facture.total_tva
-                    avoir.montant_ttc = facture.total_ttc
+                    avoir.montant_ht = source.total_ht
+                    avoir.montant_tva = source.total_tva
+                    avoir.montant_ttc = source.total_ttc
                     avoir.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
             return avoir
 
-        avoir = create_numbered(
-            Avoir, company, 'avoir', _create)
-        # Garde plafond : si l'avoir créé dépasse le reste créditable, on le
-        # supprime (avec ses lignes) et on refuse — un avoir partiel correct
-        # passe inchangé. Tolérance d'un centime pour les arrondis.
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-            avoir.lignes.all().delete()
-            avoir.delete()
-            return Response(
-                {'detail': "L'avoir dépasse le montant restant de la facture "
-                           f"({reste_creditable:.2f} MAD)."},
-                status=status.HTTP_400_BAD_REQUEST)
-        # Chatter facture : trace la création de l'avoir (acteur côté serveur,
-        # jamais lu du corps de la requête).
-        from .. import activity
-        activity.log_facture_avoir(facture, request.user, avoir)
-        if mode == 'contre_passation':
-            # ZFAC5 — annulation NETTE : la facture d'origine passe annulee,
-            # avec un FactureActivity liant les deux pièces (avoir miroir).
-            from ..models import FactureActivity
-            ancien_statut = facture.statut
-            facture.statut = Facture.Statut.ANNULEE
-            facture.save(update_fields=['statut'])
-            FactureActivity.objects.create(
-                company=company, facture=facture, user=request.user,
-                kind=FactureActivity.Kind.MODIFICATION,
-                field='statut', field_label='Statut',
-                old_value=ancien_statut, new_value=Facture.Statut.ANNULEE,
-                body=(f"Facture annulée par contre-passation — avoir miroir "
-                      f"{avoir.reference}."),
-            )
-        # YLEDG1 — événement documentaire générique (pose du seam pour
-        # compta.ecriture_pour_avoir, jamais d'import de son service ici).
-        from core.events import avoir_cree
-        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
+        # n'avait ni `transaction.atomic` ni `select_for_update` : deux
+        # requêtes concurrentes (double-clic, deux gestionnaires) lisaient
+        # chacune l'ancien `reste_creditable` et passaient toutes deux la
+        # garde, créditant le client de deux fois le plafond. C'est le motif
+        # que `enregistrer-paiement` a déjà corrigé sous ERR72 ; le même
+        # correctif est porté ici — verrou de ligne sur la Facture PUIS
+        # lecture du reste, création et contrôle du plafond dans la même
+        # transaction.
+        with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            reste_creditable = locked.total_ttc - locked.avoirs_total
+            avoir = create_numbered(
+                Avoir, company, 'avoir', lambda ref: _create(ref, locked))
+            # Garde plafond : si l'avoir créé dépasse le reste créditable, on
+            # le supprime (avec ses lignes) et on refuse — un avoir partiel
+            # correct passe inchangé. Tolérance d'un centime pour les arrondis.
+            if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+                avoir.lignes.all().delete()
+                avoir.delete()
+                return Response(
+                    {'detail': "L'avoir dépasse le montant restant de la "
+                               f"facture ({reste_creditable:.2f} MAD)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            # Chatter facture : trace la création de l'avoir (acteur côté
+            # serveur, jamais lu du corps de la requête).
+            from .. import activity
+            activity.log_facture_avoir(locked, request.user, avoir)
+            if mode == 'contre_passation':
+                # ZFAC5 — annulation NETTE : la facture d'origine passe
+                # annulee, avec un FactureActivity liant les deux pièces.
+                from ..models import FactureActivity
+                ancien_statut = locked.statut
+                locked.statut = Facture.Statut.ANNULEE
+                locked.save(update_fields=['statut'])
+                FactureActivity.objects.create(
+                    company=company, facture=locked, user=request.user,
+                    kind=FactureActivity.Kind.MODIFICATION,
+                    field='statut', field_label='Statut',
+                    old_value=ancien_statut,
+                    new_value=Facture.Statut.ANNULEE,
+                    body=(f"Facture annulée par contre-passation — avoir "
+                          f"miroir {avoir.reference}."),
+                )
+            # YLEDG1 — événement documentaire générique (pose du seam pour
+            # compta.ecriture_pour_avoir, jamais d'import de son service ici).
+            from core.events import avoir_cree
+            avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
@@ -1746,9 +1852,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
         (virement global, chèque unique). Body : ``{client, montant, mode,
         date, reference, factures:[ids]}`` — répartition FIFO par échéance
-        (la plus ancienne d'abord) sur les factures listées ; un solde
-        éventuel non affecté n'est PAS créé ici (XFAC1 le gère séparément
-        s'il est présent — le montant excédentaire est simplement refusé)."""
+        (la plus ancienne d'abord) sur les factures listées.
+
+        AUD120 — comportement RÉEL des deux branches (l'ancien docstring
+        affirmait un refus qui n'existait pas) :
+          - ``repartition`` explicite : refusée en 400 si la somme des parts
+            dépasse le ``montant`` encaissé, ou si une part dépasse le reste
+            dû de sa facture (tolérance d'un centime) ;
+          - FIFO : ce que les factures listées n'absorbent pas devient une
+            avance XFAC1 explicite (Paiement sans facture, non affecté),
+            renvoyée dans la réponse — jamais abandonnée en silence.
+        """
         from decimal import Decimal, InvalidOperation
 
         from apps.crm.selectors import get_company_client

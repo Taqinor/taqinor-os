@@ -48,6 +48,45 @@ def clients_pour_controle_ice(company):
     ]
 
 
+def find_client_by_ice_or_libelle(company, ice=None, libelle=None):
+    """AUD121 — identifie le DONNEUR D'ORDRE d'une ligne de relevé bancaire.
+
+    Point d'entrée cross-app pour ``ventes.paiement_import`` : l'import de
+    relevé ne doit plus rapprocher une somme d'argent sur le seul MONTANT
+    (un virement de 12 000 soldait la facture d'un autre client qui devait
+    la même somme). Il lui faut un client IDENTIFIABLE ; ce sélecteur est
+    la seule façon dont ``ventes`` lit ``crm.Client`` pour cela.
+
+    Deux pistes, dans l'ordre de fiabilité :
+      1. l'ICE exact (identifiant légal, jamais ambigu) ;
+      2. le nom du client CONTENU dans le libellé bancaire libre — un nom
+         de moins de 4 caractères est ignoré (trop de faux positifs), et
+         une correspondance MULTIPLE renvoie None : mieux vaut envoyer la
+         ligne en revue humaine que créditer le mauvais client.
+
+    Lecture seule. Renvoie un ``Client`` ou None.
+    """
+    ice = (ice or '').strip()
+    if ice:
+        hits = list(client_base_qs(company).filter(ice__iexact=ice)[:2])
+        if len(hits) == 1:
+            return hits[0]
+        return None
+
+    libelle = (libelle or '').strip().lower()
+    if len(libelle) < 4:
+        return None
+    trouves = []
+    for client in client_base_qs(company).only('id', 'nom', 'prenom'):
+        nom = (client.nom or '').strip().lower()
+        if len(nom) < 4 or nom not in libelle:
+            continue
+        trouves.append(client)
+        if len(trouves) > 1:
+            return None
+    return trouves[0] if len(trouves) == 1 else None
+
+
 def find_client_by_phone(company, telephone):
     """XSAV26 — Client de `company` dont le téléphone correspond au numéro
     donné, normalisé via `normalize_phone_key` (clé QW10, `services.

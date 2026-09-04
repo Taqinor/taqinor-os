@@ -23,6 +23,11 @@ from decimal import Decimal
 
 from apps.stock.services import qr_svg_for
 
+# Tolérance d'arrondi partagée par toutes les gardes d'argent de ce module :
+# un centime, exactement comme le chemin unitaire (ERR72, `views/facture.py`)
+# et comme `ventiler_avance`. JAMAIS élargie sans décision fondateur.
+TOLERANCE_CENTIME = Decimal('0.01')
+
 
 def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
                            reste=None, force=False):
@@ -199,14 +204,27 @@ def affecter_encaissement_groupe(
     ``client`` (sinon ValueError — le viewset traduit en 400). Atomique :
     échec partiel = rollback total. Bascule le statut « Payée » sur toute
     facture intégralement soldée par ce geste (comportement identique à un
-    encaissement facture-par-facture)."""
+    encaissement facture-par-facture).
+
+    AUD120 — bornes de la répartition explicite. Cette branche n'avait
+    AUCUNE garde : ni la somme des parts contre le ``montant`` réellement
+    encaissé, ni chaque part contre le reste dû de sa facture — alors que
+    la branche FIFO plafonne déjà (``min(restant, reste_facture)``) et que
+    le chemin unitaire refuse le sur-paiement sous verrou (ERR72). Un
+    virement de 5 000 réparti en 3 000 + 4 000 créait 7 000 MAD de
+    paiements, dont 2 000 n'existaient pas. Les deux bornes sont
+    désormais posées (tolérance d'un centime, même formulation d'erreur
+    que le chemin unitaire), et le reliquat FIFO n'est plus abandonné en
+    silence : il devient une avance XFAC1 explicite, non affectée et
+    ventilable plus tard."""
     from decimal import Decimal
 
     from django.db import transaction
 
     from apps.ventes.models import Facture
+    from core.money import quantize_mad
 
-    montant = Decimal(str(montant))
+    montant = quantize_mad(montant)
     if montant <= 0:
         raise ValueError("Le montant doit être positif.")
     if not factures:
@@ -226,14 +244,31 @@ def affecter_encaissement_groupe(
         by_id = {f.id: f for f in locked}
 
         if isinstance(repartition, dict) and repartition:
-            # Répartition explicite fournie par l'appelant.
+            # Répartition explicite fournie par l'appelant. AUD120 — on
+            # VALIDE tout avant d'écrire quoi que ce soit : aucune facture
+            # ne doit voir un Paiement si une seule part est hors borne.
+            parts = []
             for fid, part in repartition.items():
                 facture = by_id.get(int(fid))
                 if facture is None:
                     raise ValueError(f"Facture {fid} inconnue dans ce lot.")
-                part = Decimal(str(part))
+                part = quantize_mad(part)
                 if part <= 0:
                     continue
+                parts.append((facture, part))
+            total_parts = quantize_mad(
+                sum((p for _, p in parts), Decimal('0')))
+            if total_parts - montant > TOLERANCE_CENTIME:
+                raise ValueError(
+                    f"La répartition ({total_parts:.2f} MAD) dépasse le "
+                    f"montant encaissé ({montant:.2f} MAD).")
+            for facture, part in parts:
+                reste_facture = facture.montant_du
+                if part - reste_facture > TOLERANCE_CENTIME:
+                    raise ValueError(
+                        f"Le paiement dépasse le reste à payer "
+                        f"({reste_facture:.2f} MAD).")
+            for facture, part in parts:
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
         else:
@@ -252,6 +287,18 @@ def affecter_encaissement_groupe(
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
                 restant -= part
+            # AUD120 — le reliquat n'est plus abandonné en silence : ce qui
+            # a été encaissé et que les factures listées n'absorbent pas
+            # devient une avance XFAC1 (Paiement sans facture, non affecté),
+            # ventilable plus tard par ``ventiler_avance``.
+            restant = quantize_mad(restant)
+            if restant > TOLERANCE_CENTIME:
+                paiements.append(enregistrer_avance(
+                    company=company, client=client, montant=restant,
+                    date_paiement=date_paiement, mode=mode,
+                    reference=reference,
+                    note="Reliquat d'encaissement groupé (XFAC1).",
+                    created_by=user))
 
         # AUD102 (P3) — la bascule passe par LE service unique : ce chemin
         # soldait en silence, sans `facture_payee`, donc sans lettrage compta.
@@ -768,6 +815,11 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
         prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
         notifie le client (lien de mise à jour de carte — best-effort).
 
+    AUD123 — le montant prélevé vaut ``min(montant_du, total_ttc)`` : la
+    valeur métier de la facture (``total_ttc``, jamais le champ figé
+    ``montant_ttc`` qui est NULL hors tranche), bornée au reste réellement
+    dû. Reste dû nul ou négatif → aucun débit tenté (retourne None).
+
     Renvoie le `Paiement` créé en cas de succès, sinon None.
     """
     from django.db import transaction
@@ -775,6 +827,7 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
     from datetime import timedelta
     from apps.ventes.models import TentativeDebitMandat, Paiement
     from apps.ventes.payments.providers import get_provider
+    from core.money import quantize_mad
 
     mandat = mandat_actif_pour_client(facture.client)
     if mandat is None:
@@ -787,14 +840,28 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
     if deja_reussi:
         return None
 
+    # AUD123 — le montant prélevé se lit sur ``total_ttc`` (la valeur
+    # métier), JAMAIS sur ``montant_ttc`` : ce champ est
+    # `null=True, blank=True` et n'est renseigné que pour les factures de
+    # tranche (« Montants figés à la création pour les tranches… NULL =
+    # facture classique », `facturation/models.py`). Un mandat sur une
+    # facture d'abonnement classique à lignes prélevait donc `None`. Et le
+    # montant est désormais BORNÉ au reste dû, comme tout autre chemin
+    # d'encaissement : sans cette borne, une facture déjà partiellement
+    # réglée était prélevée du TTC intégral une seconde fois.
+    montant_a_debiter = quantize_mad(
+        min(facture.montant_du, facture.total_ttc))
+    if montant_a_debiter <= 0:
+        return None
+
     provider = get_provider(mandat.provider)
-    result = provider.charge(token=mandat.token, montant=facture.montant_ttc)
+    result = provider.charge(token=mandat.token, montant=montant_a_debiter)
 
     with transaction.atomic():
         if result.get('ok'):
             paiement = Paiement.objects.create(
                 company=facture.company, facture=facture,
-                montant=facture.montant_ttc,
+                montant=montant_a_debiter,
                 date_paiement=timezone.localdate(),
                 mode=Paiement.Mode.CARTE,
                 reference=(result.get('provider_ref') or '')[:120],

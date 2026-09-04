@@ -86,8 +86,25 @@ class TestFacturePaidOnEnregistrerPaiement(TestCase):
         self.assertEqual(len(self.listener.calls), 0)
 
     def test_marquer_payee_emits_facture_paid(self):
-        r = self.api.post(
-            f'/api/django/ventes/factures/{self.facture.id}/marquer-payee/')
+        # AUD124 — le geste est resserré : motif obligatoire, permission
+        # admin dédiée, et refus tant qu'un résiduel dépasse la tolérance
+        # société. On place donc la facture dans le seul cas légitime (reste
+        # dû nul, ici un règlement déjà encaissé hors ERP puis constaté) sans
+        # passer par l'API de paiement, qui émettrait l'événement elle-même.
+        from apps.ventes.models import Paiement
+        admin = User.objects.create_user(
+            username='ydocf4_admin', password='x', role_legacy='admin',
+            company=self.company)
+        Paiement.objects.create(
+            company=self.company, facture=self.facture,
+            montant=Decimal('6000'), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        self.facture.refresh_from_db()
+        self.assertEqual(self.facture.montant_du, Decimal('0'))
+        r = auth(admin).post(
+            f'/api/django/ventes/factures/{self.facture.id}/marquer-payee/',
+            {'motif': 'Virement encaissé hors ERP, constaté au relevé'},
+            format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(len(self.listener.calls), 1)
         self.assertEqual(self.listener.calls[0][0], self.facture.id)
