@@ -2839,3 +2839,14 @@ backend/django_core/apps/sav/models.py:591
 backend/django_core/apps/contrats/models.py:224
 backend/django_core/apps/sav/models.py:224
 backend/django_core/apps/sav/models.py:528
+# Recalage post-fold V-A 04/09 (facturation/models décalé par TotauxDocumentMixin).
+backend/django_core/apps/facturation/models.py:1017
+backend/django_core/apps/facturation/models.py:1074
+backend/django_core/apps/facturation/models.py:1077
+backend/django_core/apps/facturation/models.py:45
+backend/django_core/apps/facturation/models.py:637
+backend/django_core/apps/facturation/models.py:740
+backend/django_core/apps/facturation/models.py:890
+backend/django_core/apps/facturation/models.py:961
+backend/django_core/apps/ventes/models.py:1314
+backend/django_core/apps/ventes/models.py:1357
