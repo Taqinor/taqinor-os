@@ -1511,6 +1511,14 @@ class ReponseEnquete(models.Model):
         default=dict, blank=True, verbose_name='Réponses (JSON)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Soumise le')
+    # AUD621 — jeton d'invitation (ZMKT11) ayant servi à CETTE soumission.
+    # C'est la trace « jeton consommé » : en mode invités-seulement, le
+    # nombre de tentatives se compte sur le JETON (infalsifiable, émis par
+    # l'ERP) et non sur ``contact_ref``, champ libre du POST qu'un répondant
+    # pouvait changer ou omettre pour contourner ``tentatives_max``.
+    jeton_invite = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name="Jeton d'invitation consommé (ZMKT11/AUD621)")
 
     # ── ZMKT10 — score calculé + certificat ─────────────────────────────────
     score_pct = models.DecimalField(

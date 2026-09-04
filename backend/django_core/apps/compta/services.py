@@ -12588,20 +12588,43 @@ def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
 
 
 def soumettre_reponse_enquete(
-        enquete, *, reponses, contact_ref='', nom_repondant=''):
-    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé pour
-    ``contact_ref`` (email d'un répondant identifié)."""
-    if contact_ref and enquete.tentatives_max:
+        enquete, *, reponses, contact_ref='', nom_repondant='',
+        jeton_invite=None):
+    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé.
+
+    AUD621 — trois gardes qui manquaient :
+
+    * ``connexion_requise`` était déclaré sur le modèle mais n'avait AUCUNE
+      occurrence côté service/vue : une enquête « connexion requise »
+      acceptait une soumission anonyme (``contact_ref=''``). Elle est
+      désormais réellement exigée.
+    * en mode ``invites_seulement``, les tentatives se comptent sur le JETON
+      d'invitation (émis par l'ERP, infalsifiable) et non sur ``contact_ref``
+      — champ LIBRE du POST, jamais vérifié contre une identité réelle, qu'il
+      suffisait d'omettre ou de changer pour repartir à zéro.
+    * le jeton est CONSOMMÉ : au-delà de ``tentatives_max`` (1 par défaut en
+      mode invités), il ne sert plus. Un lien ``?invite=`` partagé ne vaut
+      plus un nombre illimité de répondants.
+    """
+    if enquete.connexion_requise and not (contact_ref or '').strip():
+        raise ValueError(
+            'Cette enquête exige de vous identifier (email de contact).')
+
+    if enquete.mode_acces == Enquete.ModeAcces.INVITES_SEULEMENT:
+        if not acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+            raise ValueError("Jeton d'invitation invalide ou déjà utilisé.")
+    elif contact_ref and enquete.tentatives_max:
         restantes = tentatives_restantes(enquete, contact_ref)
         if restantes is not None and restantes <= 0:
             raise ValueError('Nombre maximum de tentatives atteint.')
     return _soumettre_reponse_enquete_interne(
         enquete, reponses=reponses, contact_ref=contact_ref,
-        nom_repondant=nom_repondant)
+        nom_repondant=nom_repondant, jeton_invite=jeton_invite)
 
 
 def _soumettre_reponse_enquete_interne(
-        enquete, *, reponses, contact_ref='', nom_repondant=''):
+        enquete, *, reponses, contact_ref='', nom_repondant='',
+        jeton_invite=None):
     """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
     les questions effectivement visibles (logique conditionnelle) : une
     question masquée n'est jamais requise. Lève ``ValueError`` si une
@@ -12629,7 +12652,10 @@ def _soumettre_reponse_enquete_interne(
     reponse = ReponseEnquete.objects.create(
         company=enquete.company, enquete=enquete,
         contact_ref=contact_ref or '', reponses=reponses,
-        score_pct=score_pct, reussi=reussi)
+        score_pct=score_pct, reussi=reussi,
+        # AUD621 — trace « jeton consommé » : c'est elle qui décompte les
+        # tentatives en mode invités-seulement.
+        jeton_invite=(jeton_invite or '')[:64])
 
     if enquete.est_certification and reussi:
         reponse.certificat_genere = True
@@ -12661,10 +12687,33 @@ def calculer_score_enquete(enquete, reponses):
 def acces_enquete_autorise(enquete, *, jeton_invite=None):
     """ZMKT11 — vérifie le mode d'accès : lien public toujours autorisé,
     invités-seulement exige un jeton émis (présent dans ``jetons_invites``).
+
+    AUD621 — un jeton ÉPUISÉ n'ouvre plus rien. Avant ce correctif, aucun code
+    ne retirait ni ne marquait un jeton après une soumission réussie : un lien
+    ``?invite=`` partagé servait un nombre ILLIMITÉ de répondants.
     """
     if enquete.mode_acces == Enquete.ModeAcces.LIEN_PUBLIC:
         return True
-    return bool(jeton_invite and jeton_invite in (enquete.jetons_invites or []))
+    if not jeton_invite or jeton_invite not in (enquete.jetons_invites or []):
+        return False
+    return tentatives_restantes_jeton(enquete, jeton_invite) > 0
+
+
+def tentatives_restantes_jeton(enquete, jeton_invite):
+    """AUD621 — tentatives restantes pour un JETON d'invitation.
+
+    Le décompte porte sur le jeton (émis par l'ERP, infalsifiable) et non sur
+    ``contact_ref``, champ libre du POST qu'il suffisait d'omettre ou de
+    changer pour repartir à zéro. Sans ``tentatives_max`` configuré, un jeton
+    d'invitation vaut UNE soumission — « invités seulement » n'a de sens que
+    si l'invitation est nominative et non transmissible à volonté.
+    """
+    if not jeton_invite:
+        return 0
+    maximum = enquete.tentatives_max or 1
+    deja = ReponseEnquete.objects.filter(
+        enquete=enquete, jeton_invite=jeton_invite).count()
+    return max(0, maximum - deja)
 
 
 def emettre_jeton_invite(enquete):

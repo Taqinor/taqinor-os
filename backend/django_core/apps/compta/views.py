@@ -7059,6 +7059,13 @@ def enquete_soumettre(request, token):
     enquete = Enquete.objects.filter(token=token, actif=True).first()
     if not enquete:
         return Response({'detail': 'Enquête introuvable.'}, status=404)
+    # AUD621 — la soumission ne vérifiait AUCUN accès (seule la lecture des
+    # questions le faisait) : en mode invités-seulement, on pouvait répondre
+    # sans jeton du tout. Même réponse 404 que la lecture, aucune fuite
+    # d'existence, et un jeton épuisé n'ouvre plus rien.
+    jeton_invite = request.GET.get('invite') or request.data.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
     debute_le_brut = request.data.get('debute_le')
     if debute_le_brut:
         debute_le = parse_datetime(debute_le_brut)
@@ -7069,7 +7076,8 @@ def enquete_soumettre(request, token):
     try:
         reponse = services.soumettre_reponse_enquete(
             enquete, reponses=reponses, contact_ref=contact_ref,
-            nom_repondant=request.data.get('nom_repondant', ''))
+            nom_repondant=request.data.get('nom_repondant', ''),
+            jeton_invite=jeton_invite)
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response({
