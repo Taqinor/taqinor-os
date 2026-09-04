@@ -1598,14 +1598,19 @@ def generer_ecritures_recurrentes(company, *, jusqua=None, user=None):
 @transaction.atomic
 def creer_ecriture_od(company, date_ecriture, libelle, lignes, *,
                       journal=None, reference='', created_by=None,
-                      statut=None):
-    """Écriture de régularisation manuelle (OD) sans document source.
+                      statut=None, source_type='', source_id=None):
+    """Écriture de régularisation manuelle (OD), avec source optionnelle.
 
-    Pour provisions, amortissements, corrections… : pas de ``source_type``/
-    ``source_id`` (écriture purement manuelle). Passe par le journal OD par
+    Pour provisions, amortissements, corrections… Passe par le journal OD par
     défaut, exige l'équilibre Σ débit = Σ crédit (via ``creer_ecriture``) et est
     refusée si la période de ``date_ecriture`` est verrouillée (garde-fou du
     modèle, FG115). Sème le journal OD au besoin. Renvoie l'écriture.
+
+    AUD708 — ``source_type``/``source_id`` sont facultatifs (défaut : écriture
+    purement manuelle, comportement historique inchangé). Quand un appelant
+    les fournit, la contrainte DB ``uniq_ecriture_par_source`` s'applique et
+    ferme l'idempotence du postage (un même run de paie / règlement ne peut
+    plus produire deux écritures).
     """
     if journal is None:
         journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
@@ -1619,6 +1624,7 @@ def creer_ecriture_od(company, date_ecriture, libelle, lignes, *,
     return creer_ecriture(
         company, journal, date_ecriture, libelle, lignes,
         reference=reference, created_by=created_by,
+        source_type=source_type, source_id=source_id,
         statut=statut or EcritureComptable.Statut.VALIDEE,
     )
 

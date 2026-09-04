@@ -160,6 +160,44 @@ describe('PaieParametres — ParametresTab (WIR38, édition fine d’une constan
     })
 })
 
+/* AUD710 — le taux AMO PATRONAL n'était affiché NULLE PART (ni colonne, ni
+   champ, ni payload de sauvegarde) et `valide_par_fondateur` n'avait aucun
+   bouton : le fondateur ne pouvait ni voir/corriger le taux ni confirmer ses
+   paramètres depuis l'ERP. */
+describe('PaieParametres — ParametresTab (AUD710, AMO patronal + validation)', () => {
+  const PARAM_NON_VALIDE = {
+    id: 9, date_effet: '2026-01-01', smig: '3111.00', plafond_cnss: '6000.00',
+    taux_cnss_salarial: '4.48', taux_amo_salarial: '2.26',
+    taux_amo_patronal: '2.26', actif: true, valide_par_fondateur: false,
+  }
+  beforeEach(() => {
+    paieApi.getParametres.mockResolvedValue(ok([PARAM_NON_VALIDE]))
+    paieApi.saveParametre.mockClear()
+  })
+
+  it('affiche le taux AMO patronal et le valide en un clic', async () => {
+    wrap(<PaieParametres />)
+    expect(await screen.findByText('AMO pat.')).toBeInTheDocument()
+
+    const row = (await screen.findAllByText('2026-01-01'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Éditer la constante'))
+
+    const dialog = await screen.findByRole('dialog')
+    // Le champ est éditable et pré-rempli avec la valeur en base (aucune
+    // valeur légale n'est décidée par l'ERP : elle appartient au fondateur).
+    expect(within(dialog).getByLabelText('Taux AMO patronal')).toHaveValue(2.26)
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Valider (fondateur)' }))
+
+    await waitFor(() => expect(paieApi.saveParametre).toHaveBeenCalledWith(
+      9, expect.objectContaining({
+        taux_amo_patronal: 2.26, valide_par_fondateur: true,
+      })))
+  })
+})
+
 describe('PaieParametres — BaremeTab (WIR38, édition d’un palier IR)', () => {
   const BAREME = {
     id: 11, libelle: 'Barème 2026', date_effet: '2026-01-01', actif: true,

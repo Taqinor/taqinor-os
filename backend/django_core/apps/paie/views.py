@@ -72,6 +72,7 @@ from .services import (
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
+    avertissements_parametre_paie,
     avertissements_periode,
     calculer_bulletin,
     changer_statut,
@@ -910,9 +911,21 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
 
     @action(detail=True, methods=['post'], url_path='journal-ventile')
     def journal_ventile(self, request, pk=None):
-        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
+        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17).
+
+        AUD708 — traduit en 400 la ``ValidationError`` levée par le service
+        (période comptable verrouillée, ou journal de paie déjà comptabilisé
+        pour cette période) au lieu de laisser remonter un 500, exactement
+        comme l'action ``journal-de-paie``.
+        """
         periode = self.get_object()
-        ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        try:
+            ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages if hasattr(exc, 'messages')
+                 else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         if ecriture is None:
             return Response(
                 {'detail': 'Aucun bulletin validé pour cette période.'},
@@ -1479,8 +1492,15 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(
-            self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+        data = self.get_serializer(ordre).data
+        # AUD710 — remonte l'avertissement « paramètres sociaux non validés »
+        # au client : l'ordre engage de l'argent réel.
+        avertissements = avertissements_parametre_paie(
+            periode.company, date(periode.annee, periode.mois, 1),
+            contexte='Ordre de virement')
+        if avertissements:
+            data = {**data, 'avertissements': avertissements}
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
