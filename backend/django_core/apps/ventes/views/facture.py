@@ -1198,9 +1198,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lignes = None if mode == 'contre_passation' \
             else request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
-        # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
+        # facture (TTC − avoirs actifs déjà émis). AUD126 — il est désormais
+        # mesuré SOUS LE VERROU de ligne, juste avant la création (voir le
+        # bloc atomique plus bas) : le lire ici, hors transaction, laissait
+        # deux requêtes concurrentes lire chacune l'ancien reste et passer
+        # toutes deux la garde.
         from decimal import Decimal, InvalidOperation
-        reste_creditable = facture.total_ttc - facture.avoirs_total
 
         # ERR34 — valider les lignes fournies AVANT toute création, et échouer
         # bruyamment (400) au lieu de les avaler en silence (l'ancien
@@ -1271,17 +1274,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
-        def _create(ref):
+        def _create(ref, source):
             avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, taux_tva=facture.taux_tva,
+                company=company, reference=ref, facture=source,
+                client=source.client, statut=Avoir.Statut.EMISE,
+                motif=motif, taux_tva=source.taux_tva,
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:
                     LigneAvoir.objects.create(avoir=avoir, **ligne)
             else:
-                f_lignes = list(facture.lignes.all())
+                f_lignes = list(source.lignes.all())
                 if f_lignes:
                     for ligne in f_lignes:
                         LigneAvoir.objects.create(
@@ -1292,48 +1295,62 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             remise=ligne.remise, taux_tva=ligne.taux_tva)
                 else:
                     # Facture de tranche sans lignes : montants figés.
-                    avoir.montant_ht = facture.total_ht
-                    avoir.montant_tva = facture.total_tva
-                    avoir.montant_ttc = facture.total_ttc
+                    avoir.montant_ht = source.total_ht
+                    avoir.montant_tva = source.total_tva
+                    avoir.montant_ttc = source.total_ttc
                     avoir.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
             return avoir
 
-        avoir = create_numbered(
-            Avoir, company, 'avoir', _create)
-        # Garde plafond : si l'avoir créé dépasse le reste créditable, on le
-        # supprime (avec ses lignes) et on refuse — un avoir partiel correct
-        # passe inchangé. Tolérance d'un centime pour les arrondis.
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-            avoir.lignes.all().delete()
-            avoir.delete()
-            return Response(
-                {'detail': "L'avoir dépasse le montant restant de la facture "
-                           f"({reste_creditable:.2f} MAD)."},
-                status=status.HTTP_400_BAD_REQUEST)
-        # Chatter facture : trace la création de l'avoir (acteur côté serveur,
-        # jamais lu du corps de la requête).
-        from .. import activity
-        activity.log_facture_avoir(facture, request.user, avoir)
-        if mode == 'contre_passation':
-            # ZFAC5 — annulation NETTE : la facture d'origine passe annulee,
-            # avec un FactureActivity liant les deux pièces (avoir miroir).
-            from ..models import FactureActivity
-            ancien_statut = facture.statut
-            facture.statut = Facture.Statut.ANNULEE
-            facture.save(update_fields=['statut'])
-            FactureActivity.objects.create(
-                company=company, facture=facture, user=request.user,
-                kind=FactureActivity.Kind.MODIFICATION,
-                field='statut', field_label='Statut',
-                old_value=ancien_statut, new_value=Facture.Statut.ANNULEE,
-                body=(f"Facture annulée par contre-passation — avoir miroir "
-                      f"{avoir.reference}."),
-            )
-        # YLEDG1 — événement documentaire générique (pose du seam pour
-        # compta.ecriture_pour_avoir, jamais d'import de son service ici).
-        from core.events import avoir_cree
-        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
+        # n'avait ni `transaction.atomic` ni `select_for_update` : deux
+        # requêtes concurrentes (double-clic, deux gestionnaires) lisaient
+        # chacune l'ancien `reste_creditable` et passaient toutes deux la
+        # garde, créditant le client de deux fois le plafond. C'est le motif
+        # que `enregistrer-paiement` a déjà corrigé sous ERR72 ; le même
+        # correctif est porté ici — verrou de ligne sur la Facture PUIS
+        # lecture du reste, création et contrôle du plafond dans la même
+        # transaction.
+        with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            reste_creditable = locked.total_ttc - locked.avoirs_total
+            avoir = create_numbered(
+                Avoir, company, 'avoir', lambda ref: _create(ref, locked))
+            # Garde plafond : si l'avoir créé dépasse le reste créditable, on
+            # le supprime (avec ses lignes) et on refuse — un avoir partiel
+            # correct passe inchangé. Tolérance d'un centime pour les arrondis.
+            if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+                avoir.lignes.all().delete()
+                avoir.delete()
+                return Response(
+                    {'detail': "L'avoir dépasse le montant restant de la "
+                               f"facture ({reste_creditable:.2f} MAD)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            # Chatter facture : trace la création de l'avoir (acteur côté
+            # serveur, jamais lu du corps de la requête).
+            from .. import activity
+            activity.log_facture_avoir(locked, request.user, avoir)
+            if mode == 'contre_passation':
+                # ZFAC5 — annulation NETTE : la facture d'origine passe
+                # annulee, avec un FactureActivity liant les deux pièces.
+                from ..models import FactureActivity
+                ancien_statut = locked.statut
+                locked.statut = Facture.Statut.ANNULEE
+                locked.save(update_fields=['statut'])
+                FactureActivity.objects.create(
+                    company=company, facture=locked, user=request.user,
+                    kind=FactureActivity.Kind.MODIFICATION,
+                    field='statut', field_label='Statut',
+                    old_value=ancien_statut,
+                    new_value=Facture.Statut.ANNULEE,
+                    body=(f"Facture annulée par contre-passation — avoir "
+                          f"miroir {avoir.reference}."),
+                )
+            # YLEDG1 — événement documentaire générique (pose du seam pour
+            # compta.ecriture_pour_avoir, jamais d'import de son service ici).
+            from core.events import avoir_cree
+            avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
