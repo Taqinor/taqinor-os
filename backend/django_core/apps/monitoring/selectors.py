@@ -38,14 +38,27 @@ def fleet_overview(company, *, window_days=365, today=None):
     Renvoie production totale, kWc cumulés, PR moyen pondéré par l'attendu,
     nombre de systèmes actifs, et alertes (drapeaux de sous-performance
     ouverts). Réutilise la logique d'attendu du service N52.
+
+    AUD523 — la production par système est lue par UNE seule requête
+    groupée (``.values('installation').annotate(total=Sum(...))``), jamais
+    une agrégation par système DANS la boucle Python (1+N requêtes pour N
+    systèmes auparavant ; désormais constant quel que soit N).
     """
     today = today or timezone.localdate()
     since = today - timedelta(days=window_days)
 
     # Systèmes actifs supervisés : tout chantier ayant une config monitoring.
-    configs = (MonitoringConfig.objects
-               .filter(company=company)
-               .select_related('installation'))
+    configs = list(MonitoringConfig.objects
+                   .filter(company=company)
+                   .select_related('installation'))
+
+    inst_ids = [config.installation_id for config in configs]
+    prod_par_installation = dict(
+        ProductionReading.objects
+        .filter(installation_id__in=inst_ids, date__gte=since, date__lte=today)
+        .values('installation')
+        .annotate(total=Sum('energy_kwh'))
+        .values_list('installation', 'total'))
 
     total_kwh = Decimal('0')
     total_expected = Decimal('0')
@@ -61,9 +74,7 @@ def fleet_overview(company, *, window_days=365, today=None):
         kwc = inst.puissance_installee_kwc or Decimal('0')
         total_kwc += Decimal(str(kwc))
 
-        prod = ProductionReading.objects.filter(
-            installation=inst, date__gte=since, date__lte=today
-        ).aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
+        prod = prod_par_installation.get(inst.id) or Decimal('0')
         prod = Decimal(str(prod))
         total_kwh += prod
 
@@ -126,27 +137,48 @@ def co2_for_installation(installation, *, since=None, until=None,
 
 
 def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
-    """FG286 — CO₂ évité par système ET cumulé sur le parc d'une société."""
+    """FG286 — CO₂ évité par système ET cumulé sur le parc d'une société.
+
+    AUD523 — même correction N+1 que ``fleet_overview`` : la production par
+    système vient d'UNE seule requête groupée (filtrée company/dates),
+    fusionnée en Python avec les configs déjà chargées — jamais un appel à
+    ``co2_for_installation`` (une requête à lui seul) DANS la boucle
+    (1+2N requêtes pour N systèmes auparavant ; désormais constant).
+    ``co2_for_installation`` reste inchangée pour son propre usage
+    mono-système (ex. la fiche d'un chantier).
+    """
     factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
         else DEFAULT_CO2_KG_PAR_KWH
-    configs = (MonitoringConfig.objects
-               .filter(company=company)
-               .select_related('installation'))
+    configs = list(MonitoringConfig.objects
+                   .filter(company=company)
+                   .select_related('installation'))
+
+    inst_ids = [config.installation_id for config in configs]
+    qs = ProductionReading.objects.filter(installation_id__in=inst_ids)
+    if since is not None:
+        qs = qs.filter(date__gte=since)
+    if until is not None:
+        qs = qs.filter(date__lte=until)
+    prod_par_installation = dict(
+        qs.values('installation')
+        .annotate(total=Sum('energy_kwh'))
+        .values_list('installation', 'total'))
+
     systems = []
     total_kwh = Decimal('0')
     for config in configs:
         inst = config.installation
         if not getattr(inst, 'parc_actif', True):
             continue
-        row = co2_for_installation(
-            inst, since=since, until=until, co2_kg_par_kwh=factor)
-        total_kwh += Decimal(str(row['production_kwh'] or 0))
+        prod = Decimal(str(prod_par_installation.get(inst.id) or 0))
+        co2_kg = prod * factor
+        total_kwh += prod
         systems.append({
             'installation': inst.id,
             'reference': getattr(inst, 'reference', None),
-            'production_kwh': row['production_kwh'],
-            'co2_kg': row['co2_kg'],
-            'co2_tonnes': row['co2_tonnes'].quantize(Decimal('0.001')),
+            'production_kwh': _q(prod),
+            'co2_kg': _q(co2_kg),
+            'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
         })
     total_co2_kg = total_kwh * factor
     return {

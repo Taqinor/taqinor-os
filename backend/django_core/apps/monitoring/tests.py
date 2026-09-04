@@ -18,7 +18,9 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -491,6 +493,71 @@ class TestFleetOverview(TestCase):
         r = self.api.get('/api/django/monitoring/configs/fleet/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['systems_active'], 2)
+
+
+class TestAud523FleetQueryBudget(TestCase):
+    """AUD523 — fleet_overview/co2_fleet itéraient sur les systèmes et
+    exécutaient une agrégation ProductionReading PAR SYSTÈME dans la boucle
+    Python (1+N requêtes pour N systèmes ; 1+2N pour co2_fleet, qui rappelait
+    en plus ``co2_for_installation`` — une requête à lui seul — par système).
+
+    Ce module prouve la PLATITUDE : le coût en requêtes SQL de chaque
+    sélecteur pour 20 systèmes doit être IDENTIQUE à celui pour 5 — avant le
+    fix, il grandissait avec N (le prouver aurait suffi à rougir ce test)."""
+
+    def setUp(self):
+        self.company = make_company('aud523-co', 'AUD523 Co')
+        self.today = date(2026, 6, 30)
+        self._n = 0
+
+    def _make_systems(self, n):
+        for _ in range(n):
+            self._n += 1
+            inst, _ = make_installation(
+                self.company, ref=f'AUD523-{self._n:03d}', kwc='5.00')
+            MonitoringConfig.objects.create(
+                company=self.company, installation=inst,
+                expected_annual_kwh=Decimal('6000'))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=365,
+                energy_kwh=Decimal('1000'))
+
+    def test_fleet_overview_query_count_flat_as_systems_grow(self):
+        from apps.monitoring.selectors import fleet_overview
+        self._make_systems(5)
+        with CaptureQueriesContext(connection) as ctx_5:
+            ov5 = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov5['systems_active'], 5)
+
+        self._make_systems(15)  # total 20, comme l'exemple chiffré de l'audit.
+        with CaptureQueriesContext(connection) as ctx_20:
+            ov20 = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov20['systems_active'], 20)
+
+        self.assertEqual(
+            len(ctx_20.captured_queries), len(ctx_5.captured_queries),
+            f"fleet_overview a coûté {len(ctx_5.captured_queries)} requête(s) "
+            f"pour 5 systèmes mais {len(ctx_20.captured_queries)} pour 20 — "
+            "N+1 (agrégation ProductionReading par système dans la boucle).")
+
+    def test_co2_fleet_query_count_flat_as_systems_grow(self):
+        from apps.monitoring.selectors import co2_fleet
+        self._make_systems(5)
+        with CaptureQueriesContext(connection) as ctx_5:
+            r5 = co2_fleet(self.company)
+        self.assertEqual(len(r5['systems']), 5)
+
+        self._make_systems(15)
+        with CaptureQueriesContext(connection) as ctx_20:
+            r20 = co2_fleet(self.company)
+        self.assertEqual(len(r20['systems']), 20)
+
+        self.assertEqual(
+            len(ctx_20.captured_queries), len(ctx_5.captured_queries),
+            f"co2_fleet a coûté {len(ctx_5.captured_queries)} requête(s) pour "
+            f"5 systèmes mais {len(ctx_20.captured_queries)} pour 20 — N+1 "
+            "(co2_for_installation rappelé par système dans la boucle).")
 
 
 class TestProductionWarranty(TestCase):
