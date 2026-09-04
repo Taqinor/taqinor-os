@@ -30,6 +30,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier,
     IsAdminRole,
+    IsResponsableOrAdmin,
 )
 
 from django.db.models import Q
@@ -43,6 +44,7 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
+from .permissions import declared_action_permissions
 from .models import (
     ApiUsagePlan,
     BackupRun,
@@ -459,11 +461,28 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
       * ``GET  …/corbeille/``            — entrées non restaurées de la société ;
       * ``GET  …/corbeille/?undo=1``     — uniquement la fenêtre d'« annuler » ;
       * ``POST …/corbeille/{id}/restaurer/`` — restaure l'objet d'origine.
+
+    AUD817 — ``restaurer`` REMET EN CIRCULATION un enregistrement que la
+    direction avait volontairement supprimé : elle héritait de la garde
+    générique ``IsAuthenticated`` de la classe, donc un compte strictement en
+    LECTURE pouvait la déclencher. L'action porte désormais sa propre garde
+    (``IsResponsableOrAdmin``, honorée via ``declared_action_permissions`` —
+    la brique du dépôt qui empêche un ``get_permissions`` de jeter en silence
+    ce que le décorateur annonce). La LISTE reste ouverte à tout authentifié.
     """
     serializer_class = DeletionRecordSerializer
     permission_classes = [IsAuthenticated]
     queryset = DeletionRecord.objects.all()
     pagination_class = None
+
+    def get_permissions(self):
+        # AUD817 — la garde DÉCLARÉE par l'@action prime (patron canonique de
+        # ``core.permissions.declared_action_permissions``) ; à défaut, la
+        # lecture reste ouverte à tout utilisateur authentifié.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         qs = super().get_queryset().filter(restored_at__isnull=True)
@@ -473,8 +492,10 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(id__in=list(ids))
         return qs
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
+        """AUD817 — remise en circulation : palier responsable/admin exigé."""
         record = self.get_object()
         obj = trash_infra.restaurer(record)
         record.refresh_from_db()
