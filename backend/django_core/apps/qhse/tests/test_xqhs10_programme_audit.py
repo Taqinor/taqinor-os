@@ -228,3 +228,18 @@ class AuditPlanifieApiTests(TestCase):
             'grille': self.grille.id,
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_relancer_action(self):
+        """AUDV13 (DRAFT165-102) — l'endpoint REST manquant sur
+        ``relancer_audits_planifies_en_retard`` (service déjà testé ci-dessus,
+        aucun appelant REST)."""
+        ap = AuditPlanifie.objects.create(
+            company=self.company, programme=self.programme,
+            processus_domaine='Sécurité', grille=self.grille,
+            date_cible=date.today() - timedelta(days=3))
+        resp = self.api.post(f'{AUDITS_PLANIFIES}relancer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(resp.data[0]['id'], ap.id)
+        ap.refresh_from_db()
+        self.assertEqual(ap.statut, AuditPlanifie.Statut.EN_RETARD)

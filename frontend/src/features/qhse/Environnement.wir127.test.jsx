@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -25,15 +25,19 @@ beforeAll(() => {
   }
 })
 
-const { empty, dechetCreate, bsdEnlever, bsdTraiter, recTransporter, recRecycler } =
-  vi.hoisted(() => ({
-    empty: () => Promise.resolve({ data: [] }),
-    dechetCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
-    bsdEnlever: vi.fn(() => Promise.resolve({ data: {} })),
-    bsdTraiter: vi.fn(() => Promise.resolve({ data: {} })),
-    recTransporter: vi.fn(() => Promise.resolve({ data: {} })),
-    recRecycler: vi.fn(() => Promise.resolve({ data: {} })),
-  }))
+const {
+  empty, dechetCreate, bsdEnlever, bsdTraiter, recTransporter, recRecycler,
+  confEvaluer,
+} = vi.hoisted(() => ({
+  empty: () => Promise.resolve({ data: [] }),
+  dechetCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
+  bsdEnlever: vi.fn(() => Promise.resolve({ data: {} })),
+  bsdTraiter: vi.fn(() => Promise.resolve({ data: {} })),
+  recTransporter: vi.fn(() => Promise.resolve({ data: {} })),
+  recRecycler: vi.fn(() => Promise.resolve({ data: {} })),
+  // AUDV14 (XQHS8/DRAFT165-99) — évaluation périodique d'une exigence légale.
+  confEvaluer: vi.fn(() => Promise.resolve({ data: { id: 60 } })),
+}))
 
 const BSD_EMIS = {
   id: 40, reference: 'BSD-000040', dechet_libelle: 'Batteries usagées',
@@ -43,6 +47,14 @@ const REC_COLLECTE = {
   id: 50, reference: 'REC-000050', marque: 'Jinko', modele: 'JKM450',
   nombre_modules: 20, motif: 'fin_de_vie', motif_display: 'Fin de vie',
   statut: 'collecte',
+}
+// AUDV14 — exigence légale (registre XQHS8 généralisé), thématique travail.
+const CONF_ROW = {
+  id: 60, intitule: 'CSH trimestriel', type_conformite: 'csh',
+  type_conformite_display: 'CSH', thematique: 'travail',
+  thematique_display: 'Travail', autorite: 'Inspection du travail',
+  statut: 'conforme', resultat_derniere_evaluation: '',
+  date_derniere_evaluation: null,
 }
 
 vi.mock('../../api/qhseApi', () => ({
@@ -60,7 +72,11 @@ vi.mock('../../api/qhseApi', () => ({
       transporter: (...a) => recTransporter(...a),
       recycler: (...a) => recRecycler(...a),
     },
-    conformitesEnvironnementales: { list: empty, create: vi.fn() },
+    conformitesEnvironnementales: {
+      list: () => Promise.resolve({ data: [CONF_ROW] }),
+      create: vi.fn(),
+      evaluer: (...a) => confEvaluer(...a),
+    },
     bilansCarbone: { list: empty, create: vi.fn() },
     indicateursEsg: { list: empty, create: vi.fn() },
     aspectsEnvironnementaux: { list: empty, create: vi.fn() },
@@ -154,5 +170,30 @@ describe('Environnement — cycles de vie BSD / recyclage PV (WIR234)', () => {
     const recyclerBtns = screen.getAllByRole('button', { name: 'Recycler' })
     await user.click(recyclerBtns[0])
     await waitFor(() => expect(recRecycler).toHaveBeenCalledWith(50, {}))
+  })
+})
+
+describe('Environnement — évaluation d’exigence légale (AUDV14, XQHS8)', () => {
+  it('affiche la thématique du registre généralisé', async () => {
+    withProviders(<Environnement />)
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Conformité' }))
+    expect(await screen.findByText('Travail')).toBeInTheDocument()
+  })
+
+  it('enregistre une évaluation périodique via l’action Évaluer', async () => {
+    const user = userEvent.setup()
+    withProviders(<Environnement />)
+    await user.click(screen.getByRole('tab', { name: 'Conformité' }))
+    await user.click(await screen.findByRole('button', { name: 'Évaluer' }))
+
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Résultat de l’évaluation'), {
+      target: { value: 'Conforme, aucune non-conformité relevée' },
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(confEvaluer).toHaveBeenCalledWith(60, {
+      resultat: 'Conforme, aucune non-conformité relevée',
+    }))
   })
 })

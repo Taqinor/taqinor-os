@@ -21,6 +21,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
@@ -45,7 +46,8 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    ReleveCourbeIV, ReleveThermographie, ReponseCritere,
+    RetourClientQualite, ReunionQhse,
     RevueObjectif, RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
@@ -84,7 +86,7 @@ from .serializers import (
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
     ReleveConsommationSerializer, ReleveControleSerializer,
-    ReleveCourbeIVSerializer,
+    ReleveCourbeIVSerializer, ReleveThermographieSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer, ReunionQhseSerializer,
     RevueObjectifSerializer, RevueVeilleReglementaireSerializer,
     RisqueOpportuniteCapaSerializer, RisqueOpportuniteSerializer,
@@ -96,14 +98,16 @@ from . import chatter
 from .selectors import (
     aspects_environnementaux_a_revoir,
     calendrier_qhse,
-    capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    capa_en_retard, chantier_peut_cloturer,
+    conformite_lecture_procedure, conformites_a_relancer,
     cout_non_qualite,
     courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     export_esg,
     hold_points_status,
     heures_travaillees_chantiers,
-    iso9001_readiness, pareto_defauts, permis_travail_expirant,
+    iso9001_readiness, notation_fin_chantier_latest,
+    pareto_defauts, permis_travail_expirant,
     photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
@@ -111,20 +115,26 @@ from .selectors import (
 )
 from .services import (
     accuser_lecture,
-    activer_procedure, ajouter_lecteurs, calculer_score_audit,
+    activer_procedure, ajouter_lecteurs, approuver_etape_cloture_ncr,
+    calculer_score_audit,
     calculer_score_notation,
     cloturer_incident, cloturer_ncr, cloturer_reunion_qhse,
+    comparer_campagnes_thermographie,
     compteurs_observations_securite,
     conclure_revue_veille,
     creer_capa_depuis_decision,
     creer_capa_mise_en_oeuvre_moc,
     creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
-    creer_ncr_depuis_ticket,
+    creer_ncr_depuis_ticket, creer_scar_depuis_ncr,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     demandes_changement_a_reverser,
+    demarrer_workflow_cloture_ncr,
     diffuser_procedure,
     enregistrer_analyse_ncr,
+    enregistrer_evaluation_conformite,
+    enregistrer_releve_thermographie,
+    escalader_workflow_cloture_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
     creer_signalement_public, generer_qr_signalement,
@@ -135,10 +145,16 @@ from .services import (
     lier_capa_risque_opportunite, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
+    rejeter_etape_cloture_ncr,
+    relancer_audits_planifies_en_retard,
     relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
+    relancer_derogations,
+    relancer_etapes_at_en_retard,
     relancer_exercices_urgence,
     relancer_notifications_environnement,
-    rendre_analyse_ncr_pdf,
+    relancer_objectifs_revue_due,
+    relancer_retardataires_lecture,
+    rediffuser_nouvelle_version, rendre_analyse_ncr_pdf,
     resolve_lien_signalement_public,
     risques_opportunites_revue_due,
     statuer_controle_reception,
@@ -395,6 +411,110 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
                 {'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
         return Response(AnalyseNcrSerializer(analyse).data)
 
+    # ── AUDV11 (DRAFT165-85..88) — cycle d'approbation de clôture (ARC10) ───
+    # `demarrer_workflow_cloture_ncr`/`approuver_etape_cloture_ncr`/
+    # `rejeter_etape_cloture_ncr`/`escalader_workflow_cloture_ncr` (services.py)
+    # étaient testés (test_arc10_workflow_cloture_ncr.py) sans AUCUN endpoint
+    # REST — seule la clôture DIRECTE (``cloturer/``) était atteignable.
+
+    @action(detail=True, methods=['post'], url_path='demarrer-cloture')
+    def demarrer_cloture(self, request, pk=None):
+        """Démarre le cycle d'approbation à deux temps de clôture (ARC10).
+
+        Idempotent (renvoie le cycle déjà en cours s'il y en a un). Refuse
+        (400) une NCR déjà clôturée."""
+        ncr = self.get_object()
+        try:
+            instance = demarrer_workflow_cloture_ncr(ncr, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'etape_courante': instance.etape_courante,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver-cloture')
+    def approuver_cloture(self, request, pk=None):
+        """Approuve l'étape courante du cycle de clôture (ARC10).
+
+        Corps optionnel : ``commentaire``. Clôture effectivement la NCR
+        (garde d'efficacité CAPA QHSE13 appliquée) quand la DERNIÈRE étape
+        est approuvée. 400 si aucun cycle en cours."""
+        ncr = self.get_object()
+        try:
+            instance, ncr = approuver_etape_cloture_ncr(
+                ncr, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'etape_courante': instance.etape_courante,
+            'ncr': self.get_serializer(ncr).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='rejeter-cloture')
+    def rejeter_cloture(self, request, pk=None):
+        """Rejette l'étape courante du cycle de clôture — la NCR reste ouverte
+        (ARC10). Corps optionnel : ``commentaire``. 400 si aucun cycle en
+        cours."""
+        ncr = self.get_object()
+        try:
+            instance, ncr = rejeter_etape_cloture_ncr(
+                ncr, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'ncr': self.get_serializer(ncr).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='escalader-cloture')
+    def escalader_cloture(self, request, pk=None):
+        """Escalade manuellement l'étape en attente du cycle de clôture
+        (ARC10, utile après un dépassement SLA). 400 si aucune étape en
+        attente."""
+        ncr = self.get_object()
+        try:
+            step = escalader_workflow_cloture_ncr(ncr)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'step_id': step.id, 'statut': step.statut, 'ordre': step.ordre,
+        })
+
+    # ── AUDV11 (DRAFT165-97) — SCAR fournisseur depuis une NCR (XQHS6) ──────
+
+    @action(detail=True, methods=['post'], url_path='creer-scar')
+    def creer_scar(self, request, pk=None):
+        """Crée une SCAR fournisseur depuis cette NCR (``creer_scar_depuis_ncr``
+        — même patron que ``depuis-reserve``/``depuis-ticket-sav``, sens inverse).
+
+        Corps optionnel : ``echeance_reponse``, ``description_defaut``. 400 si
+        la NCR ne porte pas de fournisseur (disposition retour fournisseur ou
+        origine fournisseur, cf. XQHS2)."""
+        ncr = self.get_object()
+        try:
+            scar = creer_scar_depuis_ncr(
+                ncr,
+                echeance_reponse=request.data.get('echeance_reponse') or None,
+                description_defaut=request.data.get('description_defaut', ''),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeActionFournisseurSerializer(scar).data,
+            status=status.HTTP_201_CREATED)
+
 
 class DerogationViewSet(_QhseBaseViewSet):
     """Dérogations (acceptation en l'état bornée) liées à une NCR (XQHS2).
@@ -411,6 +531,14 @@ class DerogationViewSet(_QhseBaseViewSet):
         if ncr not in (None, ''):
             qs = qs.filter(non_conformite_id=ncr)
         return qs
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les dérogations à échéance imminente/dépassée
+        (``relancer_derogations`` — DRAFT165-89, pattern
+        ``capa/relancer-retards``). Notifications best-effort, ne mute rien."""
+        digest = relancer_derogations(request.user.company)
+        return Response(digest)
 
 
 class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):
@@ -796,6 +924,30 @@ class NotationFinChantierViewSet(_QhseBaseViewSet):
         peut = chantier_peut_cloturer(chantier_id, request.user.company)
         return Response({'chantier_id': chantier_id, 'peut_cloturer': peut})
 
+    @action(detail=False, methods=['get'])
+    def derniere(self, request):
+        """Notation fin de chantier la plus RÉCENTE d'un chantier (score/verdict
+        complets — ``notation_fin_chantier_latest``, DRAFT165-78, même patron
+        que ``procedures-qualite/courante/``). Paramètre obligatoire
+        ``?chantier_id=``. 404 si aucune notation n'existe encore."""
+        chantier_id = request.query_params.get('chantier_id')
+        if chantier_id in (None, ''):
+            return Response(
+                {'detail': 'chantier_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chantier_id = int(chantier_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'chantier_id doit être un entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        notation = notation_fin_chantier_latest(chantier_id, request.user.company)
+        if notation is None:
+            return Response(
+                {'detail': 'Aucune notation pour ce chantier.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(notation).data)
+
 
 class ItemNotationViewSet(_QhseBaseViewSet):
     """Items de notation fin de chantier (QHSE17).
@@ -950,6 +1102,47 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
                 {'detail': 'Aucun destinataire valide.'},
                 status=status.HTTP_400_BAD_REQUEST)
         diffusion = diffuser_procedure(procedure, users)
+        return Response(
+            DiffusionProcedureSerializer(diffusion).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='conformite-lecture')
+    def conformite_lecture(self, request):
+        """% de conformité de lecture d'une référence de procédure
+        (``conformite_lecture_procedure`` — AUDV15/DRAFT165-84, cockpit
+        XQHS15 jusqu'ici sans aucun appelant). Paramètre obligatoire
+        ``?reference=``. Renvoie ``{'total', 'lus', 'pct'}``."""
+        reference = request.query_params.get('reference')
+        if reference in (None, ''):
+            return Response(
+                {'detail': 'reference est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            conformite_lecture_procedure(request.user.company, reference))
+
+    @action(detail=True, methods=['post'], url_path='rediffuser-nouvelle-version')
+    def rediffuser_nouvelle_version_action(self, request, pk=None):
+        """Re-déclenche la diffusion de CETTE version (nouvelle) vers la
+        population de la version précédente (``rediffuser_nouvelle_version``
+        — AUDV15/DRAFT165-107). Corps : ``procedure_precedente`` (id, requis,
+        scopé société). 404 si introuvable ; renvoie ``null`` (aucune
+        diffusion créée) si la version précédente n'avait aucun lecteur."""
+        procedure_nouvelle = self.get_object()
+        precedente_id = request.data.get('procedure_precedente')
+        if precedente_id in (None, ''):
+            return Response(
+                {'detail': 'procedure_precedente est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        procedure_precedente = ProcedureQualite.objects.filter(
+            id=precedente_id, company=request.user.company).first()
+        if procedure_precedente is None:
+            return Response(
+                {'detail': 'Version précédente introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        diffusion = rediffuser_nouvelle_version(
+            procedure_precedente, procedure_nouvelle)
+        if diffusion is None:
+            return Response(None)
         return Response(
             DiffusionProcedureSerializer(diffusion).data,
             status=status.HTTP_201_CREATED)
@@ -1344,7 +1537,7 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         return response
 
 
-class ConsignationLotoViewSet(_QhseBaseViewSet):
+class ConsignationLotoViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
 
     CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
@@ -1358,6 +1551,11 @@ class ConsignationLotoViewSet(_QhseBaseViewSet):
 
     * ``POST …/<id>/deconsigner/`` — passe ``consignee`` → ``deconsignee`` et
       enregistre ``date_deconsignation`` (refuse si déjà déconsignée).
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'une
+    consignation déjà DÉCONSIGNÉE (registre légal sécurité électrique) :
+    rien ne l'empêchait auparavant (``_QhseBaseViewSet`` est un ModelViewSet
+    nu, gardé par rôle seul).
     """
     queryset = ConsignationLoto.objects.all()
     serializer_class = ConsignationLotoSerializer
@@ -1414,6 +1612,13 @@ class ConsignationLotoViewSet(_QhseBaseViewSet):
         consignation.save(
             update_fields=['statut', 'date_deconsignation'])
         return Response(self.get_serializer(consignation).data)
+
+    def destroy_guard_message(self, consignation):
+        if consignation.statut == ConsignationLoto.Statut.DECONSIGNEE:
+            return (
+                'Cette consignation est déjà déconsignée — registre légal '
+                'sécurité électrique, elle ne peut plus être supprimée.')
+        return None
 
 
 class InductionSecuriteViewSet(_QhseBaseViewSet):
@@ -1565,7 +1770,7 @@ class SecouristeViewSet(_QhseBaseViewSet):
         return qs
 
 
-class IncidentViewSet(_QhseBaseViewSet):
+class IncidentViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Registre des incidents HSE — accident / presqu'accident / incident (QHSE29).
 
     CRUD scopé société. ``company`` et ``declare_par`` sont posés côté serveur
@@ -1577,6 +1782,12 @@ class IncidentViewSet(_QhseBaseViewSet):
 
     Registre QHSE distinct du volet RH (``rh.AccidentTravail`` /
     ``rh.PresquAccident`` — détail CNSS/blessure/salarié) : aucun import croisé.
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    incident qui a quitté le statut OUVERT (déjà pris en charge, en cours de
+    traitement ou clos) : rien ne l'empêchait auparavant, un simple
+    Technicien (``qhse_gerer``) pouvait supprimer un accident du travail
+    déjà en cours de déclaration CNSS.
     """
     queryset = Incident.objects.select_related('declare_par').all()
     serializer_class = IncidentSerializer
@@ -1692,8 +1903,16 @@ class IncidentViewSet(_QhseBaseViewSet):
         incidents = relancer_notifications_environnement(request.user.company)
         return Response({'relances': len(incidents)})
 
+    def destroy_guard_message(self, incident):
+        if incident.statut != Incident.Statut.OUVERT:
+            return (
+                'Cet incident a été pris en charge (statut « '
+                f'{incident.get_statut_display()} ») — registre HSE légal, '
+                'il ne peut plus être supprimé.')
+        return None
 
-class DeclarationCnssViewSet(_QhseBaseViewSet):
+
+class DeclarationCnssViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Déclarations CNSS d'accident du travail + échéance légale (QHSE30).
 
     CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
@@ -1707,7 +1926,10 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
     Action ``GET …/a-echeance/`` — déclarations NON transmises qui approchent
     de l'échéance ou sont déjà hors délai (``?within_days=N``, défaut = délai
     légal), via ``selectors.declarations_cnss_a_echeance``, scopée société.
-    """
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'une
+    déclaration déjà DÉCLARÉE (``statut=DECLARE``) : rien ne l'empêchait
+    auparavant."""
     queryset = DeclarationCnss.objects.select_related('accident_travail').all()
     serializer_class = DeclarationCnssSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1771,6 +1993,13 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
         serializer = EtapeDeclarationAtSerializer(etapes, many=True)
         return Response(serializer.data)
 
+    def destroy_guard_message(self, declaration):
+        if declaration.statut == DeclarationCnss.Statut.DECLARE:
+            return (
+                'Cette déclaration a déjà été transmise à la CNSS — registre '
+                'légal, elle ne peut plus être supprimée.')
+        return None
+
 
 class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
     """Étapes légales datées de la chaîne AT/MP (loi 18-12, XQHS1).
@@ -1800,6 +2029,15 @@ class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
         marquer_etape_faite(etape)
         serializer = self.get_serializer(etape)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les étapes AT/MP (loi 18-12) à échéance imminente/dépassée
+        (``relancer_etapes_at_en_retard`` — DRAFT165-90, même pattern que les
+        relances CAPA/conformités/dérogations). Notifications best-effort, ne
+        mute rien."""
+        digest = relancer_etapes_at_en_retard(request.user.company)
+        return Response(digest)
 
 
 class AnalyseIncidentViewSet(_QhseBaseViewSet):
@@ -2221,6 +2459,25 @@ class ConformiteEnvironnementaleViewSet(_QhseBaseViewSet):
         """Relance les conformités à renouveler : notifie + digest (QHSE38)."""
         digest = relancer_conformites(request.user.company)
         return Response(digest)
+
+    @action(detail=True, methods=['post'])
+    def evaluer(self, request, pk=None):
+        """Enregistre l'évaluation périodique de cette exigence légale
+        (``enregistrer_evaluation_conformite`` — XQHS8, DRAFT165-99 : les
+        champs ``date_derniere_evaluation``/``resultat_derniere_evaluation``
+        existaient sur le modèle mais étaient absents du serializer, rien ne
+        pouvait les poser). Corps : ``resultat`` (requis), ``date``
+        (optionnelle, ``localdate()`` par défaut). Ne touche pas ``statut``
+        (dérivé de ``statut_calcule``, distinct de cette trace périodique)."""
+        conformite = self.get_object()
+        resultat = request.data.get('resultat')
+        if not resultat:
+            return Response(
+                {'detail': 'resultat est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        enregistrer_evaluation_conformite(
+            conformite, resultat, date=request.data.get('date') or None)
+        return Response(self.get_serializer(conformite).data)
 
 
 class BilanCarboneViewSet(_QhseBaseViewSet):
@@ -3272,9 +3529,14 @@ class ElementRappelViewSet(_QhseBaseViewSet):
 
 
 # ── WIR275 (XQHS9) — registre des certifications + audits externes ─────────
-class CertificationViewSet(_QhseBaseViewSet):
+class CertificationViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Certificats ISO/NM détenus par l'entreprise (WIR275/XQHS9). Filtre
-    optionnel ``?statut=``."""
+    optionnel ``?statut=``.
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    certificat déjà ÉMIS (``numero_certificat`` posé) : rien ne l'empêchait
+    auparavant. Un certificat encore à l'état de brouillon (aucun numéro)
+    reste supprimable."""
     queryset = Certification.objects.all()
     serializer_class = CertificationQhseSerializer
     filter_backends = [filters.OrderingFilter]
@@ -3287,13 +3549,26 @@ class CertificationViewSet(_QhseBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def destroy_guard_message(self, certification):
+        if (certification.numero_certificat or '').strip():
+            return (
+                'Ce certificat a déjà été émis (n° '
+                f'{certification.numero_certificat}) — registre légal, il ne '
+                'peut plus être supprimé.')
+        return None
 
-class AuditCertificationViewSet(_QhseBaseViewSet):
+
+class AuditCertificationViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Audits d'un organisme certificateur sur une ``Certification``
     (WIR275/XQHS9). Filtre optionnel ``?certification=``.
 
     ``POST …/<id>/lever-ncr/`` lève une NCR pour un constat majeur (idempotent
-    — ``lever_ncr_audit_certification`` n'avait aucun appelant)."""
+    — ``lever_ncr_audit_certification`` n'avait aucun appelant).
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    audit déjà ÉMIS (``date_audit`` posée — le rapport d'audit existe) : rien
+    ne l'empêchait auparavant. Un audit encore planifié (aucune date) reste
+    supprimable."""
     queryset = AuditCertification.objects.select_related('certification').all()
     serializer_class = AuditCertificationSerializer
     filter_backends = [filters.OrderingFilter]
@@ -3314,6 +3589,13 @@ class AuditCertificationViewSet(_QhseBaseViewSet):
         audit_certif = self.get_object()
         lever_ncr_audit_certification(audit_certif, signale_par=request.user)
         return Response(self.get_serializer(audit_certif).data)
+
+    def destroy_guard_message(self, audit_certif):
+        if audit_certif.date_audit is not None:
+            return (
+                'Cet audit de certification a déjà été réalisé (rapport '
+                'émis) — registre légal, il ne peut plus être supprimé.')
+        return None
 
 
 # ── WIR275 (XQHS10) — programme d'audit interne annuel ──────────────────────
@@ -3357,6 +3639,16 @@ class AuditPlanifieViewSet(_QhseBaseViewSet):
         audit_planifie = self.get_object()
         instancier_audit_planifie(audit_planifie)
         return Response(self.get_serializer(audit_planifie).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les audits planifiés en retard (``relancer_audits_planifies_en_retard``
+        — DRAFT165-102, même pattern que ``capa/relancer-retards``). Fait
+        avancer le statut à ``en_retard`` (idempotent : notifié une seule
+        fois, à son premier passage en retard) et renvoie les audits
+        relancés."""
+        relances = relancer_audits_planifies_en_retard(request.user.company)
+        return Response(self.get_serializer(relances, many=True).data)
 
 
 # ── WIR275 (XQHS11) — référentiel de clauses ISO multi-norme ───────────────
@@ -3490,6 +3782,14 @@ class ObjectifQhseViewSet(_QhseBaseViewSet):
         qs = objectifs_revue_due(request.user.company)
         return Response(self.get_serializer(qs, many=True).data)
 
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les objectifs QHSE en revue due (``relancer_objectifs_revue_due``
+        — DRAFT165-83, pattern ``capa/relancer-retards``). Notifications
+        best-effort, ne mute rien."""
+        digest = relancer_objectifs_revue_due(request.user.company)
+        return Response(digest)
+
     @action(detail=True, methods=['get'])
     def trajectoire(self, request, pk=None):
         """Trajectoire baseline→cible vs réel (``trajectoire_objectif`` —
@@ -3599,3 +3899,74 @@ class DiffusionProcedureViewSet(
         diffusion = self.get_object()
         accuse = accuser_lecture(diffusion, request.user)
         return Response(AccuseLectureSerializer(accuse).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance tous les accusés de lecture en attente de la société
+        (``relancer_retardataires_lecture`` — AUDV15/DRAFT165-106, pattern
+        ``capa/relancer-retards``). Notifications best-effort, ne mute rien."""
+        relances = relancer_retardataires_lecture(request.user.company)
+        return Response({'total': len(relances)})
+
+
+# ── AUDV15 (XFSM14) — Thermographie IR : NCR auto sur sévérité maximale ────
+class ReleveThermographieViewSet(_QhseBaseViewSet):
+    """Relevés de thermographie infrarouge (IEC 62446-3, DRAFT165-91/92) —
+    aucun serializer ni viewset n'existait, capacité totalement invisible
+    côté API. La création route par ``enregistrer_releve_thermographie``
+    (lève automatiquement une NCR sur sévérité ``intervention_requise`` —
+    ``classe_severite``/``ncr`` restent DÉRIVÉS, jamais reçus en écriture).
+    Filtre optionnel ``?equipement_ref=``.
+
+    ``GET …/comparer/?equipement_ref=`` compare le dernier relevé ``recette``
+    (baseline) au dernier ``suivi`` pour objectiver la dérive ΔT
+    (``comparer_campagnes_thermographie``)."""
+    queryset = ReleveThermographie.objects.select_related('ncr').all()
+    serializer_class = ReleveThermographieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_releve', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        equipement_ref = self.request.query_params.get('equipement_ref')
+        if equipement_ref not in (None, ''):
+            qs = qs.filter(equipement_ref=equipement_ref)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        releve = enregistrer_releve_thermographie(
+            company=request.user.company,
+            equipement_ref=data['equipement_ref'],
+            delta_t=data.get('delta_t'),
+            campagne=data.get('campagne', ReleveThermographie.Campagne.SUIVI),
+            chantier_id=data.get('chantier_id'),
+            attachment_id=data.get('attachment_id'),
+            seuil_a_surveiller=data.get('seuil_a_surveiller'),
+            seuil_intervention=data.get('seuil_intervention'),
+            releve_par=request.user,
+            note=data.get('note', ''),
+        )
+        out = self.get_serializer(releve)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def comparer(self, request):
+        """Compare le relevé ``recette`` (baseline) au dernier ``suivi`` d'un
+        équipement. Paramètre obligatoire ``?equipement_ref=``."""
+        equipement_ref = request.query_params.get('equipement_ref')
+        if equipement_ref in (None, ''):
+            return Response(
+                {'detail': 'equipement_ref est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        result = comparer_campagnes_thermographie(
+            request.user.company, equipement_ref)
+        return Response({
+            'recette': (self.get_serializer(result['recette']).data
+                        if result['recette'] else None),
+            'suivi': (self.get_serializer(result['suivi']).data
+                      if result['suivi'] else None),
+            'delta': result['delta'],
+        })

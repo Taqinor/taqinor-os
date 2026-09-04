@@ -1050,6 +1050,8 @@ CELERY_TASK_ROUTES = {
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
     'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
+    'ged.relancer_demandes_document_dues': {'queue': 'scheduled'},
+    'ged.notifier_planifications_echues': {'queue': 'scheduled'},
     'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
     'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
     'contrats.convertir_essais_expires_daily': {'queue': 'scheduled'},

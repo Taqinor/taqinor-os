@@ -138,6 +138,9 @@ class IncidentApiTests(TestCase):
         self.assertEqual(inc.action_immediate, 'Enquête lancée.')
 
     def test_suppression(self):
+        # AUD513 — un incident encore OUVERT (défaut de `make_incident`) reste
+        # supprimable ; seule la progression au-delà d'OUVERT est gardée
+        # (cf. Aud513DestroyGuardTests ci-dessous).
         inc = make_incident(self.company)
         resp = self.client_api.delete(f'{INCIDENT_URL}{inc.id}/')
         self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
@@ -191,3 +194,33 @@ class IncidentApiTests(TestCase):
         inc = make_incident(self.company)
         resp = self.other_client.get(f'{INCIDENT_URL}{inc.id}/')
         self.assertEqual(resp.status_code, 404)
+
+
+class Aud513DestroyGuardTests(TestCase):
+    """AUD513 — reproduit ``test_suppression`` sur un incident qui a QUITTÉ
+    OUVERT (déjà pris en charge — narrativement « déjà déclaré à la CNSS » :
+    un accident du travail EN COURS de traitement était supprimable en un
+    204 avant ce lot, sans aucune garde de statut ni trace)."""
+
+    def setUp(self):
+        self.company = make_company('co-inc-aud513', 'CoIncAud513')
+        self.user = make_user(self.company, 'inc-aud513')
+        self.client_api = auth_client(self.user)
+
+    def test_incident_en_cours_refuse_la_suppression(self):
+        inc = make_incident(self.company, statut='en_cours')
+        resp = self.client_api.delete(f'{INCIDENT_URL}{inc.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(Incident.objects.filter(id=inc.id).exists())
+
+    def test_incident_clos_refuse_la_suppression(self):
+        inc = make_incident(self.company, statut='clos')
+        resp = self.client_api.delete(f'{INCIDENT_URL}{inc.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(Incident.objects.filter(id=inc.id).exists())
+
+    def test_incident_ouvert_reste_supprimable(self):
+        inc = make_incident(self.company, statut='ouvert')
+        resp = self.client_api.delete(f'{INCIDENT_URL}{inc.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        self.assertFalse(Incident.objects.filter(id=inc.id).exists())

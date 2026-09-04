@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
-  Lock, LockOpen, XCircle, PlayCircle, FileText,
+  Lock, LockOpen, XCircle, PlayCircle, FileText, RefreshCw,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlob, downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -788,6 +788,19 @@ function EtapesDeclarationDialog({ declaration, onClose }) {
     }
   }
 
+  // AUDV11 (DRAFT165-90) — relance des étapes AT/MP (loi 18-12) à échéance
+  // imminente ou dépassée, même pattern que CAPA/dérogations, jusqu'ici sans
+  // aucun bouton d'écran.
+  async function relancerEtapes() {
+    try {
+      const res = await qhseApi.etapesDeclarationAt.relancerEtapesAt()
+      toast.success(`Relance envoyée (${res.data?.total ?? 0} étape(s) à échéance).`)
+      reload()
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
+
   const STATUT_TONE = { a_faire: 'warning', fait: 'success', hors_delai: 'danger' }
 
   return (
@@ -821,7 +834,10 @@ function EtapesDeclarationDialog({ declaration, onClose }) {
               </li>
             ))}
           </ul>
-          <div className="flex justify-end pt-1">
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={relancerEtapes}>
+              <RefreshCw size={14} /> Relancer les échéances
+            </Button>
             <Button variant="outline" onClick={onClose}>Fermer</Button>
           </div>
         </div>

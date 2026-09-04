@@ -220,3 +220,17 @@ class ConsignationLotoApiTests(TestCase):
         resp = self.other_client.post(
             f'{LOTO_URL}{loto.id}/deconsigner/', {}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+    # ── AUD513 — garde de suppression ────────────────────────────────────────
+
+    def test_suppression_refusee_si_deconsignee(self):
+        loto = make_loto(self.company, self.permis, statut='deconsignee')
+        resp = self.client_api.delete(f'{LOTO_URL}{loto.id}/')
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
+        self.assertTrue(ConsignationLoto.objects.filter(id=loto.id).exists())
+
+    def test_suppression_autorisee_si_encore_consignee(self):
+        loto = make_loto(self.company, self.permis, statut='consignee')
+        resp = self.client_api.delete(f'{LOTO_URL}{loto.id}/')
+        self.assertEqual(resp.status_code, 204, getattr(resp, 'data', None))
+        self.assertFalse(ConsignationLoto.objects.filter(id=loto.id).exists())

@@ -145,3 +145,34 @@ class ViewTests(XGed27Base):
         api_b = auth(admin_b)
         resp = api_b.get(f'/api/django/ged/lots-envoi/{lot.pk}/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_rafraichir_compteurs_action(self):
+        """AUDV12 (DRAFT165-70) — endpoint REST manquant sur
+        `rafraichir_compteurs_lot_envoi` (service déjà testé ci-dessus) : les
+        compteurs restaient figés à leur valeur de création."""
+        destinataires = [
+            {'nom': 'Client A', 'email': 'a@example.com'},
+            {'nom': 'Client B', 'email': 'b@example.com'},
+        ]
+        lot = services.creer_lot_envoi_signature(
+            company=self.co_a, modele=self.modele, destinataires=destinataires,
+            created_by=self.admin_a)
+        demande_id = lot.resultats[0]['demande_id']
+        DemandeSignatureDocument.objects.filter(pk=demande_id).update(
+            statut='signe')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/lots-envoi/{lot.pk}/rafraichir-compteurs/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['nb_signes'], 1)
+        self.assertEqual(resp.data['nb_vus'], 1)
+        lot.refresh_from_db()
+        self.assertEqual(lot.nb_signes, 1)
+
+    def test_rafraichir_compteurs_isolation_societe(self):
+        co_b = make_company('xged27-rafr-b', 'Xged27 Rafr B')
+        admin_b = make_user(co_b, 'xged27-rafr-admin-b', 'admin')
+        lot = LotEnvoi.objects.create(
+            company=self.co_a, modele=self.modele, libelle='Lot A')
+        resp = auth(admin_b).post(
+            f'/api/django/ged/lots-envoi/{lot.pk}/rafraichir-compteurs/')
+        self.assertEqual(resp.status_code, 404)

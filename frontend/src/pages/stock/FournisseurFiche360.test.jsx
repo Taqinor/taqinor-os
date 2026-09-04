@@ -147,6 +147,8 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
         // PACT23 — `total_achats_ht` est un `str(Decimal)` côté serveur
         // (services.py:2910, `str(total_achats)`), jamais un nombre JS.
         total_achats_ht: '5000.00',
+        // AUDV11 (DRAFT165-79) — compteur SCAR advisory (qualité QHSE).
+        scar_total: 3, scar_ouvertes: 2,
       },
     })
     stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
@@ -162,6 +164,9 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     // PACT23 — le texte décimal du serveur est bien formaté en MAD, jamais
     // comparé numériquement à la chaîne brute.
     expect(within(panel).getByText('5 000,00 MAD')).toBeInTheDocument()
+    // AUDV11 — le compteur SCAR (qualité QHSE) est bien affiché.
+    expect(within(panel).getByText('2')).toBeInTheDocument()
+    expect(within(panel).getByText('3')).toBeInTheDocument()
   })
 
   it('Factures/solde : ne plante pas quand l\'API rejette (500)', async () => {

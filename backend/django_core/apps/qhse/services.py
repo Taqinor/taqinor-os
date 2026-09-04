@@ -1915,6 +1915,55 @@ def relancer_csh_du_jour(company=None, today=None, cadence_jours=90):
     return relancees
 
 
+# ── XQHS13 — Objectifs & cibles QHSE/ESG (ISO 6.2) ──────────────────────────
+
+def _notifier_objectif_revue_due(objectif):
+    """Notifie le responsable qu'une revue d'objectif QHSE est due
+    (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if objectif.responsable_id is None:
+            return
+        notify(objectif.responsable, EventType.MAINTENANCE_DUE,
+               'Revue d’objectif QHSE due',
+               body=f'« {objectif.intitule} » — revue périodique due.',
+               link='/qhse/iso', company=objectif.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_objectifs_revue_due(company=None, today=None):
+    """Relance les ``ObjectifQhse`` dont la revue périodique est due
+    (DRAFT165-83, pattern QHSE12/``relancer_capa_en_retard``). Notifications
+    best-effort, ne mute aucun objectif. Renvoie le digest
+    ``{'total', 'notifiees', 'items'}``.
+    """
+    from apps.qhse.selectors import objectifs_revue_due
+
+    if company is not None:
+        objectifs = objectifs_revue_due(company, today=today)
+    else:
+        from authentication.models import Company
+        objectifs = [
+            o for c in Company.objects.all()
+            for o in objectifs_revue_due(c, today=today)
+        ]
+
+    notifiees = 0
+    items = []
+    for objectif in objectifs:
+        if objectif.responsable_id is not None:
+            _notifier_objectif_revue_due(objectif)
+            notifiees += 1
+        items.append({
+            'objectif_id': objectif.id,
+            'intitule': objectif.intitule,
+        })
+    return {'total': len(objectifs), 'notifiees': notifiees, 'items': items}
+
+
 # ── XQHS14 — Registre des risques & opportunités SMQ ────────────────────────
 
 @transaction.atomic

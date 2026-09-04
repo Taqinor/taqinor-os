@@ -395,7 +395,7 @@
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
 - frontend/src/api/gedApi.js :: ocrPiece -> /api/django/ged/documents/<>/ocr-piece
-    detail:inconnu, document:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
+    detail:inconnu, document:inconnu, en_validation:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
 - frontend/src/api/gedApi.js :: officeOuvrir -> /api/django/ged/documents/<>/office-ouvrir
     detail:texte, document_id:inconnu, editor_url:inconnu
 - frontend/src/api/gedApi.js :: purgerDocument -> /api/django/ged/documents/<>/purger
@@ -812,8 +812,12 @@
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/qhseApi.js :: calendrier -> /api/django/qhse/calendrier
     declarations_cnss:inconnu, evenements:inconnu, inspections:inconnu, permis:inconnu, today:texte, total:nombre, within_days:inconnu
+- frontend/src/api/qhseApi.js :: comparer -> /api/django/qhse/releves-thermographie/comparer
+    delta:inconnu, detail:texte, recette:inconnu, suivi:inconnu
 - frontend/src/api/qhseApi.js :: compteurs -> /api/django/qhse/observations-securite/compteurs
     a_risque:inconnu, par_superviseur_mois:liste, ratio_sur_pct:inconnu, sures:inconnu, total:inconnu
+- frontend/src/api/qhseApi.js :: conformiteLecture -> /api/django/qhse/procedures-qualite/conformite-lecture
+    detail:texte, lus:inconnu, pct:inconnu, total:inconnu
 - frontend/src/api/qhseApi.js :: criticite -> /api/django/qhse/evaluations-risque/<>/criticite
     criticite_max:inconnu, criticite_moyenne:inconnu, nb_lignes:inconnu, par_niveau:inconnu
 - frontend/src/api/qhseApi.js :: documentUniqueStatut -> /api/django/qhse/evaluations-risque/document-unique-statut
@@ -836,10 +840,18 @@
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancer -> /api/django/qhse/demandes-changement/relancer
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerDerogations -> /api/django/qhse/derogations/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: relancerEtapesAt -> /api/django/qhse/etapes-declaration-at/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: relancerExercices -> /api/django/qhse/exercices-urgence/relancer
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerObjectifsRevueDue -> /api/django/qhse/objectifs/relancer
+    items:inconnu, notifiees:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: relancerRetardatairesLecture -> /api/django/qhse/diffusions-procedure/relancer
+    total:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
     items:inconnu, notifiees:inconnu, sans_responsable:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: statistiquesTfTg -> /api/django/qhse/incidents/statistiques-tf-tg
@@ -1031,7 +1043,7 @@
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
-    avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
+    avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, scar_ouvertes:inconnu, scar_total:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
 - frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
@@ -1955,8 +1967,6 @@
     champs: actif, astuce, auto_remplir, code, created_at, created_by, hauteur_defaut, id, largeur_defaut, lecture_seule, libelle, mode_saisie, options, placeholder, updated_at
 - frontend/src/api/gedApi.js :: getValidationsOcr -> /api/django/ged/validations-ocr  [ValidationOcrDocumentSerializer]
     champs: champs_extraits, created_at, document, document_nom, id, score_confiance, updated_at, valide, valide_le, valide_par, valide_par_nom
-- frontend/src/api/gedApi.js :: getVersions -> /api/django/ged/versions  [DocumentVersionSerializer]
-    champs: checksum, created_at, document, file_key, filename, id, mime, restored_from, restored_from_version, size, uploaded_by, uploaded_by_nom, version
 - frontend/src/api/gedApi.js :: getVues -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
     champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: renameDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]

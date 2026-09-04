@@ -126,6 +126,11 @@ function OngletPerformance({ fournisseurId }) {
       <Stat label="Retours" value={String(data.nb_retours ?? 0)} />
       <Stat label="Taux de retour" value={pct(data.return_rate_pct)} />
       <Stat label="Dépenses totales (interne)" value={fmtMad(data.total_achats_ht)} />
+      {/* DRAFT165-79 (AUDV11) — compteur SCAR (qualité QHSE) advisory, lu via
+          `apps.qhse.selectors.scar_count_par_fournisseur`, jusqu'ici absent
+          du scorecard alors que le sélecteur existait déjà. */}
+      <Stat label="SCAR ouvertes" value={String(data.scar_ouvertes ?? 0)} />
+      <Stat label="SCAR totales" value={String(data.scar_total ?? 0)} />
     </div>
   )
 }
