@@ -8216,7 +8216,49 @@ def supprimer_destinataire(company, destinataire, *, motif=SuppressionMarketing.
         company=company, destinataire=destinataire,
         defaults={'motif': motif, 'source': source or ''},
     )
+    # AUD620 (CNDP, loi 09-08) — ne plus être contacté doit AUSSI arrêter les
+    # séquences déjà en cours, pas seulement les envois futurs.
+    _sortir_des_sequences_du_destinataire(company, destinataire, motif=motif)
     return obj
+
+
+def _sortir_des_sequences_du_destinataire(company, destinataire, *, motif=''):
+    """AUD620 — sort un contact supprimé de TOUTES ses séquences/journeys
+    ACTIFS.
+
+    Avant ce correctif, ``supprimer_destinataire`` ne posait qu'un
+    ``SuppressionMarketing`` : les envois FUTURS étaient bien filtrés, mais
+    une ``InscriptionSequence`` déjà ``ACTIF`` le restait et continuait d'être
+    avancée à chaque tick beat par ``executer_etapes_dues`` (moteur linéaire)
+    et ``executer_journeys_dus`` (moteur graphe) — un contact ayant demandé à
+    ne plus être contacté restait donc dans le tunnel. Impact dormant tant que
+    l'envoi réel est no-op (FG31), actif dès qu'une intégration est branchée.
+
+    Le contact n'est connu que par son e-mail/téléphone : on le rattache à ses
+    leads via ``crm.selectors`` (frontière inter-app — jamais un import des
+    modèles crm). Aucun lead correspondant → rien à faire, la liste de
+    suppression suffit.
+
+    Couvre TOUS les motifs de suppression (désinscription volontaire, plainte,
+    rebond dur, liste d'opposition) : dans chaque cas, continuer d'avancer le
+    contact dans un journey serait une sollicitation de plus.
+    """
+    from apps.crm.selectors import lead_ids_by_contact
+
+    destinataire = (destinataire or '').strip()
+    if not destinataire:
+        return []
+    if '@' in destinataire:
+        lead_ids = lead_ids_by_contact(company, email=destinataire)
+    else:
+        lead_ids = lead_ids_by_contact(company, phone=destinataire)
+    sorties = []
+    for lead_id in lead_ids:
+        sorties.extend(sortir_inscriptions_pour_lead(
+            company, lead_id,
+            motif=f'suppression_marketing:{motif}' if motif
+            else 'suppression_marketing'))
+    return sorties
 
 
 def generer_token_desinscription(company_id, destinataire):
@@ -8271,6 +8313,13 @@ def importer_liste_opposition(company, destinataires, *, source='import_csv'):
         )
         if cree:
             ajoutes += 1
+        # AUD620 — même obligation que les autres chemins de suppression :
+        # une liste d'opposition importée doit AUSSI sortir le contact de ses
+        # séquences actives (cette fonction écrit sa propre ligne pour garder
+        # son compteur ``cree`` — d'où l'appel explicite au même helper).
+        _sortir_des_sequences_du_destinataire(
+            company, destinataire,
+            motif=SuppressionMarketing.Motif.IMPORT)
     return ajoutes
 
 

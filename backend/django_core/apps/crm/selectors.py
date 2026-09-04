@@ -3299,3 +3299,25 @@ def attribution_comparaison_devis(devis):
             for modele in ATTRIBUTION_MODELES
         },
     }
+
+
+def lead_ids_by_contact(company, *, email=None, phone=None):
+    """AUD620 — ids des leads d'une société joignables à cet e-mail OU ce
+    téléphone (saisie libre acceptée, mêmes normaliseurs que la détection de
+    doublons QJ8). Lecture seule, scopée société.
+
+    Sert au chemin de DÉSINSCRIPTION marketing (loi 09-08/CNDP) : le
+    destinataire qui clique « ne plus me contacter » n'est connu que par son
+    adresse ou son numéro ; il faut le rattacher à ses leads pour le sortir de
+    ses séquences/journeys actifs. Renvoie ``[]`` si rien ne correspond —
+    l'appelant se contente alors de la liste de suppression.
+    """
+    from .services import find_duplicates_by_contact
+
+    if not email and not phone:
+        return []
+    return [
+        lead.pk
+        for lead in find_duplicates_by_contact(
+            company, email=email, phone=phone)
+    ]
