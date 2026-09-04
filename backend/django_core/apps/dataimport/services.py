@@ -671,10 +671,23 @@ def _doublon_lead(company, f):
 
 
 def _doublon_client(company, f):
+    """Fiche existante qui fait IGNORER la ligne en mode ``creer``.
+
+    AUD824 — MÊME patron que ``_doublon_lead`` ci-dessus : email d'abord, repli
+    sur le téléphone. Sans ce repli, un carnet d'adresses terrain (nom +
+    téléphone + adresse, SANS colonne email) rejoué deux fois créait un
+    deuxième ``Client`` identique à chaque passage — ``crm.Client`` ne porte
+    aucune ``UniqueConstraint`` sur (company, email) ni (company, telephone),
+    donc rien n'arrêtait la ligne, ni en Python ni en base. L'aperçu, qui
+    rejoue CETTE fonction, mentait de la même façon.
+    """
     from apps.crm.models import Client
     if f.get('email'):
         return Client.objects.filter(
             company=company, email__iexact=f['email']).first()
+    if f.get('telephone'):
+        return Client.objects.filter(
+            company=company, telephone=f['telephone']).first()
     return None
 
 
@@ -700,6 +713,14 @@ def _raison_doublon_produit(f):
     """Motif d'ignorance affiché : dit VRAI sur la clé qui a matché."""
     return ('doublon (SKU existe)' if f.get('sku')
             else 'doublon (nom existe)')
+
+
+def _raison_doublon_client(f):
+    """AUD824 — même convention que ``_raison_doublon_produit`` : le motif
+    affiché nomme la clé qui a RÉELLEMENT matché. Depuis le repli téléphone,
+    « doublon (email existe) » aurait menti sur toutes les lignes sans email."""
+    return ('doublon (email existe)' if f.get('email')
+            else 'doublon (téléphone existe)')
 
 
 def _analyser_conflits(target, rows, mapped, company, mode, external_system,
@@ -754,7 +775,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
             else:
                 existing = _doublon_client(company, f)
                 if existing is not None:
-                    action, raison = 'ignoree', 'doublon (email existe)'
+                    action, raison = 'ignoree', _raison_doublon_client(f)
         elif target == 'products':
             existing = _doublon_produit(company, f)
             if existing is not None:
@@ -932,7 +953,8 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     continue
 
                 if mode == 'creer' and _doublon_client(company, f) is not None:
-                    skipped.append({'ligne': i, 'raison': 'doublon (email existe)'})
+                    skipped.append(
+                        {'ligne': i, 'raison': _raison_doublon_client(f)})
                     continue
                 client = Client.objects.create(company=company, **f)
                 if ext_id:
