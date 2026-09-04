@@ -88,7 +88,13 @@ class UneProductionEnDebugRefuseDeDemarrer(SimpleTestCase):
             'DEBUG', faute.msg,
             'le message doit NOMMER le réglage fautif.')
 
-    @override_settings(DEBUG=False, ALLOWED_HOSTS=['api.taqinor.ma'])
+    # AUD410 — « bien réglée » inclut désormais des secrets qui ne sont pas les
+    # placeholders publiés par .env.example : la suite de tests tourne avec la
+    # clé de développement `django-insecure-change-me`, que le contrôle étendu
+    # refuse (à raison) dès que l'environnement se déclare production.
+    @override_settings(DEBUG=False, ALLOWED_HOSTS=['api.taqinor.ma'],
+                       SECRET_KEY='k9#z2m-qv4t8_w1x!e6r%b0n$c7y+a3s(d5f)g8h2j4',
+                       MINIO_SECRET_KEY='b3!x7q-z1v9_t4w#e2r%y6n$c8a0s(d5f)g7h1')
     def test_une_production_bien_reglee_ne_bloque_rien(self):
         with _prod_env():
             self.assertEqual(verifier_reglages_production(), [])

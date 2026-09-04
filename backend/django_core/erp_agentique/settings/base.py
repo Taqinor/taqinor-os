@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import timedelta
 
 from . import editions  # noqa: E402  (registre statique, sans Django)
+from . import placeholders  # noqa: E402  (prédicat pur, sans Django)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -28,12 +29,26 @@ TAQINOR_EDITION = editions.edition_active()
 _DEBUG_FLAG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-me' if _DEBUG_FLAG else '')
 
-if not _DEBUG_FLAG and (not SECRET_KEY or SECRET_KEY == 'django-insecure-change-me'):
+# AUD410 — le garde couvre désormais les PLACEHOLDERS PUBLIÉS du dépôt, pas
+# seulement la chaîne vide et le littéral `django-insecure-change-me`.
+# `.env.example` publie `DJANGO_SECRET_KEY=change_me_generate_with_python_secrets`
+# et CLAUDE.md fait de « copy .env.example to .env » LE chemin d'installation :
+# cette valeur passait le garde tel quel, donc une instance déployée depuis le
+# modèle signait ses JWT avec une chaîne lisible sur GitHub. Le prédicat
+# partagé vit dans `placeholders.py` — même définition pour le contrôle système
+# QJR423 de `core/checks.py`, jamais deux listes à resynchroniser.
+if not _DEBUG_FLAG and placeholders.est_placeholder(SECRET_KEY):
     raise RuntimeError(
-        "La variable d'environnement DJANGO_SECRET_KEY est obligatoire en production."
+        "La variable d'environnement DJANGO_SECRET_KEY est obligatoire en "
+        "production, et ne peut pas rester un placeholder publié dans le dépôt "
+        "(vide, « django-insecure-change-me », ou toute valeur commençant par "
+        "« change_me » — dont le "
+        "`change_me_generate_with_python_secrets` de .env.example). Générez "
+        "une vraie clé : python -c \"from django.core.management.utils import "
+        "get_random_secret_key; print(get_random_secret_key())\"."
     )
 
-if _DEBUG_FLAG and SECRET_KEY == 'django-insecure-change-me':
+if _DEBUG_FLAG and placeholders.est_placeholder(SECRET_KEY):
     warnings.warn(
         "SECRET_KEY par défaut détectée. Générez une vraie clé avec :\n"
         "  python -c \"from django.core.management.utils import "

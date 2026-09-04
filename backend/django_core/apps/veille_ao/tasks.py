@@ -93,11 +93,11 @@ def _collecter_les_societes(company_id=None):
     Chaque société est indépendante : une société en panne n'empêche pas les
     autres de collecter.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services import collecter_toutes_les_sources
 
-    societes = Company.objects.all()
+    societes = active_companies()  # AUD415/SCA19 — pas les suspendus
     if company_id is not None:
         societes = societes.filter(pk=company_id)
 

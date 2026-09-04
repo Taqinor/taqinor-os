@@ -18,12 +18,12 @@ def generer_seances_semaine_task():
     """NTEDU22 — génère, pour CHAQUE société, les séances de la semaine à
     venir à partir des créneaux d'emploi du temps actifs. Best-effort par
     société : une société en échec n'empêche jamais les suivantes."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services_planning import generer_seances_semaine
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             creees = generer_seances_semaine(company)
             total += len(creees)
@@ -40,12 +40,12 @@ def relancer_reinscriptions_task():
     (``ParametresEducation.date_limite_reinscription``, no-op tant que non
     renseignée), notifie l'ADMINISTRATION de chaque société des élèves sans
     réinscription créée pour l'année suivante. Best-effort par société."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services import relancer_reinscriptions_dues
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += relancer_reinscriptions_dues(company)
         except Exception:  # noqa: BLE001 - défensif, best-effort

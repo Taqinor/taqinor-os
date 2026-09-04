@@ -1,10 +1,24 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import CompanyProfile
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(CompanyProfile)
-class CompanyProfileAdmin(admin.ModelAdmin):
+class CompanyProfileAdmin(CompanyScopedAdmin):
     """NTADM7 — panneau founder pour assigner un palier de licence
     (``plan``) à une société. Édition RÉSERVÉE au founder (superuser Django) :
     jamais un écran tenant-facing (le tenant voit son profil en lecture via

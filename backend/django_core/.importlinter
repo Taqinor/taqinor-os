@@ -403,6 +403,15 @@ ignore_imports =
     core.tests.test_documents_viewset -> apps.records.views
     core.tests.test_documents_status -> apps.installations.models_demande_achat
     core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance
+# AUD422 — AUCUNE exception ajoutée, et c'est délibéré : la suite de déni
+# cross-tenant RLS (`core/tests/test_rls_cross_tenant_denial.py`) peuple des
+# lignes RÉELLES dans les cinq tables argent en résolvant ses modèles par
+# CHAÎNE (`django.apps.apps.get_model('compta', 'EcritureComptable')`), jamais
+# par import. Un `from apps.compta.models import …` y ouvrait, en transitif,
+# une dizaine d'arêtes interdites (compta.models → crm.models → crm.services →
+# notifications / ventes / stock / sav / publicapi / reporting) : les élaguer
+# aurait affaibli le contrat pour TOUT LE MONDE. Ne pas « simplifier » ce test
+# en réintroduisant les imports.
 # NTDMO25 — `authentication.tasks.seed_demo_company_task` (Celery envelope)
 # imports `authentication.views_demo_wizard` LAZILY (function-local, only at
 # call time), which itself pulls in `authentication.views_console` and, from

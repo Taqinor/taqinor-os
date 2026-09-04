@@ -3,6 +3,8 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import Client, WebsiteLeadPayload
 
 
@@ -43,8 +45,20 @@ SUPPRESSION_CLIENT_INTERDITE = (
 )
 
 
+# ── AUD417 — scope société de TOUTE l'administration de ce module ───────────
+# Extension du mixin AUD185 (`core/admin_scoping.py`), déjà appliqué à
+# ventes/compta : aucun `ModelAdmin` de ce fichier ne bornait sa liste à
+# `request.user.company`, alors que ses modèles portent un FK `company`. Un
+# superutilisateur RATTACHÉ À UNE SOCIÉTÉ y voyait — et cherchait par nom —
+# les lignes de TOUTES les sociétés clientes simultanément. Le mixin est
+# défensif : modèle sans FK `company`, ou compte sans société (opérateur
+# plateforme), ⇒ aucun filtre, comportement historique inchangé.
+class CompanyScopedAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
+    """`ModelAdmin` dont la liste est bornée à `request.user.company`."""
+
+
 @admin.register(Client)
-class ClientAdmin(admin.ModelAdmin):
+class ClientAdmin(CompanyScopedAdmin):
     list_display = ('nom', 'prenom', 'email', 'telephone', 'date_creation')
     search_fields = ('nom', 'email')
 
@@ -87,7 +101,7 @@ class ClientAdmin(admin.ModelAdmin):
 
 
 @admin.register(WebsiteLeadPayload)
-class WebsiteLeadPayloadAdmin(admin.ModelAdmin):
+class WebsiteLeadPayloadAdmin(CompanyScopedAdmin):
     """QX16 — surface LECTURE SEULE : « jamais perdre un lead » (webhooks.py)
     n'était visible nulle part. Un payload mapping-failed (error non vide,
     lead=None) était un client silencieusement perdu malgré la promesse.

@@ -26,7 +26,7 @@ def surveiller_drift_mensuel_task():
     Renvoie ``{company_id: {modele: psi}}`` (dict vide si aucun fournisseur
     n'est déclaré).
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .drift import distribution_providers, enregistrer_snapshot
 
@@ -36,7 +36,7 @@ def surveiller_drift_mensuel_task():
 
     premier_du_mois = timezone.localdate().replace(day=1)
     resultat = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         par_modele = {}
         for modele, fournisseur in providers.items():
             try:

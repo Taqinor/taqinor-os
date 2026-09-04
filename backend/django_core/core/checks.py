@@ -52,6 +52,30 @@ ALLOWED_HOSTS_JOKERS = frozenset({'*', '.*'})
 
 ID_DEBUG = 'core.E_QJR423_DEBUG'
 ID_ALLOWED_HOSTS = 'core.E_QJR423_ALLOWED_HOSTS'
+#: AUD410 — secrets restés au placeholder publié par ``.env.example``.
+ID_SECRET_KEY = 'core.E_AUD410_SECRET_KEY'
+ID_MINIO = 'core.E_AUD410_MINIO'
+
+#: AUD410 — les secrets d'une production, et le réglage qui les porte. Le
+#: prédicat de placeholder vit dans ``erp_agentique/settings/placeholders.py``
+#: (module sans Django, partagé avec le garde de démarrage de ``base.py``).
+SECRETS_DE_PRODUCTION = (
+    ('SECRET_KEY', 'DJANGO_SECRET_KEY', ID_SECRET_KEY,
+     'la clé de signature des sessions ET des jetons JWT'),
+    ('MINIO_SECRET_KEY', 'MINIO_ROOT_PASSWORD', ID_MINIO,
+     "le mot de passe du stockage d'objets (PDF, pièces jointes, sauvegardes)"),
+)
+
+
+def secret_est_placeholder(valeur):
+    """Vrai quand ``valeur`` est vide ou un placeholder publié du dépôt.
+
+    Simple ré-export du prédicat pur de la couche réglages : le contrôle
+    système et le garde de démarrage de ``base.py`` doivent partager UNE seule
+    définition, sinon l'une des deux dérive au premier placeholder ajouté.
+    """
+    from erp_agentique.settings import placeholders
+    return placeholders.est_placeholder(valeur)
 
 
 def environnement_de_production(settings_module=None, environ=None):
@@ -119,4 +143,36 @@ def verifier_reglages_production(app_configs=None, **kwargs):
             hint='Posez DJANGO_ALLOWED_HOSTS=api.taqinor.ma,<autres domaines> '
                  'dans le .env du serveur.',
             id=ID_ALLOWED_HOSTS))
+
+    erreurs.extend(verifier_secrets_publies())
+    return erreurs
+
+
+def verifier_secrets_publies():
+    """AUD410 — refuse une production dont un secret est resté au placeholder.
+
+    Le garde de ``base.py`` ne se déclenche que lorsque ``DJANGO_DEBUG`` est
+    faux ; une production qui se déclare telle par ``DJANGO_ENV`` mais tourne
+    encore avec ``DJANGO_DEBUG=True`` (l'état réel constaté par AUD411) lui
+    échappe entièrement. Ce contrôle referme ce trou, et étend la couverture à
+    ``MINIO_ROOT_PASSWORD``, publié lui aussi en clair par ``.env.example`` et
+    protégé par aucun garde.
+
+    Ni le message ni l'indice ne citent JAMAIS la valeur du secret : seulement
+    le nom du réglage et celui de la variable d'environnement.
+    """
+    erreurs = []
+    for reglage, variable, identifiant, role in SECRETS_DE_PRODUCTION:
+        valeur = getattr(settings, reglage, None)
+        if not secret_est_placeholder(valeur):
+            continue
+        erreurs.append(Error(
+            f'{reglage} est vide ou resté à un placeholder publié dans le '
+            f'dépôt (.env.example) alors que cet environnement se déclare '
+            f'production : {role} serait connu de quiconque lit le dépôt.',
+            hint=f'Posez {variable}=<valeur générée> dans le .env du serveur '
+                 '(clé Django : python -c "from django.core.management.utils '
+                 'import get_random_secret_key; print(get_random_secret_key())'
+                 '").',
+            id=identifiant))
     return erreurs

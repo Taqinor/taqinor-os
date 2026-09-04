@@ -510,6 +510,16 @@ jobs:
         run: python scripts/check_mouvement_stock_service.py
       - name: Test the MouvementStock-service checker itself (AUD223)
         run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
+      # AUD415 — un fan-out beat (apps/*/tasks.py, scheduled.py, beat_tasks.py)
+      # itère authentication.selectors.active_companies() (SCA19), jamais
+      # Company.objects.all() ni un filter(actif=True) recopié : un tenant
+      # suspendu ne doit plus être facturé, relancé, ni voir sa corbeille GED
+      # purgée. Fails on a NEW site not in
+      # scripts/beat_active_companies_allow.txt.
+      - name: Check fan-outs beat scopés aux sociétés actives (AUD415)
+        run: python scripts/check_beat_active_companies.py
+      - name: Test the beat-active-companies checker itself (AUD415)
+        run: python -m unittest scripts.tests.test_check_beat_active_companies -v
       # YDATA18 — business unique=True must be company-scoped; a unique on a
       # soft-delete model must be a partial index. Fails on a NEW unscoped
       # business unique not in scripts/unique_scoping_allow.txt.
@@ -531,6 +541,17 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # AUD421 — a local get_permissions() must never SILENTLY OVERRIDE an
+      # @action(permission_classes=...): DRF calls get_permissions() for every
+      # request, so a raw branch that returns a default list makes the inline
+      # declaration decorative (the AUD403 defect on ventes/views/devis.py).
+      # Freezes the AUD403 sweep's verified-benign baseline; fails on a NEW
+      # class (or a NEW uncovered action) not in
+      # scripts/action_permission_override_allow.txt.
+      - name: Check @action permissions are never silently overridden (AUD421)
+        run: python scripts/check_action_permission_override.py
+      - name: Test the action-permission checker itself (AUD421)
+        run: python -m unittest scripts.tests.test_check_action_permission_override -v
       # Incident du 03/08/2026 (production) : les lanes frontend/ao et
       # backend/ao ont ete construites en parallele avec des contrats
       # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route
@@ -1964,9 +1985,20 @@ jobs:
       # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
       # assertions tournent en moins d'une minute, le reste est la restauration
       # WOW8 que le volet A raccourcit déjà.
+      # AUD422 — la suite de déni cross-tenant sur les CINQ TABLES ARGENT
+      # (compta.EcritureComptable/LigneEcriture, ventes.Devis,
+      # facturation.Facture/Paiement) rejoint le sceau NTPLT5 dans ce même job :
+      # elle est opt-in par le MÊME flag, elle a les mêmes besoins (PostgreSQL
+      # réel + rôle NOBYPASSRLS), et la lancer ailleurs coûterait une seconde
+      # restauration WOW8 pour ~1 min d'assertions. Elle vérifie en plus que les
+      # policies posées par les migrations AUD422 sont bien là.
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2 --keepdb --parallel 1
+        run: >-
+          python manage.py test
+          core.tests.test_rls
+          core.tests.test_rls_cross_tenant_denial
+          -v 2 --keepdb --parallel 1
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
