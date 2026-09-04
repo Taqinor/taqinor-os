@@ -2423,6 +2423,60 @@ def totaux_temps_ordre(ordre):
     }
 
 
+# ── AUD819 — SEUL point d'écriture du statut des documents du kit ────────────
+# Constat réparé : ``DemandeAchat``/``OrdreSousTraitance`` déclaraient une table
+# ``TRANSITIONS`` (kit ``core.documents``) qui n'était JAMAIS consultée — douze
+# sites écrivaient ``statut = …`` à la main, de sorte que (a) le graphe d'états
+# avait deux propriétaires divergents et (b) ``core.events.document_statut_change``
+# n'était jamais émis pour ces documents (tout futur abonné — audit, notification,
+# KPI — restait silencieusement aveugle). Ce service est l'unique adaptateur : il
+# route CHAQUE écriture par ``core.documents.changer_statut``.
+
+
+def appliquer_statut_document(instance, cible, *, user=None, champs=None):
+    """AUD819 — applique une transition de statut GARDÉE sur un document du kit.
+
+    ``champs`` (dict champ→valeur) porte les champs annexes de l'action
+    (``approuvee_par``, ``date_decision``, ``motif_refus``, ``date_emission``,
+    ``montant_realise``…) : ils sont posés EN MÉMOIRE, persistés, puis la
+    transition elle-même est déléguée à ``core.documents.changer_statut`` — qui
+    vérifie la table ``TRANSITIONS`` du document, persiste le statut et ÉMET
+    ``core.events.document_statut_change``. L'ensemble est atomique : une
+    transition refusée (``TransitionRefusee``) annule aussi l'écriture des
+    champs annexes — un refus ne laisse AUCUNE trace.
+
+    Ré-application idempotente (``cible == instance.statut``) : conservée telle
+    quelle, sans passer par le garde et SANS émettre d'événement. Les actions de
+    vue historiques l'acceptent explicitement (re-soumettre une demande déjà
+    soumise, re-clôturer un ordre déjà clos) et les tables ``TRANSITIONS`` ne la
+    déclarent PAS — un document ne « transite » pas vers lui-même (cf. la
+    docstring de ``changer_statut``), et rien n'a changé d'état à annoncer.
+
+    Retourne l'instance mutée.
+    """
+    from django.db import transaction
+
+    from core.documents import changer_statut
+
+    champs = dict(champs or {})
+    for nom, valeur in champs.items():
+        setattr(instance, nom, valeur)
+    noms = list(champs)
+    # ``date_modification`` (auto_now historique) n'est pas dans le
+    # ``update_fields`` de ``changer_statut`` : on l'horodate ici pour garder
+    # le comportement des actions de vue d'origine.
+    if any(f.name == 'date_modification' for f in instance._meta.get_fields()):
+        noms.append('date_modification')
+    with transaction.atomic():
+        if instance.statut == cible:
+            instance.save(update_fields=['statut'] + noms)
+            return instance
+        if noms:
+            instance.save(update_fields=noms)
+        changer_statut(instance, cible, user=user)
+    return instance
+
+
 # ── XKB1 — boîte d'approbations centralisée (écriture cross-app) ─────────────
 class DecisionError(Exception):
     """Décision invalide sur une réquisition d'achat (statut non éligible)."""
@@ -2450,6 +2504,9 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
       budgétaire départementale engagée (NTP2P4) n'était JAMAIS rendue.
     """
     from django.utils import timezone
+
+    from core.documents import TransitionRefusee
+
     from .models import DemandeAchat, EtapeApprobationAchat
 
     if demande_achat.statut != DemandeAchat.Statut.SOUMISE:
@@ -2463,17 +2520,21 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
             "Un plan d'approbation est en cours sur cette demande : validez "
             "les étapes via « approuver-etape ».")
 
-    demande_achat.approuvee_par = user
-    demande_achat.date_decision = timezone.now()
+    # AUD819 — la transition passe par la table TRANSITIONS du kit (garde +
+    # événement ``document_statut_change``), jamais par un ``statut = …`` direct.
     if approuver:
-        demande_achat.statut = DemandeAchat.Statut.APPROUVEE
-        demande_achat.motif_refus = None
+        cible, motif = DemandeAchat.Statut.APPROUVEE, None
     else:
-        demande_achat.statut = DemandeAchat.Statut.REFUSEE
-        demande_achat.motif_refus = (motif_refus or '').strip() or None
-    demande_achat.save(update_fields=[
-        'statut', 'approuvee_par', 'date_decision', 'motif_refus',
-        'date_modification'])
+        cible = DemandeAchat.Statut.REFUSEE
+        motif = (motif_refus or '').strip() or None
+    try:
+        appliquer_statut_document(
+            demande_achat, cible, user=user,
+            champs={'approuvee_par': user,
+                    'date_decision': timezone.now(),
+                    'motif_refus': motif})
+    except TransitionRefusee as exc:
+        raise DecisionError(str(exc))
     if not approuver:
         # AUD312 — miroir exact du refus par la vue : plus d'étape orpheline,
         # et l'enveloppe budgétaire engagée est rendue (NTP2P4).
@@ -4391,6 +4452,9 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
 def approuver_etape_achat(etape, *, approbateur, commentaire=''):
     """Approuve une étape ; bascule la demande ``approuvee`` à la dernière."""
     from django.utils import timezone
+
+    from core.documents import TransitionRefusee
+
     from .models import DemandeAchat, EtapeApprobationAchat
 
     etape = _decider_etape_approbation_achat(
@@ -4398,12 +4462,15 @@ def approuver_etape_achat(etape, *, approbateur, commentaire=''):
         approbateur=approbateur, commentaire=commentaire)
     demande = etape.demande
     if not workflow_approbation_achat_actif(demande):
-        demande.statut = DemandeAchat.Statut.APPROUVEE
-        demande.approuvee_par = approbateur
-        demande.date_decision = timezone.now()
-        demande.motif_refus = None
-        demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
-                                    'motif_refus', 'date_modification'])
+        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+        try:
+            appliquer_statut_document(
+                demande, DemandeAchat.Statut.APPROUVEE, user=approbateur,
+                champs={'approuvee_par': approbateur,
+                        'date_decision': timezone.now(),
+                        'motif_refus': None})
+        except TransitionRefusee as exc:
+            raise ApprobationAchatError(str(exc))
     return etape
 
 
@@ -4411,6 +4478,9 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
     """Rejette une étape : la demande bascule ``refusee`` immédiatement et les
     étapes restantes sont annulées (rejetées sans approbateur)."""
     from django.utils import timezone
+
+    from core.documents import TransitionRefusee
+
     from .models import DemandeAchat, EtapeApprobationAchat
 
     etape = _decider_etape_approbation_achat(
@@ -4421,12 +4491,15 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
         statut=EtapeApprobationAchat.Statut.EN_ATTENTE
     ).update(statut=EtapeApprobationAchat.Statut.REJETE,
              decision_le=timezone.now())
-    demande.statut = DemandeAchat.Statut.REFUSEE
-    demande.approuvee_par = approbateur
-    demande.date_decision = timezone.now()
-    demande.motif_refus = (commentaire or '').strip() or None
-    demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
-                                'motif_refus', 'date_modification'])
+    # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
+    try:
+        appliquer_statut_document(
+            demande, DemandeAchat.Statut.REFUSEE, user=approbateur,
+            champs={'approuvee_par': approbateur,
+                    'date_decision': timezone.now(),
+                    'motif_refus': (commentaire or '').strip() or None})
+    except TransitionRefusee as exc:
+        raise ApprobationAchatError(str(exc))
     # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
     liberer_budget_demande_achat(demande)
     return etape
