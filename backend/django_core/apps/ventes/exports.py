@@ -18,6 +18,82 @@ def _q2(d):
     return Decimal(d).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+def facture_par_taux(facture):
+    """AUD110 — ventilation {taux: {'ht', 'tva'}} + TTC d'une facture, NETTE de
+    la remise globale.
+
+    Les quatre exports comptables (journal, comptable xlsx/csv, grand-livre,
+    pont QuickBooks) sommaient directement ``ligne.total_ht``. Or
+    ``LigneFacture.total_ht`` n'applique QUE la remise de LIGNE, jamais la
+    remise GLOBALE du document, alors que ``Facture.total_ht``/``total_tva``/
+    ``total_ttc`` l'appliquent via la chaîne canonique QX1 — la source de
+    vérité utilisée partout ailleurs (PDF facture, UBL DGI, repli note de
+    débit, ``compta.services.ecriture_pour_facture``). Une facture remisée à
+    15 % était donc déclarée au cabinet pour son BRUT : +3 000 MAD de CA et
+    +600 MAD de TVA par facture, dans un document remis à un tiers.
+
+    On lit la ventilation du DOCUMENT (``tva_par_taux``), qui gère d'un coup
+    les trois cas : lignes simples, remise globale active, et montants figés
+    (facture de tranche / header-only). Renvoie ``(par_taux, ttc)``.
+    """
+    par_taux = {}
+    for bucket in facture.tva_par_taux:
+        taux = Decimal(str(bucket['taux'] or 0))
+        entree = par_taux.setdefault(
+            taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+        entree['ht'] += _q2(bucket.get('base_ht') or 0)
+        entree['tva'] += _q2(bucket.get('montant') or 0)
+    return par_taux, _q2(facture.total_ttc)
+
+
+def lignes_ventilees(facture):
+    """AUD110 — lignes d'une facture avec leurs montants NETS de remise globale.
+
+    Renvoie ``[(ligne, taux, ht, tva)]`` DANS L'ORDRE D'ORIGINE, dont les
+    sommes égalent EXACTEMENT ``facture.total_ht`` et ``facture.total_tva`` au
+    centime : la cible par taux vient de ``tva_par_taux`` (la chaîne canonique)
+    et est répartie au prorata du brut de chaque ligne, la DERNIÈRE ligne de
+    chaque panier absorbant le résidu d'arrondi. Sans remise globale active,
+    chaque ligne retrouve exactement son montant d'hier.
+
+    Liste vide si la facture n'a aucune ligne (le cas header-only, traité par
+    le filet figé d'AUD109 chez les appelants).
+    """
+    lignes = list(facture.lignes.all())
+    if not lignes:
+        return []
+
+    index_par_taux = {}
+    for i, ligne in enumerate(lignes):
+        taux = Decimal(str(ligne.taux_tva_effectif or 0))
+        index_par_taux.setdefault(taux, []).append(i)
+
+    cible, _ttc = facture_par_taux(facture)
+    resultat = [None] * len(lignes)
+    for taux, indices in index_par_taux.items():
+        brut = {i: _q2(lignes[i].total_ht) for i in indices}
+        brut_total = sum(brut.values(), Decimal('0'))
+        panier = cible.get(taux)
+        if panier is None:
+            # Taux absent de la ventilation du document (ne devrait pas
+            # arriver) : on retombe sur le brut, comportement d'avant AUD110.
+            base, tva_cible = brut_total, _q2(brut_total * taux / Decimal('100'))
+        else:
+            base, tva_cible = panier['ht'], panier['tva']
+        reste_ht, reste_tva = base, tva_cible
+        for rang, i in enumerate(indices):
+            if rang == len(indices) - 1:
+                ht, tva = reste_ht, reste_tva
+            else:
+                part = (brut[i] / brut_total) if brut_total else Decimal('0')
+                ht = _q2(base * part)
+                tva = _q2(tva_cible * part)
+                reste_ht -= ht
+                reste_tva -= tva
+            resultat[i] = (lignes[i], taux, ht, tva)
+    return resultat
+
+
 def period_bounds(params):
     """Calcule (debut, fin) depuis ?month=YYYY-MM, ?quarter=YYYY-Q ou
     ?start=&end=. Défaut : mois courant."""
@@ -70,21 +146,53 @@ def export_journal_ventes(company, debut, fin):
     tot_ht = tot_tva = tot_ttc = Decimal('0')
     for f in factures:
         type_libelle = f.get_type_facture_display()
-        for ligne in f.lignes.all():
-            ht = _q2(ligne.total_ht)
-            taux = Decimal(ligne.taux_tva_effectif or 0)
-            tva = _q2(ht * taux / Decimal('100'))
-            ttc = _q2(ht + tva)
+        date_f = f.date_emission.isoformat() if f.date_emission else ''
+        nom = getattr(f.client, 'nom', '') or ''
+        ice = getattr(f.client, 'ice', '') or ''
+        # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``,
+        # qui n'applique que la remise de LIGNE).
+        ventilees = lignes_ventilees(f)
+        if ventilees:
+            for ligne, taux, ht, tva in ventilees:
+                ttc = _q2(ht + tva)
+                ws.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    ligne.designation, str(ligne.quantite),
+                    str(ligne.prix_unitaire),
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                bucket = par_taux.setdefault(
+                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+                bucket['ht'] += ht
+                bucket['tva'] += tva
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
+        else:
+            # AUD109 — FILET « facture header-only ». La boucle ci-dessus
+            # n'avait AUCUN `else` : une facture ÉMISE sans LigneFacture
+            # n'écrivait zéro ligne dans le journal et n'ajoutait zéro montant
+            # au résumé TVA — alors qu'elle est bien captée par le filtre
+            # ISSUED_STATUTS, donc présente dans le queryset. Ces factures
+            # existent réellement en production : `contrats.services` crée des
+            # factures ÉMISES à montants figés et SANS ligne (abonnements et
+            # maintenance récurrents), tout comme les tranches d'échéancier.
+            # Tout ce CA disparaissait donc du journal des ventes du mois — le
+            # cabinet recevait un CA sous-déclaré. Les deux jumeaux de ce
+            # fichier (`_compta_rows`, `_grand_livre_rows`) avaient déjà ce
+            # filet ; seul le journal ne l'avait pas. Montants figés lus sur
+            # les propriétés du document, qui gèrent ce cas.
+            ht = _q2(f.total_ht)
+            taux = Decimal(f.taux_tva or 0)
+            tva = _q2(f.total_tva)
+            ttc = _q2(f.total_ttc)
             ws.append([
-                f.reference,
-                f.date_emission.isoformat() if f.date_emission else '',
-                type_libelle,
-                getattr(f.client, 'nom', '') or '',
-                getattr(f.client, 'ice', '') or '',
-                ligne.designation, str(ligne.quantite), str(ligne.prix_unitaire),
+                f.reference, date_f, type_libelle, nom, ice,
+                f.libelle or type_libelle or 'Facture', '', '',
                 float(ht), float(taux), float(tva), float(ttc),
             ])
-            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+            bucket = par_taux.setdefault(
+                taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
             bucket['ht'] += ht
             bucket['tva'] += tva
             tot_ht += ht
@@ -174,12 +282,10 @@ def _compta_rows(company, debut, fin):
         nom = getattr(f.client, 'nom', '') or ''
         ice = getattr(f.client, 'ice', '') or ''
         date_f = f.date_emission.isoformat() if f.date_emission else ''
-        lignes = list(f.lignes.all())
-        if lignes:
-            for ligne in lignes:
-                ht = _q2(ligne.total_ht)
-                taux = Decimal(ligne.taux_tva_effectif or 0)
-                tva = _q2(ht * taux / Decimal('100'))
+        # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``).
+        ventilees = lignes_ventilees(f)
+        if ventilees:
+            for ligne, taux, ht, tva in ventilees:
                 ttc = _q2(ht + tva)
                 rows.append([
                     f.reference, date_f, type_libelle, nom, ice,
@@ -284,6 +390,12 @@ _DEFAULT_ACCOUNT_CODES = {
     'ventes': '7111',         # Ventes de marchandises (produit)
     'tva_collectee': '4455',  # État - TVA facturée (collectée)
     'clients': '3421',        # Clients (créance / tiers)
+    # AUD111 — Clients : avances et acomptes reçus. CGNC : un ACOMPTE ne
+    # constate JAMAIS de produit avant livraison ; tout son TTC part en 4421,
+    # jamais en 71xx/4455. C'est exactement ce que fait le seul écrivain de GL
+    # réel (``compta.services.ecriture_pour_facture``) et ce que ce
+    # reconstitué ignorait, faisant apparaître l'acompte en produit.
+    'avances': '4421',
 }
 
 # Intitulés CGNC usuels des comptes par défaut (mise en page fiduciaire).
@@ -292,6 +404,7 @@ _ACCOUNT_LABELS = {
     '7121': 'Ventes de biens et services produits',
     '4455': 'État - TVA facturée',
     '3421': 'Clients',
+    '4421': 'Clients - avances et acomptes reçus',
 }
 
 _GRAND_LIVRE_HEADERS = [
@@ -329,18 +442,123 @@ def _account_label(code):
     return _ACCOUNT_LABELS.get(str(code), '')
 
 
+#: AUD111 — mention portée EN CLAIR sur le document quand les écritures ne
+#: sont pas réellement postées au grand livre.
+BANDEAU_RECONSTITUTION = (
+    'Reconstitution depuis le registre des ventes — non issue du grand livre. '
+    "L'auto-génération des écritures comptables (COMPTA_AUTO_ECRITURES) est "
+    'inactive : ce document ne se réconcilie pas ligne à ligne avec le FEC.'
+)
+
+
+def grand_livre_est_reel(company):
+    """AUD111 — les écritures de vente sont-elles RÉELLEMENT postées ?
+
+    ``ventes/exports.py`` n'importait JAMAIS ``apps.compta`` : il RECALCULAIT
+    depuis Facture/Avoir un jeu d'écritures Débit/Crédit sur des comptes CGNC,
+    sans lire ni écrire une seule ``LigneEcriture``. Or le seul écrivain de GL
+    réel est ``compta.services.ecriture_pour_facture``, et le FEC officiel ne
+    lit QUE ``LigneEcriture`` : le cabinet recevait deux documents qui ne se
+    recoupaient sur aucune ligne. Quand le toggle est actif — le cas nominal
+    visé —, on lit désormais le GL réel ; sinon on assume l'approximation et on
+    la DIT sur le document."""
+    try:
+        from apps.compta.services import auto_ecritures_actif
+        return bool(auto_ecritures_actif(company))
+    except Exception:  # noqa: BLE001 — compta absent = reconstitution
+        return False
+
+
+def _grand_livre_rows_reels(company, debut, fin):
+    """AUD111 — les écritures du journal VTE RÉELLEMENT postées, pour
+    [debut, fin[.
+
+    Lecture cross-app par ``apps.compta.selectors.journal_items`` (jamais un
+    import de ``apps.compta.models``). Le document devient alors un extrait
+    fidèle du grand livre : il s'aligne ligne pour ligne sur le FEC du même
+    journal et de la même période, y compris pour une facture d'acompte
+    (créditée en 4421, jamais en 71xx/4455) et pour une facture remisée
+    (``ecriture_pour_facture`` lit ``facture.total_ht``, remise-aware).
+    """
+    from datetime import timedelta
+
+    from apps.compta.selectors import journal_items
+
+    items = journal_items(
+        company, journal='VTE', date_debut=debut,
+        date_fin=fin - timedelta(days=1))
+
+    # Nom + ICE du tiers : résolus une fois par tiers distinct (jamais un
+    # accès par ligne), via le selector cross-app de crm.
+    tiers_cache = {}
+
+    def _tiers(item):
+        if item['tiers_type'] != 'client' or not item['tiers_id']:
+            return '', ''
+        cle = item['tiers_id']
+        if cle not in tiers_cache:
+            from apps.crm.selectors import get_company_client
+            client = get_company_client(company, cle)
+            tiers_cache[cle] = (
+                (getattr(client, 'nom', '') or '',
+                 getattr(client, 'ice', '') or '')
+                if client is not None else ('', ''))
+        return tiers_cache[cle]
+
+    rows = []
+    tot_debit = tot_credit = Decimal('0')
+    for item in items:
+        debit = _q2(item['debit'] or 0)
+        credit = _q2(item['credit'] or 0)
+        nom, ice = _tiers(item)
+        rows.append([
+            item['compte_numero'],
+            item['compte_intitule'] or _account_label(item['compte_numero']),
+            item['date_ecriture'].isoformat() if item['date_ecriture'] else '',
+            item['journal_code'] or 'VTE',
+            item['ecriture_reference'] or '',
+            item['libelle'] or '',
+            nom, ice, '',
+            float(debit), float(credit),
+        ])
+        tot_debit += debit
+        tot_credit += credit
+    return rows, (tot_debit, tot_credit)
+
+
 def _grand_livre_rows(company, debut, fin):
-    """Construit les écritures du grand-livre des ventes pour [debut, fin[.
+    """Écritures du grand-livre des ventes pour [debut, fin[.
+
+    AUD111 — DEUX SOURCES, jamais deux vérités : quand l'auto-génération des
+    écritures est active, on lit le grand livre RÉEL (journal VTE) ; sinon on
+    reconstitue depuis le registre des ventes et le document porte le bandeau
+    ``BANDEAU_RECONSTITUTION``.
 
     Renvoie (rows, totals) où rows = listes (ordre _GRAND_LIVRE_HEADERS) et
-    totals = (tot_debit, tot_credit) en Decimal. Factures (signe +) et avoirs
-    (signe -) émis sur la période ; ventilation HT par taux, TVA par taux.
+    totals = (tot_debit, tot_credit) en Decimal.
+    """
+    if grand_livre_est_reel(company):
+        return _grand_livre_rows_reels(company, debut, fin)
+    return _grand_livre_rows_reconstitues(company, debut, fin)
+
+
+def _grand_livre_rows_reconstitues(company, debut, fin):
+    """Reconstitution depuis Facture/Avoir — le repli quand le GL réel n'est
+    pas alimenté. Factures (signe +) et avoirs (signe -) émis sur la période ;
+    ventilation HT par taux, TVA par taux.
+
+    AUD111 — aligné sur ``compta.services.ecriture_pour_facture`` sur les deux
+    points qui les faisaient diverger structurellement : les montants sont
+    NETS de remise globale (AUD110, via ``facture_par_taux``) et une facture
+    d'ACOMPTE crédite 4421 « avances et acomptes » au lieu de 71xx/4455 —
+    CGNC : un acompte ne constate aucun produit avant livraison.
     """
     from apps.ventes.models import Avoir, Facture
     codes = account_codes_for(company)
     c_clients = codes['clients']
     c_ventes = codes['ventes']
     c_tva = codes['tva_collectee']
+    c_avances = codes.get('avances', '4421')
     journal = 'VTE'
     rows = []
     tot_debit = tot_credit = Decimal('0')
@@ -368,29 +586,24 @@ def _grand_livre_rows(company, debut, fin):
         nom = getattr(f.client, 'nom', '') or ''
         ice = getattr(f.client, 'ice', '') or ''
         piece = f.reference
-        # Ventilation HT/TVA par taux sur les lignes (ou montants figés).
-        par_taux = {}
-        ttc_total = Decimal('0')
-        lignes = list(f.lignes.all())
-        if lignes:
-            for ligne in lignes:
-                ht = _q2(ligne.total_ht)
-                taux = Decimal(ligne.taux_tva_effectif or 0)
-                tva = _q2(ht * taux / Decimal('100'))
-                b = par_taux.setdefault(
-                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-                b['ht'] += ht
-                b['tva'] += tva
-                ttc_total += ht + tva
-        else:
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            par_taux[taux] = {'ht': ht, 'tva': tva}
-            ttc_total = _q2(f.total_ttc)
+        # AUD110 — ventilation HT/TVA par taux lue sur le DOCUMENT : elle est
+        # NETTE de remise globale et couvre d'un coup les trois cas (lignes,
+        # remise active, montants figés). La somme sur les lignes appliquait
+        # la seule remise de LIGNE et sur-déclarait le CA au grand livre.
+        par_taux, ttc_total = facture_par_taux(f)
         # DÉBIT 3421 Clients (TTC) — une ligne par pièce.
         _emit(ttc_total, Decimal('0'), c_clients, None, date_s, piece,
               f'Facture {piece}', nom, ice)
+        if (getattr(f, 'type_facture', None) or 'complete') == 'acompte':
+            # AUD111 — CGNC : un ACOMPTE ne constate JAMAIS de produit avant
+            # livraison. Tout son TTC part en 4421 « Clients — avances et
+            # acomptes », zéro ligne 71xx/4455 — exactement comme le fait le
+            # seul écrivain de GL réel. Ce reconstitué créditait 7111/4455
+            # pour TOUTE facture sans distinguer le type : l'acompte
+            # apparaissait en produit dans le document remis au cabinet.
+            _emit(Decimal('0'), ttc_total, c_avances, None, date_s, piece,
+                  f'Acompte {piece}', nom, ice)
+            continue
         # CRÉDIT 7111 Ventes (HT) + 4455 TVA (par taux).
         for taux in sorted(par_taux):
             b = par_taux[taux]
@@ -452,6 +665,12 @@ def export_grand_livre_xlsx(company, debut, fin):
     ws.append(total_row)
     for c in ws[ws.max_row]:
         c.font = bold
+    # AUD111 — l'approximation est DITE sur le document, jamais tue. Posée
+    # APRÈS la ligne TOTAL : l'en-tête et la zone de données gardent leur
+    # place exacte pour tout lecteur (humain ou tableur) du document.
+    if not grand_livre_est_reel(company):
+        ws.append([])
+        ws.append([BANDEAU_RECONSTITUTION])
 
     resp = HttpResponse(content_type=(
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
@@ -476,6 +695,10 @@ def export_grand_livre_csv(company, debut, fin):
     writer.writerow([])
     writer.writerow(['TOTAL', '', '', '', '', '', '', '', '',
                      float(_q2(tot_debit)), float(_q2(tot_credit))])
+    # AUD111 — même bandeau que le xlsx, après la ligne TOTAL.
+    if not grand_livre_est_reel(company):
+        writer.writerow([])
+        writer.writerow([BANDEAU_RECONSTITUTION])
     resp = HttpResponse('﻿' + buf.getvalue(),
                         content_type='text/csv; charset=utf-8')
     resp['Content-Disposition'] = (

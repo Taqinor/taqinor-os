@@ -9920,9 +9920,18 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     """Marque un paiement de facture portail comme payé (FG230), idempotent.
 
     Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
-    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché. Le
-    report vers un ``Paiement`` comptable reste à la charge de la chaîne ventes
-    via son service (cross-app) ; on ne touche jamais ses modèles ici.
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché.
+
+    AUD102 / B14 (03/09/2026) — CE REPORT N'ARRIVAIT JAMAIS. La docstring
+    disait qu'il « reste à la charge de la chaîne ventes » : le grep n'a
+    trouvé AUCUN appelant qui le fasse. L'argent réellement encaissé au
+    portail (``portail.views_client``) n'entrait donc dans le
+    ``montant_paye`` d'AUCUNE facture, et l'ERP relançait un client déjà
+    réglé. Le report est désormais fait ICI, par le service ventes
+    ``enregistrer_paiement_portail`` (cross-app par ``apps.ventes.services``,
+    jamais un import de ses modèles) : il est idempotent sur la référence de
+    transaction, borne le montant au reste dû et solde la facture par le
+    service unique AUD102.
     """
     if paiement.statut != PaiementFacturePortail.Statut.INITIE:
         return paiement
@@ -9931,6 +9940,21 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     paiement.statut = PaiementFacturePortail.Statut.PAYE
     paiement.paye_le = timezone.now()
     paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+
+    if paiement.facture_id:
+        from apps.ventes.services import (
+            enregistrer_paiement_portail, get_facture_or_none,
+        )
+        facture = get_facture_or_none(
+            company=paiement.company, facture_id=paiement.facture_id)
+        if facture is not None:
+            enregistrer_paiement_portail(
+                facture=facture, montant=paiement.montant,
+                reference=paiement.reference,
+                mode=('carte'
+                      if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                      else 'virement'),
+                company=paiement.company)
     return paiement
 
 

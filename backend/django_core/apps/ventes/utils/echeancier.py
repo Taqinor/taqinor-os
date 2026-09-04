@@ -329,9 +329,29 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     Lève ValueError si le devis n'est pas accepté ou si l'échéancier est complet.
     ``create_with_reference`` est injecté (utils.references) pour la numérotation
     sans collision, identique au reste du module ventes.
+
+    AUD101 — la tranche naît BROUILLON puis passe par LE service d'émission
+    (``domain.facturation_ops.emettre_facture``). C'était le plus grave des
+    cinq chemins muets : la chaîne acompte → matériel → solde du parcours
+    solaire posait ``EMISE`` sans émettre ``facture_emise``, donc sans jamais
+    atteindre le grand livre, alors que ``core/events.py`` affirmait le
+    contraire. Elle hérite désormais du verrou de période, du blocage crédit
+    XFAC28 et de l'événement, exactement comme l'émission depuis l'écran.
     """
     if devis.statut != devis.Statut.ACCEPTE:
         raise ValueError("Le devis doit être au statut « Accepté ».")
+
+    # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. `factures_actives` compte les
+    # tranches via `devis.factures`, qui ne voit AUCUNE facture de la chaîne
+    # BON DE COMMANDE : un devis converti en BC puis facturé pouvait être
+    # facturé une SECONDE fois ici, et le client recevait deux fois la même
+    # vente. Le prédicat est partagé avec l'autre porte (`selectors`), donc il
+    # n'existe qu'UNE définition de « déjà facturé ».
+    from apps.ventes.selectors import factures_via_bon_commande
+    if factures_via_bon_commande(devis).exists():
+        raise ValueError(
+            "Ce devis est déjà facturé par son bon de commande : générer une "
+            "tranche d'échéancier facturerait la même vente une seconde fois.")
 
     tr = next_tranche(devis)
     if tr is None:
@@ -346,7 +366,7 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             reference=ref,
             devis=devis,
             client=devis.client,
-            statut=Facture.Statut.EMISE,
+            statut=Facture.Statut.BROUILLON,
             type_facture=tr['type'],
             pourcentage=tr['pourcentage'],
             libelle=libelle,
@@ -358,11 +378,16 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             company=company,
         )
 
+    from django.db import transaction
+    from apps.ventes.domain.facturation_ops import emettre_facture
     from apps.ventes.utils.company_settings import numbering_config
     cfg = numbering_config(company, 'facture')
-    return create_with_reference(
-        Facture, cfg['prefix'], company, _create,
-        padding=cfg['padding'], period=cfg['period'])
+    with transaction.atomic():
+        facture = create_with_reference(
+            Facture, cfg['prefix'], company, _create,
+            padding=cfg['padding'], period=cfg['period'])
+        emettre_facture(facture, user=user, source='echeancier_tranche')
+    return facture
 
 
 def solde_devis(devis):
@@ -374,13 +399,27 @@ def solde_devis(devis):
     QJR24/D9 — AVANT acceptation, un devis à deux options suit le TOTAL
     AFFICHÉ (l'option recommandée / AVEC, cf. ``options.option_effective``) et
     plus jamais la somme des deux paniers : le solde décrivait une vente qui
-    n'existe pas."""
+    n'existe pas.
+
+    AUD104 (FICHE-SOLDE, 03/09/2026) — LE « PAYÉ » N'EST PLUS RECALCULÉ ICI.
+    Ce site sommait ``p.montant`` sur ``f.paiements.all()`` avec sa PROPRE
+    formule et divergeait de la référence canonique ``Facture.montant_paye``
+    sur TROIS termes : elle EXCLUT les paiements rejetés (YLEDG5), AJOUTE les
+    escomptes (XFAC12) et AJOUTE les avances ventilées (XFAC1). Trois écarts
+    réels en découlaient — un chèque impayé restait compté côté devis alors
+    que la facture était correctement rouverte, un devis soldé par escompte
+    affichait un restant fantôme, et un devis soldé par une avance ventilée
+    affichait « restant = total ». Les avoirs, eux, étaient déjà traités
+    ci-dessous : ce n'était pas un oubli global mais une ré-implémentation
+    partielle, d'autant plus trompeuse qu'elle est servie sur l'écran devis
+    (``serializers.py``), donc potentiellement sous les yeux du client. On LIT
+    désormais la propriété — les trois divergences se ferment d'un coup."""
     from apps.ventes.utils.options import option_totaux
     actives = factures_actives(devis)
     total = Decimal(str(option_totaux(devis)['ttc']))
     facture = sum((Decimal(str(f.total_ttc)) for f in actives), Decimal('0'))
     paye = sum(
-        (Decimal(str(p.montant)) for f in actives for p in f.paiements.all()),
+        (Decimal(str(f.montant_paye)) for f in actives),
         Decimal('0'),
     )
     # Avoirs (notes de crédit) actifs : réduisent le restant dû. Aucun avoir

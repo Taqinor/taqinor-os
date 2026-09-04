@@ -384,12 +384,32 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Une facture existe déjà pour ce BC.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. La garde ci-dessus ne
+        # regardait que la chaîne BC : un devis déjà facturé par l'échéancier
+        # (acompte/tranche) passait ici sans obstacle, et le client recevait
+        # deux fois la même vente. Prédicat partagé, une seule définition de
+        # « déjà facturé » pour les deux portes.
+        from ..selectors import devis_deja_facture
+        if bc.devis_id and devis_deja_facture(bc.devis):
+            return Response(
+                {'detail': (
+                    f'Le devis {bc.devis.reference} est déjà (partiellement) '
+                    'facturé par son échéancier : facturer ce bon de commande '
+                    'facturerait la même vente une seconde fois.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         company = request.user.company
 
         def _create_facture(ref):
             facture = Facture.objects.create(
                 reference=ref,
                 bon_commande=bc,
+                # AUD112 — corollaire minimal : la facture PORTE son devis.
+                # Sans lui, `solde_devis`, `devis_a_facturer` et le suivi
+                # client ne voyaient tout simplement pas ce document (FK
+                # nullable, SET_NULL : rien ne casse si le devis disparaît).
+                devis=bc.devis,
                 client=bc.client,
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,

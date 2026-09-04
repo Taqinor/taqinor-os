@@ -28,6 +28,7 @@ from ..serializers import (  # noqa: F401
     RelanceLogSerializer,
     DevisActivitySerializer,
 )
+from rest_framework.permissions import BasePermission  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -122,6 +123,21 @@ def _company_qs(qs, user):
     return qs.none()
 
 
+class IsSuperuserOnly(BasePermission):
+    """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
+
+    ``IsAdminRole`` était trop large pour un geste destructeur : il passe pour
+    TOUT rôle portant la permission ``roles_gerer``
+    (``authentication/models.py`` ``is_admin_role``) — un « Directeur » ou un
+    « Admin adjoint » entrait donc, alors que la suppression d'une facture
+    emporte ses encaissements. Le texte « admin uniquement » était vrai au sens
+    du décorateur, faux au sens de qui peut réellement le faire."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.is_superuser)
+
+
 class _DatedDocument:
     """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
     ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
@@ -179,8 +195,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'remettre_brouillon', 'encaissement_groupe',
         ]:
             return [IsResponsableOrAdmin()]
+        # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
+        # geste qui emporte les encaissements en cascade. Réservé au
+        # superutilisateur, jamais au palier « admin » élargi (tout rôle
+        # portant ``roles_gerer``).
+        elif self.action == 'destroy':
+            return [IsSuperuserOnly()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
-        elif self.action in ['destroy', 'annuler']:
+        elif self.action == 'annuler':
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
@@ -263,6 +285,53 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
+    def perform_destroy(self, instance):
+        """AUD103 (FICHE-DEL) — la suppression d'une facture cesse d'emporter
+        les encaissements en cascade.
+
+        Le viewset ne surchargeait NI ``destroy`` NI ``perform_destroy`` : DRF
+        appelait donc ``instance.delete()`` nu. Une facture ÉMISE, EN_RETARD ou
+        PAYÉE se supprimait aussi bien qu'un brouillon — alors que ``annuler``
+        REFUSE explicitement une facture payée : la suppression contournait la
+        garde métier de l'annulation. Aucun verrou de période non plus (la
+        garde YLEDG3 était câblée en sept points, jamais sur ``destroy``). Et
+        la cascade emportait ``Paiement`` : des MAD réellement encaissés
+        partaient en silence, pendant que l'écriture au grand livre — qui
+        n'est PAS liée par FK (compta la retrouve par ``source_type``/
+        ``source_id``) — SURVIVAIT en orphelin, faisant diverger le GL du
+        registre des ventes définitivement.
+
+        Trois gardes, plus une traduction :
+          1. seul un BROUILLON est supprimable (tout le reste s'ANNULE) ;
+          2. aucun paiement, même rejeté (piste d'audit) ;
+          3. verrou de période comptable ;
+          4. ``ProtectedError`` (avoir, note de débit, intention de paiement
+             portail) devient un 400 français, plus une 500 non traduite.
+        """
+        from django.db.models import ProtectedError
+
+        if instance.statut != Facture.Statut.BROUILLON:
+            raise ValidationError({'detail': (
+                'Seule une facture brouillon peut être supprimée. Une facture '
+                'émise, en retard ou payée s\'ANNULE (elle porte un numéro '
+                'légal et, le cas échéant, des encaissements).'
+            )})
+        if instance.paiements.exists():
+            raise ValidationError({'detail': (
+                'Cette facture porte au moins un paiement : la supprimer '
+                'effacerait des encaissements réels. Annulez-la ou rejetez '
+                'd\'abord ses paiements.'
+            )})
+        self._guard_periode_verrouillee(instance)
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError({'detail': (
+                'Suppression impossible : cette facture est référencée par un '
+                'avoir, une note de débit ou un paiement du portail client. '
+                'Annulez-la plutôt que de la supprimer.'
+            )})
+
     def perform_update(self, serializer):
         # YLEDG3 — un document daté dans une période comptable CLÔTURÉE ne
         # doit plus pouvoir être modifié. Import function-local de
@@ -313,46 +382,21 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # XFAC18 — workflow de revue (ségrégation des tâches). Flag OFF
-        # (défaut) → comportement inchangé, aucun contrôle supplémentaire.
-        # Flag ON et facture « à valider » → le valideur doit être un
-        # responsable/admin DIFFÉRENT du créateur.
-        from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=facture.company)
-        anomalies = []
-        if getattr(profile, 'revue_factures_active', False) and \
-                facture.revue_statut == Facture.RevueStatut.A_VALIDER:
-            if facture.created_by_id == request.user.id:
-                return Response(
-                    {'detail': (
-                        'Cette facture doit être validée par un '
-                        'responsable/admin différent du créateur.'
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            from ..services import anomalies_emission_facture
-            anomalies = anomalies_emission_facture(facture)
-            facture.revue_statut = Facture.RevueStatut.VALIDEE
-        facture.statut = Facture.Statut.EMISE
-        # XFAC23 — dérive l'échéance depuis les conditions de paiement du
-        # client à l'émission, SAUF si une échéance a déjà été saisie
-        # manuellement (jamais écrasée — input freedom) ; sans réglage
-        # client, l'échéancier FG46/FG220 ou le repli +30 j (scheduled.py)
-        # gardent la priorité, comportement inchangé.
-        if not facture.date_echeance:
-            from ..services import calculer_date_echeance
-            derivee = calculer_date_echeance(
-                client=facture.client, date_emission=facture.date_emission)
-            if derivee is not None:
-                facture.date_echeance = derivee
-        # XFAC18 — save complet (persiste statut + revue_statut + échéance
-        # dérivée), puis surface les anomalies de revue dans la réponse.
-        facture.save()
-        # YEVNT6 — événement documentaire (best-effort, ne change rien au
-        # statut déjà posé ci-dessus).
-        from core.events import facture_emise
-        facture_emise.send(
-            sender=Facture, instance=facture, company=facture.company)
+        # AUD101 — l'émission (workflow de revue XFAC18, verrou de période,
+        # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
+        # et émission de `facture_emise`) vit DANS le service unique. L'écran
+        # ne fait plus que traduire ses refus en 400/403 français.
+        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
+        from ..domain.recouvrement import CreditHoldError
+        try:
+            anomalies = emettre_facture(
+                facture, user=request.user, source='ecran_facture')
+        except EmissionRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except CreditHoldError as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_403_FORBIDDEN)
         data = FactureSerializer(facture).data
         if anomalies:
             data['anomalies'] = anomalies
@@ -426,21 +470,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        facture.statut = Facture.Statut.PAYEE
-        facture.save()
-        # YDOCF4 — facture_paid, exactement une fois. Un passage manuel
-        # « marquer payée » ne porte pas de montant de paiement propre : on
-        # transmet le résiduel qui vient d'être annulé (montant_du AVANT ce
-        # passage, ici recalculé à 0 côté document — le montant informatif
-        # posé est donc le solde figé de la facture, cohérent avec les autres
-        # sites d'émission qui portent le montant réglé).
-        from core.events import facture_paid, facture_payee
-        facture_paid.send(
-            sender=Facture, facture=facture, montant=facture.total_ttc,
-            company=facture.company)
-        # YEVNT6 — événement documentaire générique (même transition).
-        facture_payee.send(
-            sender=Facture, instance=facture, company=facture.company)
+        # AUD102 (P1) — la bascule passe par LE service unique. ``force`` : un
+        # passage MANUEL « marquer payée » est un geste responsable/admin
+        # délibéré qui solde sans encaissement — l'un des deux seuls cas
+        # autorisés à sauter la garde centime-près. Le montant informatif
+        # porté par l'événement reste le TTC du document, comme avant.
+        from ..domain.encaissements import marquer_facture_soldee
+        marquer_facture_soldee(
+            facture, montant=facture.total_ttc, user=request.user,
+            source='marquer_payee_manuel', force=True)
+        facture.refresh_from_db()
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -744,26 +783,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             paiement_enregistre.send(
                 sender=Paiement, instance=paiement, company=locked.company)
             # Statut auto : intégralement réglée → « Payée ».
+            # AUD102 (P2) — la bascule (garde centime-près, U10
+            # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
+            # `facture_payee`) vit DANS le service unique.
             locked.refresh_from_db()
-            if locked.montant_du <= Decimal('0') and \
-                    locked.statut != Facture.Statut.ANNULEE:
-                locked.statut = Facture.Statut.PAYEE
-                locked.save(update_fields=['statut'])
-                # U10 — facture soldée : on arrête l'escalade de relance
-                # (efface la prochaine relance et neutralise le compteur de
-                # niveau) pour qu'une facture payée cesse d'afficher un retard.
-                from ..services import reset_relance_escalation
-                reset_relance_escalation(locked)
-                # YDOCF4 — facture_paid, exactement une fois au passage
-                # résiduel→0 (jamais à un règlement partiel).
-                from core.events import facture_paid, facture_payee
-                facture_paid.send(
-                    sender=Facture, facture=locked, montant=montant,
-                    company=locked.company)
-                # YEVNT6 — événement documentaire générique (même transition).
-                facture_payee.send(
-                    sender=Facture, instance=locked, company=locked.company)
-            elif locked.statut != Facture.Statut.ANNULEE:
+            from ..domain.encaissements import marquer_facture_soldee
+            soldee = marquer_facture_soldee(
+                locked, montant=montant, user=request.user,
+                source='encaissement_facture')
+            if not soldee and locked.statut != Facture.Statut.ANNULEE:
                 # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
                 # reste à payer arrondi au pas société (défaut 0 = désactivé,
                 # comportement inchangé) solde la facture, l'écart d'arrondi
@@ -1193,6 +1221,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 company=company, reference=ref, facture=facture,
                 client=facture.client, statut=Avoir.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
+                # AUD106 — la remise globale de la facture SUIT sur l'avoir.
+                # Elle n'était jamais reprise : l'avoir total recopiait les
+                # lignes BRUTES alors que la facture facture le NET, donc il
+                # créditait plus que ce qui avait été facturé.
+                remise_globale=facture.remise_globale,
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:
@@ -1341,6 +1374,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 company=company, reference=ref, facture=facture,
                 client=facture.client, statut=NoteDebit.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
+                # AUD107 — la remise globale de la facture SUIT sur la note de
+                # débit. Le repli « facture entière » recopie les lignes 1:1
+                # (remise DE LIGNE incluse) mais jamais la remise GLOBALE du
+                # document : une pénalité adossée à une facture remisée à 15 %
+                # majorait le client sur le montant NON remisé. Seul le repli
+                # « facture SANS lignes » lisait la propriété remise-aware ;
+                # le chemin normal, le cas courant, ne le faisait jamais.
+                remise_globale=facture.remise_globale,
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:
@@ -1616,14 +1657,30 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         def _create(ref):
             return Facture.objects.create(
                 reference=ref, company=facture.company,
-                client=facture.client, statut=Facture.Statut.EMISE,
+                client=facture.client, statut=Facture.Statut.BROUILLON,
                 libelle=libelle, montant_ht=penalite,
                 montant_tva=Decimal('0'), montant_ttc=penalite,
                 taux_tva=Decimal('0'), created_by=request.user,
             )
 
-        facture_penalite = create_numbered(
-            Facture, facture.company, 'facture', _create)
+        # AUD101 — la facture de pénalités passe par LE service unique : elle
+        # posait EMISE sans jamais émettre `facture_emise`, donc sans écriture
+        # au grand livre, et sans consulter le blocage crédit du client.
+        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
+        from ..domain.recouvrement import CreditHoldError
+        try:
+            with transaction.atomic():
+                facture_penalite = create_numbered(
+                    Facture, facture.company, 'facture', _create)
+                emettre_facture(
+                    facture_penalite, user=request.user,
+                    source='penalites_retard')
+        except EmissionRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except CreditHoldError as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_403_FORBIDDEN)
         from .. import activity
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)
@@ -1822,8 +1879,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             'ok': False,
                             'detail': 'La facture doit avoir au moins une ligne.'}
                     else:
-                        facture.statut = Facture.Statut.EMISE
-                        facture.save(update_fields=['statut'])
+                        # AUD101 — le bulk passe par LE service unique : il
+                        # posait EMISE en silence, sans verrou de période,
+                        # sans workflow de revue XFAC18, sans dérivation
+                        # d'échéance et sans `facture_emise` (donc sans
+                        # écriture au grand livre).
+                        from ..domain.facturation_ops import emettre_facture
+                        emettre_facture(
+                            facture, user=request.user, source='bulk')
                         results[fid_int] = {
                             'ok': True,
                             'detail': 'Émise.',

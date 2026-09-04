@@ -296,10 +296,13 @@ def commit(file_bytes, filename, company, user):
                 paiement_enregistre.send(
                     sender=Paiement, instance=paiement, company=company)
                 locked.refresh_from_db()
-                if locked.montant_du <= Decimal('0') and \
-                        locked.statut != Facture.Statut.ANNULEE.value:
-                    locked.statut = Facture.Statut.PAYEE.value
-                    locked.save(update_fields=['statut'])
+                # AUD102 (P8) — l'import de relevé soldait en silence : la
+                # bascule passe par LE service unique (donc `facture_payee`,
+                # donc lettrage compta, et les relances ré-armées).
+                from .domain.encaissements import marquer_facture_soldee
+                marquer_facture_soldee(
+                    locked, montant=montant, user=user,
+                    source='import_releve')
             created += 1
             results.append({
                 'ligne': i + 2, 'statut': 'created',
