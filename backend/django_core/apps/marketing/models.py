@@ -1177,6 +1177,23 @@ class EnqueteNPS(models.Model):
         verbose_name = 'Enquête NPS'
         verbose_name_plural = 'Enquêtes NPS'
         ordering = ['-envoyee_le']
+        constraints = [
+            # AUD618 — une SEULE enquête par chantier et par société.
+            # ``_creer_enquete_nps_a_reception`` reposait sur le seul
+            # ``get_or_create``, sans garantie DB : deux réceptions
+            # concurrentes du même chantier pouvaient créer deux enquêtes et
+            # solliciter le client DEUX fois. Avec cette contrainte, le
+            # ``get_or_create`` de Django absorbe l'IntegrityError et
+            # re-lit la ligne gagnante — un seul enregistrement.
+            # ``condition`` explicite : un ``chantier_id`` NULL (enquête hors
+            # chantier) n'est pas contraint, ce que la sémantique NULL de
+            # Postgres ferait de toute façon — on l'écrit pour que l'intention
+            # ne dépende pas du backend.
+            models.UniqueConstraint(
+                fields=['company', 'chantier_id'],
+                condition=models.Q(chantier_id__isnull=False),
+                name='uniq_enquete_nps_par_chantier_et_societe'),
+        ]
 
     def __str__(self):
         return f'NPS client #{self.client_id} ({self.statut})'
