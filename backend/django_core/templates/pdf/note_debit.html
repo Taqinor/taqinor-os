@@ -36,6 +36,7 @@
 
     .totaux { margin-left: auto; width: 300px; margin-bottom: 30px; }
     .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .totaux-row.remise { color: #dc2626; }
     .totaux-row.total-ttc { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; border-top: 2px solid {{ couleur_principale }}; border-bottom: none; padding-top: 10px; margin-top: 4px; }
 
     .note-block { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 14px; margin-bottom: 24px; font-size: 11px; line-height: 1.5; }
@@ -145,12 +146,24 @@
   <div class="note-block"><strong>Motif :</strong> {{ note_debit.motif }}</div>
   {% endif %}
 
+  {# AUD107 — la chaîne HT brut → remise → HT net → TVA → TTC vient d'UNE
+     source, ``TotauxDocumentMixin.totaux_affichage``, partagée avec la facture
+     et l'avoir. La note de débit sommait les lignes recopiées (remise DE LIGNE
+     seule) : sur une facture remisée, elle majorait le client sur le montant
+     NON remisé. UN GABARIT NE RECALCULE JAMAIS UN POURCENTAGE. #}
+  {% set totaux = note_debit.totaux_affichage %}
   <div class="totaux">
     <div class="totaux-row">
       <span>Sous-total HT</span>
-      <span>{{ "%.2f"|format(note_debit.total_ht) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ht_brut) }} MAD</span>
     </div>
-    {% for b in note_debit.tva_par_taux %}
+    {% if totaux.remise > 0 %}
+    <div class="totaux-row remise">
+      <span>Remise globale ({{ note_debit.remise_globale }}%)</span>
+      <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
+    </div>
+    {% endif %}
+    {% for b in totaux.tva_par_taux %}
     <div class="totaux-row">
       <span>TVA ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>
@@ -158,7 +171,7 @@
     {% endfor %}
     <div class="totaux-row total-ttc">
       <span>Total dû en supplément (TTC)</span>
-      <span>{{ "%.2f"|format(note_debit.total_ttc) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ttc) }} MAD</span>
     </div>
   </div>
 

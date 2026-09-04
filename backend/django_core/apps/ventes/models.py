@@ -1133,7 +1133,10 @@ class AffectationPaiement(models.Model):
         return f'{self.montant} MAD — {self.paiement_id} → {self.facture.reference}'
 
 
-class NoteDebit(models.Model):
+from apps.facturation.totaux import TotauxDocumentMixin  # noqa: E402
+
+
+class NoteDebit(TotauxDocumentMixin, models.Model):
     """ZFAC4 — note de débit : pendant de l'``Avoir`` qui MAJORE une facture
     déjà émise (surfacturation régularisée, complément non prévu) au lieu de
     la réduire. Miroir structurel d'``Avoir`` (mêmes champs), référence
@@ -1156,6 +1159,15 @@ class NoteDebit(models.Model):
     motif = models.TextField(blank=True, default='')
     date_emission = models.DateField(auto_now_add=True)
     taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
+    # AUD107 — miroir du champ de Facture/Avoir. La note de débit N'AVAIT
+    # AUCUN champ de remise globale : son chemin de repli « facture entière »
+    # recopiait les lignes 1:1 (produit, quantité, P.U., remise DE LIGNE, taux
+    # TVA) sans jamais la remise globale du document, et sa propriété
+    # ``total_ht`` sommait ces lignes. Une pénalité de retard adossée à une
+    # facture remisée à 15 % majorait donc le client sur le montant NON remisé.
+    remise_globale = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Remise globale (%) reprise de la facture d\'origine.')
     # Montants figés (chemin simple, sans lignes détaillées) — utilisés quand
     # aucune ligne n'est fournie.
     montant_ht = models.DecimalField(
@@ -1178,33 +1190,13 @@ class NoteDebit(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
-    def total_ht(self):
-        if self.montant_ht is not None:
-            return self.montant_ht
-        return sum(ligne.total_ht for ligne in self.lignes.all())
-
-    @property
-    def total_tva(self):
-        if self.montant_tva is not None:
-            return self.montant_tva
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
-
-    @property
-    def tva_par_taux(self):
-        from .selectors import tva_buckets
-        frozen = None
-        if self.montant_tva is not None:
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
-        return tva_buckets(
-            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
-
-    @property
-    def total_ttc(self):
-        if self.montant_ttc is not None:
-            return self.montant_ttc
-        return self.total_ht + self.total_tva
+    # AUD107 — les totaux viennent de ``TotauxDocumentMixin``
+    # (``apps.facturation.models``), seul propriétaire de la chaîne
+    # HT → remise globale → TVA par taux → TTC, partagé avec Facture (AUD105)
+    # et Avoir (AUD106). C'était le MIROIR EXACT du défaut de l'Avoir : seul le
+    # chemin de repli « facture SANS lignes » utilisait la propriété
+    # remise-aware de la facture ; le chemin normal, qui est le cas courant, ne
+    # le faisait jamais.
 
 
 class LigneNoteDebit(models.Model):

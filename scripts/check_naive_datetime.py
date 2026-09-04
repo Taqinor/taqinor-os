@@ -58,10 +58,19 @@ NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 # ventes:1649->ventes:681, RelanceLog.date ventes:1922->facturation:1072.
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/ventes/models.py:697",
-    "backend/django_core/apps/facturation/models.py:113",
-    "backend/django_core/apps/facturation/models.py:917",
-    "backend/django_core/apps/facturation/models.py:1101",
-    "backend/django_core/apps/ventes/models.py:1157",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08), même champ date-ancre relu
+    # AUD105-107 (03/09/2026) — recalés par PREUVE DE CONTENU (diff vs la base
+    # de lane) : la chaîne de totaux a été extraite dans
+    # ``apps/facturation/totaux.py`` (mixin partagé Facture/Avoir/NoteDebit),
+    # ce qui retire ~145 lignes de facturation/models.py et ~25 de
+    # ventes/models.py, et AUD107 ajoute NoteDebit.remise_globale. MÊMES quatre
+    # champs date-ancre, déclarations identiques avant/après. Bug-class #34.
+    # facturation 113->118 (Facture.date_emission), 917->867
+    # (Avoir.date_emission), 1101->1028 (RelanceLog.date) ;
+    # ventes 1157->1160 (NoteDebit.date_emission).
+    "backend/django_core/apps/facturation/models.py:118",
+    "backend/django_core/apps/facturation/models.py:867",
+    "backend/django_core/apps/facturation/models.py:1028",
+    "backend/django_core/apps/ventes/models.py:1160",  # NoteDebit.date_emission
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.

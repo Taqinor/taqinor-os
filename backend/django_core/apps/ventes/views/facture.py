@@ -1374,6 +1374,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 company=company, reference=ref, facture=facture,
                 client=facture.client, statut=NoteDebit.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
+                # AUD107 — la remise globale de la facture SUIT sur la note de
+                # débit. Le repli « facture entière » recopie les lignes 1:1
+                # (remise DE LIGNE incluse) mais jamais la remise GLOBALE du
+                # document : une pénalité adossée à une facture remisée à 15 %
+                # majorait le client sur le montant NON remisé. Seul le repli
+                # « facture SANS lignes » lisait la propriété remise-aware ;
+                # le chemin normal, le cas courant, ne le faisait jamais.
+                remise_globale=facture.remise_globale,
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:
