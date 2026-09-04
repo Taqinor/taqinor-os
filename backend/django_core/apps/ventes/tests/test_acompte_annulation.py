@@ -201,6 +201,43 @@ class FG50AcompteAnnulation(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('Aucun acompte', r.data['detail'])
 
+    # ── 1bis. AUD125 — ce que la cible peut ABSORBER ──
+    def test_transfer_superieur_au_reste_du_de_la_cible_refuse(self):
+        """AUD125 — un acompte de 30 000 déplacé sur une facture de solde de
+        20 000 créait un trop-perçu de 10 000 INVISIBLE : ni la source ni la
+        cible ne le signalaient. ROUGE avant le correctif."""
+        source = self._facture()
+        self._pay(source, '30000')
+        cible = self._facture(type_f='intermediaire')
+        # La cible ne doit que 5 100 : elle ne peut pas absorber 30 000.
+        self.assertEqual(cible.montant_du, Decimal('5100.00'))
+
+        r = self._annuler(source, {
+            'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('dépasse le reste à payer', r.data['detail'])
+        # RIEN n'a bougé : la source reste émise avec son acompte.
+        source.refresh_from_db()
+        cible.refresh_from_db()
+        self.assertEqual(source.statut, Facture.Statut.EMISE)
+        self.assertEqual(source.montant_paye, Decimal('30000'))
+        self.assertEqual(cible.montant_paye, Decimal('0'))
+        self.assertEqual(Paiement.objects.filter(facture=cible).count(), 0)
+
+    def test_transfer_egal_au_reste_du_de_la_cible_passe(self):
+        """Le transfert qui solde EXACTEMENT la cible reste autorisé (la
+        garde est bornée au centime près, jamais plus stricte)."""
+        source = self._facture()
+        self._pay(source, '5100')
+        cible = self._facture(type_f='intermediaire')
+
+        r = self._annuler(source, {
+            'acompte': {'action': 'transferer', 'facture_cible': cible.id}})
+        self.assertEqual(r.status_code, 200, r.data)
+        cible.refresh_from_db()
+        self.assertEqual(cible.montant_paye, Decimal('5100'))
+        self.assertEqual(cible.montant_du, Decimal('0'))
+
     # ── 2. Remboursement (contre-passation) ──
     def test_refund_creates_reversing_negative_paiement(self):
         source = self._facture()

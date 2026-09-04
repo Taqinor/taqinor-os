@@ -618,6 +618,26 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         )},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                # AUD125 — CE QUE LA CIBLE PEUT ABSORBER. Le transfert
+                # re-pointait les paiements sans jamais lire `cible.montant_du`
+                # ni le comparer au net transféré : un acompte de 30 000
+                # déplacé sur une facture de solde de 20 000 créait un
+                # trop-perçu de 10 000 INVISIBLE (aucune des deux factures ne
+                # le signale). La garde est la même que celle du chemin
+                # unitaire (ERR72) : tolérance d'un centime, lecture sous le
+                # verrou déjà pris sur la cible.
+                from core.money import quantize_mad
+                reste_cible = cible.montant_du
+                if quantize_mad(net_acompte) - reste_cible > Decimal('0.01'):
+                    return Response(
+                        {'detail': (
+                            f"L'acompte transféré "
+                            f"({quantize_mad(net_acompte):.2f} MAD) dépasse le "
+                            f"reste à payer de la facture cible "
+                            f"({reste_cible:.2f} MAD)."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 # Re-pointe les paiements vers la cible : les soldes des deux
                 # factures se redérivent (propriétés calculées).
                 nb = len(paiements)
@@ -630,6 +650,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     locked, request.user, cible, net_acompte, nb)
                 activity.log_facture_acompte_transfere_entree(
                     cible, request.user, locked, net_acompte, nb)
+                # AUD125 (moitié restante) — quand le transfert SOLDE la
+                # cible, elle doit basculer PAYÉE et émettre `facture_payee`,
+                # faute de quoi elle reste EMISE donc relancée bien
+                # qu'entièrement couverte. Cette bascule DOIT passer par le
+                # service unique `marquer_facture_soldee` d'AUD102 : le
+                # dépôt compte déjà neuf transitions concurrentes, en écrire
+                # une dixième ici est exactement ce qu'AUD125 interdit.
+                # [BLOCKED: attend AUD102 — brancher l'appel ici, sur
+                #  `cible` rafraîchie, dès que le service existe.]
                 facture = locked
 
             elif acompte_action == 'rembourser':
