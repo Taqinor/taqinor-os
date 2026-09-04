@@ -2665,8 +2665,17 @@ class RemiseEncaissement(models.Model):
 class LigneRemiseEncaissement(models.Model):
     """Une ligne = un ``Paiement`` (espèces/chèque) rattaché à cette remise.
 
-    Une fois la remise clôturée, ses lignes sont VERROUILLÉES (aucune
-    modification/suppression — appliqué côté service)."""
+    AUD135 — l'unicité était déclarée ``unique_together [('remise','paiement')]``,
+    donc PAR REMISE : rien n'empêchait le même Paiement d'apparaître dans N
+    remises, et ``RemiseEncaissement.montant_lignes`` le comptait dans chacune
+    (le même chèque de 15 000 déclaré dans deux bordereaux ⇒ 15 000 de trop au
+    rapprochement de caisse). La contrainte porte désormais sur ``paiement``
+    SEUL : un encaissement appartient à AU PLUS UNE remise, garanti en base.
+
+    AUD135 — le verrou post-clôture annoncé ici n'existait nulle part :
+    ``cloturer`` ne changeait que le statut et aucun service ne l'appliquait.
+    Il est maintenant RÉEL (``save``/``delete`` ci-dessous), pas une promesse
+    de docstring."""
     remise = models.ForeignKey(
         RemiseEncaissement, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
@@ -2677,7 +2686,30 @@ class LigneRemiseEncaissement(models.Model):
     class Meta:
         verbose_name = 'Ligne de remise d\'encaissement'
         verbose_name_plural = 'Lignes de remise d\'encaissement'
-        unique_together = [('remise', 'paiement')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['paiement'],
+                name='uniq_ligne_remise_par_paiement'),
+        ]
+
+    def _garde_remise_ouverte(self, verbe):
+        """AUD135 — le verrou post-clôture, réellement appliqué."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        statut = getattr(self.remise, 'statut', None)
+        if statut and statut != RemiseEncaissement.Statut.OUVERTE:
+            raise DjangoValidationError(
+                f'Remise {self.remise.reference or self.remise_id} '
+                f'{self.remise.get_statut_display().lower()} : ses lignes sont '
+                f'verrouillées, impossible de les {verbe}.')
+
+    def save(self, *args, **kwargs):
+        self._garde_remise_ouverte('modifier')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._garde_remise_ouverte('supprimer')
+        return super().delete(*args, **kwargs)
 
     def __str__(self):
         return f'{self.remise_id} — paiement {self.paiement_id}'
