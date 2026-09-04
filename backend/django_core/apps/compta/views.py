@@ -6105,14 +6105,125 @@ class CampagneViewSet(_ComptaBaseViewSet):
         if self.action in (
                 'apercu_fusion', 'precheck', 'cout_sms', 'clics_par_lien',
                 'roi', 'roi_leads_sources', 'kpi_mere', 'kanban', 'reporting',
-                'reporting_export', 'modeles', 'rendu_lead'):
+                'reporting_export', 'modeles', 'rendu_lead',
+                # AUDV17 — LECTURES de conformité (état CNDP, lien public de
+                # désinscription d'un destinataire) : même palier que les
+                # autres rapports du module.
+                'conformite_cndp', 'lien_desinscription'):
             return [IsResponsableOrAdmin()]
         if self.action in ('envoyer', 'envoyer_test'):
             return [HasPermissionOrLegacy('compta_valider')()]
         if self.action in ('creer_depuis_modele', 'dupliquer', 'annuler',
-                           'renvoyer_echecs', 'rattacher'):
+                           'renvoyer_echecs', 'rattacher',
+                           # AUDV17 — planifier est une SAISIE (elle met la
+                           # campagne en file), jamais une validation d'envoi.
+                           'planifier'):
             return [HasPermissionOrLegacy('compta_saisir')()]
         return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def planifier(self, request, pk=None):
+        """AUDV17 / XMKT7 (DRAFT165-20) — met la campagne EN FILE (brouillon
+        → en_file) pour un envoi daté.
+
+        `services.planifier_campagne` n'avait aucun appelant : la seule façon
+        de faire partir une campagne était `envoyer` — c'est-à-dire TOUT DE
+        SUITE. La planification, le beat qui dépile la file et la fenêtre de
+        silence (aucun SMS la nuit ni un jour férié) étaient tous écrits et
+        tous inatteignables.
+
+        Corps : ``{'planifiee_le': '<ISO>'}``. Le service est idempotent (une
+        campagne déjà envoyée/annulée n'est pas remise en file).
+        """
+        campagne = self.get_object()  # scopée société par TenantMixin.
+        planifiee_le = request.data.get('planifiee_le')
+        if not planifiee_le:
+            return Response(
+                {'detail': 'Paramètre `planifiee_le` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.planifier_campagne(campagne, planifiee_le=planifiee_le)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        campagne.refresh_from_db()
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=False, methods=['get'], url_path='conformite-cndp')
+    def conformite_cndp(self, request):
+        """AUDV17 / XMKT4-XMKT15 (DRAFT165-24/25/27) — état de conformité
+        loi 09-08 / CNDP de la société, en un seul appel.
+
+        Le toggle double opt-in (`double_optin_actif`), le pied de déclaration
+        CNDP (`cndp_footer_texte`) et la mention STOP existaient tous côté
+        services SANS AUCUNE surface : personne, dans l'ERP, ne pouvait dire si
+        les campagnes partaient conformes. Lecture seule — cet endpoint ne
+        change aucun réglage, il DIT l'état.
+        """
+        company = request.user.company
+        pied = services.cndp_footer_texte(company)
+        return Response({
+            'double_optin_actif': services.double_optin_actif(company),
+            'pied_cndp': pied,
+            # Le pied n'existe que si le numéro de déclaration est renseigné
+            # dans le profil société : sans lui, les emails partent SANS
+            # mention légale — c'est précisément ce que l'écran doit montrer.
+            'pied_cndp_configure': bool(pied),
+            'mention_stop_sms': services.ajouter_mention_stop(''),
+        })
+
+    @action(detail=False, methods=['post'], url_path='importer-opposition',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def importer_opposition(self, request):
+        """AUDV17 / XMKT3 (DRAFT165-22) — importe une liste d'OPPOSITION
+        (loi 09-08) dans la liste de suppression marketing.
+
+        `services.importer_liste_opposition` n'avait aucun appelant : une
+        liste d'opposition reçue par courrier ou par un partenaire ne pouvait
+        pas entrer dans l'ERP, donc ses destinataires restaient ciblables —
+        exactement ce que la loi interdit. L'import est IDEMPOTENT : une entrée
+        déjà supprimée n'est jamais réécrite (son motif d'origine est conservé).
+
+        Corps : ``{'destinataires': ['a@x.ma', '+2126…'], 'source'?}``.
+        """
+        destinataires = request.data.get('destinataires')
+        if not isinstance(destinataires, list) or not destinataires:
+            return Response(
+                {'detail': 'Une liste `destinataires` non vide est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ajoutes = services.importer_liste_opposition(
+            request.user.company, destinataires,
+            source=request.data.get('source') or 'import_csv')
+        return Response({
+            'recus': len(destinataires),
+            'ajoutes': ajoutes,
+            # Déjà présents = ré-import du même fichier : aucun doublon, aucun
+            # motif écrasé. On le DIT plutôt que de laisser croire à un échec.
+            'deja_presents': len(destinataires) - ajoutes,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='lien-desinscription')
+    def lien_desinscription(self, request, pk=None):
+        """AUDV17 / XMKT3 (DRAFT165-21) — lien PUBLIC de désinscription d'un
+        destinataire donné.
+
+        La vue publique `desinscription_publique` consommait déjà ces jetons,
+        mais RIEN n'en générait : le destinataire d'un email marketing n'avait
+        aucun moyen de se désinscrire, ce que la loi 09-08 impose. Le jeton est
+        signé par (société, destinataire) : il ne désinscrit que CE
+        destinataire, jamais un autre — d'où un lien par personne, et non un
+        lien de campagne.
+        """
+        self.get_object()  # scoping société (404 hors société).
+        destinataire = (request.query_params.get('destinataire') or '').strip()
+        if not destinataire:
+            return Response(
+                {'detail': 'Paramètre `destinataire` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'destinataire': destinataire,
+            'lien': services.lien_desinscription(
+                request.user.company, destinataire),
+        })
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
@@ -6883,6 +6994,44 @@ class InscriptionEvenementViewSet(_ComptaBaseViewSet):
         inscription = self.get_object()
         services.pointer_presence(inscription)
         inscription.refresh_from_db()
+        return Response(InscriptionEvenementSerializer(inscription).data)
+
+    @action(detail=False, methods=['post'], url_path='pointer-borne')
+    def pointer_borne(self, request):
+        """AUDV17 / ZMKT18 (DRAFT165-49) — check-in LIBRE-SERVICE à la borne :
+        par QR scanné ou par sélection après recherche.
+
+        `services.pointer_presence_via_qr_ou_recherche` n'avait aucun appelant.
+        Seul `pointer` existait, et il exige de connaître d'AVANCE l'id de
+        l'inscription — inutilisable à une borne d'accueil, où l'on part d'un
+        QR scanné ou d'un nom cherché. Résultat : l'émargement se faisait à la
+        main dans la liste, une personne à la fois.
+
+        Corps : ``{'evenement': <id>, 'qr_token'?, 'inscription'?}``. Le jeton
+        QR est résolu DANS l'événement et DANS la société (jamais un pointage
+        croisé). Idempotent : re-scanner le même badge ne double pas la
+        présence. Endpoint AUTHENTIFIÉ — la borne est tenue par l'accueil, ce
+        n'est pas une surface publique.
+        """
+        evenement = EvenementMarketing.objects.filter(
+            company=request.user.company,
+            id=request.data.get('evenement')).first()
+        if evenement is None:
+            return Response(
+                {'detail': 'Événement inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        qr_token = request.data.get('qr_token') or None
+        inscription_id = request.data.get('inscription') or None
+        if not qr_token and not inscription_id:
+            return Response(
+                {'detail': 'Fournissez `qr_token` ou `inscription`.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        inscription = services.pointer_presence_via_qr_ou_recherche(
+            evenement, qr_token=qr_token, inscription_id=inscription_id)
+        if inscription is None:
+            return Response(
+                {'detail': "Aucun inscrit ne correspond pour cet événement."},
+                status=status.HTTP_404_NOT_FOUND)
         return Response(InscriptionEvenementSerializer(inscription).data)
 
     @action(detail=True, methods=['get'])

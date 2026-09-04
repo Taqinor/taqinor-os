@@ -7257,6 +7257,43 @@ def envoyer_campagnes_planifiees(company, *, maintenant=None):
     return envoyees
 
 
+def lien_desinscription(company, destinataire):
+    """AUDV17 / XMKT3 (DRAFT165-21) — lien PUBLIC de désinscription un clic.
+
+    `generer_token_desinscription` existait et la vue publique
+    `desinscription_publique` la consommait déjà… mais RIEN ne générait ni
+    n'insérait le lien dans un message sortant : le destinataire recevait un
+    email marketing sans aucun moyen de se désinscrire, ce que la loi 09-08
+    impose. Le jeton est signé par (société, destinataire) : il ne désinscrit
+    que CE destinataire, jamais un autre.
+    """
+    # `PUBLIC_SITE_URL` (repli documenté sur `SITE_URL`) est LE réglage de base
+    # publique du projet : n'en inventons pas un second.
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    token = generer_token_desinscription(
+        getattr(company, 'id', company), destinataire)
+    chemin = f'/api/django/compta/desinscription/{token}/'
+    return f'{base}{chemin}' if base else chemin
+
+
+def _corps_conforme_cndp(campagne):
+    """AUDV17 — ajoute au corps les mentions légales dues au canal (loi 09-08).
+
+    Email : pied de déclaration CNDP (`cndp_footer_texte`, chaîne vide donc
+    NO-OP tant que le numéro de déclaration n'est pas renseigné dans le profil
+    société — le comportement historique est strictement préservé).
+    SMS : mention STOP obligatoire (`ajouter_mention_stop`, idempotente).
+    Les deux fonctions existaient sans le moindre appelant.
+    """
+    corps = campagne.corps or ''
+    if campagne.canal == Campagne.Canal.SMS:
+        return ajouter_mention_stop(corps)
+    pied = cndp_footer_texte(campagne.company)
+    if pied and pied not in corps:
+        corps = f'{corps}\n\n{pied}'
+    return corps
+
+
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
@@ -7362,6 +7399,27 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='contact_dormant_sunset',
             )
+    # ── AUDV17 / XMKT15 (DRAFT165-28) — VALIDATION DES NUMÉROS avant SMS ──
+    # `filtrer_destinataires_sms` n'avait aucun appelant : un fixe ou un
+    # numéro malformé partait au facturier, la société payait un SMS mort et
+    # personne ne le voyait. Le canal SMS filtre désormais ses cibles, et
+    # chaque exclusion laisse une trace (jamais une disparition silencieuse).
+    if campagne.canal == Campagne.Canal.SMS and cibles:
+        tri = filtrer_destinataires_sms([_adresse(cible) for cible in cibles])
+        valides = set(tri['valides'])
+        for exclu in tri['exclus']:
+            if exclu['numero']:
+                EnvoiCampagne.objects.create(
+                    company=campagne.company, campagne=campagne,
+                    destinataire=exclu['numero'], contact_ref='',
+                    statut=EnvoiCampagne.Statut.REBOND,
+                    raison_smtp=f"numero_invalide:{exclu['motif']}",
+                )
+        cibles = [
+            cible for cible in cibles
+            if _normaliser_destinataire(_adresse(cible)) in valides
+        ]
+
     campagne.nb_destinataires = len(cibles)
     if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
         # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
@@ -7381,6 +7439,13 @@ def envoyer_campagne(campagne, *, destinataires=None):
         corps_reecrit, _liens = envelopper_liens_campagne(campagne)
         if corps_reecrit != campagne.corps:
             campagne.corps = corps_reecrit
+        # ── AUDV17 — CONFORMITÉ CNDP / loi 09-08, posée AU MOMENT DE L'ENVOI ──
+        # Trois fonctions écrites, testées et JAMAIS appelées par ce pipeline :
+        # `cndp_footer_texte` (DRAFT165-25) et `ajouter_mention_stop`
+        # (DRAFT165-27). Conséquence : les campagnes partaient sans mention
+        # légale et sans le mot-clé STOP obligatoire — une non-conformité
+        # invisible tant qu'aucun destinataire ne se plaint.
+        campagne.corps = _corps_conforme_cndp(campagne)
     campagne.statut = Campagne.Statut.ENVOYEE
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[

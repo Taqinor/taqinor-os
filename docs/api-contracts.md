@@ -592,6 +592,8 @@
     corps_fusionne:inconnu, detail:texte
 - frontend/src/api/marketingApi.js :: cloturerPresences -> /api/django/marketing/evenements-marketing/<>/cloturer-presences
     absents_marques:inconnu
+- frontend/src/api/marketingApi.js :: conformiteCndp -> /api/django/marketing/campagnes/conformite-cndp
+    double_optin_actif:inconnu, mention_stop_sms:inconnu, pied_cndp:inconnu, pied_cndp_configure:booleen
 - frontend/src/api/marketingApi.js :: enregistrementsAttendus -> /api/django/marketing/domaines-envoi/<>/enregistrements-attendus
     dkim:objet, dmarc:objet, spf:objet
 - frontend/src/api/marketingApi.js :: envoyerTest -> /api/django/marketing/campagnes/<>/envoyer-test
@@ -602,12 +604,14 @@
     configured:inconnu
 - frontend/src/api/marketingApi.js :: importer -> /api/django/marketing/listes-diffusion/<>/importer
     ajoutes:nombre, doublons:nombre, ignores_supprimes:nombre
+- frontend/src/api/marketingApi.js :: importerOpposition -> /api/django/marketing/campagnes/importer-opposition
+    ajoutes:inconnu, deja_presents:nombre, detail:texte, recus:nombre
 - frontend/src/api/marketingApi.js :: instancier -> /api/django/marketing/modeles-journey/<>/instancier
     nom:inconnu, sequence_id:inconnu
+- frontend/src/api/marketingApi.js :: lienDesinscription -> /api/django/marketing/campagnes/<>/lien-desinscription
+    destinataire:inconnu, detail:texte, lien:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
-- frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier
-    etapes:inconnu
 - frontend/src/api/marketingApi.js :: precheck -> /api/django/marketing/campagnes/<>/precheck
     avertissements:inconnu, bloque:inconnu
 - frontend/src/api/marketingApi.js :: previsualiser -> /api/django/marketing/segments-marketing/<>/previsualiser

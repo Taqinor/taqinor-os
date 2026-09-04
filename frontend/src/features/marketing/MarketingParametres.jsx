@@ -112,10 +112,56 @@ export default function MarketingParametres() {
         </select>
       </section>
 
+      <ConformiteCndp />
+
       <button className="btn btn-primary" data-testid="parametres-enregistrer"
         disabled={saving} onClick={enregistrer}>
         {saving ? 'Enregistrement…' : 'Enregistrer'}
       </button>
     </div>
+  )
+}
+
+/* AUDV17 — état de conformité loi 09-08 / CNDP.
+
+   Le toggle double opt-in, le pied de déclaration CNDP et la mention STOP
+   existaient tous côté services SANS AUCUNE surface : personne, dans l'ERP,
+   ne pouvait dire si les campagnes partaient conformes. Lecture seule : cet
+   écran DIT l'état, il ne règle rien (le numéro de déclaration se saisit dans
+   le profil société). Un pied non configuré est signalé EXPLICITEMENT — c'est
+   le cas dangereux, celui où les emails partent sans mention légale. */
+export function ConformiteCndp() {
+  const [etat, setEtat] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let vivant = true
+    marketingApi.campagnes.conformiteCndp()
+      .then((r) => { if (vivant) setEtat(r.data) })
+      .catch(() => { if (vivant) setErr('État de conformité indisponible.') })
+    return () => { vivant = false }
+  }, [])
+
+  return (
+    <section style={{ marginBottom: '1rem' }} data-testid="conformite-cndp">
+      <h3>Conformité CNDP (loi 09-08)</h3>
+      {err && <p style={{ color: '#dc2626' }}>{err}</p>}
+      {etat && (
+        <ul>
+          <li data-testid="cndp-double-optin">
+            Double opt-in : {etat.double_optin_actif ? 'activé' : 'désactivé'}
+          </li>
+          <li data-testid="cndp-pied">
+            {etat.pied_cndp_configure
+              ? `Pied des emails : ${etat.pied_cndp}`
+              : 'Aucun numéro de déclaration CNDP : les emails partent sans '
+                + 'mention légale.'}
+          </li>
+          <li data-testid="cndp-stop">
+            Mention SMS ajoutée automatiquement : «{etat.mention_stop_sms} »
+          </li>
+        </ul>
+      )}
+    </section>
   )
 }
