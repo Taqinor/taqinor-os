@@ -340,7 +340,45 @@ class EcritureComptable(models.Model):
                 "modifiée."
             )
 
+    # ── AUD804 — Immutabilité d'une écriture VALIDÉE ───────────────────────
+    def _verifier_non_validee(self):
+        """Refuse toute réécriture d'une écriture DÉJÀ validée en base.
+
+        COMPTA40 pose un contrôle à quatre yeux (``created_by`` ≠
+        ``valide_par``) dans ``services.valider_ecriture``. Il était
+        contournable de deux façons par un simple porteur de ``compta_saisir``:
+        poser ``statut='validee'`` dans un PATCH (le champ n'était pas en
+        lecture seule au sérialiseur), et — plus grave — RÉÉCRIRE LES LIGNES
+        (montants, comptes) d'une écriture déjà validée sans toucher au statut,
+        puisque la mise à jour supprime et recrée les lignes : le grand livre
+        aurait changé SOUS une validation posée. L'EXTOURNE
+        (``services.extourner_ecriture``, qui crée une écriture INVERSE) reste
+        le seul chemin légitime de correction.
+
+        On compare au statut PERSISTÉ, pas à celui en mémoire : la transition
+        de validation elle-même (brouillon → validée) doit passer.
+
+        Volontairement PAS dans ``clean()`` : ``services.creer_ecriture``
+        appelle ``clean()`` sur des écritures créées DIRECTEMENT en ``VALIDEE``
+        (auto-génération depuis les documents) — l'y placer les casserait
+        toutes sans rien protéger de plus (à la création, il n'y a rien à
+        réécrire).
+        """
+        if not self.pk:
+            return
+        ancien = (type(self).objects
+                  .filter(pk=self.pk)
+                  .values_list('statut', flat=True)
+                  .first())
+        if ancien == self.Statut.VALIDEE:
+            raise ValidationError(
+                "Écriture validée : elle ne peut plus être modifiée. "
+                "Passez une écriture d'extourne (contre-passation) pour la "
+                "corriger."
+            )
+
     def save(self, *args, **kwargs):
+        self._verifier_non_validee()
         self._verifier_periode_ouverte()
         super().save(*args, **kwargs)
 

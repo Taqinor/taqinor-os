@@ -171,6 +171,15 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'date_creation', 'source_type', 'source_id', 'total_debit',
             'total_credit', 'valide_par', 'date_validation',
+            # AUD804 — ``statut`` était dans ``fields`` mais ABSENT d'ici,
+            # contrairement à `NoteFraisSerializer`/`ExerciceComptableSerializer`
+            # du même fichier : un porteur de `compta_saisir` seul créait une
+            # écriture puis `PATCH {"statut":"validee"}` → 200, écriture VALIDÉE
+            # sans jamais passer par `services.valider_ecriture`, donc sans le
+            # contrôle à quatre yeux COMPTA40 (`created_by` ≠ valideur) et avec
+            # `valide_par`/`date_validation` restés NULL. La transition ne passe
+            # plus QUE par l'action `valider` du ViewSet.
+            'statut',
         ]
 
     def get_total_debit(self, obj):
@@ -218,6 +227,19 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
         return ecriture
 
     def update(self, instance, validated_data):
+        # AUD804 — refus EN ENTIER de la mise à jour d'une écriture VALIDÉE.
+        # Le refus ne peut pas se limiter au champ `statut` : ce bloc SUPPRIME
+        # puis RECRÉE les lignes, donc un porteur de `compta_saisir` seul
+        # pouvait réécrire montants et comptes d'une écriture déjà validée sans
+        # jamais toucher au statut — le grand livre changeait sous une
+        # validation posée. L'extourne (`services.extourner_ecriture`) est le
+        # seul chemin légitime de correction. Garde miroir côté modèle
+        # (`EcritureComptable._verifier_non_validee`) pour les chemins ORM.
+        if instance.statut == EcritureComptable.Statut.VALIDEE:
+            raise serializers.ValidationError(
+                "Écriture validée : elle ne peut plus être modifiée. "
+                "Passez une écriture d'extourne (contre-passation) pour la "
+                "corriger.")
         lignes = validated_data.pop('lignes', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
