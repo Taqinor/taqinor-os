@@ -40,9 +40,14 @@ EVENTTYPE_FILE = APPS_ROOT / "notifications" / "models.py"
 # posés pour un découplage aval futur). Tout signal orphelin non listé ici est
 # une régression (ex. YEVNT1/3/4 avaient laissé s'accumuler des orphelins).
 ALLOWED_UNCONSUMED = {
-    # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
-    # facture) ; core n'importe jamais l'app comptable — abonné à venir.
-    "payment_captured",
+    # AUD806 — ``payment_captured`` était réservé ici comme « abonné à venir ».
+    # Le commentaire est PÉRIMÉ depuis YLEDG12 : ``apps/ventes/receivers.py``
+    # (``_materialize_paiement_on_payment_captured``) s'y abonne réellement et
+    # matérialise le ``Paiement``, puis solde la facture par le service unique
+    # (``domain.encaissements.marquer_facture_soldee``, AUD102). Le signal a
+    # donc un abonné : le laisser dans cette liste blanche masquait le VRAI
+    # défaut — aucun émetteur de production ne l'envoyait (``marquer_paye``
+    # n'était appelé que par des tests). RETIRÉ.
     # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
     # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
     # métier (compta lettrage + notifications vendeur/magasinier ;

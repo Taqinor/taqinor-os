@@ -335,10 +335,29 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
     avec un détail explicite, jamais d'appel réseau). Aucune importation d'app
     domaine : la cible (facture) est désignée via ``content_type``/``object_id``
     et le rapprochement comptable passe par l'événement ``payment_captured``.
+
+    AUD806 — cette promesse n'était PAS tenue : ``core.payment.marquer_paye``
+    (seul émetteur de ``payment_captured``, seul à poser ``paye_le``) n'avait
+    AUCUN appelant de production, et le seul chemin qui écrivait ``statut``
+    était ``rafraichir``, par écriture directe. Le PSP confirmait, l'opérateur
+    cliquait « Rafraîchir » → transaction « payée » mais AUCUN ``Paiement``
+    créé (``apps/ventes/receivers._materialize_paiement_on_payment_captured``
+    ne s'exécutait jamais), la facture restait « émise » et partait en relance.
+    L'écriture passe désormais par ``marquer_paye``. La garde d'écriture monte
+    au palier responsable/admin : encaisser n'est pas une action de lecture.
     """
     serializer_class = PaymentTransactionSerializer
     permission_classes = [IsAuthenticated]
     queryset = PaymentTransaction.objects.all()
+
+    def get_permissions(self):
+        # AUD806 — lecture ouverte à tout authentifié (une facture consultée
+        # affiche l'état de sa transaction) ; toute ÉCRITURE — création,
+        # modification, suppression, et la capture par ``rafraichir`` — exige
+        # le palier responsable/admin.
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
 
     def perform_create(self, serializer):
         # company imposée côté serveur ; on initie aussitôt auprès du PSP.
@@ -347,14 +366,31 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def rafraichir(self, request, pk=None):
-        """Interroge le PSP et synchronise le statut (no-op si non configuré)."""
+        """Interroge le PSP et synchronise le statut (no-op si non configuré).
+
+        AUD806 — une capture passe OBLIGATOIREMENT par
+        ``core.payment.marquer_paye`` : elle pose ``paye_le`` et émet
+        ``payment_captured`` (que ``ventes`` consomme pour matérialiser le
+        ``Paiement`` et solder la facture via ``marquer_facture_soldee``,
+        AUD102). C'est un « À LA PLACE DE », jamais un « EN PLUS » : si
+        ``statut='paye'`` était posé d'abord, le garde d'idempotence de
+        ``marquer_paye`` (statut déjà PAYÉ → return) avalerait l'événement à
+        jamais — corriger l'un sans l'autre armerait le défaut.
+        """
+        from .models import PaymentTransaction as _PT
+
         transaction = self.get_object()
         provider = payment_infra._provider_for(transaction)
         if provider is not None:
             res = provider.fetch_status(transaction)
             if res.get('ok') and res.get('statut'):
-                transaction.statut = res['statut']
-                transaction.save(update_fields=['statut', 'updated_at'])
+                if res['statut'] == _PT.STATUT_PAYE:
+                    payment_infra.marquer_paye(
+                        transaction,
+                        external_ref=res.get('external_ref', '') or '')
+                else:
+                    transaction.statut = res['statut']
+                    transaction.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(transaction).data)
 
 

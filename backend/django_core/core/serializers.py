@@ -375,7 +375,18 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
     bougent que via le flux de paiement (``core.payment``), jamais par PATCH
     direct. La cible (facture) est désignée de façon générique par
     ``content_type``/``object_id``.
+
+    AUD806 — ``montant``, ``content_type`` et ``object_id`` restaient
+    MODIFIABLES jusqu'à la capture : un PATCH avant capture repointait la
+    transaction sur une AUTRE facture de la même société — l'argent de Dupont
+    soldait la facture d'Alami. Ces trois champs sont désormais figés dès que
+    la transaction a quitté ``STATUT_INITIE`` (une transaction déjà envoyée au
+    PSP ne change plus ni de montant ni de cible) ; corriger une cible se fait
+    en créant une nouvelle transaction.
     """
+    #: AUD806 — champs figés après l'initiation auprès du PSP.
+    _CHAMPS_FIGES_APRES_INITIATION = ('montant', 'content_type', 'object_id')
+
     class Meta:
         model = PaymentTransaction
         fields = [
@@ -387,6 +398,25 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
             'id', 'statut', 'external_ref', 'redirect_url', 'paye_le',
             'detail', 'created_at', 'updated_at',
         ]
+
+    def validate(self, attrs):
+        """AUD806 — refus EXPLICITE (400), jamais un champ silencieusement
+        ignoré : un opérateur qui croit avoir repointé la transaction doit le
+        savoir. Les champs restent donc écrivables au SCHÉMA (création) et
+        c'est l'ÉTAT de l'instance qui décide."""
+        attrs = super().validate(attrs)
+        instance = self.instance
+        if instance is not None and instance.statut != (
+                PaymentTransaction.STATUT_INITIE):
+            interdits = [nom for nom in self._CHAMPS_FIGES_APRES_INITIATION
+                         if nom in attrs]
+            if interdits:
+                raise serializers.ValidationError({
+                    nom: ("Transaction déjà envoyée au fournisseur de "
+                          "paiement : ce champ ne peut plus être modifié. "
+                          "Créez une nouvelle transaction.")
+                    for nom in interdits})
+        return attrs
 
 
 class SavedQuerySerializer(serializers.ModelSerializer):
