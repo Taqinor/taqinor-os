@@ -912,8 +912,32 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(before, after)
 
     def test_tva_reform_converts_existing_panel_preserving_ttc(self):
-        # Un panneau créé AVANT la réforme (HT à 20 %) est converti :
-        # 1 166,67 HT @20 % (1 400 TTC) → 1 272,73 HT @10 % (1 400 TTC)
+        # Un panneau du CATALOGUE créé AVANT la réforme (HT à 20 %, SKU
+        # réellement semé) est converti : 20 000 HT @20 % (24 000 TTC)
+        # → 21 818,18 HT @10 % (24 000 TTC). Le SKU catalogue PAN-CS-710 est
+        # utilisé ici (AUD201 borne désormais la réforme aux SKU semés — voir
+        # test_aud201_hors_catalogue_panneau_legacy_jamais_converti pour le
+        # cas hors catalogue, qui n'est PLUS converti).
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='PAN-CS-710', prix_vente=Decimal('20000.00'),
+            prix_achat=Decimal('18000.00'),
+            quantite_stock=5, tva=Decimal('20.00'),
+        )
+        seed(self.company)
+        p.refresh_from_db()
+        self.assertEqual(p.tva, Decimal('10.00'))
+        self.assertEqual(p.prix_vente, Decimal('21818.18'))
+        self.assertEqual(p.prix_achat, Decimal('19636.36'))  # TTC préservé
+
+    def test_aud201_hors_catalogue_panneau_legacy_jamais_converti(self):
+        """AUD201 (R2-31, correctif 1, RECALÉ 03/09/2026) — AVANT ce
+        correctif, la réforme TVA balayait TOUS les produits de la société
+        et convertissait n'importe quel nom contenant « panneau », catalogue
+        ou non (ce test créait un panneau « legacy » hors catalogue et
+        vérifiait sa conversion). Après le correctif, seuls les SKU
+        RÉELLEMENT SEMÉS par ce fichier (``SKUS_SEMES``) sont mutés : ce
+        panneau hors catalogue reste à 20 %, prix inchangés."""
         p = Produit.objects.create(
             company=self.company, nom='Panneau Maison 550W', sku='PAN-LEGACY',
             prix_vente=Decimal('1166.67'), prix_achat=Decimal('1000.00'),
@@ -921,9 +945,88 @@ class TestSeedCatalogue(TestCase):
         )
         seed(self.company)
         p.refresh_from_db()
-        self.assertEqual(p.tva, Decimal('10.00'))
-        self.assertEqual(p.prix_vente, Decimal('1272.73'))
-        self.assertEqual(p.prix_achat, Decimal('1090.91'))  # 1 200 TTC préservé
+        self.assertEqual(p.tva, Decimal('20.00'))
+        self.assertEqual(p.prix_vente, Decimal('1166.67'))
+        self.assertEqual(p.prix_achat, Decimal('1000.00'))
+
+    def test_aud201_hors_catalogue_panneau_electrique_tva_jamais_touchee(self):
+        """AUD201 (R2-31, correctif 1) — scénario de l'incident : une
+        prestation "Panneau électrique" (rien à voir avec le solaire) à
+        TVA 20 % existante. AVANT ce correctif, la boucle TVA/prix la
+        confondait avec un panneau photovoltaïque (sous-chaîne nue) et la
+        basculait à 10 % en réévaluant son HT de +9,09 % — APRÈS : bornée
+        aux SKU catalogue, elle n'est jamais touchée."""
+        hors_catalogue = Produit.objects.create(
+            company=self.company, nom='Panneau électrique',
+            sku='PRESTA-PANEL-ELEC', prix_vente=Decimal('1000.00'),
+            prix_achat=Decimal('800.00'), quantite_stock=5,
+            tva=Decimal('20.00'),
+        )
+        seed(self.company)
+        hors_catalogue.refresh_from_db()
+        self.assertEqual(hors_catalogue.tva, Decimal('20.00'))
+        self.assertEqual(hors_catalogue.prix_vente, Decimal('1000.00'))
+        self.assertEqual(hors_catalogue.prix_achat, Decimal('800.00'))
+
+    def test_aud201_hors_catalogue_sans_tva_jamais_forcee(self):
+        """AUD201 (R2-31, correctif 1) — un produit hors catalogue sans TVA
+        n'est plus forcé à 20 % par le seeder (bornage aux SKU semés)."""
+        hors_catalogue = Produit.objects.create(
+            company=self.company, nom='Prestation diverse',
+            sku='PRESTA-DIVERSE', prix_vente=Decimal('500.00'),
+            quantite_stock=1,
+        )
+        self.assertIsNone(hors_catalogue.tva)
+        seed(self.company)
+        hors_catalogue.refresh_from_db()
+        self.assertIsNone(hors_catalogue.tva)
+
+    def test_aud201_hors_catalogue_renommage_pendent_jamais_touche(self):
+        """AUD201 (R2-31, correctif 1) — la correction de coquille
+        « pendent 2 ans » → « pendant 2 ans » (SKU catalogue SUIVI-2A) ne
+        touche plus un produit HORS catalogue portant la même coquille."""
+        hors_catalogue = Produit.objects.create(
+            company=self.company,
+            nom='Contrat maintenance pendent 2 ans (client X)',
+            sku='PRESTA-MAINT-X', prix_vente=Decimal('2000.00'),
+            quantite_stock=1,
+        )
+        seed(self.company)
+        hors_catalogue.refresh_from_db()
+        self.assertIn('pendent 2 ans', hors_catalogue.nom)
+
+    def test_aud201_tva_vide_sur_panneau_seme_refusee_jamais_hallucinee(self):
+        """AUD201 (R2-31, correctif 2) — un panneau RÉELLEMENT SEMÉ dont la
+        TVA a été vidée (None, ex. import/correction manuelle) : la
+        conversion 10 % est REFUSÉE (avant ce correctif : un ancien taux de
+        20 % était halluciné par défaut) — TVA et prix inchangés."""
+        seed(self.company)
+        panneau = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        panneau.tva = None
+        panneau.save(update_fields=['tva'])
+        prix_vente_avant = panneau.prix_vente
+        prix_achat_avant = panneau.prix_achat
+        seed(self.company)
+        panneau.refresh_from_db()
+        self.assertIsNone(panneau.tva)
+        self.assertEqual(panneau.prix_vente, prix_vente_avant)
+        self.assertEqual(panneau.prix_achat, prix_achat_avant)
+
+    def test_aud201_is_panneau_frontiere_de_mot_et_exclusions(self):
+        """AUD201 (R2-31, correctif 3) — ``is_panneau`` exige une frontière
+        de mot (jamais une sous-chaîne nue, même garde-fou que
+        ``is_offgrid``) ET exclut les désignations d'une AUTRE famille
+        portant quand même le mot « panneau »."""
+        from apps.stock.management.commands import seed_catalogue as seed_cmd
+        # Vrais panneaux PV : reconnus (fixtures DC8 de test_classification_
+        # parity.py, inchangées par ce correctif).
+        self.assertTrue(seed_cmd.is_panneau('Panneau Canadien Solar 710W'))
+        self.assertTrue(seed_cmd.is_panneau('Panneaux Jinko 550W'))
+        # Scénario de l'incident : mot « panneau » présent, AUTRE famille.
+        self.assertFalse(seed_cmd.is_panneau('Panneau électrique'))
+        self.assertFalse(seed_cmd.is_panneau('Nettoyage panneaux'))
+        self.assertFalse(seed_cmd.is_panneau('Tableau De Protection AC/DC'))
+        self.assertFalse(seed_cmd.is_panneau(None))
 
     def test_taxonomy_every_product_in_exactly_one_ordered_category(self):
         from apps.stock.models import Categorie
@@ -957,13 +1060,18 @@ class TestSeedCatalogue(TestCase):
             company=self.company, nom__in=noms_taxo).order_by('ordre'))
         self.assertEqual(cats[0].nom, 'Panneaux photovoltaïques')
         self.assertEqual(cats[-1].nom, 'Services & prestations')
-        # un produit du fondateur hors seed est aussi rangé (re-catégorisation)
+        # AUD201 (R2-31, bornage 03/09/2026) — un produit HORS catalogue
+        # n'est PLUS re-catégorisé par le seeder : avant ce correctif, LA
+        # BASE ENTIÈRE de la société était balayée sans distinction (même
+        # défaut que la réforme TVA ci-dessous) ; désormais seuls les SKU
+        # réellement semés par ce fichier sont mutés, un produit du fondateur
+        # garde sa catégorie telle quelle (ici : jamais affectée).
         perso = Produit.objects.create(
             company=self.company, nom='Onduleur hybride Growatt 6kW',
             sku='OND-H-GRW-6', prix_vente=Decimal('15000'), quantite_stock=1)
         seed(self.company)
         perso.refresh_from_db()
-        self.assertEqual(perso.categorie.nom, 'Onduleurs hybrides')
+        self.assertIsNone(perso.categorie)
 
     def test_stock_read_only_role_writes_rejected(self):
         """Rôle fin « Commerciale » (stock_voir uniquement) : lecture OK,
