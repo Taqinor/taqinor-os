@@ -45,7 +45,8 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    ReleveCourbeIV, ReleveThermographie, ReponseCritere,
+    RetourClientQualite, ReunionQhse,
     RevueObjectif, RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
@@ -84,7 +85,7 @@ from .serializers import (
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
     ReleveConsommationSerializer, ReleveControleSerializer,
-    ReleveCourbeIVSerializer,
+    ReleveCourbeIVSerializer, ReleveThermographieSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer, ReunionQhseSerializer,
     RevueObjectifSerializer, RevueVeilleReglementaireSerializer,
     RisqueOpportuniteCapaSerializer, RisqueOpportuniteSerializer,
@@ -96,7 +97,8 @@ from . import chatter
 from .selectors import (
     aspects_environnementaux_a_revoir,
     calendrier_qhse,
-    capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    capa_en_retard, chantier_peut_cloturer,
+    conformite_lecture_procedure, conformites_a_relancer,
     cout_non_qualite,
     courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
@@ -116,6 +118,7 @@ from .services import (
     calculer_score_audit,
     calculer_score_notation,
     cloturer_incident, cloturer_ncr, cloturer_reunion_qhse,
+    comparer_campagnes_thermographie,
     compteurs_observations_securite,
     conclure_revue_veille,
     creer_capa_depuis_decision,
@@ -129,6 +132,7 @@ from .services import (
     diffuser_procedure,
     enregistrer_analyse_ncr,
     enregistrer_evaluation_conformite,
+    enregistrer_releve_thermographie,
     escalader_workflow_cloture_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
@@ -148,7 +152,8 @@ from .services import (
     relancer_exercices_urgence,
     relancer_notifications_environnement,
     relancer_objectifs_revue_due,
-    rendre_analyse_ncr_pdf,
+    relancer_retardataires_lecture,
+    rediffuser_nouvelle_version, rendre_analyse_ncr_pdf,
     resolve_lien_signalement_public,
     risques_opportunites_revue_due,
     statuer_controle_reception,
@@ -1096,6 +1101,47 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
                 {'detail': 'Aucun destinataire valide.'},
                 status=status.HTTP_400_BAD_REQUEST)
         diffusion = diffuser_procedure(procedure, users)
+        return Response(
+            DiffusionProcedureSerializer(diffusion).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='conformite-lecture')
+    def conformite_lecture(self, request):
+        """% de conformité de lecture d'une référence de procédure
+        (``conformite_lecture_procedure`` — AUDV15/DRAFT165-84, cockpit
+        XQHS15 jusqu'ici sans aucun appelant). Paramètre obligatoire
+        ``?reference=``. Renvoie ``{'total', 'lus', 'pct'}``."""
+        reference = request.query_params.get('reference')
+        if reference in (None, ''):
+            return Response(
+                {'detail': 'reference est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            conformite_lecture_procedure(request.user.company, reference))
+
+    @action(detail=True, methods=['post'], url_path='rediffuser-nouvelle-version')
+    def rediffuser_nouvelle_version_action(self, request, pk=None):
+        """Re-déclenche la diffusion de CETTE version (nouvelle) vers la
+        population de la version précédente (``rediffuser_nouvelle_version``
+        — AUDV15/DRAFT165-107). Corps : ``procedure_precedente`` (id, requis,
+        scopé société). 404 si introuvable ; renvoie ``null`` (aucune
+        diffusion créée) si la version précédente n'avait aucun lecteur."""
+        procedure_nouvelle = self.get_object()
+        precedente_id = request.data.get('procedure_precedente')
+        if precedente_id in (None, ''):
+            return Response(
+                {'detail': 'procedure_precedente est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        procedure_precedente = ProcedureQualite.objects.filter(
+            id=precedente_id, company=request.user.company).first()
+        if procedure_precedente is None:
+            return Response(
+                {'detail': 'Version précédente introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        diffusion = rediffuser_nouvelle_version(
+            procedure_precedente, procedure_nouvelle)
+        if diffusion is None:
+            return Response(None)
         return Response(
             DiffusionProcedureSerializer(diffusion).data,
             status=status.HTTP_201_CREATED)
@@ -3791,3 +3837,74 @@ class DiffusionProcedureViewSet(
         diffusion = self.get_object()
         accuse = accuser_lecture(diffusion, request.user)
         return Response(AccuseLectureSerializer(accuse).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance tous les accusés de lecture en attente de la société
+        (``relancer_retardataires_lecture`` — AUDV15/DRAFT165-106, pattern
+        ``capa/relancer-retards``). Notifications best-effort, ne mute rien."""
+        relances = relancer_retardataires_lecture(request.user.company)
+        return Response({'total': len(relances)})
+
+
+# ── AUDV15 (XFSM14) — Thermographie IR : NCR auto sur sévérité maximale ────
+class ReleveThermographieViewSet(_QhseBaseViewSet):
+    """Relevés de thermographie infrarouge (IEC 62446-3, DRAFT165-91/92) —
+    aucun serializer ni viewset n'existait, capacité totalement invisible
+    côté API. La création route par ``enregistrer_releve_thermographie``
+    (lève automatiquement une NCR sur sévérité ``intervention_requise`` —
+    ``classe_severite``/``ncr`` restent DÉRIVÉS, jamais reçus en écriture).
+    Filtre optionnel ``?equipement_ref=``.
+
+    ``GET …/comparer/?equipement_ref=`` compare le dernier relevé ``recette``
+    (baseline) au dernier ``suivi`` pour objectiver la dérive ΔT
+    (``comparer_campagnes_thermographie``)."""
+    queryset = ReleveThermographie.objects.select_related('ncr').all()
+    serializer_class = ReleveThermographieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_releve', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        equipement_ref = self.request.query_params.get('equipement_ref')
+        if equipement_ref not in (None, ''):
+            qs = qs.filter(equipement_ref=equipement_ref)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        releve = enregistrer_releve_thermographie(
+            company=request.user.company,
+            equipement_ref=data['equipement_ref'],
+            delta_t=data.get('delta_t'),
+            campagne=data.get('campagne', ReleveThermographie.Campagne.SUIVI),
+            chantier_id=data.get('chantier_id'),
+            attachment_id=data.get('attachment_id'),
+            seuil_a_surveiller=data.get('seuil_a_surveiller'),
+            seuil_intervention=data.get('seuil_intervention'),
+            releve_par=request.user,
+            note=data.get('note', ''),
+        )
+        out = self.get_serializer(releve)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def comparer(self, request):
+        """Compare le relevé ``recette`` (baseline) au dernier ``suivi`` d'un
+        équipement. Paramètre obligatoire ``?equipement_ref=``."""
+        equipement_ref = request.query_params.get('equipement_ref')
+        if equipement_ref in (None, ''):
+            return Response(
+                {'detail': 'equipement_ref est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        result = comparer_campagnes_thermographie(
+            request.user.company, equipement_ref)
+        return Response({
+            'recette': (self.get_serializer(result['recette']).data
+                        if result['recette'] else None),
+            'suivi': (self.get_serializer(result['suivi']).data
+                      if result['suivi'] else None),
+            'delta': result['delta'],
+        })

@@ -40,6 +40,7 @@ from .views import (
     ProcedureQualiteViewSet, public_signalement,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
+    ReleveThermographieViewSet,
     ReponseCritereViewSet,
     RetourClientQualiteViewSet, ReunionQhseViewSet,
     RevueObjectifViewSet, RevueVeilleReglementaireViewSet,
@@ -137,6 +138,8 @@ router.register(r'revues-objectif', RevueObjectifViewSet)
 router.register(r'parties-interessees', PartieInteresseeViewSet)
 router.register(r'contexte-organisation', ContexteOrganisationViewSet)
 router.register(r'diffusions-procedure', DiffusionProcedureViewSet)
+# AUDV15 (XFSM14) — thermographie IR, aucun serializer ni viewset jusqu'ici.
+router.register(r'releves-thermographie', ReleveThermographieViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

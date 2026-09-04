@@ -103,6 +103,13 @@ const qhseApi = {
     // validée côté serveur (jamais un id hors société).
     diffuser: (id, data) =>
       api.post(`/qhse/procedures-qualite/${id}/diffuser/`, data),
+    // AUDV15 (DRAFT165-84) — % de conformité de lecture d'une référence.
+    conformiteLecture: (params) =>
+      api.get('/qhse/procedures-qualite/conformite-lecture/', { params }),
+    // AUDV15 (DRAFT165-107) — rediffuse CETTE version (nouvelle) vers la
+    // population de la version précédente. Corps { procedure_precedente }.
+    rediffuserNouvelleVersion: (id, data) =>
+      api.post(`/qhse/procedures-qualite/${id}/rediffuser-nouvelle-version/`, data),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -484,6 +491,18 @@ qhseApi.diffusionsProcedure = {
   // Accuse lecture pour l'UTILISATEUR COURANT uniquement — jamais un tiers.
   marquerLu: (id) =>
     api.post(`/qhse/diffusions-procedure/${id}/marquer-lu/`),
+  // AUDV15 (DRAFT165-106) — relance tous les accusés de lecture en attente
+  // de la société. Nommée spécifiquement (jamais `relancer` nu), même
+  // raison que `derogations.relancerDerogations` (ambiguïté par nom).
+  relancerRetardatairesLecture: () =>
+    api.post('/qhse/diffusions-procedure/relancer/'),
+}
+
+// ── AUDV15 (XFSM14) — Thermographie IR : NCR auto sur sévérité maximale ──────
+qhseApi.relevesThermographie = {
+  ...crud('releves-thermographie'),
+  comparer: (params) =>
+    api.get('/qhse/releves-thermographie/comparer/', { params }),
 }
 
 export default qhseApi

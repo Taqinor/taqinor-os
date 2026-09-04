@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ClipboardCheck, PackageCheck, Play, Calculator, AlertTriangle, CheckCircle2, PlusCircle,
-  Send, Check,
+  Send, Check, RefreshCw, Repeat, Thermometer, Search,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
@@ -135,6 +135,170 @@ function ControleReceptionTab() {
         <StatuerControleDialog
           controle={statuing}
           onClose={() => setStatuing(null)}
+          onDone={() => setReload((n) => n + 1)}
+        />
+      )}
+    </div>
+  )
+}
+
+// AUDV15 (XFSM14, DRAFT165-91) — nouveau relevé de thermographie IR ; lève
+// automatiquement une NCR sur sévérité maximale (côté serveur).
+function NouveauReleveThermographieDialog({ onClose, onDone }) {
+  const [equipementRef, setEquipementRef] = useState('')
+  const [deltaT, setDeltaT] = useState('')
+  const [campagne, setCampagne] = useState('suivi')
+  const [chantierId, setChantierId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!equipementRef.trim()) { toast.error('La référence équipement est requise.'); return }
+    setSaving(true)
+    try {
+      const res = await qhseApi.relevesThermographie.create({
+        equipement_ref: equipementRef.trim(),
+        delta_t: deltaT || undefined,
+        campagne,
+        chantier_id: chantierId ? Number(chantierId) : undefined,
+      })
+      toast.success(res?.data?.ncr
+        ? 'Relevé enregistré — NCR levée (sévérité maximale).'
+        : 'Relevé enregistré.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouveau relevé de thermographie</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Référence équipement</Label>
+            <Input aria-label="Référence équipement" value={equipementRef}
+              onChange={(e) => setEquipementRef(e.target.value)} />
+          </div>
+          <div>
+            <Label>ΔT mesuré (°C)</Label>
+            <Input aria-label="ΔT mesuré (°C)" inputMode="decimal" value={deltaT}
+              onChange={(e) => setDeltaT(e.target.value)} />
+          </div>
+          <div>
+            <Label>Campagne</Label>
+            <FieldSelect value={campagne} onValueChange={setCampagne} options={[
+              { value: 'recette', label: 'Recette (baseline)' },
+              { value: 'suivi', label: 'Suivi périodique' },
+            ]} />
+          </div>
+          <div>
+            <Label>Chantier (id, optionnel)</Label>
+            <Input aria-label="Chantier (id, optionnel)" inputMode="numeric"
+              value={chantierId} onChange={(e) => setChantierId(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AUDV15 (XFSM14, DRAFT165-92) — compare le relevé recette (baseline) au
+// dernier suivi d'un équipement pour objectiver la dérive ΔT.
+function ComparerThermographieWidget() {
+  const [equipementRef, setEquipementRef] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  async function comparer() {
+    if (!equipementRef.trim()) return
+    setLoading(true)
+    try {
+      const res = await qhseApi.relevesThermographie.comparer({ equipement_ref: equipementRef.trim() })
+      setResult(res.data)
+    } catch {
+      setResult(null)
+      toast.error('Comparaison indisponible.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm">
+      <div className="flex items-center gap-2">
+        <Input aria-label="Référence équipement (comparaison)" placeholder="Référence équipement"
+          value={equipementRef} onChange={(e) => setEquipementRef(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') comparer() }} />
+        <Button variant="outline" size="sm" onClick={comparer} disabled={loading}>
+          <Search size={15} /> Comparer recette / suivi
+        </Button>
+      </div>
+      {result && (
+        <div>
+          {!result.recette || !result.suivi
+            ? 'Recette ou suivi manquant pour cette référence.'
+            : `Recette ΔT ${result.recette.delta_t}°C → Suivi ΔT ${result.suivi.delta_t}°C `
+              + `(dérive ${result.delta > 0 ? '+' : ''}${result.delta}°C)`}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SEVERITE_TONE = {
+  observation: 'success', a_surveiller: 'warning', intervention_requise: 'danger',
+}
+
+function ThermographieTab() {
+  const [dialog, setDialog] = useState(false)
+  const [reload, setReload] = useState(0)
+
+  const cols = useMemo(() => [
+    { id: 'equipement_ref', header: 'Équipement', accessor: (r) => r.equipement_ref },
+    { id: 'campagne', header: 'Campagne', width: 130, accessor: (r) => r.campagne_display || r.campagne },
+    {
+      id: 'delta_t', header: 'ΔT (°C)', width: 100, align: 'right',
+      accessor: (r) => r.delta_t ?? '—',
+    },
+    {
+      id: 'severite', header: 'Sévérité', width: 160,
+      accessor: (r) => r.classe_severite,
+      cell: (v, r) => <Badge tone={SEVERITE_TONE[v] ?? 'neutral'}>{r.classe_severite_display || v}</Badge>,
+    },
+    {
+      id: 'ncr', header: 'NCR', width: 90, align: 'center',
+      accessor: (r) => r.ncr, cell: (v) => (v ? `#${v}` : '—'),
+    },
+    {
+      id: 'date_releve', header: 'Relevé le', width: 120, align: 'right',
+      accessor: (r) => r.date_releve, cell: (v) => formatDate(v),
+    },
+  ], [])
+
+  return (
+    <div className="flex flex-col gap-6">
+      <QhseResourceList
+        title="Relevés de thermographie IR"
+        subtitle="IEC 62446-3 — une sévérité maximale lève automatiquement une NCR"
+        fetcher={() => qhseApi.relevesThermographie.list()}
+        columns={cols}
+        exportName="qhse-releves-thermographie"
+        deps={[reload]}
+        actions={(
+          <Button size="sm" onClick={() => setDialog(true)}>
+            <Thermometer size={15} aria-hidden="true" /> Nouveau relevé
+          </Button>
+        )}
+      />
+      <ComparerThermographieWidget />
+      {dialog && (
+        <NouveauReleveThermographieDialog
+          onClose={() => setDialog(false)}
           onDone={() => setReload((n) => n + 1)}
         />
       )}
@@ -392,6 +556,48 @@ function DiffuserProcedureDialog({ procedure, onClose, onDone }) {
   )
 }
 
+// AUDV15 (DRAFT165-107) — rediffuse CETTE version (nouvelle) vers la
+// population de la version précédente (``rediffuser_nouvelle_version``,
+// jusqu'ici sans appelant).
+function RediffuserProcedureDialog({ procedure, onClose, onDone }) {
+  const [procedurePrecedente, setProcedurePrecedente] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!procedurePrecedente) { toast.error('La version précédente (id) est requise.'); return }
+    setSaving(true)
+    try {
+      const res = await qhseApi.proceduresQualite.rediffuserNouvelleVersion(
+        procedure.id, { procedure_precedente: Number(procedurePrecedente) })
+      toast.success(res?.data
+        ? 'Rediffusée à la population de la version précédente.'
+        : 'Version précédente sans lecteur — rien à rediffuser.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Rediffusion impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Rediffuser — {procedure.reference} v{procedure.version}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Version précédente (id)</Label>
+            <Input aria-label="Version précédente (id)" inputMode="numeric"
+              value={procedurePrecedente} onChange={(e) => setProcedurePrecedente(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Rediffusion…' : 'Rediffuser'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function RetourClientDialog({ onClose, onDone }) {
   const [chantierId, setChantierId] = useState('')
   const [note, setNote] = useState('5')
@@ -456,6 +662,48 @@ function MoyenneRetoursWidget({ deps = [] }) {
   )
 }
 
+// AUDV15 (DRAFT165-84) — % de conformité de lecture d'une référence de
+// procédure (``conformite_lecture_procedure``, jusqu'ici sans aucun cockpit).
+function ConformiteLectureWidget() {
+  const [reference, setReference] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  async function chercher() {
+    if (!reference.trim()) return
+    setLoading(true)
+    try {
+      const res = await qhseApi.proceduresQualite.conformiteLecture({ reference: reference.trim() })
+      setResult(res.data)
+    } catch {
+      setResult(null)
+      toast.error('Conformité de lecture indisponible.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm">
+      <div className="flex items-center gap-2">
+        <Input aria-label="Référence de procédure" placeholder="Référence de procédure"
+          value={reference} onChange={(e) => setReference(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') chercher() }} />
+        <Button variant="outline" size="sm" onClick={chercher} disabled={loading}>
+          <Search size={15} /> Conformité de lecture
+        </Button>
+      </div>
+      {result && (
+        <div>
+          {result.pct == null
+            ? 'Aucune diffusion pour cette référence.'
+            : `${result.pct} % (${result.lus}/${result.total} lu(s))`}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ============================================================================
    UX31 — Inspections & audits.
    ----------------------------------------------------------------------------
@@ -487,6 +735,17 @@ export default function Inspections() {
   const [diffusingProc, setDiffusingProc] = useState(null)
   const [busyLecture, setBusyLecture] = useState(null)
   const [reloadLectures, setReloadLectures] = useState(0)
+  // AUDV15 — rediffusion sur nouvelle version + relance des retardataires.
+  const [rediffusingProc, setRediffusingProc] = useState(null)
+
+  const relancerRetardataires = async () => {
+    try {
+      const res = await qhseApi.diffusionsProcedure.relancerRetardatairesLecture()
+      toast.success(`${res?.data?.total ?? 0} retardataire(s) relancé(s).`)
+    } catch {
+      toast.error('Relance impossible.')
+    }
+  }
 
   const calculerScoreAudit = async (audit) => {
     setBusyAudit(audit.id)
@@ -677,6 +936,7 @@ export default function Inspections() {
           <TabsTrigger value="audits">Audits</TabsTrigger>
           <TabsTrigger value="cloture">Fin de chantier</TabsTrigger>
           <TabsTrigger value="controle-reception">Contrôle réception</TabsTrigger>
+          <TabsTrigger value="thermographie">Thermographie IR</TabsTrigger>
         </TabsList>
 
         <TabsContent value="itp" className="mt-4 flex flex-col gap-6">
@@ -762,9 +1022,14 @@ export default function Inspections() {
             exportName="qhse-procedures"
             deps={[reloadProc]}
             actions={(
-              <Button size="sm" onClick={() => setDialog('procedure')}>
-                <PlusCircle size={15} aria-hidden="true" /> Nouvelle procédure
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={relancerRetardataires}>
+                  <RefreshCw size={15} aria-hidden="true" /> Relancer les retardataires
+                </Button>
+                <Button size="sm" onClick={() => setDialog('procedure')}>
+                  <PlusCircle size={15} aria-hidden="true" /> Nouvelle procédure
+                </Button>
+              </div>
             )}
             rowActions={(r) => [
               ...(r.statut === 'brouillon'
@@ -779,8 +1044,15 @@ export default function Inspections() {
                 id: 'diffuser', label: 'Diffuser cette version', icon: Send,
                 onClick: () => setDiffusingProc(r),
               },
+              // AUDV15 (DRAFT165-107) — rediffuse cette version vers la
+              // population de la version précédente.
+              {
+                id: 'rediffuser', label: 'Rediffuser (nouvelle version)', icon: Repeat,
+                onClick: () => setRediffusingProc(r),
+              },
             ]}
           />
+          <ConformiteLectureWidget />
           <QhseResourceList
             title="Mes lectures en attente"
             subtitle="Procédures diffusées que je n’ai pas encore accusées en lecture (XQHS15)"
@@ -810,6 +1082,10 @@ export default function Inspections() {
 
         <TabsContent value="controle-reception" className="mt-4">
           <ControleReceptionTab />
+        </TabsContent>
+
+        <TabsContent value="thermographie" className="mt-4">
+          <ThermographieTab />
         </TabsContent>
       </Tabs>
 
@@ -848,6 +1124,13 @@ export default function Inspections() {
         <DiffuserProcedureDialog
           procedure={diffusingProc}
           onClose={() => setDiffusingProc(null)}
+          onDone={() => setReloadLectures((n) => n + 1)}
+        />
+      )}
+      {rediffusingProc && (
+        <RediffuserProcedureDialog
+          procedure={rediffusingProc}
+          onClose={() => setRediffusingProc(null)}
           onDone={() => setReloadLectures((n) => n + 1)}
         />
       )}

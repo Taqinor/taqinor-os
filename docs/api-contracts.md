@@ -784,8 +784,12 @@
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/qhseApi.js :: calendrier -> /api/django/qhse/calendrier
     declarations_cnss:inconnu, evenements:inconnu, inspections:inconnu, permis:inconnu, today:texte, total:nombre, within_days:inconnu
+- frontend/src/api/qhseApi.js :: comparer -> /api/django/qhse/releves-thermographie/comparer
+    delta:inconnu, detail:texte, recette:inconnu, suivi:inconnu
 - frontend/src/api/qhseApi.js :: compteurs -> /api/django/qhse/observations-securite/compteurs
     a_risque:inconnu, par_superviseur_mois:liste, ratio_sur_pct:inconnu, sures:inconnu, total:inconnu
+- frontend/src/api/qhseApi.js :: conformiteLecture -> /api/django/qhse/procedures-qualite/conformite-lecture
+    detail:texte, lus:inconnu, pct:inconnu, total:inconnu
 - frontend/src/api/qhseApi.js :: criticite -> /api/django/qhse/evaluations-risque/<>/criticite
     criticite_max:inconnu, criticite_moyenne:inconnu, nb_lignes:inconnu, par_niveau:inconnu
 - frontend/src/api/qhseApi.js :: documentUniqueStatut -> /api/django/qhse/evaluations-risque/document-unique-statut
@@ -818,6 +822,8 @@
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerObjectifsRevueDue -> /api/django/qhse/objectifs/relancer
     items:inconnu, notifiees:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: relancerRetardatairesLecture -> /api/django/qhse/diffusions-procedure/relancer
+    total:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
     items:inconnu, notifiees:inconnu, sans_responsable:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: statistiquesTfTg -> /api/django/qhse/incidents/statistiques-tf-tg

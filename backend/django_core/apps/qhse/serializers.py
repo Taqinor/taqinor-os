@@ -31,7 +31,8 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, ReunionQhse,
+    ReleveCourbeIV, ReleveThermographie, ReponseCritere,
+    RetourClientQualite, ReunionQhse,
     RevueObjectif, RevueVeilleReglementaire,
     RisqueOpportunite, RisqueOpportuniteCapa,
     Secouriste,
@@ -473,6 +474,30 @@ class ProcedureQualiteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'version', 'statut', 'auteur', 'date_application', 'date_creation',
         ]
+
+
+class ReleveThermographieSerializer(serializers.ModelSerializer):
+    """Relevé de thermographie infrarouge (IEC 62446-3, AUDV15/XFSM14).
+
+    ``classe_severite``/``ncr`` sont DÉRIVÉS côté serveur (jamais reçus en
+    écriture) : la classification et la levée de NCR sur sévérité maximale
+    sont calculées par ``enregistrer_releve_thermographie`` (services.py),
+    seul créateur — jamais un ``ModelSerializer.create()`` nu."""
+    campagne_display = serializers.CharField(
+        source='get_campagne_display', read_only=True)
+    classe_severite_display = serializers.CharField(
+        source='get_classe_severite_display', read_only=True)
+
+    class Meta:
+        model = ReleveThermographie
+        fields = [
+            'id', 'chantier_id', 'equipement_ref', 'attachment_id',
+            'campagne', 'campagne_display', 'delta_t',
+            'seuil_a_surveiller', 'seuil_intervention',
+            'classe_severite', 'classe_severite_display',
+            'date_releve', 'note', 'ncr', 'releve_par', 'date_creation',
+        ]
+        read_only_fields = ['classe_severite', 'ncr', 'date_creation']
 
 
 class RetourClientQualiteSerializer(serializers.ModelSerializer):
