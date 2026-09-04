@@ -824,8 +824,15 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         # company is force-assigned in perform_create — never accept it from the body.
         # FG51 — pv_livraison/date_livraison_reelle ne se posent QUE via
         # l'action « marquer-livre » (jamais un PUT direct du corps).
+        # AUD506 — ``statut`` en lecture seule : BonCommandeViewSet n'a AUCUN
+        # perform_update, un PATCH brut faisait donc passer un BC directement
+        # en_attente→livre sans réservation stock ni preuve de livraison.
+        # CONFIRME/LIVRE/ANNULE passent désormais UNIQUEMENT par leurs actions
+        # dédiées (confirmer/marquer-livre/annuler), qui posent le statut
+        # directement sur le modèle (hors de ce sérialiseur).
         read_only_fields = ['reference', 'date_creation', 'company',
-                            'pv_livraison', 'date_livraison_reelle']
+                            'pv_livraison', 'date_livraison_reelle',
+                            'statut']
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()
