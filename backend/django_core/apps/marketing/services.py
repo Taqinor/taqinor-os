@@ -317,19 +317,90 @@ def _champ_code(entree):
     return entree
 
 
-def champs_publics_a_afficher(formulaire, identifiant):
-    """NTMKT17 — filtre ``formulaire.champs`` pour un visiteur RECONNU.
+#: AUD607 — sel et durée de vie du jeton de PROFILAGE (progressive profiling).
+#: Même modèle de confiance que le jeton de préférences NTMKT33 ci-dessus :
+#: la société ET l'identifiant sont portés par la signature ``SECRET_KEY``,
+#: jamais par l'URL en clair, et le jeton expire.
+_PROFILAGE_SALT = 'marketing.aud607.profilage'
+TOKEN_PROFILAGE_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 
-    ``identifiant`` (email OU téléphone) vient du navigateur du visiteur
-    (cookie/stockage déjà géré côté client, aucune nouvelle dépendance
-    backend). Un visiteur INCONNU (``identifiant`` vide, ou aucun lead
-    correspondant — dédup QJ8) voit le formulaire COMPLET, comportement
-    actuel inchangé. Un visiteur RECONNU ne revoit QUE les champs non encore
-    renseignés sur son lead le plus récent — HubSpot-style."""
-    champs = formulaire.champs or []
-    identifiant = (identifiant or '').strip()
+
+def generer_token_profilage(company_id, identifiant):
+    """AUD607 — jeton signé prouvant la PROPRIÉTÉ d'un identifiant.
+
+    Émis uniquement par un chemin qui connaît déjà le contact (lien
+    personnalisé d'une campagne, e-mail nominatif) ; c'est la seule preuve
+    qui autorise ``champs_publics_a_afficher`` à consulter le CRM. Un
+    visiteur anonyme ne peut pas en fabriquer un, donc ne peut pas sonder
+    l'existence d'un lead."""
+    from django.core import signing
+    return signing.dumps(
+        {'company_id': company_id,
+         'identifiant': (identifiant or '').strip()},
+        salt=_PROFILAGE_SALT)
+
+
+def lire_token_profilage(token, *, max_age=TOKEN_PROFILAGE_MAX_AGE_SECONDS):
+    """Résout un jeton de profilage en ``(company_id, identifiant)``.
+
+    Jeton absent/invalide/corrompu/expiré → ``(None, None)`` : l'appelant
+    retombe silencieusement sur la réponse anonyme, jamais une 500 ni une
+    différence de réponse observable."""
+    if not token:
+        return None, None
+    from django.core import signing
+    try:
+        payload = signing.loads(token, salt=_PROFILAGE_SALT, max_age=max_age)
+    except signing.BadSignature:
+        return None, None
+    identifiant = (payload.get('identifiant') or '').strip()
     if not identifiant:
-        return champs
+        return None, None
+    return payload.get('company_id'), identifiant
+
+
+def champs_publics_a_afficher(formulaire, identifiant=None, *, jeton=None):
+    """NTMKT17 + AUD607 — définition PUBLIQUE des champs, uniforme par
+    construction.
+
+    AUD607 (loi 09-08/CNDP) : la version NTMKT17 d'origine RETIRAIT de la
+    liste les champs déjà connus d'un lead correspondant à ``identifiant``,
+    un paramètre de requête librement choisi par un appelant anonyme
+    (``AllowAny``, seul rempart un débit 30/min/IP). La longueur et le
+    contenu de la réponse trahissaient donc l'EXISTENCE d'un lead : un tiers
+    pouvait énumérer des e-mails/téléphones et savoir lesquels sont clients.
+
+    Le contrat est désormais uniforme : la liste COMPLÈTE des champs est
+    toujours renvoyée, chaque entrée normalisée en dictionnaire portant un
+    drapeau séparé ``deja_rempli``. Aucune entrée n'est jamais retirée.
+
+    Le drapeau ne vaut ``True`` que si l'appelant PROUVE qu'il est le
+    propriétaire de l'identifiant, via ``jeton`` signé
+    (``generer_token_profilage``) — même modèle de confiance que les
+    endpoints voisins ``desinscription/<token>`` / ``preferences/<token>``.
+    Sans jeton valide, AUCUNE lecture CRM n'a lieu et la réponse est
+    strictement indépendante de ``identifiant`` : deux appels, l'un avec un
+    e-mail connu, l'autre inconnu, sont indistinguables.
+    """
+    champs = [
+        (dict(c) if isinstance(c, dict) else {'code': c})
+        for c in (formulaire.champs or [])
+    ]
+    connus = _codes_connus_si_propriete_prouvee(formulaire, jeton)
+    for champ in champs:
+        champ['deja_rempli'] = _champ_code(champ) in connus
+    return champs
+
+
+def _codes_connus_si_propriete_prouvee(formulaire, jeton):
+    """Codes de champs déjà renseignés, UNIQUEMENT sur preuve de propriété.
+
+    Renvoie un ``set`` vide dès que le jeton manque, est invalide, ou a été
+    émis pour une AUTRE société que celle du formulaire (multi-tenance) —
+    aucun accès CRM n'est alors tenté."""
+    company_id, identifiant = lire_token_profilage(jeton)
+    if company_id is None or company_id != formulaire.company_id:
+        return set()
 
     from apps.crm.selectors import lead_known_field_codes
 
@@ -337,9 +408,7 @@ def champs_publics_a_afficher(formulaire, identifiant):
         connus = lead_known_field_codes(formulaire.company, email=identifiant)
     else:
         connus = lead_known_field_codes(formulaire.company, phone=identifiant)
-    if not connus:
-        return champs
-    return [c for c in champs if _champ_code(c) not in connus]
+    return connus or set()
 
 
 # ── NTMKT12 — Parcours en GRAPHE d'une séquence de relance ──────────────────

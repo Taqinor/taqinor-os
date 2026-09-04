@@ -58,7 +58,7 @@ class _IntakePublicThrottle(SimpleRateThrottle):
             'scope': self.scope, 'ident': self.get_ident(request)}
 
 
-def _serialiser_formulaire(formulaire, identifiant=None):
+def _serialiser_formulaire(formulaire, jeton=None):
     """Représentation PUBLIQUE d'un formulaire (aucune donnée sensible : ni
     société, ni compteurs, ni prix — juste de quoi rendre la landing).
 
@@ -66,15 +66,17 @@ def _serialiser_formulaire(formulaire, identifiant=None):
     PUBLIÉE (jamais un brouillon) ; ``None`` tant qu'aucune version n'est
     publiée, ce qui laisse le rendu historique inchangé.
 
-    NTMKT17 — ``champs`` est filtré (progressive profiling) quand
-    ``identifiant`` (email/téléphone connu du navigateur revenant) correspond
-    à un lead existant : seuls les champs pas encore renseignés sont rendus.
+    NTMKT17 + AUD607 — ``champs`` porte TOUJOURS la liste complète, chaque
+    entrée avec un drapeau ``deja_rempli``. Ce drapeau n'est vrai que sur
+    preuve de propriété de l'identifiant (``jeton`` signé) : sans jeton, la
+    réponse ne dépend d'aucune donnée CRM et ne peut donc pas servir
+    d'oracle d'existence de lead.
     """
     version = services.derniere_version_publiee(formulaire)
     return {
         'slug': formulaire.slug,
         'nom': formulaire.nom,
-        'champs': services.champs_publics_a_afficher(formulaire, identifiant),
+        'champs': services.champs_publics_a_afficher(formulaire, jeton=jeton),
         'page': None if version is None else {
             'version': version.version,
             'titre': version.titre,
@@ -91,15 +93,18 @@ def formulaire_intake_public(request, slug):
     """WIR64/FG206 — définition publique d'un formulaire d'intake ACTIF, par
     slug (pour rendre la landing). 404 si inconnu ou inactif.
 
-    NTMKT17 — ``?identifiant=`` (optionnel, email ou téléphone déjà connu du
-    navigateur revenant) active le progressive profiling : filtre les champs
-    déjà renseignés sur le lead correspondant, sans rien changer pour un
-    visiteur inconnu."""
+    NTMKT17 + AUD607 — le progressive profiling est piloté par ``?jeton=``
+    (jeton SIGNÉ portant société + identifiant, émis par un lien
+    personnalisé). L'ancien ``?identifiant=`` en clair est délibérément
+    IGNORÉ : librement choisi par un appelant anonyme, il faisait varier la
+    réponse selon l'existence d'un lead — un oracle d'énumération de données
+    personnelles (loi 09-08/CNDP). Il reste toléré dans l'URL pour ne casser
+    aucun lien existant, sans aucun effet sur la réponse."""
     formulaire = services.formulaire_intake_actif_par_slug(slug)
     if formulaire is None:
         return Response({'detail': 'Formulaire introuvable.'}, status=404)
-    identifiant = request.query_params.get('identifiant')
-    return Response(_serialiser_formulaire(formulaire, identifiant))
+    jeton = request.query_params.get('jeton')
+    return Response(_serialiser_formulaire(formulaire, jeton))
 
 
 @api_view(['POST'])
