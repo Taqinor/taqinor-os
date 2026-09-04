@@ -750,6 +750,8 @@
     detail:texte, overrides:inconnu
 - frontend/src/api/portailApi.js :: accepter -> /api/django/portail/mes-devis/<>/accepter
     detail:inconnu, reference:inconnu, statut:inconnu
+- frontend/src/api/portailApi.js :: consulterArticleKb -> /api/django/portail/mes-demandes-sav/consulter-article-kb
+    detail:texte, enregistre:inconnu
 - frontend/src/api/portailApi.js :: lienAcces -> /api/django/portail/comptes-portail/<>/lien-acces
     detail:texte, lien:inconnu, token_acces:inconnu
 - frontend/src/api/portailApi.js :: payer -> /api/django/portail/mes-factures/<>/payer
@@ -758,6 +760,8 @@
     actif:inconnu, cree:inconnu, detail:texte, email:inconnu, username:inconnu, utilisateur_id:inconnu
 - frontend/src/api/portailApi.js :: regenererJeton -> /api/django/portail/comptes-portail/<>/regenerer-jeton
     detail:texte, token_apercu:inconnu
+- frontend/src/api/portailApi.js :: suggestionsKb -> /api/django/portail/mes-demandes-sav/suggestions-kb
+    suggestions:inconnu
 - frontend/src/api/posApi.js :: encaisserFacture -> /api/django/pos/ventes/encaisser-facture
     facture:inconnu, id:inconnu, mode:inconnu, montant:texte
 - frontend/src/api/posApi.js :: getDashboard -> /api/django/pos/ventes/dashboard
@@ -918,6 +922,8 @@
     detail:texte, devis_id:inconnu, devis_reference:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
+- frontend/src/api/savApi.js :: escaladerTicketEnReclamation -> /api/django/sav/tickets/<>/escalader-reclamation
+    cree:inconnu, detail:texte, gravite:inconnu, objet:inconnu, reclamation_id:inconnu, reference:inconnu, statut:inconnu, type_reclamation:inconnu
 - frontend/src/api/savApi.js :: facturerContrat -> /api/django/sav/contrats-maintenance/<>/facturer
     detail:texte, facture_id:inconnu, facture_reference:inconnu, ok:booleen
 - frontend/src/api/savApi.js :: facturerTicket -> /api/django/sav/tickets/<>/facturer
@@ -3508,7 +3514,7 @@
 - frontend/src/api/savApi.js :: deleteCompatibilitePiece -> /api/django/sav/compatibilites-piece/<>  [CompatibilitePieceSerializer]
     champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
 - frontend/src/api/savApi.js :: deleteContrat -> /api/django/sav/contrats-maintenance/<>  [ContratMaintenanceSerializer]
-    champs: actif, client, client_nom, date_creation, date_debut, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, equipements, equipements_detail, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: deleteEquipeMaintenance -> /api/django/sav/equipes-maintenance/<>  [EquipeMaintenanceSerializer]
     champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
@@ -3530,7 +3536,7 @@
 - frontend/src/api/savApi.js :: getCompatibilitesPiece -> /api/django/sav/compatibilites-piece  [CompatibilitePieceSerializer]
     champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
 - frontend/src/api/savApi.js :: getContrats -> /api/django/sav/contrats-maintenance  [ContratMaintenanceSerializer]
-    champs: actif, client, client_nom, date_creation, date_debut, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, equipements, equipements_detail, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: getEquipesMaintenance -> /api/django/sav/equipes-maintenance  [EquipeMaintenanceSerializer]
     champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
