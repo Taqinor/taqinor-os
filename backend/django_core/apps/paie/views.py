@@ -1211,9 +1211,18 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
 
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
-        """Valide le bulletin → fige le snapshot (immuable, PAIE17)."""
+        """Valide le bulletin → fige le snapshot (immuable, PAIE17).
+
+        AUD705 — un refus métier (n° CNSS connu côté RH mais absent du profil
+        de paie) est une erreur de saisie, pas une panne : il repart en 400
+        avec son motif, jamais en 500.
+        """
         bulletin = self.get_object()
-        valider_bulletin(bulletin)
+        try:
+            valider_bulletin(bulletin)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
 

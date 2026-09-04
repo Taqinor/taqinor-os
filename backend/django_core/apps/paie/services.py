@@ -2789,6 +2789,10 @@ def valider_bulletin(bulletin):
 
     if bulletin.statut == BulletinPaie.STATUT_VALIDE:
         return bulletin
+    # AUD705 — un salarié affilié CNSS dont la fiche RH porte un numéro ne
+    # part pas en bulletin avec un n° CNSS vide (voir le périmètre exact,
+    # blocage vs signalement, dans ``verifier_numero_cnss_bulletin``).
+    verifier_numero_cnss_bulletin(bulletin)
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
@@ -3124,6 +3128,57 @@ def controler_coherence_rib(periode):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return divergences
+
+
+class NumeroCnssManquant(ValueError):
+    """AUD705 — validation refusée : n° CNSS connu côté RH, absent en paie."""
+
+
+def verifier_numero_cnss_bulletin(bulletin):
+    """AUD705 — refuse de valider un bulletin au n° CNSS silencieusement vide.
+
+    Le numéro existe en DEUX exemplaires indépendants (``ProfilPaie.
+    numero_cnss`` et ``rh.DossierEmploye.cnss``), tous deux ``blank=True``, et
+    ``bulletin_context`` imprimait ``profil.numero_cnss or ''`` — un bulletin
+    d'un salarié affilié CNSS pouvait donc partir avec un n° CNSS VIDE alors
+    que la fiche RH le connaissait, sans la moindre alerte.
+
+    PÉRIMÈTRE DÉLIBÉRÉ — on BLOQUE l'OMISSION, on SIGNALE la DIVERGENCE :
+
+    * numéro connu côté RH et ABSENT côté paie → refus de validation. Le fait
+      est certain (l'information existe, elle n'a pas été reprise), la
+      correction est mécanique.
+    * deux numéros NON VIDES qui diffèrent → jamais un blocage : c'est la
+      doctrine posée par WIR89 (« CONTRÔLE croisé, jamais une fusion —
+      signaler pour qu'un humain tranche »). L'écart remonte désormais AUSSI
+      dans ``avertissements_periode``, le panneau lu AVANT de payer, au lieu
+      d'une seule notification au moment de la déclaration.
+    * aucun numéro nulle part → pas de blocage ici : c'est déjà un
+      avertissement ``cnss_manquant`` de gravité « bloquant » sur ce même
+      panneau, et refuser rétroactivement toute paie d'une société qui n'a pas
+      encore saisi ses numéros ferait plus de dégâts que le défaut.
+
+    Lecture RH via ``apps.rh.selectors`` uniquement (jamais ``rh.models``).
+    """
+    profil = getattr(bulletin, 'profil', None)
+    if profil is None or not getattr(profil, 'affilie_cnss', False):
+        return
+    if (profil.numero_cnss or '').strip():
+        return
+    if not getattr(profil, 'employe_id', None):
+        return
+    from apps.rh import selectors as rh_selectors
+
+    reference = (
+        rh_selectors.cnss_par_employe(profil.company, [profil.employe_id])
+        .get(profil.employe_id) or '')
+    if not reference.strip():
+        return
+    raise NumeroCnssManquant(
+        "Numéro CNSS absent du profil de paie alors que la fiche RH le "
+        "renseigne : reprenez-le sur le profil avant de valider ce bulletin "
+        "(le bulletin et le bordereau CNSS partiraient sans numéro)."
+    )
 
 
 def controler_coherence_cnss(periode):
@@ -4650,9 +4705,11 @@ def avertissements_periode(periode):
     profils = (
         ProfilPaie.objects.filter(company=company, actif=True)
         .select_related('employe'))
+    libelles = {}
     for profil in profils:
         dossier = profil.employe
         nom = f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+        libelles[profil.id] = (dossier, nom)
         if (profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_VIREMENT
                 and not profil.rib):
             avertissements.append({
@@ -4671,6 +4728,31 @@ def avertissements_periode(periode):
                 'message': f'{nom} — salaire de base à 0 : le bulletin '
                            'sera nul.',
             })
+
+    # AUD705 — DIVERGENCE n° CNSS paie ↔ RH. Elle n'existait que sous forme de
+    # notification interne émise par ``controler_coherence_cnss`` AU MOMENT de
+    # la déclaration — donc APRÈS que les bulletins soient partis. Elle remonte
+    # désormais sur le panneau lu AVANT de payer. Ni blocage (WIR89 :
+    # « CONTRÔLE croisé, jamais une fusion — un humain tranche »), ni numéro
+    # dans le message (donnée sensible, comme la notification WIR89).
+    from . import selectors as paie_selectors
+
+    try:
+        divergences = paie_selectors.divergences_cnss_periode(periode)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        divergences = []
+    for divergence in divergences:
+        dossier, nom = libelles.get(divergence['profil_id'], (None, ''))
+        avertissements.append({
+            'type': 'cnss_divergent',
+            'employe_id': dossier.id if dossier else divergence['employe_id'],
+            'matricule': dossier.matricule if dossier else '',
+            'nom': nom,
+            'gravite': 'avertissement',
+            'message': f'{nom} — le n° CNSS du profil de paie diffère de '
+                       'celui de la fiche RH : à trancher avant la '
+                       'déclaration (aucune correction automatique).',
+        })
 
     return avertissements
 
