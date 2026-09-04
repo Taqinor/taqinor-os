@@ -240,6 +240,18 @@ jobs:
             grep -qE '^backend/'     <<< "$changed" && backend=true  || true
             grep -qE '^frontend/'    <<< "$changed" && frontend=true || true
             grep -qE '^apps/web/'    <<< "$changed" && web=true      || true
+            # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
+            # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
+            # `backend == true` et lisent leur BASELINE ici
+            # (on_delete_allowlist.txt, tenant_view_allowlist.txt,
+            # read_modify_write_allow.txt, ...). Sans cette regle, un commit
+            # d'hygiene « allowlists rebasees » qui ELARGIT une exemption
+            # rendait backend=false : la garde modifiee ne tournait pas, les
+            # six checks requis restaient satisfaits (un `skipped` ne fait pas
+            # rougir un agregateur), et la PR fusionnait sans que la garde ne
+            # se soit JAMAIS validee elle-meme. Garde de non-regression :
+            # scripts/tests/test_ci_changes_filter.py (job `stage-names`).
+            grep -qE '^scripts/'     <<< "$changed" && backend=true  || true
             # Everything else (docs/**, *.md, top-level state files, etc.)
             # affects none of the heavy jobs — only the always-on stage-names
             # guard, which is not gated here.
@@ -1510,6 +1522,15 @@ jobs:
       # vert. Stdlib pure, ~2 s.
       - name: Test the frontend-test lane split itself (WOW-CI4 — completude du decoupage)
         run: python -m unittest scripts.tests.test_ci_frontend_shard -v
+      # AUD826 — le filtre de chemins `changes` decide QUELS jobs lourds
+      # tournent. Une regression qui retirerait `^scripts/` rendrait a nouveau
+      # invisible tout commit d'hygiene sur les allowlists : la garde modifiee
+      # ne se validerait pas elle-meme. ICI et pas dans `backend-lint-fast` a
+      # DESSEIN : une PR qui ne touche que ci.yml ne met AUCUNE surface a true
+      # (`.github/**` tombe dans « le reste »), donc seul `stage-names`, non
+      # gate, peut garder le filtre. Stdlib pure, ~0,1 s.
+      - name: Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)
+        run: python -m unittest scripts.tests.test_ci_changes_filter -v
 
   web-build-test:
     needs: changes
