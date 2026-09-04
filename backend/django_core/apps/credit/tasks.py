@@ -84,10 +84,10 @@ def recalculer_encours_pour_societe(company):
 def recalculer_encours_quotidien():
     """NTCRD32 — job quotidien : rafraîchit le cache d'encours de toutes les
     sociétés (best-effort). Renvoie le total de clients rafraîchis."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += recalculer_encours_pour_societe(company)
         except Exception as exc:  # pragma: no cover - défensif
@@ -181,11 +181,11 @@ def alerter_exposition_globale():
     """NTCRD21 — balaye toutes les sociétés et émet l'alerte d'exposition
     consolidée (best-effort, une par jour et par société). Renvoie le nombre
     d'alertes émises."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     today = _casablanca_today()
     emises = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             if alerter_exposition_globale_pour_societe(company, today=today):
                 emises += 1

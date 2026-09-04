@@ -13,8 +13,10 @@ celui de ``ao``.
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``) ; son
 entrée ``beat_schedule`` vit dans ``erp_agentique/celery.py``.
 
-Multi-tenant : boucle par société (``authentication.Company``, jamais une
-société lue d'un corps de requête) ; une exception sur une société n'empêche
+Multi-tenant : boucle par société ACTIVE
+(``authentication.selectors.active_companies()`` — AUD415/SCA19 : un tenant
+suspendu ou en fermeture n'est plus balayé), jamais une société lue d'un corps
+de requête ; une exception sur une société n'empêche
 jamais les suivantes (best-effort, journalisée).
 """
 import logging
@@ -34,12 +36,12 @@ def rappeler_echeances():
     rappel posé, et une PROROGATION la rouvre (le service d'échéancier remet
     ``traitee=False`` quand la date change) — jamais une seconde ligne.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from .services import echeances_ao_dues
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             dues = echeances_ao_dues(company)
         except Exception:  # noqa: BLE001 — une société ne bloque pas les autres

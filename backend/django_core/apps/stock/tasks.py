@@ -6,8 +6,11 @@ faisait tourner — Odoo lance une action nocturne « reordering rules run ».
 Aujourd'hui personne n'est notifié tant qu'un humain n'ouvre pas l'écran.
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
-``apps.rh.tasks``/``apps.installations.tasks``. Boucle PAR société active
-(jamais une company lue d'une requête) ; une exception sur l'une n'empêche
+``apps.rh.tasks``/``apps.installations.tasks``. Boucle PAR société ACTIVE, au
+sens de ``authentication.selectors.active_companies()`` (SCA19/AUD415) : un
+tenant suspendu ou en fermeture n'est jamais balayé — la docstring l'affirmait
+avant AUD415 alors que le code itérait ``Company.objects.all()``.
+Jamais une company lue d'une requête ; une exception sur l'une n'empêche
 jamais les suivantes (best-effort, journalisé). Aucun BCF n'est créé
 automatiquement ici — SUGGESTION seulement (réutilise `produits_a_reapprovisionner`,
 jamais de logique dupliquée).
@@ -61,14 +64,14 @@ def recompute_reordering_task():
     Idempotent : une seule notification par jour par société. Renvoie un dict
     {company_id: nb_produits_notifies} (0 = aucun produit sous seuil, ou déjà
     notifié aujourd'hui)."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from apps.stock.services import produits_a_reapprovisionner
     from apps.notifications.services import notify_many
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             besoins = produits_a_reapprovisionner(company)
         except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
@@ -114,14 +117,14 @@ def relancer_bcf_en_retard_task():
     proposition par jour par BCF (le lien encode le BCF + la date). Best-
     effort : une société/un BCF en échec n'arrête jamais les suivants.
     Renvoie {company_id: nb_bcf_relances_proposees}."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from .models import AchatsParametres
     from .services import bcf_en_retard_list
     from apps.ventes.services import bcf_share_url
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         params = AchatsParametres.objects.filter(
             company=company, relance_bcf_actif=True).first()
         if params is None:
@@ -186,12 +189,12 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
 
     Renvoie ``{company_id: nb_zones_alertees}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from .selectors_entrepot import zones_en_surcapacite
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             zones = zones_en_surcapacite(company, seuil_pct=seuil_pct)
         except Exception:  # noqa: BLE001 — société suivante, jamais bloquant
@@ -237,13 +240,13 @@ def expiration_alerts_task():
     fenêtre configurable `CompanyProfile.jours_alerte_peremption` (défaut 30).
     Réutilise `produits_expirant_bientot` (FG64) tel quel — jamais de logique
     d'expiry dupliquée. Renvoie {company_id: nb_produits_notifies}."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from apps.parametres.models import CompanyProfile
     from .services import produits_expirant_bientot
 
     today = timezone.localdate()
     result = {}
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             profile = CompanyProfile.get(company=company)
             jours = profile.jours_alerte_peremption or 30

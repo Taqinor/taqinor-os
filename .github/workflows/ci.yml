@@ -502,6 +502,16 @@ jobs:
         run: python scripts/check_mouvement_stock_service.py
       - name: Test the MouvementStock-service checker itself (AUD223)
         run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
+      # AUD415 — un fan-out beat (apps/*/tasks.py, scheduled.py, beat_tasks.py)
+      # itère authentication.selectors.active_companies() (SCA19), jamais
+      # Company.objects.all() ni un filter(actif=True) recopié : un tenant
+      # suspendu ne doit plus être facturé, relancé, ni voir sa corbeille GED
+      # purgée. Fails on a NEW site not in
+      # scripts/beat_active_companies_allow.txt.
+      - name: Check fan-outs beat scopés aux sociétés actives (AUD415)
+        run: python scripts/check_beat_active_companies.py
+      - name: Test the beat-active-companies checker itself (AUD415)
+        run: python -m unittest scripts.tests.test_check_beat_active_companies -v
       # YDATA18 — business unique=True must be company-scoped; a unique on a
       # soft-delete model must be a partial index. Fails on a NEW unscoped
       # business unique not in scripts/unique_scoping_allow.txt.

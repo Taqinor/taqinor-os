@@ -9,16 +9,34 @@ tout tenant ``suspendu``/``en fermeture``). Toute tâche périodique Celery qui
 filtre ``Company.objects.filter(actif=True)`` — de sorte qu'un tenant suspendu ne
 soit plus jamais facturé, relancé ni balayé.
 
-INVENTAIRE des fan-outs beat par société (audité site par site, 2026-07-10) et
-leur état vis-à-vis du sélecteur :
+INVENTAIRE des fan-outs beat par société (audité site par site, 2026-07-10 puis
+RÉ-AUDITÉ par AUD415 le 2026-09-04) et leur état vis-à-vis du sélecteur :
 
-  MIGRÉS vers ``active_companies()`` (ce lot) :
+  MIGRÉS vers ``active_companies()`` — lot SCA19 (2026-07-10) :
     * apps/contrats/scheduled.py  (générer échéances récurrentes + relances)
     * apps/sav/tasks.py           (génération visites préventives dues)
     * apps/monitoring/tasks.py    (balayage monitoring quotidien)
     * apps/ged/tasks.py           (documents échus / corbeille / archives)
     * apps/rh/tasks.py            (échéances RH / alertes)
     * apps/automation/beat_tasks.py (moteur de règles automation)
+
+  MIGRÉS vers ``active_companies()`` — lot AUD415 (2026-09-04). L'inventaire
+  SCA19 n'avait jamais été rejoué depuis juillet ; ces 10 sites (21 appels)
+  balayaient encore TOUTES les sociétés, dont un DESTRUCTIF :
+    * apps/ged/services.py        (``purger_corbeille_toutes_societes`` — le
+      SEUL fan-out ged resté non scopé, alors que ce module était listé
+      « MIGRÉ » ci-dessus ; avec ``GED_PURGE_AUTO_APPLY=1`` la corbeille d'un
+      tenant suspendu était purgée DÉFINITIVEMENT chaque nuit à 02:30)
+    * apps/credit/tasks.py        (encours quotidien, alerte d'exposition)
+    * apps/marketing/tasks.py     (journeys, purge jetons, rappels, scores)
+    * apps/stock/tasks.py         (réappro, relance BCF, surcapacité,
+      péremption — sa docstring affirmait déjà « par société active »)
+    * apps/scm/tasks.py           (les 3 boucles + ``_companies_by_ids``)
+    * apps/education/tasks.py     (séances de la semaine, réinscriptions)
+    * apps/ai_governance/tasks.py (snapshot de dérive mensuel)
+    * apps/ao/scheduled.py        (échéances AO dues)
+    * apps/veille_ao/tasks.py     (collecte des sources — relève réseau réelle)
+    * apps/ventes/scheduled.py    (rappels devis à facturer, relève IMAP)
 
   DÉJÀ SÛRS (aucun changement requis) :
     * apps/compta/tasks.py itère ``Company.objects.all()`` MAIS chaque écriture
@@ -27,6 +45,17 @@ leur état vis-à-vis du sélecteur :
       pourra migrer séparément si un skip explicite des suspendus est voulu.
     * apps/chat/tasks.py itère ``Company.objects.all()`` pour de la maintenance
       de sessions internes (pas de facturation/relance) — hors périmètre SCA19.
+    * apps/adminops/tasks.py et apps/compta/scheduled.py recopient
+      ``Company.objects.filter(actif=True)`` : sémantique DÉJÀ correcte (aucun
+      tenant suspendu balayé), il leur reste seulement à passer par la source
+      unique — à migrer par une tâche dédiée, sans urgence de sécurité.
+
+CETTE LISTE NE SE MAINTIENT PLUS À LA MAIN. ``scripts/check_beat_active_
+companies.py`` (AUD415, job CI ``backend-lint-fast``) échoue sur tout NOUVEAU
+``Company.objects.all()`` / ``filter(actif=True)`` dans un ``tasks.py`` /
+``scheduled.py`` / ``beat_tasks.py`` d'``apps/`` hors
+``scripts/beat_active_companies_allow.txt`` — c'est la garde qui empêche
+l'inventaire de re-dériver deux mois durant.
 
 ``authentication`` est une couche de fondation : ce module ne dépend d'AUCUNE
 app métier. Les apps métier l'importent (import descendant autorisé).

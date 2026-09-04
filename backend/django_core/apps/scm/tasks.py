@@ -32,7 +32,7 @@ def generer_previsions_mensuelles_task(horizon_mois=None):
     (produit, période) — comparée AVANT écrasement par le recalcul.
 
     Renvoie ``[{'company_id', 'nb_maj', 'nb_ecarts'}, ...]``."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from core.feature_flags import societes_avec_module
     from django.apps import apps as django_apps
 
@@ -48,7 +48,7 @@ def generer_previsions_mensuelles_task(horizon_mois=None):
     # SOL14 — saute les sociétés qui ont ÉTEINT le module `scm` : une tâche
     # planifiée ne doit pas écrire des prévisions ni notifier un tenant à
     # qui l'API répond 404 au même instant.
-    for company in societes_avec_module('scm', Company.objects.all()):
+    for company in societes_avec_module('scm', active_companies()):
         nb_maj = 0
         nb_ecarts = 0
         horizon_effectif = horizon_mois
@@ -155,11 +155,14 @@ def _companies_by_ids(company_ids):
     Une liste d'ids fournie par l'appelant reste soumise à la même règle que
     la boucle « toutes les sociétés » : une tâche planifiée ne travaille pas
     pour un tenant qui a éteint le module.
+
+    AUD415 — ni pour un tenant SUSPENDU : le filtre d'ids part désormais de
+    ``active_companies()``, comme les trois boucles beat de ce module.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from core.feature_flags import societes_avec_module
     return societes_avec_module(
-        'scm', Company.objects.filter(id__in=list(company_ids)))
+        'scm', active_companies().filter(id__in=list(company_ids)))
 
 
 @shared_task(name='scm.ouvrir_cycle_sop_mensuel')
@@ -236,7 +239,7 @@ def purger_donnees_scm_anciennes():
 
     Best-effort PAR SOCIÉTÉ (même patron que les autres tâches de ce module).
     Renvoie ``[{'company_id', 'nb_supprimees'}, ...]``."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from core.feature_flags import societes_avec_module
 
     from . import selectors
@@ -246,7 +249,7 @@ def purger_donnees_scm_anciennes():
     # SOL14 — saute les sociétés qui ont ÉTEINT le module `scm` : une tâche
     # planifiée ne doit pas écrire des prévisions ni notifier un tenant à
     # qui l'API répond 404 au même instant.
-    for company in societes_avec_module('scm', Company.objects.all()):
+    for company in societes_avec_module('scm', active_companies()):
         try:
             retention_mois = selectors.parametres(company).retention_previsions_mois
             today = timezone.localdate()
@@ -294,7 +297,7 @@ def notifier_ecarts_prevision_importants():
     relancée (recherche dans ``notifications.Notification`` par
     destinataire+événement+lien+mois). Best-effort par société ET par
     produit. Renvoie ``[{'company_id', 'nb_notifications'}, ...]``."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
     from core.feature_flags import societes_avec_module
     from django.apps import apps as django_apps
     from django.utils import timezone
@@ -315,7 +318,7 @@ def notifier_ecarts_prevision_importants():
     # SOL14 — saute les sociétés qui ont ÉTEINT le module `scm` : une tâche
     # planifiée ne doit pas écrire des prévisions ni notifier un tenant à
     # qui l'API répond 404 au même instant.
-    for company in societes_avec_module('scm', Company.objects.all()):
+    for company in societes_avec_module('scm', active_companies()):
         nb_notifications = 0
         try:
             seuil = selectors.parametres(company).seuil_alerte_mape_pct

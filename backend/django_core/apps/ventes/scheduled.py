@@ -505,10 +505,10 @@ def devis_a_facturer_reminder(jours=7):
     même si le job tourne plusieurs fois. Renvoie le nombre de rappels posés."""
     from . import activity
     from .selectors import devis_a_facturer
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         candidats = devis_a_facturer(company, jours=jours)
         for devis in candidats:
             jours_ecoules = (casablanca_today() - devis.date_acceptation).days
@@ -532,10 +532,10 @@ def poll_inbound_mailboxes():
     d'une requête). Best-effort par société : un échec n'arrête pas les autres.
     Renvoie le total {fetched, handled}."""
     from core.email_intake import poll_mailbox
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     fetched = handled = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             res = poll_mailbox(company)
             fetched += int(res.get('fetched', 0) or 0)

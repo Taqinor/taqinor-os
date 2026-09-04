@@ -21,10 +21,10 @@ def executer_journeys_task():
     (XMKT1), qui reste seul en charge des séquences sans nœud : une société
     sans aucun graphe est un no-op complet ici.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         total += len(executer_journeys_dus(company))
     return {'executions': total}
 
@@ -35,10 +35,10 @@ def purger_tokens_expires_task():
     (désinscription XMKT3 / préférences NTMKT22, +90 jours) — voir la
     docstring de ``services.purger_tokens_expires`` : les jetons sont signés
     et jamais stockés, leur expiration est déjà imposée à la lecture."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         total += purger_tokens_expires(company).get('jetons_purges', 0)
     return {'jetons_purges': total}
 
@@ -47,10 +47,10 @@ def purger_tokens_expires_task():
 def rappeler_approbations_envoi_task():
     """NTMKT35 — rappelle (toutes les 4h) les approbateurs d'un envoi de
     campagne en attente depuis plus de 24h — une seule relance par demande."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         total += len(rappeler_approbations_envoi_en_attente(company))
     return {'rappels': total}
 
@@ -60,9 +60,9 @@ def recalculer_scores_maturite_inactivite_task():
     """NTMKT34 — recalcul quotidien du score de maturité (NTMKT18) : applique
     la pénalité d'inactivité 30j aux leads qui ont déjà un ``ScoreMaturite``
     (no-op complet pour une société qui n'a jamais activé NTMKT18)."""
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     total = 0
-    for company in Company.objects.all():
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         total += len(recalculer_scores_maturite_inactivite(company))
     return {'scores_changes': total}
