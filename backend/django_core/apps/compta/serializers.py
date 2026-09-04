@@ -3328,7 +3328,14 @@ class DepreciationImmobilisationSerializer(serializers.ModelSerializer):
 
 
 class MutationImmobilisationSerializer(serializers.ModelSerializer):
-    """NTFIN42 — Mutation/transfert d'immobilisation."""
+    """NTFIN42 — Mutation/transfert d'immobilisation.
+
+    AUDV05 — ``entite_source`` est en LECTURE SEULE : elle est DÉRIVÉE de la
+    société propriétaire de l'immobilisation par
+    ``services.muter_immobilisation``, jamais lue du corps. Laisser le client
+    la déclarer permettait d'inventer une entité d'origine pour un actif dont
+    le serveur connaît déjà le propriétaire.
+    """
     class Meta:
         model = MutationImmobilisation
         fields = [
@@ -3336,7 +3343,7 @@ class MutationImmobilisationSerializer(serializers.ModelSerializer):
             'entite_source', 'entite_cible', 'date', 'motif',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['entite_source', 'created_at', 'updated_at']
 
 
 class LigneImmobilisationEnCoursSerializer(serializers.ModelSerializer):

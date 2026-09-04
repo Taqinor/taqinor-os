@@ -8798,12 +8798,30 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
+    def _sceller(self, cycle, etape, *, snapshot=None, detail=''):
+        """AUDV05 / NTFIN55 (DRAFT165-52) — scelle l'étape dans la chaîne de
+        hachage d'audit du cycle.
+
+        `services.enregistrer_etape_audit_consolidation` n'avait AUCUN
+        appelant : l'action `etapes-audit` listait donc une table qui restait
+        vide POUR TOUJOURS en production. Une consolidation dont on ne peut pas
+        prouver l'ordre ni l'intégrité des étapes n'est pas auditable — c'est
+        exactement ce que NTFIN55 sert à garantir.
+
+        Le scellement est APPEND-ONLY et ne peut pas faire échouer l'étape
+        métier qui vient de réussir : il est appelé APRÈS elle.
+        """
+        return services.enregistrer_etape_audit_consolidation(
+            cycle, etape, acteur=self.request.user, snapshot=snapshot,
+            detail=detail)
+
     @action(detail=True, methods=['post'],
             permission_classes=[HasPermissionOrLegacy('compta_valider')])
     def ouvrir(self, request, pk=None):
         """NTFIN1 — Rouvre un cycle verrouillé."""
         cycle = self.get_object()
         services.ouvrir_cycle_consolidation(cycle)
+        self._sceller(cycle, 'ouverture', detail='Réouverture du cycle.')
         return Response(self.get_serializer(cycle).data)
 
     @action(detail=True, methods=['post'],
@@ -8812,6 +8830,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         """NTFIN1 — Verrouille un cycle (fige ses données agrégées)."""
         cycle = self.get_object()
         services.verrouiller_cycle_consolidation(cycle)
+        self._sceller(
+            cycle, 'verrouillage',
+            snapshot=selectors.bilan_consolide(cycle),
+            detail='Verrouillage du cycle (données figées).')
         return Response(self.get_serializer(cycle).data)
 
     @action(detail=True, methods=['post'],
@@ -8824,10 +8846,59 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
         except DjangoValidationError as exc:
             return _err400(exc)
         cycle.refresh_from_db()
+        donnees = LiasseRemonteeSerializer(liasses, many=True).data
+        self._sceller(
+            cycle, 'collecte', snapshot=donnees,
+            detail=f'{len(liasses)} liasse(s) collectée(s).')
         return Response({
             'cycle': CycleConsolidationSerializer(cycle).data,
-            'liasses': LiasseRemonteeSerializer(liasses, many=True).data,
+            'liasses': donnees,
         })
+
+    @action(detail=True, methods=['post'], url_path='convertir-entite',
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def convertir_entite(self, request, pk=None):
+        """AUDV05 / NTFIN5 (DRAFT165-50) — convertit la liasse d'une entité en
+        devise de présentation (méthode du cours de clôture).
+
+        `services.convertir_entite` n'avait aucun appelant : un groupe avec
+        une filiale en devise étrangère ne pouvait tout simplement PAS
+        consolider depuis l'écran — la balance de cette entité restait dans sa
+        devise locale, donc l'agrégat était faux.
+
+        Corps : ``{'liasse': <id>, 'taux_cloture': ..., 'taux_moyen': ...}``.
+        Bilan (classes 1-5) au cours de CLÔTURE, résultat (classes 6-7) au
+        cours MOYEN ; l'écart qui en résulte est l'écart de conversion (CTA),
+        renvoyé explicitement — jamais absorbé en silence. LECTURE SEULE sur la
+        liasse : la conversion est un CALCUL, elle ne réécrit pas le snapshot
+        collecté (l'original reste la preuve de ce que la filiale a déclaré).
+        """
+        from decimal import Decimal, InvalidOperation
+        cycle = self.get_object()
+        liasse = LiasseRemontee.objects.filter(
+            cycle=cycle, id=request.data.get('liasse')).first()
+        if liasse is None:
+            return Response(
+                {'detail': "Liasse inconnue pour ce cycle."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            taux_cloture = Decimal(str(request.data.get('taux_cloture')))
+            taux_moyen = Decimal(str(request.data.get('taux_moyen')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': "`taux_cloture` et `taux_moyen` doivent être des "
+                           "nombres."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if taux_cloture <= 0 or taux_moyen <= 0:
+            return Response(
+                {'detail': "Un cours de change doit être strictement positif."},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.convertir_entite(liasse, taux_cloture, taux_moyen)
+        self._sceller(
+            cycle, 'conversion', snapshot=resultat,
+            detail=f'Conversion de la liasse {liasse.id} '
+                   f'(clôture {taux_cloture}, moyen {taux_moyen}).')
+        return Response({'liasse': liasse.id, **resultat})
 
     @action(detail=True, methods=['get'], url_path='controles-collecte')
     def controles_collecte(self, request, pk=None):
@@ -8851,7 +8922,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             ops = services.apparier_intercos(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(OperationIntercoSerializer(ops, many=True).data)
+        donnees = OperationIntercoSerializer(ops, many=True).data
+        self._sceller(cycle, 'appariement', snapshot=donnees,
+                      detail=f'{len(ops)} opération(s) inter-co appariée(s).')
+        return Response(donnees)
 
     @action(detail=True, methods=['get'])
     def eliminations(self, request, pk=None):
@@ -8869,7 +8943,10 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             elims = services.generer_eliminations_reciproques(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(EcritureEliminationSerializer(elims, many=True).data)
+        donnees = EcritureEliminationSerializer(elims, many=True).data
+        self._sceller(cycle, 'reciproques', snapshot=donnees,
+                      detail=f'{len(elims)} élimination(s) générée(s).')
+        return Response(donnees)
 
     @action(detail=True, methods=['post'], url_path='interets-minoritaires',
             permission_classes=[HasPermissionOrLegacy('compta_valider')])
@@ -8880,7 +8957,11 @@ class CycleConsolidationViewSet(_ComptaBaseViewSet):
             elims = services.calculer_interets_minoritaires(cycle)
         except DjangoValidationError as exc:
             return _err400(exc)
-        return Response(EcritureEliminationSerializer(elims, many=True).data)
+        donnees = EcritureEliminationSerializer(elims, many=True).data
+        self._sceller(cycle, 'interets_minoritaires', snapshot=donnees,
+                      detail=f'{len(elims)} écriture(s) d\'intérêts '
+                             'minoritaires.')
+        return Response(donnees)
 
     @action(detail=True, methods=['get'], url_path='etats-consolides')
     def etats_consolides(self, request, pk=None):
@@ -9788,6 +9869,35 @@ class MutationImmobilisationViewSet(_ComptaBaseViewSet):
         if immo:
             qs = qs.filter(immobilisation_id=immo)
         return qs
+
+    def perform_create(self, serializer):
+        """AUDV05 / NTFIN42 (DRAFT165-51) — `entite_source` est DÉRIVÉE, jamais
+        acceptée du corps.
+
+        Avant : CRUD nu. `entite_source` était un champ writable ordinaire, si
+        bien qu'un client pouvait déclarer une entité d'origine ARBITRAIRE — ou
+        n'en déclarer aucune — pour un actif dont la société propriétaire est
+        connue du serveur. `services.muter_immobilisation` dérive
+        `entite_source = immobilisation.company` et n'avait aucun appelant.
+
+        Multi-tenant : l'immobilisation est revérifiée dans la société de
+        l'appelant (le sérialiseur ne le fait pas pour ce modèle).
+        """
+        donnees = serializer.validated_data
+        company = self.request.user.company
+        immobilisation = donnees.get('immobilisation')
+        if getattr(immobilisation, 'company_id', None) != getattr(
+                company, 'id', None):
+            raise ValidationError(
+                {'immobilisation': 'Immobilisation inconnue pour cette société.'})
+        serializer.instance = services.muter_immobilisation(
+            immobilisation,
+            ancien_centre=donnees.get('ancien_centre'),
+            nouveau_centre=donnees.get('nouveau_centre'),
+            entite_cible=donnees.get('entite_cible'),
+            date=donnees.get('date'),
+            motif=donnees.get('motif', '') or '',
+        )
 
 
 class ImmobilisationEnCoursViewSet(_ComptaBaseViewSet):

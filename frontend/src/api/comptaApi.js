@@ -589,6 +589,14 @@ const comptaApi = {
     ouvrir: (id) => api.post(`/compta/cycles-consolidation/${id}/ouvrir/`),
     verrouiller: (id) => api.post(`/compta/cycles-consolidation/${id}/verrouiller/`),
     collecter: (id, data) => api.post(`/compta/cycles-consolidation/${id}/collecter/`, data || {}),
+    // AUDV05 / NTFIN5 — convertit la liasse d'une entité en devise de
+    // PRÉSENTATION (bilan au cours de clôture, résultat au cours moyen).
+    // Corps : `{liasse, taux_cloture, taux_moyen}`. LECTURE SEULE sur la
+    // liasse : le snapshot collecté n'est pas réécrit (il reste la preuve de
+    // ce que la filiale a déclaré) ; l'écart de conversion (CTA) est RENVOYÉ,
+    // jamais absorbé en silence.
+    convertirEntite: (id, data) =>
+      api.post(`/compta/cycles-consolidation/${id}/convertir-entite/`, data),
     controlesCollecte: (id) => api.get(`/compta/cycles-consolidation/${id}/controles-collecte/`),
     intercos: (id) => api.get(`/compta/cycles-consolidation/${id}/intercos/`),
     apparier: (id, data) => api.post(`/compta/cycles-consolidation/${id}/apparier/`, data || {}),

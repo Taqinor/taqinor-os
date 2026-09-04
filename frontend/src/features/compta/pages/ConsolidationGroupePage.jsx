@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine, Download } from 'lucide-react'
+import {
+  Plus, Lock, Unlock, DownloadCloud, Link2, Combine, Download, Coins,
+} from 'lucide-react'
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Segmented, Label, Combobox, toast,
+  Button, Segmented, Label, Combobox, Input, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
+import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -149,10 +153,112 @@ function CycleFilterBar({ cycle, cycles, onChange }) {
   )
 }
 
+/* AUDV05 / NTFIN5 (DRAFT165-50) — conversion d'une liasse en devise de
+   présentation. `services.convertir_entite` n'avait aucun appelant : un
+   groupe avec une filiale en devise étrangère ne pouvait PAS consolider
+   depuis l'écran, la balance de cette entité restant en devise locale.
+   L'écart de conversion (CTA) est AFFICHÉ tel que le serveur le renvoie —
+   jamais recalculé ici, jamais masqué. */
+function ConversionDialog({ liasse, onClose }) {
+  const [tauxCloture, setTauxCloture] = useState('')
+  const [tauxMoyen, setTauxMoyen] = useState('')
+  const [resultat, setResultat] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const convertir = async () => {
+    setBusy(true)
+    try {
+      const res = await comptaApi.cyclesConsolidation.convertirEntite(
+        liasse.cycle, {
+          liasse: liasse.id,
+          taux_cloture: tauxCloture,
+          taux_moyen: tauxMoyen,
+        })
+      setResultat(res.data)
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Conversion impossible.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            Conversion en devise de présentation — liasse #{liasse.id}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Méthode du cours de clôture : le bilan est converti au cours de
+          clôture, le résultat au cours moyen. L’écart qui en résulte est
+          l’écart de conversion (CTA). La balance collectée n’est pas modifiée.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conv-cloture" required>Cours de clôture</Label>
+            <Input
+              id="conv-cloture" type="number" step="any" value={tauxCloture}
+              onChange={(e) => setTauxCloture(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conv-moyen" required>Cours moyen</Label>
+            <Input
+              id="conv-moyen" type="number" step="any" value={tauxMoyen}
+              onChange={(e) => setTauxMoyen(e.target.value)}
+            />
+          </div>
+          <Button
+            onClick={convertir}
+            disabled={busy || !tauxCloture || !tauxMoyen}
+          >
+            {busy ? 'Conversion…' : 'Convertir'}
+          </Button>
+        </div>
+
+        {resultat && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Écart de conversion (CTA)</span>
+              <strong className="tabular-nums">
+                {formatMAD(resultat.ecart_conversion)}
+              </strong>
+            </div>
+            <ComptaTable
+              aria-label="Balance convertie"
+              exportName={`liasse-${liasse.id}-convertie`}
+              rows={resultat.lignes}
+              getRowKey={(l, i) => i}
+              columns={[
+                { key: 'numero', label: 'Compte', cell: (l) => l.numero },
+                { key: 'intitule', label: 'Intitulé', cell: (l) => l.intitule || '—' },
+                { key: 'debit', label: 'Débit', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.debit) || 0,
+                  cell: (l) => formatMAD(l.debit) },
+                { key: 'credit', label: 'Crédit', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.credit) || 0,
+                  cell: (l) => formatMAD(l.credit) },
+              ]}
+            />
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── NTFIN2 — Liasses de remontée (lecture seule, collectées via le cycle) ──
 function LiassesPanel() {
   const [cycle, setCycle] = useState(null)
   const [cycles, setCycles] = useState([])
+  const [conversion, setConversion] = useState(null)
   useEffect(() => { cyclesAsync().then(setCycles) }, [])
   const list = useComptaList(comptaApi.liassesRemontee.list, { cycle: cycle || undefined })
 
@@ -175,10 +281,22 @@ function LiassesPanel() {
         rows={list.rows}
         loading={list.loading}
         error={list.error}
+        rowActions={(row) => [{
+          id: 'convertir',
+          label: 'Convertir en devise de présentation',
+          icon: Coins,
+          onClick: () => setConversion(row),
+        }]}
         exportName="liasses-remontee"
         emptyTitle="Aucune liasse"
         emptyDescription="Aucune balance collectée — utilisez « Collecter les liasses » sur un cycle."
       />
+      {conversion && (
+        <ConversionDialog
+          liasse={conversion}
+          onClose={() => setConversion(null)}
+        />
+      )}
     </div>
   )
 }
