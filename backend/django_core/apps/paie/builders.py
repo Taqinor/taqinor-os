@@ -115,6 +115,41 @@ def _ligne_context(ligne):
     }
 
 
+def _date_fr(valeur):
+    """Une date → « 5 juillet 2026 », ou '' si elle n'est pas renseignée."""
+    if not valeur:
+        return ''
+    return f'{valeur.day} {MOIS_FR[valeur.month]} {valeur.year}'
+
+
+def employeur_context(company):
+    """AUD704 — identité de l'employeur, mentions obligatoires du bulletin.
+
+    Ne renvoie QUE les mentions réellement renseignées : une société qui n'a
+    pas encore saisi son ICE n'imprime pas « ICE : » suivi du vide, et rien
+    n'est jamais inventé. ``mentions`` est une liste de couples (libellé,
+    valeur) déjà échappés.
+    """
+    if company is None:
+        return {'nom': '', 'adresse': '', 'mentions': []}
+    champs = (
+        ('RC', 'registre_commerce'),
+        ('IF', 'identifiant_fiscal'),
+        ('ICE', 'ice'),
+        ("N° CNSS employeur", 'numero_cnss_employeur'),
+    )
+    mentions = [
+        (libelle, escape(str(getattr(company, attribut, '') or '')))
+        for libelle, attribut in champs
+        if getattr(company, attribut, '')
+    ]
+    return {
+        'nom': escape(getattr(company, 'nom', '') or ''),
+        'adresse': escape(getattr(company, 'adresse', '') or ''),
+        'mentions': mentions,
+    }
+
+
 def bulletin_context(bulletin):
     """Contexte de rendu d'un bulletin (dict de chaînes prêtes à afficher).
 
@@ -149,6 +184,15 @@ def bulletin_context(bulletin):
             getattr(getattr(profil, 'employe', None), 'matricule', '') or ''),
         'numero_cnss': escape(profil.numero_cnss or ''),
         'periode': escape(_libelle_periode(periode)),
+        # AUD704 — mentions obligatoires absentes jusqu'ici : identité de
+        # l'employeur, date de paiement et jours/heures payés. Les deux
+        # dernières EXISTAIENT déjà en base et n'étaient simplement jamais
+        # imprimées.
+        'employeur': employeur_context(getattr(bulletin, 'company', None)),
+        'date_paiement': escape(
+            _date_fr(getattr(periode, 'date_paiement', None))),
+        'jours_travail': getattr(profil, 'jours_travail_mensuel', '') or '',
+        'heures_travail': getattr(profil, 'heures_travail_mensuel', '') or '',
         'lignes': lignes,
         'gains': gains,
         'retenues': retenues,
@@ -179,7 +223,33 @@ _BULLETIN_STYLE = """
   .chaine .net { font-weight: bold; font-size: 13px; }
   .patronal { margin-top: 14px; border: 1px dashed #999; padding: 6px 8px; }
   .patronal p { margin: 0 0 4px; font-style: italic; }
+  .employeur { border: 1px solid #ccc; padding: 6px 8px; margin-bottom: 8px; }
 """
+
+
+def _mention_html(libelle, valeur):
+    """« &nbsp; <strong>Libellé :</strong> valeur » — vide si non renseigné."""
+    if valeur in (None, ''):
+        return ''
+    return (f'&nbsp; <strong>{escape(libelle)} :</strong> '
+            f'{escape(str(valeur))}')
+
+
+def _entete_employeur_html(employeur):
+    """En-tête employeur du bulletin (AUD704) — n'imprime que le renseigné."""
+    if not employeur or not (employeur['nom'] or employeur['adresse']
+                             or employeur['mentions']):
+        return ''
+    lignes = []
+    if employeur['nom']:
+        lignes.append(f"<strong>{employeur['nom']}</strong>")
+    if employeur['adresse']:
+        lignes.append(employeur['adresse'].replace('\n', '<br>'))
+    if employeur['mentions']:
+        lignes.append(' &nbsp; '.join(
+            f'<strong>{libelle} :</strong> {valeur}'
+            for libelle, valeur in employeur['mentions']))
+    return f"<div class=\"employeur\">{'<br>'.join(lignes)}</div>"
 
 
 def _bloc_lignes_html(titre, lignes, *, sous_total=None,
@@ -231,10 +301,14 @@ def render_bulletin_html(bulletin):
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>{_BULLETIN_STYLE}</style></head><body>
   <h1>Bulletin de paie</h1>
+  {_entete_employeur_html(ctx['employeur'])}
   <p><strong>Salarié :</strong> {ctx['employe']}
      &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
      &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
-  <p><strong>Période :</strong> {ctx['periode']}</p>
+  <p><strong>Période :</strong> {ctx['periode']}
+     {_mention_html('Date de paiement', ctx['date_paiement'])}
+     {_mention_html('Jours payés', ctx['jours_travail'])}
+     {_mention_html('Heures payées', ctx['heures_travail'])}</p>
   {gains_html}
   {retenues_html}
   <h2>Récapitulatif</h2>

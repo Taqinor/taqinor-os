@@ -179,6 +179,71 @@ class BulletinRetenuesSalarialesTests(TestCase):
         self.assertTrue(par_code['IR']['montant_signe'].startswith('-'))
 
 
+class MentionsObligatoiresTests(TestCase):
+    """AUD704 — identité employeur, date de paiement, jours/heures payés.
+
+    ÉTAT AVANT LE FIX : ``render_bulletin_html``, lu intégralement, ne
+    contenait AUCUN bloc employeur — et ``authentication.Company`` ne portait
+    même pas les champs (seul ``nom``). Deux données qui EXISTAIENT déjà en
+    base n'étaient pas imprimées non plus : ``PeriodePaie.date_paiement`` et
+    ``ProfilPaie.jours_travail_mensuel``/``heures_travail_mensuel``.
+    """
+
+    def setUp(self):
+        self.co = make_company('mentions')
+        self.co.adresse = '12 rue des Ateliers, Casablanca'
+        self.co.registre_commerce = 'RC 45678'
+        self.co.identifiant_fiscal = 'IF 11223344'
+        self.co.ice = '001234567000089'
+        self.co.numero_cnss_employeur = 'CNSS-EMP-7788'
+        self.co.save()
+        ensure_defaults(self.co)
+        self.dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='MEN1', nom='Mention', prenom='Test')
+        self.profil = ProfilPaie.objects.create(
+            company=self.co, employe=self.dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('9000'), jours_travail_mensuel=26,
+            heures_travail_mensuel=191,
+            numero_cnss='12341234', affilie_cnss=True, affilie_amo=True)
+        self.periode = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=6,
+            date_paiement=date(2026, 7, 5))
+        self.bulletin = generer_bulletin(self.profil, self.periode)
+
+    def test_identite_employeur_imprimee(self):
+        html = builders.render_bulletin_html(self.bulletin)
+        self.assertIn('12 rue des Ateliers, Casablanca', html)
+        self.assertIn('RC 45678', html)
+        self.assertIn('IF 11223344', html)
+        self.assertIn('001234567000089', html)
+        self.assertIn('CNSS-EMP-7788', html)
+
+    def test_date_paiement_et_jours_payes_imprimes(self):
+        html = builders.render_bulletin_html(self.bulletin)
+        self.assertIn('Date de paiement', html)
+        self.assertIn('5 juillet 2026', html)
+        self.assertIn('Jours payés', html)
+        self.assertIn('Heures payées', html)
+
+    def test_mention_non_renseignee_nest_pas_imprimee_vide(self):
+        """Rien n'est inventé : une mention absente ne s'imprime pas."""
+        co = make_company('mentions-vides')
+        ensure_defaults(co)
+        dossier = DossierEmploye.objects.create(
+            company=co, matricule='MEN2', nom='Vide', prenom='Test')
+        profil = ProfilPaie.objects.create(
+            company=co, employe=dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('9000'))
+        periode = PeriodePaie.objects.create(company=co, annee=2026, mois=6)
+        bulletin = generer_bulletin(profil, periode)
+        html = builders.render_bulletin_html(bulletin)
+        self.assertNotIn('ICE :', html)
+        self.assertNotIn('RC :', html)
+        self.assertNotIn('Date de paiement', html)
+
+
 class RecuStcTests(TestCase):
     """AUD702 — le reçu de solde de tout compte.
 
