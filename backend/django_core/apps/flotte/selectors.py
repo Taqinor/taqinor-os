@@ -1041,9 +1041,19 @@ def synthese_pneus_pieces_vehicule(company, vehicule_id):
 
     Agrège, pour un véhicule d'une société :
     - le nombre de pneus montés (``nb_pneus_montes``) et leur coût total ;
-    - le nombre de lignes de pièces (``nb_pieces``), la quantité totale et le
-      coût total des pièces (quantité × coût unitaire) ;
-    - le coût total combiné (pneus + pièces).
+    - le nombre de lignes de pièces (``nb_pieces``), la quantité totale (les
+      DEUX comptent TOUTES les pièces, informatif) ;
+    - le coût total des pièces (``cout_pieces``) et le coût total combiné
+      (``cout_total`` = pneus + pièces).
+
+    AUD726 — une pièce déjà RATTACHÉE à un ``OrdreReparation``
+    (``ordre_reparation`` non nul) est EXCLUE de ``cout_pieces``/
+    ``cout_total`` : son coût est déjà compté dans
+    ``OrdreReparation.cout_pieces`` (saisie manuelle sur l'OR, sommée dans
+    ``tco_vehicule.reparations``) — la compter ICI en plus double le coût
+    réel de la même dépense (``tco_vehicule`` sommait jusqu'ici
+    ``reparations`` ET ``pneus_pieces`` sans exclusion). Seules les pièces
+    LIBRES (sans OR) entrent dans le montant.
 
     Retourne un dict LECTURE SEULE — tous les montants sont des ``float``
     arrondis. Aucun calcul de moyenne ici, donc pas de division par zéro.
@@ -1060,9 +1070,10 @@ def synthese_pneus_pieces_vehicule(company, vehicule_id):
     quantite_pieces = 0
     nb_pieces = 0
     for piece in pieces:
-        cout_pieces += piece.cout_total
         quantite_pieces += piece.quantite or 0
         nb_pieces += 1
+        if piece.ordre_reparation_id is None:
+            cout_pieces += piece.cout_total
 
     cout_pneus = round(float(agg_pneus['cout'] or 0), 2)
     cout_pieces = round(cout_pieces, 2)

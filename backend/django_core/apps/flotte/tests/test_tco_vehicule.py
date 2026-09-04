@@ -5,7 +5,11 @@ Couvre :
   - véhicule sans coûts → tous postes à 0, cout_total 0 ;
   - agrégation carburant (FLOTTE12) + réparations (FLOTTE17) + infractions
     (FLOTTE26) + sinistres (FLOTTE25) ; coût par km dérivé du carnet ;
-  - scope société (n'inclut pas les coûts d'une autre société).
+  - scope société (n'inclut pas les coûts d'une autre société) ;
+  - AUD726 : une ``PieceFlotte`` rattachée à un ``OrdreReparation`` n'est
+    JAMAIS comptée deux fois (une fois via ``OrdreReparation.cout_pieces``,
+    une fois via ``pneus_pieces``) — seules les pièces LIBRES (sans OR)
+    s'ajoutent à ``reparations``.
 - Endpoint ``/vehicules/<id>/tco/`` (GET, tout rôle).
 """
 import datetime
@@ -23,6 +27,7 @@ from apps.flotte.models import (
     ActifFlotte,
     Infraction,
     OrdreReparation,
+    PieceFlotte,
     PleinCarburant,
     Sinistre,
     Vehicule,
@@ -100,6 +105,37 @@ class TcoVehiculeTests(TestCase):
             kilometrage=1, quantite=Decimal("10"), prix_total=Decimal("999"))
         data = tco_vehicule(self.co, self.veh.id)
         self.assertEqual(data["carburant"], 0)
+
+    def test_aud726_piece_rattachee_a_or_jamais_double_comptee(self):
+        """AUD726 — un OR avec ``cout_pieces`` saisi à la main ET une
+        ``PieceFlotte`` liée à CE MÊME OR pour la même dépense ne doivent
+        compter qu'UNE fois : avant fix, ``reparations`` (1200, via
+        ``cout_pieces``) ET ``pneus_pieces`` (1200, via la pièce liée)
+        sommaient 2400 MAD pour une dépense réelle de 1200 MAD."""
+        ordre = OrdreReparation.objects.create(
+            company=self.co, actif_flotte=self.actif, date_ouverture=D,
+            cout_main_oeuvre=Decimal("0"), cout_pieces=Decimal("1200"))
+        PieceFlotte.objects.create(
+            company=self.co, vehicule=self.veh, designation="Kit distribution",
+            quantite=4, cout_unitaire=Decimal("300"),
+            ordre_reparation=ordre)
+
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["reparations"], 1200.0)
+        # La pièce est déjà comptée dans `reparations` (cout_pieces de l'OR) :
+        # elle n'ajoute rien à `pneus_pieces`.
+        self.assertEqual(data["pneus_pieces"], 0.0)
+        self.assertEqual(data["cout_total"], 1200.0)
+
+    def test_aud726_piece_libre_sans_or_comptee_normalement(self):
+        """Une pièce SANS OR lié reste comptée dans ``pneus_pieces`` — le
+        correctif AUD726 n'exclut que les pièces déjà rattachées à un OR."""
+        PieceFlotte.objects.create(
+            company=self.co, vehicule=self.veh, designation="Plaquettes",
+            quantite=4, cout_unitaire=Decimal("100"))
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["pneus_pieces"], 400.0)
+        self.assertEqual(data["cout_total"], 400.0)
 
 
 class TcoApiTests(TestCase):
