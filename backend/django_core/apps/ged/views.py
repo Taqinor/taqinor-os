@@ -1737,6 +1737,13 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # que les actions de lecture custom des viewsets frères.
         if self.action in READ_ACTIONS or self.action == 'apercu':
             return [IsAnyRole()]
+        # AUD810 — effacer une VERSION est un effacement RÉEL (pas de
+        # corbeille pour les versions) qui peut détruire une preuve sous
+        # legal hold (GED24) : même palier de gouvernance (WIR174) que
+        # placer/lever un hold ou caviarder, pas l'écriture courante
+        # `ged_gerer`.
+        if self.action == 'destroy':
+            return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1745,6 +1752,17 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         if document:
             qs = qs.filter(document_id=document)
         return qs
+
+    def perform_destroy(self, instance):
+        # AUD810 — même mapping d'erreurs que `DocumentViewSet.perform_destroy`
+        # : les deux gels (GED23 write-once, GED24 legal hold) restent 403,
+        # jamais 500, même si ici `instance.delete()` est un effacement RÉEL
+        # de la version (pas de corbeille pour les versions).
+        from rest_framework.exceptions import PermissionDenied
+        try:
+            instance.delete()
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            raise PermissionDenied(str(exc))
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
