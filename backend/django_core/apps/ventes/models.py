@@ -1781,7 +1781,12 @@ class PaymentLink(models.Model):
         editable=False)
     # Clé du fournisseur (registre payments.providers). 'noop' = défaut inerte.
     provider = models.CharField(max_length=40, default='noop')
-    # Montant figé à la création du lien (= reste à payer au moment T).
+    # Montant CONSTATÉ à la création (trace de ce qui était dû ce jour-là).
+    # AUD136 — ce n'est PAS ce que le client paie : le montant encaissé est
+    # DÉRIVÉ de `facture.montant_du` à l'instant du paiement (voir
+    # `montant_a_payer` ci-dessous et `record_payment_from_link`). Un lien créé
+    # avec un montant erroné, ou une facture réglée entre-temps, ne peut donc
+    # pas encaisser un chiffre périmé.
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
@@ -1799,6 +1804,16 @@ class PaymentLink(models.Model):
         verbose_name_plural = 'Liens de paiement'
         ordering = ['-created_at']
         indexes = [models.Index(fields=['token'])]
+        constraints = [
+            # AUD136 — UN SEUL lien EN ATTENTE par facture, garanti en base.
+            # `create_payment_link` réutilisait déjà un lien valide, mais rien
+            # n'empêchait deux liens actifs (course, écriture directe, ré-émission
+            # à volonté) sur la même facture.
+            models.UniqueConstraint(
+                fields=['facture'],
+                condition=models.Q(statut='en_attente'),
+                name='uniq_paymentlink_actif_par_facture'),
+        ]
 
     def __str__(self):
         return f'PaymentLink {self.token[:8]}… ({self.facture.reference})'
@@ -1807,6 +1822,20 @@ class PaymentLink(models.Model):
     def is_valid(self):
         return (self.statut == self.Statut.EN_ATTENTE
                 and self.expires_at > timezone.now())
+
+    @property
+    def montant_a_payer(self):
+        """AUD136 — le montant RÉELLEMENT dû, à l'instant où on le demande.
+
+        ``montant`` est la trace de ce qui était dû à la création ; l'afficher
+        au client (page publique) après un règlement partiel lui réclamait un
+        chiffre périmé. Le webhook borne déjà l'encaissement à ce reste dû —
+        c'est la même valeur, exposée au même endroit."""
+        from decimal import Decimal
+
+        facture = self.facture
+        reste = getattr(facture, 'montant_du', None)
+        return reste if reste is not None else Decimal('0')
 
 
 import hashlib  # noqa: E402
