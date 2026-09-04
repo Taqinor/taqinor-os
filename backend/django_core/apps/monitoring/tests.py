@@ -238,6 +238,55 @@ class TestUnderperformance(TestCase):
         res = services.evaluate_underperformance(self.inst, today=self.today)
         self.assertFalse(res['evaluated'])
         self.assertEqual(UnderperformanceFlag.objects.count(), 0)
+        # AUD522 — « jamais aucun relevé » est tracé distinctement de
+        # « relevé(s) existant(s) mais hors fenêtre » (voir ci-dessous).
+        self.assertEqual(res['data_status'], 'no_data_ever')
+
+    def test_stale_single_old_reading_is_not_a_false_zero_alarm(self):
+        """AUD522 — un relevé UNIQUE et ANCIEN (hors fenêtre récente 365 j)
+        n'est plus traité comme une production réelle à 0 %.
+
+        AVANT LE FIX : `has_data` (sans borne de date) valait True dès qu'UN
+        relevé existait, n'importe quand ; `actual` (fenêtre 365 j) valait 0
+        pour ce relevé vieux de plus d'un an → ratio 0.00 %, underperforming
+        =True, drapeau ouvert (et ticket SAV auto possible) CHAQUE NUIT sur
+        un système qui n'a simplement plus de données récentes — jamais une
+        vraie sous-performance mesurée."""
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            period_days=365)
+        res = services.evaluate_underperformance(self.inst, today=self.today)
+        self.assertFalse(res['evaluated'])
+        self.assertFalse(res['underperforming'])
+        self.assertIsNone(res['ratio_pct'])
+        self.assertEqual(res['data_status'], 'stale_data')
+        self.assertEqual(UnderperformanceFlag.objects.count(), 0)
+
+    def test_stale_data_never_creates_auto_ticket(self):
+        """Même bascule société ON (auto_create_ticket), un relevé PÉRIMÉ ne
+        déclenche jamais de ticket SAV automatique."""
+        s = MonitoringSettings.get(self.company)
+        s.auto_create_ticket = True
+        s.save()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            period_days=365)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertIsNone(res['ticket'])
+        self.assertEqual(Ticket.objects.count(), 0)
+
+    def test_recent_reading_still_evaluated_normally(self):
+        """Non-régression — un relevé RÉCENT (dans la fenêtre) continue
+        d'être évalué normalement, `data_status='evaluated'`."""
+        self._add_reading(1000)  # très en dessous de 7500, dans la fenêtre
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res['data_status'], 'evaluated')
+        self.assertTrue(res['evaluated'])
+        self.assertTrue(res['underperforming'])
 
     def test_underperf_flag_without_auto_ticket(self):
         # Bascule OFF (défaut) : flag posé, AUCUN ticket créé.

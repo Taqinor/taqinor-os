@@ -47,6 +47,11 @@ def balayage_quotidien():
     total_systemes = 0
     total_importes = 0
     total_sous_performants = 0
+    # AUD522 — comptés SÉPARÉMENT d'une vraie sous-performance : un système
+    # dont les relevés se sont taris (ou n'a encore jamais reçu de relevé)
+    # n'est PLUS confondu avec une alarme production réelle (voir
+    # `services.evaluate_underperformance`, `data_status`).
+    total_donnees_perimees = 0
 
     # SCA19 — source unique : un tenant suspendu n'est plus balayé.
     for company in active_companies():
@@ -61,6 +66,8 @@ def balayage_quotidien():
                 result = evaluate_underperformance(installation)
                 if result.get('underperforming'):
                     total_sous_performants += 1
+                elif result.get('data_status') == 'stale_data':
+                    total_donnees_perimees += 1
             except Exception:  # pragma: no cover - défensif, isolation système
                 logger.warning(
                     'monitoring.balayage_quotidien: échec système %s '
@@ -71,10 +78,12 @@ def balayage_quotidien():
 
     logger.info(
         'monitoring.balayage_quotidien: %s système(s) traité(s), %s '
-        'relevé(s) importé(s), %s sous-performant(s)',
-        total_systemes, total_importes, total_sous_performants)
+        'relevé(s) importé(s), %s sous-performant(s), %s donnée(s) périmée(s)',
+        total_systemes, total_importes, total_sous_performants,
+        total_donnees_perimees)
     return {
         'systemes': total_systemes,
         'releves_importes': total_importes,
         'sous_performants': total_sous_performants,
+        'donnees_perimees': total_donnees_perimees,
     }

@@ -11,6 +11,15 @@ productible). Sous le seuil société (MonitoringSettings), on ouvre (idempotent
 un drapeau ; et si la société a activé l'auto-ticket, on crée UN ticket SAV
 préventif lié au drapeau — jamais deux pour un même drapeau ouvert. Repasse
 au-dessus du seuil : on ferme le drapeau ouvert.
+
+AUD522 — l'existence d'un relevé était vérifiée SANS borne de date : un
+système dont le SEUL relevé date de plus d'un an (hors de la fenêtre récente
+de 365 j que `actual` somme) était donc évalué comme une vraie production à
+0 % chaque nuit, plutôt que reconnu comme une absence de DONNÉES récentes.
+Le résultat porte désormais `data_status` ∈ {no_data_ever, stale_data,
+evaluated} : seul `evaluated` déclenche un drapeau/ticket, les deux autres
+sont des no-op tracés (le rapport O&M / le fleet dashboard peuvent afficher
+« données manquantes » au lieu d'une fausse alarme production).
 """
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
@@ -135,7 +144,11 @@ def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
 def evaluate_underperformance(installation, *, user=None, today=None):
     """Évalue la performance d'un système et gère drapeau + ticket (N52).
 
-    Renvoie un dict {evaluated, underperforming, ratio_pct, flag, ticket}.
+    Renvoie un dict {evaluated, underperforming, ratio_pct, flag, ticket,
+    data_status}. ``data_status`` ∈ {no_data_ever, stale_data, evaluated} —
+    AUD522 : seul ``evaluated`` déclenche une évaluation réelle ;
+    ``stale_data`` (un relevé existe, mais aucun dans la fenêtre récente de
+    365 j) est un no-op tracé, jamais une fausse « production à 0 % ».
     Ne fait RIEN de destructif ; l'auto-ticket n'est créé que si la société a
     activé la bascule. Idempotent : un drapeau ouvert ⇒ pas de second ticket.
     """
@@ -145,18 +158,31 @@ def evaluate_underperformance(installation, *, user=None, today=None):
     config = get_or_create_config(installation)
 
     result = {'evaluated': False, 'underperforming': False,
-              'ratio_pct': None, 'flag': None, 'ticket': None}
+              'ratio_pct': None, 'flag': None, 'ticket': None,
+              'data_status': 'no_data_ever'}
 
     expected = _expected_recent_kwh(installation, config, RECENT_WINDOW_DAYS)
-    has_data = ProductionReading.objects.filter(
-        installation=installation).exists()
-    # Pas de donnée de production OU pas d'attendu : on n'évalue pas (no-op).
-    if not has_data or not expected or expected <= 0:
+    # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
+    # un système dont le SEUL relevé date de plus d'un an n'a AUCUNE donnée
+    # récente, même si `ProductionReading.objects.filter(installation=...)`
+    # (sans borne de date) renvoyait vrai. `has_recent_data=False` avec un
+    # relevé plus ancien existant ⇒ `stale_data` (pas `no_data_ever`) : la
+    # distinction reste tracée pour le rapport O&M / le fleet dashboard.
+    since = today - timedelta(days=RECENT_WINDOW_DAYS)
+    has_recent_data = ProductionReading.objects.filter(
+        installation=installation, date__gte=since, date__lte=today).exists()
+    if not has_recent_data:
+        has_ever = ProductionReading.objects.filter(
+            installation=installation).exists()
+        result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
+        return result
+    if not expected or expected <= 0:
         return result
 
     actual = recent_production_kwh(installation, today=today)
     ratio = (actual / expected) * Decimal('100')
-    result.update(evaluated=True, ratio_pct=ratio.quantize(Decimal('0.01')))
+    result.update(evaluated=True, ratio_pct=ratio.quantize(Decimal('0.01')),
+                  data_status='evaluated')
 
     threshold_pct = (settings_obj.underperf_threshold_pct
                      if settings_obj else Decimal('20'))
