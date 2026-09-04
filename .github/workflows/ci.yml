@@ -178,7 +178,7 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       code: ${{ steps.detect.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: detect
@@ -304,14 +304,14 @@ jobs:
       image: ${{ steps.tag.outputs.image }}
       image_e2e: ${{ steps.tag.outputs.image_e2e }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Source UNIQUE des etiquettes, partagee avec `ci-image.yml` : si les deux
       # les calculaient separement, la moindre divergence reconstruirait les
       # images a chaque run.
       - name: Calculer les etiquettes des images
         id: tag
         run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -331,11 +331,11 @@ jobs:
             fi
           done
           exit 0
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
       - name: Construire et pousser ci-backend si elle manque (chemin lent)
         if: ${{ steps.exists.outputs.backend != 'true' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend/django_core
           file: .github/ci-image/Dockerfile
@@ -347,7 +347,7 @@ jobs:
       # Construite PAR-DESSUS ci-backend, donc APRES elle, jamais en parallele.
       - name: Construire et pousser ci-e2e si elle manque (chemin lent)
         if: ${{ steps.exists.outputs.e2e != 'true' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           file: .github/ci-image/Dockerfile.e2e
@@ -393,8 +393,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
           cache: 'pip'
@@ -576,7 +576,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
@@ -940,7 +940,7 @@ jobs:
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated test DB (measured: the ~850-
       # migration replay was 2255s of a 2388s shard — 97% of the job); the test
@@ -1121,8 +1121,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -1182,8 +1182,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -1266,8 +1266,8 @@ jobs:
       DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
       DJANGO_DEBUG: 'True'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
           cache: 'pip'
@@ -1287,7 +1287,7 @@ jobs:
         env:
           TAQINOR_EDITION: full
         run: python manage.py verifier_edition
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -1315,8 +1315,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
       - name: Check pipeline stage names against STAGES.py
@@ -1509,8 +1509,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -1655,13 +1655,13 @@ jobs:
       # Le throttle garde son test dédié : core/tests/test_tenant_throttle.py.
       TENANT_RATE_LIMIT: '0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # WOW-CI RONDE 5 — `actions/setup-python` a disparu (Python 3.11 et toutes
       # les dépendances sont dans l'image). `actions/setup-node` RESTE : il ne
       # coûte que 4 s et il apporte le cache npm, sans lequel `npm ci` passerait
       # de 5 s (mesuré) à plusieurs dizaines de secondes. C'est pour cette raison
       # précise que l'image n'embarque pas `node_modules`.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -1823,7 +1823,7 @@ jobs:
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report
@@ -1930,7 +1930,7 @@ jobs:
       # Active la suite RLS (sautée partout ailleurs).
       POSTGRES_RLS_ENABLED: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # WOW-CI (2026-07-16): reuse the WOW8 pre-migrated dump + --keepdb exactly
       # like the shards. Before this, rls-tests cold-replayed the full ~1,150-
       # migration history on every run (measured 36-52 min, 94-97% of the job;
