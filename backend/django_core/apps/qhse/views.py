@@ -21,6 +21,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy
 from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
@@ -1536,7 +1537,7 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         return response
 
 
-class ConsignationLotoViewSet(_QhseBaseViewSet):
+class ConsignationLotoViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
 
     CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
@@ -1550,6 +1551,11 @@ class ConsignationLotoViewSet(_QhseBaseViewSet):
 
     * ``POST …/<id>/deconsigner/`` — passe ``consignee`` → ``deconsignee`` et
       enregistre ``date_deconsignation`` (refuse si déjà déconsignée).
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'une
+    consignation déjà DÉCONSIGNÉE (registre légal sécurité électrique) :
+    rien ne l'empêchait auparavant (``_QhseBaseViewSet`` est un ModelViewSet
+    nu, gardé par rôle seul).
     """
     queryset = ConsignationLoto.objects.all()
     serializer_class = ConsignationLotoSerializer
@@ -1606,6 +1612,13 @@ class ConsignationLotoViewSet(_QhseBaseViewSet):
         consignation.save(
             update_fields=['statut', 'date_deconsignation'])
         return Response(self.get_serializer(consignation).data)
+
+    def destroy_guard_message(self, consignation):
+        if consignation.statut == ConsignationLoto.Statut.DECONSIGNEE:
+            return (
+                'Cette consignation est déjà déconsignée — registre légal '
+                'sécurité électrique, elle ne peut plus être supprimée.')
+        return None
 
 
 class InductionSecuriteViewSet(_QhseBaseViewSet):
@@ -1757,7 +1770,7 @@ class SecouristeViewSet(_QhseBaseViewSet):
         return qs
 
 
-class IncidentViewSet(_QhseBaseViewSet):
+class IncidentViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Registre des incidents HSE — accident / presqu'accident / incident (QHSE29).
 
     CRUD scopé société. ``company`` et ``declare_par`` sont posés côté serveur
@@ -1769,6 +1782,12 @@ class IncidentViewSet(_QhseBaseViewSet):
 
     Registre QHSE distinct du volet RH (``rh.AccidentTravail`` /
     ``rh.PresquAccident`` — détail CNSS/blessure/salarié) : aucun import croisé.
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    incident qui a quitté le statut OUVERT (déjà pris en charge, en cours de
+    traitement ou clos) : rien ne l'empêchait auparavant, un simple
+    Technicien (``qhse_gerer``) pouvait supprimer un accident du travail
+    déjà en cours de déclaration CNSS.
     """
     queryset = Incident.objects.select_related('declare_par').all()
     serializer_class = IncidentSerializer
@@ -1884,8 +1903,16 @@ class IncidentViewSet(_QhseBaseViewSet):
         incidents = relancer_notifications_environnement(request.user.company)
         return Response({'relances': len(incidents)})
 
+    def destroy_guard_message(self, incident):
+        if incident.statut != Incident.Statut.OUVERT:
+            return (
+                'Cet incident a été pris en charge (statut « '
+                f'{incident.get_statut_display()} ») — registre HSE légal, '
+                'il ne peut plus être supprimé.')
+        return None
 
-class DeclarationCnssViewSet(_QhseBaseViewSet):
+
+class DeclarationCnssViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Déclarations CNSS d'accident du travail + échéance légale (QHSE30).
 
     CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
@@ -1899,7 +1926,10 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
     Action ``GET …/a-echeance/`` — déclarations NON transmises qui approchent
     de l'échéance ou sont déjà hors délai (``?within_days=N``, défaut = délai
     légal), via ``selectors.declarations_cnss_a_echeance``, scopée société.
-    """
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'une
+    déclaration déjà DÉCLARÉE (``statut=DECLARE``) : rien ne l'empêchait
+    auparavant."""
     queryset = DeclarationCnss.objects.select_related('accident_travail').all()
     serializer_class = DeclarationCnssSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1962,6 +1992,13 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
         etapes = instancier_etapes_at(declaration)
         serializer = EtapeDeclarationAtSerializer(etapes, many=True)
         return Response(serializer.data)
+
+    def destroy_guard_message(self, declaration):
+        if declaration.statut == DeclarationCnss.Statut.DECLARE:
+            return (
+                'Cette déclaration a déjà été transmise à la CNSS — registre '
+                'légal, elle ne peut plus être supprimée.')
+        return None
 
 
 class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
@@ -3492,9 +3529,14 @@ class ElementRappelViewSet(_QhseBaseViewSet):
 
 
 # ── WIR275 (XQHS9) — registre des certifications + audits externes ─────────
-class CertificationViewSet(_QhseBaseViewSet):
+class CertificationViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Certificats ISO/NM détenus par l'entreprise (WIR275/XQHS9). Filtre
-    optionnel ``?statut=``."""
+    optionnel ``?statut=``.
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    certificat déjà ÉMIS (``numero_certificat`` posé) : rien ne l'empêchait
+    auparavant. Un certificat encore à l'état de brouillon (aucun numéro)
+    reste supprimable."""
     queryset = Certification.objects.all()
     serializer_class = CertificationQhseSerializer
     filter_backends = [filters.OrderingFilter]
@@ -3507,13 +3549,26 @@ class CertificationViewSet(_QhseBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def destroy_guard_message(self, certification):
+        if (certification.numero_certificat or '').strip():
+            return (
+                'Ce certificat a déjà été émis (n° '
+                f'{certification.numero_certificat}) — registre légal, il ne '
+                'peut plus être supprimé.')
+        return None
 
-class AuditCertificationViewSet(_QhseBaseViewSet):
+
+class AuditCertificationViewSet(UsageGuardedDestroyMixin, _QhseBaseViewSet):
     """Audits d'un organisme certificateur sur une ``Certification``
     (WIR275/XQHS9). Filtre optionnel ``?certification=``.
 
     ``POST …/<id>/lever-ncr/`` lève une NCR pour un constat majeur (idempotent
-    — ``lever_ncr_audit_certification`` n'avait aucun appelant)."""
+    — ``lever_ncr_audit_certification`` n'avait aucun appelant).
+
+    AUD513 — ``UsageGuardedDestroyMixin`` bloque (409) la suppression d'un
+    audit déjà ÉMIS (``date_audit`` posée — le rapport d'audit existe) : rien
+    ne l'empêchait auparavant. Un audit encore planifié (aucune date) reste
+    supprimable."""
     queryset = AuditCertification.objects.select_related('certification').all()
     serializer_class = AuditCertificationSerializer
     filter_backends = [filters.OrderingFilter]
@@ -3534,6 +3589,13 @@ class AuditCertificationViewSet(_QhseBaseViewSet):
         audit_certif = self.get_object()
         lever_ncr_audit_certification(audit_certif, signale_par=request.user)
         return Response(self.get_serializer(audit_certif).data)
+
+    def destroy_guard_message(self, audit_certif):
+        if audit_certif.date_audit is not None:
+            return (
+                'Cet audit de certification a déjà été réalisé (rapport '
+                'émis) — registre légal, il ne peut plus être supprimé.')
+        return None
 
 
 # ── WIR275 (XQHS10) — programme d'audit interne annuel ──────────────────────
