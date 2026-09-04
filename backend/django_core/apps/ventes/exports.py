@@ -70,21 +70,54 @@ def export_journal_ventes(company, debut, fin):
     tot_ht = tot_tva = tot_ttc = Decimal('0')
     for f in factures:
         type_libelle = f.get_type_facture_display()
-        for ligne in f.lignes.all():
-            ht = _q2(ligne.total_ht)
-            taux = Decimal(ligne.taux_tva_effectif or 0)
-            tva = _q2(ht * taux / Decimal('100'))
-            ttc = _q2(ht + tva)
+        date_f = f.date_emission.isoformat() if f.date_emission else ''
+        nom = getattr(f.client, 'nom', '') or ''
+        ice = getattr(f.client, 'ice', '') or ''
+        lignes = list(f.lignes.all())
+        if lignes:
+            for ligne in lignes:
+                ht = _q2(ligne.total_ht)
+                taux = Decimal(ligne.taux_tva_effectif or 0)
+                tva = _q2(ht * taux / Decimal('100'))
+                ttc = _q2(ht + tva)
+                ws.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    ligne.designation, str(ligne.quantite),
+                    str(ligne.prix_unitaire),
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                bucket = par_taux.setdefault(
+                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+                bucket['ht'] += ht
+                bucket['tva'] += tva
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
+        else:
+            # AUD109 — FILET « facture header-only ». La boucle ci-dessus
+            # n'avait AUCUN `else` : une facture ÉMISE sans LigneFacture
+            # n'écrivait zéro ligne dans le journal et n'ajoutait zéro montant
+            # au résumé TVA — alors qu'elle est bien captée par le filtre
+            # ISSUED_STATUTS, donc présente dans le queryset. Ces factures
+            # existent réellement en production : `contrats.services` crée des
+            # factures ÉMISES à montants figés et SANS ligne (abonnements et
+            # maintenance récurrents), tout comme les tranches d'échéancier.
+            # Tout ce CA disparaissait donc du journal des ventes du mois — le
+            # cabinet recevait un CA sous-déclaré. Les deux jumeaux de ce
+            # fichier (`_compta_rows`, `_grand_livre_rows`) avaient déjà ce
+            # filet ; seul le journal ne l'avait pas. Montants figés lus sur
+            # les propriétés du document, qui gèrent ce cas.
+            ht = _q2(f.total_ht)
+            taux = Decimal(f.taux_tva or 0)
+            tva = _q2(f.total_tva)
+            ttc = _q2(f.total_ttc)
             ws.append([
-                f.reference,
-                f.date_emission.isoformat() if f.date_emission else '',
-                type_libelle,
-                getattr(f.client, 'nom', '') or '',
-                getattr(f.client, 'ice', '') or '',
-                ligne.designation, str(ligne.quantite), str(ligne.prix_unitaire),
+                f.reference, date_f, type_libelle, nom, ice,
+                f.libelle or type_libelle or 'Facture', '', '',
                 float(ht), float(taux), float(tva), float(ttc),
             ])
-            bucket = par_taux.setdefault(taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+            bucket = par_taux.setdefault(
+                taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
             bucket['ht'] += ht
             bucket['tva'] += tva
             tot_ht += ht
