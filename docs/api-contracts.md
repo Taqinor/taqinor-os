@@ -345,7 +345,7 @@
 - frontend/src/api/flotteApi.js :: vehiculeEcoConduite -> /api/django/flotte/vehicules/<>/eco-conduite
     co2_g_par_km:inconnu, co2_kg:inconnu, conso_kwh_100km:inconnu, conso_l_100km:inconnu, distance_totale_km:inconnu, energie:inconnu, facteur_co2_kg_par_litre:inconnu, kwh_total:nombre, litres_total:nombre, nb_pleins:inconnu, nb_surconsommation:inconnu, score_eco:inconnu, vehicule_id:inconnu
 - frontend/src/api/flotteApi.js :: vehiculeTco -> /api/django/flotte/vehicules/<>/tco
-    actif_flotte_id:inconnu, amortissement_cumule:inconnu, carburant:nombre, cout_par_km:inconnu, cout_total:nombre, distance_totale_km:inconnu, infractions:nombre, part_charges_non_deductibles:inconnu, pct_charges_non_deductibles:inconnu, pneus_pieces:nombre, reparations:nombre, sinistres:nombre, vehicule_id:inconnu
+    actif_flotte_id:inconnu, amortissement_cumule:inconnu, assurances:nombre, carburant:nombre, cout_par_km:inconnu, cout_total:nombre, couts_divers:nombre, distance_totale_km:inconnu, infractions:nombre, part_charges_non_deductibles:inconnu, pct_charges_non_deductibles:inconnu, pneus_pieces:nombre, reparations:nombre, sinistres:nombre, vehicule_id:inconnu, vignette:nombre
 - frontend/src/api/flotteApi.js :: vehiculeTsav -> /api/django/flotte/vehicules/<>/tsav
     annee:inconnu, bareme_id:inconnu, energie:inconnu, exonere:booleen, montant:inconnu, note:texte, puissance_fiscale:inconnu
 - frontend/src/api/fpaApi.js :: comparerScenarios -> /api/django/fpa/scenarios/comparer
