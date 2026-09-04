@@ -155,3 +155,71 @@ class TestSchemaAucunPan(Xctr22TestBase):
     def test_derniers_chiffres_longueur_bornee(self):
         mandat = self._mandat()
         self.assertLessEqual(len(mandat.derniers_chiffres), 4)
+
+
+class TestAUD123MontantDebite(Xctr22TestBase):
+    """AUD123 — le montant prélevé était lu sur `montant_ttc`, NULL pour
+    toute facture à lignes, et n'était jamais borné au reste dû.
+
+    Deux cas, tous deux ROUGES avant le correctif :
+      1. facture classique à lignes de 12 000 TTC → le débit valait
+         `None` (`montant_ttc` NULL) au lieu de 12 000 ;
+      2. facture dont 5 000 sont déjà réglés → le TTC intégral était
+         prélevé une seconde fois au lieu du reste dû.
+    """
+
+    def _facture_a_lignes(self, reference='FAC-AUD123-0001'):
+        """Facture CLASSIQUE (montant_ttc NULL) : 10 × 1 000 HT à 20 % de
+        TVA = 10 000 HT + 2 000 TVA = 12 000 TTC, dérivés des lignes."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneFacture
+        produit = Produit.objects.create(
+            company=self.company, nom='Abonnement supervision',
+            sku=f'AUD123-{reference[-4:]}', prix_vente=Decimal('1000'),
+            quantite_stock=100, tva=Decimal('20.00'))
+        facture = Facture.objects.create(
+            company=self.company, reference=reference,
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=facture, produit=produit,
+            designation='Abonnement supervision', quantite=Decimal('10'),
+            prix_unitaire=Decimal('1000'), taux_tva=Decimal('20.00'))
+        facture.refresh_from_db()
+        self.assertIsNone(facture.montant_ttc)
+        self.assertEqual(facture.total_ttc, Decimal('12000.00'))
+        return facture
+
+    def test_facture_a_lignes_debite_le_ttc_reel(self):
+        self._mandat()
+        facture = self._facture_a_lignes()
+        paiement = debiter_mandat_pour_facture(
+            facture=facture, periode='2026-05')
+        self.assertIsNotNone(paiement)
+        self.assertEqual(paiement.montant, Decimal('12000.00'))
+
+    def test_debit_borne_au_reste_du(self):
+        self._mandat()
+        facture = self._facture_a_lignes(reference='FAC-AUD123-0002')
+        Paiement.objects.create(
+            company=self.company, facture=facture,
+            montant=Decimal('5000.00'), date_paiement=timezone.now().date(),
+            mode=Paiement.Mode.VIREMENT)
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_du, Decimal('7000.00'))
+        paiement = debiter_mandat_pour_facture(
+            facture=facture, periode='2026-06')
+        self.assertIsNotNone(paiement)
+        self.assertEqual(paiement.montant, Decimal('7000.00'))
+
+    def test_facture_deja_soldee_aucun_debit(self):
+        self._mandat()
+        facture = self._facture_a_lignes(reference='FAC-AUD123-0003')
+        Paiement.objects.create(
+            company=self.company, facture=facture,
+            montant=Decimal('12000.00'), date_paiement=timezone.now().date(),
+            mode=Paiement.Mode.VIREMENT)
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        self.assertIsNone(debiter_mandat_pour_facture(
+            facture=facture, periode='2026-07'))

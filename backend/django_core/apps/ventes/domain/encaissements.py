@@ -681,6 +681,11 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
         prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
         notifie le client (lien de mise à jour de carte — best-effort).
 
+    AUD123 — le montant prélevé vaut ``min(montant_du, total_ttc)`` : la
+    valeur métier de la facture (``total_ttc``, jamais le champ figé
+    ``montant_ttc`` qui est NULL hors tranche), bornée au reste réellement
+    dû. Reste dû nul ou négatif → aucun débit tenté (retourne None).
+
     Renvoie le `Paiement` créé en cas de succès, sinon None.
     """
     from django.db import transaction
@@ -688,6 +693,7 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
     from datetime import timedelta
     from apps.ventes.models import TentativeDebitMandat, Paiement
     from apps.ventes.payments.providers import get_provider
+    from core.money import quantize_mad
 
     mandat = mandat_actif_pour_client(facture.client)
     if mandat is None:
@@ -700,14 +706,28 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
     if deja_reussi:
         return None
 
+    # AUD123 — le montant prélevé se lit sur ``total_ttc`` (la valeur
+    # métier), JAMAIS sur ``montant_ttc`` : ce champ est
+    # `null=True, blank=True` et n'est renseigné que pour les factures de
+    # tranche (« Montants figés à la création pour les tranches… NULL =
+    # facture classique », `facturation/models.py`). Un mandat sur une
+    # facture d'abonnement classique à lignes prélevait donc `None`. Et le
+    # montant est désormais BORNÉ au reste dû, comme tout autre chemin
+    # d'encaissement : sans cette borne, une facture déjà partiellement
+    # réglée était prélevée du TTC intégral une seconde fois.
+    montant_a_debiter = quantize_mad(
+        min(facture.montant_du, facture.total_ttc))
+    if montant_a_debiter <= 0:
+        return None
+
     provider = get_provider(mandat.provider)
-    result = provider.charge(token=mandat.token, montant=facture.montant_ttc)
+    result = provider.charge(token=mandat.token, montant=montant_a_debiter)
 
     with transaction.atomic():
         if result.get('ok'):
             paiement = Paiement.objects.create(
                 company=facture.company, facture=facture,
-                montant=facture.montant_ttc,
+                montant=montant_a_debiter,
                 date_paiement=timezone.localdate(),
                 mode=Paiement.Mode.CARTE,
                 reference=(result.get('provider_ref') or '')[:120],
