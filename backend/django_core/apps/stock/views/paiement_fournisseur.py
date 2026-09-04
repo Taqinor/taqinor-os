@@ -53,9 +53,21 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_paiement', '-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        elif self.action == 'destroy':
+        # AUD419 — la LECTURE des règlements fournisseurs n'est plus ouverte à
+        # tout rôle interne. `IsAnyRole()` laissait n'importe quel compte
+        # authentifié de la société (un magasinier sans la moindre permission
+        # financière) lister `montant`/`date_paiement`/`facture` de CHAQUE
+        # règlement — soit les rapprochements de trésorerie complets, sans
+        # besoin métier démontré.
+        #
+        # La question « un rôle métier en a-t-il besoin ? » est tranchée par
+        # PREUVE plutôt que par supposition : l'unique écran consommateur,
+        # `/stock/paiements-fournisseur` (PACT51), déclare déjà
+        # `roles: ['responsable','admin']` dans
+        # `frontend/src/features/stock/module.config.jsx` — c'est la seule
+        # référence à cette ressource dans tout le frontend. Resserrer aligne
+        # donc l'API sur son écran ; aucun usage existant ne casse.
+        if self.action == 'destroy':
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
 
