@@ -114,20 +114,6 @@ def proposer_arrondi_caisse(facture, mode, reste=None):
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
-def _as_bool(value, *, default=False):
-    """AUD129 — coercition tolérante d'un drapeau de corps de requête.
-
-    Un formulaire multipart envoie ``'false'`` / ``'0'`` (chaînes VRAIES en
-    Python) : les lire naïvement transformerait un opt-out en opt-in.
-    ``None`` (champ absent) retombe sur ``default``.
-    """
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value.strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
-    return bool(value)
-
-
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -1600,18 +1586,36 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         est renseignée (``note or lvl.message``) — elle n'était jusqu'ici
         écrite que dans le journal interne et perdue pour le destinataire.
 
+        AUD131 (PAY-18) : l'action ne vérifiait NI ``statut`` NI ``montant_du``,
+        alors que le cron exclut payee/annulee/brouillon — une facture déjà
+        payée pouvait recevoir une mise en demeure. Elle partage désormais LE
+        prédicat ``recouvrement.facture_relancable`` avec la liste des impayés
+        et le beat, et son corps est validé par un serializer (un ``niveau``
+        inexistant ou une ``prochaine_relance`` non-date ⇒ 400, plus jamais une
+        relance consignée à vide ni une erreur base).
+
         Journalise une RelanceLog + fixe la prochaine date de relance. L'envoi
         passe par l'intégration configurable : NO-OP réseau sans clé (backend
         console), envoi réel via Brevo/SMTP quand configuré."""
+        from ..recouvrement import facture_relancable
+        from ..serializers import RelancerFactureSerializer
+
         facture = self.get_object()
-        niveau = request.data.get('niveau')
-        note = (request.data.get('note') or '').strip()
-        niveau_nom = ''
-        lvl = None
-        if niveau:
-            lvl = FollowupLevel.objects.filter(
-                company=facture.company, ordre=niveau).first()
-            niveau_nom = lvl.nom if lvl else ''
+        # AUD131 — garde d'état AVANT toute écriture.
+        ok, motif = facture_relancable(facture)
+        if not ok:
+            return Response({'detail': motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        payload = RelancerFactureSerializer(
+            data=request.data, context={'company': facture.company})
+        payload.is_valid(raise_exception=True)
+        donnees = payload.validated_data
+
+        niveau = donnees.get('niveau')
+        note = (donnees.get('note') or '').strip()
+        lvl = payload.context.get('followup_level')
+        niveau_nom = lvl.nom if lvl is not None else ''
         RelanceLog.objects.create(
             company=facture.company, facture=facture,
             niveau=niveau or None, niveau_nom=niveau_nom, note=note,
@@ -1619,17 +1623,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
         # NO-OP réseau sans clé configurée.
         email_log_id = None
-        if _as_bool(request.data.get('envoyer_email'), default=False):
+        if donnees.get('envoyer_email'):
             from ..email_service import send_relance_email
             # AUD129 (PAY-19) — la note saisie prime sur le message générique
             # du niveau : sinon la personnalisation n'atteint jamais le client.
             email_log = send_relance_email(
                 facture, niveau_nom=niveau_nom,
-                message=(note or (lvl.message if lvl else '')),
+                message=(note or (lvl.message if lvl is not None else '')),
                 user=request.user)
             email_log_id = email_log.id
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
-        prochaine = request.data.get('prochaine_relance')
+        prochaine = donnees.get('prochaine_relance')
         if prochaine:
             facture.prochaine_relance = prochaine
             facture.save(update_fields=['prochaine_relance'])

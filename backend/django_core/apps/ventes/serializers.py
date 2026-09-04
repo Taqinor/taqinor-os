@@ -1097,6 +1097,39 @@ class PromessePaiementSerializer(serializers.ModelSerializer):
         read_only_fields = ['company', 'created_by', 'date_creation', 'statut']
 
 
+class RelancerFactureSerializer(serializers.Serializer):
+    """AUD131 (PAY-18) — validation du corps de l'action ``relancer``.
+
+    Le corps était lu à cru : `niveau` non validé (un ordre inexistant laissait
+    `lvl` à None et la relance était consignée quand même) et
+    `prochaine_relance` affecté brut à la facture (une chaîne non-date
+    remontait en erreur base — un 500 — au lieu d'un 400).
+
+    La société est passée en contexte : un `niveau` est un ORDRE de
+    ``FollowupLevel``, résolu et donc scopé à la société de la facture.
+    """
+    niveau = serializers.IntegerField(required=False, allow_null=True)
+    note = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True,
+        max_length=2000)
+    prochaine_relance = serializers.DateField(
+        required=False, allow_null=True)
+    envoyer_email = serializers.BooleanField(default=False)
+
+    def validate_niveau(self, value):
+        if value is None:
+            return value
+        from .models import FollowupLevel
+        company = self.context.get('company')
+        niveau = FollowupLevel.objects.filter(
+            company=company, ordre=value).first()
+        if niveau is None:
+            raise serializers.ValidationError(
+                'Niveau de relance inconnu pour cette société.')
+        self.context['followup_level'] = niveau
+        return value
+
+
 class FollowupLevelSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import FollowupLevel

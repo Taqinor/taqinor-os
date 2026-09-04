@@ -102,6 +102,37 @@ def rendre_message_relance(niveau, facture):
     return re.sub(r'[ \t]{2,}', ' ', rendu).strip()
 
 
+# ── AUD131 — UN SEUL prédicat « cette facture est-elle relançable ? » ──────
+# La vue `relancer` ne vérifiait NI le statut NI le reste dû, alors que le cron
+# excluait payee/annulee/brouillon et court-circuitait `montant_du <= 0` : une
+# facture déjà payée pouvait donc recevoir une mise en demeure. Les trois
+# surfaces (vue, `_facture_due_rows`, `relance_reminders`) partagent désormais
+# cette définition — la changer les change toutes les trois.
+
+#: Statuts qui sortent une facture de toute file de relance.
+STATUTS_NON_RELANCABLES = ('payee', 'annulee', 'brouillon')
+
+
+def facture_relancable(facture):
+    """``(True, '')`` si ``facture`` peut être relancée, sinon ``(False, motif)``.
+
+    Le motif est un message destiné à l'utilisateur (renvoyé tel quel en 400).
+    """
+    statut = getattr(facture, 'statut', '')
+    if statut in STATUTS_NON_RELANCABLES:
+        libelle = statut
+        try:
+            libelle = facture.get_statut_display()
+        except Exception:  # pragma: no cover — objet non-modèle
+            pass
+        return False, (
+            f'Statut {libelle} : la relance ne concerne qu\'une facture '
+            f'ouverte et due.')
+    if (getattr(facture, 'montant_du', 0) or 0) <= 0:
+        return False, 'Facture soldée : plus rien à relancer.'
+    return True, ''
+
+
 def _scope(qs, user):
     if user.company_id:
         return qs.filter(company=user.company)
@@ -227,12 +258,13 @@ def _facture_due_rows(user):
         Facture.objects.select_related('client').prefetch_related(
             'lignes', 'paiements', 'avoirs'),
         user
-    ).exclude(statut__in=['payee', 'annulee', 'brouillon']).filter(
+    ).exclude(statut__in=STATUTS_NON_RELANCABLES).filter(
         exclu_relances=False)
     # Portée de visibilité (Feature F) : relances/balance restreintes aux
     # factures créées par soi / l'équipe pour un rôle restreint. 'all' → inchangé.
     qs = scope_queryset(qs, user, ['created_by'])
-    return [f for f in qs if f.montant_du > 0]
+    # AUD131 — même prédicat que la vue `relancer` et que le beat.
+    return [f for f in qs if facture_relancable(f)[0]]
 
 
 @api_view(['GET'])
@@ -569,9 +601,12 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
             statut=PromessePaiement.Statut.EN_COURS,
         )
         # Une promesse active SUSPEND les relances automatiques jusqu'à sa
-        # date : on pousse ``prochaine_relance`` après la promesse (repris par
-        # le scheduler à expiration) et on pose l'exclusion EXPIRANTE (XFAC5),
-        # jamais l'exclusion éternelle (comportement historique inchangé).
+        # date : on pose l'exclusion EXPIRANTE (XFAC5), jamais l'exclusion
+        # éternelle. AUD131 — ce commentaire annonçait aussi qu'on « pousse
+        # ``prochaine_relance`` après la promesse » : c'était FAUX, seul
+        # ``exclu_relances_jusquau`` est écrit (et il suffit : le beat exclut
+        # `exclu_relances_jusquau__gte=today`, la cadence reprend d'elle-même
+        # à expiration sans que la date de relance soit déplacée).
         facture = promesse.facture
         facture.exclu_relances_jusquau = promesse.date_promise
         facture.save(update_fields=['exclu_relances_jusquau'])
