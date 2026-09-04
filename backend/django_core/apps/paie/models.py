@@ -1899,6 +1899,20 @@ class DepotBDS(models.Model):
         verbose_name = 'Dépôt BDS'
         verbose_name_plural = 'Dépôts BDS'
         ordering = ['-date_depot']
+        constraints = [
+            # AUD713 — la docstring ci-dessus affirmait « une période ne peut
+            # avoir qu'UN dépôt principal » sans QUE RIEN ne le garantisse :
+            # ``deposer_bds_principal`` faisait un ``filter().first()`` puis un
+            # ``create()``, sans verrou. Deux appels concurrents créaient donc
+            # deux dépôts principaux pour la même période. La contrainte ferme
+            # la course au niveau DB, indépendamment du code applicatif ; les
+            # dépôts COMPLÉMENTAIRES restent libres d'être multiples.
+            models.UniqueConstraint(
+                fields=['company', 'periode'],
+                condition=models.Q(type_depot='principal'),
+                name='uniq_depot_bds_principal_par_periode',
+            ),
+        ]
 
     def __str__(self):
         return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'

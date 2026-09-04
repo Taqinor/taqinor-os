@@ -27,7 +27,7 @@ qu'ils restent à confirmer.
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -4028,20 +4028,40 @@ def deposer_bds_principal(periode):
     enregistré s'il existe. Couvre TOUS les salariés affiliés CNSS de la
     déclaration (``declaration_cnss``). Renvoie le ``DepotBDS`` (créé ou
     existant).
+
+    AUD713 — la promesse « un seul dépôt principal » n'était garantie par RIEN :
+    ni verrou (``filter().first()`` puis ``create()``), ni contrainte DB. Deux
+    appels concurrents créaient deux dépôts principaux pour la même période.
+    Elle est maintenant tenue à DEUX niveaux : le verrou de période sérialise
+    les appels concurrents (il n'y a aucune ligne de dépôt à verrouiller tant
+    qu'aucun dépôt n'existe), et la contrainte
+    ``uniq_depot_bds_principal_par_periode`` ferme la course au niveau DB
+    quoi que fasse le code applicatif. Une course perdue relit le dépôt du
+    gagnant au lieu de lever : la fonction reste idempotente.
     """
     from .models import DepotBDS
 
-    existant = DepotBDS.objects.filter(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
-    if existant is not None:
-        return existant
+    filtre = dict(company=periode.company, periode=periode,
+                  type_depot=DepotBDS.TYPE_PRINCIPAL)
+    with transaction.atomic():
+        PeriodePaie.objects.select_for_update().filter(pk=periode.pk).first()
+        existant = DepotBDS.objects.filter(**filtre).first()
+        if existant is not None:
+            return existant
 
-    decl = declaration_cnss(periode)
-    profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
-    return DepotBDS.objects.create(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL, profils_couverts=profils)
+        decl = declaration_cnss(periode)
+        profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
+        try:
+            # Bloc imbriqué : une IntegrityError casse la transaction
+            # courante, il faut un point de sauvegarde pour pouvoir relire.
+            with transaction.atomic():
+                return DepotBDS.objects.create(
+                    profils_couverts=profils, **filtre)
+        except IntegrityError:
+            gagnant = DepotBDS.objects.filter(**filtre).first()
+            if gagnant is None:  # pragma: no cover - défensif
+                raise
+            return gagnant
 
 
 def deposer_bds_complementaire(periode, profils_delta, *, depot_principal=None):
