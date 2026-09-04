@@ -219,12 +219,47 @@ def production_for_calendar_year(installation, year):
     return total
 
 
-def production_warranty_status(installation, *, year=None):
+def _guaranteed_kwh_for_period(warranty, year, today):
+    """AUD508 — productible garanti pour la PÉRIODE ÉCOULÉE de ``year``.
+
+    ``guaranteed_kwh_for_year`` renvoie l'objectif ANNUEL COMPLET, dégradé
+    depuis l'année de référence — correct pour une année déjà terminée
+    (``year != today.year``), où le réel comparé couvre lui aussi l'année
+    entière. Mais pour l'année EN COURS (``year == today.year``), le réel
+    (``production_for_calendar_year``) ne peut sommer QUE les relevés déjà
+    reçus depuis le 1er janvier — comparer ce réel forcément partiel à un
+    objectif annuel complet gonfle mécaniquement le manque et la
+    compensation MAD tant que l'année n'est pas finie. On prorate donc le
+    garanti au jour de l'année écoulé (day-of-year / jours-de-l'année).
+
+    Renvoie ``(guaranteed_kwh, year_in_progress)`` — ``year_in_progress``
+    laisse l'appelant exposer un flag explicite (jamais une compensation
+    affichée comme définitivement due en cours d'année).
+    """
+    guaranteed_full = warranty.guaranteed_kwh_for_year(year)
+    if year != today.year:
+        return guaranteed_full, False
+    from datetime import date as _date
+    days_in_year = (_date(year, 12, 31) - _date(year, 1, 1)).days + 1
+    day_of_year = today.timetuple().tm_yday
+    fraction = Decimal(day_of_year) / Decimal(days_in_year)
+    return guaranteed_full * fraction, True
+
+
+def production_warranty_status(installation, *, year=None, today=None):
     """FG282 — production réelle vs productible garanti (dégradé) d'une année.
 
-    Renvoie un dict {has_warranty, year, guaranteed_kwh, actual_kwh, shortfall_kwh,
-    compensation_mad, within_tolerance}. No-op gracieux (has_warranty=False) si
-    aucune garantie de production n'est configurée pour le système.
+    AUD508 — pour l'année EN COURS, le garanti comparé est PRORATÉ au jour de
+    l'année écoulé (voir ``_guaranteed_kwh_for_period``) : comparer un réel
+    forcément partiel à un objectif annuel complet gonflait mécaniquement le
+    manque et la « compensation due » tant que l'année n'était pas finie.
+
+    Renvoie un dict {has_warranty, year, year_in_progress, guaranteed_kwh,
+    actual_kwh, shortfall_kwh, compensation_mad, within_tolerance}. No-op
+    gracieux (has_warranty=False) si aucune garantie de production n'est
+    configurée pour le système. ``today`` (optionnel) fige la date de
+    référence — tests déterministes, jamais utilisé en production où le
+    défaut (``timezone.localdate()``) s'applique.
     """
     warranty = getattr(installation, 'production_warranty', None)
     if warranty is None:
@@ -233,8 +268,10 @@ def production_warranty_status(installation, *, year=None):
     if warranty is None:
         return {'has_warranty': False}
 
-    year = int(year or timezone.localdate().year)
-    guaranteed = warranty.guaranteed_kwh_for_year(year)
+    today = today or timezone.localdate()
+    year = int(year or today.year)
+    guaranteed, year_in_progress = _guaranteed_kwh_for_period(
+        warranty, year, today)
     actual = production_for_calendar_year(installation, year)
 
     shortfall = guaranteed - actual
@@ -253,6 +290,7 @@ def production_warranty_status(installation, *, year=None):
     return {
         'has_warranty': True,
         'year': year,
+        'year_in_progress': year_in_progress,
         'guaranteed_kwh': guaranteed.quantize(q2),
         'actual_kwh': actual.quantize(q2),
         'shortfall_kwh': shortfall.quantize(q2),
@@ -271,8 +309,15 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
     `drift_threshold_pct` (au-delà de la tolérance contractuelle). Le drapeau
     `manufacturer_recourse` signale un recours fabricant probable.
 
-    Renvoie {has_warranty, threshold_pct, manufacturer_recourse, points:[...]}.
-    No-op gracieux (has_warranty=False) sans garantie configurée. 100 % lecture.
+    AUD508 — le point de l'année EN COURS compare lui aussi le garanti
+    PRORATÉ au jour écoulé (``_guaranteed_kwh_for_period``), jamais l'objectif
+    annuel complet : sinon un système simplement à mi-parcours de sa
+    production annuelle s'affichait en dérive anormale et pouvait allumer à
+    tort ``manufacturer_recourse``.
+
+    Renvoie {has_warranty, threshold_pct, manufacturer_recourse, points:[...]}
+    — chaque point porte aussi ``year_in_progress``. No-op gracieux
+    (has_warranty=False) sans garantie configurée. 100 % lecture.
     """
     warranty = getattr(installation, 'production_warranty', None)
     if warranty is None:
@@ -296,7 +341,8 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
     points = []
     recourse = False
     for year in year_list:
-        guaranteed = warranty.guaranteed_kwh_for_year(year)
+        guaranteed, year_in_progress = _guaranteed_kwh_for_period(
+            warranty, year, today)
         actual = production_for_calendar_year(installation, year)
         has_data = ProductionReading.objects.filter(
             installation=installation, date__year=year).exists()
@@ -310,6 +356,7 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
                 recourse = True
         points.append({
             'year': year,
+            'year_in_progress': year_in_progress,
             'guaranteed_kwh': guaranteed.quantize(Decimal('0.01')),
             'actual_kwh': (actual.quantize(Decimal('0.01'))
                            if has_data else None),
