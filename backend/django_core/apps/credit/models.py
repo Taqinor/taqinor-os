@@ -4,6 +4,8 @@ Additif — ne modifie AUCUN modèle ventes/crm existant ; toutes les
 références vers Client/Devis/BonCommande se font en string-FK
 ('crm.Client', 'ventes.Devis', 'ventes.BonCommande').
 """
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 
@@ -169,12 +171,37 @@ class SegmentClientCredit(TenantModel):
         return f'{self.client_id} → {self.segment}'
 
 
+#: AUD153 — durée AU-DELÀ de laquelle une entrée est considérée PÉRIMÉE et
+#: déclenche un recalcul live (jamais un affichage figé sur une donnée trop
+#: ancienne). Courte devant la cadence du job quotidien (``credit.tasks.
+#: recalculer_encours_quotidien``) : la fraîcheur réelle vient surtout du
+#: RE-CALCUL EN LECTURE (``selectors._encours_client_cache_ou_live``,
+#: "read-through") sur tout accès manqué/périmé, qui réécrit le cache — le
+#: job quotidien n'est alors qu'un pré-chauffage best-effort, jamais
+#: l'unique source de fraîcheur.
+ENCOURS_CACHE_FRAICHEUR_MAX = timedelta(minutes=15)
+
+
 class EncoursCache(TenantModel):
     """NTCRD32 — cache court de l'encours d'un client (rafraîchi par un job
     quotidien) pour éviter de recalculer l'encours en temps réel à chaque
-    affichage de liste (badges NTCRD23). Les HOOKS bloquants (NTCRD6) ne lisent
-    JAMAIS ce cache — ils calculent en LIVE pour ne jamais autoriser sur une
-    donnée périmée."""
+    affichage de liste (badges NTCRD23). Les HOOKS bloquants (NTCRD6 —
+    ``apps.credit.services.verifier_hold_credit`` — et le diagnostic WIR93
+    ``services.ecart_encours_moteurs``) ne lisent JAMAIS ce cache — ils
+    calculent en LIVE via ``selectors.encours_client`` nu, pour ne jamais
+    autoriser (ou comparer deux moteurs) sur une donnée périmée ; verrouillé
+    par ``test_ntcrd32_encours_cache.test_hold_uses_live_not_cache`` et
+    ``test_wir93_encours_non_divergence.py``.
+
+    AUD153 — ce cache était peuplé par le job quotidien
+    (``credit.tasks.recalculer_encours_quotidien``) mais lu par AUCUN
+    appelant : chaque affichage recalculait en live malgré le cache déjà
+    posé. ``selectors.disponible_credit`` (lecture NON bloquante — fiche,
+    score, badges NTCRD23) en est désormais l'UNIQUE lecteur, via
+    ``selectors._encours_client_cache_ou_live`` : lit ce cache d'ABORD s'il
+    est frais (moins de ``ENCOURS_CACHE_FRAICHEUR_MAX``), et REPLIE sur un
+    calcul live + mise à jour du cache si l'entrée est absente ou périmée —
+    jamais un affichage figé au-delà de ce seuil court."""
 
     client = models.OneToOneField(
         'crm.Client', on_delete=models.CASCADE,  # on_delete: composition — le cache d'encours n'existe que pour son client, supprimé avec lui

@@ -5,7 +5,15 @@ Couvre :
   - véhicule sans coûts → tous postes à 0, cout_total 0 ;
   - agrégation carburant (FLOTTE12) + réparations (FLOTTE17) + infractions
     (FLOTTE26) + sinistres (FLOTTE25) ; coût par km dérivé du carnet ;
-  - scope société (n'inclut pas les coûts d'une autre société).
+  - scope société (n'inclut pas les coûts d'une autre société) ;
+  - AUD726 : une ``PieceFlotte`` rattachée à un ``OrdreReparation`` n'est
+    JAMAIS comptée deux fois (une fois via ``OrdreReparation.cout_pieces``,
+    une fois via ``pneus_pieces``) — seules les pièces LIBRES (sans OR)
+    s'ajoutent à ``reparations``.
+  - AUD727 : assurances (franchise), vignette (TSAV) et coûts divers
+    (``CoutVehicule`` — péage/contrat/…) entrent désormais dans
+    ``cout_total`` — réconciliation avec ``selectors.ledger_vehicule``/
+    ``analyse_couts_report`` (voir ``test_rapport_couts.py``).
 - Endpoint ``/vehicules/<id>/tco/`` (GET, tout rôle).
 """
 import datetime
@@ -21,8 +29,12 @@ from authentication.models import Company
 
 from apps.flotte.models import (
     ActifFlotte,
+    AssuranceVehicule,
+    BaremeVignette,
+    CoutVehicule,
     Infraction,
     OrdreReparation,
+    PieceFlotte,
     PleinCarburant,
     Sinistre,
     Vehicule,
@@ -100,6 +112,63 @@ class TcoVehiculeTests(TestCase):
             kilometrage=1, quantite=Decimal("10"), prix_total=Decimal("999"))
         data = tco_vehicule(self.co, self.veh.id)
         self.assertEqual(data["carburant"], 0)
+
+    def test_aud726_piece_rattachee_a_or_jamais_double_comptee(self):
+        """AUD726 — un OR avec ``cout_pieces`` saisi à la main ET une
+        ``PieceFlotte`` liée à CE MÊME OR pour la même dépense ne doivent
+        compter qu'UNE fois : avant fix, ``reparations`` (1200, via
+        ``cout_pieces``) ET ``pneus_pieces`` (1200, via la pièce liée)
+        sommaient 2400 MAD pour une dépense réelle de 1200 MAD."""
+        ordre = OrdreReparation.objects.create(
+            company=self.co, actif_flotte=self.actif, date_ouverture=D,
+            cout_main_oeuvre=Decimal("0"), cout_pieces=Decimal("1200"))
+        PieceFlotte.objects.create(
+            company=self.co, vehicule=self.veh, designation="Kit distribution",
+            quantite=4, cout_unitaire=Decimal("300"),
+            ordre_reparation=ordre)
+
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["reparations"], 1200.0)
+        # La pièce est déjà comptée dans `reparations` (cout_pieces de l'OR) :
+        # elle n'ajoute rien à `pneus_pieces`.
+        self.assertEqual(data["pneus_pieces"], 0.0)
+        self.assertEqual(data["cout_total"], 1200.0)
+
+    def test_aud726_piece_libre_sans_or_comptee_normalement(self):
+        """Une pièce SANS OR lié reste comptée dans ``pneus_pieces`` — le
+        correctif AUD726 n'exclut que les pièces déjà rattachées à un OR."""
+        PieceFlotte.objects.create(
+            company=self.co, vehicule=self.veh, designation="Plaquettes",
+            quantite=4, cout_unitaire=Decimal("100"))
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["pneus_pieces"], 400.0)
+        self.assertEqual(data["cout_total"], 400.0)
+
+    def test_aud727_assurances_vignette_couts_divers_dans_le_total(self):
+        """AUD727 — avant fix, ``cout_total`` EXCLUAIT assurance (franchise),
+        TSAV et ``CoutVehicule`` (le docstring promettait même une clé
+        ``assurances`` jamais peuplée) — ces trois postes comptent
+        désormais, réconciliant ce TCO avec ``ledger_vehicule``/
+        ``analyse_couts_report`` (XFLT7, voir test_rapport_couts.py)."""
+        self.veh.puissance_fiscale = 7
+        self.veh.save(update_fields=["puissance_fiscale"])
+        BaremeVignette.objects.create(
+            company=self.co, energie="diesel", cv_min=0, cv_max=9999,
+            montant=Decimal("700"))
+        AssuranceVehicule.objects.create(
+            company=self.co, actif_flotte=self.actif, assureur="Wafa",
+            numero_police="RC1", date_debut=datetime.date(2026, 1, 1),
+            date_echeance=datetime.date(2026, 12, 31),
+            franchise=Decimal("1500"))
+        CoutVehicule.objects.create(
+            company=self.co, actif_flotte=self.actif, categorie="peage",
+            date=D, montant=Decimal("300"))
+
+        data = tco_vehicule(self.co, self.veh.id)
+        self.assertEqual(data["assurances"], 1500.0)
+        self.assertEqual(data["vignette"], 700.0)
+        self.assertEqual(data["couts_divers"], 300.0)
+        self.assertEqual(data["cout_total"], 2500.0)
 
 
 class TcoApiTests(TestCase):

@@ -1118,7 +1118,7 @@ def confirm_reception_fournisseur(reception, user):
     from django.db import transaction
     from django.utils import timezone
     from .models import (
-        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+        Produit, ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
     )
     if reception.statut != ReceptionFournisseur.Statut.BROUILLON:
         # Idempotence : une réception déjà confirmée/annulée ne touche pas le
@@ -1163,8 +1163,14 @@ def confirm_reception_fournisseur(reception, user):
                 ligne_cmd.quantite_recue += qte
                 ligne_cmd.save(update_fields=['quantite_recue'])
                 continue
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # AUD216 — VERROU de ligne produit (patron ERR24 déjà appliqué à
+            # `apply_retour_fournisseur` juste au-dessus). Un
+            # `refresh_from_db()` relit la ligne SANS la verrouiller : deux
+            # confirmations concurrentes du même produit lisaient le MÊME
+            # `quantite_stock` et la seconde écrasait la première (lost
+            # update). `select_for_update` sérialise les deux.
+            produit = Produit.objects.select_for_update().get(
+                pk=ligne.produit_id)
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + qte
             record_stock_movement(
@@ -1262,7 +1268,7 @@ def annuler_reception_confirmee(reception, user):
     from django.db import transaction
     from django.utils import timezone
     from .models import (
-        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+        Produit, ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
     )
 
     if reception.statut != ReceptionFournisseur.Statut.CONFIRME:
@@ -1277,8 +1283,12 @@ def annuler_reception_confirmee(reception, user):
             qte = int(ligne.quantite or 0)
             if qte <= 0 or ligne.produit_id is None:
                 continue
-            produit = ligne.produit
-            produit.refresh_from_db()
+            # AUD216 — VERROU de ligne produit : la contre-passation calcule
+            # `min(qte, stock en main)`, donc une lecture non verrouillée
+            # décide sur une valeur périmée et écrase la décrémentation d'une
+            # transaction concurrente (lost update).
+            produit = Produit.objects.select_for_update().get(
+                pk=ligne.produit_id)
             qte_avant = produit.quantite_stock
             # XSTK8 — jamais négatif : la contre-passation ne sort jamais
             # plus que le stock en main (une partie a pu être déjà consommée
@@ -1549,10 +1559,29 @@ def create_facture_sous_traitant(*, company, user=None, fournisseur,
 
 
 def add_paiement_sous_traitant(*, company, user=None, facture, montant,
-                               date_paiement=None, mode='virement', note=None):
+                               date_paiement=None, mode='virement', note=None,
+                               taux_ras=None, montant_ras_tva=None):
     """DC34 — impute un règlement sur une facture sous-traitant via la chaîne AP
     standard (PaiementFournisseur) et recalcule le statut de la facture. On
-    n'impute jamais plus que le solde dû. Renvoie le PaiementFournisseur."""
+    n'impute jamais plus que le solde dû. Renvoie le PaiementFournisseur.
+
+    AUD209 — ``taux_ras``/``montant_ras_tva`` (XPUR2) sont calculés par
+    l'APPELANT et persistés ici quand ils sont fournis ; laissés à ``None``,
+    le paiement garde les valeurs par défaut du modèle (0/0). La chaîne AP
+    complète — gates XPUR1/XPUR4, ``compute_ras_tva`` et l'événement
+    ``paiement_fournisseur_enregistre`` (YLEDG2, qui déclenche l'écriture
+    comptable) — appartient à l'ENDPOINT
+    ``installations.views.facture_soustraitant.PaiementSousTraitantViewSet``,
+    exactement comme ``stock.views.paiement_fournisseur`` le fait pour la
+    chaîne fournisseur générique.
+
+    APPELANT INTERNE DÉLIBÉRÉMENT EXCLU de cette chaîne :
+    ``apps.compta.services.valider_compensation`` (compensation AR/AP) appelle
+    ce service SANS RAS ni événement — elle poste sa PROPRE écriture de
+    compensation, un second passage par ``ecriture_pour_paiement_fournisseur``
+    doublonnerait le décaissement, et une retenue à la source n'a pas de sens
+    sur une compensation de créances. Ne pas « harmoniser » les deux chemins.
+    """
     from decimal import Decimal, InvalidOperation
     from django.db import transaction
     from .models import PaiementFournisseur
@@ -1568,11 +1597,16 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
     # AUD232 — garde de période comptable EN AMONT du document.
     check_periode_comptable_ouverte(
         company, date_paiement, document='Ce règlement sous-traitant')
+    extra = {}
+    if taux_ras is not None:
+        extra['taux_ras'] = taux_ras
+    if montant_ras_tva is not None:
+        extra['montant_ras_tva'] = montant_ras_tva
     with transaction.atomic():
         paiement = PaiementFournisseur.objects.create(
             company=company, facture=facture, montant=montant_dec,
             date_paiement=date_paiement, mode=mode, note=note,
-            created_by=user)
+            created_by=user, **extra)
         facture.refresh_from_db()
         recompute_facture_fournisseur_statut(facture)
     return paiement
@@ -1843,6 +1877,27 @@ def resolve_fournisseur(company, fournisseur_id, installation):
     return None
 
 
+# ── AUD216 — point d'entrée cross-app : VERROU de ligne produit ─────────────
+# Les autres apps (ventes, sav, pos, ecommerce_connect…) doivent verrouiller le
+# produit AVANT de lire `quantite_stock`, sinon deux transactions concurrentes
+# lisent la même valeur et la seconde écrase la première (lost update). Elles
+# ne peuvent pas le faire elles-mêmes sans importer `stock.models` — ce que la
+# règle de frontière inter-apps interdit. Ce thin service est donc le SEUL
+# chemin supporté, exactement comme `record_stock_movement` l'est pour
+# l'écriture.
+
+def verrouiller_produit(produit_id):
+    """Renvoie le ``Produit`` VERROUILLÉ (``SELECT … FOR UPDATE``).
+
+    À appeler DANS le ``transaction.atomic()`` de l'appelant, AVANT de lire
+    ``quantite_stock`` : le verrou n'a de valeur que s'il précède la lecture
+    sur laquelle l'arithmétique est faite. Lève ``Produit.DoesNotExist`` comme
+    un ``get()`` ordinaire — l'appelant garde sa propre gestion d'absence.
+    """
+    from .models import Produit
+    return Produit.objects.select_for_update().get(pk=produit_id)
+
+
 # ── Point d'entrée cross-app : mouvement de stock + maj du produit ───────────
 # Les autres apps (ventes, installations, sav) décrémentent/incrémentent le
 # stock à travers ce service plutôt qu'en créant `MouvementStock` directement et
@@ -1854,7 +1909,8 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
                           created_by, save_produit=True, emplacement_source=None,
                           bin_source=None, bin_destination=None,
-                          bin_source_id=None, motif_rebut=None):
+                          bin_source_id=None, motif_rebut=None,
+                          verrouiller_produit=True):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1877,8 +1933,32 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     ``bin_source_id`` (casier connu par son ID au scan) sont des passe-plats
     additifs : ils existent pour que les chemins qui posaient un
     ``MouvementStock`` en direct puissent converger ici SANS perdre une seule
-    colonne. Absents = comportement historique strictement inchangé."""
-    from .models import MouvementStock, StockEmplacement
+    colonne. Absents = comportement historique strictement inchangé.
+
+    AUD216 — ``verrouiller_produit`` (défaut ``True``) : le service prend
+    LUI-MÊME le verrou de ligne ``SELECT … FOR UPDATE`` sur le produit avant
+    d'écrire, pour que le contrat cesse de reposer sur la discipline de chaque
+    appelant. Ce que cela garantit exactement, sans le survendre :
+
+    * deux écritures concurrentes sur le MÊME produit se sérialisent ici, même
+      si un appelant a oublié son verrou — la seconde attend le commit de la
+      première au lieu d'écrire par-dessus au même instant ;
+    * cela ne rend PAS juste une arithmétique déjà périmée : un appelant qui a
+      lu ``quantite_stock`` HORS verrou peut passer un ``quantite_apres``
+      calculé sur une valeur morte. Le verrou doit être pris AVANT la lecture
+      — c'est ce que font désormais les 9 sites listés par AUD216.
+
+    Le verrou n'est posé que dans un bloc atomique (hors transaction,
+    ``select_for_update`` lèverait ``TransactionManagementError``) et jamais
+    pour un produit non encore enregistré : sans transaction ouverte, le
+    comportement reste strictement historique. Un appelant qui détient déjà le
+    verrou ne paie rien (ré-acquérir dans la même transaction est un no-op)."""
+    from django.db import transaction as _transaction
+    from .models import MouvementStock, Produit, StockEmplacement
+
+    if (verrouiller_produit and getattr(produit, 'pk', None)
+            and _transaction.get_connection().in_atomic_block):
+        Produit.objects.select_for_update().filter(pk=produit.pk).first()
     # NTWMS5 — casiers source/destination du poste scanner. None partout
     # ailleurs : comportement historique strictement inchangé.
     casiers = {'bin_destination': bin_destination}
@@ -2045,7 +2125,21 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
     rattachée à un document source (``reference``, ex. un ordre d'assemblage).
     ``motif`` doit être une valeur de ``MouvementStock.MotifRebut``. Lève
-    ValueError si la quantité est invalide."""
+    ValueError si la quantité est invalide.
+
+    AUD222 — la sortie n'est PLUS ramenée en silence au stock disponible.
+    L'ancien ``qte_sortie = min(quantite, avant)`` produisait un mouvement où
+    ``quantite ≠ quantite_avant − quantite_apres`` : le registre devenait
+    incohérent AVEC LUI-MÊME, puisque ``_quantite_produit_a_date`` reconstruit
+    depuis ``quantite_apres`` tandis qu'``export_mouvements_xlsx`` affiche
+    ``quantite``. Un rebut de 10 sur un stock de 3 s'écrivait « 3 » sans que
+    personne n'apprenne que 7 unités déclarées perdues n'ont jamais été
+    tracées. Cette fonction s'aligne donc sur sa sœur ``rebuter_produit``
+    (juste en dessous) : ``check_negative_stock_guard`` refuse par défaut, et
+    n'autorise le passage sous zéro que si la société a explicitement activé
+    ``AchatsParametres.stock_negatif_autorise``. La vue appelante
+    (``installations/views/kitting.py``, action ``declarer-rebut``) traduit
+    déjà ce ``ValueError`` en 400 lisible."""
     from django.db import transaction
     from .models import MouvementStock, Produit
 
@@ -2058,12 +2152,12 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     with transaction.atomic():
         p = Produit.objects.select_for_update().get(id=produit.id)
         avant = p.quantite_stock
-        qte_sortie = min(quantite, avant) if avant > 0 else 0
-        apres = avant - qte_sortie
+        apres = avant - quantite
+        check_negative_stock_guard(company, avant, apres)
         mouvement = record_stock_movement(
             company=company, produit=p,
             type_mouvement=MouvementStock.TypeMouvement.REBUT,
-            quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, motif_rebut=motif,
             created_by=user)
     return mouvement

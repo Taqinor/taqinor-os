@@ -98,6 +98,61 @@ class PayerOrdreVirementTests(TestCase):
             reference=f'OV-REGLEMENT-{ordre.id}').count()
         self.assertEqual(nb, 1)
 
+    def test_instance_perimee_ne_double_pas_le_reglement(self):
+        """AUD712 — la course « check-then-create » est fermée.
+
+        Reproduction déterministe du motif de course : deux lectures de
+        l'ordre AVANT tout paiement (comme deux requêtes concurrentes). La
+        seconde instance ne « voit » pas le règlement posé par la première ;
+        le contrôle d'état se faisant sur cette instance en mémoire, hors
+        transaction et sans verrou, une SECONDE écriture complète était
+        postée (double débit 4432 / crédit trésorerie).
+        """
+        from apps.compta.models import EcritureComptable
+        from apps.paie.models import OrdreVirement
+
+        ordre = self._ordre()
+        vue_a = OrdreVirement.objects.get(pk=ordre.pk)
+        vue_b = OrdreVirement.objects.get(pk=ordre.pk)
+
+        ecriture1 = payer_ordre_virement(vue_a, self.treso.id)
+        ecriture2 = payer_ordre_virement(vue_b, self.treso.id)
+
+        self.assertEqual(ecriture1.id, ecriture2.id)
+        self.assertEqual(
+            EcritureComptable.objects.filter(
+                company=self.co, source_type='paie_ov_reglement',
+                source_id=ordre.id).count(), 1)
+        # L'instance périmée est resynchronisée sur l'état réel.
+        self.assertEqual(vue_b.ecriture_reglement_id, ecriture1.id)
+
+    def test_ecriture_reglement_porte_sa_source(self):
+        ordre = self._ordre()
+        ecriture = payer_ordre_virement(ordre, self.treso.id)
+        self.assertEqual(ecriture.source_type, 'paie_ov_reglement')
+        self.assertEqual(ecriture.source_id, ordre.id)
+
+    def test_contrainte_db_refuse_une_seconde_ecriture_meme_source(self):
+        """Filet DB : la garde applicative n'est plus le seul rempart."""
+        from django.db import IntegrityError, transaction
+
+        from apps.compta.services import creer_ecriture_od, get_compte
+
+        ordre = self._ordre()
+        payer_ordre_virement(ordre, self.treso.id)
+        compte_net = get_compte(self.co, '4432')
+        lignes = [
+            {'compte': compte_net, 'libelle': 'Doublon',
+             'debit': Decimal('1'), 'credit': Decimal('0')},
+            {'compte': self.treso.compte_comptable, 'libelle': 'Doublon',
+             'debit': Decimal('0'), 'credit': Decimal('1')},
+        ]
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                creer_ecriture_od(
+                    self.co, ordre.date_reglement.date(), 'Doublon', lignes,
+                    source_type='paie_ov_reglement', source_id=ordre.id)
+
     def test_compte_tresorerie_autre_societe_refuse(self):
         ordre = self._ordre()
         autre = make_company('yledg7-ov-autre')
@@ -165,6 +220,22 @@ class PayerOrganismesTests(TestCase):
         # Rejouer : l'échéance est déjà payée -> no-op (None), jamais 2e écriture.
         ecriture2 = payer_organismes(self.periode, 'ir', self.treso.id)
         self.assertIsNone(ecriture2)
+
+    def test_ecriture_organisme_porte_sa_source(self):
+        """AUD712 — une source par organisme ET par période."""
+        self._bulletin_valide('P4')
+        generer_echeances_periode(self.periode)
+        ecriture = payer_organismes(self.periode, 'cnss_amo', self.treso.id)
+        self.assertIsNotNone(ecriture)
+        self.assertEqual(ecriture.source_type, 'paie_org_cnss_amo')
+        self.assertEqual(ecriture.source_id, self.periode.id)
+
+        # Un AUTRE organisme de la même période garde sa propre source : la
+        # contrainte d'unicité ne bloque jamais un règlement légitime.
+        autre = payer_organismes(self.periode, 'ir', self.treso.id)
+        self.assertIsNotNone(autre)
+        self.assertEqual(autre.source_type, 'paie_org_ir')
+        self.assertEqual(autre.source_id, self.periode.id)
 
     def test_organisme_inconnu_leve(self):
         self._bulletin_valide('P3')

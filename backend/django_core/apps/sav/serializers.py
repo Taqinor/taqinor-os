@@ -371,6 +371,9 @@ class TicketSerializer(serializers.ModelSerializer):
             # (+ `annuler`/`reactiver` existants qui restent un DRAPEAU
             # séparé, jamais une valeur de `statut`).
             'statut',
+            # AUD529 — le lien vers la réclamation est posé par l'action
+            # `escalader-reclamation` (frontière litiges), jamais du corps.
+            'reclamation_id_ext',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

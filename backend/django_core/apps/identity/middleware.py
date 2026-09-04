@@ -65,6 +65,14 @@ def _ip_allowed(ip_str, policy):
     except ValueError:
         return False
     for rule in policy.rules.all():
+        # AUD406 — défense en profondeur : n'appliquer QUE les règles de la
+        # société propriétaire de la politique. Une règle rattachée à la
+        # politique d'un autre tenant (le trou refermé côté
+        # ``perform_update``) ne doit jamais pouvoir élargir l'allowlist de
+        # celui-ci, même si une ligne survivait en base. Filtré EN PYTHON pour
+        # ne pas casser le ``prefetch_related('rules')`` de ``_policy_for``.
+        if rule.company_id != policy.company_id:
+            continue
         try:
             net = ipaddress.ip_network((rule.cidr or '').strip(),
                                        strict=False)

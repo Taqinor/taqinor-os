@@ -76,9 +76,12 @@ class FacturationServiceTests(TestCase):
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
         self.assertEqual(facture.montant_ttc, Decimal("1200.00"))
         self.assertEqual(facture.company_id, self.co.id)
-        # TTC = 1200 → HT 1000, TVA 200 (20 %).
+        # AUD181 — TTC 1200 → HT 1000, TVA 200. Le 20 % ne vient PLUS d'un
+        # littéral figé mais du knob société `CompanyProfile.tva_standard`,
+        # dont le défaut est 20 : société non éditée => ventilation inchangée.
         self.assertEqual(facture.montant_ht, Decimal("1000.00"))
         self.assertEqual(facture.montant_tva, Decimal("200.00"))
+        self.assertEqual(facture.taux_tva, Decimal("20.00"))
         ligne.refresh_from_db()
         self.assertEqual(ligne.facture_id, facture.id)
         # Le statut du contrat n'a pas bougé.
@@ -136,3 +139,272 @@ class FacturationApiTests(TestCase):
         api = auth(commercial)
         res = api.post(f"{LIGNES}{ligne.id}/facturer/", {}, format="json")
         self.assertEqual(res.status_code, 403)
+
+
+class LigneFactureEcheanceTests(TestCase):
+    """AUD184 — une facture d'échéance porte UNE ligne, donc reste exportable.
+
+    `facturer_ligne_echeance` ne posait que les montants d'en-tête : la facture
+    était invisible de tout consommateur qui itère `facture.lignes`, au premier
+    rang `ventes.exports.export_journal_ventes` qui OMETTAIT totalement les
+    factures header-only et SOUS-DÉCLARAIT donc le CA (douze échéances
+    mensuelles n'apparaissaient dans aucun export ligne-à-ligne de l'année).
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-ligne", "FacRecLigne")
+        self.user = make_user(self.co, "facrec-ligne-admin", role="admin")
+
+    def test_facture_porte_une_ligne_nommant_l_echeance(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        lignes = list(facture.lignes.all())
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("Échéance n°1", lignes[0].designation)
+        self.assertEqual(lignes[0].quantite, Decimal("1.00"))
+        self.assertEqual(lignes[0].prix_unitaire, Decimal("1000.00"))
+        self.assertEqual(lignes[0].total_ht, Decimal("1000.00"))
+        self.assertEqual(lignes[0].taux_tva, Decimal("20.00"))
+
+    def test_totaux_ttc_strictement_identiques(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        # Aucune double-comptabilisation entre l'en-tête et la ligne.
+        self.assertEqual(facture.montant_ht, Decimal("1000.00"))
+        self.assertEqual(facture.montant_tva, Decimal("200.00"))
+        self.assertEqual(facture.montant_ttc, Decimal("1200.00"))
+        self.assertEqual(
+            sum(li.total_ht for li in facture.lignes.all()),
+            facture.montant_ht)
+
+    def test_facture_apparait_dans_export_journal_ventes(self):
+        from datetime import timedelta as _td
+        from apps.ventes.exports import export_journal_ventes
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        debut = facture.date_emission
+        fin = debut + _td(days=1)
+        wb = export_journal_ventes(self.co, debut, fin)
+        ws = wb['Journal des ventes']
+        references = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)
+                      if row and row[0]]
+        self.assertIn(facture.reference, references)
+
+    def test_produit_de_service_reutilise_une_seule_fois(self):
+        from apps.stock.models import Produit
+        _, ech, ligne1 = make_setup(self.co, montant="1200")
+        services.facturer_ligne_echeance(ligne1, user=self.user)
+        ligne2 = services.ajouter_ligne_echeance(
+            ech, date_echeance=timezone.localdate(), montant=Decimal("1200"))
+        services.facturer_ligne_echeance(ligne2, user=self.user)
+        self.assertEqual(
+            Produit.objects.filter(company=self.co, sku='CTR-ECH').count(), 1)
+
+
+class IdempotenceVerrouLigneTests(TestCase):
+    """AUD183 — clé d'idempotence : verrou en base sur la LigneEcheance.
+
+    La garde « déjà facturée » portait sur l'objet DÉJÀ CHARGÉ EN MÉMOIRE par
+    le beat (queryset itéré sans `select_for_update`) : deux exécutions
+    concurrentes — double worker Celery, retry après timeout apparent, ou
+    `rejouer_cycle` lancé pendant un passage du beat — franchissaient toutes
+    deux la garde avant que la première n'ait posé `facture_id`, produisant
+    DEUX Factures pour la même échéance. Ce test reproduit exactement ce
+    mécanisme de façon déterministe : deux INSTANCES distinctes de la même
+    ligne, la seconde restant « périmée » en mémoire.
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-idem", "FacRecIdem")
+        self.user = make_user(self.co, "facrec-idem-admin", role="admin")
+
+    def test_seconde_execution_sur_instance_perimee_ne_double_facture_pas(self):
+        from apps.contrats.models import LigneEcheance
+        _, _, ligne = make_setup(self.co, montant="1200")
+        # Deux instances SÉPARÉES de la même ligne, toutes deux « fraîches »
+        # avant la première facturation : c'est l'état de deux workers.
+        instance_a = LigneEcheance.objects.get(pk=ligne.pk)
+        instance_b = LigneEcheance.objects.get(pk=ligne.pk)
+        self.assertIsNone(instance_b.facture_id)
+
+        services.facturer_ligne_echeance(instance_a, user=self.user)
+
+        with self.assertRaises(services.FacturationError):
+            services.facturer_ligne_echeance(instance_b, user=self.user)
+
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 1)
+        ligne.refresh_from_db()
+        self.assertIsNotNone(ligne.facture_id)
+
+    def test_rejeu_apres_facturation_ne_double_facture_pas(self):
+        from apps.contrats.models import LigneEcheance
+        _, _, ligne = make_setup(self.co, montant="1200")
+        perimee = LigneEcheance.objects.get(pk=ligne.pk)
+        services.facturer_ligne_echeance_journalisee(ligne, user=self.user)
+        with self.assertRaises(services.FacturationError):
+            services.facturer_ligne_echeance_journalisee(
+                perimee, user=self.user)
+        self.assertEqual(Facture.objects.filter(company=self.co).count(), 1)
+
+    def test_chemin_nominal_reste_vert(self):
+        _, _, ligne = make_setup(self.co, montant="1200")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        self.assertEqual(facture.montant_ttc, Decimal("1200.00"))
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.facture_id, facture.id)
+
+
+class TauxTvaTraverseTests(TestCase):
+    """AUD181 — le taux de TVA société TRAVERSE toute la facturation contrats.
+
+    Sept producteurs figeaient 20 % (`taux_tva=Decimal('20')` ou le littéral
+    `/ Decimal('1.2')`) sans aucun chemin pour en changer : un tenant réglant
+    `CompanyProfile.tva_standard` à 14 % voyait 14 % sur ses factures SAV et
+    20 % sur chaque échéance, caution retenue, frais de retard, dommage et
+    facture de régie — même grand livre, deux taux.
+    """
+
+    def setUp(self):
+        self.co = make_company("facrec-tva14", "TVA14")
+        self.user = make_user(self.co, "facrec-tva14-admin", role="admin")
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.co)
+        profil.tva_standard = Decimal("14")
+        profil.save(update_fields=["tva_standard"])
+
+    def test_echeance_ventilee_au_taux_societe(self):
+        _, _, ligne = make_setup(self.co, montant="1000")
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        # 1000 TTC à 14 % → HT 877.19, TVA 122.81 (aujourd'hui 833.33/166.67).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_ttc, Decimal("1000.00"))
+        self.assertEqual(facture.montant_ht, Decimal("877.19"))
+        self.assertEqual(facture.montant_tva, Decimal("122.81"))
+
+    def test_taux_propre_de_l_echeancier_prioritaire(self):
+        _, ech, ligne = make_setup(self.co, montant="1000")
+        ech.taux_tva = Decimal("7")
+        ech.save(update_fields=["taux_tva"])
+        ligne.refresh_from_db()
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        self.assertEqual(facture.taux_tva, Decimal("7"))
+
+    def test_taux_du_contrat_utilise_si_echeancier_muet(self):
+        contrat, _, ligne = make_setup(self.co, montant="1000")
+        contrat.taux_tva = Decimal("10")
+        contrat.save(update_fields=["taux_tva"])
+        ligne.refresh_from_db()
+        facture = services.facturer_ligne_echeance(ligne, user=self.user)
+        self.assertEqual(facture.taux_tva, Decimal("10"))
+
+    def test_taux_tva_effectif_replie_sur_le_knob_societe(self):
+        self.assertEqual(
+            services.taux_tva_effectif(self.co), Decimal("14"))
+        self.assertEqual(
+            services.taux_tva_effectif(self.co, None), Decimal("14"))
+
+    def test_facture_de_regie_suit_le_knob_societe(self):
+        from apps.ventes.services import creer_facture_regie
+        cli = Client.objects.create(company=self.co, nom="Client régie")
+        facture = creer_facture_regie(
+            company=self.co, client=cli, user=self.user,
+            libelle="Régie", montant_ht=Decimal("1000"))
+        # 1000 HT à 14 % → TVA 140 (aujourd'hui 200).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_tva, Decimal("140.00"))
+        self.assertEqual(facture.montant_ttc, Decimal("1140.00"))
+
+    def test_acompte_de_situation_suit_le_knob_societe(self):
+        from apps.ventes.services import creer_facture_acompte_situation
+        cli = Client.objects.create(company=self.co, nom="Client situation")
+        facture = creer_facture_acompte_situation(
+            company=self.co, client=cli, user=self.user,
+            libelle="Situation n°1", montant_periode_ht=Decimal("1000"))
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_tva, Decimal("140.00"))
+
+
+class TauxTvaLocationTests(TestCase):
+    """AUD181 — les quatre producteurs « location » suivent aussi le taux réel.
+
+    Caution retenue, frais de retard, dommages d'inspection et cycle de
+    location longue durée figeaient 20 % — les trois derniers via un
+    `/ Decimal('1.2')` LITTÉRAL, sans aucun paramètre exposé.
+    """
+
+    def setUp(self):
+        from apps.stock.models import Produit
+        self.co = make_company("facrec-loc14", "Loc14")
+        self.user = make_user(self.co, "facrec-loc14-admin", role="admin")
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.co)
+        profil.tva_standard = Decimal("14")
+        profil.save(update_fields=["tva_standard"])
+        self.client_obj = Client.objects.create(
+            company=self.co, nom="Client location")
+        self.produit = Produit.objects.create(
+            company=self.co, nom="Nacelle", prix_vente=Decimal("100"),
+            louable=True, tarif_location_jour=Decimal("500"))
+
+    def _ordre(self, **kwargs):
+        aujourdhui = timezone.localdate()
+        return services.creer_ordre_location(
+            self.co, client_id=self.client_obj.id, produit=self.produit,
+            date_reservation=aujourdhui - timedelta(days=4),
+            date_enlevement_prevue=aujourdhui - timedelta(days=2),
+            date_retour_prevue=aujourdhui + timedelta(days=2),
+            **kwargs)
+
+    def test_creation_fige_le_taux_societe_sur_l_ordre(self):
+        ordre = self._ordre()
+        self.assertEqual(ordre.taux_tva, Decimal("14"))
+
+    def test_retenue_de_caution_au_taux_reel(self):
+        ordre = self._ordre()
+        ordre.caution_montant = Decimal("1000")
+        ordre.caution_statut = "encaissee"
+        ordre.date_retour_reelle = timezone.localdate()
+        ordre.save(update_fields=[
+            "caution_montant", "caution_statut", "date_retour_reelle"])
+        resultat = services.retenir_caution_partielle(
+            ordre, montant_retenu=Decimal("570"), motif="Casse",
+            user=self.user)
+        facture = resultat["facture"]
+        # 570 TTC à 14 % → HT 500.00 (aujourd'hui 475.00 à 20 %).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_ht, Decimal("500.00"))
+
+    def test_frais_de_retard_au_taux_reel(self):
+        from apps.contrats.models import OrdreLocation
+        ordre = self._ordre(frais_retard_jour=Decimal("114"))
+        services.changer_statut_ordre_location(
+            ordre, OrdreLocation.Statut.ENLEVEE)
+        ordre.date_retour_reelle = (
+            ordre.date_retour_prevue + timedelta(days=1))
+        ordre.statut = OrdreLocation.Statut.RETOURNEE
+        ordre.save(update_fields=["date_retour_reelle", "statut"])
+        services.cloturer_ordre_location(ordre, user=self.user)
+        ordre.refresh_from_db()
+        facture = Facture.objects.get(id=ordre.frais_retard_facture_id)
+        # 114 TTC à 14 % → HT 100.00 (aujourd'hui 95.00 via / Decimal('1.2')).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_ht, Decimal("100.00"))
+
+    def test_dommages_inspection_au_taux_reel(self):
+        ordre = self._ordre()
+        resultat = services.inspecter_retour(
+            ordre, dommages_montant=Decimal("228"), user=self.user)
+        facture = resultat["facture"]
+        # 228 TTC à 14 % → HT 200.00 (aujourd'hui 190.00 via / Decimal('1.2')).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_ht, Decimal("200.00"))
+
+    def test_cycle_location_recurrent_au_taux_reel(self):
+        ordre = self._ordre(tarif_jour=Decimal("100"))
+        ordre.facturation_recurrente_active = True
+        ordre.save(update_fields=["facturation_recurrente_active"])
+        facture = services.facturer_ordre_location_recurrent(
+            ordre, user=self.user)
+        # 100 × 30 = 3000 TTC à 14 % → HT 2631.58 (aujourd'hui 2500.00).
+        self.assertEqual(facture.taux_tva, Decimal("14"))
+        self.assertEqual(facture.montant_ht, Decimal("2631.58"))

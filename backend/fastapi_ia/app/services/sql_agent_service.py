@@ -694,14 +694,91 @@ def _assert_tenant_safe(sql: str, company_id: int) -> None:
             )
 
 
+# ── AUD401 — confidentialite INTRA-societe (secrets de comptes) ──────────────
+# _assert_tenant_safe est reellement fail-closed sur l'isolation ENTRE societes,
+# mais ne borne AUCUNE colonne DANS une societe : `authentication_customuser`
+# etant allowlistee, un `SELECT username, password FROM authentication_customuser`
+# passait TOUS les gardes en une seule instruction et rendait les hashes PBKDF2
+# de tous les comptes de la societe (admins inclus) a n'importe quel employe a
+# role minimal — l'endpoint /query n'exige aucune permission dediee. Le refus du
+# LLM ne compte pas comme garantie (le fichier le dit lui-meme) : voici le garde
+# DUR qui manquait.
+#
+# Volontairement INCONDITIONNEL — contrairement a _FORBIDDEN_COLUMNS (prix
+# d'achat), qui se leve pour un porteur de `prix_achat_voir` : aucune permission
+# metier ne justifie de lire un hash de mot de passe ou une graine TOTP par le
+# canal du chatbot.
+#
+# Verifie a l'ecriture de ce garde : `parametres_companyprofile` ne porte AUCUN
+# secret SMTP/API dans ce depot (aucun champ chiffre, uniquement de la
+# configuration de politique) — elle reste donc lisible, contrairement a ce que
+# l'audit envisageait par precaution.
+_SECRET_COLUMNS = (
+    "password",            # hash PBKDF2 (AbstractBaseUser)
+    "last_login",
+    "is_superuser",
+    "is_staff",
+    "totp_secret",         # graine 2FA (chiffree au repos, dechiffree par l'ORM)
+    "totp_recovery_codes",
+)
+
+# Frontiere de mot STRICTE : `password_min_length`, `must_change_password` et
+# `password_changed_at` ne matchent pas (le `_` est un caractere de mot), donc
+# la configuration de politique reste interrogeable.
+_SECRET_RE = re.compile(
+    r"\b(" + "|".join(re.escape(c) for c in _SECRET_COLUMNS) + r")\b",
+    re.IGNORECASE,
+)
+
+# Tables dont une projection etoilee exposerait ces colonnes sans jamais les
+# nommer — un filtre purement lexical serait sinon contourne par `SELECT *`.
+_SECRET_TABLES = ("authentication_customuser",)
+
+
+def _has_star_projection(text: str) -> bool:
+    """True si la requete projette une etoile qui RENDRAIT des colonnes.
+
+    `COUNT(*)` est tolere (l'etoile y est immediatement precedee d'une
+    parenthese : l'agregat ne restitue aucune colonne), pour qu'un « combien
+    d'utilisateurs ? » reste possible. Toute autre etoile — `SELECT *`,
+    `SELECT DISTINCT *`, `SELECT u.*`, `, t.*` — echoue FERME."""
+    for match in re.finditer(r"\*", text or ""):
+        if text[:match.start()].rstrip().endswith("("):
+            continue
+        return True
+    return False
+
+
+def _references_secret_column(sql: str) -> bool:
+    """True si la requete peut restituer un secret de compte (AUD401).
+
+    Deux motifs : la colonne est NOMMEE, ou une table sensible est projetee en
+    etoile (qui la rendrait sans jamais la nommer — un filtre purement lexical
+    serait sinon contourne par un simple `SELECT *`)."""
+    text = _strip_sql_comments(sql or "")
+    if _SECRET_RE.search(text):
+        return True
+    lowered = text.lower()
+    if any(table in lowered for table in _SECRET_TABLES):
+        return _has_star_projection(text)
+    return False
+
+
 def _validate_and_secure(sql: str, company_id: int) -> str:
     """Point d'entree unique de securisation d'une requete generee :
       ERR1 : prouve que c'est une seule instruction SELECT en lecture seule ;
+      AUD401 : refuse toute lecture d'un secret de compte (hash de mot de passe,
+             graine 2FA, drapeaux d'elevation), nommee ou etoilee ;
       ERR2 : injecte le filtre company_id (cas mono-table) puis PROUVE que la
              requete finale est correctement scopee, sinon rejet (fail-closed).
     Leve SQLSecurityError en cas d'echec — l'appelant renvoie un refus francais
     a l'agent sans jamais executer la requete."""
     _enforce_single_select(sql)
+    if _references_secret_column(sql):
+        raise SQLSecurityError(
+            "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
+            "— lecture refusee."
+        )
     secured = _inject_company_filter(sql, company_id)
     _assert_tenant_safe(secured, company_id)
     return secured

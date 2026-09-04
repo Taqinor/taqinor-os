@@ -238,8 +238,13 @@ export function Component() {
   }).length
 
   // L322 — vue « À renouveler » via renouvellement_du déjà sérialisé.
+  // AUD502 — `a_renouveler` élargit le filtre à l'échéance duree_mois échue
+  // (période de grâce de 30 j comprise : la couverture tombe à sa fin). Repli
+  // sur `renouvellement_du` si le serveur ne sérialise pas encore le champ.
   const visibleRows = useMemo(() => {
-    if (vue === 'renouveler') return rows.filter((r) => r.renouvellement_du)
+    if (vue === 'renouveler') {
+      return rows.filter((r) => r.a_renouveler ?? r.renouvellement_du)
+    }
     return rows
   }, [rows, vue])
 
@@ -413,11 +418,23 @@ export function Component() {
       },
     },
     {
-      id: 'date_renouvellement', header: 'Renouvellement', width: 160,
+      id: 'date_renouvellement', header: 'Renouvellement', width: 200,
       cell: (_v, row) => (
-        <span className="flex items-center gap-1.5">
+        <span className="flex flex-wrap items-center gap-1.5">
           {formatDateFR(row.date_renouvellement)}
-          {row.renouvellement_du && <Badge tone="warning">à renouveler</Badge>}
+          {/* AUD502 — échéance réelle (date_debut + duree_mois) : « En
+              grâce » = expiré mais encore couvrant 30 j, « Expiré » = la
+              couverture est tombée (tickets redevenus facturables). */}
+          {row.date_expiration && (
+            <span className="text-xs text-muted-foreground">
+              échéance {formatDateFR(row.date_expiration)}
+            </span>
+          )}
+          {row.en_periode_grace
+            ? <Badge tone="danger">En grâce (30 j)</Badge>
+            : row.expire
+              ? <Badge tone="danger">Expiré</Badge>
+              : row.renouvellement_du && <Badge tone="warning">à renouveler</Badge>}
         </span>
       ),
       exportValue: (row) => formatDateFR(row.date_renouvellement),

@@ -58,15 +58,15 @@ NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 # ventes:1649->ventes:681, RelanceLog.date ventes:1922->facturation:1072.
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/ventes/models.py:697",
-    "backend/django_core/apps/facturation/models.py:113",
+    "backend/django_core/apps/facturation/models.py:118",
     # Remappés 917->945 (Avoir.date_emission) et 1101->1155 (RelanceLog.date)
     # par AUD188 : les CheckConstraint d'argent ajoutées sur Facture,
     # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
     # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:951",
-    "backend/django_core/apps/facturation/models.py:1161",
-    "backend/django_core/apps/ventes/models.py:1180",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    "backend/django_core/apps/facturation/models.py:901",
+    "backend/django_core/apps/facturation/models.py:1088",
+    "backend/django_core/apps/ventes/models.py:1183",  # NoteDebit.date_emission (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.

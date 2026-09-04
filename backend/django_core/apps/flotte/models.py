@@ -213,6 +213,22 @@ class Vehicule(models.Model):
         return all(checklist.get(item) for item in
                    self.CHECKLIST_MISE_EN_SERVICE)
 
+    # États terminaux du cycle de vie (AUD728) — un véhicule ne peut être
+    # supprimé de l'API qu'après être sorti du parc (réformé/cédé) : « cédé »
+    # se lit ``VENDU`` sur ce statut (le seul état de sortie par cession, à
+    # distinguer d'``A_VENDRE``/``COMMANDE`` qui restent en cours de vie).
+    CYCLE_DE_VIE_TERMINAL = (Statut.REFORME, Statut.VENDU)
+
+    def cycle_de_vie_terminal(self):
+        """AUD728 — Vrai si le véhicule est sorti du parc (réformé ou cédé).
+
+        Un ``Vehicule`` encore ``actif``/``maintenance``/``commande``/
+        ``a_vendre`` porte un historique d'exploitation VIVANT (entretien,
+        réparations, assurance, sinistres…) : le supprimer effacerait cet
+        historique en cascade (``ActifFlotte`` → 16+ modèles dépendants) sans
+        qu'aucune décision métier de sortie de parc n'ait été prise."""
+        return self.statut in self.CYCLE_DE_VIE_TERMINAL
+
 
 # ── XFLT4 — Journal des changements de statut véhicule ─────────────────────────
 
@@ -476,6 +492,17 @@ class ActifFlotte(models.Model):
         if self.engin_id is not None:
             return str(self.engin)
         return ''
+
+    def cycle_de_vie_terminal(self):
+        """AUD728 — Vrai si l'actif cible (véhicule OU engin) est sorti du
+        parc (réformé/cédé pour un véhicule ; réformé pour un engin, qui n'a
+        pas d'état de cession). Délègue à ``Vehicule.cycle_de_vie_terminal``/
+        ``EnginRoulant.statut`` — jamais de logique dupliquée."""
+        if self.vehicule_id is not None:
+            return self.vehicule.cycle_de_vie_terminal()
+        if self.engin_id is not None:
+            return self.engin.statut == EnginRoulant.Statut.REFORME
+        return False
 
     def __str__(self):
         return f'ActifFlotte({self.type_actif}) — {self.label}'
@@ -3273,16 +3300,17 @@ class EcheanceContrat(models.Model):
     """Ligne de coût datée matérialisant l'échéance d'un ``ContratVehicule``
     (XFLT2).
 
-    Générée par ``services.generer_couts_contrat`` : une ligne PAR contrat ET
-    PAR période (``unique_together`` — garantit l'IDEMPOTENCE de la
-    génération, deux exécutions sur la même période ne créent qu'une seule
-    ligne). ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
+    AUD725 — MODÈLE LEGACY : ``services.generer_couts_contrat`` n'écrit plus
+    ICI depuis AUD725 (il écrit désormais dans ``CoutVehicule``, XFLT3,
+    catégorie ``contrat`` — ce modèle de repli n'avait NI ViewSet, NI
+    serializer, NI route, et n'était lu ni par le Cockpit Flotte ni par le
+    grand livre/TCO). Les lignes déjà générées avant ce correctif restent en
+    base, en LECTURE SEULE, pour ne rien perdre historiquement.
+
+    ``unique_together`` (contrat, period) reste en place pour ces lignes
+    historiques. ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
     granularité de génération, indépendamment de la ``periodicite`` du
     contrat qui reste informative sur le montant facturé).
-
-    Modèle transitoire : si ``CoutVehicule`` (XFLT3) existe sur cette
-    branche, la génération y écrit à la place (voir docstring du service) —
-    ce modèle reste le repli tant que XFLT3 n'est pas construit.
 
     Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
     requête). Le contrat lié doit appartenir à la MÊME société.

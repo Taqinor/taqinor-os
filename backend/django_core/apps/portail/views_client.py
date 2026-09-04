@@ -73,7 +73,15 @@ def _noter_connexion(company, client_id):
 
 
 def _ip(request):
-    return request.META.get('REMOTE_ADDR')
+    """AUD144 — l'IP de PREUVE (signature e-signature, loi 53-05) doit être
+    celle du CLIENT, jamais celle du reverse-proxy. ``REMOTE_ADDR`` seul rend
+    l'IP interne du conteneur nginx/Caddy (``identity/middleware.py``) : on
+    délègue donc à LA primitive UNIQUE du dépôt (QJR416,
+    ``core.throttling.ip_de_requete`` — dernier saut de confiance de
+    ``X-Forwarded-For``), déjà utilisée par le chemin de signature PUBLIC
+    tokenisé (``ventes/public_views.py``). Jamais une seconde primitive."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
@@ -201,32 +209,66 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'], url_path='payer',
             permission_classes=[IsPortalClientUser])
     def payer(self, request, pk=None):
-        """Crée une intention de paiement locale — JAMAIS d'appel payant.
+        """Crée (ou réutilise) une intention de paiement locale — JAMAIS
+        d'appel payant.
 
         Critère NTPRT11 : sans clé CMI, le bouton « Payer » crée une intention
         ``initie`` ET renvoie les coordonnées bancaires (RIB de
         ``CompanyProfile``) comme repli — jamais une erreur. Avec CMI actif, la
         même intention est créée et l'intégration (future) prend le relais dans
         ``services.initier_paiement_facture`` : rien n'est décidé ici.
+
+        AUD137 — deux garde-fous ajoutés ici :
+        1. une facture ANNULÉE ou déjà PAYÉE est REFUSÉE (400) — le sélecteur
+           la rend déjà non ``payable`` (``factures_du_client_portail``), mais
+           le serveur ne fait jamais confiance à un écran qui afficherait
+           quand même le bouton.
+        2. IDEMPOTENT : réutilise l'intention ``initie`` existante
+           (``get_or_create`` + contrainte partielle
+           ``uniq_paiement_portail_facture_initie``) au lieu d'en créer une
+           nouvelle à chaque clic, et rafraîchit son montant/méthode depuis
+           l'état COURANT de la facture à chaque appel — jamais figé au
+           premier clic.
         """
+        from django.db import IntegrityError, transaction
+
         from apps.parametres.selectors import company_identity
-        from apps.ventes.selectors import facture_du_client_portail
+        from apps.ventes.selectors import (
+            facture_du_client_portail, facture_est_payable_portail,
+        )
 
         company, client_id = _scope(request)
         facture = facture_du_client_portail(company, client_id, pk)
         if facture is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if not facture_est_payable_portail(facture):
+            return Response(
+                {'detail': "Cette facture n'est plus payable "
+                           "(annulée ou déjà réglée)."},
+                status=status.HTTP_400_BAD_REQUEST)
 
         from .models import PaiementFacturePortail
         actif = services.cmi_actif()
-        paiement = PaiementFacturePortail.objects.create(
-            company=company,
-            facture=facture,
-            montant=facture.montant_du,
-            methode=(PaiementFacturePortail.Methode.CARTE if actif
-                     else PaiementFacturePortail.Methode.VIREMENT),
-        )
+        methode = (PaiementFacturePortail.Methode.CARTE if actif
+                   else PaiementFacturePortail.Methode.VIREMENT)
+        try:
+            with transaction.atomic():
+                paiement, _ = PaiementFacturePortail.objects.get_or_create(
+                    company=company, facture=facture,
+                    statut=PaiementFacturePortail.Statut.INITIE,
+                    defaults={'montant': facture.montant_du,
+                              'methode': methode})
+        except IntegrityError:
+            paiement = PaiementFacturePortail.objects.filter(
+                company=company, facture=facture,
+                statut=PaiementFacturePortail.Statut.INITIE).first()
+        # Rafraîchit le montant/méthode depuis l'état COURANT de la facture à
+        # CHAQUE appel — une intention réutilisée ne doit jamais rester figée
+        # au reste dû du premier clic.
+        paiement.montant = facture.montant_du
+        paiement.methode = methode
+        paiement.save(update_fields=['montant', 'methode'])
         services.initier_paiement_facture(paiement)
         paiement.refresh_from_db(fields=['reference', 'statut'])
 
@@ -404,3 +446,111 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = f'inline; filename="{nom}"'
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
+
+class MesDemandesSavPortailViewSet(viewsets.ViewSet):
+    """AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233.
+
+    FG233 (ouverture d'un ticket SAV depuis le portail) était du code MORT :
+    son seul ViewSet (``DemandeTicketPortailViewSet``) est gardé par
+    ``IsResponsableOrAdmin`` — une garde INTERNE, refusée à tout rôle
+    ``portail_*``. Aucun compte portail réel ne pouvait donc l'atteindre, et
+    la déflection KB (suggestions/consultation) héritait de la même garde :
+    jamais exercée par un vrai client.
+
+    Ce ViewSet est la surface authentifiée manquante, sur le même patron que
+    ``MesDevisPortailViewSet``/``MesFacturesPortailViewSet`` : garde
+    ``IsPortalClientUser``, société ET client résolus du COMPTE connecté
+    (jamais du corps de requête). Les écrans internes d'administration des
+    demandes (liste, ``prendre_en_charge``) restent inchangés."""
+
+    permission_classes = [IsPortalClientUser]
+
+    @staticmethod
+    def _ligne(demande):
+        """Payload CLIENT — volontairement pauvre : aucune donnée interne."""
+        return {
+            'id': demande.id,
+            'sujet': demande.sujet,
+            'description': demande.description,
+            'statut': demande.statut,
+            'statut_display': demande.get_statut_display(),
+            'chantier_id': demande.chantier_id,
+            'ticket_id': demande.ticket_id,
+            'date_creation': (demande.date_creation.isoformat()
+                              if demande.date_creation else None),
+        }
+
+    def _mes_demandes(self, request):
+        from .models import DemandeTicketPortail
+        company, client_id = _scope(request)
+        return DemandeTicketPortail.objects.filter(
+            company=company, client_id=client_id)
+
+    def list(self, request):
+        return Response({
+            'results': [self._ligne(d) for d in self._mes_demandes(request)]})
+
+    def retrieve(self, request, pk=None):
+        demande = self._mes_demandes(request).filter(pk=pk).first()
+        if demande is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._ligne(demande))
+
+    def create(self, request):
+        """Ouvre une demande SAV (statut SOUMISE) pour le client connecté.
+
+        ``company`` et ``client`` viennent du compte portail, JAMAIS du
+        corps. Le chantier éventuel est vérifié comme appartenant au client
+        (un id étranger est ignoré, jamais lié)."""
+        from .models import DemandeTicketPortail
+
+        company, client_id = _scope(request)
+        sujet = (request.data.get('sujet') or '').strip()[:200]
+        if not sujet:
+            return Response({'sujet': 'Ce champ est obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        description = (request.data.get('description') or '').strip()[:4000]
+
+        chantier_id = request.data.get('chantier') or request.data.get(
+            'chantier_id')
+        if chantier_id:
+            from apps.installations.selectors import installation_scoped
+            chantier = installation_scoped(company, chantier_id)
+            if chantier is None or chantier.client_id != client_id:
+                chantier_id = None
+
+        demande = DemandeTicketPortail.objects.create(
+            company=company, client_id=client_id, chantier_id=chantier_id,
+            sujet=sujet, description=description,
+            statut=DemandeTicketPortail.Statut.SOUMISE)
+        return Response(self._ligne(demande),
+                        status=status.HTTP_201_CREATED)
+
+    # ── XSAV22 — Déflection KB, désormais servie au VRAI client ────────────
+    # Lit/écrit UNIQUEMENT via ``apps.kb.selectors``/``apps.kb.services``
+    # (jamais ``apps.kb.models``). ``detail=False`` : appelables PENDANT la
+    # saisie, avant toute création de demande.
+
+    @action(detail=False, methods=['get'], url_path='suggestions-kb',
+            permission_classes=[IsPortalClientUser])
+    def suggestions_kb(self, request):
+        """Articles KB (publiés + ``visible_portail``) suggérés pendant la
+        saisie du sujet — la déflection avant soumission."""
+        from apps.kb.selectors import suggestions_portail
+        company, _ = _scope(request)
+        return Response({'suggestions': suggestions_portail(
+            company, request.query_params.get('q', ''))})
+
+    @action(detail=False, methods=['post'], url_path='consulter-article-kb',
+            permission_classes=[IsPortalClientUser])
+    def consulter_article_kb(self, request):
+        """Journalise la consultation d'un article suggéré (déflection)."""
+        from apps.kb.services import enregistrer_consultation_portail
+        company, _ = _scope(request)
+        article_id = request.data.get('article_id')
+        if not article_id:
+            return Response({'detail': 'article_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'enregistre': enregistrer_consultation_portail(
+            company, article_id)})

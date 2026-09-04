@@ -53,9 +53,14 @@ def _flag(valeur):
 
 
 class PrixFournisseurViewSet(CompanyScopedModelViewSet):
-    """N17 — prix d'achat multi-fournisseurs par SKU (INTERNE). Lecture tout
-    rôle, écriture stock_modifier. `company` posé serveur ; produit/fournisseur
-    doivent appartenir à la société."""
+    """N17 — prix d'achat multi-fournisseurs par SKU (INTERNE).
+
+    AUD213 — la LECTURE exige `prix_achat_voir` (et non plus « tout rôle ») :
+    ce ViewSet ne renvoie QUE des prix d'achat et leurs paliers, exactement le
+    champ que `ProduitSerializer`/`reporting.sav_pivot`/`sav.maintenance`
+    gardent déjà derrière `can_view_buy_prices`. Écriture : stock_modifier.
+    `company` posé serveur ; produit/fournisseur doivent appartenir à la
+    société."""
     queryset = PrixFournisseur.objects.select_related(
         'produit', 'fournisseur').all()
     serializer_class = PrixFournisseurSerializer
@@ -65,7 +70,10 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx']:
-            return [IsAnyRole()]
+            # AUD213 — la ressource EST le prix d'achat : même gate que le
+            # champ `prix_achat` ailleurs. `HasPermissionOrLegacy` conserve le
+            # comportement historique des comptes hérités sans rôle fin.
+            return [HasPermissionOrLegacy('prix_achat_voir')()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):

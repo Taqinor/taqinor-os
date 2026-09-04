@@ -119,7 +119,7 @@ def reserver_creneau_fournisseur(token_obj, *, quai_id, debut,
     illisible ou passé, le BCF fourni n'appartient pas à ce fournisseur, ou le
     créneau est déjà pris (garde de non-chevauchement NTWMS7).
     """
-    from django.db import transaction
+    from django.db import IntegrityError, transaction
 
     from .models import BonCommandeFournisseur
     from .models_wms import RendezVousTransporteur
@@ -168,8 +168,13 @@ def reserver_creneau_fournisseur(token_obj, *, quai_id, debut,
                 immatriculation=(immatriculation or '').strip()[:30],
                 note=note)
             rdv.save()
-    except ValueError:
+    except (ValueError, IntegrityError):
         # `save()` refuse le chevauchement (NTWMS7) — message métier propre.
+        # AUD214 — sous requêtes CONCURRENTES, `save()` ne voit rien (les deux
+        # SELECT précèdent les deux INSERT) : c'est alors l'ExclusionConstraint
+        # de la base qui refuse la seconde, avec une `IntegrityError`. Cet
+        # endpoint est PUBLIC (`AllowAny`) : les deux refus doivent produire
+        # exactement le MÊME message métier, jamais une 500 ni une trace.
         raise ValueError('Ce créneau vient d\'être réservé, choisissez-en un '
                          'autre.')
     logger.info('NTWMS35 creneau reserve quai=%s fournisseur=%s',

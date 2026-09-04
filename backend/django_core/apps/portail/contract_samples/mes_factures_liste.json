@@ -1,0 +1,50 @@
+{
+  "endpoint": "GET /api/django/portail/mes-factures/",
+  "forme_serveur": "complete",
+  "pourquoi": "AUD137 — une facture ANNULÉE était présentée au client comme « reste dû » avec un bouton « Payer » actif, parce que `Facture.montant_du` (facturation/models.py) ne regarde jamais le statut et rend donc le TTC entier pour une facture annulée sans paiement, et que l'écran (`PortailClientFactures.jsx`) ne testait que `!payee`. `apps.ventes.selectors.factures_du_client_portail` ajoute désormais `payable` (faux pour ANNULEE et PAYEE) et rend `montant_du = '0.00'` pour une facture annulée — jamais le TTC recalculé du modèle pour cet état. Le serveur refuse ensuite `POST .../payer/` (400) si le client force quand même l'appel sur une facture non payable (voir `payer_facture_refuse_annulee.json`).",
+  "exemple": {
+    "results": [
+      {
+        "id": 101,
+        "reference": "FAC-2026-0101",
+        "statut": "emise",
+        "statut_display": "Émise",
+        "date_emission": "2026-08-01",
+        "date_echeance": "2026-08-31",
+        "montant_ttc": "12000.00",
+        "montant_du": "12000.00",
+        "payee": false,
+        "payable": true
+      },
+      {
+        "id": 102,
+        "reference": "FAC-2026-0102",
+        "statut": "annulee",
+        "statut_display": "Annulée",
+        "date_emission": "2026-07-15",
+        "date_echeance": "2026-08-15",
+        "montant_ttc": "20400.00",
+        "montant_du": "0.00",
+        "payee": false,
+        "payable": false
+      },
+      {
+        "id": 100,
+        "reference": "FAC-2026-0100",
+        "statut": "payee",
+        "statut_display": "Payée",
+        "date_emission": "2026-06-01",
+        "date_echeance": "2026-06-30",
+        "montant_ttc": "8000.00",
+        "montant_du": "0.00",
+        "payee": true,
+        "payable": false
+      }
+    ],
+    "paiement_en_ligne_actif": false
+  },
+  "notes": {
+    "payable": "AUD137 — faux pour ANNULEE et PAYEE : c'est le seul champ que l'écran doit lire pour décider d'afficher « reste dû » et le bouton « Payer » (jamais recalculé côté client depuis `statut`).",
+    "montant_du_annulee": "AUD137 — figé à '0.00' pour une facture ANNULEE, quel que soit ce que `Facture.montant_du` calculerait (il ignore le statut par construction — comportement du modèle inchangé, seul l'agrégat portail compense)."
+  }
+}

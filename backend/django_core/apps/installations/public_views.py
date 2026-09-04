@@ -60,8 +60,12 @@ class RFQConsultationPublicView(APIView):
     la propre offre déjà soumise (le cas échéant). POST crée/complète
     l'offre du fournisseur — idempotent tant que la RFQ n'est pas clôturée.
     Token invalide/expiré/révoqué → 404 (jamais 403 : on ne confirme pas
-    l'existence du token à un tiers)."""
+    l'existence du token à un tiers).
+    AUD314 — c'est la SEULE des 4 routes publiques tokenisées qui ÉCRIT
+    (crée/MAJ une RFQOffre) : throttle obligatoire (le throttle global
+    no-op sur AnonymousUser), même patron que ses 3 sœurs ci-dessous."""
     permission_classes = [AllowAny]
+    throttle_classes = [PublicTokenThrottle]
 
     def get(self, request, token):
         consultation = _consultation_or_404(token)

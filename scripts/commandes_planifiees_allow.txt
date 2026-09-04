@@ -1,0 +1,31 @@
+# AUD231 — commandes de gestion qui se DÉCLARENT « cron / Celery beat » sans
+# entrée correspondante dans `erp_agentique/celery.py` (convention de nom :
+# `<app>.<nom_de_commande>`).
+#
+# CE FICHIER EST UNE DETTE, PAS UNE APPROBATION. Chaque ligne est un balayage
+# qui NE TOURNE PAS aujourd'hui, ou dont la couverture passe par une tâche
+# portant un AUTRE nom. La liste NE PEUT QUE RÉTRÉCIR : planifier la commande
+# (tâche Celery + entrée beat + route `scheduled`) puis retirer sa ligne.
+# Ajouter une ligne pour faire passer une NOUVELLE commande non planifiée est
+# exactement ce que ce garde interdit.
+#
+# Format : <app>.<nom_de_commande>    # raison / renvoi
+
+# ── Couvertes en réalité, sous un nom de tâche DIFFÉRENT (vérifié en lisant
+# les deux implémentations : même service, même travail). Elles restent ici
+# tant que la convention de nom n'est pas alignée.
+flotte.generer_echeances_entretien    # planifiée sous flotte.generer_echeances_entretien_quotidien (FLOTTE16) — même service services.generer_echeances_entretien
+rh.alertes_expiration_rh    # planifiée sous rh.alertes_expiration (YHIRE8) — mêmes échéances RH via selectors.echeances_rh
+
+# ── Réellement NON planifiées : dette PRÉEXISTANTE, hors périmètre d'AUD231
+# (qui nomme huit balayages précis, tous traités et donc absents d'ici).
+contrats.cloturer_contrats_impayes    # ZCTR2 — constat déjà porté par le groupe AUD1 (crossref AUD231), à planifier avec sa décision métier
+crm.detecter_comptes_dormants    # non planifié
+fpa.verifier_derive_fpa    # non planifié
+flotte.generer_couts_contrats    # non planifié
+mrp.declencher_kanban_production    # non planifié
+mrp.generer_echeances_entretien    # non planifié (distinct de mrp.rappeler_entretiens_poste_j7, qui RAPPELLE sans générer)
+mrp.sweep_ecos_effectivite    # non planifié
+parametres.purge_audit_retention    # non planifié
+publicapi.retry_webhook_deliveries    # non planifié
+rh.accruer_conges    # non planifié

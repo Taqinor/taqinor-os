@@ -8,6 +8,12 @@ import PinLock from './PinLock'
 // (F2 nouveau ticket, F4 encaisser, Échap annuler la dernière ligne).
 import ScanMode from './ScanMode'
 import { attacherRaccourcisClavier } from './scanApi'
+// NTRET1 / AUD230 — mode offline caisse : la file de synchronisation existait
+// (`offlineQueue.js`, testée) mais n'était câblée NULLE PART — une coupure
+// réseau pendant un encaissement perdait purement et simplement la vente.
+import {
+  estHorsLigne, getOfflineVenteQueue, makeUuidClient,
+} from './offlineQueue'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
@@ -26,6 +32,49 @@ import {
   cartLineTotal, cartTotal, cartItemCount, calculerRendu, peutEncaisser,
   chargerTicketsEnAttente, parquerTicket, rappelerTicket, supprimerTicket,
 } from './pos'
+
+/* NTRET1 / AUD230 — envoi d'UNE vente comptoir au serveur, depuis un payload
+   COMPLET (client + lignes + paiements + `uuid_client`).
+
+   C'est le MÊME chemin en ligne et au rejeu : la vente porte son `uuid_client`
+   dès la PREMIÈRE tentative, ce qui est la condition pour qu'un rejeu se
+   dédupe. Sans cela la dédup serveur ne protégeait que la 1re des 3 étapes
+   (`perform_create`), et rejouer une vente à moitié appliquée la dupliquait.
+
+   Le rejeu reprend donc là où la coupure a laissé la vente :
+     * vente déjà VALIDÉE (statut ≠ brouillon) → rien à refaire, on la rend ;
+     * lignes déjà posées → on ne repose que celles qui manquent (le panier
+       fusionne les lignes d'un même produit, `pos.addToCart` : un produit
+       déjà présent côté serveur est donc bien la MÊME ligne) ;
+     * puis validation avec les paiements.
+   Fonction PURE de l'état React (elle ne lit que son payload) : elle peut donc
+   servir de `sender` à la file, qui la rejouera longtemps après le démontage
+   de l'écran. */
+export async function envoyerVenteComptoir(payload) {
+  const { uuid_client: uuidClient, client, lignes = [], paiements = [] } = payload || {}
+  const venteRes = await posApi.createVente({
+    ...(uuidClient ? { uuid_client: uuidClient } : {}),
+    ...(client ? { client } : {}),
+  })
+  const vente = venteRes?.data || {}
+  if (vente.statut && vente.statut !== 'brouillon') return vente
+  const dejaPosees = new Set(
+    (vente.lignes || []).map((l) => String(l.produit)))
+  for (const ligne of lignes) {
+    if (dejaPosees.has(String(ligne.produit))) continue
+    await posApi.ajouterLigne(vente.id, ligne)
+  }
+  const finale = await posApi.validerVente(vente.id, { paiements })
+  return finale?.data
+}
+
+// File partagée (IndexedDB → localStorage → mémoire) : le `sender` est câblé
+// UNE fois, sur la fonction ci-dessus.
+const fileVentes = () => getOfflineVenteQueue(envoyerVenteComptoir)
+
+// Un échec SANS réponse serveur est une coupure réseau ; un 4xx/5xx est un
+// refus métier, qui doit rester visible et NE JAMAIS partir en file.
+const estPanneReseau = (err) => !err?.response
 
 /* XPOS2 — Écran caisse (vente rapide), route /pos.
    Objectif "done" : une vente accessoire se conclut en < 5 clics — chercher
@@ -67,6 +116,31 @@ export default function CaisseScreen() {
   // (best-effort, `?.()` — jamais d'exception si l'API n'est pas montée,
   // ex. un test qui mocke un posApi partiel).
   const [sessionId, setSessionId] = useState(null)
+  // NTRET1 / AUD230 — nombre de ventes encore en file locale (0 = tout est
+  // parti). Affiché en permanence : une vente en attente ne doit jamais être
+  // invisible pour le caissier.
+  const [ventesEnFile, setVentesEnFile] = useState(0)
+
+  // NTRET1 / AUD230 — rejeu au montage (une coupure a pu survivre à une
+  // fermeture d'onglet) puis à CHAQUE retour réseau. `flush()` est réentrante
+  // (garde `_flushing`) et le serveur dédupe sur `uuid_client` : ni double
+  // envoi, ni double vente.
+  useEffect(() => {
+    const queue = fileVentes()
+    let monte = true
+    const majCompteur = () => queue.count()
+      .then((n) => { if (monte) setVentesEnFile(n) })
+      .catch(() => undefined)
+    const rejouer = () => queue.flush()
+      .then(majCompteur, majCompteur)
+    rejouer()
+    if (typeof window === 'undefined') return () => { monte = false }
+    window.addEventListener('online', rejouer)
+    return () => {
+      monte = false
+      window.removeEventListener('online', rejouer)
+    }
+  }, [])
 
   useEffect(() => {
     posApi.getProduits().then((r) => {
@@ -246,30 +320,69 @@ export default function CaisseScreen() {
   // échec silencieux).
   const handleConfirmerEncaissement = async () => {
     setBusy(true)
-    try {
-      const venteRes = await posApi.createVente(
-        client?.id ? { client: client.id } : {})
-      const venteId = venteRes.data.id
-      for (const ligne of cart) {
-        await posApi.ajouterLigne(venteId, {
-          produit: ligne.produitId,
-          quantite: ligne.quantite,
-          prix_unitaire_ttc: ligne.prixTtc,
-          numeros_serie: parseNumerosSerie(numerosSerie[ligne.produitId]),
-        })
-      }
-      const utiles = paiements
+    // NTRET1 / AUD230 — le payload est assemblé EN ENTIER avant le premier
+    // appel : c'est lui, et non trois requêtes séparées, qui part en file si
+    // le réseau tombe. `uuid_client` est posé dès la première tentative, sans
+    // quoi un rejeu ne pourrait pas se dédupliquer côté serveur.
+    const payload = {
+      uuid_client: makeUuidClient(),
+      ...(client?.id ? { client: client.id } : {}),
+      lignes: cart.map((ligne) => ({
+        produit: ligne.produitId,
+        quantite: ligne.quantite,
+        prix_unitaire_ttc: ligne.prixTtc,
+        numeros_serie: parseNumerosSerie(numerosSerie[ligne.produitId]),
+      })),
+      paiements: paiements
         .map((p) => ({ mode: p.mode, montant: Number(p.montant) || 0 }))
-        .filter((p) => p.montant > 0)
-      const finale = await posApi.validerVente(venteId, { paiements: utiles })
-      setDerniereVente(finale.data)
-      toast.success('Vente encaissée.')
+        .filter((p) => p.montant > 0),
+    }
+
+    const viderLePanier = () => {
       setEncaissementOpen(false)
       setCart([])
       setClient(null)
       setNumerosSerie({})
+    }
+
+    const mettreEnFile = async () => {
+      const queue = fileVentes()
+      await queue.enqueue(payload, { uuidClient: payload.uuid_client })
+      setVentesEnFile(await queue.count())
+      toast.success(
+        'Réseau indisponible — vente enregistrée hors ligne, elle partira '
+        + 'automatiquement à la reconnexion.')
+      viderLePanier()
+    }
+
+    try {
+      // Coupure DÉJÀ connue (`navigator.onLine === false`) : inutile de
+      // tenter trois appels condamnés — la vente part directement en file.
+      if (await estHorsLigne()) {
+        await mettreEnFile()
+        return
+      }
+      const finale = await envoyerVenteComptoir(payload)
+      setDerniereVente(finale)
+      toast.success('Vente encaissée.')
+      viderLePanier()
     } catch (err) {
-      // WIR7 — plus de message générique avalant l'erreur réelle : le
+      // AUD230 — une COUPURE RÉSEAU (aucune réponse serveur) ne perd plus la
+      // vente : le payload complet part en file, y compris si la coupure est
+      // survenue APRÈS la création ou après l'ajout des lignes (le rejeu
+      // reprend la vente existante par son `uuid_client`).
+      if (estPanneReseau(err)) {
+        try {
+          await mettreEnFile()
+          return
+        } catch {
+          toast.error(
+            'Réseau indisponible ET mise en file impossible — ne videz pas '
+            + 'le panier, réessayez.')
+          return
+        }
+      }
+      // WIR7 — un REFUS serveur (4xx/5xx) n'est jamais mis en file : le
       // caissier voit le motif exact renvoyé par le backend (ex. « Un client
       // est requis pour émettre la facture légale. »).
       toast.error(errorMessageFrom(err, 'L’encaissement a échoué — la vente n’a pas été validée.'))
@@ -409,6 +522,21 @@ export default function CaisseScreen() {
             Mode scan
           </Button>
         </div>
+        {/* NTRET1 / AUD230 — une vente encaissée hors ligne n'est JAMAIS
+            invisible : le caissier voit combien restent à partir. */}
+        {ventesEnFile > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="ventes-hors-ligne"
+            role="status"
+          >
+            <Badge tone="warning">
+              {ventesEnFile === 1
+                ? '1 vente hors ligne en attente d’envoi'
+                : `${ventesEnFile} ventes hors ligne en attente d’envoi`}
+            </Badge>
+          </div>
+        )}
         {tickets.length > 0 && (
           <div className="flex flex-wrap items-center gap-2" data-testid="tickets-en-attente">
             <span className="text-sm text-muted-foreground">Tickets en attente :</span>
