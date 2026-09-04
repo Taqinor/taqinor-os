@@ -2605,6 +2605,29 @@ class ChargeConstateeAvanceViewSet(_ComptaBaseViewSet):
             'montant': str(dotation.montant),
         }, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'])
+    def solde(self, request):
+        """AUDV08 / XACC15 (DRAFT165-14) — solde 3491 RESTANT à étaler.
+
+        `selectors.solde_charges_constatees_avance` n'avait aucun appelant :
+        l'écran comptait bien « n/12 dotations postées » par ligne, mais
+        personne ne pouvait lire le MONTANT encore immobilisé au compte 3491 —
+        le seul chiffre qui se rapproche du bilan, et celui que le comptable
+        doit justifier à la clôture.
+
+        ``?date_fin=YYYY-MM-DD`` borne les dotations prises en compte (défaut :
+        aujourd'hui) — un solde se lit toujours À UNE DATE. Lecture seule.
+        """
+        date_fin = request.query_params.get('date_fin')
+        try:
+            date_fin = _parse_date(date_fin) if date_fin else None
+        except ValueError:
+            return Response(
+                {'detail': '`date_fin` doit être une date ISO (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.solde_charges_constatees_avance(
+            request.user.company, date_fin=date_fin))
+
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
 

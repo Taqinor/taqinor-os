@@ -180,6 +180,8 @@
     comptes:inconnu, nb:nombre
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
+- frontend/src/api/comptaApi.js :: solde -> /api/django/compta/charges-avance/solde
+    charges:inconnu, detail:texte, total_restant:inconnu
 - frontend/src/api/comptaApi.js :: suggestionsApprises -> /api/django/compta/rapprochements/<>/suggestions-apprises
     detail:texte, nb_lignes_non_pointees:nombre, rapprochement:inconnu, suggestions:inconnu
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux

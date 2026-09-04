@@ -279,6 +279,10 @@ const comptaApi = {
     ...resource('charges-avance'),
     posterDotation: (id, dotation) =>
       api.post(`/compta/charges-avance/${id}/poster-dotation/`, { dotation }),
+    // AUDV08 / XACC15 — solde 3491 RESTANT à étaler, par charge et au total.
+    // `dote` ne compte que les dotations POSTÉES (une dotation générée mais
+    // non postée n'a pas bougé le grand livre) ; le solde se lit À UNE DATE.
+    solde: (params) => api.get('/compta/charges-avance/solde/', { params }),
   },
 
   // ── PACT29 / NTFIN40-43 — Immobilisations avancées (composants,

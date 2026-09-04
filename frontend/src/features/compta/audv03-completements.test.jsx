@@ -5,6 +5,13 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { formatMAD } from '../../lib/format'
+
+/* Attendu monétaire DÉRIVÉ de `formatMAD`. Le `replace` est indispensable :
+   `Intl` fr-FR sépare les milliers par une espace fine insécable (U+202F) que
+   testing-library normalise en espace ordinaire — sans lui, la comparaison
+   échoue sur deux chaînes visuellement identiques. */
+const montantAffiche = (valeur) => formatMAD(valeur).replace(/\s/g, ' ')
 
 /* ============================================================================
    AUDV03 — deux compléments trésorerie DEVIENNENT visibles à l'écran.
@@ -41,6 +48,7 @@ const mocks = vi.hoisted(() => ({
   ecrituresList: vi.fn(),
   chargesList: vi.fn(),
   posterDotation: vi.fn(),
+  solde: vi.fn(),
   vide: () => Promise.resolve({ data: [] }),
 }))
 
@@ -59,6 +67,8 @@ vi.mock('../../api/comptaApi', () => ({
       list: mocks.chargesList,
       create: mocks.vide,
       posterDotation: mocks.posterDotation,
+      // AUDV08 — solde 3491 restant à étaler, chargé au montage de l'écran.
+      solde: mocks.solde,
     },
   },
 }))
@@ -111,24 +121,29 @@ describe('AUDV03 — aperçu du numéro de pièce d’une OD (COMPTA4)', () => {
   }, 30000)
 })
 
-describe('AUDV03 — postage d’une dotation d’étalement (XACC15)', () => {
-  const charge = {
-    id: 37,
-    reference: 'CCA-2026-0037',
-    libelle: 'Assurance annuelle',
-    montant_total: '12000.00',
-    date_debut: '2026-01-01',
-    nb_mois: 12,
-    dotations: [
-      { id: 511, numero: 3, date_dotation: '2026-08-01', montant: '1000.00',
-        posted: true },
-      { id: 512, numero: 4, date_dotation: '2026-09-01', montant: '1000.00',
-        posted: false },
-    ],
-  }
+// Une charge à étaler dont UNE dotation est déjà postée et l'autre non :
+// partagée par les deux describes ci-dessous (postage + solde 3491).
+const charge = {
+  id: 37,
+  reference: 'CCA-2026-0037',
+  libelle: 'Assurance annuelle',
+  montant_total: '12000.00',
+  date_debut: '2026-01-01',
+  nb_mois: 12,
+  dotations: [
+    { id: 511, numero: 3, date_dotation: '2026-08-01', montant: '1000.00',
+      posted: true },
+    { id: 512, numero: 4, date_dotation: '2026-09-01', montant: '1000.00',
+      posted: false },
+  ],
+}
 
+describe('AUDV03 — postage d’une dotation d’étalement (XACC15)', () => {
   it('poste la dotation NON postée et ne propose rien sur celle déjà postée', async () => {
     mocks.chargesList.mockResolvedValue({ data: [charge] })
+    mocks.solde.mockResolvedValue({
+      data: exempleContrat('compta', 'charges_avance_solde', 'exemple_vide'),
+    })
     mocks.posterDotation.mockResolvedValue({
       data: exempleContrat('compta', 'dotation_etalement_poster'),
     })
@@ -157,5 +172,31 @@ describe('AUDV03 — postage d’une dotation d’étalement (XACC15)', () => {
       expect(within(dialogue).queryByRole('button', { name: 'Poster' }))
         .not.toBeInTheDocument()
     })
+  }, 30000)
+})
+
+/* AUDV08 / XACC15 (DRAFT165-14) — le solde 3491 RESTANT à étaler.
+   `selectors.solde_charges_constatees_avance` n'avait aucun appelant :
+   l'écran comptait « n/12 dotations postées » par ligne, mais personne ne
+   pouvait lire le MONTANT encore immobilisé au compte 3491. La charge utile
+   vient de l'exemple COMMITTÉ, affirmé côté backend par
+   `test_audv08_solde_charges_avance.py`. */
+describe('AUDV08 — solde 3491 restant à étaler (XACC15)', () => {
+  it('affiche le total renvoyé par le serveur, jamais une somme d’écran', async () => {
+    const solde = exempleContrat('compta', 'charges_avance_solde')
+    mocks.chargesList.mockResolvedValue({ data: [charge] })
+    mocks.solde.mockResolvedValue({ data: solde })
+
+    const { default: ChargesAvancePage } = await import(
+      './pages/ChargesAvancePage.jsx')
+    mount(<ChargesAvancePage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Solde 3491 restant à étaler')).toBeInTheDocument()
+    })
+    // 9 000,00 MAD — le TOTAL du serveur, pas la somme des lignes affichées
+    // (le tableau est filtrable et paginé : une somme d'écran mentirait).
+    expect(screen.getByText(montantAffiche(solde.total_restant)))
+      .toBeInTheDocument()
   }, 30000)
 })
