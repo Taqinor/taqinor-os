@@ -92,9 +92,18 @@ class TestActiveSessions(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         UserSession.objects.get(pk=sid)
         self.assertTrue(UserSession.objects.get(pk=sid).revoked)
-        # Plus listée.
+        # AUD408 — révoquer SA PROPRE session courante coupe l'accès tout de
+        # suite : les cookies sont effacés (le ``jti`` courant est désormais lu
+        # avant le blacklistage) et le jeton d'accès déjà émis ne vaut plus rien
+        # (claim de session comparé à ``UserSession.revoked``). Avant AUD408, la
+        # requête suivante répondait encore 200 pendant 30 min.
         listing = self.api.get('/api/django/auth/sessions/')
-        self.assertEqual(len(listing.data), 0)
+        self.assertIn(listing.status_code, (401, 403))
+        # Plus listée : vérifié depuis une NOUVELLE connexion.
+        self._login()
+        listing = self.api.get('/api/django/auth/sessions/')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertNotIn(sid, [row['id'] for row in listing.data])
 
     def test_cannot_revoke_other_users_session(self):
         """Révoquer la session d'un autre utilisateur → 404 (jamais autorisé)."""

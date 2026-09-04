@@ -286,7 +286,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/services.py:2671` | get_or_create | EvaluationEmploye.objects | campagne, company, employe |
 | `backend/django_core/apps/rh/views.py:1813` | get_or_create | ReglageRH.objects | company |
 | `backend/django_core/apps/rh/views.py:3980` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
-| `backend/django_core/apps/roles/management/commands/init_roles.py:54` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/roles/management/commands/init_roles.py:87` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1445` | get_or_create | TicketFollower.objects | company, ticket, user |

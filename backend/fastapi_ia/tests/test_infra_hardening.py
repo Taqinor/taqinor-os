@@ -98,5 +98,105 @@ class RateLimitFailClosedTests(unittest.TestCase):
             _ocr._check_rate_limit("user-1")
 
 
+# ── AUD401 — confidentialite INTRA-societe de l'agent NL->SQL ────────────────
+try:
+    from app.services import sql_agent_service as _svc
+    _SVC_ERR = None
+except Exception as exc:  # pragma: no cover - dependances manquantes
+    _svc = None
+    _SVC_ERR = exc
+
+
+@unittest.skipIf(_svc is None, f"sql_agent_service non importable: {_SVC_ERR}")
+class Aud401AccountSecretsTests(unittest.TestCase):
+    """`authentication_customuser` est allowlistee et scopee par company_id :
+    l'isolation ENTRE societes etait prouvee, mais AUCUNE colonne n'etait bornee
+    DANS une societe. Un employe a role minimal pouvait donc extraire les hashes
+    PBKDF2 de tous les comptes de sa societe (admins inclus) en une seule
+    instruction qui passait tous les gardes. Ces requetes etaient ACCEPTEES
+    avant AUD401 ; elles doivent maintenant echouer FERME, avant execution."""
+
+    CID = 7
+
+    def _refused(self, sql):
+        with self.assertRaises(_svc.SQLSecurityError):
+            _svc._validate_and_secure(sql, self.CID)
+
+    def _accepted(self, sql):
+        # Ne doit pas lever : la requete reste securisee normalement.
+        self.assertTrue(_svc._validate_and_secure(sql, self.CID))
+
+    # ── Le scenario de l'audit ────────────────────────────────────────────
+    def test_hash_de_mot_de_passe_refuse(self):
+        self._refused(
+            "SELECT username, email, password FROM authentication_customuser")
+
+    def test_etoile_sur_la_table_des_comptes_refusee(self):
+        """Un filtre purement lexical serait contourne par `SELECT *`."""
+        self._refused("SELECT * FROM authentication_customuser")
+
+    def test_etoile_qualifiee_refusee(self):
+        self._refused("SELECT u.* FROM authentication_customuser u")
+
+    def test_etoile_apres_distinct_refusee(self):
+        self._refused("SELECT DISTINCT * FROM authentication_customuser")
+
+    # ── Autres secrets de compte ──────────────────────────────────────────
+    def test_graine_2fa_refusee(self):
+        self._refused(
+            "SELECT username, totp_secret FROM authentication_customuser")
+
+    def test_codes_de_secours_2fa_refuses(self):
+        self._refused(
+            "SELECT totp_recovery_codes FROM authentication_customuser")
+
+    def test_drapeaux_delevation_refuses(self):
+        self._refused(
+            "SELECT username, is_superuser FROM authentication_customuser")
+        self._refused(
+            "SELECT username, is_staff FROM authentication_customuser")
+
+    def test_derniere_connexion_refusee(self):
+        self._refused(
+            "SELECT username, last_login FROM authentication_customuser")
+
+    def test_colonne_masquee_par_un_commentaire_refusee(self):
+        self._refused(
+            "SELECT username, /* rien a voir */ password "
+            "FROM authentication_customuser")
+
+    def test_secret_dans_une_sous_requete_refuse(self):
+        self._refused(
+            "SELECT username FROM authentication_customuser WHERE password "
+            "LIKE 'pbkdf2%'")
+
+    # ── Le garde est INCONDITIONNEL (jamais leve par une permission) ──────
+    def test_le_garde_ne_depend_daucune_permission(self):
+        """Contrairement au garde prix_achat, aucune permission ne le leve :
+        il vit dans `_validate_and_secure`, traverse par TOUT appelant."""
+        self.assertTrue(_svc._references_secret_column(
+            "SELECT password FROM authentication_customuser"))
+
+    # ── Non-regression : l'usage legitime reste possible ──────────────────
+    def test_colonnes_ordinaires_acceptees(self):
+        self._accepted(
+            "SELECT username, email FROM authentication_customuser")
+
+    def test_comptage_des_comptes_accepte(self):
+        self._accepted("SELECT COUNT(*) FROM authentication_customuser")
+
+    def test_politique_de_mot_de_passe_toujours_lisible(self):
+        """`password_min_length` n'est PAS un secret : la frontiere de mot doit
+        etre stricte (le `_` est un caractere de mot)."""
+        self.assertFalse(_svc._references_secret_column(
+            "SELECT password_min_length FROM parametres_companyprofile"))
+        self.assertFalse(_svc._references_secret_column(
+            "SELECT must_change_password FROM authentication_customuser"))
+
+    def test_etoile_sur_une_table_non_sensible_inchangee(self):
+        self.assertFalse(
+            _svc._references_secret_column("SELECT * FROM crm_client"))
+
+
 if __name__ == "__main__":
     unittest.main()

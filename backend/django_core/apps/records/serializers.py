@@ -33,8 +33,25 @@ def resolve_target(model_label, object_id, company):
     except (ct.model_class().DoesNotExist, ValueError, TypeError):
         raise ValueError('Cible introuvable.')
     obj_company = getattr(obj, 'company_id', None)
-    if company is not None and obj_company not in (None, company.id):
+    # AUD416 — une cible à ``company_id IS NULL`` était traitée comme PARTAGÉE
+    # entre toutes les sociétés : le ``not in (None, company.id)`` la laissait
+    # passer pour n'importe quel appelant. Or 13 des 39 cibles autorisées ont un
+    # ``company`` nullable au niveau du SCHÉMA (crm.client, crm.lead,
+    # stock.produit, ged.document, sav.ticket, ventes.devis…) — aucun chemin
+    # applicatif connu n'en produit aujourd'hui, mais AUCUNE contrainte de base
+    # ne l'empêche. Une telle ligne devenait une cible où deux sociétés
+    # attachaient notes et pièces jointes sans le savoir. Un objet sans société
+    # n'a pas de propriétaire légitime : il est refusé pour TOUT appelant.
+    if obj_company is None:
+        raise ValueError('Cible sans société — non exploitable.')
+    if company is not None and obj_company != company.id:
         raise ValueError('Cible hors de votre société.')
+    # NOTE (AUD416) — le volet « symétrique » (refuser aussi ``company is
+    # None``) n'est délibérément PAS appliqué : ``records.views._scoped`` accorde
+    # explicitement au superuser SANS société d'attache une lecture de
+    # plateforme, et le refuser ici casserait ce chemin sans fermer la fuite
+    # auditée (qui vient toujours d'une cible sans société, désormais close pour
+    # tout le monde).
     return ct, obj
 
 

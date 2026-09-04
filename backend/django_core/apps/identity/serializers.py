@@ -1,6 +1,7 @@
 """Sérialiseurs de la fondation Identité & accès."""
 import ipaddress
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
@@ -25,7 +26,19 @@ class IpAllowRuleSerializer(serializers.ModelSerializer):
 
 
 class NetworkPolicySerializer(serializers.ModelSerializer):
-    rules = IpAllowRuleSerializer(many=True, read_only=True)
+    # AUD406 — défense en profondeur : n'exposer que les règles de la société
+    # propriétaire de la politique. Une règle étrangère rattachée par erreur
+    # (le trou refermé côté ``IpAllowRuleViewSet.perform_update``) ne doit ni
+    # s'afficher chez le voisin ni laisser croire qu'elle le protège.
+    rules = serializers.SerializerMethodField()
+
+    @extend_schema_field(IpAllowRuleSerializer(many=True))
+    def get_rules(self, obj):
+        # Filtré EN PYTHON pour ne pas casser le ``prefetch_related('rules')``
+        # du viewset (une requête de plus par politique sinon).
+        propres = [r for r in obj.rules.all()
+                   if r.company_id == obj.company_id]
+        return IpAllowRuleSerializer(propres, many=True).data
 
     class Meta:
         model = NetworkPolicy

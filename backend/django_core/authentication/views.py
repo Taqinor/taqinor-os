@@ -334,6 +334,13 @@ class CookieTokenRefreshView(APIView):
     Le client n'a pas besoin d'envoyer quoi que ce soit dans le body.
     """
     permission_classes = [permissions.AllowAny]
+    # AUD408 — cette vue ne lit QUE le cookie refresh (jamais ``request.user``).
+    # Sans cette ligne, le cookie d'accès d'une session révoquée ferait échouer
+    # l'authentification par défaut AVANT le corps de la vue, et le client
+    # recevrait « Session révoquée » au lieu du 401 « refresh invalide » qui
+    # décrit sa vraie situation. Le contrôle de révocation reste porté par le
+    # refresh (blacklist) et par ``session_policy``.
+    authentication_classes = []
 
     def post(self, request):
         refresh_raw = request.COOKIES.get('refresh_token')
@@ -558,6 +565,23 @@ class RegisterCompanyView(generics.GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # AUD402 — force de mot de passe à la CRÉATION (jusqu'ici seul
+        # ``ChangePasswordView`` câblait AUTH_PASSWORD_VALIDATORS : un signup
+        # public passait avec « 1 »). Validé AVANT de créer la société, pour
+        # qu'un refus ne laisse aucune Company orpheline. La société n'existe
+        # pas encore → pas de politique FG22 applicable, seuls les validateurs
+        # Django (dont la longueur minimale) s'appliquent ici.
+        from .password_policy import validate_new_password
+        password_errors = validate_new_password(
+            password, None,
+            user=CustomUser(username=username, email=email),
+        )
+        if password_errors:
+            return Response(
+                {'password': password_errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         slug_base = slugify(company_nom) or 'company'
         slug = slug_base
         i = 1
@@ -668,6 +692,19 @@ class LogoutView(generics.GenericAPIView):
                 token = RefreshToken(refresh_raw)
                 token.blacklist()
             except TokenError:
+                pass
+            # AUD408 — la déconnexion marque AUSSI la ligne de session comme
+            # révoquée : c'est ce drapeau qui coupe le jeton d'ACCÈS déjà émis
+            # (claim ``sid``, cf. session_policy). Sans lui, le logout ne
+            # fermait que le refresh et l'appareil restait authentifié jusqu'à
+            # 30 min. Best-effort : ne fait jamais échouer la déconnexion.
+            try:
+                jti = _refresh_jti(refresh_raw)
+                if jti:
+                    UserSession.objects.filter(
+                        user=request.user, jti=jti, revoked=False,
+                    ).update(revoked=True)
+            except Exception:
                 pass
         # Journal d'activité (Feature G) — déconnexion. Best-effort.
         try:
@@ -1519,12 +1556,16 @@ class SessionRevokeView(APIView):
                 {'detail': 'Session introuvable.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        # AUD408 — le ``jti`` courant est lu AVANT le blacklistage : après lui,
+        # ``RefreshToken(raw)`` lève (jeton blacklisté) et ``_refresh_jti``
+        # renvoyait None, donc la branche « c'est ma propre session » ne se
+        # déclenchait JAMAIS et les cookies de l'appareil n'étaient pas effacés.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
         _blacklist_refresh_jti(session.jti)
         session.revoked = True
         session.save(update_fields=['revoked'])
         # Si l'utilisateur révoque SA session courante, on efface ses cookies
         # pour le déconnecter immédiatement de cet appareil.
-        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
         response = Response({'detail': 'Session révoquée.'})
         if current_jti and current_jti == session.jti:
             _clear_auth_cookies(response)
@@ -1543,8 +1584,6 @@ class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError as DjValidationError
         from django.utils import timezone
         user = request.user
         current = request.data.get('current_password', '')
@@ -1559,21 +1598,15 @@ class ChangePasswordView(APIView):
                 {'detail': 'Le nouveau mot de passe est requis.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            validate_password(new, user=user)
-        except DjValidationError as exc:
+        # AUD402 — validateurs Django + politique société FG22 via l'entrée
+        # UNIQUE ``validate_new_password`` (le même helper garde désormais les
+        # deux chemins de CRÉATION de compte). Messages et statut inchangés.
+        from .password_policy import validate_new_password
+        password_errors = validate_new_password(
+            new, getattr(user, 'company', None), user=user)
+        if password_errors:
             return Response(
-                {'detail': ' '.join(exc.messages)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # FG22 — politique par société (longueur/complexité) en plus des
-        # validateurs Django. Inerte tant que la société n'a rien durci.
-        from .password_policy import validate_password_policy
-        policy_errors = validate_password_policy(
-            new, getattr(user, 'company', None))
-        if policy_errors:
-            return Response(
-                {'detail': ' '.join(policy_errors)},
+                {'detail': ' '.join(password_errors)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         user.set_password(new)

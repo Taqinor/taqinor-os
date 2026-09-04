@@ -195,7 +195,17 @@ def refuser(demande, *, par=None, now=None):
 
 
 def terminer(demande, *, now=None):
-    """Clôt la session (idempotent). Le jeton émis meurt avec `expire_le`."""
+    """Clôt la session (idempotent) — et le jeton émis meurt AVEC elle.
+
+    AUD404 : cette fonction n'a jamais fait qu'écrire `terminee_le` en base, et
+    le jeton d'accès d'impersonation, autoporteur et borné par son seul `exp`
+    (jusqu'à 30 min), continuait d'authentifier le support avec un accès complet
+    à toute la société — le coupe-circuit était cosmétique. Le drapeau posé ici
+    est désormais LU comme garde d'authentification par
+    `CookieJWTAuthentication.authenticate()` (via `est_active()`, le même
+    invariant que tout ce module) : couper la session coupe l'accès à la requête
+    SUIVANTE. Aucune blacklist n'est nécessaire — l'état de la session fait foi.
+    """
     if demande.terminee_le is None:
         demande.terminee_le = now or timezone.now()
         demande.save(update_fields=['terminee_le', 'updated_at'])

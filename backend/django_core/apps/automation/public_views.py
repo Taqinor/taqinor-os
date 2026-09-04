@@ -49,6 +49,43 @@ def _throttled(token):
         return False
 
 
+class _WebhookIpThrottle(SimpleRateThrottle):
+    """AUD420 — débit PAR IP, applicable AVANT que le token soit résolu.
+
+    Le throttle par token ne protège que ce qui vient APRÈS la résolution : un
+    scan bouclant sur des tokens inconnus déclenchait une requête base à chaque
+    appel sans jamais être ralenti (toutes 404, aucune 429). Le dépôt porte
+    déjà le bon patron sur ses deux autres surfaces publiques
+    (``sav.SavPublicThrottle``, ``stock.QuaiCheckinThrottle`` : throttle par IP
+    appliqué avant le corps de la vue) — cette vue étant une vue Django simple
+    et non DRF, ``@throttle_classes`` ne s'y applique pas, on appelle donc le
+    même mécanisme à la main, en TÊTE de la vue.
+
+    Le taux est écrit ici (comme ses deux jumeaux) plutôt que dans
+    ``DEFAULT_THROTTLE_RATES`` : il est délibérément PLUS HAUT que le plafond
+    par token (60/min) pour ne jamais gêner un intégrateur légitime qui
+    alimente plusieurs webhooks depuis la même IP, tout en bornant le coût d'un
+    scan.
+    """
+    scope = 'automation_webhook_ip'
+    rate = '120/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request),
+        }
+
+
+def _throttled_ip(request):
+    try:
+        return not _WebhookIpThrottle().allow_request(request, None)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        return False
+
+
 def _verify_signature(trigger, raw_body, provided_sig):
     if not trigger.hmac_secret:
         return True  # signature optionnelle : token seul suffit
@@ -68,6 +105,14 @@ def _verify_signature(trigger, raw_body, provided_sig):
 @csrf_exempt
 @require_POST
 def incoming_webhook(request, token):
+    # AUD420 — le débit par IP est mesuré AVANT toute lecture en base : sinon
+    # un token INEXISTANT ou DÉSACTIVÉ déclenchait une requête à chaque appel
+    # sans aucune limite (le throttle par token ne s'appliquait qu'APRÈS avoir
+    # trouvé un trigger). Le token fait 256 bits, ce n'est donc pas un vecteur
+    # de force brute — mais le coût base d'un scan n'était pas borné.
+    if _throttled_ip(request):
+        return JsonResponse({'detail': 'Trop de requêtes.'}, status=429)
+
     trigger = (
         IncomingWebhookTrigger.objects
         .select_related('rule', 'company')
