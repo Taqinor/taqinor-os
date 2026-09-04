@@ -373,6 +373,19 @@ def commit(company, user, token, lignes=None):
     OPEN_STATUTS = (Facture.Statut.EMISE.value, Facture.Statut.EN_RETARD.value)
     demandees = None if lignes is None else {int(x) for x in lignes}
 
+    # AUD122 — verrou de période : la date de chaque ligne vient de la colonne
+    # « date » du relevé, donc de l'extérieur. Un relevé de décembre importé en
+    # février créait des encaissements dans un exercice clôturé sans qu'aucune
+    # garde ne s'y oppose. On vérifie TOUTES les lignes à écrire AVANT d'en
+    # écrire une seule : la garde lève (→ 400) et rien n'est créé.
+    from .utils.periode import guard_periode_date
+    for decision in (session.decisions or []):
+        if decision.get('statut') != STATUT_IMPORTABLE:
+            continue
+        if demandees is not None and decision.get('ligne') not in demandees:
+            continue
+        guard_periode_date(company, decision.get('date'))
+
     created = 0
     skipped = 0
     errors = 0

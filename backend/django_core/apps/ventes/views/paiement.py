@@ -36,6 +36,10 @@ from authentication.permissions import (  # noqa: F401
 from core.permissions import declared_action_permissions
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+# AUD122 — garde de période comptable PARTAGÉE : aucun de ces chemins ne
+# l'appliquait, alors que chacun écrit de l'argent à une date fournie par
+# l'appelant (voir utils/periode.py).
+from ..utils.periode import guard_periode_date  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -107,6 +111,12 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': 'Le motif du rejet est obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AUD122 — un rejet daté dans un exercice clôturé rouvrirait une
+        # facture PAYÉE de cette période. Garde AVANT toute écriture.
+        from django.utils import timezone as _tz
+        guard_periode_date(
+            paiement.company,
+            request.data.get('date_rejet') or _tz.now().date())
         try:
             rejeter_paiement(
                 paiement=paiement, motif=motif,
@@ -176,6 +186,10 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # AUD122 — la ventilation déplace de l'argent DATÉ (la date de
+        # l'avance) : si cette date tombe dans un exercice clôturé, le
+        # lettrage de cette période changerait. Garde AVANT l'écriture.
+        guard_periode_date(paiement.company, paiement.date_paiement)
         try:
             affectation = _ventiler_avance(
                 paiement=paiement, facture=facture,
@@ -203,6 +217,10 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # AUD122 — même garde que le chemin `enregistrer-paiement` de
+        # `views/facture.py` : la date du règlement vient du corps de la
+        # requête, elle peut tomber dans un exercice clôturé.
+        guard_periode_date(facture.company, request.data.get('date_paiement'))
         try:
             paiement, retenue = _enregistrer_avec_retenue(
                 facture=facture, montant=request.data.get('montant'),

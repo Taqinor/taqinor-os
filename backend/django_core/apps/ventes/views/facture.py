@@ -38,6 +38,10 @@ from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+# AUD122 — garde de période comptable PARTAGÉE (voir utils/periode.py).
+from ..utils.periode import (  # noqa: F401
+    DatedDocument, guard_periode_date, guard_periode_verrouillee,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -122,14 +126,12 @@ def _company_qs(qs, user):
     return qs.none()
 
 
-class _DatedDocument:
-    """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
-    ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
-    n'est pas ``Facture.date_emission`` (ex. la date d'un paiement)."""
-
-    def __init__(self, company, une_date):
-        self.company = company
-        self.date_emission = une_date
+# AUD122 — la garde de période et son adaptateur vivent désormais dans
+# ``apps/ventes/utils/periode.py`` (module partagé) : ils étaient dupliqués
+# ici et dans ``views/avoir.py``, et donc absents des 4 autres chemins qui
+# créent un Paiement à une date fournie par l'appelant. L'alias local garde
+# les appels existants de ce module inchangés au caractère près.
+_DatedDocument = DatedDocument
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -188,19 +190,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @staticmethod
     def _guard_periode_verrouillee(document):
         """YLEDG3 — refuse (400) une mutation d'un document ventes daté dans
-        une période comptable CLÔTURÉE (FG115). Society/app compta absente ou
-        aucune période verrouillée = garde silencieuse (comportement actuel
-        inchangé). Import function-local de ``apps.compta.services`` — cross-
-        app services autorisé, jamais un import de ``apps.compta.models``."""
-        try:
-            from apps.compta.services import verifier_facture_modifiable
-        except Exception:  # noqa: BLE001 — compta absent = no-op
-            return
-        try:
-            verifier_facture_modifiable(document)
-        except DjangoValidationError as exc:
-            raise ValidationError({'detail': exc.messages[0]
-                                   if exc.messages else str(exc)})
+        une période comptable CLÔTURÉE (FG115). AUD122 — le corps est
+        désormais la fonction PARTAGÉE ``utils.periode`` : même garde, même
+        no-op silencieux quand compta est absente ou qu'aucune période n'est
+        verrouillée."""
+        guard_periode_verrouillee(document)
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
