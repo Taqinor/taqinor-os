@@ -1977,9 +1977,20 @@ jobs:
       # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
       # assertions tournent en moins d'une minute, le reste est la restauration
       # WOW8 que le volet A raccourcit déjà.
+      # AUD422 — la suite de déni cross-tenant sur les CINQ TABLES ARGENT
+      # (compta.EcritureComptable/LigneEcriture, ventes.Devis,
+      # facturation.Facture/Paiement) rejoint le sceau NTPLT5 dans ce même job :
+      # elle est opt-in par le MÊME flag, elle a les mêmes besoins (PostgreSQL
+      # réel + rôle NOBYPASSRLS), et la lancer ailleurs coûterait une seconde
+      # restauration WOW8 pour ~1 min d'assertions. Elle vérifie en plus que les
+      # policies posées par les migrations AUD422 sont bien là.
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2 --keepdb --parallel 1
+        run: >-
+          python manage.py test
+          core.tests.test_rls
+          core.tests.test_rls_cross_tenant_denial
+          -v 2 --keepdb --parallel 1
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
