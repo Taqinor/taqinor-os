@@ -64,6 +64,10 @@ PARAMETRES_DEFAUT_2026 = {
     # n'est changée ici : le taux est désormais VISIBLE et ÉDITABLE dans
     # l'écran « Paramètres de paie », et le drapeau ``valide_par_fondateur``
     # avertit tant que le fondateur/comptable n'a pas confirmé.
+    # PROPRIÉTAIRES DU TAUX (il n'en reste que deux, verrouillés égaux par
+    # ``test_aud710_parametres_valides``) : cette table de semis et le DÉFAUT
+    # DU CHAMP ``ParametrePaie.taux_amo_patronal`` — seul repli lu par
+    # ``selectors.taux_charges_patronales``, qui ne recopie plus de littéral.
     'taux_amo_patronal': Decimal('2.26'),
     # PAIE23 — Allocations familiales (charge patronale, non plafonnée, ~6,4 %).
     'taux_allocations_familiales': Decimal('6.4'),
