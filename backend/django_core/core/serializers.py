@@ -506,7 +506,20 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+
+    AUD809 — DÉFENSE EN PROFONDEUR derrière l'append-only du ViewSet : les
+    champs de PREUVE du double opt-in (``granted``, ``occurred_at``,
+    ``version_texte``, ``ip_confirmation``) ne sont écrivables qu'à la CRÉATION.
+    Un retrait de consentement s'enregistre par une NOUVELLE ligne
+    ``granted=False`` — jamais en réécrivant la preuve d'une ligne existante,
+    ce qui reviendrait à fabriquer (ou détruire) une preuve légale.
     """
+    # Écrits à la création, jamais modifiables ensuite : DRF n'expose plus de
+    # PUT/PATCH sur ce ViewSet (append-only), et si un futur chemin d'écriture
+    # apparaissait, ces champs resteraient figés sur une ligne existante.
+    _CHAMPS_PREUVE = ('granted', 'occurred_at', 'version_texte',
+                      'ip_confirmation')
+
     class Meta:
         model = ConsentRecord
         fields = [
@@ -515,6 +528,14 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self.instance is not None:
+            for nom in self._CHAMPS_PREUVE:
+                if nom in fields:
+                    fields[nom].read_only = True
+        return fields
 
 
 class DataSubjectRequestSerializer(serializers.ModelSerializer):

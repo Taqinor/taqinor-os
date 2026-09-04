@@ -13,7 +13,10 @@ Couvre :
   * AUD816 — ``core.events.bulk_edit_applied`` (émis par ``core.bulk_edit``,
     qui écrit par ``queryset.update()`` donc SANS aucun signal CRUD) produit
     UNE ligne ``AuditLog`` portant la cible, les champs, le nombre de lignes,
-    l'auteur et la société.
+    l'auteur et la société ;
+  * AUD809 — les trois registres légaux CNDP / loi 09-08 sont suivis, et la
+    CRÉATION d'un consentement (seule écriture encore possible : les registres
+    sont append-only) écrit sa ligne ``AuditLog``.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -61,6 +64,42 @@ class Aud813ChangelogJournalTests(TestCase):
         self.assertTrue(
             AuditLog.objects.filter(
                 object_repr__icontains='Tracée AUD813',
+                action=AuditLog.Action.CREATE).exists())
+
+
+class Aud809RegistresCndpJournalTests(TestCase):
+    """AUD809 — les trois registres légaux CNDP sont suivis par le Journal."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='AUD809 Journal SARL')
+        cls.admin = User.objects.create_user(
+            username='aud809j_admin', password='x', company=cls.company,
+            role_legacy='admin')
+        cls.factory = APIRequestFactory()
+
+    def test_les_trois_registres_sont_suivis(self):
+        for modele in ('ConsentRecord', 'DataSubjectRequest',
+                       'RegistreTraitement'):
+            self.assertIn(('core', modele), TRACKED_MODELS)
+
+    def test_creation_d_un_consentement_ecrit_une_ligne(self):
+        from core.views import ConsentRecordViewSet
+
+        req = self.factory.post('/consent-records/', {
+            'subject_identifier': 'aud809j@example.ma',
+            'purpose': 'marketing', 'granted': True,
+        }, format='json')
+        force_authenticate(req, user=self.admin)
+        recorder.begin_request(req)
+        try:
+            resp = ConsentRecordViewSet.as_view({'post': 'create'})(req)
+        finally:
+            recorder.end_request()
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                object_repr__icontains='aud809j@example.ma',
                 action=AuditLog.Action.CREATE).exists())
 
 

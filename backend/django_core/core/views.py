@@ -745,10 +745,23 @@ class ConsentRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     Réservé au palier admin/responsable (donnée de conformité sensible). Aucune
     importation d'app domaine : la personne est désignée par un identifiant
     générique (email/téléphone).
+
+    AUD809 — REGISTRE LÉGAL, DONC APPEND-ONLY. C'était un ``ModelViewSet``
+    complet : un Responsable pouvait PATCH une ligne pour FABRIQUER une preuve
+    de consentement (``granted``/``occurred_at``/``version_texte``/
+    ``ip_confirmation`` sont les preuves du double opt-in), ou DELETE pour faire
+    disparaître un refus — sans aucune trace (le modèle n'était pas suivi par le
+    Journal d'activité). La correction est en trois temps : plus aucune méthode
+    de MODIFICATION ni de SUPPRESSION (``http_method_names``), champs de preuve
+    en lecture seule (un RETRAIT de consentement = une NOUVELLE ligne
+    ``granted=False``, jamais une réécriture), et le modèle ajouté à
+    ``apps.audit.signals.TRACKED_MODELS``.
     """
     serializer_class = ConsentRecordSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = ConsentRecord.objects.all()
+    # AUD809 — append-only : lecture + création, jamais PUT/PATCH/DELETE.
+    http_method_names = ['get', 'post', 'head', 'options']
 
 
 class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -761,10 +774,17 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
 
       * ``POST …/dsr-requests/{id}/traiter/`` — exécute la demande (accès →
         export agrégé ; effacement → suppression/anonymisation agrégée).
+
+    AUD809 — APPEND-ONLY (même raison que ``ConsentRecordViewSet``) : une
+    demande supprimée, c'est un dépassement de délai légal effacé. Le cycle de
+    vie légitime passe par l'action ``traiter`` (le statut et le résultat sont
+    déjà en lecture seule au sérialiseur), jamais par un DELETE.
     """
     serializer_class = DataSubjectRequestSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = DataSubjectRequest.objects.all()
+    # AUD809 — append-only ; ``traiter`` (POST) reste le seul chemin d'évolution.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     @action(detail=True, methods=['post'])
     def traiter(self, request, pk=None):
@@ -782,11 +802,26 @@ class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
     importation d'app domaine.
 
       * ``GET …/registre-traitements/export-csv/`` — export CSV du registre.
+
+    AUD809 — APPEND-ONLY (même famille que les deux registres ci-dessus) : le
+    registre des traitements est le document que la CNDP peut exiger ; un
+    ``ModelViewSet`` complet, sans immuabilité ni trace, permettait de le
+    réécrire ou d'en supprimer une ligne après coup. Une évolution se déclare
+    par une NOUVELLE ligne (le champ ``actif`` porte l'état de la version
+    courante), jamais par une réécriture de l'ancienne.
+
+    CONSÉQUENCE FRONTEND connue et assumée : ``frontend/src/pages/parametres/
+    ConfidentialiteSection.jsx`` appelle encore ``update`` (bascule ``actif``)
+    et ``remove`` sur ce registre — ces deux boutons renverront 405 tant que
+    l'écran n'est pas recâblé sur une création de nouvelle version. Hors
+    périmètre de cette tâche (Files: backend uniquement).
     """
     serializer_class = RegistreTraitementSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = RegistreTraitement.objects.all()
     pagination_class = None
+    # AUD809 — append-only : lecture + création, jamais PUT/PATCH/DELETE.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     @action(detail=False, methods=['get'], url_path='export-csv')
     def export_csv(self, request):
