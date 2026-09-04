@@ -15,7 +15,7 @@ from .models import (
     Budget, BudgetLigne, Caisse, CautionBancaire, CessionImmobilisation,
     ChargeConstateeAvance,
     CompteComptable,
-    CompteTresorerie, EcheanceEmprunt,
+    CompteTresorerie,
     Effet, Emprunt,
     EntiteConsolidation, Immobilisation, IndemniteChantier, LigneEcriture,
     LignePrevisionnelTresorerie,
@@ -1890,11 +1890,15 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
         date_echeance__lt=fin_horizon,
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).order_by('date_echeance', 'id'))
-    # XACC14 — échéances d'emprunt FUTURES non postées : décaissement prévu.
-    echeances_emprunt = list(EcheanceEmprunt.objects.filter(
-        company=company, date_echeance__gte=debut,
-        date_echeance__lt=fin_horizon, posted=False,
-    ).select_related('emprunt').order_by('date_echeance', 'id'))
+    # XACC14 / AUDV01 — échéances d'emprunt FUTURES non postées : décaissement
+    # prévu. UNE SEULE source de vérité : ``services.injecter_echeances_
+    # previsionnel``. Ce sélecteur refaisait la même requête à côté pendant que
+    # cette fonction restait orpheline (DRAFT165-34) — deux copies d'une même
+    # règle finissent toujours par diverger. Import local : même patron que le
+    # reste du module (évite tout cycle selectors ↔ services au chargement).
+    from . import services as _svc
+    lignes_emprunt = _svc.injecter_echeances_previsionnel(
+        company, date_debut=debut, nb_semaines=nb_semaines)
 
     semaines = []
     for i in range(nb_semaines):
@@ -1934,17 +1938,21 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13,
                     'date': ef.date_echeance,
                     'montant': signe,
                 })
-        for ee in echeances_emprunt:
-            if s_debut <= ee.date_echeance <= s_fin:
-                montant = ee.mensualite or Decimal('0')
-                sorties += montant
+        for le in lignes_emprunt:
+            if s_debut <= le['date'] <= s_fin:
+                # ``montant`` est déjà NÉGATIF (décaissement) côté service ;
+                # ``sorties`` compte en valeur absolue comme les effets.
+                sorties += -le['montant']
+                # Les clés publiées restent EXACTEMENT celles des autres types
+                # de ligne (``date_prevue``, propre au modèle
+                # ``LignePrevisionnelTresorerie``, n'est pas republiée ici) :
+                # la forme du contrat ne bouge pas.
                 lignes.append({
-                    'type': 'echeance_emprunt',
-                    'libelle': (
-                        f'Échéance emprunt {ee.emprunt.banque or ee.emprunt.reference}'),
-                    'categorie': 'decaissement',
-                    'date': ee.date_echeance,
-                    'montant': -montant,
+                    'type': le['type'],
+                    'libelle': le['libelle'],
+                    'categorie': le['categorie'],
+                    'date': le['date'],
+                    'montant': le['montant'],
                 })
         flux_net = entrees - sorties
         solde += flux_net

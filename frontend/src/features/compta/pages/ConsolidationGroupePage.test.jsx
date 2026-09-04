@@ -6,6 +6,7 @@ import { Provider } from 'react-redux'
 import { toast } from '../../../ui'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* PACT33 — Consolidation groupe (NTFIN1-9). Un cycle VERROUILLÉ refuse toute
    modification de collecte (400 serveur) — l'écran doit afficher ce refus TEL
@@ -26,12 +27,19 @@ const mocks = vi.hoisted(() => ({
   cycles: vi.fn(),
   collecter: vi.fn(),
   exercices: vi.fn(),
+  // AUDV05 — conversion d'une liasse en devise de présentation (NTFIN5).
+  convertirEntite: vi.fn(),
+  liasses: vi.fn().mockResolvedValue({ data: [] }),
 }))
 
 vi.mock('../../../api/comptaApi', () => ({
   default: {
-    cyclesConsolidation: { list: mocks.cycles, collecter: mocks.collecter },
-    liassesRemontee: { list: vi.fn().mockResolvedValue({ data: [] }) },
+    cyclesConsolidation: {
+      list: mocks.cycles,
+      collecter: mocks.collecter,
+      convertirEntite: mocks.convertirEntite,
+    },
+    liassesRemontee: { list: mocks.liasses },
     mappingsConsolidation: { list: vi.fn().mockResolvedValue({ data: [] }) },
     operationsInterco: { list: vi.fn().mockResolvedValue({ data: [] }) },
     margesInternesStock: { list: vi.fn().mockResolvedValue({ data: [] }) },
@@ -43,13 +51,13 @@ vi.mock('../../../api/comptaApi', () => ({
 
 import ConsolidationGroupePage from './ConsolidationGroupePage.jsx'
 
-function mount() {
+function mount({ route = '/' } = {}) {
   const store = configureStore({
     reducer: { auth: () => ({ role: 'admin', role_nom: null, permissions: [] }) },
   })
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[route]}>
         <ThemeProvider><ConsolidationGroupePage /></ThemeProvider>
       </MemoryRouter>
     </Provider>,
@@ -91,5 +99,52 @@ describe('ConsolidationGroupePage — cycle verrouillé (PACT33)', () => {
     expect(await screen.findByRole('menuitem', { name: /Ouvrir \(déverrouiller\)/i }))
       .toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Verrouiller' })).toBeNull()
+  })
+})
+
+/* AUDV05 / NTFIN5 (DRAFT165-50) — `services.convertir_entite` n'avait aucun
+   appelant : un groupe avec une filiale en devise étrangère ne pouvait PAS
+   consolider depuis l'écran. La charge utile vient de l'exemple COMMITTÉ
+   (`apps/compta/contract_samples/consolidation_conversion_entite.json`), le
+   même que le test backend affirme contre la vraie réponse de la vue. */
+describe('ConsolidationGroupePage — conversion de devise (AUDV05)', () => {
+  it('convertit une liasse et AFFICHE l’écart de conversion du serveur', async () => {
+    const conversion = exempleContrat('compta', 'consolidation_conversion_entite')
+    mocks.exercices.mockResolvedValue({ data: [] })
+    mocks.cycles.mockResolvedValue({ data: [] })
+    mocks.liasses.mockResolvedValue({
+      data: [{ id: conversion.liasse, cycle: 4, entite: 9,
+        devise_locale: 'EUR', statut: 'collecte',
+        statut_display: 'Collectée', date_collecte: '2026-08-31' }],
+    })
+    mocks.convertirEntite.mockResolvedValue({ data: conversion })
+
+    mount({ route: '/?onglet=liasses' })
+
+    const ligne = (await screen.findAllByText('EUR'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(
+      within(ligne).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByRole(
+      'menuitem', { name: /Convertir en devise de présentation/i }))
+
+    fireEvent.change(screen.getByLabelText(/Cours de clôture/), {
+      target: { value: '10' },
+    })
+    fireEvent.change(screen.getByLabelText(/Cours moyen/), {
+      target: { value: '11' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Convertir' }))
+
+    await waitFor(() => {
+      expect(mocks.convertirEntite).toHaveBeenCalledWith(4, {
+        liasse: conversion.liasse, taux_cloture: '10', taux_moyen: '11',
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Écart de conversion (CTA)')).toBeInTheDocument()
+    })
+    // Le compte converti est rendu tel que le serveur l'a calculé.
+    expect(screen.getByText(conversion.lignes[0].numero)).toBeInTheDocument()
   })
 })

@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/compta/etats/previsionnel-tresorerie/",
-  "pourquoi": "WIR182 — la colonne « Solde projeté » de TresoreriePage lisait `s.solde_projete`, une clé qui n'a JAMAIS existé côté serveur (`apps/compta/selectors.py::previsionnel_tresorerie` renvoie `solde_fin` par semaine) : l'écran affichait « — » pour toujours, sans la moindre erreur. PACT10 — cet exemple est le porteur du contrat entre `apps/compta/selectors.py` (que `scripts/check_api_shapes.py` compare statiquement à ce fichier) et `frontend/src/features/compta/compta-xacc2.test.jsx` (qui l'IMPORTE au lieu de retaper `{semaines: []}` à la main, PACT13) : si le serveur renomme ou retire une clé, cet exemple diverge et la garde CI rougit AVANT qu'un écran ne retombe en silence sur des tirets.",
+  "pourquoi": "WIR182 — la colonne « Solde projeté » de TresoreriePage lisait `s.solde_projete`, une clé qui n'a JAMAIS existé côté serveur (`apps/compta/selectors.py::previsionnel_tresorerie` renvoie `solde_fin` par semaine) : l'écran affichait « — » pour toujours, sans la moindre erreur. PACT10 — cet exemple est le porteur du contrat entre `apps/compta/selectors.py` (que `scripts/check_api_shapes.py` compare statiquement à ce fichier) et `frontend/src/features/compta/compta-xacc2.test.jsx` (qui l'IMPORTE au lieu de retaper `{semaines: []}` à la main, PACT13) : si le serveur renomme ou retire une clé, cet exemple diverge et la garde CI rougit AVANT qu'un écran ne retombe en silence sur des tirets. AUDV01/DRAFT165-34 — l'exemple porte désormais aussi une ligne `semaines[].lignes[]` de type `echeance_emprunt` : les remboursements de crédit (XACC14) sont agrégés dans `sorties` par `services.injecter_echeances_previsionnel`, seule source de ces lignes, et l'écran doit les NOMMER (un montant fondu dans « Sorties » sans libellé est invisible pour le comptable). Une ligne porte exactement `{type, libelle, categorie, date, montant}` — `montant` NÉGATIF pour un décaissement — quel que soit son type (`prevu`, `effet`, `echeance_emprunt`).",
   "exemple": {
     "solde_initial": 0,
     "date_debut": "2026-08-24",
@@ -16,6 +16,24 @@
         "flux_net": 4000,
         "solde_fin": 4000,
         "lignes": []
+      },
+      {
+        "index": 2,
+        "date_debut": "2026-08-31",
+        "date_fin": "2026-09-06",
+        "entrees": 0,
+        "sorties": 3336.25,
+        "flux_net": -3336.25,
+        "solde_fin": 663.75,
+        "lignes": [
+          {
+            "type": "echeance_emprunt",
+            "libelle": "Échéance emprunt Banque Populaire",
+            "categorie": "decaissement",
+            "date": "2026-09-01",
+            "montant": -3336.25
+          }
+        ]
       }
     ]
   }

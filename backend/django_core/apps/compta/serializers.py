@@ -81,6 +81,12 @@ from .models import (
     # paramétrables) : services complets, aucun ViewSet jusqu'ici.
     Emprunt, EcheanceEmprunt,
     EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
+    # AUDV06 / XACC17-XACC18 — devises : taux, postes ouverts, écarts de
+    # change réalisés et runs de réévaluation de clôture.
+    TauxDevise, ItemOuvertDevise, EcartChange, ReevaluationCloture,
+    LigneReevaluation,
+    # AUDV09 / XACC20 — règles d'auto-imputation analytique.
+    RegleImputation, LigneRegleImputation,
 )
 
 
@@ -3513,7 +3519,14 @@ class DepreciationImmobilisationSerializer(serializers.ModelSerializer):
 
 
 class MutationImmobilisationSerializer(serializers.ModelSerializer):
-    """NTFIN42 — Mutation/transfert d'immobilisation."""
+    """NTFIN42 — Mutation/transfert d'immobilisation.
+
+    AUDV05 — ``entite_source`` est en LECTURE SEULE : elle est DÉRIVÉE de la
+    société propriétaire de l'immobilisation par
+    ``services.muter_immobilisation``, jamais lue du corps. Laisser le client
+    la déclarer permettait d'inventer une entité d'origine pour un actif dont
+    le serveur connaît déjà le propriétaire.
+    """
     class Meta:
         model = MutationImmobilisation
         fields = [
@@ -3521,7 +3534,7 @@ class MutationImmobilisationSerializer(serializers.ModelSerializer):
             'entite_source', 'entite_cible', 'date', 'motif',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['entite_source', 'created_at', 'updated_at']
 
 
 class LigneImmobilisationEnCoursSerializer(serializers.ModelSerializer):
@@ -3843,3 +3856,164 @@ class EtatPersonnaliseSerializer(serializers.ModelSerializer):
             'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
+
+
+# ── AUDV06 / XACC17-XACC18 — Devises : taux, postes ouverts, écarts ────────
+
+class TauxDeviseSerializer(serializers.ModelSerializer):
+    """Taux de change quotidien ``devise`` → MAD (XACC17).
+
+    AUDV06 — le modèle et ``services.enregistrer_taux_devise`` existaient sans
+    aucun ViewSet : la table FX était inatteignable hors admin Django, donc
+    tout document en devise retombait sur le repli 1:1. La création est ROUTÉE
+    par le service (upsert par (société, devise, jour) ; règle « never snap » :
+    un feed n'écrase JAMAIS une saisie manuelle du même jour).
+    """
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = TauxDevise
+        fields = [
+            'id', 'devise', 'date_taux', 'taux_vers_mad', 'source',
+            'source_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "MAD n'a pas besoin de table de taux (1:1).")
+        return devise
+
+    def validate_taux_vers_mad(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                'Un taux de change doit être strictement positif.')
+        return value
+
+
+class EcartChangeSerializer(serializers.ModelSerializer):
+    """Écart de change RÉALISÉ au règlement (XACC18) — LECTURE SEULE.
+
+    Un écart ne se saisit pas : il est CONSTATÉ par
+    ``services.constater_ecart_change`` au règlement (gain 733 / perte 633).
+    """
+    class Meta:
+        model = EcartChange
+        fields = [
+            'id', 'item', 'date_reglement', 'taux_reglement', 'difference',
+            'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class ItemOuvertDeviseSerializer(serializers.ModelSerializer):
+    """Poste ouvert en devise suivi pour l'écart de change (XACC18).
+
+    ``taux_origine`` est FIGÉ à la création : ré-enregistrer le même document
+    renvoie l'item existant sans l'écraser — c'est la référence contre
+    laquelle l'écart sera mesuré. ``solde`` bascule au constat de l'écart,
+    jamais par le corps de la requête.
+    """
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    contre_valeur_origine = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    ecart_change = EcartChangeSerializer(read_only=True)
+
+    class Meta:
+        model = ItemOuvertDevise
+        fields = [
+            'id', 'type_document', 'type_document_display', 'document_id',
+            'document_reference', 'devise', 'montant_devise', 'taux_origine',
+            'date_origine', 'solde', 'contre_valeur_origine', 'ecart_change',
+            'date_creation',
+        ]
+        read_only_fields = ['solde', 'date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "Un document en MAD n'a pas besoin de suivi de change.")
+        return devise
+
+    def validate_taux_origine(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                "Le taux d'origine doit être strictement positif.")
+        return value
+
+
+class LigneReevaluationSerializer(serializers.ModelSerializer):
+    """Détail par poste d'un run de réévaluation de clôture (XACC18)."""
+    document_reference = serializers.CharField(
+        source='item.document_reference', read_only=True)
+    devise = serializers.CharField(source='item.devise', read_only=True)
+
+    class Meta:
+        model = LigneReevaluation
+        fields = [
+            'id', 'item', 'document_reference', 'devise', 'taux_cloture',
+            'ecart',
+        ]
+        read_only_fields = fields
+
+
+class LigneRegleImputationSerializer(serializers.ModelSerializer):
+    """Part (%) d'une règle d'imputation affectée à un centre de coût (XACC20)."""
+    centre_cout_libelle = serializers.CharField(
+        source='centre_cout.libelle', read_only=True)
+
+    class Meta:
+        model = LigneRegleImputation
+        fields = ['id', 'centre_cout', 'centre_cout_libelle', 'pourcentage']
+        read_only_fields = ['id']
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class RegleImputationSerializer(serializers.ModelSerializer):
+    """Règle d'AUTO-imputation analytique (XACC20).
+
+    AUDV09 — la règle et son moteur d'application existaient sans aucun
+    ViewSet : chaque écriture devait être ventilée à la main, indéfiniment.
+    Les ``distributions`` sont acceptées IMBRIQUÉES ; la vue route la création
+    vers ``services.creer_regle_imputation``, qui EXIGE une somme de 100 % —
+    une distribution partielle imputerait silencieusement une partie de la
+    charge nulle part.
+    """
+    distributions = LigneRegleImputationSerializer(many=True, required=False)
+
+    class Meta:
+        model = RegleImputation
+        fields = [
+            'id', 'libelle', 'prefixe_compte', 'tiers_id', 'produit_id',
+            'priorite', 'actif', 'distributions', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ReevaluationClotureSerializer(serializers.ModelSerializer):
+    """Run de réévaluation de clôture des postes en devise (XACC18).
+
+    LECTURE SEULE : un run naît de l'action ``lancer`` (idempotente par
+    (société, date de clôture)), qui poste l'écart LATENT et son extourne
+    datée du lendemain. Le rejouer ne double jamais l'écriture.
+    """
+    lignes = LigneReevaluationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReevaluationCloture
+        fields = [
+            'id', 'date_cloture', 'date_extourne', 'ecriture',
+            'ecriture_extourne', 'total_ecart', 'lignes', 'date_creation',
+        ]
+        read_only_fields = fields

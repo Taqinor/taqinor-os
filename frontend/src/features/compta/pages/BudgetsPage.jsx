@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Plus, PieChart, Download, BarChart3 } from 'lucide-react'
+import {
+  Plus, PieChart, Download, BarChart3, GitBranch, TrendingUp, TrendingDown,
+} from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, EmptyState, Card, Input, Label, toast,
@@ -24,6 +26,15 @@ import { EtatRender } from './EtatsPage.jsx'
    et une courbe (égale ou saisonnière solaire marocaine) — le serveur calcule
    les 12 montants (services.generer_ligne_budget_repartie).
    ========================================================================== */
+
+// AUDV09 / XACC22 — libellés des scénarios budgétaires. `engage` est LE
+// budget officiel : c'est le seul que le contrôle d'engagement (XACC21) et le
+// suivi budget-vs-réel (FG149) consomment.
+const SCENARIOS = {
+  engage: 'Engagé (officiel)',
+  optimiste: 'Optimiste',
+  pessimiste: 'Pessimiste',
+}
 
 const compteAsync = () => comptaApi.comptes.list({ page_size: 500 }).then((res) => {
   const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
@@ -208,8 +219,63 @@ export default function BudgetsPage() {
     { id: 'annee', header: 'Année', accessor: (r) => r.annee },
     { id: 'libelle', header: 'Libellé', accessor: (r) => r.libelle || '—' },
     { id: 'statut', header: 'Statut', accessor: (r) => r.statut_display || r.statut },
+    // AUDV09 / XACC22 — la VERSION et le SCÉNARIO étaient invisibles alors
+    // que le modèle les porte : sans eux, deux lignes « Budget 2026 » à
+    // l'écran sont indiscernables.
+    { id: 'version', header: 'Version', searchable: false,
+      accessor: (r) => `V${r.version ?? 1}${r.figee ? ' (figée)' : ''}` },
+    { id: 'scenario', header: 'Scénario', searchable: false,
+      accessor: (r) => SCENARIOS[r.scenario] || r.scenario || '—' },
     { id: 'lignes', header: 'Lignes', accessor: (r) => (r.lignes || []).length, searchable: false },
   ]
+
+  /* AUDV09 / XACC22 (DRAFT165-44) — RÉVISION budgétaire.
+     `services.reviser_budget` n'avait aucun appelant : un budget se modifiait
+     donc SUR PLACE, écrasant la version approuvée — plus aucune comparaison
+     « prévu à l'approbation » vs « prévu aujourd'hui » n'était possible. */
+  const reviser = async (row) => {
+    try {
+      await comptaApi.budgets.reviser(row.id, {})
+      toast.success(`Budget révisé — version ${(row.version ?? 1) + 1} créée.`)
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Révision impossible.'))
+    }
+  }
+
+  /* AUDV09 / XACC22 (DRAFT165-45) — SCÉNARIO what-if : une copie INDÉPENDANTE
+     du budget officiel. Sans elle, chiffrer une hypothèse haute ou basse
+     obligeait à toucher au budget engagé — donc on y touchait. */
+  const creerScenario = async (row, scenario) => {
+    try {
+      await comptaApi.budgets.scenarioWhatIf(row.id, scenario)
+      toast.success(`Scénario ${SCENARIOS[scenario]} créé.`)
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Scénario impossible.'))
+    }
+  }
+
+  const rowActions = (row) => {
+    const actions = []
+    if (!row.figee) {
+      actions.push({
+        id: 'reviser', label: 'Réviser (figer et créer la V+1)',
+        icon: GitBranch, onClick: () => reviser(row),
+      })
+    }
+    if ((row.scenario || 'engage') === 'engage') {
+      actions.push(
+        { id: 'optimiste', label: 'Scénario optimiste', icon: TrendingUp,
+          onClick: () => creerScenario(row, 'optimiste') },
+        { id: 'pessimiste', label: 'Scénario pessimiste', icon: TrendingDown,
+          onClick: () => creerScenario(row, 'pessimiste') },
+      )
+    }
+    return actions
+  }
 
   return (
     <div className="page">
@@ -230,6 +296,7 @@ export default function BudgetsPage() {
         loading={list.loading}
         error={list.error}
         onRowClick={(row) => setDetailId(row.id)}
+        rowActions={rowActions}
         exportName="budgets"
         emptyTitle="Aucun budget"
         emptyDescription="Créez un budget annuel pour démarrer."

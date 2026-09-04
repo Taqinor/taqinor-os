@@ -31,7 +31,14 @@ const comptaApi = {
 
   // ── UX3 — Plan comptable, comptes CGNC & journaux ──
   plans: resource('plans'),
-  comptes: resource('comptes'),
+  // AUDV02 — `ficheTiers` sert l'ENCOURS d'un compte de tiers (Σ débit − Σ
+  // crédit des seules lignes NON LETTRÉES) et le détail qui le compose. À ne
+  // pas confondre avec le solde brut du compte, qui compte aussi les lignes
+  // déjà appariées et ne répond donc PAS à « combien me doit-il vraiment ? ».
+  comptes: {
+    ...resource('comptes'),
+    ficheTiers: (id) => api.get(`/compta/comptes/${id}/fiche-tiers/`),
+  },
   journaux: resource('journaux'),
 
   // ── UX4 — Écritures comptables ──
@@ -39,6 +46,11 @@ const comptaApi = {
     ...resource('ecritures'),
     valider: (id) => api.post(`/compta/ecritures/${id}/valider/`),
     extourner: (id) => api.post(`/compta/ecritures/${id}/extourner/`),
+    // AUDV03 / COMPTA4 — numéro de pièce qui SERA attribué à une écriture
+    // créée SANS référence sur ce journal. Pur aperçu : il ne réserve rien
+    // (c'est `create_with_reference` qui tranche au moment de l'écriture).
+    prochainNumero: (params) =>
+      api.get('/compta/ecritures/prochain-numero/', { params }),
   },
 
   // ── UX5 — États comptables CGNC (blob quand export fichier) ──
@@ -149,7 +161,13 @@ const comptaApi = {
   },
 
   // ── UX6 — Trésorerie & prévisionnel ──
-  tresorerie: resource('tresorerie'),
+  tresorerie: {
+    ...resource('tresorerie'),
+    // AUDV02 / XACC24 — comptes ACTIFS dont le RIB porte une clé mod-97
+    // fausse. Warning pur : un RIB vide n'est pas signalé (cas normal d'une
+    // caisse) et rien n'est bloqué — la saisie historique n'est jamais cassée.
+    ribInvalides: () => api.get('/compta/tresorerie/rib-invalides/'),
+  },
   caisses: {
     ...resource('caisses'),
     mouvementList: (id, params) =>
@@ -234,6 +252,15 @@ const comptaApi = {
     planFiscal: (id) => api.get(`/compta/immobilisations/${id}/plan-fiscal/`),
     genererPlanFiscal: (id, data) =>
       api.post(`/compta/immobilisations/${id}/plan-fiscal/`, data),
+    // AUDV07 / XACC16 — poste UNE dotation dérogatoire de l'exercice au grand
+    // livre (dotation 65941/1351, ou reprise 1351/7594 en fin de vie). Sans
+    // elle, le plan fiscal se générait mais la provision réglementée n'était
+    // JAMAIS constituée. Un exercice sans écart renvoie `ecriture_id: null`
+    // (rien à écrire) ; un re-post est refusé côté serveur (400).
+    posterDotationDerogatoire: (id, annee) =>
+      api.post(
+        `/compta/immobilisations/${id}/poster-dotation-derogatoire/`,
+        { annee }),
   },
   dotations: {
     ...resource('dotations'),
@@ -244,8 +271,18 @@ const comptaApi = {
     poster: (id) => api.post(`/compta/cessions/${id}/poster/`),
   },
   // ── PACT163 / XACC15 — Charges constatées d'avance (étalement) ──
+  // AUDV03 / XACC15 — `posterDotation` passe UNE dotation mensuelle au grand
+  // livre (débit du compte de charge / crédit 3491). Sans elle, l'échéancier
+  // était généré puis jamais étalé : la charge restait immobilisée en 3491.
+  // Un re-post est REFUSÉ côté serveur (400), jamais avalé en silence.
   chargesAvance: {
     ...resource('charges-avance'),
+    posterDotation: (id, dotation) =>
+      api.post(`/compta/charges-avance/${id}/poster-dotation/`, { dotation }),
+    // AUDV08 / XACC15 — solde 3491 RESTANT à étaler, par charge et au total.
+    // `dote` ne compte que les dotations POSTÉES (une dotation générée mais
+    // non postée n'a pas bougé le grand livre) ; le solde se lit À UNE DATE.
+    solde: (params) => api.get('/compta/charges-avance/solde/', { params }),
   },
 
   // ── PACT29 / NTFIN40-43 — Immobilisations avancées (composants,
@@ -275,6 +312,12 @@ const comptaApi = {
     pointer: (id, data) =>
       api.post(`/compta/rapprochements/${id}/pointer/`, data),
     suggestions: (id) => api.get(`/compta/rapprochements/${id}/suggestions/`),
+    // AUDV02 / NTTRE4 — suggestions APPRISES de l'historique des pointages
+    // validés (libellé bancaire récurrent → compte habituel). Complémentaire
+    // de `suggestions` (règle montant/date/tiers), jamais un remplacement :
+    // la règle rattrape le cas exact, l'apprentissage le libellé illisible.
+    suggestionsApprises: (id, params) =>
+      api.get(`/compta/rapprochements/${id}/suggestions-apprises/`, { params }),
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
@@ -293,6 +336,9 @@ const comptaApi = {
     evaluer: (id) => api.post(`/compta/rapprochements-3voies/${id}/evaluer/`),
     valider: (id, data) =>
       api.post(`/compta/rapprochements-3voies/${id}/valider/`, data),
+    // AUDV02 — les écarts BLOQUANTS agrégés en alerte. Un écart non vu, c'est
+    // un paiement fournisseur parti sur une facture non conforme.
+    enEcart: () => api.get('/compta/rapprochements-3voies/en-ecart/'),
   },
   // ── PACT30 / NTFIN35-37 — Rapprochements de comptes de bilan (4 yeux) ──
   rapprochementsCompte: {
@@ -316,8 +362,24 @@ const comptaApi = {
     // méthode tel quel, jamais un tiret.
     vsRealise: (id, params) =>
       api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
+    // AUDV09 / XACC22 — RÉVISION : fige la version courante (consultable pour
+    // toujours) et crée la V+1 éditable. Sans elle, un budget se modifiait SUR
+    // PLACE, écrasant la version approuvée — plus aucune comparaison possible.
+    reviser: (id, data) =>
+      api.post(`/compta/budgets/${id}/reviser/`, data || {}),
+    // AUDV09 / XACC22 — SCÉNARIO what-if : copie INDÉPENDANTE (optimiste ou
+    // pessimiste). Ni le contrôle d'engagement ni le suivi budget-vs-réel ne
+    // la consomment : ils restent sur le scénario `engage`.
+    scenarioWhatIf: (id, scenario) =>
+      api.post(`/compta/budgets/${id}/scenario-what-if/`, { scenario }),
   },
   centresCout: resource('centres-cout'),
+  // AUDV09 / XACC20 — règles d'AUTO-imputation analytique. Le moteur était
+  // déjà appelé par `creer_ecriture` mais aucune règle ne pouvait être créée
+  // hors admin Django : il tournait à vide. `distributions` est IMBRIQUÉE et
+  // doit sommer à 100 % (refus 400 sinon — une distribution partielle
+  // imputerait une part de la charge nulle part).
+  reglesImputation: resource('regles-imputation'),
   provisionsCreances: resource('provisions-creances'),
   comptesAuxiliaires: resource('comptes-auxiliaires'),
   mappingsCompte: resource('mappings-compte'),
@@ -354,6 +416,11 @@ const comptaApi = {
     apurerEscompte: (id, data) =>
       api.post(`/compta/effets/${id}/apurer-escompte/`, data),
     endosser: (id, data) => api.post(`/compta/effets/${id}/endosser/`, data),
+    // AUDV02 — échéancier + TOTAUX ouverts par sens. Les totaux portent
+    // toujours sur le portefeuille ENTIER (`portefeuille` + `remis`) : un
+    // filtre d'affichage (`sens`/`statut`) ne change QUE la liste, jamais le
+    // total de la société — sinon le chiffre affiché dépendrait de l'onglet.
+    echeancier: (params) => api.get('/compta/effets/echeancier/', { params }),
   },
   // ── FG129 — Bordereaux de remise en banque ──
   bordereaux: {
@@ -460,6 +527,10 @@ const comptaApi = {
       api.post(`/compta/approbations-rib/${id}/approuver/`, data || {}),
     refuser: (id, data) =>
       api.post(`/compta/approbations-rib/${id}/refuser/`, data || {}),
+    // AUDV02 — diagnostic mod-97 AVANT de déposer la demande. WARNING pur :
+    // le serveur DIT, l'écran affiche, l'humain décide — rien n'est bloqué.
+    diagnosticRib: (rib) =>
+      api.get('/compta/approbations-rib/diagnostic-rib/', { params: { rib } }),
   },
 
   // ── XACC26 — Provisions FNP/FAE de fin de période ──
@@ -547,6 +618,14 @@ const comptaApi = {
     ouvrir: (id) => api.post(`/compta/cycles-consolidation/${id}/ouvrir/`),
     verrouiller: (id) => api.post(`/compta/cycles-consolidation/${id}/verrouiller/`),
     collecter: (id, data) => api.post(`/compta/cycles-consolidation/${id}/collecter/`, data || {}),
+    // AUDV05 / NTFIN5 — convertit la liasse d'une entité en devise de
+    // PRÉSENTATION (bilan au cours de clôture, résultat au cours moyen).
+    // Corps : `{liasse, taux_cloture, taux_moyen}`. LECTURE SEULE sur la
+    // liasse : le snapshot collecté n'est pas réécrit (il reste la preuve de
+    // ce que la filiale a déclaré) ; l'écart de conversion (CTA) est RENVOYÉ,
+    // jamais absorbé en silence.
+    convertirEntite: (id, data) =>
+      api.post(`/compta/cycles-consolidation/${id}/convertir-entite/`, data),
     controlesCollecte: (id) => api.get(`/compta/cycles-consolidation/${id}/controles-collecte/`),
     intercos: (id) => api.get(`/compta/cycles-consolidation/${id}/intercos/`),
     apparier: (id, data) => api.post(`/compta/cycles-consolidation/${id}/apparier/`, data || {}),
@@ -694,6 +773,29 @@ const comptaApi = {
   etatsPersonnalises: {
     ...resource('etats-personnalises'),
     evaluer: (id) => api.post(`/compta/etats-personnalises/${id}/evaluer/`),
+  },
+
+  // ── AUDV06 / XACC17-XACC18 — Devises ──────────────────────────────────
+  // Le modèle, l'upsert de taux, le suivi des postes ouverts, l'écart de
+  // change réalisé et la réévaluation de clôture existaient TOUS côté
+  // services sans le moindre ViewSet : la table FX était inatteignable hors
+  // admin Django, donc tout document en devise retombait en silence sur le
+  // repli 1:1. `create` sur `tauxDevise` est un UPSERT par (devise, jour) —
+  // règle « never snap » : un feed n'écrase jamais une saisie manuelle.
+  tauxDevise: resource('taux-devise'),
+  itemsOuvertsDevise: {
+    ...resource('items-ouverts-devise'),
+    // Écart RÉALISÉ au règlement : gain 733 / perte 633. Un poste déjà soldé
+    // est REFUSÉ (400) — un écart réalisé ne se constate qu'une fois.
+    constaterEcart: (id, data) =>
+      api.post(`/compta/items-ouverts-devise/${id}/constater-ecart/`, data),
+  },
+  reevaluationsCloture: {
+    list: (params) => api.get('/compta/reevaluations-cloture/', { params }),
+    get: (id) => api.get(`/compta/reevaluations-cloture/${id}/`),
+    // Idempotent par (société, date de clôture) : rejouer ne double jamais
+    // l'écriture. Poste l'écart LATENT et son extourne datée du lendemain.
+    lancer: (data) => api.post('/compta/reevaluations-cloture/lancer/', data),
   },
 }
 

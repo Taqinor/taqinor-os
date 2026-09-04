@@ -81,6 +81,10 @@ from .views import (
     AbonnementEcritureViewSet,
     # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
     EmpruntViewSet, EcheanceEmpruntViewSet, EtatPersonnaliseViewSet,
+    # AUDV06 — XACC17 / XACC18 : même constat, sur les devises.
+    TauxDeviseViewSet, ItemOuvertDeviseViewSet, ReevaluationClotureViewSet,
+    # AUDV09 — XACC20 : même constat, sur l'auto-imputation analytique.
+    RegleImputationViewSet,
 )
 
 router = DefaultRouter()
@@ -239,6 +243,18 @@ router.register(r'echeances-emprunt', EcheanceEmpruntViewSet)
 # Route DISTINCTE de ``etats/`` (EtatsComptablesViewSet, les états FIGÉS
 # GL/balance/CPC/bilan) : deux ressources différentes, jamais fusionnées.
 router.register(r'etats-personnalises', EtatPersonnaliseViewSet)
+# ── AUDV06 / XACC17-XACC18 — Devises : taux, postes ouverts, réévaluation ──
+# Trois ressources dont le modèle ET le service existaient depuis XACC17/18
+# sans aucun ViewSet : la table FX était inatteignable hors admin Django, donc
+# tout document en devise retombait en silence sur le repli 1:1.
+router.register(r'taux-devise', TauxDeviseViewSet)
+router.register(r'items-ouverts-devise', ItemOuvertDeviseViewSet)
+router.register(r'reevaluations-cloture', ReevaluationClotureViewSet)
+# ── AUDV09 / XACC20 — Règles d'auto-imputation analytique ─────────────────
+# Le moteur (`_appliquer_regle_imputation_si_match`) était DÉJÀ appelé par
+# `creer_ecriture` — mais aucune règle ne pouvait être créée hors admin
+# Django : il tournait à vide, chaque écriture restant à ventiler à la main.
+router.register(r'regles-imputation', RegleImputationViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

@@ -1,0 +1,33 @@
+{
+  "endpoint": "GET /api/django/compta/rapprochements-3voies/en-ecart/",
+  "pourquoi": "AUDV02 / DRAFT165-13 (FG131) — `selectors.rapprochements_en_ecart` n'avait aucun appelant : l'onglet 3 voies affichait bien une pastille « Bloqué (écart) » par ligne, mais rien n'AGRÉGEAIT les écarts en alerte — il fallait déjà être dans l'onglet et parcourir la liste pour les voir. Un écart non vu, c'est un paiement fournisseur parti sur une facture non conforme. Lecture seule, ordonné du plus récemment évalué au plus ancien. Chaque élément de `rapprochements` est la forme complète du `RapprochementSerializer` (mêmes clés que `GET /compta/rapprochements-3voies/`), jamais une forme abrégée : l'écran d'alerte et la liste partagent le même rendu de ligne.",
+  "exemple": {
+    "nb": 1,
+    "rapprochements": [
+      {
+        "id": 58,
+        "bon_commande": 204,
+        "bon_commande_reference": "BCF-2026-07-0012",
+        "fournisseur_nom": "Fournisseur Électrique SA",
+        "statut": "ecart",
+        "statut_display": "Écart",
+        "tolerance": "2.00",
+        "montant_commande": "84000.00",
+        "montant_recu": "84000.00",
+        "montant_facture": "91200.00",
+        "ecart": "7200.00",
+        "ecart_commande_recu": "0.00",
+        "bon_a_payer": false,
+        "note": "Facture au-dessus du BC : à arbitrer avant paiement.",
+        "date_evaluation": "2026-08-30T09:14:00Z",
+        "valide_par": null,
+        "date_validation": null,
+        "date_creation": "2026-08-28T11:02:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "nb": 0,
+    "rapprochements": []
+  }
+}

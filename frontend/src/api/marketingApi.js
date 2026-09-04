@@ -28,6 +28,27 @@ const marketingApi = {
   campagnes: {
     ...resource('campagnes'),
     envoyer: (id, data) => api.post(`/marketing/campagnes/${id}/envoyer/`, data),
+    // ── AUDV17 / loi 09-08 & CNDP ────────────────────────────────────────
+    // `planifier` met la campagne EN FILE : la seule façon de la faire
+    // partir était `envoyer`, c'est-à-dire TOUT DE SUITE — la file, le beat
+    // qui la dépile et la fenêtre de silence étaient tous inatteignables.
+    planifier: (id, planifieeLe) =>
+      api.post(`/marketing/campagnes/${id}/planifier/`,
+        { planifiee_le: planifieeLe }),
+    // État de conformité de la SOCIÉTÉ (toggle double opt-in, pied de
+    // déclaration CNDP, mention STOP). Lecture seule : ça DIT, ça ne règle
+    // rien — sans cet appel, personne dans l'ERP ne pouvait savoir si les
+    // campagnes partaient conformes.
+    conformiteCndp: () => api.get('/marketing/campagnes/conformite-cndp/'),
+    // Import d'une liste d'OPPOSITION (loi 09-08) dans la liste de
+    // suppression. Idempotent : un ré-import n'écrase aucun motif d'origine.
+    importerOpposition: (payload) =>
+      api.post('/marketing/campagnes/importer-opposition/', payload),
+    // Lien PUBLIC de désinscription d'UN destinataire (le jeton est signé
+    // par destinataire : il ne désinscrit que lui, jamais un autre).
+    lienDesinscription: (id, destinataire) =>
+      api.get(`/marketing/campagnes/${id}/lien-desinscription/`,
+        { params: { destinataire } }),
     envoyerTest: (id, data) =>
       api.post(`/marketing/campagnes/${id}/envoyer-test/`, data),
     precheck: (id, params) =>
@@ -175,6 +196,12 @@ const marketingApi = {
   inscriptionsEvenement: {
     ...resource('inscriptions-evenement'),
     pointer: (id) => api.post(`/marketing/inscriptions-evenement/${id}/pointer/`),
+    // AUDV17 / ZMKT18 — check-in LIBRE-SERVICE à la borne : par QR scanné ou
+    // par sélection après recherche. `pointer` exige de connaître d'avance
+    // l'id de l'inscription — inutilisable à une borne d'accueil, où l'on
+    // part d'un QR ou d'un nom. Idempotent : re-scanner ne double pas.
+    pointerBorne: (payload) =>
+      api.post('/marketing/inscriptions-evenement/pointer-borne/', payload),
     badgePdf: (id) =>
       api.get(`/marketing/inscriptions-evenement/${id}/badge/`,
         { responseType: 'blob' }),

@@ -36,6 +36,10 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
+# YDATA8 — arrondi monétaire centralisé (``core`` est une app de FONDATION :
+# import exempt de la frontière cross-app M3).
+from core.money import quantize_mad
+
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
@@ -7586,6 +7590,43 @@ def envoyer_campagnes_planifiees(company, *, maintenant=None):
     return envoyees
 
 
+def lien_desinscription(company, destinataire):
+    """AUDV17 / XMKT3 (DRAFT165-21) — lien PUBLIC de désinscription un clic.
+
+    `generer_token_desinscription` existait et la vue publique
+    `desinscription_publique` la consommait déjà… mais RIEN ne générait ni
+    n'insérait le lien dans un message sortant : le destinataire recevait un
+    email marketing sans aucun moyen de se désinscrire, ce que la loi 09-08
+    impose. Le jeton est signé par (société, destinataire) : il ne désinscrit
+    que CE destinataire, jamais un autre.
+    """
+    # `PUBLIC_SITE_URL` (repli documenté sur `SITE_URL`) est LE réglage de base
+    # publique du projet : n'en inventons pas un second.
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    token = generer_token_desinscription(
+        getattr(company, 'id', company), destinataire)
+    chemin = f'/api/django/compta/desinscription/{token}/'
+    return f'{base}{chemin}' if base else chemin
+
+
+def _corps_conforme_cndp(campagne):
+    """AUDV17 — ajoute au corps les mentions légales dues au canal (loi 09-08).
+
+    Email : pied de déclaration CNDP (`cndp_footer_texte`, chaîne vide donc
+    NO-OP tant que le numéro de déclaration n'est pas renseigné dans le profil
+    société — le comportement historique est strictement préservé).
+    SMS : mention STOP obligatoire (`ajouter_mention_stop`, idempotente).
+    Les deux fonctions existaient sans le moindre appelant.
+    """
+    corps = campagne.corps or ''
+    if campagne.canal == Campagne.Canal.SMS:
+        return ajouter_mention_stop(corps)
+    pied = cndp_footer_texte(campagne.company)
+    if pied and pied not in corps:
+        corps = f'{corps}\n\n{pied}'
+    return corps
+
+
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
@@ -7691,6 +7732,27 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='contact_dormant_sunset',
             )
+    # ── AUDV17 / XMKT15 (DRAFT165-28) — VALIDATION DES NUMÉROS avant SMS ──
+    # `filtrer_destinataires_sms` n'avait aucun appelant : un fixe ou un
+    # numéro malformé partait au facturier, la société payait un SMS mort et
+    # personne ne le voyait. Le canal SMS filtre désormais ses cibles, et
+    # chaque exclusion laisse une trace (jamais une disparition silencieuse).
+    if campagne.canal == Campagne.Canal.SMS and cibles:
+        tri = filtrer_destinataires_sms([_adresse(cible) for cible in cibles])
+        valides = set(tri['valides'])
+        for exclu in tri['exclus']:
+            if exclu['numero']:
+                EnvoiCampagne.objects.create(
+                    company=campagne.company, campagne=campagne,
+                    destinataire=exclu['numero'], contact_ref='',
+                    statut=EnvoiCampagne.Statut.REBOND,
+                    raison_smtp=f"numero_invalide:{exclu['motif']}",
+                )
+        cibles = [
+            cible for cible in cibles
+            if _normaliser_destinataire(_adresse(cible)) in valides
+        ]
+
     campagne.nb_destinataires = len(cibles)
     if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
         # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
@@ -7710,6 +7772,13 @@ def envoyer_campagne(campagne, *, destinataires=None):
         corps_reecrit, _liens = envelopper_liens_campagne(campagne)
         if corps_reecrit != campagne.corps:
             campagne.corps = corps_reecrit
+        # ── AUDV17 — CONFORMITÉ CNDP / loi 09-08, posée AU MOMENT DE L'ENVOI ──
+        # Trois fonctions écrites, testées et JAMAIS appelées par ce pipeline :
+        # `cndp_footer_texte` (DRAFT165-25) et `ajouter_mention_stop`
+        # (DRAFT165-27). Conséquence : les campagnes partaient sans mention
+        # légale et sans le mot-clé STOP obligatoire — une non-conformité
+        # invisible tant qu'aucun destinataire ne se plaint.
+        campagne.corps = _corps_conforme_cndp(campagne)
     campagne.statut = Campagne.Statut.ENVOYEE
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
@@ -11223,24 +11292,46 @@ def poster_echeance_emprunt(echeance, *, user=None):
     return ecriture
 
 
-def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13):
-    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel 13 semaines
-    (FG126) — lecture seule, pure. Renvoie une liste de dicts compatibles avec
-    les lignes du prévisionnel : ``{'libelle', 'date_prevue', 'montant'}``
-    (montant NÉGATIF = décaissement). Ne persiste rien : c'est
-    ``selectors.previsionnel_tresorerie`` qui les agrège à l'existant.
+def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13,
+                                    inclure_postees=False):
+    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel (FG126).
+
+    AUDV01 / DRAFT165-34 — cette fonction est l'UNIQUE source des lignes
+    « échéance d'emprunt » du prévisionnel roulant :
+    ``selectors.previsionnel_tresorerie`` l'APPELLE désormais au lieu de
+    refaire la même requête à côté. Elle était orpheline (sa propre docstring
+    affirmait le contraire) pendant que le sélecteur en dupliquait la logique —
+    deux copies d'une même règle ne peuvent que diverger.
+
+    Lecture seule, pure, ne persiste rien. Chaque ligne a la forme d'une ligne
+    de prévisionnel : ``{'type': 'echeance_emprunt', 'libelle', 'categorie',
+    'date', 'date_prevue', 'montant'}``. ``montant`` est NÉGATIF (décaissement).
+    ``date`` est le nom de clé des lignes de ``previsionnel_tresorerie`` ;
+    ``date_prevue`` est celui du champ ``LignePrevisionnelTresorerie`` — les
+    deux portent la même valeur pour que la ligne soit utilisable des deux
+    côtés sans traduction.
+
+    Une échéance DÉJÀ POSTÉE au grand livre n'est plus un prévisionnel (elle a
+    bougé la trésorerie réelle) : elle est exclue sauf ``inclure_postees``.
+    L'horizon est ``[date_debut, date_debut + nb_semaines[`` — borne de fin
+    EXCLUE, exactement celle du prévisionnel.
     """
     from datetime import timedelta
-    debut = date_debut or timezone.now().date()
+    debut = date_debut or timezone.localdate()
     fin = debut + timedelta(weeks=nb_semaines)
     qs = EcheanceEmprunt.objects.filter(
-        company=company, date_echeance__gte=debut, date_echeance__lte=fin,
-    ).select_related('emprunt').order_by('date_echeance')
+        company=company, date_echeance__gte=debut, date_echeance__lt=fin,
+    ).select_related('emprunt').order_by('date_echeance', 'id')
+    if not inclure_postees:
+        qs = qs.filter(posted=False)
     return [
         {
+            'type': 'echeance_emprunt',
             'libelle': f'Échéance emprunt {e.emprunt.banque or e.emprunt.reference}',
+            'categorie': 'decaissement',
+            'date': e.date_echeance,
             'date_prevue': e.date_echeance,
-            'montant': -Decimal(e.mensualite),
+            'montant': -quantize_mad(e.mensualite or 0),
         }
         for e in qs
     ]

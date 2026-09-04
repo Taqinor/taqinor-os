@@ -1,0 +1,35 @@
+{
+  "endpoint": "GET /api/django/compta/charges-avance/solde/",
+  "pourquoi": "AUDV08 / XACC15 (DRAFT165-14) — `selectors.solde_charges_constatees_avance` n'avait aucun appelant : l'écran comptait bien « n/12 dotations postées » par ligne, mais personne ne pouvait lire le MONTANT encore immobilisé au compte 3491 — le seul chiffre qui se rapproche du bilan, et celui que le comptable doit justifier à la clôture. `dote` est la Σ des dotations POSTÉES jusqu'à `date_fin` (les dotations générées mais non postées ne comptent pas : elles n'ont pas bougé le grand livre) ; `solde_restant` = `montant_total` − `dote`, borné à 0 pour qu'un sur-postage ne produise jamais un négatif trompeur. `?date_fin=AAAA-MM-JJ` borne la lecture (défaut : aujourd'hui) — un solde se lit toujours À UNE DATE. Cet agrégat renvoie un dictionnaire BRUT : ses montants passent par l'encodeur JSON de DRF, qui rend un `Decimal` en NOMBRE. `detail` est le canal d'ERREUR (message français sur un 400) et vaut `null` en succès — la garde `check_api_shapes.py` unifie la forme de toutes les branches d'une vue, donc la clé figure ici même si le succès ne la remplit jamais.",
+  "exemple": {
+    "charges": [
+      {
+        "id": 37,
+        "reference": "CCA-2026-0037",
+        "libelle": "Assurance annuelle flotte",
+        "montant_total": 12000.0,
+        "dote": 3000.0,
+        "solde_restant": 9000.0
+      },
+      {
+        "id": 34,
+        "reference": "CCA-2026-0034",
+        "libelle": "Loyer payé d'avance",
+        "montant_total": 60000.0,
+        "dote": 60000.0,
+        "solde_restant": 0.0
+      }
+    ],
+    "total_restant": 9000.0,
+    "detail": null
+  },
+  "exemple_vide": {
+    "charges": [],
+    "total_restant": 0.0,
+    "detail": null
+  },
+  "exemple_erreur": {
+    "pourquoi": "`date_fin` non ISO — 400, seule `detail` est renvoyée (jamais un solde partiel calculé sur une borne douteuse).",
+    "detail": "`date_fin` doit être une date ISO (AAAA-MM-JJ)."
+  }
+}

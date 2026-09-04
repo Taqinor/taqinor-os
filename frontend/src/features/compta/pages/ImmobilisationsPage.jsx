@@ -94,6 +94,7 @@ function PlanFiscalDialog({ immo, onClose }) {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [postage, setPostage] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -125,6 +126,26 @@ function PlanFiscalDialog({ immo, onClose }) {
       toast.error(typeof d === 'string' ? d : (d?.detail || 'Génération impossible.'))
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // AUDV07 — postage d'UNE dotation dérogatoire au grand livre. Le serveur
+  // refuse un re-post (400) et respecte le verrou de période ; une différence
+  // NULLE est marquée traitée sans écriture (jamais une écriture vide).
+  const posterDerogatoire = async (dotation) => {
+    setPostage(dotation.annee)
+    try {
+      const res = await comptaApi.immobilisations.posterDotationDerogatoire(
+        immo.id, dotation.annee)
+      toast.success(res.data?.ecriture_id
+        ? `Dotation dérogatoire ${dotation.annee} postée au grand livre.`
+        : `Exercice ${dotation.annee} sans écart : rien à poster.`)
+      load()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Postage impossible.'))
+    } finally {
+      setPostage(null)
     }
   }
 
@@ -168,6 +189,20 @@ function PlanFiscalDialog({ immo, onClose }) {
                 numeric: true, sortValue: (d) => Number(d.difference) || 0,
                 cell: (d) => formatMAD(d.difference) },
               { key: 'posted', label: 'Postée', cell: (d) => (d.posted ? 'Oui' : 'Non') },
+              /* AUDV07 / XACC16 — le plan fiscal se générait bien mais AUCUNE
+                 dotation ne pouvait être passée au grand livre : la provision
+                 réglementée 1351 n'était jamais constituée, l'écart restant
+                 un chiffre d'écran invisible du bilan. */
+              { key: 'action', label: '', align: 'right',
+                cell: (d) => (d.posted ? null : (
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={postage === d.annee}
+                    onClick={() => posterDerogatoire(d)}
+                  >
+                    {postage === d.annee ? 'Postage…' : 'Poster'}
+                  </Button>
+                )) },
             ]}
           />
         )}

@@ -8,7 +8,7 @@ import {
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
   UploadCloud, GitCompare, Tag, Wand2, Link2, FileStack, CalendarRange,
-  ClipboardCheck, Banknote, SlidersHorizontal,
+  ClipboardCheck, Banknote, SlidersHorizontal, Coins,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -96,6 +96,11 @@ const ApprobationsConfigPage = lazy(
 const EmpruntsPage = lazy(() => import('./pages/EmpruntsPage.jsx'))
 const EtatsPersonnalisesPage = lazy(
   () => import('./pages/EtatsPersonnalisesPage.jsx'))
+// AUDV06 — devises & change (XACC17/XACC18) : taux, postes ouverts, écarts
+// réalisés et réévaluation de clôture. Quatre services complets qui n'avaient
+// ni ViewSet ni écran — un document en devise retombait donc en silence sur
+// un change 1:1.
+const DevisesPage = lazy(() => import('./pages/DevisesPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -149,6 +154,7 @@ const config = {
       { to: '/comptabilite/approbations-config', label: 'Approbations config', icon: icon(ClipboardCheck), roles: ROLES },
       { to: '/comptabilite/emprunts', label: 'Emprunts et crédits-bails', icon: icon(Banknote), roles: ROLES },
       { to: '/comptabilite/etats-personnalises', label: 'États paramétrables', icon: icon(SlidersHorizontal), roles: ROLES },
+      { to: '/comptabilite/devises', label: 'Devises & change', icon: icon(Coins), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -157,6 +163,7 @@ const config = {
     // se fait par préfixe, l'entrée la plus spécifique doit passer d'abord.
     // WIR280 — même règle : « etats-personnalises » AVANT « etats » (préfixe).
     ['/comptabilite/etats-personnalises', 'États paramétrables — Comptabilité'],
+    ['/comptabilite/devises', 'Devises & change — Comptabilité'],
     ['/comptabilite/emprunts', 'Emprunts et crédits-bails — Comptabilité'],
     ['/comptabilite/ecritures-recurrentes', 'Écritures récurrentes — Comptabilité'],
     ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
@@ -225,6 +232,7 @@ const config = {
     { path: '/comptabilite/approbations-config', component: ApprobationsConfigPage, roles: ROLES },
     { path: '/comptabilite/emprunts', component: EmpruntsPage, roles: ROLES },
     { path: '/comptabilite/etats-personnalises', component: EtatsPersonnalisesPage, roles: ROLES },
+    { path: '/comptabilite/devises', component: DevisesPage, roles: ROLES },
   ],
 }
 

@@ -112,12 +112,20 @@
     cycle:inconnu, detail:inconnu, liasses:inconnu
 - frontend/src/api/comptaApi.js :: controlesCollecte -> /api/django/compta/cycles-consolidation/<>/controles-collecte
     anomalies:inconnu, bloquant:inconnu
+- frontend/src/api/comptaApi.js :: diagnosticRib -> /api/django/compta/approbations-rib/diagnostic-rib
+    detail:texte, erreurs:inconnu, rib:inconnu, valide:booleen
+- frontend/src/api/comptaApi.js :: echeancier -> /api/django/compta/effets/echeancier
+    effets:inconnu, nb:nombre, net:nombre, total_a_payer:inconnu, total_a_recevoir:inconnu
+- frontend/src/api/comptaApi.js :: enEcart -> /api/django/compta/rapprochements-3voies/en-ecart
+    nb:nombre, rapprochements:inconnu
 - frontend/src/api/comptaApi.js :: etatsConsolides -> /api/django/compta/cycles-consolidation/<>/etats-consolides
     bilan:inconnu, cpc:inconnu
 - frontend/src/api/comptaApi.js :: etic -> /api/django/compta/etats/etic
     date_debut:texte, date_fin:texte, detail:texte, engagements_hors_bilan:objet, exercice:texte, immobilisations:inconnu, principes_methodes:texte, provisions:inconnu, resultat:inconnu, sections:liste
 - frontend/src/api/comptaApi.js :: executionBudgetaire -> /api/django/compta/etats/execution-budgetaire
     annee:inconnu, budget_id:inconnu, detail:texte, lignes:inconnu, total_budget:inconnu, total_disponible:inconnu, total_engage:inconnu, total_realise:inconnu
+- frontend/src/api/comptaApi.js :: ficheTiers -> /api/django/compta/comptes/<>/fiche-tiers
+    compte:inconnu, compte_intitule:inconnu, compte_numero:inconnu, encours:inconnu, lignes_non_lettrees:liste, nb_lignes_non_lettrees:nombre
 - frontend/src/api/comptaApi.js :: fraisBancaires -> /api/django/compta/etats/frais-bancaires
     par_compte:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: genererDues -> /api/django/compta/abonnements-ecriture/generer-dues
@@ -142,12 +150,18 @@
     comptes:inconnu, projection:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
     lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
+- frontend/src/api/comptaApi.js :: posterDotation -> /api/django/compta/charges-avance/<>/poster-dotation
+    date_ecriture:inconnu, detail:inconnu, dotation:inconnu, ecriture_id:inconnu, montant:texte, numero:inconnu, posted:inconnu, reference:inconnu
+- frontend/src/api/comptaApi.js :: posterDotationDerogatoire -> /api/django/compta/immobilisations/<>/poster-dotation-derogatoire
+    annee:inconnu, detail:inconnu, difference:texte, dotation:inconnu, ecriture_id:inconnu, posted:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
 - frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
     detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
 - frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
     date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
+- frontend/src/api/comptaApi.js :: prochainNumero -> /api/django/compta/ecritures/prochain-numero
+    detail:texte, journal:inconnu, journal_code:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
     annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
 - frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard
@@ -162,8 +176,14 @@
     detail:texte, ok:booleen
 - frontend/src/api/comptaApi.js :: resultatAnalytique -> /api/django/compta/etats/resultat-analytique
     axe:inconnu, detail:texte, total_resultat:inconnu, valeurs:inconnu
+- frontend/src/api/comptaApi.js :: ribInvalides -> /api/django/compta/tresorerie/rib-invalides
+    comptes:inconnu, nb:nombre
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
+- frontend/src/api/comptaApi.js :: solde -> /api/django/compta/charges-avance/solde
+    charges:inconnu, detail:texte, total_restant:inconnu
+- frontend/src/api/comptaApi.js :: suggestionsApprises -> /api/django/compta/rapprochements/<>/suggestions-apprises
+    detail:texte, nb_lignes_non_pointees:nombre, rapprochement:inconnu, suggestions:inconnu
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux
     capitaux_cloture_part_groupe:inconnu, capitaux_ouverture:inconnu, cycle:inconnu, dividendes:inconnu, ecart_conversion:inconnu, resultat_part_groupe:inconnu, resultat_part_minoritaires:inconnu
 - frontend/src/api/comptaApi.js :: verifier -> /api/django/compta/pistes-audit/verifier
@@ -574,6 +594,8 @@
     corps_fusionne:inconnu, detail:texte
 - frontend/src/api/marketingApi.js :: cloturerPresences -> /api/django/marketing/evenements-marketing/<>/cloturer-presences
     absents_marques:inconnu
+- frontend/src/api/marketingApi.js :: conformiteCndp -> /api/django/marketing/campagnes/conformite-cndp
+    double_optin_actif:inconnu, mention_stop_sms:inconnu, pied_cndp:inconnu, pied_cndp_configure:booleen
 - frontend/src/api/marketingApi.js :: enregistrementsAttendus -> /api/django/marketing/domaines-envoi/<>/enregistrements-attendus
     dkim:objet, dmarc:objet, spf:objet
 - frontend/src/api/marketingApi.js :: envoyerTest -> /api/django/marketing/campagnes/<>/envoyer-test
@@ -584,12 +606,14 @@
     configured:inconnu
 - frontend/src/api/marketingApi.js :: importer -> /api/django/marketing/listes-diffusion/<>/importer
     ajoutes:nombre, doublons:nombre, ignores_supprimes:nombre
+- frontend/src/api/marketingApi.js :: importerOpposition -> /api/django/marketing/campagnes/importer-opposition
+    ajoutes:inconnu, deja_presents:nombre, detail:texte, recus:nombre
 - frontend/src/api/marketingApi.js :: instancier -> /api/django/marketing/modeles-journey/<>/instancier
     nom:inconnu, sequence_id:inconnu
+- frontend/src/api/marketingApi.js :: lienDesinscription -> /api/django/marketing/campagnes/<>/lien-desinscription
+    destinataire:inconnu, detail:texte, lien:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
-- frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier
-    etapes:inconnu
 - frontend/src/api/marketingApi.js :: precheck -> /api/django/marketing/campagnes/<>/precheck
     avertissements:inconnu, bloque:inconnu
 - frontend/src/api/marketingApi.js :: previsualiser -> /api/django/marketing/segments-marketing/<>/previsualiser

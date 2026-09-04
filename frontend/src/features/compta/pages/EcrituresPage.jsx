@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Check, Undo2, Trash2 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import {
@@ -73,6 +73,23 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
   const [reference, setReference] = useState('')
   const [lignes, setLignes] = useState([emptyLigne(), emptyLigne()])
   const [saving, setSaving] = useState(false)
+  // AUDV03 / COMPTA4 — aperçu du numéro de pièce qui SERA attribué si la
+  // référence est laissée vide. `services.sequence_piece_journal` calculait
+  // déjà ce numéro sans aucun appelant : l'écran de saisie ne pouvait donc
+  // pas l'annoncer. Pur aperçu — il ne réserve rien.
+  const [prochainNumero, setProchainNumero] = useState('')
+
+  // La remise à zéro se fait dans le HANDLER de changement de journal, jamais
+  // ici : un `setState` synchrone dans un effet est refusé par
+  // `react-hooks/set-state-in-effect` (erreur, pas avertissement).
+  useEffect(() => {
+    if (!journal) return undefined
+    let vivant = true
+    comptaApi.ecritures.prochainNumero({ journal })
+      .then((res) => { if (vivant) setProchainNumero(res.data?.reference || '') })
+      .catch(() => { if (vivant) setProchainNumero('') })
+    return () => { vivant = false }
+  }, [journal])
 
   const td = totalDebit(lignes)
   const tc = totalCredit(lignes)
@@ -139,7 +156,8 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
               <Label required>Journal</Label>
               <select
                 className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
-                value={journal} onChange={(e) => setJournal(e.target.value)}
+                value={journal}
+                onChange={(e) => { setProchainNumero(''); setJournal(e.target.value) }}
               >
                 <option value="">—</option>
                 {journaux.map((j) => (
@@ -154,6 +172,11 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
             <div className="flex flex-col gap-1">
               <Label>Référence</Label>
               <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+              {!reference && prochainNumero && (
+                <span className="text-xs text-muted-foreground">
+                  Numéro attribué : {prochainNumero}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-1">

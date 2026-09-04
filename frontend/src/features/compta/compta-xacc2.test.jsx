@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -7,8 +7,17 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 // WIR182 / PACT10 / PACT13 — le prévisionnel trésorerie N'INVENTE plus sa
 // charge utile : elle vient de l'exemple committé que le backend affirme
 // (apps/compta/contract_samples/previsionnel_tresorerie.json).
-import { reponseContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+import { formatMAD } from '../../lib/format'
 import comptaApi from '../../api/comptaApi'
+
+/* Attendu monétaire DÉRIVÉ de `formatMAD` (jamais un nombre retapé à la main,
+   qui se désynchronise du contrat committé). Le `replace` est indispensable :
+   `Intl` fr-FR sépare les milliers par une ESPACE FINE INSÉCABLE (U+202F), que
+   testing-library normalise en espace ordinaire dans le texte du DOM — sans
+   cette normalisation côté attendu, la comparaison échoue sur deux chaînes
+   visuellement IDENTIQUES, ce qui coûte une demi-heure à diagnostiquer. */
+const montantAffiche = (valeur) => formatMAD(valeur).replace(/\s/g, ' ')
 
 /* Tests du module Comptabilité — round 2 (XACC/ZACC) :
    wiring des nouveaux écrans NotesDeFraisPage / EffetsPage / EngagementsPage
@@ -32,10 +41,17 @@ vi.mock('../../api/comptaApi', () => {
     default: {
       downloadBlob: vi.fn(),
       cockpit: empty,
-      comptes: res(), journaux: res(), plans: res(),
+      // AUDV02 — `ficheTiers`/`ribInvalides`/`echeancier`/`enEcart`/
+      // `suggestionsApprises` sont appelés au MONTAGE des écrans : absents du
+      // mock, l'appel part sur `undefined` et fait planter la page entière.
+      comptes: { ...res(), list: vi.fn(empty), ficheTiers: vi.fn(empty) },
+      journaux: res(), plans: res(),
       ecritures: { ...res(), valider: empty, extourner: empty },
       exercices: { ...res(), cloturer: empty, rouvrir: empty },
-      tresorerie: res(),
+      tresorerie: {
+        ...res(),
+        ribInvalides: vi.fn(() => Promise.resolve({ data: { nb: 0, comptes: [] } })),
+      },
       caisses: {
         ...res(),
         mouvementList: () => Promise.resolve({ data: [] }),
@@ -75,6 +91,9 @@ vi.mock('../../api/comptaApi', () => {
       effets: {
         ...res(), encaisser: empty, payer: empty, rejeter: empty,
         escompter: empty, apurerEscompte: empty, endosser: empty,
+        echeancier: vi.fn(() => Promise.resolve({
+          data: { nb: 0, effets: [], total_a_recevoir: 0, total_a_payer: 0, net: 0 },
+        })),
       },
       bordereaux: { ...res(), poster: empty },
       paymentRuns: { ...res(), proposer: empty, figer: empty, poster: empty, fichierVirement: empty },
@@ -102,9 +121,13 @@ vi.mock('../../api/comptaApi', () => {
       rapprochements: {
         ...res(), lignesGl: empty, resume: empty, ajouterLigneReleve: empty,
         pointer: empty, suggestions: empty, accepterSuggestions: empty, cloturer: empty,
+        suggestionsApprises: () => Promise.resolve({ data: { suggestions: [] } }),
       },
       modelesRapprochement: { ...res(), appliquer: empty },
-      rapprochements3voies: { ...res(), evaluer: empty, valider: empty },
+      rapprochements3voies: {
+        ...res(), evaluer: empty, valider: empty,
+        enEcart: vi.fn(() => Promise.resolve({ data: { nb: 0, rapprochements: [] } })),
+      },
       budgets: res(), centresCout: res(), provisionsCreances: res(),
       comptesAuxiliaires: res(), mappingsCompte: res(), piecesJustificatives: res(),
       periodes: { ...res(), cloturer: empty, rouvrir: empty },
@@ -228,8 +251,136 @@ describe('TresoreriePage — prévisionnel roulant 13 semaines (WIR182)', () => 
     await waitFor(() => {
       expect(screen.getAllByText('4 000,00 MAD').length).toBeGreaterThan(0)
     })
-    expect(screen.getByText('0,00 MAD')).toBeInTheDocument()
+    // AUDV01 — l'exemple porte désormais DEUX semaines (la seconde apporte
+    // l'échéance d'emprunt) : « 0,00 MAD » apparaît plusieurs fois.
+    expect(screen.getAllByText('0,00 MAD').length).toBeGreaterThan(0)
     // L'exemple committé a `date_rupture_estimee: null` : pas de bandeau d'alerte.
     expect(screen.queryByText(/Rupture de trésorerie estimée/)).not.toBeInTheDocument()
+  }, 30000)
+
+  /* AUDV01 / DRAFT165-34 — une échéance d'emprunt (XACC14) était fondue dans
+     la colonne « Sorties » sans le moindre libellé : le comptable voyait un
+     montant sans jamais savoir d'où il venait. La charge utile vient de
+     l'exemple COMMITTÉ (le même que le test backend
+     `PrevisionnelEcheancesEmpruntTests` affirme contre la vraie réponse du
+     sélecteur) — jamais d'un objet recopié à la main. */
+  it('NOMME les échéances d’emprunt du prévisionnel (AUDV01)', async () => {
+    comptaApi.etats.previsionnelTresorerie.mockResolvedValue(
+      reponseContrat('compta', 'previsionnel_tresorerie'))
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=position' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Détail des mouvements prévus')).toBeInTheDocument()
+    })
+    // Le libellé RÉEL du serveur, pas un total anonyme.
+    expect(screen.getByText('Échéance emprunt Banque Populaire')).toBeInTheDocument()
+    expect(screen.getByText('Échéance emprunt')).toBeInTheDocument()
+    // Décaissement : le montant reste NÉGATIF à l'écran (jamais réécrit ici).
+    expect(screen.getAllByText(montantAffiche(-3336.25)).length).toBeGreaterThan(0)
+  }, 30000)
+})
+
+/* ============================================================================
+   AUDV02 — l'écran Trésorerie rend enfin ce que le serveur savait déjà dire.
+   ----------------------------------------------------------------------------
+   Six sélecteurs/services complets et testés n'avaient AUCUN appelant : le
+   comptable ne pouvait répondre, depuis aucun écran, à « combien ce client me
+   doit-il vraiment ? », « combien ai-je en portefeuille ? », « qu'est-ce qui
+   bloque avant paiement ? », « ce RIB est-il valide ? ».
+
+   Chaque charge utile vient de l'exemple COMMITTÉ (PACT10/PACT13) — le même
+   fichier que `apps/compta/tests/test_audv02_ecran_tresorerie.py` affirme
+   contre la VRAIE réponse de la vue. Jamais un objet recopié à la main.
+   ========================================================================== */
+
+describe('AUDV02 — trésorerie : encours, effets, alertes, RIB', () => {
+  it('alerte sur les comptes au RIB invalide (XACC24)', async () => {
+    comptaApi.etats.previsionnelTresorerie.mockResolvedValue(
+      reponseContrat('compta', 'previsionnel_tresorerie'))
+    comptaApi.tresorerie.ribInvalides.mockResolvedValue(
+      reponseContrat('compta', 'comptes_rib_invalides'))
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=position' })
+
+    await waitFor(() => {
+      expect(screen.getByText('RIB à vérifier (1)')).toBeInTheDocument()
+    })
+    expect(screen.getByText('BP — Compte courant Casablanca')).toBeInTheDocument()
+    expect(screen.getByText('Clé de contrôle invalide (mod 97).')).toBeInTheDocument()
+  }, 30000)
+
+  it('la carte RIB disparaît quand tout est conforme (aucun bandeau inutile)', async () => {
+    comptaApi.etats.previsionnelTresorerie.mockResolvedValue(
+      reponseContrat('compta', 'previsionnel_tresorerie'))
+    comptaApi.tresorerie.ribInvalides.mockResolvedValue(
+      reponseContrat('compta', 'comptes_rib_invalides', 'exemple_vide'))
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=position' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/RIB à vérifier/)).not.toBeInTheDocument()
+  }, 30000)
+
+  it('la fiche tiers montre l’ENCOURS non lettré et les lignes qui le composent', async () => {
+    const fiche = exempleContrat('compta', 'fiche_tiers_encours')
+    comptaApi.comptes.list.mockResolvedValue({
+      data: [{ id: fiche.compte, numero: fiche.compte_numero,
+        intitule: fiche.compte_intitule }],
+    })
+    comptaApi.comptes.ficheTiers.mockResolvedValue({ data: fiche })
+
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />, { route: '/?onglet=fiche-tiers' })
+
+    const select = await screen.findByLabelText('Compte de tiers')
+    await waitFor(() => {
+      expect(select.querySelectorAll('option').length).toBe(2)
+    })
+    fireEvent.change(select, { target: { value: String(fiche.compte) } })
+
+    await waitFor(() => {
+      expect(screen.getByText(montantAffiche(fiche.encours))).toBeInTheDocument()
+    })
+    // Les lignes NON LETTRÉES qui composent l'encours, nommées une à une.
+    expect(screen.getByText('VTE-2026-06-0031')).toBeInTheDocument()
+    expect(comptaApi.comptes.ficheTiers).toHaveBeenCalledWith(String(fiche.compte))
+  }, 30000)
+
+  it('le portefeuille d’effets affiche ses TOTAUX ouverts (jamais une somme d’écran)', async () => {
+    const echeancier = exempleContrat('compta', 'effets_echeancier')
+    comptaApi.effets.echeancier.mockResolvedValue({ data: echeancier })
+
+    const { default: EffetsPage } = await import('./pages/EffetsPage.jsx')
+    mount(<EffetsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('À recevoir (ouverts)')).toBeInTheDocument()
+    })
+    expect(screen.getByText(montantAffiche(echeancier.total_a_recevoir))).toBeInTheDocument()
+    expect(screen.getByText(montantAffiche(echeancier.total_a_payer))).toBeInTheDocument()
+    expect(screen.getByText(montantAffiche(echeancier.net))).toBeInTheDocument()
+  }, 30000)
+
+  it('l’onglet 3 voies alerte sur les écarts BLOQUANTS avant paiement', async () => {
+    const alerte = exempleContrat('compta', 'rapprochements_en_ecart')
+    comptaApi.rapprochements3voies.enEcart.mockResolvedValue({ data: alerte })
+
+    const { default: RapprochementsPage } = await import('./pages/RapprochementsPage.jsx')
+    mount(<RapprochementsPage />, { route: '/?onglet=troisVoies' })
+
+    await waitFor(() => {
+      expect(screen.getByText('1 rapprochement(s) en écart bloquant.')).toBeInTheDocument()
+    })
+    expect(screen.getByText(
+      /BCF-2026-07-0012/)).toBeInTheDocument()
   }, 30000)
 })
