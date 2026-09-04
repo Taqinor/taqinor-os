@@ -142,7 +142,11 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
     canal = getattr(niveau, 'canal', FollowupLevel.Canal.EMAIL) \
         if niveau is not None else FollowupLevel.Canal.EMAIL
     niveau_nom = niveau.nom if niveau is not None else ''
-    message = niveau.message if niveau is not None else ''
+    # AUD130 — le beat passait `niveau.message` BRUT aux quatre canaux : le
+    # `{reference}` des niveaux semés atteignait donc aussi l'activité d'appel
+    # que lit le gestionnaire. Un seul rendu, partagé avec email et lettre.
+    from .recouvrement import rendre_message_relance
+    message = rendre_message_relance(niveau, facture)
 
     if canal == FollowupLevel.Canal.WHATSAPP:
         try:

@@ -317,7 +317,11 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
     if client is not None:
         nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
-    corps_msg = message.strip() if message else (
+    # AUD130 — le message configuré porte des placeholders (`{reference}`…) que
+    # PERSONNE ne formatait : `message.strip()` les expédiait tels quels. Le
+    # rendu passe par l'unique fonction partagée avec la lettre PDF.
+    from .recouvrement import rendre_message_relance
+    corps_msg = rendre_message_relance(message, facture) or (
         f"Sauf erreur de notre part, la facture {reference} reste impayée. "
         f"Nous vous remercions de bien vouloir procéder à son règlement.")
     signature = _signature(

@@ -2,6 +2,7 @@
 âgée, relevé de compte client. VUE / CONSIGNE / IMPRESSION uniquement — aucun
 envoi (email/SMS/courrier). L'envoi reste pour une session future.
 """
+import re
 from decimal import Decimal
 
 from django.http import HttpResponse
@@ -24,6 +25,81 @@ from .serializers import (
 def _s(x):
     """Decimal → chaîne au centime (2 décimales)."""
     return str(Decimal(x).quantize(Decimal('0.01')))
+
+
+# ── AUD130 — UN SEUL rendu de message de relance ───────────────────────────
+# `seed_defaults` (plus bas) sème trois messages contenant `{reference}` et
+# AUCUN code ne les formatait : l'email faisait `message.strip()` et la lettre
+# PDF rendait `{{ message }}` tel quel, si bien que le client recevait
+# littéralement « Mise en demeure : la facture {reference} est en retard ».
+# Arbitrage retenu (la tâche impose de trancher) : les placeholders RESTENT
+# dans les messages configurables et sont rendus ici — jamais ailleurs.
+
+#: Jeu de variables DÉCLARÉ, la seule chose qu'un message de relance peut citer.
+VARIABLES_RELANCE = ('reference', 'client', 'montant_du', 'jours_retard')
+
+#: Une accolade ouvrante suivie de n'importe quoi jusqu'à la fermante. Volontai-
+#: rement large : un `{ }` ou un `{variable_inexistante}` doit disparaître, pas
+#: faire échouer le rendu (un KeyError de `str.format` renverrait un 500 sur la
+#: lettre de relance — le contraire du but).
+_PLACEHOLDER_RE = re.compile(r'\{[^{}]*\}')
+
+
+def variables_relance(facture):
+    """Valeurs des variables déclarées pour ``facture``, prêtes à insérer."""
+    from core.money import quantize_mad
+
+    client = getattr(facture, 'client', None)
+    nom_client = ''
+    if client is not None:
+        nom_client = (
+            f"{getattr(client, 'nom', '') or ''} "
+            f"{getattr(client, 'prenom', '') or ''}").strip()
+    try:
+        montant = quantize_mad(getattr(facture, 'montant_du', 0) or 0)
+    except Exception:  # pragma: no cover — facture sans montant exploitable
+        montant = Decimal('0.00')
+    jours = getattr(facture, 'jours_retard', 0) or 0
+    return {
+        'reference': getattr(facture, 'reference', '') or '',
+        'client': nom_client,
+        'montant_du': f'{montant:.2f}',
+        'jours_retard': str(jours),
+    }
+
+
+def rendre_message_relance(niveau, facture):
+    """Message de relance RENDU : le seul endroit où `{…}` est substitué.
+
+    ``niveau`` accepte les trois formes qui circulent dans le code : un
+    ``FollowupLevel``, le dict `{ordre, nom, delai_jours}` que le beat fabrique,
+    ou directement la chaîne du message. Retourne toujours une chaîne SANS
+    accolade : une variable hors du jeu déclaré (``VARIABLES_RELANCE``) est
+    retirée silencieusement plutôt que de faire échouer l'envoi ou la lettre.
+    """
+    if niveau is None:
+        message = ''
+    elif isinstance(niveau, str):
+        message = niveau
+    elif isinstance(niveau, dict):
+        message = niveau.get('message') or ''
+    else:
+        message = getattr(niveau, 'message', '') or ''
+    message = (message or '').strip()
+    if not message:
+        return ''
+    valeurs = variables_relance(facture)
+
+    def _remplacer(match):
+        cle = match.group(0)[1:-1].strip()
+        return valeurs.get(cle, '') if cle in VARIABLES_RELANCE else ''
+
+    rendu = _PLACEHOLDER_RE.sub(_remplacer, message)
+    # Accolades orphelines (message mal formé saisi à la main) : elles ne
+    # doivent jamais atteindre un document client.
+    rendu = rendu.replace('{', '').replace('}', '')
+    # Une variable retirée laisse un double espace — on recolle proprement.
+    return re.sub(r'[ \t]{2,}', ' ', rendu).strip()
 
 
 def _scope(qs, user):
