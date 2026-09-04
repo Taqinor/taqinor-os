@@ -1771,7 +1771,11 @@ def parametre_en_vigueur(company, le_jour):
     )
 
 
-def avertissements_parametre_paie(company, le_jour, *, contexte=''):
+_PARAMETRE_NON_FOURNI = object()
+
+
+def avertissements_parametre_paie(company, le_jour, *, contexte='',
+                                  parametre=_PARAMETRE_NON_FOURNI):
     """Avertissements FORTS sur les paramètres sociaux en vigueur (AUD710).
 
     ``valide_par_fondateur`` n'était lu QUE par le seed/l'admin/le serializer :
@@ -1786,9 +1790,13 @@ def avertissements_parametre_paie(company, le_jour, *, contexte=''):
     bloquerait toute paie dès le premier jour d'une société. Le message est
     renvoyé aux appelants (payload API) ET journalisé en WARNING.
 
+    ``parametre`` évite une relecture quand l'appelant a DÉJÀ chargé le
+    ``ParametrePaie`` en vigueur (``calculer_bulletin``) ; omis, il est lu ici.
+
     Renvoie une liste de chaînes (vide quand tout est confirmé).
     """
-    parametre = parametre_en_vigueur(company, le_jour)
+    if parametre is _PARAMETRE_NON_FOURNI:
+        parametre = parametre_en_vigueur(company, le_jour)
     if parametre is None:
         message = (
             "Aucun paramètre social en vigueur : les cotisations et l'IR ne "
@@ -2483,7 +2491,8 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         # validés par le fondateur (liste vide sinon). Non persisté : c'est un
         # signal de calcul, remonté tel quel par l'API du bulletin.
         'avertissements': avertissements_parametre_paie(
-            profil.company, le_jour, contexte='Bulletin de paie'),
+            profil.company, le_jour, contexte='Bulletin de paie',
+            parametre=parametre),
         # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
@@ -3889,7 +3898,8 @@ def declaration_cnss(periode):
         # AUD710 — un BDS déposé sur des taux non confirmés est un risque
         # déclaratif : le signal accompagne la déclaration.
         'avertissements': avertissements_parametre_paie(
-            periode.company, le_jour, contexte='Déclaration CNSS'),
+            periode.company, le_jour, contexte='Déclaration CNSS',
+            parametre=parametre),
     }
     for cle, valeur in totaux.items():
         resultat[cle] = _q(valeur)
