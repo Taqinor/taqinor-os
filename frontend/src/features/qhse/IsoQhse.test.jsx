@@ -32,6 +32,7 @@ beforeAll(() => {
 const {
   empty, campagneCreate, certificationCreate, programmeCreate, reunionCreate,
   decisionCreate, decisionCreerCapa, objectifCreate, revueObjectifCreate,
+  campagnePeupler, campagneNotifier, campagneCloturer, elementPlanifier,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   campagneCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -42,6 +43,10 @@ const {
   decisionCreerCapa: vi.fn(),
   objectifCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
   revueObjectifCreate: vi.fn(() => Promise.resolve({ data: { id: 7 } })),
+  campagnePeupler: vi.fn(() => Promise.resolve({ data: { crees: 3 } })),
+  campagneNotifier: vi.fn(() => Promise.resolve({ data: { notifies: 2 } })),
+  campagneCloturer: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  elementPlanifier: vi.fn(() => Promise.resolve({ data: { ticket_id: 7 } })),
 }))
 
 const DECISION_ROW = {
@@ -55,10 +60,29 @@ const OBJECTIF_ROW = {
   id: 60, intitule: 'Taux de fréquence accidents', domaine: 'securite',
   domaine_display: 'Sécurité', valeur_cible: 2, echeance: '2027-01-01',
 }
+// AUDV10 — campagne de rappel peuplable/notifiable/clôturable + son élément.
+const CAMPAGNE_ROW = {
+  id: 1, titre: 'Rappel onduleurs X', produit: 12, gravite: 'majeure',
+  nb_elements: 1, statut: 'en_cours', statut_display: 'En cours',
+}
+const ELEMENT_ROW = {
+  id: 200, campagne: 1, numero_serie: 'SN-0042', statut: 'a_notifier',
+  statut_display: 'À notifier', ticket_sav_id: null,
+}
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
-    campagnesRappel: { list: empty, create: (...a) => campagneCreate(...a) },
+    campagnesRappel: {
+      list: () => Promise.resolve({ data: [CAMPAGNE_ROW] }),
+      create: (...a) => campagneCreate(...a),
+      peupler: (...a) => campagnePeupler(...a),
+      notifier: (...a) => campagneNotifier(...a),
+      cloturer: (...a) => campagneCloturer(...a),
+    },
+    elementsRappel: {
+      list: () => Promise.resolve({ data: [ELEMENT_ROW] }),
+      planifierRemplacement: (...a) => elementPlanifier(...a),
+    },
     certifications: { list: empty, create: (...a) => certificationCreate(...a) },
     programmesAudit: { list: empty, create: (...a) => programmeCreate(...a) },
     reunionsQhse: {
@@ -101,6 +125,52 @@ describe('IsoQhse — Rappels produit (WIR276)', () => {
 
     await waitFor(() => expect(campagneCreate).toHaveBeenCalledWith(
       expect.objectContaining({ titre: 'Rappel onduleurs X', produit: 12, gravite: 'majeure' }),
+    ))
+  })
+})
+
+describe('IsoQhse — Cycle de rappel produit (AUDV10)', () => {
+  it('peuple une campagne depuis le parc réel', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(await screen.findByRole('button', { name: 'Peupler depuis le parc' }))
+    await waitFor(() => expect(campagnePeupler).toHaveBeenCalledWith(1))
+  })
+
+  it('notifie les responsables des éléments à notifier', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(await screen.findByRole('button', { name: 'Notifier les responsables' }))
+    await waitFor(() => expect(campagneNotifier).toHaveBeenCalledWith(1))
+  })
+
+  it('clôture une campagne après vérification d’efficacité (action au menu)', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    // Deux listes (campagnes + éléments) partagent l'onglet — le kebab de la
+    // campagne est le premier rendu dans le DOM.
+    const kebabs = await screen.findAllByRole('button', { name: "Plus d'actions sur la ligne" })
+    await user.click(kebabs[0])
+    await user.click(await screen.findByRole('menuitem', { name: 'Clôturer' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Date de vérification d’efficacité'), '2026-09-04')
+    await user.click(within(dialog).getByRole('button', { name: 'Clôturer' }))
+
+    await waitFor(() => expect(campagneCloturer).toHaveBeenCalledWith(
+      1, expect.objectContaining({ date_verification_efficacite: '2026-09-04' }),
+    ))
+  })
+
+  it('planifie le remplacement SAV d’un élément concerné', async () => {
+    const user = userEvent.setup()
+    withProviders(<IsoQhse />)
+    await user.click(await screen.findByRole('button', { name: 'Planifier remplacement' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Client (id)'), '55')
+    await user.click(within(dialog).getByRole('button', { name: 'Planifier' }))
+
+    await waitFor(() => expect(elementPlanifier).toHaveBeenCalledWith(
+      200, { client_id: 55 },
     ))
   })
 })

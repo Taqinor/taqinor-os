@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Wrench } from 'lucide-react'
+import { Plus, Wrench, PlayCircle, Bell, CheckCircle2 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Dialog, DialogContent,
@@ -73,6 +73,95 @@ function CreerCampagneRappelDialog({ onClose, onCreated }) {
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose}>Annuler</Button>
             <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AUDV10 — clôture d'une campagne de rappel (vérification d'efficacité datée,
+// requise côté serveur par `cloturer_campagne_rappel`).
+function CloturerCampagneDialog({ campagne, onClose, onDone }) {
+  const [date, setDate] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function confirm() {
+    setSaving(true)
+    try {
+      await qhseApi.campagnesRappel.cloturer(campagne.id, {
+        date_verification_efficacite: date || undefined,
+      })
+      toast.success('Campagne clôturée.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Clôturer la campagne « {campagne.titre} »</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Date de vérification d’efficacité</Label>
+            <Input aria-label="Date de vérification d’efficacité" type="date"
+              value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={confirm} disabled={saving}>{saving ? 'Clôture…' : 'Clôturer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AUDV10 — planifie le remplacement SAV d'un élément de rappel (client requis
+// côté serveur, résolu via `crm.selectors.get_company_client`).
+function PlanifierRemplacementDialog({ element, onClose, onDone }) {
+  const [clientId, setClientId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function confirm() {
+    if (!clientId) { toast.error('Le client est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.elementsRappel.planifierRemplacement(element.id, {
+        client_id: Number(clientId),
+      })
+      toast.success('Remplacement planifié — ticket SAV créé.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Planification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>
+          Planifier le remplacement — {element.numero_serie || `élément #${element.id}`}
+        </DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Client (id)</Label>
+            <Input aria-label="Client (id)" inputMode="numeric" value={clientId}
+              onChange={(e) => setClientId(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={confirm} disabled={saving}>
+              {saving ? 'Planification…' : 'Planifier'}
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -443,6 +532,30 @@ export default function IsoQhse() {
   // décision (même patron que `ouvrirCreationLoto`, Risques.jsx).
   const [reunionOptions, setReunionOptions] = useState([])
   const [objectifOptions, setObjectifOptions] = useState([])
+  // AUDV10 — cycle de vie d'une campagne de rappel (peupler/notifier/clôturer)
+  // et planification du remplacement SAV d'un élément concerné.
+  const [cloturerCampagne, setCloturerCampagne] = useState(null)
+  const [planifierElement, setPlanifierElement] = useState(null)
+
+  async function peuplerCampagne(row) {
+    try {
+      const res = await qhseApi.campagnesRappel.peupler(row.id)
+      toast.success(`${res?.data?.crees ?? 0} élément(s) peuplé(s) depuis le parc.`)
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Peuplement impossible.')
+    }
+  }
+
+  async function notifierCampagne(row) {
+    try {
+      const res = await qhseApi.campagnesRappel.notifier(row.id)
+      toast.success(`${res?.data?.notifies ?? 0} responsable(s) notifié(s).`)
+      bump()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Notification impossible.')
+    }
+  }
 
   async function ouvrirCreationDecision() {
     try {
@@ -480,6 +593,16 @@ export default function IsoQhse() {
     { id: 'gravite', header: 'Gravité', width: 120, accessor: (r) => r.gravite_display || r.gravite },
     { id: 'nb_elements', header: 'Éléments', width: 100, align: 'right', accessor: (r) => r.nb_elements ?? 0 },
     { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
+  ], [])
+
+  const elementsRappelCols = useMemo(() => [
+    { id: 'campagne', header: 'Campagne', width: 100, accessor: (r) => r.campagne },
+    { id: 'serie', header: 'N° série', accessor: (r) => r.numero_serie || '—' },
+    { id: 'statut', header: 'Statut', width: 130, accessor: (r) => r.statut_display || r.statut },
+    {
+      id: 'ticket', header: 'Ticket SAV', width: 110, align: 'center',
+      accessor: (r) => r.ticket_sav_id, cell: (v) => (v ? `#${v}` : '—'),
+    },
   ], [])
 
   const certificationsCols = useMemo(() => [
@@ -551,7 +674,7 @@ export default function IsoQhse() {
           <TabsTrigger value="objectifs">Objectifs QHSE</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rappels" className="mt-4">
+        <TabsContent value="rappels" className="mt-4 flex flex-col gap-6">
           <QhseResourceList
             title="Campagnes de rappel produit"
             subtitle="Défaut fournisseur produit-lot-série (XQHS5)"
@@ -564,6 +687,27 @@ export default function IsoQhse() {
                 <Plus size={16} /> Nouvelle campagne
               </Button>
             }
+            // AUDV10 — cycle de vie complet (peupler le parc réel, notifier les
+            // responsables, clôturer après vérification d'efficacité) jusqu'ici
+            // testé côté API (WIR275) sans aucun bouton d'écran.
+            rowActions={(r) => [
+              { id: 'peupler', label: 'Peupler depuis le parc', icon: PlayCircle, onClick: () => peuplerCampagne(r) },
+              { id: 'notifier', label: 'Notifier les responsables', icon: Bell, onClick: () => notifierCampagne(r) },
+              ...(r.statut !== 'cloturee'
+                ? [{ id: 'cloturer', label: 'Clôturer', icon: CheckCircle2, onClick: () => setCloturerCampagne(r) }]
+                : []),
+            ]}
+          />
+          <QhseResourceList
+            title="Éléments concernés"
+            subtitle="Équipements du parc peuplés par une campagne — remplacement SAV"
+            fetcher={() => qhseApi.elementsRappel.list()}
+            columns={elementsRappelCols}
+            exportName="qhse-elements-rappel"
+            deps={[reloadNonce]}
+            rowActions={(r) => (r.statut === 'remplace' || r.statut === 'clos'
+              ? []
+              : [{ id: 'planifier', label: 'Planifier remplacement', icon: Wrench, onClick: () => setPlanifierElement(r) }])}
           />
         </TabsContent>
 
@@ -663,6 +807,20 @@ export default function IsoQhse() {
 
       {createKey === 'campagne' && (
         <CreerCampagneRappelDialog onClose={() => setCreateKey(null)} onCreated={bump} />
+      )}
+      {cloturerCampagne && (
+        <CloturerCampagneDialog
+          campagne={cloturerCampagne}
+          onClose={() => setCloturerCampagne(null)}
+          onDone={bump}
+        />
+      )}
+      {planifierElement && (
+        <PlanifierRemplacementDialog
+          element={planifierElement}
+          onClose={() => setPlanifierElement(null)}
+          onDone={bump}
+        />
       )}
       {createKey === 'certification' && (
         <CreerCertificationDialog onClose={() => setCreateKey(null)} onCreated={bump} />
