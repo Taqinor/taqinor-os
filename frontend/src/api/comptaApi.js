@@ -252,6 +252,15 @@ const comptaApi = {
     planFiscal: (id) => api.get(`/compta/immobilisations/${id}/plan-fiscal/`),
     genererPlanFiscal: (id, data) =>
       api.post(`/compta/immobilisations/${id}/plan-fiscal/`, data),
+    // AUDV07 / XACC16 — poste UNE dotation dérogatoire de l'exercice au grand
+    // livre (dotation 65941/1351, ou reprise 1351/7594 en fin de vie). Sans
+    // elle, le plan fiscal se générait mais la provision réglementée n'était
+    // JAMAIS constituée. Un exercice sans écart renvoie `ecriture_id: null`
+    // (rien à écrire) ; un re-post est refusé côté serveur (400).
+    posterDotationDerogatoire: (id, annee) =>
+      api.post(
+        `/compta/immobilisations/${id}/poster-dotation-derogatoire/`,
+        { annee }),
   },
   dotations: {
     ...resource('dotations'),

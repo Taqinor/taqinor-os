@@ -152,6 +152,8 @@
     lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
 - frontend/src/api/comptaApi.js :: posterDotation -> /api/django/compta/charges-avance/<>/poster-dotation
     date_ecriture:inconnu, detail:inconnu, dotation:inconnu, ecriture_id:inconnu, montant:texte, numero:inconnu, posted:inconnu, reference:inconnu
+- frontend/src/api/comptaApi.js :: posterDotationDerogatoire -> /api/django/compta/immobilisations/<>/poster-dotation-derogatoire
+    annee:inconnu, detail:inconnu, difference:texte, dotation:inconnu, ecriture_id:inconnu, posted:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
 - frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer

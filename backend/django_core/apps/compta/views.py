@@ -2302,6 +2302,64 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 plan_fiscal, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'],
+            url_path='poster-dotation-derogatoire',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def poster_dotation_derogatoire(self, request, pk=None):
+        """AUDV07 / XACC16 (DRAFT165-37) — poste UNE dotation dérogatoire au GL.
+
+        `services.poster_dotation_derogatoire` n'avait aucun appelant : le plan
+        fiscal se générait bien (avec ses différences par exercice) mais AUCUNE
+        ne pouvait jamais être passée. La provision réglementée (1351) n'était
+        donc jamais constituée — l'écart entre l'amortissement fiscal et
+        l'amortissement comptable restait un chiffre d'écran, invisible du
+        bilan, alors que c'est exactement ce que l'administration fiscale
+        attend d'un amortissement dérogatoire.
+
+        Corps : ``{'annee': <exercice>}`` — la dotation est cherchée dans le
+        plan fiscal de CETTE immobilisation (404/400 sinon). Une différence
+        POSITIVE dote (débit 65941 / crédit 1351), une NÉGATIVE reprend (débit
+        1351 / crédit 7594) ; une différence NULLE ne poste rien mais marque la
+        dotation traitée. La vue refuse explicitement un re-post — même règle
+        que les autres postages du module. Verrou de période respecté.
+        """
+        immo = self.get_object()  # scopée société par TenantMixin.
+        plan_comptable = getattr(immo, 'plan_amortissement', None)
+        plan_fiscal = (getattr(plan_comptable, 'plan_fiscal', None)
+                       if plan_comptable else None)
+        if plan_fiscal is None:
+            return Response(
+                {'detail': "Aucun plan fiscal : générez-le d'abord."},
+                status=status.HTTP_400_BAD_REQUEST)
+        dotation = plan_fiscal.dotations_derogatoires.filter(
+            annee=request.data.get('annee')).first()
+        if dotation is None:
+            return Response(
+                {'detail': "Aucune dotation dérogatoire pour cet exercice."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if dotation.posted:
+            return Response(
+                {'detail': (
+                    f"La dotation dérogatoire {dotation.annee} est déjà "
+                    "postée : elle ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_dotation_derogatoire(
+                dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': dotation.id,
+            'annee': dotation.annee,
+            'difference': str(dotation.difference),
+            'posted': dotation.posted,
+            # `null` quand la différence est NULLE : il n'y avait rien à
+            # écrire, et inventer une écriture vide serait pire que rien.
+            'ecriture_id': ecriture.id if ecriture else None,
+            'reference': ecriture.reference if ecriture else '',
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def ceder(self, request, pk=None):
         """Enregistre et poste la cession / mise au rebut de l'actif (FG120).
