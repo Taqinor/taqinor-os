@@ -672,6 +672,39 @@ def _positionner(inscription, noeud, *, maintenant):
     inscription.save(update_fields=['noeud_courant', 'noeud_depuis'])
 
 
+def _executer_noeud_action(inscription, noeud):
+    """AUD622 — exécute un nœud ACTION du graphe, action CRM COMPRISE.
+
+    Le type est libellé « Action (message / CRM) » et sa config documente
+    ``action_crm``, mais la branche ne lisait que ``config['canal']`` pour
+    tracer : AUCUNE action CRM ne se produisait jamais, silencieusement —
+    alors que le moteur LINÉAIRE (XMKT19) interprète ce même JSON depuis
+    toujours. On appelle donc la MÊME logique, extraite en
+    ``compta.services.executer_action_crm_config`` : une seule implémentation
+    pour les deux moteurs.
+
+    Un nœud sans ``action_crm`` garde exactement le comportement d'avant
+    (trace ``planifie`` portant le canal).
+    """
+    config = noeud.config or {}
+    canal = str(config.get('canal') or '')
+    action_crm = config.get('action_crm')
+    if not action_crm:
+        return _tracer_noeud(inscription, noeud, canal=canal)
+
+    from apps.compta.services import executer_action_crm_config
+
+    action = (action_crm or {}).get('action')
+    resultat = executer_action_crm_config(
+        inscription.company, inscription.lead_id, action_crm,
+        note_chatter=(
+            f'Journey « {inscription.sequence.nom} » — action CRM '
+            f'« {action} » exécutée (nœud {noeud.libelle or noeud.id})'))
+    return _tracer_noeud(
+        inscription, noeud, canal=canal, resultat=resultat,
+        erreur='' if resultat != 'erreur' else 'action CRM échouée')
+
+
 def avancer_journey(inscription, *, maintenant=None):
     """Fait avancer UNE inscription dans le graphe de sa séquence (NTMKT12).
 
@@ -706,9 +739,7 @@ def avancer_journey(inscription, *, maintenant=None):
             if maintenant < echeance_noeud(inscription, noeud):
                 break
         elif noeud.type_noeud == NoeudJourney.Type.ACTION:
-            config = noeud.config or {}
-            traces.append(_tracer_noeud(
-                inscription, noeud, canal=str(config.get('canal') or '')))
+            traces.append(_executer_noeud_action(inscription, noeud))
         arc = arc_suivant(inscription, noeud)
         _positionner(inscription, arc.cible if arc else None,
                      maintenant=maintenant)
@@ -770,6 +801,7 @@ def executer_journeys_dus(company, *, maintenant=None):
     Pendant graphe de ``compta.services.executer_etapes_dues`` (linéaire), qui
     reste la seule voie pour les séquences sans nœud.
     """
+    from django.db import transaction
     from django.utils import timezone
     from .models import InscriptionSequence, NoeudJourney
     maintenant = maintenant or timezone.now()
@@ -779,13 +811,24 @@ def executer_journeys_dus(company, *, maintenant=None):
     if not sequences_graphe:
         return []
     traces = []
-    inscriptions = InscriptionSequence.objects.filter(
-        company=company,
-        statut=InscriptionSequence.Statut.ACTIF,
-        sequence_id__in=sequences_graphe,
-    ).select_related('sequence', 'noeud_courant')
-    for inscription in inscriptions:
-        traces.extend(avancer_journey(inscription, maintenant=maintenant))
+    # AUD622 — VERROU DE TICK. Sans lui, deux ticks beat qui se chevauchent
+    # lisaient les mêmes inscriptions ACTIVES et les avançaient TOUTES LES
+    # DEUX : deux ``ExecutionEtapeSequence`` pour le même nœud, et une action
+    # CRM exécutée deux fois. ``skip_locked`` fait que le second tick IGNORE
+    # les inscriptions déjà prises au lieu d'attendre (un tick beat ne doit
+    # jamais bloquer sur le précédent). ``of=('self',)`` ne verrouille que la
+    # ligne d'inscription : Postgres refuse un FOR UPDATE portant sur le côté
+    # nullable d'une jointure externe (``noeud_courant``).
+    with transaction.atomic():
+        inscriptions = list(
+            InscriptionSequence.objects.filter(
+                company=company,
+                statut=InscriptionSequence.Statut.ACTIF,
+                sequence_id__in=sequences_graphe,
+            ).select_related('sequence', 'noeud_courant')
+            .select_for_update(skip_locked=True, of=('self',)))
+        for inscription in inscriptions:
+            traces.extend(avancer_journey(inscription, maintenant=maintenant))
     return traces
 
 

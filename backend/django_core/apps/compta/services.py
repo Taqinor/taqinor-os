@@ -9283,19 +9283,27 @@ def _appliquer_action_alternative(inscription, etape, action):
             f'autre objet (branche alternative étape {etape.ordre})')
 
 
-def _executer_action_crm(inscription, etape):
-    """XMKT19 — exécute l'action CRM configurée sur ``etape.action_crm``
-    (JSON ``{"action": ..., "params": {...}}``), toujours via
-    ``apps.crm.services`` (jamais d'import direct du modèle CRM). Renvoie
-    ``'execute'`` / ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+def executer_action_crm_config(company, lead_id, action_crm, *,
+                               note_chatter=''):
+    """XMKT19 / AUD622 — exécute une action CRM déclarée en JSON
+    (``{"action": ..., "params": {...}}``), toujours via ``apps.crm.services``
+    (jamais d'import direct du modèle CRM). Renvoie ``'execute'`` /
+    ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+
+    AUD622 — extraite de ``_executer_action_crm`` (moteur LINÉAIRE XMKT19)
+    pour que le moteur GRAPHE (``marketing.services.avancer_journey``) exécute
+    EXACTEMENT la même logique. Le nœud ACTION du graphe est libellé
+    « Action (message / CRM) » et sa config documente ``action_crm``, mais
+    aucune action CRM ne s'y produisait : la branche ne lisait que
+    ``config['canal']`` pour tracer, silencieusement.
     """
     from apps.crm.selectors import get_company_lead
     from apps.crm import services as crm_services
 
-    lead = get_company_lead(inscription.company, inscription.lead_id)
+    lead = get_company_lead(company, lead_id)
     if lead is None:
         return 'lead_introuvable'
-    config = etape.action_crm or {}
+    config = action_crm or {}
     action = config.get('action')
     params = config.get('params') or {}
     try:
@@ -9317,11 +9325,23 @@ def _executer_action_crm(inscription, etape):
             return 'action_inconnue'
     except Exception:
         return 'erreur'
-    noter_touche_marketing_pour_lead(
-        inscription.company, f'lead:{inscription.lead_id}',
-        f'Séquence « {inscription.sequence.nom} » — action CRM « {action} » '
-        f'exécutée (étape {etape.ordre})')
+    if note_chatter:
+        noter_touche_marketing_pour_lead(
+            company, f'lead:{lead_id}', note_chatter)
     return 'execute'
+
+
+def _executer_action_crm(inscription, etape):
+    """XMKT19 — action CRM d'une ÉTAPE du moteur linéaire (``etape.action_crm``).
+    Enveloppe fine d'``executer_action_crm_config``, partagée avec le moteur
+    graphe depuis AUD622 — la logique n'existe qu'à un seul endroit.
+    """
+    action = (etape.action_crm or {}).get('action')
+    return executer_action_crm_config(
+        inscription.company, inscription.lead_id, etape.action_crm,
+        note_chatter=(
+            f'Séquence « {inscription.sequence.nom} » — action CRM '
+            f'« {action} » exécutée (étape {etape.ordre})'))
 
 
 def _executer_une_etape(inscription, etape, *, maintenant=None):
@@ -9599,27 +9619,36 @@ def executer_etapes_dues(company, *, maintenant=None):
     """
     maintenant = maintenant or timezone.now()
     executions = []
-    qs = InscriptionSequence.objects.filter(
-        company=company, statut=InscriptionSequence.Statut.ACTIF,
-        etape_courante__isnull=False,
-    ).select_related('etape_courante', 'sequence')
-    for inscription in qs:
-        etape = inscription.etape_courante
-        echeance = inscription.declenchee_le + timezone.timedelta(
-            days=etape.delai_jours)
-        if maintenant < echeance:
-            continue
-        executions.append(
-            _executer_une_etape(inscription, etape, maintenant=maintenant))
-        suivante = inscription.sequence.etapes.filter(
-            ordre__gt=etape.ordre).order_by('ordre').first()
-        if suivante:
-            inscription.etape_courante = suivante
-            inscription.save(update_fields=['etape_courante'])
-        else:
-            inscription.etape_courante = None
-            inscription.statut = InscriptionSequence.Statut.TERMINE
-            inscription.save(update_fields=['etape_courante', 'statut'])
+    # AUD622 — VERROU DE TICK (même garde que le moteur graphe
+    # ``marketing.services.executer_journeys_dus``, par cohérence : le risque
+    # de double exécution était partagé). Sans lui, deux ticks beat qui se
+    # chevauchent exécutent la même étape deux fois. ``skip_locked`` : un tick
+    # ignore ce qu'un autre traite au lieu d'attendre. ``of=('self',)`` ne
+    # verrouille que la ligne d'inscription, jamais les tables jointes.
+    with transaction.atomic():
+        inscriptions = list(
+            InscriptionSequence.objects.filter(
+                company=company, statut=InscriptionSequence.Statut.ACTIF,
+                etape_courante__isnull=False,
+            ).select_related('etape_courante', 'sequence')
+            .select_for_update(skip_locked=True, of=('self',)))
+        for inscription in inscriptions:
+            etape = inscription.etape_courante
+            echeance = inscription.declenchee_le + timezone.timedelta(
+                days=etape.delai_jours)
+            if maintenant < echeance:
+                continue
+            executions.append(
+                _executer_une_etape(inscription, etape, maintenant=maintenant))
+            suivante = inscription.sequence.etapes.filter(
+                ordre__gt=etape.ordre).order_by('ordre').first()
+            if suivante:
+                inscription.etape_courante = suivante
+                inscription.save(update_fields=['etape_courante'])
+            else:
+                inscription.etape_courante = None
+                inscription.statut = InscriptionSequence.Statut.TERMINE
+                inscription.save(update_fields=['etape_courante', 'statut'])
     return executions
 
 
