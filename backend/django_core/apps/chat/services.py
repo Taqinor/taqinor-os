@@ -888,11 +888,22 @@ def _months_ago(now, months):
 
 def sweep_retention(company, now=None):
     """Sweep de rétention pour UNE société : pour chaque type de conversation
-    ayant une politique active (`retention_months` non nul), soft-delete
-    (`deleted_at`) les messages plus vieux que la fenêtre. SANS politique,
-    RIEN n'est purgé (comportement par défaut inchangé). Journalise
-    TOUJOURS l'exécution, même à 0 purge (traçabilité CNDP)."""
-    from .models import Message, RetentionPolicy, RetentionSweepRun
+    ayant une politique active (`retention_months` non nul), EFFACE
+    RÉELLEMENT le contenu des messages plus vieux que la fenêtre — corps vidé,
+    pièces jointes détachées et leur blob MinIO supprimé — avant de poser
+    `deleted_at` (le message reste comme tombstone : id/auteur/date restent
+    pour le fil, comme une suppression manuelle ordinaire, mais plus jamais
+    de contenu). AUD812 — un simple flag `deleted_at` sans effacement réel
+    (l'ancien comportement) laissait le corps et les pièces jointes
+    indéfiniment en base/MinIO malgré le masquage en lecture : ce n'est pas
+    une rétention au sens loi 09-08/CNDP. SANS politique, RIEN n'est purgé
+    (comportement par défaut inchangé). Journalise TOUJOURS l'exécution,
+    même à 0 purge (traçabilité CNDP)."""
+    from apps.records.storage import delete_attachment
+
+    from .models import (
+        Message, MessageAttachment, RetentionPolicy, RetentionSweepRun,
+    )
 
     now = now or timezone.now()
     total = 0
@@ -906,9 +917,20 @@ def sweep_retention(company, now=None):
             conversation__kind=policy.conversation_kind,
             deleted_at__isnull=True,
             created_at__lt=cutoff)
-        count = qs.count()
+        message_ids = list(qs.values_list('id', flat=True))
+        count = len(message_ids)
         if count:
-            qs.update(deleted_at=now)
+            # Blob MinIO d'abord (best-effort, `delete_attachment` n'échoue
+            # jamais), puis les lignes de pièce jointe (plus rien à garder
+            # une fois le blob parti — transcript de mémo vocal inclus),
+            # puis le corps du message. `deleted_at` posé en dernier.
+            attachments = MessageAttachment.objects.filter(
+                message_id__in=message_ids)
+            for att in attachments:
+                delete_attachment(att.file_key)
+            attachments.delete()
+            Message.objects.filter(id__in=message_ids).update(
+                body='', deleted_at=now)
         total += count
         details.append(
             f'{policy.conversation_kind}: {count} message(s) purgé(s) '
