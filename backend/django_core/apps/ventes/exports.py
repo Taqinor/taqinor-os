@@ -18,6 +18,82 @@ def _q2(d):
     return Decimal(d).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+def facture_par_taux(facture):
+    """AUD110 — ventilation {taux: {'ht', 'tva'}} + TTC d'une facture, NETTE de
+    la remise globale.
+
+    Les quatre exports comptables (journal, comptable xlsx/csv, grand-livre,
+    pont QuickBooks) sommaient directement ``ligne.total_ht``. Or
+    ``LigneFacture.total_ht`` n'applique QUE la remise de LIGNE, jamais la
+    remise GLOBALE du document, alors que ``Facture.total_ht``/``total_tva``/
+    ``total_ttc`` l'appliquent via la chaîne canonique QX1 — la source de
+    vérité utilisée partout ailleurs (PDF facture, UBL DGI, repli note de
+    débit, ``compta.services.ecriture_pour_facture``). Une facture remisée à
+    15 % était donc déclarée au cabinet pour son BRUT : +3 000 MAD de CA et
+    +600 MAD de TVA par facture, dans un document remis à un tiers.
+
+    On lit la ventilation du DOCUMENT (``tva_par_taux``), qui gère d'un coup
+    les trois cas : lignes simples, remise globale active, et montants figés
+    (facture de tranche / header-only). Renvoie ``(par_taux, ttc)``.
+    """
+    par_taux = {}
+    for bucket in facture.tva_par_taux:
+        taux = Decimal(str(bucket['taux'] or 0))
+        entree = par_taux.setdefault(
+            taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+        entree['ht'] += _q2(bucket.get('base_ht') or 0)
+        entree['tva'] += _q2(bucket.get('montant') or 0)
+    return par_taux, _q2(facture.total_ttc)
+
+
+def lignes_ventilees(facture):
+    """AUD110 — lignes d'une facture avec leurs montants NETS de remise globale.
+
+    Renvoie ``[(ligne, taux, ht, tva)]`` DANS L'ORDRE D'ORIGINE, dont les
+    sommes égalent EXACTEMENT ``facture.total_ht`` et ``facture.total_tva`` au
+    centime : la cible par taux vient de ``tva_par_taux`` (la chaîne canonique)
+    et est répartie au prorata du brut de chaque ligne, la DERNIÈRE ligne de
+    chaque panier absorbant le résidu d'arrondi. Sans remise globale active,
+    chaque ligne retrouve exactement son montant d'hier.
+
+    Liste vide si la facture n'a aucune ligne (le cas header-only, traité par
+    le filet figé d'AUD109 chez les appelants).
+    """
+    lignes = list(facture.lignes.all())
+    if not lignes:
+        return []
+
+    index_par_taux = {}
+    for i, ligne in enumerate(lignes):
+        taux = Decimal(str(ligne.taux_tva_effectif or 0))
+        index_par_taux.setdefault(taux, []).append(i)
+
+    cible, _ttc = facture_par_taux(facture)
+    resultat = [None] * len(lignes)
+    for taux, indices in index_par_taux.items():
+        brut = {i: _q2(lignes[i].total_ht) for i in indices}
+        brut_total = sum(brut.values(), Decimal('0'))
+        panier = cible.get(taux)
+        if panier is None:
+            # Taux absent de la ventilation du document (ne devrait pas
+            # arriver) : on retombe sur le brut, comportement d'avant AUD110.
+            base, tva_cible = brut_total, _q2(brut_total * taux / Decimal('100'))
+        else:
+            base, tva_cible = panier['ht'], panier['tva']
+        reste_ht, reste_tva = base, tva_cible
+        for rang, i in enumerate(indices):
+            if rang == len(indices) - 1:
+                ht, tva = reste_ht, reste_tva
+            else:
+                part = (brut[i] / brut_total) if brut_total else Decimal('0')
+                ht = _q2(base * part)
+                tva = _q2(tva_cible * part)
+                reste_ht -= ht
+                reste_tva -= tva
+            resultat[i] = (lignes[i], taux, ht, tva)
+    return resultat
+
+
 def period_bounds(params):
     """Calcule (debut, fin) depuis ?month=YYYY-MM, ?quarter=YYYY-Q ou
     ?start=&end=. Défaut : mois courant."""
@@ -73,12 +149,11 @@ def export_journal_ventes(company, debut, fin):
         date_f = f.date_emission.isoformat() if f.date_emission else ''
         nom = getattr(f.client, 'nom', '') or ''
         ice = getattr(f.client, 'ice', '') or ''
-        lignes = list(f.lignes.all())
-        if lignes:
-            for ligne in lignes:
-                ht = _q2(ligne.total_ht)
-                taux = Decimal(ligne.taux_tva_effectif or 0)
-                tva = _q2(ht * taux / Decimal('100'))
+        # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``,
+        # qui n'applique que la remise de LIGNE).
+        ventilees = lignes_ventilees(f)
+        if ventilees:
+            for ligne, taux, ht, tva in ventilees:
                 ttc = _q2(ht + tva)
                 ws.append([
                     f.reference, date_f, type_libelle, nom, ice,
@@ -207,12 +282,10 @@ def _compta_rows(company, debut, fin):
         nom = getattr(f.client, 'nom', '') or ''
         ice = getattr(f.client, 'ice', '') or ''
         date_f = f.date_emission.isoformat() if f.date_emission else ''
-        lignes = list(f.lignes.all())
-        if lignes:
-            for ligne in lignes:
-                ht = _q2(ligne.total_ht)
-                taux = Decimal(ligne.taux_tva_effectif or 0)
-                tva = _q2(ht * taux / Decimal('100'))
+        # AUD110 — montants NETS de remise globale (jamais ``ligne.total_ht``).
+        ventilees = lignes_ventilees(f)
+        if ventilees:
+            for ligne, taux, ht, tva in ventilees:
                 ttc = _q2(ht + tva)
                 rows.append([
                     f.reference, date_f, type_libelle, nom, ice,
@@ -401,26 +474,11 @@ def _grand_livre_rows(company, debut, fin):
         nom = getattr(f.client, 'nom', '') or ''
         ice = getattr(f.client, 'ice', '') or ''
         piece = f.reference
-        # Ventilation HT/TVA par taux sur les lignes (ou montants figés).
-        par_taux = {}
-        ttc_total = Decimal('0')
-        lignes = list(f.lignes.all())
-        if lignes:
-            for ligne in lignes:
-                ht = _q2(ligne.total_ht)
-                taux = Decimal(ligne.taux_tva_effectif or 0)
-                tva = _q2(ht * taux / Decimal('100'))
-                b = par_taux.setdefault(
-                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-                b['ht'] += ht
-                b['tva'] += tva
-                ttc_total += ht + tva
-        else:
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            par_taux[taux] = {'ht': ht, 'tva': tva}
-            ttc_total = _q2(f.total_ttc)
+        # AUD110 — ventilation HT/TVA par taux lue sur le DOCUMENT : elle est
+        # NETTE de remise globale et couvre d'un coup les trois cas (lignes,
+        # remise active, montants figés). La somme sur les lignes appliquait
+        # la seule remise de LIGNE et sur-déclarait le CA au grand livre.
+        par_taux, ttc_total = facture_par_taux(f)
         # DÉBIT 3421 Clients (TTC) — une ligne par pièce.
         _emit(ttc_total, Decimal('0'), c_clients, None, date_s, piece,
               f'Facture {piece}', nom, ice)
