@@ -341,6 +341,18 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     if devis.statut != devis.Statut.ACCEPTE:
         raise ValueError("Le devis doit être au statut « Accepté ».")
 
+    # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. `factures_actives` compte les
+    # tranches via `devis.factures`, qui ne voit AUCUNE facture de la chaîne
+    # BON DE COMMANDE : un devis converti en BC puis facturé pouvait être
+    # facturé une SECONDE fois ici, et le client recevait deux fois la même
+    # vente. Le prédicat est partagé avec l'autre porte (`selectors`), donc il
+    # n'existe qu'UNE définition de « déjà facturé ».
+    from apps.ventes.selectors import factures_via_bon_commande
+    if factures_via_bon_commande(devis).exists():
+        raise ValueError(
+            "Ce devis est déjà facturé par son bon de commande : générer une "
+            "tranche d'échéancier facturerait la même vente une seconde fois.")
+
     tr = next_tranche(devis)
     if tr is None:
         raise ValueError("Toutes les tranches de l'échéancier sont déjà facturées.")

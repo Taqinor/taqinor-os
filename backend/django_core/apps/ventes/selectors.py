@@ -2526,3 +2526,55 @@ def share_link_niveau_map(devis_ids):
             'sections': row['sections'] or {},
         }
     return out
+
+
+# ── AUD112 — UN prédicat unique « ce devis est-il déjà facturé ? » ──────────
+# Les DEUX voies de facturation étaient totalement aveugles l'une à l'autre :
+# ``bon_commande.creer_facture`` ne gardait que
+# ``Facture.objects.filter(bon_commande=bc)``, et l'échéancier comptait les
+# tranches via ``devis.factures``, qui ne voit AUCUNE facture de la chaîne BC.
+# Un devis converti en BC puis facturé pouvait donc être facturé une SECONDE
+# fois par l'échéancier — le client recevait deux fois la même facture, jusqu'à
+# 200 %. Ces trois selectors sont la source unique consultée par les deux
+# portes.
+
+def factures_via_bon_commande(devis, *, inclure_annulees=False):
+    """Factures de la chaîne BON DE COMMANDE de ce devis (queryset).
+
+    C'est le trou : que ``Facture.devis`` soit réservé à l'échéancier est
+    assumé — ce qui ne l'était pas, c'est que RIEN ne regardait
+    ``bon_commande__devis``."""
+    from .models import Facture
+    qs = Facture.objects.filter(bon_commande__devis=devis)
+    if not inclure_annulees:
+        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    return qs
+
+
+def factures_du_devis(devis, *, inclure_annulees=False):
+    """TOUTES les factures d'un devis, LES DEUX VOIES CONFONDUES (queryset).
+
+    ``Q(devis=devis) | Q(bon_commande__devis=devis)`` : l'échéancier ET le bon
+    de commande. Les factures ANNULÉES sont exclues par défaut (elles ne
+    consomment plus rien)."""
+    from django.db.models import Q
+
+    from .models import Facture
+    qs = Facture.objects.filter(
+        Q(devis=devis) | Q(bon_commande__devis=devis))
+    if not inclure_annulees:
+        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    return qs.distinct()
+
+
+def devis_deja_facture(devis):
+    """LE prédicat partagé : ce devis est-il déjà (partiellement) facturé ?
+
+    Appelé depuis LES DEUX portes — ``bon_commande.creer_facture`` (qui refuse
+    en 400 si des tranches d'échéancier existent) et
+    ``utils.echeancier.creer_facture_tranche`` (qui refuse si la chaîne BC a
+    déjà facturé). Un devis sans facture active renvoie ``False`` : les deux
+    portes restent grandes ouvertes dans le cas normal."""
+    if devis is None:
+        return False
+    return factures_du_devis(devis).exists()
