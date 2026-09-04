@@ -2822,6 +2822,14 @@ def valider_bulletin(bulletin):
             extourner_provisions_gratification(bulletin.profil)
         except Exception:  # pragma: no cover - défensif, best-effort
             pass
+    # AUD703 — l'ARCHIVE IMMUABLE du PDF (doctrine D9) n'est PAS posée ici :
+    # elle l'est à la PREMIÈRE ÉMISSION du document validé
+    # (``builders.bulletin_pdf_a_servir``). Rendre un PDF WeasyPrint et
+    # téléverser dans l'entrepôt à l'intérieur de CHAQUE validation de paie
+    # coûterait une génération complète par bulletin et ferait dépendre la
+    # validation d'un service externe — alors qu'un bulletin jamais émis n'a
+    # rien à archiver. À partir de la première émission, la réémission sert
+    # TOUJOURS cette archive, jamais un re-rendu.
     # XPAI21 — Notifie l'employé lié (rh.DossierEmploye.user) que son
     # bulletin validé est disponible dans son coffre-fort (PAIE35).
     # Best-effort : jamais bloquant pour la validation.

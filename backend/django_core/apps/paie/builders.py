@@ -20,6 +20,7 @@ PyMuPDF) est HORS PÉRIMÈTRE : elle n'importe pas WeasyPrint directement, elle
 réutilise ``render_bulletin_pdf`` (déjà migré) puis fusionne les pages via
 ``fitz``.
 """
+import hashlib
 from datetime import date
 from decimal import Decimal
 from html import escape
@@ -261,6 +262,105 @@ def render_bulletin_html(bulletin):
 def render_bulletin_pdf(bulletin):
     """Bulletin de paie → octets PDF (PAIE34)."""
     return _html_to_pdf(render_bulletin_html(bulletin))
+
+
+# ── AUD703 — Archive immuable du bulletin validé (doctrine D9) ─────────────
+
+class ArchiveBulletinIndisponible(RuntimeError):
+    """L'archive d'un bulletin VALIDÉ existe mais ne peut pas être servie.
+
+    On préfère un échec explicite à un re-rendu : re-rendre servirait un
+    document POTENTIELLEMENT DIFFÉRENT de celui qui a été remis au salarié —
+    exactement le défaut que l'archive ferme.
+    """
+
+
+def cle_archive_bulletin(bulletin):
+    """Clé de l'objet archivé, préfixée par la SOCIÉTÉ (multi-tenant)."""
+    periode = bulletin.periode
+    return (f'paie/{bulletin.company_id}/bulletins/'
+            f'{periode.annee}/{periode.mois:02d}/{bulletin.id}.pdf')
+
+
+def _archive_put(cle, pdf_bytes):
+    """Téléverse l'archive dans MinIO. Isolé pour être remplaçable en test."""
+    from django.conf import settings
+
+    from core.pdf import _upload_pdf
+
+    return _upload_pdf(pdf_bytes, cle,
+                       getattr(settings, 'MINIO_BUCKET_PDF', 'erp-pdf'))
+
+
+def _archive_get(cle):
+    """Relit l'archive depuis MinIO. Isolé pour être remplaçable en test."""
+    from django.conf import settings
+
+    from core.pdf import _minio_client
+
+    bucket = getattr(settings, 'MINIO_BUCKET_PDF', 'erp-pdf')
+    return _minio_client().get_object(Bucket=bucket, Key=cle)['Body'].read()
+
+
+def archiver_bulletin_pdf(bulletin, *, pdf_bytes=None):
+    """Rend (si besoin), archive et EMPREINTE le PDF d'un bulletin (AUD703).
+
+    Écrit ``pdf_archive_cle`` / ``pdf_sha256`` / ``pdf_archive_le`` sur le
+    bulletin — champs autorisés après validation (cf.
+    ``BulletinPaie._CHAMPS_AUTORISES_APRES_VALIDATION``). L'empreinte est
+    posée MÊME si le téléversement échoue (l'entrepôt peut être indisponible) :
+    on garde alors la preuve de ce qui a été rendu, sans prétendre à une
+    archive. Renvoie les octets du PDF. N'archive jamais deux fois : un
+    bulletin qui porte déjà une clé est rendu tel quel depuis son archive.
+    """
+    from django.utils import timezone
+
+    if pdf_bytes is None:
+        pdf_bytes = render_bulletin_pdf(bulletin)
+    empreinte = hashlib.sha256(pdf_bytes).hexdigest()
+    cle = cle_archive_bulletin(bulletin)
+    champs = ['pdf_sha256', 'pdf_archive_le']
+    try:
+        _archive_put(cle, pdf_bytes)
+    except Exception:
+        # Entrepôt indisponible : on n'invente pas une archive qui n'existe
+        # pas. La clé reste vide → le prochain appel réessaiera d'archiver.
+        cle = ''
+    else:
+        bulletin.pdf_archive_cle = cle
+        champs.append('pdf_archive_cle')
+    bulletin.pdf_sha256 = empreinte
+    bulletin.pdf_archive_le = timezone.now()
+    if bulletin.pk:
+        bulletin.save(update_fields=champs)
+    return pdf_bytes
+
+
+def bulletin_pdf_a_servir(bulletin):
+    """Les octets à SERVIR pour ce bulletin (AUD703) — jamais un re-rendu.
+
+    * bulletin en BROUILLON → rendu à la volée (rien n'a encore été remis) ;
+    * bulletin VALIDÉ déjà archivé → l'objet archivé, à l'octet près ;
+    * bulletin VALIDÉ pas encore archivé (validé avant AUD703, ou entrepôt
+      indisponible ce jour-là) → rendu MAINTENANT puis archivé, et ce sont ces
+      octets-là qui font foi ensuite.
+
+    Lève ``ArchiveBulletinIndisponible`` si une archive EXISTE mais est
+    illisible : mieux vaut un échec explicite qu'un document divergent.
+    """
+    from .models import BulletinPaie
+
+    if getattr(bulletin, 'statut', None) != BulletinPaie.STATUT_VALIDE:
+        return render_bulletin_pdf(bulletin)
+    if bulletin.pdf_archive_cle:
+        try:
+            return _archive_get(bulletin.pdf_archive_cle)
+        except Exception as exc:
+            raise ArchiveBulletinIndisponible(
+                "Archive du bulletin indisponible : le document remis au "
+                "salarié ne peut pas être resservi pour l'instant."
+            ) from exc
+    return archiver_bulletin_pdf(bulletin)
 
 
 # ── PAIE34 — Attestations (salaire / travail / domiciliation) ──────────────

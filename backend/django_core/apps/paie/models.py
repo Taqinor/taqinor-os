@@ -1147,6 +1147,22 @@ class BulletinPaie(models.Model):
     # et la garde côté service ``marquer_bulletin_lu``).
     lu_le = models.DateTimeField(
         null=True, blank=True, verbose_name='Lu le (accusé de lecture)')
+    # AUD703 — ARCHIVE IMMUABLE du document remis au salarié (doctrine D9).
+    # ``SNAPSHOT_FIELDS`` ne gèle que les MONTANTS : l'identité imprimée
+    # (n° CNSS, RIB, banque du profil ; date de paiement de la période) reste
+    # modifiable par un PATCH banal, et chaque téléchargement re-rendait le
+    # PDF — un bulletin déjà remis pouvait donc être ré-émis avec un contenu
+    # différent, sans trace ni empreinte à comparer. À la validation, le PDF
+    # est rendu UNE fois, téléversé sous une clé préfixée par la société, et
+    # son empreinte SHA-256 figée ici : la réémission sert TOUJOURS l'archive.
+    pdf_archive_cle = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé de l\'archive PDF')
+    pdf_sha256 = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte SHA-256 du PDF archivé')
+    pdf_archive_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='PDF archivé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1171,8 +1187,12 @@ class BulletinPaie(models.Model):
     # se posent forcément APRÈS le gel). ``lu_le`` (XPAI21) se pose de la
     # même façon, après coup, à la première consultation employé. Les
     # montants/lignes de paie restent, eux, strictement figés.
+    # AUD703 — l'ARCHIVE du PDF (doctrine D9) se pose forcément APRÈS le gel :
+    # le document archivé est celui du bulletin VALIDÉ. Ces trois champs ne
+    # décrivent pas de la paie, ils décrivent l'artefact remis au salarié.
     _CHAMPS_AUTORISES_APRES_VALIDATION = frozenset(
-        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le'})
+        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le',
+         'pdf_archive_cle', 'pdf_sha256', 'pdf_archive_le'})
 
     def save(self, *args, **kwargs):
         """Garde d'immuabilité (PAIE17).

@@ -1360,10 +1360,16 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
-        """Bulletin de paie au format PDF conforme (PAIE34)."""
+        """Bulletin de paie au format PDF conforme (PAIE34).
+
+        AUD703 — un bulletin VALIDÉ sert son ARCHIVE, jamais un re-rendu :
+        l'identité imprimée (n° CNSS, RIB, date de paiement) reste modifiable
+        après validation, un re-rendu pourrait donc différer du document
+        réellement remis au salarié.
+        """
         bulletin = self.get_object()
         try:
-            pdf = builders.render_bulletin_pdf(bulletin)
+            pdf = builders.bulletin_pdf_a_servir(bulletin)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
@@ -1432,7 +1438,9 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
         bulletin = self.get_object()  # déjà scopé à l'utilisateur
         marquer_bulletin_lu(bulletin)
         try:
-            pdf = builders.render_bulletin_pdf(bulletin)
+            # AUD703 — le salarié retélécharge TOUJOURS l'archive de ce qui lui
+            # a été remis, jamais un re-rendu (qui pourrait avoir changé).
+            pdf = builders.bulletin_pdf_a_servir(bulletin)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)},
