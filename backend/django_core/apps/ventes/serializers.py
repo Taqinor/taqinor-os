@@ -781,6 +781,25 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             'overrides']
         extra_kwargs = {'client': {'required': False}}
 
+    def validate_statut(self, value):
+        """AUD505 — ACCEPTE/REFUSE/EXPIRE ont chacun leur porte dédiée et
+        gardée : ``/accepter/`` (``accept_devis`` — contrôle crédit XFAC28,
+        avertissement vente ZSAL9, événement ``devis_accepted`` → création
+        Chantier), ``/refuser/`` (garde de statut + ``devis_refused``), et
+        EXPIRE posé par le seul système (domain/recouvrement.py). Un PATCH
+        brut du corps ne passait par AUCUNE de ces gardes tout en faisant
+        avancer le lead CRM en SIGNED via ``perform_update`` →
+        ``avancer_stage_pour_devis`` — c'est ce trou que cette validation
+        ferme. BROUILLON/ENVOYE restent écrivables ici (matrice
+        d'approbation NTCPQ7/8, funnel QUOTE_SENT inchangés)."""
+        bloques = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
+                   Devis.Statut.EXPIRE}
+        if value in bloques:
+            raise serializers.ValidationError(
+                'Statut réservé à une action dédiée (« accepter » / '
+                '« refuser ») — jamais un PATCH direct du corps.')
+        return value
+
 
 class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
@@ -805,8 +824,15 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         # company is force-assigned in perform_create — never accept it from the body.
         # FG51 — pv_livraison/date_livraison_reelle ne se posent QUE via
         # l'action « marquer-livre » (jamais un PUT direct du corps).
+        # AUD506 — ``statut`` en lecture seule : BonCommandeViewSet n'a AUCUN
+        # perform_update, un PATCH brut faisait donc passer un BC directement
+        # en_attente→livre sans réservation stock ni preuve de livraison.
+        # CONFIRME/LIVRE/ANNULE passent désormais UNIQUEMENT par leurs actions
+        # dédiées (confirmer/marquer-livre/annuler), qui posent le statut
+        # directement sur le modèle (hors de ce sérialiseur).
         read_only_fields = ['reference', 'date_creation', 'company',
-                            'pv_livraison', 'date_livraison_reelle']
+                            'pv_livraison', 'date_livraison_reelle',
+                            'statut']
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()

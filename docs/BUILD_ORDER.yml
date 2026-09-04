@@ -420,6 +420,11 @@ unmapped_ok:
   # aucun prérequis de vague plateforme.
   - CRX
   - CRXB
+  # MRY — Moteur de relances de Meryem (Groupe MRY de PLAN2, 03-04/09/2026) :
+  # étend la RELANCE FOUNDATION existante (RelanceEtape/CadenceRelanceEtape),
+  # auto-ordonné par ses @after (MRY0 arrivée des leads, MRY25 contrats d'abord,
+  # lanes parametres/crm/notifications/frontend) ; aucun prérequis de vague.
+  - MRY
   # LB — Leads Board & Liste (refonte page pipeline, Groupe LB de PLAN2,
   # session 2026-07-19) : frontend pur, aucun prérequis de vague.
   - LB

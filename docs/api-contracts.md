@@ -669,7 +669,7 @@
 - frontend/src/api/monitoringApi.js :: getWarrantyCurve -> /api/django/monitoring/warranties/<>/curve
     has_warranty:booleen, installation:inconnu, manufacturer_recourse:inconnu, points:inconnu, threshold_pct:inconnu
 - frontend/src/api/monitoringApi.js :: getWarrantyStatus -> /api/django/monitoring/warranties/<>/status
-    actual_kwh:inconnu, compensation_mad:inconnu, guaranteed_kwh:inconnu, has_warranty:booleen, shortfall_kwh:inconnu, within_tolerance:inconnu, year:inconnu
+    actual_kwh:inconnu, compensation_mad:inconnu, guaranteed_kwh:inconnu, has_warranty:booleen, shortfall_kwh:inconnu, within_tolerance:inconnu, year:inconnu, year_in_progress:inconnu
 - frontend/src/api/monitoringApi.js :: syncNow -> /api/django/monitoring/configs/<>/sync-now
     imported:inconnu, ok:booleen, provider:inconnu, ratio_pct:inconnu, ticket:inconnu, underperforming:inconnu
 - frontend/src/api/mrpApi.js :: clotureAssisteeOF -> /api/django/mrp/ordres-fabrication/<>/cloture-assistee

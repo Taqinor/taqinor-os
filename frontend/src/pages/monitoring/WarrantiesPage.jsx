@@ -301,7 +301,17 @@ export default function WarrantiesPage() {
                       <div className="font-medium tabular-nums">{formatNumber(status.shortfall_kwh, { decimals: 0 })} kWh</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Compensation due</div>
+                      <div className="text-xs text-muted-foreground">
+                        Compensation due
+                        {status.year_in_progress && (
+                          // AUD508 — le garanti de l'année en cours est
+                          // PRORATÉ au jour écoulé (jamais l'objectif annuel
+                          // complet comparé à un réel forcément partiel) :
+                          // ce montant reste une estimation tant que
+                          // l'année n'est pas terminée.
+                          <span className="ml-1 italic">(estimation, année en cours)</span>
+                        )}
+                      </div>
                       <div className="font-medium tabular-nums">{formatMAD(status.compensation_mad)}</div>
                     </div>
                     <Badge tone={status.within_tolerance ? 'success' : 'danger'}>

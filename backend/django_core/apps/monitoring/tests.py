@@ -18,7 +18,9 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -238,6 +240,55 @@ class TestUnderperformance(TestCase):
         res = services.evaluate_underperformance(self.inst, today=self.today)
         self.assertFalse(res['evaluated'])
         self.assertEqual(UnderperformanceFlag.objects.count(), 0)
+        # AUD522 — « jamais aucun relevé » est tracé distinctement de
+        # « relevé(s) existant(s) mais hors fenêtre » (voir ci-dessous).
+        self.assertEqual(res['data_status'], 'no_data_ever')
+
+    def test_stale_single_old_reading_is_not_a_false_zero_alarm(self):
+        """AUD522 — un relevé UNIQUE et ANCIEN (hors fenêtre récente 365 j)
+        n'est plus traité comme une production réelle à 0 %.
+
+        AVANT LE FIX : `has_data` (sans borne de date) valait True dès qu'UN
+        relevé existait, n'importe quand ; `actual` (fenêtre 365 j) valait 0
+        pour ce relevé vieux de plus d'un an → ratio 0.00 %, underperforming
+        =True, drapeau ouvert (et ticket SAV auto possible) CHAQUE NUIT sur
+        un système qui n'a simplement plus de données récentes — jamais une
+        vraie sous-performance mesurée."""
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            period_days=365)
+        res = services.evaluate_underperformance(self.inst, today=self.today)
+        self.assertFalse(res['evaluated'])
+        self.assertFalse(res['underperforming'])
+        self.assertIsNone(res['ratio_pct'])
+        self.assertEqual(res['data_status'], 'stale_data')
+        self.assertEqual(UnderperformanceFlag.objects.count(), 0)
+
+    def test_stale_data_never_creates_auto_ticket(self):
+        """Même bascule société ON (auto_create_ticket), un relevé PÉRIMÉ ne
+        déclenche jamais de ticket SAV automatique."""
+        s = MonitoringSettings.get(self.company)
+        s.auto_create_ticket = True
+        s.save()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            period_days=365)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertIsNone(res['ticket'])
+        self.assertEqual(Ticket.objects.count(), 0)
+
+    def test_recent_reading_still_evaluated_normally(self):
+        """Non-régression — un relevé RÉCENT (dans la fenêtre) continue
+        d'être évalué normalement, `data_status='evaluated'`."""
+        self._add_reading(1000)  # très en dessous de 7500, dans la fenêtre
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res['data_status'], 'evaluated')
+        self.assertTrue(res['evaluated'])
+        self.assertTrue(res['underperforming'])
 
     def test_underperf_flag_without_auto_ticket(self):
         # Bascule OFF (défaut) : flag posé, AUCUN ticket créé.
@@ -444,6 +495,71 @@ class TestFleetOverview(TestCase):
         self.assertEqual(r.data['systems_active'], 2)
 
 
+class TestAud523FleetQueryBudget(TestCase):
+    """AUD523 — fleet_overview/co2_fleet itéraient sur les systèmes et
+    exécutaient une agrégation ProductionReading PAR SYSTÈME dans la boucle
+    Python (1+N requêtes pour N systèmes ; 1+2N pour co2_fleet, qui rappelait
+    en plus ``co2_for_installation`` — une requête à lui seul — par système).
+
+    Ce module prouve la PLATITUDE : le coût en requêtes SQL de chaque
+    sélecteur pour 20 systèmes doit être IDENTIQUE à celui pour 5 — avant le
+    fix, il grandissait avec N (le prouver aurait suffi à rougir ce test)."""
+
+    def setUp(self):
+        self.company = make_company('aud523-co', 'AUD523 Co')
+        self.today = date(2026, 6, 30)
+        self._n = 0
+
+    def _make_systems(self, n):
+        for _ in range(n):
+            self._n += 1
+            inst, _ = make_installation(
+                self.company, ref=f'AUD523-{self._n:03d}', kwc='5.00')
+            MonitoringConfig.objects.create(
+                company=self.company, installation=inst,
+                expected_annual_kwh=Decimal('6000'))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=365,
+                energy_kwh=Decimal('1000'))
+
+    def test_fleet_overview_query_count_flat_as_systems_grow(self):
+        from apps.monitoring.selectors import fleet_overview
+        self._make_systems(5)
+        with CaptureQueriesContext(connection) as ctx_5:
+            ov5 = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov5['systems_active'], 5)
+
+        self._make_systems(15)  # total 20, comme l'exemple chiffré de l'audit.
+        with CaptureQueriesContext(connection) as ctx_20:
+            ov20 = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov20['systems_active'], 20)
+
+        self.assertEqual(
+            len(ctx_20.captured_queries), len(ctx_5.captured_queries),
+            f"fleet_overview a coûté {len(ctx_5.captured_queries)} requête(s) "
+            f"pour 5 systèmes mais {len(ctx_20.captured_queries)} pour 20 — "
+            "N+1 (agrégation ProductionReading par système dans la boucle).")
+
+    def test_co2_fleet_query_count_flat_as_systems_grow(self):
+        from apps.monitoring.selectors import co2_fleet
+        self._make_systems(5)
+        with CaptureQueriesContext(connection) as ctx_5:
+            r5 = co2_fleet(self.company)
+        self.assertEqual(len(r5['systems']), 5)
+
+        self._make_systems(15)
+        with CaptureQueriesContext(connection) as ctx_20:
+            r20 = co2_fleet(self.company)
+        self.assertEqual(len(r20['systems']), 20)
+
+        self.assertEqual(
+            len(ctx_20.captured_queries), len(ctx_5.captured_queries),
+            f"co2_fleet a coûté {len(ctx_5.captured_queries)} requête(s) pour "
+            f"5 systèmes mais {len(ctx_20.captured_queries)} pour 20 — N+1 "
+            "(co2_for_installation rappelé par système dans la boucle).")
+
+
 class TestProductionWarranty(TestCase):
     """FG282 — garantie de production + compensation de manque."""
 
@@ -478,8 +594,14 @@ class TestProductionWarranty(TestCase):
             company=self.company, installation=self.inst,
             date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
         from apps.monitoring.services import production_warranty_status
-        st = production_warranty_status(self.inst, year=2026)
+        # AUD508 — 2026 doit être une année CLOSE pour ce calcul (le garanti
+        # annuel complet 11940 est la bonne référence uniquement une fois
+        # l'année terminée) : `today` fige la référence après le 31/12/2026,
+        # déterministe quelle que soit la date réelle d'exécution du test.
+        st = production_warranty_status(
+            self.inst, year=2026, today=date(2027, 1, 5))
         self.assertTrue(st['has_warranty'])
+        self.assertFalse(st['year_in_progress'])
         # Manque = 11940 - 10000 = 1940 ; compensation = 1940 × 1.4 = 2716.
         self.assertEqual(st['shortfall_kwh'], Decimal('1940.00'))
         self.assertEqual(st['compensation_mad'], Decimal('2716.00'))
@@ -521,6 +643,76 @@ class TestProductionWarranty(TestCase):
             f'/api/django/monitoring/warranties/{w.id}/status/?year=2026')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['has_warranty'])
+
+
+class TestAud508WarrantyProrationAnneeEnCours(TestCase):
+    """AUD508 — année EN COURS : le garanti comparé est PRORATÉ au jour
+    écoulé, jamais l'objectif annuel complet contre un réel forcément partiel.
+
+    LE BUG (avant fix). Garantie 12 000 kWh/an, tolérance 5 %, tarif
+    1,4 MAD/kWh, ~8000 kWh relevés au 3 septembre (système parfaitement
+    conforme à sa trajectoire annuelle) : le code comparait 8000 au garanti
+    ANNUEL COMPLET (12000) → manque = 4000, franchise = 600, compensable =
+    3400 → « Compensation due » ≈ 4760 MAD affichée CHAQUE JOUR tant que
+    l'année n'est pas finie, sur un système qui ne doit RIEN.
+
+    LE FIX. Le garanti comparé au 3 septembre (jour 246/365 de 2026) est
+    prorata-t-isé : 12000 × 246/365 ≈ 8087.67 kWh. 8000 kWh est alors
+    LARGEMENT dans la tolérance (franchise 5 % ≈ 404.38 kWh sur un manque de
+    seulement ≈ 87.67 kWh) → compensation = 0.00, within_tolerance = True.
+    """
+
+    def setUp(self):
+        self.company = make_company('aud508-co', 'AUD508 Co')
+        self.inst, _ = make_installation(self.company, ref='AUD508-1', kwc='10.00')
+        from apps.monitoring.models import ProductionWarranty
+        self.warranty = ProductionWarranty.objects.create(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0'),
+            start_year=2026, tolerance_pct=Decimal('5'),
+            compensation_mad_per_kwh=Decimal('1.4000'))
+        self.today = date(2026, 9, 3)
+
+    def test_systeme_conforme_aucune_compensation_en_cours_annee(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=180, energy_kwh=Decimal('8000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(
+            self.inst, year=2026, today=self.today)
+        self.assertTrue(st['has_warranty'])
+        self.assertTrue(st['year_in_progress'])
+        self.assertEqual(st['guaranteed_kwh'], Decimal('8087.67'))
+        self.assertEqual(st['shortfall_kwh'], Decimal('87.67'))
+        self.assertTrue(st['within_tolerance'])
+        # LE CŒUR DE LA PREUVE — avant le fix ce montant valait 4760.00 MAD.
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
+
+    def test_systeme_reellement_sous_performant_reste_detecte(self):
+        """La proration ne masque pas un VRAI manque — elle le mesure juste
+        contre la bonne cible (le garanti ÉCOULÉ, pas l'objectif annuel)."""
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=180, energy_kwh=Decimal('5000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(
+            self.inst, year=2026, today=self.today)
+        self.assertFalse(st['within_tolerance'])
+        self.assertEqual(st['compensation_mad'], Decimal('3756.60'))
+
+    def test_annee_terminee_reste_non_proratee(self):
+        """Non-régression — une année déjà CLOSE garde le garanti annuel
+        complet comme référence (aucune proration à appliquer)."""
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(
+            self.inst, year=2026, today=date(2027, 1, 10))
+        self.assertFalse(st['year_in_progress'])
+        self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('4760.00'))
 
 
 class TestSoiling(TestCase):
@@ -599,15 +791,23 @@ class TestWarrantyCurveOverlay(TestCase):
         self.today = date(2026, 6, 30)
 
     def test_anomalous_drift_flags_recourse(self):
+        # AUD508 — le point 2026 (année EN COURS relativement à `self.today`
+        # = 30/06/2026) compare désormais au garanti PRORATÉ au jour écoulé
+        # (≈ 5920.93 kWh au jour 181/365), pas à l'objectif annuel complet
+        # (11940) : 3000 kWh reste un VRAI manque sous ce garanti prorata-tisé
+        # (l'ancienne valeur 8000 aurait été AU-DESSUS du garanti proraté —
+        # donc non anomale sous le fix, ce qui aurait été correct : un système
+        # à 8000 kWh au 30 juin est en AVANCE sur sa trajectoire annuelle).
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('3000'))
         from apps.monitoring.services import warranty_curve_overlay
         ov = warranty_curve_overlay(self.inst, today=self.today)
         self.assertTrue(ov['has_warranty'])
         self.assertTrue(ov['manufacturer_recourse'])
         p2026 = next(p for p in ov['points'] if p['year'] == 2026)
         self.assertTrue(p2026['anomalous'])
+        self.assertTrue(p2026['year_in_progress'])
 
     def test_on_curve_no_recourse(self):
         ProductionReading.objects.create(
@@ -625,9 +825,17 @@ class TestWarrantyCurveOverlay(TestCase):
             self.assertIsNone(p['actual_kwh'])
 
     def test_curve_endpoint(self):
+        # AUD508 — cette route n'injecte pas `today` (elle utilise la date
+        # RÉELLE du jour, comme en production) : depuis le fix, le garanti
+        # 2026 comparé est PRORATÉ au jour de l'année réellement écoulé, une
+        # quantité qui varie selon la date d'exécution du test. 1 kWh reste
+        # un manque anomal quel que soit le jour de l'année (le garanti
+        # proraté minimal, au 1er janvier, dépasse déjà largement 1 kWh) —
+        # avant le fix, 8000 kWh suffisait car le garanti comparé était
+        # toujours l'objectif annuel complet (11940), insensible à la date.
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('1'))
         r = self.api.get(
             f'/api/django/monitoring/warranties/{self.warranty.id}/curve/')
         self.assertEqual(r.status_code, 200, r.data)
