@@ -73,7 +73,15 @@ def _noter_connexion(company, client_id):
 
 
 def _ip(request):
-    return request.META.get('REMOTE_ADDR')
+    """AUD144 — l'IP de PREUVE (signature e-signature, loi 53-05) doit être
+    celle du CLIENT, jamais celle du reverse-proxy. ``REMOTE_ADDR`` seul rend
+    l'IP interne du conteneur nginx/Caddy (``identity/middleware.py``) : on
+    délègue donc à LA primitive UNIQUE du dépôt (QJR416,
+    ``core.throttling.ip_de_requete`` — dernier saut de confiance de
+    ``X-Forwarded-For``), déjà utilisée par le chemin de signature PUBLIC
+    tokenisé (``ventes/public_views.py``). Jamais une seconde primitive."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
