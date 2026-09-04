@@ -119,9 +119,39 @@ app.conf.beat_schedule = {
     # AOF15 — rappels d'échéances d'appel d'offres (remise des plis, ouverture,
     # fin de validité). Un dossier d'AO se perd sur une date, jamais sur la
     # technique : passage quotidien tôt, avant la journée de travail.
+    # AUD614 — la GÉNÉRATION de l'échéancier passe AVANT son rappel. Elle
+    # n'était dispatchée nulle part : `ao.rappeler_echeances` rappelait donc un
+    # échéancier qui n'existait pas — un no-op silencieux, la pire forme de
+    # panne (l'écran « Tâches planifiées » affichait vert). Générer APRÈS le
+    # rappel aurait fait attendre un jour à chaque nouvelle échéance.
+    'ao-generer-echeanciers': {
+        'task': 'ao.generer_echeanciers',
+        'schedule': crontab(hour=6, minute=15),
+    },
     'ao-rappeler-echeances': {
         'task': 'ao.rappeler_echeances',
         'schedule': crontab(hour=6, minute=30),
+    },
+    # AUD614 — relance PROACTIVE des pièces administratives qui vont expirer.
+    # Elle n'existait qu'en action GET : il fallait ALLER VOIR pour apprendre
+    # qu'une attestation expire, alors qu'une attestation périmée le jour de
+    # l'ouverture fait ÉCARTER le pli. Après les échéances (l'ordre du matin
+    # va du plus daté au plus administratif) ; cadencée à une relance par
+    # pièce tous les 7 jours (voir `ao/scheduled.py`).
+    'ao-relancer-pieces-administratives': {
+        'task': 'ao.relancer_pieces_administratives',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # AUD614 — expiration des avis dont la date limite est passée. Le service
+    # existait, testé, et n'était appelé par AUCUN chemin de production : un
+    # avis dont la remise est passée restait « nouveau » indéfiniment, et le
+    # tri humain se faisait sur une liste polluée. AUCUN appel réseau (règle
+    # #5) : la tâche compare une date déjà en base à l'horloge — elle n'est
+    # donc pas gardée par VEILLE_AO_COLLECTE_ACTIVE, qui arme l'ACQUISITION.
+    # Juste après la collecte de 06:00, pour nettoyer ce qu'elle vient de voir.
+    'veille-ao-expirer-avis-depasses': {
+        'task': 'veille_ao.expirer_avis_depasses',
+        'schedule': crontab(hour=6, minute=10),
     },
     # VAO22 — veille appels d'offres, collecte du matin. 06:00 parce que les
     # remises de plis sont à 10 h-11 h : l'information du matin est

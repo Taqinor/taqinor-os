@@ -3695,6 +3695,12 @@ class PieceAdministrative(TenantModel):
         verbose_name='Dossiers rattachés')
     rappel_jours = models.PositiveIntegerField(
         default=30, verbose_name='Rappel avant expiration (jours)')
+    #: AUD614 — dernière relance PROACTIVE posée par le beat quotidien. Sans
+    #: cette date, une pièce dans sa fenêtre de rappel (30 jours par défaut)
+    #: recevrait une note de chatter CHAQUE MATIN : trente notes pour une seule
+    #: information, c'est-à-dire un canal qu'on apprend à ne plus lire.
+    derniere_relance_le = models.DateField(
+        null=True, blank=True, verbose_name='Dernière relance')
     actif = models.BooleanField(default=True, verbose_name='Active')
 
     class Meta:
