@@ -900,8 +900,25 @@ class PaiementSerializer(serializers.ModelSerializer):
         # company/created_by forcés côté serveur — jamais depuis le corps.
         # escompte_montant (XFAC12) est calculé côté serveur (fenêtre + net
         # réglé), jamais accepté du corps de requête.
+        #
+        # AUD134 — `fields='__all__'` laissait SEPT champs de plus en écriture.
+        # `enregistrer-paiement` fait `PaiementSerializer(data=request.data)`
+        # puis `save(facture=…, company=…, created_by=…, escompte_montant=…)` :
+        # tout champ non surchargé passait tel quel. Concrètement, un corps
+        # pouvait poser `statut='rejete'` — contournant l'action `rejeter` et
+        # sa permission `IsResponsableOrAdmin` — et un `client` pointant sur
+        # une AUTRE société. Chacun de ces champs a son propriétaire serveur :
+        #   - `client`             → résolu depuis la facture, ou scopé société
+        #                            sur le chemin avance (`enregistrer-avance`
+        #                            passe par `crm.selectors.client_base_qs`) ;
+        #   - `statut` + `motif_rejet`/`frais_rejet`/`date_rejet`
+        #                          → l'action `rejeter` (YLEDG5) et elle seule ;
+        #   - `statut_affectation` → le service de ventilation (XFAC1) ;
+        #   - `provider_ref`       → le webhook PSP.
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
-                            'escompte_montant']
+                            'escompte_montant', 'client', 'statut',
+                            'statut_affectation', 'provider_ref',
+                            'motif_rejet', 'frais_rejet', 'date_rejet']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):

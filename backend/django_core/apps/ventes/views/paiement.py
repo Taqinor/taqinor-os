@@ -153,14 +153,22 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='enregistrer-avance')
     def enregistrer_avance(self, request):
         """XFAC1 — enregistre un règlement reçu SANS facture (avance/acompte à
-        la commande/trop-perçu), rattaché directement au client."""
+        la commande/trop-perçu), rattaché directement au client.
+
+        AUD134 — c'est le SEUL chemin où `client` reste choisi par l'appelant
+        (`PaiementSerializer.client` est désormais en lecture seule). Il est
+        résolu à travers `crm.selectors.client_base_qs(company)`, donc borné à
+        la société de l'utilisateur : un id d'une autre société renvoie 400,
+        jamais un paiement rattaché hors tenant."""
         from apps.crm.selectors import client_base_qs
         from ..services import enregistrer_avance as _enregistrer_avance
 
         company = request.user.company
         client_id = request.data.get('client')
-        client = _company_qs(client_base_qs(), request.user).filter(
-            pk=client_id).first()
+        # Scoping EXPLICITE par la société (superuser sans société : `_company_qs`
+        # garde son comportement historique de portée globale).
+        client = _company_qs(
+            client_base_qs(company), request.user).filter(pk=client_id).first()
         if client is None:
             return Response({'detail': 'Client introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)

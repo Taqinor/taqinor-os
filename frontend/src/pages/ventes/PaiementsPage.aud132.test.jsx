@@ -37,7 +37,7 @@ const VALIDE = {
   id: 11, facture: 7, facture_reference: 'FAC-2026-0007',
   client: 3, client_nom: 'ACME SARL', montant: '3000.00',
   date_paiement: '2026-08-01', mode: 'virement', mode_display: 'Virement',
-  statut: 'valide', statut_display: 'Valide', created_by_username: 'meryem',
+  statut: 'encaisse', statut_display: 'Encaissé', created_by_username: 'meryem',
 }
 const REJETE = {
   id: 12, facture: 8, facture_reference: 'FAC-2026-0008',
