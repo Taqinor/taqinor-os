@@ -111,7 +111,8 @@ from .selectors import (
 )
 from .services import (
     accuser_lecture,
-    activer_procedure, ajouter_lecteurs, calculer_score_audit,
+    activer_procedure, ajouter_lecteurs, approuver_etape_cloture_ncr,
+    calculer_score_audit,
     calculer_score_notation,
     cloturer_incident, cloturer_ncr, cloturer_reunion_qhse,
     compteurs_observations_securite,
@@ -119,12 +120,14 @@ from .services import (
     creer_capa_depuis_decision,
     creer_capa_mise_en_oeuvre_moc,
     creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
-    creer_ncr_depuis_ticket,
+    creer_ncr_depuis_ticket, creer_scar_depuis_ncr,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     demandes_changement_a_reverser,
+    demarrer_workflow_cloture_ncr,
     diffuser_procedure,
     enregistrer_analyse_ncr,
+    escalader_workflow_cloture_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
     creer_signalement_public, generer_qr_signalement,
@@ -135,7 +138,10 @@ from .services import (
     lier_capa_risque_opportunite, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
+    rejeter_etape_cloture_ncr,
     relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
+    relancer_derogations,
+    relancer_etapes_at_en_retard,
     relancer_exercices_urgence,
     relancer_notifications_environnement,
     rendre_analyse_ncr_pdf,
@@ -395,6 +401,110 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
                 {'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
         return Response(AnalyseNcrSerializer(analyse).data)
 
+    # ── AUDV11 (DRAFT165-85..88) — cycle d'approbation de clôture (ARC10) ───
+    # `demarrer_workflow_cloture_ncr`/`approuver_etape_cloture_ncr`/
+    # `rejeter_etape_cloture_ncr`/`escalader_workflow_cloture_ncr` (services.py)
+    # étaient testés (test_arc10_workflow_cloture_ncr.py) sans AUCUN endpoint
+    # REST — seule la clôture DIRECTE (``cloturer/``) était atteignable.
+
+    @action(detail=True, methods=['post'], url_path='demarrer-cloture')
+    def demarrer_cloture(self, request, pk=None):
+        """Démarre le cycle d'approbation à deux temps de clôture (ARC10).
+
+        Idempotent (renvoie le cycle déjà en cours s'il y en a un). Refuse
+        (400) une NCR déjà clôturée."""
+        ncr = self.get_object()
+        try:
+            instance = demarrer_workflow_cloture_ncr(ncr, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'etape_courante': instance.etape_courante,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver-cloture')
+    def approuver_cloture(self, request, pk=None):
+        """Approuve l'étape courante du cycle de clôture (ARC10).
+
+        Corps optionnel : ``commentaire``. Clôture effectivement la NCR
+        (garde d'efficacité CAPA QHSE13 appliquée) quand la DERNIÈRE étape
+        est approuvée. 400 si aucun cycle en cours."""
+        ncr = self.get_object()
+        try:
+            instance, ncr = approuver_etape_cloture_ncr(
+                ncr, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'etape_courante': instance.etape_courante,
+            'ncr': self.get_serializer(ncr).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='rejeter-cloture')
+    def rejeter_cloture(self, request, pk=None):
+        """Rejette l'étape courante du cycle de clôture — la NCR reste ouverte
+        (ARC10). Corps optionnel : ``commentaire``. 400 si aucun cycle en
+        cours."""
+        ncr = self.get_object()
+        try:
+            instance, ncr = rejeter_etape_cloture_ncr(
+                ncr, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'instance_id': instance.id,
+            'statut': instance.statut,
+            'ncr': self.get_serializer(ncr).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='escalader-cloture')
+    def escalader_cloture(self, request, pk=None):
+        """Escalade manuellement l'étape en attente du cycle de clôture
+        (ARC10, utile après un dépassement SLA). 400 si aucune étape en
+        attente."""
+        ncr = self.get_object()
+        try:
+            step = escalader_workflow_cloture_ncr(ncr)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'step_id': step.id, 'statut': step.statut, 'ordre': step.ordre,
+        })
+
+    # ── AUDV11 (DRAFT165-97) — SCAR fournisseur depuis une NCR (XQHS6) ──────
+
+    @action(detail=True, methods=['post'], url_path='creer-scar')
+    def creer_scar(self, request, pk=None):
+        """Crée une SCAR fournisseur depuis cette NCR (``creer_scar_depuis_ncr``
+        — même patron que ``depuis-reserve``/``depuis-ticket-sav``, sens inverse).
+
+        Corps optionnel : ``echeance_reponse``, ``description_defaut``. 400 si
+        la NCR ne porte pas de fournisseur (disposition retour fournisseur ou
+        origine fournisseur, cf. XQHS2)."""
+        ncr = self.get_object()
+        try:
+            scar = creer_scar_depuis_ncr(
+                ncr,
+                echeance_reponse=request.data.get('echeance_reponse') or None,
+                description_defaut=request.data.get('description_defaut', ''),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeActionFournisseurSerializer(scar).data,
+            status=status.HTTP_201_CREATED)
+
 
 class DerogationViewSet(_QhseBaseViewSet):
     """Dérogations (acceptation en l'état bornée) liées à une NCR (XQHS2).
@@ -411,6 +521,14 @@ class DerogationViewSet(_QhseBaseViewSet):
         if ncr not in (None, ''):
             qs = qs.filter(non_conformite_id=ncr)
         return qs
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les dérogations à échéance imminente/dépassée
+        (``relancer_derogations`` — DRAFT165-89, pattern
+        ``capa/relancer-retards``). Notifications best-effort, ne mute rien."""
+        digest = relancer_derogations(request.user.company)
+        return Response(digest)
 
 
 class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):
@@ -1800,6 +1918,15 @@ class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
         marquer_etape_faite(etape)
         serializer = self.get_serializer(etape)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les étapes AT/MP (loi 18-12) à échéance imminente/dépassée
+        (``relancer_etapes_at_en_retard`` — DRAFT165-90, même pattern que les
+        relances CAPA/conformités/dérogations). Notifications best-effort, ne
+        mute rien."""
+        digest = relancer_etapes_at_en_retard(request.user.company)
+        return Response(digest)
 
 
 class AnalyseIncidentViewSet(_QhseBaseViewSet):

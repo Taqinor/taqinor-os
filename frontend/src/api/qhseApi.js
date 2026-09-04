@@ -208,7 +208,15 @@ const qhseApi = {
   indicateursEsg: crud('indicateurs-esg'),
 
   // ── XQHS2 — Dérogations & disposition NCR ──────────────────────────────
-  derogations: crud('derogations'),
+  derogations: {
+    ...crud('derogations'),
+    // AUDV11 (DRAFT165-89) — relance des dérogations à échéance imminente
+    // ou dépassée (notifications best-effort, ne mute rien). Nommée
+    // spécifiquement (jamais `relancer` nu) : `qhseApi.js` porte déjà
+    // `demandesChangement.relancer` — un second `relancer` casse
+    // l'appariement mock↔route de check_api_shapes.py (ambiguïté par nom).
+    relancerDerogations: () => api.post('/qhse/derogations/relancer/'),
+  },
 
   // ── XQHS3 — Contrôle qualité à la réception fournisseur ────────────────
   plansControleReception: crud('plans-controle-reception'),
@@ -228,6 +236,10 @@ const qhseApi = {
     ...crud('etapes-declaration-at'),
     marquerFait: (id) =>
       api.post(`/qhse/etapes-declaration-at/${id}/marquer-fait/`),
+    // AUDV11 (DRAFT165-90) — relance des étapes AT/MP (loi 18-12) à échéance
+    // imminente ou dépassée. Nommée spécifiquement, même raison que
+    // `derogations.relancerDerogations` ci-dessus (ambiguïté par nom).
+    relancerEtapesAt: () => api.post('/qhse/etapes-declaration-at/relancer/'),
   },
 
   // ── XQHS16 — Signalement QR public (chantier) ──────────────────────────
@@ -363,6 +375,19 @@ qhseApi.nonConformites.analysePdf = (id, params) =>
   api.get(`/qhse/non-conformites/${id}/analyse/pdf/`, {
     params, responseType: 'blob',
   })
+
+// ── AUDV11 (DRAFT165-85..88) — cycle d'approbation de clôture NCR (ARC10) ────
+qhseApi.nonConformites.demarrerCloture = (id) =>
+  api.post(`/qhse/non-conformites/${id}/demarrer-cloture/`)
+qhseApi.nonConformites.approuverCloture = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/approuver-cloture/`, data ?? {})
+qhseApi.nonConformites.rejeterCloture = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/rejeter-cloture/`, data ?? {})
+qhseApi.nonConformites.escaladerCloture = (id) =>
+  api.post(`/qhse/non-conformites/${id}/escalader-cloture/`)
+// ── AUDV11 (DRAFT165-97) — SCAR fournisseur depuis une NCR ───────────────────
+qhseApi.nonConformites.creerScar = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/creer-scar/`, data ?? {})
 
 // ── WIR275 (XQHS5) — campagnes de rappel produit ─────────────────────────────
 qhseApi.campagnesRappel = {

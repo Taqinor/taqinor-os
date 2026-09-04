@@ -3100,6 +3100,13 @@ def supplier_performance(company, fournisseur):
         company=company, fournisseur=fournisseur, resolu=False,
         gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
 
+    # DRAFT165-79 (AUDV11) — compteur SCAR (demandes d'action corrective
+    # fournisseur QHSE) ADVISORY au scorecard : lu via le sélecteur qhse
+    # (jamais un import de modèle cross-app) ; best-effort à zéro si l'app
+    # qhse n'a aucune donnée pour ce fournisseur.
+    from apps.qhse.selectors import scar_count_par_fournisseur
+    scar = scar_count_par_fournisseur(company, fournisseur.id)
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
@@ -3109,6 +3116,8 @@ def supplier_performance(company, fournisseur):
         'otif_nb_retard': otif['nb_retard'],
         'otif_nb_incomplet': otif['nb_incomplet'],
         'incidents_qualite_critiques_ouverts': incidents_critiques,
+        'scar_total': scar['total'],
+        'scar_ouvertes': scar['ouvertes'],
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,
