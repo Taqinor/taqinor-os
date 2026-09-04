@@ -706,7 +706,13 @@ class ResultatAOSerializer(serializers.ModelSerializer):
             'classement', 'notre_rang', 'motif', 'date_resultat',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        #: AUD605 — `issue` et `appel_offre` en LECTURE SEULE : les écrire fait
+        #: suivre le statut de l'AO, le chatter et l'événement `ao_gagne`. Le
+        #: seul chemin d'écriture est l'action `/resultats-ao/enregistrer/`
+        #: (qui lit le corps de requête, pas ce sérialiseur) — la garde ici est
+        #: la seconde barrière, pour qu'aucun futur ViewSet ne rouvre la porte
+        #: en réutilisant ce sérialiseur.
+        read_only_fields = ['date_creation', 'issue', 'appel_offre']
 
 
 # ── AOF115 — Dossier de dépôt (kit ``core/documents.py``) ──────────────────

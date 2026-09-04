@@ -538,6 +538,37 @@ _ISSUE_VERS_STATUT = {
     ResultatAO.Issue.PERDU: AppelOffre.Statut.PERDU,
 }
 
+#: AUD605 — statuts d'AO depuis lesquels un devis ne peut PLUS naître.
+#:
+#: Ce sont les états TERMINAUX NÉGATIFS : l'affaire est close et perdue. En
+#: créer un devis consommerait une référence DEV réelle (numérotation
+#: `core.numbering`, jamais réattribuée) pour une affaire qui n'existe plus, et
+#: ferait apparaître un devis dans le pipeline commercial.
+#:
+#: Les états AMONT (`identifie` → `pret_a_deposer`) ne sont PAS refusés : le
+#: chiffrage précède le dépôt par construction — c'est très exactement le
+#: moment où `creer-devis` sert. Les refuser aurait interdit le chemin normal.
+STATUTS_SANS_DEVIS = frozenset({
+    AppelOffre.Statut.PERDU,
+    AppelOffre.Statut.ABANDONNE,
+})
+
+
+def refus_de_creation_de_devis(appel_offre):
+    """Le motif FRANÇAIS qui interdit de créer un devis, ou ``None``.
+
+    Une fonction plutôt qu'un ``if`` dans la vue : la règle est une DONNÉE que
+    l'écran, les tests et un futur appelant lisent au même endroit.
+    """
+    if appel_offre is None:
+        return None
+    if appel_offre.statut in STATUTS_SANS_DEVIS:
+        return (
+            "Cet appel d'offres est « %s » : un devis ne peut plus en naître "
+            "(il consommerait une référence de devis réelle pour une affaire "
+            "close)." % appel_offre.get_statut_display())
+    return None
+
 
 def enregistrer_resultat_ao(appel_offre, *, issue, user=None, **donnees):
     """Enregistre le résultat d'ouverture des plis et FAIT SUIVRE le statut.

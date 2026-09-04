@@ -28,6 +28,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -1136,6 +1137,14 @@ class BordereauPrixViewSet(AoBaseViewSet):
         )
 
         bordereau = self.get_object()  # borné société par get_queryset
+        # AUD605 — l'action ne vérifiait AUCUN statut d'AO : un devis pouvait
+        # naître du bordereau d'un appel d'offres PERDU ou ABANDONNÉ, en
+        # consommant une référence DEV réelle et en réapparaissant dans le
+        # pipeline commercial. La règle vit dans `services`, jamais ici.
+        refus = services.refus_de_creation_de_devis(bordereau.appel_offre)
+        if refus:
+            return Response({'appel_offre': [refus]},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             devis, rapport = creer_devis_depuis_bordereau(
                 bordereau, user=request.user, company=bordereau.company)
@@ -1364,11 +1373,38 @@ class EcheanceAOViewSet(AoBaseViewSet):
 
 class ResultatAOViewSet(AoBaseViewSet):
     """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
-    renvoie le taux de réussite consolidé."""
+    renvoie le taux de réussite consolidé.
+
+    AUD605 — LECTURE SEULE au CRUD. Le résultat d'un appel d'offres n'est pas
+    une ligne comme une autre : écrire ``issue`` fait suivre le STATUT de l'AO,
+    journalise au chatter et émet ``ao_gagne`` (auquel le CRM s'abonne pour
+    avancer le lead à SIGNED). Un ``POST /resultats-ao/`` standard court-
+    circuitait tout cela : le résultat existait, l'AO restait « déposé », le
+    lead ne bougeait pas, et rien ne le disait. Toute écriture passe donc par
+    l'action ``enregistrer`` — miroir exact de ``services.enregistrer_resultat_ao``.
+    """
     queryset = ResultatAO.objects.all()
     serializer_class = ResultatAOSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_resultat']
+
+    #: Message unique des quatre refus — il NOMME le chemin à prendre.
+    ECRITURE_REFUSEE = (
+        "Le résultat d'un appel d'offres ne s'écrit pas directement : il fait "
+        "suivre le statut de l'AO, le chatter et l'événement « AO gagné ». "
+        "Utiliser POST /resultats-ao/enregistrer/.")
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed('POST', detail=self.ECRITURE_REFUSEE)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PUT', detail=self.ECRITURE_REFUSEE)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PATCH', detail=self.ECRITURE_REFUSEE)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed('DELETE', detail=self.ECRITURE_REFUSEE)
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
