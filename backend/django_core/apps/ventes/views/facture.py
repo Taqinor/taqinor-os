@@ -114,6 +114,20 @@ def proposer_arrondi_caisse(facture, mode, reste=None):
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
+def _as_bool(value, *, default=False):
+    """AUD129 — coercition tolérante d'un drapeau de corps de requête.
+
+    Un formulaire multipart envoie ``'false'`` / ``'0'`` (chaînes VRAIES en
+    Python) : les lire naïvement transformerait un opt-out en opt-in.
+    ``None`` (champ absent) retombe sur ``default``.
+    """
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
+    return bool(value)
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -1573,13 +1587,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='relancer',
             permission_classes=[IsResponsableOrAdmin])
     def relancer(self, request, pk=None):
-        """Consigne une relance et, par défaut, l'envoie par email (N87).
+        """Consigne une relance — l'envoi d'email est un OPT-IN explicite.
 
-        Journalise une RelanceLog + fixe la prochaine date de relance. L'email
-        de relance part via l'intégration configurable : NO-OP réseau sans clé
-        (backend console), envoi réel via Brevo/SMTP quand configuré. Passer
-        ``envoyer_email=false`` pour seulement consigner sans envoyer (ancien
-        comportement). Ouvert à la Commerciale."""
+        AUD129 (PAY-4) : l'envoi était le DÉFAUT (``envoyer_email`` non fourni
+        ⇒ email parti) alors que la modale annonce « Cette action journalise la
+        relance (aucun envoi) » et que le lot poste ``{niveau}`` seul — une
+        consignation en lot expédiait donc de vraies mises en demeure. Le
+        défaut est désormais FALSE : il faut poster ``envoyer_email=true``
+        (case « Envoyer l'email au client ») pour qu'un email parte.
+
+        AUD129 (PAY-19) : le corps de l'email reprend la note saisie quand elle
+        est renseignée (``note or lvl.message``) — elle n'était jusqu'ici
+        écrite que dans le journal interne et perdue pour le destinataire.
+
+        Journalise une RelanceLog + fixe la prochaine date de relance. L'envoi
+        passe par l'intégration configurable : NO-OP réseau sans clé (backend
+        console), envoi réel via Brevo/SMTP quand configuré."""
         facture = self.get_object()
         niveau = request.data.get('niveau')
         note = (request.data.get('note') or '').strip()
@@ -1593,13 +1616,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             company=facture.company, facture=facture,
             niveau=niveau or None, niveau_nom=niveau_nom, note=note,
             created_by=request.user)
-        # Envoi email de relance (par défaut) — NO-OP sans clé configurée.
+        # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
+        # NO-OP réseau sans clé configurée.
         email_log_id = None
-        if request.data.get('envoyer_email', True):
+        if _as_bool(request.data.get('envoyer_email'), default=False):
             from ..email_service import send_relance_email
+            # AUD129 (PAY-19) — la note saisie prime sur le message générique
+            # du niveau : sinon la personnalisation n'atteint jamais le client.
             email_log = send_relance_email(
                 facture, niveau_nom=niveau_nom,
-                message=(lvl.message if lvl else ''), user=request.user)
+                message=(note or (lvl.message if lvl else '')),
+                user=request.user)
             email_log_id = email_log.id
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
         prochaine = request.data.get('prochaine_relance')

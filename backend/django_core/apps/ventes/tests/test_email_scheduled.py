@@ -116,6 +116,8 @@ class TestEmailService(TestCase):
             direction=EmailLog.Direction.SORTANT).exists())
 
     def test_relancer_sends_relance_email(self):
+        # AUD129 — l'envoi est désormais un OPT-IN explicite : `envoyer_email`
+        # absent ne doit RIEN envoyer (cf. test_aud129_relance_consigner).
         FollowupLevel.objects.create(
             company=self.company, ordre=1, nom='Rappel', delai_jours=7,
             message='Merci de régulariser.')
@@ -124,7 +126,8 @@ class TestEmailService(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/relancer/',
-            {'niveau': 1, 'note': 'rappel'}, format='json')
+            {'niveau': 1, 'note': 'rappel', 'envoyer_email': True},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(RelanceLog.objects.filter(facture=self.facture).exists())
         self.assertTrue(EmailLog.objects.filter(

@@ -23,6 +23,8 @@ const ROWS = [
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getRelances: vi.fn(() => Promise.resolve({ data: ROWS })),
+    // AUD129 — l'action de relance est mockée pour inspecter le CORPS posté.
+    relancerFacture: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 // PACT44/PACT45 — le paramétrage de relance client et les promesses de paiement
@@ -54,6 +56,7 @@ const defaultGet = (url) => {
 beforeEach(() => {
   api.get.mockImplementation(defaultGet)
   ventesApi.getRelances.mockResolvedValue({ data: ROWS })
+  ventesApi.relancerFacture.mockResolvedValue({ data: {} })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -195,5 +198,54 @@ describe('RelancesPage (PACT45 — promesses de paiement)', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/ventes/promesses-paiement/',
       expect.objectContaining({ facture: 1, montant_promis: '1000' })))
+  })
+})
+
+/* AUD129 — la modale annonçait « aucun envoi » alors que le serveur envoyait
+   PAR DÉFAUT (`envoyer_email` absent ⇒ True) et que la note saisie n'atteignait
+   jamais le client. L'écran doit désormais : dire la vérité, poster
+   `envoyer_email: false` tant que la case n'est pas cochée, et `true` avec. */
+describe('RelancesPage (AUD129 — consigner n\'envoie rien sans opt-in)', () => {
+  const ouvrirModale = async (user) => {
+    renderPage()
+    await screen.findByText('ACME SARL')
+    const boutons = screen.getAllByRole('button', { name: 'Relancer' })
+    await user.click(boutons[0])
+    await screen.findByRole('checkbox', { name: /Envoyer l'email au client/ })
+  }
+
+  it('le libellé ne promet plus « aucun envoi » inconditionnel', async () => {
+    const user = userEvent.setup()
+    await ouvrirModale(user)
+    expect(
+      screen.getByText(/Aucun email n'est envoyé au client sauf si vous cochez/),
+    ).toBeInTheDocument()
+  })
+
+  it('sans la case cochée, poste envoyer_email: false', async () => {
+    const user = userEvent.setup()
+    await ouvrirModale(user)
+    await user.click(screen.getByRole('button', { name: 'Consigner' }))
+
+    await waitFor(() => expect(ventesApi.relancerFacture).toHaveBeenCalled())
+    const [id, body] = ventesApi.relancerFacture.mock.calls[0]
+    expect(id).toBe(1)
+    expect(body.envoyer_email).toBe(false)
+  })
+
+  it('avec la case cochée, poste envoyer_email: true et la note saisie', async () => {
+    const user = userEvent.setup()
+    await ouvrirModale(user)
+    const note = screen.getByLabelText(/Note \(appel, courrier remis/)
+    await user.clear(note)
+    await user.type(note, 'Chèque revenu impayé.')
+    await user.click(
+      screen.getByRole('checkbox', { name: /Envoyer l'email au client/ }))
+    await user.click(screen.getByRole('button', { name: 'Consigner' }))
+
+    await waitFor(() => expect(ventesApi.relancerFacture).toHaveBeenCalled())
+    const body = ventesApi.relancerFacture.mock.calls[0][1]
+    expect(body.envoyer_email).toBe(true)
+    expect(body.note).toBe('Chèque revenu impayé.')
   })
 })
