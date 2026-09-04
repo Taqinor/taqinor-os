@@ -206,7 +206,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             if (getattr(user, 'portee', None) != 'portail_client'
                     or scope is None):
                 return qs.none()
-            return qs.filter(client_id=scope)
+            # AUD143 — même exclusion que le sélecteur portail
+            # (ventes.selectors.devis_du_client_portail) : un devis BROUILLON
+            # n'a jamais été montré au client (fuite de travail en cours). Le
+            # chemin PDF canonique `/proposal` (règle #4) passe par
+            # ``self.get_object()`` -> ``get_queryset()`` et ne contrôlait
+            # jusqu'ici AUCUN statut ; un brouillon devient donc INTROUVABLE
+            # (404) pour TOUTE action portail, jamais 403 (qui confirmerait
+            # son existence).
+            return qs.filter(client_id=scope).exclude(
+                statut=Devis.Statut.BROUILLON)
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # devis qu'il a créés / son équipe. 'all' → inchangé.
         qs = scope_queryset(qs, self.request.user, ['created_by'])

@@ -73,7 +73,15 @@ def _noter_connexion(company, client_id):
 
 
 def _ip(request):
-    return request.META.get('REMOTE_ADDR')
+    """AUD144 — l'IP de PREUVE (signature e-signature, loi 53-05) doit être
+    celle du CLIENT, jamais celle du reverse-proxy. ``REMOTE_ADDR`` seul rend
+    l'IP interne du conteneur nginx/Caddy (``identity/middleware.py``) : on
+    délègue donc à LA primitive UNIQUE du dépôt (QJR416,
+    ``core.throttling.ip_de_requete`` — dernier saut de confiance de
+    ``X-Forwarded-For``), déjà utilisée par le chemin de signature PUBLIC
+    tokenisé (``ventes/public_views.py``). Jamais une seconde primitive."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
@@ -201,32 +209,66 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'], url_path='payer',
             permission_classes=[IsPortalClientUser])
     def payer(self, request, pk=None):
-        """Crée une intention de paiement locale — JAMAIS d'appel payant.
+        """Crée (ou réutilise) une intention de paiement locale — JAMAIS
+        d'appel payant.
 
         Critère NTPRT11 : sans clé CMI, le bouton « Payer » crée une intention
         ``initie`` ET renvoie les coordonnées bancaires (RIB de
         ``CompanyProfile``) comme repli — jamais une erreur. Avec CMI actif, la
         même intention est créée et l'intégration (future) prend le relais dans
         ``services.initier_paiement_facture`` : rien n'est décidé ici.
+
+        AUD137 — deux garde-fous ajoutés ici :
+        1. une facture ANNULÉE ou déjà PAYÉE est REFUSÉE (400) — le sélecteur
+           la rend déjà non ``payable`` (``factures_du_client_portail``), mais
+           le serveur ne fait jamais confiance à un écran qui afficherait
+           quand même le bouton.
+        2. IDEMPOTENT : réutilise l'intention ``initie`` existante
+           (``get_or_create`` + contrainte partielle
+           ``uniq_paiement_portail_facture_initie``) au lieu d'en créer une
+           nouvelle à chaque clic, et rafraîchit son montant/méthode depuis
+           l'état COURANT de la facture à chaque appel — jamais figé au
+           premier clic.
         """
+        from django.db import IntegrityError, transaction
+
         from apps.parametres.selectors import company_identity
-        from apps.ventes.selectors import facture_du_client_portail
+        from apps.ventes.selectors import (
+            facture_du_client_portail, facture_est_payable_portail,
+        )
 
         company, client_id = _scope(request)
         facture = facture_du_client_portail(company, client_id, pk)
         if facture is None:
             return Response({'detail': 'Introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if not facture_est_payable_portail(facture):
+            return Response(
+                {'detail': "Cette facture n'est plus payable "
+                           "(annulée ou déjà réglée)."},
+                status=status.HTTP_400_BAD_REQUEST)
 
         from .models import PaiementFacturePortail
         actif = services.cmi_actif()
-        paiement = PaiementFacturePortail.objects.create(
-            company=company,
-            facture=facture,
-            montant=facture.montant_du,
-            methode=(PaiementFacturePortail.Methode.CARTE if actif
-                     else PaiementFacturePortail.Methode.VIREMENT),
-        )
+        methode = (PaiementFacturePortail.Methode.CARTE if actif
+                   else PaiementFacturePortail.Methode.VIREMENT)
+        try:
+            with transaction.atomic():
+                paiement, _ = PaiementFacturePortail.objects.get_or_create(
+                    company=company, facture=facture,
+                    statut=PaiementFacturePortail.Statut.INITIE,
+                    defaults={'montant': facture.montant_du,
+                              'methode': methode})
+        except IntegrityError:
+            paiement = PaiementFacturePortail.objects.filter(
+                company=company, facture=facture,
+                statut=PaiementFacturePortail.Statut.INITIE).first()
+        # Rafraîchit le montant/méthode depuis l'état COURANT de la facture à
+        # CHAQUE appel — une intention réutilisée ne doit jamais rester figée
+        # au reste dû du premier clic.
+        paiement.montant = facture.montant_du
+        paiement.methode = methode
+        paiement.save(update_fields=['montant', 'methode'])
         services.initier_paiement_facture(paiement)
         paiement.refresh_from_db(fields=['reference', 'statut'])
 

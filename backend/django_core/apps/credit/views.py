@@ -201,11 +201,21 @@ def exposition_credit(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsDirecteurOrAdmin])
 def position_credit_pdf(request, client_id):
     """NTCRD25 — PDF interne « Position crédit client » (filigrane USAGE
     INTERNE, réservé Direction/Finance). Company-scopé ; 503 propre si le
-    moteur PDF est indisponible."""
+    moteur PDF est indisponible.
+
+    AUD152 — la garde effective était ``IsAuthenticated`` (identique à
+    ``ping``/``fiche_credit_client``/``exposition_credit``) alors que le
+    docstring l'annonce « réservé Direction/Finance » depuis NTCRD25 : tout
+    utilisateur authentifié de la société — un Commercial compris —
+    téléchargeait la position crédit consolidée du portefeuille (encours,
+    limites, retards). ``IsDirecteurOrAdmin`` est la classe DÉJÀ posée dans
+    ce même fichier pour restreindre exactement ce type de document
+    (``importer_limites`` :274, ``LimiteCreditViewSet.get_permissions``
+    :314, NTCRD35)."""
     from django.http import HttpResponse
 
     from apps.crm.selectors import get_company_client
