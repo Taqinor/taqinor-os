@@ -116,6 +116,17 @@ class NonConformiteSerializer(serializers.ModelSerializer):
     def validate_code_defaut(self, value):
         return _meme_societe(self, value, 'Code de défaut')
 
+    def validate_statut(self, value):
+        # AUD512 — CLOTUREE ne passe QUE par l'action dédiée `cloturer/`
+        # (garde d'efficacité CAPA, QHSE13) ; les transitions
+        # ouverte→en_traitement→resolue restent volontairement au CRUD
+        # (CHATTER_FIELDS les trace déjà), donc PAS de read_only total.
+        if value == NonConformite.Statut.CLOTUREE:
+            raise serializers.ValidationError(
+                "La clôture passe par l'action dédiée cloturer/ (garde "
+                "d'efficacité CAPA), jamais un PATCH direct.")
+        return value
+
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
     type_action_display = serializers.CharField(
@@ -144,8 +155,12 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = [
-            'efficace', 'commentaire_verification', 'date_verification',
-            'verifiee_par', 'date_creation',
+            # AUD512 — `statut` ajouté : VERIFIEE (et toute autre transition)
+            # ne passe QUE par les actions dédiées (`verifier-efficacite/`
+            # notamment) — aucune transition intermédiaire CRUD légitime,
+            # contrairement à NonConformite (ouverte→en_traitement→resolue).
+            'statut', 'efficace', 'commentaire_verification',
+            'date_verification', 'verifiee_par', 'date_creation',
         ]
 
     def validate_non_conformite(self, value):
@@ -1768,7 +1783,11 @@ class AuditPlanifieSerializer(serializers.ModelSerializer):
             'auditeur', 'responsable_domaine', 'statut', 'statut_display',
             'independance_ok', 'audit', 'date_creation',
         ]
-        read_only_fields = ['audit', 'date_creation']
+        # AUD512 — `statut` ajouté : PLANIFIE/REALISE/EN_RETARD ne sont
+        # pilotés que par `instancier_audit_planifie`/`relancer_audits_
+        # planifies_en_retard`, aucune transition intermédiaire CRUD
+        # légitime (même patron mineur que ActionCorrectivePreventive).
+        read_only_fields = ['audit', 'statut', 'date_creation']
 
     def get_independance_ok(self, obj) -> bool:
         return obj.independance_ok()
