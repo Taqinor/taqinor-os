@@ -827,6 +827,19 @@ ao_gagne = django.dispatch.Signal()
 # toggle) — voir la docstring du module ci-dessus.
 module_toggled = django.dispatch.Signal()
 
+# AUD816 — une ÉDITION EN MASSE a été appliquée (``core.bulk_edit``). Ce
+# chemin écrit par ``queryset.update()`` : il court-circuite ``Model.save()``,
+# ``full_clean()`` et TOUS les signaux — donc l'audit générique par
+# ``post_save`` (``apps.audit.signals.TRACKED_MODELS``) ne voit RIEN passer.
+# Cet événement est le SEUL canal par lequel une opération de masse laisse une
+# trace, et il permet à ``core`` (fondation) de la produire sans importer
+# ``apps.audit`` (contrat import-linter ``core-foundation-is-a-base-layer``).
+# Émis UNE fois par lot réellement appliqué (jamais si 0 ligne modifiée).
+# Arguments : ``target`` (nom logique de la cible), ``label``, ``fields``
+# (liste des champs écrits), ``count`` (nb de lignes modifiées), ``company``,
+# ``user`` (peut être None). Abonné : ``apps/audit/receivers.py``.
+bulk_edit_applied = django.dispatch.Signal()
+
 
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).

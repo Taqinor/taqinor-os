@@ -13,7 +13,11 @@ identiques 1:1 (même action ``PDF``, même cible, même détail, même acteur).
 """
 from django.dispatch import receiver
 
-from core.events import document_pdf_generated, devis_expired
+from core.events import (
+    bulk_edit_applied,
+    devis_expired,
+    document_pdf_generated,
+)
 
 from . import recorder
 from .models import AuditLog
@@ -60,3 +64,32 @@ def _record_devis_expiration_systeme(sender, devis, ancien_statut, **kwargs):
         devis, 'statut', ancien_statut, 'expire', user=None,
         field_label='Statut', action=AuditLog.Action.STATUS, chatter=False,
         detail='Expiration automatique (job : expire_stale_devis).')
+
+
+@receiver(bulk_edit_applied,
+          dispatch_uid='audit_record_on_bulk_edit_applied')
+def _record_bulk_edit(sender, target, label, fields, count, company=None,
+                      user=None, **kwargs):
+    """AUD816 — journalise UNE ligne par lot d'édition en masse appliqué.
+
+    ``core.bulk_edit.apply_bulk_edit`` écrit par ``queryset.update()`` : ni
+    ``save()``, ni ``full_clean()``, ni signal CRUD — l'audit générique de
+    ``signals.TRACKED_MODELS`` ne voit donc RIEN passer, quel que soit le modèle
+    cible. Cette ligne est la SEULE trace de l'opération : cible, champs écrits,
+    nombre de lignes, auteur. ``core`` (fondation) ne peut pas appeler ``audit``
+    directement (contrat import-linter) — il émet, et le satellite écrit.
+
+    ``company``/``user`` viennent de l'événement (l'opération peut être lancée
+    hors requête, ex. une commande de gestion) ; ``record`` n'élève jamais.
+    """
+    champs = ', '.join(fields) if fields else '—'
+    recorder.record(
+        AuditLog.Action.UPDATE,
+        object_repr=label or target,
+        detail=(f'Édition en masse « {label or target} » '
+                f'({target}) : {count} ligne(s), champs : {champs}.'),
+        company=company,
+        user=user,
+        changes=[{'field': f, 'old': '', 'new': '(édition en masse)'}
+                 for f in (fields or [])],
+    )

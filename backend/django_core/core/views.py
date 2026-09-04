@@ -495,8 +495,38 @@ class BulkEditViewSet(viewsets.ViewSet):
       * ``GET  …/bulk-edit/targets/`` — cibles éditables + champs autorisés ;
       * ``POST …/bulk-edit/appliquer/`` — corps
         ``{"target": "...", "ids": [...], "changes": {champ: valeur}}``.
+
+    AUD816 — l'endpoint était gardé par ``IsAuthenticated`` SEUL : un compte en
+    lecture seule pouvait désactiver 200 lignes d'un coup, et
+    ``bulk_edit.apply_bulk_edit`` écrit par ``queryset.update()`` — donc sans
+    ``save()``/``full_clean()``/signal, sans ``updated_at`` et sans une ligne de
+    journal. Les cibles d'aujourd'hui sont étroites (3 cibles CPQ, aucun champ
+    de prix) mais CHAQUE cible future héritait du défaut du socle. Désormais :
+    palier responsable/admin par défaut, une cible pouvant DÉCLARER sa propre
+    garde (``permission=`` de ``register_bulk_target``), et un lot appliqué émet
+    ``bulk_edit_applied`` — journalisé par ``apps/audit/receivers.py``.
     """
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """Lecture du catalogue : tout authentifié. Écriture : palier de rôle.
+
+        Si la cible visée déclare ses PROPRES permissions, elles priment (une
+        app peut resserrer l'accès à ses données) ; sinon le palier du socle
+        s'applique. La cible est lue du corps de façon défensive : un corps
+        illisible retombe sur le palier par défaut, jamais sur ``IsAuthenticated``.
+        """
+        if self.action == 'targets':
+            return [IsAuthenticated()]
+        try:
+            target = (self.request.data or {}).get('target')
+        except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
+            target = None
+        if target:
+            declarees = bulk_edit_infra.target_permissions(target)
+            if declarees:
+                return declarees
+        return [IsAdminOrResponsableTier()]
 
     @action(detail=False, methods=['get'])
     def targets(self, request):
