@@ -466,6 +466,37 @@ class ElementVariableSerializer(serializers.ModelSerializer):
     def validate_type_entree(self, value):
         return _meme_societe(self, value, "Type d'entrée ponctuelle")
 
+    def validate(self, attrs):
+        """AUD715 — même garde de statut que ``importer_elements_rh``.
+
+        L'import AUTOMATIQUE refusait déjà d'écrire hors brouillon ; l'écriture
+        MANUELLE ne vérifiait que la société. Écrire sur une période
+        CALCULÉE/VALIDÉE/CLÔTURÉE réussissait en 201/200 sans jamais influencer
+        le bulletin déjà émis. Le modèle porte la même garde (admin, scripts) ;
+        ici on la traduit en 400 lisible au lieu d'une 500.
+        """
+        attrs = super().validate(attrs)
+        periode = attrs.get('periode') or getattr(
+            self.instance, 'periode', None)
+        if periode is not None \
+                and periode.statut != PeriodePaie.STATUT_BROUILLON:
+            raise serializers.ValidationError({
+                'periode': "Période au statut « "
+                           f'{periode.get_statut_display()} » : la saisie '
+                           "d'éléments variables n'est possible qu'en "
+                           'brouillon.',
+            })
+        # Un élément déjà saisi ne peut pas non plus être DÉPLACÉ hors d'une
+        # période figée.
+        origine = getattr(self.instance, 'periode', None)
+        if origine is not None and origine != periode \
+                and origine.statut != PeriodePaie.STATUT_BROUILLON:
+            raise serializers.ValidationError({
+                'periode': "Période d'origine close au calcul : cet élément "
+                           'ne peut plus être déplacé.',
+            })
+        return attrs
+
 
 class LigneBulletinSerializer(serializers.ModelSerializer):
     """Ligne d'un bulletin (PAIE17) — snapshot figé, lecture seule."""

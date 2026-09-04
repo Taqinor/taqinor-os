@@ -956,8 +956,57 @@ class ElementVariable(models.Model):
         # normale, jamais concerné par cette contrainte).
         unique_together = [('periode', 'reconduit_depuis')]
 
+    class PeriodeVerrouillee(Exception):
+        """AUD715 — écriture d'élément variable sur une période non brouillon."""
+
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'
+
+    # AUD715 — GARDE DE STATUT DE PÉRIODE, symétrique de ``BulletinPaie.save``.
+    # ``importer_elements_rh`` refusait déjà d'écrire hors brouillon
+    # (``TransitionPeriodeInterdite``), mais l'écriture MANUELLE — serializer,
+    # ``ModelViewSet`` complet, Django admin, script — n'avait AUCUNE garde :
+    # créer, modifier ou supprimer un élément variable sur une période déjà
+    # CALCULÉE/VALIDÉE/CLÔTURÉE réussissait silencieusement (200/201/204) sans
+    # jamais influencer le bulletin déjà émis. Le net réellement viré divergeait
+    # alors des éléments variables du mois, sans trace ni erreur.
+    def _periode_figee(self, periode_id=None):
+        statut = (
+            PeriodePaie.objects
+            .filter(pk=periode_id if periode_id is not None else self.periode_id)
+            .values_list('statut', flat=True)
+            .first()
+        )
+        return statut is not None and statut != PeriodePaie.STATUT_BROUILLON
+
+    def save(self, *args, **kwargs):
+        if self._periode_figee():
+            raise ElementVariable.PeriodeVerrouillee(
+                "Période close au calcul : la saisie d'éléments variables "
+                "n'est possible qu'en statut brouillon (le bulletin déjà "
+                "émis ne serait pas recalculé).")
+        if self.pk:
+            # Un élément ne peut pas non plus être DÉPLACÉ hors d'une période
+            # figée : on vérifie aussi la période d'origine.
+            ancienne = (
+                ElementVariable.objects
+                .filter(pk=self.pk)
+                .values_list('periode_id', flat=True)
+                .first()
+            )
+            if ancienne is not None and ancienne != self.periode_id \
+                    and self._periode_figee(ancienne):
+                raise ElementVariable.PeriodeVerrouillee(
+                    "Période d'origine close au calcul : cet élément variable "
+                    "ne peut plus être déplacé.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self._periode_figee():
+            raise ElementVariable.PeriodeVerrouillee(
+                "Période close au calcul : la suppression d'un élément "
+                "variable n'est possible qu'en statut brouillon.")
+        return super().delete(*args, **kwargs)
 
 
 # ── PAIE17 — Bulletin de paie (snapshot immuable une fois validé) ───────────

@@ -15,6 +15,7 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -1157,6 +1158,19 @@ class ElementVariableViewSet(_PaieBaseViewSet):
     serializer_class = ElementVariableSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['periode', 'profil', 'id']
+
+    def perform_destroy(self, instance):
+        """AUD715 — la suppression suit la même garde de statut que l'écriture.
+
+        Sans elle, un DELETE sur une période déjà CALCULÉE/VALIDÉE/CLÔTURÉE
+        renvoyait 204 en retirant un élément qui n'influencerait plus jamais le
+        bulletin déjà émis. La garde vit sur le modèle (admin, scripts inclus) ;
+        ici on la traduit en 400 lisible plutôt qu'en 500.
+        """
+        try:
+            instance.delete()
+        except ElementVariable.PeriodeVerrouillee as exc:
+            raise DRFValidationError({'periode': str(exc)})
 
 
 class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
