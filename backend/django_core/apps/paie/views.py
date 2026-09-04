@@ -259,8 +259,16 @@ class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
 class ProfilPaieViewSet(_PaieBaseViewSet):
     """Profils de paie des employés (PAIE8) — société scopée, palier paie.
 
-    ``OneToOne`` vers ``rh.DossierEmploye`` ; le salaire de base est SENSIBLE
-    (jamais exposé côté client). ``company`` posée côté serveur.
+    ``OneToOne`` vers ``rh.DossierEmploye`` ; ``company`` posée côté serveur.
+
+    AUD716 — le salaire de base est SENSIBLE : cette docstring l'affirmait déjà
+    (« jamais exposé côté client ») alors que ``ProfilPaieSerializer`` le
+    servait EN CLAIR et l'acceptait en écriture sous la seule permission
+    ``paie_voir``/``paie_gerer``. Il est désormais gaté ``salaires_voir`` dans
+    les deux sens PAR LE SERIALIZER (masqué en lecture, refusé en écriture) —
+    et non par ``permission_classes``, pour que le reste du profil (affiliation
+    CNSS/AMO, RIB, normes de travail, régime d'exonération) reste accessible au
+    gestionnaire de paie, comme aujourd'hui.
     """
     queryset = ProfilPaie.objects.select_related('employe').all()
     serializer_class = ProfilPaieSerializer

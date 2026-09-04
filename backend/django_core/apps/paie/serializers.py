@@ -196,6 +196,47 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
+    # ── AUD716 — ``salaire_base`` est gaté ``salaires_voir``, DANS LES DEUX
+    # SENS. Il était exposé en clair (et écrivable) sous la seule permission
+    # ``paie_voir``/``paie_gerer`` du ``ProfilPaieViewSet``, alors que la MÊME
+    # donnée est strictement gatée ``salaires_voir`` partout ailleurs —
+    # ``rh.RemunerationViewSet``, ``rh.GrilleSalarialeViewSet``, et jusque dans
+    # la MÊME classe : l'action ``synchroniser_salaire_action`` exige
+    # explicitement ``salaires_voir`` « au-delà de paie_gerer… donnée
+    # sensible ». Exploitable en configuration par défaut : le rôle
+    # Responsable livré porte ``paie_voir``/``paie_gerer`` mais PAS
+    # ``salaires_voir``.
+    #
+    # REPLI LÉGATAIRE ASSUMÉ (``HasPermissionOrLegacy``, le patron déjà retenu
+    # pour ``can_view_buy_prices``) : un compte porteur d'un RÔLE FIN doit
+    # avoir ``salaires_voir`` — c'est l'exploit que cette tâche ferme ; un
+    # compte HÉRITÉ sans rôle fin garde son comportement historique, sinon on
+    # éteindrait sans préavis l'écran de paie des déploiements existants.
+    def _peut_voir_salaires(self):
+        request = self.context.get('request')
+        if request is None:
+            # Hors requête HTTP (admin Django, scripts, tests de service) :
+            # aucune permission à évaluer, comportement inchangé.
+            return True
+        from authentication.permissions import HasPermissionOrLegacy
+
+        return bool(
+            HasPermissionOrLegacy('salaires_voir')()
+            .has_permission(request, None))
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._peut_voir_salaires():
+            data['salaire_base'] = None
+        return data
+
+    def validate_salaire_base(self, value):
+        if not self._peut_voir_salaires():
+            raise serializers.ValidationError(
+                'Permission « salaires_voir » requise pour écrire le salaire '
+                'de base.')
+        return value
+
     def get_employe_nom(self, obj):
         emp = obj.employe
         return f'{emp.nom} {emp.prenom}'.strip() if emp else ''
