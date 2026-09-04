@@ -1324,6 +1324,19 @@ class CautionSoumissionViewSet(AoBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_echeance', 'statut']
 
+    def perform_destroy(self, instance):
+        """AUD609 — une caution APPELÉE ne s'efface pas.
+
+        « Appelée » signifie que la banque a DÉJÀ débité le montant : la
+        supprimer effacerait la trace d'un mouvement d'argent réel, et le
+        rapprochement bancaire n'aurait plus rien à quoi rattacher la sortie.
+        """
+        if instance.statut == CautionSoumission.Statut.APPELEE:
+            raise DrfValidationError({api_settings.NON_FIELD_ERRORS_KEY: [
+                'Suppression refusée : cette caution est APPELÉE — la banque a '
+                'débité le montant. Sa trace ne se supprime pas.']})
+        super().perform_destroy(instance)
+
     @extend_schema(request=ChangerStatutCautionSerializer,
                    responses=CautionSoumissionSerializer)
     @action(detail=True, methods=['post'], url_path='changer-statut',
