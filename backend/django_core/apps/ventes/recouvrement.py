@@ -613,9 +613,25 @@ def lettre_relance_pdf(request, facture_id):
 
 # ── XFAC5 — Promesse de paiement (promise-to-pay) ──────────────────────────
 
+#: AUD133 — horizon MAXIMAL d'une promesse de paiement, en jours. Au-delà, la
+#: « promesse » n'est plus un engagement client mais un gel de la relance : le
+#: serveur écrit `date_promise` dans `facture.exclu_relances_jusquau`, et
+#: `relance_reminders` exclut `exclu_relances_jusquau__gte=today` — une date au
+#: 31/12/2030 sortait donc la facture du recouvrement pour toujours, sans trace
+#: de décision ni validation hiérarchique. Plafond société par défaut : 90 jours.
+PROMESSE_HORIZON_JOURS_MAX = 90
+
+
 class PromessePaiementViewSet(viewsets.ModelViewSet):
     """Promesses de paiement client — suspendent la relance auto jusqu'à
-    ``date_promise``. Écriture réservée aux rôles responsable/admin."""
+    ``date_promise``. Écriture réservée aux rôles responsable/admin.
+
+    AUD133 — ce docstring était FAUX : ``get_permissions`` renvoyait
+    ``[IsAnyRole()]`` dans les DEUX branches, donc `create` — la seule action
+    d'écriture exposée (``http_method_names``) — était ouverte à tout compte
+    authentifié. La branche d'écriture applique désormais réellement
+    ``IsResponsableOrAdmin`` ; la LECTURE reste ouverte à tout rôle.
+    """
     serializer_class = PromessePaiementSerializer
     http_method_names = ['get', 'post', 'head', 'options']
 
@@ -628,7 +644,7 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
-        return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError

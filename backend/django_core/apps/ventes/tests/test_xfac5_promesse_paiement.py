@@ -132,9 +132,12 @@ class XFAC5PromessePaiementTests(TestCase):
             company=other_company,
         )
         other_api = auth(other_admin)
+        # AUD133 — date VALIDE (future, sous le plafond) pour que le 400 reste
+        # bien un refus de SCOPING société, pas un refus de date.
         r = other_api.post('/api/django/ventes/promesses-paiement/', {
             'facture': self.facture.id, 'montant_promis': '5000',
-            'date_promise': timezone.now().date().isoformat(),
+            'date_promise': (
+                timezone.now().date() + timedelta(days=5)).isoformat(),
         }, format='json')
         self.assertEqual(r.status_code, 400)
 

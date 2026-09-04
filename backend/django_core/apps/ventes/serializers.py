@@ -1087,13 +1087,39 @@ class NoteDebitSerializer(serializers.ModelSerializer):
 
 
 class PromessePaiementSerializer(serializers.ModelSerializer):
-    """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
+    """XFAC5 — engagement de paiement client (« je paie le 15 »).
+
+    AUD133 — ``date_promise`` n'était BORNÉE nulle part : la valeur du corps
+    était écrite telle quelle dans ``facture.exclu_relances_jusquau``, et
+    ``relance_reminders`` exclut ``exclu_relances_jusquau__gte=today``. Une
+    promesse au 31/12/2030 gelait donc la relance pour toujours. Elle doit
+    désormais être FUTURE et rester sous le plafond société
+    (``recouvrement.PROMESSE_HORIZON_JOURS_MAX``, 90 j par défaut).
+    """
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
+
+    def validate_date_promise(self, value):
+        from datetime import timedelta
+
+        from .recouvrement import PROMESSE_HORIZON_JOURS_MAX
+        from .scheduled import casablanca_today
+
+        today = casablanca_today()
+        if value <= today:
+            raise serializers.ValidationError(
+                "Une promesse de paiement porte sur une date FUTURE.")
+        plafond = today + timedelta(days=PROMESSE_HORIZON_JOURS_MAX)
+        if value > plafond:
+            raise serializers.ValidationError(
+                f'Une promesse ne peut pas dépasser {PROMESSE_HORIZON_JOURS_MAX} '
+                f'jours (soit le {plafond.isoformat()}) : au-delà, elle gèle la '
+                f'relance au lieu d\'engager le client.')
+        return value
 
     class Meta:
         from .models import PromessePaiement
