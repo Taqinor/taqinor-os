@@ -94,8 +94,13 @@ GED_GERER = 'ged_gerer'
 GED_GOUVERNANCE = 'ged_gouvernance'
 
 # Actions de GOUVERNANCE portées par ``DocumentViewSet``.
+# AUD811 — ``purger`` (effacement définitif IRRÉVERSIBLE depuis la corbeille)
+# tombait par défaut sur ``ged_gerer`` (écriture opérationnelle courante),
+# plus bas que ``ged_gouvernance`` qui protège pourtant ce même document :
+# l'action la moins gardée causait le dommage le plus irréversible. On ne
+# remonte PAS ``mettre_en_corbeille`` (réversible, GED26) au même palier.
 GOUVERNANCE_ACTIONS = (
-    'placer_legal_hold', 'lever_legal_hold', 'caviarder',
+    'placer_legal_hold', 'lever_legal_hold', 'caviarder', 'purger',
 )
 
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
