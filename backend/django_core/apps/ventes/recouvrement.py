@@ -15,7 +15,10 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Facture, FollowupLevel, ParametrageRelanceClient, PromessePaiement
+from .models import (
+    Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
+    PromessePaiement,
+)
 from .serializers import (
     FollowupLevelSerializer, ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
@@ -411,14 +414,53 @@ def _releve_data(client, user=None):
             'total_ttc': _s(f.total_ttc),
             'paye': _s(paye), 'avoirs': _s(avo), 'du': _s(du),
         })
-        # Détail des encaissements (date / mode / montant) par facture.
+        # ── AUD132 (PAY-11) — UN SEUL propriétaire du détail ──────────────
+        # Le détail était construit par `for p in f.paiements.all()` SANS aucun
+        # filtre : un chèque rejeté restait imprimé au client comme un
+        # règlement, tandis que les escomptes et les avances ventilées — qui
+        # COMPTENT tous deux dans `montant_paye` — n'étaient jamais listés.
+        # Les lignes reprennent maintenant EXACTEMENT les trois termes de
+        # `Facture.montant_paye` : paiements non rejetés + escomptes + avances
+        # ventilées dont le paiement source n'est pas rejeté. La somme des
+        # lignes égale donc `totaux.paye`, sur l'écran interne, le PDF et le
+        # portail client (tous trois alimentés par ce même dict).
         for p in f.paiements.all():
+            if p.statut == Paiement.Statut.REJETE:
+                continue
+            date_p = (p.date_paiement.isoformat()
+                      if p.date_paiement else None)
             paiements.append({
                 'facture': f.reference,
-                'date': (p.date_paiement.isoformat()
-                         if p.date_paiement else None),
+                'date': date_p,
                 'mode': p.get_mode_display(),
                 'montant': _s(p.montant),
+                'type': 'paiement',
+                'libelle': p.get_mode_display(),
+            })
+            escompte = p.escompte_montant or Decimal('0')
+            if escompte:
+                paiements.append({
+                    'facture': f.reference,
+                    'date': date_p,
+                    'mode': 'Escompte',
+                    'montant': _s(escompte),
+                    'type': 'escompte',
+                    'libelle': 'Escompte de règlement',
+                })
+        # Avances ventilées SUR cette facture (le paiement source vit ailleurs).
+        for a in f.affectations_paiement.select_related('paiement'):
+            source = a.paiement
+            if source.statut == Paiement.Statut.REJETE:
+                continue
+            paiements.append({
+                'facture': f.reference,
+                'date': (source.date_paiement.isoformat()
+                         if source.date_paiement else None),
+                'mode': source.get_mode_display(),
+                'montant': _s(a.montant),
+                'type': 'avance',
+                'libelle': f'Avance ventilée (encaissement #{source.id})',
+                'reference_source': str(source.id),
             })
         # Détail des avoirs actifs (date / référence / montant) par facture.
         for a in f.avoirs.all():

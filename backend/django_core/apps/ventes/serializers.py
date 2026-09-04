@@ -857,6 +857,11 @@ class PaiementSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, read_only=True)
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
+    # AUD132 (PAY-10) — l'écran Encaissements n'avait AUCUNE colonne statut :
+    # un paiement rejeté (chèque impayé) y était affiché comme un encaissement
+    # valide. Le libellé est servi ici pour que l'écran ne le réinvente pas.
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
