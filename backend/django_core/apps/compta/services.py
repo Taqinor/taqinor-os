@@ -7571,17 +7571,57 @@ def envoyer_campagnes_planifiees(company, *, maintenant=None):
     )
     envoyees = []
     for campagne in campagnes:
-        destinataires = _destinataires_des_listes(campagne)
+        # AUD617 — le reliquat d'un lot throttlé doit REPARTIR au tick
+        # suivant, sans jamais re-cibler qui a déjà été traité.
+        restants = _destinataires_non_traites(
+            campagne, _destinataires_des_listes(campagne))
         if campagne.debit_max_par_heure:
-            lot = destinataires[:campagne.debit_max_par_heure]
+            lot = restants[:campagne.debit_max_par_heure]
+            reste = restants[campagne.debit_max_par_heure:]
         else:
-            lot = destinataires
-        envoyees.append(envoyer_campagne(campagne, destinataires=lot))
+            lot, reste = restants, []
+        envoyees.append(envoyer_campagne(
+            campagne, destinataires=lot, partiel=bool(reste)))
     return envoyees
 
 
-def envoyer_campagne(campagne, *, destinataires=None):
+def _destinataires_non_traites(campagne, destinataires):
+    """AUD617 — retire les destinataires DÉJÀ couverts par un lot précédent
+    de cette campagne.
+
+    ``_destinataires_des_listes`` renvoie à chaque tick la liste COMPLÈTE des
+    inscrits : sans ce filtre, la reprise du reliquat re-solliciterait les
+    destinataires du premier lot à chaque passage beat. Une ligne
+    ``EnvoiCampagne`` existe pour tout destinataire traité — y compris ceux
+    écartés (consentement, plafond de pression, dormant), qui ne doivent pas
+    être retentés non plus.
+    """
+    deja = set(
+        EnvoiCampagne.objects.filter(
+            company=campagne.company, campagne=campagne,
+        ).values_list('destinataire', flat=True))
+    if not deja:
+        return list(destinataires)
+    restants = []
+    for cible in destinataires:
+        brute = cible.get('destinataire') if isinstance(cible, dict) else cible
+        if (brute or '').strip() in deja:
+            continue
+        restants.append(cible)
+    return restants
+
+
+def envoyer_campagne(campagne, *, destinataires=None, partiel=False):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
+
+    AUD617 — ``partiel=True`` signale que ce lot ne couvre PAS tous les
+    destinataires (débit horaire ``debit_max_par_heure``) : la campagne
+    retourne alors ``en_file`` (jamais ``envoyee``) avec sa ``planifiee_le``
+    inchangée, et ses compteurs CUMULENT au lieu d'être écrasés — le reliquat
+    repart au tick beat suivant. C'est ``en_file`` et non ``envoi_en_cours``
+    parce que c'est le seul statut que la requête d'``envoyer_campagnes_
+    planifiees`` reprend : une campagne laissée ``envoi_en_cours`` entre deux
+    ticks ne serait jamais reprise.
 
     ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0), ou de
     dicts ``{'destinataire': ..., 'contact_ref': ...}`` pour porter la
@@ -7603,6 +7643,11 @@ def envoyer_campagne(campagne, *, destinataires=None):
     if campagne.statut not in (Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
         return campagne
     statut_avant = campagne.statut
+    # AUD617 — reprise d'un lot throttlé : les compteurs doivent CUMULER, pas
+    # être écrasés par le dernier lot. Une campagne qui porte déjà des lignes
+    # ``EnvoiCampagne`` est forcément la reprise d'un lot précédent (le garde
+    # de statut ci-dessus interdit tout second envoi hors throttle).
+    reprise = campagne.envois.exists()
     campagne.statut = Campagne.Statut.ENVOI_EN_COURS
     campagne.save(update_fields=['statut'])
     brutes = list(destinataires or [])
@@ -7685,27 +7730,38 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='contact_dormant_sunset',
             )
-    campagne.nb_destinataires = len(cibles)
+    # AUD617 — cumul sur une reprise, écrasement sur un envoi neuf.
+    base_destinataires = campagne.nb_destinataires if reprise else 0
+    base_envois = campagne.nb_envois if reprise else 0
+    campagne.nb_destinataires = base_destinataires + len(cibles)
     if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
         # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
         # uniquement) : chaque destinataire obtient TOUJOURS un message —
         # via BSP (jeton présent) ou repli manuel (lien wa.me), jamais aucun
         # des deux (comportement du provider QJ23/FG33). On compte l'envoi
         # comme « traité » indépendamment de brevo_actif().
-        campagne.nb_envois = len(cibles)
+        campagne.nb_envois = base_envois + len(cibles)
     elif brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
-        campagne.nb_envois = len(cibles)
+        campagne.nb_envois = base_envois + len(cibles)
     # XMKT9 — réécrit les liens du corps en redirections tokenisées AU MOMENT
     # DE L'ENVOI (une seule fois, jamais si aucun lien HTTP(S) présent).
     if cibles:
         corps_reecrit, _liens = envelopper_liens_campagne(campagne)
         if corps_reecrit != campagne.corps:
             campagne.corps = corps_reecrit
-    campagne.statut = Campagne.Statut.ENVOYEE
-    campagne.envoyee_le = timezone.now()
+    if partiel:
+        # AUD617 — il RESTE des destinataires non couverts par ce lot : la
+        # campagne n'est pas « envoyée ». Elle retourne en file (échéance
+        # inchangée) et le reliquat part au tick beat suivant. Avant ce
+        # correctif elle passait `envoyee` dès le premier lot et le reliquat
+        # n'était JAMAIS envoyé.
+        campagne.statut = Campagne.Statut.EN_FILE
+    else:
+        campagne.statut = Campagne.Statut.ENVOYEE
+        campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le', 'corps'])
     maintenant = timezone.now() if campagne.nb_envois else None
