@@ -4373,6 +4373,73 @@ def _parse_date_import(valeur):
     return None
 
 
+class StatutImportRefuse(Exception):
+    """AUD516 — le statut demandé par une ligne d'import n'est pas atteignable
+    légalement (transition interdite, garde métier non satisfaite, ou preuve
+    juridique qui ne s'importe pas). La ligne devient une ERREUR du rapport
+    d'import — jamais un statut posé en force."""
+
+
+def _appliquer_statut_import(contrat, statut_cible, *, user=None):
+    """AUD516 — amène un contrat IMPORTÉ (créé en brouillon) vers son statut
+    cible par les SERVICES GARDÉS, jamais par une écriture directe.
+
+    ``creer_contrat_import`` posait ``statut=<valeur brute du fichier>`` dans
+    le ``Contrat.objects.create`` : zéro passage par la machine d'états, zéro
+    garde « ≥ 2 parties », aucune ``SignatureContrat``, aucune
+    ``Resiliation``, et AUCUN des trois événements ``core.events``
+    (``contrat_signe``/``contrat_actif``/``contrat_resilie``). Un CSV pouvait
+    donc fabriquer un contrat ACTIF sans partie ni signature.
+
+    Chaque cible passe désormais par son service métier :
+      * ``resilie``  → ``resilier_contrat`` (crée la ``Resiliation`` + émet
+        ``contrat_resilie``) ;
+      * ``actif``    → ``activer_si_eligible`` (n'active QU'UN contrat signé
+        et éligible — sinon la ligne est en erreur) ;
+      * ``signe``    → REFUSÉ : une signature est une preuve juridique
+        (``SignatureContrat``, nom dactylographié, IP, horodatage) qu'un
+        fichier d'import ne porte pas et qu'on ne fabriquera pas ; le contrat
+        s'importe en brouillon puis se fait signer par le chemin réel ;
+      * tout le reste (``en_approbation``…) → ``changer_statut``, la machine
+        d'états gardée, pour les seules transitions administratives.
+    """
+    from django.core.exceptions import ValidationError as DjangoValidationError
+
+    from .machine_etats import TransitionInterdite
+    from .models import Contrat
+
+    if statut_cible == Contrat.Statut.SIGNE:
+        raise StatutImportRefuse(
+            "Statut « signé » non importable : une signature (nom, horodatage, "
+            "preuve) ne s'importe pas. Importez le contrat en brouillon, puis "
+            'faites-le signer.')
+
+    if statut_cible == Contrat.Statut.RESILIE:
+        try:
+            resilier_contrat(
+                contrat, motif='Contrat résilié — repris par import.',
+                auteur=user)
+        except Exception as exc:
+            raise StatutImportRefuse(
+                f'Résiliation refusée : {exc}') from exc
+        return
+
+    if statut_cible == Contrat.Statut.ACTIF:
+        if not activer_si_eligible(contrat, auteur=user):
+            raise StatutImportRefuse(
+                "Statut « actif » non atteignable : un contrat n'est activé "
+                "qu'une fois SIGNÉ et éligible. Importez-le en brouillon.")
+        return
+
+    try:
+        changer_statut(contrat, statut_cible, user=user)
+    except (TransitionInterdite, DjangoValidationError) as exc:
+        message = getattr(exc, 'messages', None)
+        raise StatutImportRefuse(
+            f'Statut « {statut_cible} » refusé : '
+            f'{message[0] if message else exc}') from exc
+
+
 def creer_contrat_import(company, ligne, *, user=None):
     """ARC13 — Crée (ou saute si doublon) UN contrat depuis une ligne d'import
     CSV/XLSX (dict de colonnes déjà nettoyées), via ``apps.contrats.services``
@@ -4386,8 +4453,16 @@ def creer_contrat_import(company, ligne, *, user=None):
     (retourne ``'doublon'``), jamais mise à jour ni dupliquée — une ligne SANS
     référence est toujours créée (pas de clé d'idempotence disponible).
     Retourne ``('cree'|'doublon'|'erreur', message|None)``.
+
+    AUD516 — le contrat naît TOUJOURS en ``brouillon`` ; un statut cible
+    fourni par le fichier est ensuite atteint par les services gardés
+    (``_appliquer_statut_import``). Une cible inatteignable met la LIGNE en
+    erreur et la transaction de la ligne est annulée : on ne laisse jamais
+    derrière soi un contrat à moitié importé (ni un statut posé en force).
     """
     from decimal import Decimal, InvalidOperation
+
+    from django.db import transaction
 
     from .models import Contrat
 
@@ -4407,7 +4482,7 @@ def creer_contrat_import(company, ligne, *, user=None):
 
     statut_brut = str(ligne.get('statut', '') or '').strip().lower()
     statuts_valides = {c for c, _ in Contrat.Statut.choices}
-    statut = statut_brut if statut_brut in statuts_valides \
+    statut_cible = statut_brut if statut_brut in statuts_valides \
         else Contrat.Statut.BROUILLON
 
     montant_brut = ligne.get('montant')
@@ -4420,18 +4495,24 @@ def creer_contrat_import(company, ligne, *, user=None):
             montant = Decimal('0')
 
     try:
-        Contrat.objects.create(
-            company=company,
-            reference=reference,
-            objet=objet,
-            type_contrat=type_contrat,
-            statut=statut,
-            date_debut=_parse_date_import(ligne.get('date_debut')),
-            date_fin=_parse_date_import(ligne.get('date_fin')),
-            montant=montant,
-            devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
-            created_by=user if getattr(user, 'pk', None) else None,
-        )
+        with transaction.atomic():
+            contrat = Contrat.objects.create(
+                company=company,
+                reference=reference,
+                objet=objet,
+                type_contrat=type_contrat,
+                # AUD516 — jamais la valeur brute du fichier.
+                statut=Contrat.Statut.BROUILLON,
+                date_debut=_parse_date_import(ligne.get('date_debut')),
+                date_fin=_parse_date_import(ligne.get('date_fin')),
+                montant=montant,
+                devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
+                created_by=user if getattr(user, 'pk', None) else None,
+            )
+            if statut_cible != Contrat.Statut.BROUILLON:
+                _appliquer_statut_import(contrat, statut_cible, user=user)
+    except StatutImportRefuse as exc:
+        return 'erreur', str(exc)
     except Exception as exc:  # pragma: no cover - défensif, erreur inattendue
         return 'erreur', str(exc)
 

@@ -26,6 +26,7 @@ from .views import (
     PaiementFacturePortailViewSet,
 )
 from .views_client import (
+    MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
@@ -62,6 +63,12 @@ router.register(r'mes-factures', MesFacturesPortailViewSet,
 # livraison (FG228/XSTK22), la section portail n'existait pas.
 router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
                 basename='portail-mes-livraisons')
+# AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233, jamais
+# atteignable jusqu'ici (son seul ViewSet est gardé IsResponsableOrAdmin,
+# refusé à tout rôle portail). Porte aussi la déflection KB (XSAV22), qui
+# n'était donc jamais exercée par un vrai client.
+router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
+                basename='portail-mes-demandes-sav')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

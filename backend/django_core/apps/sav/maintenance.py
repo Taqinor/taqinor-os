@@ -169,7 +169,10 @@ def generer_visites_dues(company, user, avance_jours=0):
                 description=f'Visite de maintenance préventive (contrat #{c.pk}).',
                 created_by=user)
 
-        create_with_reference(Ticket, 'SAV', company, _save)
+        # AUD519 — la visite préventive porte la même échéance SLA que le
+        # chemin manuel (sans quoi elle était exclue des scans quotidiens).
+        from .services import poser_sla_due_at
+        poser_sla_due_at(create_with_reference(Ticket, 'SAV', company, _save))
         contrat.derniere_visite = due
         contrat.save(update_fields=['derniere_visite'])
         genere += 1
@@ -215,6 +218,12 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         qs = super().get_queryset()
         if self.request.query_params.get('due') in ('1', 'true'):
             ids = [c.id for c in qs if c.is_due()]
+            qs = qs.filter(id__in=ids)
+        # AUD502 — file « à renouveler » : date de renouvellement atteinte OU
+        # échéance duree_mois dépassée (période de grâce comprise — la
+        # couverture tombe à la fin de la fenêtre de 30 jours).
+        if self.request.query_params.get('a_renouveler') in ('1', 'true'):
+            ids = [c.id for c in qs if c.a_renouveler()]
             qs = qs.filter(id__in=ids)
         return qs
 
