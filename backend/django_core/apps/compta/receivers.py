@@ -18,6 +18,7 @@ transitent par les arguments du signal.
 from django.dispatch import receiver
 
 from core.events import (
+    avoir_annule,
     avoir_cree,
     chantier_receptionne,
     facture_annulee,
@@ -227,6 +228,20 @@ def _ecriture_pour_mouvement_stock(sender, instance, company, **kwargs):
 @receiver(facture_annulee, dispatch_uid="compta_extourne_facture_annulee")
 def _extourne_facture_annulee(sender, instance, company, **kwargs):
     ecriture = _ecriture_existante(company, 'facture', instance.id)
+    if ecriture is None:
+        return
+    extourner_ecriture(ecriture)
+
+
+# AUD127 — même geste pour un AVOIR annulé. Côté ERP, `Facture.avoirs_total`
+# exclut les avoirs annulés : `montant_du` remonte immédiatement. Sans
+# extourne, le grand livre gardait l'avoir et la comptabilité considérait la
+# créance comme toujours créditée. Un avoir jamais comptabilisé (toggle OFF)
+# n'a aucune écriture source → no-op, comme pour la facture.
+
+@receiver(avoir_annule, dispatch_uid="compta_extourne_avoir_annule")
+def _extourne_avoir_annule(sender, instance, company, **kwargs):
+    ecriture = _ecriture_existante(company, 'avoir', instance.id)
     if ecriture is None:
         return
     extourner_ecriture(ecriture)

@@ -92,12 +92,90 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
         from ..utils.periode import guard_periode_verrouillee
         guard_periode_verrouillee(document)
 
+    @staticmethod
+    def _trace_contre_passation(avoir):
+        """AUD127 — retrouve la trace ZFAC5 qui a annulé la facture d'origine
+        POUR CET AVOIR.
+
+        Un avoir de contre-passation ne porte pas son mode : la seule preuve
+        du lien est le ``FactureActivity`` posé par ``creer_avoir``, dont le
+        corps nomme l'avoir miroir et dont ``old_value`` porte le statut que
+        la facture avait AVANT d'être annulée. C'est exactement ce qu'il faut
+        pour la restaurer.
+        """
+        from ..models import FactureActivity
+        if avoir.facture_id is None:
+            return None
+        return (FactureActivity.objects
+                .filter(facture_id=avoir.facture_id, field='statut',
+                        new_value=Facture.Statut.ANNULEE,
+                        body__contains=f'avoir miroir {avoir.reference}')
+                .order_by('-id')
+                .first())
+
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
+        """AUD127 — annule un avoir ET contre-passe son effet.
+
+        L'action posait ``statut='annulee'`` et rendait la réponse : AUCUN
+        événement, alors que la CRÉATION émet ``avoir_cree`` auquel compta
+        abonne l'écriture d'avoir. L'effet ERP était immédiat —
+        ``Facture.avoirs_total`` exclut les avoirs annulés, donc
+        ``montant_du`` remonte — pendant que le grand livre gardait l'avoir :
+        une créance de 20 000 réapparaissait côté ERP alors que la
+        comptabilité la considérait toujours comme créditée. Et si l'avoir
+        était une CONTRE-PASSATION, la facture d'origine avait été forcée à
+        ANNULEE et rien ne la restaurait.
+
+        Désormais : idempotente (double annulation = no-op), elle restaure la
+        facture d'origine d'une contre-passation à son statut antérieur (ou
+        refuse en 400 si ce statut est introuvable), et émet ``avoir_annule``
+        exactement une fois — d'où l'extourne côté compta.
+        """
         avoir = self.get_object()
+        if avoir.statut == Avoir.Statut.ANNULEE:
+            # Idempotence : rien à annuler, aucun événement ré-émis (une
+            # seconde extourne doublerait le grand livre).
+            return Response(AvoirSerializer(avoir).data)
         self._guard_periode_verrouillee(avoir)
-        avoir.statut = Avoir.Statut.ANNULEE
-        avoir.save(update_fields=['statut'])
+
+        from core.events import avoir_annule
+
+        with transaction.atomic():
+            trace = self._trace_contre_passation(avoir)
+            if trace is not None:
+                facture = Facture.objects.select_for_update().get(
+                    pk=avoir.facture_id)
+                ancien = (trace.old_value or '').strip()
+                if not ancien or ancien == Facture.Statut.ANNULEE:
+                    return Response(
+                        {'detail': (
+                            "Annulation refusée : cet avoir a contre-passé la "
+                            f"facture {facture.reference}, et son statut "
+                            "antérieur est introuvable — la facture ne peut "
+                            "pas être restaurée."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST)
+                if facture.statut == Facture.Statut.ANNULEE:
+                    facture.statut = ancien
+                    facture.save(update_fields=['statut'])
+                    from ..models import FactureActivity
+                    FactureActivity.objects.create(
+                        company=facture.company, facture=facture,
+                        user=request.user,
+                        kind=FactureActivity.Kind.MODIFICATION,
+                        field='statut', field_label='Statut',
+                        old_value=Facture.Statut.ANNULEE, new_value=ancien,
+                        body=(f"Facture restaurée : l'avoir de "
+                              f"contre-passation {avoir.reference} a été "
+                              f"annulé."),
+                    )
+            avoir.statut = Avoir.Statut.ANNULEE
+            avoir.save(update_fields=['statut'])
+            # YLEDG4 — symétrique d'``avoir_cree`` : compta extourne
+            # l'écriture d'avoir (jamais de suppression, COMPTA11).
+            avoir_annule.send(
+                sender=Avoir, instance=avoir, company=avoir.company)
         return Response(AvoirSerializer(avoir).data)
 
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
