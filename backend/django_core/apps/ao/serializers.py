@@ -9,6 +9,8 @@ un champ exposé : elle est posée côté serveur par le socle
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AppelOffre,
     BatimentAO,
@@ -407,11 +409,13 @@ class BatimentAOSerializer(serializers.ModelSerializer):
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
 
-class PieceConsultationSerializer(serializers.ModelSerializer):
+class PieceConsultationSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
     """AOF21 — le DCE REÇU de l'acheteur, pièce par pièce."""
     type_piece_display = serializers.CharField(
         source='get_type_piece_display', read_only=True)
     est_additif = serializers.BooleanField(read_only=True)
+    same_company_fields = ('attachment',)
 
     class Meta:
         model = PieceConsultation
@@ -439,8 +443,10 @@ class ExigenceCPSSerializer(serializers.ModelSerializer):
         ]
 
 
-class VarianteCalepinageSerializer(serializers.ModelSerializer):
+class VarianteCalepinageSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """AOF28 — le modèle PIVOT : role + parent + PREUVE."""
+    same_company_fields = ('job',)
     role_display = serializers.CharField(
         source='get_role_display', read_only=True)
     statut_display = serializers.CharField(
@@ -481,8 +487,10 @@ class PresetCalepinageSerializer(serializers.ModelSerializer):
 
 # ── AOF26 — Kits de calepinage ─────────────────────────────────────────────
 
-class KitCalepinageSerializer(serializers.ModelSerializer):
+class KitCalepinageSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """AOF26 — le kit ne porte AUCUN prix : il vient du produit lié."""
+    same_company_fields = ('produit',)
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     #: kWc = modules × puissance unitaire — CALCULÉ, jamais recopié.
@@ -508,7 +516,12 @@ class KitCalepinageSerializer(serializers.ModelSerializer):
 
 # ── FG223 — Bordereaux des prix (BOQ) ──────────────────────────────────────
 
-class LigneBordereauSerializer(serializers.ModelSerializer):
+class LigneBordereauSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    #: AUD601 — le produit cité par une ligne de bordereau est RENDU dans le
+    #: bordereau des prix remis à l'acheteur : une ligne pointant le catalogue
+    #: d'une société voisine ferait imprimer sa désignation chez le client.
+    same_company_fields = ('produit',)
     # AOF120 — montants RECALCULÉS côté serveur, jamais acceptés du client.
     montant_ht = serializers.DecimalField(
         max_digits=16, decimal_places=2, read_only=True)
@@ -605,7 +618,9 @@ class BordereauPrixSerializer(serializers.ModelSerializer):
 
 # ── FG224 — Cautions de soumission ─────────────────────────────────────────
 
-class CautionSoumissionSerializer(serializers.ModelSerializer):
+class CautionSoumissionSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
+    same_company_fields = ('attachment',)
     type_caution_display = serializers.CharField(
         source='get_type_caution_display', read_only=True)
     statut_display = serializers.CharField(
@@ -734,7 +749,9 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PieceAdministrativeSerializer(serializers.ModelSerializer):
+class PieceAdministrativeSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    same_company_fields = ('attachment',)
     type_piece_display = serializers.CharField(
         source='get_type_piece_display', read_only=True)
     #: Dérivée de la date d'émission + la durée réglementaire — jamais saisie.
@@ -817,7 +834,8 @@ class DossierAOSerializer(serializers.ModelSerializer):
 
 # ── AOF118/AOF141 — Équipements engagés : snapshot figé, AUCUN prix ────────
 
-class EquipementAOSerializer(serializers.ModelSerializer):
+class EquipementAOSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """L'équipement ENGAGÉ tel que l'écran Équipements du dossier le montre.
 
     **Aucun montant ne traverse ce sérialiseur.** Le produit du catalogue porte
@@ -835,6 +853,10 @@ class EquipementAOSerializer(serializers.ModelSerializer):
     voie. Elle est lue par la string-FK, jamais par un import de
     ``apps.stock.models`` (contrat ``ao-models-decoupled``).
     """
+
+    #: AUD601 — le produit engagé est LU par l'acheteur sur l'onglet
+    #: Équipements du dossier ; il ne peut jamais venir d'un autre catalogue.
+    same_company_fields = ('produit',)
 
     role_display = serializers.CharField(
         source='get_role_display', read_only=True)

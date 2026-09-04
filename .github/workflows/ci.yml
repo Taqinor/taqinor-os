@@ -523,6 +523,15 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # AUD601 — l'autre moitié d'YDATA21 : la vue scope ce qu'on LIT, ce guard
+      # scope ce qu'on ÉCRIT. Une FK cross-app écrivable d'un ModelSerializer
+      # accepte par défaut la ligne d'une société voisine (sur les surfaces AO
+      # elle finit dans un document remis à l'ACHETEUR). Échoue sur un NOUVEAU
+      # sérialiseur absent de scripts/fk_scoping_allow.txt.
+      - name: Check cross-app FK serializer scoping (AUD601)
+        run: python scripts/check_fk_scoping.py
+      - name: Test the FK-scoping checker itself (AUD601)
+        run: python -m unittest scripts.tests.test_check_fk_scoping -v
       # Incident du 03/08/2026 (production) : les lanes frontend/ao et
       # backend/ao ont ete construites en parallele avec des contrats
       # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route

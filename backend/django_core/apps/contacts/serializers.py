@@ -1,9 +1,13 @@
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import ContactClient
 
 
-class ContactClientSerializer(serializers.ModelSerializer):
+class ContactClientSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
+    same_company_fields = ('client',)
     role_achat_display = serializers.CharField(
         source='get_role_achat_display', read_only=True)
 
