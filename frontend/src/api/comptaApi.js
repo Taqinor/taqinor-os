@@ -31,7 +31,14 @@ const comptaApi = {
 
   // ── UX3 — Plan comptable, comptes CGNC & journaux ──
   plans: resource('plans'),
-  comptes: resource('comptes'),
+  // AUDV02 — `ficheTiers` sert l'ENCOURS d'un compte de tiers (Σ débit − Σ
+  // crédit des seules lignes NON LETTRÉES) et le détail qui le compose. À ne
+  // pas confondre avec le solde brut du compte, qui compte aussi les lignes
+  // déjà appariées et ne répond donc PAS à « combien me doit-il vraiment ? ».
+  comptes: {
+    ...resource('comptes'),
+    ficheTiers: (id) => api.get(`/compta/comptes/${id}/fiche-tiers/`),
+  },
   journaux: resource('journaux'),
 
   // ── UX4 — Écritures comptables ──
@@ -149,7 +156,13 @@ const comptaApi = {
   },
 
   // ── UX6 — Trésorerie & prévisionnel ──
-  tresorerie: resource('tresorerie'),
+  tresorerie: {
+    ...resource('tresorerie'),
+    // AUDV02 / XACC24 — comptes ACTIFS dont le RIB porte une clé mod-97
+    // fausse. Warning pur : un RIB vide n'est pas signalé (cas normal d'une
+    // caisse) et rien n'est bloqué — la saisie historique n'est jamais cassée.
+    ribInvalides: () => api.get('/compta/tresorerie/rib-invalides/'),
+  },
   caisses: {
     ...resource('caisses'),
     mouvementList: (id, params) =>
@@ -275,6 +288,12 @@ const comptaApi = {
     pointer: (id, data) =>
       api.post(`/compta/rapprochements/${id}/pointer/`, data),
     suggestions: (id) => api.get(`/compta/rapprochements/${id}/suggestions/`),
+    // AUDV02 / NTTRE4 — suggestions APPRISES de l'historique des pointages
+    // validés (libellé bancaire récurrent → compte habituel). Complémentaire
+    // de `suggestions` (règle montant/date/tiers), jamais un remplacement :
+    // la règle rattrape le cas exact, l'apprentissage le libellé illisible.
+    suggestionsApprises: (id, params) =>
+      api.get(`/compta/rapprochements/${id}/suggestions-apprises/`, { params }),
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
@@ -293,6 +312,9 @@ const comptaApi = {
     evaluer: (id) => api.post(`/compta/rapprochements-3voies/${id}/evaluer/`),
     valider: (id, data) =>
       api.post(`/compta/rapprochements-3voies/${id}/valider/`, data),
+    // AUDV02 — les écarts BLOQUANTS agrégés en alerte. Un écart non vu, c'est
+    // un paiement fournisseur parti sur une facture non conforme.
+    enEcart: () => api.get('/compta/rapprochements-3voies/en-ecart/'),
   },
   // ── PACT30 / NTFIN35-37 — Rapprochements de comptes de bilan (4 yeux) ──
   rapprochementsCompte: {
@@ -354,6 +376,11 @@ const comptaApi = {
     apurerEscompte: (id, data) =>
       api.post(`/compta/effets/${id}/apurer-escompte/`, data),
     endosser: (id, data) => api.post(`/compta/effets/${id}/endosser/`, data),
+    // AUDV02 — échéancier + TOTAUX ouverts par sens. Les totaux portent
+    // toujours sur le portefeuille ENTIER (`portefeuille` + `remis`) : un
+    // filtre d'affichage (`sens`/`statut`) ne change QUE la liste, jamais le
+    // total de la société — sinon le chiffre affiché dépendrait de l'onglet.
+    echeancier: (params) => api.get('/compta/effets/echeancier/', { params }),
   },
   // ── FG129 — Bordereaux de remise en banque ──
   bordereaux: {
@@ -460,6 +487,10 @@ const comptaApi = {
       api.post(`/compta/approbations-rib/${id}/approuver/`, data || {}),
     refuser: (id, data) =>
       api.post(`/compta/approbations-rib/${id}/refuser/`, data || {}),
+    // AUDV02 — diagnostic mod-97 AVANT de déposer la demande. WARNING pur :
+    // le serveur DIT, l'écran affiche, l'humain décide — rien n'est bloqué.
+    diagnosticRib: (rib) =>
+      api.get('/compta/approbations-rib/diagnostic-rib/', { params: { rib } }),
   },
 
   // ── XACC26 — Provisions FNP/FAE de fin de période ──

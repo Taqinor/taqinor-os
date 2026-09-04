@@ -1,0 +1,47 @@
+{
+  "endpoint": "GET /api/django/compta/effets/echeancier/",
+  "pourquoi": "AUDV02 / DRAFT165-11+12 (FG127/FG128) — `selectors.echeancier_effets` et `selectors.total_effets_ouverts` existaient sans aucun appelant : l'écran listait les effets ligne à ligne SANS jamais totaliser, donc « combien ai-je en portefeuille à recevoir ? » n'avait pas de réponse. Les totaux ne portent QUE sur les effets OUVERTS (statut `portefeuille` ou `remis`) : un effet `encaisse`/`paye` a déjà bougé la banque, l'additionner double-compterait la trésorerie. Les filtres facultatifs `?sens=` et `?statut=` ne portent QUE sur la liste `effets` — les trois totaux restent ceux du portefeuille ENTIER, sinon un filtre d'affichage changerait silencieusement le total de la société. `net` = `total_a_recevoir` − `total_a_payer`. Cet agrégat renvoie un dictionnaire BRUT (pas un sérialiseur DRF) : ses montants passent par l'encodeur JSON de DRF, qui rend un `Decimal` en NOMBRE — d'où des nombres ici.",
+  "exemple": {
+    "nb": 2,
+    "effets": [
+      {
+        "id": 71,
+        "sens": "recevoir",
+        "type_effet": "cheque",
+        "numero": "CHQ-4471203",
+        "montant": 42000.0,
+        "date_emission": "2026-07-15",
+        "date_echeance": "2026-09-15",
+        "banque": "Attijariwafa Bank",
+        "tireur": "SunRak SARL",
+        "statut": "portefeuille",
+        "frais_rejet": 0.0,
+        "bordereau_id": null
+      },
+      {
+        "id": 72,
+        "sens": "payer",
+        "type_effet": "traite",
+        "numero": "LCR-2026-018",
+        "montant": 13500.0,
+        "date_emission": "2026-07-20",
+        "date_echeance": "2026-10-20",
+        "banque": "Banque Populaire",
+        "tireur": "Fournisseur Électrique SA",
+        "statut": "portefeuille",
+        "frais_rejet": 0.0,
+        "bordereau_id": null
+      }
+    ],
+    "total_a_recevoir": 42000.0,
+    "total_a_payer": 13500.0,
+    "net": 28500.0
+  },
+  "exemple_vide": {
+    "nb": 0,
+    "effets": [],
+    "total_a_recevoir": 0.0,
+    "total_a_payer": 0.0,
+    "net": 0.0
+  }
+}

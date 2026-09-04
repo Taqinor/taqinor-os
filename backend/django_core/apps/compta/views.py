@@ -245,6 +245,42 @@ class CompteComptableViewSet(_ComptaBaseViewSet):
             qs = qs.filter(classe=classe)
         return qs
 
+    @action(detail=True, methods=['get'], url_path='fiche-tiers')
+    def fiche_tiers(self, request, pk=None):
+        """AUDV02 / DRAFT165-9+10 — Fiche d'un compte de tiers : encours réel
+        + lignes NON LETTRÉES qui le composent.
+
+        ``selectors.encours_tiers`` et ``selectors.lignes_non_lettrees``
+        existaient depuis COMPTA22 sans AUCUN appelant : le comptable n'avait
+        aucun écran pour répondre à « combien ce client me doit-il VRAIMENT ? »
+        (le solde brut du compte compte aussi les lignes déjà appariées).
+        L'encours est la Σ(débit) − Σ(crédit) des seules lignes non lettrées :
+        POSITIF = le tiers doit, NÉGATIF = la société doit. Lecture seule —
+        aucune écriture, aucun lettrage n'est posé ici.
+        """
+        compte = self.get_object()  # déjà scopé société par TenantMixin.
+        company = request.user.company
+        lignes = selectors.lignes_non_lettrees(company, compte)
+        return Response({
+            'compte': compte.id,
+            'compte_numero': compte.numero,
+            'compte_intitule': compte.intitule,
+            'encours': selectors.encours_tiers(company, compte),
+            'nb_lignes_non_lettrees': len(lignes),
+            'lignes_non_lettrees': [
+                {
+                    'id': ligne.id,
+                    'ecriture': ligne.ecriture_id,
+                    'date_ecriture': ligne.ecriture.date_ecriture,
+                    'reference': ligne.ecriture.reference,
+                    'libelle': ligne.libelle or ligne.ecriture.libelle,
+                    'debit': ligne.debit,
+                    'credit': ligne.credit,
+                }
+                for ligne in lignes
+            ],
+        })
+
 
 class JournalViewSet(_ComptaBaseViewSet):
     """Journaux comptables (FG108)."""
@@ -375,6 +411,21 @@ class CompteTresorerieViewSet(_ComptaBaseViewSet):
             'mouvements': mouvements,
             'solde': total,
         })
+
+    @action(detail=False, methods=['get'], url_path='rib-invalides')
+    def rib_invalides(self, request):
+        """AUDV02 / DRAFT165-16 (XACC24) — Alerte : comptes de trésorerie
+        ACTIFS dont le RIB porte une clé mod-97 fausse.
+
+        ``selectors.comptes_tresorerie_rib_invalides`` n'avait aucun appelant :
+        un virement partait sur un RIB à clé fausse sans qu'aucun écran ne le
+        signale. WARNING pur — un RIB vide n'est PAS signalé (compte sans RIB
+        renseigné, cas normal), et rien n'est jamais bloqué : c'est de la
+        saisie historique qu'on ne casse pas rétroactivement.
+        """
+        comptes = selectors.comptes_tresorerie_rib_invalides(
+            request.user.company)
+        return Response({'nb': len(comptes), 'comptes': comptes})
 
 
 class EtatsComptablesViewSet(viewsets.ViewSet):
@@ -2521,6 +2572,46 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         rapprochement = self.get_object()  # scopé société par TenantMixin.
         return Response(selectors.suggestions_rapprochement(rapprochement))
 
+    @action(detail=True, methods=['get'], url_path='suggestions-apprises')
+    def suggestions_apprises(self, request, pk=None):
+        """AUDV02 / DRAFT165-18 (NTTRE4) — Suggestions APPRISES de l'historique.
+
+        ``services.suggerer_rapprochement_appris`` n'avait aucun appelant : le
+        moteur qui apprend des ``PointageReleve`` déjà validés de la société
+        (libellé récurrent → compte habituel) tournait à vide pendant que
+        l'écran n'affichait que les suggestions par RÈGLE
+        (``selectors.suggestions_rapprochement``, montant/date/tiers). Les deux
+        sont COMPLÉMENTAIRES et restent deux endpoints distincts : la règle
+        rattrape le cas exact, l'apprentissage rattrape le libellé bancaire
+        illisible qu'un humain a déjà classé dix fois.
+
+        Lecture seule : ne poste RIEN, ne pointe RIEN. Chaque ligne de relevé
+        encore NON POINTÉE reçoit au plus une suggestion ; celles sans
+        historique suffisant sont simplement absentes (jamais une suggestion
+        inventée à confiance nulle).
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        try:
+            seuil = float(request.query_params.get('seuil') or 0.5)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le seuil de similarité doit être un nombre."},
+                status=status.HTTP_400_BAD_REQUEST)
+        lignes = list(rapprochement.lignes_releve.filter(
+            statut=LigneReleve.Statut.NON_POINTEE
+        ).order_by('date_operation', 'id'))
+        suggestions = []
+        for ligne in lignes:
+            suggestion = services.suggerer_rapprochement_appris(
+                ligne, seuil_similarite=seuil)
+            if suggestion:
+                suggestions.append({**suggestion, 'libelle': ligne.libelle})
+        return Response({
+            'rapprochement': rapprochement.id,
+            'nb_lignes_non_pointees': len(lignes),
+            'suggestions': suggestions,
+        })
+
     @action(detail=True, methods=['post'], url_path='accepter-suggestions')
     def accepter_suggestions(self, request, pk=None):
         """Pointe en un clic les suggestions non ambiguës (XACC3).
@@ -2891,6 +2982,38 @@ class EffetViewSet(_ComptaBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=False, methods=['get'])
+    def echeancier(self, request):
+        """AUDV02 / DRAFT165-11+12 — Échéancier du portefeuille d'effets AVEC
+        ses totaux ouverts par sens.
+
+        ``selectors.echeancier_effets`` et ``selectors.total_effets_ouverts``
+        existaient depuis FG127/FG128 sans aucun appelant : l'écran listait les
+        effets ligne à ligne, SANS jamais totaliser. « Combien ai-je en
+        portefeuille à recevoir ce mois-ci ? » — la question la plus élémentaire
+        du poste — n'avait pas de réponse à l'écran.
+
+        Les totaux ne portent QUE sur les effets OUVERTS (portefeuille + remis),
+        jamais sur les encaissés/payés/impayés : un effet encaissé a déjà bougé
+        la banque, l'additionner au portefeuille double-compterait la trésorerie.
+        ``net`` = à recevoir − à payer. Lecture seule.
+        """
+        company = request.user.company
+        params = request.query_params
+        effets = selectors.echeancier_effets(
+            company, sens=params.get('sens') or None,
+            statut=params.get('statut') or None)
+        a_recevoir = selectors.total_effets_ouverts(
+            company, sens=Effet.Sens.RECEVOIR)
+        a_payer = selectors.total_effets_ouverts(company, sens=Effet.Sens.PAYER)
+        return Response({
+            'nb': len(effets),
+            'effets': effets,
+            'total_a_recevoir': a_recevoir,
+            'total_a_payer': a_payer,
+            'net': a_recevoir - a_payer,
+        })
+
     def list(self, request, *args, **kwargs):
         # NTTRE38 — export XLSX de la situation des effets (retraitement compta).
         if request.query_params.get('export') == 'xlsx':
@@ -3175,6 +3298,25 @@ class RapprochementViewSet(_ComptaBaseViewSet):
         if bon_commande:
             qs = qs.filter(bon_commande_id=bon_commande)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='en-ecart')
+    def en_ecart(self, request):
+        """AUDV02 / DRAFT165-13 — Alerte « à corriger AVANT paiement ».
+
+        ``selectors.rapprochements_en_ecart`` n'avait aucun appelant : l'écran
+        3 voies affichait bien une pastille « Bloqué (écart) » par ligne, mais
+        rien n'agrégeait les écarts en une ALERTE — il fallait déjà être dans
+        l'onglet et parcourir la liste pour les voir. Un écart non vu, c'est un
+        paiement fournisseur parti sur une facture non conforme.
+
+        Lecture seule, ordonné du plus récemment évalué au plus ancien.
+        """
+        rapprochements = selectors.rapprochements_en_ecart(request.user.company)
+        return Response({
+            'nb': len(rapprochements),
+            'rapprochements': self.get_serializer(
+                rapprochements, many=True).data,
+        })
 
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -7296,9 +7438,44 @@ class DemandeApprobationRibViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, demandeur=self.request.user)
 
+    @action(detail=False, methods=['get'], url_path='diagnostic-rib')
+    def diagnostic_rib(self, request):
+        """AUDV02 / DRAFT165-46 — Diagnostic mod-97 d'un RIB, AVANT de déposer
+        la demande de changement.
+
+        ``services.diagnostic_rib`` (le diagnostic PARTAGÉ stock/rh/compta)
+        n'avait aucun appelant HTTP : la file d'approbation acceptait un
+        nouveau RIB à clé fausse, et l'erreur ne se voyait qu'au rejet du
+        virement par la banque, des semaines plus tard. WARNING pur : cet
+        endpoint ne bloque RIEN — il DIT, l'écran affiche, l'humain décide.
+        """
+        rib = request.query_params.get('rib') or ''
+        if not rib.strip():
+            return Response(
+                {'detail': 'Paramètre `rib` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.diagnostic_rib(rib))
+
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
+        """Approuve la demande — JAMAIS par son propre demandeur (XACC24).
+
+        AUDV02 — le principe des « 4 yeux » n'était affirmé que par la
+        docstring : rien n'empêchait celui qui a saisi le nouveau RIB de
+        l'approuver lui-même, ce qui rend le contrôle purement décoratif sur
+        le seul champ qui détourne un virement fournisseur. Le refus, lui,
+        n'est pas gardé : renoncer à SA propre demande n'est pas un
+        contournement, c'est une annulation.
+        """
         demande = self.get_object()
+        if (demande.demandeur_id
+                and demande.demandeur_id == request.user.id):
+            return Response(
+                {'detail': (
+                    "Contrôle à quatre yeux : le demandeur d'un changement de "
+                    "RIB ne peut pas approuver sa propre demande. Elle doit "
+                    "être approuvée par une autre personne.")},
+                status=status.HTTP_400_BAD_REQUEST)
         services.approuver_demande_rib(
             demande, decideur=request.user,
             commentaire=request.data.get('commentaire') or '')

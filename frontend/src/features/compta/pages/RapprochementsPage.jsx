@@ -47,6 +47,14 @@ const TABS = [
 // XACC3 — Suggestions d'appariement relevé ↔ GL, notées par confiance.
 function SuggestionsDialog({ rapprochement, onClose }) {
   const [data, setData] = useState(null)
+  // AUDV02 / NTTRE4 (DRAFT165-18) — le moteur APPRIS (`services.suggerer_
+  // rapprochement_appris`) tournait à vide : aucun appelant. L'écran
+  // n'affichait que les suggestions par RÈGLE (montant/date/tiers), donc le
+  // libellé bancaire illisible qu'un humain a déjà classé dix fois restait à
+  // reclasser une onzième. Les deux listes sont COMPLÉMENTAIRES et restent
+  // SÉPARÉES : « Accepter les non-ambiguës » ne pointe que les suggestions
+  // par règle — on ne poste jamais automatiquement sur un apprentissage.
+  const [apprises, setApprises] = useState([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
@@ -55,6 +63,9 @@ function SuggestionsDialog({ rapprochement, onClose }) {
       .then((res) => setData(res.data))
       .catch(() => toast.error('Suggestions indisponibles.'))
       .finally(() => setLoading(false))
+    comptaApi.rapprochements.suggestionsApprises(rapprochement.id)
+      .then((res) => setApprises(res.data?.suggestions || []))
+      .catch(() => setApprises([]))
   }, [rapprochement.id])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
@@ -107,6 +118,38 @@ function SuggestionsDialog({ rapprochement, onClose }) {
             ]}
           />
         )}
+
+        {apprises.length > 0 && (
+          <div className="mt-4">
+            <h4 className="mb-1 text-sm font-medium">
+              Suggestions apprises de l’historique
+            </h4>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Déduites des pointages déjà validés (libellé bancaire récurrent →
+              compte habituel). À pointer manuellement : rien n’est accepté
+              automatiquement sur un apprentissage.
+            </p>
+            <ComptaTable
+              aria-label="Suggestions apprises"
+              exportName="suggestions-apprises"
+              rows={apprises}
+              getRowKey={(s, i) => i}
+              columns={[
+                { key: 'libelle', label: 'Ligne relevé', cell: (s) => s.libelle || '—' },
+                { key: 'pattern_libelle', label: 'Motif appris',
+                  cell: (s) => s.pattern_libelle || '—' },
+                { key: 'frequence', label: 'Vu', align: 'right', numeric: true,
+                  sortValue: (s) => Number(s.frequence) || 0,
+                  cell: (s) => `${s.frequence ?? 0}×` },
+                { key: 'confiance', label: 'Confiance', align: 'right', numeric: true,
+                  sortValue: (s) => Number(s.confiance) || 0,
+                  cell: (s) => (s.confiance != null
+                    ? `${Math.round(s.confiance * 100)} %` : '—') },
+              ]}
+            />
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Fermer</Button>
           <Button onClick={accepter} disabled={loading || !suggestions.length}>
@@ -115,6 +158,39 @@ function SuggestionsDialog({ rapprochement, onClose }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/* AUDV02 / FG131 (DRAFT165-13) — alerte « à corriger AVANT paiement ».
+   `selectors.rapprochements_en_ecart` existait sans aucun appelant : l'onglet
+   affichait bien une pastille par ligne, mais rien n'AGRÉGEAIT les écarts —
+   il fallait déjà être dans l'onglet ET parcourir la liste pour les voir. Un
+   écart non vu, c'est un paiement fournisseur parti sur une facture non
+   conforme. La carte disparaît quand il n'y a plus d'écart. */
+function AlerteEcartsBloquants() {
+  const [alerte, setAlerte] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.rapprochements3voies.enEcart()
+      .then((res) => { if (vivant) setAlerte(res.data) })
+      .catch(() => { if (vivant) setAlerte(null) })
+    return () => { vivant = false }
+  }, [])
+
+  if (!alerte?.nb) return null
+  return (
+    <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+      <strong className="text-destructive">
+        {alerte.nb} rapprochement(s) en écart bloquant.
+      </strong>{' '}
+      <span className="text-muted-foreground">
+        À arbitrer avant tout paiement :{' '}
+        {alerte.rapprochements
+          .map((r) => r.bon_commande_reference || `#${r.id}`)
+          .join(', ')}.
+      </span>
+    </div>
   )
 }
 
@@ -642,6 +718,8 @@ export default function RapprochementsPage() {
       <div className="mb-3">
         <Segmented options={TABS} value={tab} onChange={setTab} aria-label="Onglet rapprochements" />
       </div>
+
+      {tab === 'troisVoies' && <AlerteEcartsBloquants />}
 
       <ListShell
         hideHeader

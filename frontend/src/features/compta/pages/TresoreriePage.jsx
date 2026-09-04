@@ -35,7 +35,16 @@ const TABS = [
   { value: 'virements', label: 'Virements' },
   { value: 'previsionnel', label: 'Prévisionnel' },
   { value: 'position', label: 'Position & projection' },
+  // AUDV02 — la fiche d'un compte de TIERS : encours réel + lignes non
+  // lettrées. Onglet en LECTURE SEULE, comme « Position & projection ».
+  { value: 'fiche-tiers', label: 'Fiche tiers' },
 ]
+
+// AUDV02 — un compte de TIERS au sens du CGNC : classe 3 (créances, dont
+// clients 342x) et classe 4 (dettes, dont fournisseurs 441x). Filtrer ici
+// évite de proposer les 400+ comptes du plan pour une question qui ne porte
+// que sur les comptes lettrables.
+const CLASSES_TIERS = ['3', '4']
 
 // AUDV01 — libellés des NATURES de ligne publiées par
 // `apps/compta/selectors.py::previsionnel_tresorerie` (clé `type`). Un type
@@ -285,8 +294,157 @@ function PositionPanel() {
         )}
       </Card>
 
+      <RibInvalidesCard />
+
       <FraisBancairesCard />
     </div>
+  )
+}
+
+/* AUDV02 / XACC24 (DRAFT165-16) — alerte RIB à clé mod-97 fausse.
+   `selectors.comptes_tresorerie_rib_invalides` existait sans aucun appelant :
+   un virement partait sur un RIB faux et l'erreur ne se voyait qu'au rejet
+   par la banque, des semaines plus tard. WARNING pur — rien n'est bloqué ici,
+   et la carte DISPARAÎT quand tout est conforme (pas de bandeau vert inutile
+   qui ferait du bruit dans un écran déjà dense). */
+function RibInvalidesCard() {
+  const [alerte, setAlerte] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.tresorerie.ribInvalides()
+      .then((res) => { if (vivant) setAlerte(res.data) })
+      .catch(() => { if (vivant) setAlerte(null) })
+    return () => { vivant = false }
+  }, [])
+
+  if (!alerte?.nb) return null
+  return (
+    <Card className="border-destructive/40 bg-destructive/5 p-4 sm:p-5">
+      <h3 className="mb-2 font-display text-base font-semibold text-destructive">
+        RIB à vérifier ({alerte.nb})
+      </h3>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Ces comptes portent un RIB dont la clé de contrôle est fausse. Un
+        virement émis vers l’un d’eux sera rejeté par la banque.
+      </p>
+      <ComptaTable
+        aria-label="Comptes au RIB invalide"
+        exportName="rib-invalides"
+        rows={alerte.comptes}
+        getRowKey={(c) => c.id}
+        columns={[
+          { key: 'libelle', label: 'Compte', cell: (c) => c.libelle },
+          { key: 'rib', label: 'RIB', cell: (c) => c.rib },
+          { key: 'erreurs', label: 'Anomalie',
+            cell: (c) => (c.erreurs || []).join(' ') || '—' },
+        ]}
+      />
+    </Card>
+  )
+}
+
+/* AUDV02 / COMPTA22 (DRAFT165-9+10) — fiche d'un compte de TIERS.
+   `encours_tiers` et `lignes_non_lettrees` existaient sans écran : « combien
+   ce client me doit-il VRAIMENT ? » n'avait pas de réponse, le solde brut du
+   compte comptant aussi les lignes déjà appariées. Lecture seule — aucun
+   lettrage n'est posé d'ici. */
+function FicheTiersPanel() {
+  const [comptes, setComptes] = useState([])
+  const [compteId, setCompteId] = useState('')
+  const [fiche, setFiche] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let vivant = true
+    comptaApi.comptes.list({ page_size: 500 })
+      .then((res) => {
+        if (!vivant) return
+        const liste = Array.isArray(res.data) ? res.data : (res.data?.results || [])
+        setComptes(liste.filter(
+          (c) => CLASSES_TIERS.includes(String(c.numero || '').charAt(0))))
+      })
+      .catch(() => { if (vivant) setComptes([]) })
+    return () => { vivant = false }
+  }, [])
+
+  const charger = async (id) => {
+    setCompteId(id)
+    setFiche(null)
+    if (!id) return
+    setLoading(true)
+    try {
+      const res = await comptaApi.comptes.ficheTiers(id)
+      setFiche(res.data)
+    } catch {
+      toast.error('Fiche tiers indisponible.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="fiche-tiers-compte">Compte de tiers</Label>
+          <select
+            id="fiche-tiers-compte"
+            value={compteId}
+            onChange={(e) => charger(e.target.value)}
+            className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+          >
+            <option value="">Choisir un compte…</option>
+            {comptes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.numero} — {c.intitule}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {loading && (
+        <p className="py-6 text-center text-sm text-muted-foreground">Chargement…</p>
+      )}
+
+      {!loading && fiche && (
+        <>
+          <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+            <span className="text-muted-foreground">
+              Encours (lignes non lettrées uniquement)
+            </span>
+            <strong className="tabular-nums">{formatMAD(fiche.encours)}</strong>
+          </div>
+          {fiche.nb_lignes_non_lettrees === 0 ? (
+            <EmptyState
+              title="Tout est lettré"
+              description="Aucune ligne ouverte sur ce compte : rien ne reste dû."
+            />
+          ) : (
+            <ComptaTable
+              aria-label="Lignes non lettrées"
+              exportName="lignes-non-lettrees"
+              rows={fiche.lignes_non_lettrees}
+              getRowKey={(l) => l.id}
+              columns={[
+                { key: 'date_ecriture', label: 'Date',
+                  sortValue: (l) => l.date_ecriture || '',
+                  cell: (l) => formatDate(l.date_ecriture) },
+                { key: 'reference', label: 'Pièce', cell: (l) => l.reference || '—' },
+                { key: 'libelle', label: 'Libellé', cell: (l) => l.libelle || '—' },
+                { key: 'debit', label: 'Débit', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.debit) || 0,
+                  cell: (l) => formatMAD(l.debit) },
+                { key: 'credit', label: 'Crédit', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.credit) || 0,
+                  cell: (l) => formatMAD(l.credit) },
+              ]}
+            />
+          )}
+        </>
+      )}
+    </Card>
   )
 }
 
@@ -429,8 +587,13 @@ export default function TresoreriePage() {
   const [caisseJournal, setCaisseJournal] = useState(null)
 
   const isPosition = tab === 'position'
+  const isFicheTiers = tab === 'fiche-tiers'
+  // AUDV02 — les deux onglets de LECTURE n'ont pas de ressource CRUD : on
+  // charge une liste inoffensive plutôt que d'indexer `RESOURCE` avec un
+  // onglet absent (ce qui planterait tout l'écran sur un `.list` de undefined).
+  const isLecture = isPosition || isFicheTiers
   const list = useComptaList(
-    isPosition ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
+    isLecture ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
 
   // FG125 — poste l'écriture équilibrée du virement interne au grand livre.
   const posterVirement = async (row) => {
@@ -474,7 +637,7 @@ export default function TresoreriePage() {
     <div className="page">
       <div className="page-header">
         <h2>Trésorerie & prévisionnel</h2>
-        {!isPosition && (
+        {!isLecture && (
           <div className="page-header-actions">
             <Button onClick={() => setDialog({ row: null })}>
               <Plus /> Nouveau {singular}
@@ -487,9 +650,9 @@ export default function TresoreriePage() {
         <Segmented options={TABS} value={tab} onChange={setTab} aria-label="Onglet trésorerie" />
       </div>
 
-      {isPosition ? (
-        <PositionPanel />
-      ) : (
+      {isPosition && <PositionPanel />}
+      {isFicheTiers && <FicheTiersPanel />}
+      {!isLecture && (
         <ListShell
           hideHeader
           title={TABS.find((t) => t.value === tab).label}
@@ -504,7 +667,7 @@ export default function TresoreriePage() {
         />
       )}
 
-      {dialog && !isPosition && (
+      {dialog && !isLecture && (
         <CrudDialog
           open
           onClose={() => setDialog(null)}

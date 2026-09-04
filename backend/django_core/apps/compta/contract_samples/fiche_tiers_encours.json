@@ -1,0 +1,48 @@
+{
+  "endpoint": "GET /api/django/compta/comptes/{id}/fiche-tiers/",
+  "pourquoi": "AUDV02 / DRAFT165-9+10 (COMPTA22) — `selectors.encours_tiers` et `selectors.lignes_non_lettrees` existaient sans AUCUN appelant : le comptable n'avait aucun écran pour répondre à « combien ce client me doit-il VRAIMENT ? ». Le solde BRUT du compte compte aussi les lignes déjà appariées ; l'encours ne retient que les lignes NON LETTRÉES — Σ(débit) − Σ(crédit). POSITIF = le tiers doit, NÉGATIF = la société doit. Lecture seule : cet endpoint ne pose aucun lettrage, il ne fait que MONTRER ce qui reste ouvert. Cet agrégat renvoie un dictionnaire BRUT (pas un sérialiseur DRF) : ses montants passent donc par l'encodeur JSON de DRF, qui rend un `Decimal` en NOMBRE — d'où des nombres ici, là où un endpoint à sérialiseur rendrait du texte. L'écran les affiche tels quels sans jamais recalculer.",
+  "exemple": {
+    "compte": 412,
+    "compte_numero": "3421",
+    "compte_intitule": "Clients — ventes de biens et services",
+    "encours": 18400.0,
+    "nb_lignes_non_lettrees": 3,
+    "lignes_non_lettrees": [
+      {
+        "id": 9001,
+        "ecriture": 3310,
+        "date_ecriture": "2026-06-12",
+        "reference": "VTE-2026-06-0031",
+        "libelle": "Facture FAC-2026-0031 — SunRak",
+        "debit": 24000.0,
+        "credit": 0.0
+      },
+      {
+        "id": 9002,
+        "ecriture": 3388,
+        "date_ecriture": "2026-07-03",
+        "reference": "BNQ-2026-07-0009",
+        "libelle": "Acompte reçu virement",
+        "debit": 0.0,
+        "credit": 9600.0
+      },
+      {
+        "id": 9003,
+        "ecriture": 3402,
+        "date_ecriture": "2026-07-28",
+        "reference": "VTE-2026-07-0044",
+        "libelle": "Facture FAC-2026-0044 — SunRak",
+        "debit": 4000.0,
+        "credit": 0.0
+      }
+    ]
+  },
+  "exemple_vide": {
+    "compte": 413,
+    "compte_numero": "3423",
+    "compte_intitule": "Clients — effets à recevoir",
+    "encours": 0.0,
+    "nb_lignes_non_lettrees": 0,
+    "lignes_non_lettrees": []
+  }
+}

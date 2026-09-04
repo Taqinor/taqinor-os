@@ -112,12 +112,20 @@
     cycle:inconnu, detail:inconnu, liasses:inconnu
 - frontend/src/api/comptaApi.js :: controlesCollecte -> /api/django/compta/cycles-consolidation/<>/controles-collecte
     anomalies:inconnu, bloquant:inconnu
+- frontend/src/api/comptaApi.js :: diagnosticRib -> /api/django/compta/approbations-rib/diagnostic-rib
+    detail:texte, erreurs:inconnu, rib:inconnu, valide:booleen
+- frontend/src/api/comptaApi.js :: echeancier -> /api/django/compta/effets/echeancier
+    effets:inconnu, nb:nombre, net:nombre, total_a_payer:inconnu, total_a_recevoir:inconnu
+- frontend/src/api/comptaApi.js :: enEcart -> /api/django/compta/rapprochements-3voies/en-ecart
+    nb:nombre, rapprochements:inconnu
 - frontend/src/api/comptaApi.js :: etatsConsolides -> /api/django/compta/cycles-consolidation/<>/etats-consolides
     bilan:inconnu, cpc:inconnu
 - frontend/src/api/comptaApi.js :: etic -> /api/django/compta/etats/etic
     date_debut:texte, date_fin:texte, detail:texte, engagements_hors_bilan:objet, exercice:texte, immobilisations:inconnu, principes_methodes:texte, provisions:inconnu, resultat:inconnu, sections:liste
 - frontend/src/api/comptaApi.js :: executionBudgetaire -> /api/django/compta/etats/execution-budgetaire
     annee:inconnu, budget_id:inconnu, detail:texte, lignes:inconnu, total_budget:inconnu, total_disponible:inconnu, total_engage:inconnu, total_realise:inconnu
+- frontend/src/api/comptaApi.js :: ficheTiers -> /api/django/compta/comptes/<>/fiche-tiers
+    compte:inconnu, compte_intitule:inconnu, compte_numero:inconnu, encours:inconnu, lignes_non_lettrees:liste, nb_lignes_non_lettrees:nombre
 - frontend/src/api/comptaApi.js :: fraisBancaires -> /api/django/compta/etats/frais-bancaires
     par_compte:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: genererDues -> /api/django/compta/abonnements-ecriture/generer-dues
@@ -162,8 +170,12 @@
     detail:texte, ok:booleen
 - frontend/src/api/comptaApi.js :: resultatAnalytique -> /api/django/compta/etats/resultat-analytique
     axe:inconnu, detail:texte, total_resultat:inconnu, valeurs:inconnu
+- frontend/src/api/comptaApi.js :: ribInvalides -> /api/django/compta/tresorerie/rib-invalides
+    comptes:inconnu, nb:nombre
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
+- frontend/src/api/comptaApi.js :: suggestionsApprises -> /api/django/compta/rapprochements/<>/suggestions-apprises
+    detail:texte, nb_lignes_non_pointees:nombre, rapprochement:inconnu, suggestions:inconnu
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux
     capitaux_cloture_part_groupe:inconnu, capitaux_ouverture:inconnu, cycle:inconnu, dividendes:inconnu, ecart_conversion:inconnu, resultat_part_groupe:inconnu, resultat_part_minoritaires:inconnu
 - frontend/src/api/comptaApi.js :: verifier -> /api/django/compta/pistes-audit/verifier
