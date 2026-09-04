@@ -1198,34 +1198,43 @@ def _contrat_actif_sur_periode(contrat, annee, mois):
 
 
 def generer_couts_contrat(company, period):
-    """XFLT2 — Matérialise l'échéance récurrente des contrats véhicule DUS
-    pour ``period``.
+    """XFLT2/AUD725 — Matérialise le coût récurrent DÛ pour ``period`` de
+    chaque ``ContratVehicule`` actif, dans le grand livre unifié
+    ``CoutVehicule`` (XFLT3, catégorie ``contrat``).
 
     ``period`` est une chaîne ``'YYYY-MM'``. Pour chaque ``ContratVehicule``
     (XFLT1) de la société qui COUVRE ce mois (``date_debut``/``date_fin``),
-    crée UNE ``EcheanceContrat`` (XFLT2) portant le ``montant_recurrent`` du
-    contrat — sauf si une échéance existe déjà pour ce couple
-    ``(contrat, period)`` (contrainte ``unique_together`` + vérification
-    applicative avant écriture) : la génération est donc IDEMPOTENTE, deux
-    exécutions sur la même période ne créent jamais de doublon.
+    crée UNE ligne ``CoutVehicule`` portant le ``montant_recurrent`` du
+    contrat, rattachée à l'``ActifFlotte`` du véhicule loué — sauf si une
+    ligne existe déjà pour ce couple ``(contrat, period)`` (détectée via
+    ``reference_piece='CONTRAT-<id>-<period>'``, déterministe donc unique par
+    construction) : la génération est donc IDEMPOTENTE, deux exécutions sur
+    la même période ne créent jamais de doublon.
 
-    NOTE (repli XFLT3) : tant que ``CoutVehicule`` (grand livre unifié,
-    XFLT3) n'existe pas sur cette branche, la matérialisation utilise le
-    modèle propre ``EcheanceContrat``. Le jour où ``CoutVehicule`` existe,
-    ce service devra y écrire à la place (catégorie ``contrat``) — voir
-    XFLT3 pour le branchement.
+    AUD725 — avant ce correctif, la matérialisation écrivait dans
+    ``EcheanceContrat`` (modèle de REPLI, périmé : sans ViewSet, sans
+    serializer, sans route, jamais lu ni par le Cockpit Flotte ni par
+    ``selectors.ledger_vehicule``/``tco_vehicule``) alors que ``CoutVehicule``
+    existe déjà pleinement exposé — le coût du leasing/location n'atteignait
+    donc jamais le grand livre. ``EcheanceContrat`` n'est plus alimenté par ce
+    service (les lignes historiques y restent, lecture seule).
+
+    Un contrat dont le véhicule n'a pas encore d'``ActifFlotte`` (créé
+    séparément, FLOTTE1) est compté à part (``nb_sans_actif``) — AUCUNE ligne
+    n'est écrite tant que l'actif n'existe pas, jamais une perte silencieuse.
 
     Multi-tenant : ``company`` est toujours posée côté serveur. Retourne un
     dict scopé société ::
 
         {'company_id', 'period', 'nb_contrats_actifs', 'nb_creees',
-         'nb_existantes', 'echeances': [<EcheanceContrat>, …]}  # nouvelles uniquement
+         'nb_existantes', 'nb_sans_actif',
+         'couts': [<CoutVehicule>, …]}  # nouvelles lignes uniquement
 
-    Aucune écriture hors ``EcheanceContrat`` ; l'opération est sûre à relancer.
+    Aucune écriture hors ``CoutVehicule`` ; l'opération est sûre à relancer.
     """
-    from django.db import IntegrityError, transaction
+    from core.money import quantize_mad
 
-    from .models import ContratVehicule, EcheanceContrat
+    from .models import ContratVehicule, CoutVehicule
 
     try:
         annee, mois = (int(part) for part in period.split('-'))
@@ -1238,35 +1247,44 @@ def generer_couts_contrat(company, period):
         c for c in contrats if _contrat_actif_sur_periode(c, annee, mois)
     ]
 
+    def _reference(contrat_id):
+        # Clé déterministe (contrat, period) — sert de garde d'idempotence en
+        # l'absence d'unique_together (reference_piece n'est pas unique en
+        # base : d'autres flux, ex. `ventiler_cout_fournisseur`, partagent
+        # volontairement la même référence entre plusieurs actifs).
+        return f'CONTRAT-{contrat_id}-{period}'
+
     deja_generes = set(
-        EcheanceContrat.objects
-        .filter(company=company, period=period,
-                contrat__in=[c.id for c in contrats_actifs])
-        .values_list('contrat_id', flat=True)
+        CoutVehicule.objects
+        .filter(company=company, categorie=CoutVehicule.Categorie.CONTRAT,
+                reference_piece__in=[
+                    _reference(c.id) for c in contrats_actifs])
+        .values_list('reference_piece', flat=True)
     )
 
     date_echeance = datetime.date(annee, mois, 1)
     creees = []
     nb_existantes = 0
+    nb_sans_actif = 0
     for contrat in contrats_actifs:
-        if contrat.id in deja_generes:
+        reference = _reference(contrat.id)
+        if reference in deja_generes:
             nb_existantes += 1
             continue
-        try:
-            with transaction.atomic():
-                echeance = EcheanceContrat.objects.create(
-                    company=company,
-                    contrat=contrat,
-                    period=period,
-                    date_echeance=date_echeance,
-                    montant=contrat.montant_recurrent,
-                )
-        except IntegrityError:
-            # Course concurrente sur le même (contrat, period) : une autre
-            # exécution a déjà créé la ligne — comportement idempotent.
-            nb_existantes += 1
+        actif = getattr(contrat.vehicule, 'actif_flotte', None)
+        if actif is None:
+            nb_sans_actif += 1
             continue
-        creees.append(echeance)
+        cout = CoutVehicule.objects.create(
+            company=company,
+            actif_flotte=actif,
+            categorie=CoutVehicule.Categorie.CONTRAT,
+            date=date_echeance,
+            montant=quantize_mad(contrat.montant_recurrent),
+            fournisseur=contrat.fournisseur,
+            reference_piece=reference,
+        )
+        creees.append(cout)
 
     return {
         'company_id': company.id,
@@ -1274,7 +1292,8 @@ def generer_couts_contrat(company, period):
         'nb_contrats_actifs': len(contrats_actifs),
         'nb_creees': len(creees),
         'nb_existantes': nb_existantes,
-        'echeances': creees,
+        'nb_sans_actif': nb_sans_actif,
+        'couts': creees,
     }
 
 

@@ -226,7 +226,10 @@ class InfractionApiTests(TestCase):
         admin_b = make_user(self.co_b, "inf-admin-b", "admin")
         self.assertEqual(rows(auth(admin_b).get(URL)), [])
 
-    def test_update_and_delete(self):
+    def test_update_allowed_delete_blocked(self):
+        """AUD728 — une infraction/PV se CORRIGE (PATCH, ex. paiement) mais
+        ne se supprime jamais (document à valeur légale/financière) : avant
+        ce correctif, le DELETE réussissait sans aucune garde."""
         i = Infraction.objects.create(
             company=self.co_a, actif_flotte=self.actif,
             date_infraction=datetime.date(2026, 6, 1))
@@ -239,8 +242,8 @@ class InfractionApiTests(TestCase):
         self.assertEqual(i.statut, "payee")
         self.assertEqual(i.date_paiement, datetime.date(2026, 6, 15))
         resp = auth(self.admin_a).delete(f"{URL}{i.id}/")
-        self.assertEqual(resp.status_code, 204)
-        self.assertEqual(Infraction.objects.count(), 0)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(Infraction.objects.count(), 1)
 
     def test_filtre_par_statut(self):
         Infraction.objects.create(
