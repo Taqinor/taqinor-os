@@ -1579,7 +1579,13 @@ def factures_du_client_portail(company, client_id, *, limit=200):
 
     Mêmes règles : brouillons internes exclus, aucun champ de coût.
     ``montant_du`` est le reste à payer déjà calculé par le modèle (source
-    unique — jamais un recalcul local qui divergerait de l'écran interne).
+    unique — jamais un recalcul local qui divergerait de l'écran interne),
+    SAUF pour une facture ANNULÉE (AUD137) : ``Facture.montant_du`` ignore le
+    statut par construction et rend donc le TTC entier pour une annulation
+    sans paiement — l'agrégat portail compense ici en la figeant à '0.00'.
+    ``payable`` (AUD137) est le SEUL champ que l'écran doit lire pour décider
+    d'afficher « reste dû » et le bouton « Payer » : faux pour ANNULEE et
+    PAYEE, jamais dérivé côté client depuis ``statut``.
     """
     from .models import Facture
 
@@ -1597,8 +1603,11 @@ def factures_du_client_portail(company, client_id, *, limit=200):
         'date_emission': f.date_emission,
         'date_echeance': f.date_echeance,
         'montant_ttc': str(f.total_ttc),
-        'montant_du': str(f.montant_du),
+        'montant_du': ('0.00' if f.statut == Facture.Statut.ANNULEE
+                       else str(f.montant_du)),
         'payee': f.statut == Facture.Statut.PAYEE,
+        'payable': f.statut not in (
+            Facture.Statut.ANNULEE, Facture.Statut.PAYEE),
     } for f in qs]
 
 
@@ -1612,6 +1621,17 @@ def facture_du_client_portail(company, client_id, facture_id):
             .filter(company=company, client_id=client_id, pk=facture_id)
             .exclude(statut=Facture.Statut.BROUILLON)
             .first())
+
+
+def facture_est_payable_portail(facture):
+    """AUD137 — une facture ANNULÉE ou déjà PAYÉE n'est plus payable au
+    portail. Utilisé par ``portail.views_client.payer`` AVANT de créer/
+    réutiliser une intention de paiement — jamais un import de
+    ``apps.facturation.models`` côté portail (frontière cross-app)."""
+    from .models import Facture
+
+    return facture is not None and facture.statut not in (
+        Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
 
 
 # ── AOF164 — comparaison A/B du calepinage d'un devis (LECTURE SEULE) ───────
@@ -2526,3 +2546,55 @@ def share_link_niveau_map(devis_ids):
             'sections': row['sections'] or {},
         }
     return out
+
+
+# ── AUD112 — UN prédicat unique « ce devis est-il déjà facturé ? » ──────────
+# Les DEUX voies de facturation étaient totalement aveugles l'une à l'autre :
+# ``bon_commande.creer_facture`` ne gardait que
+# ``Facture.objects.filter(bon_commande=bc)``, et l'échéancier comptait les
+# tranches via ``devis.factures``, qui ne voit AUCUNE facture de la chaîne BC.
+# Un devis converti en BC puis facturé pouvait donc être facturé une SECONDE
+# fois par l'échéancier — le client recevait deux fois la même facture, jusqu'à
+# 200 %. Ces trois selectors sont la source unique consultée par les deux
+# portes.
+
+def factures_via_bon_commande(devis, *, inclure_annulees=False):
+    """Factures de la chaîne BON DE COMMANDE de ce devis (queryset).
+
+    C'est le trou : que ``Facture.devis`` soit réservé à l'échéancier est
+    assumé — ce qui ne l'était pas, c'est que RIEN ne regardait
+    ``bon_commande__devis``."""
+    from .models import Facture
+    qs = Facture.objects.filter(bon_commande__devis=devis)
+    if not inclure_annulees:
+        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    return qs
+
+
+def factures_du_devis(devis, *, inclure_annulees=False):
+    """TOUTES les factures d'un devis, LES DEUX VOIES CONFONDUES (queryset).
+
+    ``Q(devis=devis) | Q(bon_commande__devis=devis)`` : l'échéancier ET le bon
+    de commande. Les factures ANNULÉES sont exclues par défaut (elles ne
+    consomment plus rien)."""
+    from django.db.models import Q
+
+    from .models import Facture
+    qs = Facture.objects.filter(
+        Q(devis=devis) | Q(bon_commande__devis=devis))
+    if not inclure_annulees:
+        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    return qs.distinct()
+
+
+def devis_deja_facture(devis):
+    """LE prédicat partagé : ce devis est-il déjà (partiellement) facturé ?
+
+    Appelé depuis LES DEUX portes — ``bon_commande.creer_facture`` (qui refuse
+    en 400 si des tranches d'échéancier existent) et
+    ``utils.echeancier.creer_facture_tranche`` (qui refuse si la chaîne BC a
+    déjà facturé). Un devis sans facture active renvoie ``False`` : les deux
+    portes restent grandes ouvertes dans le cas normal."""
+    if devis is None:
+        return False
+    return factures_du_devis(devis).exists()

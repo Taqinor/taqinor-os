@@ -23,10 +23,26 @@ uniquement.
 import secrets
 
 from django.conf import settings
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import RangeBoundary, RangeOperators
+from django.contrib.postgres.fields import DateTimeRangeField
 from django.db import models
 from django.utils import timezone
 
 from core.models import TenantModel
+
+
+class TsTzRange(models.Func):
+    """AUD214 — ``TSTZRANGE(debut, fin, '[)')`` côté base.
+
+    Sert l'``ExclusionConstraint`` de ``RendezVousTransporteur`` : c'est la
+    base, et non plus Python, qui refuse deux créneaux qui se recouvrent sur
+    un même quai. Bornes ``[)`` (début inclus, fin exclue) — un rendez-vous
+    8h-9h et un 9h-10h ne se chevauchent donc PAS, exactement comme la garde
+    Python historique (``date_heure_debut__lt=fin``/``date_heure_fin__gt=debut``).
+    """
+    function = 'TSTZRANGE'
+    output_field = DateTimeRangeField()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -366,6 +382,28 @@ class RendezVousTransporteur(TenantModel):
                 fields=['company', 'code_checkin'],
                 condition=~models.Q(code_checkin=''),
                 name='stock_rdvtransporteur_code_checkin_uniq'),
+            # AUD214 — l'invariant de non-chevauchement est désormais posé PAR
+            # LA BASE, pas seulement par `save()`. La garde Python était un
+            # TOCTOU (lire les chevauchements, puis insérer) sur un endpoint
+            # PUBLIC (`portail_fournisseur_reserver_creneau_view`, AllowAny) :
+            # deux réservations simultanées du MÊME créneau ne voyaient ni
+            # l'une ni l'autre et passaient toutes les deux. `EXCLUDE USING
+            # GIST` sérialise les insertions concurrentes au niveau de
+            # l'index — la seconde est refusée, quel que soit le chemin
+            # (API interne, portail public, import, admin, shell).
+            # La liste de statuts DOIT rester le miroir de STATUTS_OCCUPANTS
+            # ci-dessus (un rendez-vous ANNULÉ libère son créneau) — un test
+            # dédié échoue si les deux divergent.
+            ExclusionConstraint(
+                name='stock_rdvtransporteur_quai_sans_chevauchement',
+                expressions=[
+                    (TsTzRange('date_heure_debut', 'date_heure_fin',
+                               RangeBoundary()), RangeOperators.OVERLAPS),
+                    ('quai', RangeOperators.EQUAL),
+                ],
+                condition=models.Q(statut__in=[
+                    'planifie', 'arrive', 'en_cours', 'termine', 'no_show']),
+            ),
         ]
         indexes = [
             models.Index(fields=['company', 'quai', 'date_heure_debut'],

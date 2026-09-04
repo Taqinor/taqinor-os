@@ -1,6 +1,11 @@
 from django.db import models
 from django.conf import settings
 
+# AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
+# un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
+# puisse l'importer en tête de fichier sans toucher l'ordre de chargement.
+from .totaux import TotauxDocumentMixin  # noqa: F401
+
 # ODX17 — App Facturation, étape 1 (modèles, state-only).
 #
 # Ces modèles vivaient dans ``apps.ventes.models`` (Facture, LigneFacture,
@@ -19,7 +24,7 @@ from django.conf import settings
 # telles quelles ('crm.Client', 'crm.Lead').
 
 
-class Facture(models.Model):
+class Facture(TotauxDocumentMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         EMISE = 'emise', 'Émise'
@@ -398,83 +403,11 @@ class Facture(models.Model):
                 self.conditions_paiement = libelle
         super().save(*args, **kwargs)
 
-    @property
-    def _remise_globale_active(self):
-        """QX1 — vrai si une remise globale doit être appliquée aux totaux.
-
-        Ne s'applique JAMAIS à une facture de tranche (montants figés) et
-        seulement si ``remise_globale`` > 0. Une facture sans remise (défaut 0)
-        garde donc la sémantique historique « total = somme des lignes »,
-        byte-identique."""
-        from decimal import Decimal
-        if self.montant_ht is not None:
-            return False
-        return (self.remise_globale or Decimal('0')) > 0
-
-    @property
-    def total_ht(self):
-        # Tranche d'échéancier : montant figé. Sinon : somme des lignes.
-        if self.montant_ht is not None:
-            return self.montant_ht
-        if self._remise_globale_active:
-            # QX1 — HT NET (remise globale appliquée) via la chaîne canonique
-            # partagée avec le devis/l'échéancier (centime-exact).
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['ht_net']
-        return sum(ligne.total_ht for ligne in self.lignes.all())
-
-    @property
-    def total_tva(self):
-        if self.montant_tva is not None:
-            return self.montant_tva
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
-
-    @property
-    def tva_par_taux(self):
-        """Ventilation de la TVA par taux (10 % / 20 %), réconciliée au centime.
-
-        Miroir exact de la logique devis : on regroupe les lignes par taux
-        effectif. Mono-taux (toutes les factures historiques ou de tranche) →
-        un seul panier, calculé par la formule d'origine, rendu strictement
-        inchangé. Taux mixtes (10/20) → un panier par taux, chaque TVA
-        arrondie au centime, dont la somme est le total TVA.
-
-        DC23 — délègue au selector unique ``tva_buckets``. Facture de tranche
-        (montant figé) : panier figé passé via ``frozen``.
-
-        QX1 — quand une remise globale est active, la TVA est calculée sur le HT
-        NET via la même chaîne canonique que le devis (``_canonical_totaux``),
-        pour que devis/BC/facture s'accordent au centime.
-        """
-        if self._remise_globale_active:
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['tva_par_taux']
-        from apps.ventes.selectors import tva_buckets
-        frozen = None
-        if self.montant_tva is not None:
-            # Facture de tranche (acompte) : montant figé, un seul panier.
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
-        return tva_buckets(
-            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
-
-    @property
-    def total_ttc(self):
-        if self.montant_ttc is not None:
-            return self.montant_ttc
-        if self._remise_globale_active:
-            from apps.ventes.selectors import _canonical_totaux
-            return _canonical_totaux(
-                self.lignes.all(),
-                remise_globale_pct=self.remise_globale,
-                fallback_taux=self.taux_tva)['ttc']
-        return self.total_ht + self.total_tva
+    # AUD106 — `_remise_globale_active`, `total_ht`, `tva_par_taux`,
+    # `total_tva`, `total_ttc` et `totaux_affichage` vivent désormais dans
+    # ``TotauxDocumentMixin`` (en tête de module), partagé au caractère près
+    # avec Avoir et NoteDebit. Corps IDENTIQUES à ceux qui étaient ici :
+    # aucune valeur ne bouge pour la Facture.
 
     @property
     def montant_paye(self):
@@ -494,7 +427,14 @@ class Facture(models.Model):
         YLEDG5 — un paiement ``rejete`` (chèque impayé/virement rejeté) sort
         de ce total : la facture redevient ouverte/en retard exactement
         comme si le règlement n'avait jamais eu lieu (jamais supprimé —
-        piste d'audit conservée)."""
+        piste d'audit conservée).
+
+        AUD104 (résidu PAY-2) — le terme ``via_affectation`` ne filtrait PAS
+        le statut du paiement SOURCE : une avance ventilée puis REJETÉE
+        (chèque d'acompte impayé) continuait de solder les factures qu'elle
+        avait servies, alors qu'un paiement rejeté posé directement en sortait
+        bien. ``select_related('paiement')`` charge le statut avec
+        l'affectation — une requête, jamais un N+1 par ligne."""
         from decimal import Decimal
         actifs = [p for p in self.paiements.all()
                   if p.statut != Paiement.Statut.REJETE]
@@ -503,7 +443,10 @@ class Facture(models.Model):
             (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
         via_affectation = sum(
-            (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
+            (a.montant
+             for a in self.affectations_paiement.select_related('paiement')
+             if a.paiement.statut != Paiement.Statut.REJETE),
+            Decimal('0'))
         return direct + escomptes + via_affectation
 
     @property
@@ -801,9 +744,16 @@ class Paiement(models.Model):
         blank=True,
         related_name='paiements',
     )
+    # AUD103 (FICHE-DEL) — on_delete: PROTECT. C'était CASCADE : supprimer une
+    # facture effaçait EN SILENCE les MAD réellement encaissés, pendant que
+    # l'écriture au grand livre (non liée par FK) survivait en orphelin. Un
+    # paiement est de l'argent : il ne disparaît jamais avec son document. Le
+    # viewset ne laisse de toute façon plus supprimer qu'un BROUILLON sans
+    # aucun paiement ; ce PROTECT est le filet côté MODÈLE, qui couvre aussi
+    # l'admin Django, le shell et tout futur appelant.
     facture = models.ForeignKey(
         Facture,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='paiements',
         null=True,
         blank=True,
@@ -926,7 +876,7 @@ class Paiement(models.Model):
         return reste if reste > 0 else Decimal('0')
 
 
-class Avoir(models.Model):
+class Avoir(TotauxDocumentMixin, models.Model):
     """Note de crédit (Avoir) liée à une facture émise — style Odoo : on garde
     le lien vers la facture d'origine, jamais une facture négative isolée.
 
@@ -998,36 +948,13 @@ class Avoir(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
-    def total_ht(self):
-        if self.montant_ht is not None:
-            return self.montant_ht
-        return sum(ligne.total_ht for ligne in self.lignes.all())
-
-    @property
-    def total_tva(self):
-        if self.montant_tva is not None:
-            return self.montant_tva
-        from decimal import Decimal
-        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
-
-    @property
-    def tva_par_taux(self):
-        """Ventilation TVA par taux — même logique exacte que Facture.
-
-        DC23 — délègue au selector unique ``tva_buckets``."""
-        from apps.ventes.selectors import tva_buckets
-        frozen = None
-        if self.montant_tva is not None:
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
-        return tva_buckets(
-            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
-
-    @property
-    def total_ttc(self):
-        if self.montant_ttc is not None:
-            return self.montant_ttc
-        return self.total_ht + self.total_tva
+    # AUD106 — les totaux viennent de ``TotauxDocumentMixin`` (en tête de
+    # module). AVANT, les trois propriétés de l'Avoir sommaient les lignes
+    # BRUTES et n'ont JAMAIS lu ``remise_globale`` — grep sur tout ``apps/`` :
+    # le champ n'apparaissait que dans sa déclaration et sa migration. Sur une
+    # facture remisée à 15 %, l'avoir TOTAL créditait donc le brut (20 400 TTC
+    # facturés, 24 000 TTC crédités : 3 600 MAD offerts). Le champ existait et
+    # donnait l'illusion que la remise était gérée (FAC-16).
 
 
 class LigneAvoir(models.Model):

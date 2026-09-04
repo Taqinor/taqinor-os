@@ -295,7 +295,10 @@ class CarteGriseVehiculeApiTests(TestCase):
         admin_b = make_user(self.co_b, "cg-admin-b", "admin")
         self.assertEqual(rows(auth(admin_b).get(URL)), [])
 
-    def test_update_and_delete(self):
+    def test_update_allowed_delete_blocked(self):
+        """AUD728 — une carte grise se CORRIGE (PATCH) mais ne se supprime
+        jamais (document réglementaire d'immatriculation) : avant ce
+        correctif, le DELETE réussissait sans aucune garde."""
         cg = CarteGriseVehicule.objects.create(
             company=self.co_a, actif_flotte=self.actif,
             numero_carte_grise="P")
@@ -307,8 +310,8 @@ class CarteGriseVehiculeApiTests(TestCase):
         self.assertEqual(cg.numero_carte_grise, "CG-NEW")
 
         resp = auth(self.admin_a).delete(f"{URL}{cg.id}/")
-        self.assertEqual(resp.status_code, 204, resp.data)
-        self.assertEqual(CarteGriseVehicule.objects.count(), 0)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(CarteGriseVehicule.objects.count(), 1)
 
     def test_filtre_par_statut(self):
         CarteGriseVehicule.objects.create(

@@ -300,6 +300,23 @@ class ApiTests(TestCase):
         ordre = make_or(self.co_a, self.actif_a)
         resp = auth(self.user_a).post(f"{URL_OR}{ordre.id}/cloturer/")
         self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_aud728_delete_or_ouvert_autorise(self):
+        """Un OR encore OUVERT (aucun coût final engagé) reste supprimable."""
+        ordre = make_or(self.co_a, self.actif_a, mo=100)
+        resp = auth(self.admin_a).delete(f"{URL_OR}{ordre.id}/")
+        self.assertEqual(resp.status_code, 204, resp.data)
+        self.assertEqual(OrdreReparation.objects.count(), 0)
+
+    def test_aud728_delete_or_cloture_bloque(self):
+        """AUD728 — un OR CLÔTURÉ ne se supprime pas : son coût est déjà
+        compté dans le TCO/ledger (``OrdreReparation.cout_total``) — avant ce
+        correctif, aucune garde n'existait sur son DELETE."""
+        ordre = make_or(self.co_a, self.actif_a, mo=300, pieces=200)
+        auth(self.admin_a).post(f"{URL_OR}{ordre.id}/cloturer/")
+        resp = auth(self.admin_a).delete(f"{URL_OR}{ordre.id}/")
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(OrdreReparation.objects.count(), 1)
         ordre.refresh_from_db()
         self.assertEqual(ordre.statut, OrdreReparation.Statut.OUVERT)
 

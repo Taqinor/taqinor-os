@@ -127,6 +127,30 @@ class KbArticleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'contenu_structure': (
                 "Une structure de phases n'est acceptée que sur un article de "
                 "type « playbook ».")})
+
+        # AUD526 — validation CROISÉE ``visible_portail`` × ``visibilite``.
+        # ``visible_portail`` était un simple booléen inscriptible : rien
+        # n'empêchait un article ``visibilite=prive`` (notes personnelles,
+        # XKB9) de rester publié sur le portail client. Deux règles, l'une
+        # stricte, l'autre réparatrice :
+        #  * demander EXPLICITEMENT ``visible_portail=True`` sur un article
+        #    qui n'est pas ``workspace`` est REFUSÉ (400) — on ne publie pas
+        #    des notes privées par inadvertance ;
+        #  * repasser un article déjà publié sur le portail en ``prive``/
+        #    ``partage`` remet ``visible_portail`` à False (le retrait suit la
+        #    restriction de visibilité, sans faire échouer l'enregistrement).
+        visibilite = attrs.get(
+            'visibilite',
+            getattr(instance, 'visibilite', KbArticle.Visibilite.WORKSPACE))
+        demande_explicite = attrs.get('visible_portail')
+        visible_portail = attrs.get(
+            'visible_portail', getattr(instance, 'visible_portail', False))
+        if visible_portail and visibilite != KbArticle.Visibilite.WORKSPACE:
+            if demande_explicite:
+                raise serializers.ValidationError({'visible_portail': (
+                    "Un article qui n'est pas dans l'espace de travail ne "
+                    'peut pas être publié sur le portail client.')})
+            attrs['visible_portail'] = False
         return attrs
 
     def get_proprietes_effectives(self, obj):

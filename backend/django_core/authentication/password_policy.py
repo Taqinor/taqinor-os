@@ -57,6 +57,37 @@ def validate_password_policy(password, company):
     return errors
 
 
+def validate_new_password(password, company, user=None):
+    """AUD402 — point d'entrée UNIQUE pour valider un mot de passe NEUF.
+
+    Combine les validateurs Django (``AUTH_PASSWORD_VALIDATORS``, qui n'étaient
+    câblés QUE dans ``ChangePasswordView`` — jamais à la création d'un compte)
+    et la politique de société FG22 (``validate_password_policy``). Les trois
+    points d'entrée d'un mot de passe neuf (``RegisterCompanyView``,
+    ``RegisterSerializer``, ``ChangePasswordView``) passent par ici pour qu'une
+    4e divergence ne puisse plus s'installer.
+
+    ``company`` peut être ``None`` (signup public : la société n'existe pas
+    encore) → seuls les validateurs Django s'appliquent, ce qui suffit à
+    refuser un mot de passe d'un caractère.
+
+    Retourne une LISTE de messages (vide si conforme) ; ne lève jamais, pour
+    que chaque appelant rende sa propre 400 dans son format.
+    """
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError as DjValidationError
+
+    if not password:
+        return ['Le mot de passe est requis.']
+    errors = []
+    try:
+        validate_password(password, user=user)
+    except DjValidationError as exc:
+        errors.extend(exc.messages)
+    errors.extend(validate_password_policy(password, company))
+    return errors
+
+
 def is_locked(user):
     """True si le compte est temporairement verrouillé (FG22)."""
     locked_until = getattr(user, 'locked_until', None)

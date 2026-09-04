@@ -94,6 +94,11 @@ function ParametresTab() {
     { id: 'amo', header: 'AMO sal.', align: 'right',
       accessor: (r) => Number(r.taux_amo_salarial) || 0,
       cell: (_v, r) => formatPercent(r.taux_amo_salarial, { decimals: 2 }) },
+    // AUD710 — le taux AMO PATRONAL n'était affiché nulle part : le fondateur
+    // ne pouvait ni le voir ni le corriger depuis l'ERP.
+    { id: 'amo_pat', header: 'AMO pat.', align: 'right',
+      accessor: (r) => Number(r.taux_amo_patronal) || 0,
+      cell: (_v, r) => formatPercent(r.taux_amo_patronal, { decimals: 2 }) },
     { id: 'actif', header: 'État', accessor: (r) => r.actif,
       cell: (_v, r) => (
         <span className="flex items-center gap-1.5">
@@ -144,25 +149,51 @@ function ParametreDialog({ parametre, onClose, onSaved }) {
     String(parametre.taux_cnss_salarial ?? '0'))
   const [tauxAmoSalarial, setTauxAmoSalarial] = useState(
     String(parametre.taux_amo_salarial ?? '0'))
+  // AUD710 — taux AMO PATRONAL : absent de l'écran ET du payload, le fondateur
+  // ne pouvait ni le voir ni le corriger (2,26 % codé vs 4,11 % de référence
+  // usuelle — la valeur retenue lui appartient, l'ERP ne tranche pas).
+  const [tauxAmoPatronal, setTauxAmoPatronal] = useState(
+    String(parametre.taux_amo_patronal ?? '0'))
   const [actif, setActif] = useState(Boolean(parametre.actif))
+  const [valide, setValide] = useState(Boolean(parametre.valide_par_fondateur))
   const [busy, setBusy] = useState(false)
+
+  const payload = () => ({
+    date_effet: dateEffet,
+    smig: Number(smig) || 0,
+    plafond_cnss: Number(plafondCnss) || 0,
+    taux_cnss_salarial: Number(tauxCnssSalarial) || 0,
+    taux_amo_salarial: Number(tauxAmoSalarial) || 0,
+    taux_amo_patronal: Number(tauxAmoPatronal) || 0,
+    actif,
+    valide_par_fondateur: valide,
+  })
 
   const enregistrer = async () => {
     setBusy(true)
     try {
-      await paieApi.saveParametre(parametre.id, {
-        date_effet: dateEffet,
-        smig: Number(smig) || 0,
-        plafond_cnss: Number(plafondCnss) || 0,
-        taux_cnss_salarial: Number(tauxCnssSalarial) || 0,
-        taux_amo_salarial: Number(tauxAmoSalarial) || 0,
-        actif,
-      })
+      await paieApi.saveParametre(parametre.id, payload())
       toast.success('Constante légale mise à jour.')
       onSaved()
       onClose()
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  // AUD710 — validation EXPLICITE du fondateur : tant qu'elle manque, le
+  // moteur avertit (bulletin, déclaration CNSS, ordre de virement).
+  const valider = async () => {
+    setBusy(true)
+    try {
+      await paieApi.saveParametre(parametre.id,
+        { ...payload(), valide_par_fondateur: true })
+      setValide(true)
+      toast.success('Paramètres validés par le fondateur.')
+      onSaved()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Validation impossible.')
     } finally { setBusy(false) }
   }
 
@@ -201,13 +232,30 @@ function ParametreDialog({ parametre, onClose, onSaved }) {
               <Input type="number" step="any" value={tauxAmoSalarial}
                 onChange={(e) => setTauxAmoSalarial(e.target.value)} />
             </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Taux AMO patronal</span>
+              <Input type="number" step="any" value={tauxAmoPatronal}
+                onChange={(e) => setTauxAmoPatronal(e.target.value)} />
+            </label>
           </div>
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" checked={actif}
               onChange={(e) => setActif(e.target.checked)} /> Actif
           </label>
+          <p className="text-xs text-muted-foreground">
+            {valide
+              ? 'Paramètres confirmés par le fondateur.'
+              : 'Non validés : le moteur avertit sur chaque bulletin, '
+                + 'déclaration CNSS et ordre de virement tant que la '
+                + 'confirmation manque.'}
+          </p>
         </div>
         <DialogFooter>
+          {!valide && (
+            <Button variant="outline" onClick={valider} loading={busy}>
+              Valider (fondateur)
+            </Button>
+          )}
           <Button onClick={enregistrer} loading={busy}>Enregistrer</Button>
         </DialogFooter>
       </DialogContent>

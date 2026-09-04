@@ -34,6 +34,129 @@ class StockInsuffisantError(Exception):
         self.message = message
 
 
+class EmissionRefusee(Exception):
+    """AUD101 — l'émission d'une facture est refusée (message FR, prêt 400).
+
+    Porte ``motif`` (le message français) pour que les vues le renvoient tel
+    quel dans un 400 sans jamais reformuler la règle métier."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def _guard_periode_emission(facture):
+    """AUD101 — refuse l'émission d'une facture datée dans une période
+    comptable CLÔTURÉE (YLEDG3/FG115).
+
+    Réplique EXACTEMENT la garde des vues (``FactureViewSet.
+    _guard_periode_verrouillee``) mais côté SERVICE, pour que les chemins qui
+    n'ont pas de vue (POS, contrats, échéancier, Celery) en héritent aussi.
+    Import function-local de ``apps.compta.services`` — cross-app services
+    autorisé, jamais un import de ``apps.compta.models``. Société sans app
+    compta / sans période verrouillée = garde silencieuse."""
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    try:
+        from apps.compta.services import verifier_facture_modifiable
+    except Exception:  # noqa: BLE001 — compta absent = no-op
+        return
+    try:
+        verifier_facture_modifiable(facture)
+    except DjangoValidationError as exc:
+        raise EmissionRefusee(
+            exc.messages[0] if exc.messages else str(exc))
+
+
+def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
+                    verifier_credit=True):
+    """AUD101 — LE SERVICE UNIQUE D'ÉMISSION d'une ``ventes.Facture``.
+
+    AUCUN autre site du domaine ventes ne doit poser ``Facture.Statut.EMISE``
+    (test de parité : ``apps/ventes/tests/test_aud101_emission_unique.py``).
+    Avant ce service, CINQ chemins basculaient une facture en ÉMISE en silence
+    — le bulk ``action=emettre``, la facturation de pénalités, la tranche
+    d'échéancier (le chemin acompte→matériel→solde du parcours solaire), la
+    facture « classique » consommée par POS/e-commerce/immobilier et la
+    consolidation multi-devis. Aucun ne passait par le verrou de période,
+    aucun n'appelait le blocage crédit, aucun n'émettait ``facture_emise`` :
+    ces factures n'atteignaient donc JAMAIS le grand livre (``compta`` ne
+    comptabilise que sur événement, ``apps/compta/receivers.py``).
+
+    Ce que le service fait, dans cet ordre (les REFUS d'abord, pour qu'un
+    appelant qui l'enveloppe dans ``transaction.atomic()`` n'écrive rien) :
+
+      1. refuse une facture ANNULÉE ou déjà PAYÉE ;
+      2. ``exiger_lignes`` (chemin écran) : refuse une facture vide ;
+      3. verrou de période comptable (YLEDG3) ;
+      4. blocage crédit dur XFAC28 (``verifier_credit_hold``) — EXEMPTION
+         explicite via ``verifier_credit=False`` pour la vente comptoir
+         intégralement réglée à l'acte : le hold protège l'encours, il n'a
+         aucune raison de refuser du cash immédiat ;
+      5. workflow de revue XFAC18 (valideur ≠ créateur, anomalies) ;
+      6. dérivation de l'échéance depuis les conditions client (XFAC23), sans
+         jamais écraser une échéance saisie ;
+      7. pose ``EMISE`` + ``save()`` ;
+      8. émet ``facture_emise`` EXACTEMENT une fois.
+
+    RÈGLE #4 : ce service ne touche QUE le statut de la Facture (et le
+    ``revue_statut``/``date_echeance`` qui l'accompagnent) ; il ne rend aucun
+    document et ne connaît pas le moteur de devis.
+
+    Renvoie la liste des anomalies de revue (vide hors XFAC18). Lève
+    ``EmissionRefusee`` (message FR) ou ``CreditHoldError``.
+    """
+    from apps.ventes.models import Facture
+
+    statut = facture.statut
+    if statut == Facture.Statut.ANNULEE:
+        raise EmissionRefusee("Une facture annulée ne peut pas être émise.")
+    if statut == Facture.Statut.PAYEE:
+        raise EmissionRefusee("Une facture payée ne peut pas être émise.")
+    if exiger_lignes and not facture.lignes.exists() and not facture.libelle:
+        raise EmissionRefusee(
+            'La facture doit contenir au moins une ligne.')
+
+    _guard_periode_emission(facture)
+
+    if verifier_credit and facture.client_id:
+        from apps.ventes.domain.recouvrement import verifier_credit_hold
+        verifier_credit_hold(
+            facture.client, user=user,
+            contexte=(source or 'émission de facture'))
+
+    anomalies = []
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=facture.company)
+    if getattr(profile, 'revue_factures_active', False) and \
+            facture.revue_statut == Facture.RevueStatut.A_VALIDER:
+        if user is not None and facture.created_by_id == getattr(
+                user, 'id', None):
+            raise EmissionRefusee(
+                'Cette facture doit être validée par un responsable/admin '
+                'différent du créateur.')
+        from apps.ventes.domain.recouvrement import anomalies_emission_facture
+        anomalies = anomalies_emission_facture(facture)
+        facture.revue_statut = Facture.RevueStatut.VALIDEE
+
+    if not facture.date_echeance:
+        derivee = calculer_date_echeance(
+            client=facture.client, date_emission=facture.date_emission)
+        if derivee is not None:
+            facture.date_echeance = derivee
+
+    facture.statut = Facture.Statut.EMISE
+    facture.save()
+
+    from core.events import facture_emise
+    facture_emise.send(
+        sender=Facture, instance=facture, company=facture.company)
+    logger.info(
+        'AUD101: facture %s émise (source=%s, company=%s)',
+        facture.reference, source or 'inconnue',
+        getattr(facture.company, 'id', '?'))
+    return anomalies
+
+
 def reserver_stock_devis_facture(*, devis, user, company):
     """U9 — réserve/consomme le stock matériel d'un devis facturé EN DIRECT.
 
@@ -61,7 +184,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
         mouvement_type_sortie, record_stock_movement,
-        sortie_exists_for_reference,
+        sortie_exists_for_reference, verrouiller_produit,
     )
     from apps.ventes.models import BonCommande
 
@@ -85,7 +208,13 @@ def reserver_stock_devis_facture(*, devis, user, company):
         produit = ligne.produit
         if produit is None:
             continue
-        produit.refresh_from_db()
+        # AUD216 — VERROU de ligne produit AVANT la lecture de
+        # `quantite_stock` : `refresh_from_db()` relisait sans verrouiller, et
+        # la garde « stock insuffisant » ci-dessous décidait donc sur une
+        # valeur qu'une transaction concurrente pouvait déjà avoir consommée
+        # (survente, exactement ce que U9 existe pour empêcher). Verrou pris
+        # par le thin service stock — jamais d'import des models stock ici.
+        produit = verrouiller_produit(ligne.produit_id)
         # Même règle que la livraison BC (ERR15) : on arrondit au plus proche
         # (HALF_UP) au lieu de tronquer, le registre de stock étant en entiers.
         qte = int(Decimal(ligne.quantite).quantize(
@@ -174,7 +303,7 @@ def creer_facture_contrat(*, contrat, user, company):
             reference=ref,
             company=company,
             client=contrat.client,
-            statut=Facture.Statut.EMISE,
+            statut=Facture.Statut.BROUILLON,
             taux_tva=tva_pct,
             montant_ht=prix_ht,
             montant_tva=montant_tva,
@@ -185,22 +314,20 @@ def creer_facture_contrat(*, contrat, user, company):
             periode_service_fin=periode_fin,
         )
 
-    facture = create_with_reference(Facture, 'FAC', company, _create)
+    # AUD101 — la facture naît BROUILLON puis passe par LE service d'émission
+    # (verrou de période + blocage crédit + `facture_emise` une seule fois).
+    # YSUBS6 reste satisfait : l'événement est bien émis, mais par le seul
+    # site qui a le droit de poser EMISE. La transaction garantit qu'un refus
+    # (période close, hold crédit) ne laisse AUCUN brouillon orphelin.
+    from django.db import transaction
+    with transaction.atomic():
+        facture = create_with_reference(Facture, 'FAC', company, _create)
+        emettre_facture(facture, user=user, source='contrat_maintenance')
 
-    # Avancer la date de dernière facturation.
-    today = timezone.localdate()
-    contrat.derniere_facturation = today
-    contrat.save(update_fields=['derniere_facturation'])
-
-    # YSUBS6 — cette facture est créée EMISE directement (redevance de
-    # maintenance récurrente, jamais de passage par brouillon/`emettre`) : le
-    # bus documentaire de YLEDG1 ne la voit donc jamais sans émission
-    # explicite ici. Émettre `facture_emise` pour que l'auto-écriture
-    # compta (togglée par COMPTA_AUTO_ECRITURES, OFF par défaut) se déclenche
-    # comme sur une facture émise via l'écran (comportement inchangé si le
-    # toggle reste OFF).
-    from core.events import facture_emise
-    facture_emise.send(sender=Facture, instance=facture, company=company)
+        # Avancer la date de dernière facturation.
+        today = timezone.localdate()
+        contrat.derniere_facturation = today
+        contrat.save(update_fields=['derniere_facturation'])
 
     logger.info(
         'FG40: facture %s créée pour contrat #%s (company %s)',
@@ -211,7 +338,7 @@ def creer_facture_contrat(*, contrat, user, company):
 # ── XPRJ3 — Facturation en régie (T&M) depuis gestion_projet ─────────────────
 
 def creer_facture_regie(*, company, client, user, libelle, montant_ht,
-                        taux_tva=Decimal('20')):
+                        taux_tva=None):
     """XPRJ3 — Crée une Facture BROUILLON « en régie » (temps & matériel).
 
     Fonction FINE sanctionnée pour ``gestion_projet.services.facturer_temps_
@@ -225,10 +352,20 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     directement) : une facture de régie doit rester éditable/relisible avant
     envoi. Numérotation via ``apps/ventes/utils/references.py`` (jamais
     ``count()+1``). Renvoie la ``Facture`` créée.
+
+    AUD181 — ``taux_tva=None`` (et non plus ``Decimal('20')`` figé) résout le
+    KNOB SOCIÉTÉ ``CompanyProfile.tva_standard`` comme le font déjà les deux
+    fonctions frères de ce module : un tenant réglé à 14 % ne voyait 14 % que
+    sur ses factures SAV, et 20 % sur sa régie. Le défaut du knob reste 20 %,
+    donc le comportement est inchangé tant que rien n'est édité.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_ht = Decimal(montant_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     montant_tva = (montant_ht * taux_tva / 100).quantize(
@@ -257,37 +394,111 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
+# ── AUD184 — Ligne de service porteuse d'une échéance de contrat ─────────────
+# `apps.contrats` ne peut PAS importer `apps.ventes.models` ni `apps.stock.
+# models` pour poser sa ligne : cette fonction FINE est son unique porte
+# d'entrée, sur le patron déjà éprouvé de `_main_oeuvre_produit` (XFSM1).
+
+def _echeance_contrat_produit(company):
+    """Produit catalogue (service, non stocké) porteur des lignes d'échéance
+    de contrat — get-or-create idempotent, un seul par société. Jamais
+    décrémenté (aucun mouvement de stock ne le référence)."""
+    from apps.stock.models import Produit
+    produit, _created = Produit.objects.get_or_create(
+        company=company, sku='CTR-ECH', defaults={
+            'nom': 'Échéance de contrat',
+            'prix_vente': Decimal('0'),
+            'quantite_stock': 0,
+        })
+    return produit
+
+
+def ajouter_ligne_echeance_contrat(facture, *, designation, montant_ht,
+                                   taux_tva):
+    """AUD184 — pose LA ligne unique d'une facture d'échéance de contrat.
+
+    Les factures d'échéance ne portaient QUE des montants d'en-tête : aucune
+    ``LigneFacture`` n'était créée, si bien qu'elles étaient invisibles de tout
+    consommateur qui itère ``facture.lignes`` — au premier rang
+    ``ventes.exports.export_journal_ventes``, qui OMET les factures
+    header-only et SOUS-DÉCLARE donc le CA (douze échéances mensuelles
+    n'apparaissaient dans aucun export comptable ligne-à-ligne de l'année).
+
+    Le mode header-only lui-même reste LÉGITIME (documenté, rendu au PDF,
+    toléré par le contrôle art. 145, consommé en compta par les totaux
+    d'en-tête) : seules les factures d'échéance changent.
+
+    La ligne porte ``quantite=1`` et ``prix_unitaire=montant_ht``, donc son
+    ``total_ht`` égale EXACTEMENT le ``montant_ht`` d'en-tête : les totaux TTC
+    de la facture sont inchangés au centime et il n'y a AUCUNE
+    double-comptabilisation entre l'en-tête et la ligne. Renvoie la ligne.
+    """
+    from apps.ventes.models import LigneFacture
+
+    return LigneFacture.objects.create(
+        facture=facture,
+        produit=_echeance_contrat_produit(facture.company),
+        designation=(designation or 'Échéance de contrat')[:255],
+        quantite=Decimal('1'),
+        prix_unitaire=Decimal(montant_ht),
+        remise=Decimal('0'),
+        taux_tva=taux_tva,
+    )
+
+
 # ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
 
 def creer_facture_acompte_situation(*, company, client, user, libelle,
                                     montant_periode_ht,
                                     retenue_garantie_pct=None,
-                                    taux_tva=Decimal('20')):
+                                    taux_tva=None):
     """XPRJ4 — Crée une Facture BROUILLON d'ACOMPTE pour une situation de
     travaux (décompte progressif BTP).
 
     Fonction FINE sanctionnée pour ``gestion_projet.services`` (frontière
     cross-app, CLAUDE.md) : reçoit le montant HT DÉJÀ calculé de la PÉRIODE
     (cumulé − antérieur, agrégé côté appelant sur toutes les lignes de la
-    situation) et une retenue de garantie optionnelle DÉDUITE du montant
-    facturé (le taux, pas le suivi de sa libération — qui vit dans
-    ``contrats``, jamais importé ici). Statut BROUILLON + ``type_facture``
-    ACOMPTE (chaîne standard devis→factures, réutilisée ici sans devis source).
-    Numérotation via ``apps/ventes/utils/references.py`` (jamais
-    ``count()+1``). Renvoie la ``Facture`` créée.
+    situation) et une retenue de garantie optionnelle (le taux, pas le suivi de
+    sa libération — qui vit dans ``contrats``, jamais importé ici). Statut
+    BROUILLON + ``type_facture`` ACOMPTE (chaîne standard devis→factures,
+    réutilisée ici sans devis source). Numérotation via
+    ``apps/ventes/utils/references.py`` (jamais ``count()+1``). Renvoie la
+    ``Facture`` créée.
+
+    AUD180 — DÉCISION FONDATEUR du 03/09/2026 : l'ASSIETTE est le
+    ``montant_periode`` COMPLET. La retenue de garantie est une modalité de
+    PAIEMENT (un montant retenu sur le RÈGLEMENT), pas une réduction de
+    l'assiette taxable : ni ``montant_ht`` ni ``montant_tva`` ne sont diminués
+    du pourcentage retenu. Auparavant la retenue était déduite du HT ET servait
+    de base à la TVA (``montant_ht_net``), ce qui sous-déclarait la TVA.
+    Elle est désormais tracée dans ``conditions_paiement``, seul endroit où
+    elle a sa place ; à contre-valider par le comptable, sans bloquer.
+
+    AUD181 — ``taux_tva=None`` résout le knob société ``tva_standard`` (défaut
+    20 %) au lieu de figer 20 %, comme les deux fonctions frères de ce module.
     """
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
+    from ..utils.company_settings import tva_standard
+
+    taux_tva = (Decimal(str(taux_tva)) if taux_tva is not None
+                else tva_standard(company))
     montant_periode_ht = Decimal(montant_periode_ht).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     rg_pct = Decimal(retenue_garantie_pct or 0)
     montant_rg = (montant_periode_ht * rg_pct / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ht_net = montant_periode_ht - montant_rg
-    montant_tva = (montant_ht_net * taux_tva / 100).quantize(
+    # Assiette = période COMPLÈTE (la RG ne la réduit jamais).
+    montant_tva = (montant_periode_ht * taux_tva / 100).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
-    montant_ttc = montant_ht_net + montant_tva
+    montant_ttc = montant_periode_ht + montant_tva
+    conditions_paiement = ''
+    if montant_rg > 0:
+        conditions_paiement = (
+            f'Retenue de garantie de {rg_pct.normalize():f} % '
+            f'({montant_rg} MAD) retenue sur le règlement — '
+            'sans effet sur la base taxable.')
 
     def _create(ref):
         return Facture.objects.create(
@@ -297,18 +508,19 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
             statut=Facture.Statut.BROUILLON,
             type_facture=Facture.TypeFacture.ACOMPTE,
             taux_tva=taux_tva,
-            montant_ht=montant_ht_net,
+            montant_ht=montant_periode_ht,
             montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             libelle=libelle,
+            conditions_paiement=conditions_paiement,
             created_by=user,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
     logger.info(
         'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
-        'net %s, RG %s%%)',
-        facture.reference, company.id, montant_ht_net, rg_pct)
+        '%s, RG %s%% = %s retenue au règlement)',
+        facture.reference, company.id, montant_periode_ht, rg_pct, montant_rg)
     return facture
 
 
@@ -318,13 +530,22 @@ def creer_facture_acompte_situation(*, company, client, user, libelle,
 # créer une facture classique et enregistrer/lire des paiements.
 
 def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
-                            montant_tva, montant_ttc, libelle=''):
+                            montant_tva, montant_ttc, libelle='',
+                            reglee_a_l_acte=False):
     """Crée une ``Facture`` classique (sans devis/BC), montants figés.
 
     Utilisé par ``apps.pos.services.valider_vente`` pour la facture légale
     d'une vente comptoir. ``company``/``client`` doivent déjà être validés par
     l'appelant (scoping multi-tenant). Numérotation collision-proof (jamais
-    count()+1)."""
+    count()+1).
+
+    AUD101 — la facture naît BROUILLON et passe par ``emettre_facture`` : elle
+    hérite donc du verrou de période, du blocage crédit XFAC28 et de
+    l'événement ``facture_emise`` (donc de l'écriture au grand livre), qu'elle
+    n'avait jamais. ``reglee_a_l_acte=True`` est l'EXEMPTION explicite de
+    blocage crédit : une vente comptoir intégralement réglée à l'acte encaisse
+    du cash immédiat, le hold d'encours n'a aucune raison de la refuser."""
+    from django.db import transaction
     from apps.ventes.models import Facture
     from apps.ventes.utils.references import create_with_reference
 
@@ -333,7 +554,7 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
             reference=ref,
             company=company,
             client=client,
-            statut=Facture.Statut.EMISE,
+            statut=Facture.Statut.BROUILLON,
             type_facture=Facture.TypeFacture.COMPLETE,
             taux_tva=taux_tva,
             montant_ht=montant_ht,
@@ -343,7 +564,12 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
             created_by=user,
         )
 
-    return create_with_reference(Facture, 'FAC', company, _create)
+    with transaction.atomic():
+        facture = create_with_reference(Facture, 'FAC', company, _create)
+        emettre_facture(
+            facture, user=user, source='facture_classique',
+            verifier_credit=not reglee_a_l_acte)
+    return facture
 
 
 # ── XACC28 — Refacturation des frais au client (billable expenses) ────────

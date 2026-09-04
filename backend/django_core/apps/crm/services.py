@@ -4631,3 +4631,54 @@ def ajouter_specialite_partenaire(partenaire_id, company, specialite):
         partenaire.specialites = specialites
         partenaire.save(update_fields=['specialites'])
     return partenaire
+
+
+# ---------------------------------------------------------------------------
+# AUD518 — Effets de CRÉATION d'un lead importé (dataimport)
+# ---------------------------------------------------------------------------
+
+
+def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
+    """AUD518 — applique à un lead IMPORTÉ les effets de création du chemin
+    MANUEL, dont il était intégralement privé.
+
+    ``apps.dataimport`` faisait ``Lead.objects.create(company=…, **f)`` et
+    s'arrêtait là : pas d'``owner`` (donc un lead invisible de l'écran « mes
+    leads »), aucune ``LeadActivity`` de création (aucune trace, et le sweep
+    d'inactivité sans point de départ), ``score`` figé à 0 (donc jamais
+    évalué MQL). Ce point d'entrée est le SEUL que ``dataimport`` appelle :
+    la frontière cross-app est respectée (aucun import de ``crm.activity`` ni
+    du modèle depuis l'app d'import).
+
+    Trois effets, dans l'ordre du chemin manuel
+    (``LeadViewSet.perform_create``) :
+
+    1. OWNER — même règle exactement : un utilisateur à portée restreinte
+       garde la propriété de ce qu'il crée, sinon le responsable par défaut
+       de la société (territoires NTCRM1 puis repli round-robin XSAL11) est
+       résolu depuis les attributs de la ligne. Un ``owner`` déjà posé par le
+       fichier n'est JAMAIS écrasé.
+    2. CHATTER — ``activity.log_creation`` (l'app d'import n'y touche pas
+       elle-même).
+    3. SCORE — ``recompute_lead_score``, qui évalue aussi le passage MQL
+       (``maybe_assign_mql``). Déjà best-effort en interne.
+
+    Renvoie le lead.
+    """
+    from . import activity
+
+    if not lead.owner_id:
+        proprietaire = None
+        portee = getattr(user, 'record_scope', None)
+        if user is not None and callable(portee) and portee() != 'all':
+            proprietaire = user
+        else:
+            proprietaire = default_responsable_for(
+                lead.company, lead_attrs=lead_attrs)
+        if proprietaire is not None:
+            lead.owner = proprietaire
+            lead.save(update_fields=['owner'])
+
+    activity.log_creation(lead, user)
+    recompute_lead_score(lead)
+    return lead

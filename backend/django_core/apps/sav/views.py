@@ -690,14 +690,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         """XSAV7 — Résout le délai de résolution (jours) avec précédence :
         contrat de maintenance ACTIF du client avec override > sla_par_priorite
         > défauts société (premier match gagne). Sans contrat/override, la
-        résolution retombe exactement sur le comportement FG81 d'origine."""
-        from .models import ContratMaintenance
-        sla = SavSlaSettings.get(company)
-        contrat = ContratMaintenance.actif_pour_client(client)
-        if contrat is not None and contrat.sla_resolution_days is not None:
-            return contrat.sla_resolution_days
-        _, resolution_days = sla.days_for(priorite)
-        return resolution_days
+        résolution retombe exactement sur le comportement FG81 d'origine.
+
+        AUD519 — l'implémentation vit désormais dans ``services`` (une seule
+        copie, partagée avec les 7 autres producteurs de tickets)."""
+        from .services import resolution_days_pour
+        return resolution_days_pour(company, client, priorite)
 
     def _compute_sla_due_at(self, company, client, priorite, date_ouverture):
         """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
@@ -708,16 +706,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         comportement calendaire byte-identique à avant XSAV5.
 
         XSAV7 — ``resolution_days`` peut venir d'un contrat de maintenance actif
-        du client (override), avant repli sur ``sla_par_priorite``/défauts."""
-        sla = SavSlaSettings.get(company)
-        if not sla.sla_breach_enabled:
-            return None
-        resolution_days = self._resolve_resolution_days(
-            company, client, priorite)
-        if sla.sla_jours_ouvres:
-            from core.calendar import add_working_days
-            return add_working_days(date_ouverture, resolution_days)
-        return date_ouverture + timedelta(days=resolution_days)
+        du client (override), avant repli sur ``sla_par_priorite``/défauts.
+
+        AUD519 — délègue à ``services.compute_sla_due_at`` : ce chemin manuel
+        n'est plus le seul à poser l'échéance, la logique est partagée."""
+        from .services import compute_sla_due_at
+        return compute_sla_due_at(company, client, priorite, date_ouverture)
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -1599,9 +1593,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 type_intervention=request.data.get('type_intervention'))
         except TicketSansInstallationError as exc:
             return Response({'detail': str(exc)}, status=400)
+        # AUD514 — le passage NOUVEAU → PLANIFIE passe par la machine d'états
+        # gardée (``machine_etats``), plus par une écriture directe qui
+        # court-circuitait le graphe. La transition est dans le graphe normal ;
+        # un refus (statut inattendu) laisse simplement le ticket en l'état —
+        # l'intervention, elle, est déjà créée.
         if ticket.statut == Ticket.Statut.NOUVEAU:
-            ticket.statut = Ticket.Statut.PLANIFIE
-            ticket.save(update_fields=['statut'])
+            from .machine_etats import TransitionInterdite, changer_statut
+            try:
+                changer_statut(ticket, Ticket.Statut.PLANIFIE, persister=False)
+                ticket.save(update_fields=['statut'])
+            except TransitionInterdite:
+                import logging
+                logging.getLogger(__name__).warning(
+                    'sav: planifier_intervention — transition NOUVEAU → '
+                    'PLANIFIE refusée sur le ticket #%s', ticket.pk)
         activity.log_note(
             ticket, request.user,
             f'Intervention #{interv.id} planifiée depuis le ticket.')
@@ -1609,6 +1615,44 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'intervention_id': interv.id,
             'ticket_statut': ticket.statut,
         }, status=201)
+
+    @action(detail=True, methods=['post'], url_path='escalader-reclamation',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def escalader_reclamation(self, request, pk=None):
+        """AUD529 — escalade CE ticket en réclamation formelle (litiges).
+
+        POST /sav/tickets/{id}/escalader-reclamation/
+        body optionnel : {type_reclamation, gravite, objet, description,
+                          montant_conteste}
+
+        Ouvre une ``litiges.Reclamation`` liée (source_type='ticket'), pose le
+        lien de retour sur le ticket et trace l'événement dans LES DEUX
+        chatters. IDEMPOTENT : un ticket déjà escaladé renvoie 200 avec la
+        réclamation existante (jamais un second dossier). Un ticket annulé
+        est refusé (400). La société n'est jamais lue du corps."""
+        ticket = self.get_object()
+        from .services import (
+            TicketNonEscaladableError, escalader_ticket_en_reclamation,
+        )
+        try:
+            reclamation, cree = escalader_ticket_en_reclamation(
+                ticket=ticket, user=request.user,
+                type_reclamation=request.data.get('type_reclamation'),
+                gravite=request.data.get('gravite'),
+                objet=request.data.get('objet'),
+                description=request.data.get('description'),
+                montant_conteste=request.data.get('montant_conteste'))
+        except TicketNonEscaladableError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({
+            'reclamation_id': reclamation.pk,
+            'reference': reclamation.reference,
+            'objet': reclamation.objet,
+            'statut': reclamation.statut,
+            'type_reclamation': reclamation.type_reclamation,
+            'gravite': reclamation.gravite,
+            'cree': cree,
+        }, status=201 if cree else 200)
 
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2296,7 +2340,10 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                 f'Escalade alarme onduleur {alarme.code} '
                 f'({alarme.get_gravite_display()})'
                 + (f' : {alarme.libelle}' if alarme.libelle else ''))
-            ticket = create_with_reference(
+            # AUD519 — l'escalade d'alarme pose la même échéance SLA que le
+            # chemin manuel (sans quoi le ticket était invisible aux scans).
+            from .services import poser_sla_due_at
+            ticket = poser_sla_due_at(create_with_reference(
                 Ticket, 'SAV', company,
                 lambda ref: Ticket.objects.create(
                     reference=ref, company=company,
@@ -2310,7 +2357,7 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
                     description=description,
                     date_ouverture=timezone.localdate(),
                     created_by=request.user),
-            )
+            ))
         alarme.ticket = ticket
         alarme.statut = AlarmeOnduleur.Statut.ESCALADEE
         alarme.save(update_fields=['ticket', 'statut', 'date_modification'])
@@ -2622,6 +2669,26 @@ def sav_parts_forecast(request):
     return Response(results)
 
 
+# ── AUD521 — Réglages SLA mis en cache PAR SOCIÉTÉ pour les scans quotidiens ─
+# Les trois scans ci-dessous parcourent la queryset Ticket multi-société et
+# appelaient ``SavSlaSettings.get(ticket.company)`` DANS la boucle — soit un
+# ``get_or_create`` par ticket. Ce helper charge tous les réglages en UNE
+# requête et ne retombe sur ``get()`` que pour une société sans réglage
+# enregistré (au plus une requête par société distincte, jamais par ticket).
+
+def _reglages_sla_par_ticket(tickets):
+    """Renvoie une fonction ``(ticket) -> SavSlaSettings`` sans N+1."""
+    cache = SavSlaSettings.par_company({t.company_id for t in tickets})
+
+    def _pour(ticket):
+        if ticket.company_id in cache:
+            return cache[ticket.company_id]
+        reglage = SavSlaSettings.get(ticket.company)
+        cache[ticket.company_id] = reglage
+        return reglage
+    return _pour
+
+
 # ── FG81 — Scan journalier de breach (appelé par Celery-beat ou management cmd) ──
 
 def scan_sla_breaches():
@@ -2634,17 +2701,20 @@ def scan_sla_breaches():
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
-    breached = Ticket.objects.filter(
+    breached = list(Ticket.objects.filter(
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
         sla_due_at__lt=today,
         sla_breach=False,
-    ).select_related('company', 'technicien_responsable')
+    ).select_related('company', 'technicien_responsable'))
+    # AUD521 — réglages chargés UNE fois par société (plus un get_or_create
+    # par ticket).
+    reglage_pour = _reglages_sla_par_ticket(breached)
 
     updated = 0
     for ticket in breached:
         # Vérifie que la société a activé les notifications SLA.
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         if not sla.sla_breach_enabled:
             continue
         ticket.sla_breach = True
@@ -2684,16 +2754,18 @@ def scan_sla_pre_alerts_and_escalations():
     from apps.notifications.models import EventType
 
     today = timezone.localdate()
-    qs = Ticket.objects.filter(
+    qs = list(Ticket.objects.filter(
         statut__in=Ticket.OPEN_STATUTS,
         annule=False,
         sla_due_at__isnull=False,
-    ).select_related('company', 'technicien_responsable')
+    ).select_related('company', 'technicien_responsable'))
+    # AUD521 — réglages chargés UNE fois par société.
+    reglage_pour = _reglages_sla_par_ticket(qs)
 
     pre_alerts = 0
     escalations = 0
     for ticket in qs:
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         due_effectif = ticket.sla_due_at_effectif(today=today)
 
         # ── Pré-alerte J-x au technicien assigné ──
@@ -2760,17 +2832,19 @@ def scan_auto_cloture_tickets_resolus():
     (``notify_ticket_transition``, best-effort, n'envoie rien sans le toggle
     société ``notifications_client_sav`` — indépendant du toggle
     ``auto_cloture_jours``)."""
-    from .models import SavSlaSettings, TicketActivity
+    from .models import TicketActivity
 
     today = timezone.localdate()
     cloture = 0
 
-    tickets = (Ticket.objects
-               .filter(statut=Ticket.Statut.RESOLU, annule=False)
-               .select_related('company'))
+    tickets = list(Ticket.objects
+                   .filter(statut=Ticket.Statut.RESOLU, annule=False)
+                   .select_related('company'))
+    # AUD521 — réglages chargés UNE fois par société.
+    reglage_pour = _reglages_sla_par_ticket(tickets)
 
     for ticket in tickets:
-        sla = SavSlaSettings.get(ticket.company)
+        sla = reglage_pour(ticket)
         if not sla.auto_cloture_jours:
             continue
 

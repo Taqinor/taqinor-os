@@ -109,14 +109,34 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
             ticket.canal_resolution = ticket.CanalResolution.SUR_SITE
             update_fields.append('canal_resolution')
         ancien_statut = ticket.statut
-        ticket.statut = Ticket.Statut.RESOLU
+        # AUD514 — le statut passe désormais par la machine d'états GARDÉE
+        # (plus d'écriture directe qui contournait le graphe : NOUVEAU/
+        # PLANIFIE → RESOLU n'est PAS une transition humaine). Le saut est
+        # déclaré comme transition SYSTÈME et tracé au chatter — jamais
+        # silencieux. Une transition refusée (statut inattendu) laisse le
+        # ticket intact et n'est pas avalée : elle est journalisée.
+        from .machine_etats import TransitionInterdite, changer_statut
+        try:
+            changer_statut(ticket, Ticket.Statut.RESOLU,
+                           persister=False, systeme=True)
+        except TransitionInterdite as exc:
+            logger.warning(
+                'sav: intervention terminée #%s — transition de ticket '
+                'refusée par la machine d\'états : %s',
+                getattr(intervention, 'pk', None), exc)
+            if update_fields:
+                ticket.save(update_fields=update_fields)
+            return
         update_fields.append('statut')
         ticket.save(update_fields=update_fields)
+        saut_systeme = ancien_statut != Ticket.Statut.EN_COURS
         activity.log_note(
             ticket, user,
             f"Intervention {intervention.get_type_intervention_display()} "
             'terminée — ticket avancé automatiquement vers Résolu '
-            f'(depuis {ancien_statut}).')
+            f'(depuis {ancien_statut}).'
+            + (' Transition système : le ticket n\'était pas encore en cours, '
+               'l\'intervention terminée fait foi.' if saut_systeme else ''))
         # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu),
         # même point d'émission unique que la transition manuelle gardée
         # (apps/sav/views.py).

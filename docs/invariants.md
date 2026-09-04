@@ -43,6 +43,34 @@ Format d'une entrée : `ID | invariant | fichier::Classe::test_méthode`.
    soit le format (règle CLAUDE.md — devis premium).
    `apps/ventes/tests/test_quote_engine_formats.py::TestPdfFormats::test_buy_prices_never_in_pdf_html`
 
+8. **TOTALS-RECONCILE-LEGACY-PDF** — la chaîne `Sous-total − Remise + Σ TVA ==
+   Total TTC` se réconcilie au centime sur les CINQ documents d'argent LEGACY
+   (règle #4 : ils ne passent jamais par le moteur devis premium), sur un
+   document à remise globale ET taux mixtes 10/20. Pour le relevé de compte et
+   la quittance, dont la chaîne est un solde et non une TVA, c'est la même
+   exigence transposée : `facturé − payé − avoirs == solde dû`, et
+   `montant réglé + solde restant == TTC de la facture`. AUD108 — les
+   invariants 3/4/7 ci-dessus ne couvraient que le moteur premium ; c'est ce
+   trou qui a laissé passer AUD105 (remise globale décomptée deux fois sur le
+   PDF facture) sans qu'aucun gate CI ne bronche.
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestChaineTotauxPdfFacture::test_totaux_reconcilient_au_centime`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestChaineTotauxPdfAvoir::test_totaux_reconcilient_au_centime`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestChaineTotauxPdfNoteDebit::test_totaux_reconcilient_au_centime`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestChaineSoldesReleveClient::test_soldes_reconcilient_au_centime`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestChaineSoldeQuittance::test_montant_regle_plus_solde_restant_egale_le_ttc`
+
+9. **NO-PRIX-ACHAT-LEGACY-PDF** — `Produit.prix_achat` (indicateur de marge
+   GÉNÉRATEUR-ONLY) n'apparaît dans AUCUN des cinq documents d'argent legacy :
+   PDF facture, PDF avoir, PDF note de débit, relevé de compte client,
+   quittance. La protection existait DE FAIT (ces gabarits n'utilisent que
+   designation / quantite / prix_unitaire / remise) — rien ne l'empêchait de
+   disparaître au prochain commit.
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_pdf_facture`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_pdf_avoir`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_pdf_note_debit`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_releve_client`
+   `apps/ventes/tests/test_aud108_invariants_pdf_legacy.py::TestAucunPrixAchatDansLesCinqDocuments::test_quittance`
+
 ## Règle : un bug corrigé atterrit avec un test rouge-d'abord
 
 Tout bug corrigé DOIT être livré avec un test qui échoue AVANT le correctif et

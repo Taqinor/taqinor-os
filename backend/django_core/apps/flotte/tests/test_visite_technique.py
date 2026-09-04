@@ -279,6 +279,17 @@ class VisiteTechniqueApiTests(TestCase):
         }, format="json")
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_aud728_delete_bloque(self):
+        """AUD728 — une visite technique ne se supprime jamais (document
+        réglementaire NARSA) : avant ce correctif, aucune garde n'existait
+        sur son DELETE."""
+        vt = VisiteTechnique.objects.create(
+            company=self.co_a, actif_flotte=self.actif, centre="A",
+            date_visite=datetime.date(2026, 1, 1))
+        resp = auth(self.admin_a).delete(f"{URL}{vt.id}/")
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(VisiteTechnique.objects.count(), 1)
+
     def test_list_scoped_and_read_any_role(self):
         VisiteTechnique.objects.create(
             company=self.co_a, actif_flotte=self.actif, centre="A",

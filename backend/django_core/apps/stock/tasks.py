@@ -279,3 +279,42 @@ def expiration_alerts_task():
                 company.id, exc_info=True)
             result[company.id] = 0
     return result
+
+
+# ── AUD231 — deux jobs WMS écrits « pour Celery beat » mais planifiés NULLE
+# PART. Leurs docstrings de commande annonçaient « Plannifiable par Celery beat
+# comme les autres jobs du module » ; le grep sur `erp_agentique/` rendait
+# ZÉRO. Les enveloppes ci-dessous appellent le SERVICE (jamais la commande, ni
+# une logique dupliquée) et sont, elles, dans le `beat_schedule`.
+
+@shared_task(name='stock.generer_comptages_tournants')
+def generer_comptages_tournants_task():
+    """NTWMS13 (AUD231) — génère les sessions d'inventaire de comptage tournant
+    DUES, toutes sociétés. Idempotente : rejouée le même jour elle ne recrée
+    rien (l'échéance du plan vient d'être repoussée). Renvoie le nombre de
+    sessions créées."""
+    from .services_wms import generer_comptages_tournants
+    try:
+        resultat = generer_comptages_tournants()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('stock.generer_comptages_tournants: échec du balayage',
+                       exc_info=True)
+        return 0
+    return len(resultat.get('sessions', []))
+
+
+@shared_task(name='stock.liberer_vagues_planifiees')
+def liberer_vagues_planifiees_task():
+    """NTWMS12 (AUD231) — libère les vagues de prélèvement AUTO_HEURE /
+    AUTO_SEUIL dont la condition est atteinte, toutes sociétés. Idempotente :
+    une vague déjà lancée n'est jamais retouchée. Cadence courte assumée :
+    l'heure de coupure est un réglage PAR SOCIÉTÉ, à la minute près. Renvoie le
+    nombre de vagues libérées."""
+    from .services_wms import liberer_vagues_planifiees
+    try:
+        resultat = liberer_vagues_planifiees()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('stock.liberer_vagues_planifiees: échec du balayage',
+                       exc_info=True)
+        return 0
+    return len(resultat.get('liberees', []))

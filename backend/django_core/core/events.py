@@ -216,12 +216,31 @@ importe ``apps.audit``.
     ``ventes.services``/``views.facture`` n'émettaient jusque-là que pour les
     DEVIS (``devis_accepted``/``devis_sent``/``devis_refused``) ; rien pour la
     chaîne BonCommande → Facture. Émission SYNCHRONE, best-effort, aux sites
-    de transition réels (``emettre``, ``creer_facture_contrat``,
-    ``creer_facture_tranche`` pour ``facture_emise`` ; ``annuler`` pour
+    de transition réels.
+
+    AUD101 (03/09/2026) — CE PARAGRAPHE DISAIT FAUX. Il affirmait que
+    ``creer_facture_tranche`` émettait ``facture_emise`` : le grep rendait
+    ZÉRO sur ``utils/echeancier.py`` comme sur ``views/devis.py``, et quatre
+    autres chemins (bulk ``action=emettre``, facturation de pénalités,
+    ``creer_facture_classique`` consommée par POS/e-commerce/immobilier,
+    consolidation multi-devis) posaient eux aussi ``EMISE`` en silence — donc
+    sans jamais atteindre le grand livre, qui ne comptabilise que sur
+    événement. Depuis AUD101 il n'existe QU'UN SEUL émetteur dans le domaine
+    ventes : ``apps.ventes.domain.facturation_ops.emettre_facture`` (verrou de
+    période, blocage crédit XFAC28, workflow de revue XFAC18, dérivation
+    d'échéance XFAC23, pose du statut, puis ``facture_emise`` exactement une
+    fois) ; tous les chemins ci-dessus l'appellent, et un test de parité
+    échoue si un site de ``apps/ventes`` repose ``Facture.Statut.EMISE`` hors
+    de lui. Restent émetteurs directs hors ventes : ``contrats.services`` et
+    ``compta.services``.
+
+    Les autres transitions sont inchangées : ``annuler`` pour
     ``facture_annulee`` ; ``convertir_en_bc`` pour ``bon_commande_cree`` ;
     ``facture_payee`` accompagne ``facture_paid`` — YDOCF4 — au même
-    résiduel→0). Préserve STRICTEMENT les statuts document (règle #4) :
-    l'émission n'en change AUCUN. Arguments communs :
+    résiduel→0 (AUD102 : émis par le service unique
+    ``apps.ventes.domain.encaissements.marquer_facture_soldee``). Préserve
+    STRICTEMENT les statuts document (règle #4) : l'émission n'en change
+    AUCUN. Arguments communs :
 
     * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
     * ``company`` — la société (posée côté serveur).

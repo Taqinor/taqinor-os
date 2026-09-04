@@ -784,6 +784,25 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
     # dédié / l'import xlsx, pas en écriture imbriquée ici).
     paliers = PalierPrixFournisseurSerializer(many=True, read_only=True)
 
+    def get_fields(self):
+        """AUD213 — même gate que `ProduitSerializer` sur le MÊME champ.
+
+        `prix_achat` (et les paliers de quantité, qui sont des prix d'achat)
+        sont une donnée INTERNE gardée par `prix_achat_voir`
+        (`user.can_view_buy_prices`). Sans la permission, les deux champs sont
+        RETIRÉS — jamais renvoyés en clair. Défense en profondeur : la vue
+        refuse déjà l'accès (403), ce masquage protège aussi les appelants
+        internes qui réutilisent ce serializer avec un `request` en contexte.
+        Aucun `request` (usage service/interne) ⇒ comportement historique.
+        """
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_buy_prices', True):
+            fields.pop('prix_achat', None)
+            fields.pop('paliers', None)
+        return fields
+
     class Meta:
         model = PrixFournisseur
         fields = [

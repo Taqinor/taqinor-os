@@ -17,6 +17,40 @@ from datetime import timedelta
 from django.utils import timezone
 
 
+# ── AUD408 — révocation effective du jeton d'ACCÈS ────────────────────────
+# DÉCISION RETENUE (écrite ici et pas seulement dans ERR87) : plutôt que de
+# raccourcir ``ACCESS_TOKEN_LIFETIME`` (qui ne fait que rétrécir une fenêtre
+# d'impuissance sans jamais la fermer, et triple le trafic de rafraîchissement),
+# chaque jeton d'ACCÈS émis par la voie de connexion porte un claim de SESSION
+# (``sid`` = le ``jti`` du refresh, donc l'identifiant de la ligne
+# ``UserSession``). ``CookieJWTAuthentication`` le compare à l'état de
+# révocation de cette session : les 4 chemins de révocation VOLONTAIRE (logout,
+# révocation d'un appareil distant, éviction concurrente, changement de mot de
+# passe) posent déjà ``UserSession.revoked = True``, et coupent donc désormais
+# l'accès IMMÉDIATEMENT au lieu d'attendre jusqu'à 30 min.
+#
+# Compatibilité : un jeton SANS ce claim (``AccessToken.for_user`` des scripts,
+# tests et outils internes) se comporte exactement comme avant — le claim n'est
+# posé que par ``CustomTokenObtainPairSerializer.get_token``. Coût : une seule
+# lecture indexée (``UserSession.jti``) par requête portant le claim.
+SESSION_CLAIM = 'sid'
+
+
+def access_session_revoked(validated_token):
+    """True si le jeton d'accès porte un claim de session RÉVOQUÉE (AUD408).
+
+    Sans claim (jeton legacy/interne) ou sans ligne ``UserSession``
+    correspondante → False : comportement historique inchangé. Une erreur de
+    base ne doit PAS être avalée en « non révoqué » (ce serait fail-open sur le
+    garde lui-même) : elle remonte et l'authentification échoue.
+    """
+    sid = validated_token.get(SESSION_CLAIM) if validated_token else None
+    if not sid:
+        return False
+    from authentication.models import UserSession
+    return UserSession.objects.filter(jti=sid, revoked=True).exists()
+
+
 def _policy(company):
     if company is None:
         return None

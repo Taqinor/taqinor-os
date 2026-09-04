@@ -86,6 +86,25 @@ class IRBaremeTests(TestCase):
         self.assertGreaterEqual(ir_bareme(self.bareme, Decimal('2501')),
                                 Decimal('0.00'))
 
+    def test_arrondi_demi_superieur_explicite(self):
+        """AUD711 — l'IR arrondit en ROUND_HALF_UP, comme tout le bulletin.
+
+        3000,05 dans la tranche 10 % : 3000,05 × 10 % − 250 = 50,005 — pile un
+        demi-centime. Le défaut Python (ROUND_HALF_EVEN) renvoyait 50,00 alors
+        que `_q()` (ROUND_HALF_UP) gouverne CNSS/AMO/formation/allocations/net
+        du même bulletin : un centime divergent sur le poste le plus scruté.
+        """
+        self.assertEqual(ir_bareme(self.bareme, Decimal('3000.05')),
+                         Decimal('50.01'))
+
+    def test_arrondi_coherent_avec_le_reste_du_bulletin(self):
+        """La même valeur passée par `_q()` donne le même centime."""
+        from apps.paie.services import _q
+
+        brut = (Decimal('3000.05') * Decimal('10') / Decimal('100')
+                - Decimal('250'))
+        self.assertEqual(ir_bareme(self.bareme, Decimal('3000.05')), _q(brut))
+
 
 class DeductionChargesFamilleTests(TestCase):
     """La déduction pour charges de famille (montant × nb, plafonnée)."""

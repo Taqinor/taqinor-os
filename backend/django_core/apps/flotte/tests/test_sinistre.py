@@ -240,7 +240,10 @@ class SinistreApiTests(TestCase):
         admin_b = make_user(self.co_b, "sin-admin-b", "admin")
         self.assertEqual(rows(auth(admin_b).get(URL)), [])
 
-    def test_update_and_delete(self):
+    def test_update_allowed_delete_blocked(self):
+        """AUD728 — un sinistre se CORRIGE (PATCH, ex. indemnisation) mais ne
+        se supprime jamais (dossier à valeur légale/financière) : avant ce
+        correctif, le DELETE réussissait sans aucune garde."""
         s = Sinistre.objects.create(
             company=self.co_a, actif_flotte=self.actif,
             date_sinistre=datetime.date(2026, 6, 1), description="a")
@@ -250,8 +253,8 @@ class SinistreApiTests(TestCase):
         s.refresh_from_db()
         self.assertEqual(s.statut, "indemnise")
         resp = auth(self.admin_a).delete(f"{URL}{s.id}/")
-        self.assertEqual(resp.status_code, 204)
-        self.assertEqual(Sinistre.objects.count(), 0)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(Sinistre.objects.count(), 1)
 
     def test_filtre_par_statut(self):
         Sinistre.objects.create(

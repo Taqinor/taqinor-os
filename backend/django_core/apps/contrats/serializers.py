@@ -119,7 +119,8 @@ class ContratSerializer(serializers.ModelSerializer):
             'date_dernier_renouvellement', 'nb_renouvellements',
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
-            'montant', 'devise', 'plan_recurrent', 'plan_abonnement',
+            'montant', 'devise', 'taux_tva',
+            'plan_recurrent', 'plan_abonnement',
             'sequence_dunning',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
@@ -1118,7 +1119,7 @@ class EcheancierContratSerializer(serializers.ModelSerializer):
         model = EcheancierContrat
         fields = [
             'id', 'contrat', 'libelle', 'periodicite', 'periodicite_display',
-            'montant_total', 'devise', 'statut', 'statut_display',
+            'montant_total', 'devise', 'taux_tva', 'statut', 'statut_display',
             'facturation_active', 'lignes', 'date_creation',
         ]
         read_only_fields = [
@@ -1421,7 +1422,7 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
             'date_reservation', 'date_enlevement_prevue',
             'date_retour_prevue', 'date_enlevement_reelle',
             'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
-            'montant_estime', 'note', 'date_creation',
+            'montant_estime', 'taux_tva', 'note', 'date_creation',
             'caution_montant', 'caution_statut', 'caution_statut_display',
             'caution_retenue', 'caution_motif_retenue',
             'frais_retard_jour', 'frais_retard_montant',

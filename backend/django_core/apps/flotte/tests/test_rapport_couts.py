@@ -6,6 +6,9 @@ Couvre :
   - coût/km par véhicule ;
   - benchmark : outlier de consommation (>20% au-dessus de la médiane du
     modèle) signalé, véhicule seul de son modèle jamais outlier.
+- AUD727 : réconciliation du « coût total » par véhicule entre ce rapport
+  (via ``ledger_vehicule``) et ``selectors.tco_vehicule`` (FLOTTE31) —
+  assurance/TSAV/coûts divers comptent désormais des DEUX côtés.
 - Endpoint ``GET /flotte/rapports/couts/`` :
   - pivot JSON par défaut (lecture tout rôle) ;
   - export XLSX via ``?export=xlsx`` (JAMAIS ``?format=``).
@@ -19,8 +22,14 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.flotte.models import ActifFlotte, CoutVehicule, Vehicule
-from apps.flotte.selectors import analyse_couts_report
+from apps.flotte.models import (
+    ActifFlotte,
+    AssuranceVehicule,
+    BaremeVignette,
+    CoutVehicule,
+    Vehicule,
+)
+from apps.flotte.selectors import analyse_couts_report, tco_vehicule
 
 User = get_user_model()
 
@@ -136,6 +145,40 @@ class AnalyseCoutsReportSelectorTests(TestCase):
         result = analyse_couts_report(self.co, group_by='vehicule')
         outlier_ids = {o['vehicule_id'] for o in result['outliers']}
         self.assertNotIn(veh_unique.id, outlier_ids)
+
+    def test_aud727_reconcilie_avec_tco_vehicule(self):
+        """AUD727 — pour un même véhicule avec assurance (franchise) + TSAV +
+        ``CoutVehicule`` non nuls, le « coût total » du rapport pivot XFLT7
+        (par véhicule, via ``ledger_vehicule``) est désormais RÉCONCILIÉ avec
+        celui de l'onglet TCO (``selectors.tco_vehicule``). Avant ce fix, le
+        TCO ignorait assurance/vignette/``CoutVehicule`` (les excluait du
+        total) alors que ce rapport pivot les comptait déjà via
+        ``ledger_vehicule`` — les deux « coût total » divergeaient pour le
+        même véhicule/période, sans disclaimer de périmètre."""
+        veh = Vehicule.objects.create(
+            company=self.co, immatriculation="RECONC", energie="diesel",
+            kilometrage=2000, puissance_fiscale=7)
+        actif = ActifFlotte.objects.create(company=self.co, vehicule=veh)
+        BaremeVignette.objects.create(
+            company=self.co, energie="diesel", cv_min=0, cv_max=9999,
+            montant=700)
+        AssuranceVehicule.objects.create(
+            company=self.co, actif_flotte=actif, assureur="Wafa",
+            numero_police="RC1", date_debut=datetime.date(2026, 1, 1),
+            date_echeance=datetime.date(2026, 12, 31), franchise=1500)
+        CoutVehicule.objects.create(
+            company=self.co, actif_flotte=actif, categorie="peage",
+            date=datetime.date(2026, 6, 1), montant=300)
+
+        result = analyse_couts_report(self.co, group_by='vehicule')
+        par_veh = {p['vehicule_id']: p for p in result['par_vehicule']}
+        rapport_total = par_veh[veh.id]['cout_total']
+
+        tco = tco_vehicule(self.co, veh.id)
+
+        self.assertEqual(rapport_total, 2500.0)
+        self.assertEqual(tco['cout_total'], 2500.0)
+        self.assertEqual(rapport_total, tco['cout_total'])
 
 
 class RapportCoutsApiTests(TestCase):

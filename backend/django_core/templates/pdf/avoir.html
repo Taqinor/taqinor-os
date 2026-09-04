@@ -146,12 +146,24 @@
   <div class="note-block"><strong>Motif :</strong> {{ avoir.motif }}</div>
   {% endif %}
 
+  {# AUD106 — la chaîne HT brut → remise → HT net → TVA → TTC vient d'UNE
+     source, ``TotauxDocumentMixin.totaux_affichage``, partagée avec la facture
+     et la note de débit. L'avoir sommait les lignes BRUTES et n'a jamais lu
+     ``remise_globale`` : sur une facture remisée, il créditait plus que ce qui
+     avait été facturé. UN GABARIT NE RECALCULE JAMAIS UN POURCENTAGE. #}
+  {% set totaux = avoir.totaux_affichage %}
   <div class="totaux">
     <div class="totaux-row">
       <span>Sous-total HT crédité</span>
-      <span>{{ "%.2f"|format(avoir.total_ht) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ht_brut) }} MAD</span>
     </div>
-    {% for b in avoir.tva_par_taux %}
+    {% if totaux.remise > 0 %}
+    <div class="totaux-row remise">
+      <span>Remise globale ({{ avoir.remise_globale }}%)</span>
+      <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
+    </div>
+    {% endif %}
+    {% for b in totaux.tva_par_taux %}
     <div class="totaux-row">
       <span>TVA ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>
@@ -159,7 +171,7 @@
     {% endfor %}
     <div class="totaux-row total-ttc">
       <span>Total crédité TTC</span>
-      <span>{{ "%.2f"|format(avoir.total_ttc) }} MAD</span>
+      <span>{{ "%.2f"|format(totaux.ttc) }} MAD</span>
     </div>
   </div>
 

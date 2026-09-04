@@ -5,7 +5,7 @@ from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
+    mouvement_type_sortie, record_stock_movement, verrouiller_produit,
 )
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -177,8 +177,13 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         with transaction.atomic():
             if bc.devis and not toggle_bc_stock:
                 for ligne in bc.devis.lignes.select_related('produit'):
-                    produit = ligne.produit
-                    produit.refresh_from_db()
+                    # AUD216 — VERROU de ligne produit AVANT la lecture de
+                    # `quantite_stock` : `refresh_from_db()` relisait sans
+                    # verrouiller, donc la garde « stock insuffisant » plus bas
+                    # décidait sur une valeur qu'une livraison concurrente
+                    # pouvait déjà avoir consommée (survente). Verrou pris par
+                    # le thin service stock — jamais d'import des models stock.
+                    produit = verrouiller_produit(ligne.produit_id)
                     # ERR15 — ne PAS tronquer la quantité décimale (int() perdait
                     # la partie fractionnaire : 3,5 → 3, dérive silencieuse du
                     # stock sur les lignes au mètre/câble). Le ledger de stock
@@ -256,51 +261,60 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         # déjà réservé PAR CETTE MÊME requête est suivi en mémoire (deux
         # lignes de devis du même produit ne doivent pas survaloriser le
         # stock disponible).
-        stock_reserve = {}
-        validated = []
-        for entry in lignes_payload:
-            ligne_devis_id = entry.get('ligne_devis')
-            quantite = entry.get('quantite')
-            if ligne_devis_id is None or quantite is None:
-                return Response(
-                    {'detail': 'Chaque ligne requiert ligne_devis et quantite.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            reliquat_ligne = reliquats.get(int(ligne_devis_id))
-            if reliquat_ligne is None:
-                return Response(
-                    {'detail': f'Ligne de devis {ligne_devis_id} inconnue sur ce BC.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            quantite = Decimal(str(quantite))
-            if quantite <= 0 or quantite > reliquat_ligne['reliquat']:
-                return Response(
-                    {'detail': (
-                        f"Quantité invalide pour « {reliquat_ligne['designation']} » "
-                        f"(reliquat disponible : {reliquat_ligne['reliquat']})."
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            ligne_devis = bc.devis.lignes.get(id=ligne_devis_id)
-            produit = ligne_devis.produit
-            produit.refresh_from_db()
-            qte_entiere = int(Decimal(quantite).quantize(
-                Decimal('1'), rounding=ROUND_HALF_UP))
-            qte_avant = produit.quantite_stock - stock_reserve.get(produit.id, 0)
-            qte_apres = qte_avant - qte_entiere
-            if qte_apres < 0:
-                return Response(
-                    {'detail': (
-                        f'Stock insuffisant pour « {produit.nom} » '
-                        f'(disponible : {qte_avant}, requis : {qte_entiere}).'
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            stock_reserve[produit.id] = stock_reserve.get(produit.id, 0) + qte_entiere
-            validated.append(
-                (ligne_devis, produit, quantite, qte_entiere, qte_avant, qte_apres))
-
+        # AUD216 — la VALIDATION (lecture du stock disponible) et l'ÉCRITURE
+        # vivent désormais dans UNE SEULE transaction : le verrou de ligne pris
+        # ci-dessous ne vaut que s'il tient jusqu'au commit des mouvements.
+        # Auparavant la boucle de validation lisait `quantite_stock` HORS
+        # transaction (`refresh_from_db()`), puis le bloc atomique écrivait
+        # des `qte_avant`/`qte_apres` calculés sur cette valeur déjà morte.
         with transaction.atomic():
+            stock_reserve = {}
+            validated = []
+            for entry in lignes_payload:
+                ligne_devis_id = entry.get('ligne_devis')
+                quantite = entry.get('quantite')
+                if ligne_devis_id is None or quantite is None:
+                    return Response(
+                        {'detail': 'Chaque ligne requiert ligne_devis et quantite.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                reliquat_ligne = reliquats.get(int(ligne_devis_id))
+                if reliquat_ligne is None:
+                    return Response(
+                        {'detail': f'Ligne de devis {ligne_devis_id} inconnue sur ce BC.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                quantite = Decimal(str(quantite))
+                if quantite <= 0 or quantite > reliquat_ligne['reliquat']:
+                    return Response(
+                        {'detail': (
+                            f"Quantité invalide pour « {reliquat_ligne['designation']} » "
+                            f"(reliquat disponible : {reliquat_ligne['reliquat']})."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                ligne_devis = bc.devis.lignes.get(id=ligne_devis_id)
+                # AUD216 — VERROU de ligne produit, tenu jusqu'au commit des
+                # mouvements (la validation et l'écriture partagent désormais
+                # la même transaction).
+                produit = verrouiller_produit(ligne_devis.produit_id)
+                qte_entiere = int(Decimal(quantite).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP))
+                qte_avant = produit.quantite_stock - stock_reserve.get(produit.id, 0)
+                qte_apres = qte_avant - qte_entiere
+                if qte_apres < 0:
+                    return Response(
+                        {'detail': (
+                            f'Stock insuffisant pour « {produit.nom} » '
+                            f'(disponible : {qte_avant}, requis : {qte_entiere}).'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                stock_reserve[produit.id] = stock_reserve.get(produit.id, 0) + qte_entiere
+                validated.append(
+                    (ligne_devis, produit, quantite, qte_entiere, qte_avant, qte_apres))
+
+            # Ecritures : MEME transaction que la validation ci-dessus (AUD216).
             livraison = LivraisonBC.objects.create(
                 company=bc.company, bon_commande=bc,
                 date_livraison=request.data.get('date_livraison') or timezone.now().date(),
@@ -370,12 +384,32 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Une facture existe déjà pour ce BC.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. La garde ci-dessus ne
+        # regardait que la chaîne BC : un devis déjà facturé par l'échéancier
+        # (acompte/tranche) passait ici sans obstacle, et le client recevait
+        # deux fois la même vente. Prédicat partagé, une seule définition de
+        # « déjà facturé » pour les deux portes.
+        from ..selectors import devis_deja_facture
+        if bc.devis_id and devis_deja_facture(bc.devis):
+            return Response(
+                {'detail': (
+                    f'Le devis {bc.devis.reference} est déjà (partiellement) '
+                    'facturé par son échéancier : facturer ce bon de commande '
+                    'facturerait la même vente une seconde fois.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         company = request.user.company
 
         def _create_facture(ref):
             facture = Facture.objects.create(
                 reference=ref,
                 bon_commande=bc,
+                # AUD112 — corollaire minimal : la facture PORTE son devis.
+                # Sans lui, `solde_devis`, `devis_a_facturer` et le suivi
+                # client ne voyaient tout simplement pas ce document (FK
+                # nullable, SET_NULL : rien ne casse si le devis disparaît).
+                devis=bc.devis,
                 client=bc.client,
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,

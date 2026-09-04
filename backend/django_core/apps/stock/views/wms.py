@@ -442,13 +442,27 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
         return qs
 
     def _sauver(self, serializer):
-        """Traduit le refus de chevauchement (ValueError posée dans
-        ``save()``) en 400 lisible plutôt qu'en 500."""
+        """Traduit le refus de chevauchement en 400 lisible plutôt qu'en 500.
+
+        Deux refus possibles, un seul message : la garde Python de ``save()``
+        (``ValueError``) sur le chemin courant, et — AUD214 — l'
+        ``ExclusionConstraint`` de la base (``IntegrityError``) quand deux
+        requêtes concurrentes ont lu AVANT que l'autre n'insère. La sauvegarde
+        est enveloppée dans son propre bloc atomique pour que l'
+        ``IntegrityError`` n'empoisonne pas la transaction courante.
+        """
+        from django.db import IntegrityError, transaction
         try:
-            serializer.save(company=self.request.user.company)
+            with transaction.atomic():
+                serializer.save(company=self.request.user.company)
         except ValueError as exc:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'detail': str(exc)})
+        except IntegrityError:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'detail': (
+                'Ce créneau vient d\'être réservé sur ce quai, '
+                'choisissez-en un autre.')})
 
     def perform_create(self, serializer):
         self._sauver(serializer)
