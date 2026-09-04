@@ -78,6 +78,10 @@ TRACKED_MODELS = [
     ('btp_chantier', 'ReserveChantier'),
     ('btp_chantier', 'VisaDocument'),
     ('btp_chantier', 'AvenantChantier'),
+    # AUD813 — le changelog produit est GLOBAL (aucune FK société) et republié
+    # sans authentification par ``apps.publicapi`` : son écriture (désormais
+    # réservée au superutilisateur) doit laisser une trace au Journal.
+    ('core', 'ChangelogEntry'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).

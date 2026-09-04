@@ -895,13 +895,22 @@ class ChangelogViewSet(viewsets.ModelViewSet):
 
     Le changelog est GLOBAL au produit (aucune portée société) : la lecture est
     ouverte à tout utilisateur authentifié et ne renvoie que les notes publiées ;
-    l'écriture (publication) est réservée au palier admin. Le suivi de lecture
+    l'écriture (publication) est réservée à l'ÉDITEUR. Le suivi de lecture
     est PAR UTILISATEUR. Aucune importation d'app domaine.
 
       * ``GET …/changelog/``            — notes publiées + drapeau ``lu``.
       * ``GET …/changelog/non_lues/``   — compte de notes non lues.
       * ``POST …/changelog/{id}/marquer_lu/`` — accuse lecture d'une note.
       * ``POST …/changelog/marquer_tout_lu/`` — accuse lecture de tout.
+
+    AUD813 — l'écriture est réservée au SUPERUTILISATEUR Django
+    (``_IsSuperUser``, le même palier que ``TenantUsageSnapshotViewSet`` /
+    ``OutboxEventViewSet`` / ``maintenance_toggle``) et NON à ``IsAdminRole`` :
+    la table n'a aucune FK société et ``apps/publicapi`` republie les notes
+    publiées en ``AllowAny``, donc un ``role_legacy='admin'`` de n'importe quel
+    tenant pouvait publier chez TOUS les tenants (et sur l'endpoint public sans
+    clé), ou supprimer les notes de l'éditeur. ``('core', 'ChangelogEntry')``
+    est par ailleurs suivi par le Journal d'activité (``TRACKED_MODELS``).
     """
     serializer_class = ChangelogEntrySerializer
     pagination_class = None
@@ -910,7 +919,9 @@ class ChangelogViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve', 'non_lues', 'marquer_lu',
                            'marquer_tout_lu'):
             return [IsAuthenticated()]
-        return [IsAdminRole()]
+        # AUD813 — toute méthode NON SÛRE (create/update/partial_update/
+        # destroy) : superutilisateur uniquement, jamais un admin de tenant.
+        return [_IsSuperUser()]
 
     def get_queryset(self):
         qs = ChangelogEntry.objects.all()
