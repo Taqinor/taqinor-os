@@ -28,7 +28,7 @@ import logging
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -2360,6 +2360,27 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
+    # AUD701 — MATÉRIALISATION des retenues salariales, contrat partagé
+    # ``apps/paie/contract_samples/bulletin_lignes.json``. Jusqu'ici CNSS/AMO/
+    # CIMR/IR n'étaient QUE soustraites arithmétiquement du net (cf. calcul du
+    # net à payer plus bas) : le seul document remis au salarié passait donc du
+    # salaire de base au net à payer SANS UNE SEULE LIGNE d'explication.
+    #
+    # ATTENTION — ces quatre lignes sont un AFFICHAGE, pas un calcul : elles ne
+    # rejoignent AUCUN accumulateur (``retenues_variables`` / ``net_a_payer``
+    # déduisent déjà ces montants). Les y ajouter les compterait DEUX FOIS.
+    for _code, _libelle, _type_ligne, _montant in (
+        ('CNSS_SAL', 'CNSS (part salariale)', Rubrique.TYPE_COTISATION, cnss),
+        ('AMO_SAL', 'AMO (part salariale)', Rubrique.TYPE_COTISATION, amo),
+        ('CIMR_SAL', 'CIMR (part salariale)', Rubrique.TYPE_COTISATION, cimr),
+        ('IR', 'Impôt sur le revenu', Rubrique.TYPE_RETENUE, ir),
+    ):
+        if _montant > 0:
+            lignes.append({
+                'code': _code, 'libelle': _libelle,
+                'type': _type_ligne, 'montant': _q(_montant),
+            })
+
     # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
     # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
     # effective de ``montant_rembourse`` se fait à la validation du bulletin
@@ -2971,6 +2992,10 @@ def valider_bulletin(bulletin):
     if bulletin.statut == BulletinPaie.STATUT_VALIDE:
         return bulletin
     _resynchroniser_snapshot_avant_validation(bulletin)
+    # AUD705 — un salarié affilié CNSS dont la fiche RH porte un numéro ne
+    # part pas en bulletin avec un n° CNSS vide (voir le périmètre exact,
+    # blocage vs signalement, dans ``verifier_numero_cnss_bulletin``).
+    verifier_numero_cnss_bulletin(bulletin)
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
@@ -3004,6 +3029,14 @@ def valider_bulletin(bulletin):
             extourner_provisions_gratification(bulletin.profil)
         except Exception:  # pragma: no cover - défensif, best-effort
             pass
+    # AUD703 — l'ARCHIVE IMMUABLE du PDF (doctrine D9) n'est PAS posée ici :
+    # elle l'est à la PREMIÈRE ÉMISSION du document validé
+    # (``builders.bulletin_pdf_a_servir``). Rendre un PDF WeasyPrint et
+    # téléverser dans l'entrepôt à l'intérieur de CHAQUE validation de paie
+    # coûterait une génération complète par bulletin et ferait dépendre la
+    # validation d'un service externe — alors qu'un bulletin jamais émis n'a
+    # rien à archiver. À partir de la première émission, la réémission sert
+    # TOUJOURS cette archive, jamais un re-rendu.
     # XPAI21 — Notifie l'employé lié (rh.DossierEmploye.user) que son
     # bulletin validé est disponible dans son coffre-fort (PAIE35).
     # Best-effort : jamais bloquant pour la validation.
@@ -3298,6 +3331,57 @@ def controler_coherence_rib(periode):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return divergences
+
+
+class NumeroCnssManquant(ValueError):
+    """AUD705 — validation refusée : n° CNSS connu côté RH, absent en paie."""
+
+
+def verifier_numero_cnss_bulletin(bulletin):
+    """AUD705 — refuse de valider un bulletin au n° CNSS silencieusement vide.
+
+    Le numéro existe en DEUX exemplaires indépendants (``ProfilPaie.
+    numero_cnss`` et ``rh.DossierEmploye.cnss``), tous deux ``blank=True``, et
+    ``bulletin_context`` imprimait ``profil.numero_cnss or ''`` — un bulletin
+    d'un salarié affilié CNSS pouvait donc partir avec un n° CNSS VIDE alors
+    que la fiche RH le connaissait, sans la moindre alerte.
+
+    PÉRIMÈTRE DÉLIBÉRÉ — on BLOQUE l'OMISSION, on SIGNALE la DIVERGENCE :
+
+    * numéro connu côté RH et ABSENT côté paie → refus de validation. Le fait
+      est certain (l'information existe, elle n'a pas été reprise), la
+      correction est mécanique.
+    * deux numéros NON VIDES qui diffèrent → jamais un blocage : c'est la
+      doctrine posée par WIR89 (« CONTRÔLE croisé, jamais une fusion —
+      signaler pour qu'un humain tranche »). L'écart remonte désormais AUSSI
+      dans ``avertissements_periode``, le panneau lu AVANT de payer, au lieu
+      d'une seule notification au moment de la déclaration.
+    * aucun numéro nulle part → pas de blocage ici : c'est déjà un
+      avertissement ``cnss_manquant`` de gravité « bloquant » sur ce même
+      panneau, et refuser rétroactivement toute paie d'une société qui n'a pas
+      encore saisi ses numéros ferait plus de dégâts que le défaut.
+
+    Lecture RH via ``apps.rh.selectors`` uniquement (jamais ``rh.models``).
+    """
+    profil = getattr(bulletin, 'profil', None)
+    if profil is None or not getattr(profil, 'affilie_cnss', False):
+        return
+    if (profil.numero_cnss or '').strip():
+        return
+    if not getattr(profil, 'employe_id', None):
+        return
+    from apps.rh import selectors as rh_selectors
+
+    reference = (
+        rh_selectors.cnss_par_employe(profil.company, [profil.employe_id])
+        .get(profil.employe_id) or '')
+    if not reference.strip():
+        return
+    raise NumeroCnssManquant(
+        "Numéro CNSS absent du profil de paie alors que la fiche RH le "
+        "renseigne : reprenez-le sur le profil avant de valider ce bulletin "
+        "(le bulletin et le bordereau CNSS partiraient sans numéro)."
+    )
 
 
 def controler_coherence_cnss(periode):
@@ -4179,20 +4263,40 @@ def deposer_bds_principal(periode):
     enregistré s'il existe. Couvre TOUS les salariés affiliés CNSS de la
     déclaration (``declaration_cnss``). Renvoie le ``DepotBDS`` (créé ou
     existant).
+
+    AUD713 — la promesse « un seul dépôt principal » n'était garantie par RIEN :
+    ni verrou (``filter().first()`` puis ``create()``), ni contrainte DB. Deux
+    appels concurrents créaient deux dépôts principaux pour la même période.
+    Elle est maintenant tenue à DEUX niveaux : le verrou de période sérialise
+    les appels concurrents (il n'y a aucune ligne de dépôt à verrouiller tant
+    qu'aucun dépôt n'existe), et la contrainte
+    ``uniq_depot_bds_principal_par_periode`` ferme la course au niveau DB
+    quoi que fasse le code applicatif. Une course perdue relit le dépôt du
+    gagnant au lieu de lever : la fonction reste idempotente.
     """
     from .models import DepotBDS
 
-    existant = DepotBDS.objects.filter(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
-    if existant is not None:
-        return existant
+    filtre = dict(company=periode.company, periode=periode,
+                  type_depot=DepotBDS.TYPE_PRINCIPAL)
+    with transaction.atomic():
+        PeriodePaie.objects.select_for_update().filter(pk=periode.pk).first()
+        existant = DepotBDS.objects.filter(**filtre).first()
+        if existant is not None:
+            return existant
 
-    decl = declaration_cnss(periode)
-    profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
-    return DepotBDS.objects.create(
-        company=periode.company, periode=periode,
-        type_depot=DepotBDS.TYPE_PRINCIPAL, profils_couverts=profils)
+        decl = declaration_cnss(periode)
+        profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
+        try:
+            # Bloc imbriqué : une IntegrityError casse la transaction
+            # courante, il faut un point de sauvegarde pour pouvoir relire.
+            with transaction.atomic():
+                return DepotBDS.objects.create(
+                    profils_couverts=profils, **filtre)
+        except IntegrityError:
+            gagnant = DepotBDS.objects.filter(**filtre).first()
+            if gagnant is None:  # pragma: no cover - défensif
+                raise
+            return gagnant
 
 
 def deposer_bds_complementaire(periode, profils_delta, *, depot_principal=None):
@@ -4868,9 +4972,11 @@ def avertissements_periode(periode):
     profils = (
         ProfilPaie.objects.filter(company=company, actif=True)
         .select_related('employe'))
+    libelles = {}
     for profil in profils:
         dossier = profil.employe
         nom = f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+        libelles[profil.id] = (dossier, nom)
         if (profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_VIREMENT
                 and not profil.rib):
             avertissements.append({
@@ -4889,6 +4995,31 @@ def avertissements_periode(periode):
                 'message': f'{nom} — salaire de base à 0 : le bulletin '
                            'sera nul.',
             })
+
+    # AUD705 — DIVERGENCE n° CNSS paie ↔ RH. Elle n'existait que sous forme de
+    # notification interne émise par ``controler_coherence_cnss`` AU MOMENT de
+    # la déclaration — donc APRÈS que les bulletins soient partis. Elle remonte
+    # désormais sur le panneau lu AVANT de payer. Ni blocage (WIR89 :
+    # « CONTRÔLE croisé, jamais une fusion — un humain tranche »), ni numéro
+    # dans le message (donnée sensible, comme la notification WIR89).
+    from . import selectors as paie_selectors
+
+    try:
+        divergences = paie_selectors.divergences_cnss_periode(periode)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        divergences = []
+    for divergence in divergences:
+        dossier, nom = libelles.get(divergence['profil_id'], (None, ''))
+        avertissements.append({
+            'type': 'cnss_divergent',
+            'employe_id': dossier.id if dossier else divergence['employe_id'],
+            'matricule': dossier.matricule if dossier else '',
+            'nom': nom,
+            'gravite': 'avertissement',
+            'message': f'{nom} — le n° CNSS du profil de paie diffère de '
+                       'celui de la fiche RH : à trancher avant la '
+                       'déclaration (aucune correction automatique).',
+        })
 
     return avertissements
 
@@ -5626,15 +5757,18 @@ def calculer_gratification(profil, periode, *, annee_reference=None,
             'libelle': '13e mois / prime de bilan (prorata présence)',
             'type': Rubrique.TYPE_GAIN, 'montant': montant_brut,
         })
+    # AUD701 — même vocabulaire que ``calculer_bulletin`` (contrat partagé
+    # ``contract_samples/bulletin_lignes.json``) : le bulletin de gratification
+    # se rend avec le MÊME gabarit, il doit parler les mêmes codes/types.
     if cnss_sal > 0:
         lignes.append({
-            'code': 'CNSS_SAL', 'libelle': 'CNSS salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': cnss_sal,
+            'code': 'CNSS_SAL', 'libelle': 'CNSS (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': cnss_sal,
         })
     if amo_sal > 0:
         lignes.append({
-            'code': 'AMO_SAL', 'libelle': 'AMO salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': amo_sal,
+            'code': 'AMO_SAL', 'libelle': 'AMO (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': amo_sal,
         })
     if ir > 0:
         lignes.append({
