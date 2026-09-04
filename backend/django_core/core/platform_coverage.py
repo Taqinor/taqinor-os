@@ -266,6 +266,90 @@ def stale_baseline(manifests=None):
     }
 
 
+# ── AUD606 — surfaces à CHEMIN DOTTÉ : déclarées ≠ résolubles ────────────────
+#
+# ``kpi_providers`` et ``agent_actions_module`` ne nomment pas des modèles mais
+# des CALLABLES/MODULES par chemin dotté. Leurs consommateurs les résolvent en
+# silence et IGNORENT ce qui ne résout pas :
+# ``reporting.reports.kpi_federes`` saute toute clé sans point (« clé libre
+# héritée ») puis toute ``ImportError``/``AttributeError`` — « jamais un 500 ».
+# Excellent en production, aveugle en revue : ``apps/crm/platform.py`` a déclaré
+# pendant des mois ``kpi_providers: ['crm_sales_report']`` — sans point — et le
+# hub KPI fédéré n'a jamais affiché la moindre tuile de funnel commercial sans
+# que rien ne le dise. Une surface DÉCLARÉE mais non câblée est exactement ce
+# que la règle d'honnêteté ARC41 refuse.
+
+#: Chemins dottés TOLÉRÉS bien que non résolubles, avec leur raison. Vide
+#: aujourd'hui : toute entrée ajoutée ici doit porter un commentaire.
+BASELINE_PROVIDERS: set[tuple[str, str, str]] = set()
+
+
+def _resout_en_callable(dotted):
+    import importlib
+
+    if '.' not in dotted:
+        return False, 'chemin sans point : le hub le saute comme « clé libre »'
+    module_path, nom = dotted.rsplit('.', 1)
+    try:
+        cible = getattr(importlib.import_module(module_path), nom)
+    except (ImportError, AttributeError) as exc:
+        return False, f'introuvable ({exc.__class__.__name__})'
+    if not callable(cible):
+        return False, "résout, mais n'est pas appelable"
+    return True, ''
+
+
+def _resout_en_module(dotted):
+    import importlib
+
+    try:
+        importlib.import_module(dotted)
+    except ImportError as exc:
+        return False, f'module introuvable ({exc.__class__.__name__})'
+    return True, ''
+
+
+def all_providers_drift(manifests=None):
+    """Chemins dottés DÉCLARÉS mais non résolubles.
+
+    Renvoie un ``set`` de ``(module_key, surface, valeur)``. Vide = toutes les
+    surfaces à chemin dotté sont RÉELLEMENT câblées.
+    """
+    if manifests is None:
+        manifests = platform.collect_platform_manifests()
+
+    findings: set[tuple[str, str, str]] = set()
+    for cle, manifest in manifests.items():
+        for dotted in (manifest.get('kpi_providers') or ()):
+            ok, _motif = _resout_en_callable(dotted)
+            if not ok:
+                findings.add((cle, 'kpi_providers', dotted))
+        module = (manifest.get('agent_actions_module') or '').strip()
+        if module:
+            ok, _motif = _resout_en_module(module)
+            if not ok:
+                findings.add((cle, 'agent_actions_module', module))
+    return findings
+
+
+def new_providers_drift(manifests=None):
+    """Chemins dottés non résolubles HORS baseline — font échouer le test."""
+    return all_providers_drift(manifests) - BASELINE_PROVIDERS
+
+
+def format_providers_drift(findings):
+    """Message FR listant chaque chemin fautif et POURQUOI il ne résout pas."""
+    lignes = []
+    for cle, surface, dotted in sorted(findings):
+        if surface == 'kpi_providers':
+            _ok, motif = _resout_en_callable(dotted)
+        else:
+            _ok, motif = _resout_en_module(dotted)
+        lignes.append(
+            f'  - {cle}.{surface} : « {dotted} » — {motif}')
+    return '\n'.join(lignes)
+
+
 def platform_matrix(manifests=None):
     """Matrice de couverture des surfaces, par modèle ``'app.model'``.
 
