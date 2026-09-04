@@ -243,19 +243,23 @@ class TestAvancerStagePourDevis(TestCase):
         self.assertEqual(act.user_id, self.user.id)
         self.assertEqual(act.company_id, self.company.id)
 
-    def test_accepte_moves_to_signed_and_logs(self):
+    def test_patch_statut_accepte_rejected_lead_not_advanced(self):
+        """AUD505 — un PATCH brut vers « accepte » ne fait plus rien : seul
+        POST /devis/<id>/accepter/ (accept_devis) peut faire avancer le
+        statut ET le lead. Avant le fix, ce PATCH réussissait (200) et
+        faisait passer le lead en SIGNED sans jamais appeler accept_devis
+        (pas de contrôle crédit, pas de devis_accepted, pas de Chantier)."""
         devis_id, ref = self._create_devis(self.lead)
         self._patch_statut(devis_id, 'envoye')
         resp = self._patch_statut(devis_id, 'accepte')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.status_code, 400, resp.data)
+        devis = Devis.objects.get(pk=devis_id)
+        self.assertEqual(devis.statut, 'envoye')
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage, 'SIGNED')
-        act = self._stage_acts().first()  # plus récent en premier
-        self.assertEqual(act.new_value, stages.STAGE_LABELS['SIGNED'])
-        self.assertEqual(act.new_value, 'Signé')
-        self.assertIn('auto — devis', act.body)
-        self.assertIn(ref, act.body)
-        self.assertIn('accepté', act.body)
+        # Le lead reste où l'envoi l'a amené (QUOTE_SENT) — jamais SIGNED
+        # via un PATCH brut.
+        self.assertEqual(self.lead.stage, 'QUOTE_SENT')
+        self.assertEqual(self._stage_acts().count(), 1)  # seul l'envoi a loggé
 
     def test_create_directly_envoye_moves_stage(self):
         self._create_devis(self.lead, {'statut': 'envoye'})

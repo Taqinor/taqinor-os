@@ -781,6 +781,25 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             'overrides']
         extra_kwargs = {'client': {'required': False}}
 
+    def validate_statut(self, value):
+        """AUD505 — ACCEPTE/REFUSE/EXPIRE ont chacun leur porte dédiée et
+        gardée : ``/accepter/`` (``accept_devis`` — contrôle crédit XFAC28,
+        avertissement vente ZSAL9, événement ``devis_accepted`` → création
+        Chantier), ``/refuser/`` (garde de statut + ``devis_refused``), et
+        EXPIRE posé par le seul système (domain/recouvrement.py). Un PATCH
+        brut du corps ne passait par AUCUNE de ces gardes tout en faisant
+        avancer le lead CRM en SIGNED via ``perform_update`` →
+        ``avancer_stage_pour_devis`` — c'est ce trou que cette validation
+        ferme. BROUILLON/ENVOYE restent écrivables ici (matrice
+        d'approbation NTCPQ7/8, funnel QUOTE_SENT inchangés)."""
+        bloques = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
+                   Devis.Statut.EXPIRE}
+        if value in bloques:
+            raise serializers.ValidationError(
+                'Statut réservé à une action dédiée (« accepter » / '
+                '« refuser ») — jamais un PATCH direct du corps.')
+        return value
+
 
 class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
