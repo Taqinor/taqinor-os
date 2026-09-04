@@ -79,40 +79,40 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/compta/services.py:236` | get_or_create | CompteComptable.objects | company, numero |
 | `backend/django_core/apps/compta/services.py:271` | get_or_create | Journal.objects | code, company |
 | `backend/django_core/apps/compta/services.py:1315` | get_or_create | PeriodeComptable.objects | company, date_debut, date_fin |
-| `backend/django_core/apps/compta/services.py:1630` | get_or_create | ExerciceComptable.objects | company, date_debut, date_fin |
-| `backend/django_core/apps/compta/services.py:1700` | get_or_create | Journal.objects | code, company |
-| `backend/django_core/apps/compta/services.py:1884` | get_or_create | Journal.objects | code, company |
-| `backend/django_core/apps/compta/services.py:2016` | get_or_create | PlanAmortissement.objects | company, immobilisation |
-| `backend/django_core/apps/compta/services.py:2209` | get_or_create | CompteComptable.objects | company, numero |
-| `backend/django_core/apps/compta/services.py:4015` | get_or_create | Rapprochement.objects | bon_commande_id, company |
-| `backend/django_core/apps/compta/services.py:4377` | get_or_create | ParametresTresorerie.objects | company |
-| `backend/django_core/apps/compta/services.py:5951` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:1636` | get_or_create | ExerciceComptable.objects | company, date_debut, date_fin |
+| `backend/django_core/apps/compta/services.py:1706` | get_or_create | Journal.objects | code, company |
+| `backend/django_core/apps/compta/services.py:1890` | get_or_create | Journal.objects | code, company |
+| `backend/django_core/apps/compta/services.py:2022` | get_or_create | PlanAmortissement.objects | company, immobilisation |
+| `backend/django_core/apps/compta/services.py:2215` | get_or_create | CompteComptable.objects | company, numero |
+| `backend/django_core/apps/compta/services.py:4021` | get_or_create | Rapprochement.objects | bon_commande_id, company |
+| `backend/django_core/apps/compta/services.py:4383` | get_or_create | ParametresTresorerie.objects | company |
 | `backend/django_core/apps/compta/services.py:5957` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:5969` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:5984` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:5998` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6003` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6813` | get_or_create | CentreCout.objects | code, company |
-| `backend/django_core/apps/compta/services.py:7099` | get_or_create | EntiteConsolidation.objects | company, entite |
-| `backend/django_core/apps/compta/services.py:7322` | update_or_create | StatutEngagementContact.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:7333` | update_or_create | StatutEngagementContact.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:7977` | get_or_create | RebondSoft.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8159` | get_or_create | SuppressionMarketing.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8209` | get_or_create | SuppressionMarketing.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8392` | get_or_create | AbonnementListe.objects | destinataire, liste |
-| `backend/django_core/apps/compta/services.py:9553` | get_or_create | OuverturePartage.objects | company, token |
-| `backend/django_core/apps/compta/services.py:9593` | get_or_create | MessageWhatsAppEntrant.objects | company, wa_message_id |
-| `backend/django_core/apps/compta/services.py:10498` | get_or_create | MappingCompte.objects | clef, company, type_clef |
-| `backend/django_core/apps/compta/services.py:11361` | get_or_create | PlanAmortissementFiscal.objects | company, plan_comptable |
-| `backend/django_core/apps/compta/services.py:11719` | update_or_create | LigneReevaluation.objects | item, reevaluation |
-| `backend/django_core/apps/compta/services.py:11841` | get_or_create | VentilationAnalytique.objects | company, ligne_ecriture |
-| `backend/django_core/apps/compta/services.py:13206` | update_or_create | LiasseRemontee.objects | company, cycle, entite |
-| `backend/django_core/apps/compta/services.py:13551` | get_or_create | ReferentielComptable.objects | code, company |
-| `backend/django_core/apps/compta/services.py:13872` | get_or_create | ModeleCloture.objects | company, libelle, periodicite |
-| `backend/django_core/apps/compta/services.py:13878` | get_or_create | TacheClotureModele.objects | company, libelle, modele |
-| `backend/django_core/apps/compta/services.py:13894` | get_or_create | InstanceCloture.objects | company, periode |
-| `backend/django_core/apps/compta/services.py:14116` | get_or_create | RapprochementCompte.objects | company, compte, periode |
-| `backend/django_core/apps/compta/services.py:14523` | get_or_create | AcompteIS.objects | company, exercice, rang |
+| `backend/django_core/apps/compta/services.py:5963` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:5975` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:5990` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:6004` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:6009` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
+| `backend/django_core/apps/compta/services.py:6819` | get_or_create | CentreCout.objects | code, company |
+| `backend/django_core/apps/compta/services.py:7105` | get_or_create | EntiteConsolidation.objects | company, entite |
+| `backend/django_core/apps/compta/services.py:7328` | update_or_create | StatutEngagementContact.objects | company, destinataire |
+| `backend/django_core/apps/compta/services.py:7339` | update_or_create | StatutEngagementContact.objects | company, destinataire |
+| `backend/django_core/apps/compta/services.py:7983` | get_or_create | RebondSoft.objects | company, destinataire |
+| `backend/django_core/apps/compta/services.py:8165` | get_or_create | SuppressionMarketing.objects | company, destinataire |
+| `backend/django_core/apps/compta/services.py:8215` | get_or_create | SuppressionMarketing.objects | company, destinataire |
+| `backend/django_core/apps/compta/services.py:8398` | get_or_create | AbonnementListe.objects | destinataire, liste |
+| `backend/django_core/apps/compta/services.py:9559` | get_or_create | OuverturePartage.objects | company, token |
+| `backend/django_core/apps/compta/services.py:9599` | get_or_create | MessageWhatsAppEntrant.objects | company, wa_message_id |
+| `backend/django_core/apps/compta/services.py:10504` | get_or_create | MappingCompte.objects | clef, company, type_clef |
+| `backend/django_core/apps/compta/services.py:11367` | get_or_create | PlanAmortissementFiscal.objects | company, plan_comptable |
+| `backend/django_core/apps/compta/services.py:11725` | update_or_create | LigneReevaluation.objects | item, reevaluation |
+| `backend/django_core/apps/compta/services.py:11847` | get_or_create | VentilationAnalytique.objects | company, ligne_ecriture |
+| `backend/django_core/apps/compta/services.py:13212` | update_or_create | LiasseRemontee.objects | company, cycle, entite |
+| `backend/django_core/apps/compta/services.py:13557` | get_or_create | ReferentielComptable.objects | code, company |
+| `backend/django_core/apps/compta/services.py:13878` | get_or_create | ModeleCloture.objects | company, libelle, periodicite |
+| `backend/django_core/apps/compta/services.py:13884` | get_or_create | TacheClotureModele.objects | company, libelle, modele |
+| `backend/django_core/apps/compta/services.py:13900` | get_or_create | InstanceCloture.objects | company, periode |
+| `backend/django_core/apps/compta/services.py:14122` | get_or_create | RapprochementCompte.objects | company, compte, periode |
+| `backend/django_core/apps/compta/services.py:14529` | get_or_create | AcompteIS.objects | company, exercice, rang |
 | `backend/django_core/apps/contrats/management/commands/seed_motifs_resiliation.py:40` | get_or_create | MotifResiliation.objects | code, company |
 | `backend/django_core/apps/contrats/management/commands/seed_plans_recurrents.py:34` | get_or_create | PlanRecurrent.objects | company, nom |
 | `backend/django_core/apps/contrats/services.py:4684` | update_or_create | CompteurUsage.objects | cible_id, code_compteur, company, periode_debut, periode_fin, type_cible |
@@ -226,15 +226,15 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/views.py:221` | get_or_create | WorkingHoursConfig.objects | company |
 | `backend/django_core/apps/notifications/views.py:436` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
-| `backend/django_core/apps/paie/services.py:118` | get_or_create | ParametrePaie.objects | company, date_effet |
-| `backend/django_core/apps/paie/services.py:126` | get_or_create | BaremeIR.objects | company, date_effet |
-| `backend/django_core/apps/paie/services.py:300` | get_or_create | Rubrique.objects | code, company |
-| `backend/django_core/apps/paie/services.py:373` | get_or_create | TypeEntreePonctuelle.objects | code, company |
-| `backend/django_core/apps/paie/services.py:2902` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
-| `backend/django_core/apps/paie/services.py:5147` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
-| `backend/django_core/apps/paie/services.py:5834` | get_or_create | StructurePaie.objects | code, company |
-| `backend/django_core/apps/paie/services.py:5844` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
-| `backend/django_core/apps/paie/services.py:5870` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
+| `backend/django_core/apps/paie/services.py:132` | get_or_create | ParametrePaie.objects | company, date_effet |
+| `backend/django_core/apps/paie/services.py:140` | get_or_create | BaremeIR.objects | company, date_effet |
+| `backend/django_core/apps/paie/services.py:324` | get_or_create | Rubrique.objects | code, company |
+| `backend/django_core/apps/paie/services.py:397` | get_or_create | TypeEntreePonctuelle.objects | code, company |
+| `backend/django_core/apps/paie/services.py:3105` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
+| `backend/django_core/apps/paie/services.py:5526` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
+| `backend/django_core/apps/paie/services.py:6222` | get_or_create | StructurePaie.objects | code, company |
+| `backend/django_core/apps/paie/services.py:6232` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
+| `backend/django_core/apps/paie/services.py:6258` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
 | `backend/django_core/apps/parametres/models_company.py:759` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:764` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
