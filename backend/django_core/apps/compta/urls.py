@@ -81,6 +81,8 @@ from .views import (
     AbonnementEcritureViewSet,
     # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
     EmpruntViewSet, EcheanceEmpruntViewSet, EtatPersonnaliseViewSet,
+    # AUDV06 — XACC17 / XACC18 : même constat, sur les devises.
+    TauxDeviseViewSet, ItemOuvertDeviseViewSet, ReevaluationClotureViewSet,
 )
 
 router = DefaultRouter()
@@ -239,6 +241,13 @@ router.register(r'echeances-emprunt', EcheanceEmpruntViewSet)
 # Route DISTINCTE de ``etats/`` (EtatsComptablesViewSet, les états FIGÉS
 # GL/balance/CPC/bilan) : deux ressources différentes, jamais fusionnées.
 router.register(r'etats-personnalises', EtatPersonnaliseViewSet)
+# ── AUDV06 / XACC17-XACC18 — Devises : taux, postes ouverts, réévaluation ──
+# Trois ressources dont le modèle ET le service existaient depuis XACC17/18
+# sans aucun ViewSet : la table FX était inatteignable hors admin Django, donc
+# tout document en devise retombait en silence sur le repli 1:1.
+router.register(r'taux-devise', TauxDeviseViewSet)
+router.register(r'items-ouverts-devise', ItemOuvertDeviseViewSet)
+router.register(r'reevaluations-cloture', ReevaluationClotureViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

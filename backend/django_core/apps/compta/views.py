@@ -101,6 +101,8 @@ from .models import (
     EtapeAuditConsolidation,
     # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
     Emprunt, EcheanceEmprunt, EtatPersonnalise,
+    # AUDV06 / XACC17-XACC18 — devises.
+    TauxDevise, ItemOuvertDevise, ReevaluationCloture,
 )
 from .serializers import (
     AcompteISSerializer, ConventionFiscaleSerializer,
@@ -192,6 +194,9 @@ from .serializers import (
     AbonnementEcritureSerializer,
     # WIR279 — XACC14 / XACC19.
     EmpruntSerializer, EcheanceEmpruntSerializer, EtatPersonnaliseSerializer,
+    # AUDV06 / XACC17-XACC18 — devises.
+    TauxDeviseSerializer, ItemOuvertDeviseSerializer,
+    ReevaluationClotureSerializer,
 )
 
 
@@ -10386,3 +10391,188 @@ class EtatPersonnaliseViewSet(_ComptaBaseViewSet):
                 for ligne in resultat['lignes']
             ],
         })
+
+
+# ── AUDV06 / XACC17-XACC18 — Devises (exposition REST) ─────────────────────
+
+class TauxDeviseViewSet(_ComptaBaseViewSet):
+    """Table des taux de change ``devise`` → MAD (XACC17).
+
+    AUDV06 — le modèle, l'upsert et le sélecteur ``taux_du_jour`` existaient
+    sans AUCUN ViewSet : la table FX était inatteignable hors admin Django, si
+    bien que tout document en devise retombait silencieusement sur le repli
+    1:1. La création est ROUTÉE par ``services.enregistrer_taux_devise`` (et
+    non par ``ModelSerializer.create``) pour que la règle « never snap » —
+    un feed n'écrase jamais une saisie manuelle du même jour — s'applique
+    aussi aux saisies faites depuis l'écran.
+    """
+    queryset = TauxDevise.objects.all()
+    serializer_class = TauxDeviseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_taux', 'devise', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        devise = self.request.query_params.get('devise')
+        if devise:
+            qs = qs.filter(devise=devise.upper())
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            taux = services.enregistrer_taux_devise(
+                request.user.company,
+                devise=donnees['devise'],
+                date_taux=donnees['date_taux'],
+                taux_vers_mad=donnees['taux_vers_mad'],
+                source=donnees.get('source'),
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(taux).data, status=status.HTTP_201_CREATED)
+
+
+class ItemOuvertDeviseViewSet(_ComptaBaseViewSet):
+    """Postes ouverts en devise suivis pour l'écart de change (XACC18).
+
+    AUDV06 — ``enregistrer_item_ouvert_devise`` et ``constater_ecart_change``
+    n'avaient aucun appelant : aucun écran ne pouvait déclarer un poste ouvert
+    ni constater son écart au règlement, donc le gain/la perte de change
+    n'entrait JAMAIS au grand livre.
+
+    La création passe par le service (idempotente par document : le taux
+    d'origine reste FIGÉ une fois posé — c'est la référence de mesure de
+    l'écart).
+    """
+    queryset = ItemOuvertDevise.objects.select_related('ecart_change').all()
+    serializer_class = ItemOuvertDeviseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['document_reference', 'devise']
+    ordering_fields = ['date_origine', 'devise', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        devise = params.get('devise')
+        if devise:
+            qs = qs.filter(devise=devise.upper())
+        solde = params.get('solde')
+        if solde in ('true', 'false'):
+            qs = qs.filter(solde=(solde == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy',
+                           'constater_ecart'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            item = services.enregistrer_item_ouvert_devise(
+                request.user.company,
+                type_document=donnees['type_document'],
+                document_id=donnees['document_id'],
+                document_reference=donnees.get('document_reference', '') or '',
+                devise=donnees['devise'],
+                montant_devise=donnees['montant_devise'],
+                taux_origine=donnees['taux_origine'],
+                date_origine=donnees['date_origine'],
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='constater-ecart')
+    def constater_ecart(self, request, pk=None):
+        """Constate l'écart de change RÉALISÉ au règlement (XACC18).
+
+        Corps : ``{'date_reglement': 'YYYY-MM-DD', 'taux_reglement'?}`` — sans
+        taux explicite, celui de la table au jour du règlement est utilisé
+        (repli : le taux d'origine, donc écart nul). Gain → crédit 733, perte
+        → débit 633 ; un écart NUL ne poste aucune écriture (rien à dire).
+        La vue REFUSE un second constat : un poste soldé n'a qu'UN écart
+        réalisé, et un double clic doit le DIRE plutôt que de rendre un 200
+        trompeur. Verrou de période (FG115) respecté par le service.
+        """
+        item = self.get_object()  # scopé société par TenantMixin.
+        if item.solde:
+            return Response(
+                {'detail': (
+                    "Ce poste est déjà soldé : son écart de change a déjà été "
+                    "constaté et ne peut pas l'être une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_reglement = request.data.get('date_reglement')
+        if not date_reglement:
+            return Response(
+                {'detail': 'Paramètre `date_reglement` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Date NORMALISÉE avant le service : il la pose telle quelle sur
+            # un champ date et la compare au verrou de période.
+            services.constater_ecart_change(
+                item, date_reglement=_parse_date(date_reglement),
+                taux_reglement=request.data.get('taux_reglement') or None,
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        # L'écart est renvoyé IMBRIQUÉ dans le poste (`ecart_change`) : l'écran
+        # a besoin du poste soldé ET de son écart en une seule réponse.
+        item.refresh_from_db()
+        return Response(
+            self.get_serializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class ReevaluationClotureViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Runs de réévaluation de clôture des postes en devise (XACC18).
+
+    LECTURE SEULE : un run ne se saisit pas, il se LANCE. ``services.
+    reevaluer_cloture`` n'avait aucun appelant — la perte/le gain LATENT de
+    change n'était donc jamais constaté à la clôture, alors que c'est
+    précisément l'écriture que le commissaire aux comptes attend.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = ReevaluationCloture.objects.prefetch_related(
+        'lignes__item').all()
+    serializer_class = ReevaluationClotureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cloture', 'id']
+
+    @action(detail=False, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_valider')])
+    def lancer(self, request):
+        """Lance (ou renvoie) le run de réévaluation d'une date de clôture.
+
+        Corps : ``{'date_cloture': 'YYYY-MM-DD'}``. IDEMPOTENT par (société,
+        date) : rejouer ne double jamais l'écriture — le run existant est
+        renvoyé tel quel. Poste l'écart LATENT (gain → 1701, perte → 2701) et
+        son EXTOURNE datée du lendemain, pour que l'exercice suivant reparte
+        du réel. Aucun poste en devise, ou aucun taux de clôture connu : le
+        run existe mais ne poste rien (jamais un écart inventé).
+        """
+        date_cloture = request.data.get('date_cloture')
+        if not date_cloture:
+            return Response(
+                {'detail': 'Paramètre `date_cloture` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            run = services.reevaluer_cloture(
+                request.user.company, date_cloture=_parse_date(date_cloture),
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(run).data, status=status.HTTP_201_CREATED)

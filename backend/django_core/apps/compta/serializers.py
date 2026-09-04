@@ -79,6 +79,10 @@ from .models import (
     # paramétrables) : services complets, aucun ViewSet jusqu'ici.
     Emprunt, EcheanceEmprunt,
     EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
+    # AUDV06 / XACC17-XACC18 — devises : taux, postes ouverts, écarts de
+    # change réalisés et runs de réévaluation de clôture.
+    TauxDevise, ItemOuvertDevise, EcartChange, ReevaluationCloture,
+    LigneReevaluation,
 )
 
 
@@ -3665,3 +3669,129 @@ class EtatPersonnaliseSerializer(serializers.ModelSerializer):
             'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
+
+
+# ── AUDV06 / XACC17-XACC18 — Devises : taux, postes ouverts, écarts ────────
+
+class TauxDeviseSerializer(serializers.ModelSerializer):
+    """Taux de change quotidien ``devise`` → MAD (XACC17).
+
+    AUDV06 — le modèle et ``services.enregistrer_taux_devise`` existaient sans
+    aucun ViewSet : la table FX était inatteignable hors admin Django, donc
+    tout document en devise retombait sur le repli 1:1. La création est ROUTÉE
+    par le service (upsert par (société, devise, jour) ; règle « never snap » :
+    un feed n'écrase JAMAIS une saisie manuelle du même jour).
+    """
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = TauxDevise
+        fields = [
+            'id', 'devise', 'date_taux', 'taux_vers_mad', 'source',
+            'source_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "MAD n'a pas besoin de table de taux (1:1).")
+        return devise
+
+    def validate_taux_vers_mad(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                'Un taux de change doit être strictement positif.')
+        return value
+
+
+class EcartChangeSerializer(serializers.ModelSerializer):
+    """Écart de change RÉALISÉ au règlement (XACC18) — LECTURE SEULE.
+
+    Un écart ne se saisit pas : il est CONSTATÉ par
+    ``services.constater_ecart_change`` au règlement (gain 733 / perte 633).
+    """
+    class Meta:
+        model = EcartChange
+        fields = [
+            'id', 'item', 'date_reglement', 'taux_reglement', 'difference',
+            'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class ItemOuvertDeviseSerializer(serializers.ModelSerializer):
+    """Poste ouvert en devise suivi pour l'écart de change (XACC18).
+
+    ``taux_origine`` est FIGÉ à la création : ré-enregistrer le même document
+    renvoie l'item existant sans l'écraser — c'est la référence contre
+    laquelle l'écart sera mesuré. ``solde`` bascule au constat de l'écart,
+    jamais par le corps de la requête.
+    """
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    contre_valeur_origine = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    ecart_change = EcartChangeSerializer(read_only=True)
+
+    class Meta:
+        model = ItemOuvertDevise
+        fields = [
+            'id', 'type_document', 'type_document_display', 'document_id',
+            'document_reference', 'devise', 'montant_devise', 'taux_origine',
+            'date_origine', 'solde', 'contre_valeur_origine', 'ecart_change',
+            'date_creation',
+        ]
+        read_only_fields = ['solde', 'date_creation']
+
+    def validate_devise(self, value):
+        devise = (value or '').upper()
+        if not devise:
+            raise serializers.ValidationError('Devise requise.')
+        if devise == 'MAD':
+            raise serializers.ValidationError(
+                "Un document en MAD n'a pas besoin de suivi de change.")
+        return devise
+
+    def validate_taux_origine(self, value):
+        if value is None or Decimal(value) <= 0:
+            raise serializers.ValidationError(
+                "Le taux d'origine doit être strictement positif.")
+        return value
+
+
+class LigneReevaluationSerializer(serializers.ModelSerializer):
+    """Détail par poste d'un run de réévaluation de clôture (XACC18)."""
+    document_reference = serializers.CharField(
+        source='item.document_reference', read_only=True)
+    devise = serializers.CharField(source='item.devise', read_only=True)
+
+    class Meta:
+        model = LigneReevaluation
+        fields = [
+            'id', 'item', 'document_reference', 'devise', 'taux_cloture',
+            'ecart',
+        ]
+        read_only_fields = fields
+
+
+class ReevaluationClotureSerializer(serializers.ModelSerializer):
+    """Run de réévaluation de clôture des postes en devise (XACC18).
+
+    LECTURE SEULE : un run naît de l'action ``lancer`` (idempotente par
+    (société, date de clôture)), qui poste l'écart LATENT et son extourne
+    datée du lendemain. Le rejouer ne double jamais l'écriture.
+    """
+    lignes = LigneReevaluationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReevaluationCloture
+        fields = [
+            'id', 'date_cloture', 'date_extourne', 'ecriture',
+            'ecriture_extourne', 'total_ecart', 'lignes', 'date_creation',
+        ]
+        read_only_fields = fields

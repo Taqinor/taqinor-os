@@ -745,6 +745,29 @@ const comptaApi = {
     ...resource('etats-personnalises'),
     evaluer: (id) => api.post(`/compta/etats-personnalises/${id}/evaluer/`),
   },
+
+  // ── AUDV06 / XACC17-XACC18 — Devises ──────────────────────────────────
+  // Le modèle, l'upsert de taux, le suivi des postes ouverts, l'écart de
+  // change réalisé et la réévaluation de clôture existaient TOUS côté
+  // services sans le moindre ViewSet : la table FX était inatteignable hors
+  // admin Django, donc tout document en devise retombait en silence sur le
+  // repli 1:1. `create` sur `tauxDevise` est un UPSERT par (devise, jour) —
+  // règle « never snap » : un feed n'écrase jamais une saisie manuelle.
+  tauxDevise: resource('taux-devise'),
+  itemsOuvertsDevise: {
+    ...resource('items-ouverts-devise'),
+    // Écart RÉALISÉ au règlement : gain 733 / perte 633. Un poste déjà soldé
+    // est REFUSÉ (400) — un écart réalisé ne se constate qu'une fois.
+    constaterEcart: (id, data) =>
+      api.post(`/compta/items-ouverts-devise/${id}/constater-ecart/`, data),
+  },
+  reevaluationsCloture: {
+    list: (params) => api.get('/compta/reevaluations-cloture/', { params }),
+    get: (id) => api.get(`/compta/reevaluations-cloture/${id}/`),
+    // Idempotent par (société, date de clôture) : rejouer ne double jamais
+    // l'écriture. Poste l'écart LATENT et son extourne datée du lendemain.
+    lancer: (data) => api.post('/compta/reevaluations-cloture/lancer/', data),
+  },
 }
 
 export default comptaApi
