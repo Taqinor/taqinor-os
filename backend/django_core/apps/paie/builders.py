@@ -73,22 +73,78 @@ _LIGNE_TPL = (
     '<td style="text-align:right">{montant}</td></tr>'
 )
 
+# AUD701 — le corps du bulletin porte désormais le TYPE et le SIGNE de chaque
+# ligne : sans eux, une retenue (stockée en positif) s'imprimait exactement
+# comme un gain.
+_LIGNE_TPL_DETAIL = (
+    '<tr><td>{code}</td><td>{libelle}</td><td>{type_libelle}</td>'
+    '<td style="text-align:right">{montant_signe}</td></tr>'
+)
+
+# AUD701 — les lignes 100 % PATRONALES. Elles ne diminuent JAMAIS le net du
+# salarié : elles sortent du corps du bulletin et vont dans un encadré
+# « information — non déduit ». La distinction salarial/patronal ne se lit PAS
+# sur ``type`` (ces lignes sont `cotisation`, comme les cotisations salariales
+# CNSS/AMO/CIMR) : elle se lit sur le CODE — c'est le contrat partagé
+# ``apps/paie/contract_samples/bulletin_lignes.json`` qui le dit, et
+# ``services._CODES_PATRONALES_ITEMISEES`` porte la même liste côté moteur.
+CODES_PATRONAUX_INFORMATIFS = ('MUTUELLE_PAT', 'ALLOC_FAM', 'FORMATION_PRO')
+
+_TYPE_LIBELLES = {
+    'gain': 'Gain',
+    'retenue': 'Retenue',
+    'cotisation': 'Cotisation',
+}
+
+
+def _ligne_context(ligne):
+    """Une ``LigneBulletin`` → dict d'affichage (échappé, signé, typé)."""
+    type_ligne = ligne.type or 'gain'
+    montant = Decimal(ligne.montant or 0)
+    # Un gain s'imprime tel quel ; une retenue/cotisation s'imprime avec
+    # l'effet de son sens (négatif). Un bulletin d'ANNULATION porte des
+    # montants déjà négatifs : la même règle rend alors la retenue en positif,
+    # ce qui EST l'extourne correcte.
+    signe = montant if type_ligne == 'gain' else -montant
+    return {
+        'code': escape(ligne.code or ''),
+        'libelle': escape(ligne.libelle or ''),
+        'type': type_ligne,
+        'type_libelle': escape(_TYPE_LIBELLES.get(type_ligne, type_ligne)),
+        'montant': _fmt(montant),
+        'montant_signe': _fmt(signe),
+        'montant_brut': montant,
+    }
+
 
 def bulletin_context(bulletin):
     """Contexte de rendu d'un bulletin (dict de chaînes prêtes à afficher).
 
     Lecture seule : ne lit que des champs publics du bulletin et de son profil.
+
+    AUD701 — les lignes sont désormais RÉPARTIES en trois blocs (contrat
+    ``apps/paie/contract_samples/bulletin_lignes.json``) : ``gains``,
+    ``retenues`` (salariales — cotisations CNSS/AMO/CIMR, IR, avances,
+    saisies, mutuelle) et ``patronal`` (informatif, jamais déduit du net).
+    ``lignes`` reste la liste complète, inchangée pour ses autres appelants.
     """
     profil = bulletin.profil
     periode = bulletin.periode
-    lignes = [
-        {
-            'code': escape(ligne.code or ''),
-            'libelle': escape(ligne.libelle or ''),
-            'montant': _fmt(ligne.montant),
-        }
-        for ligne in bulletin.lignes.all()
-    ]
+    lignes = [_ligne_context(ligne) for ligne in bulletin.lignes.all()]
+    gains, retenues, patronal = [], [], []
+    for ligne in lignes:
+        if ligne['code'] in CODES_PATRONAUX_INFORMATIFS:
+            patronal.append(ligne)
+        elif ligne['type'] == 'gain':
+            gains.append(ligne)
+        else:
+            retenues.append(ligne)
+    # Sous-total DÉRIVÉ des lignes réellement imprimées — jamais un montant
+    # reconstruit à côté (règle « zéro chiffre inventé »).
+    total_retenues = sum(
+        (ligne['montant_brut'] for ligne in retenues), Decimal('0'))
+    total_patronal = sum(
+        (ligne['montant_brut'] for ligne in patronal), Decimal('0'))
     return {
         'employe': escape(_nom_employe(profil)),
         'matricule': escape(
@@ -96,7 +152,15 @@ def bulletin_context(bulletin):
         'numero_cnss': escape(profil.numero_cnss or ''),
         'periode': escape(_libelle_periode(periode)),
         'lignes': lignes,
+        'gains': gains,
+        'retenues': retenues,
+        'patronal': patronal,
+        'total_retenues': _fmt(total_retenues),
+        'total_patronal': _fmt(total_patronal),
         'brut': _fmt(bulletin.brut),
+        'brut_imposable': _fmt(bulletin.brut_imposable),
+        'frais_professionnels': _fmt(bulletin.frais_professionnels),
+        'net_imposable': _fmt(bulletin.net_imposable),
         'cnss': _fmt(bulletin.cnss_salariale),
         'amo': _fmt(bulletin.amo_salariale),
         'cimr': _fmt(bulletin.cimr_salariale),
@@ -105,29 +169,95 @@ def bulletin_context(bulletin):
     }
 
 
+_BULLETIN_STYLE = """
+  body { font-family: sans-serif; font-size: 11px; color: #222; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 13px; margin: 14px 0 2px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  th, td { border: 1px solid #ccc; padding: 4px 6px; }
+  .total { font-weight: bold; font-size: 13px; }
+  .sous-total td { font-weight: bold; background: #f4f4f4; }
+  .chaine td { padding: 3px 6px; }
+  .chaine .net { font-weight: bold; font-size: 13px; }
+  .patronal { margin-top: 14px; border: 1px dashed #999; padding: 6px 8px; }
+  .patronal p { margin: 0 0 4px; font-style: italic; }
+"""
+
+
+def _bloc_lignes_html(titre, lignes, *, sous_total=None,
+                      libelle_sous_total=None):
+    """Un bloc « titre + tableau typé/signé (+ sous-total) » du bulletin."""
+    if not lignes:
+        return ''
+    corps = ''.join(_LIGNE_TPL_DETAIL.format(**ligne) for ligne in lignes)
+    if sous_total is not None:
+        corps += (
+            f'<tr class="sous-total"><td></td>'
+            f'<td>{escape(libelle_sous_total or "Sous-total")}</td><td></td>'
+            f'<td style="text-align:right">{sous_total}</td></tr>')
+    return (
+        f'<h2>{escape(titre)}</h2>'
+        '<table><thead><tr><th>Code</th><th>Libellé</th><th>Type</th>'
+        '<th>Montant (MAD)</th></tr></thead>'
+        f'<tbody>{corps}</tbody></table>')
+
+
 def render_bulletin_html(bulletin):
-    """Construit le HTML du bulletin de paie (PAIE34)."""
+    """Construit le HTML du bulletin de paie (PAIE34, refondu AUD701).
+
+    Trois blocs — Gains / Retenues salariales (détail + sous-total) /
+    information patronale non déduite — puis la chaîne explicite
+    Brut → Total des retenues → Net imposable → IR → Net à payer.
+    """
     ctx = bulletin_context(bulletin)
-    lignes_html = ''.join(
-        _LIGNE_TPL.format(**ligne) for ligne in ctx['lignes'])
+    gains_html = _bloc_lignes_html('Gains', ctx['gains'])
+    retenues_html = _bloc_lignes_html(
+        'Retenues salariales', ctx['retenues'],
+        sous_total=f"-{ctx['total_retenues']}",
+        libelle_sous_total='Total des retenues salariales')
+    patronal_html = ''
+    if ctx['patronal']:
+        corps = ''.join(
+            f"<tr><td>{ligne['code']}</td><td>{ligne['libelle']}</td>"
+            f"<td style=\"text-align:right\">{ligne['montant']}</td></tr>"
+            for ligne in ctx['patronal'])
+        patronal_html = (
+            '<div class="patronal">'
+            '<p>Charges patronales — information, NON déduites de votre net '
+            'à payer.</p>'
+            '<table><thead><tr><th>Code</th><th>Libellé</th>'
+            '<th>Montant (MAD)</th></tr></thead>'
+            f'<tbody>{corps}</tbody></table>'
+            f"<p>Total charges patronales : {ctx['total_patronal']} MAD</p>"
+            '</div>')
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
-<style>
-  body {{ font-family: sans-serif; font-size: 11px; color: #222; }}
-  h1 {{ font-size: 18px; }}
-  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
-  th, td {{ border: 1px solid #ccc; padding: 4px 6px; }}
-  .total {{ font-weight: bold; font-size: 13px; }}
-</style></head><body>
+<style>{_BULLETIN_STYLE}</style></head><body>
   <h1>Bulletin de paie</h1>
   <p><strong>Salarié :</strong> {ctx['employe']}
      &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
      &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
   <p><strong>Période :</strong> {ctx['periode']}</p>
-  <table>
-    <thead><tr><th>Code</th><th>Libellé</th><th>Montant (MAD)</th></tr></thead>
-    <tbody>{lignes_html}</tbody>
+  {gains_html}
+  {retenues_html}
+  <h2>Récapitulatif</h2>
+  <table class="chaine">
+    <tr><td>Brut</td>
+        <td style="text-align:right">{ctx['brut']}</td></tr>
+    <tr><td>Brut imposable</td>
+        <td style="text-align:right">{ctx['brut_imposable']}</td></tr>
+    <tr><td>Total des retenues salariales</td>
+        <td style="text-align:right">-{ctx['total_retenues']}</td></tr>
+    <tr><td>Frais professionnels</td>
+        <td style="text-align:right">{ctx['frais_professionnels']}</td></tr>
+    <tr><td>Net imposable</td>
+        <td style="text-align:right">{ctx['net_imposable']}</td></tr>
+    <tr><td>Impôt sur le revenu (IR)</td>
+        <td style="text-align:right">-{ctx['ir']}</td></tr>
+    <tr class="net"><td>Net à payer</td>
+        <td style="text-align:right">{ctx['net_a_payer']} MAD</td></tr>
   </table>
   <p class="total">Net à payer : {ctx['net_a_payer']} MAD</p>
+  {patronal_html}
 </body></html>"""
 
 

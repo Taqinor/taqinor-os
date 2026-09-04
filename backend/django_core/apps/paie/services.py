@@ -2219,6 +2219,27 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
+    # AUD701 — MATÉRIALISATION des retenues salariales, contrat partagé
+    # ``apps/paie/contract_samples/bulletin_lignes.json``. Jusqu'ici CNSS/AMO/
+    # CIMR/IR n'étaient QUE soustraites arithmétiquement du net (cf. calcul du
+    # net à payer plus bas) : le seul document remis au salarié passait donc du
+    # salaire de base au net à payer SANS UNE SEULE LIGNE d'explication.
+    #
+    # ATTENTION — ces quatre lignes sont un AFFICHAGE, pas un calcul : elles ne
+    # rejoignent AUCUN accumulateur (``retenues_variables`` / ``net_a_payer``
+    # déduisent déjà ces montants). Les y ajouter les compterait DEUX FOIS.
+    for _code, _libelle, _type_ligne, _montant in (
+        ('CNSS_SAL', 'CNSS (part salariale)', Rubrique.TYPE_COTISATION, cnss),
+        ('AMO_SAL', 'AMO (part salariale)', Rubrique.TYPE_COTISATION, amo),
+        ('CIMR_SAL', 'CIMR (part salariale)', Rubrique.TYPE_COTISATION, cimr),
+        ('IR', 'Impôt sur le revenu', Rubrique.TYPE_RETENUE, ir),
+    ):
+        if _montant > 0:
+            lignes.append({
+                'code': _code, 'libelle': _libelle,
+                'type': _type_ligne, 'montant': _q(_montant),
+            })
+
     # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
     # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
     # effective de ``montant_rembourse`` se fait à la validation du bulletin
@@ -5247,15 +5268,18 @@ def calculer_gratification(profil, periode, *, annee_reference=None,
             'libelle': '13e mois / prime de bilan (prorata présence)',
             'type': Rubrique.TYPE_GAIN, 'montant': montant_brut,
         })
+    # AUD701 — même vocabulaire que ``calculer_bulletin`` (contrat partagé
+    # ``contract_samples/bulletin_lignes.json``) : le bulletin de gratification
+    # se rend avec le MÊME gabarit, il doit parler les mêmes codes/types.
     if cnss_sal > 0:
         lignes.append({
-            'code': 'CNSS_SAL', 'libelle': 'CNSS salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': cnss_sal,
+            'code': 'CNSS_SAL', 'libelle': 'CNSS (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': cnss_sal,
         })
     if amo_sal > 0:
         lignes.append({
-            'code': 'AMO_SAL', 'libelle': 'AMO salariale',
-            'type': Rubrique.TYPE_RETENUE, 'montant': amo_sal,
+            'code': 'AMO_SAL', 'libelle': 'AMO (part salariale)',
+            'type': Rubrique.TYPE_COTISATION, 'montant': amo_sal,
         })
     if ir > 0:
         lignes.append({
