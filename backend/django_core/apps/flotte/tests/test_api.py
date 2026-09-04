@@ -5,14 +5,16 @@ serveur (jamais lue du corps de requête), filtres et recherche, pour les deux
 ressources Véhicule et Engin roulant.
 """
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.flotte.models import EnginRoulant, Vehicule
-from apps.flotte.selectors import emplacement_stock_label
+from apps.flotte.models import EnginRoulant, ModeleVehicule, Vehicule
+from apps.flotte.selectors import emplacement_stock_label, emplacements_stock_labels
 from apps.stock.models import EmplacementStock
 
 User = get_user_model()
@@ -261,3 +263,76 @@ class FlotteEmplacementLinkTests(TestCase):
             emplacement_stock_label(self.co_a, 999999), '#999999')
         # Pas de lien -> None.
         self.assertIsNone(emplacement_stock_label(self.co_a, None))
+
+    def test_aud729_batch_selector_matches_unitaire(self):
+        """AUD729 — la variante BATCH résout EXACTEMENT les mêmes libellés
+        que la variante unitaire (même dégradation id nu / autre société),
+        pour un lot d'ids en un seul appel groupé."""
+        labels = emplacements_stock_labels(
+            self.co_a, [self.empl_a.id, self.empl_b.id, 999999])
+        self.assertEqual(labels[self.empl_a.id], 'Dépôt principal')
+        self.assertEqual(labels[self.empl_b.id], f'#{self.empl_b.id}')
+        self.assertEqual(labels[999999], '#999999')
+        # Ids vides/None ignorés, aucune requête, dict vide.
+        self.assertEqual(emplacements_stock_labels(self.co_a, []), {})
+        self.assertEqual(emplacements_stock_labels(self.co_a, [None]), {})
+
+
+class FlotteVehiculeListeNPlusUnTests(TestCase):
+    """AUD729 — N+1 confirmé sur la liste des véhicules : ``modele_ref``
+    (str(obj.modele_ref) par ligne) et ``emplacement_stock`` (un lookup DB
+    de stock par ligne, jamais batché) étaient résolus un par un."""
+
+    def setUp(self):
+        self.co = make_company('flotte-n1', 'Flotte N+1')
+        self.admin = make_user(self.co, 'flotte-n1-admin', 'admin')
+
+    def _seed(self, n):
+        Vehicule.objects.filter(company=self.co).delete()
+        ModeleVehicule.objects.filter(company=self.co).delete()
+        EmplacementStock.objects.filter(company=self.co).delete()
+        for i in range(n):
+            modele = ModeleVehicule.objects.create(
+                company=self.co, marque='Renault', modele=f'Modele-{i}')
+            emplacement = EmplacementStock.objects.create(
+                company=self.co, nom=f'Dépôt {i}')
+            Vehicule.objects.create(
+                company=self.co, immatriculation=f'N1-{i}', energie='diesel',
+                modele_ref=modele, emplacement_stock_id=emplacement.id)
+
+    def test_liste_nombre_de_requetes_constant(self):
+        """Le nombre de requêtes SQL de la liste ne doit PAS croître avec le
+        nombre de véhicules : avant fix, chaque véhicule ajoutait jusqu'à 2
+        requêtes supplémentaires (résolution ``modele_ref`` + emplacement de
+        stock, chacune un aller-retour DB séparé, jusqu'à ~100 requêtes en
+        plus pour 50 véhicules) — après fix (``select_related`` + batch), le
+        nombre de requêtes reste CONSTANT, que la page contienne 3 ou 50
+        véhicules aux ``modele_ref``/``emplacement_stock_id`` tous DIFFÉRENTS
+        (pas seulement répétés — un simple cache par id ne suffirait pas)."""
+        api = auth(self.admin)
+
+        self._seed(3)
+        with CaptureQueriesContext(connection) as small:
+            resp_small = api.get('/api/django/flotte/vehicules/')
+        self.assertEqual(resp_small.status_code, 200, resp_small.data)
+        self.assertEqual(len(resp_small.data['results']), 3)
+
+        self._seed(50)
+        with CaptureQueriesContext(connection) as big:
+            resp_big = api.get('/api/django/flotte/vehicules/')
+        self.assertEqual(resp_big.status_code, 200, resp_big.data)
+        self.assertEqual(len(resp_big.data['results']), 50)
+
+        self.assertEqual(len(small.captured_queries), len(big.captured_queries))
+
+    def test_labels_corrects_dans_la_reponse(self):
+        """Les libellés résolus par lot restent CORRECTS (pas juste rapides)
+        — chaque véhicule affiche bien SON propre modèle/emplacement."""
+        self._seed(3)
+        resp = auth(self.admin).get('/api/django/flotte/vehicules/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data['results']
+        self.assertEqual(len(rows), 3)
+        for i, row in enumerate(sorted(rows, key=lambda r: r['immatriculation'])):
+            self.assertEqual(row['modele_ref_label'], f'Renault Modele-{i}')
+            self.assertEqual(row['emplacement_stock_label'], f'Dépôt {i}')

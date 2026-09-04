@@ -141,7 +141,10 @@ class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
 class VehiculeViewSet(ChatterViewSetMixin, _FlotteBaseViewSet):
     """Véhicules immatriculés du parc (FLOTTE2). Filtrable par énergie/statut,
     recherche par immatriculation/marque/modèle."""
-    queryset = Vehicule.objects.all()
+    # AUD729 — `select_related('modele_ref')` : `modele_ref_label`
+    # (serializer) fait `str(obj.modele_ref)` par ligne, une requête/véhicule
+    # sans préchargement (N+1 réel sur la liste).
+    queryset = Vehicule.objects.select_related('modele_ref')
     serializer_class = VehiculeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['immatriculation', 'marque', 'modele']
@@ -158,6 +161,38 @@ class VehiculeViewSet(ChatterViewSetMixin, _FlotteBaseViewSet):
         if energie:
             qs = qs.filter(energie=energie)
         return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # AUD729 — libellés d'emplacement de stock PRÉCHARGÉS en un seul
+        # appel groupé par ``list()`` (voir ci-dessous) ; ``None`` pour tout
+        # AUTRE point d'entrée (retrieve/create/update), où le serializer
+        # dégrade sur le sélecteur unitaire (comportement inchangé).
+        context['emplacement_labels'] = getattr(
+            self, '_emplacement_labels_cache', None)
+        return context
+
+    def list(self, request, *args, **kwargs):
+        # AUD729 — `emplacement_stock_label` (serializer) résolvait chaque
+        # véhicule de la page par un lookup DB SÉPARÉ (`stock_selectors.
+        # get_emplacement_scoped`, jamais batché) — jusqu'à N requêtes
+        # supplémentaires par page de N véhicules. On précharge ici TOUS les
+        # libellés de la page en UN SEUL appel groupé.
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        target = page if page is not None else queryset
+
+        from .selectors import emplacements_stock_labels
+        ids = {v.emplacement_stock_id for v in target
+               if v.emplacement_stock_id}
+        self._emplacement_labels_cache = emplacements_stock_labels(
+            request.user.company, ids)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         # XFLT12/ZCTR11 — À la sélection d'un ``modele_ref``, pré-remplit les

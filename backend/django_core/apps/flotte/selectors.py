@@ -713,6 +713,31 @@ def emplacement_stock_label(company, emplacement_stock_id):
     return f'#{emplacement_stock_id}'
 
 
+def emplacements_stock_labels(company, emplacement_stock_ids):
+    """FLOTTE3/AUD729 — Libellés de PLUSIEURS emplacements de stock EN UN
+    SEUL appel groupé (dict ``{emplacement_stock_id: libellé}``).
+
+    Variante BATCH d'``emplacement_stock_label`` : la liste des véhicules
+    (``VehiculeViewSet.list``) résolvait un emplacement PAR véhicule (1
+    lookup DB chacun, jamais batché — N+1 réel, AUD729). Même dégradation
+    que la variante unitaire : un id qui n'existe pas / n'appartient pas à
+    la société retombe sur ``"#<id>"``. Lecture seule, ``ids`` vide → ``{}``
+    sans requête.
+    """
+    ids = {i for i in emplacement_stock_ids if i}
+    if not ids:
+        return {}
+    try:
+        from apps.stock import selectors as stock_selectors
+        emplacements = stock_selectors.get_emplacements_scoped(company, ids)
+    except Exception:
+        emplacements = {}
+    return {
+        eid: (str(emplacements[eid]) if eid in emplacements else f'#{eid}')
+        for eid in ids
+    }
+
+
 # ── FLOTTE15 — Plans d'entretien préventif (km / date / heures) ────────────────
 
 def plans_de_la_societe(company, actif_only=False, actif_flotte_id=None):
