@@ -3,7 +3,9 @@
 #
 # Principes :
 #   - SEUL Caddy publie des ports (80/443, HTTPS Let's Encrypt automatique).
-#     nginx, Postgres, Redis et MinIO redeviennent internes (!reset).
+#     nginx, Postgres, Redis, MinIO et pgbouncer redeviennent internes
+#     (!reset) — pgbouncer compris, même s'il ne démarre qu'avec le profil
+#     `scale` (AUD412).
 #   - Django tourne sous gunicorn (déjà dans requirements), DEBUG off vient
 #     de l'.env du serveur, jamais de ce fichier.
 #   - PUBLIC_HOSTNAME (.env serveur) = l'hôte public ; pour migrer vers
@@ -110,6 +112,17 @@ services:
     # limite conteneur (pas de la RAM machine totale).
     mem_limit: 4g
     cpus: 2.0
+
+  pgbouncer:
+    # AUD412 — le reset de port MANQUAIT pour le pooler. `docker-compose.yml`
+    # publie « 6432:6432 » sur le service pgbouncer ; comme AUCUNE entrée
+    # `pgbouncer` n'existait ici, le service HÉRITAIT ce port publié — donc le
+    # jour où `--profile scale` tourne en production (chemin documenté dans
+    # docs/scale-runway.md), Postgres devenait joignable depuis Internet via le
+    # pooler, protégé par le seul DB_PASSWORD, et Docker publie EN CONTOURNANT
+    # ufw. Miroir exact du patron nginx/db/minio/redis : le pooler reste
+    # joignable des autres conteneurs par le réseau interne, jamais de dehors.
+    ports: !reset []
 
   minio:
     ports: !reset []
